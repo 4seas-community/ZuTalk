@@ -6171,7 +6171,6 @@ impl ZulangueCore {
                 .editor_bridge
                 .get_delta(&tab.doc_id)
                 .map_err(store_error)?;
-            let user_owned_lanes = user_owned_lanes(&delta, &run.session_id)?;
             let existing_range = resolve_capture_section_range(
                 &self.editor_bridge,
                 &tab.doc_id,
@@ -6235,7 +6234,6 @@ impl ZulangueCore {
                     )
                     .map_err(store_error)?;
             }
-            debug_assert!(user_owned_lanes.is_empty());
             self.editor_bridge
                 .set_capture_owned_range(
                     &tab.doc_id,
@@ -6617,55 +6615,6 @@ fn push_lane_marks(
     }
 }
 
-fn user_owned_lanes(
-    delta_json: &str,
-    session_id: &str,
-) -> Result<std::collections::HashSet<(String, String)>, CoreError> {
-    let delta: serde_json::Value =
-        serde_json::from_str(delta_json).map_err(|error| CoreError::ValidationFailed {
-            message: format!("invalid editor Delta JSON: {error}"),
-        })?;
-    let operations = delta
-        .as_array()
-        .ok_or_else(|| CoreError::ValidationFailed {
-            message: "editor Delta must be an array".to_string(),
-        })?;
-    let mut result = std::collections::HashSet::new();
-    for operation in operations {
-        let Some(attributes) = operation
-            .get("attributes")
-            .and_then(serde_json::Value::as_object)
-        else {
-            continue;
-        };
-        if attributes
-            .get("session_id")
-            .and_then(serde_json::Value::as_str)
-            != Some(session_id)
-            || attributes
-                .get("content_owner")
-                .and_then(serde_json::Value::as_str)
-                != Some("user")
-        {
-            continue;
-        }
-        let Some(utterance_id) = attributes
-            .get("utterance_id")
-            .and_then(serde_json::Value::as_str)
-        else {
-            continue;
-        };
-        let Some(lane_language) = attributes
-            .get("lane_language")
-            .and_then(serde_json::Value::as_str)
-        else {
-            continue;
-        };
-        result.insert((utterance_id.to_string(), lane_language.to_string()));
-    }
-    Ok(result)
-}
-
 fn sync_capture_section_incrementally(
     bridge: &vt_store::EditorBridge,
     document_id: &str,
@@ -6701,14 +6650,6 @@ fn sync_capture_section_incrementally(
                 .map_err(store_error)?;
             continue;
         }
-        sync_capture_lane(
-            bridge,
-            document_id,
-            session_id,
-            utterance,
-            UtteranceLane::Source,
-            &utterance.source_language,
-        )?;
         if let (Some(language), Some(_)) = (
             utterance.translated_language.as_deref(),
             utterance.translated_text.as_deref(),
@@ -6722,34 +6663,23 @@ fn sync_capture_section_incrementally(
                     lane_language: Some(language),
                 },
             )?;
-            if translated_range.is_some() {
-                if !user_owned_lanes(&delta, session_id)?
-                    .contains(&(utterance.id.clone(), language.to_string()))
-                {
-                    sync_capture_lane(
+            if translated_range.is_none() {
+                if let Some(source_range) = crate::editor_api::find_unique_marked_range(
+                    &delta,
+                    crate::editor_api::DeltaMarkSelector {
+                        session_id: Some(session_id),
+                        utterance_id: Some(&utterance.id),
+                        lane_language: Some(&utterance.source_language),
+                    },
+                )? {
+                    let rendered = render_capture_lane(utterance, UtteranceLane::Translated);
+                    apply_rendered_capture_text(
                         bridge,
                         document_id,
-                        session_id,
-                        utterance,
-                        UtteranceLane::Translated,
-                        language,
+                        source_range.pos + source_range.len,
+                        rendered,
                     )?;
                 }
-            } else if let Some(source_range) = crate::editor_api::find_unique_marked_range(
-                &delta,
-                crate::editor_api::DeltaMarkSelector {
-                    session_id: Some(session_id),
-                    utterance_id: Some(&utterance.id),
-                    lane_language: Some(&utterance.source_language),
-                },
-            )? {
-                let rendered = render_capture_lane(utterance, UtteranceLane::Translated);
-                apply_rendered_capture_text(
-                    bridge,
-                    document_id,
-                    source_range.pos + source_range.len,
-                    rendered,
-                )?;
             }
         }
     }
@@ -6767,47 +6697,6 @@ fn sync_capture_section_incrementally(
             .map_err(store_error)?;
     }
     Ok(())
-}
-
-fn sync_capture_lane(
-    bridge: &vt_store::EditorBridge,
-    document_id: &str,
-    session_id: &str,
-    utterance: &RealtimeUtterance,
-    lane: UtteranceLane,
-    language: &str,
-) -> Result<(), CoreError> {
-    let delta = bridge.get_delta(document_id).map_err(store_error)?;
-    if user_owned_lanes(&delta, session_id)?.contains(&(utterance.id.clone(), language.to_string()))
-    {
-        return Ok(());
-    }
-    let Some(range) = crate::editor_api::find_unique_marked_range(
-        &delta,
-        crate::editor_api::DeltaMarkSelector {
-            session_id: Some(session_id),
-            utterance_id: Some(&utterance.id),
-            lane_language: Some(language),
-        },
-    )?
-    else {
-        return Ok(());
-    };
-    bridge
-        .apply(
-            document_id,
-            vt_store::EditOp::Delete {
-                pos: range.pos,
-                len: range.len,
-            },
-        )
-        .map_err(store_error)?;
-    apply_rendered_capture_text(
-        bridge,
-        document_id,
-        range.pos,
-        render_capture_lane(utterance, lane),
-    )
 }
 
 fn apply_rendered_capture_text(
@@ -9775,7 +9664,7 @@ mod tests {
     }
 
     #[test]
-    fn incremental_projection_updates_machine_lane_and_preserves_user_lane() {
+    fn incremental_projection_never_rewrites_finalized_lanes() {
         let bridge = vt_store::EditorBridge::new();
         let doc = loro::LoroDoc::new();
         doc.config_text_style(crate::editor_api::voice_tool_style_config());
@@ -9850,9 +9739,54 @@ mod tests {
         .unwrap();
 
         let content = bridge.get_content("realtime-doc").unwrap();
-        assert!(content.contains("en: machine revision\n"));
+        assert!(content.contains("en: good morning 🌏\n"));
+        assert!(!content.contains("machine revision"));
         assert!(content.contains("zh: 我写的版本\n"));
         assert!(!content.contains("机器修订"));
+    }
+
+    #[test]
+    fn incremental_projection_may_append_a_missing_finalized_translation_lane() {
+        let bridge = vt_store::EditorBridge::new();
+        let doc = loro::LoroDoc::new();
+        doc.config_text_style(crate::editor_api::voice_tool_style_config());
+        bridge.open("realtime-doc", doc).unwrap();
+        let mut utterance = projected_utterance();
+        utterance.translated_language = None;
+        utterance.translated_text = None;
+        utterance.alignment = UtteranceAlignment::SourceOnly;
+        let rendered = render_bilingual_capture_section("session-a", &[utterance.clone()], false);
+        let section_len = rendered.text.chars().count();
+        apply_rendered(&bridge, "realtime-doc", 0, rendered);
+        bridge
+            .set_capture_owned_range(
+                "realtime-doc",
+                &capture_section_owner_key("session-a"),
+                "session-a",
+                0,
+                section_len,
+            )
+            .unwrap();
+
+        utterance.translated_language = Some("zh".into());
+        utterance.translated_text = Some("迟到的翻译".into());
+        utterance.alignment = UtteranceAlignment::Paired;
+        utterance.revision = 1;
+        sync_capture_section_incrementally(
+            &bridge,
+            "realtime-doc",
+            "session-a",
+            crate::editor_api::TextRange {
+                pos: 0,
+                len: section_len,
+            },
+            &[utterance],
+        )
+        .unwrap();
+
+        let content = bridge.get_content("realtime-doc").unwrap();
+        assert!(content.contains("en: good morning 🌏\n"));
+        assert!(content.contains("zh: 迟到的翻译\n"));
     }
 
     #[test]

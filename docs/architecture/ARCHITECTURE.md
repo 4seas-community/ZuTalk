@@ -54,10 +54,11 @@ SQLite 中的 provider token、utterance 事实和异步结果保留机器原文
 可编辑投影。每个可编辑段必须带稳定的 `session_id`、`utterance_id` 和
 `lane_language` 标记。
 
-自动投影只拥有 `completion = partial` 的临时内容以及尚未被用户修改的完整 lane。
-用户主动提交修改时，在 Loro lane 上写入用户所有权标记。之后的投影按稳定
-utterance/lane 增量更新，遇到用户所有的 lane 必须跳过；不能通过重建整个 Session
-区段覆盖它。机器原文和用户文本因此可以同时保留。
+自动投影只拥有 `completion = partial` 的临时内容。完整 utterance 首次写入 Loro
+后成为稳定内容，不再接受实时流的替换；用户主动提交修改时，在 Loro lane 上写入
+用户所有权标记。之后的投影按稳定 utterance/lane 增量追加，只能补充尚不存在的
+迟到翻译 lane，不能通过重建整个 Session 区段覆盖 finalized 内容。机器原文和用户
+文本因此可以同时保留。
 
 ## 录音与转录
 
