@@ -15,7 +15,7 @@ TEST_ENVIRONMENT="$SWIFT_ROOT/App/TestEnvironment.swift"
 SONIOX_RT="$ROOT_DIR/crates/vt-stt/src/soniox_rt.rs"
 SONIOX_STREAM="$ROOT_DIR/crates/vt-stt/src/soniox_stream.rs"
 TRANSCRIBE_API="$ROOT_DIR/crates/vt-ffi/src/transcribe_api.rs"
-README="$ROOT_DIR/README.md"
+SECURITY_DOC="$ROOT_DIR/docs/security.md"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -147,10 +147,10 @@ if grep -Eq 'DebugLog\.|os_log|Logger\.|print\(' "$PROVIDER_SESSION"; then
   fail "ProviderCredentialSession must not log provider credential operations or values"
 fi
 
-grep -Fq 'Secrets/provider-credentials.json' "$README" \
-  || fail "README must describe the current app-private provider credential file"
-if grep -Eq 'Swift 侧 Key 存 macOS Keychain|macOS Keychain，再把|keyring-rs' "$README"; then
-  fail "README must not describe the removed Keychain/keyring credential runtime"
+grep -Fq 'Secrets/provider-credentials.json' "$SECURITY_DOC" \
+  || fail "security documentation must describe the current app-private provider credential file"
+if grep -Eq 'Swift 侧 Key 存 macOS Keychain|macOS Keychain，再把|keyring-rs' "$SECURITY_DOC"; then
+  fail "security documentation must not describe the removed Keychain/keyring credential runtime"
 fi
 
 grep -Fq 'safe_soniox_request_id' "$SONIOX_RT" \
