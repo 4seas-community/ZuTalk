@@ -457,8 +457,12 @@ assert-public-app-privacy:
         echo "FAIL: release app contains a machine-local user path" >&2
         exit 1
     fi
+    # The public update-feed URL contains the current GitHub organization name.
+    # Exclude only that exact, required URL; all other legacy identity matches
+    # remain release-blocking.
+    EXPECTED_FEED='https://github.com/4seas-community/zulangue/releases/latest/download/appcast.xml'
     prior_identity_pattern='4[[:space:]_-]*S''EAS|Four''Seas|Voice''Tool|Gi''tea'
-    if grep -Eiq "$prior_identity_pattern" "$SCAN"; then
+    if grep -Fv "$EXPECTED_FEED" "$SCAN" | grep -Eiq "$prior_identity_pattern"; then
         echo "FAIL: release app contains a prior product or service identity" >&2
         exit 1
     fi
