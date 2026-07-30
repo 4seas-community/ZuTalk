@@ -3555,7 +3555,7 @@ impl NotebookCaptureStore {
         };
         let lane_language = variant.language.clone();
 
-        ensure_utterance_is_editable(&tx, &utterance.session_id)?;
+        ensure_utterance_is_editable(&tx, &utterance.session_id, utterance.completion)?;
         if session_purge_job_exists(&tx, &utterance.session_id)? {
             return Err(NotebookCaptureStoreError::Conflict(format!(
                 "session {} is pending permanent deletion",
@@ -3626,7 +3626,6 @@ impl NotebookCaptureStore {
                 "projection mutation {mutation_id} is not pending"
             )));
         }
-        ensure_utterance_is_editable(&tx, &mutation.session_id)?;
         if session_purge_job_exists(&tx, &mutation.session_id)? {
             return Err(NotebookCaptureStoreError::Conflict(format!(
                 "session {} is pending permanent deletion",
@@ -3638,6 +3637,7 @@ impl NotebookCaptureStore {
             get_utterance_by_id_from_conn(&tx, &mutation.utterance_id)?.ok_or_else(|| {
                 NotebookCaptureStoreError::NotFound(format!("utterance {}", mutation.utterance_id))
             })?;
+        ensure_utterance_is_editable(&tx, &mutation.session_id, current.completion)?;
         let variant = current
             .variants
             .iter()
@@ -4218,7 +4218,13 @@ fn ensure_active_realtime_session(
 fn ensure_utterance_is_editable(
     conn: &Connection,
     session_id: &str,
+    completion: UtteranceCompletion,
 ) -> Result<(), NotebookCaptureStoreError> {
+    if completion != UtteranceCompletion::Complete {
+        return Err(NotebookCaptureStoreError::Conflict(
+            "provisional utterance lanes remain machine-owned".into(),
+        ));
+    }
     let editable = conn
         .query_row(
             "SELECT capture_state, projection_state FROM notebook_capture_runs
@@ -4230,11 +4236,11 @@ fn ensure_utterance_is_editable(
         .ok_or_else(|| {
             NotebookCaptureStoreError::NotFound(format!("capture session {session_id}"))
         })?;
-    if !CaptureState::parse(&editable.0)?.is_terminal()
-        || ProjectionState::parse(&editable.1)? != ProjectionState::Ready
-    {
+    let capture_state = CaptureState::parse(&editable.0)?;
+    let projection_state = ProjectionState::parse(&editable.1)?;
+    if capture_state.is_terminal() && projection_state != ProjectionState::Ready {
         return Err(NotebookCaptureStoreError::Conflict(
-            "utterance lanes are editable only after projection is ready".into(),
+            "terminal utterance lanes are editable only after projection is ready".into(),
         ));
     }
     Ok(())
@@ -6666,7 +6672,7 @@ mod tests {
     }
 
     #[test]
-    fn translated_lane_has_no_synthetic_timestamp_and_is_read_only_until_ready() {
+    fn completed_translated_lane_is_editable_while_capture_remains_active() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
         create_run(&store, &new_run(&notebook_id, "utterance")).unwrap();
@@ -6718,10 +6724,10 @@ mod tests {
                 ),
             ]
         );
-        assert!(matches!(
-            store.stage_utterance_lane_replacement("utt-1", UtteranceLane::Translated, "您好", 0),
-            Err(NotebookCaptureStoreError::Conflict(_))
-        ));
+        let active_edit = store
+            .stage_utterance_lane_replacement("utt-1", UtteranceLane::Translated, "您好", 0)
+            .unwrap();
+        store.cancel_projection_mutation(&active_edit.id).unwrap();
 
         store
             .transition_capture(
@@ -7093,15 +7099,10 @@ mod tests {
                 None,
             )
             .unwrap();
-        assert!(matches!(
-            store.stage_utterance_lane_replacement(
-                "utt-saga-conflict",
-                UtteranceLane::Source,
-                "new",
-                0
-            ),
-            Err(NotebookCaptureStoreError::Conflict(_))
-        ));
+        let active_edit = store
+            .stage_utterance_lane_replacement("utt-saga-conflict", UtteranceLane::Source, "new", 0)
+            .unwrap();
+        store.cancel_projection_mutation(&active_edit.id).unwrap();
         finish_run_ready(&store, "saga-conflict");
         assert!(matches!(
             store.stage_utterance_lane_replacement(

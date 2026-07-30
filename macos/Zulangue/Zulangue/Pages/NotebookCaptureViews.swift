@@ -2733,7 +2733,7 @@ struct NotebookRealtimeUtteranceView: View {
     }
 
     private var isEditable: Bool {
-        run.captureState.isActive == false && run.projectionState == .ready
+        run.captureState.isActive || run.projectionState == .ready
     }
 
     private var runHeader: some View {
@@ -2954,7 +2954,7 @@ struct NotebookRealtimeUtteranceView: View {
                         ),
                         speakerDisplayName: speakerDisplayName(for: utterance),
                         onManageSpeaker: { selectSpeaker(for: utterance) },
-                        isEditable: isEditable,
+                        isEditable: isEditable && utterance.completion == "complete",
                         onReplace: { language, text in
                             try history.replaceLane(
                                 utteranceId: utterance.id,
@@ -2992,7 +2992,7 @@ struct NotebookRealtimeUtteranceView: View {
                         utterance: utterance,
                         speakerDisplayName: speakerDisplayName(for: utterance),
                         onManageSpeaker: { selectSpeaker(for: utterance) },
-                        isEditable: isEditable,
+                        isEditable: isEditable && utterance.completion == "complete",
                         onReplace: { language, text in
                             try history.replaceLane(
                                 utteranceId: utterance.id,

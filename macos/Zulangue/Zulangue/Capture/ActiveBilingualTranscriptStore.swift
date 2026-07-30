@@ -452,6 +452,7 @@ protocol NotebookCaptureClienting: AnyObject {
         text: String,
         expectedRevision: UInt64
     ) throws -> NotebookCaptureUtteranceDTO
+    func projectNotebookRealtimeIncremental(sessionId: String) throws
 }
 
 extension NotebookCaptureClienting {
@@ -460,6 +461,10 @@ extension NotebookCaptureClienting {
     func listNotebookCaptureHistory(
         notebookId: String
     ) throws -> [NotebookCaptureHistoryRunDTO] {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
+    func projectNotebookRealtimeIncremental(sessionId: String) throws {
         throw NotebookCaptureClientError.ffiUnavailable
     }
 
@@ -777,6 +782,10 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             text: text,
             expectedRevision: expectedRevision
         ))
+    }
+
+    func projectNotebookRealtimeIncremental(sessionId: String) throws {
+        try requireCore().projectNotebookRealtimeIncremental(sessionId: sessionId)
     }
 
     private func requireCore() throws -> any ZulangueCoreProtocol {
@@ -1857,8 +1866,6 @@ final class NotebookCaptureHistoryStore: ObservableObject {
         guard let runIndex = runs.firstIndex(where: { run in
             run.utterances.contains(where: { $0.id == utteranceId })
         }),
-        runs[runIndex].captureState.isActive == false,
-        runs[runIndex].projectionState == .ready,
         let utteranceIndex = runs[runIndex].utterances.firstIndex(where: {
             $0.id == utteranceId
         }) else {
@@ -1866,6 +1873,11 @@ final class NotebookCaptureHistoryStore: ObservableObject {
         }
 
         let current = runs[runIndex].utterances[utteranceIndex]
+        guard current.completion == "complete",
+              runs[runIndex].captureState.isActive
+                || runs[runIndex].projectionState == .ready else {
+            throw NotebookCaptureClientError.projectionLocked
+        }
         let updated = try client.replaceNotebookUtteranceLane(
             utteranceId: utteranceId,
             laneLanguage: language,
@@ -3315,6 +3327,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             }
         }
         reconcileUtterances(for: event)
+        if event.captureState.isActive,
+           event.utterances.contains(where: { $0.completion == "complete" }) {
+            try? client.projectNotebookRealtimeIncremental(sessionId: event.sessionId)
+        }
         if let receipt = event.contextReceipt, receipt.applied {
             appliedContextReceipt = receipt
             appliedContextSessionId = event.sessionId

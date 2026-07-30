@@ -878,6 +878,12 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
 
     func previewNotebookCaptureContext(notebookId: String) throws  -> FfiNotebookCaptureContextPreview
 
+    /**
+     * Incrementally materializes every durable completed utterance into the
+     * realtime Loro document without completing the capture projection.
+     */
+    func projectNotebookRealtimeIncremental(sessionId: String) throws
+
     func pushNotebookCaptureSession(sessionId: String, audioData: Data) throws
 
     func replaceNotebookUtteranceLane(utteranceId: String, laneLanguage: String, text: String, expectedRevision: UInt64) throws  -> FfiNotebookCaptureUtterance
@@ -1711,6 +1717,18 @@ open func previewNotebookCaptureContext(notebookId: String)throws  -> FfiNoteboo
         FfiConverterString.lower(notebookId),$0
     )
 })
+}
+
+    /**
+     * Incrementally materializes every durable completed utterance into the
+     * realtime Loro document without completing the capture projection.
+     */
+open func projectNotebookRealtimeIncremental(sessionId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_project_notebook_realtime_incremental(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+}
 }
 
 open func pushNotebookCaptureSession(sessionId: String, audioData: Data)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
@@ -7263,6 +7281,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_preview_notebook_capture_context() != 41211) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_project_notebook_realtime_incremental() != 18098) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_push_notebook_capture_session() != 3507) {
