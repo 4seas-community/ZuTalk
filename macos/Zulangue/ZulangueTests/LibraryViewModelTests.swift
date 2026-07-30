@@ -70,7 +70,7 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(viewModel.sessions.count, 0)
     }
 
-    func testHomeViewIsNotebookScopedAndHidesInternalDiagnostics() throws {
+    func testHomeViewIsNotebookLibraryAndHidesInternalDiagnostics() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -80,19 +80,16 @@ final class LibraryViewModelTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(contents.contains("HomeNotebookHero"))
-        XCTAssertTrue(contents.contains("HomeRecentRecordingsSection"))
+        XCTAssertTrue(contents.contains("HomeNotebookLibrary"))
+        XCTAssertTrue(contents.contains("HomeNotebookCard"))
         XCTAssertTrue(contents.contains("HomeCreateNotebookSheet"))
-        XCTAssertTrue(contents.contains("activeNotebookGroupedSessions"))
+        XCTAssertTrue(contents.contains("viewModel.notebooks"))
         XCTAssertTrue(contents.contains("MainNavigationStoreV2.shared.openActiveNotebookForCapture()"))
-        XCTAssertTrue(contents.contains("viewModel.importAudioIntoActiveNotebook(at: url)"))
         XCTAssertTrue(contents.contains("HomeWorkspaceFailureView"))
         XCTAssertTrue(contents.contains("HomeWorkspaceRefreshWarning"))
-        XCTAssertTrue(contents.contains("case .paused: String(localized: \"capture.state.paused\")"))
-        XCTAssertTrue(contents.contains("case .draining: String(localized: \"capture.state.draining\")"))
-        XCTAssertTrue(contents.contains("case .degraded: String(localized: \"capture.remote.degraded\")"))
-        XCTAssertTrue(contents.contains("case .unavailable: String(localized: \"capture.remote.unavailable\")"))
-        XCTAssertTrue(contents.contains("home.capture.owner_elsewhere"))
+        XCTAssertFalse(contents.contains("HomeNotebookLibrary(\n                        viewModel: viewModel,\n                        capture:"))
+        XCTAssertFalse(contents.contains("chooseAudioForActiveNotebook"))
+        XCTAssertFalse(contents.contains("HomeRecentRecordingsSection(\n                        viewModel: viewModel"))
         XCTAssertFalse(contents.contains("HomeActivityHeatmap"))
         XCTAssertFalse(contents.contains("notebookEvents"))
         XCTAssertFalse(contents.contains("event.eventType"))
@@ -135,6 +132,30 @@ final class LibraryViewModelTests: XCTestCase {
 
         XCTAssertTrue(viewModel.contains("TranscriptionTaskIndex.load(core: core)"))
         XCTAssertFalse(viewModel.contains("templateId == \"transcript-hd\""))
+    }
+
+    func testNotebookEditorIncludesResourcesAsAUiOnlyStatusTab() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue", isDirectory: true)
+        let editor = try String(
+            contentsOf: root.appendingPathComponent("Pages/DocumentEditorPage.swift"),
+            encoding: .utf8
+        )
+        let resources = try String(
+            contentsOf: root.appendingPathComponent("Pages/NotebookResourcesView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(editor.contains("ResourcesTabButton"))
+        XCTAssertTrue(editor.contains("NotebookResourcesView("))
+        XCTAssertTrue(editor.contains("isShowingResources"))
+        XCTAssertTrue(resources.contains("NotebookResourceItem"))
+        XCTAssertTrue(resources.contains("listNotebookSessions"))
+        XCTAssertTrue(resources.contains("listNotebookSessionProjections"))
+        XCTAssertTrue(resources.contains("TranscriptionTaskIndex.load"))
+        XCTAssertFalse(resources.contains("createNotebook"))
     }
 
     // MARK: - Search

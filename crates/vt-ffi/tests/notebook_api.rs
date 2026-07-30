@@ -38,9 +38,15 @@ fn notebook_audio_import_creates_the_only_public_session_link_path() {
         .import_audio_into_notebook(fixture.to_string_lossy().into_owned(), notebook.id.clone())
         .unwrap();
 
-    let sessions = core.list_notebook_sessions(notebook.id).unwrap();
+    let sessions = core.list_notebook_sessions(notebook.id.clone()).unwrap();
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].session_id, imported.session_id);
+    let tabs = core.list_notebook_tabs(notebook.id.clone()).unwrap();
+    for tab in tabs {
+        let projections = core.list_notebook_session_projections(tab.id).unwrap();
+        assert_eq!(projections.len(), 1);
+        assert_eq!(projections[0].session_id, imported.session_id);
+    }
     let run = core
         .get_notebook_capture_session_event(imported.session_id.clone())
         .unwrap();
@@ -49,4 +55,31 @@ fn notebook_audio_import_creates_the_only_public_session_link_path() {
         run.capture_state,
         vt_ffi::notebook_capture_api::FfiNotebookCaptureState::Completed
     );
+}
+
+#[test]
+fn renaming_manual_note_only_changes_its_optional_title() {
+    let (_tmp, core) = make_core();
+    let notebook = core.create_notebook(Some("Research".into())).unwrap();
+    let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../vt-audio/tests/fixtures/test_16k_mono.wav");
+    let imported = core
+        .import_audio_into_notebook(fixture.to_string_lossy().into_owned(), notebook.id.clone())
+        .unwrap();
+
+    let named = core
+        .rename_notebook_manual_note(
+            notebook.id.clone(),
+            imported.session_id.clone(),
+            Some("Interview notes".into()),
+        )
+        .unwrap();
+    assert_eq!(named.section_title.as_deref(), Some("Interview notes"));
+
+    let cleared = core
+        .rename_notebook_manual_note(notebook.id, imported.session_id, Some("   ".into()))
+        .unwrap();
+    assert_eq!(cleared.section_title, None);
+    assert_eq!(cleared.id, named.id);
+    assert_eq!(cleared.created_at, named.created_at);
 }

@@ -818,6 +818,13 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
 
     func listNotebooks() throws  -> [FfiNotebook]
 
+    /**
+     * Names the complete personal note associated with one recording time.
+     * This only updates projection metadata; it never mutates note text,
+     * session ownership, or the session timestamp.
+     */
+    func renameNotebookManualNote(notebookId: String, sessionId: String, title: String?) throws  -> FfiNotebookSessionProjection
+
     func copyNotebookPrivateContextToLibrary(notebookId: String, title: String) throws  -> FfiContextPackInfo
 
     func createLibraryContextPack(title: String) throws  -> FfiContextPackInfo
@@ -1509,6 +1516,22 @@ open func listNotebooks()throws  -> [FfiNotebook]  {
     return try  FfiConverterSequenceTypeFfiNotebook.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_list_notebooks(
             self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * Names the complete personal note associated with one recording time.
+     * This only updates projection metadata; it never mutates note text,
+     * session ownership, or the session timestamp.
+     */
+open func renameNotebookManualNote(notebookId: String, sessionId: String, title: String?)throws  -> FfiNotebookSessionProjection  {
+    return try  FfiConverterTypeFfiNotebookSessionProjection_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_rename_notebook_manual_note(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),
+        FfiConverterString.lower(sessionId),
+        FfiConverterOptionString.lower(title),$0
     )
 })
 }
@@ -7092,6 +7115,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebooks() != 13876) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_rename_notebook_manual_note() != 53332) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_copy_notebook_private_context_to_library() != 37895) {

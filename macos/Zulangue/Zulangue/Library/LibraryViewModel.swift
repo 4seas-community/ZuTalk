@@ -124,6 +124,7 @@ class LibraryViewModel: ObservableObject {
     @Published var notebookTabs: [FfiNotebookTab] = []
     @Published var notebookSessionLinks: [FfiNotebookSessionLink] = []
     @Published var notebookSessionProjections: [FfiNotebookSessionProjection] = []
+    @Published private(set) var notebookSessionCounts: [String: Int] = [:]
     @Published var notebookWorkspaceError: String?
     @Published private(set) var isImportingAudio = false
     @Published private(set) var audioImportError: String?
@@ -232,6 +233,12 @@ class LibraryViewModel: ObservableObject {
             let loadedNotebooks = try client.listNotebooks()
                 .filter { $0.deletedAt == nil }
             notebooks = loadedNotebooks
+            notebookSessionCounts = Dictionary(
+                uniqueKeysWithValues: loadedNotebooks.map { notebook in
+                    let links = (try? client.listNotebookSessions(notebookId: notebook.id)) ?? []
+                    return (notebook.id, Set(links.map(\.sessionId)).count)
+                }
+            )
             let preferredNotebookId = activeNotebookId
                 ?? NotebookSessionContextStore.shared.activeNotebookId
             if let preferredNotebookId,
@@ -352,6 +359,7 @@ class LibraryViewModel: ObservableObject {
         } else {
             notebooks.append(notebook)
         }
+        notebookSessionCounts[notebook.id] = 0
         activeNotebookId = notebook.id
 
         do {

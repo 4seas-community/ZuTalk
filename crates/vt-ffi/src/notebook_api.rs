@@ -428,6 +428,29 @@ impl ZulangueCore {
             })?;
         Ok(projections.into_iter().map(Into::into).collect())
     }
+
+    /// Names the complete personal note associated with one recording time.
+    /// This only updates projection metadata; it never mutates note text,
+    /// session ownership, or the session timestamp.
+    pub fn rename_notebook_manual_note(
+        &self,
+        notebook_id: String,
+        session_id: String,
+        title: Option<String>,
+    ) -> Result<FfiNotebookSessionProjection, CoreError> {
+        let projection = self
+            .notebook_store
+            .ensure_session_projection(
+                &notebook_id,
+                BuiltinNotebookTab::ManualNote,
+                &session_id,
+                title.as_deref(),
+            )
+            .map_err(|e| CoreError::InternalError {
+                message: e.to_string(),
+            })?;
+        Ok(projection.into())
+    }
 }
 
 impl ZulangueCore {
@@ -445,7 +468,23 @@ impl ZulangueCore {
             .attach_session(&notebook_id, &session_id)
             .map_err(|e| CoreError::InternalError {
                 message: e.to_string(),
-            })
+            })?;
+
+        // Every recording has a stable corresponding file in all three
+        // resource views from the moment it joins the Notebook. Later
+        // projection work fills these files without changing their identity.
+        for kind in [
+            BuiltinNotebookTab::RealtimeTranscript,
+            BuiltinNotebookTab::AsyncTranscript,
+            BuiltinNotebookTab::ManualNote,
+        ] {
+            self.notebook_store
+                .ensure_session_projection(&notebook_id, kind, &session_id, None)
+                .map_err(|e| CoreError::InternalError {
+                    message: e.to_string(),
+                })?;
+        }
+        Ok(())
     }
 
     fn rollback_notebook_import(&self, session_id: &str, error: CoreError) -> CoreError {

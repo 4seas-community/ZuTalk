@@ -27,8 +27,26 @@ flowchart TB
 
 ## Notebook
 
-每个 Notebook 包含实时转录、异步转录和手写笔记。一次录音或导入对应一个
-session。转录投影只能写入对应的转录文档，不能写入手写笔记。
+每个 Notebook 固定包含四个内建标签：
+`realtime_transcript`、`async_transcript`、`manual_note` 和 `resources`。
+标签是固定视图，不是 Session，也不是用户自定义分类。
+
+一次录音或导入对应一个 Session。创建 Session 时建立稳定的资源集合，所有资源
+共享同一个 `session_id`：
+
+- `realtime_transcript` 保存该 Session 的实时转录投影。
+- `async_transcript` 保存该 Session 的异步转录投影与任务状态。
+- `manual_note` 查询该 Notebook 的线性时间笔记流。每条记录代表某个时间点形成的
+  一份完整笔记，包含可空标题、正文、不可因重命名而改变的创建时间、更新时间和
+  可选的 `session_id`。标题命名整份时间笔记，不命名内部段落或资源文件。
+- `resources` 查询该 Session 的文件清单与状态，不创建第四份正文。
+
+实时与异步标签按 Session 的录音时间线性查询对应文件；个人笔记按笔记创建时间
+线性查询，并支持连续滚动。资源标签按 Session 分组显示音频、转录与笔记资源，
+状态至少区分 `missing`、`pending`、`ready` 和 `failed`。
+
+标签级容器负责聚合，Session 级文件负责隔离内容。转录任务只能写入对应 Session
+的转录文件，不能写入个人笔记。
 
 ## 录音与转录
 

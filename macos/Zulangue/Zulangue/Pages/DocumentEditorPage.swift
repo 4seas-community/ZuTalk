@@ -94,6 +94,7 @@ struct DocumentEditorPage: View {
     @State private var activeSidePanel: DocumentEditorSidePanel?
     @State private var isShowingExportSheet = false
     @State private var presentedCaptureSettingsNotebookId: String?
+    @State private var isShowingResources = false
 
     /// Notebook-scoped unified tab surface, including realtime transcript.
     @State private var notebookTabs: [NotebookTabViewModel] = []
@@ -130,7 +131,20 @@ struct DocumentEditorPage: View {
                     NotebookSettingsNotebookHeader(title: editorNotebook?.title)
                 } else {
                     NotebookBuiltinTabTitle(title: activeNotebookTab?.title)
-                    NoteMetadataBar(sessionId: effectiveSessionId)
+                    if activeNotebookTab?.displayType == .manualNote,
+                       let notebookId = route?.notebookID,
+                       let sessionId = effectiveSessionId {
+                        ManualTimeNoteHeader(
+                            notebookId: notebookId,
+                            sessionId: sessionId,
+                            initialTitle: activeNotebookTab?.sessionLink?.sectionTitle,
+                            onRenamed: {
+                                Task { await loadNotebookRoute() }
+                            }
+                        )
+                    } else {
+                        NoteMetadataBar(sessionId: effectiveSessionId)
+                    }
                 }
 
                 DocumentTabBar(
@@ -138,8 +152,10 @@ struct DocumentEditorPage: View {
                     activeTabId: activeNotebookTabId,
                     captureSettingsNotebookId: captureSettingsNotebookId,
                     isCaptureSettingsSelected: isShowingCaptureSettings,
+                    isResourcesSelected: isShowingResources,
                     sessionId: effectiveSessionId,
                     onSelect: selectNotebookTab,
+                    onSelectResources: showResources,
                     onSelectCaptureSettings: showCaptureSettings,
                     onExport: { isShowingExportSheet = true }
                 )
@@ -150,10 +166,14 @@ struct DocumentEditorPage: View {
             ZStack {
                 // Editor 层
                 editorLayer
-                    .opacity(showTranscript || isShowingCaptureSettings ? 0 : 1)
-                    .allowsHitTesting(showTranscript == false && isShowingCaptureSettings == false)
-                    .disabled(isShowingCaptureSettings)
-                    .accessibilityHidden(showTranscript || isShowingCaptureSettings)
+                    .opacity(showTranscript || isShowingCaptureSettings || isShowingResources ? 0 : 1)
+                    .allowsHitTesting(
+                        showTranscript == false
+                            && isShowingCaptureSettings == false
+                            && isShowingResources == false
+                    )
+                    .disabled(isShowingCaptureSettings || isShowingResources)
+                    .accessibilityHidden(showTranscript || isShowingCaptureSettings || isShowingResources)
 
                 // Realtime is constructed even without a session: it is the
                 // Notebook's capture command center. Async remains
@@ -169,8 +189,16 @@ struct DocumentEditorPage: View {
                         .id("realtime:\(transcriptTab.notebookId)")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .opacity(showTranscript && isShowingCaptureSettings == false ? 1 : 0)
-                        .allowsHitTesting(showTranscript && isShowingCaptureSettings == false)
-                        .accessibilityHidden(showTranscript == false || isShowingCaptureSettings)
+                        .allowsHitTesting(
+                            showTranscript
+                                && isShowingCaptureSettings == false
+                                && isShowingResources == false
+                        )
+                        .accessibilityHidden(
+                            showTranscript == false
+                                || isShowingCaptureSettings
+                                || isShowingResources
+                        )
                 } else if let sid = effectiveSessionId,
                           let transcriptTab = activeNotebookTab,
                           transcriptTab.displayType == .asyncTranscript {
@@ -183,8 +211,16 @@ struct DocumentEditorPage: View {
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .opacity(showTranscript && isShowingCaptureSettings == false ? 1 : 0)
-                    .allowsHitTesting(showTranscript && isShowingCaptureSettings == false)
-                    .accessibilityHidden(showTranscript == false || isShowingCaptureSettings)
+                    .allowsHitTesting(
+                        showTranscript
+                            && isShowingCaptureSettings == false
+                            && isShowingResources == false
+                    )
+                    .accessibilityHidden(
+                        showTranscript == false
+                            || isShowingCaptureSettings
+                            || isShowingResources
+                    )
                 } else if showTranscript && isShowingCaptureSettings == false {
                     // 用户点了 Transcript tab 但 doc 没 session(纯 scratchpad)
                     EmptyState(
@@ -203,6 +239,17 @@ struct DocumentEditorPage: View {
                     )
                         .id(notebookId)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+
+                if isShowingResources, let notebookId = route?.notebookID {
+                    NotebookResourcesView(
+                        notebookId: notebookId,
+                        onOpenSession: { sessionId in
+                            WindowCommandRouter.shared.requestOpenSession(sessionId)
+                        }
+                    )
+                    .id("resources:\(notebookId)")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -461,6 +508,7 @@ struct DocumentEditorPage: View {
             activeTabId: activeNotebookTabId
         )
         presentedCaptureSettingsNotebookId = nil
+        isShowingResources = false
         if reusesCurrentRoute {
             syncPresentedRoute()
             return
@@ -478,7 +526,16 @@ struct DocumentEditorPage: View {
         guard let notebookId = captureSettingsNotebookId else { return }
         activeSidePanel = nil
         hostedTextView?.window?.makeFirstResponder(nil)
+        isShowingResources = false
         presentedCaptureSettingsNotebookId = notebookId
+    }
+
+    private func showResources() {
+        activeSidePanel = nil
+        hostedTextView?.window?.makeFirstResponder(nil)
+        presentedCaptureSettingsNotebookId = nil
+        showTranscript = false
+        isShowingResources = true
     }
 
     private func openRealtimeControls() {
@@ -767,8 +824,10 @@ private struct DocumentTabBar: View {
     let activeTabId: String?
     let captureSettingsNotebookId: String?
     let isCaptureSettingsSelected: Bool
+    let isResourcesSelected: Bool
     let sessionId: String?
     let onSelect: (NotebookTabViewModel) -> Void
+    let onSelectResources: () -> Void
     let onSelectCaptureSettings: () -> Void
     let onExport: () -> Void
     @ObservedObject private var captureStore = ActiveBilingualTranscriptStore.shared
@@ -780,10 +839,17 @@ private struct DocumentTabBar: View {
                     ForEach(tabs) { tab in
                         NotebookTabButton(
                             tab: effectiveTab(tab),
-                            isActive: isCaptureSettingsSelected == false && tab.id == activeTabId,
+                            isActive: isCaptureSettingsSelected == false
+                                && isResourcesSelected == false
+                                && tab.id == activeTabId,
                             action: { onSelect(tab) }
                         )
                     }
+
+                    ResourcesTabButton(
+                        isActive: isResourcesSelected,
+                        action: onSelectResources
+                    )
 
                     if captureSettingsNotebookId != nil {
                         CaptureSettingsTabButton(
@@ -796,7 +862,7 @@ private struct DocumentTabBar: View {
 
             Spacer(minLength: Spacing.md)
 
-            if isCaptureSettingsSelected == false {
+            if isCaptureSettingsSelected == false && isResourcesSelected == false {
                 Button(action: onExport) {
                     Image(systemName: "tray.and.arrow.up")
                         .font(.system(size: 12, weight: .semibold))
@@ -841,6 +907,37 @@ private struct DocumentTabBar: View {
             status: resolvedStatus,
             position: tab.position
         )
+    }
+}
+
+private struct ResourcesTabButton: View {
+    let isActive: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 0) {
+                Label(
+                    String(localized: "resources.tab"),
+                    systemImage: "tray.full"
+                )
+                .font(.bodyMedium)
+                .lineLimit(1)
+                .foregroundColor(isActive || isHovering ? .bpLine : .textOnBpDim)
+                .padding(.horizontal, Spacing.md)
+                .padding(.vertical, 8)
+
+                Rectangle()
+                    .fill(isActive ? Color.brandAccent : Color.clear)
+                    .frame(height: 2)
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help(String(localized: "resources.tab.hint"))
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+        .accessibilityIdentifier("notebook.tab.resources")
     }
 }
 
@@ -1415,6 +1512,103 @@ private struct NoteMetadataBar: View {
         let s = total % 60
         if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
         return String(format: "%d:%02d", m, s)
+    }
+}
+
+private struct ManualTimeNoteHeader: View {
+    let notebookId: String
+    let sessionId: String
+    let initialTitle: String?
+    let onRenamed: () -> Void
+
+    @State private var title = ""
+    @State private var savedTitle = ""
+    @State private var createdAt: Date?
+    @State private var isSaving = false
+
+    var body: some View {
+        HStack(spacing: Spacing.sm) {
+            TextField(
+                String(localized: "manual_note.title.placeholder"),
+                text: $title
+            )
+            .textFieldStyle(.plain)
+            .font(.bodyMedium)
+            .foregroundColor(.bpLine)
+            .onSubmit(save)
+            .accessibilityIdentifier("manual_note.title")
+
+            if title != savedTitle {
+                Button(action: save) {
+                    if isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isSaving)
+                .help(String(localized: "manual_note.title.save"))
+                .accessibilityIdentifier("manual_note.title.save")
+            }
+
+            Spacer()
+
+            if let createdAt {
+                Label(
+                    createdAt.formatted(date: .abbreviated, time: .shortened),
+                    systemImage: "clock"
+                )
+                .font(.caption)
+                .foregroundColor(.textOnBpFaint)
+                .accessibilityLabel(
+                    String(
+                        format: String(localized: "manual_note.created_at_format"),
+                        createdAt.formatted(date: .long, time: .shortened)
+                    )
+                )
+            }
+        }
+        .padding(.horizontal, Spacing.lg)
+        .padding(.bottom, Spacing.sm)
+        .task(id: sessionId) {
+            title = initialTitle ?? ""
+            savedTitle = title
+            guard let core = CoreClient.shared.core,
+                  let session = try? core.getSession(id: sessionId) else {
+                createdAt = nil
+                return
+            }
+            createdAt = Date(
+                timeIntervalSince1970: TimeInterval(session.createdAtUnixMs) / 1_000
+            )
+        }
+        .onChange(of: initialTitle) { _, newValue in
+            let resolved = newValue ?? ""
+            title = resolved
+            savedTitle = resolved
+        }
+    }
+
+    private func save() {
+        guard isSaving == false, title != savedTitle,
+              let core = CoreClient.shared.core else { return }
+        isSaving = true
+        do {
+            let projection = try core.renameNotebookManualNote(
+                notebookId: notebookId,
+                sessionId: sessionId,
+                title: title
+            )
+            title = projection.sectionTitle ?? ""
+            savedTitle = title
+            onRenamed()
+        } catch {
+            ToastCenter.shared.error(String(localized: "manual_note.title.save_failed"))
+        }
+        isSaving = false
     }
 }
 

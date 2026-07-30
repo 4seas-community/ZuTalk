@@ -1,13 +1,10 @@
 // HomeView.swift
 // Notebook-first home for the local Zulangue MVP.
 
-import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct HomeView: View {
     @StateObject private var viewModel = LibraryViewModel()
-    @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @State private var isCreatingNotebook = false
 
     var body: some View {
@@ -22,17 +19,10 @@ struct HomeView: View {
                         HomeWorkspaceFailureView(onRetry: reloadWorkspace)
                     }
                 } else {
-                    HomeNotebookHero(
+                    HomeNotebookLibrary(
                         viewModel: viewModel,
-                        capture: capture,
-                        onOpenNotebook: openActiveNotebook,
-                        onImportAudio: chooseAudioForActiveNotebook,
+                        onOpenNotebook: openNotebook,
                         onCreateNotebook: { isCreatingNotebook = true }
-                    )
-
-                    HomeRecentRecordingsSection(
-                        viewModel: viewModel,
-                        onOpenSession: openInEditor
                     )
 
                     if viewModel.notebookWorkspaceError != nil {
@@ -55,16 +45,14 @@ struct HomeView: View {
             viewModel.loadSessions()
             viewModel.loadNotebookWorkspace()
         }
-        .onChange(of: viewModel.activeNotebookId) { _, _ in
-            viewModel.searchText = ""
-        }
         .onReceive(NotificationCenter.default.publisher(for: .zulangueSessionUpdated)) { _ in
             viewModel.loadSessions()
             viewModel.loadNotebookWorkspace()
         }
     }
 
-    private func openActiveNotebook() {
+    private func openNotebook(_ notebookId: String) {
+        viewModel.selectNotebook(notebookId)
         MainNavigationStoreV2.shared.openActiveNotebookForCapture()
     }
 
@@ -72,27 +60,129 @@ struct HomeView: View {
         viewModel.loadSessions()
         viewModel.loadNotebookWorkspace()
     }
+}
 
-    private func openInEditor(sessionId: String) {
-        _ = viewModel.selectNotebook(containingSession: sessionId)
-        WindowCommandRouter.shared.requestOpenSession(sessionId)
-    }
+// MARK: - Notebook library
 
-    private func chooseAudioForActiveNotebook() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = ["wav", "mp3", "m4a", "flac", "ogg"]
-            .compactMap { UTType(filenameExtension: $0) }
-        panel.title = String(localized: "home.import.panel.title")
-        panel.prompt = String(localized: "home.import.panel.action")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        viewModel.importAudioIntoActiveNotebook(at: url)
+private struct HomeNotebookLibrary: View {
+    @ObservedObject var viewModel: LibraryViewModel
+    let onOpenNotebook: (String) -> Void
+    let onCreateNotebook: () -> Void
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 250, maximum: 340), spacing: Spacing.md)
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text(String(localized: "home.library.title"))
+                        .font(.titleLG)
+                        .foregroundColor(.bpLine)
+
+                    Text(String(localized: "home.library.subtitle"))
+                        .font(.bodySM)
+                        .foregroundColor(.textOnBpDim)
+                }
+
+                Spacer()
+
+                Button(action: onCreateNotebook) {
+                    Label(String(localized: "home.notebook.new"), systemImage: "plus")
+                        .font(.bodyMedium)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.bpLine)
+                .accessibilityIdentifier("home.notebook.new")
+            }
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.md) {
+                ForEach(viewModel.notebooks, id: \.id) { notebook in
+                    HomeNotebookCard(
+                        notebook: notebook,
+                        sessionCount: viewModel.notebookSessionCounts[notebook.id] ?? 0,
+                        onOpen: { onOpenNotebook(notebook.id) }
+                    )
+                }
+            }
+        }
     }
 }
 
-// MARK: - Active Notebook
+private struct HomeNotebookCard: View {
+    let notebook: FfiNotebook
+    let sessionCount: Int
+    let onOpen: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                HStack(alignment: .top) {
+                    Image(systemName: "book.closed.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.brandAccent)
+                        .frame(width: 36, height: 36)
+                        .background(Color.bpBlueChip)
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+
+                    Spacer()
+
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(isHovering ? .bpLine : .textOnBpFaint)
+                }
+
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text(notebook.title)
+                        .font(.titleMD)
+                        .foregroundColor(.bpLine)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    Text(metadata)
+                        .font(.bodySM)
+                        .foregroundColor(.textOnBpDim)
+                }
+
+                Label(
+                    String(localized: "home.notebook.local_first"),
+                    systemImage: "lock.fill"
+                )
+                .font(.caption)
+                .foregroundColor(.textOnBpFaint)
+            }
+            .padding(Spacing.lg)
+            .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
+            .background(isHovering ? Color.bpBlueLight.opacity(0.58) : Color.bpBlueLight.opacity(0.28))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.md)
+                    .strokeBorder(
+                        isHovering ? Color.brandAccent.opacity(0.45) : Color.bpLineGhost.opacity(0.55),
+                        lineWidth: Stroke.thin
+                    )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.md))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(notebook.title)
+        .accessibilityHint(String(localized: "home.library.open_hint"))
+        .accessibilityIdentifier("home.notebook.card.\(notebook.id)")
+    }
+
+    private var metadata: String {
+        String(
+            format: String(localized: "home.library.session_count_format"),
+            Int64(sessionCount)
+        )
+    }
+}
+
+// MARK: - Legacy active Notebook components
 
 private struct HomeNotebookHero: View {
     @ObservedObject var viewModel: LibraryViewModel
