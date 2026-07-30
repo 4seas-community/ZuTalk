@@ -74,27 +74,12 @@ sweep days="30":
 
 # 版本号同步（Cargo.toml → Info.plist）
 sync-version:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    VERSION=$(cargo metadata --no-deps --format-version 1 2>/dev/null | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; print([p['version'] for p in pkgs if p['name']=='vt-ffi'][0])")
-    echo "Syncing version: $VERSION"
-    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" {{ macos_dir }}/Zulangue/Info.plist 2>/dev/null || echo "Info.plist not found (skip)"
+    @echo "Info.plist uses Xcode build variables; update Cargo.toml and MARKETING_VERSION together."
+    bash "{{ project_dir }}/scripts/check_release_version.sh"
 
 # 版本号一致性检查
 version-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    CARGO_VER=$(cargo metadata --no-deps --format-version 1 2>/dev/null | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; print([p['version'] for p in pkgs if p['name']=='vt-ffi'][0])")
-    echo "Cargo version: $CARGO_VER"
-    if [ -f "{{ macos_dir }}/Zulangue/Info.plist" ]; then
-        PLIST_VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" {{ macos_dir }}/Zulangue/Info.plist)
-        echo "Plist version: $PLIST_VER"
-        if [ "$CARGO_VER" != "$PLIST_VER" ]; then
-            echo "FAIL: Version mismatch! Run 'just sync-version'"
-            exit 1
-        fi
-    fi
-    echo "✓ Version OK: $CARGO_VER"
+    bash "{{ project_dir }}/scripts/check_release_version.sh"
 
 # 完整质量门禁
 ci-check:
@@ -279,6 +264,9 @@ xcode-build:
     set -euo pipefail
     OUT="{{ app_build_dir }}"
     mkdir -p "$OUT"
+    if [ -e "$OUT/Zulangue.app" ]; then
+        find "$OUT/Zulangue.app" -depth -delete
+    fi
     HOST_ARCH=$(uname -m)
     LOG="$OUT/xcodebuild.log"
     echo "Building for host arch: $HOST_ARCH"
@@ -317,6 +305,9 @@ xcode-build-universal:
     set -euo pipefail
     OUT="{{ app_build_dir }}"
     mkdir -p "$OUT"
+    if [ -e "$OUT/Zulangue.app" ]; then
+        find "$OUT/Zulangue.app" -depth -delete
+    fi
     LOG="$OUT/xcodebuild-universal.log"
     echo "Building universal release app: arm64 x86_64"
     if ! xcodebuild build \
@@ -342,6 +333,50 @@ xcode-build-universal:
     just assert-universal-app
     echo "✓ Universal Xcode build → $OUT/Zulangue.app"
 
+# Developer ID distribution build. Xcode signs Sparkle.framework and its
+# helpers as part of the archive, so the finished bundle keeps one stable code
+# identity instead of being repaired later with a recursive re-sign.
+xcode-build-universal-signed:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${DEVELOPER_ID:?DEVELOPER_ID is required for a signed release}"
+    OUT="{{ app_build_dir }}"
+    ARCHIVE="{{ build_dir }}/archive/Zulangue.xcarchive"
+    LOG="$OUT/xcodebuild-distribution.log"
+    mkdir -p "$OUT" "$(dirname "$ARCHIVE")"
+    if [ -e "$ARCHIVE" ]; then
+        find "$ARCHIVE" -depth -delete
+    fi
+    echo "Archiving universal Developer ID release: arm64 x86_64"
+    if ! xcodebuild archive \
+        -project "{{ macos_dir }}/Zulangue.xcodeproj" \
+        -scheme Zulangue \
+        -configuration Release \
+        -archivePath "$ARCHIVE" \
+        -destination "generic/platform=macOS" \
+        ONLY_ACTIVE_ARCH=NO \
+        ARCHS="arm64 x86_64" \
+        CODE_SIGN_STYLE=Manual \
+        CODE_SIGN_IDENTITY="$DEVELOPER_ID" \
+        DEVELOPMENT_TEAM="" \
+        ENABLE_HARDENED_RUNTIME=YES \
+        OTHER_CODE_SIGN_FLAGS="--timestamp" \
+        >"$LOG" 2>&1; then
+        grep -E "error:|warning:|ARCHIVE|CodeSign|Sparkle" "$LOG" | tail -120 || tail -120 "$LOG"
+        exit 1
+    fi
+    APP="$ARCHIVE/Products/Applications/Zulangue.app"
+    test -d "$APP" || { echo "FAIL: signed archive does not contain Zulangue.app"; exit 1; }
+    if [ -e "$OUT/Zulangue.app" ]; then
+        find "$OUT/Zulangue.app" -depth -delete
+    fi
+    ditto "$APP" "$OUT/Zulangue.app"
+    just assert-universal-app
+    just assert-release-app-signature
+    just assert-sparkle-configured-app
+    bash "{{ project_dir }}/scripts/check_release_version.sh" "$OUT/Zulangue.app"
+    echo "✓ Signed universal archive → $OUT/Zulangue.app"
+
 assert-universal-app:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -359,6 +394,45 @@ assert-universal-app:
         fi
     done
     echo "✓ Universal app executable: $ARCHS"
+
+assert-release-app-signature:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP="{{ app_build_dir }}/Zulangue.app"
+    test -d "$APP" || { echo "FAIL: $APP does not exist"; exit 1; }
+    codesign --verify --deep --strict --verbose=2 "$APP"
+    DETAILS="$(codesign -dv --verbose=4 "$APP" 2>&1)"
+    grep -Fq "Authority=Developer ID Application:" <<<"$DETAILS" \
+        || { echo "FAIL: release app is not signed with Developer ID Application"; exit 1; }
+    grep -Eq "flags=.*\\(runtime\\)" <<<"$DETAILS" \
+        || { echo "FAIL: release app does not enable Hardened Runtime"; exit 1; }
+    if grep -Fq "Signature=adhoc" <<<"$DETAILS"; then
+        echo "FAIL: release app must never use an Ad Hoc signature"
+        exit 1
+    fi
+    echo "✓ Developer ID signature and Hardened Runtime verified"
+
+assert-sparkle-configured-app:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    APP="{{ app_build_dir }}/Zulangue.app"
+    PLIST="$APP/Contents/Info.plist"
+    FRAMEWORK="$APP/Contents/Frameworks/Sparkle.framework"
+    test -f "$PLIST" || { echo "FAIL: release Info.plist is missing"; exit 1; }
+    test -d "$FRAMEWORK" || { echo "FAIL: Sparkle.framework is not embedded"; exit 1; }
+    FEED="$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$PLIST")"
+    PUBLIC_KEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$PLIST")"
+    [[ "$FEED" == https://* ]] \
+        || { echo "FAIL: SUFeedURL must use HTTPS"; exit 1; }
+    [[ "$PUBLIC_KEY" =~ ^[A-Za-z0-9+/]{43}=$ ]] \
+        || { echo "FAIL: SUPublicEDKey is missing or malformed"; exit 1; }
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :SURequireSignedFeed' "$PLIST")" == "true" ]] \
+        || { echo "FAIL: signed appcast enforcement is disabled"; exit 1; }
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUVerifyUpdateBeforeExtraction' "$PLIST")" == "true" ]] \
+        || { echo "FAIL: pre-extraction update verification is disabled"; exit 1; }
+    otool -L "$APP/Contents/MacOS/Zulangue" | grep -Fq "Sparkle.framework" \
+        || { echo "FAIL: Zulangue executable is not linked to Sparkle"; exit 1; }
+    echo "✓ Sparkle feed, public key, framework, and strict verification are configured"
 
 assert-adhoc-app:
     #!/usr/bin/env bash
@@ -517,20 +591,42 @@ notarize:
         echo "FAIL: {{ dmg_dir }}/Zulangue-*.dmg 不存在 — 先运行 'just dmg'"
         exit 1
     fi
-    xcrun notarytool submit "$DMG" \
-        --keychain-profile "zulangue-notary" \
-        --wait
+    if [ -n "${NOTARY_KEY_PATH:-}" ] \
+        && [ -n "${APPLE_NOTARY_KEY_ID:-}" ] \
+        && [ -n "${APPLE_NOTARY_ISSUER_ID:-}" ]; then
+        xcrun notarytool submit "$DMG" \
+            --key "$NOTARY_KEY_PATH" \
+            --key-id "$APPLE_NOTARY_KEY_ID" \
+            --issuer "$APPLE_NOTARY_ISSUER_ID" \
+            --wait
+    else
+        xcrun notarytool submit "$DMG" \
+            --keychain-profile "zulangue-notary" \
+            --wait
+    fi
     xcrun stapler staple "$DMG"
+    xcrun stapler validate "$DMG"
     echo "✓ 公证完成: $DMG"
 
-# 官方发布公证。缺 notary profile 必须失败，不能跳过。
+# 官方发布公证。支持本机 Keychain profile 或 CI 的 App Store Connect API key。
 notarize-release:
     #!/usr/bin/env bash
     set -euo pipefail
-    command -v security >/dev/null 2>&1 || { echo "FAIL: security 不可用，无法验证公证 profile"; exit 1; }
-    if ! security find-generic-password -a "zulangue-notary" -s "com.apple.gk.ticket-delivery" >/dev/null 2>&1; then
-        echo "FAIL: zulangue-notary keychain profile 未配置，不能生成官方发布产物"
-        exit 1
+    if [ -n "${NOTARY_KEY_PATH:-}" ] \
+        || [ -n "${APPLE_NOTARY_KEY_ID:-}" ] \
+        || [ -n "${APPLE_NOTARY_ISSUER_ID:-}" ]; then
+        : "${NOTARY_KEY_PATH:?NOTARY_KEY_PATH is required for CI notarization}"
+        : "${APPLE_NOTARY_KEY_ID:?APPLE_NOTARY_KEY_ID is required for CI notarization}"
+        : "${APPLE_NOTARY_ISSUER_ID:?APPLE_NOTARY_ISSUER_ID is required for CI notarization}"
+        test -f "$NOTARY_KEY_PATH" \
+            || { echo "FAIL: NOTARY_KEY_PATH does not point to a file"; exit 1; }
+    else
+        command -v security >/dev/null 2>&1 \
+            || { echo "FAIL: security is unavailable"; exit 1; }
+        if ! security find-generic-password -a "zulangue-notary" -s "com.apple.gk.ticket-delivery" >/dev/null 2>&1; then
+            echo "FAIL: configure the zulangue-notary profile or CI notary API credentials"
+            exit 1
+        fi
     fi
     just notarize
 
@@ -548,12 +644,72 @@ dmg:
     DMG="{{ dmg_dir }}/Zulangue-${VERSION}.dmg"
     bash "{{ project_dir }}/scripts/create_friendly_dmg.sh" "$APP" "$VERSION" "$DMG"
 
-# 单一社区发布包：Universal app + Ad Hoc 签名 + DMG。
-release-adhoc: release xcode-build-universal assert-universal-app assert-adhoc-app assert-public-app-privacy dmg
+sign-release-dmg:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${DEVELOPER_ID:?DEVELOPER_ID is required for DMG signing}"
+    DMG=$(ls -t {{ dmg_dir }}/Zulangue-*.dmg 2>/dev/null | head -1)
+    test -f "$DMG" || { echo "FAIL: release DMG is missing"; exit 1; }
+    codesign --force --sign "$DEVELOPER_ID" --timestamp "$DMG"
+    codesign --verify --strict --verbose=2 "$DMG"
+    echo "✓ Developer ID DMG signature verified"
+
+sparkle-appcast:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
+    : "${GITHUB_REF_NAME:?GITHUB_REF_NAME is required}"
+    UPDATE_DIR="{{ build_dir }}/update"
+    mkdir -p "$UPDATE_DIR"
+    find "$UPDATE_DIR" -mindepth 1 -depth -delete
+    DMG=$(ls -t {{ dmg_dir }}/Zulangue-*.dmg 2>/dev/null | head -1)
+    test -f "$DMG" || { echo "FAIL: release DMG is missing"; exit 1; }
+    cp "$DMG" "$UPDATE_DIR/"
+    BASENAME="$(basename "$DMG" .dmg)"
+    cp "{{ project_dir }}/packaging/release-notes.md" "$UPDATE_DIR/${BASENAME}.md"
+
+    TOOL_DIR="$(mktemp -d)"
+    trap 'find "$TOOL_DIR" -depth -delete 2>/dev/null || true' EXIT
+    ARCHIVE="$TOOL_DIR/Sparkle-2.9.4.tar.xz"
+    curl --fail --location --silent --show-error \
+        "https://github.com/sparkle-project/Sparkle/releases/download/2.9.4/Sparkle-2.9.4.tar.xz" \
+        -o "$ARCHIVE"
+    ACTUAL_SHA="$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')"
+    EXPECTED_SHA="ce89daf967db1e1893ed3ebd67575ed82d3902563e3191ca92aaec9164fbdef9"
+    [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] \
+        || { echo "FAIL: Sparkle tools archive checksum mismatch"; exit 1; }
+    tar -xJf "$ARCHIVE" -C "$TOOL_DIR"
+
+    # Release signing is deliberately local-only: the private key remains in
+    # the login Keychain and is never stored as a GitHub Actions secret.
+    "$TOOL_DIR/bin/generate_appcast" \
+        --account Zulangue \
+        --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
+        --link "https://github.com/${GITHUB_REPOSITORY}" \
+        --embed-release-notes \
+        --maximum-deltas 0 \
+        -o "$UPDATE_DIR/appcast.xml" \
+        "$UPDATE_DIR"
+    test -f "$UPDATE_DIR/appcast.xml" \
+        || { echo "FAIL: appcast.xml was not generated"; exit 1; }
+    grep -Fq "sparkle:edSignature=" "$UPDATE_DIR/appcast.xml" \
+        || { echo "FAIL: update archive is not signed in appcast.xml"; exit 1; }
+    grep -Fq "<!-- sparkle-signatures:" "$UPDATE_DIR/appcast.xml" \
+        || { echo "FAIL: appcast.xml itself is not signed"; exit 1; }
+    cp "$UPDATE_DIR/appcast.xml" "{{ dmg_dir }}/appcast.xml"
+    echo "✓ Signed Sparkle appcast generated"
+
+# 单一社区发布包：Universal app + Ad Hoc 签名 + Sparkle 配置 + DMG。
+release-adhoc: release xcode-build-universal assert-universal-app assert-adhoc-app assert-sparkle-configured-app assert-public-app-privacy dmg
     @echo "✓ Ad Hoc Universal release 完成: build/dmg/Zulangue-*.dmg"
 
-# 完整签名发布（需要 DEVELOPER_ID 和 notarize keychain profile）
-release-full: release xcode-build-universal assert-universal-app assert-public-app-privacy sign-release dmg notarize-release assert-release-dmg-gatekeeper-accepted
+# 本机正式发布包：先构建 Ad Hoc DMG，再使用登录 Keychain 中的 Zulangue
+# Sparkle 私钥签署更新包和 appcast。CI 不运行此 recipe。
+release-sparkle-adhoc: release-adhoc sparkle-appcast
+    @echo "✓ Ad Hoc + Sparkle 本机发布产物完成: build/dmg/"
+
+# 完整签名发布（需要 Developer ID、公证凭据和源码中固定的 Sparkle 公钥）
+release-full: release xcode-build-universal-signed assert-universal-app assert-release-app-signature assert-sparkle-configured-app assert-public-app-privacy dmg sign-release-dmg notarize-release assert-release-dmg-gatekeeper-accepted
     @echo "✓ 完整签名 + 公证 release 完成: build/dmg/Zulangue-*.dmg"
 
 # --- 内部 recipes ---

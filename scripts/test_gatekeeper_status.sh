@@ -125,6 +125,10 @@ grep -Eq '^release-full:.*notarize-release.*assert-release-dmg-gatekeeper-accept
 grep -Eq 'bash scripts/test_gatekeeper_status\.sh' "$ROOT_DIR/justfile" \
   || { echo "local gate must run the Gatekeeper status gate" >&2; exit 1; }
 grep -Fq 'just release-adhoc' "$ROOT_DIR/.github/workflows/macos-build.yaml" \
-  || { echo "GitHub macOS workflow must package the explicitly Ad Hoc signed app" >&2; exit 1; }
+  || { echo "GitHub macOS workflow must compile the Ad Hoc verification app" >&2; exit 1; }
+if grep -Fq 'just release-full' "$ROOT_DIR/.github/workflows/macos-build.yaml"; then
+  echo "GitHub macOS workflow must not require Developer ID for the current release path" >&2
+  exit 1
+fi
 
 echo "gatekeeper status check tests passed"

@@ -22,6 +22,13 @@ struct MenuBarIdleView: View {
                 accessibilityID: AccessibilityID.menuBarSettingsButton,
                 action: "settings"
             )
+            MenuBarActionRow(
+                systemImage: "arrow.triangle.2.circlepath",
+                title: String(localized: "updates.check"),
+                tint: Color.textSecondary,
+                accessibilityID: AccessibilityID.menuBarCheckForUpdatesButton,
+                action: "checkForUpdates"
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

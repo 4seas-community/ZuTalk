@@ -591,6 +591,14 @@
 "menubar.action.recording" = "Start recording";
 "menubar.action.float" = "Floating transcript";
 "menubar.action.settings" = "Settings";
+"updates.check" = "Check for Updates…";
+"updates.unavailable.title" = "Updates are not configured";
+"updates.unavailable.message" = "This development build does not contain the public update-signing key.";
+"updates.unavailable.dismiss" = "OK";
+"settings.updates.title" = "Software updates";
+"settings.updates.subtitle" = "Signed updates are delivered securely through Sparkle.";
+"settings.updates.automatic" = "Automatically check for updates";
+"settings.updates.automatic_hint" = "Zulangue checks the signed update feed periodically and notifies you when a new version is available.";
 "menubar.recording.pause" = "Pause";
 "menubar.recording.resume" = "Resume";
 "menubar.recording.stop" = "Stop";

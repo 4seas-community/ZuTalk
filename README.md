@@ -43,18 +43,18 @@ just ci-check
 
 ## 打包
 
-当前社区发布包：
+当前社区发布路线：
 
-```bash
-just release-adhoc
-```
+1. 构建 arm64 与 x86_64 Universal App，并使用 Ad Hoc 代码签名；
+2. 创建带 Applications 快捷方式的 DMG；
+3. 在发布 Mac 上使用专用 Sparkle Ed25519 私钥签署更新包和 appcast；
+4. 将 DMG、SHA-256 校验文件和 `appcast.xml` 发布到 GitHub Release；
+5. 已安装的 Zulangue 通过 Sparkle 2 从 HTTPS appcast 检查更新并提示用户。
 
-该命令生成一个同时支持 Apple Silicon 和 Intel 的 Universal DMG，并使用
-Ad Hoc 签名。打开 DMG 后，将 Zulangue 拖到 Applications 即可安装。
-由于它没有 Apple 公证，首次打开时 macOS 可能要求用户在“系统设置 →
-隐私与安全性”中确认打开。
-
-需要无安全提示的正式公开分发时，应改用 Developer ID 签名和 Apple 公证。
+当前安装包没有 Apple Developer ID 签名或公证，首次打开时可能需要在 Finder
+中右键选择“打开”，或在“隐私与安全性”中确认。Sparkle 私钥只保存在发布
+Mac 的登录 Keychain，GitHub Actions 只做无私钥的构建和测试。完整步骤见
+[macOS 发布说明](docs/releasing.md)。
 
 ## 目录
 

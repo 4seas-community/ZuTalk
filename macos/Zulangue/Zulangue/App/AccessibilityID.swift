@@ -21,6 +21,7 @@ enum AccessibilityID {
 
     /// 菜单栏 popover idle 状态:Settings
     static let menuBarSettingsButton = "menubar.button.settings"
+    static let menuBarCheckForUpdatesButton = "menubar.button.checkForUpdates"
 
     /// 菜单栏 popover 公共底部：退出整个应用
     static let menuBarQuitButton = "menubar.button.quit"

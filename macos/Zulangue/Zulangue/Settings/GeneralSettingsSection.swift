@@ -92,6 +92,7 @@ struct GeneralSettingsSection: View {
     @AppStorage("appearance") private var appearance: String = AppearanceMode.system.rawValue
 
     @State private var showRestartHint: Bool = false
+    @State private var automaticallyChecksForUpdates = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
@@ -153,6 +154,29 @@ struct GeneralSettingsSection: View {
                     }
                 }
             }
+
+            SettingsCard(
+                title: String(localized: "settings.updates.title"),
+                subtitle: String(localized: "settings.updates.subtitle")
+            ) {
+                SettingsRow(
+                    String(localized: "settings.updates.automatic"),
+                    description: String(localized: "settings.updates.automatic_hint")
+                ) {
+                    Toggle("", isOn: $automaticallyChecksForUpdates)
+                        .labelsHidden()
+                        .disabled(!SoftwareUpdateController.shared.isAvailable)
+                        .onChange(of: automaticallyChecksForUpdates) { _, enabled in
+                            SoftwareUpdateController.shared.setAutomaticallyChecksForUpdates(enabled)
+                        }
+                }
+                SettingsRowDivider()
+                SettingsRow(String(localized: "updates.check")) {
+                    Button(String(localized: "updates.check")) {
+                        SoftwareUpdateController.shared.checkForUpdates()
+                    }
+                }
+            }
         }
         .onAppear {
             // 进面板时,清洗遗留值(用户历史上可能是 "system")到显式语言
@@ -160,6 +184,8 @@ struct GeneralSettingsSection: View {
             if effective.rawValue != language {
                 language = effective.rawValue
             }
+            automaticallyChecksForUpdates =
+                SoftwareUpdateController.shared.automaticallyChecksForUpdates
         }
     }
 

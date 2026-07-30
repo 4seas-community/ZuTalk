@@ -25,7 +25,7 @@ recipe_body() {
 grep -Fq 'runs-on: macos-15' "$WORKFLOW" \
   || fail "GitHub macOS workflow must use the pinned macOS 15 runner"
 grep -Fq 'just release-adhoc' "$WORKFLOW" \
-  || fail "GitHub macOS workflow must build the Ad Hoc Universal release"
+  || fail "GitHub macOS workflow must build the Ad Hoc Universal verification artifact"
 grep -Fq 'build/dmg/Zulangue-*.dmg' "$WORKFLOW" \
   || fail "GitHub macOS workflow must upload the single Zulangue DMG"
 
@@ -83,10 +83,22 @@ grep -Eq 'lipo[[:space:]]+-create.*FDK_ARM64.*FDK_X86_64|lipo[[:space:]]+-create
 grep -Eq 'libfdk-aac\.a[[:space:]]+-verify_arch[[:space:]]+arm64[[:space:]]+x86_64' <<<"$copy_release_body" \
   || fail "release artifact copy must verify universal libfdk-aac.a"
 
-grep -Eq '^release-adhoc:.*release.*xcode-build-universal.*assert-universal-app.*assert-adhoc-app.*assert-public-app-privacy.*dmg' "$JUSTFILE" \
-  || fail "release-adhoc must verify the Universal app, Ad Hoc signature, and app privacy before packaging"
-grep -Eq '^release-full:.*release.*xcode-build-universal.*assert-universal-app.*assert-public-app-privacy.*sign-release.*dmg.*notarize-release' "$JUSTFILE" \
-  || fail "release-full must build and assert the universal app before signing and DMG packaging"
+grep -Eq '^release-adhoc:.*release.*xcode-build-universal.*assert-universal-app.*assert-adhoc-app.*assert-sparkle-configured-app.*assert-public-app-privacy.*dmg' "$JUSTFILE" \
+  || fail "release-adhoc must verify the Universal app, Ad Hoc signature, Sparkle, and privacy before packaging"
+grep -Eq '^xcode-build-universal-signed:' "$JUSTFILE" \
+  || fail "justfile must define a Developer ID universal archive recipe"
+signed_universal_body="$(recipe_body xcode-build-universal-signed)"
+grep -Eq 'ONLY_ACTIVE_ARCH=NO' <<<"$signed_universal_body" \
+  || fail "signed release build must disable ONLY_ACTIVE_ARCH"
+grep -Eq 'ARCHS="arm64 x86_64"' <<<"$signed_universal_body" \
+  || fail "signed release build must include arm64 and x86_64"
+grep -Eq 'generic/platform=macOS' <<<"$signed_universal_body" \
+  || fail "signed release build must use a generic macOS destination"
+grep -Fq 'CODE_SIGN_IDENTITY="$DEVELOPER_ID"' <<<"$signed_universal_body" \
+  || fail "signed release build must use the injected Developer ID identity"
+
+grep -Eq '^release-full:.*release.*xcode-build-universal-signed.*assert-universal-app.*assert-release-app-signature.*assert-sparkle-configured-app.*assert-public-app-privacy.*dmg.*sign-release-dmg.*notarize-release' "$JUSTFILE" \
+  || fail "release-full must build, verify, sign, and notarize the universal app"
 
 friendly_dmg_script="$ROOT_DIR/scripts/create_friendly_dmg.sh"
 [[ -f "$friendly_dmg_script" ]] \

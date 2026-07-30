@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 WORKFLOW="$ROOT_DIR/.github/workflows/macos-build.yaml"
 JUSTFILE="$ROOT_DIR/justfile"
+PROJECT_FILE="$ROOT_DIR/macos/Zulangue/Zulangue.xcodeproj/project.pbxproj"
+INFO_PLIST="$ROOT_DIR/macos/Zulangue/Zulangue-Info.plist"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -19,39 +21,55 @@ recipe_body() {
   ' "$JUSTFILE"
 }
 
-[[ -f "$WORKFLOW" ]] \
-  || fail "GitHub macOS workflow must exist"
+[[ -f "$WORKFLOW" ]] || fail "GitHub macOS workflow must exist"
 
 grep -Fq 'just release-adhoc' "$WORKFLOW" \
-  || fail "GitHub macOS workflow must build the Ad Hoc release"
-
-if grep -Eq 'secrets\.|DEVELOPER_ID|zulangue-notary' "$WORKFLOW"; then
-  fail "Ad Hoc GitHub release must not require private signing or notarization secrets"
+  || fail "tag CI must compile the Ad Hoc Universal verification artifact"
+if grep -Fq 'just release-full' "$WORKFLOW"; then
+  fail "tag CI must not require unavailable Developer ID credentials"
+fi
+if grep -Eq 'secrets\.(SPARKLE_PRIVATE_ED_KEY|DEVELOPER_ID|APPLE_NOTARY)' "$WORKFLOW"; then
+  fail "GitHub Actions must not receive release signing private material"
+fi
+if grep -Fq 'just sparkle-appcast' "$WORKFLOW"; then
+  fail "GitHub Actions must not sign appcasts"
+fi
+if grep -Fq 'gh release create' "$WORKFLOW"; then
+  fail "GitHub Actions must not publish a release without the local signed appcast"
+fi
+if grep -Fq 'build/dmg/appcast.xml' "$WORKFLOW"; then
+  fail "GitHub Actions must not upload locally signed appcasts"
 fi
 
-grep -Eq '^release-full:.*assert-public-app-privacy.*sign-release.*notarize-release' "$JUSTFILE" \
-  || fail "release-full must use fail-closed release signing and notarization recipes"
+grep -Eq '^release-adhoc:.*release.*xcode-build-universal.*assert-universal-app.*assert-adhoc-app.*assert-sparkle-configured-app.*assert-public-app-privacy.*dmg' "$JUSTFILE" \
+  || fail "release-adhoc must verify architecture, Ad Hoc signing, Sparkle, and privacy"
+grep -Eq '^release-sparkle-adhoc:.*release-adhoc.*sparkle-appcast' "$JUSTFILE" \
+  || fail "the local release path must add a signed Sparkle appcast"
 
-sign_release_body="$(recipe_body sign-release)"
-[[ -n "$sign_release_body" ]] || fail "justfile must define sign-release"
-
-grep -Eq 'DEVELOPER_ID:\?' <<<"$sign_release_body" \
-  || fail "sign-release must fail when DEVELOPER_ID is missing"
-
-if grep -Eq -- '--sign[[:space:]]+-|ad-hoc|adhoc' <<<"$sign_release_body"; then
-  fail "sign-release must not fall back to ad-hoc signing"
+appcast_body="$(recipe_body sparkle-appcast)"
+grep -Fq -- '--account Zulangue' <<<"$appcast_body" \
+  || fail "appcast signing must use the dedicated local Keychain account"
+if grep -Fq 'SPARKLE_PRIVATE_ED_KEY' <<<"$appcast_body"; then
+  fail "appcast signing must not accept an exported private key environment variable"
 fi
+grep -Fq 'ce89daf967db1e1893ed3ebd67575ed82d3902563e3191ca92aaec9164fbdef9' <<<"$appcast_body" \
+  || fail "the downloaded Sparkle tools archive must have a pinned checksum"
+grep -Fq 'releases/download/${GITHUB_REF_NAME}/' <<<"$appcast_body" \
+  || fail "appcast downloads must use immutable tagged release URLs"
+grep -Fq 'sparkle:edSignature=' <<<"$appcast_body" \
+  || fail "appcast generation must verify the update archive signature"
+grep -Fq '<!-- sparkle-signatures:' <<<"$appcast_body" \
+  || fail "appcast generation must verify the signed feed"
 
-grep -Eq -- '--timestamp' <<<"$sign_release_body" \
-  || fail "sign-release must timestamp the Developer ID signature"
+grep -Fq 'version = 2.9.4;' "$PROJECT_FILE" \
+  || fail "the reviewed Sparkle version must be pinned exactly"
+grep -Eq 'SPARKLE_PUBLIC_ED_KEY = "[A-Za-z0-9+/]{43}=";' "$PROJECT_FILE" \
+  || fail "the application must embed a valid public update key"
+grep -A1 -F '<key>SURequireSignedFeed</key>' "$INFO_PLIST" | grep -Fq '<true/>' \
+  || fail "the app must require a signed update feed"
+grep -A1 -F '<key>SUVerifyUpdateBeforeExtraction</key>' "$INFO_PLIST" | grep -Fq '<true/>' \
+  || fail "the app must verify updates before extraction"
+grep -Fq 'https://github.com/Zuddev/zulangue/releases/latest/download/appcast.xml' "$PROJECT_FILE" \
+  || fail "the public HTTPS appcast URL must be configured"
 
-notarize_release_body="$(recipe_body notarize-release)"
-[[ -n "$notarize_release_body" ]] || fail "justfile must define notarize-release"
-
-grep -Eq 'security[[:space:]]+find-generic-password.*zulangue-notary' <<<"$notarize_release_body" \
-  || fail "notarize-release must require the zulangue-notary keychain profile"
-
-grep -Eq 'exit[[:space:]]+1' <<<"$notarize_release_body" \
-  || fail "notarize-release must fail when the notary profile is missing"
-
-echo "local release distribution gate is fail-closed"
+echo "local-keychain Ad Hoc Sparkle release gate is fail-closed"

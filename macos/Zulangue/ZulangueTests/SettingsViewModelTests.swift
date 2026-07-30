@@ -473,25 +473,19 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         let appProject = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let projectFile = try String(
-            contentsOf: appProject
-                .appendingPathComponent("Zulangue.xcodeproj")
-                .appendingPathComponent("project.pbxproj"),
-            encoding: .utf8
+        let infoPlistData = try Data(
+            contentsOf: appProject.appendingPathComponent("Zulangue-Info.plist")
         )
-        XCTAssertEqual(
-            projectFile
-                .components(separatedBy: "INFOPLIST_KEY_CFBundleDisplayName = Zulangue;")
-                .count - 1,
-            2
+        let infoPlist = try XCTUnwrap(
+            PropertyListSerialization.propertyList(
+                from: infoPlistData,
+                options: [],
+                format: nil
+            ) as? [String: Any]
         )
-        XCTAssertEqual(
-            projectFile
-                .components(separatedBy: "INFOPLIST_KEY_CFBundleName = Zulangue;")
-                .count - 1,
-            2
-        )
-        XCTAssertFalse(projectFile.contains("INFOPLIST_KEY_CFBundleDisplayName = zulangue;"))
+        XCTAssertEqual(infoPlist["CFBundleDisplayName"] as? String, "Zulangue")
+        XCTAssertEqual(infoPlist["CFBundleName"] as? String, "$(PRODUCT_NAME)")
+        XCTAssertFalse(infoPlist.values.contains { ($0 as? String) == "zulangue" })
     }
 
     private func localizedString(locale: String, key: String) throws -> String {

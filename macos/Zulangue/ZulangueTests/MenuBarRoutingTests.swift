@@ -19,6 +19,7 @@ final class MenuBarRoutingTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        SoftwareUpdateController.shared.installTestCheckAction(nil)
         WindowCommandRouter.shared.installTestOverrides(nil)
         MenuBarRuntimeStore.shared.resetForTesting()
         try await super.tearDown()
@@ -105,6 +106,17 @@ final class MenuBarRoutingTests: XCTestCase {
 
         wait(for: [exp], timeout: 1.0)
         XCTAssertTrue(received, "'settings' action must route openSettings")
+    }
+
+    func testCheckForUpdatesAction_routesToSparkleController() {
+        let exp = expectation(description: "update action should reach Sparkle controller")
+        SoftwareUpdateController.shared.installTestCheckAction {
+            exp.fulfill()
+        }
+
+        sendMenuBarAction("checkForUpdates")
+
+        wait(for: [exp], timeout: 1.0)
     }
 
     func testUnknownAction_isIgnoredSilently() {

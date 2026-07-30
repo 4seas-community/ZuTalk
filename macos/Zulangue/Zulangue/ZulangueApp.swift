@@ -21,6 +21,11 @@ struct ZulangueApp: App {
             EmptyView()
         }
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button(String(localized: "updates.check")) {
+                    SoftwareUpdateController.shared.checkForUpdates()
+                }
+            }
             // 主入口走 NSStatusItem(MenuBarCoordinator),屏蔽 SwiftUI 默认 File/New 菜单
             CommandGroup(replacing: .newItem) {}
             // 主窗口改由 AppKit WindowSystem 持有,不再暴露空白 SwiftUI settings scene。

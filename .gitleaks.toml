@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Sparkle Ed25519 public verification key embedded in the app"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''SPARKLE_PUBLIC_ED_KEY = "Sm3x2TVehf4jFO1YDLPFu2xVQfnPNYGp1IeDYsLZeg8="''',
+]
+paths = [
+  '''macos/Zulangue/Zulangue\.xcodeproj/project\.pbxproj$''',
+]

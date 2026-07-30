@@ -18,6 +18,8 @@ extension NSApplication {
             WindowCommandRouter.shared.requestToggleCaptionMirror()
         case "settings":
             WindowCommandRouter.shared.requestOpenSettings()
+        case "checkForUpdates":
+            SoftwareUpdateController.shared.checkForUpdates()
         default:
             break
         }

@@ -34,7 +34,7 @@ jobs:
           cargo install cargo-nextest --version 0.9.100 --locked
 
       - name: Check source for secrets
-        run: gitleaks dir . --redact --no-banner
+        run: gitleaks dir . --config .gitleaks.toml --redact --no-banner
 
       - name: Run static checks
         run: just ci-check
@@ -47,46 +47,19 @@ jobs:
       - name: Run Swift tests
         run: just swift-test
 
-      - name: Build Universal DMG
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-        run: just release-adhoc
+      - name: Build Ad Hoc Universal DMG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          just release-adhoc
+          shasum -a 256 build/dmg/Zulangue-*.dmg > build/dmg/Zulangue-macOS.sha256
 
-      - name: Upload Universal DMG
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+      - name: Upload CI verification artifact
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Zulangue-macOS-universal
-          path: build/dmg/Zulangue-*.dmg
+          name: Zulangue-macOS-universal-adhoc
+          path: |
+            build/dmg/Zulangue-*.dmg
+            build/dmg/Zulangue-macOS.sha256
           if-no-files-found: error
           retention-days: 14
-
-  release:
-    name: Publish tagged release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download Universal DMG
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: Zulangue-macOS-universal
-          path: dist
-
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          shopt -s nullglob
-          packages=(dist/Zulangue-*.dmg)
-          if (( ${#packages[@]} != 1 )); then
-            echo "Expected exactly one Universal DMG, found ${#packages[@]}" >&2
-            exit 1
-          fi
-          gh release create "$GITHUB_REF_NAME" "${packages[0]}" \
-            --verify-tag \
-            --title "Zulangue $GITHUB_REF_NAME" \
-            --generate-notes

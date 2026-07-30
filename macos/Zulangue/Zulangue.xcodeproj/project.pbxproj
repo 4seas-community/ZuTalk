@@ -21,6 +21,7 @@
 		4B6DD921F963C7F376D98772 /* CrashDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EE7634869688B0059AE8276 /* CrashDiagnosticsTests.swift */; };
 		4E5312DA4B1D49B3259D1749 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A34D0F80519A7FFD867B1AE /* SystemConfiguration.framework */; };
 		5B009933BAE7D937E44972E5 /* CoreIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CA0B529DABEE67ED8011CE /* CoreIntegrationTests.swift */; };
+		5C256A579AC0CE51072FB2B8 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 05AB7648345CF1E6B4E8F7BD /* Sparkle */; };
 		605FC2F36E9A3F6526BABE37 /* LibraryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 770FFC8AD8881B4945EC2163 /* LibraryViewModelTests.swift */; };
 		67AF36C08A6FEA3CF5F1535E /* NotebookCaptureRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDD2897B6DA01351336E1417 /* NotebookCaptureRuntimeTests.swift */; };
 		701B2ACB07F2D21E418C4698 /* AccessibilityID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36BB1BD8CA9C83509BD30008 /* AccessibilityID.swift */; };
@@ -192,6 +193,7 @@
 				4E5312DA4B1D49B3259D1749 /* SystemConfiguration.framework in Frameworks */,
 				412F1ABAAFFFFF9B67358D7C /* CoreFoundation.framework in Frameworks */,
 				99970ED7A6224EAFE901D712 /* libresolv.tbd in Frameworks */,
+				5C256A579AC0CE51072FB2B8 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -659,6 +661,9 @@
 				B77C3BF62F8937E0000C2429 /* Zulangue */,
 			);
 			name = Zulangue;
+			packageProductDependencies = (
+				05AB7648345CF1E6B4E8F7BD /* Sparkle */,
+			);
 			productName = Zulangue;
 			productReference = B77C3BF42F8937E0000C2429 /* Zulangue.app */;
 			productType = "com.apple.product-type.application";
@@ -708,6 +713,9 @@
 			);
 			mainGroup = B77C3BEB2F8937E0000C2429;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C4E1683CFB6E25A8F2C04486 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B77C3BF52F8937E0000C2429 /* Products */;
 			projectDirPath = "";
@@ -1019,16 +1027,12 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_ATSApplicationFontsPath = Fonts/;
-				INFOPLIST_KEY_CFBundleDisplayName = Zulangue;
-				INFOPLIST_KEY_CFBundleName = Zulangue;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Zulangue needs microphone access to record and transcribe your voice. Recordings are encrypted with AES-256-GCM and stored only on this device.";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Zulangue-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1037,7 +1041,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Zulangue/Bridge/Generated",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				OTHER_LDFLAGS = (
 					"-lc++",
 					"-framework",
@@ -1048,6 +1052,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = xyz.voice.zulangue;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
+				SPARKLE_FEED_URL = "https://github.com/Zuddev/zulangue/releases/latest/download/appcast.xml";
+				SPARKLE_PUBLIC_ED_KEY = "Sm3x2TVehf4jFO1YDLPFu2xVQfnPNYGp1IeDYsLZeg8=";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -1068,16 +1074,12 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_ATSApplicationFontsPath = Fonts/;
-				INFOPLIST_KEY_CFBundleDisplayName = Zulangue;
-				INFOPLIST_KEY_CFBundleName = Zulangue;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Zulangue needs microphone access to record and transcribe your voice. Recordings are encrypted with AES-256-GCM and stored only on this device.";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Zulangue-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1086,7 +1088,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Zulangue/Bridge/Generated",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				OTHER_LDFLAGS = (
 					"-lc++",
 					"-framework",
@@ -1097,6 +1099,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = xyz.voice.zulangue;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
+				SPARKLE_FEED_URL = "https://github.com/Zuddev/zulangue/releases/latest/download/appcast.xml";
+				SPARKLE_PUBLIC_ED_KEY = "Sm3x2TVehf4jFO1YDLPFu2xVQfnPNYGp1IeDYsLZeg8=";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -1217,6 +1221,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C4E1683CFB6E25A8F2C04486 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.9.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		05AB7648345CF1E6B4E8F7BD /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C4E1683CFB6E25A8F2C04486 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B77C3BEC2F8937E0000C2429 /* Project object */;
 }

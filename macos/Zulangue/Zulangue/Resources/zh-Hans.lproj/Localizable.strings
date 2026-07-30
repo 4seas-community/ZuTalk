@@ -591,6 +591,14 @@
 "menubar.action.recording" = "开始录音";
 "menubar.action.float" = "浮动转录窗";
 "menubar.action.settings" = "设置";
+"updates.check" = "检查更新…";
+"updates.unavailable.title" = "尚未配置更新";
+"updates.unavailable.message" = "此开发版本未包含更新签名公钥。";
+"updates.unavailable.dismiss" = "好";
+"settings.updates.title" = "软件更新";
+"settings.updates.subtitle" = "通过 Sparkle 安全接收签名更新。";
+"settings.updates.automatic" = "自动检查更新";
+"settings.updates.automatic_hint" = "Zulangue 会定期检查经过签名的更新源，并在新版本可用时提醒你。";
 "menubar.recording.pause" = "暂停";
 "menubar.recording.resume" = "继续";
 "menubar.recording.stop" = "停止";
