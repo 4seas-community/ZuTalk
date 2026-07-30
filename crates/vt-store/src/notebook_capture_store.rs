@@ -16,7 +16,7 @@ use crate::session_query::SessionRecord;
 
 pub const SONIOX_PROVIDER_ID: &str = "soniox";
 pub const SONIOX_STT_RT_V5_MODEL_ID: &str = "stt-rt-v5";
-pub const MAX_CAPTURE_LANGUAGES: usize = 8;
+pub const MAX_CAPTURE_LANGUAGES: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -5601,7 +5601,7 @@ mod tests {
     }
 
     #[test]
-    fn profile_validation_supports_one_language_and_caps_the_ordered_columns_at_eight() {
+    fn profile_validation_supports_one_language_and_caps_the_ordered_columns_at_four() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
         let one_language = NotebookCaptureProfileUpdate {
@@ -5634,7 +5634,7 @@ mod tests {
             language_b: "zh".into(),
             left_language: "en".into(),
             right_language: "zh".into(),
-            selected_languages: ["en", "zh", "th", "ja", "ko", "fr", "de", "es", "it"]
+            selected_languages: ["en", "zh", "th", "ja", "ko"]
                 .into_iter()
                 .map(str::to_string)
                 .collect(),

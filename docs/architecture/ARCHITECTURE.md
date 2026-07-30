@@ -48,6 +48,17 @@ flowchart TB
 标签级容器负责聚合，Session 级文件负责隔离内容。转录任务只能写入对应 Session
 的转录文件，不能写入个人笔记。
 
+## 转录编辑所有权
+
+SQLite 中的 provider token、utterance 事实和异步结果保留机器原文。Loro 文档是
+可编辑投影。每个可编辑段必须带稳定的 `session_id`、`utterance_id` 和
+`lane_language` 标记。
+
+自动投影只拥有 `completion = partial` 的临时内容以及尚未被用户修改的完整 lane。
+用户主动提交修改时，在 Loro lane 上写入用户所有权标记。之后的投影按稳定
+utterance/lane 增量更新，遇到用户所有的 lane 必须跳过；不能通过重建整个 Session
+区段覆盖它。机器原文和用户文本因此可以同时保留。
+
 ## 录音与转录
 
 macOS 音频适配器把采集到的音频交给 Rust 会话。Rust 负责会话生命周期、本地

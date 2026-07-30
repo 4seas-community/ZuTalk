@@ -1,7 +1,7 @@
 use tempfile::TempDir;
 use vt_ffi::notebook_capture_api::{
-    FfiNotebookCaptureCallback, FfiNotebookCaptureEvent, FfiNotebookCaptureState,
-    FfiNotebookRemoteHealth,
+    FfiNotebookCaptureCallback, FfiNotebookCaptureEvent, FfiNotebookCaptureLivePreview,
+    FfiNotebookCaptureState, FfiNotebookRemoteHealth,
 };
 use vt_ffi::ZulangueCore;
 
@@ -9,6 +9,8 @@ struct NoopCaptureCallback;
 
 impl FfiNotebookCaptureCallback for NoopCaptureCallback {
     fn on_capture_event(&self, _event: FfiNotebookCaptureEvent) {}
+
+    fn on_live_preview(&self, _preview: FfiNotebookCaptureLivePreview) {}
 }
 
 #[test]

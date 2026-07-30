@@ -340,6 +340,30 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
     }
 }
 
+/// Replace-in-full, process-local view of the current Soniox speculative tail.
+/// It never represents a persisted transcript row.
+struct NotebookCaptureLivePreviewDTO: Equatable {
+    let sessionId: String
+    let previewRevision: UInt64
+    let utterances: [NotebookCaptureUtteranceDTO]
+}
+
+enum NotebookCaptureLivePresentation {
+    static func utterances(
+        durable: [NotebookCaptureUtteranceDTO],
+        preview: [NotebookCaptureUtteranceDTO],
+        sessionId: String?
+    ) -> [NotebookCaptureUtteranceDTO] {
+        guard let sessionId else { return durable }
+        var rows = durable.filter { $0.sessionId == sessionId }
+        let durableSequences = Set(rows.map(\.sequence))
+        rows.append(contentsOf: preview.filter {
+            $0.sessionId == sessionId && durableSequences.contains($0.sequence) == false
+        })
+        return rows.sorted { $0.sequence < $1.sequence }
+    }
+}
+
 enum NotebookCaptureInterruptReason: String, Codable, Equatable, Sendable {
     case localAudioOverflow = "local_audio_overflow"
     case localAudioUnavailable = "local_audio_unavailable"
@@ -386,7 +410,8 @@ protocol NotebookCaptureClienting: AnyObject {
         notebookId: String,
         profileRevision: UInt64,
         confirmedContextDigest: String?,
-        onCaptureEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void
+        onCaptureEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void,
+        onLivePreview: @escaping @MainActor @Sendable (NotebookCaptureLivePreviewDTO) -> Void
     ) throws -> NotebookCaptureEventDTO
     /// Builds a sendable, session-bound audio sink. The microphone callback
     /// invokes this sink off the main actor so realtime PCM never queues one
@@ -597,9 +622,13 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
         notebookId: String,
         profileRevision: UInt64,
         confirmedContextDigest: String?,
-        onCaptureEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void
+        onCaptureEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void,
+        onLivePreview: @escaping @MainActor @Sendable (NotebookCaptureLivePreviewDTO) -> Void
     ) throws -> NotebookCaptureEventDTO {
-        let callback = RustNotebookCaptureCallback(onCaptureEvent: onCaptureEvent)
+        let callback = RustNotebookCaptureCallback(
+            onCaptureEvent: onCaptureEvent,
+            onLivePreview: onLivePreview
+        )
         return Self.map(try requireCore().startNotebookCaptureSession(
             notebookId: notebookId,
             profileRevision: profileRevision,
@@ -888,6 +917,14 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
         )
     }
 
+    static func map(_ value: FfiNotebookCaptureLivePreview) -> NotebookCaptureLivePreviewDTO {
+        NotebookCaptureLivePreviewDTO(
+            sessionId: value.sessionId,
+            previewRevision: value.previewRevision,
+            utterances: value.utterances.map(Self.map)
+        )
+    }
+
     static func map(
         _ value: FfiNotebookCaptureHistoryRun
     ) -> NotebookCaptureHistoryRunDTO {
@@ -1042,17 +1079,103 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
 }
 
 final class RustNotebookCaptureCallback: FfiNotebookCaptureCallback, @unchecked Sendable {
-    nonisolated private let onCaptureEvent: @MainActor @Sendable (NotebookCaptureEventDTO) -> Void
+    nonisolated private let dispatcher: NotebookCaptureCallbackDispatcher
 
     nonisolated init(
-        onCaptureEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void
+        onCaptureEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void,
+        onLivePreview: @escaping @MainActor @Sendable (NotebookCaptureLivePreviewDTO) -> Void
     ) {
-        self.onCaptureEvent = onCaptureEvent
+        self.dispatcher = NotebookCaptureCallbackDispatcher(
+            deliverEvent: onCaptureEvent,
+            deliverPreview: onLivePreview
+        )
     }
 
     nonisolated func onCaptureEvent(event: FfiNotebookCaptureEvent) {
-        Task { @MainActor [onCaptureEvent] in
-            onCaptureEvent(RustNotebookCaptureClient.map(event))
+        dispatcher.submit(event)
+    }
+
+    nonisolated func onLivePreview(preview: FfiNotebookCaptureLivePreview) {
+        dispatcher.submit(preview)
+    }
+}
+
+/// UniFFI callbacks return before their MainActor work runs. Durable callbacks
+/// remain ordered while the replace-in-full preview keeps one newest-only
+/// slot. One shared drain also makes final-row promotion run before the empty
+/// preview that follows it.
+private final class NotebookCaptureCallbackDispatcher: @unchecked Sendable {
+    nonisolated private let lock = NSLock()
+    nonisolated(unsafe) private var pendingEvents: [FfiNotebookCaptureEvent] = []
+    nonisolated(unsafe) private var pending: FfiNotebookCaptureLivePreview?
+    nonisolated(unsafe) private var drainScheduled = false
+    nonisolated private let deliverEvent:
+        @MainActor @Sendable (NotebookCaptureEventDTO) -> Void
+    nonisolated private let deliverPreview:
+        @MainActor @Sendable (NotebookCaptureLivePreviewDTO) -> Void
+
+    nonisolated init(
+        deliverEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void,
+        deliverPreview: @escaping @MainActor @Sendable (NotebookCaptureLivePreviewDTO) -> Void
+    ) {
+        self.deliverEvent = deliverEvent
+        self.deliverPreview = deliverPreview
+    }
+
+    nonisolated func submit(_ event: FfiNotebookCaptureEvent) {
+        lock.lock()
+        pendingEvents.append(event)
+        let shouldSchedule = scheduleDrainIfNeededLocked()
+        lock.unlock()
+        scheduleDrain(shouldSchedule)
+    }
+
+    nonisolated func submit(_ preview: FfiNotebookCaptureLivePreview) {
+        lock.lock()
+        pending = preview
+        let shouldSchedule = scheduleDrainIfNeededLocked()
+        lock.unlock()
+        scheduleDrain(shouldSchedule)
+    }
+
+    nonisolated private func scheduleDrainIfNeededLocked() -> Bool {
+        guard drainScheduled == false else { return false }
+        drainScheduled = true
+        return true
+    }
+
+    nonisolated private func scheduleDrain(_ shouldSchedule: Bool) {
+        guard shouldSchedule else { return }
+        Task { @MainActor [self] in drainOne() }
+    }
+
+    @MainActor
+    private func drainOne() {
+        let events: [FfiNotebookCaptureEvent]
+        let preview: FfiNotebookCaptureLivePreview?
+        lock.lock()
+        events = pendingEvents
+        pendingEvents.removeAll(keepingCapacity: true)
+        preview = pending
+        pending = nil
+        lock.unlock()
+
+        for event in events {
+            deliverEvent(RustNotebookCaptureClient.map(event))
+        }
+        if let preview {
+            deliverPreview(RustNotebookCaptureClient.map(preview))
+        }
+
+        lock.lock()
+        let hasPending = pendingEvents.isEmpty == false || pending != nil
+        if hasPending == false {
+            drainScheduled = false
+        }
+        lock.unlock()
+
+        if hasPending {
+            Task { @MainActor [self] in drainOne() }
         }
     }
 }
@@ -1163,7 +1286,8 @@ final class UnavailableNotebookCaptureClient: NotebookCaptureClienting {
         notebookId: String,
         profileRevision: UInt64,
         confirmedContextDigest: String?,
-        onCaptureEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void
+        onCaptureEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void,
+        onLivePreview: @escaping @MainActor @Sendable (NotebookCaptureLivePreviewDTO) -> Void
     ) throws -> NotebookCaptureEventDTO {
         throw NotebookCaptureClientError.ffiUnavailable
     }
@@ -2125,6 +2249,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     @Published private(set) var captureState: NotebookCaptureState = .completed
     @Published private(set) var remoteHealth: NotebookRemoteHealth = .off
     @Published private(set) var projectionState: NotebookProjectionState = .ready
+    /// Process-local Soniox speculative tail. Durable transcript consumers
+    /// must continue to use `utterances`.
+    @Published private(set) var livePreviewUtterances: [NotebookCaptureUtteranceDTO] = []
     @Published private(set) var utterances: [NotebookCaptureUtteranceDTO] = []
     @Published private(set) var contextPreview: NotebookCaptureContextPreviewDTO?
     @Published private(set) var contextPacks: [NotebookContextPackDTO] = []
@@ -2167,7 +2294,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private var readyCallbackGeneration: UInt64?
     private var callbackSessionId: String?
     private var lastAppliedEventRevision: UInt64?
+    private var lastAppliedLivePreviewRevision: UInt64?
     private var pendingCallbackEvents: [NotebookCaptureEventDTO] = []
+    private var pendingLivePreview: NotebookCaptureLivePreviewDTO?
     private var terminalTransitionLease: TerminalTransitionLease?
     private var terminalTransitionDrainPending = false
     private var pendingTerminalTransitionEvent: NotebookCaptureEventDTO?
@@ -2202,6 +2331,14 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 #endif
     var isCaptureActive: Bool {
         sessionId != nil && (captureState.isActive || terminalTransitionLease != nil)
+    }
+
+    var presentedUtterances: [NotebookCaptureUtteranceDTO] {
+        NotebookCaptureLivePresentation.utterances(
+            durable: utterances,
+            preview: livePreviewUtterances,
+            sessionId: sessionId
+        )
     }
     var requiresApplicationTerminationPreparation: Bool {
         lifecycleOperationCount > 0
@@ -2547,6 +2684,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         readyCallbackGeneration = nil
         callbackSessionId = nil
         pendingCallbackEvents.removeAll(keepingCapacity: true)
+        pendingLivePreview = nil
 
         let initial: NotebookCaptureEventDTO
         do {
@@ -2556,6 +2694,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                 confirmedContextDigest: startProfile.sendContextToSoniox ? confirmedContextDigest : nil,
                 onCaptureEvent: { [weak self] event in
                     self?.receiveCaptureCallback(event, generation: generation)
+                },
+                onLivePreview: { [weak self] preview in
+                    self?.receiveLivePreview(preview, generation: generation)
                 }
             )
         } catch {
@@ -2567,7 +2708,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         self.notebookId = notebookId
         self.profile = startProfile
         self.utterances = []
+        self.livePreviewUtterances = []
         self.lastAppliedEventRevision = nil
+        self.lastAppliedLivePreviewRevision = nil
         self.appliedContextReceipt = nil
         self.appliedContextSessionId = nil
         self.providerErrorType = nil
@@ -2615,6 +2758,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         startElapsedTimer()
         readyCallbackGeneration = generation
         drainPendingCaptureCallback(generation: generation)
+        drainPendingLivePreview(generation: generation)
     }
 
     func setPaused(_ paused: Bool) async throws {
@@ -2984,7 +3128,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         remoteHealth = .off
         projectionState = .ready
         utterances = []
+        livePreviewUtterances = []
         lastAppliedEventRevision = nil
+        lastAppliedLivePreviewRevision = nil
         contextPreview = nil
         contextPacks = []
         contextSources = []
@@ -3010,6 +3156,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         readyCallbackGeneration = nil
         callbackSessionId = nil
         pendingCallbackEvents.removeAll(keepingCapacity: true)
+        pendingLivePreview = nil
         lifecycleOperationCount = 0
         let lifecycleWaiters = lifecycleOperationWaiters
         lifecycleOperationWaiters.removeAll(keepingCapacity: false)
@@ -3174,6 +3321,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
 
         if event.captureState.isActive == false {
+            livePreviewUtterances = []
+            lastAppliedLivePreviewRevision = nil
+            refreshRecentTranscriptPresentation()
             _ = enterLocalTerminal(
                 sessionId: event.sessionId,
                 state: event.captureState,
@@ -3214,7 +3364,26 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             }
         }
         utterances.sort { $0.sequence < $1.sequence }
-        let recent = utterances.suffix(2).map { utterance in
+        refreshRecentTranscriptPresentation()
+    }
+
+    private func applyLivePreview(_ preview: NotebookCaptureLivePreviewDTO) {
+        guard preview.sessionId == sessionId else { return }
+        if let lastAppliedLivePreviewRevision,
+           preview.previewRevision <= lastAppliedLivePreviewRevision {
+            return
+        }
+        let next = preview.utterances.filter {
+            $0.sessionId == preview.sessionId
+        }
+        lastAppliedLivePreviewRevision = preview.previewRevision
+        guard next != livePreviewUtterances else { return }
+        livePreviewUtterances = next
+        refreshRecentTranscriptPresentation()
+    }
+
+    private func refreshRecentTranscriptPresentation() {
+        let recent = presentedUtterances.suffix(2).map { utterance in
             let lanes = texts(for: utterance)
             let text = lanes.pendingLanguage
                 ?? lanes.outsidePair
@@ -3222,6 +3391,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                 ?? lanes.right
                 ?? ""
             return TranscriptLine(
+                id: utterance.id,
                 timestamp: formatTimestamp(utterance.sourceStartMs),
                 languageLabel: lanes.pendingLanguage == nil
                     ? displayLanguage(utterance.sourceLanguage)
@@ -3375,7 +3545,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
     private func clearSessionScopedDisplayState() {
         utterances = []
+        livePreviewUtterances = []
         lastAppliedEventRevision = nil
+        lastAppliedLivePreviewRevision = nil
         appliedContextReceipt = nil
         appliedContextSessionId = nil
         providerErrorType = nil
@@ -3420,6 +3592,19 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         apply(event)
     }
 
+    private func receiveLivePreview(
+        _ preview: NotebookCaptureLivePreviewDTO,
+        generation: UInt64
+    ) {
+        guard acceptedCallbackGeneration == generation else { return }
+        guard readyCallbackGeneration == generation else {
+            pendingLivePreview = preview
+            return
+        }
+        guard callbackSessionId == preview.sessionId else { return }
+        applyLivePreview(preview)
+    }
+
     private func drainPendingCaptureCallback(generation: UInt64) {
         guard acceptedCallbackGeneration == generation,
               readyCallbackGeneration == generation,
@@ -3435,12 +3620,23 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
     }
 
+    private func drainPendingLivePreview(generation: UInt64) {
+        guard acceptedCallbackGeneration == generation,
+              readyCallbackGeneration == generation,
+              let preview = pendingLivePreview
+        else { return }
+        pendingLivePreview = nil
+        guard callbackSessionId == preview.sessionId else { return }
+        applyLivePreview(preview)
+    }
+
     private func invalidateCaptureCallback(generation: UInt64? = nil) {
         if let generation, acceptedCallbackGeneration != generation { return }
         acceptedCallbackGeneration = nil
         readyCallbackGeneration = nil
         callbackSessionId = nil
         pendingCallbackEvents.removeAll(keepingCapacity: true)
+        pendingLivePreview = nil
     }
 
     private func beginTerminalTransition(

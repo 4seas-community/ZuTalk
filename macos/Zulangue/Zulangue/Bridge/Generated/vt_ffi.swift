@@ -3438,6 +3438,77 @@ public func FfiConverterTypeFfiNotebookCaptureLanguageVariant_lower(_ value: Ffi
 }
 
 
+/**
+ * Process-local, replace-in-full presentation state for the current Soniox
+ * speculative tail. These utterances are never persisted and never advance
+ * the durable capture-event revision.
+ */
+public struct FfiNotebookCaptureLivePreview: Equatable, Hashable {
+    public var sessionId: String
+    /**
+     * Monotonic only within the transient preview channel. A skipped revision
+     * is harmless because every callback carries the complete current tail.
+     */
+    public var previewRevision: UInt64
+    public var utterances: [FfiNotebookCaptureUtterance]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(sessionId: String,
+        /**
+         * Monotonic only within the transient preview channel. A skipped revision
+         * is harmless because every callback carries the complete current tail.
+         */previewRevision: UInt64, utterances: [FfiNotebookCaptureUtterance]) {
+        self.sessionId = sessionId
+        self.previewRevision = previewRevision
+        self.utterances = utterances
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNotebookCaptureLivePreview: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNotebookCaptureLivePreview: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNotebookCaptureLivePreview {
+        return
+            try FfiNotebookCaptureLivePreview(
+                sessionId: FfiConverterString.read(from: &buf),
+                previewRevision: FfiConverterUInt64.read(from: &buf),
+                utterances: FfiConverterSequenceTypeFfiNotebookCaptureUtterance.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNotebookCaptureLivePreview, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.sessionId, into: &buf)
+        FfiConverterUInt64.write(value.previewRevision, into: &buf)
+        FfiConverterSequenceTypeFfiNotebookCaptureUtterance.write(value.utterances, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNotebookCaptureLivePreview_lift(_ buf: RustBuffer) throws -> FfiNotebookCaptureLivePreview {
+    return try FfiConverterTypeFfiNotebookCaptureLivePreview.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNotebookCaptureLivePreview_lower(_ value: FfiNotebookCaptureLivePreview) -> RustBuffer {
+    return FfiConverterTypeFfiNotebookCaptureLivePreview.lower(value)
+}
+
+
 public struct FfiNotebookCaptureProfile: Equatable, Hashable {
     public var notebookId: String
     public var remoteRealtimeEnabled: Bool
@@ -6105,6 +6176,8 @@ public protocol FfiNotebookCaptureCallback: AnyObject, Sendable {
 
     func onCaptureEvent(event: FfiNotebookCaptureEvent)
 
+    func onLivePreview(preview: FfiNotebookCaptureLivePreview)
+
 }
 
 
@@ -6144,6 +6217,30 @@ fileprivate struct UniffiCallbackInterfaceFfiNotebookCaptureCallback {
                 }
                 return uniffiObj.onCaptureEvent(
                      event: try FfiConverterTypeFfiNotebookCaptureEvent_lift(event)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onLivePreview: { (
+            uniffiHandle: UInt64,
+            preview: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceFfiNotebookCaptureCallback.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onLivePreview(
+                     preview: try FfiConverterTypeFfiNotebookCaptureLivePreview_lift(preview)
                 )
             }
 
@@ -7241,6 +7338,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_ffinotebookcapturecallback_on_capture_event() != 11919) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_ffinotebookcapturecallback_on_live_preview() != 27348) {
         return InitializationResult.apiChecksumMismatch
     }
 

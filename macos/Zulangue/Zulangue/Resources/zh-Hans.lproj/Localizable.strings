@@ -527,6 +527,11 @@
 "manual_note.title.save" = "保存笔记标题";
 "manual_note.title.save_failed" = "无法保存笔记标题";
 "manual_note.created_at_format" = "创建于 %@";
+"manual_note.timeline.title" = "个人笔记";
+"manual_note.timeline.subtitle" = "按时间排列。标题可以为空，也可以直接在卡片中命名。";
+"manual_note.timeline.load_failed" = "无法载入个人笔记";
+"manual_note.timeline.empty" = "录音后，对应的个人笔记会出现在这里";
+"manual_note.timeline.open" = "打开笔记";
 "home.create.title_too_long.detail_format" = "请使用不超过 %lld 个字符。";
 "home.search_placeholder" = "搜索会话…";
 "home.empty.no_match_title" = "无匹配项";
@@ -706,6 +711,15 @@
 "subtitle.overlay.font_smaller" = "减小字幕";
 "subtitle.overlay.font_larger" = "放大字幕";
 "subtitle.overlay.move_resize_hint" = "拖动窗口可移动；拖动任意边缘或四角可调整大小。";
+"subtitle.overlay.pin" = "将字幕固定在最前";
+"subtitle.overlay.unpin" = "取消字幕置顶";
+"subtitle.overlay.pinned" = "已置顶，并显示在所有桌面";
+"subtitle.overlay.unpinned" = "未置顶";
+"subtitle.overlay.mode" = "字幕模式";
+"subtitle.overlay.mode.conversation" = "对照";
+"subtitle.overlay.mode.audience" = "观众";
+"subtitle.overlay.mode.conversation.help" = "保留最近几句话，便于跨语言沟通、校对和理解。";
+"subtitle.overlay.mode.audience.help" = "以平等层级向观众显示最多四种语言的最新一句。";
 "capture.toolbar.start" = "开始录音";
 "capture.toolbar.starting" = "正在开始…";
 "capture.toolbar.start_hint" = "开始录音并按所选语言实时转录；服务暂时不可用时，录音仍会继续。";
@@ -765,7 +779,7 @@
 "capture.settings.languages.ordered_detail" = "请按显示顺序添加。每种所选语言都会显示为一栏；说话原文先出现，其余栏目通常稍后补齐。";
 "capture.settings.languages.search" = "搜索并添加语言";
 "capture.settings.languages.no_results" = "没有找到尚未选择的匹配语言。";
-"capture.settings.languages.maximum_reached" = "每场最多可选择八种语言。";
+"capture.settings.languages.maximum_reached" = "每场最多可选择四种语言。";
 "capture.settings.languages.add_format" = "添加 %@";
 "capture.settings.languages.move_earlier" = "将语言向前移动";
 "capture.settings.languages.move_later" = "将语言向后移动";

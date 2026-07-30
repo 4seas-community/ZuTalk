@@ -257,6 +257,13 @@ typedef void (*UniffiCallbackInterfaceFfiNotebookCaptureCallbackMethod0)(uint64_
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_FFI_NOTEBOOK_CAPTURE_CALLBACK_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_FFI_NOTEBOOK_CAPTURE_CALLBACK_METHOD1
+typedef void (*UniffiCallbackInterfaceFfiNotebookCaptureCallbackMethod1)(uint64_t, RustBuffer, void* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_FFI_EDITOR_CALLBACK
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_FFI_EDITOR_CALLBACK
 typedef struct UniffiVTableCallbackInterfaceFfiEditorCallback {
@@ -272,6 +279,7 @@ typedef struct UniffiVTableCallbackInterfaceFfiNotebookCaptureCallback {
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
     UniffiCallbackInterfaceClone _Nonnull uniffiClone;
     UniffiCallbackInterfaceFfiNotebookCaptureCallbackMethod0 _Nonnull onCaptureEvent;
+    UniffiCallbackInterfaceFfiNotebookCaptureCallbackMethod1 _Nonnull onLivePreview;
 } UniffiVTableCallbackInterfaceFfiNotebookCaptureCallback;
 
 #endif
@@ -1422,6 +1430,12 @@ uint16_t uniffi_vt_ffi_checksum_method_ffieditorcallback_on_doc_changed(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_FFINOTEBOOKCAPTURECALLBACK_ON_CAPTURE_EVENT
 #define UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_FFINOTEBOOKCAPTURECALLBACK_ON_CAPTURE_EVENT
 uint16_t uniffi_vt_ffi_checksum_method_ffinotebookcapturecallback_on_capture_event(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_FFINOTEBOOKCAPTURECALLBACK_ON_LIVE_PREVIEW
+#define UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_FFINOTEBOOKCAPTURECALLBACK_ON_LIVE_PREVIEW
+uint16_t uniffi_vt_ffi_checksum_method_ffinotebookcapturecallback_on_live_preview(void
 
 );
 #endif

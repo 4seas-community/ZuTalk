@@ -527,6 +527,11 @@
 "manual_note.title.save" = "Save note title";
 "manual_note.title.save_failed" = "The note title could not be saved";
 "manual_note.created_at_format" = "Created %@";
+"manual_note.timeline.title" = "Personal notes";
+"manual_note.timeline.subtitle" = "Ordered by time. Titles are optional and editable directly on each card.";
+"manual_note.timeline.load_failed" = "Personal notes could not be loaded";
+"manual_note.timeline.empty" = "A corresponding personal note will appear here after a recording";
+"manual_note.timeline.open" = "Open note";
 "home.create.title_too_long.detail_format" = "Use %lld characters or fewer.";
 "home.search_placeholder" = "Search sessions…";
 "home.empty.no_match_title" = "No matches";
@@ -706,6 +711,15 @@
 "subtitle.overlay.font_smaller" = "Smaller captions";
 "subtitle.overlay.font_larger" = "Larger captions";
 "subtitle.overlay.move_resize_hint" = "Drag the window to move it. Drag any edge or corner to resize it.";
+"subtitle.overlay.pin" = "Keep subtitles on top";
+"subtitle.overlay.unpin" = "Stop keeping subtitles on top";
+"subtitle.overlay.pinned" = "Pinned above other windows on every desktop";
+"subtitle.overlay.unpinned" = "Not pinned";
+"subtitle.overlay.mode" = "Subtitle mode";
+"subtitle.overlay.mode.conversation" = "Compare";
+"subtitle.overlay.mode.audience" = "Audience";
+"subtitle.overlay.mode.conversation.help" = "Keep recent utterances for cross-language conversation, review, and understanding.";
+"subtitle.overlay.mode.audience.help" = "Show the latest utterance in up to four equal audience languages.";
 "capture.toolbar.start" = "Start Recording";
 "capture.toolbar.starting" = "Starting…";
 "capture.toolbar.start_hint" = "Starts recording and live transcription in the selected languages. Recording continues if the service is temporarily unavailable.";
@@ -765,7 +779,7 @@
 "capture.settings.languages.ordered_detail" = "Add languages in display order. Each selected language gets its own column; spoken text appears first, then the other columns fill in shortly after.";
 "capture.settings.languages.search" = "Search languages to add";
 "capture.settings.languages.no_results" = "No unselected language matches your search.";
-"capture.settings.languages.maximum_reached" = "You can select up to eight languages for one session.";
+"capture.settings.languages.maximum_reached" = "You can select up to four languages for one session.";
 "capture.settings.languages.add_format" = "Add %@";
 "capture.settings.languages.move_earlier" = "Move language earlier";
 "capture.settings.languages.move_later" = "Move language later";

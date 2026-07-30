@@ -32,16 +32,31 @@ struct RecordingInfo: Equatable {
 }
 
 /// One line of live transcript shown in the recording popover's transcript
-/// preview block. `id` is generated locally — content equality uses `id` only
-/// so SwiftUI ForEach diffs cleanly without re-rendering each tick.
+/// preview block. Live capture supplies the stable utterance id so replacing a
+/// speculative tail updates one row instead of deleting and inserting it.
 struct TranscriptLine: Equatable, Identifiable {
-    let id = UUID()
+    let id: String
     var timestamp: String
     var languageLabel: String
     var text: String
 
+    init(
+        id: String = UUID().uuidString,
+        timestamp: String,
+        languageLabel: String,
+        text: String
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.languageLabel = languageLabel
+        self.text = text
+    }
+
     static func == (lhs: TranscriptLine, rhs: TranscriptLine) -> Bool {
         lhs.id == rhs.id
+            && lhs.timestamp == rhs.timestamp
+            && lhs.languageLabel == rhs.languageLabel
+            && lhs.text == rhs.text
     }
 }
 

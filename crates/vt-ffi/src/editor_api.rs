@@ -121,6 +121,7 @@ pub(crate) fn voice_tool_style_config() -> StyleConfigMap {
         "lane_language",
         "source_timestamp_ms",
         "utterance_revision",
+        "content_owner",
     ] {
         map.insert(
             key.into(),
@@ -959,6 +960,12 @@ mod tests {
 
     impl crate::notebook_capture_api::FfiNotebookCaptureCallback for NoopCaptureCallback {
         fn on_capture_event(&self, _event: crate::notebook_capture_api::FfiNotebookCaptureEvent) {}
+
+        fn on_live_preview(
+            &self,
+            _preview: crate::notebook_capture_api::FfiNotebookCaptureLivePreview,
+        ) {
+        }
     }
 
     #[test]

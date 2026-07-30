@@ -498,6 +498,13 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(normalized.selectedLanguages, ["th", "en"])
         XCTAssertEqual(normalized.mode, .twoWay)
 
+        duplicateProfile.selectedLanguages = ["en", "zh", "th", "ja", "fr"]
+        XCTAssertEqual(
+            NotebookCaptureProfileEditorModel.normalized(duplicateProfile).selectedLanguages,
+            ["en", "zh", "th", "ja"],
+            "legacy profiles must preserve language order while adopting the four-language limit"
+        )
+
         duplicateProfile.selectedLanguages = []
         XCTAssertEqual(
             NotebookCaptureProfileEditorModel.normalized(duplicateProfile).selectedLanguages,
@@ -912,6 +919,71 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(store.utterances.count, 1)
         XCTAssertEqual(store.utterances.first?.id, "provider-reissued-id")
         XCTAssertEqual(store.utterances.first?.sourceText, "Second revision")
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testLivePreviewReplacesInPlaceWithoutEnteringDurableUtterances() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var preview = NotebookCaptureUtteranceDTO.sample
+        preview.revision = 0
+        preview.sourceLanguage = "und"
+        preview.sourceText = "hel"
+        preview.translatedLanguage = nil
+        preview.translatedText = nil
+        preview.completion = "partial"
+        preview.alignment = "source_only"
+        client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+            sessionId: "session-a",
+            previewRevision: 1,
+            utterances: [preview]
+        ))
+
+        XCTAssertTrue(store.utterances.isEmpty)
+        XCTAssertEqual(store.presentedUtterances.map(\.sourceText), ["hel"])
+        XCTAssertEqual(client.listUtterancesCount, 0)
+
+        preview.sourceText = "hello"
+        client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+            sessionId: "session-a",
+            previewRevision: 3,
+            utterances: [preview]
+        ))
+        XCTAssertEqual(store.presentedUtterances.map(\.sourceText), ["hello"])
+        XCTAssertEqual(client.listUtterancesCount, 0, "preview gaps never rebuild durable rows")
+
+        preview.sourceText = "stale"
+        client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+            sessionId: "session-a",
+            previewRevision: 2,
+            utterances: [preview]
+        ))
+        XCTAssertEqual(store.presentedUtterances.map(\.sourceText), ["hello"])
+
+        var durable = NotebookCaptureUtteranceDTO.sample
+        durable.sourceText = "Hello."
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [durable],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+
+        XCTAssertEqual(store.utterances.map(\.sourceText), ["Hello."])
+        XCTAssertEqual(store.presentedUtterances.map(\.sourceText), ["Hello."])
+        client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+            sessionId: "session-a",
+            previewRevision: 4,
+            utterances: []
+        ))
+        XCTAssertEqual(store.presentedUtterances.map(\.sourceText), ["Hello."])
         store.resetForTesting()
     }
 
@@ -2325,6 +2397,15 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 .map(\.code),
             expected
         )
+        let labels = Dictionary(
+            uniqueKeysWithValues: NotebookCaptureSupportedLanguages.options(
+                locale: Locale(identifier: "en")
+            ).map { ($0.code, $0.label) }
+        )
+        XCTAssertTrue(labels["de"]?.contains("Deutsch") == true)
+        XCTAssertTrue(labels["th"]?.contains("ไทย") == true)
+        XCTAssertTrue(labels["hi"]?.contains("हिन्दी") == true)
+        XCTAssertTrue(labels["bn"]?.contains("বাংলা") == true)
     }
 
     @MainActor
@@ -3357,11 +3438,14 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
 
     func testRustCaptureCallbackHopsToMainActor() {
         let callbackExpectation = expectation(description: "capture callback reaches main actor")
-        let callback = RustNotebookCaptureCallback { event in
-            XCTAssertTrue(Thread.isMainThread)
-            XCTAssertEqual(event.sessionId, "session-callback")
-            callbackExpectation.fulfill()
-        }
+        let callback = RustNotebookCaptureCallback(
+            onCaptureEvent: { event in
+                XCTAssertTrue(Thread.isMainThread)
+                XCTAssertEqual(event.sessionId, "session-callback")
+                callbackExpectation.fulfill()
+            },
+            onLivePreview: { _ in }
+        )
         let event = FfiNotebookCaptureEvent(
             sessionId: "session-callback",
             eventRevision: 1,
@@ -4214,8 +4298,12 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(overlayViews.contains("store.selectedLanguages"))
         XCTAssertTrue(overlayViews.contains("store.projection(for: utterance)"))
         XCTAssertFalse(overlays.contains("commonCaptionLanguage"))
-        XCTAssertTrue(overlayViews.contains("ForEach(Array(store.selectedLanguages.enumerated())"))
-        XCTAssertTrue(overlayViews.contains("ForEach(Array(projection.lanes.enumerated())"))
+        XCTAssertTrue(overlayViews.contains("ForEach(Array(displayLanguages.enumerated())"))
+        XCTAssertTrue(overlayViews.contains("ForEach(Array(displayLanes(projection).enumerated())"))
+        XCTAssertTrue(overlayViews.contains("SubtitleOverlayDisplayMode"))
+        XCTAssertTrue(overlayViews.contains("SubtitleOverlayLayoutPolicy"))
+        XCTAssertTrue(overlayViews.contains("LazyVGrid(columns: columns"))
+        XCTAssertTrue(overlayViews.contains("presentedUtterances.suffix(2)"))
         XCTAssertFalse(overlayViews.contains("commonCaptionLanguage"))
         XCTAssertFalse(overlayViews.contains("capture.settings.languages.common_caption"))
         XCTAssertFalse(overlayViews.contains("isCommonCaption"))
@@ -4288,6 +4376,15 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 "subtitle.overlay.font_smaller",
                 "subtitle.overlay.font_larger",
                 "subtitle.overlay.move_resize_hint",
+                "subtitle.overlay.pin",
+                "subtitle.overlay.unpin",
+                "subtitle.overlay.pinned",
+                "subtitle.overlay.unpinned",
+                "subtitle.overlay.mode",
+                "subtitle.overlay.mode.conversation",
+                "subtitle.overlay.mode.audience",
+                "subtitle.overlay.mode.conversation.help",
+                "subtitle.overlay.mode.audience.help",
                 "capture.toolbar.subtitle_window.open",
                 "capture.toolbar.subtitle_window.close",
                 "menubar.recording.open_subtitles",
@@ -4709,6 +4806,12 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     private let audioPushRecorder = FakeAudioPushRecorder()
     private var captureCallback: (@MainActor @Sendable (NotebookCaptureEventDTO) -> Void)?
     private var captureCallbacks: [String: @MainActor @Sendable (NotebookCaptureEventDTO) -> Void] = [:]
+    private var livePreviewCallback: (
+        @MainActor @Sendable (NotebookCaptureLivePreviewDTO) -> Void
+    )?
+    private var livePreviewCallbacks: [
+        String: @MainActor @Sendable (NotebookCaptureLivePreviewDTO) -> Void
+    ] = [:]
     private var lastStartedSessionId = "session-a"
     private var contextPacks: [NotebookContextPackDTO]
     private var contextSources: [String: [NotebookContextPackSourceDTO]] = [:]
@@ -4898,13 +5001,16 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         notebookId: String,
         profileRevision: UInt64,
         confirmedContextDigest: String?,
-        onCaptureEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void
+        onCaptureEvent: @escaping @MainActor @Sendable (NotebookCaptureEventDTO) -> Void,
+        onLivePreview: @escaping @MainActor @Sendable (NotebookCaptureLivePreviewDTO) -> Void
     ) throws -> NotebookCaptureEventDTO {
         startCount += 1
         lastConfirmedContextDigest = confirmedContextDigest
         lastStartedSessionId = nextSessionId
         captureCallback = onCaptureEvent
         captureCallbacks[nextSessionId] = onCaptureEvent
+        livePreviewCallback = onLivePreview
+        livePreviewCallbacks[nextSessionId] = onLivePreview
         return event(
             sessionId: nextSessionId,
             state: .recording,
@@ -4981,6 +5087,17 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         callbackSessionId: String
     ) {
         captureCallbacks[callbackSessionId]?(event)
+    }
+
+    func emitLivePreview(_ preview: NotebookCaptureLivePreviewDTO) {
+        livePreviewCallback?(preview)
+    }
+
+    func emitLivePreview(
+        _ preview: NotebookCaptureLivePreviewDTO,
+        callbackSessionId: String
+    ) {
+        livePreviewCallbacks[callbackSessionId]?(preview)
     }
 
     func listNotebookCaptureUtterances(sessionId: String) throws -> [NotebookCaptureUtteranceDTO] {

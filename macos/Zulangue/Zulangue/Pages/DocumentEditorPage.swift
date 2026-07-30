@@ -86,6 +86,10 @@ struct DocumentEditorPage: View {
 
     private var selectedSessionId: String? { route?.selectedSessionID }
 
+    private var isShowingManualNotesTimeline: Bool {
+        activeNotebookTab?.displayType == .manualNote && selectedSessionId == nil
+    }
+
     @State private var bridge: LoroTextBridge?
     @State private var hostedTextView: NSTextView?
     @State private var currentSelection: NSRange = NSRange(location: 0, length: 0)
@@ -311,7 +315,24 @@ struct DocumentEditorPage: View {
     /// 保证 ZStack 里它与 TranscriptView 是两棵独立的子树,切 opacity 不牵连。
     @ViewBuilder
     private var editorLayer: some View {
-        VStack(spacing: 0) {
+        if isShowingManualNotesTimeline,
+           let notebookId = route?.notebookID,
+           let manualTab = activeNotebookTab {
+            ManualNotesTimelineView(
+                notebookId: notebookId,
+                tabId: manualTab.tabId,
+                documentId: manualTab.documentId,
+                onOpenNote: { sessionId in
+                    WindowCommandRouter.shared.requestOpenNotebookTab(
+                        notebookID: notebookId,
+                        tabID: manualTab.tabId,
+                        documentID: manualTab.documentId,
+                        selectedSessionID: sessionId
+                    )
+                }
+            )
+        } else {
+            VStack(spacing: 0) {
             if NotebookDocumentSurfacePolicy.mountsLoroTextEditor(
                 for: activeNotebookTab?.displayType
             ) {
@@ -359,6 +380,7 @@ struct DocumentEditorPage: View {
                     description: String(localized: "editor.empty.no_doc_desc")
                 )
             }
+        }
         }
     }
 
@@ -1527,52 +1549,68 @@ private struct ManualTimeNoteHeader: View {
     @State private var isSaving = false
 
     var body: some View {
-        HStack(spacing: Spacing.sm) {
-            TextField(
-                String(localized: "manual_note.title.placeholder"),
-                text: $title
-            )
-            .textFieldStyle(.plain)
-            .font(.bodyMedium)
-            .foregroundColor(.bpLine)
-            .onSubmit(save)
-            .accessibilityIdentifier("manual_note.title")
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack(spacing: Spacing.sm) {
+                TextField(
+                    String(localized: "manual_note.title.placeholder"),
+                    text: $title
+                )
+                .textFieldStyle(.plain)
+                .font(.titleMD)
+                .foregroundColor(.bpLine)
+                .onSubmit(save)
+                .accessibilityIdentifier("manual_note.title")
 
-            if title != savedTitle {
-                Button(action: save) {
-                    if isSaving {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .semibold))
+                if title != savedTitle {
+                    Button(action: save) {
+                        if isSaving {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.brandAccent)
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .disabled(isSaving)
+                    .help(String(localized: "manual_note.title.save"))
+                    .accessibilityIdentifier("manual_note.title.save")
                 }
-                .buttonStyle(.plain)
-                .disabled(isSaving)
-                .help(String(localized: "manual_note.title.save"))
-                .accessibilityIdentifier("manual_note.title.save")
             }
 
-            Spacer()
-
-            if let createdAt {
-                Label(
-                    createdAt.formatted(date: .abbreviated, time: .shortened),
-                    systemImage: "clock"
-                )
-                .font(.caption)
-                .foregroundColor(.textOnBpFaint)
-                .accessibilityLabel(
-                    String(
-                        format: String(localized: "manual_note.created_at_format"),
-                        createdAt.formatted(date: .long, time: .shortened)
+            HStack(spacing: Spacing.sm) {
+                if let createdAt {
+                    Label(
+                        createdAt.formatted(date: .long, time: .shortened),
+                        systemImage: "clock"
                     )
-                )
+                    .font(.bodySM)
+                    .foregroundColor(.textOnBpDim)
+                    .accessibilityLabel(
+                        String(
+                            format: String(localized: "manual_note.created_at_format"),
+                            createdAt.formatted(date: .long, time: .shortened)
+                        )
+                    )
+                }
+
+                Text(String(sessionId.prefix(8)))
+                    .font(.caption.monospaced())
+                    .foregroundColor(.textOnBpFaint)
+
+                Spacer()
             }
         }
+        .padding(Spacing.md)
+        .background(Color.bpBlueLight.opacity(0.28))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.sm)
+                .strokeBorder(Color.bpLineGhost.opacity(0.5), lineWidth: Stroke.thin)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .padding(.horizontal, Spacing.lg)
-        .padding(.bottom, Spacing.sm)
+        .padding(.bottom, Spacing.md)
         .task(id: sessionId) {
             title = initialTitle ?? ""
             savedTitle = title

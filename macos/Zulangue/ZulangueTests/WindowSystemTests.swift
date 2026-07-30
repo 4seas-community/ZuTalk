@@ -478,11 +478,74 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertNil(controller.managedWindow.contentViewController)
         let contentView: NSView = try XCTUnwrap(controller.managedWindow.contentView)
         XCTAssertFalse(contentView.subviews.isEmpty)
-        XCTAssertEqual(controller.managedWindow.level, NSWindow.Level.floating)
+        XCTAssertEqual(
+            controller.managedWindow.level,
+            SubtitleOverlayWindowPolicy.level(
+                isPinned: SubtitleOverlayPresentationSettings.shared.isPinned
+            )
+        )
         XCTAssertTrue(controller.managedWindow.styleMask.contains(.resizable))
         XCTAssertTrue(controller.managedWindow.isMovable)
         XCTAssertTrue(controller.managedWindow.isMovableByWindowBackground)
+        XCTAssertTrue((controller.managedWindow as? NSPanel)?.isExcludedFromWindowsMenu ?? false)
         XCTAssertFalse((controller.managedWindow as? NSPanel)?.hidesOnDeactivate ?? true)
+    }
+
+    func testSubtitleOverlayWindowPolicySwitchesBetweenPinnedAndRegularWindowBehavior() {
+        XCTAssertEqual(SubtitleOverlayWindowPolicy.level(isPinned: true), .floating)
+        XCTAssertEqual(
+            SubtitleOverlayWindowPolicy.collectionBehavior(isPinned: true),
+            [.canJoinAllSpaces, .fullScreenAuxiliary]
+        )
+        XCTAssertEqual(SubtitleOverlayWindowPolicy.level(isPinned: false), .normal)
+        XCTAssertEqual(
+            SubtitleOverlayWindowPolicy.collectionBehavior(isPinned: false),
+            [.moveToActiveSpace, .fullScreenAuxiliary]
+        )
+    }
+
+    func testSubtitleOverlayLayoutPolicyAdaptsConversationAndAudienceLayouts() {
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.conversationLayout(
+                width: 1_100,
+                languageCount: 2,
+                fontSize: 30
+            ),
+            .columns
+        )
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.conversationLayout(
+                width: 560,
+                languageCount: 4,
+                fontSize: 30
+            ),
+            .stacked
+        )
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceColumnCount(
+                width: 1_100,
+                languageCount: 4,
+                fontSize: 30
+            ),
+            2
+        )
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceColumnCount(
+                width: 1_600,
+                languageCount: 4,
+                fontSize: 30
+            ),
+            4
+        )
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceColumnCount(
+                width: 560,
+                languageCount: 3,
+                fontSize: 30
+            ),
+            1
+        )
+        XCTAssertEqual(SubtitleOverlayLayoutPolicy.maximumLanguageCount, 4)
     }
 
     func testSubtitleOverlayFontPolicy_clampsAndStepsWithinReadableRange() {

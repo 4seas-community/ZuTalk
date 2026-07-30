@@ -342,6 +342,11 @@ final class NotebookCaptureProfileEditorModel: ObservableObject {
             else { return nil }
             return code
         }
+        normalized.selectedLanguages = Array(
+            normalized.selectedLanguages.prefix(
+                NotebookCaptureSupportedLanguages.maximumSelectedCount
+            )
+        )
         if normalized.selectedLanguages.isEmpty {
             let fallback = normalized.languageA
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -922,7 +927,7 @@ private func notebookCaptureProviderDisplayName(_ providerId: String) -> String 
 /// list and applies equally to every language; these codes define the ordered
 /// language lanes for one capture.
 enum NotebookCaptureSupportedLanguages {
-    static let maximumSelectedCount = 8
+    static let maximumSelectedCount = 4
 
     static let codes = [
         "af", "sq", "ar", "az", "eu", "be", "bn", "bs", "bg", "ca",
@@ -937,9 +942,15 @@ enum NotebookCaptureSupportedLanguages {
         locale: Locale = .current
     ) -> [(code: String, label: String)] {
         codes.map { code in
-            let languageName = locale.localizedString(forLanguageCode: code)
+            let localizedName = locale.localizedString(forLanguageCode: code)
                 ?? code.uppercased()
-            return (code, "\(languageName) · \(code.uppercased())")
+            let nativeName = Locale(identifier: code)
+                .localizedString(forLanguageCode: code)
+                ?? localizedName
+            let names = nativeName.caseInsensitiveCompare(localizedName) == .orderedSame
+                ? nativeName
+                : "\(nativeName) · \(localizedName)"
+            return (code, "\(names) · \(code.uppercased())")
         }
     }
 }
@@ -2565,6 +2576,9 @@ private struct NotebookRealtimeHistoryView: View {
                         ForEach(presentedRuns) { run in
                             NotebookRealtimeUtteranceView(
                                 run: run,
+                                livePreviewUtterances: run.sessionId == capture.sessionId
+                                    ? capture.livePreviewUtterances
+                                    : [],
                                 presentationMode: presentationMode,
                                 isFocused: focusSessionId == run.sessionId,
                                 history: history
@@ -2600,7 +2614,7 @@ private struct NotebookRealtimeHistoryView: View {
 
     private var latestLiveUtteranceID: String? {
         guard capture.notebookId == notebookId else { return nil }
-        return NotebookRealtimeAutoscrollPolicy.targetID(in: capture.utterances)
+        return NotebookRealtimeAutoscrollPolicy.targetID(in: capture.presentedUtterances)
     }
 
     private func runAnchor(_ sessionId: String) -> String {
@@ -2624,6 +2638,7 @@ private struct NotebookRealtimeHistoryView: View {
 /// session id and never changes the run's frozen processing configuration.
 struct NotebookRealtimeUtteranceView: View {
     let run: NotebookCaptureHistoryRunDTO
+    let livePreviewUtterances: [NotebookCaptureUtteranceDTO]
     let presentationMode: NotebookTranscriptPresentationMode
     let isFocused: Bool
     @ObservedObject var history: NotebookCaptureHistoryStore
@@ -2707,6 +2722,14 @@ struct NotebookRealtimeUtteranceView: View {
 
     private var displayLanguages: [String] {
         NotebookCaptureHistoryPolicy.displayLanguages(for: run) ?? []
+    }
+
+    private var displayUtterances: [NotebookCaptureUtteranceDTO] {
+        NotebookCaptureLivePresentation.utterances(
+            durable: run.utterances,
+            preview: livePreviewUtterances,
+            sessionId: run.sessionId
+        )
     }
 
     private var isEditable: Bool {
@@ -2910,7 +2933,7 @@ struct NotebookRealtimeUtteranceView: View {
 
     @ViewBuilder
     private var bilingualBody: some View {
-        if run.utterances.isEmpty {
+        if displayUtterances.isEmpty {
             compactEmptyRun(
                 title: run.captureState.isActive
                     ? String(localized: "capture.transcript.waiting_title")
@@ -2921,7 +2944,7 @@ struct NotebookRealtimeUtteranceView: View {
             )
         } else {
             LazyVStack(spacing: 0) {
-                ForEach(run.utterances) { utterance in
+                ForEach(displayUtterances) { utterance in
                     MultilingualUtteranceRow(
                         utterance: utterance,
                         projection: NotebookCaptureHistoryPolicy.laneProjection(
@@ -2953,7 +2976,7 @@ struct NotebookRealtimeUtteranceView: View {
 
     @ViewBuilder
     private var transcriptionBody: some View {
-        if run.utterances.isEmpty {
+        if displayUtterances.isEmpty {
             compactEmptyRun(
                 title: run.captureState.isActive
                     ? String(localized: "capture.transcript.waiting_title")
@@ -2964,7 +2987,7 @@ struct NotebookRealtimeUtteranceView: View {
             )
         } else {
             LazyVStack(spacing: 0) {
-                ForEach(run.utterances) { utterance in
+                ForEach(displayUtterances) { utterance in
                     TranscriptionUtteranceRow(
                         utterance: utterance,
                         speakerDisplayName: speakerDisplayName(for: utterance),

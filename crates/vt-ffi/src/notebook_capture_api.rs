@@ -289,9 +289,22 @@ pub struct FfiNotebookCaptureEvent {
     pub provider_request_id: Option<String>,
 }
 
+/// Process-local, replace-in-full presentation state for the current Soniox
+/// speculative tail. These utterances are never persisted and never advance
+/// the durable capture-event revision.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiNotebookCaptureLivePreview {
+    pub session_id: String,
+    /// Monotonic only within the transient preview channel. A skipped revision
+    /// is harmless because every callback carries the complete current tail.
+    pub preview_revision: u64,
+    pub utterances: Vec<FfiNotebookCaptureUtterance>,
+}
+
 #[uniffi::export(callback_interface)]
 pub trait FfiNotebookCaptureCallback: Send + Sync {
     fn on_capture_event(&self, event: FfiNotebookCaptureEvent);
+    fn on_live_preview(&self, preview: FfiNotebookCaptureLivePreview);
 }
 
 impl From<CaptureMode> for FfiNotebookCaptureMode {
@@ -456,6 +469,36 @@ impl From<RealtimeUtterance> for FfiNotebookCaptureUtterance {
             .to_string(),
             language_variants,
         }
+    }
+}
+
+fn ffi_live_preview(value: AssembledRealtimeUtterance) -> FfiNotebookCaptureUtterance {
+    let value = value.utterance;
+    FfiNotebookCaptureUtterance {
+        id: value.id,
+        session_id: value.session_id,
+        sequence: value.sequence,
+        // A preview revision is intentionally not a store row revision. The
+        // enclosing preview event owns transient replacement ordering.
+        revision: 0,
+        session_speaker_id: None,
+        source_language: value.source_language,
+        source_text: value.source_text,
+        source_start_ms: value.source_start_ms,
+        source_end_ms: value.source_end_ms,
+        translated_language: value.translated_language,
+        translated_text: value.translated_text,
+        completion: "partial".to_string(),
+        alignment: match value.alignment {
+            UtteranceAlignment::Paired => "paired",
+            UtteranceAlignment::SourceOnly => "source_only",
+            UtteranceAlignment::TranslationPending => "translation_pending",
+            UtteranceAlignment::OutsideLanguagePair => "outside_language_pair",
+        }
+        .to_string(),
+        // Live previews reuse the legacy shadow fields above. Durable language
+        // variants remain a store-owned fact and are never synthesized here.
+        language_variants: Vec::new(),
     }
 }
 
@@ -1211,6 +1254,16 @@ async fn collect_stream_events(
             }
         }
         let lane_index = tagged.lane_index;
+        let publishes_canonical_preview = lane_index == canonical_lane_index
+            && matches!(
+                &tagged.event,
+                SttStreamEvent::Tokens(_)
+                    | SttStreamEvent::Endpoint
+                    | SttStreamEvent::Finalized
+                    | SttStreamEvent::Finished
+                    | SttStreamEvent::Reconnecting { .. }
+                    | SttStreamEvent::Error(_)
+            );
         let persisted = match tagged.event {
             SttStreamEvent::Connected => {
                 let reconnected = lanes[lane_index].awaiting_reconnect;
@@ -1360,6 +1413,13 @@ async fn collect_stream_events(
             if let Ok(Some(run)) = store.get_run(&run_id) {
                 emit_capture_delta(run, persisted, &callback);
             }
+        }
+        if publishes_canonical_preview {
+            emit_live_preview(
+                &session_id,
+                lanes[canonical_lane_index].assembler.live_previews(),
+                &callback,
+            );
         }
     }
     let unavailable =
@@ -2001,17 +2061,49 @@ fn persist_assembled_utterances(
                 })?;
             update.utterance.session_speaker_id = Some(speaker.id);
         }
-        let persisted = store
-            .upsert_utterance(&update.utterance, update.expected_revision)
-            .map_err(|error| {
-                local_persistence_failure(
+        let persisted = match store.upsert_utterance(
+            &update.utterance,
+            update.expected_revision,
+        ) {
+            Ok(persisted) => persisted,
+            Err(vt_store::NotebookCaptureStoreError::Conflict(_))
+                if update.expected_revision.is_some() =>
+            {
+                // A completed lane may have advanced because the user edited
+                // its Loro-backed projection while capture continued. Provider
+                // replay is stale in that case: retain the newer durable row
+                // instead of turning a valid capture into local_persistence
+                // failure. The expected revision still prevents silent writes.
+                let current = store
+                    .get_utterance_by_id(&update.utterance.id)
+                    .map_err(|error| {
+                        local_persistence_failure(
+                            "reload user-owned utterance after stale provider revision",
+                            error,
+                        )
+                    })?
+                    .filter(|current| {
+                        current.completion == UtteranceCompletion::Complete
+                            && update
+                                .expected_revision
+                                .is_some_and(|expected| current.revision > expected)
+                    })
+                    .ok_or_else(|| ProviderFailure {
+                        error_type: "local_persistence".to_string(),
+                        request_id: None,
+                    })?;
+                current
+            }
+            Err(error) => {
+                return Err(local_persistence_failure(
                     &format!(
                         "persist ordered Soniox utterance {}:{}",
                         update.utterance.session_id, update.utterance.sequence
                     ),
                     error,
-                )
-            })?;
+                ));
+            }
+        };
         assembler.record_persisted(&persisted.id, persisted.revision);
         persisted_updates.push(persisted);
     }
@@ -2057,6 +2149,18 @@ fn emit_capture_delta(
     callback.send(event_from_run(run, changed_utterances, false));
 }
 
+fn emit_live_preview(
+    session_id: &str,
+    previews: Vec<AssembledRealtimeUtterance>,
+    callback: &CaptureCallbackSink,
+) {
+    callback.send_preview(FfiNotebookCaptureLivePreview {
+        session_id: session_id.to_string(),
+        preview_revision: 0,
+        utterances: previews.into_iter().map(ffi_live_preview).collect(),
+    });
+}
+
 fn event_full_snapshot_from_run(
     store: &NotebookCaptureStore,
     run: NotebookCaptureRun,
@@ -2072,11 +2176,18 @@ pub(crate) struct CaptureCallbackSink {
 }
 
 struct CaptureCallbackMailbox {
-    pending: StdMutex<Option<FfiNotebookCaptureEvent>>,
+    pending: StdMutex<PendingCaptureCallbacks>,
     wake: Condvar,
     closed: AtomicBool,
     sender_count: AtomicUsize,
     next_revision: AtomicU64,
+    next_preview_revision: AtomicU64,
+}
+
+#[derive(Default)]
+struct PendingCaptureCallbacks {
+    event: Option<FfiNotebookCaptureEvent>,
+    preview: Option<FfiNotebookCaptureLivePreview>,
 }
 
 impl Clone for CaptureCallbackSink {
@@ -2100,28 +2211,42 @@ impl Drop for CaptureCallbackSink {
 impl CaptureCallbackSink {
     fn new(callback: Arc<dyn FfiNotebookCaptureCallback>) -> Result<Self, CoreError> {
         let mailbox = Arc::new(CaptureCallbackMailbox {
-            pending: StdMutex::new(None),
+            pending: StdMutex::new(PendingCaptureCallbacks::default()),
             wake: Condvar::new(),
             closed: AtomicBool::new(false),
             sender_count: AtomicUsize::new(1),
             next_revision: AtomicU64::new(1),
+            next_preview_revision: AtomicU64::new(1),
         });
         let worker_mailbox = mailbox.clone();
         std::thread::Builder::new()
             .name("zulangue-capture-callback".to_string())
             .spawn(move || loop {
-                let event = {
+                let (event, preview) = {
                     let mut pending = worker_mailbox.pending.lock().unwrap();
-                    while pending.is_none() && !worker_mailbox.closed.load(Ordering::Acquire) {
+                    while pending.event.is_none()
+                        && pending.preview.is_none()
+                        && !worker_mailbox.closed.load(Ordering::Acquire)
+                    {
                         pending = worker_mailbox.wake.wait(pending).unwrap();
                     }
-                    match pending.take() {
-                        Some(event) => event,
-                        None => break,
+                    let event = pending.event.take();
+                    let preview = pending.preview.take();
+                    if event.is_none()
+                        && preview.is_none()
+                        && worker_mailbox.closed.load(Ordering::Acquire)
+                    {
+                        break;
                     }
+                    (event, preview)
                 };
                 if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    callback.on_capture_event(event);
+                    if let Some(event) = event {
+                        callback.on_capture_event(event);
+                    }
+                    if let Some(preview) = preview {
+                        callback.on_live_preview(preview);
+                    }
                 }))
                 .is_err()
                 {
@@ -2143,10 +2268,31 @@ impl CaptureCallbackSink {
             tracing::warn!("Notebook capture callback dispatcher is closed");
             return event;
         }
-        *pending = Some(event.clone());
+        pending.event = Some(event.clone());
         drop(pending);
         self.mailbox.wake.notify_one();
         event
+    }
+
+    fn send_preview(
+        &self,
+        mut preview: FfiNotebookCaptureLivePreview,
+    ) -> FfiNotebookCaptureLivePreview {
+        let mut pending = self.mailbox.pending.lock().unwrap();
+        preview.preview_revision = self
+            .mailbox
+            .next_preview_revision
+            .fetch_add(1, Ordering::Relaxed);
+        if self.mailbox.closed.load(Ordering::Acquire) {
+            tracing::warn!("Notebook capture callback dispatcher is closed");
+            return preview;
+        }
+        // The speculative tail is a complete replacement snapshot, so keeping
+        // only the newest value is lossless and provides natural backpressure.
+        pending.preview = Some(preview.clone());
+        drop(pending);
+        self.mailbox.wake.notify_one();
+        preview
     }
 }
 
@@ -2533,6 +2679,29 @@ impl RealtimeUtteranceAssembler {
                     common_caption_language.as_deref(),
                     segment,
                 ))
+            })
+            .collect()
+    }
+
+    /// Complete process-local replacement view of every unfinished canonical
+    /// segment. This never mutates the assembler and never crosses into the
+    /// durable utterance store.
+    fn live_previews(&self) -> Vec<AssembledRealtimeUtterance> {
+        let session_id = self.session_id.clone();
+        let selected_languages = self.selected_languages.clone();
+        let capture_mode = self.capture_mode;
+        let common_caption_language = self.common_caption_language.clone();
+        self.segments
+            .iter()
+            .filter(|segment| !segment.complete && !segment.is_empty())
+            .map(|segment| {
+                assemble_segment(
+                    &session_id,
+                    &selected_languages,
+                    capture_mode,
+                    common_caption_language.as_deref(),
+                    segment,
+                )
             })
             .collect()
     }
@@ -5717,6 +5886,7 @@ impl ZulangueCore {
                 ),
             })?;
             let rendered = render_replacement_lane(&current, mutation);
+            let rendered_len = rendered.text.chars().count();
             self.editor_bridge
                 .apply(
                     &tab.doc_id,
@@ -5740,6 +5910,17 @@ impl ZulangueCore {
                     )
                     .map_err(store_error)?;
             }
+            self.editor_bridge
+                .apply(
+                    &tab.doc_id,
+                    EditOp::Mark {
+                        pos: range.pos,
+                        len: rendered_len,
+                        key: "content_owner".to_string(),
+                        value_json: "\"user\"".to_string(),
+                    },
+                )
+                .map_err(store_error)?;
             crate::editor_api::flush_snapshot_to_disk_result(
                 &self.data_dir,
                 &self.editor_bridge,
@@ -5956,6 +6137,7 @@ impl ZulangueCore {
                 .editor_bridge
                 .get_delta(&tab.doc_id)
                 .map_err(store_error)?;
+            let user_owned_lanes = user_owned_lanes(&delta, &run.session_id)?;
             let existing_range = resolve_capture_section_range(
                 &self.editor_bridge,
                 &tab.doc_id,
@@ -6011,6 +6193,34 @@ impl ZulangueCore {
                         },
                     )
                     .map_err(store_error)?;
+            }
+            if !user_owned_lanes.is_empty() {
+                let projected_delta = self
+                    .editor_bridge
+                    .get_delta(&tab.doc_id)
+                    .map_err(store_error)?;
+                for (utterance_id, lane_language) in user_owned_lanes {
+                    if let Some(range) = crate::editor_api::find_unique_marked_range(
+                        &projected_delta,
+                        crate::editor_api::DeltaMarkSelector {
+                            session_id: Some(&run.session_id),
+                            utterance_id: Some(&utterance_id),
+                            lane_language: Some(&lane_language),
+                        },
+                    )? {
+                        self.editor_bridge
+                            .apply(
+                                &tab.doc_id,
+                                EditOp::Mark {
+                                    pos: range.pos,
+                                    len: range.len,
+                                    key: "content_owner".to_string(),
+                                    value_json: "\"user\"".to_string(),
+                                },
+                            )
+                            .map_err(store_error)?;
+                    }
+                }
             }
             self.editor_bridge
                 .set_capture_owned_range(
@@ -6308,6 +6518,7 @@ fn push_lane_marks(
             serde_json::to_string(lane_language).unwrap_or_else(|_| "\"\"".to_string()),
         ),
         ("utterance_revision", utterance.revision.to_string()),
+        ("content_owner", "\"machine\"".to_string()),
     ] {
         marks.push(CaptureRenderedMark {
             pos,
@@ -6324,6 +6535,53 @@ fn push_lane_marks(
             value_json: timestamp.to_string(),
         });
     }
+}
+
+fn user_owned_lanes(
+    delta_json: &str,
+    session_id: &str,
+) -> Result<std::collections::HashSet<(String, String)>, CoreError> {
+    let delta: serde_json::Value =
+        serde_json::from_str(delta_json).map_err(|error| CoreError::ValidationFailed {
+            message: format!("invalid editor Delta JSON: {error}"),
+        })?;
+    let operations = delta.as_array().ok_or_else(|| CoreError::ValidationFailed {
+        message: "editor Delta must be an array".to_string(),
+    })?;
+    let mut result = std::collections::HashSet::new();
+    for operation in operations {
+        let Some(attributes) = operation
+            .get("attributes")
+            .and_then(serde_json::Value::as_object)
+        else {
+            continue;
+        };
+        if attributes
+            .get("session_id")
+            .and_then(serde_json::Value::as_str)
+            != Some(session_id)
+            || attributes
+                .get("content_owner")
+                .and_then(serde_json::Value::as_str)
+                != Some("user")
+        {
+            continue;
+        }
+        let Some(utterance_id) = attributes
+            .get("utterance_id")
+            .and_then(serde_json::Value::as_str)
+        else {
+            continue;
+        };
+        let Some(lane_language) = attributes
+            .get("lane_language")
+            .and_then(serde_json::Value::as_str)
+        else {
+            continue;
+        };
+        result.insert((utterance_id.to_string(), lane_language.to_string()));
+    }
+    Ok(result)
 }
 
 fn format_capture_timestamp(milliseconds: u64) -> String {
@@ -6453,6 +6711,8 @@ mod tests {
         fn on_capture_event(&self, event: FfiNotebookCaptureEvent) {
             let _ = self.0.send(event);
         }
+
+        fn on_live_preview(&self, _preview: FfiNotebookCaptureLivePreview) {}
     }
 
     #[derive(Default)]
@@ -7836,6 +8096,51 @@ mod tests {
         );
         assert_store_valid_alignment_shape(&finalized[0].utterance);
         assert_eq!(finalized[0].provider_speaker.as_deref(), Some("speaker-1"));
+    }
+
+    #[test]
+    fn live_preview_replaces_the_speculative_tail_without_persisting_it() {
+        let mut assembler = RealtimeUtteranceAssembler::new("session-preview".into(), &profile());
+
+        assert!(assembler
+            .apply_tokens(&[attributed_token(
+                "hel",
+                SttStreamTranslationStatus::Original,
+                Some("en"),
+                None,
+                None,
+                false,
+            )])
+            .is_empty());
+        let first = assembler.live_previews();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].utterance.id, "session-preview:0");
+        assert_eq!(first[0].utterance.source_language, "und");
+        assert_eq!(first[0].utterance.source_text, "hel");
+        assert_eq!(first[0].utterance.completion, UtteranceCompletion::Partial);
+
+        assert!(assembler
+            .apply_tokens(&[attributed_token(
+                "hello",
+                SttStreamTranslationStatus::Original,
+                Some("en"),
+                None,
+                None,
+                false,
+            )])
+            .is_empty());
+        let revised = assembler.live_previews();
+        assert_eq!(revised.len(), 1);
+        assert_eq!(revised[0].utterance.id, "session-preview:0");
+        assert_eq!(revised[0].utterance.source_text, "hello");
+
+        let finalized = assembler.finalize();
+        assert_eq!(finalized.len(), 1);
+        assert_eq!(
+            finalized[0].utterance.completion,
+            UtteranceCompletion::Complete
+        );
+        assert!(assembler.live_previews().is_empty());
     }
 
     #[test]
@@ -9436,6 +9741,16 @@ mod tests {
         let (callback_tx, _callback_rx) = std::sync::mpsc::channel();
         let callback = CaptureCallbackSink::new(Arc::new(CaptureEventSender(callback_tx))).unwrap();
 
+        let first_preview = callback.send_preview(FfiNotebookCaptureLivePreview {
+            session_id: run.session_id.clone(),
+            preview_revision: 0,
+            utterances: Vec::new(),
+        });
+        let second_preview = callback.send_preview(FfiNotebookCaptureLivePreview {
+            session_id: run.session_id.clone(),
+            preview_revision: 0,
+            utterances: Vec::new(),
+        });
         let first = callback.send(event_from_run(
             run.clone(),
             vec![changed.expect("the final changed utterance")],
@@ -9443,6 +9758,8 @@ mod tests {
         ));
         let second = callback.send(event_from_run(run.clone(), Vec::new(), false));
 
+        assert_eq!(first_preview.preview_revision, 1);
+        assert_eq!(second_preview.preview_revision, 2);
         assert_eq!(first.event_revision, 1);
         assert_eq!(second.event_revision, 2);
         assert!(!first.is_full_snapshot);

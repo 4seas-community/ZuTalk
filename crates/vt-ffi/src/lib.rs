@@ -1673,6 +1673,12 @@ mod tests {
 
     impl crate::notebook_capture_api::FfiNotebookCaptureCallback for NoopNotebookCaptureCallback {
         fn on_capture_event(&self, _event: crate::notebook_capture_api::FfiNotebookCaptureEvent) {}
+
+        fn on_live_preview(
+            &self,
+            _preview: crate::notebook_capture_api::FfiNotebookCaptureLivePreview,
+        ) {
+        }
     }
 
     fn process_test_key_refs(data_dir: &Path) -> Vec<String> {
