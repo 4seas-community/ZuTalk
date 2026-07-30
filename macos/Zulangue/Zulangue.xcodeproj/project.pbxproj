@@ -1,0 +1,1222 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		045287E89ED87EE0FC55FAE9 /* ProviderCredentialSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31D0C9AE8D24DEF64046E239 /* ProviderCredentialSessionTests.swift */; };
+		09642A0C201E7541FF49F844 /* TrustWarningViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E74376D0524DBD11622CE17 /* TrustWarningViewModelTests.swift */; };
+		09FBE393472AEA170B5F6401 /* WindowArchitectureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCFDA163E28AEBAE7F806B2C /* WindowArchitectureTests.swift */; };
+		24837CE6787271CBF1A1E5E0 /* WindowSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 162823BFBEBB61C186527799 /* WindowSystemTests.swift */; };
+		263F77C7195DA6D8330D4BBF /* OnboardingControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF4098FE0DDC1AC0C338F00 /* OnboardingControllerTests.swift */; };
+		311D6659C7CEBB1B7D9F3A6F /* IntegrityChecksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EB8781E8D2523CE9443D0EE /* IntegrityChecksTests.swift */; };
+		31640285D389BBA008E4E291 /* DiagnosticsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348F795AC233AE8DDE436431 /* DiagnosticsViewModelTests.swift */; };
+		345A25274BE8DF990C5D88E5 /* EditorAPITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C6921155A5E8B401C25A14 /* EditorAPITests.swift */; };
+		3F6E3928687B8CEF7FB73122 /* DesignSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4628A3113DB3E747E57DD458 /* DesignSystemTests.swift */; };
+		412F1ABAAFFFFF9B67358D7C /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 31D5B9CCF8C2146CB1F1E386 /* CoreFoundation.framework */; };
+		41FCC028AA59D24DAA9381AB /* SessionAudioAPITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FEF689B2BB937D9535039BA /* SessionAudioAPITests.swift */; };
+		4B6DD921F963C7F376D98772 /* CrashDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EE7634869688B0059AE8276 /* CrashDiagnosticsTests.swift */; };
+		4E5312DA4B1D49B3259D1749 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A34D0F80519A7FFD867B1AE /* SystemConfiguration.framework */; };
+		5B009933BAE7D937E44972E5 /* CoreIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CA0B529DABEE67ED8011CE /* CoreIntegrationTests.swift */; };
+		605FC2F36E9A3F6526BABE37 /* LibraryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 770FFC8AD8881B4945EC2163 /* LibraryViewModelTests.swift */; };
+		67AF36C08A6FEA3CF5F1535E /* NotebookCaptureRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDD2897B6DA01351336E1417 /* NotebookCaptureRuntimeTests.swift */; };
+		701B2ACB07F2D21E418C4698 /* AccessibilityID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36BB1BD8CA9C83509BD30008 /* AccessibilityID.swift */; };
+		84ED658F9535CE16DF33690C /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B5842E2728CFD4EF99804EE5 /* Cocoa.framework */; };
+		8C650758EB5B16D2F6B349E3 /* DocumentEditorFormattingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA270ED67B65CD6B619E724A /* DocumentEditorFormattingTests.swift */; };
+		99970ED7A6224EAFE901D712 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = ED747CFF1AF51B7426CAA001 /* libresolv.tbd */; };
+		A1B2C3D4E5F6A7B8C9D0E1F2 /* RecordingHudControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F3 /* RecordingHudControllerTests.swift */; };
+		C0D3F0010000000000000003 /* vt_ffi.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D3F0010000000000000001 /* vt_ffi.swift */; };
+		C0D3F0010000000000000004 /* libZulangueFFI.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C0D3F0010000000000000002 /* libZulangueFFI.a */; };
+		CA09340829DA2AA6DC05D883 /* MainWindowOpenerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B37664AE23067DCA1F7E73 /* MainWindowOpenerTests.swift */; };
+		CB47342D5D4443D088407E4D /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F95D27B26D922E784C9460D5 /* SmokeTests.swift */; };
+		CFA8C3D8F926B5B572590D3C /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B5842E2728CFD4EF99804EE5 /* Cocoa.framework */; };
+		D13126FCE1DFF5CF30392330 /* MenuBarRuntimeStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E302F449C28ED87E719068 /* MenuBarRuntimeStoreTests.swift */; };
+		DC2B06541D2788A746F3BD25 /* NotificationWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 092187BCB5E91E90A702E495 /* NotificationWiringTests.swift */; };
+		E6A8D02CA717CBAC5C8ED3E6 /* SettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8D7293DBB546554791FCA02 /* SettingsViewModelTests.swift */; };
+		F0A443E42466075E4CA84FFB /* ToastCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CE5515BC1A19E49ACF4695D /* ToastCenterTests.swift */; };
+		F4031A651DB0846273986DEA /* MenuBarRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E4553AB6D32D9116E7F352B /* MenuBarRoutingTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		323727D5824A1393E07B6909 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B77C3BEC2F8937E0000C2429 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B77C3BF32F8937E0000C2429;
+			remoteInfo = Zulangue;
+		};
+		B6910092E44EC47257B82A06 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B77C3BEC2F8937E0000C2429 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B77C3BF32F8937E0000C2429;
+			remoteInfo = Zulangue;
+		};
+		C0D3F001000000000000000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B77C3BEC2F8937E0000C2429 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C0D3F0010000000000000006;
+			remoteInfo = ZulangueFFI;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		02C390D6E8CAE721471ED287 /* StatusDot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StatusDot.swift; sourceTree = "<group>"; };
+		092187BCB5E91E90A702E495 /* NotificationWiringTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationWiringTests.swift; sourceTree = "<group>"; };
+		09F865D1C536BACA52D17090 /* FocusableTextField.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FocusableTextField.swift; sourceTree = "<group>"; };
+		0B838B133068BA8E82D011D2 /* Appearance.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Appearance.swift; sourceTree = "<group>"; };
+		13BA84CD1C5856337F7DD6BA /* HotKeyManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HotKeyManager.swift; sourceTree = "<group>"; };
+		162823BFBEBB61C186527799 /* WindowSystemTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WindowSystemTests.swift; sourceTree = "<group>"; };
+		1AF8F46504DDB9BCF06D5901 /* AccessibilityID.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccessibilityID.swift; sourceTree = "<group>"; };
+		1FEF689B2BB937D9535039BA /* SessionAudioAPITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SessionAudioAPITests.swift; sourceTree = "<group>"; };
+		2E3DAFFADD45D9ABAE7745E2 /* TrashPage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TrashPage.swift; sourceTree = "<group>"; };
+		3194C8794F66E7CF4E013AEF /* CoreIntegrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CoreIntegrationTests.swift; sourceTree = "<group>"; };
+		31D0C9AE8D24DEF64046E239 /* ProviderCredentialSessionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProviderCredentialSessionTests.swift; sourceTree = "<group>"; };
+		31D5B9CCF8C2146CB1F1E386 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
+		348F795AC233AE8DDE436431 /* DiagnosticsViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DiagnosticsViewModelTests.swift; sourceTree = "<group>"; };
+		36BB1BD8CA9C83509BD30008 /* AccessibilityID.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AccessibilityID.swift; path = ../Zulangue/App/AccessibilityID.swift; sourceTree = "<group>"; };
+		3E4553AB6D32D9116E7F352B /* MenuBarRoutingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MenuBarRoutingTests.swift; sourceTree = "<group>"; };
+		3E74376D0524DBD11622CE17 /* TrustWarningViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TrustWarningViewModelTests.swift; sourceTree = "<group>"; };
+		3FB7195A216E20593FDE129B /* FocusRing.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FocusRing.swift; sourceTree = "<group>"; };
+		458C9048F690A3F07D4D9964 /* SpecSheetRow.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpecSheetRow.swift; sourceTree = "<group>"; };
+		4628A3113DB3E747E57DD458 /* DesignSystemTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DesignSystemTests.swift; sourceTree = "<group>"; };
+		4A34D0F80519A7FFD867B1AE /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
+		5043F9FC90FB2963225DED00 /* GridBackground.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GridBackground.swift; sourceTree = "<group>"; };
+		50BC115A7A9A81D134A28737 /* TrustBar.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TrustBar.swift; sourceTree = "<group>"; };
+		527AA9ABC34D18E16BF8D0B2 /* IntegrityChecks.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IntegrityChecks.swift; sourceTree = "<group>"; };
+		5A44B471FC10F863D2866806 /* Tokens.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Tokens.swift; sourceTree = "<group>"; };
+		5F3806B27CBE315C371F5810 /* LoadingIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LoadingIndicator.swift; sourceTree = "<group>"; };
+		6365B975362667F6E2DED15A /* FullSettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FullSettingsView.swift; sourceTree = "<group>"; };
+		63875C353B1F1F2D5A74AA72 /* LoroDeltaMapping.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LoroDeltaMapping.swift; sourceTree = "<group>"; };
+		6583BED23F40AD8ED5363601 /* SegmentedTab.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SegmentedTab.swift; sourceTree = "<group>"; };
+		6AF4098FE0DDC1AC0C338F00 /* OnboardingControllerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OnboardingControllerTests.swift; sourceTree = "<group>"; };
+		6CE5515BC1A19E49ACF4695D /* ToastCenterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ToastCenterTests.swift; sourceTree = "<group>"; };
+		6EB8781E8D2523CE9443D0EE /* IntegrityChecksTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IntegrityChecksTests.swift; sourceTree = "<group>"; };
+		770FFC8AD8881B4945EC2163 /* LibraryViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LibraryViewModelTests.swift; sourceTree = "<group>"; };
+		79B4168FE2E5229F399D6D7C /* ZulangueTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZulangueTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		86823E96D4B8CB1603B48BE1 /* EmptyState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmptyState.swift; sourceTree = "<group>"; };
+		875D095CCECBB7FE16C367D6 /* OutlineButton.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OutlineButton.swift; sourceTree = "<group>"; };
+		8C47AAFC99D647187011A09A /* InsetCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsetCard.swift; sourceTree = "<group>"; };
+		8EE7634869688B0059AE8276 /* CrashDiagnosticsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CrashDiagnosticsTests.swift; sourceTree = "<group>"; };
+		94D05EED0C5C36078BA90E19 /* DocumentEditorPage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DocumentEditorPage.swift; sourceTree = "<group>"; };
+		9598FFAD28CA31BFBCA90191 /* DebugLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
+		99148459BF5023CF09B22E99 /* MetadataLabel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MetadataLabel.swift; sourceTree = "<group>"; };
+		9E5B788A3D1DBB2A0B61D6BD /* DiagnosticsSection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DiagnosticsSection.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E1F3 /* RecordingHudControllerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecordingHudControllerTests.swift; sourceTree = "<group>"; };
+		A557C9581DBAF0092D964EA3 /* IconButton.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IconButton.swift; sourceTree = "<group>"; };
+		A8D7293DBB546554791FCA02 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
+		AF7F105E9BF9711463ED1095 /* Typography.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
+		AFF9A56558C77EBF1A9CB013 /* CornerCrosshair.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CornerCrosshair.swift; sourceTree = "<group>"; };
+		B5842E2728CFD4EF99804EE5 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		B77C3BF42F8937E0000C2429 /* Zulangue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Zulangue.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BCC2EC30B476B20521496DE3 /* Motion.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
+		BCFDA163E28AEBAE7F806B2C /* WindowArchitectureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WindowArchitectureTests.swift; sourceTree = "<group>"; };
+		BFE772E620BB14E84C6376AF /* ZulangueUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZulangueUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0D3F0010000000000000001 /* vt_ffi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = vt_ffi.swift; sourceTree = "<group>"; };
+		C0D3F0010000000000000002 /* libZulangueFFI.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libZulangueFFI.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0E302F449C28ED87E719068 /* MenuBarRuntimeStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MenuBarRuntimeStoreTests.swift; sourceTree = "<group>"; };
+		C0EFF5C11D67C752943AE2D5 /* Elevation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Elevation.swift; sourceTree = "<group>"; };
+		C488C1B466B285FC5A1B8B0E /* LoroTextBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LoroTextBridge.swift; sourceTree = "<group>"; };
+		C5B37664AE23067DCA1F7E73 /* MainWindowOpenerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MainWindowOpenerTests.swift; sourceTree = "<group>"; };
+		C61CBA58ECA08D8A17FB198E /* InstrumentPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InstrumentPanel.swift; sourceTree = "<group>"; };
+		C767BB3D476A88D8B06E89F3 /* ProviderCredentialSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProviderCredentialSession.swift; sourceTree = "<group>"; };
+		CF2D2A977DD32F3AFF904579 /* TestEnvironment.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TestEnvironment.swift; sourceTree = "<group>"; };
+		D8D4A9A99FD773F10DFE2910 /* CoreClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CoreClient.swift; sourceTree = "<group>"; };
+		DA270ED67B65CD6B619E724A /* DocumentEditorFormattingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DocumentEditorFormattingTests.swift; sourceTree = "<group>"; };
+		DA410A75832E13BF553437D4 /* ZulangueApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ZulangueApp.swift; sourceTree = "<group>"; };
+		DD2CC0D60F15A8E87C68488F /* ExportSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ExportSheet.swift; sourceTree = "<group>"; };
+		E06C37F6CD98EA36A1DADFF0 /* MicrophoneCapture.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MicrophoneCapture.swift; sourceTree = "<group>"; };
+		E2C5284730BC0ECEE9ACF92F /* ReferenceNumber.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReferenceNumber.swift; sourceTree = "<group>"; };
+		E2C6921155A5E8B401C25A14 /* EditorAPITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EditorAPITests.swift; sourceTree = "<group>"; };
+		E5CA0B529DABEE67ED8011CE /* CoreIntegrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CoreIntegrationTests.swift; sourceTree = "<group>"; };
+		EBC05DD69499D870B35A210B /* LiveIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveIndicator.swift; sourceTree = "<group>"; };
+		EBE3303AA3EA9C305C14677D /* Iconography.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Iconography.swift; sourceTree = "<group>"; };
+		ED747CFF1AF51B7426CAA001 /* libresolv.tbd */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
+		F0089869ED67753830755EAF /* SessionAudioPlayer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SessionAudioPlayer.swift; sourceTree = "<group>"; };
+		F318AD986686556465BB36C4 /* LabeledButton.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LabeledButton.swift; sourceTree = "<group>"; };
+		F3D6CA8EC35C1656F448F4E3 /* SectionHeader.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SectionHeader.swift; sourceTree = "<group>"; };
+		F60778632B116397BAE639B3 /* Accessibility.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Accessibility.swift; sourceTree = "<group>"; };
+		F71A79533959E93ED69E58E1 /* OnboardingView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		F7A7D263DC6CEAFF05903620 /* Toast.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Toast.swift; sourceTree = "<group>"; };
+		F95D27B26D922E784C9460D5 /* SmokeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
+		FDD2897B6DA01351336E1417 /* NotebookCaptureRuntimeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotebookCaptureRuntimeTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C0D3F001000000000000000E /* Exceptions for "Zulangue" folder in "Zulangue" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Bridge/Generated/vt_ffi.swift,
+			);
+			target = B77C3BF32F8937E0000C2429 /* Zulangue */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B77C3BF62F8937E0000C2429 /* Zulangue */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C0D3F001000000000000000E /* Exceptions for "Zulangue" folder in "Zulangue" target */,
+			);
+			path = Zulangue;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A91FB82A81673222BF2F35FE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CFA8C3D8F926B5B572590D3C /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ABFCD583BD49667738143052 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				84ED658F9535CE16DF33690C /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B77C3BF12F8937E0000C2429 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C0D3F0010000000000000004 /* libZulangueFFI.a in Frameworks */,
+				4E5312DA4B1D49B3259D1749 /* SystemConfiguration.framework in Frameworks */,
+				412F1ABAAFFFFF9B67358D7C /* CoreFoundation.framework in Frameworks */,
+				99970ED7A6224EAFE901D712 /* libresolv.tbd in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0D3F0010000000000000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		01A4405CDA5309DB86C26B5F /* Library */ = {
+			isa = PBXGroup;
+			children = (
+				C488C1B466B285FC5A1B8B0E /* LoroTextBridge.swift */,
+				DD2CC0D60F15A8E87C68488F /* ExportSheet.swift */,
+				F0089869ED67753830755EAF /* SessionAudioPlayer.swift */,
+				63875C353B1F1F2D5A74AA72 /* LoroDeltaMapping.swift */,
+			);
+			path = Library;
+			sourceTree = "<group>";
+		};
+		04AFCF00725B8B76D334FD39 /* Zulangue */ = {
+			isa = PBXGroup;
+			children = (
+				48E656FCA0F197962BD70AEA /* App */,
+			);
+			path = Zulangue;
+			sourceTree = "<group>";
+		};
+		06CD5BCA81A1F9A350233034 /* ZulangueTests */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = ZulangueTests;
+			sourceTree = "<group>";
+		};
+		0BC05E615126E239B2B8A0D4 /* Pages */ = {
+			isa = PBXGroup;
+			children = (
+				2E3DAFFADD45D9ABAE7745E2 /* TrashPage.swift */,
+				94D05EED0C5C36078BA90E19 /* DocumentEditorPage.swift */,
+			);
+			path = Pages;
+			sourceTree = "<group>";
+		};
+		2366F53FEBFE420C8913E666 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				AF7F105E9BF9711463ED1095 /* Typography.swift */,
+				5A44B471FC10F863D2866806 /* Tokens.swift */,
+				C61CBA58ECA08D8A17FB198E /* InstrumentPanel.swift */,
+				50BC115A7A9A81D134A28737 /* TrustBar.swift */,
+				5043F9FC90FB2963225DED00 /* GridBackground.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		2C5753273DC3A16FD2E7A947 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				8D51E95F1162165478560F34 /* OS X */,
+				4A34D0F80519A7FFD867B1AE /* SystemConfiguration.framework */,
+				31D5B9CCF8C2146CB1F1E386 /* CoreFoundation.framework */,
+				ED747CFF1AF51B7426CAA001 /* libresolv.tbd */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		3119511B52FBDAF1F8F06075 /* Zulangue */ = {
+			isa = PBXGroup;
+			children = (
+				2366F53FEBFE420C8913E666 /* DesignSystem */,
+				D36B873BB8E2322C15AF565F /* App */,
+				6233A97540865DFD835E85F4 /* Library */,
+			);
+			path = Zulangue;
+			sourceTree = "<group>";
+		};
+		4229FA9F7A818F1C21F1BD86 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Capture;
+			sourceTree = "<group>";
+		};
+		48E656FCA0F197962BD70AEA /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C767BB3D476A88D8B06E89F3 /* ProviderCredentialSession.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		4BA4559A0C20323C09F1E10A /* ZulangueTests */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = ZulangueTests;
+			sourceTree = "<group>";
+		};
+		6233A97540865DFD835E85F4 /* Library */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Library;
+			sourceTree = "<group>";
+		};
+		649EF8CE145F246A432800D0 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				8C47AAFC99D647187011A09A /* InsetCard.swift */,
+				6583BED23F40AD8ED5363601 /* SegmentedTab.swift */,
+				86823E96D4B8CB1603B48BE1 /* EmptyState.swift */,
+				A557C9581DBAF0092D964EA3 /* IconButton.swift */,
+				F318AD986686556465BB36C4 /* LabeledButton.swift */,
+				02C390D6E8CAE721471ED287 /* StatusDot.swift */,
+				99148459BF5023CF09B22E99 /* MetadataLabel.swift */,
+				5F3806B27CBE315C371F5810 /* LoadingIndicator.swift */,
+				09F865D1C536BACA52D17090 /* FocusableTextField.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		654B93610FB6081CBD9FF5B5 /* Zulangue */ = {
+			isa = PBXGroup;
+			children = (
+				4229FA9F7A818F1C21F1BD86 /* Capture */,
+			);
+			path = Zulangue;
+			sourceTree = "<group>";
+		};
+		74E548F6AD79DB83B5199828 /* Zulangue */ = {
+			isa = PBXGroup;
+			children = (
+				9C5D540BDB330EF5DD2CB35D /* DesignSystem */,
+				B9AFEA1D1745B9B9BD423898 /* App */,
+			);
+			path = Zulangue;
+			sourceTree = "<group>";
+		};
+		750A6B1F80A9903241553479 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				E06C37F6CD98EA36A1DADFF0 /* MicrophoneCapture.swift */,
+			);
+			path = Capture;
+			sourceTree = "<group>";
+		};
+		86CB0F1F5DE2CF868EBEB0F8 /* ZulangueTests */ = {
+			isa = PBXGroup;
+			children = (
+				E2C6921155A5E8B401C25A14 /* EditorAPITests.swift */,
+				1FEF689B2BB937D9535039BA /* SessionAudioAPITests.swift */,
+			);
+			path = ZulangueTests;
+			sourceTree = "<group>";
+		};
+		8CD1277E94AB844ED9B97E29 /* Zulangue */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Zulangue;
+			sourceTree = "<group>";
+		};
+		8D51E95F1162165478560F34 /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				B5842E2728CFD4EF99804EE5 /* Cocoa.framework */,
+			);
+			name = "OS X";
+			sourceTree = "<group>";
+		};
+		9335BFFE8E353733870491F7 /* Zulangue */ = {
+			isa = PBXGroup;
+			children = (
+				A5A69769C887999A28935632 /* Settings */,
+				750A6B1F80A9903241553479 /* Capture */,
+				ADE08DE79ABE53D558925A8B /* App */,
+				DA410A75832E13BF553437D4 /* ZulangueApp.swift */,
+				01A4405CDA5309DB86C26B5F /* Library */,
+				E4F665075AEFBA6B661CA118 /* Overlay */,
+				B1D03C8B4AA43E653A432720 /* DesignSystem */,
+				0BC05E615126E239B2B8A0D4 /* Pages */,
+			);
+			path = Zulangue;
+			sourceTree = "<group>";
+		};
+		9C5D540BDB330EF5DD2CB35D /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				F7A7D263DC6CEAFF05903620 /* Toast.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		A5A69769C887999A28935632 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				6365B975362667F6E2DED15A /* FullSettingsView.swift */,
+				9E5B788A3D1DBB2A0B61D6BD /* DiagnosticsSection.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		A9E2275316BB7F52E30A1EAD /* Zulangue */ = {
+			isa = PBXGroup;
+			children = (
+				D551BBD348088CE027DC2A11 /* Library */,
+			);
+			path = Zulangue;
+			sourceTree = "<group>";
+		};
+		AC5C497E6C263B8ED6FE1DA4 /* ZulangueTests */ = {
+			isa = PBXGroup;
+			children = (
+				4628A3113DB3E747E57DD458 /* DesignSystemTests.swift */,
+				FDD2897B6DA01351336E1417 /* NotebookCaptureRuntimeTests.swift */,
+				6CE5515BC1A19E49ACF4695D /* ToastCenterTests.swift */,
+				31D0C9AE8D24DEF64046E239 /* ProviderCredentialSessionTests.swift */,
+				770FFC8AD8881B4945EC2163 /* LibraryViewModelTests.swift */,
+				6AF4098FE0DDC1AC0C338F00 /* OnboardingControllerTests.swift */,
+				A8D7293DBB546554791FCA02 /* SettingsViewModelTests.swift */,
+				C0E302F449C28ED87E719068 /* MenuBarRuntimeStoreTests.swift */,
+				A1B2C3D4E5F6A7B8C9D0E1F3 /* RecordingHudControllerTests.swift */,
+			);
+			path = ZulangueTests;
+			sourceTree = "<group>";
+		};
+		ADE08DE79ABE53D558925A8B /* App */ = {
+			isa = PBXGroup;
+			children = (
+				F60778632B116397BAE639B3 /* Accessibility.swift */,
+				0B838B133068BA8E82D011D2 /* Appearance.swift */,
+				CF2D2A977DD32F3AFF904579 /* TestEnvironment.swift */,
+				1AF8F46504DDB9BCF06D5901 /* AccessibilityID.swift */,
+				527AA9ABC34D18E16BF8D0B2 /* IntegrityChecks.swift */,
+				9598FFAD28CA31BFBCA90191 /* DebugLog.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		B0D2E30222B315218953AB31 /* Zulangue */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Zulangue;
+			sourceTree = "<group>";
+		};
+		B0E1FF3540B4B895026AA651 /* ZulangueTests */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = ZulangueTests;
+			sourceTree = "<group>";
+		};
+		B1D03C8B4AA43E653A432720 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				BCC2EC30B476B20521496DE3 /* Motion.swift */,
+				EBE3303AA3EA9C305C14677D /* Iconography.swift */,
+				3FB7195A216E20593FDE129B /* FocusRing.swift */,
+				C0EFF5C11D67C752943AE2D5 /* Elevation.swift */,
+				649EF8CE145F246A432800D0 /* Components */,
+				F1FFE13D2E9D5F64DC1DE279 /* Primitives */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		B77C3BEB2F8937E0000C2429 = {
+			isa = PBXGroup;
+			children = (
+				B77C3BF62F8937E0000C2429 /* Zulangue */,
+				C0D3F0010000000000000005 /* Generated */,
+				B77C3BF52F8937E0000C2429 /* Products */,
+				2C5753273DC3A16FD2E7A947 /* Frameworks */,
+				F113D05912327F0CB45C9427 /* ZulangueTests */,
+				9335BFFE8E353733870491F7 /* Zulangue */,
+				86CB0F1F5DE2CF868EBEB0F8 /* ZulangueTests */,
+				3119511B52FBDAF1F8F06075 /* Zulangue */,
+				E7F11EE880F1CD9F3EECE9A2 /* ZulangueTests */,
+				04AFCF00725B8B76D334FD39 /* Zulangue */,
+				F8D4CEE5A789E6A50F1B59FC /* ZulangueTests */,
+				74E548F6AD79DB83B5199828 /* Zulangue */,
+				AC5C497E6C263B8ED6FE1DA4 /* ZulangueTests */,
+				8CD1277E94AB844ED9B97E29 /* Zulangue */,
+				4BA4559A0C20323C09F1E10A /* ZulangueTests */,
+				B0D2E30222B315218953AB31 /* Zulangue */,
+				06CD5BCA81A1F9A350233034 /* ZulangueTests */,
+				654B93610FB6081CBD9FF5B5 /* Zulangue */,
+				B0E1FF3540B4B895026AA651 /* ZulangueTests */,
+				A9E2275316BB7F52E30A1EAD /* Zulangue */,
+				C01400B0E6F48496C777FC54 /* ZulangueTests */,
+				FD22D35E5DCDDC5A21B5A78F /* ZulangueUITests */,
+			);
+			sourceTree = "<group>";
+		};
+		B77C3BF52F8937E0000C2429 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B77C3BF42F8937E0000C2429 /* Zulangue.app */,
+				C0D3F0010000000000000002 /* libZulangueFFI.a */,
+				79B4168FE2E5229F399D6D7C /* ZulangueTests.xctest */,
+				BFE772E620BB14E84C6376AF /* ZulangueUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B9AFEA1D1745B9B9BD423898 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				13BA84CD1C5856337F7DD6BA /* HotKeyManager.swift */,
+				F71A79533959E93ED69E58E1 /* OnboardingView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		C01400B0E6F48496C777FC54 /* ZulangueTests */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = ZulangueTests;
+			sourceTree = "<group>";
+		};
+		C0D3F0010000000000000005 /* Generated */ = {
+			isa = PBXGroup;
+			children = (
+				C0D3F0010000000000000001 /* vt_ffi.swift */,
+			);
+			path = Zulangue/Bridge/Generated;
+			sourceTree = "<group>";
+		};
+		D36B873BB8E2322C15AF565F /* App */ = {
+			isa = PBXGroup;
+			children = (
+				D8D4A9A99FD773F10DFE2910 /* CoreClient.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		D551BBD348088CE027DC2A11 /* Library */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Library;
+			sourceTree = "<group>";
+		};
+		E4F665075AEFBA6B661CA118 /* Overlay */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Overlay;
+			sourceTree = "<group>";
+		};
+		E7F11EE880F1CD9F3EECE9A2 /* ZulangueTests */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = ZulangueTests;
+			sourceTree = "<group>";
+		};
+		F113D05912327F0CB45C9427 /* ZulangueTests */ = {
+			isa = PBXGroup;
+			children = (
+				E5CA0B529DABEE67ED8011CE /* CoreIntegrationTests.swift */,
+				3194C8794F66E7CF4E013AEF /* CoreIntegrationTests.swift */,
+				3E4553AB6D32D9116E7F352B /* MenuBarRoutingTests.swift */,
+				092187BCB5E91E90A702E495 /* NotificationWiringTests.swift */,
+				C5B37664AE23067DCA1F7E73 /* MainWindowOpenerTests.swift */,
+				6EB8781E8D2523CE9443D0EE /* IntegrityChecksTests.swift */,
+				DA270ED67B65CD6B619E724A /* DocumentEditorFormattingTests.swift */,
+				8EE7634869688B0059AE8276 /* CrashDiagnosticsTests.swift */,
+				162823BFBEBB61C186527799 /* WindowSystemTests.swift */,
+				BCFDA163E28AEBAE7F806B2C /* WindowArchitectureTests.swift */,
+				348F795AC233AE8DDE436431 /* DiagnosticsViewModelTests.swift */,
+				3E74376D0524DBD11622CE17 /* TrustWarningViewModelTests.swift */,
+			);
+			path = ZulangueTests;
+			sourceTree = "<group>";
+		};
+		F1FFE13D2E9D5F64DC1DE279 /* Primitives */ = {
+			isa = PBXGroup;
+			children = (
+				458C9048F690A3F07D4D9964 /* SpecSheetRow.swift */,
+				E2C5284730BC0ECEE9ACF92F /* ReferenceNumber.swift */,
+				875D095CCECBB7FE16C367D6 /* OutlineButton.swift */,
+				AFF9A56558C77EBF1A9CB013 /* CornerCrosshair.swift */,
+				EBC05DD69499D870B35A210B /* LiveIndicator.swift */,
+				F3D6CA8EC35C1656F448F4E3 /* SectionHeader.swift */,
+			);
+			path = Primitives;
+			sourceTree = "<group>";
+		};
+		F8D4CEE5A789E6A50F1B59FC /* ZulangueTests */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = ZulangueTests;
+			sourceTree = "<group>";
+		};
+		FD22D35E5DCDDC5A21B5A78F /* ZulangueUITests */ = {
+			isa = PBXGroup;
+			children = (
+				F95D27B26D922E784C9460D5 /* SmokeTests.swift */,
+				36BB1BD8CA9C83509BD30008 /* AccessibilityID.swift */,
+			);
+			path = ZulangueUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		35D0EDBA88D49BF34CDE29D4 /* ZulangueUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7B210815C13FDC9FA709C70A /* Build configuration list for PBXNativeTarget "ZulangueUITests" */;
+			buildPhases = (
+				E914C5D426637239964F24BA /* Sources */,
+				ABFCD583BD49667738143052 /* Frameworks */,
+				A73AF8B25F4771C8BE909F55 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8087950D543DA77783C6F427 /* PBXTargetDependency */,
+			);
+			name = ZulangueUITests;
+			productName = ZulangueUITests;
+			productReference = BFE772E620BB14E84C6376AF /* ZulangueUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		58CE7893B6726E1512B79C41 /* ZulangueTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 74A128746086A042942268BE /* Build configuration list for PBXNativeTarget "ZulangueTests" */;
+			buildPhases = (
+				579B060C65D4292212FC578C /* Sources */,
+				A91FB82A81673222BF2F35FE /* Frameworks */,
+				2D81206441DC964FF9385FA1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				264D69881AF61D02B9F13AFB /* PBXTargetDependency */,
+			);
+			name = ZulangueTests;
+			productName = ZulangueTests;
+			productReference = 79B4168FE2E5229F399D6D7C /* ZulangueTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		B77C3BF32F8937E0000C2429 /* Zulangue */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B77C3BFF2F8937E1000C2429 /* Build configuration list for PBXNativeTarget "Zulangue" */;
+			buildPhases = (
+				B77C3BF02F8937E0000C2429 /* Sources */,
+				B77C3BF12F8937E0000C2429 /* Frameworks */,
+				B77C3BF22F8937E0000C2429 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C0D3F001000000000000000D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B77C3BF62F8937E0000C2429 /* Zulangue */,
+			);
+			name = Zulangue;
+			productName = Zulangue;
+			productReference = B77C3BF42F8937E0000C2429 /* Zulangue.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C0D3F0010000000000000006 /* ZulangueFFI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0D3F0010000000000000009 /* Build configuration list for PBXNativeTarget "ZulangueFFI" */;
+			buildPhases = (
+				C0D3F0010000000000000007 /* Sources */,
+				C0D3F0010000000000000008 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ZulangueFFI;
+			productName = ZulangueFFI;
+			productReference = C0D3F0010000000000000002 /* libZulangueFFI.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B77C3BEC2F8937E0000C2429 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2640;
+				LastUpgradeCheck = 2640;
+				TargetAttributes = {
+					B77C3BF32F8937E0000C2429 = {
+						CreatedOnToolsVersion = 26.4;
+					};
+					C0D3F0010000000000000006 = {
+						CreatedOnToolsVersion = 26.4;
+					};
+				};
+			};
+			buildConfigurationList = B77C3BEF2F8937E0000C2429 /* Build configuration list for PBXProject "Zulangue" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+				ja,
+			);
+			mainGroup = B77C3BEB2F8937E0000C2429;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B77C3BF52F8937E0000C2429 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C0D3F0010000000000000006 /* ZulangueFFI */,
+				B77C3BF32F8937E0000C2429 /* Zulangue */,
+				58CE7893B6726E1512B79C41 /* ZulangueTests */,
+				35D0EDBA88D49BF34CDE29D4 /* ZulangueUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		2D81206441DC964FF9385FA1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A73AF8B25F4771C8BE909F55 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B77C3BF22F8937E0000C2429 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		579B060C65D4292212FC578C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5B009933BAE7D937E44972E5 /* CoreIntegrationTests.swift in Sources */,
+				345A25274BE8DF990C5D88E5 /* EditorAPITests.swift in Sources */,
+				41FCC028AA59D24DAA9381AB /* SessionAudioAPITests.swift in Sources */,
+				3F6E3928687B8CEF7FB73122 /* DesignSystemTests.swift in Sources */,
+				67AF36C08A6FEA3CF5F1535E /* NotebookCaptureRuntimeTests.swift in Sources */,
+				F0A443E42466075E4CA84FFB /* ToastCenterTests.swift in Sources */,
+				045287E89ED87EE0FC55FAE9 /* ProviderCredentialSessionTests.swift in Sources */,
+				605FC2F36E9A3F6526BABE37 /* LibraryViewModelTests.swift in Sources */,
+				263F77C7195DA6D8330D4BBF /* OnboardingControllerTests.swift in Sources */,
+				E6A8D02CA717CBAC5C8ED3E6 /* SettingsViewModelTests.swift in Sources */,
+				D13126FCE1DFF5CF30392330 /* MenuBarRuntimeStoreTests.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E1F2 /* RecordingHudControllerTests.swift in Sources */,
+				F4031A651DB0846273986DEA /* MenuBarRoutingTests.swift in Sources */,
+				DC2B06541D2788A746F3BD25 /* NotificationWiringTests.swift in Sources */,
+				CA09340829DA2AA6DC05D883 /* MainWindowOpenerTests.swift in Sources */,
+				311D6659C7CEBB1B7D9F3A6F /* IntegrityChecksTests.swift in Sources */,
+				8C650758EB5B16D2F6B349E3 /* DocumentEditorFormattingTests.swift in Sources */,
+				4B6DD921F963C7F376D98772 /* CrashDiagnosticsTests.swift in Sources */,
+				24837CE6787271CBF1A1E5E0 /* WindowSystemTests.swift in Sources */,
+				09FBE393472AEA170B5F6401 /* WindowArchitectureTests.swift in Sources */,
+				31640285D389BBA008E4E291 /* DiagnosticsViewModelTests.swift in Sources */,
+				09642A0C201E7541FF49F844 /* TrustWarningViewModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B77C3BF02F8937E0000C2429 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0D3F0010000000000000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C0D3F0010000000000000003 /* vt_ffi.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E914C5D426637239964F24BA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CB47342D5D4443D088407E4D /* SmokeTests.swift in Sources */,
+				701B2ACB07F2D21E418C4698 /* AccessibilityID.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		264D69881AF61D02B9F13AFB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = Zulangue;
+			target = B77C3BF32F8937E0000C2429 /* Zulangue */;
+			targetProxy = B6910092E44EC47257B82A06 /* PBXContainerItemProxy */;
+		};
+		8087950D543DA77783C6F427 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = Zulangue;
+			target = B77C3BF32F8937E0000C2429 /* Zulangue */;
+			targetProxy = 323727D5824A1393E07B6909 /* PBXContainerItemProxy */;
+		};
+		C0D3F001000000000000000D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = ZulangueFFI;
+			target = C0D3F0010000000000000006 /* ZulangueFFI */;
+			targetProxy = C0D3F001000000000000000C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2B8269CF0BCE125DAFC186E1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Zulangue/Bridge/Generated",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lvt_ffi",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = xyz.voice.zulangue.Tests;
+				PRODUCT_MODULE_NAME = ZulangueTests;
+				PRODUCT_NAME = ZulangueTests;
+				SDKROOT = macosx;
+				SWIFT_INCLUDE_PATHS = "$(inherited) $(PROJECT_DIR)/Zulangue/Bridge/Generated";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Zulangue.app/Contents/MacOS/Zulangue";
+			};
+			name = Release;
+		};
+		33BE91D8245B8BB2E0ADAFC7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				PRODUCT_BUNDLE_IDENTIFIER = xyz.voice.zulangue.UITests;
+				PRODUCT_MODULE_NAME = ZulangueUITests;
+				PRODUCT_NAME = ZulangueUITests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Zulangue;
+				USES_XCTRUNNER = YES;
+			};
+			name = Debug;
+		};
+		87F2D2191195982749FF4A7F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				PRODUCT_BUNDLE_IDENTIFIER = xyz.voice.zulangue.UITests;
+				PRODUCT_MODULE_NAME = ZulangueUITests;
+				PRODUCT_NAME = ZulangueUITests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Zulangue;
+				USES_XCTRUNNER = YES;
+			};
+			name = Release;
+		};
+		B77C3BFD2F8937E1000C2429 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B77C3BFE2F8937E1000C2429 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		B77C3C002F8937E1000C2429 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = ../Zulangue.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ATSApplicationFontsPath = Fonts/;
+				INFOPLIST_KEY_CFBundleDisplayName = Zulangue;
+				INFOPLIST_KEY_CFBundleName = Zulangue;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Zulangue needs microphone access to record and transcribe your voice. Recordings are encrypted with AES-256-GCM and stored only on this device.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Zulangue/Bridge/Generated",
+				);
+				MARKETING_VERSION = 0.1.0;
+				OTHER_LDFLAGS = (
+					"-lc++",
+					"-framework",
+					AudioToolbox,
+					"-framework",
+					AVFoundation,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = xyz.voice.zulangue;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Zulangue/Bridge/Generated";
+				SWIFT_OBJC_BRIDGING_HEADER = Zulangue/Bridge/Generated/vt_ffiFFI.h;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B77C3C012F8937E1000C2429 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = ../Zulangue.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ATSApplicationFontsPath = Fonts/;
+				INFOPLIST_KEY_CFBundleDisplayName = Zulangue;
+				INFOPLIST_KEY_CFBundleName = Zulangue;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Zulangue needs microphone access to record and transcribe your voice. Recordings are encrypted with AES-256-GCM and stored only on this device.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Zulangue/Bridge/Generated",
+				);
+				MARKETING_VERSION = 0.1.0;
+				OTHER_LDFLAGS = (
+					"-lc++",
+					"-framework",
+					AudioToolbox,
+					"-framework",
+					AVFoundation,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = xyz.voice.zulangue;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Zulangue/Bridge/Generated";
+				SWIFT_OBJC_BRIDGING_HEADER = Zulangue/Bridge/Generated/vt_ffiFFI.h;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C0D3F001000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEFINES_MODULE = YES;
+				ENABLE_TESTABILITY = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				PRODUCT_MODULE_NAME = ZulangueFFI;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Zulangue/Bridge/Generated";
+				SWIFT_OBJC_BRIDGING_HEADER = Zulangue/Bridge/Generated/vt_ffiFFI.h;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C0D3F001000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEFINES_MODULE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				PRODUCT_MODULE_NAME = ZulangueFFI;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Zulangue/Bridge/Generated";
+				SWIFT_OBJC_BRIDGING_HEADER = Zulangue/Bridge/Generated/vt_ffiFFI.h;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		E531BD0E333DB5271ECD8CE0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Zulangue/Bridge/Generated",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lvt_ffi",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = xyz.voice.zulangue.Tests;
+				PRODUCT_MODULE_NAME = ZulangueTests;
+				PRODUCT_NAME = ZulangueTests;
+				SDKROOT = macosx;
+				SWIFT_INCLUDE_PATHS = "$(inherited) $(PROJECT_DIR)/Zulangue/Bridge/Generated";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Zulangue.app/Contents/MacOS/Zulangue";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		74A128746086A042942268BE /* Build configuration list for PBXNativeTarget "ZulangueTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2B8269CF0BCE125DAFC186E1 /* Release */,
+				E531BD0E333DB5271ECD8CE0 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7B210815C13FDC9FA709C70A /* Build configuration list for PBXNativeTarget "ZulangueUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				87F2D2191195982749FF4A7F /* Release */,
+				33BE91D8245B8BB2E0ADAFC7 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B77C3BEF2F8937E0000C2429 /* Build configuration list for PBXProject "Zulangue" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B77C3BFD2F8937E1000C2429 /* Debug */,
+				B77C3BFE2F8937E1000C2429 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B77C3BFF2F8937E1000C2429 /* Build configuration list for PBXNativeTarget "Zulangue" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B77C3C002F8937E1000C2429 /* Debug */,
+				B77C3C012F8937E1000C2429 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C0D3F0010000000000000009 /* Build configuration list for PBXNativeTarget "ZulangueFFI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0D3F001000000000000000A /* Debug */,
+				C0D3F001000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B77C3BEC2F8937E0000C2429 /* Project object */;
+}

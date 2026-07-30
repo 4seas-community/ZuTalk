@@ -1,0 +1,22 @@
+error:
+  core:
+    init_failed: "初期化失敗: %{detail}"
+    validation_failed: "検証失敗: %{detail}"
+    not_found: "見つかりません: %{detail}"
+    internal: "内部エラー: %{detail}"
+
+  stt:
+    ws_failed: "WebSocket 接続失敗: %{detail}"
+    read_timeout: "WebSocket 読み取りタイムアウト (%{duration})"
+    server_closed: "サーバーが接続を切断: code=%{code}, reason=%{reason}"
+    auth_failed: "認証失敗: %{detail}"
+    quota_exhausted: "クォータ切れ: %{detail}"
+    rate_limited: "レート制限"
+    parse: "解析エラー: %{detail}"
+    server_error: "サーバーエラー %{status}: %{detail}"
+    api_error: "API エラー %{status}: [%{kind}] %{detail}"
+    transcription_failed: "文字起こし失敗: [%{kind}] %{detail}"
+    http: "HTTP エラー: %{detail}"
+    timeout: "タイムアウト: %{operation} %{duration}"
+    cancelled: "キャンセル済み"
+    upload_failed: "アップロード失敗: %{detail}"

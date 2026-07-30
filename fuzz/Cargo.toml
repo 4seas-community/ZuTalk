@@ -1,0 +1,36 @@
+[package]
+name = "zulangue-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+vt-crypto = { path = "../crates/vt-crypto" }
+vt-store = { path = "../crates/vt-store" }
+loro = "1"
+tempfile = "3"
+
+[[bin]]
+name = "fuzz_decrypt_arbitrary"
+path = "fuzz_targets/fuzz_decrypt_arbitrary.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_encrypt_roundtrip"
+path = "fuzz_targets/fuzz_encrypt_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_loro_import"
+path = "fuzz_targets/fuzz_loro_import.rs"
+test = false
+doc = false
+bench = false

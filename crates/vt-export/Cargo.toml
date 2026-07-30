@@ -1,0 +1,10 @@
+[package]
+name = "vt-export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+zip = { version = "2", default-features = false, features = ["deflate"] }

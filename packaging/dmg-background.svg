@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="440" viewBox="0 0 720 440">
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F8FBFA"/>
+      <stop offset="1" stop-color="#EEF5F2"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#79C8AD"/>
+      <stop offset="1" stop-color="#08795D"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#134F40" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect width="720" height="440" rx="24" fill="url(#surface)"/>
+  <circle cx="92" cy="68" r="160" fill="#D9F3E9" opacity="0.48"/>
+  <circle cx="675" cy="410" r="190" fill="#DDECE7" opacity="0.62"/>
+
+  <text x="360" y="66" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif"
+        font-size="28" font-weight="650" fill="#163B31">Install Zulangue</text>
+  <text x="360" y="96" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif"
+        font-size="15" fill="#54736A">Drag Zulangue into Applications</text>
+
+  <rect x="116" y="138" width="168" height="168" rx="36"
+        fill="#FFFFFF" opacity="0.62" filter="url(#shadow)"/>
+  <rect x="436" y="138" width="168" height="168" rx="36"
+        fill="#FFFFFF" opacity="0.62" filter="url(#shadow)"/>
+
+  <path d="M304 222 H407" fill="none" stroke="url(#arrow)"
+        stroke-width="10" stroke-linecap="round"/>
+  <path d="M392 203 L414 222 L392 241" fill="none" stroke="#08795D"
+        stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="200" y="342" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif"
+        font-size="16" font-weight="600" fill="#274B41">Zulangue</text>
+  <text x="520" y="342" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif"
+        font-size="16" font-weight="600" fill="#274B41">Applications</text>
+
+  <text x="360" y="402" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif"
+        font-size="13" fill="#6C847D">Universal app · macOS 15.5 or later</text>
+</svg>

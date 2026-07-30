@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Sandbox: 关闭。
+         当前本地分发包延续 non-MAS + Hardened Runtime 路径。
+         旧的 fn 键系统听写 / 光标注入能力已删除;不要把这里理解为仍需要
+         Accessibility、Input Monitoring、CGEvent 或 AXUIElement。若未来要上架
+         Mac App Store,应单独评估 sandbox 兼容性。 -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+
+    <!-- 网络访问(Soniox) -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Hardened Runtime -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <false/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <false/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <false/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <false/>
+</dict>
+</plist>

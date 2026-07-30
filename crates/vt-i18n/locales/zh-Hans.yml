@@ -1,0 +1,22 @@
+error:
+  core:
+    init_failed: "初始化失败: %{detail}"
+    validation_failed: "校验失败: %{detail}"
+    not_found: "未找到: %{detail}"
+    internal: "内部错误: %{detail}"
+
+  stt:
+    ws_failed: "WebSocket 连接失败: %{detail}"
+    read_timeout: "WebSocket 读超时,已等 %{duration}"
+    server_closed: "服务器关闭连接: code=%{code}, reason=%{reason}"
+    auth_failed: "鉴权失败: %{detail}"
+    quota_exhausted: "配额已用完: %{detail}"
+    rate_limited: "请求过于频繁"
+    parse: "解析错误: %{detail}"
+    server_error: "服务器错误 %{status}: %{detail}"
+    api_error: "API 错误 %{status}: [%{kind}] %{detail}"
+    transcription_failed: "转录失败: [%{kind}] %{detail}"
+    http: "HTTP 错误: %{detail}"
+    timeout: "超时: %{operation} 等待 %{duration}"
+    cancelled: "已取消"
+    upload_failed: "上传失败: %{detail}"

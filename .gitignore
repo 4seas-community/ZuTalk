@@ -1,0 +1,94 @@
+# Rust
+/target/
+*.rs.bk
+
+# macOS
+.DS_Store
+*.xcuserdata
+DerivedData/
+
+# Xcode
+xcuserdata/
+
+# 构建产物
+*.a
+*.dylib
+*.dmg
+# build/ 是所有构建产物的统一出口。
+/build/*
+!/build/README.md
+!/build/dmg/
+!/build/app/
+/build/dmg/*
+!/build/dmg/.gitkeep
+/build/app/*
+!/build/app/.gitkeep
+# 兼容其他本地构建工具的输出目录
+/dist/
+# 嵌套在 macos/Zulangue/ 下的 Xcode 中间产物
+macos/**/build/
+# trybuild 第一次跑生成的 wip baseline（应当复制到 typestate_compile_fail/ 后清理）
+crates/*/wip/
+
+# 环境 / 密钥
+.env
+.env.local
+.env.*
+*.pem
+*.key
+*.p12
+*.p8
+*.pfx
+*.cer
+*.crt
+*.keystore
+*.jks
+*.mobileprovision
+*.provisionprofile
+
+# API Keys / Secrets
+secrets/
+credentials/
+*.secret
+.netrc
+.npmrc
+.pypirc
+.cargo/credentials
+.cargo/credentials.toml
+
+# 本地数据与日志
+*.sqlite
+*.sqlite-*
+*.db
+*.log
+*.trace
+/archive/
+
+# IDE
+.idea/
+.vscode/
+.swiftpm/
+*.swp
+*.swo
+*~
+
+# 测试
+*.profraw
+*.profdata
+coverage/
+__pycache__/
+*.py[cod]
+
+# 工具生成的临时日志
+.build-logs/
+
+# Claude Code
+.claude/
+
+# Fuzz
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+/Zulangue.app/
+/Zulangue.dSYM/
+# xcodebuild 意外 spew 到根

@@ -1,0 +1,23 @@
+[package]
+name = "vt-stt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+vt-model = { path = "../vt-model" }
+vt-i18n = { path = "../vt-i18n" }
+tokio = { workspace = true }
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
+futures = "0.3"
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread", "net"] }
+tokio-tungstenite = "0.26"
+futures = "0.3"
+hound = "3"

@@ -1,0 +1,111 @@
+# cargo-deny 配置 — Zulangue 依赖合规检查
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+# 默认 target — Linux + macOS
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+all-features = false
+
+# ============================================================
+# 安全漏洞扫描
+# ============================================================
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "warn"
+# `spin 0.9.8` is currently a yanked transitive dependency through
+# loro-internal -> postcard -> heapless. It is not ignored: cargo-deny must keep
+# reporting it until the Loro/postcard chain can move without expanding this MVP
+# into a storage-engine upgrade.
+ignore = [
+    # atomic-polyfill is unmaintained (informational, not a CVE).
+    # Pulled in via: loro-internal -> postcard 1.1.3 -> heapless 0.7.17 -> atomic-polyfill.
+    # heapless 0.8+ replaces atomic-polyfill with portable-atomic, but postcard
+    # 1.1.3 pins heapless 0.7. Revisit when postcard / loro-internal upgrade.
+    "RUSTSEC-2023-0089",
+]
+
+# ============================================================
+# 许可证合规
+# ============================================================
+# cargo-deny 0.16+ 移除了 deny 字段；不在 allow 列表中的 license 会被自动 deny。
+[licenses]
+confidence-threshold = 0.93
+
+# 项目本身是 GPL-3.0-or-later。
+# 依赖仍只允许宽松许可证（GPL 项目可自由消费 MIT/Apache/BSD 等依赖）。
+# 把 GPL/LGPL/SSPL 留在全局 allow 列表外，保持对*依赖*树的
+# copyleft 拒绝；workspace crate 通过下面的 explicit exceptions 放行。
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "Zlib",
+    "BSL-1.0",
+]
+
+[[licenses.exceptions]]
+name = "vt-audio"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "vt-crypto"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "vt-export"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "vt-ffi"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "vt-i18n"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "vt-model"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "vt-pipeline"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "vt-store"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "vt-stt"
+allow = ["GPL-3.0-or-later"]
+
+# ============================================================
+# 重复依赖
+# ============================================================
+[bans]
+multiple-versions = "warn"
+wildcards = "warn"
+highlight = "all"
+
+# 允许的重复依赖（生态系统过渡期常见）
+skip = [
+    # 例如 syn 1.x vs 2.x 过渡期
+]
+
+# ============================================================
+# 来源限制
+# ============================================================
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
