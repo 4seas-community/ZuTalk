@@ -69,7 +69,7 @@ grep -A1 -F '<key>SURequireSignedFeed</key>' "$INFO_PLIST" | grep -Fq '<true/>' 
   || fail "the app must require a signed update feed"
 grep -A1 -F '<key>SUVerifyUpdateBeforeExtraction</key>' "$INFO_PLIST" | grep -Fq '<true/>' \
   || fail "the app must verify updates before extraction"
-grep -Fq 'https://github.com/Zuddev/zulangue/releases/latest/download/appcast.xml' "$PROJECT_FILE" \
+grep -Fq 'https://github.com/4seas-community/zulangue/releases/latest/download/appcast.xml' "$PROJECT_FILE" \
   || fail "the public HTTPS appcast URL must be configured"
 
 echo "local-keychain Ad Hoc Sparkle release gate is fail-closed"

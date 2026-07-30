@@ -3,6 +3,14 @@
 Zulangue 是一款原生 macOS 语音笔记应用。它使用 SwiftUI/AppKit 构建界面，
 使用 Rust 处理录音状态、转录、持久化、加密和导出，并通过 UniFFI 连接两端。
 
+## 仓库
+
+- 主仓库：[4Seas/zulangue](https://tea.4seas.xyz/4Seas/zulangue)
+- GitHub 镜像：[4seas-community/zulangue](https://github.com/4seas-community/zulangue)
+
+代码维护、分支和标签以 Gitea 主仓库为准。主仓库的提交会自动镜像到 GitHub，
+并由 GitHub Actions 运行构建与测试；不要直接向 GitHub 镜像推送提交。
+
 ## 功能
 
 - 在 Notebook 中录音或导入音频

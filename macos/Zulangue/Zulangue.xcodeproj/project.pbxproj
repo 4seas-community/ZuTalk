@@ -1052,7 +1052,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = xyz.voice.zulangue;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
-				SPARKLE_FEED_URL = "https://github.com/Zuddev/zulangue/releases/latest/download/appcast.xml";
+				SPARKLE_FEED_URL = "https://github.com/4seas-community/zulangue/releases/latest/download/appcast.xml";
 				SPARKLE_PUBLIC_ED_KEY = "Sm3x2TVehf4jFO1YDLPFu2xVQfnPNYGp1IeDYsLZeg8=";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -1099,7 +1099,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = xyz.voice.zulangue;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
-				SPARKLE_FEED_URL = "https://github.com/Zuddev/zulangue/releases/latest/download/appcast.xml";
+				SPARKLE_FEED_URL = "https://github.com/4seas-community/zulangue/releases/latest/download/appcast.xml";
 				SPARKLE_PUBLIC_ED_KEY = "Sm3x2TVehf4jFO1YDLPFu2xVQfnPNYGp1IeDYsLZeg8=";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

@@ -55,7 +55,7 @@ GitHub Actions 不接收也不使用这把私钥。
 4. 设置标签环境并在本机生成发布产物：
 
    ```bash
-   GITHUB_REPOSITORY=Zuddev/zulangue \
+   GITHUB_REPOSITORY=4seas-community/zulangue \
    GITHUB_REF_NAME=v0.1.2 \
    just release-sparkle-adhoc
    ```
@@ -74,7 +74,7 @@ Universal DMG 作为验证产物。CI 不生成 appcast，也不创建 GitHub Re
 appcast 使用稳定 HTTPS 地址：
 
 ```text
-https://github.com/Zuddev/zulangue/releases/latest/download/appcast.xml
+https://github.com/4seas-community/zulangue/releases/latest/download/appcast.xml
 ```
 
 其中的实际 DMG 下载地址绑定到不可变的版本标签，不使用可变的 `latest`
