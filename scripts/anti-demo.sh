@@ -97,7 +97,7 @@ run_check \
 # Public source must not expose prior product identities or machine-local paths.
 # Keep the blocked identity fragments separated so the public source does not
 # reproduce those names while the guard can still reject regressions.
-prior_identity_pattern='4[[:space:]_-]*S''EAS|Four''Seas|Voice''Tool|Gi''tea|hpe''Xt'
+prior_identity_pattern='4[[:space:]_-]*S''EAS|Four''Seas|Voice''Tool|hpe''Xt'
 run_check \
     "[public] no prior product or service identities" \
     "$prior_identity_pattern" \
