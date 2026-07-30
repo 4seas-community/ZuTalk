@@ -318,7 +318,6 @@
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "キーボードショートカット";
 "settings.shortcuts.subtitle" = "Zulangue アクションのグローバルホットキー。";
-"settings.shortcuts.toggle_floating" = "フローティングパネルを切替";
 "settings.shortcuts.toggle_recording" = "Notebook 録音を開く";
 "settings.shortcuts.cycle_display" = "表示モードを切替";
 "settings.shortcuts.font_bigger" = "文字サイズを拡大";
@@ -355,10 +354,6 @@
 "diagnostics.operational.severity.blocked" = "ブロック";
 
 /* Toast — Floating panel */
-"toast.floating.need_key.title" = "フローティングパネルに Soniox キーが必要";
-"toast.floating.ready.title" = "フローティングパネル準備完了";
-"toast.floating.ready.detail" = "Soniox 待機中 · 言語自動検出";
-"toast.floating.start_failed.title" = "フローティングパネルの起動失敗";
 
 /* Toast — Microphone */
 "toast.mic.denied.title" = "マイク権限が拒否されました";
@@ -564,7 +559,6 @@
 
 /* Menu Bar status item — popover content */
 "menubar.action.recording" = "録音開始";
-"menubar.action.float" = "フローティング字幕";
 "menubar.action.settings" = "設定";
 "updates.check" = "アップデートを確認…";
 "updates.unavailable.title" = "アップデートは未設定です";
@@ -578,6 +572,8 @@
 "menubar.recording.resume" = "再開";
 "menubar.recording.stop" = "停止";
 "menubar.recording.live_transcript" = "リアルタイム文字起こし";
+"menubar.recording.open_subtitles" = "ライブ字幕を開く";
+"menubar.recording.close_subtitles" = "ライブ字幕を閉じる";
 "menubar.recording.open_notebook" = "ノートを開く";
 "menubar.processing.open_session" = "セッションを開く";
 "menubar.suppressed.privacy.title" = "マイク権限が拒否されています";
@@ -632,10 +628,6 @@
 "a11y.record.hint_stop" = "ダブルクリックで現在の録音を停止";
 "a11y.record.hint_start" = "ダブルクリックで新しい録音を開始";
 "a11y.session_card" = "%@, %@, 時間 %@";
-"a11y.floating_panel" = "リアルタイム文字起こしオーバーレイ";
-"a11y.floating_panel_hint" = "リアルタイムの音声文字起こしを表示";
-"a11y.caption_window" = "字幕ブロードキャストウィンドウ";
-"a11y.caption_window_langs" = "%lld 言語";
 
 /* Notebook multilingual capture */
 "common.close" = "閉じる";
@@ -654,18 +646,18 @@
 "capture.route.unavailable_detail" = "Zulangue のローカルサービスが準備できていません。";
 "session.route.unavailable" = "録音を開けません";
 "session.route.unavailable_detail" = "録音は変更されていません。もう一度お試しください。";
-"capture.mirror.open_notebook" = "Notebook を開く";
-"capture.mirror.open_notebook_hint" = "録音操作は所有する Notebook 内でのみ行えます。";
-"capture.mirror.read_only" = "字幕ミラー · 読み取り専用";
-"capture.mirror.idle" = "Notebook で録音を開始してください";
-"capture.mirror.recording" = "Notebook で録音中";
-"capture.mirror.recording_degraded" = "ローカル録音を継続 · リモート利用不可";
-"capture.mirror.paused" = "Notebook で一時停止中";
-"capture.mirror.draining" = "Notebook 録音を終了中";
-"capture.mirror.left_column_format" = "左列：%@";
-"capture.mirror.right_column_format" = "右列：%@";
-"capture.mirror.auto_language" = "自動";
-"capture.mirror.caption_font" = "字幕サイズ";
+"capture.open_notebook" = "Notebook を開く";
+"capture.open_notebook_hint" = "録音操作は所有する Notebook 内でのみ行えます。";
+"subtitle.overlay.title" = "ライブ字幕";
+"subtitle.overlay.read_only" = "ライブ字幕 · 読み取り専用";
+"subtitle.overlay.accessibility_label" = "多言語ライブ字幕ウィンドウ";
+"subtitle.overlay.language_count" = "%lld 言語";
+"subtitle.overlay.waiting" = "音声を待っています…";
+"subtitle.overlay.recording_ended" = "録音が終了しました";
+"subtitle.overlay.font_size" = "字幕サイズ";
+"subtitle.overlay.font_smaller" = "字幕を小さく";
+"subtitle.overlay.font_larger" = "字幕を大きく";
+"subtitle.overlay.move_resize_hint" = "ウィンドウをドラッグして移動し、辺または四隅をドラッグしてサイズを変更できます。";
 "capture.toolbar.start" = "録音開始";
 "capture.toolbar.starting" = "開始中…";
 "capture.toolbar.start_hint" = "録音と、選択した言語のリアルタイム文字起こしを開始します。サービスを一時的に利用できなくても録音は続行します。";
@@ -676,6 +668,10 @@
 "capture.toolbar.stop" = "停止";
 "capture.toolbar.stop_hint" = "音声入力を停止します。リモート処理が有効な場合は、最後のリモート token も待ちます。";
 "capture.toolbar.active_other_notebook" = "録音は別の Notebook に属しています";
+"capture.toolbar.subtitle_window.open" = "ライブ字幕を開く";
+"capture.toolbar.subtitle_window.close" = "ライブ字幕を閉じる";
+"capture.toolbar.subtitle_window.hint" = "常に手前に表示される多言語ライブ字幕ウィンドウを開きます。";
+"capture.toolbar.subtitle_window.unavailable_hint" = "この Notebook で録音を開始してからライブ字幕を開いてください。";
 "capture.toast.start_failed" = "録音を開始できませんでした";
 "capture.toast.pause_failed" = "録音状態を変更できませんでした";
 "capture.toast.stop_failed" = "録音を停止できませんでした";

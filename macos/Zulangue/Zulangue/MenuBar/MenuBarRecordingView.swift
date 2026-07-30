@@ -8,6 +8,7 @@ import SwiftUI
 struct MenuBarRecordingView: View {
     let info: RecordingInfo
     let recentLines: [TranscriptLine]
+    @ObservedObject private var subtitleOverlay = SubtitleOverlayCoordinator.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
@@ -21,6 +22,7 @@ struct MenuBarRecordingView: View {
             if !recentLines.isEmpty {
                 transcriptSection
             }
+            floatingSubtitleButton
             openNotebookButton
         }
     }
@@ -50,7 +52,7 @@ struct MenuBarRecordingView: View {
 
     private var readOnlyNotice: some View {
         Label(
-            String(localized: "capture.mirror.read_only"),
+            String(localized: "subtitle.overlay.read_only"),
             systemImage: "eye.fill"
         )
         .font(Font.sans11Medium)
@@ -62,7 +64,7 @@ struct MenuBarRecordingView: View {
             RoundedRectangle(cornerRadius: Radius.sm)
                 .stroke(Color.borderPanel, lineWidth: 1)
         )
-        .accessibilityLabel(Text(String(localized: "capture.mirror.read_only")))
+        .accessibilityLabel(Text(String(localized: "subtitle.overlay.read_only")))
     }
 
     private var transcriptSection: some View {
@@ -128,10 +130,46 @@ struct MenuBarRecordingView: View {
         .accessibilityLabel(Text(String(localized: "menubar.recording.open_notebook")))
     }
 
+    private var floatingSubtitleButton: some View {
+        Button(action: toggleFloatingSubtitles) {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: subtitleOverlay.isPresented ? "pip.exit" : "pip.enter")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(String(localized: subtitleOverlay.isPresented
+                    ? "menubar.recording.close_subtitles"
+                    : "menubar.recording.open_subtitles"))
+                    .font(Font.sans11Medium)
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(Color.textTertiary)
+            }
+            .foregroundColor(Color.brandAccent)
+            .padding(.horizontal, Spacing.sm)
+            .frame(height: Spacing.xl)
+            .background(
+                RoundedRectangle(cornerRadius: Radius.sm)
+                    .fill(Color.brandAccentSoft)
+            )
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "capture.toolbar.subtitle_window.hint"))
+        .accessibilityLabel(Text(String(localized: subtitleOverlay.isPresented
+            ? "menubar.recording.close_subtitles"
+            : "menubar.recording.open_subtitles")))
+        .accessibilityHint(Text(String(localized: "capture.toolbar.subtitle_window.hint")))
+        .accessibilityIdentifier(AccessibilityID.menuBarSubtitleButton)
+    }
+
     private func openNotebook() {
         WindowCommandRouter.shared.openMainWindow(detail: "menu-bar.popover.open-notebook") {
             MainNavigationStoreV2.shared.openActiveNotebookForCapture()
         }
+        MenuBarCoordinator.shared.closePopover()
+    }
+
+    private func toggleFloatingSubtitles() {
+        WindowCommandRouter.shared.requestToggleSubtitleOverlay()
         MenuBarCoordinator.shared.closePopover()
     }
 

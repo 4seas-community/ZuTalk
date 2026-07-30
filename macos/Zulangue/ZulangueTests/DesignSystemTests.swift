@@ -18,39 +18,6 @@ final class DesignSystemTests: XCTestCase {
         XCTAssertNotNil(color)
     }
 
-    func testCaptionBackgroundAdaptsToAppearance() {
-        let dark = resolvedColor(NSColor(Color.captionBackground), appearance: .darkAqua)
-        let light = resolvedColor(NSColor(Color.captionBackground), appearance: .aqua)
-
-        XCTAssertLessThan(brightness(dark), brightness(light))
-        XCTAssertLessThan(brightness(dark), 0.1)
-        XCTAssertGreaterThan(brightness(light), 0.9)
-    }
-
-    func testCaptionPrimaryAdaptsToAppearance() {
-        let dark = resolvedColor(NSColor(Color.captionPrimary), appearance: .darkAqua)
-        let light = resolvedColor(NSColor(Color.captionPrimary), appearance: .aqua)
-
-        XCTAssertGreaterThan(brightness(dark), 0.9)
-        XCTAssertLessThan(brightness(light), 0.2)
-    }
-
-    @MainActor
-    func testCaptionWindowBackgroundAdaptsToAppearance() {
-        let controller = CaptionControllerV2()
-        defer { controller.close() }
-
-        guard let background = controller.window?.backgroundColor else {
-            return XCTFail("CaptionControllerV2 should provide a background color")
-        }
-
-        let dark = resolvedColor(background, appearance: .darkAqua)
-        let light = resolvedColor(background, appearance: .aqua)
-
-        XCTAssertLessThan(brightness(dark), brightness(light))
-        XCTAssertGreaterThan(brightness(light), 0.9)
-    }
-
     // MARK: - Radius tokens
 
     func testRadiusValues() {

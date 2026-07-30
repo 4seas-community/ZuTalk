@@ -31,9 +31,7 @@ final class WindowCoordinator {
     private var catalog: [WindowSurfaceID: WindowSpec] = [:]
     private var registeredWindows: [WindowSurfaceID: WeakWindowBox] = [:]
     private var mainSurfaceController: MainWindowControllerV2?
-    private var floatingPanelSurfaceController: FloatingPanelControllerV2?
-    private var captionSurfaceController: CaptionControllerV2?
-    private var operatorPanelSurfaceController: OperatorPanelControllerV2?
+    private var subtitleOverlayController: SubtitleOverlayController?
     private var pendingLayoutUpdates: [WindowSurfaceID: PendingLayoutUpdate] = [:]
     private var scheduledLayoutUpdates: Set<WindowSurfaceID> = []
     private var diagnosticAttachments: [WindowSurfaceID: DiagnosticAttachment] = [:]
@@ -140,116 +138,39 @@ final class WindowCoordinator {
     }
 
     @discardableResult
-    func presentFloatingPanel(store: ActiveBilingualTranscriptStore) -> NSPanel {
-        if let controller = floatingPanelSurfaceController,
+    func presentSubtitleOverlay(store: ActiveBilingualTranscriptStore) -> NSPanel {
+        if let controller = subtitleOverlayController,
            controller.storeForTesting === store,
            let panel = controller.managedWindow as? NSPanel {
-            _ = presentRegisteredWindow(.floatingPanel)
+            _ = presentRegisteredWindow(.subtitleOverlay)
             return panel
         }
 
-        dismissFloatingPanel()
-
-        let controller = FloatingPanelControllerV2(store: store)
-        floatingPanelSurfaceController = controller
-        registerWindow(controller.managedWindow, id: .floatingPanel)
-        applyInitialFloatingPanelLayout(using: controller)
-        _ = presentRegisteredWindow(.floatingPanel)
+        dismissSubtitleOverlay()
+        let controller = SubtitleOverlayController(store: store)
+        subtitleOverlayController = controller
+        registerWindow(controller.managedWindow, id: .subtitleOverlay)
+        applyInitialSubtitleOverlayLayout(using: controller)
+        _ = presentRegisteredWindow(.subtitleOverlay)
         guard let panel = controller.managedWindow as? NSPanel else {
-            preconditionFailure("FloatingPanelControllerV2 should own an NSPanel")
+            preconditionFailure("SubtitleOverlayController should own an NSPanel")
         }
         return panel
     }
 
-    func dismissFloatingPanel() {
-        guard floatingPanelSurfaceController != nil else { return }
-        _ = dismissRegisteredWindow(.floatingPanel)
-        unregisterWindow(.floatingPanel)
-        floatingPanelSurfaceController = nil
-    }
-
-    @discardableResult
-    func ensureCaptionMirror(
-        store: CaptionStoreV2? = nil,
-        screen: NSScreen? = nil,
-        onClose: (() -> Void)? = nil
-    ) -> CaptionControllerV2 {
-        if let captionSurfaceController {
-            if let store, captionSurfaceController.storeForTesting !== store {
-                dismissCaptionMirror()
-                return ensureCaptionMirror(store: store, screen: screen, onClose: onClose)
-            }
-            if let onClose {
-                captionSurfaceController.onClose = onClose
-            }
-            if let screen {
-                captionSurfaceController.moveToScreen(screen)
-            }
-            return captionSurfaceController
-        }
-
-        let resolvedStore = store ?? CaptionStoreV2()
-        let controller = CaptionControllerV2(store: resolvedStore, screen: screen, onClose: onClose)
-        captionSurfaceController = controller
-        registerWindow(controller.managedWindow, id: .captionMirror)
-        applyInitialCaptionLayout(using: controller, preferredScreen: screen)
-        return controller
-    }
-
-    @discardableResult
-    func presentCaptionMirror(
-        store: CaptionStoreV2? = nil,
-        screen: NSScreen? = nil,
-        onClose: (() -> Void)? = nil
-    ) -> CaptionControllerV2 {
-        let controller = ensureCaptionMirror(store: store, screen: screen, onClose: onClose)
-        _ = presentRegisteredWindow(.captionMirror)
-        return controller
-    }
-
-    func dismissCaptionMirror() {
-        guard captionSurfaceController != nil else { return }
-        captionSurfaceController?.onClose = nil
-        _ = dismissRegisteredWindow(.captionMirror)
-        unregisterWindow(.captionMirror)
-        captionSurfaceController = nil
-    }
-
-    @discardableResult
-    func presentOperatorPanel(store: OperatorPanelStoreV2) -> OperatorPanelControllerV2 {
-        if let controller = operatorPanelSurfaceController,
-           controller.storeForTesting === store {
-            _ = presentRegisteredWindow(.operatorPanel)
-            return controller
-        }
-
-        dismissOperatorPanel()
-
-        let controller = OperatorPanelControllerV2(store: store)
-        operatorPanelSurfaceController = controller
-        registerWindow(controller.managedWindow, id: .operatorPanel)
-        applyInitialOperatorPanelLayout(using: controller)
-        _ = presentRegisteredWindow(.operatorPanel)
-        return controller
-    }
-
-    func dismissOperatorPanel() {
-        guard operatorPanelSurfaceController != nil else { return }
-        _ = dismissRegisteredWindow(.operatorPanel)
-        unregisterWindow(.operatorPanel)
-        operatorPanelSurfaceController = nil
+    func dismissSubtitleOverlay() {
+        guard subtitleOverlayController != nil else { return }
+        _ = dismissRegisteredWindow(.subtitleOverlay)
+        unregisterWindow(.subtitleOverlay)
+        subtitleOverlayController = nil
     }
 
     func didCloseManagedSurface(_ id: WindowSurfaceID) {
         switch id {
         case .main:
             mainSurfaceController = nil
-        case .floatingPanel:
-            floatingPanelSurfaceController = nil
-        case .captionMirror:
-            captionSurfaceController = nil
-        case .operatorPanel:
-            operatorPanelSurfaceController = nil
+        case .subtitleOverlay:
+            subtitleOverlayController = nil
         }
         unregisterWindow(id)
     }
@@ -401,18 +322,12 @@ final class WindowCoordinator {
     }
 
     func resetForTesting() {
-        OverlaySessionCoordinatorV2.shared.resetForTesting()
+        SubtitleOverlayCoordinator.shared.resetForTesting()
         mainSurfaceController?.window?.orderOut(nil)
-        floatingPanelSurfaceController?.window?.orderOut(nil)
-        captionSurfaceController?.window?.orderOut(nil)
-        operatorPanelSurfaceController?.window?.orderOut(nil)
-        dismissFloatingPanel()
-        dismissCaptionMirror()
-        dismissOperatorPanel()
+        subtitleOverlayController?.window?.orderOut(nil)
+        dismissSubtitleOverlay()
         mainSurfaceController = nil
-        floatingPanelSurfaceController = nil
-        captionSurfaceController = nil
-        operatorPanelSurfaceController = nil
+        subtitleOverlayController = nil
         catalog.removeAll()
         detachAllDiagnostics()
         registeredWindows.removeAll()
@@ -425,16 +340,8 @@ final class WindowCoordinator {
         mainSurfaceController
     }
 
-    var floatingPanelForTesting: NSPanel? {
-        floatingPanelSurfaceController?.managedWindow as? NSPanel
-    }
-
-    var captionControllerForTesting: CaptionControllerV2? {
-        captionSurfaceController
-    }
-
-    var operatorPanelControllerForTesting: OperatorPanelControllerV2? {
-        operatorPanelSurfaceController
+    var subtitleOverlayForTesting: NSPanel? {
+        subtitleOverlayController?.managedWindow as? NSPanel
     }
 
     private func flushLayoutUpdate(for id: WindowSurfaceID) {
@@ -472,44 +379,18 @@ final class WindowCoordinator {
         return controller
     }
 
-    private func applyInitialFloatingPanelLayout(using controller: FloatingPanelControllerV2) {
+    private func applyInitialSubtitleOverlayLayout(using controller: SubtitleOverlayController) {
         let profile = DisplayProfileResolverV2.resolveProfile(from: controller.managedWindow.screen)
-        let snapshot = WindowLayoutEngineV2.floatingPanelSnapshot(
+        let snapshot = WindowLayoutEngineV2.subtitleOverlaySnapshot(
             for: WindowLayoutRequestV2(
-                surfaceID: .floatingPanel,
+                surfaceID: .subtitleOverlay,
                 display: profile,
                 systemState: .default,
                 currentFrame: controller.managedWindow.frame,
-                savedFrame: FloatingPanelControllerV2.loadSavedFrame()
+                savedFrame: SubtitleOverlayController.loadSavedFrame()
             )
         )
-        applyV2LayoutSnapshot(snapshot, reason: "window.floating-panel.initial")
-    }
-
-    private func applyInitialCaptionLayout(using controller: CaptionControllerV2, preferredScreen: NSScreen?) {
-        let profile = DisplayProfileResolverV2.resolveProfile(from: preferredScreen ?? controller.managedWindow.screen)
-        let snapshot = WindowLayoutEngineV2.captionWindowSnapshot(
-            for: WindowLayoutRequestV2(
-                surfaceID: .captionMirror,
-                display: profile,
-                systemState: .default,
-                currentFrame: controller.managedWindow.frame
-            )
-        )
-        applyV2LayoutSnapshot(snapshot, reason: "window.caption.initial")
-    }
-
-    private func applyInitialOperatorPanelLayout(using controller: OperatorPanelControllerV2) {
-        let profile = DisplayProfileResolverV2.resolveProfile(from: controller.managedWindow.screen)
-        let snapshot = WindowLayoutEngineV2.operatorPanelSnapshot(
-            for: WindowLayoutRequestV2(
-                surfaceID: .operatorPanel,
-                display: profile,
-                systemState: .default,
-                currentFrame: controller.managedWindow.frame
-            )
-        )
-        applyV2LayoutSnapshot(snapshot, reason: "window.operator-panel.initial")
+        applyV2LayoutSnapshot(snapshot, reason: "window.subtitle-overlay.initial")
     }
 
     @discardableResult

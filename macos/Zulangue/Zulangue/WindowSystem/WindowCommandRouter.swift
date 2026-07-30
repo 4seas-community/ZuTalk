@@ -4,8 +4,7 @@ import Foundation
 
 enum WindowCommand: String {
     case openMainWindow
-    case toggleFloatingPanel
-    case toggleCaptionMirror
+    case toggleSubtitleOverlay
     case openSession
     case openSettings
     case openNotebookTab
@@ -21,8 +20,7 @@ struct WindowCommandRecord: Equatable {
 @MainActor
 struct WindowCommandRouterTestOverrides {
     var openMainWindow: ((String, (@MainActor @Sendable () -> Void)?) -> Void)?
-    var toggleFloatingPanel: (() -> Void)?
-    var toggleCaptionMirror: (() -> Void)?
+    var toggleSubtitleOverlay: (() -> Void)?
     var openSession: ((String) -> Void)?
     var openSettings: (() -> Void)?
     var openNotebookTab: ((EditorRouteV2) -> Void)?
@@ -53,25 +51,14 @@ final class WindowCommandRouter {
         }
     }
 
-    func requestToggleFloatingPanel() {
-        record(.toggleFloatingPanel, detail: "read-only-current-capture")
+    func requestToggleSubtitleOverlay() {
+        record(.toggleSubtitleOverlay, detail: "current-capture-subtitles")
         Task { @MainActor in
-            if let handler = self.testOverrides?.toggleFloatingPanel {
+            if let handler = self.testOverrides?.toggleSubtitleOverlay {
                 handler()
                 return
             }
-            OverlaySessionCoordinatorV2.shared.toggleFloatingPanel()
-        }
-    }
-
-    func requestToggleCaptionMirror() {
-        record(.toggleCaptionMirror, detail: "read-only-current-capture")
-        Task { @MainActor in
-            if let handler = self.testOverrides?.toggleCaptionMirror {
-                handler()
-                return
-            }
-            OverlaySessionCoordinatorV2.shared.toggleCaptionMirror()
+            SubtitleOverlayCoordinator.shared.toggle()
         }
     }
 

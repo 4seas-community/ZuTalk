@@ -320,7 +320,6 @@
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "Keyboard shortcuts";
 "settings.shortcuts.subtitle" = "Global hotkeys for Zulangue actions.";
-"settings.shortcuts.toggle_floating" = "Toggle floating panel";
 "settings.shortcuts.toggle_recording" = "Open Notebook capture";
 "settings.shortcuts.cycle_display" = "Cycle display mode";
 "settings.shortcuts.font_bigger" = "Increase font size";
@@ -357,10 +356,6 @@
 "diagnostics.operational.severity.blocked" = "BLOCKED";
 
 /* Toast center — Floating panel */
-"toast.floating.need_key.title" = "Floating panel needs Soniox key";
-"toast.floating.ready.title" = "Floating panel ready";
-"toast.floating.ready.detail" = "Soniox listening · auto language detect";
-"toast.floating.start_failed.title" = "Failed to start floating panel";
 
 /* Toast center — Microphone permission (shared) */
 "toast.mic.denied.title" = "Microphone permission denied";
@@ -589,7 +584,6 @@
 
 /* Menu Bar status item — popover content */
 "menubar.action.recording" = "Start recording";
-"menubar.action.float" = "Floating transcript";
 "menubar.action.settings" = "Settings";
 "updates.check" = "Check for Updates…";
 "updates.unavailable.title" = "Updates are not configured";
@@ -603,6 +597,8 @@
 "menubar.recording.resume" = "Resume";
 "menubar.recording.stop" = "Stop";
 "menubar.recording.live_transcript" = "Live transcript";
+"menubar.recording.open_subtitles" = "Open live subtitles";
+"menubar.recording.close_subtitles" = "Close live subtitles";
 "menubar.recording.open_notebook" = "Open notebook";
 "menubar.processing.open_session" = "Open session";
 "menubar.suppressed.privacy.title" = "Microphone access denied";
@@ -657,10 +653,6 @@
 "a11y.record.hint_stop" = "Double-click to stop the current recording";
 "a11y.record.hint_start" = "Double-click to start a new recording";
 "a11y.session_card" = "%@, %@, duration %@";
-"a11y.floating_panel" = "Live transcription overlay";
-"a11y.floating_panel_hint" = "Shows real-time voice transcription";
-"a11y.caption_window" = "Caption broadcast window";
-"a11y.caption_window_langs" = "%lld languages";
 
 /* Notebook multilingual capture */
 "common.close" = "Close";
@@ -679,18 +671,18 @@
 "capture.route.unavailable_detail" = "The local Zulangue service is not ready.";
 "session.route.unavailable" = "Cannot open recording";
 "session.route.unavailable_detail" = "The recording remains unchanged. Try again.";
-"capture.mirror.open_notebook" = "Open Notebook";
-"capture.mirror.open_notebook_hint" = "Capture controls are available only inside the owning Notebook.";
-"capture.mirror.read_only" = "Caption Mirror · Read-only";
-"capture.mirror.idle" = "Start recording in a Notebook";
-"capture.mirror.recording" = "Recording in Notebook";
-"capture.mirror.recording_degraded" = "Recording locally · remote unavailable";
-"capture.mirror.paused" = "Paused in Notebook";
-"capture.mirror.draining" = "Finishing the Notebook capture";
-"capture.mirror.left_column_format" = "Left column: %@";
-"capture.mirror.right_column_format" = "Right column: %@";
-"capture.mirror.auto_language" = "Auto";
-"capture.mirror.caption_font" = "Caption size";
+"capture.open_notebook" = "Open Notebook";
+"capture.open_notebook_hint" = "Capture controls are available only inside the owning Notebook.";
+"subtitle.overlay.title" = "Live subtitles";
+"subtitle.overlay.read_only" = "Live subtitles · Read-only";
+"subtitle.overlay.accessibility_label" = "Live multilingual subtitle window";
+"subtitle.overlay.language_count" = "%lld languages";
+"subtitle.overlay.waiting" = "Listening for speech…";
+"subtitle.overlay.recording_ended" = "Recording ended";
+"subtitle.overlay.font_size" = "Caption size";
+"subtitle.overlay.font_smaller" = "Smaller captions";
+"subtitle.overlay.font_larger" = "Larger captions";
+"subtitle.overlay.move_resize_hint" = "Drag the window to move it. Drag any edge or corner to resize it.";
 "capture.toolbar.start" = "Start Recording";
 "capture.toolbar.starting" = "Starting…";
 "capture.toolbar.start_hint" = "Starts recording and live transcription in the selected languages. Recording continues if the service is temporarily unavailable.";
@@ -701,6 +693,10 @@
 "capture.toolbar.stop" = "Stop";
 "capture.toolbar.stop_hint" = "Stops audio input. If remote processing is active, Zulangue also waits for its final tokens.";
 "capture.toolbar.active_other_notebook" = "Recording belongs to another Notebook";
+"capture.toolbar.subtitle_window.open" = "Open live subtitles";
+"capture.toolbar.subtitle_window.close" = "Close live subtitles";
+"capture.toolbar.subtitle_window.hint" = "Open an always-on-top multilingual subtitle window.";
+"capture.toolbar.subtitle_window.unavailable_hint" = "Start recording in this Notebook before opening live subtitles.";
 "capture.toast.start_failed" = "Could not start recording";
 "capture.toast.pause_failed" = "Could not change recording state";
 "capture.toast.stop_failed" = "Could not stop recording";

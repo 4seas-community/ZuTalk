@@ -51,40 +51,22 @@ final class MenuBarRoutingTests: XCTestCase {
         XCTAssertEqual(detail, "menu-bar.popover.open-capture-notebook")
     }
 
-    func testFloatAction_routesToggleFloatingPanelCommand() {
-        let exp = expectation(description: "float action should reach router override")
+    func testSubtitlesAction_routesToggleSubtitleOverlayCommand() {
+        let exp = expectation(description: "subtitles action should reach router override")
         var received = false
         WindowCommandRouter.shared.installTestOverrides(
             WindowCommandRouterTestOverrides(
-                toggleFloatingPanel: {
+                toggleSubtitleOverlay: {
                     received = true
                     exp.fulfill()
                 }
             )
         )
 
-        sendMenuBarAction("float")
+        sendMenuBarAction("subtitles")
 
         wait(for: [exp], timeout: 1.0)
-        XCTAssertTrue(received, "'float' action must route toggleFloatingPanel")
-    }
-
-    func testCaptionMirrorAction_routesReadOnlyMirrorCommand() {
-        let exp = expectation(description: "caption mirror action should reach router override")
-        var received = false
-        WindowCommandRouter.shared.installTestOverrides(
-            WindowCommandRouterTestOverrides(
-                toggleCaptionMirror: {
-                    received = true
-                    exp.fulfill()
-                }
-            )
-        )
-
-        sendMenuBarAction("captionMirror")
-
-        wait(for: [exp], timeout: 1.0)
-        XCTAssertTrue(received, "caption mirror action must route its read-only command")
+        XCTAssertTrue(received, "'subtitles' action must route toggleSubtitleOverlay")
     }
 
     func testSettingsAction_routesOpenSettingsCommand() {

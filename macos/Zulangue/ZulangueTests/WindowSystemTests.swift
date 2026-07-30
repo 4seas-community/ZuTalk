@@ -55,7 +55,10 @@ final class WindowSystemTests: XCTestCase {
 
         XCTAssertEqual(ids, Set(WindowSurfaceID.allCases))
         XCTAssertEqual(WindowCoordinator.shared.spec(for: .main)?.frameMutationPolicy, .coordinatorOnly)
-        XCTAssertEqual(WindowCoordinator.shared.spec(for: .captionMirror)?.presentation.dismissAction, .close)
+        XCTAssertEqual(
+            WindowCoordinator.shared.spec(for: .subtitleOverlay)?.presentation.dismissAction,
+            .orderOut
+        )
     }
 
     func testWindowCoordinator_registerWindow_tracksWindowBySurfaceID() {
@@ -80,12 +83,12 @@ final class WindowSystemTests: XCTestCase {
             defer: false
         )
 
-        WindowCoordinator.shared.registerWindow(window, id: .floatingPanel)
+        WindowCoordinator.shared.registerWindow(window, id: .subtitleOverlay)
 
         let target = NSRect(x: 40, y: 60, width: 420, height: 260)
         let applied = WindowCoordinator.shared.applyFrame(
             target,
-            to: .floatingPanel,
+            to: .subtitleOverlay,
             reason: "unit-test"
         )
 
@@ -93,8 +96,8 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(window.frame, target)
     }
 
-    func testManagedWindowRuntime_applyUsesCatalogChromeForFloatingPanel() {
-        let spec = WindowSpec.required(.floatingPanel)
+    func testManagedWindowRuntime_applyUsesCatalogChromeForSubtitleOverlay() {
+        let spec = WindowSpec.required(.subtitleOverlay)
         let panel = NSPanel(
             contentRect: spec.initialContentRect,
             styleMask: spec.styleMask,
@@ -106,9 +109,10 @@ final class WindowSystemTests: XCTestCase {
 
         XCTAssertEqual(panel.level, .floating)
         XCTAssertEqual(panel.collectionBehavior, [.canJoinAllSpaces, .fullScreenAuxiliary])
-        XCTAssertEqual(panel.contentMinSize, NSSize(width: 560, height: 120))
-        XCTAssertEqual(panel.contentMaxSize, NSSize(width: 2400, height: 800))
+        XCTAssertEqual(panel.contentMinSize, NSSize(width: 560, height: 180))
+        XCTAssertEqual(panel.contentMaxSize, NSSize(width: 2600, height: 1000))
         XCTAssertTrue(panel.isFloatingPanel)
+        XCTAssertFalse(panel.hidesOnDeactivate)
     }
 
     @available(macOS 13.0, *)
@@ -290,8 +294,8 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(repeatedStabilization.totalDisabled, 0)
     }
 
-    func testManagedWindowRuntimeV2_applyUsesCatalogChromeForFloatingPanel() {
-        let spec = WindowSpecV2.required(.floatingPanel)
+    func testManagedWindowRuntimeV2_applyUsesCatalogChromeForSubtitleOverlay() {
+        let spec = WindowSpecV2.required(.subtitleOverlay)
         let panel = NSPanel(
             contentRect: spec.initialContentRect,
             styleMask: spec.styleMask,
@@ -303,9 +307,10 @@ final class WindowSystemTests: XCTestCase {
 
         XCTAssertEqual(panel.level, .floating)
         XCTAssertEqual(panel.collectionBehavior, [.canJoinAllSpaces, .fullScreenAuxiliary])
-        XCTAssertEqual(panel.contentMinSize, NSSize(width: 560, height: 120))
-        XCTAssertEqual(panel.contentMaxSize, NSSize(width: 2400, height: 800))
+        XCTAssertEqual(panel.contentMinSize, NSSize(width: 560, height: 180))
+        XCTAssertEqual(panel.contentMaxSize, NSSize(width: 2600, height: 1000))
         XCTAssertTrue(panel.isFloatingPanel)
+        XCTAssertFalse(panel.hidesOnDeactivate)
     }
 
     func testMainNavigationStoreV2_openNotebookTabKeepsSessionAsContext() {
@@ -448,25 +453,25 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertTrue(WindowCoordinator.shared.window(for: .main) === window)
     }
 
-    func testWindowCoordinator_presentFloatingPanel_ownsV2FloatingPanelDirectly() {
+    func testWindowCoordinator_presentSubtitleOverlay_ownsSingleOverlayDirectly() {
         let store = ActiveBilingualTranscriptStore()
 
-        let panel = WindowCoordinator.shared.presentFloatingPanel(store: store)
+        let panel = WindowCoordinator.shared.presentSubtitleOverlay(store: store)
 
-        XCTAssertTrue(panel === WindowCoordinator.shared.floatingPanelForTesting)
-        XCTAssertTrue(WindowCoordinator.shared.window(for: .floatingPanel) === panel)
+        XCTAssertTrue(panel === WindowCoordinator.shared.subtitleOverlayForTesting)
+        XCTAssertTrue(WindowCoordinator.shared.window(for: .subtitleOverlay) === panel)
         XCTAssertTrue(panel.isVisible)
 
-        WindowCoordinator.shared.dismissFloatingPanel()
+        WindowCoordinator.shared.dismissSubtitleOverlay()
 
-        XCTAssertFalse(WindowCoordinator.shared.isRegistered(.floatingPanel))
+        XCTAssertFalse(WindowCoordinator.shared.isRegistered(.subtitleOverlay))
         XCTAssertFalse(panel.isVisible)
     }
 
-    func testFloatingPanelControllerV2_usesInjectedStoreAndPinnedRootView() throws {
+    func testSubtitleOverlayController_isMovableResizablePersistentAcrossApps() throws {
         let store = ActiveBilingualTranscriptStore()
 
-        let controller = FloatingPanelControllerV2(store: store)
+        let controller = SubtitleOverlayController(store: store)
         defer { controller.close() }
 
         XCTAssertTrue(controller.storeForTesting === store)
@@ -474,92 +479,19 @@ final class WindowSystemTests: XCTestCase {
         let contentView: NSView = try XCTUnwrap(controller.managedWindow.contentView)
         XCTAssertFalse(contentView.subviews.isEmpty)
         XCTAssertEqual(controller.managedWindow.level, NSWindow.Level.floating)
+        XCTAssertTrue(controller.managedWindow.styleMask.contains(.resizable))
+        XCTAssertTrue(controller.managedWindow.isMovable)
+        XCTAssertTrue(controller.managedWindow.isMovableByWindowBackground)
+        XCTAssertFalse((controller.managedWindow as? NSPanel)?.hidesOnDeactivate ?? true)
     }
 
-    func testWindowCoordinator_presentCaptionMirror_ownsV2CaptionControllerDirectly() {
-        let store = CaptionStoreV2()
-        let controller = WindowCoordinator.shared.presentCaptionMirror(store: store)
-
-        XCTAssertTrue(WindowCoordinator.shared.captionControllerForTesting === controller)
-        XCTAssertTrue(WindowCoordinator.shared.window(for: .captionMirror) === controller.window)
-        XCTAssertTrue(controller.storeForTesting === store)
-
-        controller.close()
-
-        XCTAssertFalse(WindowCoordinator.shared.isRegistered(.captionMirror))
-    }
-
-    func testCaptionStoreV2_exposesVisibleStatusWhileEmpty() {
-        let store = CaptionStoreV2()
-
-        XCTAssertEqual(store.statusMessage, String(localized: "capture.mirror.idle"))
-
-        store.statusMessage = "Connecting"
-
-        XCTAssertEqual(store.statusMessage, "Connecting")
-    }
-
-    func testWindowCoordinator_presentOperatorPanel_ownsV2OperatorPanelDirectly() {
-        let store = OperatorPanelStoreV2()
-
-        let controller = WindowCoordinator.shared.presentOperatorPanel(store: store)
-
-        XCTAssertTrue(WindowCoordinator.shared.operatorPanelControllerForTesting === controller)
-        XCTAssertTrue(WindowCoordinator.shared.window(for: .operatorPanel) === controller.window)
-        XCTAssertTrue(controller.storeForTesting === store)
-
-        WindowCoordinator.shared.dismissOperatorPanel()
-
-        XCTAssertFalse(WindowCoordinator.shared.isRegistered(.operatorPanel))
-    }
-
-    func testCaptionControllerV2_installsPinnedCaptionViewAndPreservesCloseHandler() throws {
-        let closed = expectation(description: "caption mirror controller should preserve close handler")
-        let store = CaptionStoreV2()
-        let controller = CaptionControllerV2(store: store, onClose: { closed.fulfill() })
-
-        XCTAssertNotNil(controller.onCloseForTesting)
-        XCTAssertTrue(controller.storeForTesting === store)
-        XCTAssertNil(controller.managedWindow.contentViewController)
-        let contentView: NSView = try XCTUnwrap(controller.managedWindow.contentView)
-        XCTAssertFalse(contentView.subviews.isEmpty)
-
-        controller.close()
-
-        wait(for: [closed], timeout: 1.0)
-    }
-
-    func testOperatorPanelControllerV2_usesInjectedStoreAndPinnedRootView() throws {
-        let store = OperatorPanelStoreV2()
-
-        let controller = OperatorPanelControllerV2(store: store)
-        defer { controller.close() }
-
-        XCTAssertTrue(controller.storeForTesting === store)
-        XCTAssertNil(controller.managedWindow.contentViewController)
-        let contentView: NSView = try XCTUnwrap(controller.managedWindow.contentView)
-        XCTAssertFalse(contentView.subviews.isEmpty)
-        XCTAssertEqual(controller.managedWindow.level, NSWindow.Level.floating)
-    }
-
-    func testWindowCoordinator_presentCaptionMirror_preservesExternalCloseHandler() {
-        let closed = expectation(description: "external close handler should be preserved across ensure/present")
-        let store = CaptionStoreV2()
-
-        let controller = WindowCoordinator.shared.ensureCaptionMirror(store: store) {
-            closed.fulfill()
-        }
-
-        XCTAssertNotNil(controller.onClose)
-        XCTAssertTrue(controller.storeForTesting === store)
-
-        let presented = WindowCoordinator.shared.presentCaptionMirror(store: store)
-        XCTAssertTrue(presented === controller)
-
-        controller.close()
-
-        wait(for: [closed], timeout: 1.0)
-        XCTAssertFalse(WindowCoordinator.shared.isRegistered(.captionMirror))
+    func testSubtitleOverlayFontPolicy_clampsAndStepsWithinReadableRange() {
+        XCTAssertEqual(SubtitleOverlayFontPolicy.clamped(2), 18)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.clamped(100), 64)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.smaller(than: 30), 26)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.larger(than: 30), 34)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.smaller(than: 18), 18)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.larger(than: 64), 64)
     }
 
     func testWindowCoordinator_registrySnapshot_listsAllKnownWindowSurfaces() {
@@ -569,7 +501,7 @@ final class WindowSystemTests: XCTestCase {
 
         XCTAssertEqual(snapshot.count, WindowSurfaceID.allCases.count)
         XCTAssertTrue(snapshot.contains { $0.contains("surface=main") })
-        XCTAssertTrue(snapshot.contains { $0.contains("surface=floatingPanel") })
+        XCTAssertTrue(snapshot.contains { $0.contains("surface=subtitleOverlay") })
     }
 
     // MARK: - DisplayProfileResolverV2 notch-width clamp

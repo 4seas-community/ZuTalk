@@ -40,13 +40,11 @@ struct WindowLayoutResult: Equatable {
 }
 
 enum WindowLayoutEngine {
-    static let floatingPanelMinimumSize = NSSize(width: 560, height: 120)
-    static let floatingPanelDefaultSize = NSSize(width: 1000, height: 180)
-    static let floatingPanelMaximumWidth: CGFloat = 2200
-    static let floatingPanelMaximumHeight: CGFloat = 800
-    static let floatingPanelTopInset: CGFloat = 60
-
-    static let operatorPanelDefaultSize = NSSize(width: 380, height: 600)
+    static let subtitleOverlayMinimumSize = NSSize(width: 560, height: 180)
+    static let subtitleOverlayDefaultSize = NSSize(width: 1100, height: 280)
+    static let subtitleOverlayMaximumWidth: CGFloat = 2600
+    static let subtitleOverlayMaximumHeight: CGFloat = 1000
+    static let subtitleOverlayTopInset: CGFloat = 36
 
     static func layout(
         for id: WindowSurfaceID,
@@ -54,85 +52,54 @@ enum WindowLayoutEngine {
     ) -> WindowLayoutResult? {
         switch id {
         case .main:
-            return WindowLayoutResult(frame: mainWindowFrame(input: input))
-        case .floatingPanel:
-            return WindowLayoutResult(frame: floatingPanelFrame(input: input))
-        case .captionMirror:
-            return WindowLayoutResult(frame: input.screenFrame)
-        case .operatorPanel:
-            return WindowLayoutResult(frame: operatorPanelFrame(input: input))
+            return WindowLayoutResult(frame: MainWindowMetrics.launchFrame(in: input.visibleFrame))
+        case .subtitleOverlay:
+            return WindowLayoutResult(frame: subtitleOverlayFrame(input: input))
         }
     }
 
-    private static func mainWindowFrame(input: WindowLayoutInput) -> NSRect {
-        MainWindowMetrics.launchFrame(in: input.visibleFrame)
-    }
-
-    private static func floatingPanelFrame(input: WindowLayoutInput) -> NSRect {
+    private static func subtitleOverlayFrame(input: WindowLayoutInput) -> NSRect {
         if let saved = input.savedFrame,
-           let normalized = normalizedFloatingPanelFrame(saved, visibleFrame: input.visibleFrame) {
+           let normalized = normalizedSubtitleOverlayFrame(
+               saved,
+               visibleFrame: input.visibleFrame
+           ) {
             return normalized.integral
         }
 
         let width = min(
-            floatingPanelMaximumWidth,
-            max(floatingPanelDefaultSize.width, input.visibleFrame.width * 0.9)
+            subtitleOverlayMaximumWidth,
+            max(
+                subtitleOverlayMinimumSize.width,
+                min(subtitleOverlayDefaultSize.width, input.visibleFrame.width * 0.92)
+            )
         )
-        let height = floatingPanelDefaultSize.height
-        let origin = NSPoint(
+        let height = min(subtitleOverlayDefaultSize.height, input.visibleFrame.height * 0.42)
+        return NSRect(
             x: input.visibleFrame.midX - width / 2,
-            y: input.visibleFrame.maxY - height - floatingPanelTopInset
-        )
-        return NSRect(origin: origin, size: NSSize(width: width, height: height)).integral
+            y: input.visibleFrame.maxY - height - subtitleOverlayTopInset,
+            width: width,
+            height: height
+        ).integral
     }
 
-    private static func operatorPanelFrame(input: WindowLayoutInput) -> NSRect {
-        let origin = NSPoint(
-            x: input.visibleFrame.maxX - operatorPanelDefaultSize.width - 48,
-            y: input.visibleFrame.midY - operatorPanelDefaultSize.height / 2
-        )
-        return NSRect(origin: origin, size: operatorPanelDefaultSize).integral
-    }
-
-    private static func currentSize(from currentFrame: NSRect?, fallback: NSSize) -> NSSize {
-        guard let currentFrame,
-              currentFrame.width > 0,
-              currentFrame.height > 0 else {
-            return fallback
-        }
-        return currentFrame.size
-    }
-
-    private static func normalizedFloatingPanelFrame(
+    private static func normalizedSubtitleOverlayFrame(
         _ frame: NSRect,
         visibleFrame: NSRect
     ) -> NSRect? {
-        guard visibleFrame.intersects(frame) else {
+        guard visibleFrame.intersects(frame) else { return nil }
+
+        let maxWidth = min(subtitleOverlayMaximumWidth, visibleFrame.width)
+        let maxHeight = min(subtitleOverlayMaximumHeight, visibleFrame.height)
+        guard maxWidth >= subtitleOverlayMinimumSize.width,
+              maxHeight >= subtitleOverlayMinimumSize.height else {
             return nil
         }
 
-        let maxWidth = min(floatingPanelMaximumWidth, visibleFrame.width)
-        let maxHeight = min(
-            floatingPanelMaximumHeight,
-            max(floatingPanelMinimumSize.height, visibleFrame.height - floatingPanelTopInset)
-        )
-
-        guard maxWidth >= floatingPanelMinimumSize.width,
-              maxHeight >= floatingPanelMinimumSize.height else {
-            return nil
-        }
-
-        let width = min(max(frame.width, floatingPanelMinimumSize.width), maxWidth)
-        let height = min(max(frame.height, floatingPanelMinimumSize.height), maxHeight)
+        let width = min(max(frame.width, subtitleOverlayMinimumSize.width), maxWidth)
+        let height = min(max(frame.height, subtitleOverlayMinimumSize.height), maxHeight)
         let originX = min(max(frame.minX, visibleFrame.minX), visibleFrame.maxX - width)
         let originY = min(max(frame.minY, visibleFrame.minY), visibleFrame.maxY - height)
-        let normalized = NSRect(
-            x: originX,
-            y: originY,
-            width: width,
-            height: height
-        )
-
-        return normalized
+        return NSRect(x: originX, y: originY, width: width, height: height)
     }
 }

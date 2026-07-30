@@ -16,8 +16,8 @@ enum AccessibilityID {
     /// 菜单栏 popover idle 状态:开始录音
     static let menuBarRecordButton = "menubar.button.record"
 
-    /// 菜单栏 popover idle 状态:浮动转录面板
-    static let menuBarFloatButton = "menubar.button.float"
+    /// 菜单栏 popover 录音状态：多语言字幕悬浮窗
+    static let menuBarSubtitleButton = "menubar.button.subtitles"
 
     /// 菜单栏 popover idle 状态:Settings
     static let menuBarSettingsButton = "menubar.button.settings"
@@ -31,6 +31,13 @@ enum AccessibilityID {
 
     /// 菜单栏 popover 录音状态:停止
     static let menuBarRecordingStopButton = "menubar.button.recordingStop"
+
+    /// 菜单栏和实时转录页：打开多语言字幕浮窗
+    static let floatingSubtitleButton = "capture.button.floatingSubtitles"
+
+    /// 字幕浮窗右上角：减小或放大字号
+    static let floatingSubtitleFontSmaller = "capture.floatingSubtitles.fontSmaller"
+    static let floatingSubtitleFontLarger = "capture.floatingSubtitles.fontLarger"
 
     // MARK: - Main Window
 

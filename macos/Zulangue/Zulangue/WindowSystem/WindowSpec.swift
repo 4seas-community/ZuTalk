@@ -42,7 +42,6 @@ enum ManagedWindowDismissAction: String {
 enum ManagedWindowBackgroundStyle {
     case systemDefault
     case clear
-    case captionBackdrop
 }
 
 struct ManagedWindowPresentation {
@@ -94,10 +93,7 @@ extension WindowSpec {
     }
 
     static func baselineCatalog() -> [WindowSurfaceID: WindowSpec] {
-        baselineSpecs
-    }
-
-    private static let baselineSpecs: [WindowSurfaceID: WindowSpec] = [
+        [
             .main: WindowSpec(
                 id: .main,
                 role: WindowSurfaceID.main.role,
@@ -139,18 +135,18 @@ extension WindowSpec {
                     minimumContentSize: nil,
                     maximumContentSize: nil
                 ),
-                notes: "Main window is AppKit-owned by the V2 main window controller; content state changes stay inside a stable hosting root."
+                notes: "AppKit-owned main window with a stable hosting root."
             ),
-            .floatingPanel: WindowSpec(
-                id: .floatingPanel,
-                role: WindowSurfaceID.floatingPanel.role,
+            .subtitleOverlay: WindowSpec(
+                id: .subtitleOverlay,
+                role: WindowSurfaceID.subtitleOverlay.role,
                 ownership: .coordinatorOwned,
                 hostingPolicy: .fixedWindowOwned,
                 frameMutationPolicy: .coordinatorOnly,
                 frameApplyStrategy: .setFrame,
                 migrationPhase: .overlays,
                 styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView, .resizable],
-                initialContentRect: NSRect(x: 100, y: 100, width: 1000, height: 180),
+                initialContentRect: NSRect(x: 0, y: 0, width: 1100, height: 280),
                 presentation: ManagedWindowPresentation(
                     presentAction: .orderFrontRegardless,
                     dismissAction: .orderOut,
@@ -165,86 +161,17 @@ extension WindowSpec {
                     isOpaque: false,
                     titleVisibility: .hidden,
                     titlebarAppearsTransparent: true,
-                    isMovable: nil,
+                    isMovable: true,
                     isMovableByWindowBackground: true,
-                    ignoresMouseEvents: nil,
-                    hidesOnDeactivate: nil,
-                    animationBehavior: .utilityWindow,
-                    minimumWindowSize: nil,
-                    minimumContentSize: NSSize(width: 560, height: 120),
-                    maximumContentSize: NSSize(width: 2400, height: 800)
-                ),
-                notes: "Floating transcript overlay routes initial/default geometry through WindowLayoutEngine and coordinator frame application."
-            ),
-            .captionMirror: WindowSpec(
-                id: .captionMirror,
-                role: WindowSurfaceID.captionMirror.role,
-                ownership: .coordinatorOwned,
-                hostingPolicy: .fixedWindowOwned,
-                frameMutationPolicy: .coordinatorOnly,
-                frameApplyStrategy: .setFrame,
-                migrationPhase: .overlays,
-                styleMask: [.borderless],
-                initialContentRect: NSRect(x: 0, y: 0, width: 1280, height: 720),
-                presentation: ManagedWindowPresentation(
-                    presentAction: .orderFrontRegardless,
-                    dismissAction: .close,
-                    activatesApp: false
-                ),
-                chrome: ManagedWindowChrome(
-                    level: .floating,
-                    collectionBehavior: [.canJoinAllSpaces, .fullScreenAuxiliary],
-                    backgroundStyle: .captionBackdrop,
-                    isFloatingPanel: false,
-                    hasShadow: false,
-                    isOpaque: false,
-                    titleVisibility: .hidden,
-                    titlebarAppearsTransparent: true,
-                    isMovable: false,
-                    isMovableByWindowBackground: nil,
                     ignoresMouseEvents: false,
-                    hidesOnDeactivate: nil,
-                    animationBehavior: .none,
-                    minimumWindowSize: nil,
-                    minimumContentSize: nil,
-                    maximumContentSize: nil
-                ),
-                notes: "Full-screen captions are screen-routed through WindowLayoutEngine and coordinator frame application."
-            ),
-            .operatorPanel: WindowSpec(
-                id: .operatorPanel,
-                role: WindowSurfaceID.operatorPanel.role,
-                ownership: .coordinatorOwned,
-                hostingPolicy: .fixedWindowOwned,
-                frameMutationPolicy: .coordinatorOnly,
-                frameApplyStrategy: .setFrame,
-                migrationPhase: .cleanup,
-                styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
-                initialContentRect: NSRect(x: 0, y: 0, width: 380, height: 600),
-                presentation: ManagedWindowPresentation(
-                    presentAction: .showWindowAndMakeKey,
-                    dismissAction: .close,
-                    activatesApp: false
-                ),
-                chrome: ManagedWindowChrome(
-                    level: .floating,
-                    collectionBehavior: [],
-                    backgroundStyle: .systemDefault,
-                    isFloatingPanel: true,
-                    hasShadow: true,
-                    isOpaque: true,
-                    titleVisibility: .visible,
-                    titlebarAppearsTransparent: false,
-                    isMovable: nil,
-                    isMovableByWindowBackground: nil,
-                    ignoresMouseEvents: nil,
                     hidesOnDeactivate: false,
                     animationBehavior: .utilityWindow,
                     minimumWindowSize: nil,
-                    minimumContentSize: nil,
-                    maximumContentSize: nil
+                    minimumContentSize: NSSize(width: 560, height: 180),
+                    maximumContentSize: NSSize(width: 2600, height: 1000)
                 ),
-                notes: "Utility panel registers and lays out through the shared window system primitives."
+                notes: "Single movable and resizable live-subtitle window."
             ),
         ]
+    }
 }

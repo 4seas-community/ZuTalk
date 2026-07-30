@@ -10,9 +10,9 @@ final class WindowArchitectureTests: XCTestCase {
         WindowCommandRouter.shared.resetForTesting()
     }
 
-    // MARK: - WindowLayoutEngine (floating panel + main)
+    // MARK: - WindowLayoutEngine (subtitle overlay + main)
 
-    func testWindowLayoutEngine_floatingPanelPrefersValidSavedFrame() {
+    func testWindowLayoutEngine_subtitleOverlayPrefersValidSavedFrame() {
         let visible = NSRect(x: 0, y: 0, width: 1440, height: 900)
         let saved = NSRect(x: 120, y: 180, width: 960, height: 220)
         let input = WindowLayoutInput(
@@ -21,12 +21,12 @@ final class WindowArchitectureTests: XCTestCase {
             savedFrame: saved
         )
 
-        let layout = WindowLayoutEngine.layout(for: .floatingPanel, input: input)
+        let layout = WindowLayoutEngine.layout(for: .subtitleOverlay, input: input)
 
         XCTAssertEqual(layout?.frame, saved.integral)
     }
 
-    func testWindowLayoutEngine_floatingPanelFallsBackToCenteredDefaultFrame() {
+    func testWindowLayoutEngine_subtitleOverlayFallsBackToTopCenteredDefaultFrame() {
         let visible = NSRect(x: 0, y: 0, width: 1200, height: 900)
         let invalidSaved = NSRect(x: -2000, y: -2000, width: 100, height: 40)
         let input = WindowLayoutInput(
@@ -35,15 +35,15 @@ final class WindowArchitectureTests: XCTestCase {
             savedFrame: invalidSaved
         )
 
-        let layout = WindowLayoutEngine.layout(for: .floatingPanel, input: input)
+        let layout = WindowLayoutEngine.layout(for: .subtitleOverlay, input: input)
 
-        XCTAssertEqual(layout?.frame.width, 1080)
-        XCTAssertEqual(layout?.frame.height, 180)
-        XCTAssertEqual(layout?.frame.origin.x, 60)
-        XCTAssertEqual(layout?.frame.origin.y, 660)
+        XCTAssertEqual(layout?.frame.width, 1100)
+        XCTAssertEqual(layout?.frame.height, 280)
+        XCTAssertEqual(layout?.frame.origin.x, 50)
+        XCTAssertEqual(layout?.frame.origin.y, 584)
     }
 
-    func testWindowLayoutEngine_floatingPanelClampsOversizedSavedFrameIntoVisibleBounds() {
+    func testWindowLayoutEngine_subtitleOverlayClampsOversizedSavedFrameIntoVisibleBounds() {
         let visible = NSRect(x: 0, y: 24, width: 1512, height: 956)
         let oversizedSaved = NSRect(x: 86, y: -820, width: 1556, height: 1844)
         let input = WindowLayoutInput(
@@ -52,13 +52,13 @@ final class WindowArchitectureTests: XCTestCase {
             savedFrame: oversizedSaved
         )
 
-        let layout = WindowLayoutEngine.layout(for: .floatingPanel, input: input)
+        let layout = WindowLayoutEngine.layout(for: .subtitleOverlay, input: input)
         let frame = layout?.frame ?? .zero
 
         XCTAssertTrue(visible.contains(frame))
     }
 
-    func testWindowLayoutEngineV2_floatingPanelClampsOversizedSavedFrameIntoVisibleBounds() {
+    func testWindowLayoutEngineV2_subtitleOverlayClampsOversizedSavedFrameIntoVisibleBounds() {
         let profile = DisplayProfileResolverV2.resolveProfile(
             screenFrame: NSRect(x: 0, y: 24, width: 1512, height: 956),
             visibleFrame: NSRect(x: 0, y: 24, width: 1512, height: 956),
@@ -69,7 +69,7 @@ final class WindowArchitectureTests: XCTestCase {
         )
         let oversizedSaved = NSRect(x: 86, y: -820, width: 1556, height: 1844)
         let request = WindowLayoutRequestV2(
-            surfaceID: .floatingPanel,
+            surfaceID: .subtitleOverlay,
             display: profile,
             systemState: .default,
             savedFrame: oversizedSaved
@@ -178,8 +178,8 @@ final class WindowArchitectureTests: XCTestCase {
     // MARK: - Architecture invariants
 
     /// Anything that constructs/presents a window outside WindowSystem /
-    /// MenuBar is a regression. WindowSystem owns the 4 main surfaces (main,
-    /// floatingPanel, captionMirror, operatorPanel); MenuBar owns its own
+    /// MenuBar is a regression. WindowSystem owns the main window and the
+    /// subtitle overlay; MenuBar owns its own
     /// affordances (NSStatusItem button, NSPopover, RecordingHudPanel) since
     /// they're conceptually the menu-bar app's entry surfaces, not stage-level
     /// windows that need WindowCoordinator's spec/chrome routing.
@@ -251,6 +251,8 @@ final class WindowArchitectureTests: XCTestCase {
             "WindowSystem/NotchSpaceManager.swift",
             "AppV2/FrontendSceneOrchestratorV2.swift",
             "ProjectionsV2/ProjectionAssemblerV2.swift",
+            "AppV2/OverlaySessionCoordinatorV2.swift",
+            "WindowSystemV2/Surfaces/OverlayControllersV2.swift",
         ]
 
         for path in mustNotExist {
@@ -288,50 +290,45 @@ final class WindowArchitectureTests: XCTestCase {
 
         XCTAssertFalse(contents.contains("case dynamicIsland"))
         XCTAssertTrue(contents.contains("case main"))
-        XCTAssertTrue(contents.contains("case floatingPanel"))
+        XCTAssertTrue(contents.contains("case subtitleOverlay"))
+        XCTAssertFalse(contents.contains("case floatingPanel"))
+        XCTAssertFalse(contents.contains("case captionMirror"))
+        XCTAssertFalse(contents.contains("case operatorPanel"))
     }
 
-    // MARK: - Overlay session V2 owns read-only mirror lifecycle
+    // MARK: - Single subtitle overlay lifecycle
 
-    func testWindowCoordinator_noLongerOwnsOverlaySessionLifecycleAuthority() throws {
+    func testWindowCoordinator_doesNotOwnSubtitleTogglePolicy() throws {
         let coordinatorSource = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Zulangue/WindowSystem/WindowCoordinator.swift")
         let contents = try String(contentsOf: coordinatorSource, encoding: .utf8)
 
-        let disallowedSnippets = [
-            "private var floatingPanelLifecycle = FloatingPanelLifecycle()",
-            "private var eventModeLifecycle = EventModeLifecycle()",
-            "func toggleFloatingPanel(",
-            "func toggleCaptionMirror(",
-        ]
-
-        for snippet in disallowedSnippets {
-            XCTAssertFalse(contents.contains(snippet), "WindowCoordinator.swift should not own overlay session lifecycle: \(snippet)")
-        }
+        XCTAssertFalse(contents.contains("func toggleSubtitleOverlay("))
+        XCTAssertTrue(contents.contains("func presentSubtitleOverlay("))
     }
 
-    func testWindowCommandRouter_routesOverlaySessionCommandsThroughOverlaySessionCoordinatorV2() throws {
+    func testWindowCommandRouter_routesSubtitleCommandThroughSubtitleCoordinator() throws {
         let routerSource = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Zulangue/WindowSystem/WindowCommandRouter.swift")
         let contents = try String(contentsOf: routerSource, encoding: .utf8)
 
-        XCTAssertTrue(contents.contains("OverlaySessionCoordinatorV2.shared.toggleFloatingPanel()"))
-        XCTAssertFalse(contents.contains("cycleFloatingDisplayMode"))
-        XCTAssertTrue(contents.contains("OverlaySessionCoordinatorV2.shared.toggleCaptionMirror()"))
+        XCTAssertTrue(contents.contains("SubtitleOverlayCoordinator.shared.toggle()"))
+        XCTAssertFalse(contents.contains("toggleCaptionMirror"))
+        XCTAssertFalse(contents.contains("toggleFloatingPanel"))
     }
 
-    func testZulangueApp_doesNotControlOverlaySessionsWhenCaptureChanges() throws {
+    func testZulangueApp_doesNotControlSubtitleOverlayWhenCaptureChanges() throws {
         let appSource = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Zulangue/ZulangueApp.swift")
         let contents = try String(contentsOf: appSource, encoding: .utf8)
 
-        XCTAssertFalse(contents.contains("OverlaySessionCoordinatorV2.shared.stopFloatingPanelIfNeeded()"))
+        XCTAssertFalse(contents.contains("SubtitleOverlayCoordinator.shared.dismiss()"))
     }
 
     // MARK: - Main window + navigation model

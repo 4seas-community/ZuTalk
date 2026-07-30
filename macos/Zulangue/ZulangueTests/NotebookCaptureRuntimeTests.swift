@@ -3840,7 +3840,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             encoding: .utf8
         )
         let overlays = try String(
-            contentsOf: root.appendingPathComponent("AppV2/OverlaySessionCoordinatorV2.swift"),
+            contentsOf: root.appendingPathComponent("AppV2/SubtitleOverlayCoordinator.swift"),
             encoding: .utf8
         )
         let activeCapture = try String(
@@ -3848,7 +3848,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             encoding: .utf8
         )
         let overlayViews = try String(
-            contentsOf: root.appendingPathComponent("WindowSystemV2/Surfaces/OverlayControllersV2.swift"),
+            contentsOf: root.appendingPathComponent("WindowSystemV2/Surfaces/SubtitleOverlayController.swift"),
             encoding: .utf8
         )
         let documentEditor = try String(
@@ -3927,12 +3927,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let laneTextView = String(
             captureViews[laneTextStart.lowerBound..<laneTextEnd.lowerBound]
         )
-        let captionStart = try XCTUnwrap(overlayViews.range(of: "struct CaptionViewV2: View"))
-        let captionEnd = try XCTUnwrap(
-            overlayViews[captionStart.upperBound...].range(of: "struct OperatorPanelViewV2: View")
-        )
-        let captionView = String(overlayViews[captionStart.lowerBound..<captionEnd.lowerBound])
-
         XCTAssertTrue(captureViews.contains("try await capture.start(notebookId: notebookId)"))
         XCTAssertTrue(captureViews.contains("try await capture.setPaused"))
         XCTAssertTrue(captureViews.contains("try await capture.stop()"))
@@ -4210,28 +4204,27 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(activeCapture.contains("import Synchronization"))
         XCTAssertTrue(activeCapture.contains("capture.error.profile_snapshot_unavailable"))
         XCTAssertFalse(activeCapture.contains("Capture profile snapshot is unavailable."))
-        XCTAssertTrue(overlays.contains("CaptionOverlayRowV2"))
         XCTAssertTrue(overlayViews.contains("if store.isCaptureActive == false"))
         XCTAssertTrue(overlayViews.contains("capture.transcript.waiting_lane"))
         XCTAssertTrue(overlayViews.contains("capture.transcript.unselected_language"))
         XCTAssertTrue(overlayViews.contains("capture.transcript.language_pending"))
-        XCTAssertTrue(overlayViews.contains("projectedLane.missingLaneState == .waiting"))
-        XCTAssertTrue(overlayViews.contains("projectedLane.missingLaneState == .failed"))
+        XCTAssertTrue(overlayViews.contains("lane.missingLaneState == .waiting"))
+        XCTAssertTrue(overlayViews.contains("lane.missingLaneState == .failed"))
         XCTAssertTrue(overlayViews.contains("capture.transcript.failed_lane"))
-        XCTAssertTrue(overlays.contains("selectedLanguages = capture.selectedLanguages"))
-        XCTAssertTrue(overlays.contains("projection: capture.projection(for: utterance)"))
+        XCTAssertTrue(overlayViews.contains("store.selectedLanguages"))
+        XCTAssertTrue(overlayViews.contains("store.projection(for: utterance)"))
         XCTAssertFalse(overlays.contains("commonCaptionLanguage"))
         XCTAssertTrue(overlayViews.contains("ForEach(Array(store.selectedLanguages.enumerated())"))
-        XCTAssertTrue(overlayViews.contains("ForEach(Array(row.projection.lanes.enumerated())"))
+        XCTAssertTrue(overlayViews.contains("ForEach(Array(projection.lanes.enumerated())"))
         XCTAssertFalse(overlayViews.contains("commonCaptionLanguage"))
         XCTAssertFalse(overlayViews.contains("capture.settings.languages.common_caption"))
         XCTAssertFalse(overlayViews.contains("isCommonCaption"))
         XCTAssertFalse(overlayViews.contains("index == 0"))
         XCTAssertFalse(overlayViews.contains("【超出当前语言对】"))
-        XCTAssertTrue(captionView.contains("ScrollView {"))
-        XCTAssertTrue(captionView.contains("LazyVStack(spacing: 16)"))
-        XCTAssertTrue(captionView.contains(".defaultScrollAnchor(.bottom)"))
-        XCTAssertTrue(overlayViews.contains("capture.mirror.caption_font"))
+        XCTAssertTrue(overlayViews.contains("ScrollView {"))
+        XCTAssertTrue(overlayViews.contains("LazyVStack(spacing: 10)"))
+        XCTAssertTrue(overlayViews.contains(".defaultScrollAnchor(.bottom)"))
+        XCTAssertTrue(overlayViews.contains("SubtitleOverlayFontPolicy"))
         XCTAssertFalse(overlayViews.contains("Text(\"Source:"))
         XCTAssertFalse(documentEditor.contains("struct TranscriptView: View"))
         XCTAssertTrue(captureViews.contains("NotebookRealtimeUtteranceView("))
@@ -4289,6 +4282,16 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 "capture.transcript.copy_success_live_detail",
                 "capture.transcript.copy_failed",
                 "capture.transcript.copy_clipboard_failed",
+                "subtitle.overlay.title",
+                "subtitle.overlay.accessibility_label",
+                "subtitle.overlay.language_count",
+                "subtitle.overlay.font_smaller",
+                "subtitle.overlay.font_larger",
+                "subtitle.overlay.move_resize_hint",
+                "capture.toolbar.subtitle_window.open",
+                "capture.toolbar.subtitle_window.close",
+                "menubar.recording.open_subtitles",
+                "menubar.recording.close_subtitles",
             ] {
                 XCTAssertTrue(strings.contains("\"\(key)\" ="), "\(locale) must define \(key)")
             }

@@ -493,8 +493,8 @@ struct NotebookCaptureToolbar: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundColor(.textOnBpDim)
-                        .help(String(localized: "capture.mirror.open_notebook_hint"))
-                        .accessibilityLabel(Text(String(localized: "capture.mirror.open_notebook")))
+                        .help(String(localized: "capture.open_notebook_hint"))
+                        .accessibilityLabel(Text(String(localized: "capture.open_notebook")))
                     }
                 } else {
                     startButton
@@ -666,6 +666,7 @@ struct NotebookRealtimeTranscriptPage: View {
     let onOpenAdvancedSettings: () -> Void
     @StateObject private var history = NotebookCaptureHistoryStore()
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var subtitleOverlay = SubtitleOverlayCoordinator.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -681,6 +682,7 @@ struct NotebookRealtimeTranscriptPage: View {
                     notebookId: notebookId,
                     profileEditor: editor
                 )
+                floatingSubtitleButton
             }
             .padding(.horizontal, Spacing.xl)
             .padding(.vertical, Spacing.sm)
@@ -725,6 +727,50 @@ struct NotebookRealtimeTranscriptPage: View {
     private var activeSessionSpeakerIds: [String] {
         guard capture.notebookId == notebookId else { return [] }
         return Array(Set(capture.utterances.compactMap(\.sessionSpeakerId))).sorted()
+    }
+
+    private var floatingSubtitleButton: some View {
+        let isAvailable = capture.isCaptureActive && capture.notebookId == notebookId
+        let isPresented = subtitleOverlay.isPresented
+        let title = isPresented
+            ? String(localized: "capture.toolbar.subtitle_window.close")
+            : String(localized: "capture.toolbar.subtitle_window.open")
+
+        return Button {
+            WindowCommandRouter.shared.requestToggleSubtitleOverlay()
+        } label: {
+            Image(systemName: isPresented ? "pip.exit" : "pip.enter")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(isPresented ? .brandAccent : .bpLine)
+        .background(
+            RoundedRectangle(cornerRadius: Radius.xs)
+                .fill(isPresented ? Color.brandAccent.opacity(0.14) : Color.bpBlueLight.opacity(0.65))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.xs)
+                .strokeBorder(
+                    isPresented ? Color.brandAccent.opacity(0.5) : Color.bpLineGhost.opacity(0.25),
+                    lineWidth: 0.5
+                )
+        )
+        .disabled(isAvailable == false)
+        .opacity(isAvailable ? 1 : 0.45)
+        .help(
+            isAvailable
+                ? String(localized: "capture.toolbar.subtitle_window.hint")
+                : String(localized: "capture.toolbar.subtitle_window.unavailable_hint")
+        )
+        .accessibilityLabel(Text(title))
+        .accessibilityHint(Text(
+            isAvailable
+                ? String(localized: "capture.toolbar.subtitle_window.hint")
+                : String(localized: "capture.toolbar.subtitle_window.unavailable_hint")
+        ))
+        .accessibilityIdentifier(AccessibilityID.floatingSubtitleButton)
     }
 }
 

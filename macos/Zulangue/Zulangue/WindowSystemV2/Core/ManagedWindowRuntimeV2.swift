@@ -40,11 +40,6 @@ enum ManagedWindowRuntimeV2 {
             break
         case .clear:
             window.backgroundColor = .clear
-        case .captionBackdrop:
-            window.backgroundColor = NSColor.dynamic(
-                dark: NSColor(hex: 0x050505, opacity: 0.85),
-                light: NSColor(hex: 0xF7F7F7, opacity: 0.92)
-            )
         }
 
         if let panel = window as? NSPanel {

@@ -320,7 +320,6 @@
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "键盘快捷键";
 "settings.shortcuts.subtitle" = "Zulangue 动作的全局快捷键。";
-"settings.shortcuts.toggle_floating" = "切换浮窗";
 "settings.shortcuts.toggle_recording" = "打开 Notebook 录音";
 "settings.shortcuts.cycle_display" = "切换显示模式";
 "settings.shortcuts.font_bigger" = "增大字号";
@@ -357,10 +356,6 @@
 "diagnostics.operational.severity.blocked" = "阻塞";
 
 /* Toast — Floating panel */
-"toast.floating.need_key.title" = "浮窗需要 Soniox 密钥";
-"toast.floating.ready.title" = "浮窗就绪";
-"toast.floating.ready.detail" = "Soniox 监听中 · 自动语言检测";
-"toast.floating.start_failed.title" = "浮窗启动失败";
 
 /* Toast — Microphone */
 "toast.mic.denied.title" = "麦克风权限被拒绝";
@@ -589,7 +584,6 @@
 
 /* Menu Bar status item — popover content */
 "menubar.action.recording" = "开始录音";
-"menubar.action.float" = "浮动转录窗";
 "menubar.action.settings" = "设置";
 "updates.check" = "检查更新…";
 "updates.unavailable.title" = "尚未配置更新";
@@ -603,6 +597,8 @@
 "menubar.recording.resume" = "继续";
 "menubar.recording.stop" = "停止";
 "menubar.recording.live_transcript" = "实时转录";
+"menubar.recording.open_subtitles" = "打开实时字幕";
+"menubar.recording.close_subtitles" = "关闭实时字幕";
 "menubar.recording.open_notebook" = "打开笔记本";
 "menubar.processing.open_session" = "打开会话";
 "menubar.suppressed.privacy.title" = "麦克风权限被拒绝";
@@ -657,10 +653,6 @@
 "a11y.record.hint_stop" = "双击停止当前录音";
 "a11y.record.hint_start" = "双击开始新录音";
 "a11y.session_card" = "%@, %@, 时长 %@";
-"a11y.floating_panel" = "实时转录浮窗";
-"a11y.floating_panel_hint" = "显示实时语音转录内容";
-"a11y.caption_window" = "字幕投屏窗口";
-"a11y.caption_window_langs" = "%lld 种语言";
 
 /* Notebook 多语言录音 */
 "common.close" = "关闭";
@@ -679,18 +671,18 @@
 "capture.route.unavailable_detail" = "Zulangue 本地服务尚未就绪。";
 "session.route.unavailable" = "无法打开录音";
 "session.route.unavailable_detail" = "录音内容没有被更改，请重试。";
-"capture.mirror.open_notebook" = "打开 Notebook";
-"capture.mirror.open_notebook_hint" = "录音控制仅在所属 Notebook 内提供。";
-"capture.mirror.read_only" = "字幕镜像 · 只读";
-"capture.mirror.idle" = "请在 Notebook 开始录音";
-"capture.mirror.recording" = "正在 Notebook 中录音";
-"capture.mirror.recording_degraded" = "本地录音继续 · 远端不可用";
-"capture.mirror.paused" = "已在 Notebook 中暂停";
-"capture.mirror.draining" = "正在完成 Notebook 录音";
-"capture.mirror.left_column_format" = "左列：%@";
-"capture.mirror.right_column_format" = "右列：%@";
-"capture.mirror.auto_language" = "自动";
-"capture.mirror.caption_font" = "字幕字号";
+"capture.open_notebook" = "打开 Notebook";
+"capture.open_notebook_hint" = "录音控制仅在所属 Notebook 内提供。";
+"subtitle.overlay.title" = "实时字幕";
+"subtitle.overlay.read_only" = "实时字幕 · 只读";
+"subtitle.overlay.accessibility_label" = "多语言实时字幕悬浮窗";
+"subtitle.overlay.language_count" = "%lld 种语言";
+"subtitle.overlay.waiting" = "正在等待语音…";
+"subtitle.overlay.recording_ended" = "录音已结束";
+"subtitle.overlay.font_size" = "字幕字号";
+"subtitle.overlay.font_smaller" = "减小字幕";
+"subtitle.overlay.font_larger" = "放大字幕";
+"subtitle.overlay.move_resize_hint" = "拖动窗口可移动；拖动任意边缘或四角可调整大小。";
 "capture.toolbar.start" = "开始录音";
 "capture.toolbar.starting" = "正在开始…";
 "capture.toolbar.start_hint" = "开始录音并按所选语言实时转录；服务暂时不可用时，录音仍会继续。";
@@ -701,6 +693,10 @@
 "capture.toolbar.stop" = "停止";
 "capture.toolbar.stop_hint" = "停止音频输入；若已启用远端处理，Zulangue 还会等待远端返回尾部 token。";
 "capture.toolbar.active_other_notebook" = "录音归属于另一个 Notebook";
+"capture.toolbar.subtitle_window.open" = "打开实时字幕";
+"capture.toolbar.subtitle_window.close" = "关闭实时字幕";
+"capture.toolbar.subtitle_window.hint" = "打开一个始终置顶的多语言实时字幕窗口。";
+"capture.toolbar.subtitle_window.unavailable_hint" = "请先在当前 Notebook 开始录音，再打开实时字幕。";
 "capture.toast.start_failed" = "无法开始录音";
 "capture.toast.pause_failed" = "无法切换录音状态";
 "capture.toast.stop_failed" = "无法停止录音";

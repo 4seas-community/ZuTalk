@@ -10,7 +10,7 @@ struct MenuBarIdleView: View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             MenuBarActionRow(
                 systemImage: "record.circle.fill",
-                title: String(localized: "capture.mirror.open_notebook"),
+                title: String(localized: "capture.open_notebook"),
                 tint: Color.brandAccent,
                 accessibilityID: AccessibilityID.menuBarRecordButton,
                 action: "recording"

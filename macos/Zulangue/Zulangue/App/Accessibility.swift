@@ -23,19 +23,12 @@ extension View {
             )
     }
 
-    /// 为浮窗面板添加辅助功能
-    func floatingPanelAccessibility() -> some View {
+    /// 为实时字幕悬浮窗添加辅助功能
+    func subtitleOverlayAccessibility(languageCount: Int) -> some View {
         self
-            .accessibilityLabel(Text("a11y.floating_panel"))
-            .accessibilityHint(Text("a11y.floating_panel_hint"))
-    }
-
-    /// 为字幕窗口添加辅助功能
-    func captionWindowAccessibility(languageCount: Int) -> some View {
-        self
-            .accessibilityLabel(Text("a11y.caption_window"))
+            .accessibilityLabel(Text("subtitle.overlay.accessibility_label"))
             .accessibilityValue(
-                Text(String(format: String(localized: "a11y.caption_window_langs"), languageCount))
+                Text(String(format: String(localized: "subtitle.overlay.language_count"), languageCount))
             )
     }
 }

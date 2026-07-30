@@ -8,14 +8,12 @@ extension NSApplication {
     @objc func sendMenuBarAction(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? String else { return }
         switch action {
-        case "float":
-            WindowCommandRouter.shared.requestToggleFloatingPanel()
+        case "subtitles":
+            WindowCommandRouter.shared.requestToggleSubtitleOverlay()
         case "recording":
             WindowCommandRouter.shared.openMainWindow(detail: "menu-bar.popover.open-capture-notebook") {
                 MainNavigationStoreV2.shared.openActiveNotebookForCapture()
             }
-        case "captionMirror":
-            WindowCommandRouter.shared.requestToggleCaptionMirror()
         case "settings":
             WindowCommandRouter.shared.requestOpenSettings()
         case "checkForUpdates":

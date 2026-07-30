@@ -281,13 +281,8 @@ extension Color {
     static var ledOffOnBp:   Color { line15 }
     static var ledOffOnHw:   Color { line15 }
 
-    // ─── Grid / caption ──────────────────────────────────────
+    // ─── Grid ────────────────────────────────────────────────
     static var gridLine: Color { line05 }
-    static let captionBackground: Color = .dynamic(
-        dark: NSColor(hex: 0x002A1D, opacity: 0.90),
-        light: NSColor(hex: 0xF7F7F7, opacity: 0.92)
-    )
-    static var captionPrimary: Color { line100 }
 
 }
 
