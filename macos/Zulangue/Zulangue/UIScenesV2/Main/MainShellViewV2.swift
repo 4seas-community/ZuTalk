@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MainShellViewV2: View {
     @ObservedObject private var store: MainNavigationStoreV2
+    @ObservedObject private var communityInvite = CommunityInviteSession.shared
     @State private var isSidebarHidden = false
 
     init(store: MainNavigationStoreV2) {
@@ -183,6 +184,32 @@ struct MainShellViewV2: View {
                 .fill(Color.bpLineGhost.opacity(0.4))
                 .frame(height: 0.5)
 
+            Button {
+                store.presentOnboarding()
+            } label: {
+                Label(
+                    String(localized: "sidebar.help"),
+                    systemImage: "questionmark.circle"
+                )
+                .font(.bodySM)
+                .foregroundColor(.textOnBpDim)
+                .frame(minHeight: 36)
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "sidebar.help.hint"))
+            .accessibilityIdentifier("sidebar.help")
+
+            if communityInvite.isEnabled, communityInvite.isActive {
+                Label(
+                    communityTimeLabel,
+                    systemImage: "gift.fill"
+                )
+                .font(.bodySM)
+                .foregroundColor(.textOnBpDim)
+                .accessibilityIdentifier("sidebar.community-invite.remaining")
+                .task { await communityInvite.refreshQuota() }
+            }
+
             HStack(spacing: Spacing.sm) {
                 Label(
                     String(localized: "sidebar.local_first"),
@@ -206,6 +233,17 @@ struct MainShellViewV2: View {
                 .accessibilityIdentifier(AccessibilityID.mainTabConfig)
             }
         }
+    }
+
+    private var communityTimeLabel: String {
+        guard let seconds = communityInvite.remainingSeconds else {
+            return String(localized: "community_invite.active")
+        }
+        let hours = max(0, seconds / 3_600)
+        return String(
+            format: String(localized: "community_invite.remaining_hours_format"),
+            Int64(hours)
+        )
     }
 
     private var contentArea: some View {

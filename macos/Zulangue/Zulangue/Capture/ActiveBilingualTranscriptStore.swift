@@ -449,6 +449,7 @@ protocol NotebookCaptureClienting: AnyObject {
     func listNotebookCaptureHistory(notebookId: String) throws -> [NotebookCaptureHistoryRunDTO]
     func retryNotebookCaptureProjection(sessionId: String) throws -> NotebookCaptureEventDTO
     func retryNotebookAsyncProjection(sessionId: String) throws -> NotebookCaptureEventDTO
+    func requestNotebookAsyncTranscription(sessionId: String) throws -> NotebookCaptureEventDTO
     func replaceNotebookUtteranceLane(
         utteranceId: String,
         laneLanguage: String,
@@ -464,6 +465,12 @@ extension NotebookCaptureClienting {
     func listNotebookCaptureHistory(
         notebookId: String
     ) throws -> [NotebookCaptureHistoryRunDTO] {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
+    func requestNotebookAsyncTranscription(
+        sessionId: String
+    ) throws -> NotebookCaptureEventDTO {
         throw NotebookCaptureClientError.ffiUnavailable
     }
 
@@ -771,6 +778,12 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
 
     func retryNotebookAsyncProjection(sessionId: String) throws -> NotebookCaptureEventDTO {
         Self.map(try requireCore().retryNotebookAsyncProjection(sessionId: sessionId))
+    }
+
+    func requestNotebookAsyncTranscription(
+        sessionId: String
+    ) throws -> NotebookCaptureEventDTO {
+        Self.map(try requireCore().requestNotebookAsyncTranscription(sessionId: sessionId))
     }
 
     func replaceNotebookUtteranceLane(
@@ -2830,8 +2843,24 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                 )
                 apply(event)
                 MenuBarRuntimeStore.shared.updateRecording { $0.isPaused = true }
-            } catch {
-                // Rust did not accept the pause. Restore local recording with
+            } catch let pauseError {
+                // The Rust transition and its response are not one failure
+                // boundary: SQLite may already contain Paused even if a later
+                // provider-health write or FFI response failed. Reconcile the
+                // durable state before reopening the microphone, otherwise a
+                // successful pause is falsely reported as failed and local
+                // audio resumes against a paused capture.
+                if let authoritative = try? client.getNotebookCaptureSessionEvent(
+                    sessionId: sessionId
+                ),
+                   authoritative.sessionId == sessionId,
+                   authoritative.captureState == .paused {
+                    apply(authoritative)
+                    MenuBarRuntimeStore.shared.updateRecording { $0.isPaused = true }
+                    return
+                }
+
+                // Rust did not commit the pause. Restore local recording with
                 // one fresh microphone generation; if that cannot be done,
                 // fail closed and durably interrupt the run.
                 if terminalSessionId == nil, captureState.isActive {
@@ -2853,12 +2882,24 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                         )
                     }
                 }
-                throw error
+                throw pauseError
             }
             return
         }
 
-        let event = try client.pauseNotebookCaptureSession(sessionId: sessionId, paused: false)
+        let event: NotebookCaptureEventDTO
+        do {
+            event = try client.pauseNotebookCaptureSession(sessionId: sessionId, paused: false)
+        } catch let resumeError {
+            guard let authoritative = try? client.getNotebookCaptureSessionEvent(
+                sessionId: sessionId
+            ),
+            authoritative.sessionId == sessionId,
+            authoritative.captureState == .recording else {
+                throw resumeError
+            }
+            event = authoritative
+        }
         guard terminalSessionId == nil,
               self.sessionId == sessionId,
               captureState.isActive,

@@ -1,0 +1,16 @@
+[Unit]
+Description=Zulangue community invite service
+After=network-online.target
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/zulangue-community-invite
+EnvironmentFile=/home/exedev/zulangue-community-invite/service.env
+ExecStart=/usr/bin/python3 server.py --db /home/exedev/zulangue-community-invite/data/invites.db serve --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=2
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

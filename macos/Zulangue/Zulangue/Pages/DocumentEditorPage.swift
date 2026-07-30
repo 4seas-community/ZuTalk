@@ -1228,6 +1228,20 @@ private struct AsyncTranscriptView: View {
                 .font(.captionMedium)
                 .foregroundColor(.textOnBpDim)
             Spacer(minLength: Spacing.md)
+            if canRequestAsyncTranscription {
+                Button {
+                    requestAsyncTranscription()
+                } label: {
+                    Label(
+                        String(localized: "editor.transcript.async.start"),
+                        systemImage: "waveform.badge.plus"
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .frame(minHeight: 44)
+                .disabled(isRequestingAsyncTranscription)
+            }
             if asyncProjectionState == .failed {
                 Button {
                     retryLocalProjection()
@@ -1251,6 +1265,31 @@ private struct AsyncTranscriptView: View {
         .frame(minHeight: 52)
         .background(Color.bpBlueDeep.opacity(0.2))
         .accessibilityElement(children: .contain)
+    }
+
+    private var isRequestingAsyncTranscription: Bool {
+        projectionStore.requestingAsyncTranscriptionSessions.contains(sessionId)
+    }
+
+    private var canRequestAsyncTranscription: Bool {
+        asyncProjectionState == NotebookAsyncProjectionState.none
+            && (asyncProviderState == nil || asyncProviderState == "none")
+    }
+
+    private func requestAsyncTranscription() {
+        Task { @MainActor in
+            do {
+                try await projectionStore.requestAsyncTranscription(
+                    sessionId: sessionId,
+                    notebookId: notebookId
+                )
+            } catch {
+                ToastCenter.shared.error(
+                    String(localized: "editor.transcript.async.start_failed"),
+                    detail: error.localizedDescription
+                )
+            }
+        }
     }
 
     private var asyncStatusText: String {

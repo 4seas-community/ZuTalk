@@ -21,9 +21,9 @@
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "Continue →";
-"onboarding.welcome.bullet1" = "Follow the room through live multilingual captions.";
-"onboarding.welcome.bullet2" = "Take notes alongside the conversation as it unfolds.";
-"onboarding.welcome.bullet3" = "Afterward, edit and organize the recording, captions, and notes together.";
+"onboarding.welcome.bullet1" = "Create a Notebook for one kind of conversation, such as “English interviews.”";
+"onboarding.welcome.bullet2" = "Open the Notebook and click Start Recording.";
+"onboarding.welcome.bullet3" = "When you stop, find the captions, audio, and notes together.";
 "onboarding.welcome.privacy" = "Data stays on this Mac by default. You choose whether to enable remote transcription for each meeting.";
 "onboarding.visual.live" = "LIVE TRANSCRIPT";
 "onboarding.visual.speaker.host" = "Host";
@@ -49,10 +49,26 @@
 "onboarding.permissions.continue" = "ENTER ZULANGUE →";
 
 /* Onboarding — API Keys */
-"onboarding.keys.title" = "Connect Soniox";
-"onboarding.keys.subtitle" = "Add your Soniox API key now, or skip and configure it later in Settings.";
-"onboarding.keys.voice_label" = "LIVE TRANSCRIPTION · STT-RT-V5";
-"onboarding.keys.soniox.help" = "Verification opens one short Soniox connection and sends no audio.";
+"onboarding.keys.title" = "Turn on live captions";
+"onboarding.keys.subtitle" = "Use a community invitation or connect your own transcription service.";
+"onboarding.keys.own_key.option" = "My own key";
+"community_invite.option" = "Community invite";
+"community_invite.placeholder" = "Enter invitation code";
+"community_invite.action" = "Activate invitation";
+"community_invite.active" = "Community invitation active";
+"community_invite.thirty_hours" = "5 Give · about 30 hours";
+"community_invite.shared_detail" = "Live transcription, translation, and audio-file transcription share this time.";
+"community_invite.invalid" = "That invitation code is not valid. Check with the person who invited you.";
+"community_invite.unavailable" = "The community service is temporarily unavailable. Try again later.";
+"community_invite.remaining_hours_format" = "About %lld hours left";
+"editor.transcript.async.start" = "Transcribe this audio";
+"editor.transcript.async.start_failed" = "Could not start audio transcription";
+"onboarding.keys.voice_label" = "LIVE CAPTION SERVICE";
+"onboarding.keys.guide.create" = "Sign up";
+"onboarding.keys.guide.copy" = "Copy key";
+"onboarding.keys.guide.paste" = "Paste below";
+"onboarding.keys.open_soniox" = "Get a key from Soniox";
+"onboarding.keys.soniox.help" = "Verify & Save only checks that the key works. It does not upload a recording.";
 "onboarding.keys.paste" = "Soniox API key";
 "onboarding.keys.verify_and_save" = "Verify & Save";
 "onboarding.keys.verify_saved" = "Verify Connection";
@@ -63,10 +79,13 @@
 /* Onboarding — Step Indicator */
 "onboarding.step.signup" = "Meet Zulangue";
 "onboarding.step.setup" = "Ready to record";
-"onboarding.step.tryout" = "API Keys";
+"onboarding.step.tryout" = "Live captions";
 
 /* Onboarding — Common */
 "onboarding.common.back" = "← BACK";
+
+"sidebar.help" = "How to use Zulangue";
+"sidebar.help.hint" = "Open the getting-started guide again";
 
 /* Library */
 "library.title" = "Sessions";
@@ -471,6 +490,13 @@
 "home.capture.owner_elsewhere" = "Owned by another Notebook";
 "home.no_notebook.title" = "Create your first Notebook";
 "home.no_notebook.description" = "A Notebook keeps recordings, transcripts, notes, and optional transcription references together.";
+"home.first_use.step1.title" = "Create a Notebook";
+"home.first_use.step1.detail" = "Think of it as a folder for one kind of conversation.";
+"home.first_use.step2.title" = "Start recording";
+"home.first_use.step2.detail" = "Open the Notebook. The red recording button is at the top.";
+"home.first_use.step3.title" = "Review the result";
+"home.first_use.step3.detail" = "After you stop, the captions, audio, and notes stay together.";
+"home.first_use.action" = "Create my first Notebook";
 "home.import.action" = "Import audio";
 "home.import.in_progress" = "Importing…";
 "home.import.panel.title" = "Import audio into Notebook";

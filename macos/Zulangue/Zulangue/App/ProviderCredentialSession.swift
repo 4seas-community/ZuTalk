@@ -1081,6 +1081,23 @@ final class ProviderCredentialSession: ObservableObject, ProviderCredentialSessi
         }
     }
 
+    /// Installs a short-lived credential for the current process without
+    /// writing it to the durable provider credential document.
+    func activateProcessOnlyCredential(
+        _ value: String,
+        for account: ProviderCredentialAccount
+    ) throws {
+        defer { publishStatusChange() }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.isEmpty == false else {
+            throw ProviderCredentialSessionError.emptyValue
+        }
+        try runtime.setApiKey(scope: account.scope, value: normalized)
+        guard runtime.hasApiKey(scope: account.scope) else {
+            throw ProviderCredentialSessionError.activationFailed(account.scope)
+        }
+    }
+
     func activateSavedCredentials() throws {
         savedAccounts = []
         recoveryErrorDescription = nil

@@ -62,4 +62,13 @@ final class OnboardingControllerTests: XCTestCase {
             [.welcome, .credential, .permissions, .finished]
         )
     }
+
+    func testHelpCanPresentOnboardingAgain() {
+        let store = MainNavigationStoreV2()
+        store.completeOnboarding()
+
+        store.presentOnboarding()
+
+        XCTAssertTrue(store.needsOnboarding)
+    }
 }

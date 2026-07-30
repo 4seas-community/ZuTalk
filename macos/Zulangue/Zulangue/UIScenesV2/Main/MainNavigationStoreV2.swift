@@ -78,6 +78,11 @@ final class MainNavigationStoreV2: ObservableObject {
         recordSnapshot()
     }
 
+    func presentOnboarding() {
+        needsOnboarding = true
+        recordSnapshot()
+    }
+
     func select(tab: MainTab) {
         let route = route(for: tab)
         activeTab = route.tab

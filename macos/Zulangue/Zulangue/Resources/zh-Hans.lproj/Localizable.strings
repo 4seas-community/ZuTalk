@@ -21,9 +21,9 @@
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "继续 →";
-"onboarding.welcome.bullet1" = "实时呈现多语言字幕，让每个人都能跟上现场。";
-"onboarding.welcome.bullet2" = "边看交流内容，边记录自己的重点和想法。";
-"onboarding.welcome.bullet3" = "会后结合录音、字幕和笔记，继续编辑与整理。";
+"onboarding.welcome.bullet1" = "为一类对话建一个 Notebook，例如“英语面试”。";
+"onboarding.welcome.bullet2" = "打开 Notebook，点击“开始录音”。";
+"onboarding.welcome.bullet3" = "停止后，在同一个地方查看字幕、录音和笔记。";
 "onboarding.welcome.privacy" = "数据默认保存在这台 Mac；远端转录由你在具体会议中开启。";
 "onboarding.visual.live" = "现场转录";
 "onboarding.visual.speaker.host" = "主持人";
@@ -49,10 +49,26 @@
 "onboarding.permissions.continue" = "进入 Zulangue →";
 
 /* Onboarding — API Keys */
-"onboarding.keys.title" = "连接 Soniox";
-"onboarding.keys.subtitle" = "现在添加 Soniox API 密钥，或先跳过，稍后在设置中配置。";
-"onboarding.keys.voice_label" = "实时转录 · STT-RT-V5";
-"onboarding.keys.soniox.help" = "验证只会建立一次短暂的 Soniox 连接，不会发送音频。";
+"onboarding.keys.title" = "开启实时字幕";
+"onboarding.keys.subtitle" = "使用社区邀请码，或者连接自己的转录服务。";
+"onboarding.keys.own_key.option" = "自己的 Key";
+"community_invite.option" = "社区邀请码";
+"community_invite.placeholder" = "输入邀请码";
+"community_invite.action" = "启用邀请";
+"community_invite.active" = "社区邀请已生效";
+"community_invite.thirty_hours" = "5 Give · 约 30 小时";
+"community_invite.shared_detail" = "实时转录、翻译和音频文件转录共用这段时间。";
+"community_invite.invalid" = "邀请码无效，请向邀请人确认。";
+"community_invite.unavailable" = "社区服务暂时不可用，请稍后再试。";
+"community_invite.remaining_hours_format" = "剩余约 %lld 小时";
+"editor.transcript.async.start" = "转录这段音频";
+"editor.transcript.async.start_failed" = "无法开始音频转录";
+"onboarding.keys.voice_label" = "实时字幕服务";
+"onboarding.keys.guide.create" = "注册";
+"onboarding.keys.guide.copy" = "复制密钥";
+"onboarding.keys.guide.paste" = "粘贴到下方";
+"onboarding.keys.open_soniox" = "前往 Soniox 获取密钥";
+"onboarding.keys.soniox.help" = "点击“验证并保存”只检查密钥是否可用，不会上传录音。";
 "onboarding.keys.paste" = "Soniox API 密钥";
 "onboarding.keys.verify_and_save" = "验证并保存";
 "onboarding.keys.verify_saved" = "验证连接";
@@ -63,10 +79,13 @@
 /* Onboarding — Step Indicator */
 "onboarding.step.signup" = "认识 Zulangue";
 "onboarding.step.setup" = "准备录音";
-"onboarding.step.tryout" = "密钥";
+"onboarding.step.tryout" = "实时字幕";
 
 /* Onboarding — Common */
 "onboarding.common.back" = "← 返回";
+
+"sidebar.help" = "使用帮助";
+"sidebar.help.hint" = "重新打开新手引导";
 
 /* Library */
 "library.title" = "会话";
@@ -471,6 +490,13 @@
 "home.capture.owner_elsewhere" = "归属于另一个 Notebook";
 "home.no_notebook.title" = "创建第一个 Notebook";
 "home.no_notebook.description" = "Notebook 统一管理录音、转录、笔记和可选的识别参考资料。";
+"home.first_use.step1.title" = "先创建 Notebook";
+"home.first_use.step1.detail" = "把它理解成一个文件夹，用来收纳同一类对话。";
+"home.first_use.step2.title" = "再开始录音";
+"home.first_use.step2.detail" = "进入 Notebook 后，红色录音按钮就在顶部。";
+"home.first_use.step3.title" = "最后查看结果";
+"home.first_use.step3.detail" = "停止录音后，字幕、音频和笔记都会留在里面。";
+"home.first_use.action" = "创建我的第一个 Notebook";
 "home.import.action" = "导入音频";
 "home.import.in_progress" = "正在导入…";
 "home.import.panel.title" = "导入音频到 Notebook";

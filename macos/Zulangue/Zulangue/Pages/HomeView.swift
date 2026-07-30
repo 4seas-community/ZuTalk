@@ -38,7 +38,16 @@ struct HomeView: View {
         .background(Color.bpBlue)
         .sheet(isPresented: $isCreatingNotebook) {
             HomeCreateNotebookSheet { title in
-                viewModel.createNotebook(title: title)
+                let created = viewModel.createNotebook(title: title)
+                if created, let notebookId = viewModel.activeNotebookId {
+                    // The first successful action should lead straight to the
+                    // recording surface instead of asking a novice to find and
+                    // reopen the Notebook they just created.
+                    DispatchQueue.main.async {
+                        openNotebook(notebookId)
+                    }
+                }
+                return created
             }
         }
         .onAppear {
@@ -452,8 +461,27 @@ private struct HomeNoNotebookView: View {
                     .frame(maxWidth: 460)
             }
 
+            HStack(alignment: .top, spacing: Spacing.md) {
+                firstUseStep(
+                    number: "1",
+                    title: String(localized: "home.first_use.step1.title"),
+                    detail: String(localized: "home.first_use.step1.detail")
+                )
+                firstUseStep(
+                    number: "2",
+                    title: String(localized: "home.first_use.step2.title"),
+                    detail: String(localized: "home.first_use.step2.detail")
+                )
+                firstUseStep(
+                    number: "3",
+                    title: String(localized: "home.first_use.step3.title"),
+                    detail: String(localized: "home.first_use.step3.detail")
+                )
+            }
+            .frame(maxWidth: 720)
+
             HomeActionButton(
-                title: String(localized: "home.notebook.new"),
+                title: String(localized: "home.first_use.action"),
                 icon: "plus",
                 style: .primary,
                 action: onCreate
@@ -469,6 +497,34 @@ private struct HomeNoNotebookView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 420)
         .padding(Spacing.xl)
+    }
+
+    private func firstUseStep(number: String, title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text(number)
+                .font(.captionMedium)
+                .foregroundColor(.brandAccentForeground)
+                .frame(width: 24, height: 24)
+                .background(Color.brandAccent)
+                .clipShape(Circle())
+
+            Text(title)
+                .font(.bodyMedium)
+                .foregroundColor(.bpLine)
+
+            Text(detail)
+                .font(.bodySM)
+                .foregroundColor(.textOnBpDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Spacing.md)
+        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+        .background(Color.bpBlueLight.opacity(0.3))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.sm)
+                .strokeBorder(Color.bpLineGhost.opacity(0.55), lineWidth: Stroke.thin)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
     }
 }
 

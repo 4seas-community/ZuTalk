@@ -1,5 +1,5 @@
 // OnboardingView.swift
-// 首次启动引导 — Welcome → Soniox → Microphone permission → 完成
+// 首次启动引导 — 认识产品 → 开启实时字幕 → 麦克风 → 完成
 // Zulangue onboarding。
 // 每一步都由用户主动点击继续，不自动推进。
 //
@@ -639,11 +639,26 @@ struct WelcomeScreen: View {
 
             Spacer().frame(height: 40)
 
-            // 核心能力
-            VStack(alignment: .leading, spacing: 18) {
-                bullet(icon: "captions.bubble", key: "onboarding.welcome.bullet1", delayIdx: 0)
-                bullet(icon: "note.text", key: "onboarding.welcome.bullet2", delayIdx: 1)
-                bullet(icon: "rectangle.stack", key: "onboarding.welcome.bullet3", delayIdx: 2)
+            // 用用户会实际执行的三步解释产品，不要求先理解 Notebook / Session。
+            VStack(alignment: .leading, spacing: 12) {
+                journeyStep(
+                    number: "1",
+                    icon: "book.closed.fill",
+                    key: "onboarding.welcome.bullet1",
+                    delayIdx: 0
+                )
+                journeyStep(
+                    number: "2",
+                    icon: "record.circle",
+                    key: "onboarding.welcome.bullet2",
+                    delayIdx: 1
+                )
+                journeyStep(
+                    number: "3",
+                    icon: "text.page",
+                    key: "onboarding.welcome.bullet3",
+                    delayIdx: 2
+                )
             }
 
             HStack(alignment: .top, spacing: 10) {
@@ -681,8 +696,19 @@ struct WelcomeScreen: View {
         .onAppear { appeared = true }
     }
 
-    private func bullet(icon: String, key: LocalizedStringKey, delayIdx: Int) -> some View {
+    private func journeyStep(
+        number: String,
+        icon: String,
+        key: LocalizedStringKey,
+        delayIdx: Int
+    ) -> some View {
         HStack(spacing: 14) {
+            Text(number)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.brandAccentForeground)
+                .frame(width: 24, height: 24)
+                .background(Color.brandAccent)
+                .clipShape(Circle())
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .regular))
                 .foregroundColor(Color.textOnBpFaint)
@@ -703,10 +729,13 @@ struct WelcomeScreen: View {
 struct SonioxCredentialScreen: View {
     @ObservedObject var viewModel: ProviderConnectionsViewModel
     @ObservedObject private var verificationStore = ProviderConnectionVerificationStore.shared
+    @ObservedObject private var communityInvite = CommunityInviteSession.shared
     var onContinue: () -> Void
     var onBack: () -> Void
 
     @State private var draft = ""
+    @State private var inviteCode = ""
+    @State private var usesCommunityInvite = true
     @State private var errorMessage: String?
     @State private var isWorking = false
     @State private var appeared = false
@@ -741,6 +770,15 @@ struct SonioxCredentialScreen: View {
             Spacer().frame(height: 28)
 
             VStack(alignment: .leading, spacing: 16) {
+                Picker("", selection: $usesCommunityInvite) {
+                    Text("community_invite.option").tag(true)
+                    Text("onboarding.keys.own_key.option").tag(false)
+                }
+                .pickerStyle(.segmented)
+
+                if usesCommunityInvite {
+                    communityInviteForm
+                } else {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Soniox")
@@ -767,6 +805,29 @@ struct SonioxCredentialScreen: View {
                     .buttonStyle(.bordered)
                     .disabled(verificationState == .checking)
                 } else {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "1.circle.fill")
+                        Text("onboarding.keys.guide.create")
+                        Image(systemName: "arrow.right")
+                        Image(systemName: "2.circle.fill")
+                        Text("onboarding.keys.guide.copy")
+                        Image(systemName: "arrow.right")
+                        Image(systemName: "3.circle.fill")
+                        Text("onboarding.keys.guide.paste")
+                    }
+                    .font(.caption)
+                    .foregroundColor(.textOnBpDim)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    Link(destination: URL(string: "https://console.soniox.com")!) {
+                        Label(
+                            String(localized: "onboarding.keys.open_soniox"),
+                            systemImage: "arrow.up.right.square"
+                        )
+                        .frame(minHeight: 32)
+                    }
+                    .font(.bodyMedium)
+
                     SecureField(
                         String(localized: "onboarding.keys.paste"),
                         text: $draft
@@ -796,6 +857,7 @@ struct SonioxCredentialScreen: View {
                     .font(.caption)
                     .foregroundColor(.textOnBpFaint)
                     .fixedSize(horizontal: false, vertical: true)
+                }
 
                 if let errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -823,10 +885,14 @@ struct SonioxCredentialScreen: View {
                 Spacer()
 
                 OnbPillButton(
-                    title: verificationState.isReady
+                    title: (verificationState.isReady
+                        || (usesCommunityInvite && communityInvite.isActive))
                         ? "onboarding.keys.continue"
                         : "onboarding.keys.skip",
-                    style: verificationState.isReady ? .primary : .ghost,
+                    style: (verificationState.isReady
+                        || (usesCommunityInvite && communityInvite.isActive))
+                        ? .primary
+                        : .ghost,
                     action: onContinue
                 )
             }
@@ -838,6 +904,7 @@ struct SonioxCredentialScreen: View {
         .animation(.easeOut(duration: 0.4), value: appeared)
         .onAppear {
             appeared = true
+            usesCommunityInvite = communityInvite.isActive || !isConfigured
             viewModel.refresh()
             if isConfigured {
                 verificationStore.verifyIfNeeded(
@@ -846,9 +913,64 @@ struct SonioxCredentialScreen: View {
                 )
             }
         }
+        .onChange(of: usesCommunityInvite) { _, enabled in
+            communityInvite.setEnabled(enabled)
+        }
         .onDisappear {
             draft = ""
             errorMessage = nil
+        }
+    }
+
+    @ViewBuilder
+    private var communityInviteForm: some View {
+        if communityInvite.isActive {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(
+                    String(localized: "community_invite.active"),
+                    systemImage: "checkmark.circle.fill"
+                )
+                .font(.bodyMedium)
+                .foregroundColor(.signalGreen)
+
+                Text("community_invite.thirty_hours")
+                    .font(.body)
+                    .foregroundColor(.bpLine)
+
+                Text("community_invite.shared_detail")
+                    .font(.caption)
+                    .foregroundColor(.textOnBpDim)
+            }
+        } else {
+            TextField(
+                String(localized: "community_invite.placeholder"),
+                text: $inviteCode
+            )
+            .textFieldStyle(.roundedBorder)
+            .frame(minHeight: 44)
+            .disabled(communityInvite.isWorking)
+
+            Button {
+                Task { await communityInvite.redeem(inviteCode) }
+            } label: {
+                if communityInvite.isWorking {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text(String(localized: "community_invite.action"))
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(
+                communityInvite.isWorking
+                    || inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            )
+
+            if let error = communityInvite.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundColor(.signalAmber)
+            }
         }
     }
 

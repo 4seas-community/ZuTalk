@@ -95,6 +95,7 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
     @Published private(set) var asyncProjectionStateBySession: [String: NotebookAsyncProjectionState] = [:]
     @Published private(set) var asyncProjectionErrorBySession: [String: String] = [:]
     @Published private(set) var retryingAsyncProjectionSessions: Set<String> = []
+    @Published private(set) var requestingAsyncTranscriptionSessions: Set<String> = []
 
     fileprivate struct EditorTarget: Equatable {
         let notebookId: String
@@ -240,6 +241,73 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
             refreshAsyncProjectionState(sessionId: sessionId)
             throw error
         }
+    }
+
+    func requestAsyncTranscription(sessionId: String, notebookId: String) async throws {
+        guard requestingAsyncTranscriptionSessions.contains(sessionId) == false else { return }
+        requestingAsyncTranscriptionSessions.insert(sessionId)
+        defer { requestingAsyncTranscriptionSessions.remove(sessionId) }
+
+        let run = try captureClient
+            .listNotebookCaptureHistory(notebookId: notebookId)
+            .first(where: { $0.sessionId == sessionId })
+        let durationSeconds = Int(
+            ((run?.durationMs ?? 0) + 999) / 1_000
+        )
+        let reservationSessionID = try await CommunityInviteSession.shared.prepareAsyncCredential(
+            requestedSeconds: max(1, durationSeconds)
+        )
+        do {
+            let event = try captureClient.requestNotebookAsyncTranscription(
+                sessionId: sessionId
+            )
+            applyAsyncState(event)
+            Task { @MainActor [weak self] in
+                await self?.settleAsyncWhenTerminal(
+                    sessionId: sessionId,
+                    durationSeconds: durationSeconds,
+                    reservationSessionID: reservationSessionID
+                )
+            }
+        } catch {
+            await CommunityInviteSession.shared.settleAsyncSession(
+                sessionID: reservationSessionID,
+                usedSeconds: 0
+            )
+            throw error
+        }
+    }
+
+    private func settleAsyncWhenTerminal(
+        sessionId: String,
+        durationSeconds: Int,
+        reservationSessionID: String?
+    ) async {
+        for _ in 0..<360 {
+            try? await Task.sleep(for: .seconds(5))
+            guard let event = try? captureClient.getNotebookCaptureSessionEvent(
+                sessionId: sessionId
+            ) else { continue }
+            applyAsyncState(event)
+            if event.postStopAsyncState == "completed" {
+                await CommunityInviteSession.shared.settleAsyncSession(
+                    sessionID: reservationSessionID,
+                    usedSeconds: durationSeconds
+                )
+                return
+            }
+            if event.postStopAsyncState == "failed" {
+                await CommunityInviteSession.shared.settleAsyncSession(
+                    sessionID: reservationSessionID,
+                    usedSeconds: 0
+                )
+                return
+            }
+        }
+        await CommunityInviteSession.shared.settleAsyncSession(
+            sessionID: reservationSessionID,
+            usedSeconds: 0
+        )
     }
 
     func replaceSegment(sessionId: String, segmentIndex: Int, text: String) {

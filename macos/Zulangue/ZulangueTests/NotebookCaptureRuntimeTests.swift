@@ -1848,6 +1848,52 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testPauseErrorReconcilesACommittedDurablePauseBeforeReopeningAudio() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        client.pauseError = .ffiUnavailable
+        client.sessionEventOverride = captureEvent(
+            sessionId: "session-a",
+            state: .paused,
+            utterances: []
+        )
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        try await store.start(notebookId: "notebook-a")
+
+        try await store.setPaused(true)
+
+        XCTAssertEqual(client.pauseCount, 1)
+        XCTAssertEqual(client.sessionEventCount, 1)
+        XCTAssertEqual(store.captureState, .paused)
+        XCTAssertEqual(audio.unsubscribeCount, 1)
+        XCTAssertEqual(audio.subscribeCount, 1, "a committed pause must not reopen the microphone")
+        XCTAssertFalse(store.hasAudioSubscription)
+    }
+
+    @MainActor
+    func testResumeErrorReconcilesACommittedDurableResumeBeforeReopeningAudio() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        try await store.start(notebookId: "notebook-a")
+        try await store.setPaused(true)
+        client.pauseError = .ffiUnavailable
+        client.sessionEventOverride = captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: []
+        )
+
+        try await store.setPaused(false)
+
+        XCTAssertEqual(client.pauseCount, 2)
+        XCTAssertEqual(client.sessionEventCount, 1)
+        XCTAssertEqual(store.captureState, .recording)
+        XCTAssertEqual(audio.subscribeCount, 2)
+        XCTAssertTrue(store.hasAudioSubscription)
+    }
+
+    @MainActor
     func testStopPrioritizesOverflowReturnedBySynchronousMicrophoneDrain() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         let audio = FakeNotebookCaptureAudioSource()
@@ -4790,6 +4836,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     private(set) var asyncProjectionRetryCount = 0
     private(set) var historyNotebookIds: [String] = []
     var shouldFailStop = false
+    var pauseError: NotebookCaptureClientError?
     var audioPushFailureMessage: String?
     var audioPushHandler: (@Sendable (Data) -> String?)?
     var sessionEventOverride: NotebookCaptureEventDTO?
@@ -5034,6 +5081,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
 
     func pauseNotebookCaptureSession(sessionId: String, paused: Bool) throws -> NotebookCaptureEventDTO {
         pauseCount += 1
+        if let pauseError { throw pauseError }
         return event(
             sessionId: sessionId,
             state: paused ? .paused : .recording,

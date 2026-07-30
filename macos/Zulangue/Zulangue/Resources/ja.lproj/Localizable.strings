@@ -21,9 +21,9 @@
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "続ける →";
-"onboarding.welcome.bullet1" = "リアルタイムの多言語字幕で、その場の会話を理解できます。";
-"onboarding.welcome.bullet2" = "会話を追いながら、自分の要点や考えを記録できます。";
-"onboarding.welcome.bullet3" = "会議後は、録音、字幕、ノートをまとめて編集・整理できます。";
+"onboarding.welcome.bullet1" = "「英語面接」など、会話の種類ごとに Notebook を作ります。";
+"onboarding.welcome.bullet2" = "Notebook を開き、「録音を開始」をクリックします。";
+"onboarding.welcome.bullet3" = "停止後、字幕、音声、ノートを同じ場所で確認できます。";
 "onboarding.welcome.privacy" = "データは既定でこの Mac に保存されます。リモート文字起こしは会議ごとに選択します。";
 "onboarding.visual.live" = "ライブ文字起こし";
 "onboarding.visual.speaker.host" = "ホスト";
@@ -49,10 +49,26 @@
 "onboarding.permissions.continue" = "ZULANGUE を開く →";
 
 /* Onboarding — API Keys */
-"onboarding.keys.title" = "Soniox に接続";
-"onboarding.keys.subtitle" = "Soniox API キーを追加するか、スキップして後で設定できます。";
-"onboarding.keys.voice_label" = "ライブ文字起こし · STT-RT-V5";
-"onboarding.keys.soniox.help" = "確認では短い Soniox 接続を1回だけ開き、音声は送信しません。";
+"onboarding.keys.title" = "ライブ字幕を有効にする";
+"onboarding.keys.subtitle" = "コミュニティ招待を使うか、自分の文字起こしサービスを接続します。";
+"onboarding.keys.own_key.option" = "自分の Key";
+"community_invite.option" = "コミュニティ招待";
+"community_invite.placeholder" = "招待コードを入力";
+"community_invite.action" = "招待を有効にする";
+"community_invite.active" = "コミュニティ招待が有効です";
+"community_invite.thirty_hours" = "5 Give · 約 30 時間";
+"community_invite.shared_detail" = "リアルタイム文字起こし、翻訳、音声ファイルの文字起こしで共用します。";
+"community_invite.invalid" = "招待コードが無効です。招待者に確認してください。";
+"community_invite.unavailable" = "コミュニティサービスを一時的に利用できません。後でもう一度お試しください。";
+"community_invite.remaining_hours_format" = "残り約 %lld 時間";
+"editor.transcript.async.start" = "この音声を文字起こし";
+"editor.transcript.async.start_failed" = "音声の文字起こしを開始できませんでした";
+"onboarding.keys.voice_label" = "ライブ字幕サービス";
+"onboarding.keys.guide.create" = "登録";
+"onboarding.keys.guide.copy" = "キーをコピー";
+"onboarding.keys.guide.paste" = "下に貼り付け";
+"onboarding.keys.open_soniox" = "Soniox でキーを取得";
+"onboarding.keys.soniox.help" = "「確認して保存」はキーが使えるか確認するだけで、録音は送信しません。";
 "onboarding.keys.paste" = "Soniox API キー";
 "onboarding.keys.verify_and_save" = "確認して保存";
 "onboarding.keys.verify_saved" = "接続を確認";
@@ -63,10 +79,13 @@
 /* Onboarding — Step Indicator */
 "onboarding.step.signup" = "Zulangue について";
 "onboarding.step.setup" = "録音の準備";
-"onboarding.step.tryout" = "API キー";
+"onboarding.step.tryout" = "ライブ字幕";
 
 /* Onboarding — Common */
 "onboarding.common.back" = "← 戻る";
+
+"sidebar.help" = "使い方";
+"sidebar.help.hint" = "初心者ガイドをもう一度開く";
 
 /* Library */
 "library.title" = "セッション";
@@ -441,6 +460,13 @@
 "home.capture.owner_elsewhere" = "別の Notebook に所属";
 "home.no_notebook.title" = "最初の Notebook を作成";
 "home.no_notebook.description" = "Notebook は録音、文字起こし、ノート、任意の認識参考資料をまとめて管理します。";
+"home.first_use.step1.title" = "Notebook を作成";
+"home.first_use.step1.detail" = "同じ種類の会話をまとめるフォルダだと考えてください。";
+"home.first_use.step2.title" = "録音を開始";
+"home.first_use.step2.detail" = "Notebook を開くと、上部に赤い録音ボタンがあります。";
+"home.first_use.step3.title" = "結果を確認";
+"home.first_use.step3.detail" = "停止後、字幕、音声、ノートが同じ場所に残ります。";
+"home.first_use.action" = "最初の Notebook を作成";
 "home.import.action" = "音声を読み込む";
 "home.import.in_progress" = "読み込み中…";
 "home.import.panel.title" = "Notebook に音声を読み込む";

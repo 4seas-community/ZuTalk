@@ -530,6 +530,7 @@ struct NotebookCaptureToolbar: View {
             Task { @MainActor in
                 defer { isStarting = false }
                 do {
+                    try await CommunityInviteSession.shared.prepareRealtimeCredential()
                     try await profileEditor.prepareForCaptureStart()
                     try await NotebookCaptureStartCoordinator(
                         capture: capture,
@@ -615,7 +616,11 @@ struct NotebookCaptureToolbar: View {
             Task { @MainActor in
                 defer { isStopping = false }
                 do {
+                    let usedSeconds = Int(capture.elapsedRecordingTime.rounded(.up))
                     try await capture.stop()
+                    await CommunityInviteSession.shared.settleRealtimeSession(
+                        usedSeconds: usedSeconds
+                    )
                 } catch {
                     ToastCenter.shared.error(
                         String(localized: "capture.toast.stop_failed"),
