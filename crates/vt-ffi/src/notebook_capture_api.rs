@@ -2061,10 +2061,7 @@ fn persist_assembled_utterances(
                 })?;
             update.utterance.session_speaker_id = Some(speaker.id);
         }
-        let persisted = match store.upsert_utterance(
-            &update.utterance,
-            update.expected_revision,
-        ) {
+        let persisted = match store.upsert_utterance(&update.utterance, update.expected_revision) {
             Ok(persisted) => persisted,
             Err(vt_store::NotebookCaptureStoreError::Conflict(_))
                 if update.expected_revision.is_some() =>
@@ -6545,9 +6542,11 @@ fn user_owned_lanes(
         serde_json::from_str(delta_json).map_err(|error| CoreError::ValidationFailed {
             message: format!("invalid editor Delta JSON: {error}"),
         })?;
-    let operations = delta.as_array().ok_or_else(|| CoreError::ValidationFailed {
-        message: "editor Delta must be an array".to_string(),
-    })?;
+    let operations = delta
+        .as_array()
+        .ok_or_else(|| CoreError::ValidationFailed {
+            message: "editor Delta must be an array".to_string(),
+        })?;
     let mut result = std::collections::HashSet::new();
     for operation in operations {
         let Some(attributes) = operation
