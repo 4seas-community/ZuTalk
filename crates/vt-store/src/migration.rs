@@ -1,4 +1,4 @@
-//! Zulangue SQLite v26 schema.
+//! Zulangue SQLite v27 schema.
 //!
 //! Fresh databases are installed directly at v26. The three immediately
 //! preceding Notebook schemas are migrated in place so existing capture data
@@ -9,7 +9,8 @@ use rusqlite::{Connection, OptionalExtension, Result as SqlResult};
 const LEGACY_VERSION: i32 = 23;
 const SPEAKER_VERSION: i32 = 24;
 const PREVIOUS_VERSION: i32 = 25;
-const CURRENT_VERSION: i32 = 26;
+const VARIANTS_VERSION: i32 = 26;
+const CURRENT_VERSION: i32 = 27;
 
 const V23_TABLES: &[&str] = &[
     "audio_retention_chunks",
@@ -180,6 +181,61 @@ const V26_INDEXES: &[&str] = &[
     "idx_session_speakers_session_epoch",
 ];
 const V26_TRIGGERS: &[&str] = V25_TRIGGERS;
+const V27_TABLES: &[&str] = &[
+    "audio_retention_chunks",
+    "context_pack_sources",
+    "context_packs",
+    "notebook_capture_profiles",
+    "notebook_capture_runs",
+    "notebook_context_pack_bindings",
+    "notebook_projection_mutations",
+    "notebook_session_projections",
+    "notebook_sessions",
+    "notebook_tabs",
+    "notebooks",
+    "participants",
+    "realtime_transcript_gaps",
+    "realtime_utterance_variants",
+    "realtime_utterances",
+    "search_index",
+    "search_index_config",
+    "search_index_content",
+    "search_index_data",
+    "search_index_docsize",
+    "search_index_idx",
+    "session_meta",
+    "session_purge_jobs",
+    "session_records",
+    "session_speakers",
+];
+const V27_INDEXES: &[&str] = &[
+    "idx_audio_retention_chunks_due",
+    "idx_audio_retention_chunks_session",
+    "idx_context_pack_sources_pack_order",
+    "idx_context_packs_library",
+    "idx_context_packs_private_owner",
+    "idx_notebook_capture_runs_notebook_created",
+    "idx_notebook_capture_runs_single_active",
+    "idx_notebook_context_bindings_order",
+    "idx_notebook_projection_mutations_session",
+    "idx_notebook_session_projections_notebook_session",
+    "idx_notebook_session_projections_tab",
+    "idx_notebook_sessions_session_unique",
+    "idx_notebook_tabs_builtin_unique",
+    "idx_notebook_tabs_notebook_position",
+    "idx_notebooks_updated",
+    "idx_participants_display_name",
+    "idx_realtime_transcript_gaps_pending",
+    "idx_realtime_utterance_variants_language",
+    "idx_realtime_utterance_variants_one_source",
+    "idx_realtime_utterances_session_sequence",
+    "idx_realtime_utterances_session_speaker",
+    "idx_session_purge_jobs_updated",
+    "idx_session_records_active_created",
+    "idx_session_speakers_participant",
+    "idx_session_speakers_session_epoch",
+];
+const V27_TRIGGERS: &[&str] = V26_TRIGGERS;
 
 /// Install, migrate, or validate the supported main-database schema.
 pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
@@ -188,7 +244,7 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
 
     match current {
         0 if database_has_user_objects(conn)? => Err(schema_reset_required(0)),
-        0 => install_v26_baseline(conn),
+        0 => install_v27_baseline(conn),
         LEGACY_VERSION => {
             validate_v23_baseline(conn)?;
             migrate_v23_to_v24(conn)?;
@@ -196,21 +252,32 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v24_to_v25(conn)?;
             validate_v25_baseline(conn)?;
             migrate_v25_to_v26(conn)?;
-            validate_v26_baseline(conn)
+            validate_v26_baseline(conn)?;
+            migrate_v26_to_v27(conn)?;
+            validate_v27_baseline(conn)
         }
         SPEAKER_VERSION => {
             validate_v24_baseline(conn)?;
             migrate_v24_to_v25(conn)?;
             validate_v25_baseline(conn)?;
             migrate_v25_to_v26(conn)?;
-            validate_v26_baseline(conn)
+            validate_v26_baseline(conn)?;
+            migrate_v26_to_v27(conn)?;
+            validate_v27_baseline(conn)
         }
-        PREVIOUS_VERSION => {
+        25 => {
             validate_v25_baseline(conn)?;
             migrate_v25_to_v26(conn)?;
-            validate_v26_baseline(conn)
+            validate_v26_baseline(conn)?;
+            migrate_v26_to_v27(conn)?;
+            validate_v27_baseline(conn)
         }
-        CURRENT_VERSION => validate_v26_baseline(conn),
+        VARIANTS_VERSION => {
+            validate_v26_baseline(conn)?;
+            migrate_v26_to_v27(conn)?;
+            validate_v27_baseline(conn)
+        }
+        CURRENT_VERSION => validate_v27_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
     }?;
 
@@ -340,7 +407,21 @@ fn validate_v25_baseline(conn: &Connection) -> SqlResult<()> {
 }
 
 fn validate_v26_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, CURRENT_VERSION, true, true)
+    validate_v24_or_later_baseline(conn, VARIANTS_VERSION, true, true)
+}
+
+fn validate_v27_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v24_or_later_baseline(conn, CURRENT_VERSION, true, true)?;
+    validate_exact_object_names(conn, CURRENT_VERSION, "table", V27_TABLES)?;
+    validate_exact_object_names(conn, CURRENT_VERSION, "index", V27_INDEXES)?;
+    validate_exact_object_names(conn, CURRENT_VERSION, "trigger", V27_TRIGGERS)?;
+    conn.prepare(
+        "SELECT id, session_id, start_frame, end_frame, reason, repair_state,
+                created_at, updated_at
+         FROM realtime_transcript_gaps LIMIT 0",
+    )
+    .map(|_| ())
+    .map_err(|_| schema_reset_required(CURRENT_VERSION))
 }
 
 fn validate_v24_or_later_baseline(
@@ -349,7 +430,9 @@ fn validate_v24_or_later_baseline(
     has_multilingual_profile: bool,
     has_utterance_variants: bool,
 ) -> SqlResult<()> {
-    let (tables, indexes, triggers) = if has_utterance_variants {
+    let (tables, indexes, triggers) = if claimed_version == CURRENT_VERSION {
+        (V27_TABLES, V27_INDEXES, V27_TRIGGERS)
+    } else if has_utterance_variants {
         (V26_TABLES, V26_INDEXES, V26_TRIGGERS)
     } else if has_multilingual_profile {
         (V25_TABLES, V25_INDEXES, V25_TRIGGERS)
@@ -687,13 +770,46 @@ fn migrate_v25_to_v26(conn: &Connection) -> SqlResult<()> {
             ON notebook_projection_mutations(session_id, created_at, id);
         "#,
     )?;
-    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+    tx.pragma_update(None, "user_version", VARIANTS_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{PREVIOUS_VERSION} to v{CURRENT_VERSION}");
+    tracing::info!("migrated Zulangue schema v{PREVIOUS_VERSION} to v{VARIANTS_VERSION}");
     Ok(())
 }
 
-fn install_v26_baseline(conn: &Connection) -> SqlResult<()> {
+fn migrate_v26_to_v27(conn: &Connection) -> SqlResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(realtime_transcript_gaps_schema())?;
+    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+    tx.commit()?;
+    tracing::info!("migrated Zulangue schema v{VARIANTS_VERSION} to v{CURRENT_VERSION}");
+    Ok(())
+}
+
+fn realtime_transcript_gaps_schema() -> &'static str {
+    r#"
+        CREATE TABLE realtime_transcript_gaps (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT NOT NULL
+                               REFERENCES notebook_capture_runs(session_id) ON DELETE CASCADE,
+            start_frame   INTEGER NOT NULL CHECK(start_frame >= 0),
+            end_frame     INTEGER NOT NULL CHECK(end_frame > start_frame),
+            reason        TEXT NOT NULL CHECK(reason = 'network_discontinuity'),
+            repair_state  TEXT NOT NULL
+                               CHECK(repair_state IN (
+                                   'preserved', 'enqueued', 'provider_accepted',
+                                   'result_durable', 'projected', 'repaired', 'failed'
+                               )),
+            created_at    TEXT NOT NULL,
+            updated_at    TEXT NOT NULL,
+            UNIQUE(session_id, start_frame, end_frame, reason)
+        );
+        CREATE INDEX idx_realtime_transcript_gaps_pending
+            ON realtime_transcript_gaps(session_id, repair_state, start_frame)
+            WHERE repair_state <> 'repaired';
+    "#
+}
+
+fn install_v27_baseline(conn: &Connection) -> SqlResult<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(
         r#"
@@ -1361,6 +1477,7 @@ fn install_v26_baseline(conn: &Connection) -> SqlResult<()> {
         END;
         "#,
     )?;
+    tx.execute_batch(realtime_transcript_gaps_schema())?;
     tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
     tx.commit()?;
     tracing::info!("installed clean Zulangue schema v{CURRENT_VERSION}");
@@ -1408,7 +1525,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_fresh_database_has_exact_v26_objects() {
+    fn migration_fresh_database_has_exact_v27_objects() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
 
@@ -1427,6 +1544,7 @@ mod tests {
                 "notebook_tabs",
                 "notebooks",
                 "participants",
+                "realtime_transcript_gaps",
                 "realtime_utterance_variants",
                 "realtime_utterances",
                 "search_index",
@@ -1460,6 +1578,7 @@ mod tests {
                 "idx_notebook_tabs_notebook_position",
                 "idx_notebooks_updated",
                 "idx_participants_display_name",
+                "idx_realtime_transcript_gaps_pending",
                 "idx_realtime_utterance_variants_language",
                 "idx_realtime_utterance_variants_one_source",
                 "idx_realtime_utterances_session_sequence",
@@ -1808,7 +1927,7 @@ mod tests {
 
     #[test]
     fn migration_rejects_every_historical_or_future_nonzero_version() {
-        for version in [1, 7, 21, 22, 27] {
+        for version in [1, 7, 21, 22, 28] {
             let conn = Connection::open_in_memory().unwrap();
             conn.pragma_update(None, "user_version", version).unwrap();
             let error = run_migrations(&conn).unwrap_err();
@@ -1846,7 +1965,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_rejects_incomplete_database_claiming_v26() {
+    fn migration_rejects_incomplete_database_claiming_v27() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute("CREATE TABLE notebooks (id TEXT PRIMARY KEY)", [])
             .unwrap();
@@ -1856,7 +1975,7 @@ mod tests {
         let error = run_migrations(&conn).unwrap_err();
         assert!(error
             .to_string()
-            .contains("unsupported schema 26; reset required"));
+            .contains("unsupported schema 27; reset required"));
     }
 
     #[test]
@@ -1879,6 +1998,7 @@ mod tests {
         // baseline, then seed data that must survive the in-place migration.
         conn.execute_batch(
             "ALTER TABLE notebook_projection_mutations DROP COLUMN lane_language;
+             DROP TABLE realtime_transcript_gaps;
              DROP TABLE realtime_utterance_variants;
              ALTER TABLE notebook_capture_profiles DROP COLUMN common_caption_language;
              ALTER TABLE notebook_capture_profiles DROP COLUMN selected_languages_json;
@@ -1967,7 +2087,7 @@ mod tests {
                 ),
             ]
         );
-        validate_v26_baseline(&conn).unwrap();
+        validate_v27_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -1976,6 +2096,7 @@ mod tests {
         run_migrations(&conn).unwrap();
         conn.execute_batch(
             "ALTER TABLE notebook_projection_mutations DROP COLUMN lane_language;
+             DROP TABLE realtime_transcript_gaps;
              DROP TABLE realtime_utterance_variants;
              ALTER TABLE notebook_capture_profiles DROP COLUMN common_caption_language;
              ALTER TABLE notebook_capture_profiles DROP COLUMN selected_languages_json;
@@ -2009,7 +2130,7 @@ mod tests {
         assert_eq!(selected, r#"["th","ja"]"#);
         assert_eq!(common, None);
         assert_eq!(revision, 7);
-        validate_v26_baseline(&conn).unwrap();
+        validate_v27_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -2018,6 +2139,7 @@ mod tests {
         run_migrations(&conn).unwrap();
         conn.execute_batch(
             "ALTER TABLE notebook_projection_mutations DROP COLUMN lane_language;
+             DROP TABLE realtime_transcript_gaps;
              DROP TABLE realtime_utterance_variants;
              PRAGMA user_version = 25;",
         )
@@ -2164,7 +2286,7 @@ mod tests {
             .unwrap(),
             2
         );
-        validate_v26_baseline(&conn).unwrap();
+        validate_v27_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -2208,7 +2330,7 @@ mod tests {
             .unwrap(),
             4
         );
-        validate_v26_baseline(&conn).unwrap();
+        validate_v27_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -2217,6 +2339,7 @@ mod tests {
         run_migrations(&conn).unwrap();
         conn.execute_batch(
             "ALTER TABLE notebook_projection_mutations DROP COLUMN lane_language;
+             DROP TABLE realtime_transcript_gaps;
              DROP TABLE realtime_utterance_variants;
              PRAGMA user_version = 25;",
         )

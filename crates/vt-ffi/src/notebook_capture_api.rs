@@ -1116,6 +1116,7 @@ struct StreamAggregationLane {
     connected: bool,
     ever_connected: bool,
     provider_accepted_configuration: bool,
+    disconnected_at_frame: Option<u64>,
 }
 
 const REALTIME_CONTINUITY_WINDOW_MS: u64 = 15_000;
@@ -1153,6 +1154,7 @@ async fn collect_stream_events(
     lane_descriptors: Vec<RemoteStreamLane>,
     mut event_rx: tokio::sync::mpsc::Receiver<TaggedStreamEvent>,
     group_cancel: tokio_util::sync::CancellationToken,
+    captured_frames: Arc<AtomicU64>,
     callback: CaptureCallbackSink,
 ) -> Result<(), ProviderFailure> {
     // Any persistence/protocol return path must stop every sibling WebSocket;
@@ -1184,6 +1186,7 @@ async fn collect_stream_events(
                 connected: false,
                 ever_connected: false,
                 provider_accepted_configuration: false,
+                disconnected_at_frame: None,
             }
         })
         .collect::<Vec<_>>();
@@ -1301,12 +1304,34 @@ async fn collect_stream_events(
                     &mut lane.awaiting_reconnect,
                 );
                 if reconnected && !outage_is_continuous(outage_ms) {
+                    let end_frame = captured_frames.load(Ordering::Acquire);
+                    if let Some(start_frame) = lane.disconnected_at_frame.take() {
+                        if end_frame > start_frame {
+                            store
+                                .preserve_network_transcript_gap(
+                                    &session_id,
+                                    start_frame,
+                                    end_frame,
+                                )
+                                .map_err(|error| {
+                                    local_persistence_failure(
+                                        "preserve network transcript gap",
+                                        error,
+                                    )
+                                })?;
+                        }
+                    }
                     next_group_epoch = next_group_epoch.saturating_add(1);
                     lane.group_epoch = next_group_epoch;
+                } else if reconnected {
+                    lane.disconnected_at_frame = None;
                 }
                 Vec::new()
             }
             SttStreamEvent::Reconnecting { .. } => {
+                lanes[lane_index]
+                    .disconnected_at_frame
+                    .get_or_insert_with(|| captured_frames.load(Ordering::Acquire));
                 let finalized = lanes[lane_index].assembler.finalize();
                 let persisted = persist_stream_lane_updates(
                     &store,
@@ -2932,6 +2957,7 @@ pub(crate) struct ActiveNotebookCapture {
     pub(crate) callback: CaptureCallbackSink,
     pub(crate) journal: vt_pipeline::CaptureAudioJournal,
     pub(crate) last_persisted_frames: u64,
+    pub(crate) captured_frames: Arc<AtomicU64>,
     pub(crate) remote: Option<ActiveRemoteCapture>,
     /// Backpressure cancels the provider writer immediately, but the sole
     /// event persistence task may need bounded time to drain. Keeping its join
@@ -3637,12 +3663,14 @@ impl ZulangueCore {
             );
             return Err(error);
         }
+        let captured_frames = Arc::new(AtomicU64::new(0));
         let remote = if requested_remote {
             match self.start_soniox_capture_runtime(
                 &run_id,
                 &session_id,
                 &profile,
                 context_compilation.as_ref(),
+                captured_frames.clone(),
                 callback.clone(),
             ) {
                 Ok(remote) => Some(remote),
@@ -3675,6 +3703,7 @@ impl ZulangueCore {
             callback: callback.clone(),
             journal,
             last_persisted_frames: 0,
+            captured_frames,
             remote,
             remote_cleanup: None,
         };
@@ -3743,6 +3772,11 @@ impl ZulangueCore {
             .expect("active capture was checked above")
             .journal
             .captured_frames();
+        active_guard
+            .as_ref()
+            .expect("active capture was checked above")
+            .captured_frames
+            .store(frames, Ordering::Release);
         let last_persisted_frames = active_guard
             .as_ref()
             .expect("active capture was checked above")
@@ -4208,11 +4242,9 @@ impl ZulangueCore {
                     run.id
                 ),
             })?;
-        if profile.capture_mode != CaptureMode::TranscriptionOnly {
-            return Err(CoreError::ValidationFailed {
-                message: "async_transcription_requires_transcription_only_run".to_string(),
-            });
-        }
+        // Post-stop transcription is also the repair path for locally
+        // preserved network gaps. Capture mode controls realtime presentation,
+        // not whether durable source audio may later be converted to text.
         let authorized = self
             .notebook_capture_store
             .authorize_async_transcription(
@@ -5275,6 +5307,7 @@ impl ZulangueCore {
         session_id: &str,
         profile: &NotebookCaptureProfile,
         context: Option<&ContextCompilation>,
+        captured_frames: Arc<AtomicU64>,
         callback: CaptureCallbackSink,
     ) -> Result<ActiveRemoteCapture, CoreError> {
         let engine = CURRENT_NOTEBOOK_CAPTURE_ENGINE;
@@ -5395,6 +5428,7 @@ impl ZulangueCore {
                 lane_descriptors,
                 tagged_rx,
                 event_cancel,
+                captured_frames,
                 callback,
             )
             .await
@@ -5784,6 +5818,17 @@ impl ZulangueCore {
                 ),
             })?;
         if profile.privacy_level != "maximum" {
+            return Ok(());
+        }
+        if self
+            .notebook_capture_store
+            .has_unrepaired_transcript_gaps(&run.session_id)
+            .map_err(store_error)?
+        {
+            tracing::info!(
+                session_id = %run.session_id,
+                "maximum privacy retained audio because durable transcript gaps remain"
+            );
             return Ok(());
         }
         if self
@@ -9186,6 +9231,7 @@ mod tests {
                 connected: true,
                 ever_connected: true,
                 provider_accepted_configuration: true,
+                disconnected_at_frame: None,
             }
         };
         let mut lanes = vec![make_lane("en", true), make_lane("zh", false)];

@@ -32,9 +32,9 @@ pub use notebook_capture_store::{
     CaptureMode, CaptureState, NewNotebookCaptureRun, NewRealtimeUtterance, NotebookCaptureProfile,
     NotebookCaptureProfileUpdate, NotebookCaptureRun, NotebookCaptureStore,
     NotebookCaptureStoreError, NotebookProjectionMutation, Participant, ProjectionMutationState,
-    ProjectionPurgeTarget, ProjectionState, ProviderFailure, RealtimeUtterance,
-    RealtimeUtteranceVariant, RemoteHealth, SessionPurgeJob, SessionPurgePlan, SessionSpeaker,
-    UtteranceAlignment, UtteranceCompletion, UtteranceLane, UtteranceVariantRole,
+    ProjectionPurgeTarget, ProjectionState, ProviderFailure, RealtimeTranscriptGap,
+    RealtimeUtterance, RealtimeUtteranceVariant, RemoteHealth, SessionPurgeJob, SessionPurgePlan,
+    SessionSpeaker, UtteranceAlignment, UtteranceCompletion, UtteranceLane, UtteranceVariantRole,
     UtteranceVariantState,
 };
 pub use notebook_store::{
