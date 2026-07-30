@@ -846,6 +846,7 @@
 "capture.state.failed" = "Failed";
 "capture.remote.off" = "Remote off";
 "capture.remote.connecting" = "Remote connecting";
+"capture.remote.catching_up" = "Captions catching up, %d seconds behind";
 "capture.remote.live" = "Remote live";
 "capture.remote.degraded" = "Remote degraded";
 "capture.remote.unavailable" = "Remote unavailable";

@@ -3048,6 +3048,11 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
     public var isFullSnapshot: Bool
     public var captureState: FfiNotebookCaptureState
     public var remoteHealth: FfiNotebookRemoteHealth
+    /**
+     * Process-local provider lag. Present only on live progress callbacks;
+     * durable snapshots leave it absent.
+     */
+    public var realtimeLagMs: UInt64?
     public var projectionState: FfiNotebookProjectionState
     /**
      * Immutable per-run display configuration. `None` means the durable
@@ -3090,7 +3095,11 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
          * When true, `utterances` replaces the client's session view. Otherwise
          * it contains only utterances changed by this event and is applied by
          * `(session_id, sequence)` upsert.
-         */isFullSnapshot: Bool, captureState: FfiNotebookCaptureState, remoteHealth: FfiNotebookRemoteHealth, projectionState: FfiNotebookProjectionState,
+         */isFullSnapshot: Bool, captureState: FfiNotebookCaptureState, remoteHealth: FfiNotebookRemoteHealth,
+        /**
+         * Process-local provider lag. Present only on live progress callbacks;
+         * durable snapshots leave it absent.
+         */realtimeLagMs: UInt64?, projectionState: FfiNotebookProjectionState,
         /**
          * Immutable per-run display configuration. `None` means the durable
          * profile snapshot is corrupt; clients must show an error instead of
@@ -3106,6 +3115,7 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
         self.isFullSnapshot = isFullSnapshot
         self.captureState = captureState
         self.remoteHealth = remoteHealth
+        self.realtimeLagMs = realtimeLagMs
         self.projectionState = projectionState
         self.mode = mode
         self.languageA = languageA
@@ -3148,6 +3158,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
                 isFullSnapshot: FfiConverterBool.read(from: &buf),
                 captureState: FfiConverterTypeFfiNotebookCaptureState.read(from: &buf),
                 remoteHealth: FfiConverterTypeFfiNotebookRemoteHealth.read(from: &buf),
+                realtimeLagMs: FfiConverterOptionUInt64.read(from: &buf),
                 projectionState: FfiConverterTypeFfiNotebookProjectionState.read(from: &buf),
                 mode: FfiConverterOptionTypeFfiNotebookCaptureMode.read(from: &buf),
                 languageA: FfiConverterOptionString.read(from: &buf),
@@ -3176,6 +3187,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
         FfiConverterBool.write(value.isFullSnapshot, into: &buf)
         FfiConverterTypeFfiNotebookCaptureState.write(value.captureState, into: &buf)
         FfiConverterTypeFfiNotebookRemoteHealth.write(value.remoteHealth, into: &buf)
+        FfiConverterOptionUInt64.write(value.realtimeLagMs, into: &buf)
         FfiConverterTypeFfiNotebookProjectionState.write(value.projectionState, into: &buf)
         FfiConverterOptionTypeFfiNotebookCaptureMode.write(value.mode, into: &buf)
         FfiConverterOptionString.write(value.languageA, into: &buf)

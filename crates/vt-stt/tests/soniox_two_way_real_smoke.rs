@@ -138,6 +138,8 @@ async fn soniox_v5_two_way_real_smoke_redacts_content() {
             match event {
                 SttStreamEvent::Connected => evidence.connected = true,
                 SttStreamEvent::Reconnecting { .. } => {}
+                SttStreamEvent::RecoveryStarted { .. } => {}
+                SttStreamEvent::AudioProgress { .. } => {}
                 SttStreamEvent::Tokens(tokens) => {
                     for token in tokens {
                         match token.translation_status {

@@ -397,7 +397,13 @@ private struct HomeNotebookHero: View {
     }
 
     private var remoteHealthText: String {
-        switch capture.remoteHealth {
+        if let lagMs = capture.realtimeLagMs, lagMs >= 1_000 {
+            return String(
+                format: String(localized: "capture.remote.catching_up"),
+                Int((lagMs + 999) / 1_000)
+            )
+        }
+        return switch capture.remoteHealth {
         case .off: String(localized: "capture.remote.off")
         case .connecting: String(localized: "capture.remote.connecting")
         case .live: String(localized: "capture.remote.live")

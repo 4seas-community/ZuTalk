@@ -262,6 +262,9 @@ pub struct FfiNotebookCaptureEvent {
     pub is_full_snapshot: bool,
     pub capture_state: FfiNotebookCaptureState,
     pub remote_health: FfiNotebookRemoteHealth,
+    /// Process-local provider lag. Present only on live progress callbacks;
+    /// durable snapshots leave it absent.
+    pub realtime_lag_ms: Option<u64>,
     pub projection_state: FfiNotebookProjectionState,
     /// Immutable per-run display configuration. `None` means the durable
     /// profile snapshot is corrupt; clients must show an error instead of
@@ -794,6 +797,7 @@ fn event_from_run(
         is_full_snapshot,
         capture_state: run.capture_state.into(),
         remote_health: run.remote_health.into(),
+        realtime_lag_ms: None,
         projection_state: run.projection_state.into(),
         mode,
         language_a,
@@ -1114,6 +1118,8 @@ struct StreamAggregationLane {
     provider_accepted_configuration: bool,
 }
 
+const REALTIME_CONTINUITY_WINDOW_MS: u64 = 15_000;
+
 #[derive(Debug, Clone)]
 struct CanonicalUtteranceMatch {
     group_epoch: u64,
@@ -1224,6 +1230,8 @@ async fn collect_stream_events(
         let provider_accepted_configuration = matches!(
             &tagged.event,
             SttStreamEvent::Tokens(_)
+                | SttStreamEvent::AudioProgress { .. }
+                | SttStreamEvent::RecoveryStarted { .. }
                 | SttStreamEvent::Endpoint
                 | SttStreamEvent::Finalized
                 | SttStreamEvent::Finished
@@ -1266,17 +1274,12 @@ async fn collect_stream_events(
             );
         let persisted = match tagged.event {
             SttStreamEvent::Connected => {
-                let reconnected = lanes[lane_index].awaiting_reconnect;
                 {
                     let lane = &mut lanes[lane_index];
                     record_provider_connected(
                         &mut lane.provider_session_epoch,
                         &mut lane.awaiting_reconnect,
                     );
-                    if reconnected {
-                        next_group_epoch = next_group_epoch.saturating_add(1);
-                        lane.group_epoch = next_group_epoch;
-                    }
                     lane.connected = true;
                     lane.ever_connected = true;
                 }
@@ -1287,6 +1290,19 @@ async fn collect_stream_events(
                             local_persistence_failure("persist Soniox live state", error)
                         })?;
                     emit_capture_delta(run, Vec::new(), &callback);
+                }
+                Vec::new()
+            }
+            SttStreamEvent::RecoveryStarted { outage_ms } => {
+                let lane = &mut lanes[lane_index];
+                let reconnected = lane.awaiting_reconnect;
+                record_provider_connected(
+                    &mut lane.provider_session_epoch,
+                    &mut lane.awaiting_reconnect,
+                );
+                if reconnected && !outage_is_continuous(outage_ms) {
+                    next_group_epoch = next_group_epoch.saturating_add(1);
+                    lane.group_epoch = next_group_epoch;
                 }
                 Vec::new()
             }
@@ -1351,6 +1367,14 @@ async fn collect_stream_events(
                     &mut reverse_variant_bindings,
                     &mut initialized_variants,
                 )?
+            }
+            SttStreamEvent::AudioProgress { lag_ms, .. } => {
+                if lane_index == canonical_lane_index {
+                    if let Ok(Some(run)) = store.get_run(&run_id) {
+                        emit_realtime_progress(run, lag_ms, &callback);
+                    }
+                }
+                Vec::new()
             }
             SttStreamEvent::Endpoint | SttStreamEvent::Finalized | SttStreamEvent::Finished => {
                 let finalized = lanes[lane_index].assembler.finalize();
@@ -2040,6 +2064,10 @@ fn record_provider_connected(provider_session_epoch: &mut u64, awaiting_reconnec
     }
 }
 
+fn outage_is_continuous(outage_ms: u64) -> bool {
+    outage_ms <= REALTIME_CONTINUITY_WINDOW_MS
+}
+
 fn persist_assembled_utterances(
     store: &NotebookCaptureStore,
     assembler: &mut RealtimeUtteranceAssembler,
@@ -2143,6 +2171,12 @@ fn emit_capture_delta(
     // busy. `CaptureCallbackSink` revisions make that loss explicit so Swift
     // performs one bounded full rebuild instead of receiving O(n^2) snapshots.
     callback.send(event_from_run(run, changed_utterances, false));
+}
+
+fn emit_realtime_progress(run: NotebookCaptureRun, lag_ms: u64, callback: &CaptureCallbackSink) {
+    let mut event = event_from_run(run, Vec::new(), false);
+    event.realtime_lag_ms = Some(lag_ms);
+    callback.send(event);
 }
 
 fn emit_live_preview(
@@ -8818,6 +8852,14 @@ mod tests {
 
         record_provider_connected(&mut epoch, &mut awaiting_reconnect);
         assert_eq!(epoch, 1);
+    }
+
+    #[test]
+    fn realtime_continuity_window_includes_exactly_fifteen_seconds() {
+        assert!(outage_is_continuous(1_000));
+        assert!(outage_is_continuous(5_000));
+        assert!(outage_is_continuous(15_000));
+        assert!(!outage_is_continuous(15_001));
     }
 
     #[test]

@@ -267,6 +267,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
     let isFullSnapshot: Bool
     let captureState: NotebookCaptureState
     let remoteHealth: NotebookRemoteHealth
+    var realtimeLagMs: UInt64? = nil
     let projectionState: NotebookProjectionState
     let utterances: [NotebookCaptureUtteranceDTO]
     let contextReceipt: NotebookCaptureContextReceiptDTO?
@@ -293,6 +294,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         isFullSnapshot: Bool = true,
         captureState: NotebookCaptureState,
         remoteHealth: NotebookRemoteHealth,
+        realtimeLagMs: UInt64? = nil,
         projectionState: NotebookProjectionState,
         utterances: [NotebookCaptureUtteranceDTO],
         contextReceipt: NotebookCaptureContextReceiptDTO?,
@@ -318,6 +320,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         self.isFullSnapshot = isFullSnapshot
         self.captureState = captureState
         self.remoteHealth = remoteHealth
+        self.realtimeLagMs = realtimeLagMs
         self.projectionState = projectionState
         self.utterances = utterances
         self.contextReceipt = contextReceipt
@@ -896,6 +899,7 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             isFullSnapshot: value.isFullSnapshot,
             captureState: map(value.captureState),
             remoteHealth: map(value.remoteHealth),
+            realtimeLagMs: value.realtimeLagMs,
             projectionState: map(value.projectionState),
             utterances: value.utterances.map(Self.map),
             contextReceipt: value.contextReceipt.map { receipt in
@@ -2260,6 +2264,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     @Published private(set) var profile = NotebookCaptureProfileDTO.localDefault(notebookId: "")
     @Published private(set) var captureState: NotebookCaptureState = .completed
     @Published private(set) var remoteHealth: NotebookRemoteHealth = .off
+    @Published private(set) var realtimeLagMs: UInt64?
     @Published private(set) var projectionState: NotebookProjectionState = .ready
     /// Process-local Soniox speculative tail. Durable transcript consumers
     /// must continue to use `utterances`.
@@ -3269,6 +3274,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             ? .draining
             : event.captureState
         remoteHealth = event.remoteHealth
+        realtimeLagMs = event.realtimeLagMs
         projectionState = event.projectionState
         providerErrorType = event.providerErrorType
         providerRequestId = event.providerRequestId

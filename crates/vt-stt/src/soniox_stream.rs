@@ -6,6 +6,7 @@
 
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -29,6 +30,10 @@ const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const RECONNECT_BASE_DELAY: Duration = Duration::from_secs(1);
 const RECONNECT_MAX_ATTEMPTS: u8 = 3;
+const CONTINUITY_WINDOW: Duration = Duration::from_secs(15);
+const FAST_RECONNECT_WINDOW: Duration = Duration::from_secs(5);
+const REPLAY_OVERLAP: Duration = Duration::from_secs(2);
+const PCM_BYTES_PER_MILLISECOND: u64 = 32;
 
 // The macOS capture tap forwards approximately one 100 ms, 3,200-byte PCM
 // block at a time. Keep enough bounded queue space for all three production
@@ -104,6 +109,18 @@ pub enum SttStreamEvent {
     Reconnecting {
         attempt: u8,
         delay_ms: u64,
+    },
+    /// A replacement WebSocket is configured. The duration measures only the
+    /// transport outage, before replay/catch-up work begins.
+    RecoveryStarted {
+        outage_ms: u64,
+    },
+    /// Provider-confirmed processing progress for the current WebSocket,
+    /// projected onto the capture-wide audio timeline.
+    AudioProgress {
+        final_audio_proc_ms: u64,
+        total_audio_proc_ms: u64,
+        lag_ms: u64,
     },
     /// A contiguous batch of non-control tokens in exact provider response order.
     Tokens(Vec<SttStreamToken>),
@@ -360,6 +377,83 @@ struct SonioxStreamResponse {
     _error_message: Option<String>,
     #[serde(default)]
     request_id: Option<String>,
+    #[serde(default)]
+    final_audio_proc_ms: Option<u64>,
+    #[serde(default)]
+    total_audio_proc_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+struct ReplayAudioFrame {
+    end_ms: u64,
+    pcm: Vec<u8>,
+}
+
+#[derive(Debug, Default)]
+struct StreamRecoveryState {
+    next_audio_ms: u64,
+    acknowledged_ms: u64,
+    connection_origin_ms: u64,
+    sent_frames: VecDeque<ReplayAudioFrame>,
+}
+
+impl StreamRecoveryState {
+    fn record_sent(&mut self, pcm: Vec<u8>) {
+        let duration_ms = (pcm.len() as u64)
+            .div_ceil(PCM_BYTES_PER_MILLISECOND)
+            .max(1);
+        let frame = ReplayAudioFrame {
+            end_ms: self.next_audio_ms.saturating_add(duration_ms),
+            pcm,
+        };
+        self.next_audio_ms = frame.end_ms;
+        self.sent_frames.push_back(frame);
+    }
+
+    fn acknowledge(&mut self, provider_total_ms: u64) -> (u64, u64) {
+        let acknowledged = self
+            .connection_origin_ms
+            .saturating_add(provider_total_ms)
+            .min(self.next_audio_ms);
+        self.acknowledged_ms = self.acknowledged_ms.max(acknowledged);
+        let retain_from = self
+            .acknowledged_ms
+            .saturating_sub(REPLAY_OVERLAP.as_millis() as u64);
+        while self
+            .sent_frames
+            .front()
+            .is_some_and(|frame| frame.end_ms <= retain_from)
+        {
+            self.sent_frames.pop_front();
+        }
+        (
+            self.acknowledged_ms,
+            self.next_audio_ms.saturating_sub(self.acknowledged_ms),
+        )
+    }
+
+    fn prepare_replay(&mut self, outage: Duration) -> Vec<ReplayAudioFrame> {
+        if outage > CONTINUITY_WINDOW {
+            self.sent_frames.clear();
+            self.acknowledged_ms = self.next_audio_ms;
+            self.connection_origin_ms = self.next_audio_ms;
+            return Vec::new();
+        }
+        let replay_from = self
+            .acknowledged_ms
+            .saturating_sub(REPLAY_OVERLAP.as_millis() as u64);
+        self.connection_origin_ms = replay_from;
+        self.sent_frames
+            .iter()
+            .filter(|frame| frame.end_ms > replay_from)
+            .cloned()
+            .collect()
+    }
+
+    fn replay_duplicate_until_provider_ms(&self) -> u64 {
+        self.acknowledged_ms
+            .saturating_sub(self.connection_origin_ms)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -468,8 +562,11 @@ async fn run_stream(
 ) -> Result<(), StreamFailure> {
     let mut paused = false;
     let mut reconnect_attempt = 0_u8;
+    let mut disconnected_at = None::<Instant>;
+    let mut recovery = StreamRecoveryState::default();
     loop {
         let mut session_connected = false;
+        let reconnect_outage = disconnected_at.map(|started| started.elapsed());
         match run_stream_session(
             endpoint,
             api_key,
@@ -481,13 +578,18 @@ async fn run_stream(
             timeouts,
             &mut paused,
             &mut session_connected,
+            &mut recovery,
+            reconnect_outage,
         )
         .await
         {
             Ok(()) => return Ok(()),
             Err(failure) if failure.is_retryable() => {
                 if session_connected {
+                    disconnected_at = Some(Instant::now());
                     reconnect_attempt = 0;
+                } else {
+                    disconnected_at.get_or_insert_with(Instant::now);
                 }
                 if reconnect_attempt >= timeouts.reconnect_max_attempts {
                     return Err(failure);
@@ -526,6 +628,8 @@ async fn run_stream_session(
     timeouts: StreamTimeouts,
     paused: &mut bool,
     session_connected: &mut bool,
+    recovery: &mut StreamRecoveryState,
+    reconnect_outage: Option<Duration>,
 ) -> Result<(), StreamFailure> {
     let connect = time::timeout(timeouts.connect, connect_async(endpoint))
         .await
@@ -545,6 +649,66 @@ async fn run_stream_session(
     )
     .await?;
     *session_connected = true;
+
+    let mut suppress_replay_until_provider_ms = 0_u64;
+    if let Some(outage) = reconnect_outage {
+        send_event(
+            event_tx,
+            SttStreamEvent::RecoveryStarted {
+                outage_ms: outage.as_millis().try_into().unwrap_or(u64::MAX),
+            },
+        )
+        .await?;
+        send_event(
+            event_tx,
+            SttStreamEvent::AudioProgress {
+                final_audio_proc_ms: recovery.acknowledged_ms,
+                total_audio_proc_ms: recovery.acknowledged_ms,
+                lag_ms: outage.as_millis().try_into().unwrap_or(u64::MAX),
+            },
+        )
+        .await?;
+        let replay = recovery.prepare_replay(outage);
+        suppress_replay_until_provider_ms = recovery.replay_duplicate_until_provider_ms();
+        let replay_interval = if outage > FAST_RECONNECT_WINDOW {
+            Some(Duration::from_millis(80))
+        } else {
+            None
+        };
+        for frame in replay {
+            send_message(
+                &mut write,
+                Message::Binary(frame.pcm.into()),
+                "Soniox stream recovery audio send",
+                timeouts.write,
+            )
+            .await?;
+            if let Some(interval) = replay_interval {
+                time::sleep(interval).await;
+            }
+        }
+        if outage > FAST_RECONNECT_WINDOW && outage <= CONTINUITY_WINDOW {
+            while let Ok(pcm) = audio_rx.try_recv() {
+                let retained_pcm = pcm.clone();
+                send_message(
+                    &mut write,
+                    Message::Binary(pcm.into()),
+                    "Soniox stream catch-up audio send",
+                    timeouts.write,
+                )
+                .await?;
+                recovery.record_sent(retained_pcm);
+                time::sleep(Duration::from_millis(80)).await;
+            }
+        } else if outage > CONTINUITY_WINDOW {
+            // The local encrypted journal remains authoritative for this
+            // interval. Do not burst stale remote audio into the new,
+            // explicitly non-contiguous realtime epoch.
+            while audio_rx.try_recv().is_ok() {}
+        }
+    } else {
+        recovery.connection_origin_ms = recovery.next_audio_ms;
+    }
     send_event(event_tx, SttStreamEvent::Connected).await?;
 
     let mut draining = false;
@@ -603,12 +767,14 @@ async fn run_stream_session(
             audio = audio_rx.recv(), if audio_open && !draining => {
                 match audio {
                     Some(pcm) if !*paused => {
+                        let retained_pcm = pcm.clone();
                         send_message(
                             &mut write,
                             Message::Binary(pcm.into()),
                             "Soniox stream audio send",
                             timeouts.write,
                         ).await?;
+                        recovery.record_sent(retained_pcm);
                     }
                     Some(_) => {
                         // Paused audio is deliberately not buffered or sent remotely.
@@ -635,7 +801,7 @@ async fn run_stream_session(
                 reset_sleep(&mut receive_idle_sleep, timeouts.receive_idle);
                 match message {
                     Some(Ok(Message::Text(text))) => {
-                        let response: SonioxStreamResponse = serde_json::from_str(&text)
+                        let mut response: SonioxStreamResponse = serde_json::from_str(&text)
                             .map_err(|error| StreamFailure::protocol(error.to_string()))?;
                         if let Some(error_code) = response.error_code {
                             let error_type = canonical_soniox_error_type(
@@ -649,6 +815,60 @@ async fn run_stream_session(
                                 error_message: "provider request failed".to_string(),
                                 request_id: safe_soniox_request_id(response.request_id.as_deref()),
                             }));
+                        }
+                        if let Some(total_audio_proc_ms) = response.total_audio_proc_ms {
+                            let final_audio_proc_ms = response.final_audio_proc_ms.unwrap_or(0);
+                            let (acknowledged_ms, sent_lag_ms) =
+                                recovery.acknowledge(total_audio_proc_ms);
+                            let queued_lag_ms = (audio_rx.len() as u64).saturating_mul(100);
+                            let lag_ms = sent_lag_ms.saturating_add(queued_lag_ms);
+                            let final_audio_proc_ms = recovery
+                                .connection_origin_ms
+                                .saturating_add(final_audio_proc_ms)
+                                .min(acknowledged_ms);
+                            send_event(
+                                event_tx,
+                                SttStreamEvent::AudioProgress {
+                                    final_audio_proc_ms,
+                                    total_audio_proc_ms: acknowledged_ms,
+                                    lag_ms,
+                                },
+                            )
+                            .await?;
+                        }
+                        if suppress_replay_until_provider_ms > 0 {
+                            let response_is_entirely_replayed = response
+                                .total_audio_proc_ms
+                                .is_some_and(|processed| {
+                                    processed <= suppress_replay_until_provider_ms
+                                });
+                            if response_is_entirely_replayed {
+                                response.tokens.clear();
+                            } else {
+                                let has_new_timed_source = response.tokens.iter().any(|token| {
+                                    token.translation_status.as_deref() != Some("translation")
+                                        && token.end_ms.is_some_and(|end_ms| {
+                                            end_ms > suppress_replay_until_provider_ms
+                                        })
+                                });
+                                response.tokens.retain(|token| {
+                                    if token.translation_status.as_deref() == Some("translation") {
+                                        has_new_timed_source
+                                    } else {
+                                        token.end_ms.is_none_or(|end_ms| {
+                                            end_ms > suppress_replay_until_provider_ms
+                                        })
+                                    }
+                                });
+                            }
+                            if response
+                                .total_audio_proc_ms
+                                .is_some_and(|processed| {
+                                    processed >= suppress_replay_until_provider_ms
+                                })
+                            {
+                                suppress_replay_until_provider_ms = 0;
+                            }
                         }
                         emit_response_events(event_tx, response.tokens).await?;
                         if response.finished {
@@ -1185,6 +1405,14 @@ mod tests {
 
         let buffered_audio = vec![7_u8; 3_200];
         runtime.push_pcm(buffered_audio.clone()).await.unwrap();
+        assert!(matches!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::RecoveryStarted { outage_ms }) if outage_ms <= 15_000
+        ));
+        assert!(matches!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::AudioProgress { lag_ms, .. }) if lag_ms <= 15_000
+        ));
         assert_eq!(
             runtime.event_rx.recv().await,
             Some(SttStreamEvent::Connected)
@@ -1321,5 +1549,37 @@ mod tests {
             soniox_stream_context_json(&context).unwrap(),
             Some(serde_json::to_string(&wire).unwrap())
         );
+    }
+
+    #[test]
+    fn provider_progress_keeps_two_seconds_for_short_reconnect_replay() {
+        let mut recovery = StreamRecoveryState::default();
+        for _ in 0..50 {
+            recovery.record_sent(vec![0; 3_200]);
+        }
+        let (acknowledged_ms, lag_ms) = recovery.acknowledge(5_000);
+        assert_eq!(acknowledged_ms, 5_000);
+        assert_eq!(lag_ms, 0);
+
+        let replay = recovery.prepare_replay(Duration::from_secs(1));
+        assert_eq!(recovery.connection_origin_ms, 3_000);
+        assert_eq!(recovery.replay_duplicate_until_provider_ms(), 2_000);
+        assert_eq!(replay.len(), 20);
+    }
+
+    #[test]
+    fn outage_over_fifteen_seconds_starts_without_replay() {
+        let mut recovery = StreamRecoveryState::default();
+        for _ in 0..50 {
+            recovery.record_sent(vec![0; 3_200]);
+        }
+        recovery.acknowledge(4_000);
+
+        assert!(!recovery
+            .prepare_replay(Duration::from_millis(15_001))
+            .iter()
+            .any(|_| true));
+        assert_eq!(recovery.connection_origin_ms, 5_000);
+        assert_eq!(recovery.acknowledged_ms, 5_000);
     }
 }

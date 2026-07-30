@@ -846,6 +846,7 @@
 "capture.state.failed" = "失败";
 "capture.remote.off" = "远端关闭";
 "capture.remote.connecting" = "远端连接中";
+"capture.remote.catching_up" = "字幕正在追赶，落后 %d 秒";
 "capture.remote.live" = "远端实时";
 "capture.remote.degraded" = "远端降级";
 "capture.remote.unavailable" = "远端不可用";

@@ -821,6 +821,7 @@
 "capture.state.failed" = "失敗";
 "capture.remote.off" = "リモートオフ";
 "capture.remote.connecting" = "リモート接続中";
+"capture.remote.catching_up" = "字幕を追跡中、%d 秒遅延";
 "capture.remote.live" = "リモートライブ";
 "capture.remote.degraded" = "リモート低下";
 "capture.remote.unavailable" = "リモート利用不可";

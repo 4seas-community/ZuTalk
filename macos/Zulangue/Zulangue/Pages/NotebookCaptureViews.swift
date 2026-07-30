@@ -1386,6 +1386,14 @@ private struct NotebookRealtimeCaptureConsole: View {
               let modelId = capture.realtimeModelId
         else { return remoteHealthTitle }
         let providerName = notebookCaptureProviderDisplayName(providerId)
+        if let lagMs = capture.realtimeLagMs, lagMs >= 1_000 {
+            let lagSeconds = Int((lagMs + 999) / 1_000)
+            let catchingUp = String(
+                format: String(localized: "capture.remote.catching_up"),
+                lagSeconds
+            )
+            return "\(providerName) · \(modelId) · \(catchingUp)"
+        }
         return "\(providerName) · \(modelId) · \(remoteHealthTitle)"
     }
 
