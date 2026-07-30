@@ -2071,7 +2071,7 @@ fn persist_assembled_utterances(
                 // replay is stale in that case: retain the newer durable row
                 // instead of turning a valid capture into local_persistence
                 // failure. The expected revision still prevents silent writes.
-                let current = store
+                store
                     .get_utterance_by_id(&update.utterance.id)
                     .map_err(|error| {
                         local_persistence_failure(
@@ -2088,8 +2088,7 @@ fn persist_assembled_utterances(
                     .ok_or_else(|| ProviderFailure {
                         error_type: "local_persistence".to_string(),
                         request_id: None,
-                    })?;
-                current
+                    })?
             }
             Err(error) => {
                 return Err(local_persistence_failure(
@@ -9670,7 +9669,8 @@ mod tests {
         doc.config_text_style(crate::editor_api::voice_tool_style_config());
         bridge.open("realtime-doc", doc).unwrap();
         let utterance = projected_utterance();
-        let rendered = render_bilingual_capture_section("session-a", &[utterance.clone()], false);
+        let rendered =
+            render_bilingual_capture_section("session-a", std::slice::from_ref(&utterance), false);
         let section_len = rendered.text.chars().count();
         apply_rendered(&bridge, "realtime-doc", 0, rendered);
         bridge
