@@ -387,17 +387,12 @@ impl ZulangueCore {
         {
             return Err(self.rollback_notebook_import(&session_id, error));
         }
-        if let Err(error) = self.attach_session_to_notebook(notebook_id.clone(), session_id.clone())
-        {
-            return Err(self.rollback_notebook_import(&session_id, error));
-        }
-
         if let Err(error) = self
             .notebook_capture_store
             .create_completed_import_run(
                 &vt_store::notebook_capture_store::NewCompletedNotebookImportRun {
                     id: uuid::Uuid::new_v4().to_string(),
-                    notebook_id,
+                    notebook_id: notebook_id.clone(),
                     session_id: session_id.clone(),
                     audio_path: import.audio_path,
                     audio_key_ref: import.audio_key_ref,
@@ -411,6 +406,9 @@ impl ZulangueCore {
                 message: format!("create completed Notebook import run: {error}"),
             })
         {
+            return Err(self.rollback_notebook_import(&session_id, error));
+        }
+        if let Err(error) = self.attach_session_to_notebook(notebook_id, session_id.clone()) {
             return Err(self.rollback_notebook_import(&session_id, error));
         }
         Ok(import.result)
@@ -464,27 +462,14 @@ impl ZulangueCore {
             .map_err(|_| CoreError::NotFound {
                 message: format!("session not found: {session_id}"),
             })?;
+        // Every recording gets one stable resource entry in all three views.
+        // The store commits the ownership link and projections together so a
+        // failure cannot leave a partial Notebook attachment behind.
         self.notebook_store
-            .attach_session(&notebook_id, &session_id)
+            .attach_session_with_builtin_projections(&notebook_id, &session_id)
             .map_err(|e| CoreError::InternalError {
                 message: e.to_string(),
-            })?;
-
-        // Every recording has a stable corresponding file in all three
-        // resource views from the moment it joins the Notebook. Later
-        // projection work fills these files without changing their identity.
-        for kind in [
-            BuiltinNotebookTab::RealtimeTranscript,
-            BuiltinNotebookTab::AsyncTranscript,
-            BuiltinNotebookTab::ManualNote,
-        ] {
-            self.notebook_store
-                .ensure_session_projection(&notebook_id, kind, &session_id, None)
-                .map_err(|e| CoreError::InternalError {
-                    message: e.to_string(),
-                })?;
-        }
-        Ok(())
+            })
     }
 
     fn rollback_notebook_import(&self, session_id: &str, error: CoreError) -> CoreError {

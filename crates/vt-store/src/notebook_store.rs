@@ -407,6 +407,104 @@ impl NotebookStore {
         Ok(())
     }
 
+    /// Atomically links a recording and creates its three stable resource
+    /// projections. A failure cannot leave a partial link or projection set.
+    pub fn attach_session_with_builtin_projections(
+        &self,
+        notebook_id: &str,
+        session_id: &str,
+    ) -> Result<(), NotebookStoreError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let notebook_exists = tx
+            .query_row(
+                "SELECT 1 FROM notebooks WHERE id = ?1 AND deleted_at IS NULL",
+                params![notebook_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        if !notebook_exists {
+            return Err(NotebookStoreError::NotFound(notebook_id.to_string()));
+        }
+
+        let existing_notebook_id = tx
+            .query_row(
+                "SELECT notebook_id FROM notebook_sessions WHERE session_id = ?1",
+                params![session_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if let Some(existing_notebook_id) = existing_notebook_id.as_deref() {
+            if existing_notebook_id != notebook_id {
+                return Err(NotebookStoreError::SessionAlreadyLinked {
+                    session_id: session_id.to_string(),
+                    notebook_id: existing_notebook_id.to_string(),
+                });
+            }
+        }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        if existing_notebook_id.is_none() {
+            tx.execute(
+                "INSERT INTO notebook_sessions (notebook_id, session_id, created_at)
+                 VALUES (?1, ?2, ?3)",
+                params![notebook_id, session_id, now],
+            )?;
+        }
+
+        let tabs = {
+            let mut stmt = tx.prepare(
+                "SELECT id, builtin_kind
+                 FROM notebook_tabs
+                 WHERE notebook_id = ?1 AND deleted_at IS NULL
+                 ORDER BY position ASC, created_at ASC, id ASC",
+            )?;
+            let rows = stmt
+                .query_map(params![notebook_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        let expected = BuiltinNotebookTab::bootstrap_order();
+        if tabs.len() != expected.len()
+            || expected.iter().any(|kind| {
+                tabs.iter()
+                    .filter(|(_, raw_kind)| raw_kind == kind.as_str())
+                    .count()
+                    != 1
+            })
+        {
+            return Err(NotebookStoreError::Validation(format!(
+                "notebook {notebook_id} must contain exactly three builtin tabs"
+            )));
+        }
+
+        for (tab_id, _) in tabs {
+            tx.execute(
+                "INSERT INTO notebook_session_projections
+                 (id, notebook_id, tab_id, session_id, section_title,
+                  created_at, updated_at, deleted_at)
+                 VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?5, NULL)
+                 ON CONFLICT(tab_id, session_id) DO UPDATE SET
+                     updated_at = excluded.updated_at,
+                     deleted_at = NULL",
+                params![
+                    uuid::Uuid::new_v4().to_string(),
+                    notebook_id,
+                    tab_id,
+                    session_id,
+                    now,
+                ],
+            )?;
+        }
+
+        self.touch_notebook_tx(&tx, notebook_id, &now)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     fn ensure_notebook_exists(&self, notebook_id: &str) -> Result<(), NotebookStoreError> {
         if self.get_notebook(notebook_id)?.is_some() {
             Ok(())
@@ -593,5 +691,35 @@ mod tests {
             store.resolve_builtin_tab(&first.id, &first_tab.doc_id),
             Err(NotebookStoreError::NotFound(_))
         ));
+    }
+
+    #[test]
+    fn linking_with_builtin_projections_rolls_back_atomically() {
+        let temp = TempDir::new().unwrap();
+        let db_path = temp.path().join("notebook.db");
+        let store = NotebookStore::new(&db_path).unwrap();
+        let notebook = store.create_notebook(Some("Atomic resources")).unwrap();
+        let connection = Connection::open(&db_path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TRIGGER fail_second_resource_projection
+                 BEFORE INSERT ON notebook_session_projections
+                 WHEN (
+                     SELECT COUNT(*) FROM notebook_session_projections
+                     WHERE session_id = NEW.session_id
+                 ) = 1
+                 BEGIN
+                   SELECT RAISE(ABORT, 'forced resource projection failure');
+                 END;",
+            )
+            .unwrap();
+
+        let result = store.attach_session_with_builtin_projections(&notebook.id, "session-atomic");
+
+        assert!(result.is_err());
+        assert!(store.list_linked_sessions(&notebook.id).unwrap().is_empty());
+        for tab in store.list_tabs(&notebook.id).unwrap() {
+            assert!(store.list_session_projections(&tab.id).unwrap().is_empty());
+        }
     }
 }

@@ -1,11 +1,13 @@
-# Zulangue 0.1.1
+# Zulangue 0.1.2
 
-This is the first Zulangue release with built-in update checks.
+This release makes live multilingual work easier to follow and organize.
 
-- Checks for new versions automatically and shows a native update prompt.
-- Adds a manual **Check for Updates…** action in the app and menu-bar menus.
-- Verifies downloaded updates before extraction and installation.
-- Improves Soniox key setup and connection validation.
+- Adds an always-on-top multilingual subtitle window for recordings.
+- Lets you move and resize the subtitle window and adjust its text size.
+- Opens or closes live subtitles from the recording view or menu bar.
+- Adds a Notebook resource timeline for audio, live transcripts, processed
+  transcripts, and personal notes.
+- Keeps Sparkle update checks and signed update verification from 0.1.1.
 
 Zulangue requires macOS 15.5 or later.
 

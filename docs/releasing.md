@@ -56,7 +56,7 @@ GitHub Actions 不接收也不使用这把私钥。
 
    ```bash
    GITHUB_REPOSITORY=Zuddev/zulangue \
-   GITHUB_REF_NAME=v0.1.1 \
+   GITHUB_REF_NAME=v0.1.2 \
    just release-sparkle-adhoc
    ```
 
@@ -64,7 +64,7 @@ GitHub Actions 不接收也不使用这把私钥。
 6. 创建 OpenPGP 签名标签并推送提交与标签。
 7. 从本机上传以下三个文件到 GitHub Release：
 
-   - `Zulangue-0.1.1.dmg`
+   - `Zulangue-0.1.2.dmg`
    - `Zulangue-macOS.sha256`
    - `appcast.xml`
 
