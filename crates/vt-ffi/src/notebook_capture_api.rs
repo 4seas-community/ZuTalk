@@ -2071,7 +2071,7 @@ fn persist_assembled_utterances(
                 // replay is stale in that case: retain the newer durable row
                 // instead of turning a valid capture into local_persistence
                 // failure. The expected revision still prevents silent writes.
-                let current = store
+                store
                     .get_utterance_by_id(&update.utterance.id)
                     .map_err(|error| {
                         local_persistence_failure(
@@ -2088,8 +2088,7 @@ fn persist_assembled_utterances(
                     .ok_or_else(|| ProviderFailure {
                         error_type: "local_persistence".to_string(),
                         request_id: None,
-                    })?;
-                current
+                    })?
             }
             Err(error) => {
                 return Err(local_persistence_failure(
