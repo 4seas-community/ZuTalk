@@ -781,6 +781,10 @@
 "subtitle.overlay.unpin" = "Stop keeping subtitles on top";
 "subtitle.overlay.pinned" = "Pinned above other windows on every desktop";
 "subtitle.overlay.unpinned" = "Not pinned";
+"subtitle.overlay.theme.switch_to_light" = "Use light subtitles";
+"subtitle.overlay.theme.switch_to_dark" = "Use dark subtitles";
+"subtitle.overlay.theme.dark" = "Dark canvas";
+"subtitle.overlay.theme.light" = "Light canvas";
 "subtitle.overlay.mode" = "Subtitle mode";
 "subtitle.overlay.mode.conversation" = "Compare";
 "subtitle.overlay.mode.audience" = "Event";

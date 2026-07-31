@@ -769,6 +769,10 @@
 "subtitle.overlay.unpin" = "字幕の固定を解除";
 "subtitle.overlay.pinned" = "すべてのデスクトップで最前面に固定";
 "subtitle.overlay.unpinned" = "固定されていません";
+"subtitle.overlay.theme.switch_to_light" = "明るい字幕にする";
+"subtitle.overlay.theme.switch_to_dark" = "暗い字幕にする";
+"subtitle.overlay.theme.dark" = "ダークキャンバス";
+"subtitle.overlay.theme.light" = "ライトキャンバス";
 "subtitle.overlay.mode" = "字幕モード";
 "subtitle.overlay.mode.conversation" = "対照";
 "subtitle.overlay.mode.audience" = "イベント";

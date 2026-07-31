@@ -781,6 +781,10 @@
 "subtitle.overlay.unpin" = "Ne plus garder les sous-titres au premier plan";
 "subtitle.overlay.pinned" = "Épinglés au-dessus des autres fenêtres sur tous les bureaux";
 "subtitle.overlay.unpinned" = "Non épinglés";
+"subtitle.overlay.theme.switch_to_light" = "Utiliser des sous-titres clairs";
+"subtitle.overlay.theme.switch_to_dark" = "Utiliser des sous-titres sombres";
+"subtitle.overlay.theme.dark" = "Toile sombre";
+"subtitle.overlay.theme.light" = "Toile claire";
 "subtitle.overlay.mode" = "Mode des sous-titres";
 "subtitle.overlay.mode.conversation" = "Comparer";
 "subtitle.overlay.mode.audience" = "Événement";

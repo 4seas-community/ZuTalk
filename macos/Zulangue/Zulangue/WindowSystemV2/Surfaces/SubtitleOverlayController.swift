@@ -91,6 +91,53 @@ enum SubtitleOverlayLayoutPolicy {
     }
 }
 
+/// The overlay paints on an opaque surface instead of a blurred material.
+///
+/// A translucent window makes the compositor re-run a CoreImage backdrop blur
+/// over whatever sits behind it every time the canvas is dirtied. This canvas
+/// floats above a live meeting and is dirtied by every transcript revision, so
+/// the backdrop never stops changing and the blur can never be cached — the
+/// work lands on the WindowServer main thread and stalls the whole display
+/// pipeline, not just this app. An opaque fill removes that path entirely.
+///
+/// Hairlines follow the same constraint: they used to be white-on-material,
+/// which disappears against an opaque light-mode surface, so they resolve
+/// through the semantic separator color instead.
+enum SubtitleOverlayPalette {
+    static let surface = Color(nsColor: .windowBackgroundColor)
+    static let hairline = Color(nsColor: .separatorColor)
+}
+
+/// Light and dark are an explicit operator choice rather than a mirror of the
+/// system appearance: the canvas is read off a projector in a room whose
+/// lighting has nothing to do with how this Mac is themed, and a meeting that
+/// starts in daylight should not have its subtitles invert at sunset. Dark is
+/// the default because a bright panel washes out a projected room.
+///
+/// The choice resolves through the window's `NSAppearance` rather than by
+/// hardcoding colors, so the surface, hairlines, and text all resolve as a
+/// matched set — forcing a dark fill while the text stayed system-light would
+/// leave the words unreadable, which is the one failure this canvas cannot
+/// afford.
+enum SubtitleOverlayTheme: String, CaseIterable {
+    case dark
+    case light
+
+    static let defaultsKey = "zulangue.subtitleOverlay.theme"
+
+    var appearance: NSAppearance? {
+        NSAppearance(named: self == .dark ? .darkAqua : .aqua)
+    }
+
+    var colorScheme: ColorScheme {
+        self == .dark ? .dark : .light
+    }
+
+    var toggled: SubtitleOverlayTheme {
+        self == .dark ? .light : .dark
+    }
+}
+
 enum SubtitleOverlayWindowPolicy {
     static let pinnedDefaultsKey = "zulangue.subtitleOverlay.isPinned"
 
@@ -119,6 +166,15 @@ final class SubtitleOverlayPresentationSettings: ObservableObject {
         }
     }
 
+    @Published var theme: SubtitleOverlayTheme {
+        didSet {
+            UserDefaults.standard.set(
+                theme.rawValue,
+                forKey: SubtitleOverlayTheme.defaultsKey
+            )
+        }
+    }
+
     private static let displayModeDefaultsKey = "zulangue.subtitleOverlay.displayMode"
 
     private init(defaults: UserDefaults = .standard) {
@@ -130,6 +186,9 @@ final class SubtitleOverlayPresentationSettings: ObservableObject {
         displayMode = defaults.string(forKey: Self.displayModeDefaultsKey)
             .flatMap(SubtitleOverlayDisplayMode.init(rawValue:))
             ?? .audience
+        theme = defaults.string(forKey: SubtitleOverlayTheme.defaultsKey)
+            .flatMap(SubtitleOverlayTheme.init(rawValue:))
+            ?? .dark
     }
 
     func togglePinned(defaults: UserDefaults = .standard) {
@@ -151,10 +210,10 @@ struct SubtitleOverlayView: View {
             .frame(minWidth: 560, minHeight: 180)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.regularMaterial)
+                    .fill(SubtitleOverlayPalette.surface)
                     .overlay(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                            .strokeBorder(SubtitleOverlayPalette.hairline, lineWidth: 0.5)
                     )
             )
             .overlay(alignment: .top) { hoverControlBar }
@@ -170,6 +229,7 @@ struct SubtitleOverlayView: View {
                 format: String(localized: "subtitle.overlay.language_count"),
                 store.selectedLanguages.count
             )))
+            .environment(\.colorScheme, presentationSettings.theme.colorScheme)
     }
 
     /// The overlay is a projection canvas in every mode: while it is being
@@ -181,9 +241,9 @@ struct SubtitleOverlayView: View {
         if isHoveringOverlay {
             VStack(spacing: 0) {
                 controlBar
-                Divider().overlay(Color.white.opacity(0.12))
+                Divider().overlay(SubtitleOverlayPalette.hairline)
             }
-            .background(.regularMaterial)
+            .background(SubtitleOverlayPalette.surface)
             .transition(.opacity)
         }
     }
@@ -201,6 +261,7 @@ struct SubtitleOverlayView: View {
 
                 modePicker
                 fontControls
+                themeButton
                 pinButton
                 closeButton
             }
@@ -209,6 +270,7 @@ struct SubtitleOverlayView: View {
                 HStack(spacing: 8) {
                     captureStatus
                     Spacer(minLength: 8)
+                    themeButton
                     pinButton
                     closeButton
                 }
@@ -254,6 +316,30 @@ struct SubtitleOverlayView: View {
         .accessibilityValue(Text(String(localized: presentationSettings.isPinned
             ? "subtitle.overlay.pinned"
             : "subtitle.overlay.unpinned")))
+    }
+
+    private var themeButton: some View {
+        Button {
+            presentationSettings.theme = presentationSettings.theme.toggled
+        } label: {
+            Image(systemName: presentationSettings.theme == .dark
+                ? "moon.fill"
+                : "sun.max.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.secondary)
+        .help(String(localized: presentationSettings.theme == .dark
+            ? "subtitle.overlay.theme.switch_to_light"
+            : "subtitle.overlay.theme.switch_to_dark"))
+        .accessibilityLabel(Text(String(localized: presentationSettings.theme == .dark
+            ? "subtitle.overlay.theme.switch_to_light"
+            : "subtitle.overlay.theme.switch_to_dark")))
+        .accessibilityValue(Text(String(localized: presentationSettings.theme == .dark
+            ? "subtitle.overlay.theme.dark"
+            : "subtitle.overlay.theme.light")))
     }
 
     private var closeButton: some View {
@@ -374,7 +460,7 @@ struct SubtitleOverlayView: View {
         return VStack(spacing: 0) {
             if layout == .columns {
                 languageHeader
-                Divider().overlay(Color.white.opacity(0.1))
+                Divider().overlay(SubtitleOverlayPalette.hairline)
             }
             conversationTranscript(layout: layout)
         }
@@ -399,7 +485,7 @@ struct SubtitleOverlayView: View {
                 .accessibilityAddTraits(.isHeader)
 
                 if index < displayLanguages.count - 1 {
-                    Divider().overlay(Color.white.opacity(0.1))
+                    Divider().overlay(SubtitleOverlayPalette.hairline)
                 }
             }
         }
@@ -520,7 +606,7 @@ struct SubtitleOverlayView: View {
                         lane in
                         conversationLane(lane, showsLanguageHeader: false)
                         if index < displayLanes(projection).count - 1 {
-                            Divider().overlay(Color.white.opacity(0.1))
+                            Divider().overlay(SubtitleOverlayPalette.hairline)
                         }
                     }
                 }
@@ -532,7 +618,7 @@ struct SubtitleOverlayView: View {
                         lane in
                         conversationLane(lane, showsLanguageHeader: true)
                         if index < displayLanes(projection).count - 1 {
-                            Divider().overlay(Color.white.opacity(0.1))
+                            Divider().overlay(SubtitleOverlayPalette.hairline)
                         }
                     }
                 }
@@ -801,6 +887,7 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
     private let store: ActiveBilingualTranscriptStore
     private var hostingView: NSHostingView<SubtitleOverlayView>?
     private var presentationSettingsCancellable: AnyCancellable?
+    private var themeCancellable: AnyCancellable?
 
     var windowSurfaceID: WindowSurfaceID { .subtitleOverlay }
     var managedWindow: NSWindow {
@@ -871,6 +958,18 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
             .sink { [weak self] isPinned in
                 self?.applyPinnedState(isPinned)
             }
+        themeCancellable = SubtitleOverlayPresentationSettings.shared.$theme
+            .removeDuplicates()
+            .sink { [weak self] theme in
+                self?.applyTheme(theme)
+            }
+    }
+
+    /// Pinning the appearance to the window rather than to the hosting view
+    /// keeps the panel's own chrome — the resize edges and the shadow AppKit
+    /// draws outside the SwiftUI content — in the same theme as the canvas.
+    private func applyTheme(_ theme: SubtitleOverlayTheme) {
+        managedWindow.appearance = theme.appearance
     }
 
     private func applyPinnedState(_ isPinned: Bool) {

@@ -781,6 +781,10 @@
 "subtitle.overlay.unpin" = "取消字幕置顶";
 "subtitle.overlay.pinned" = "已置顶，并显示在所有桌面";
 "subtitle.overlay.unpinned" = "未置顶";
+"subtitle.overlay.theme.switch_to_light" = "使用浅色字幕";
+"subtitle.overlay.theme.switch_to_dark" = "使用深色字幕";
+"subtitle.overlay.theme.dark" = "深色画布";
+"subtitle.overlay.theme.light" = "浅色画布";
 "subtitle.overlay.mode" = "字幕模式";
 "subtitle.overlay.mode.conversation" = "对照";
 "subtitle.overlay.mode.audience" = "活动";
