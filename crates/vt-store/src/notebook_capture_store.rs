@@ -3879,27 +3879,36 @@ impl NotebookCaptureStore {
             tx.commit()?;
             return Ok(None);
         }
-        if let Some(sequence) = item.bound_sequence {
-            let utterance = bind_translation_inbox_item_from_conn(&tx, key, sequence)?;
-            tx.commit()?;
-            return Ok(Some(RealtimeTranslationInboxBinding {
-                key: item.key,
-                canonical_sequence: sequence,
-                utterance,
-            }));
-        }
-        let candidates = list_machine_utterances_from_conn(&tx, &key.session_id)?;
-        let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter()) else {
-            tx.commit()?;
-            return Ok(None);
+        let sequence = if let Some(sequence) = item.bound_sequence {
+            sequence
+        } else {
+            let candidates = list_machine_utterances_from_conn(&tx, &key.session_id)?;
+            let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter())
+            else {
+                tx.commit()?;
+                return Ok(None);
+            };
+            sequence
         };
-        let utterance = bind_translation_inbox_item_from_conn(&tx, key, sequence)?;
-        tx.commit()?;
-        Ok(Some(RealtimeTranslationInboxBinding {
-            key: item.key,
-            canonical_sequence: sequence,
-            utterance,
-        }))
+        match bind_translation_inbox_item_from_conn(&tx, key, sequence) {
+            Ok(utterance) => {
+                tx.commit()?;
+                Ok(Some(RealtimeTranslationInboxBinding {
+                    key: item.key,
+                    canonical_sequence: sequence,
+                    utterance,
+                }))
+            }
+            Err(NotebookCaptureStoreError::Conflict(_)) => {
+                // Same policy as reconcile: an already-owned visible language
+                // lane or contested identity keeps the durable fact unbound.
+                // "Unique" is a best-effort guess, so a contested bind must
+                // never escalate into a capture-fatal persistence error.
+                tx.rollback()?;
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// Reconciles every currently unbound epoch-zero auxiliary fact while the
@@ -10187,6 +10196,89 @@ mod tests {
             durable.bound_utterance_id.as_deref(),
             Some("utt-aux-final-bind")
         );
+    }
+
+    #[test]
+    fn contested_unique_binding_stays_unbound_instead_of_conflicting() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "aux-occupied-lane");
+        claim_realtime(&store, "session-aux-occupied-lane");
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-aux-occupied-lane".into(),
+                    session_id: "session-aux-occupied-lane".into(),
+                    sequence: 0,
+                    session_speaker_id: None,
+                    source_language: "th".into(),
+                    source_text: "ฝนตกหนัก".into(),
+                    source_start_ms: Some(100),
+                    source_end_ms: Some(300),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Partial,
+                    alignment: UtteranceAlignment::TranslationPending,
+                },
+                None,
+            )
+            .unwrap();
+        let owner = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: "session-aux-occupied-lane".into(),
+                    lane_index: 1,
+                    group_epoch: 0,
+                    provider_sequence: 0,
+                    target_language: "en".into(),
+                },
+                source_language: "th".into(),
+                source_text: "ฝนตกหนัก".into(),
+                source_start_ms: Some(100),
+                source_end_ms: Some(300),
+                translated_text: Some("Heavy rain".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(owner.item.bound_sequence, Some(0));
+
+        // A second auxiliary fact whose only alignment candidate is the same
+        // canonical row. Its target lane is already owned, so the
+        // store-authoritative fallback must keep the durable fact unbound for
+        // a later pass instead of escalating the ownership conflict into a
+        // capture-fatal persistence error.
+        let late_key = RealtimeTranslationInboxKey {
+            session_id: "session-aux-occupied-lane".into(),
+            lane_index: 1,
+            group_epoch: 0,
+            provider_sequence: 1,
+            target_language: "en".into(),
+        };
+        let accepted = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: late_key.clone(),
+                source_language: "th".into(),
+                source_text: "แค่เริ่มต้น".into(),
+                source_start_ms: Some(150),
+                source_end_ms: Some(350),
+                translated_text: Some("Just the beginning".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(accepted.item.bound_sequence, None);
+
+        let resolved = store
+            .bind_translation_inbox_item_if_unique(&late_key)
+            .unwrap();
+        assert!(resolved.is_none());
+        let inbox = store
+            .list_translation_inbox("session-aux-occupied-lane")
+            .unwrap();
+        assert_eq!(inbox.len(), 2);
+        assert_eq!(inbox[0].bound_sequence, Some(0));
+        assert_eq!(inbox[1].bound_sequence, None);
     }
 
     #[test]

@@ -1956,24 +1956,45 @@ fn initialize_waiting_translation_variants(
             {
                 continue;
             }
-            let updated = store
-                .upsert_translation_variant(
-                    &utterance.session_id,
-                    utterance.sequence,
-                    language,
-                    None,
-                    UtteranceVariantState::Waiting,
-                    None,
-                )
-                .map_err(|error| {
-                    local_persistence_failure(
+            let updated = match store.upsert_translation_variant(
+                &utterance.session_id,
+                utterance.sequence,
+                language,
+                None,
+                UtteranceVariantState::Waiting,
+                None,
+            ) {
+                Ok(updated) => updated,
+                Err(
+                    error @ (vt_store::NotebookCaptureStoreError::Conflict(_)
+                    | vt_store::NotebookCaptureStoreError::Validation(_)
+                    | vt_store::NotebookCaptureStoreError::NotFound(_)),
+                ) => {
+                    // The Waiting placeholder is cosmetic. A semantic
+                    // rejection means the lane's durable state moved past
+                    // this snapshot (source revised to this language, lane
+                    // already final, utterance withdrawn); none of those may
+                    // interrupt the live capture. Only real storage failures
+                    // stay fatal.
+                    tracing::warn!(
+                        session_id = %utterance.session_id,
+                        sequence = utterance.sequence,
+                        language = %language,
+                        error = %error,
+                        "waiting translation variant rejected; lane state is newer than snapshot"
+                    );
+                    continue;
+                }
+                Err(error) => {
+                    return Err(local_persistence_failure(
                         &format!(
                             "persist waiting translation variant {}:{}:{language}",
                             utterance.session_id, utterance.sequence
                         ),
                         error,
-                    )
-                })?;
+                    ));
+                }
+            };
             canonical_assembler.record_persisted(&updated.id, updated.revision);
             canonical_matches.insert(
                 (group_epoch, updated.sequence),
@@ -2120,17 +2141,42 @@ fn flush_pending_translation_variants(
             continue;
         }
         let (sequence, updated) = if let Some(sequence) = cached_sequence {
-            let updated = store
-                .bind_translation_inbox_item(&key, sequence)
-                .map_err(|error| {
-                    local_persistence_failure(
+            let updated = match store.bind_translation_inbox_item(&key, sequence) {
+                Ok(updated) => updated,
+                Err(vt_store::NotebookCaptureStoreError::Conflict(conflict)) => {
+                    // SQLite is the authority on lane ownership; a contested
+                    // bind invalidates this cached correlation. The provider
+                    // fact is already durable in the inbox, so it stays
+                    // pending for a later better-evidenced pass instead of
+                    // interrupting the live capture.
+                    tracing::warn!(
+                        session_id = %pending.session_id,
+                        sequence,
+                        target_language = %pending.target_language,
+                        conflict = %conflict,
+                        "cached translation inbox binding rejected; fact remains unbound"
+                    );
+                    variant_bindings.remove(&pending_key);
+                    let reverse_key = (
+                        pending.group_epoch,
+                        sequence,
+                        pending.target_language.clone(),
+                    );
+                    if reverse_variant_bindings.get(&reverse_key) == Some(&pending_key) {
+                        reverse_variant_bindings.remove(&reverse_key);
+                    }
+                    continue;
+                }
+                Err(error) => {
+                    return Err(local_persistence_failure(
                         &format!(
                             "bind durable translation inbox {}:{}:{}",
                             pending.session_id, sequence, pending.target_language
                         ),
                         error,
-                    )
-                })?;
+                    ));
+                }
+            };
             (sequence, updated)
         } else {
             let Some(binding) =
