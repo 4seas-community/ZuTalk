@@ -1,16 +1,15 @@
-# Zulangue 0.1.5
+# Zulangue 0.1.6
 
-This release fixes a bug that could freeze live transcription mid-recording
-and makes software updates and invite codes easier to manage.
+This release brings Zulangue to eight languages.
 
-- Fixes a live-capture freeze: a translation arriving for an
-  already-translated sentence no longer aborts the recording or leaves the
-  transcript stuck in a failed projection state.
-- Retries interrupted update downloads automatically and ships small delta
-  updates for recent versions, so updating works on unstable networks.
-- Community invite codes can now be entered and disabled in Settings, and
-  your own Soniox key always takes priority over invite keys when both are
-  present.
+- The app interface is now available in English, ไทย (Thai), မြန်မာ
+  (Burmese), 日本語 (Japanese), Français, Español, Deutsch, and 简体中文
+  (Simplified Chinese). Pick your language in **Settings → General**.
+- Error messages from the transcription engine are localized into the same
+  eight languages.
+- The project README is available in all eight languages as well.
+- Fills in a handful of interface strings that were missing from the
+  Japanese localization.
 - Continues to verify updates with the project-specific Sparkle signing key.
 
 Zulangue requires macOS 15.5 or later.
