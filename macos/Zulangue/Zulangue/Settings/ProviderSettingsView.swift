@@ -302,7 +302,7 @@ struct ProviderSettingsView: View {
             SettingsRowDivider()
             SettingsRow(
                 String(localized: "settings.services.engine.post_stop"),
-                description: String(localized: engine.postStopUsesRealtimeRestream == true
+                description: String(localized: engine.postStopUsesAsyncFileApi == true
                     ? "settings.services.engine.post_stop_detail"
                     : "settings.services.engine.post_stop_unavailable_detail")
             ) {
@@ -326,7 +326,7 @@ struct ProviderSettingsView: View {
     private func postStopAccessibilityLabel(
         for engine: NotebookCaptureEnginePresentation
     ) -> String {
-        let key: String.LocalizationValue = engine.postStopUsesRealtimeRestream == true
+        let key: String.LocalizationValue = engine.postStopUsesAsyncFileApi == true
             ? "settings.services.engine.post_stop_accessibility_format"
             : "settings.services.engine.post_stop_unavailable_accessibility_format"
         return String(format: String(localized: key), engine.postStopSummary)

@@ -69,7 +69,7 @@ async fn start_mock_server() -> (SocketAddr, Arc<Mutex<Option<Value>>>, Arc<Mute
 }
 
 #[tokio::test]
-async fn test_post_stop_connect_and_config_uses_current_engine() {
+async fn test_realtime_connect_and_config_uses_current_engine() {
     let (addr, received_config, _) = start_mock_server().await;
     let endpoint = format!("ws://127.0.0.1:{}", addr.port());
 
@@ -86,7 +86,7 @@ async fn test_post_stop_connect_and_config_uses_current_engine() {
         enable_speaker_diarization: true,
         ..Default::default()
     };
-    SonioxRtClient::run_post_stop(
+    SonioxRtClient::run(
         &endpoint,
         "test-api-key",
         &stt_config,
@@ -105,7 +105,7 @@ async fn test_post_stop_connect_and_config_uses_current_engine() {
     let config = received_config.lock().await;
     let config = config.as_ref().unwrap();
     let engine = CURRENT_NOTEBOOK_CAPTURE_ENGINE;
-    assert_eq!(config["model"], engine.post_stop_model_id);
+    assert_eq!(config["model"], engine.realtime_model_id);
     assert_eq!(config["api_key"], "test-api-key");
     assert_eq!(config["audio_format"], engine.audio_format);
     assert_eq!(config["sample_rate"], engine.sample_rate);
@@ -421,7 +421,7 @@ async fn test_post_stop_token_language_and_speaker_fields_preserved() {
         .unwrap();
     drop(audio_tx);
 
-    SonioxRtClient::run_post_stop(
+    SonioxRtClient::run(
         &endpoint, "key", &config, audio_rx, token_tx, status_tx, cancel,
     )
     .await

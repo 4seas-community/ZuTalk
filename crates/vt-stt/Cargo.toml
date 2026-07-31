@@ -11,6 +11,7 @@ vt-i18n = { path = "../vt-i18n" }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["rt"] }
 tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
+reqwest = { workspace = true }
 futures = "0.3"
 serde.workspace = true
 serde_json.workspace = true

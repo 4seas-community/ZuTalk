@@ -5770,6 +5770,7 @@ public func FfiConverterTypeFfiNotebookCaptureState_lower(_ value: FfiNotebookCa
 public enum FfiNotebookPostStopExecution: Equatable, Hashable {
 
     case realtimeRestream
+    case asyncFileApi
 
 
 
@@ -5793,6 +5794,8 @@ public struct FfiConverterTypeFfiNotebookPostStopExecution: FfiConverterRustBuff
 
         case 1: return .realtimeRestream
 
+        case 2: return .asyncFileApi
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -5803,6 +5806,10 @@ public struct FfiConverterTypeFfiNotebookPostStopExecution: FfiConverterRustBuff
 
         case .realtimeRestream:
             writeInt(&buf, Int32(1))
+
+
+        case .asyncFileApi:
+            writeInt(&buf, Int32(2))
 
         }
     }

@@ -9,23 +9,79 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{broadcast, mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use vt_audio::{canonicalize_for_soniox, SONIOX_CANONICAL_SAMPLE_RATE};
 use vt_crypto::{KeyProvider, SessionKey};
-use vt_model::{AudioChannel, AudioChunk, Token};
+use vt_model::Token;
 use vt_store::{AsyncProviderReceipt, NotebookCaptureStore, SearchStore, SessionMetaStore};
 use vt_stt::{
-    ConnectionStatus, SonioxRtClient, SttConfig, SttError, CURRENT_NOTEBOOK_CAPTURE_ENGINE,
+    soniox_async_transcribe_wav, wrap_pcm_s16le_in_wav, SonioxAsyncArtifactObserver,
+    SonioxAsyncRequest, SttError, CURRENT_NOTEBOOK_CAPTURE_ENGINE, SONIOX_ASYNC_POLL_INTERVAL,
 };
 
 pub(crate) type ProviderDispatchGate = Arc<dyn Fn() -> Result<(), (String, String)> + Send + Sync>;
 
-const SONIOX_AUDIO_CHUNK_BYTES: usize = 3200;
-const SONIOX_AUDIO_CHUNK_PACING: Duration = Duration::from_millis(20);
 const SONIOX_ASYNC_TASK_MIN_TIMEOUT: Duration = Duration::from_secs(90);
-const SONIOX_ASYNC_TASK_MAX_TIMEOUT: Duration = Duration::from_secs(30 * 60);
-const SONIOX_CLIENT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
+const SONIOX_ASYNC_TASK_MAX_TIMEOUT: Duration = Duration::from_secs(60 * 60);
+/// 上传 + 排队裕量。异步 API 支持最长 5 小时的文件，处理速度远快于实时。
+const SONIOX_ASYNC_TASK_BASE_ALLOWANCE: Duration = Duration::from_secs(5 * 60);
+
+/// 远端工件标签。上传文件名与转录任务的 `client_reference_id` 都用它，
+/// 启动扫尾据此在远端清单里认出本机遗留的工件。
+pub(crate) fn provider_artifact_reference(task_id: &str) -> String {
+    format!("zulangue-{task_id}")
+}
+
+/// 把 `soniox_async` 的远端工件生命周期落到 `provider_remote_artifacts` 日志。
+///
+/// 回调不能失败：此刻远端已经有工件，中断反而把它留得更久。写库失败只记
+/// WARN，兜底仍是启动扫尾——claim 行在任何远端调用之前就已落库，扫尾即使
+/// 没有具体 id 也能按标签在远端清单里找回。
+struct RemoteArtifactJournal {
+    store: NotebookCaptureStore,
+    task_id: String,
+}
+
+impl SonioxAsyncArtifactObserver for RemoteArtifactJournal {
+    fn remote_file_created(&self, remote_id: &str) {
+        if let Err(error) = self
+            .store
+            .record_provider_remote_file(&self.task_id, remote_id)
+        {
+            tracing::warn!(
+                task_id = %self.task_id,
+                error = %error,
+                "failed to journal remote provider file id; startup sweep will fall back to the reference tag"
+            );
+        }
+    }
+
+    fn remote_transcription_created(&self, remote_id: &str) {
+        if let Err(error) = self
+            .store
+            .record_provider_remote_transcription(&self.task_id, remote_id)
+        {
+            tracing::warn!(
+                task_id = %self.task_id,
+                error = %error,
+                "failed to journal remote provider transcription id; startup sweep will fall back to the reference tag"
+            );
+        }
+    }
+
+    fn remote_artifacts_cleaned(&self) {
+        if let Err(error) = self
+            .store
+            .close_provider_remote_artifact_claim(&self.task_id)
+        {
+            tracing::warn!(
+                task_id = %self.task_id,
+                error = %error,
+                "failed to close remote provider artifact claim; startup sweep will re-confirm deletion"
+            );
+        }
+    }
+}
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 enum SonioxTranscriptionError {
@@ -51,18 +107,12 @@ fn ensure_transcription_not_cancelled(cancel: &CancellationToken) -> Result<(), 
 }
 
 fn soniox_async_task_timeout(audio_bytes: usize) -> Duration {
-    let chunk_count =
-        audio_bytes.saturating_add(SONIOX_AUDIO_CHUNK_BYTES - 1) / SONIOX_AUDIO_CHUNK_BYTES;
-    let paced_send_ms =
-        (chunk_count as u64).saturating_mul(SONIOX_AUDIO_CHUNK_PACING.as_millis() as u64);
-    // The restream outruns the provider (~5x realtime), so the server keeps
-    // transcribing backlog after EOF at roughly realtime speed. The deadline
-    // must cover that tail, not just the paced send.
+    // 异步 API 的处理明显快于实时；预算 = 上传/排队裕量 + 音频时长的一半，
+    // 上限保护 5 小时量级的长文件不会被过早判死。
     let audio_duration_ms = (audio_bytes as u64).saturating_mul(1000)
         / (SONIOX_CANONICAL_SAMPLE_RATE as u64 * 2).max(1);
-    Duration::from_millis(paced_send_ms)
-        .saturating_add(Duration::from_millis(audio_duration_ms))
-        .saturating_add(Duration::from_secs(60))
+    Duration::from_millis(audio_duration_ms / 2)
+        .saturating_add(SONIOX_ASYNC_TASK_BASE_ALLOWANCE)
         .clamp(SONIOX_ASYNC_TASK_MIN_TIMEOUT, SONIOX_ASYNC_TASK_MAX_TIMEOUT)
 }
 
@@ -72,19 +122,6 @@ where
     F: std::future::Future<Output = T>,
 {
     tokio::time::timeout(deadline, future).await.ok()
-}
-
-fn map_soniox_client_join_result(
-    result: Result<Result<(), SttError>, tokio::task::JoinError>,
-) -> Result<(), String> {
-    match result {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(error)) => Err(safe_soniox_task_error(&error)),
-        // A JoinError can embed an arbitrary panic payload. Never reflect it
-        // into tasks.error_msg or tracing, because provider/context data may be
-        // present in that payload.
-        Err(_) => Err("Soniox client task failed".to_string()),
-    }
 }
 
 /// This string crosses the durable task/error logging boundary. Do not use the
@@ -111,28 +148,6 @@ fn safe_soniox_task_error(error: &SttError) -> String {
         }
         SttError::TranscriptionFailed { .. } => "Soniox transcription failed".to_string(),
         SttError::UploadFailed { .. } => "Soniox audio upload failed".to_string(),
-    }
-}
-
-/// Cancel the provider client and prove its JoinHandle has terminated before
-/// returning. A timed-out cooperative shutdown is force-aborted, but the abort
-/// is still awaited so no detached WebSocket task survives Delete Forever.
-async fn cancel_and_join_soniox_client(
-    cancel: &CancellationToken,
-    client_handle: &mut tokio::task::JoinHandle<Result<(), SttError>>,
-    shutdown_timeout: Duration,
-) {
-    cancel.cancel();
-    match tokio::time::timeout(shutdown_timeout, &mut *client_handle).await {
-        Ok(joined) => {
-            if let Err(error) = map_soniox_client_join_result(joined) {
-                tracing::debug!(error = %error, "Soniox client stopped during cancellation");
-            }
-        }
-        Err(_) => {
-            client_handle.abort();
-            let _ = client_handle.await;
-        }
     }
 }
 
@@ -331,18 +346,31 @@ async fn run_transcribe_pcm_f32_bytes_async(
     // gate here keeps decrypt/format/frame validation local-only while still
     // guaranteeing the claim commits before Soniox is constructed or called.
     provider_dispatch_gate()?;
+
+    // Journal the remote-artifact claim before Soniox is contacted: the row is
+    // the only durable record that this machine may have left audio on the
+    // provider, so it must exist even if the process dies mid-upload.
+    let artifact_reference = provider_artifact_reference(task_id);
+    let journal = open_remote_artifact_journal(&db_path, task_id, session_id, &artifact_reference)?;
+
     callback.on_progress(task_id.to_string(), "transcribing".to_string(), 25.0);
 
-    // 3. Soniox WebSocket
-    let raw_tokens =
-        run_soniox_transcription(soniox_api_key, language, prepared.s16le, cancel.clone())
-            .await
-            .map_err(|error| match error {
-                SonioxTranscriptionError::Cancelled => transcription_cancelled_error(),
-                SonioxTranscriptionError::Failed(message) => {
-                    ("internal_error".to_string(), format!("soniox: {message}"))
-                }
-            })?;
+    // 3. Soniox async file API
+    let raw_tokens = run_soniox_transcription(
+        soniox_api_key,
+        language,
+        prepared.s16le,
+        cancel.clone(),
+        &artifact_reference,
+        Some(&journal),
+    )
+    .await
+    .map_err(|error| match error {
+        SonioxTranscriptionError::Cancelled => transcription_cancelled_error(),
+        SonioxTranscriptionError::Failed(message) => {
+            ("internal_error".to_string(), format!("soniox: {message}"))
+        }
+    })?;
     ensure_transcription_not_cancelled(&cancel)?;
 
     callback.on_progress(task_id.to_string(), "deduping".to_string(), 80.0);
@@ -499,6 +527,34 @@ fn transcribe_result_json(
     .to_string()
 }
 
+/// 落 claim 行并返回观察者。失败必须中止本次派发：日志写不下去时，任何
+/// 远端调用都会产生我们无法保证删除的留存。
+fn open_remote_artifact_journal(
+    db_path: &Path,
+    task_id: &str,
+    session_id: &str,
+    artifact_reference: &str,
+) -> Result<RemoteArtifactJournal, (String, String)> {
+    let store = NotebookCaptureStore::new(db_path).map_err(|error| {
+        (
+            "internal_error".to_string(),
+            format!("open capture store for remote artifact journal: {error}"),
+        )
+    })?;
+    store
+        .open_provider_remote_artifact_claim(task_id, session_id, artifact_reference)
+        .map_err(|error| {
+            (
+                "internal_error".to_string(),
+                format!("journal remote provider artifact claim: {error}"),
+            )
+        })?;
+    Ok(RemoteArtifactJournal {
+        store,
+        task_id: task_id.to_string(),
+    })
+}
+
 fn persist_transcribe_task_output(
     db_path: &Path,
     task_id: &str,
@@ -571,20 +627,25 @@ where
     projection
 }
 
-/// 内部辅助：用 Soniox 转录 PCM 数据
+/// 内部辅助：用 Soniox 异步文件 API 转录 PCM 数据
 ///
-/// - Some("en") = 提示 Soniox 语言, 加快首字延迟
+/// - Some("en") = 提示 Soniox 语言
 /// - None       = 让 Soniox 自动识别 (enable_language_identification)
+///
+/// 上传 → 转录 → 取回 → 删除远端文件与转录任务，全部在
+/// `soniox_async::transcribe_wav` 内完成；取消与整体超时也在其内部处理，
+/// 保证任何路径都先跑完远端清理再返回（Soniox 无自动 TTL）。
 async fn run_soniox_transcription(
     api_key: &str,
     language: Option<&str>,
     s16_pcm: Vec<u8>,
     cancel: CancellationToken,
+    artifact_reference: &str,
+    observer: Option<&dyn SonioxAsyncArtifactObserver>,
 ) -> Result<Vec<Token>, SonioxTranscriptionError> {
-    let (audio_tx, audio_rx) = mpsc::channel::<AudioChunk>(64);
-    let (token_tx, mut token_rx) = broadcast::channel::<Token>(4096);
-    let (status_tx, _) = watch::channel(ConnectionStatus::Reconnecting { attempt: 0 });
-    let client_cancel = cancel.child_token();
+    if cancel.is_cancelled() {
+        return Err(SonioxTranscriptionError::Cancelled);
+    }
 
     let language_hints: Vec<String> = match language {
         Some(lang) if !lang.trim().is_empty() => vec![lang.to_string()],
@@ -592,125 +653,28 @@ async fn run_soniox_transcription(
     };
     // 没有 hint 时强制开启 language identification, 否则 Soniox 用 fallback en 解码非英文音频
     let enable_lang_id = language_hints.is_empty();
-    let config = SttConfig {
+
+    let engine = CURRENT_NOTEBOOK_CAPTURE_ENGINE;
+    let overall_deadline = soniox_async_task_timeout(s16_pcm.len());
+    let wav_bytes = wrap_pcm_s16le_in_wav(&s16_pcm, engine.sample_rate, engine.channels as u16);
+    drop(s16_pcm);
+    let request = SonioxAsyncRequest {
+        base_url: engine.async_api_base_url,
+        api_key,
+        model: engine.post_stop_model_id,
         language_hints,
         enable_language_identification: enable_lang_id,
-        ..Default::default()
+        client_reference_id: Some(artifact_reference.to_string()),
+        overall_deadline,
+        poll_interval: SONIOX_ASYNC_POLL_INTERVAL,
     };
 
-    // Spawn 客户端
-    let api_key_owned = api_key.to_string();
-    let cancel_client = client_cancel.clone();
-    let mut client_handle = tokio::spawn(async move {
-        SonioxRtClient::run_post_stop(
-            CURRENT_NOTEBOOK_CAPTURE_ENGINE.realtime_endpoint,
-            &api_key_owned,
-            &config,
-            audio_rx,
-            token_tx,
-            status_tx,
-            cancel_client,
-        )
-        .await
-    });
-
-    let whole_task_timeout = soniox_async_task_timeout(s16_pcm.len());
-    let operation = async {
-        // 分块发送音频。channel 提前关闭通常意味着 client 已失败；继续到 join，
-        // 以 provider/transport 原始错误为准，不能把它降级成部分成功。
-        let send_audio = async move {
-            let mut audio_send_error = None;
-            for chunk in s16_pcm.chunks(SONIOX_AUDIO_CHUNK_BYTES) {
-                let audio_chunk = AudioChunk {
-                    pcm_data: chunk.to_vec(),
-                    channel: AudioChannel::Microphone,
-                    captured_at_ns: 0,
-                };
-                if audio_tx.send(audio_chunk).await.is_err() {
-                    audio_send_error =
-                        Some("Soniox audio channel closed before all audio was sent".to_string());
-                    break;
-                }
-                tokio::time::sleep(SONIOX_AUDIO_CHUNK_PACING).await;
-            }
-            drop(audio_tx); // 关闭通道触发 EOF + bounded drain
-            audio_send_error
-        };
-
-        // token_tx 只归 client 所有。channel 关闭意味着 client 已完成或失败，
-        // 随后的 join 是唯一权威结果。Lagged 表示正文不完整，必须失败。
-        let receive_tokens = async move {
-            let mut tokens = Vec::new();
-            let mut skipped_tokens = 0_u64;
-            loop {
-                match token_rx.recv().await {
-                    Ok(token) => tokens.push(token),
-                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        skipped_tokens = skipped_tokens.saturating_add(skipped);
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                }
-            }
-            let error = (skipped_tokens > 0)
-                .then(|| format!("Soniox token receiver lagged and lost {skipped_tokens} tokens"));
-            (tokens, error)
-        };
-
-        let (audio_send_error, (tokens, token_receive_error)) =
-            tokio::join!(send_audio, receive_tokens);
-
-        map_soniox_client_join_result((&mut client_handle).await)?;
-        if let Some(error) = audio_send_error {
-            return Err(error);
-        }
-        if let Some(error) = token_receive_error {
-            return Err(error);
-        }
-        Ok(tokens)
-    };
-
-    enum OperationEnd {
-        Completed(Result<Vec<Token>, String>),
-        Cancelled,
-        TimedOut,
-    }
-
-    let mut operation = Box::pin(operation);
-    let deadline = tokio::time::sleep(whole_task_timeout);
-    tokio::pin!(deadline);
-    let end = tokio::select! {
-        biased;
-        _ = cancel.cancelled() => OperationEnd::Cancelled,
-        _ = &mut deadline => OperationEnd::TimedOut,
-        result = &mut operation => OperationEnd::Completed(result),
-    };
-    // The operation borrows client_handle while joining it. Drop that future
-    // before cancellation/timeout shutdown takes ownership of the same handle.
-    drop(operation);
-
-    match end {
-        OperationEnd::Completed(result) => result.map_err(SonioxTranscriptionError::Failed),
-        OperationEnd::Cancelled => {
-            cancel_and_join_soniox_client(
-                &client_cancel,
-                &mut client_handle,
-                SONIOX_CLIENT_SHUTDOWN_TIMEOUT,
-            )
-            .await;
-            Err(SonioxTranscriptionError::Cancelled)
-        }
-        OperationEnd::TimedOut => {
-            cancel_and_join_soniox_client(
-                &client_cancel,
-                &mut client_handle,
-                SONIOX_CLIENT_SHUTDOWN_TIMEOUT,
-            )
-            .await;
-            Err(SonioxTranscriptionError::Failed(format!(
-                "Soniox async transcription timed out after {} seconds",
-                whole_task_timeout.as_secs()
-            )))
-        }
+    match soniox_async_transcribe_wav(&request, wav_bytes, &cancel, observer).await {
+        Ok(tokens) => Ok(tokens),
+        Err(SttError::Cancelled) => Err(SonioxTranscriptionError::Cancelled),
+        Err(error) => Err(SonioxTranscriptionError::Failed(safe_soniox_task_error(
+            &error,
+        ))),
     }
 }
 
@@ -753,17 +717,25 @@ mod tests {
     use vt_model::TranslationStatus;
 
     #[test]
-    fn async_soniox_deadline_is_bounded_and_accounts_for_audio_pacing() {
-        assert_eq!(soniox_async_task_timeout(0), SONIOX_ASYNC_TASK_MIN_TIMEOUT);
+    fn async_soniox_deadline_is_bounded_and_scales_with_audio_duration() {
+        assert_eq!(
+            soniox_async_task_timeout(0),
+            SONIOX_ASYNC_TASK_BASE_ALLOWANCE
+        );
 
         let ten_minutes_of_s16_mono = 16_000 * 2 * 10 * 60;
         let ten_minute_timeout = soniox_async_task_timeout(ten_minutes_of_s16_mono);
-        assert!(ten_minute_timeout > SONIOX_ASYNC_TASK_MIN_TIMEOUT);
-        assert!(ten_minute_timeout <= SONIOX_ASYNC_TASK_MAX_TIMEOUT);
-        assert!(
-            ten_minute_timeout >= Duration::from_secs(120 + 600),
-            "deadline must cover the paced send plus the server's realtime backlog tail"
+        assert_eq!(
+            ten_minute_timeout,
+            SONIOX_ASYNC_TASK_BASE_ALLOWANCE + Duration::from_secs(5 * 60),
+            "deadline must cover the upload allowance plus half the audio duration"
         );
+
+        // 5 小时（异步 API 单文件上限）也必须落在上限之内，不被过早判死。
+        let five_hours_of_s16_mono = 16_000 * 2 * 5 * 60 * 60;
+        let five_hour_timeout = soniox_async_task_timeout(five_hours_of_s16_mono);
+        assert!(five_hour_timeout <= SONIOX_ASYNC_TASK_MAX_TIMEOUT);
+        assert!(five_hour_timeout >= Duration::from_secs(60 * 60));
 
         assert_eq!(
             soniox_async_task_timeout(usize::MAX),
@@ -810,19 +782,23 @@ mod tests {
         assert!(result.is_none());
     }
 
-    #[tokio::test]
-    async fn soniox_provider_error_is_redacted_at_durable_task_boundary() {
+    #[test]
+    fn soniox_provider_error_is_redacted_at_durable_task_boundary() {
         const HOSTILE_REMOTE_MESSAGE: &str =
             "credential-shaped provider detail api_key=async-fixture-never-log";
-        let handle = tokio::spawn(async {
-            Err(SttError::AuthFailed {
-                message: HOSTILE_REMOTE_MESSAGE.to_string(),
-            })
+        let error = safe_soniox_task_error(&SttError::AuthFailed {
+            message: HOSTILE_REMOTE_MESSAGE.to_string(),
         });
-        let error = map_soniox_client_join_result(handle.await).unwrap_err();
         assert_eq!(error, "Soniox authentication failed");
         assert!(!error.contains(HOSTILE_REMOTE_MESSAGE));
         assert!(!error.contains("async-fixture-never-log"));
+
+        let failed = safe_soniox_task_error(&SttError::TranscriptionFailed {
+            error_type: "content_policy".to_string(),
+            message: HOSTILE_REMOTE_MESSAGE.to_string(),
+        });
+        assert_eq!(failed, "Soniox transcription failed");
+        assert!(!failed.contains(HOSTILE_REMOTE_MESSAGE));
 
         let closed = safe_soniox_task_error(&SttError::ServerClosed {
             code: 1008,
@@ -833,77 +809,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn soniox_client_join_error_is_not_swallowed() {
-        let handle = tokio::spawn(std::future::pending::<Result<(), SttError>>());
-        handle.abort();
-        let error = map_soniox_client_join_result(handle.await).unwrap_err();
-        assert_eq!(error, "Soniox client task failed");
-    }
-
-    #[tokio::test]
     async fn cancelled_soniox_transcription_returns_explicit_cancelled_error() {
         let cancel = CancellationToken::new();
         cancel.cancel();
 
-        let result = run_soniox_transcription("unused", None, Vec::new(), cancel).await;
+        let result =
+            run_soniox_transcription("unused", None, Vec::new(), cancel, "zulangue-t1", None).await;
         assert!(matches!(result, Err(SonioxTranscriptionError::Cancelled)));
-    }
-
-    #[tokio::test]
-    async fn soniox_shutdown_joins_cooperative_client_before_returning() {
-        struct DropFlag(Arc<AtomicBool>);
-        impl Drop for DropFlag {
-            fn drop(&mut self) {
-                self.0.store(true, Ordering::SeqCst);
-            }
-        }
-
-        let dropped = Arc::new(AtomicBool::new(false));
-        let dropped_in_client = dropped.clone();
-        let cancel = CancellationToken::new();
-        let client_cancel = cancel.clone();
-        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-        let mut handle = tokio::spawn(async move {
-            let _guard = DropFlag(dropped_in_client);
-            let _ = started_tx.send(());
-            client_cancel.cancelled().await;
-            Ok::<(), SttError>(())
-        });
-        started_rx.await.unwrap();
-
-        cancel_and_join_soniox_client(&cancel, &mut handle, Duration::from_secs(1)).await;
-        assert!(
-            dropped.load(Ordering::SeqCst),
-            "cooperative Soniox client must be joined before shutdown returns"
-        );
-    }
-
-    #[tokio::test]
-    async fn soniox_shutdown_aborts_and_joins_stubborn_client_after_bound() {
-        struct DropFlag(Arc<AtomicBool>);
-        impl Drop for DropFlag {
-            fn drop(&mut self) {
-                self.0.store(true, Ordering::SeqCst);
-            }
-        }
-
-        let dropped = Arc::new(AtomicBool::new(false));
-        let dropped_in_client = dropped.clone();
-        let cancel = CancellationToken::new();
-        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-        let mut handle = tokio::spawn(async move {
-            let _guard = DropFlag(dropped_in_client);
-            let _ = started_tx.send(());
-            std::future::pending::<()>().await;
-            Ok::<(), SttError>(())
-        });
-        started_rx.await.unwrap();
-
-        cancel_and_join_soniox_client(&cancel, &mut handle, Duration::from_millis(10)).await;
-        assert!(
-            dropped.load(Ordering::SeqCst),
-            "forced Soniox shutdown must await the aborted client"
-        );
     }
 
     fn make_token(text: &str, start_ms: u64, end_ms: u64, is_final: bool) -> Token {

@@ -2173,7 +2173,7 @@ struct NotebookCaptureSettingsView: View {
             title: String(localized: "capture.settings.after_stop.title"),
             icon: "waveform.badge.plus"
         ) {
-            Text(String(localized: engineStore.engine.postStopUsesRealtimeRestream == true
+            Text(String(localized: engineStore.engine.postStopUsesAsyncFileApi == true
                 ? "capture.settings.after_stop.detail"
                 : "capture.settings.after_stop.unavailable_detail"))
                 .font(.caption)

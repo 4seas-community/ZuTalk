@@ -331,14 +331,14 @@
 "settings.services.engine.realtime" = "Captura en tiempo real";
 "settings.services.engine.realtime_detail" = "Se usa para la transcripción multilingüe en vivo y los subtítulos por idioma cuando un Notebook activa explícitamente el procesamiento remoto.";
 "settings.services.engine.post_stop" = "Procesamiento tras detener";
-"settings.services.engine.post_stop_detail" = "Vuelve a transmitir la grabación local finalizada a través del motor de tiempo real actual. No llama a la API asíncrona de Soniox.";
+"settings.services.engine.post_stop_detail" = "Sube la grabación local finalizada a la API asíncrona de archivos de Soniox para transcribirla y elimina de inmediato el archivo remoto y la transcripción tras recuperar el resultado.";
 "settings.services.engine.post_stop_unavailable_detail" = "El núcleo no proporcionó un descriptor de ejecución tras detener.";
-"settings.services.engine.realtime_replay" = "Repetición en tiempo real";
+"settings.services.engine.async_file_api" = "API asíncrona de archivos";
 "settings.services.engine.execution_unavailable" = "Ejecución no disponible";
 "settings.services.engine.fixed" = "Fijo";
 "settings.services.engine.unavailable" = "Motor no disponible";
 "settings.services.engine.accessibility_format" = "Motor de tiempo real fijo: %@";
-"settings.services.engine.post_stop_accessibility_format" = "Motor fijo tras detener: %@. Repetición en tiempo real, no la API asíncrona de Soniox.";
+"settings.services.engine.post_stop_accessibility_format" = "Motor fijo tras la detención: %@. API asíncrona de archivos de Soniox; el audio remoto se elimina justo después de la transcripción.";
 "settings.services.engine.post_stop_unavailable_accessibility_format" = "Motor tras detener: %@. El descriptor de ejecución no está disponible.";
 
 /* Settings — Privacy section */
@@ -920,7 +920,7 @@
 "capture.transcript.swap_hint" = "Cambia solo la disposición izquierda-derecha en memoria; no reescribe la grabación ni la transcripción.";
 "capture.transcript.realtime_accessibility_label" = "Transcripción en tiempo real";
 "capture.transcript.engine.realtime_format" = "Tiempo real · %@";
-"capture.transcript.engine.post_stop_format" = "Repetición tras detener · %@";
+"capture.transcript.engine.post_stop_format" = "Transcripción tras la detención · %@";
 "capture.transcript.transcription_heading" = "Línea de tiempo de la transcripción";
 "capture.transcript.transcription_empty_title" = "No hay intervenciones en tiempo real";
 "capture.transcript.transcription_empty_detail" = "Active el procesamiento remoto en tiempo real e inicie la grabación para generar la transcripción de la sesión.";

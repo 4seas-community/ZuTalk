@@ -332,14 +332,14 @@
 "settings.services.engine.realtime" = "Capture en temps réel";
 "settings.services.engine.realtime_detail" = "Utilisé pour la transcription multilingue en direct et les sous-titres par langue lorsqu’un Notebook active explicitement le traitement à distance.";
 "settings.services.engine.post_stop" = "Traitement après l’arrêt";
-"settings.services.engine.post_stop_detail" = "Rejoue l’enregistrement local finalisé via le moteur temps réel actuel. N’appelle pas l’API asynchrone de Soniox.";
+"settings.services.engine.post_stop_detail" = "Téléverse l'enregistrement local finalisé vers l'API asynchrone de fichiers Soniox pour transcription, puis supprime immédiatement le fichier distant et la transcription une fois le résultat récupéré.";
 "settings.services.engine.post_stop_unavailable_detail" = "Le cœur n’a pas fourni de descripteur d’exécution après l’arrêt.";
-"settings.services.engine.realtime_replay" = "Relecture en temps réel";
+"settings.services.engine.async_file_api" = "API asynchrone de fichiers";
 "settings.services.engine.execution_unavailable" = "Exécution indisponible";
 "settings.services.engine.fixed" = "Fixe";
 "settings.services.engine.unavailable" = "Moteur indisponible";
 "settings.services.engine.accessibility_format" = "Moteur temps réel fixe : %@";
-"settings.services.engine.post_stop_accessibility_format" = "Moteur après-arrêt fixe : %@. Relecture en temps réel, pas l’API asynchrone de Soniox.";
+"settings.services.engine.post_stop_accessibility_format" = "Moteur post-arrêt fixe : %@. API asynchrone de fichiers Soniox ; l'audio distant est supprimé dès la fin de la transcription.";
 "settings.services.engine.post_stop_unavailable_accessibility_format" = "Moteur après-arrêt : %@. Le descripteur d’exécution est indisponible.";
 
 /* Settings — Privacy section */
@@ -921,7 +921,7 @@
 "capture.transcript.swap_hint" = "Modifie uniquement l’affichage gauche-droite en mémoire ; ne réécrit ni l’enregistrement ni la transcription.";
 "capture.transcript.realtime_accessibility_label" = "Transcription en temps réel";
 "capture.transcript.engine.realtime_format" = "Temps réel · %@";
-"capture.transcript.engine.post_stop_format" = "Relecture après l’arrêt · %@";
+"capture.transcript.engine.post_stop_format" = "Transcription post-arrêt · %@";
 "capture.transcript.transcription_heading" = "Chronologie de transcription";
 "capture.transcript.transcription_empty_title" = "Aucun énoncé en temps réel";
 "capture.transcript.transcription_empty_detail" = "Activez le traitement à distance en temps réel et démarrez l’enregistrement pour construire la transcription de la session.";

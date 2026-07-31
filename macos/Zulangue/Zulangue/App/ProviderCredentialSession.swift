@@ -35,14 +35,14 @@ struct NotebookCaptureEnginePresentation: Equatable {
     let providerDisplayName: String
     let realtimeModelId: String?
     let postStopModelId: String?
-    let postStopUsesRealtimeRestream: Bool?
+    let postStopUsesAsyncFileApi: Bool?
 
     static var descriptorUnavailable: Self {
         Self(
             providerDisplayName: String(localized: "settings.services.engine.unavailable"),
             realtimeModelId: nil,
             postStopModelId: nil,
-            postStopUsesRealtimeRestream: nil
+            postStopUsesAsyncFileApi: nil
         )
     }
 
@@ -65,8 +65,8 @@ struct NotebookCaptureEnginePresentation: Equatable {
     }
 
     var postStopExecutionSummary: String {
-        postStopUsesRealtimeRestream == true
-            ? String(localized: "settings.services.engine.realtime_replay")
+        postStopUsesAsyncFileApi == true
+            ? String(localized: "settings.services.engine.async_file_api")
             : String(localized: "settings.services.engine.execution_unavailable")
     }
 }
@@ -90,7 +90,7 @@ struct LiveNotebookCaptureEngineDescriptorLoader: NotebookCaptureEngineDescripto
             providerDisplayName: descriptor.providerDisplayName,
             realtimeModelId: descriptor.realtimeModelId,
             postStopModelId: descriptor.postStopModelId,
-            postStopUsesRealtimeRestream: descriptor.postStopExecution == .realtimeRestream
+            postStopUsesAsyncFileApi: descriptor.postStopExecution == .asyncFileApi
         )
     }
 }

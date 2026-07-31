@@ -332,14 +332,14 @@
 "settings.services.engine.realtime" = "Realtime capture";
 "settings.services.engine.realtime_detail" = "Used for live multilingual transcription and language captions when a Notebook explicitly enables remote processing.";
 "settings.services.engine.post_stop" = "After-stop processing";
-"settings.services.engine.post_stop_detail" = "Re-streams the finalized local recording through the current realtime engine. It does not call the Soniox asynchronous API.";
+"settings.services.engine.post_stop_detail" = "Uploads the finalized local recording to the Soniox asynchronous file API for transcription, then deletes the remote file and transcription immediately after the result is retrieved.";
 "settings.services.engine.post_stop_unavailable_detail" = "The core did not provide an after-stop execution descriptor.";
-"settings.services.engine.realtime_replay" = "Realtime replay";
+"settings.services.engine.async_file_api" = "Async file API";
 "settings.services.engine.execution_unavailable" = "Execution unavailable";
 "settings.services.engine.fixed" = "Fixed";
 "settings.services.engine.unavailable" = "Engine unavailable";
 "settings.services.engine.accessibility_format" = "Fixed realtime engine: %@";
-"settings.services.engine.post_stop_accessibility_format" = "Fixed after-stop engine: %@. Realtime replay, not the Soniox asynchronous API.";
+"settings.services.engine.post_stop_accessibility_format" = "Fixed after-stop engine: %@. Soniox asynchronous file API; remote audio is deleted immediately after transcription.";
 "settings.services.engine.post_stop_unavailable_accessibility_format" = "After-stop engine: %@. The execution descriptor is unavailable.";
 
 /* Settings — Privacy section */
@@ -921,7 +921,7 @@
 "capture.transcript.swap_hint" = "Changes only the in-memory left and right display; it does not rewrite the recording or transcript.";
 "capture.transcript.realtime_accessibility_label" = "Realtime transcript";
 "capture.transcript.engine.realtime_format" = "Realtime · %@";
-"capture.transcript.engine.post_stop_format" = "After-stop replay · %@";
+"capture.transcript.engine.post_stop_format" = "After-stop transcription · %@";
 "capture.transcript.transcription_heading" = "Transcription timeline";
 "capture.transcript.transcription_empty_title" = "No realtime utterances";
 "capture.transcript.transcription_empty_detail" = "Enable remote realtime processing and start recording to build the session transcript.";

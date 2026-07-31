@@ -332,14 +332,14 @@
 "settings.services.engine.realtime" = "การบันทึกแบบเรียลไทม์";
 "settings.services.engine.realtime_detail" = "ใช้สำหรับการถอดเสียงหลายภาษาแบบสดและคำบรรยายภาษาเมื่อ Notebook เปิดใช้การประมวลผลระยะไกลอย่างชัดแจ้ง";
 "settings.services.engine.post_stop" = "การประมวลผลหลังหยุดบันทึก";
-"settings.services.engine.post_stop_detail" = "สตรีมการบันทึกในเครื่องที่เสร็จสมบูรณ์แล้วผ่านเอนจินเรียลไทม์ปัจจุบันอีกครั้ง ไม่ได้เรียกใช้ Soniox asynchronous API";
+"settings.services.engine.post_stop_detail" = "อัปโหลดเสียงบันทึกในเครื่องที่เสร็จสิ้นแล้วไปยัง API ไฟล์แบบอะซิงโครนัสของ Soniox เพื่อถอดความ แล้วลบไฟล์และงานถอดความฝั่งเซิร์ฟเวอร์ทันทีหลังได้ผลลัพธ์";
 "settings.services.engine.post_stop_unavailable_detail" = "แกนหลักไม่ได้ให้ตัวอธิบายการประมวลผลหลังหยุดบันทึก";
-"settings.services.engine.realtime_replay" = "การเล่นซ้ำแบบเรียลไทม์";
+"settings.services.engine.async_file_api" = "API ไฟล์แบบอะซิงโครนัส";
 "settings.services.engine.execution_unavailable" = "การประมวลผลไม่พร้อมใช้งาน";
 "settings.services.engine.fixed" = "คงที่";
 "settings.services.engine.unavailable" = "เอนจินไม่พร้อมใช้งาน";
 "settings.services.engine.accessibility_format" = "เอนจินเรียลไทม์แบบคงที่: %@";
-"settings.services.engine.post_stop_accessibility_format" = "เอนจินหลังหยุดบันทึกแบบคงที่: %@ เป็นการเล่นซ้ำแบบเรียลไทม์ ไม่ใช่ Soniox asynchronous API";
+"settings.services.engine.post_stop_accessibility_format" = "เอนจินหลังหยุดแบบตายตัว: %@ ใช้ API ไฟล์แบบอะซิงโครนัสของ Soniox และลบเสียงฝั่งเซิร์ฟเวอร์ทันทีหลังถอดความเสร็จ";
 "settings.services.engine.post_stop_unavailable_accessibility_format" = "เอนจินหลังหยุดบันทึก: %@ ตัวอธิบายการประมวลผลไม่พร้อมใช้งาน";
 
 /* Settings — Privacy section */
@@ -921,7 +921,7 @@
 "capture.transcript.swap_hint" = "เปลี่ยนเฉพาะการแสดงผลซ้ายขวาในหน่วยความจำเท่านั้น ไม่เขียนทับการบันทึกหรือบทถอดเสียง";
 "capture.transcript.realtime_accessibility_label" = "บทถอดเสียงเรียลไทม์";
 "capture.transcript.engine.realtime_format" = "เรียลไทม์ · %@";
-"capture.transcript.engine.post_stop_format" = "เล่นซ้ำหลังหยุดบันทึก · %@";
+"capture.transcript.engine.post_stop_format" = "ถอดความหลังหยุด · %@";
 "capture.transcript.transcription_heading" = "ไทม์ไลน์การถอดเสียง";
 "capture.transcript.transcription_empty_title" = "ไม่มีถ้อยคำแบบเรียลไทม์";
 "capture.transcript.transcription_empty_detail" = "เปิดใช้การประมวลผลเรียลไทม์ระยะไกลแล้วเริ่มบันทึกเพื่อสร้างบทถอดเสียงของเซสชัน";

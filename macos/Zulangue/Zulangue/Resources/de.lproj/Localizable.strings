@@ -331,14 +331,14 @@
 "settings.services.engine.realtime" = "Echtzeit-Aufnahme";
 "settings.services.engine.realtime_detail" = "Wird für die mehrsprachige Live-Transkription und Sprach-Untertitel verwendet, wenn ein Notebook die Remote-Verarbeitung ausdrücklich aktiviert.";
 "settings.services.engine.post_stop" = "Verarbeitung nach dem Stoppen";
-"settings.services.engine.post_stop_detail" = "Streamt die abgeschlossene lokale Aufnahme erneut durch die aktuelle Echtzeit-Engine. Die asynchrone Soniox-API wird dabei nicht aufgerufen.";
+"settings.services.engine.post_stop_detail" = "Lädt die abgeschlossene lokale Aufnahme zur Transkription in die asynchrone Datei-API von Soniox hoch und löscht die entfernte Datei und die Transkription sofort nach dem Abruf des Ergebnisses.";
 "settings.services.engine.post_stop_unavailable_detail" = "Der Kern hat keinen Ausführungsdeskriptor für die Verarbeitung nach dem Stoppen bereitgestellt.";
-"settings.services.engine.realtime_replay" = "Echtzeit-Wiedergabe";
+"settings.services.engine.async_file_api" = "Asynchrone Datei-API";
 "settings.services.engine.execution_unavailable" = "Ausführung nicht verfügbar";
 "settings.services.engine.fixed" = "Fest";
 "settings.services.engine.unavailable" = "Engine nicht verfügbar";
 "settings.services.engine.accessibility_format" = "Feste Echtzeit-Engine: %@";
-"settings.services.engine.post_stop_accessibility_format" = "Feste Engine für die Verarbeitung nach dem Stoppen: %@. Echtzeit-Wiedergabe, nicht die asynchrone Soniox-API.";
+"settings.services.engine.post_stop_accessibility_format" = "Feste Engine nach dem Stopp: %@. Asynchrone Datei-API von Soniox; entfernte Audiodaten werden direkt nach der Transkription gelöscht.";
 "settings.services.engine.post_stop_unavailable_accessibility_format" = "Engine für die Verarbeitung nach dem Stoppen: %@. Der Ausführungsdeskriptor ist nicht verfügbar.";
 
 /* Settings — Privacy section */
@@ -920,7 +920,7 @@
 "capture.transcript.swap_hint" = "Ändert nur die linke und rechte Anzeige im Speicher; Aufnahme und Transkript werden nicht umgeschrieben.";
 "capture.transcript.realtime_accessibility_label" = "Echtzeittranskript";
 "capture.transcript.engine.realtime_format" = "Echtzeit · %@";
-"capture.transcript.engine.post_stop_format" = "Wiedergabe nach dem Stoppen · %@";
+"capture.transcript.engine.post_stop_format" = "Transkription nach dem Stopp · %@";
 "capture.transcript.transcription_heading" = "Transkriptionszeitleiste";
 "capture.transcript.transcription_empty_title" = "Keine Echtzeitäußerungen";
 "capture.transcript.transcription_empty_detail" = "Aktiviere die Remote-Echtzeitverarbeitung und starte eine Aufnahme, um das Sitzungstranskript aufzubauen.";

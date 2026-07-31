@@ -1,13 +1,15 @@
 //! Fixed Notebook capture engine contract for the minimal MVP.
 //!
 //! This is deliberately a singular build-time descriptor, not a provider
-//! registry or a user-selectable model catalogue. Realtime capture and the
-//! post-stop replay path have separate model roles even though both currently
-//! use the same Soniox model.
+//! registry or a user-selectable model catalogue. Realtime capture streams to
+//! the Soniox realtime WebSocket; the post-stop path uses the Soniox async
+//! file REST API with its own model role.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PostStopExecution {
-    RealtimeRestream,
+    /// 停止后转录走 Soniox 异步文件 REST API：上传、转录、取回、
+    /// 立刻删除远端文件与转录任务（Soniox 无自动 TTL，留存由客户端强制）。
+    AsyncFileApi,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +20,7 @@ pub struct NotebookCaptureEngine {
     pub realtime_model_id: &'static str,
     pub post_stop_model_id: &'static str,
     pub realtime_endpoint: &'static str,
+    pub async_api_base_url: &'static str,
     pub audio_format: &'static str,
     pub sample_rate: u32,
     pub channels: u8,
@@ -33,8 +36,9 @@ pub const CURRENT_NOTEBOOK_CAPTURE_ENGINE: NotebookCaptureEngine = NotebookCaptu
     provider_display_name: "Soniox",
     credential_scope: "soniox",
     realtime_model_id: "stt-rt-v5",
-    post_stop_model_id: "stt-rt-v5",
+    post_stop_model_id: "stt-async-v5",
     realtime_endpoint: "wss://stt-rt.soniox.com/transcribe-websocket",
+    async_api_base_url: "https://api.soniox.com",
     audio_format: "pcm_s16le",
     sample_rate: 16_000,
     channels: 1,
@@ -42,7 +46,7 @@ pub const CURRENT_NOTEBOOK_CAPTURE_ENGINE: NotebookCaptureEngine = NotebookCaptu
     supports_two_way_translation: true,
     supports_context: true,
     supports_post_stop_transcription: true,
-    post_stop_execution: PostStopExecution::RealtimeRestream,
+    post_stop_execution: PostStopExecution::AsyncFileApi,
 };
 
 #[cfg(test)]
@@ -57,11 +61,12 @@ mod tests {
         assert_eq!(engine.provider_display_name, "Soniox");
         assert_eq!(engine.credential_scope, "soniox");
         assert_eq!(engine.realtime_model_id, "stt-rt-v5");
-        assert_eq!(engine.post_stop_model_id, "stt-rt-v5");
+        assert_eq!(engine.post_stop_model_id, "stt-async-v5");
         assert_eq!(
             engine.realtime_endpoint,
             "wss://stt-rt.soniox.com/transcribe-websocket"
         );
+        assert_eq!(engine.async_api_base_url, "https://api.soniox.com");
         assert_eq!(engine.audio_format, "pcm_s16le");
         assert_eq!(engine.sample_rate, 16_000);
         assert_eq!(engine.channels, 1);
@@ -69,9 +74,6 @@ mod tests {
         assert!(engine.supports_two_way_translation);
         assert!(engine.supports_context);
         assert!(engine.supports_post_stop_transcription);
-        assert_eq!(
-            engine.post_stop_execution,
-            PostStopExecution::RealtimeRestream
-        );
+        assert_eq!(engine.post_stop_execution, PostStopExecution::AsyncFileApi);
     }
 }

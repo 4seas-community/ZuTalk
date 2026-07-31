@@ -157,15 +157,15 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         let engine = NotebookCaptureEnginePresentation(
             providerDisplayName: "Soniox",
             realtimeModelId: "stt-rt-v5",
-            postStopModelId: "stt-rt-v5",
-            postStopUsesRealtimeRestream: true
+            postStopModelId: "stt-async-v5",
+            postStopUsesAsyncFileApi: true
         )
 
         XCTAssertEqual(engine.realtimeSummary, "Soniox · stt-rt-v5")
-        XCTAssertEqual(engine.postStopSummary, "Soniox · stt-rt-v5")
-        XCTAssertEqual(engine.postStopUsesRealtimeRestream, true)
+        XCTAssertEqual(engine.postStopSummary, "Soniox · stt-async-v5")
+        XCTAssertEqual(engine.postStopUsesAsyncFileApi, true)
         XCTAssertEqual(engine.postStopExecutionSummary, String(
-            localized: "settings.services.engine.realtime_replay"
+            localized: "settings.services.engine.async_file_api"
         ))
 
         XCTAssertEqual(

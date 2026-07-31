@@ -103,6 +103,7 @@ pub enum FfiNotebookAsyncProjectionState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum FfiNotebookPostStopExecution {
     RealtimeRestream,
+    AsyncFileApi,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -434,8 +435,8 @@ impl From<vt_stt::NotebookCaptureEngine> for FfiNotebookCaptureEngineDescriptor 
             supports_context: value.supports_context,
             supports_post_stop_transcription: value.supports_post_stop_transcription,
             post_stop_execution: match value.post_stop_execution {
-                vt_stt::PostStopExecution::RealtimeRestream => {
-                    FfiNotebookPostStopExecution::RealtimeRestream
+                vt_stt::PostStopExecution::AsyncFileApi => {
+                    FfiNotebookPostStopExecution::AsyncFileApi
                 }
             },
         }
@@ -9078,7 +9079,7 @@ mod tests {
         );
         assert_eq!(
             descriptor.post_stop_execution,
-            FfiNotebookPostStopExecution::RealtimeRestream
+            FfiNotebookPostStopExecution::AsyncFileApi
         );
     }
 

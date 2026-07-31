@@ -29,6 +29,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 thiserror = "2"
 anyhow = "1"
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json", "multipart"] }
 
 # 保留行号信息以支持堆栈定位，同时减少本地构建产物体积。
 # 关闭 incremental 以便共享编译缓存；需要时可用 CARGO_INCREMENTAL=1 覆盖。

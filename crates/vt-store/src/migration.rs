@@ -12,7 +12,8 @@ const PREVIOUS_VERSION: i32 = 25;
 const MULTILINGUAL_VERSION: i32 = 26;
 const REALTIME_LORO_VERSION: i32 = 27;
 const TRANSLATION_INBOX_VERSION: i32 = 28;
-const CURRENT_VERSION: i32 = 29;
+const TRANSCRIPT_GAPS_VERSION: i32 = 29;
+const CURRENT_VERSION: i32 = 30;
 
 const V23_TABLES: &[&str] = &[
     "audio_retention_chunks",
@@ -326,6 +327,36 @@ const V29_TABLES: &[&str] = &[
     "session_records",
     "session_speakers",
 ];
+const V30_TABLES: &[&str] = &[
+    "audio_retention_chunks",
+    "context_pack_sources",
+    "context_packs",
+    "notebook_capture_profiles",
+    "notebook_capture_runs",
+    "notebook_context_pack_bindings",
+    "notebook_projection_mutations",
+    "notebook_session_projections",
+    "notebook_sessions",
+    "notebook_tabs",
+    "notebooks",
+    "participants",
+    "provider_remote_artifacts",
+    "realtime_transcript_gaps",
+    "realtime_translation_inbox",
+    "realtime_utterance_overrides",
+    "realtime_utterance_variants",
+    "realtime_utterances",
+    "search_index",
+    "search_index_config",
+    "search_index_content",
+    "search_index_data",
+    "search_index_docsize",
+    "search_index_idx",
+    "session_meta",
+    "session_purge_jobs",
+    "session_records",
+    "session_speakers",
+];
 const V29_INDEXES: &[&str] = &[
     "idx_audio_retention_chunks_due",
     "idx_audio_retention_chunks_session",
@@ -366,7 +397,7 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
 
     match current {
         0 if database_has_user_objects(conn)? => Err(schema_reset_required(0)),
-        0 => install_v29_baseline(conn),
+        0 => install_v30_baseline(conn),
         LEGACY_VERSION => {
             validate_v23_baseline(conn)?;
             migrate_v23_to_v24(conn)?;
@@ -380,7 +411,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v27_to_v28(conn)?;
             validate_v28_baseline(conn)?;
             migrate_v28_to_v29(conn)?;
-            validate_v29_baseline(conn)
+            validate_v29_baseline(conn)?;
+            migrate_v29_to_v30(conn)?;
+            validate_v30_baseline(conn)
         }
         SPEAKER_VERSION => {
             validate_v24_baseline(conn)?;
@@ -393,7 +426,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v27_to_v28(conn)?;
             validate_v28_baseline(conn)?;
             migrate_v28_to_v29(conn)?;
-            validate_v29_baseline(conn)
+            validate_v29_baseline(conn)?;
+            migrate_v29_to_v30(conn)?;
+            validate_v30_baseline(conn)
         }
         PREVIOUS_VERSION => {
             validate_v25_baseline(conn)?;
@@ -404,7 +439,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v27_to_v28(conn)?;
             validate_v28_baseline(conn)?;
             migrate_v28_to_v29(conn)?;
-            validate_v29_baseline(conn)
+            validate_v29_baseline(conn)?;
+            migrate_v29_to_v30(conn)?;
+            validate_v30_baseline(conn)
         }
         MULTILINGUAL_VERSION => {
             validate_v26_baseline(conn)?;
@@ -413,21 +450,32 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v27_to_v28(conn)?;
             validate_v28_baseline(conn)?;
             migrate_v28_to_v29(conn)?;
-            validate_v29_baseline(conn)
+            validate_v29_baseline(conn)?;
+            migrate_v29_to_v30(conn)?;
+            validate_v30_baseline(conn)
         }
         REALTIME_LORO_VERSION => {
             validate_v27_baseline(conn)?;
             migrate_v27_to_v28(conn)?;
             validate_v28_baseline(conn)?;
             migrate_v28_to_v29(conn)?;
-            validate_v29_baseline(conn)
+            validate_v29_baseline(conn)?;
+            migrate_v29_to_v30(conn)?;
+            validate_v30_baseline(conn)
         }
         TRANSLATION_INBOX_VERSION => {
             validate_v28_baseline(conn)?;
             migrate_v28_to_v29(conn)?;
-            validate_v29_baseline(conn)
+            validate_v29_baseline(conn)?;
+            migrate_v29_to_v30(conn)?;
+            validate_v30_baseline(conn)
         }
-        CURRENT_VERSION => validate_v29_baseline(conn),
+        TRANSCRIPT_GAPS_VERSION => {
+            validate_v29_baseline(conn)?;
+            migrate_v29_to_v30(conn)?;
+            validate_v30_baseline(conn)
+        }
+        CURRENT_VERSION => validate_v30_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
     }?;
 
@@ -461,7 +509,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {LEGACY_VERSION}, schema {SPEAKER_VERSION}, schema {PREVIOUS_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {LEGACY_VERSION}, schema {SPEAKER_VERSION}, schema {PREVIOUS_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -549,58 +597,56 @@ fn validate_v23_baseline(conn: &Connection) -> SqlResult<()> {
 }
 
 fn validate_v24_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, SPEAKER_VERSION, false, false, false, false, false)
+    validate_v24_or_later_baseline(conn, SPEAKER_VERSION)
 }
 
 fn validate_v25_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, PREVIOUS_VERSION, true, false, false, false, false)
+    validate_v24_or_later_baseline(conn, PREVIOUS_VERSION)
 }
 
 fn validate_v26_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, MULTILINGUAL_VERSION, true, true, false, false, false)
+    validate_v24_or_later_baseline(conn, MULTILINGUAL_VERSION)
 }
 
 fn validate_v27_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, REALTIME_LORO_VERSION, true, true, true, false, false)
+    validate_v24_or_later_baseline(conn, REALTIME_LORO_VERSION)
 }
 
 fn validate_v28_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(
-        conn,
-        TRANSLATION_INBOX_VERSION,
-        true,
-        true,
-        true,
-        true,
-        false,
-    )
+    validate_v24_or_later_baseline(conn, TRANSLATION_INBOX_VERSION)
 }
 
 fn validate_v29_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, CURRENT_VERSION, true, true, true, true, true)
+    validate_v24_or_later_baseline(conn, TRANSCRIPT_GAPS_VERSION)
 }
 
-fn validate_v24_or_later_baseline(
-    conn: &Connection,
-    claimed_version: i32,
-    has_multilingual_profile: bool,
-    has_utterance_variants: bool,
-    has_realtime_loro_projection: bool,
-    has_translation_inbox: bool,
-    has_transcript_gaps: bool,
-) -> SqlResult<()> {
-    let (tables, indexes, triggers) = if has_transcript_gaps {
-        (V29_TABLES, V29_INDEXES, V29_TRIGGERS)
-    } else if has_translation_inbox {
-        (V28_TABLES, V28_INDEXES, V28_TRIGGERS)
-    } else if has_realtime_loro_projection {
-        (V27_TABLES, V27_INDEXES, V27_TRIGGERS)
-    } else if has_utterance_variants {
-        (V26_TABLES, V26_INDEXES, V26_TRIGGERS)
-    } else if has_multilingual_profile {
-        (V25_TABLES, V25_INDEXES, V25_TRIGGERS)
-    } else {
-        (V24_TABLES, V24_INDEXES, V24_TRIGGERS)
+fn validate_v30_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v24_or_later_baseline(conn, CURRENT_VERSION)?;
+    // v30 的实质变化只在 CHECK 文本里:post-stop 必须允许异步文件 API 模型。
+    let table_sql = schema_object_sql(conn, "table", "notebook_capture_runs")?.to_ascii_lowercase();
+    if !table_sql.contains("'stt-async-v5'") {
+        return Err(schema_reset_required(CURRENT_VERSION));
+    }
+    Ok(())
+}
+
+/// v24 及之后每一版的对象集合都是严格累加的，所以版本号本身就足以选出
+/// 该版应有的表/索引/触发器；不要再退回按特性标志逐个传参。
+fn validate_v24_or_later_baseline(conn: &Connection, claimed_version: i32) -> SqlResult<()> {
+    let has_multilingual_profile = claimed_version >= PREVIOUS_VERSION;
+    let has_utterance_variants = claimed_version >= MULTILINGUAL_VERSION;
+    let has_realtime_loro_projection = claimed_version >= REALTIME_LORO_VERSION;
+    let has_translation_inbox = claimed_version >= TRANSLATION_INBOX_VERSION;
+    let has_transcript_gaps = claimed_version >= TRANSCRIPT_GAPS_VERSION;
+    let has_remote_artifact_journal = claimed_version >= CURRENT_VERSION;
+    let (tables, indexes, triggers) = match claimed_version {
+        CURRENT_VERSION => (V30_TABLES, V29_INDEXES, V29_TRIGGERS),
+        TRANSCRIPT_GAPS_VERSION => (V29_TABLES, V29_INDEXES, V29_TRIGGERS),
+        TRANSLATION_INBOX_VERSION => (V28_TABLES, V28_INDEXES, V28_TRIGGERS),
+        REALTIME_LORO_VERSION => (V27_TABLES, V27_INDEXES, V27_TRIGGERS),
+        MULTILINGUAL_VERSION => (V26_TABLES, V26_INDEXES, V26_TRIGGERS),
+        PREVIOUS_VERSION => (V25_TABLES, V25_INDEXES, V25_TRIGGERS),
+        _ => (V24_TABLES, V24_INDEXES, V24_TRIGGERS),
     };
     validate_exact_object_names(conn, claimed_version, "table", tables)?;
     validate_exact_object_names(conn, claimed_version, "index", indexes)?;
@@ -740,6 +786,17 @@ fn validate_v24_or_later_baseline(
                 "SELECT id, session_id, start_frame, end_frame, reason, repair_state,
                         created_at, updated_at
                  FROM realtime_transcript_gaps LIMIT 0",
+            )
+            .is_err()
+    {
+        return Err(schema_reset_required(claimed_version));
+    }
+    if has_remote_artifact_journal
+        && conn
+            .prepare(
+                "SELECT task_id, session_id, provider_id, client_reference_id,
+                        remote_file_id, remote_transcription_id, created_at, updated_at
+                 FROM provider_remote_artifacts LIMIT 0",
             )
             .is_err()
     {
@@ -1318,9 +1375,11 @@ fn migrate_v27_to_v28(conn: &Connection) -> SqlResult<()> {
 fn migrate_v28_to_v29(conn: &Connection) -> SqlResult<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(realtime_transcript_gaps_schema())?;
-    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+    tx.pragma_update(None, "user_version", TRANSCRIPT_GAPS_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{TRANSLATION_INBOX_VERSION} to v{CURRENT_VERSION}");
+    tracing::info!(
+        "migrated Zulangue schema v{TRANSLATION_INBOX_VERSION} to v{TRANSCRIPT_GAPS_VERSION}"
+    );
     Ok(())
 }
 
@@ -1348,7 +1407,7 @@ fn realtime_transcript_gaps_schema() -> &'static str {
     "#
 }
 
-fn install_v29_baseline(conn: &Connection) -> SqlResult<()> {
+fn install_v30_baseline(conn: &Connection) -> SqlResult<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(
         r#"
@@ -1503,150 +1562,6 @@ fn install_v29_baseline(conn: &Connection) -> SqlResult<()> {
             CHECK(capture_mode = 'transcription_only' OR remote_realtime_enabled = 1),
             CHECK(send_context_to_soniox = 0 OR remote_realtime_enabled = 1)
         );
-
-        CREATE TABLE notebook_capture_runs (
-            id                          TEXT PRIMARY KEY,
-            notebook_id                 TEXT NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
-            session_id                  TEXT NOT NULL UNIQUE,
-            profile_revision            INTEGER NOT NULL CHECK(profile_revision >= 0),
-            profile_snapshot_json       TEXT NOT NULL,
-            realtime_provider_id        TEXT,
-            realtime_model_id           TEXT,
-            post_stop_provider_id       TEXT,
-            post_stop_model_id          TEXT,
-            context_receipt_json        TEXT,
-            context_applied_at          TEXT,
-            context_snapshot_ciphertext BLOB,
-            context_snapshot_key_ref    TEXT,
-            context_snapshot_sha256     TEXT,
-            capture_state               TEXT NOT NULL CHECK(capture_state IN (
-                                            'recording', 'paused', 'draining', 'completed',
-                                            'interrupted', 'failed'
-                                        )),
-            remote_health               TEXT NOT NULL DEFAULT 'off' CHECK(remote_health IN (
-                                            'off', 'connecting', 'live', 'degraded', 'unavailable'
-                                        )),
-            projection_state            TEXT NOT NULL DEFAULT 'pending' CHECK(projection_state IN (
-                                            'pending', 'projecting', 'ready', 'failed'
-                                        )),
-            async_task_state            TEXT NOT NULL DEFAULT 'none' CHECK(async_task_state IN (
-                                            'none', 'pending', 'reserved', 'enqueued',
-                                            'completed', 'failed'
-                                        )),
-            async_authorized_at_ms      INTEGER CHECK(
-                                            async_authorized_at_ms IS NULL
-                                            OR async_authorized_at_ms > 0
-                                        ),
-            async_language_hint         TEXT CHECK(
-                                            async_language_hint IS NULL
-                                            OR length(trim(async_language_hint)) > 0
-                                        ),
-            async_task_id               TEXT,
-            async_task_payload_sha256   TEXT,
-            async_projection_state      TEXT NOT NULL DEFAULT 'none' CHECK(
-                                            async_projection_state IN (
-                                                'none', 'pending', 'projecting', 'ready', 'failed'
-                                            )
-                                        ),
-            async_provider_output_sha256 TEXT,
-            async_provider_result_json   TEXT,
-            async_provider_completed_at  TEXT,
-            async_search_projection_state TEXT NOT NULL DEFAULT 'none' CHECK(
-                                            async_search_projection_state IN (
-                                                'none', 'pending', 'ready', 'failed'
-                                            )
-                                        ),
-            provider_error_type         TEXT,
-            provider_request_id         TEXT,
-            audio_journal_path          TEXT,
-            audio_path                  TEXT,
-            audio_key_ref               TEXT,
-            sample_rate                 INTEGER CHECK(sample_rate IS NULL OR sample_rate > 0),
-            channels                    INTEGER CHECK(channels IS NULL OR channels > 0),
-            captured_frames             INTEGER NOT NULL DEFAULT 0 CHECK(captured_frames >= 0),
-            created_at                  TEXT NOT NULL,
-            updated_at                  TEXT NOT NULL,
-            completed_at                TEXT,
-            realtime_loro_desired_revision INTEGER NOT NULL DEFAULT 0
-                                                 CHECK(realtime_loro_desired_revision >= 0),
-            realtime_loro_applied_revision INTEGER NOT NULL DEFAULT 0
-                                                 CHECK(
-                                                     realtime_loro_applied_revision >= 0
-                                                     AND realtime_loro_applied_revision
-                                                         <= realtime_loro_desired_revision
-                                                 ),
-            CHECK(
-                (context_snapshot_ciphertext IS NULL
-                    AND context_snapshot_key_ref IS NULL
-                    AND context_snapshot_sha256 IS NULL)
-                OR
-                (context_snapshot_ciphertext IS NOT NULL
-                    AND context_snapshot_key_ref IS NOT NULL
-                    AND context_snapshot_sha256 IS NOT NULL)
-            ),
-            CHECK(
-                (realtime_provider_id IS NULL AND realtime_model_id IS NULL)
-                OR
-                (realtime_provider_id IS NOT NULL AND realtime_model_id IS NOT NULL
-                    AND realtime_provider_id = 'soniox'
-                    AND realtime_model_id = 'stt-rt-v5')
-            ),
-            CHECK(
-                (post_stop_provider_id IS NULL AND post_stop_model_id IS NULL)
-                OR
-                (post_stop_provider_id IS NOT NULL AND post_stop_model_id IS NOT NULL
-                    AND post_stop_provider_id = 'soniox'
-                    AND post_stop_model_id = 'stt-rt-v5')
-            ),
-            CHECK(
-                context_applied_at IS NULL
-                OR
-                (realtime_provider_id IS NOT NULL
-                    AND realtime_model_id IS NOT NULL
-                    AND realtime_provider_id = 'soniox'
-                    AND realtime_model_id = 'stt-rt-v5')
-            ),
-            CHECK(
-                (async_task_state = 'none'
-                    AND async_authorized_at_ms IS NULL
-                    AND async_language_hint IS NULL
-                    AND async_task_id IS NULL
-                    AND async_task_payload_sha256 IS NULL)
-                OR
-                (async_task_state = 'pending'
-                    AND async_authorized_at_ms IS NOT NULL
-                    AND async_task_id IS NULL
-                    AND async_task_payload_sha256 IS NULL)
-                OR
-                (async_task_state IN ('reserved', 'enqueued', 'completed', 'failed')
-                    AND async_authorized_at_ms IS NOT NULL
-                    AND async_task_id IS NOT NULL
-                    AND length(trim(async_task_id)) > 0
-                    AND async_task_payload_sha256 IS NOT NULL
-                    AND length(async_task_payload_sha256) = 64
-                    AND async_task_payload_sha256 NOT GLOB '*[^0-9a-f]*')
-            ),
-            CHECK(async_projection_state = 'none' OR async_task_state = 'completed'),
-            CHECK(
-                (async_provider_output_sha256 IS NULL
-                    AND async_provider_result_json IS NULL
-                    AND async_provider_completed_at IS NULL
-                    AND async_search_projection_state = 'none')
-                OR
-                (async_provider_output_sha256 IS NOT NULL
-                    AND length(async_provider_output_sha256) = 64
-                    AND async_provider_output_sha256 NOT GLOB '*[^0-9a-f]*'
-                    AND async_provider_result_json IS NOT NULL
-                    AND async_provider_completed_at IS NOT NULL
-                    AND async_search_projection_state IN ('pending', 'ready', 'failed'))
-            ),
-            CHECK(async_provider_output_sha256 IS NULL OR post_stop_provider_id IS NOT NULL)
-        );
-        CREATE INDEX idx_notebook_capture_runs_notebook_created
-            ON notebook_capture_runs(notebook_id, created_at DESC, id);
-        CREATE UNIQUE INDEX idx_notebook_capture_runs_single_active
-            ON notebook_capture_runs((1))
-            WHERE capture_state IN ('recording', 'paused', 'draining');
 
         -- Human-assigned participant metadata. These records contain names
         -- only: no audio, embeddings, prototypes, or other voiceprints.
@@ -1955,6 +1870,200 @@ fn install_v29_baseline(conn: &Connection) -> SqlResult<()> {
         CREATE INDEX idx_session_purge_jobs_updated
             ON session_purge_jobs(updated_at, session_id);
 
+        CREATE TRIGGER session_meta_provider_tokens_immutable
+        BEFORE UPDATE OF tokens_json ON session_meta
+        WHEN NEW.tokens_json IS NOT OLD.tokens_json
+             AND EXISTS (
+                 SELECT 1 FROM notebook_capture_runs r
+                 WHERE r.session_id = OLD.session_id
+                   AND r.async_provider_output_sha256 IS NOT NULL
+             )
+        BEGIN
+            SELECT RAISE(ABORT, 'capture provider authoritative tokens are immutable');
+        END;
+
+        "#,
+    )?;
+    tx.execute_batch(notebook_capture_runs_schema())?;
+    tx.execute_batch(realtime_transcript_gaps_schema())?;
+    tx.execute_batch(provider_remote_artifacts_schema())?;
+    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+    tx.commit()?;
+    tracing::info!("installed clean Zulangue schema v{CURRENT_VERSION}");
+    Ok(())
+}
+
+/// 远端 provider 工件日志:post-stop 任务在调用 Soniox 异步文件 API 前落一行
+/// claim,拿到远端 id 后回填,确认远端删除后整行移除。启动扫尾据此删掉
+/// 崩溃遗留的远端文件/转录任务。像 session_purge_jobs 一样刻意不挂外键:
+/// 行必须活过会话删除,直到远端收敛。
+fn provider_remote_artifacts_schema() -> &'static str {
+    r#"
+        CREATE TABLE provider_remote_artifacts (
+            task_id                 TEXT PRIMARY KEY,
+            session_id              TEXT NOT NULL CHECK(length(trim(session_id)) > 0),
+            provider_id             TEXT NOT NULL CHECK(provider_id = 'soniox'),
+            client_reference_id     TEXT NOT NULL UNIQUE
+                                         CHECK(length(trim(client_reference_id)) > 0),
+            remote_file_id          TEXT,
+            remote_transcription_id TEXT,
+            created_at              TEXT NOT NULL,
+            updated_at              TEXT NOT NULL
+        );
+    "#
+}
+
+/// `notebook_capture_runs` 的完整 schema(表 + 索引 + 自身触发器)。
+///
+/// v30 起 post-stop 允许 `stt-async-v5`(异步文件 API),同时保留
+/// `stt-rt-v5` 让升级前落库的 restream 收据保持合法。全新安装与
+/// v29→v30 重建迁移共用这一份定义。
+fn notebook_capture_runs_schema() -> &'static str {
+    r#"
+        CREATE TABLE notebook_capture_runs (
+            id                          TEXT PRIMARY KEY,
+            notebook_id                 TEXT NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
+            session_id                  TEXT NOT NULL UNIQUE,
+            profile_revision            INTEGER NOT NULL CHECK(profile_revision >= 0),
+            profile_snapshot_json       TEXT NOT NULL,
+            realtime_provider_id        TEXT,
+            realtime_model_id           TEXT,
+            post_stop_provider_id       TEXT,
+            post_stop_model_id          TEXT,
+            context_receipt_json        TEXT,
+            context_applied_at          TEXT,
+            context_snapshot_ciphertext BLOB,
+            context_snapshot_key_ref    TEXT,
+            context_snapshot_sha256     TEXT,
+            capture_state               TEXT NOT NULL CHECK(capture_state IN (
+                                            'recording', 'paused', 'draining', 'completed',
+                                            'interrupted', 'failed'
+                                        )),
+            remote_health               TEXT NOT NULL DEFAULT 'off' CHECK(remote_health IN (
+                                            'off', 'connecting', 'live', 'degraded', 'unavailable'
+                                        )),
+            projection_state            TEXT NOT NULL DEFAULT 'pending' CHECK(projection_state IN (
+                                            'pending', 'projecting', 'ready', 'failed'
+                                        )),
+            async_task_state            TEXT NOT NULL DEFAULT 'none' CHECK(async_task_state IN (
+                                            'none', 'pending', 'reserved', 'enqueued',
+                                            'completed', 'failed'
+                                        )),
+            async_authorized_at_ms      INTEGER CHECK(
+                                            async_authorized_at_ms IS NULL
+                                            OR async_authorized_at_ms > 0
+                                        ),
+            async_language_hint         TEXT CHECK(
+                                            async_language_hint IS NULL
+                                            OR length(trim(async_language_hint)) > 0
+                                        ),
+            async_task_id               TEXT,
+            async_task_payload_sha256   TEXT,
+            async_projection_state      TEXT NOT NULL DEFAULT 'none' CHECK(
+                                            async_projection_state IN (
+                                                'none', 'pending', 'projecting', 'ready', 'failed'
+                                            )
+                                        ),
+            async_provider_output_sha256 TEXT,
+            async_provider_result_json   TEXT,
+            async_provider_completed_at  TEXT,
+            async_search_projection_state TEXT NOT NULL DEFAULT 'none' CHECK(
+                                            async_search_projection_state IN (
+                                                'none', 'pending', 'ready', 'failed'
+                                            )
+                                        ),
+            provider_error_type         TEXT,
+            provider_request_id         TEXT,
+            audio_journal_path          TEXT,
+            audio_path                  TEXT,
+            audio_key_ref               TEXT,
+            sample_rate                 INTEGER CHECK(sample_rate IS NULL OR sample_rate > 0),
+            channels                    INTEGER CHECK(channels IS NULL OR channels > 0),
+            captured_frames             INTEGER NOT NULL DEFAULT 0 CHECK(captured_frames >= 0),
+            created_at                  TEXT NOT NULL,
+            updated_at                  TEXT NOT NULL,
+            completed_at                TEXT,
+            realtime_loro_desired_revision INTEGER NOT NULL DEFAULT 0
+                                                 CHECK(realtime_loro_desired_revision >= 0),
+            realtime_loro_applied_revision INTEGER NOT NULL DEFAULT 0
+                                                 CHECK(
+                                                     realtime_loro_applied_revision >= 0
+                                                     AND realtime_loro_applied_revision
+                                                         <= realtime_loro_desired_revision
+                                                 ),
+            CHECK(
+                (context_snapshot_ciphertext IS NULL
+                    AND context_snapshot_key_ref IS NULL
+                    AND context_snapshot_sha256 IS NULL)
+                OR
+                (context_snapshot_ciphertext IS NOT NULL
+                    AND context_snapshot_key_ref IS NOT NULL
+                    AND context_snapshot_sha256 IS NOT NULL)
+            ),
+            CHECK(
+                (realtime_provider_id IS NULL AND realtime_model_id IS NULL)
+                OR
+                (realtime_provider_id IS NOT NULL AND realtime_model_id IS NOT NULL
+                    AND realtime_provider_id = 'soniox'
+                    AND realtime_model_id = 'stt-rt-v5')
+            ),
+            CHECK(
+                (post_stop_provider_id IS NULL AND post_stop_model_id IS NULL)
+                OR
+                (post_stop_provider_id IS NOT NULL AND post_stop_model_id IS NOT NULL
+                    AND post_stop_provider_id = 'soniox'
+                    AND post_stop_model_id IN ('stt-rt-v5', 'stt-async-v5'))
+            ),
+            CHECK(
+                context_applied_at IS NULL
+                OR
+                (realtime_provider_id IS NOT NULL
+                    AND realtime_model_id IS NOT NULL
+                    AND realtime_provider_id = 'soniox'
+                    AND realtime_model_id = 'stt-rt-v5')
+            ),
+            CHECK(
+                (async_task_state = 'none'
+                    AND async_authorized_at_ms IS NULL
+                    AND async_language_hint IS NULL
+                    AND async_task_id IS NULL
+                    AND async_task_payload_sha256 IS NULL)
+                OR
+                (async_task_state = 'pending'
+                    AND async_authorized_at_ms IS NOT NULL
+                    AND async_task_id IS NULL
+                    AND async_task_payload_sha256 IS NULL)
+                OR
+                (async_task_state IN ('reserved', 'enqueued', 'completed', 'failed')
+                    AND async_authorized_at_ms IS NOT NULL
+                    AND async_task_id IS NOT NULL
+                    AND length(trim(async_task_id)) > 0
+                    AND async_task_payload_sha256 IS NOT NULL
+                    AND length(async_task_payload_sha256) = 64
+                    AND async_task_payload_sha256 NOT GLOB '*[^0-9a-f]*')
+            ),
+            CHECK(async_projection_state = 'none' OR async_task_state = 'completed'),
+            CHECK(
+                (async_provider_output_sha256 IS NULL
+                    AND async_provider_result_json IS NULL
+                    AND async_provider_completed_at IS NULL
+                    AND async_search_projection_state = 'none')
+                OR
+                (async_provider_output_sha256 IS NOT NULL
+                    AND length(async_provider_output_sha256) = 64
+                    AND async_provider_output_sha256 NOT GLOB '*[^0-9a-f]*'
+                    AND async_provider_result_json IS NOT NULL
+                    AND async_provider_completed_at IS NOT NULL
+                    AND async_search_projection_state IN ('pending', 'ready', 'failed'))
+            ),
+            CHECK(async_provider_output_sha256 IS NULL OR post_stop_provider_id IS NOT NULL)
+        );
+        CREATE INDEX idx_notebook_capture_runs_notebook_created
+            ON notebook_capture_runs(notebook_id, created_at DESC, id);
+        CREATE UNIQUE INDEX idx_notebook_capture_runs_single_active
+            ON notebook_capture_runs((1))
+            WHERE capture_state IN ('recording', 'paused', 'draining');
+
         CREATE TRIGGER notebook_capture_runs_async_receipt_insert
         BEFORE INSERT ON notebook_capture_runs
         WHEN NOT (
@@ -2080,18 +2189,6 @@ fn install_v29_baseline(conn: &Connection) -> SqlResult<()> {
             SELECT RAISE(ABORT, 'capture provider success receipt is immutable');
         END;
 
-        CREATE TRIGGER session_meta_provider_tokens_immutable
-        BEFORE UPDATE OF tokens_json ON session_meta
-        WHEN NEW.tokens_json IS NOT OLD.tokens_json
-             AND EXISTS (
-                 SELECT 1 FROM notebook_capture_runs r
-                 WHERE r.session_id = OLD.session_id
-                   AND r.async_provider_output_sha256 IS NOT NULL
-             )
-        BEGIN
-            SELECT RAISE(ABORT, 'capture provider authoritative tokens are immutable');
-        END;
-
         CREATE TRIGGER notebook_capture_runs_realtime_provenance_immutable
         BEFORE UPDATE OF realtime_provider_id, realtime_model_id
         ON notebook_capture_runs
@@ -2115,13 +2212,98 @@ fn install_v29_baseline(conn: &Connection) -> SqlResult<()> {
         BEGIN
             SELECT RAISE(ABORT, 'post-stop provider provenance is immutable');
         END;
-        "#,
-    )?;
-    tx.execute_batch(realtime_transcript_gaps_schema())?;
-    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
-    tx.commit()?;
-    tracing::info!("installed clean Zulangue schema v{CURRENT_VERSION}");
-    Ok(())
+    "#
+}
+
+/// v29 → v30:重建 `notebook_capture_runs`,把 post-stop 模型 CHECK 从
+/// 仅 `stt-rt-v5` 放宽为 `stt-rt-v5` / `stt-async-v5`(SQLite 无法原地修改
+/// CHECK,只能按官方 12 步流程重建)。
+///
+/// 同时清空"已认领 post-stop provenance 但没有 provider 成功收据"的未完成
+/// 认领:这些任务升级后会用异步模型重新认领;不清空的话,不可变触发器会把
+/// 它们永远卡死在旧 restream 模型上。已有收据的行保持原样,收据保持诚实。
+fn migrate_v29_to_v30(conn: &Connection) -> SqlResult<()> {
+    conn.pragma_update(None, "foreign_keys", "OFF")?;
+    conn.pragma_update(None, "legacy_alter_table", "ON")?;
+    let result = (|| {
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(
+            "DROP TRIGGER notebook_capture_runs_async_receipt_insert;
+             DROP TRIGGER notebook_capture_runs_async_receipt_update;
+             DROP TRIGGER notebook_capture_runs_async_state_transition;
+             DROP TRIGGER notebook_capture_runs_async_authorization_immutable;
+             DROP TRIGGER notebook_capture_runs_async_projection_transition;
+             DROP TRIGGER notebook_capture_runs_async_identity_immutable;
+             DROP TRIGGER notebook_capture_runs_provider_receipt_immutable;
+             DROP TRIGGER notebook_capture_runs_realtime_provenance_immutable;
+             DROP TRIGGER notebook_capture_runs_post_stop_provenance_immutable;
+             DROP INDEX idx_notebook_capture_runs_notebook_created;
+             DROP INDEX idx_notebook_capture_runs_single_active;
+             ALTER TABLE notebook_capture_runs RENAME TO notebook_capture_runs_v29_legacy;",
+        )?;
+        tx.execute_batch(notebook_capture_runs_schema())?;
+        tx.execute(
+            "INSERT INTO notebook_capture_runs (
+                 id, notebook_id, session_id, profile_revision, profile_snapshot_json,
+                 realtime_provider_id, realtime_model_id,
+                 post_stop_provider_id, post_stop_model_id,
+                 context_receipt_json, context_applied_at,
+                 context_snapshot_ciphertext, context_snapshot_key_ref,
+                 context_snapshot_sha256, capture_state, remote_health,
+                 projection_state, async_task_state, async_authorized_at_ms,
+                 async_language_hint, async_task_id, async_task_payload_sha256,
+                 async_projection_state, async_provider_output_sha256,
+                 async_provider_result_json, async_provider_completed_at,
+                 async_search_projection_state, provider_error_type,
+                 provider_request_id, audio_journal_path, audio_path, audio_key_ref,
+                 sample_rate, channels, captured_frames, created_at, updated_at,
+                 completed_at, realtime_loro_desired_revision,
+                 realtime_loro_applied_revision
+             )
+             SELECT
+                 id, notebook_id, session_id, profile_revision, profile_snapshot_json,
+                 realtime_provider_id, realtime_model_id,
+                 CASE WHEN async_provider_output_sha256 IS NULL THEN NULL
+                      ELSE post_stop_provider_id END,
+                 CASE WHEN async_provider_output_sha256 IS NULL THEN NULL
+                      ELSE post_stop_model_id END,
+                 context_receipt_json, context_applied_at,
+                 context_snapshot_ciphertext, context_snapshot_key_ref,
+                 context_snapshot_sha256, capture_state, remote_health,
+                 projection_state, async_task_state, async_authorized_at_ms,
+                 async_language_hint, async_task_id, async_task_payload_sha256,
+                 async_projection_state, async_provider_output_sha256,
+                 async_provider_result_json, async_provider_completed_at,
+                 async_search_projection_state, provider_error_type,
+                 provider_request_id, audio_journal_path, audio_path, audio_key_ref,
+                 sample_rate, channels, captured_frames, created_at, updated_at,
+                 completed_at, realtime_loro_desired_revision,
+                 realtime_loro_applied_revision
+             FROM notebook_capture_runs_v29_legacy",
+            [],
+        )?;
+        tx.execute_batch("DROP TABLE notebook_capture_runs_v29_legacy;")?;
+        tx.execute_batch(provider_remote_artifacts_schema())?;
+        let violations: i64 =
+            tx.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })?;
+        if violations > 0 {
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
+                Some(format!(
+                    "notebook_capture_runs rebuild left {violations} foreign key violations"
+                )),
+            ));
+        }
+        tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+        tx.commit()?;
+        tracing::info!("migrated Zulangue schema v{TRANSCRIPT_GAPS_VERSION} to v{CURRENT_VERSION}");
+        Ok(())
+    })();
+    conn.pragma_update(None, "legacy_alter_table", "OFF")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    result
 }
 
 #[cfg(test)]
@@ -2167,6 +2349,7 @@ mod tests {
     fn downgrade_v27_to_v26(conn: &Connection) {
         conn.execute_batch(
             r#"
+            DROP TABLE provider_remote_artifacts;
             DROP INDEX idx_realtime_transcript_gaps_pending;
             DROP TABLE realtime_transcript_gaps;
             DROP INDEX idx_realtime_translation_inbox_unbound;
@@ -2220,7 +2403,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_fresh_database_has_exact_v29_objects() {
+    fn migration_fresh_database_has_exact_v30_objects() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
 
@@ -2239,6 +2422,7 @@ mod tests {
                 "notebook_tabs",
                 "notebooks",
                 "participants",
+                "provider_remote_artifacts",
                 "realtime_transcript_gaps",
                 "realtime_translation_inbox",
                 "realtime_utterance_overrides",
@@ -2696,7 +2880,101 @@ mod tests {
     }
 
     #[test]
-    fn migration_rejects_incomplete_database_claiming_v29() {
+    fn migration_v29_to_v30_relaxes_post_stop_model_and_clears_unfinished_claims() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE notebooks (
+                 id TEXT PRIMARY KEY, title TEXT NOT NULL,
+                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+             );",
+        )
+        .unwrap();
+        // v29 的表只在 post-stop CHECK 文本上不同:从共享 schema 反推出旧约束。
+        let v29_schema = notebook_capture_runs_schema()
+            .replace("IN ('stt-rt-v5', 'stt-async-v5')", "= 'stt-rt-v5'");
+        assert_ne!(v29_schema, notebook_capture_runs_schema());
+        conn.execute_batch(&v29_schema).unwrap();
+        insert_notebook(&conn, "v30-notebook");
+
+        let receipt_sha = "a".repeat(64);
+        let payload_sha = "b".repeat(64);
+        conn.execute(
+            "INSERT INTO notebook_capture_runs
+             (id, notebook_id, session_id, profile_revision, profile_snapshot_json,
+              post_stop_provider_id, post_stop_model_id, capture_state,
+              async_task_state, async_authorized_at_ms, async_task_id,
+              async_task_payload_sha256, async_provider_output_sha256,
+              async_provider_result_json, async_provider_completed_at,
+              async_search_projection_state, created_at, updated_at)
+             VALUES ('run-legacy-receipt', 'v30-notebook', 'session-legacy-receipt',
+                     0, '{}', 'soniox', 'stt-rt-v5', 'completed',
+                     'completed', 1, 'task-legacy', ?1, ?2, '{}', 't', 'ready',
+                     't', 't')",
+            rusqlite::params![payload_sha, receipt_sha],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO notebook_capture_runs
+             (id, notebook_id, session_id, profile_revision, profile_snapshot_json,
+              post_stop_provider_id, post_stop_model_id, capture_state,
+              async_task_state, async_authorized_at_ms, async_task_id,
+              async_task_payload_sha256, created_at, updated_at)
+             VALUES ('run-unfinished-claim', 'v30-notebook', 'session-unfinished',
+                     0, '{}', 'soniox', 'stt-rt-v5', 'completed',
+                     'failed', 1, 'task-unfinished', ?1, 't', 't')",
+            rusqlite::params![payload_sha],
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", TRANSCRIPT_GAPS_VERSION)
+            .unwrap();
+
+        migrate_v29_to_v30(&conn).unwrap();
+
+        assert_eq!(
+            conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
+                .unwrap(),
+            CURRENT_VERSION
+        );
+        // 已有 provider 成功收据的行保持旧 restream provenance,收据保持诚实。
+        let (legacy_model, legacy_sha): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT post_stop_model_id, async_provider_output_sha256
+                 FROM notebook_capture_runs WHERE id = 'run-legacy-receipt'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(legacy_model.as_deref(), Some("stt-rt-v5"));
+        assert_eq!(legacy_sha.as_deref(), Some(receipt_sha.as_str()));
+        // 未完成的认领被清空,升级后可以用异步模型重新认领。
+        let unfinished_model: Option<String> = conn
+            .query_row(
+                "SELECT post_stop_model_id FROM notebook_capture_runs
+                 WHERE id = 'run-unfinished-claim'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(unfinished_model, None);
+        conn.execute(
+            "UPDATE notebook_capture_runs
+             SET post_stop_provider_id = 'soniox', post_stop_model_id = 'stt-async-v5'
+             WHERE id = 'run-unfinished-claim'",
+            [],
+        )
+        .unwrap();
+        assert!(conn
+            .execute(
+                "UPDATE notebook_capture_runs
+                 SET post_stop_provider_id = 'soniox', post_stop_model_id = 'stt-async-v4'
+                 WHERE id = 'run-unfinished-claim'",
+                [],
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn migration_rejects_incomplete_database_claiming_v30() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute("CREATE TABLE notebooks (id TEXT PRIMARY KEY)", [])
             .unwrap();
@@ -2706,7 +2984,7 @@ mod tests {
         let error = run_migrations(&conn).unwrap_err();
         assert!(error
             .to_string()
-            .contains("unsupported schema 29; reset required"));
+            .contains("unsupported schema 30; reset required"));
     }
 
     #[test]
@@ -2904,7 +3182,7 @@ mod tests {
             .unwrap(),
             0
         );
-        validate_v29_baseline(&conn).unwrap();
+        validate_v30_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -3089,7 +3367,7 @@ mod tests {
                 ),
             ]
         );
-        validate_v29_baseline(&conn).unwrap();
+        validate_v30_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -3132,7 +3410,7 @@ mod tests {
         assert_eq!(selected, r#"["th","ja"]"#);
         assert_eq!(common, None);
         assert_eq!(revision, 7);
-        validate_v29_baseline(&conn).unwrap();
+        validate_v30_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -3291,7 +3569,7 @@ mod tests {
         assert!(conn
             .prepare("SELECT session_id FROM realtime_translation_inbox LIMIT 0")
             .is_ok());
-        validate_v29_baseline(&conn).unwrap();
+        validate_v30_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -3335,7 +3613,7 @@ mod tests {
             .unwrap(),
             4
         );
-        validate_v29_baseline(&conn).unwrap();
+        validate_v30_baseline(&conn).unwrap();
     }
 
     #[test]

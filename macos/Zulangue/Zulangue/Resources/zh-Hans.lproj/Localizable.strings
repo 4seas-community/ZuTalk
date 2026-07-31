@@ -332,14 +332,14 @@
 "settings.services.engine.realtime" = "实时录音";
 "settings.services.engine.realtime_detail" = "Notebook 明确开启远端处理后，用于实时多语言转录和语言字幕。";
 "settings.services.engine.post_stop" = "停止后处理";
-"settings.services.engine.post_stop_detail" = "通过当前实时引擎重放已完成的本地录音，不会调用 Soniox 异步 API。";
+"settings.services.engine.post_stop_detail" = "将已完成的本地录音上传到 Soniox 异步文件 API 转录，取回结果后立即删除远端文件与转录任务。";
 "settings.services.engine.post_stop_unavailable_detail" = "核心未提供停止后执行方式描述。";
-"settings.services.engine.realtime_replay" = "实时引擎重放";
+"settings.services.engine.async_file_api" = "异步文件 API";
 "settings.services.engine.execution_unavailable" = "执行方式不可用";
 "settings.services.engine.fixed" = "固定";
 "settings.services.engine.unavailable" = "引擎不可用";
 "settings.services.engine.accessibility_format" = "固定实时引擎：%@";
-"settings.services.engine.post_stop_accessibility_format" = "固定停止后引擎：%@。使用实时引擎重放，不是 Soniox 异步 API。";
+"settings.services.engine.post_stop_accessibility_format" = "固定停止后引擎：%@。使用 Soniox 异步文件 API，转录完成后立即删除远端音频。";
 "settings.services.engine.post_stop_unavailable_accessibility_format" = "停止后引擎：%@。执行方式描述不可用。";
 
 /* Settings — Privacy section */
@@ -921,7 +921,7 @@
 "capture.transcript.swap_hint" = "只临时交换左右显示，不会改写录音配置或转录内容。";
 "capture.transcript.realtime_accessibility_label" = "实时转录";
 "capture.transcript.engine.realtime_format" = "实时 · %@";
-"capture.transcript.engine.post_stop_format" = "停止后重放 · %@";
+"capture.transcript.engine.post_stop_format" = "停止后转录 · %@";
 "capture.transcript.transcription_heading" = "转录时间线";
 "capture.transcript.transcription_empty_title" = "暂无实时话语";
 "capture.transcript.transcription_empty_detail" = "开启远端实时处理并开始录音后，这里会显示本场转录。";

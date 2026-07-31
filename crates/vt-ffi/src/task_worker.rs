@@ -52,7 +52,11 @@ use vt_store::{
     AsyncProviderReceipt, AsyncTaskState, AudioChunkRetentionRecord, NotebookCaptureStore,
     NotebookCaptureStoreError, SessionMeta, SessionMetaStore,
 };
-use vt_stt::CURRENT_NOTEBOOK_CAPTURE_ENGINE;
+use vt_stt::{
+    soniox_async_delete_remote_file, soniox_async_delete_remote_transcription,
+    soniox_async_list_remote_files, soniox_async_list_remote_transcriptions, SonioxRemoteEndpoint,
+    SonioxRemoteInventoryEntry, CURRENT_NOTEBOOK_CAPTURE_ENGINE,
+};
 
 /// One-shot gate that prevents the durable worker from claiming provider work
 /// until the app has restored (or explicitly failed closed) its persisted
@@ -1197,6 +1201,165 @@ fn is_local_preflight_failure(code: &str) -> bool {
     ) || code.starts_with("capture_audio_format_")
 }
 
+/// 远端清单快照。只在有 claim 缺 id 时才拉取。
+struct RemoteArtifactInventory {
+    files: Vec<SonioxRemoteInventoryEntry>,
+    transcriptions: Vec<SonioxRemoteInventoryEntry>,
+}
+
+impl RemoteArtifactInventory {
+    /// 文件列表接口不回 client_reference_id，标签只能从文件名认。
+    fn file_ids_for(&self, reference: &str) -> Vec<String> {
+        let expected = format!("{reference}.wav");
+        self.files
+            .iter()
+            .filter(|entry| entry.filename.as_deref() == Some(expected.as_str()))
+            .map(|entry| entry.id.clone())
+            .collect()
+    }
+
+    fn transcription_ids_for(&self, reference: &str) -> Vec<String> {
+        self.transcriptions
+            .iter()
+            .filter(|entry| entry.client_reference_id.as_deref() == Some(reference))
+            .map(|entry| entry.id.clone())
+            .collect()
+    }
+}
+
+/// 启动扫尾。进程被杀、断电、崩溃都会让一次转录失去删除远端工件的时机；
+/// `provider_remote_artifacts` 的行是"远端可能还留着这次录音"的唯一权威，
+/// 所以 worker 必须先把它们收敛，才允许派发新的 provider 任务。
+///
+/// 只处理本机日志过的工件——按落库的 id 删，或按 `zulangue-{task_id}` 标签
+/// 在远端清单里找回"id 未及落库"的孤儿。同账号其他设备正在跑的工件不属于
+/// 本机 claim，不会被碰到。
+///
+/// 收敛不了的行留在库里，下次启动继续重试：宁可重复删，不可漏删。
+async fn sweep_orphaned_remote_artifacts(
+    capture_store: &NotebookCaptureStore,
+    base_url: &str,
+    api_key: &str,
+) {
+    let claims = match capture_store.list_provider_remote_artifact_claims() {
+        Ok(claims) => claims,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "cannot read remote provider artifact journal; skipping startup sweep"
+            );
+            return;
+        }
+    };
+    if claims.is_empty() {
+        return;
+    }
+    tracing::info!(
+        claims = claims.len(),
+        "sweeping remote provider artifacts left behind by an interrupted transcription"
+    );
+
+    let endpoint = SonioxRemoteEndpoint { base_url, api_key };
+
+    // 只要有一行缺 id，就得靠远端清单按标签找回。清单拉不到时不能把
+    // "没找到"当成"远端没有"，那一轮直接放弃，claim 行留到下次启动。
+    let needs_inventory = claims
+        .iter()
+        .any(|claim| claim.remote_file_id.is_none() || claim.remote_transcription_id.is_none());
+    let inventory = if needs_inventory {
+        match load_remote_artifact_inventory(&endpoint).await {
+            Ok(inventory) => Some(inventory),
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "cannot list remote provider artifacts; startup sweep retries on next launch"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    for claim in claims {
+        let mut transcription_ids = claim
+            .remote_transcription_id
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut file_ids = claim.remote_file_id.iter().cloned().collect::<Vec<_>>();
+        let mut resolved = transcription_ids.len() == 1 && file_ids.len() == 1;
+        if let Some(inventory) = inventory.as_ref() {
+            for id in inventory.transcription_ids_for(&claim.client_reference_id) {
+                if !transcription_ids.contains(&id) {
+                    transcription_ids.push(id);
+                }
+            }
+            for id in inventory.file_ids_for(&claim.client_reference_id) {
+                if !file_ids.contains(&id) {
+                    file_ids.push(id);
+                }
+            }
+            // 清单到手就能断言"远端还剩什么"，没匹配到即为已经干净。
+            resolved = true;
+        }
+        if !resolved {
+            continue;
+        }
+
+        // 先删转录任务再删文件：文件可能被仍存在的转录任务引用。
+        let mut deleted = true;
+        for id in &transcription_ids {
+            if let Err(error) = soniox_async_delete_remote_transcription(&endpoint, id).await {
+                deleted = false;
+                tracing::warn!(
+                    task_id = %claim.task_id,
+                    error = %error,
+                    "failed to delete orphaned remote transcription"
+                );
+            }
+        }
+        for id in &file_ids {
+            if let Err(error) = soniox_async_delete_remote_file(&endpoint, id).await {
+                deleted = false;
+                tracing::warn!(
+                    task_id = %claim.task_id,
+                    error = %error,
+                    "failed to delete orphaned remote file"
+                );
+            }
+        }
+        if !deleted {
+            continue;
+        }
+        if let Err(error) = capture_store.close_provider_remote_artifact_claim(&claim.task_id) {
+            tracing::warn!(
+                task_id = %claim.task_id,
+                error = %error,
+                "swept remote provider artifacts but could not close the journal claim"
+            );
+            continue;
+        }
+        tracing::info!(
+            task_id = %claim.task_id,
+            transcriptions = transcription_ids.len(),
+            files = file_ids.len(),
+            "swept orphaned remote provider artifacts"
+        );
+    }
+}
+
+async fn load_remote_artifact_inventory(
+    endpoint: &SonioxRemoteEndpoint<'_>,
+) -> Result<RemoteArtifactInventory, vt_stt::SttError> {
+    let files = soniox_async_list_remote_files(endpoint).await?;
+    let transcriptions = soniox_async_list_remote_transcriptions(endpoint).await?;
+    Ok(RemoteArtifactInventory {
+        files,
+        transcriptions,
+    })
+}
+
 /// 启动 worker(runtime spawn + cancel 控制)
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_worker(
@@ -1222,6 +1385,10 @@ pub fn spawn_worker(
             return;
         }
         tracing::info!("task worker started");
+        // 扫尾要在派发任何 provider 任务之前跑完，否则会把本进程刚开的
+        // claim 当成孤儿。凭据可能稍后才在设置里保存，所以一直等到第一次
+        // 拿得到 key 为止。
+        let mut swept = false;
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => {
@@ -1229,6 +1396,24 @@ pub fn spawn_worker(
                     break;
                 }
                 _ = tokio::time::sleep(Duration::from_millis(200)) => {
+                    if !swept {
+                        let credential_scope = CURRENT_NOTEBOOK_CAPTURE_ENGINE.credential_scope;
+                        let api_key = match api_key_store.get(credential_scope) {
+                            Ok(value) if !value.trim().is_empty() => Some(value),
+                            Ok(_) | Err(_) => None,
+                        };
+                        let Some(api_key) = api_key else {
+                            continue;
+                        };
+                        sweep_orphaned_remote_artifacts(
+                            &notebook_capture_store,
+                            CURRENT_NOTEBOOK_CAPTURE_ENGINE.async_api_base_url,
+                            &api_key,
+                        )
+                        .await;
+                        swept = true;
+                        continue;
+                    }
                     match claim_next_worker_task(
                         task_queue.as_ref(),
                         &notebook_capture_store,
@@ -2058,8 +2243,14 @@ fn verify_post_stop_provider_receipt(
         run.post_stop_model_id.as_deref(),
     );
     let receipt_pair = (receipt.provider_id.as_str(), receipt.model_id.as_str());
+    // 收据是不可变的历史事实：升级前用 restream 跑出来的 post-stop 收据带
+    // `stt-rt-v5`，它仍然必须可恢复，否则升级会把已完成的转录扔进隔离。
+    // 新认领只接受当前模型（由 claim_provider_provenance 把关）。
+    let receipt_model_supported = receipt_pair.1 == engine.post_stop_model_id
+        || receipt_pair.1 == vt_store::notebook_capture_store::SONIOX_STT_RT_V5_MODEL_ID;
     if stored_pair != (Some(receipt_pair.0), Some(receipt_pair.1))
-        || receipt_pair != (engine.provider_id, engine.post_stop_model_id)
+        || receipt_pair.0 != engine.provider_id
+        || !receipt_model_supported
     {
         return Err((
             "capture_provider_receipt_invalid".to_string(),
@@ -4033,5 +4224,226 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(err.0, "privacy_state_invalid");
+    }
+
+    /// 最小 HTTP/1.1 mock：只服务扫尾要用的清单与删除端点。
+    struct SweepMock {
+        base_url: String,
+        requests: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+    }
+
+    struct SweepMockPlan {
+        files_body: String,
+        transcriptions_body: String,
+        fail_list: bool,
+        fail_delete: bool,
+    }
+
+    impl Default for SweepMockPlan {
+        fn default() -> Self {
+            Self {
+                files_body: r#"{"files":[]}"#.to_string(),
+                transcriptions_body: r#"{"transcriptions":[]}"#.to_string(),
+                fail_list: false,
+                fail_delete: false,
+            }
+        }
+    }
+
+    async fn start_sweep_mock(plan: SweepMockPlan) -> SweepMock {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let requests: Arc<std::sync::Mutex<Vec<(String, String)>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = requests.clone();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                loop {
+                    let mut buffer = Vec::new();
+                    let mut chunk = [0u8; 2048];
+                    let head_end = loop {
+                        if let Some(pos) = buffer
+                            .windows(4)
+                            .position(|window| window == b"\r\n\r\n".as_slice())
+                        {
+                            break Some(pos);
+                        }
+                        match stream.read(&mut chunk).await {
+                            Ok(0) | Err(_) => break None,
+                            Ok(read) => buffer.extend_from_slice(&chunk[..read]),
+                        }
+                    };
+                    if head_end.is_none() {
+                        break;
+                    }
+                    let head = String::from_utf8_lossy(&buffer).to_string();
+                    let mut parts = head.split_whitespace();
+                    let method = parts.next().unwrap_or_default().to_string();
+                    let path = parts.next().unwrap_or_default().to_string();
+                    recorded
+                        .lock()
+                        .unwrap()
+                        .push((method.clone(), path.clone()));
+
+                    let (status, body) = if method == "DELETE" {
+                        if plan.fail_delete {
+                            ("500 Internal Server Error", "{}".to_string())
+                        } else {
+                            ("200 OK", "{}".to_string())
+                        }
+                    } else if plan.fail_list {
+                        ("500 Internal Server Error", "{}".to_string())
+                    } else if path.starts_with("/v1/files") {
+                        ("200 OK", plan.files_body.clone())
+                    } else if path.starts_with("/v1/transcriptions") {
+                        ("200 OK", plan.transcriptions_body.clone())
+                    } else {
+                        ("404 Not Found", "{}".to_string())
+                    };
+                    let response = format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                        body.len()
+                    );
+                    if stream.write_all(response.as_bytes()).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+
+        SweepMock {
+            base_url: format!("http://127.0.0.1:{port}"),
+            requests,
+        }
+    }
+
+    impl SweepMock {
+        fn paths(&self) -> Vec<String> {
+            self.requests
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(method, path)| format!("{method} {path}"))
+                .collect()
+        }
+    }
+
+    #[tokio::test]
+    async fn startup_sweep_deletes_journaled_artifacts_and_closes_the_claim() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let store = NotebookCaptureStore::new(&tmp.path().join("capture.db")).unwrap();
+        store
+            .open_provider_remote_artifact_claim("task-1", "session-1", "zulangue-task-1")
+            .unwrap();
+        store
+            .record_provider_remote_file("task-1", "file-1")
+            .unwrap();
+        store
+            .record_provider_remote_transcription("task-1", "tr-1")
+            .unwrap();
+
+        let mock = start_sweep_mock(SweepMockPlan::default()).await;
+        sweep_orphaned_remote_artifacts(&store, &mock.base_url, "key").await;
+
+        // 两个 id 都在库里时不需要拉清单，直接按 id 删；先转录后文件。
+        assert_eq!(
+            mock.paths(),
+            vec![
+                "DELETE /v1/transcriptions/tr-1".to_string(),
+                "DELETE /v1/files/file-1".to_string(),
+            ]
+        );
+        assert!(store
+            .list_provider_remote_artifact_claims()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn startup_sweep_recovers_orphans_by_reference_tag_when_ids_never_landed() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let store = NotebookCaptureStore::new(&tmp.path().join("capture.db")).unwrap();
+        store
+            .open_provider_remote_artifact_claim("task-2", "session-2", "zulangue-task-2")
+            .unwrap();
+
+        let mock = start_sweep_mock(SweepMockPlan {
+            files_body: r#"{"files":[
+                {"id":"file-2","filename":"zulangue-task-2.wav"},
+                {"id":"other-file","filename":"zulangue-task-999.wav"}
+            ]}"#
+            .to_string(),
+            transcriptions_body: r#"{"transcriptions":[
+                {"id":"tr-2","client_reference_id":"zulangue-task-2"},
+                {"id":"other-tr","client_reference_id":"zulangue-task-999"}
+            ]}"#
+            .to_string(),
+            ..SweepMockPlan::default()
+        })
+        .await;
+        sweep_orphaned_remote_artifacts(&store, &mock.base_url, "key").await;
+
+        let paths = mock.paths();
+        assert!(paths.contains(&"DELETE /v1/transcriptions/tr-2".to_string()));
+        assert!(paths.contains(&"DELETE /v1/files/file-2".to_string()));
+        // 别的设备正在跑的工件不属于本机 claim，绝不能被扫掉。
+        assert!(!paths.contains(&"DELETE /v1/files/other-file".to_string()));
+        assert!(!paths.contains(&"DELETE /v1/transcriptions/other-tr".to_string()));
+        assert!(store
+            .list_provider_remote_artifact_claims()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn startup_sweep_keeps_the_claim_when_the_remote_listing_is_unavailable() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let store = NotebookCaptureStore::new(&tmp.path().join("capture.db")).unwrap();
+        store
+            .open_provider_remote_artifact_claim("task-3", "session-3", "zulangue-task-3")
+            .unwrap();
+
+        let mock = start_sweep_mock(SweepMockPlan {
+            fail_list: true,
+            ..SweepMockPlan::default()
+        })
+        .await;
+        sweep_orphaned_remote_artifacts(&store, &mock.base_url, "key").await;
+
+        // 清单拉不到就不能断言远端已经干净；claim 行留到下次启动重试。
+        assert_eq!(
+            store.list_provider_remote_artifact_claims().unwrap().len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_sweep_keeps_the_claim_when_remote_deletion_fails() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let store = NotebookCaptureStore::new(&tmp.path().join("capture.db")).unwrap();
+        store
+            .open_provider_remote_artifact_claim("task-4", "session-4", "zulangue-task-4")
+            .unwrap();
+        store
+            .record_provider_remote_file("task-4", "file-4")
+            .unwrap();
+        store
+            .record_provider_remote_transcription("task-4", "tr-4")
+            .unwrap();
+
+        let mock = start_sweep_mock(SweepMockPlan {
+            fail_delete: true,
+            ..SweepMockPlan::default()
+        })
+        .await;
+        sweep_orphaned_remote_artifacts(&store, &mock.base_url, "key").await;
+
+        assert_eq!(
+            store.list_provider_remote_artifact_claims().unwrap().len(),
+            1
+        );
     }
 }

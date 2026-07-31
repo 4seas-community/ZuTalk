@@ -330,14 +330,14 @@
 "settings.services.engine.realtime" = "リアルタイムキャプチャ";
 "settings.services.engine.realtime_detail" = "Notebook が明示的にリモート処理を有効にした場合、ライブ多言語文字起こしと言語別字幕に使用します。";
 "settings.services.engine.post_stop" = "停止後の処理";
-"settings.services.engine.post_stop_detail" = "完了したローカル録音を現在のリアルタイムエンジンに再送信します。Soniox 非同期 API は使用しません。";
+"settings.services.engine.post_stop_detail" = "確定したローカル録音を Soniox 非同期ファイル API にアップロードして文字起こしし、結果の取得後すぐにリモートのファイルと文字起こしジョブを削除します。";
 "settings.services.engine.post_stop_unavailable_detail" = "コアから停止後の実行方式が提供されませんでした。";
-"settings.services.engine.realtime_replay" = "リアルタイム再生";
+"settings.services.engine.async_file_api" = "非同期ファイル API";
 "settings.services.engine.execution_unavailable" = "実行方式を利用できません";
 "settings.services.engine.fixed" = "固定";
 "settings.services.engine.unavailable" = "エンジンを利用できません";
 "settings.services.engine.accessibility_format" = "固定リアルタイムエンジン: %@";
-"settings.services.engine.post_stop_accessibility_format" = "固定停止後エンジン: %@。Soniox 非同期 API ではなくリアルタイム再生を使用します。";
+"settings.services.engine.post_stop_accessibility_format" = "固定の停止後エンジン：%@。Soniox 非同期ファイル API を使用し、文字起こし完了後すぐにリモート音声を削除します。";
 "settings.services.engine.post_stop_unavailable_accessibility_format" = "停止後エンジン: %@。実行方式を利用できません。";
 
 /* Settings — Privacy */
@@ -909,7 +909,7 @@
 "capture.transcript.swap_hint" = "左右の表示だけを一時的に入れ替えます。録音設定や文字起こしは変更しません。";
 "capture.transcript.realtime_accessibility_label" = "リアルタイム文字起こし";
 "capture.transcript.engine.realtime_format" = "リアルタイム · %@";
-"capture.transcript.engine.post_stop_format" = "停止後の再生 · %@";
+"capture.transcript.engine.post_stop_format" = "停止後文字起こし · %@";
 "capture.transcript.transcription_heading" = "文字起こしタイムライン";
 "capture.transcript.transcription_empty_title" = "リアルタイム発話はありません";
 "capture.transcript.transcription_empty_detail" = "リモートリアルタイム処理を有効にして録音を開始すると、セッションの文字起こしが表示されます。";

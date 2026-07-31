@@ -17,6 +17,7 @@ use crate::session_query::SessionRecord;
 
 pub const SONIOX_PROVIDER_ID: &str = "soniox";
 pub const SONIOX_STT_RT_V5_MODEL_ID: &str = "stt-rt-v5";
+pub const SONIOX_STT_ASYNC_V5_MODEL_ID: &str = "stt-async-v5";
 pub const MAX_CAPTURE_LANGUAGES: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -999,6 +1000,16 @@ impl SessionPurgePlan {
     }
 }
 
+/// 一条未收敛的远端 provider 工件 claim(见 provider_remote_artifacts 表)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderRemoteArtifactClaim {
+    pub task_id: String,
+    pub session_id: String,
+    pub client_reference_id: String,
+    pub remote_file_id: Option<String>,
+    pub remote_transcription_id: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionPurgeJob {
     pub session_id: String,
@@ -1597,7 +1608,14 @@ impl NotebookCaptureStore {
         require_nonempty("session_id", session_id)?;
         require_nonempty("provider_id", provider_id)?;
         require_nonempty("model_id", model_id)?;
-        if provider_id != SONIOX_PROVIDER_ID || model_id != SONIOX_STT_RT_V5_MODEL_ID {
+        // Realtime 只允许 RT 流模型;post-stop 自 v30 起走异步文件 API 模型。
+        // 旧 restream 收据里的 stt-rt-v5 post-stop 值仍是合法的历史事实,但
+        // 新认领不再接受它。
+        let role_model_id = match role {
+            CaptureProviderRole::Realtime => SONIOX_STT_RT_V5_MODEL_ID,
+            CaptureProviderRole::PostStop => SONIOX_STT_ASYNC_V5_MODEL_ID,
+        };
+        if provider_id != SONIOX_PROVIDER_ID || model_id != role_model_id {
             return Err(NotebookCaptureStoreError::Validation(format!(
                 "unsupported capture provider/model pair {provider_id}/{model_id}"
             )));
@@ -2096,8 +2114,11 @@ impl NotebookCaptureStore {
             )));
         }
         let (provider_id, model_id) = match (provider_id, model_id) {
+            // 收据可绑定当前的异步文件 API 模型,或升级前落库的 restream 模型。
             (Some(provider_id), Some(model_id))
-                if provider_id == SONIOX_PROVIDER_ID && model_id == SONIOX_STT_RT_V5_MODEL_ID =>
+                if provider_id == SONIOX_PROVIDER_ID
+                    && (model_id == SONIOX_STT_ASYNC_V5_MODEL_ID
+                        || model_id == SONIOX_STT_RT_V5_MODEL_ID) =>
             {
                 (provider_id, model_id)
             }
@@ -2972,6 +2993,111 @@ impl NotebookCaptureStore {
     /// Freeze every currently-known deletion target before any external
     /// filesystem, local-key, task database, or Loro mutation is attempted.
     /// Repeated calls are idempotent and always return the original plan.
+    /// 在任何远端 provider 调用之前落 claim 行。行存在 = 远端可能有工件;
+    /// 只有确认远端删除后才移除(close)。重复打开同一 task 是幂等的。
+    pub fn open_provider_remote_artifact_claim(
+        &self,
+        task_id: &str,
+        session_id: &str,
+        client_reference_id: &str,
+    ) -> Result<(), NotebookCaptureStoreError> {
+        require_nonempty("task_id", task_id)?;
+        require_nonempty("session_id", session_id)?;
+        require_nonempty("client_reference_id", client_reference_id)?;
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO provider_remote_artifacts
+             (task_id, session_id, provider_id, client_reference_id, created_at, updated_at)
+             VALUES (?1, ?2, 'soniox', ?3, ?4, ?4)
+             ON CONFLICT(task_id) DO NOTHING",
+            params![task_id, session_id, client_reference_id, now],
+        )?;
+        Ok(())
+    }
+
+    /// 远端返回 id 后立刻回填,启动扫尾可据此直接删除。
+    pub fn record_provider_remote_file(
+        &self,
+        task_id: &str,
+        remote_file_id: &str,
+    ) -> Result<(), NotebookCaptureStoreError> {
+        self.record_provider_remote_column(task_id, "remote_file_id", remote_file_id)
+    }
+
+    pub fn record_provider_remote_transcription(
+        &self,
+        task_id: &str,
+        remote_transcription_id: &str,
+    ) -> Result<(), NotebookCaptureStoreError> {
+        self.record_provider_remote_column(
+            task_id,
+            "remote_transcription_id",
+            remote_transcription_id,
+        )
+    }
+
+    fn record_provider_remote_column(
+        &self,
+        task_id: &str,
+        column: &str,
+        remote_id: &str,
+    ) -> Result<(), NotebookCaptureStoreError> {
+        require_nonempty("task_id", task_id)?;
+        require_nonempty("remote_id", remote_id)?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let updated = self.conn.lock().unwrap().execute(
+            &format!(
+                "UPDATE provider_remote_artifacts
+                 SET {column} = ?2, updated_at = ?3
+                 WHERE task_id = ?1"
+            ),
+            params![task_id, remote_id, now],
+        )?;
+        if updated == 0 {
+            return Err(NotebookCaptureStoreError::NotFound(format!(
+                "provider remote artifact claim for task {task_id}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// 仅在远端文件与转录任务都确认删除后调用。缺行时幂等成功。
+    pub fn close_provider_remote_artifact_claim(
+        &self,
+        task_id: &str,
+    ) -> Result<(), NotebookCaptureStoreError> {
+        require_nonempty("task_id", task_id)?;
+        self.conn.lock().unwrap().execute(
+            "DELETE FROM provider_remote_artifacts WHERE task_id = ?1",
+            [task_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_provider_remote_artifact_claims(
+        &self,
+    ) -> Result<Vec<ProviderRemoteArtifactClaim>, NotebookCaptureStoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT task_id, session_id, client_reference_id,
+                    remote_file_id, remote_transcription_id
+             FROM provider_remote_artifacts
+             ORDER BY created_at, task_id",
+        )?;
+        let claims = stmt
+            .query_map([], |row| {
+                Ok(ProviderRemoteArtifactClaim {
+                    task_id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    client_reference_id: row.get(2)?,
+                    remote_file_id: row.get(3)?,
+                    remote_transcription_id: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(claims)
+    }
+
     pub fn begin_session_purge(
         &self,
         session_id: &str,
@@ -6769,7 +6895,10 @@ fn validate_async_provider_receipt(
             raw.session_id
         ))
     })?;
-    if provider_id != SONIOX_PROVIDER_ID || model_id != SONIOX_STT_RT_V5_MODEL_ID {
+    // 异步文件 API 收据用 stt-async-v5;升级前的 restream 收据仍是 stt-rt-v5。
+    if provider_id != SONIOX_PROVIDER_ID
+        || (model_id != SONIOX_STT_ASYNC_V5_MODEL_ID && model_id != SONIOX_STT_RT_V5_MODEL_ID)
+    {
         return Err(NotebookCaptureStoreError::CorruptData(format!(
             "provider receipt for session {} has unsupported provider provenance",
             raw.session_id
@@ -7512,7 +7641,7 @@ mod tests {
                 session_id,
                 CaptureProviderRole::PostStop,
                 SONIOX_PROVIDER_ID,
-                SONIOX_STT_RT_V5_MODEL_ID,
+                SONIOX_STT_ASYNC_V5_MODEL_ID,
             )
             .unwrap()
     }
@@ -7875,7 +8004,7 @@ mod tests {
                 "session-provenance",
                 CaptureProviderRole::PostStop,
                 SONIOX_PROVIDER_ID,
-                SONIOX_STT_RT_V5_MODEL_ID,
+                SONIOX_STT_ASYNC_V5_MODEL_ID,
             ),
             Err(NotebookCaptureStoreError::Conflict(_))
         ));
@@ -7924,7 +8053,7 @@ mod tests {
         );
         assert_eq!(
             claimed.post_stop_model_id.as_deref(),
-            Some(SONIOX_STT_RT_V5_MODEL_ID)
+            Some(SONIOX_STT_ASYNC_V5_MODEL_ID)
         );
         assert_eq!(
             claim_post_stop(&store, "session-provenance").post_stop_model_id,
@@ -7960,7 +8089,7 @@ mod tests {
                 "session-provenance-purge",
                 CaptureProviderRole::PostStop,
                 SONIOX_PROVIDER_ID,
-                SONIOX_STT_RT_V5_MODEL_ID,
+                SONIOX_STT_ASYNC_V5_MODEL_ID,
             ),
             Err(NotebookCaptureStoreError::Conflict(_))
         ));
@@ -8284,14 +8413,14 @@ mod tests {
             )
             .unwrap();
         assert_eq!(receipt.provider_id, SONIOX_PROVIDER_ID);
-        assert_eq!(receipt.model_id, SONIOX_STT_RT_V5_MODEL_ID);
+        assert_eq!(receipt.model_id, SONIOX_STT_ASYNC_V5_MODEL_ID);
         assert_eq!(
             receipt.output_sha256,
             async_provider_output_digest(
                 "session-provider-binding",
                 "provider-binding-task",
                 SONIOX_PROVIDER_ID,
-                SONIOX_STT_RT_V5_MODEL_ID,
+                SONIOX_STT_ASYNC_V5_MODEL_ID,
                 &tokens_json,
                 &result_json,
             )
