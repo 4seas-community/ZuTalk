@@ -14,12 +14,16 @@ use vt_pipeline::{
     CaptureAudioJournal, RecordingConfig, RecordingResult, RemoteTaskAuthorization, TaskPayload,
     TaskPriority,
 };
+#[cfg(test)]
+use vt_store::notebook_capture_store::AsyncSearchProjectionState;
 use vt_store::notebook_capture_store::{
     canonical_language, capture_mode_for_selection, legacy_capture_language_pair,
     AsyncProjectionState, AsyncTaskState, CaptureMode, CaptureProviderRole, CaptureState,
-    NewRealtimeUtterance, NotebookCaptureHistoryRun, NotebookCaptureProfile,
-    NotebookCaptureProfileUpdate, NotebookCaptureRun, NotebookCaptureStore,
-    NotebookProjectionMutation, ProjectionState, ProviderFailure, RealtimeUtterance, RemoteHealth,
+    NewRealtimeTranslationInboxItem, NewRealtimeUtterance, NotebookCaptureHistoryRun,
+    NotebookCaptureProfile, NotebookCaptureProfileUpdate, NotebookCaptureRun, NotebookCaptureStore,
+    NotebookProjectionMutation, ProjectionState, ProviderFailure, RealtimeLoroProjectionAck,
+    RealtimeLoroProjectionSnapshot, RealtimeTranslationInboxItem, RealtimeTranslationInboxKey,
+    RealtimeTranslationLaneUpdate, RealtimeUtterance, RealtimeUtteranceVariant, RemoteHealth,
     SessionPurgeJob, SessionPurgePlan, UtteranceAlignment, UtteranceCompletion, UtteranceLane,
     UtteranceVariantRole, UtteranceVariantState,
 };
@@ -190,6 +194,11 @@ pub struct FfiNotebookCaptureLanguageVariant {
     pub text: Option<String>,
     pub state: String,
     pub completion: Option<String>,
+    /// Session Final watermark that makes this lane safe to show from Loro.
+    /// Zero means the lane is still SQLite-only.
+    pub projection_revision: u64,
+    /// Lane-local revision of the user-visible override.
+    pub edit_revision: u64,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -207,6 +216,11 @@ pub struct FfiNotebookCaptureUtterance {
     pub translated_text: Option<String>,
     pub completion: String,
     pub alignment: String,
+    /// Session Final watermark that makes the source lane safe to show from
+    /// Loro. Zero means the source is still SQLite-only.
+    pub source_projection_revision: u64,
+    /// Lane-local revision of the source's user-visible override.
+    pub source_edit_revision: u64,
     pub language_variants: Vec<FfiNotebookCaptureLanguageVariant>,
 }
 
@@ -226,6 +240,9 @@ pub struct FfiNotebookCaptureHistoryRun {
     pub capture_state: FfiNotebookCaptureState,
     pub remote_health: FfiNotebookRemoteHealth,
     pub projection_state: FfiNotebookProjectionState,
+    /// Highest session Final watermark whose receipt-bearing Loro snapshot is
+    /// durably fsynced and acknowledged.
+    pub realtime_loro_applied_revision: u64,
     pub mode: Option<FfiNotebookCaptureMode>,
     pub language_a: Option<String>,
     pub language_b: Option<String>,
@@ -266,6 +283,9 @@ pub struct FfiNotebookCaptureEvent {
     /// durable snapshots leave it absent.
     pub realtime_lag_ms: Option<u64>,
     pub projection_state: FfiNotebookProjectionState,
+    /// Highest session Final watermark whose receipt-bearing Loro snapshot is
+    /// durably fsynced and acknowledged.
+    pub realtime_loro_applied_revision: u64,
     /// Immutable per-run display configuration. `None` means the durable
     /// profile snapshot is corrupt; clients must show an error instead of
     /// guessing en/zh or reading the Notebook's newer profile.
@@ -444,6 +464,8 @@ impl From<RealtimeUtterance> for FfiNotebookCaptureUtterance {
                     }
                     .to_string()
                 }),
+                projection_revision: variant.projection_revision,
+                edit_revision: variant.edit_revision,
             })
             .collect();
         Self {
@@ -470,6 +492,8 @@ impl From<RealtimeUtterance> for FfiNotebookCaptureUtterance {
                 UtteranceAlignment::OutsideLanguagePair => "outside_language_pair",
             }
             .to_string(),
+            source_projection_revision: value.source_projection_revision,
+            source_edit_revision: value.source_edit_revision,
             language_variants,
         }
     }
@@ -499,6 +523,8 @@ fn ffi_live_preview(value: AssembledRealtimeUtterance) -> FfiNotebookCaptureUtte
             UtteranceAlignment::OutsideLanguagePair => "outside_language_pair",
         }
         .to_string(),
+        source_projection_revision: 0,
+        source_edit_revision: 0,
         // Live previews reuse the legacy shadow fields above. Durable language
         // variants remain a store-owned fact and are never synthesized here.
         language_variants: Vec::new(),
@@ -560,6 +586,7 @@ impl From<NotebookCaptureHistoryRun> for FfiNotebookCaptureHistoryRun {
             capture_state: value.capture_state.into(),
             remote_health: value.remote_health.into(),
             projection_state: value.projection_state.into(),
+            realtime_loro_applied_revision: value.realtime_loro_applied_revision,
             mode,
             language_a,
             language_b,
@@ -799,6 +826,7 @@ fn event_from_run(
         remote_health: run.remote_health.into(),
         realtime_lag_ms: None,
         projection_state: run.projection_state.into(),
+        realtime_loro_applied_revision: run.realtime_loro_applied_revision,
         mode,
         language_a,
         language_b,
@@ -914,9 +942,11 @@ struct RealtimeSegmentRevision {
     committed_source_end_ms: Option<u64>,
     pending_source_start_ms: Option<u64>,
     pending_source_end_ms: Option<u64>,
+    persisted_translation_language: Option<String>,
     revision: Option<u64>,
     complete: bool,
-    dirty: bool,
+    source_dirty: bool,
+    translation_dirty: bool,
 }
 
 impl RealtimeSegmentRevision {
@@ -937,23 +967,31 @@ impl RealtimeSegmentRevision {
             committed_source_end_ms: None,
             pending_source_start_ms: None,
             pending_source_end_ms: None,
+            persisted_translation_language: None,
             revision: None,
             complete: false,
-            dirty: false,
+            source_dirty: false,
+            translation_dirty: false,
         }
     }
 
     fn begin_response_revision(&mut self) {
-        let changed = self.source.begin_response_revision()
-            | self.translated.begin_response_revision()
-            | self.pending_provider_speaker.take().is_some()
-            | self.pending_provider_speaker_ambiguous
-            | self.pending_source_language_hint.take().is_some()
-            | self.pending_provider_speaker_hint.take().is_some()
+        let source_changed = self.source.begin_response_revision()
             | self.pending_source_start_ms.take().is_some()
             | self.pending_source_end_ms.take().is_some();
+        self.pending_provider_speaker.take();
+        self.pending_source_language_hint.take();
+        self.pending_provider_speaker_hint.take();
+        let translation_changed = self.translated.begin_response_revision();
         self.pending_provider_speaker_ambiguous = false;
-        self.dirty |= changed;
+        self.source_dirty |= source_changed;
+        // Inline translation pairing depends on the canonical source
+        // identity. If that source tail is replaced, re-evaluate the inline
+        // lane even when its own provider tokens were already committed.
+        // External auxiliary lanes are not stored in this assembler and are
+        // therefore never cleared through this dependency.
+        self.translation_dirty |=
+            translation_changed || (source_changed && !self.translated.is_empty());
     }
 
     fn stable_source_language(&self) -> Option<&str> {
@@ -1028,8 +1066,34 @@ impl RealtimeSegmentRevision {
 #[derive(Debug)]
 struct AssembledRealtimeUtterance {
     utterance: NewRealtimeUtterance,
+    source_dirty: bool,
+    translation_dirty: bool,
+    translation_completion: Option<UtteranceCompletion>,
+    translation_clear_language: Option<String>,
+    remove_partial: bool,
     provider_speaker: Option<String>,
     expected_revision: Option<u64>,
+}
+
+#[derive(Debug, Default)]
+struct PersistedCaptureChanges {
+    utterances: Vec<RealtimeUtterance>,
+    removed_sequences: Vec<u64>,
+    requires_full_snapshot: bool,
+}
+
+impl std::ops::Deref for PersistedCaptureChanges {
+    type Target = Vec<RealtimeUtterance>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.utterances
+    }
+}
+
+impl std::ops::DerefMut for PersistedCaptureChanges {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.utterances
+    }
 }
 
 /// Response-order utterance assembler. It keeps provider speaker and language
@@ -1126,8 +1190,9 @@ struct CanonicalUtteranceMatch {
     utterance: RealtimeUtterance,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PendingTranslationVariant {
+    session_id: String,
     group_epoch: u64,
     source_sequence: u64,
     source_language: String,
@@ -1135,8 +1200,28 @@ struct PendingTranslationVariant {
     source_start_ms: Option<u64>,
     source_end_ms: Option<u64>,
     target_language: String,
-    translated_text: String,
     completion: UtteranceCompletion,
+}
+
+fn pending_translation_from_inbox(
+    item: &RealtimeTranslationInboxItem,
+) -> Option<PendingTranslationVariant> {
+    if item.withdrawn || item.bound_sequence.is_some() {
+        return None;
+    }
+    item.translated_text.as_ref()?;
+    let completion = item.completion?;
+    Some(PendingTranslationVariant {
+        session_id: item.key.session_id.clone(),
+        group_epoch: item.key.group_epoch,
+        source_sequence: item.key.provider_sequence,
+        source_language: normalize_language(&item.source_language),
+        source_text: item.source_text.clone(),
+        source_start_ms: item.source_start_ms,
+        source_end_ms: item.source_end_ms,
+        target_language: normalize_language(&item.key.target_language),
+        completion,
+    })
 }
 
 /// Keep enough finalized alignment history for late provider revisions without
@@ -1218,6 +1303,63 @@ async fn collect_stream_events(
     let mut reverse_variant_bindings =
         std::collections::HashMap::<(u64, u64, String), (usize, u64, u64)>::new();
     let mut initialized_variants = std::collections::HashSet::<(u64, String)>::new();
+    for item in store.list_translation_inbox(&session_id).map_err(|error| {
+        local_persistence_failure("rehydrate durable auxiliary translation inbox", error)
+    })? {
+        let stored_lane_index =
+            usize::try_from(item.key.lane_index).map_err(|_| ProviderFailure {
+                error_type: "invalid_stream_lane".to_string(),
+                request_id: None,
+            })?;
+        let stored_target = lanes
+            .get(stored_lane_index)
+            .and_then(|lane| lane.descriptor.target_language.as_deref())
+            .map(normalize_language);
+        let lane_index = if stored_target.as_deref() == Some(item.key.target_language.as_str()) {
+            stored_lane_index
+        } else {
+            let matching = lanes
+                .iter()
+                .enumerate()
+                .filter(|(_, lane)| {
+                    lane.descriptor
+                        .target_language
+                        .as_deref()
+                        .map(normalize_language)
+                        .as_deref()
+                        == Some(item.key.target_language.as_str())
+                })
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            let [only] = matching.as_slice() else {
+                return Err(ProviderFailure {
+                    error_type: "invalid_stream_lane".to_string(),
+                    request_id: None,
+                });
+            };
+            *only
+        };
+        if lanes[lane_index].descriptor.canonical {
+            return Err(ProviderFailure {
+                error_type: "invalid_stream_lane".to_string(),
+                request_id: None,
+            });
+        }
+        let pending_key = (lane_index, item.key.group_epoch, item.key.provider_sequence);
+        if let Some(sequence) = item.bound_sequence {
+            variant_bindings.insert(pending_key, sequence);
+            reverse_variant_bindings.insert(
+                (
+                    item.key.group_epoch,
+                    sequence,
+                    item.key.target_language.clone(),
+                ),
+                pending_key,
+            );
+        } else if let Some(pending) = pending_translation_from_inbox(&item) {
+            pending_variants.insert(pending_key, pending);
+        }
+    }
 
     while let Some(tagged) = event_rx.recv().await {
         let Some(lane) = lanes.get_mut(tagged.lane_index) else {
@@ -1291,7 +1433,7 @@ async fn collect_stream_events(
                         })?;
                     emit_capture_delta(run, Vec::new(), &callback);
                 }
-                Vec::new()
+                PersistedCaptureChanges::default()
             }
             SttStreamEvent::RecoveryStarted { outage_ms } => {
                 let lane = &mut lanes[lane_index];
@@ -1304,7 +1446,7 @@ async fn collect_stream_events(
                     next_group_epoch = next_group_epoch.saturating_add(1);
                     lane.group_epoch = next_group_epoch;
                 }
-                Vec::new()
+                PersistedCaptureChanges::default()
             }
             SttStreamEvent::Reconnecting { .. } => {
                 let finalized = lanes[lane_index].assembler.finalize();
@@ -1374,7 +1516,7 @@ async fn collect_stream_events(
                         emit_realtime_progress(run, lag_ms, &callback);
                     }
                 }
-                Vec::new()
+                PersistedCaptureChanges::default()
             }
             SttStreamEvent::Endpoint | SttStreamEvent::Finalized | SttStreamEvent::Finished => {
                 let finalized = lanes[lane_index].assembler.finalize();
@@ -1433,9 +1575,19 @@ async fn collect_stream_events(
             }
         };
 
-        if !persisted.is_empty() {
+        if persisted.requires_full_snapshot {
             if let Ok(Some(run)) = store.get_run(&run_id) {
-                emit_capture_delta(run, persisted, &callback);
+                let utterances = store.list_utterances(&run.session_id).map_err(|error| {
+                    local_persistence_failure(
+                        "load full callback snapshot after partial removal",
+                        error,
+                    )
+                })?;
+                callback.send(event_from_run(run, utterances, true));
+            }
+        } else if !persisted.is_empty() {
+            if let Ok(Some(run)) = store.get_run(&run_id) {
+                emit_capture_delta(run, persisted.utterances, &callback);
             }
         }
         if publishes_canonical_preview {
@@ -1447,7 +1599,7 @@ async fn collect_stream_events(
         }
     }
     let unavailable =
-        mark_waiting_translation_variants_unavailable(&store, &mut canonical_matches)?;
+        mark_waiting_translation_variants_unavailable(&store, &session_id, &mut canonical_matches)?;
     if !unavailable.is_empty() {
         if let Ok(Some(run)) = store.get_run(&run_id) {
             emit_capture_delta(run, unavailable, &callback);
@@ -1469,26 +1621,31 @@ fn persist_stream_lane_updates(
     variant_bindings: &mut std::collections::HashMap<(usize, u64, u64), u64>,
     reverse_variant_bindings: &mut std::collections::HashMap<(u64, u64, String), (usize, u64, u64)>,
     initialized_variants: &mut std::collections::HashSet<(u64, String)>,
-) -> Result<Vec<RealtimeUtterance>, ProviderFailure> {
+) -> Result<PersistedCaptureChanges, ProviderFailure> {
     let group_epoch = lanes[lane_index].group_epoch;
     if lanes[lane_index].descriptor.canonical {
         let provider_session_epoch = lanes[lane_index].provider_session_epoch;
-        // The timeline is durable product state, not Soniox's speculative
-        // tail. Keep partial revisions inside the assembler and publish only
-        // after an identity split or endpoint seals the segment. With the
-        // balanced 2s endpoint this gives the UI its intended short stability
-        // delay and prevents translations from chasing rows that later move.
-        let updates = updates
-            .into_iter()
-            .filter(|update| update.utterance.completion == UtteranceCompletion::Complete)
-            .collect();
+        // SQLite is the authoritative machine-fact ledger and therefore keeps
+        // both Partial and Complete revisions. The Loro projector below is the
+        // stability boundary: it selects finalized lanes independently and
+        // never materializes speculative text.
         let mut persisted = persist_assembled_utterances(
             store,
             &mut lanes[lane_index].assembler,
             updates,
             provider_session_epoch,
         )?;
-        for utterance in &persisted {
+        for sequence in &persisted.removed_sequences {
+            forget_canonical_sequence(
+                group_epoch,
+                *sequence,
+                canonical_matches,
+                variant_bindings,
+                reverse_variant_bindings,
+                initialized_variants,
+            );
+        }
+        for utterance in &persisted.utterances {
             let source_language_changed = canonical_matches
                 .get(&(group_epoch, utterance.sequence))
                 .is_some_and(|previous| {
@@ -1531,62 +1688,223 @@ fn persist_stream_lane_updates(
             reverse_variant_bindings,
         )?;
         persisted.extend(matched);
+        let durable_bindings = store
+            .reconcile_active_translation_inbox(&lanes[canonical_lane_index].assembler.session_id)
+            .map_err(|error| {
+                local_persistence_failure("reconcile bounded auxiliary translation inbox", error)
+            })?;
+        for binding in durable_bindings {
+            let lane_index =
+                usize::try_from(binding.key.lane_index).map_err(|_| ProviderFailure {
+                    error_type: "invalid_stream_lane".to_string(),
+                    request_id: None,
+                })?;
+            let pending_key = (
+                lane_index,
+                binding.key.group_epoch,
+                binding.key.provider_sequence,
+            );
+            variant_bindings.insert(pending_key, binding.canonical_sequence);
+            reverse_variant_bindings.insert(
+                (
+                    binding.key.group_epoch,
+                    binding.canonical_sequence,
+                    binding.key.target_language.clone(),
+                ),
+                pending_key,
+            );
+            pending_variants.retain(|(pending_lane, epoch, provider_sequence), pending| {
+                !(*epoch == binding.key.group_epoch
+                    && *provider_sequence == binding.key.provider_sequence
+                    && normalize_language(&pending.target_language) == binding.key.target_language
+                    && (*pending_lane == lane_index
+                        || pending.session_id == binding.key.session_id))
+            });
+            if let Some(updated) = binding.utterance {
+                canonical_assembler_record_external_state(
+                    &mut lanes[canonical_lane_index].assembler,
+                    &updated,
+                    &binding.key.target_language,
+                );
+                canonical_matches.insert(
+                    (binding.key.group_epoch, binding.canonical_sequence),
+                    CanonicalUtteranceMatch {
+                        group_epoch: binding.key.group_epoch,
+                        utterance: updated.clone(),
+                    },
+                );
+                persisted.push(updated);
+            }
+        }
         prune_resolved_stream_aggregation_history(
             selected_languages,
             canonical_matches,
+            pending_variants,
             variant_bindings,
             reverse_variant_bindings,
             initialized_variants,
         );
-        return Ok(latest_utterance_revisions(persisted));
+        persisted.utterances = latest_utterance_revisions(persisted.utterances);
+        return Ok(persisted);
     }
 
-    let Some(target_language) = lanes[lane_index].descriptor.target_language.clone() else {
-        return Ok(Vec::new());
+    let Some(target_language) = lanes[lane_index]
+        .descriptor
+        .target_language
+        .as_deref()
+        .map(normalize_language)
+    else {
+        return Ok(PersistedCaptureChanges::default());
     };
+    let mut persisted = Vec::new();
+    let mut removed_sequences = Vec::new();
     for update in updates {
+        let translation_completion = update.translation_completion;
+        let translation_clear_language = update
+            .translation_clear_language
+            .as_deref()
+            .map(normalize_language);
+        let remove_partial = update.remove_partial;
         let utterance = update.utterance;
+        let provider_utterance_id = utterance.id.clone();
         let translated_language = utterance
             .translated_language
             .as_deref()
             .map(normalize_language);
-        let Some(translated_text) = utterance.translated_text else {
-            continue;
-        };
-        if translated_language.as_deref() != Some(target_language.as_str()) {
+        let is_present = translated_language.as_deref() == Some(target_language.as_str())
+            && utterance.translated_text.is_some();
+        let is_withdrawn = utterance.translated_text.is_none()
+            && (remove_partial
+                || translation_clear_language.as_deref() == Some(target_language.as_str()));
+        if !is_present && !is_withdrawn {
             continue;
         }
-        pending_variants.insert(
-            (lane_index, group_epoch, utterance.sequence),
-            PendingTranslationVariant {
-                group_epoch,
-                source_sequence: utterance.sequence,
-                source_language: normalize_language(&utterance.source_language),
+        if is_present && translation_completion.is_none() {
+            return Err(ProviderFailure {
+                error_type: "invalid_stream_lane".to_string(),
+                request_id: None,
+            });
+        }
+        let pending_key = (lane_index, group_epoch, utterance.sequence);
+        let persistence = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: utterance.session_id.clone(),
+                    lane_index: u64::try_from(lane_index).map_err(|_| ProviderFailure {
+                        error_type: "invalid_stream_lane".to_string(),
+                        request_id: None,
+                    })?,
+                    group_epoch,
+                    provider_sequence: utterance.sequence,
+                    target_language: target_language.clone(),
+                },
+                source_language: {
+                    let normalized = normalize_language(&utterance.source_language);
+                    if normalized.is_empty() {
+                        "und".to_string()
+                    } else {
+                        normalized
+                    }
+                },
                 source_text: utterance.source_text,
                 source_start_ms: utterance.source_start_ms,
                 source_end_ms: utterance.source_end_ms,
-                target_language: target_language.clone(),
-                translated_text,
-                completion: utterance.completion,
-            },
+                translated_text: is_present.then_some(utterance.translated_text).flatten(),
+                completion: if is_present {
+                    translation_completion
+                } else {
+                    None
+                },
+                withdrawn: is_withdrawn,
+            })
+            .map_err(|error| {
+                local_persistence_failure(
+                    &format!(
+                        "persist auxiliary translation inbox {}:{}:{}:{}",
+                        utterance.session_id, group_epoch, utterance.sequence, target_language
+                    ),
+                    error,
+                )
+            })?;
+        lanes[lane_index].assembler.record_translation_persisted(
+            &provider_utterance_id,
+            (!persistence.item.withdrawn).then_some(target_language.as_str()),
         );
+        if let Some(sequence) = persistence.removed_bound_sequence {
+            removed_sequences.push(sequence);
+            forget_canonical_sequence(
+                group_epoch,
+                sequence,
+                canonical_matches,
+                variant_bindings,
+                reverse_variant_bindings,
+                initialized_variants,
+            );
+            if let Some(id) = persistence.removed_bound_utterance_id.as_deref() {
+                lanes[canonical_lane_index]
+                    .assembler
+                    .record_partial_removed(id);
+            }
+        }
+
+        if let Some(sequence) = persistence.item.bound_sequence {
+            variant_bindings.insert(pending_key, sequence);
+            reverse_variant_bindings.insert(
+                (group_epoch, sequence, target_language.clone()),
+                pending_key,
+            );
+            pending_variants.remove(&pending_key);
+            if let Some(updated) = persistence.bound_utterance {
+                canonical_assembler_record_external_state(
+                    &mut lanes[canonical_lane_index].assembler,
+                    &updated,
+                    &target_language,
+                );
+                canonical_matches.insert(
+                    (group_epoch, sequence),
+                    CanonicalUtteranceMatch {
+                        group_epoch,
+                        utterance: updated.clone(),
+                    },
+                );
+                persisted.push(updated);
+            }
+        } else if let Some(pending) = pending_translation_from_inbox(&persistence.item) {
+            pending_variants.insert(pending_key, pending);
+        } else {
+            pending_variants.remove(&pending_key);
+        }
     }
-    let persisted = flush_pending_translation_variants(
+    persisted.extend(flush_pending_translation_variants(
         store,
         &mut lanes[canonical_lane_index].assembler,
         canonical_matches,
         pending_variants,
         variant_bindings,
         reverse_variant_bindings,
-    )?;
+    )?);
     prune_resolved_stream_aggregation_history(
         selected_languages,
         canonical_matches,
+        pending_variants,
         variant_bindings,
         reverse_variant_bindings,
         initialized_variants,
     );
-    Ok(persisted)
+    Ok(PersistedCaptureChanges {
+        utterances: latest_utterance_revisions(persisted),
+        requires_full_snapshot: !removed_sequences.is_empty(),
+        removed_sequences,
+    })
+}
+
+fn canonical_assembler_record_external_state(
+    assembler: &mut RealtimeUtteranceAssembler,
+    utterance: &RealtimeUtterance,
+    language: &str,
+) {
+    assembler.record_persisted(&utterance.id, utterance.revision);
+    assembler.relinquish_inline_translation_lane(&utterance.id, language);
 }
 
 fn initialize_waiting_translation_variants(
@@ -1600,9 +1918,11 @@ fn initialize_waiting_translation_variants(
 ) -> Result<Vec<RealtimeUtterance>, ProviderFailure> {
     let mut updates = Vec::new();
     for utterance in persisted {
-        let source_language = normalize_language(&utterance.source_language);
+        let source_language = utterance
+            .has_source_lane()
+            .then(|| normalize_language(&utterance.source_language));
         for language in selected_languages {
-            if language == &source_language
+            if source_language.as_ref() == Some(language)
                 || utterance
                     .variants
                     .iter()
@@ -1645,81 +1965,58 @@ fn initialize_waiting_translation_variants(
 
 fn mark_waiting_translation_variants_unavailable(
     store: &NotebookCaptureStore,
+    session_id: &str,
     canonical_matches: &mut std::collections::HashMap<(u64, u64), CanonicalUtteranceMatch>,
 ) -> Result<Vec<RealtimeUtterance>, ProviderFailure> {
-    let mut pending = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for ((group_epoch, sequence), candidate) in canonical_matches.iter() {
-        for variant in &candidate.utterance.variants {
-            if variant.state == UtteranceVariantState::Waiting
-                && seen.insert((
-                    *group_epoch,
-                    *sequence,
-                    normalize_language(&variant.language),
-                ))
-            {
-                pending.push((
-                    *group_epoch,
-                    candidate.utterance.session_id.clone(),
-                    *sequence,
-                    normalize_language(&variant.language),
-                ));
-            }
+    let updates = store
+        .mark_waiting_translation_variants_unavailable(session_id)
+        .map_err(|error| {
+            local_persistence_failure(
+                &format!("persist unavailable translation variants for {session_id}"),
+                error,
+            )
+        })?;
+    for updated in &updates {
+        for candidate in canonical_matches.values_mut().filter(|candidate| {
+            candidate.utterance.session_id == updated.session_id
+                && candidate.utterance.sequence == updated.sequence
+        }) {
+            candidate.utterance = updated.clone();
         }
     }
-
-    let mut updates = Vec::new();
-    for (group_epoch, session_id, sequence, language) in pending {
-        let updated = store
-            .upsert_translation_variant(
-                &session_id,
-                sequence,
-                &language,
-                None,
-                UtteranceVariantState::Unavailable,
-                None,
-            )
-            .map_err(|error| {
-                local_persistence_failure(
-                    &format!(
-                        "persist unavailable translation variant {session_id}:{sequence}:{language}"
-                    ),
-                    error,
-                )
-            })?;
-        canonical_matches.insert(
-            (group_epoch, sequence),
-            CanonicalUtteranceMatch {
-                group_epoch,
-                utterance: updated.clone(),
-            },
-        );
-        updates.push(updated);
-    }
     Ok(latest_utterance_revisions(updates))
+}
+
+fn forget_canonical_sequence(
+    group_epoch: u64,
+    sequence: u64,
+    canonical_matches: &mut std::collections::HashMap<(u64, u64), CanonicalUtteranceMatch>,
+    variant_bindings: &mut std::collections::HashMap<(usize, u64, u64), u64>,
+    reverse_variant_bindings: &mut std::collections::HashMap<(u64, u64, String), (usize, u64, u64)>,
+    initialized_variants: &mut std::collections::HashSet<(u64, String)>,
+) {
+    canonical_matches.remove(&(group_epoch, sequence));
+    initialized_variants.retain(|(candidate_sequence, _)| *candidate_sequence != sequence);
+    variant_bindings.retain(|(_, epoch, _), bound| !(*epoch == group_epoch && *bound == sequence));
+    reverse_variant_bindings
+        .retain(|(epoch, bound, _), _| !(*epoch == group_epoch && *bound == sequence));
 }
 
 fn prune_resolved_stream_aggregation_history(
     selected_languages: &[String],
     canonical_matches: &mut std::collections::HashMap<(u64, u64), CanonicalUtteranceMatch>,
+    pending_variants: &mut std::collections::HashMap<(usize, u64, u64), PendingTranslationVariant>,
     variant_bindings: &mut std::collections::HashMap<(usize, u64, u64), u64>,
     reverse_variant_bindings: &mut std::collections::HashMap<(u64, u64, String), (usize, u64, u64)>,
     initialized_variants: &mut std::collections::HashSet<(u64, String)>,
 ) -> usize {
-    let mut resolved = canonical_matches
-        .iter()
-        .filter_map(|(key, candidate)| {
-            canonical_match_has_final_selected_languages(candidate, selected_languages)
-                .then_some(*key)
-        })
-        .collect::<Vec<_>>();
-    if resolved.len() <= STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW {
-        return 0;
-    }
-
-    resolved.sort_unstable();
-    resolved.truncate(resolved.len() - STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW);
-    let recycled = resolved
+    let mut canonical_keys = canonical_matches.keys().copied().collect::<Vec<_>>();
+    canonical_keys.sort_unstable();
+    let recycle_count = canonical_keys
+        .len()
+        .saturating_sub(STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW);
+    canonical_keys.truncate(recycle_count);
+    let recycled = canonical_keys
         .into_iter()
         .collect::<std::collections::HashSet<_>>();
     canonical_matches.retain(|key, _| !recycled.contains(key));
@@ -1733,26 +2030,21 @@ fn prune_resolved_stream_aggregation_history(
         .retain(|(_, group_epoch, _), sequence| !recycled.contains(&(*group_epoch, *sequence)));
     reverse_variant_bindings
         .retain(|(group_epoch, sequence, _), _| !recycled.contains(&(*group_epoch, *sequence)));
-    recycled.len()
-}
 
-fn canonical_match_has_final_selected_languages(
-    candidate: &CanonicalUtteranceMatch,
-    selected_languages: &[String],
-) -> bool {
-    if candidate.utterance.completion != UtteranceCompletion::Complete {
-        return false;
+    // Unbound provider facts are already durable in SQLite, so the process
+    // cache can be bounded independently. A late item outside this window is
+    // resolved by the store-authoritative unique matcher.
+    let pending_limit =
+        STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW.saturating_mul(selected_languages.len().max(1));
+    if pending_variants.len() > pending_limit {
+        let mut pending_keys = pending_variants.keys().copied().collect::<Vec<_>>();
+        pending_keys.sort_unstable();
+        pending_keys.truncate(pending_keys.len() - pending_limit);
+        for key in pending_keys {
+            pending_variants.remove(&key);
+        }
     }
-    let source_language = normalize_language(&candidate.utterance.source_language);
-    selected_languages.iter().all(|language| {
-        let language = normalize_language(language);
-        language == source_language
-            || candidate.utterance.variants.iter().any(|variant| {
-                normalize_language(&variant.language) == language
-                    && variant.state == UtteranceVariantState::Ready
-                    && variant.completion == Some(UtteranceCompletion::Complete)
-            })
-    })
+    recycled.len()
 }
 
 fn flush_pending_translation_variants(
@@ -1766,75 +2058,99 @@ fn flush_pending_translation_variants(
     let pending_keys = pending_variants.keys().cloned().collect::<Vec<_>>();
     let mut persisted = Vec::new();
     for pending_key in pending_keys {
-        let Some(pending) = pending_variants.get(&pending_key) else {
+        let Some(pending) = pending_variants.get(&pending_key).cloned() else {
             continue;
         };
-        let Some(sequence) = resolve_canonical_sequence(
+        let key = RealtimeTranslationInboxKey {
+            session_id: pending.session_id.clone(),
+            lane_index: u64::try_from(pending_key.0).map_err(|_| ProviderFailure {
+                error_type: "invalid_stream_lane".to_string(),
+                request_id: None,
+            })?,
+            group_epoch: pending_key.1,
+            provider_sequence: pending_key.2,
+            target_language: pending.target_language.clone(),
+        };
+        let cached_sequence = resolve_canonical_sequence(
             pending_key,
-            pending,
+            &pending,
             canonical_matches,
             variant_bindings,
             reverse_variant_bindings,
-        ) else {
-            continue;
-        };
-        let candidate_key = (pending.group_epoch, sequence);
-        let Some(candidate) = canonical_matches.get(&candidate_key) else {
-            continue;
-        };
-        if normalize_language(&candidate.utterance.source_language) == pending.target_language {
-            pending_variants.remove(&pending_key);
+        );
+        if cached_sequence.is_some_and(|sequence| {
+            canonical_matches
+                .get(&(pending.group_epoch, sequence))
+                .is_some_and(|candidate| {
+                    candidate.utterance.has_source_lane()
+                        && !candidate.utterance.source_lane_is_complete()
+                        && normalize_language(&candidate.utterance.source_language)
+                            == pending.target_language
+                        && pending.completion != UtteranceCompletion::Complete
+                })
+        }) {
+            // A provisional source-language guess cannot durably satisfy an
+            // independent aux Final. Keep it unbound until the source lane is
+            // itself Final or revises to another language.
             continue;
         }
+        let (sequence, updated) = if let Some(sequence) = cached_sequence {
+            let updated = store
+                .bind_translation_inbox_item(&key, sequence)
+                .map_err(|error| {
+                    local_persistence_failure(
+                        &format!(
+                            "bind durable translation inbox {}:{}:{}",
+                            pending.session_id, sequence, pending.target_language
+                        ),
+                        error,
+                    )
+                })?;
+            (sequence, updated)
+        } else {
+            let Some(binding) =
+                store
+                    .bind_translation_inbox_item_if_unique(&key)
+                    .map_err(|error| {
+                        local_persistence_failure(
+                            &format!(
+                                "resolve durable translation inbox {}:{}:{}",
+                                pending.session_id,
+                                pending.source_sequence,
+                                pending.target_language
+                            ),
+                            error,
+                        )
+                    })?
+            else {
+                continue;
+            };
+            (binding.canonical_sequence, binding.utterance)
+        };
+        let candidate_key = (pending.group_epoch, sequence);
         let reverse_key = (
             pending.group_epoch,
             sequence,
             pending.target_language.clone(),
         );
-        if candidate.utterance.variants.iter().any(|variant| {
-            normalize_language(&variant.language) == pending.target_language
-                && variant.state == UtteranceVariantState::Ready
-                && variant.text.as_deref() == Some(pending.translated_text.as_str())
-                && variant.completion == Some(pending.completion)
-        }) {
-            // Soniox may repeat the same complete partial response. Preserve
-            // its stable binding, but avoid a no-op SQLite revision and UI
-            // callback when the visible language lane is byte-for-byte equal.
-            variant_bindings.insert(pending_key, sequence);
-            reverse_variant_bindings.insert(reverse_key, pending_key);
-            pending_variants.remove(&pending_key);
-            continue;
-        }
-        let updated = store
-            .upsert_translation_variant(
-                &candidate.utterance.session_id,
-                sequence,
-                &pending.target_language,
-                Some(&pending.translated_text),
-                UtteranceVariantState::Ready,
-                Some(pending.completion),
-            )
-            .map_err(|error| {
-                local_persistence_failure(
-                    &format!(
-                        "persist paired translation variant {}:{}:{}",
-                        candidate.utterance.session_id, sequence, pending.target_language
-                    ),
-                    error,
-                )
-            })?;
-        canonical_assembler.record_persisted(&updated.id, updated.revision);
-        canonical_matches.insert(
-            candidate_key,
-            CanonicalUtteranceMatch {
-                group_epoch: pending.group_epoch,
-                utterance: updated.clone(),
-            },
-        );
         variant_bindings.insert(pending_key, sequence);
         reverse_variant_bindings.insert(reverse_key, pending_key);
         pending_variants.remove(&pending_key);
-        persisted.push(updated);
+        if let Some(updated) = updated {
+            canonical_assembler_record_external_state(
+                canonical_assembler,
+                &updated,
+                &pending.target_language,
+            );
+            canonical_matches.insert(
+                candidate_key,
+                CanonicalUtteranceMatch {
+                    group_epoch: pending.group_epoch,
+                    utterance: updated.clone(),
+                },
+            );
+            persisted.push(updated);
+        }
     }
     Ok(latest_utterance_revisions(persisted))
 }
@@ -1869,20 +2185,18 @@ fn resolve_canonical_sequence(
         }
     }
 
-    for sequence in ranked_canonical_sequences(pending, canonical_matches.values()) {
-        let reverse_key = (
-            pending.group_epoch,
-            sequence,
-            pending.target_language.clone(),
-        );
-        if reverse_variant_bindings
-            .get(&reverse_key)
-            .is_none_or(|bound| bound == &pending_key)
-        {
-            return Some(sequence);
-        }
-    }
-    None
+    let sequence = ranked_canonical_sequences(pending, canonical_matches.values())
+        .into_iter()
+        .next()?;
+    let reverse_key = (
+        pending.group_epoch,
+        sequence,
+        pending.target_language.clone(),
+    );
+    reverse_variant_bindings
+        .get(&reverse_key)
+        .is_none_or(|bound| bound == &pending_key)
+        .then_some(sequence)
 }
 
 #[cfg(test)]
@@ -1940,10 +2254,35 @@ fn ranked_canonical_sequences<'a>(
             })
             .then_with(|| left_score.sequence.cmp(&right_score.sequence))
     });
+    let Some((best_score, _)) = ranked.first() else {
+        return Vec::new();
+    };
+    let equally_supported_sequences = ranked
+        .iter()
+        .take_while(|(score, _)| timeline_alignment_evidence_eq(best_score, score))
+        .map(|(_, candidate)| candidate.utterance.sequence)
+        .collect::<std::collections::HashSet<_>>();
+    if equally_supported_sequences.len() > 1 {
+        // Canonical sequence is an arbitrary local identifier, not alignment
+        // evidence. Equal best evidence for two different rows must remain
+        // durably unbound until a later provider revision disambiguates it.
+        return Vec::new();
+    }
     ranked
         .into_iter()
         .map(|(_, candidate)| candidate.utterance.sequence)
         .collect()
+}
+
+fn timeline_alignment_evidence_eq(
+    left: &TimelineAlignmentScore,
+    right: &TimelineAlignmentScore,
+) -> bool {
+    left.exact_source_text == right.exact_source_text
+        && left.overlap_per_mille == right.overlap_per_mille
+        && left.source_language_matches == right.source_language_matches
+        && left.midpoint_distance_ms == right.midpoint_distance_ms
+        && left.sequence_distance == right.sequence_distance
 }
 
 fn timeline_alignment_score(
@@ -2073,9 +2412,73 @@ fn persist_assembled_utterances(
     assembler: &mut RealtimeUtteranceAssembler,
     updates: Vec<AssembledRealtimeUtterance>,
     provider_session_epoch: u64,
-) -> Result<Vec<RealtimeUtterance>, ProviderFailure> {
+) -> Result<PersistedCaptureChanges, ProviderFailure> {
     let mut persisted_updates = Vec::with_capacity(updates.len());
+    let mut removed_sequences = Vec::new();
     for mut update in updates {
+        if update.remove_partial {
+            let expected_revision = update.expected_revision.ok_or_else(|| ProviderFailure {
+                error_type: "local_persistence".to_string(),
+                request_id: None,
+            })?;
+            let translation_update = if update.translation_dirty {
+                match (
+                    update.utterance.translated_language.as_ref(),
+                    update.utterance.translated_text.as_ref(),
+                    update.translation_completion,
+                ) {
+                    (Some(language), Some(text), Some(completion)) => {
+                        Some(RealtimeTranslationLaneUpdate {
+                            language: language.clone(),
+                            text: Some(text.clone()),
+                            state: UtteranceVariantState::Ready,
+                            completion: Some(completion),
+                        })
+                    }
+                    _ => update.translation_clear_language.as_ref().map(|language| {
+                        RealtimeTranslationLaneUpdate {
+                            language: language.clone(),
+                            text: None,
+                            state: UtteranceVariantState::Waiting,
+                            completion: None,
+                        }
+                    }),
+                }
+            } else {
+                None
+            };
+            let surviving_shell = store
+                .remove_partial_utterance(
+                    &update.utterance.session_id,
+                    update.utterance.sequence,
+                    expected_revision,
+                    translation_update.as_ref(),
+                )
+                .map_err(|error| {
+                    local_persistence_failure(
+                        &format!(
+                            "remove withdrawn Soniox partial {}:{}",
+                            update.utterance.session_id, update.utterance.sequence
+                        ),
+                        error,
+                    )
+                })?;
+            if let Some(surviving_shell) = surviving_shell {
+                assembler.record_translation_persisted(
+                    &surviving_shell.id,
+                    translation_update
+                        .as_ref()
+                        .filter(|update| update.state == UtteranceVariantState::Ready)
+                        .map(|update| update.language.as_str()),
+                );
+                assembler.record_persisted(&surviving_shell.id, surviving_shell.revision);
+                persisted_updates.push(surviving_shell);
+            } else {
+                assembler.record_partial_removed(&update.utterance.id);
+            }
+            removed_sequences.push(update.utterance.sequence);
+            continue;
+        }
         if let Some(provider_label) = update.provider_speaker.as_deref() {
             let speaker = store
                 .ensure_session_speaker(
@@ -2089,57 +2492,135 @@ fn persist_assembled_utterances(
                 })?;
             update.utterance.session_speaker_id = Some(speaker.id);
         }
-        let persisted = match store.upsert_utterance(&update.utterance, update.expected_revision) {
-            Ok(persisted) => persisted,
-            Err(vt_store::NotebookCaptureStoreError::Conflict(_))
-                if update.expected_revision.is_some() =>
-            {
-                // A completed lane may have advanced because the user edited
-                // its Loro-backed projection while capture continued. Provider
-                // replay is stale in that case: retain the newer durable row
-                // instead of turning a valid capture into local_persistence
-                // failure. The expected revision still prevents silent writes.
-                store
-                    .get_utterance_by_id(&update.utterance.id)
+        // The aggregate row is the source-lane compatibility record. A
+        // translation must never participate in its completion decision or
+        // source CAS, so canonical persistence strips the legacy shadow and
+        // writes the translation through its lane-local variant API below.
+        let mut persisted = if update.source_dirty || update.expected_revision.is_none() {
+            let mut source = update.utterance.clone();
+            source.translated_language = None;
+            source.translated_text = None;
+            source.alignment = match source.alignment {
+                UtteranceAlignment::OutsideLanguagePair => UtteranceAlignment::OutsideLanguagePair,
+                UtteranceAlignment::TranslationPending => UtteranceAlignment::TranslationPending,
+                _ if update.utterance.translated_text.is_some() => {
+                    UtteranceAlignment::TranslationPending
+                }
+                _ => UtteranceAlignment::SourceOnly,
+            };
+            match store.upsert_utterance(&source, update.expected_revision) {
+                Ok(persisted) => persisted,
+                Err(vt_store::NotebookCaptureStoreError::Conflict(_))
+                    if update.expected_revision.is_some() =>
+                {
+                    // A later source fact may already have advanced this lane.
+                    // Retain only an immutable newer source Final; translation
+                    // revisions use their own CAS and cannot satisfy this
+                    // fallback.
+                    store
+                        .get_machine_utterance_by_id(&source.id)
+                        .map_err(|error| {
+                            local_persistence_failure(
+                                "reload source utterance after stale provider revision",
+                                error,
+                            )
+                        })?
+                        .filter(|current| {
+                            current.source_fact_is_complete()
+                                && update
+                                    .expected_revision
+                                    .is_some_and(|expected| current.revision > expected)
+                        })
+                        .ok_or_else(|| ProviderFailure {
+                            error_type: "local_persistence".to_string(),
+                            request_id: None,
+                        })?
+                }
+                Err(error) => {
+                    return Err(local_persistence_failure(
+                        &format!(
+                            "persist ordered Soniox source {}:{}",
+                            source.session_id, source.sequence
+                        ),
+                        error,
+                    ));
+                }
+            }
+        } else {
+            store
+                .get_machine_utterance_by_id(&update.utterance.id)
+                .map_err(|error| {
+                    local_persistence_failure("reload translation parent utterance", error)
+                })?
+                .ok_or_else(|| ProviderFailure {
+                    error_type: "local_persistence".to_string(),
+                    request_id: None,
+                })?
+        };
+
+        if update.translation_dirty {
+            if let (Some(language), Some(text), Some(completion)) = (
+                update.utterance.translated_language.as_deref(),
+                update.utterance.translated_text.as_deref(),
+                update.translation_completion,
+            ) {
+                persisted = store
+                    .upsert_translation_variant(
+                        &update.utterance.session_id,
+                        update.utterance.sequence,
+                        language,
+                        Some(text),
+                        UtteranceVariantState::Ready,
+                        Some(completion),
+                    )
                     .map_err(|error| {
                         local_persistence_failure(
-                            "reload user-owned utterance after stale provider revision",
+                            &format!(
+                                "persist ordered Soniox translation {}:{}:{language}",
+                                update.utterance.session_id, update.utterance.sequence
+                            ),
                             error,
                         )
-                    })?
-                    .filter(|current| {
-                        current.completion == UtteranceCompletion::Complete
-                            && update
-                                .expected_revision
-                                .is_some_and(|expected| current.revision > expected)
-                    })
-                    .ok_or_else(|| ProviderFailure {
-                        error_type: "local_persistence".to_string(),
-                        request_id: None,
-                    })?
+                    })?;
+                assembler.record_translation_persisted(&persisted.id, Some(language));
+            } else if let Some(language) = update.translation_clear_language.as_deref() {
+                persisted = store
+                    .upsert_translation_variant(
+                        &update.utterance.session_id,
+                        update.utterance.sequence,
+                        language,
+                        None,
+                        UtteranceVariantState::Waiting,
+                        None,
+                    )
+                    .map_err(|error| {
+                        local_persistence_failure(
+                            &format!(
+                                "withdraw Soniox partial translation {}:{}:{language}",
+                                update.utterance.session_id, update.utterance.sequence
+                            ),
+                            error,
+                        )
+                    })?;
+                assembler.record_translation_persisted(&persisted.id, None);
             }
-            Err(error) => {
-                return Err(local_persistence_failure(
-                    &format!(
-                        "persist ordered Soniox utterance {}:{}",
-                        update.utterance.session_id, update.utterance.sequence
-                    ),
-                    error,
-                ));
-            }
-        };
+        }
         assembler.record_persisted(&persisted.id, persisted.revision);
         persisted_updates.push(persisted);
     }
-    Ok(persisted_updates)
+    Ok(PersistedCaptureChanges {
+        utterances: persisted_updates,
+        requires_full_snapshot: !removed_sequences.is_empty(),
+        removed_sequences,
+    })
 }
 
 fn local_persistence_failure(operation: &str, error: impl std::fmt::Display) -> ProviderFailure {
     tracing::warn!(
         operation,
+        error = %error,
         "local capture persistence failed; error detail suppressed from durable state"
     );
-    let _ = error;
     ProviderFailure {
         error_type: "local_persistence".to_string(),
         request_id: None,
@@ -2160,6 +2641,23 @@ fn prefer_provider_failure(
         }
         Some(existing) => Some(existing),
     }
+}
+
+fn missing_remote_truth(run: &NotebookCaptureRun) -> (RemoteHealth, ProviderFailure) {
+    let health = match run.remote_health {
+        RemoteHealth::Live | RemoteHealth::Degraded => RemoteHealth::Degraded,
+        RemoteHealth::Off | RemoteHealth::Connecting | RemoteHealth::Unavailable => {
+            RemoteHealth::Unavailable
+        }
+    };
+    let failure = ProviderFailure {
+        error_type: run
+            .provider_error_type
+            .clone()
+            .unwrap_or_else(|| "remote_runtime_unavailable".to_string()),
+        request_id: run.provider_request_id.clone(),
+    };
+    (health, failure)
 }
 
 fn emit_capture_delta(
@@ -2203,6 +2701,7 @@ fn event_full_snapshot_from_run(
 
 pub(crate) struct CaptureCallbackSink {
     mailbox: Arc<CaptureCallbackMailbox>,
+    store: NotebookCaptureStore,
 }
 
 struct CaptureCallbackMailbox {
@@ -2212,12 +2711,21 @@ struct CaptureCallbackMailbox {
     sender_count: AtomicUsize,
     next_revision: AtomicU64,
     next_preview_revision: AtomicU64,
+    last_enqueued_applied_revision: AtomicU64,
 }
 
 #[derive(Default)]
 struct PendingCaptureCallbacks {
     event: Option<FfiNotebookCaptureEvent>,
     preview: Option<FfiNotebookCaptureLivePreview>,
+    remote_truth: Option<CaptureRemoteTruthOverlay>,
+}
+
+#[derive(Debug, Clone)]
+struct CaptureRemoteTruthOverlay {
+    session_id: String,
+    health: RemoteHealth,
+    failure: ProviderFailure,
 }
 
 impl Clone for CaptureCallbackSink {
@@ -2225,6 +2733,7 @@ impl Clone for CaptureCallbackSink {
         self.mailbox.sender_count.fetch_add(1, Ordering::Relaxed);
         Self {
             mailbox: self.mailbox.clone(),
+            store: self.store.clone(),
         }
     }
 }
@@ -2239,7 +2748,10 @@ impl Drop for CaptureCallbackSink {
 }
 
 impl CaptureCallbackSink {
-    fn new(callback: Arc<dyn FfiNotebookCaptureCallback>) -> Result<Self, CoreError> {
+    fn new(
+        callback: Arc<dyn FfiNotebookCaptureCallback>,
+        store: NotebookCaptureStore,
+    ) -> Result<Self, CoreError> {
         let mailbox = Arc::new(CaptureCallbackMailbox {
             pending: StdMutex::new(PendingCaptureCallbacks::default()),
             wake: Condvar::new(),
@@ -2247,6 +2759,7 @@ impl CaptureCallbackSink {
             sender_count: AtomicUsize::new(1),
             next_revision: AtomicU64::new(1),
             next_preview_revision: AtomicU64::new(1),
+            last_enqueued_applied_revision: AtomicU64::new(0),
         });
         let worker_mailbox = mailbox.clone();
         std::thread::Builder::new()
@@ -2288,20 +2801,277 @@ impl CaptureCallbackSink {
             .map_err(|error| CoreError::InternalError {
                 message: format!("start capture callback dispatcher: {error}"),
             })?;
-        Ok(Self { mailbox })
+        Ok(Self { mailbox, store })
     }
 
-    fn send(&self, mut event: FfiNotebookCaptureEvent) -> FfiNotebookCaptureEvent {
+    fn send(&self, event: FfiNotebookCaptureEvent) -> FfiNotebookCaptureEvent {
+        self.send_with_refresh_hook(event, || {})
+    }
+
+    fn send_with_refresh_hook<H>(
+        &self,
+        event: FfiNotebookCaptureEvent,
+        after_refresh: H,
+    ) -> FfiNotebookCaptureEvent
+    where
+        H: FnOnce(),
+    {
         let mut pending = self.mailbox.pending.lock().unwrap();
-        event.event_revision = self.mailbox.next_revision.fetch_add(1, Ordering::Relaxed);
+        // Allocate before the fallible refresh. Even if the stale callback is
+        // deliberately not enqueued, a synchronous pause/stop caller receives
+        // a monotonic revision and the next delivered callback exposes a gap
+        // that forces the client to reload.
+        let event_revision = self.mailbox.next_revision.fetch_add(1, Ordering::Relaxed);
         if self.mailbox.closed.load(Ordering::Acquire) {
             tracing::warn!("Notebook capture callback dispatcher is closed");
-            return event;
+            let mut direct = event;
+            direct.event_revision = event_revision;
+            return direct;
         }
-        pending.event = Some(event.clone());
+
+        // `event` may have been assembled from a run snapshot immediately
+        // before a concurrent pause/resume/health transaction committed. The
+        // mailbox is the publication order boundary: refresh every
+        // run-derived field while holding its lock. SQLite materializes the
+        // run plus only the changed sequence rows in one read transaction;
+        // only an explicit full event scans the whole session.
+        let requested_sequences = event
+            .utterances
+            .iter()
+            .map(|utterance| utterance.sequence)
+            .collect::<Vec<_>>();
+        let mut refreshed = match self.store.load_capture_callback_snapshot(
+            &event.session_id,
+            &requested_sequences,
+            event.is_full_snapshot,
+        ) {
+            Ok(Some((run, utterances))) => {
+                let mut refreshed = event_from_run(run, utterances, event.is_full_snapshot);
+                refreshed.realtime_lag_ms = event.realtime_lag_ms;
+                if matches!(
+                    refreshed.capture_state,
+                    FfiNotebookCaptureState::Completed
+                        | FfiNotebookCaptureState::Interrupted
+                        | FfiNotebookCaptureState::Failed
+                ) {
+                    pending.remote_truth = None;
+                } else {
+                    Self::apply_remote_truth_overlay(&mut refreshed, pending.remote_truth.as_ref());
+                }
+                refreshed
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    session_id = %event.session_id,
+                    "capture callback refresh found no durable run; stale event was not enqueued"
+                );
+                let mut direct = event;
+                direct.event_revision = event_revision;
+                return direct;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    session_id = %event.session_id,
+                    error = %error,
+                    "capture callback refresh failed; stale event was not enqueued"
+                );
+                let mut direct = event;
+                direct.event_revision = event_revision;
+                return direct;
+            }
+        };
+        after_refresh();
+        refreshed.event_revision = event_revision;
+        self.mailbox
+            .last_enqueued_applied_revision
+            .fetch_max(refreshed.realtime_loro_applied_revision, Ordering::Release);
+        pending.event = Some(refreshed.clone());
         drop(pending);
         self.mailbox.wake.notify_one();
-        event
+        refreshed
+    }
+
+    fn set_remote_truth_overlay(
+        &self,
+        session_id: &str,
+        health: RemoteHealth,
+        failure: ProviderFailure,
+    ) {
+        let mut pending = self.mailbox.pending.lock().unwrap();
+        let overlay = CaptureRemoteTruthOverlay {
+            session_id: session_id.to_string(),
+            health,
+            failure,
+        };
+        if let Some(event) = pending.event.as_mut() {
+            Self::apply_remote_truth_overlay(event, Some(&overlay));
+        }
+        pending.remote_truth = Some(overlay);
+    }
+
+    fn clear_remote_truth_overlay(&self, session_id: &str) {
+        let mut pending = self.mailbox.pending.lock().unwrap();
+        if pending
+            .remote_truth
+            .as_ref()
+            .is_some_and(|overlay| overlay.session_id == session_id)
+        {
+            pending.remote_truth = None;
+        }
+    }
+
+    fn remote_truth_overlay(&self, session_id: &str) -> Option<CaptureRemoteTruthOverlay> {
+        self.mailbox
+            .pending
+            .lock()
+            .unwrap()
+            .remote_truth
+            .as_ref()
+            .filter(|overlay| overlay.session_id == session_id)
+            .cloned()
+    }
+
+    fn full_snapshot_with_remote_truth(
+        &self,
+        session_id: &str,
+    ) -> Result<FfiNotebookCaptureEvent, CoreError> {
+        let mut pending = self.mailbox.pending.lock().unwrap();
+        let (run, utterances) = self
+            .store
+            .load_capture_callback_snapshot(session_id, &[], true)
+            .map_err(store_error)?
+            .ok_or_else(|| CoreError::NotFound {
+                message: format!("capture session {session_id}"),
+            })?;
+        let mut event = event_from_run(run, utterances, true);
+        if matches!(
+            event.capture_state,
+            FfiNotebookCaptureState::Completed
+                | FfiNotebookCaptureState::Interrupted
+                | FfiNotebookCaptureState::Failed
+        ) {
+            pending.remote_truth = None;
+        } else {
+            Self::apply_remote_truth_overlay(&mut event, pending.remote_truth.as_ref());
+        }
+        Ok(event)
+    }
+
+    fn apply_remote_truth_overlay(
+        event: &mut FfiNotebookCaptureEvent,
+        overlay: Option<&CaptureRemoteTruthOverlay>,
+    ) {
+        let Some(overlay) = overlay.filter(|overlay| overlay.session_id == event.session_id) else {
+            return;
+        };
+        event.remote_health = overlay.health.into();
+        event.provider_error_type = Some(overlay.failure.error_type.clone());
+        event.provider_request_id = overlay.failure.request_id.clone();
+    }
+
+    /// Commits a durable projection ACK without letting an older run snapshot
+    /// overwrite a newer capture-state event in the latest-wins mailbox.
+    ///
+    /// The mailbox lock is deliberately held while selecting the fallback
+    /// event and committing the SQLite ACK:
+    ///
+    /// - if pause/resume already queued an event, only its applied watermark is
+    ///   raised;
+    /// - if no event is pending, the latest run is read before the ACK and
+    ///   queued while later state events are blocked on this same lock;
+    /// - a fallback read failure occurs before the ACK, so an advanced receipt
+    ///   can never lose its only UI notification.
+    fn commit_projection_ack<C>(
+        &self,
+        session_id: &str,
+        commit_ack: C,
+    ) -> Result<RealtimeLoroProjectionAck, CoreError>
+    where
+        C: FnOnce() -> Result<RealtimeLoroProjectionAck, CoreError>,
+    {
+        let mut pending = self.mailbox.pending.lock().unwrap();
+        if let Some(event) = pending.event.as_ref() {
+            if event.session_id != session_id {
+                return Err(CoreError::InternalError {
+                    message: format!(
+                        "capture callback mailbox for {} contains event for {}",
+                        session_id, event.session_id
+                    ),
+                });
+            }
+        }
+        let closed = self.mailbox.closed.load(Ordering::Acquire);
+        let fallback = if !closed && pending.event.is_none() {
+            let run = self
+                .store
+                .get_run_for_session(session_id)
+                .map_err(store_error)?
+                .ok_or_else(|| CoreError::NotFound {
+                    message: format!("capture session {session_id}"),
+                })?;
+            let mut event = event_from_run(run, Vec::new(), false);
+            Self::apply_remote_truth_overlay(&mut event, pending.remote_truth.as_ref());
+            if event.session_id != session_id {
+                return Err(CoreError::InternalError {
+                    message: format!(
+                        "capture projection ACK fallback for {} loaded event for {}",
+                        session_id, event.session_id
+                    ),
+                });
+            }
+            Some(event)
+        } else {
+            None
+        };
+
+        let acknowledgement = commit_ack()?;
+        if acknowledgement.session_id != session_id {
+            return Err(CoreError::InternalError {
+                message: format!(
+                    "capture projection ACK for {} returned receipt for {}",
+                    session_id, acknowledgement.session_id
+                ),
+            });
+        }
+        let mut notify = false;
+        if acknowledgement.advanced && !closed {
+            if let Some(event) = pending.event.as_mut() {
+                event.realtime_loro_applied_revision = event
+                    .realtime_loro_applied_revision
+                    .max(acknowledgement.applied_revision);
+                self.mailbox
+                    .last_enqueued_applied_revision
+                    .fetch_max(acknowledgement.applied_revision, Ordering::Release);
+                notify = true;
+            } else {
+                let mut event =
+                    fallback.expect("an open empty mailbox loaded its fallback before ACK");
+                event.realtime_loro_applied_revision = event
+                    .realtime_loro_applied_revision
+                    .max(acknowledgement.applied_revision);
+                event.event_revision = self.mailbox.next_revision.fetch_add(1, Ordering::Relaxed);
+                self.mailbox
+                    .last_enqueued_applied_revision
+                    .fetch_max(event.realtime_loro_applied_revision, Ordering::Release);
+                pending.event = Some(event);
+                notify = true;
+            }
+        }
+        drop(pending);
+        if notify {
+            self.mailbox.wake.notify_one();
+        }
+        Ok(acknowledgement)
+    }
+
+    fn last_enqueued_applied_revision(&self) -> u64 {
+        self.mailbox
+            .last_enqueued_applied_revision
+            .load(Ordering::Acquire)
+    }
+
+    fn is_closed(&self) -> bool {
+        self.mailbox.closed.load(Ordering::Acquire)
     }
 
     fn send_preview(
@@ -2476,7 +3246,7 @@ impl RealtimeUtteranceAssembler {
         if let Some(next) = token.end_ms {
             *end = Some(end.map_or(next, |current| current.max(next)));
         }
-        segment.dirty = true;
+        segment.source_dirty = true;
         self.latest_original_segment = Some(segment_index);
     }
 
@@ -2511,7 +3281,8 @@ impl RealtimeUtteranceAssembler {
                 ))
         {
             self.segments[current].complete = true;
-            self.segments[current].dirty = true;
+            self.segments[current].source_dirty = true;
+            self.segments[current].translation_dirty = true;
             return self.create_segment();
         }
 
@@ -2538,7 +3309,11 @@ impl RealtimeUtteranceAssembler {
 
         if let Some(source_language) = source_language {
             if token.is_final {
+                let changes_durable_source_language = segment.source.committed_language.is_none()
+                    && segment.committed_source_language_hint.as_deref()
+                        != Some(source_language.as_str());
                 segment.committed_source_language_hint = Some(source_language);
+                segment.source_dirty |= changes_durable_source_language;
             } else {
                 segment.pending_source_language_hint = Some(source_language);
             }
@@ -2550,7 +3325,7 @@ impl RealtimeUtteranceAssembler {
                 segment.pending_provider_speaker_hint = Some(provider_speaker);
             }
         }
-        segment.dirty = true;
+        segment.translation_dirty = true;
     }
 
     fn translation_segment(
@@ -2632,7 +3407,8 @@ impl RealtimeUtteranceAssembler {
                 segment.pending_source_start_ms.take(),
                 segment.pending_source_end_ms.take(),
             ));
-            segment.dirty = true;
+            segment.source_dirty = true;
+            segment.translation_dirty = true;
         }
         for (
             source,
@@ -2656,12 +3432,14 @@ impl RealtimeUtteranceAssembler {
             segment.pending_source_start_ms = pending_source_start_ms;
             segment.pending_source_end_ms = pending_source_end_ms;
             segment.complete = true;
-            segment.dirty = true;
+            segment.source_dirty = true;
+            segment.translation_dirty = true;
         }
         for segment in &mut self.segments {
             if !segment.is_empty() && !segment.complete {
                 segment.complete = true;
-                segment.dirty = true;
+                segment.source_dirty = true;
+                segment.translation_dirty = true;
             }
         }
         self.take_dirty_updates()
@@ -2680,6 +3458,28 @@ impl RealtimeUtteranceAssembler {
         }
     }
 
+    fn record_translation_persisted(&mut self, id: &str, language: Option<&str>) {
+        if let Some(segment) = self.segments.iter_mut().find(|segment| segment.id == id) {
+            segment.persisted_translation_language = language.map(normalize_language);
+        }
+    }
+
+    fn relinquish_inline_translation_lane(&mut self, id: &str, language: &str) {
+        let language = normalize_language(language);
+        if let Some(segment) = self.segments.iter_mut().find(|segment| segment.id == id) {
+            if segment.persisted_translation_language.as_deref() == Some(language.as_str()) {
+                segment.persisted_translation_language = None;
+            }
+        }
+    }
+
+    fn record_partial_removed(&mut self, id: &str) {
+        if let Some(segment) = self.segments.iter_mut().find(|segment| segment.id == id) {
+            segment.revision = None;
+            segment.persisted_translation_language = None;
+        }
+    }
+
     fn take_dirty_updates(&mut self) -> Vec<AssembledRealtimeUtterance> {
         let session_id = self.session_id.clone();
         let selected_languages = self.selected_languages.clone();
@@ -2688,18 +3488,30 @@ impl RealtimeUtteranceAssembler {
         self.segments
             .iter_mut()
             .filter_map(|segment| {
-                if !segment.dirty {
+                if !segment.source_dirty && !segment.translation_dirty {
                     return None;
                 }
-                segment.dirty = false;
+                let source_dirty = std::mem::take(&mut segment.source_dirty);
+                let translation_dirty = std::mem::take(&mut segment.translation_dirty);
                 // Keep a pure provisional run out of the language columns.
                 // It will use the same segment ID once final source evidence
                 // arrives, or be emitted as a neutral `und` fact if an
                 // endpoint/reconnect forces finalization first.
-                if !segment.complete && segment.stable_source_language().is_none() {
+                if !segment.complete
+                    && segment.stable_source_language().is_none()
+                    && segment.persisted_translation_language.is_none()
+                    && segment.revision.is_none()
+                {
                     return None;
                 }
-                if segment.is_empty() && segment.revision.is_none() {
+                let has_publishable_source = !segment
+                    .source
+                    .text(segment.pending_source_matches_committed_identity())
+                    .is_empty();
+                if !has_publishable_source
+                    && segment.revision.is_none()
+                    && segment.persisted_translation_language.is_none()
+                {
                     return None;
                 }
                 Some(assemble_segment(
@@ -2708,6 +3520,8 @@ impl RealtimeUtteranceAssembler {
                     capture_mode,
                     common_caption_language.as_deref(),
                     segment,
+                    source_dirty,
+                    translation_dirty,
                 ))
             })
             .collect()
@@ -2731,6 +3545,8 @@ impl RealtimeUtteranceAssembler {
                     capture_mode,
                     common_caption_language.as_deref(),
                     segment,
+                    false,
+                    false,
                 )
             })
             .collect()
@@ -2743,8 +3559,11 @@ fn assemble_segment(
     capture_mode: CaptureMode,
     common_caption_language: Option<&str>,
     segment: &RealtimeSegmentRevision,
+    source_dirty: bool,
+    translation_dirty: bool,
 ) -> AssembledRealtimeUtterance {
     let include_pending_source = segment.pending_source_matches_committed_identity();
+    let source_text = segment.source.text(include_pending_source);
     let source_language = segment.source_language();
     let source_is_unknown = source_language == "und";
     let source_is_selected = selected_languages.contains(&source_language);
@@ -2775,13 +3594,36 @@ fn assemble_segment(
             }
             CaptureMode::MultilingualOneWay => common_caption_language == Some(language),
         });
-    let translated_text = translation_is_pairable
+    // Inline translation is causally attached to this canonical source
+    // segment. A provider replacement that withdraws the entire speculative
+    // source must withdraw its still-Partial inline translation in the same
+    // transaction. Independent auxiliary lanes live outside this assembler.
+    let translated_text = (!source_text.is_empty() && translation_is_pairable)
         .then(|| segment.translated.text(include_pending_translation))
         .filter(|text| !text.is_empty());
     let translated_language = translated_text
         .as_ref()
         .and(translated_language_candidate)
         .map(str::to_string);
+    let source_completion = if segment.complete
+        && !segment.source.committed.is_empty()
+        && segment.source.pending.is_empty()
+    {
+        UtteranceCompletion::Complete
+    } else {
+        UtteranceCompletion::Partial
+    };
+    let translation_completion = translated_text.as_ref().map(|_| {
+        if !source_text.is_empty()
+            && segment.complete
+            && !segment.translated.committed.is_empty()
+            && segment.translated.pending.is_empty()
+        {
+            UtteranceCompletion::Complete
+        } else {
+            UtteranceCompletion::Partial
+        }
+    });
     let alignment = if translated_text.is_some() {
         UtteranceAlignment::Paired
     } else if outside_pair {
@@ -2805,6 +3647,10 @@ fn assemble_segment(
         (Some(committed), Some(pending)) => Some(committed.max(pending)),
         (committed, pending) => committed.or(pending),
     };
+    let translation_clear_language = (translation_dirty && translated_text.is_none())
+        .then(|| segment.persisted_translation_language.clone())
+        .flatten();
+    let remove_partial = segment.revision.is_some() && source_text.is_empty();
     AssembledRealtimeUtterance {
         utterance: NewRealtimeUtterance {
             id: segment.id.clone(),
@@ -2812,18 +3658,19 @@ fn assemble_segment(
             sequence: segment.sequence,
             session_speaker_id: None,
             source_language,
-            source_text: segment.source.text(include_pending_source),
+            source_text,
             source_start_ms,
             source_end_ms,
             translated_language,
             translated_text,
-            completion: if segment.complete {
-                UtteranceCompletion::Complete
-            } else {
-                UtteranceCompletion::Partial
-            },
+            completion: source_completion,
             alignment,
         },
+        source_dirty,
+        translation_dirty,
+        translation_completion,
+        translation_clear_language,
+        remove_partial,
         provider_speaker: segment.durable_provider_speaker().map(str::to_string),
         expected_revision: segment.revision,
     }
@@ -3498,7 +4345,7 @@ impl ZulangueCore {
         // Spawn the bounded callback dispatcher before creating any durable
         // session state, eliminating a rollback-only failure point after attach.
         let callback: Arc<dyn FfiNotebookCaptureCallback> = Arc::from(callback);
-        let callback = CaptureCallbackSink::new(callback)?;
+        let callback = CaptureCallbackSink::new(callback, self.notebook_capture_store.clone())?;
 
         let session_id = uuid::Uuid::new_v4().to_string();
         let session_record = vt_store::SessionRecord {
@@ -3652,11 +4499,31 @@ impl ZulangueCore {
                         error_type: "unavailable".to_string(),
                         request_id: None,
                     };
-                    let _ = self.notebook_capture_store.update_remote_health(
-                        &run_id,
-                        RemoteHealth::Unavailable,
-                        Some(&failure),
-                    );
+                    if let Err(persistence_error) = self
+                        .notebook_capture_store
+                        .update_remote_health(&run_id, RemoteHealth::Unavailable, Some(&failure))
+                    {
+                        // Without either a provider owner or a durable
+                        // Unavailable fact, installing an active capture would
+                        // create `remote=None + Connecting`. Fail the start
+                        // before publishing ownership and use the existing
+                        // durable rollback saga.
+                        let _ = self.notebook_capture_store.transition_capture(
+                            &run_id,
+                            CaptureState::Recording,
+                            CaptureState::Failed,
+                        );
+                        self.rollback_failed_capture_start(
+                            &session_id,
+                            &[journal.journal_path().to_path_buf()],
+                            std::slice::from_ref(&key_ref),
+                        );
+                        return Err(CoreError::InternalError {
+                            message: format!(
+                                "Soniox unavailable ({error}); persist unavailable remote truth: {persistence_error}"
+                            ),
+                        });
+                    }
                     None
                 }
             }
@@ -3847,12 +4714,6 @@ impl ZulangueCore {
         paused: bool,
     ) -> Result<FfiNotebookCaptureEvent, CoreError> {
         let mut active_guard = self.active_notebook_capture.lock().unwrap();
-        let active = active_guard
-            .as_mut()
-            .filter(|active| active.session_id == session_id)
-            .ok_or_else(|| CoreError::ValidationFailed {
-                message: format!("capture_not_active: {session_id}"),
-            })?;
         let (expected, next, control) = if paused {
             (
                 CaptureState::Recording,
@@ -3866,18 +4727,118 @@ impl ZulangueCore {
                 SttStreamControl::Resume,
             )
         };
-        if active.state != expected {
-            return Err(CoreError::ValidationFailed {
-                message: format!("capture pause transition requires {expected:?}"),
-            });
+
+        {
+            let active = active_guard
+                .as_ref()
+                .filter(|active| active.session_id == session_id)
+                .ok_or_else(|| CoreError::ValidationFailed {
+                    message: format!("capture_not_active: {session_id}"),
+                })?;
+            if active.state != expected {
+                return Err(CoreError::ValidationFailed {
+                    message: format!("capture pause transition requires {expected:?}"),
+                });
+            }
         }
+
+        // A requested remote profile with no process-local provider owner must
+        // never silently cross Paused -> Recording while SQLite still says
+        // Live/Connecting. Persist the missing-provider truth first. A failed
+        // resume preflight leaves the already-durable Paused state untouched;
+        // a pause still commits locally and keeps a process-only UI overlay.
+        let missing_remote = {
+            let active = active_guard
+                .as_ref()
+                .expect("active capture was checked above");
+            active.profile.remote_realtime_enabled && active.remote.is_none()
+        };
+        if missing_remote {
+            let (run_id, callback) = {
+                let active = active_guard
+                    .as_ref()
+                    .expect("active capture was checked above");
+                (active.run_id.clone(), active.callback.clone())
+            };
+            let durable = self
+                .notebook_capture_store
+                .get_run(&run_id)
+                .map_err(store_error)?
+                .ok_or_else(|| CoreError::NotFound {
+                    message: format!("capture run {run_id}"),
+                })?;
+            if matches!(
+                durable.remote_health,
+                RemoteHealth::Degraded | RemoteHealth::Unavailable
+            ) {
+                callback.clear_remote_truth_overlay(&session_id);
+            } else {
+                let overlay = callback
+                    .remote_truth_overlay(&session_id)
+                    .unwrap_or_else(|| {
+                        let (health, failure) = missing_remote_truth(&durable);
+                        CaptureRemoteTruthOverlay {
+                            session_id: session_id.clone(),
+                            health,
+                            failure,
+                        }
+                    });
+                callback.set_remote_truth_overlay(
+                    &session_id,
+                    overlay.health,
+                    overlay.failure.clone(),
+                );
+                match self.notebook_capture_store.update_remote_health(
+                    &run_id,
+                    overlay.health,
+                    Some(&overlay.failure),
+                ) {
+                    Ok(_) => callback.clear_remote_truth_overlay(&session_id),
+                    Err(persistence_error) if !paused => {
+                        tracing::warn!(
+                            session_id,
+                            run_id,
+                            error = %persistence_error,
+                            "resume remains paused until missing remote truth is durable"
+                        );
+                        return Err(CoreError::InternalError {
+                            message: format!(
+                                "persist missing remote health before resume: {persistence_error}"
+                            ),
+                        });
+                    }
+                    Err(persistence_error) => {
+                        tracing::warn!(
+                            session_id,
+                            run_id,
+                            error = %persistence_error,
+                            "pause will use process-local remote truth until durable reconciliation"
+                        );
+                    }
+                }
+            }
+        }
+
+        let run_id = active_guard
+            .as_ref()
+            .expect("active capture was checked above")
+            .run_id
+            .clone();
         let mut run = self
             .notebook_capture_store
-            .transition_capture(&active.run_id, expected, next)
+            .transition_capture(&run_id, expected, next)
             .map_err(store_error)?;
-        active.state = next;
-        if let Some(remote) = active.remote.take() {
-            if let Err(_error) = remote.try_fanout_control(control) {
+        active_guard
+            .as_mut()
+            .expect("active capture was checked above")
+            .state = next;
+        let remote = active_guard
+            .as_mut()
+            .expect("active capture was checked above")
+            .remote
+            .take();
+        if let Some(remote) = remote {
+            if let Err(control_error) = remote.try_fanout_control(control) {
                 let mut failure = ProviderFailure {
                     error_type: "control_unavailable".to_string(),
                     request_id: None,
@@ -3886,15 +4847,90 @@ impl ZulangueCore {
                     failure = prefer_provider_failure(Some(failure), shutdown_failure)
                         .expect("a provider failure was supplied");
                 }
-                run = self
-                    .notebook_capture_store
-                    .update_remote_health(&active.run_id, RemoteHealth::Degraded, Some(&failure))
-                    .map_err(store_error)?;
+                let callback = active_guard
+                    .as_ref()
+                    .expect("active capture was checked above")
+                    .callback
+                    .clone();
+                callback.set_remote_truth_overlay(
+                    &session_id,
+                    RemoteHealth::Degraded,
+                    failure.clone(),
+                );
+                match self.notebook_capture_store.update_remote_health(
+                    &run_id,
+                    RemoteHealth::Degraded,
+                    Some(&failure),
+                ) {
+                    Ok(updated) => {
+                        callback.clear_remote_truth_overlay(&session_id);
+                        run = updated;
+                    }
+                    Err(persistence_error) if !paused => {
+                        // Resume already crossed its state CAS before the
+                        // provider control failure was known. Roll it back so
+                        // missing remote truth can be retried while Paused.
+                        match self.notebook_capture_store.transition_capture(
+                            &run_id,
+                            CaptureState::Recording,
+                            CaptureState::Paused,
+                        ) {
+                            Ok(rolled_back) => {
+                                active_guard
+                                    .as_mut()
+                                    .expect("active capture was checked above")
+                                    .state = CaptureState::Paused;
+                                callback.send(event_from_run(rolled_back, Vec::new(), false));
+                                return Err(CoreError::InternalError {
+                                    message: format!(
+                                        "resume provider control failed ({control_error}); persist degraded remote health: {persistence_error}"
+                                    ),
+                                });
+                            }
+                            Err(rollback_error) => {
+                                let failed = active_guard
+                                    .take()
+                                    .expect("active capture was checked above");
+                                let terminal_error = self.terminate_capture_after_push_error(
+                                    &session_id,
+                                    failed,
+                                    "rollback resume after remote truth persistence failure",
+                                    format!(
+                                        "control={control_error}; health={persistence_error}; rollback={rollback_error}"
+                                    ),
+                                );
+                                drop(active_guard);
+                                return Err(terminal_error);
+                            }
+                        }
+                    }
+                    Err(persistence_error) => {
+                        // The capture-state CAS above is the pause/resume
+                        // command's commit point. Keep Pause successful and
+                        // surface Degraded through the process-only callback
+                        // overlay until a later preflight can persist it.
+                        tracing::warn!(
+                            session_id,
+                            run_id,
+                            error = %persistence_error,
+                            control_error = %control_error,
+                            "pause control degraded after state commit; using process-local remote truth"
+                        );
+                    }
+                }
             } else {
-                active.remote = Some(remote);
+                active_guard
+                    .as_mut()
+                    .expect("active capture was checked above")
+                    .remote = Some(remote);
             }
         }
-        let event = active.callback.send(event_from_run(run, Vec::new(), false));
+        let callback = active_guard
+            .as_ref()
+            .expect("active capture was checked above")
+            .callback
+            .clone();
+        let event = callback.send(event_from_run(run, Vec::new(), false));
         Ok(event)
     }
 
@@ -4028,10 +5064,17 @@ impl ZulangueCore {
             .ok_or_else(|| CoreError::NotFound {
                 message: format!("capture run {}", active.run_id),
             })?;
-        let projection_result = match remote_failure_persistence_error {
-            Some(message) => Err(CoreError::InternalError { message }),
-            None => self.project_notebook_capture_with_ownership(&active.run_id),
-        };
+        if let Some(error) = remote_failure_persistence_error {
+            // The remote-health write is diagnostic metadata in a separate
+            // error domain. Audio and Final machine facts are already durable,
+            // so it must never suppress their independent Loro projection.
+            tracing::warn!(
+                session_id,
+                error,
+                "capture stopped; remote shutdown diagnostics were not persisted"
+            );
+        }
+        let projection_result = self.project_notebook_capture_with_ownership(&active.run_id);
         let retention_result = self.enforce_realtime_capture_retention(&completed_run);
 
         let run = self
@@ -4046,16 +5089,19 @@ impl ZulangueCore {
             .list_utterances(&session_id)
             .map_err(store_error)?;
         let event = active.callback.send(event_from_run(run, utterances, true));
-        match (projection_result, retention_result) {
-            (Ok(()), Ok(())) => Ok(event),
-            (Err(projection_error), Ok(())) => Err(projection_error),
-            (Ok(()), Err(retention_error)) => Err(retention_error),
-            (Err(projection_error), Err(retention_error)) => Err(CoreError::InternalError {
-                message: format!(
-                    "capture projection failed ({projection_error}); audio retention enforcement failed ({retention_error})"
-                ),
-            }),
+        if let Err(projection_error) = projection_result {
+            // Audio, capture state, and transcript facts are already durable.
+            // A Loro failure is a separately retryable projection outcome, not
+            // a failed stop command. The terminal event carries Failed so the
+            // UI can offer retry without lying about recording state.
+            tracing::warn!(
+                session_id,
+                error = %projection_error,
+                "capture stopped durably; realtime Loro projection remains retryable"
+            );
         }
+        retention_result?;
+        Ok(event)
     }
 
     /// Immediately stops a Notebook capture after the bounded Swift audio
@@ -4232,6 +5278,21 @@ impl ZulangueCore {
         &self,
         session_id: String,
     ) -> Result<FfiNotebookCaptureEvent, CoreError> {
+        let active_callback = self
+            .active_notebook_capture
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|active| active.session_id == session_id)
+            .map(|active| active.callback.clone());
+        if let Some(callback) = active_callback {
+            // Serialize this explicit read with callback publication and the
+            // process-local remote-truth overlay. The overlay is not durable;
+            // it only prevents an acknowledged Paused owner whose provider
+            // teardown outlived a failed diagnostic write from being reported
+            // as Live before startup recovery or a later retry converges it.
+            return callback.full_snapshot_with_remote_truth(&session_id);
+        }
         let run = self
             .notebook_capture_store
             .get_run_for_session(&session_id)
@@ -4288,11 +5349,8 @@ impl ZulangueCore {
             .ok_or_else(|| CoreError::NotFound {
                 message: format!("capture session {session_id}"),
             })?;
-        let utterances = self
-            .notebook_capture_store
-            .list_utterances(&session_id)
-            .map_err(store_error)?;
-        self.sync_bilingual_capture_into_realtime_tab(&run, &utterances, false)
+        self.ensure_capture_projection_not_purging(&run.session_id)?;
+        self.sync_bilingual_capture_into_realtime_tab(&run, false)
     }
 
     /// Retries only the local Async Transcript Loro materialization. The
@@ -4345,46 +5403,69 @@ impl ZulangueCore {
     ) -> Result<FfiNotebookCaptureUtterance, CoreError> {
         let current = self
             .notebook_capture_store
-            .get_utterance_by_id(&utterance_id)
+            .get_machine_utterance_by_id(&utterance_id)
             .map_err(store_error)?;
         let current = current.ok_or_else(|| CoreError::NotFound {
             message: format!("utterance {utterance_id}"),
         })?;
-        let lane = if normalize_language(&current.source_language)
-            == normalize_language(&lane_language)
-        {
+        let normalized_lane_language = normalize_language(&lane_language);
+        let source_variant = current.variants.iter().find(|variant| {
+            variant.role == UtteranceVariantRole::Source
+                && normalize_language(&variant.language) == normalized_lane_language
+        });
+        let _lane = if let Some(source_variant) = source_variant {
+            if source_variant.state != UtteranceVariantState::Ready
+                || source_variant.completion != Some(UtteranceCompletion::Complete)
+                || source_variant.text.is_none()
+            {
+                return Err(CoreError::ValidationFailed {
+                    message: format!(
+                        "source lane {lane_language} on {utterance_id} is partial and cannot be edited"
+                    ),
+                });
+            }
             UtteranceLane::Source
-        } else if current
-            .translated_language
-            .as_deref()
-            .is_some_and(|language| {
-                normalize_language(language) == normalize_language(&lane_language)
-            })
-        {
+        } else if let Some(variant) = current.variants.iter().find(|variant| {
+            variant.role == UtteranceVariantRole::Translation
+                && normalize_language(&variant.language) == normalized_lane_language
+        }) {
+            if variant.state != UtteranceVariantState::Ready
+                || variant.completion != Some(UtteranceCompletion::Complete)
+                || variant.text.is_none()
+            {
+                return Err(CoreError::ValidationFailed {
+                    message: format!(
+                        "translation lane {lane_language} on {utterance_id} is not complete and cannot be edited"
+                    ),
+                });
+            }
             UtteranceLane::Translated
         } else {
             return Err(CoreError::ValidationFailed {
                 message: format!("lane language {lane_language} is not present on {utterance_id}"),
             });
         };
-        let run = self
+        let _run = self
             .notebook_capture_store
             .get_run_for_session(&current.session_id)
             .map_err(store_error)?
             .ok_or_else(|| CoreError::NotFound {
                 message: format!("capture session {}", current.session_id),
             })?;
-        if run.capture_state.is_active() {
-            let utterances = self
-                .notebook_capture_store
-                .list_utterances(&current.session_id)
-                .map_err(store_error)?;
-            self.sync_bilingual_capture_into_realtime_tab(&run, &utterances, false)?;
-        }
+        // Do not synchronously chase unrelated pending Finals here. The store
+        // authorizes this exact target lane only when its projection revision
+        // is already <= the durable applied watermark. A newer language lane
+        // may remain pending/failed without re-locking this editable lane or
+        // forcing the UI edit path through a projection fsync.
         let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
         let mutation = self
             .notebook_capture_store
-            .stage_utterance_lane_replacement(&utterance_id, lane, &text, expected_revision)
+            .stage_utterance_variant_replacement(
+                &utterance_id,
+                &lane_language,
+                &text,
+                expected_revision,
+            )
             .map_err(store_error)?;
         self.apply_notebook_projection_mutation(&mutation)
             .map(Into::into)
@@ -5064,13 +6145,30 @@ impl ZulangueCore {
                 &target.doc_id,
                 &plan.session_id,
                 &delta,
-            )?
-            .ok_or_else(|| CoreError::ValidationFailed {
-                message: format!(
-                    "session {} has a projection row in document {} but no durable section anchor, ownership marks, or purge receipt",
-                    plan.session_id, target.doc_id
-                ),
-            })?;
+            )?;
+            let range = match range {
+                Some(range) => range,
+                None if self
+                    .editor_bridge
+                    .get_content(&target.doc_id)
+                    .map_err(store_error)?
+                    .is_empty() =>
+                {
+                    // A projection row is created before the first Final lane.
+                    // An entirely empty document therefore proves there are no
+                    // target bytes to delete; still persist the purge receipt
+                    // so crash replay remains exact-once.
+                    crate::editor_api::TextRange { pos: 0, len: 0 }
+                }
+                None => {
+                    return Err(CoreError::ValidationFailed {
+                        message: format!(
+                            "session {} has a projection row in document {} but no durable section anchor, ownership marks, or purge receipt",
+                            plan.session_id, target.doc_id
+                        ),
+                    });
+                }
+            };
             let rollback_snapshot = self
                 .editor_bridge
                 .export_snapshot(&target.doc_id)
@@ -5569,15 +6667,162 @@ impl ZulangueCore {
     }
 
     pub(crate) fn resume_pending_notebook_projection_mutations(&self) -> Result<(), CoreError> {
+        // Recover the machine projection watermark first. User mutations may
+        // target a lane whose Final machine fact was committed immediately
+        // before a crash but whose receipt was not yet acknowledged.
+        let terminal_runs = self
+            .notebook_capture_store
+            .list_completed_runs()
+            .map_err(store_error)?
+            .into_iter()
+            .chain(
+                self.notebook_capture_store
+                    .list_interrupted_runs()
+                    .map_err(store_error)?,
+            )
+            .collect::<Vec<_>>();
+        // The collector may crash after accepting an auxiliary Final into its
+        // durable inbox but before the canonical binding transaction. Recovery
+        // has already made these runs terminal, so consume only the pre-crash
+        // inbox facts before discovering pending Loro watermarks.
+        for run in &terminal_runs {
+            if let Err(error) = self
+                .notebook_capture_store
+                .reconcile_translation_inbox_after_recovery(&run.session_id)
+            {
+                tracing::warn!(
+                    session_id = %run.session_id,
+                    error = %error,
+                    "startup left ambiguous auxiliary translation facts durably unbound"
+                );
+            }
+        }
+        let mut realtime_sessions = std::collections::BTreeSet::new();
+        for projection in self
+            .notebook_capture_store
+            .list_pending_realtime_loro_projections()
+            .map_err(store_error)?
+        {
+            realtime_sessions.insert(projection.session_id);
+        }
+        let terminal_sessions = terminal_runs
+            .iter()
+            .map(|run| run.session_id.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        // A crash after the applied-watermark ACK but before Projecting ->
+        // Ready leaves no pending outbox row. Include every recoverable
+        // terminal run whose projection state is not yet Ready.
+        for run in terminal_runs
+            .iter()
+            .filter(|run| run.projection_state != ProjectionState::Ready)
+        {
+            realtime_sessions.insert(run.session_id.clone());
+        }
+        for session_id in realtime_sessions {
+            if let Err(error) = self.recover_notebook_realtime_projection(&session_id) {
+                tracing::warn!(
+                    session_id,
+                    error = %error,
+                    "startup isolated a failed realtime Loro projection; recovery continues"
+                );
+            }
+        }
+
         let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
         let pending = self
             .notebook_capture_store
             .list_pending_projection_mutations()
             .map_err(store_error)?;
         for mutation in pending {
-            self.apply_notebook_projection_mutation(&mutation)?;
+            if let Err(error) = self.apply_notebook_projection_mutation(&mutation) {
+                tracing::warn!(
+                    session_id = %mutation.session_id,
+                    mutation_id = %mutation.id,
+                    error = %error,
+                    "startup isolated a failed capture lane mutation; recovery continues"
+                );
+            }
+        }
+        drop(_mutation_guard);
+
+        // FTS is intentionally disposable, so it has no per-edit outbox. A
+        // crash after the SQLite override commit but before its synchronous
+        // rebuild is repaired here from the visible overlay. Limit the repair
+        // to lanes at or below the durable applied watermark so an unrelated
+        // async transcript index is never replaced by speculative realtime
+        // text.
+        for session_id in terminal_sessions {
+            let repair_result = (|| -> Result<(), CoreError> {
+                let run = self
+                    .notebook_capture_store
+                    .get_run_for_session(&session_id)
+                    .map_err(store_error)?
+                    .ok_or_else(|| CoreError::NotFound {
+                        message: format!("capture session {session_id}"),
+                    })?;
+                let visible = self
+                    .notebook_capture_store
+                    .list_utterances(&session_id)
+                    .map_err(store_error)?;
+                let has_projected_lane = finalized_capture_lanes(&visible).iter().any(|lane| {
+                    lane.revision > 0 && lane.revision <= run.realtime_loro_applied_revision
+                });
+                if has_projected_lane {
+                    self.rebuild_finalized_capture_search_index_through(
+                        &session_id,
+                        &visible,
+                        run.realtime_loro_applied_revision,
+                    )?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = repair_result {
+                tracing::warn!(
+                    session_id,
+                    error = %error,
+                    "startup isolated a failed capture FTS repair; recovery continues"
+                );
+            }
         }
         Ok(())
+    }
+
+    fn recover_notebook_realtime_projection(&self, session_id: &str) -> Result<(), CoreError> {
+        let _ownership_guard = self.capture_ownership_gate.lock().unwrap();
+        let mut run = self
+            .notebook_capture_store
+            .get_run_for_session(session_id)
+            .map_err(store_error)?
+            .ok_or_else(|| CoreError::NotFound {
+                message: format!("capture session {session_id}"),
+            })?;
+        self.ensure_capture_projection_not_purging(session_id)?;
+
+        if run.capture_state.is_active() {
+            return self.sync_bilingual_capture_into_realtime_tab(&run, false);
+        }
+
+        match run.projection_state {
+            ProjectionState::Ready => {
+                // A terminal run can already be Ready while a later durable
+                // Final still has an unacknowledged realtime watermark.
+                self.sync_bilingual_capture_into_realtime_tab(&run, false)
+            }
+            ProjectionState::Failed => {
+                run = self
+                    .notebook_capture_store
+                    .retry_projection(&run.id)
+                    .map_err(store_error)?;
+                self.project_notebook_capture_with_ownership(&run.id)
+            }
+            ProjectionState::Pending => self.project_notebook_capture_with_ownership(&run.id),
+            ProjectionState::Projecting => Err(CoreError::ValidationFailed {
+                message: format!(
+                    "capture projection {} remained Projecting after startup recovery",
+                    run.id
+                ),
+            }),
+        }
     }
 
     pub(crate) fn compensate_completed_notebook_async_tasks(&self) -> Result<(), CoreError> {
@@ -5865,31 +7110,17 @@ impl ZulangueCore {
 
         let current = self
             .notebook_capture_store
-            .get_utterance_by_id(&mutation.utterance_id)
+            .get_machine_utterance_by_id(&mutation.utterance_id)
             .map_err(store_error)?
             .ok_or_else(|| CoreError::NotFound {
                 message: format!("utterance {}", mutation.utterance_id),
             })?;
-        if current.revision != mutation.expected_revision {
-            let error = CoreError::ValidationFailed {
-                message: format!(
-                    "utterance {} expected revision {}",
-                    mutation.utterance_id, mutation.expected_revision
-                ),
-            };
-            self.cancel_projection_mutation_after_error(mutation, &error)?;
-            return Err(error);
-        }
-        let lane_language = match mutation.lane {
-            UtteranceLane::Source => current.source_language.as_str(),
-            UtteranceLane::Translated => {
-                current.translated_language.as_deref().ok_or_else(|| {
-                    CoreError::ValidationFailed {
-                        message: format!("utterance {} has no translated lane", current.id),
-                    }
-                })?
-            }
-        };
+        // Do not gate replay on the aggregate utterance revision. A Partial in
+        // another language may legitimately advance that counter after this
+        // Final lane was staged. The store commit checks the target variant's
+        // role and lane-local revision; Loro's mutation receipt closes the
+        // crash window independently.
+        let lane_language = mutation.lane_language.as_str();
         let run = self
             .notebook_capture_store
             .get_run_for_session(&mutation.session_id)
@@ -5929,77 +7160,118 @@ impl ZulangueCore {
                 return Err(error);
             }
         };
+        let receipt = notebook_projection_mutation_receipt(mutation);
+        let mut receipt_preexisted = false;
+        let mut loro_snapshot_durable = false;
 
         let apply_result = (|| -> Result<RealtimeUtterance, CoreError> {
-            let delta = self
+            let existing_receipt = self
                 .editor_bridge
-                .get_delta(&tab.doc_id)
+                .get_user_mutation_receipt(&tab.doc_id, &receipt.namespace, &receipt.mutation_id)
                 .map_err(store_error)?;
-            let range = crate::editor_api::find_unique_marked_range(
-                &delta,
-                crate::editor_api::DeltaMarkSelector {
-                    session_id: Some(&mutation.session_id),
-                    utterance_id: Some(&mutation.utterance_id),
-                    lane_language: Some(lane_language),
-                },
-            )?
-            .ok_or_else(|| CoreError::ValidationFailed {
-                message: format!(
-                    "Loro lane ownership marks are missing for utterance {} ({lane_language})",
-                    mutation.utterance_id
-                ),
-            })?;
-            let rendered = render_replacement_lane(&current, mutation);
-            let rendered_len = rendered.text.chars().count();
-            self.editor_bridge
-                .apply(
-                    &tab.doc_id,
-                    EditOp::Replace {
-                        pos: range.pos,
-                        len: range.len,
-                        text: rendered.text,
-                    },
-                )
-                .map_err(store_error)?;
-            for mark in rendered.marks {
-                self.editor_bridge
-                    .apply(
-                        &tab.doc_id,
-                        EditOp::Mark {
-                            pos: range.pos + mark.pos,
-                            len: mark.len,
-                            key: mark.key,
-                            value_json: mark.value_json,
-                        },
-                    )
+            receipt_preexisted = existing_receipt.is_some();
+            let operations = if existing_receipt.as_ref() == Some(&receipt) {
+                // Crash replay after the Loro snapshot became durable but
+                // before the SQLite override commit. The receipt proves the
+                // Replace and every ownership mark already happened.
+                Vec::new()
+            } else if existing_receipt.is_some() {
+                // Let the bridge return its typed digest conflict without
+                // depending on ownership marks that may since have moved.
+                Vec::new()
+            } else {
+                let delta = self
+                    .editor_bridge
+                    .get_delta(&tab.doc_id)
                     .map_err(store_error)?;
-            }
-            self.editor_bridge
-                .apply(
-                    &tab.doc_id,
-                    EditOp::Mark {
-                        pos: range.pos,
-                        len: rendered_len,
-                        key: "content_owner".to_string(),
-                        value_json: "\"user\"".to_string(),
-                    },
-                )
+                let canonical_lane_id = capture_lane_id(lane_language);
+                let range = find_unique_capture_lane_range(
+                    &delta,
+                    &mutation.session_id,
+                    &mutation.utterance_id,
+                    &canonical_lane_id,
+                )?
+                .ok_or_else(|| CoreError::ValidationFailed {
+                    message: format!(
+                        "Loro lane ownership marks are missing for utterance {} ({canonical_lane_id})",
+                        mutation.utterance_id
+                    ),
+                })?;
+                let rendered = render_replacement_lane(&current, mutation);
+                let rendered_len = rendered.text.chars().count();
+                let mut operations = vec![EditOp::Replace {
+                    pos: range.pos,
+                    len: range.len,
+                    text: rendered.text,
+                }];
+                operations.extend(rendered.marks.into_iter().map(|mark| EditOp::Mark {
+                    pos: range.pos + mark.pos,
+                    len: mark.len,
+                    key: mark.key,
+                    value_json: mark.value_json,
+                }));
+                operations.push(EditOp::Mark {
+                    pos: range.pos,
+                    len: rendered_len,
+                    key: "content_owner".to_string(),
+                    value_json: "\"user\"".to_string(),
+                });
+                operations
+            };
+            let batch = self
+                .editor_bridge
+                .apply_user_mutation_batch(&tab.doc_id, operations, receipt.clone())
                 .map_err(store_error)?;
-            crate::editor_api::flush_snapshot_to_disk_result(
+            crate::editor_api::persist_snapshot_bytes_to_disk_result(
                 &self.data_dir,
-                &self.editor_bridge,
                 &tab.doc_id,
+                &batch.snapshot,
             )
             .map_err(|message| CoreError::InternalError { message })?;
-            self.notebook_capture_store
+            loro_snapshot_durable = true;
+
+            let updated = self
+                .notebook_capture_store
                 .commit_projection_mutation(&mutation.id)
+                .map_err(store_error)?;
+            match self
+                .notebook_capture_store
+                .list_utterances(&mutation.session_id)
                 .map_err(store_error)
+                .and_then(|visible| {
+                    self.rebuild_finalized_capture_search_index_through(
+                        &mutation.session_id,
+                        &visible,
+                        run.realtime_loro_applied_revision,
+                    )
+                }) {
+                Ok(()) => {}
+                Err(error) => {
+                    // The Loro edit and SQLite override are already committed.
+                    // FTS is disposable and startup/retry can rebuild it; do
+                    // not turn a successful edit into a false UI failure.
+                    tracing::warn!(
+                        session_id = %mutation.session_id,
+                        mutation_id = %mutation.id,
+                        error = %error,
+                        "capture lane edit committed; search projection remains retryable"
+                    );
+                }
+            }
+            Ok(updated)
         })();
 
         match apply_result {
             Ok(updated) => {
                 crate::editor_api::notify_editor_callback(&self.editor_callbacks, &tab.doc_id);
                 Ok(updated)
+            }
+            Err(error) if loro_snapshot_durable || receipt_preexisted => {
+                // Once the exact receipt-bearing snapshot is durable, rolling
+                // it back would make Loro lie behind its own exact-once proof.
+                // Keep the SQLite mutation pending so startup can replay the
+                // receipt and finish only the override commit.
+                Err(error)
             }
             Err(error) => {
                 let rollback_result = self
@@ -6011,10 +7283,10 @@ impl ZulangueCore {
                     )
                     .map_err(|rollback_error| rollback_error.to_string())
                     .and_then(|_| {
-                        crate::editor_api::flush_snapshot_to_disk_result(
+                        crate::editor_api::persist_snapshot_bytes_to_disk_result(
                             &self.data_dir,
-                            &self.editor_bridge,
                             &tab.doc_id,
+                            &rollback_snapshot,
                         )
                     });
                 if let Err(rollback_error) = rollback_result {
@@ -6100,12 +7372,30 @@ impl ZulangueCore {
             });
         }
         if run.provider_error_type.as_deref() == Some("local_persistence") {
-            self.notebook_capture_store
+            // Capture completeness and committed lane durability are separate
+            // domains. A failure in one provider lane must not strand Final
+            // facts that already reached the SQLite ledger: project and ACK
+            // that known prefix first, then retain Failed as the run-quality
+            // signal for the missing suffix.
+            let prefix_projection = self.sync_bilingual_capture_into_realtime_tab(&run, false);
+            let failed_state = self
+                .notebook_capture_store
                 .set_projection_state(run_id, ProjectionState::Pending, ProjectionState::Failed)
-                .map_err(store_error)?;
+                .map_err(store_error);
+            if let Err(error) = prefix_projection {
+                return Err(match failed_state {
+                    Ok(_) => error,
+                    Err(state_error) => CoreError::InternalError {
+                        message: format!(
+                            "project committed Final prefix failed ({error}); mark incomplete projection failed also failed ({state_error})"
+                        ),
+                    },
+                });
+            }
+            failed_state?;
             return Err(CoreError::InternalError {
                 message:
-                    "realtime utterance persistence failed; local encrypted audio was preserved"
+                    "realtime utterance persistence failed; committed Final lanes remain editable and local encrypted audio was preserved"
                         .to_string(),
             });
         }
@@ -6117,11 +7407,7 @@ impl ZulangueCore {
             )
             .map_err(store_error)?;
         let projection_result = (|| -> Result<(), CoreError> {
-            let utterances = self
-                .notebook_capture_store
-                .list_utterances(&run.session_id)
-                .map_err(store_error)?;
-            self.sync_bilingual_capture_into_realtime_tab(&run, &utterances, true)?;
+            self.sync_bilingual_capture_into_realtime_tab(&run, true)?;
             Ok(())
         })();
         match projection_result {
@@ -6155,32 +7441,94 @@ impl ZulangueCore {
         }
     }
 
+    fn rebuild_finalized_capture_search_index_through(
+        &self,
+        session_id: &str,
+        utterances: &[RealtimeUtterance],
+        applied_revision: u64,
+    ) -> Result<(), CoreError> {
+        // SearchStore has one replace-in-full row per session. The post-stop
+        // transcript is the later authority, so its Ready check and this
+        // realtime replacement must serialize inside one SQLite write
+        // transaction. A read here followed by `index_session` is a TOCTOU:
+        // async can publish Ready between them and leave Ready + stale
+        // realtime content.
+        self.search_store
+            .replace_session_from_realtime_unless_async_ready(
+                session_id,
+                &finalized_capture_search_content_through(utterances, applied_revision),
+            )
+            .map(|_| ())
+            .map_err(|error| CoreError::InternalError {
+                message: format!("rebuild finalized capture search index: {error}"),
+            })
+    }
+
     fn sync_bilingual_capture_into_realtime_tab(
         &self,
         run: &NotebookCaptureRun,
-        utterances: &[RealtimeUtterance],
         complete_projection: bool,
     ) -> Result<(), CoreError> {
-        if utterances.is_empty() {
-            self.rebuild_capture_search_index(&run.session_id, utterances)?;
+        // Snapshot selection, planning, Loro mutation, exact fsync, and SQLite
+        // ACK are serialized as one projection critical section. Loading R
+        // before this guard would let a concurrent R+1 commit first and then
+        // allow stale R to overwrite its document bytes despite monotonic ACK.
+        let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
+        self.ensure_capture_projection_not_purging(&run.session_id)?;
+        let projection = self
+            .notebook_capture_store
+            .load_realtime_loro_projection(&run.session_id)
+            .map_err(store_error)?;
+        let utterances = projection.machine_utterances.as_slice();
+        if projection.applied_revision >= projection.desired_revision {
+            let callback = self
+                .active_notebook_capture
+                .lock()
+                .unwrap()
+                .as_ref()
+                .filter(|active| active.session_id == run.session_id)
+                .map(|active| active.callback.clone());
+            if let Some(callback) = callback.filter(|callback| {
+                !callback.is_closed()
+                    && callback.last_enqueued_applied_revision() < projection.applied_revision
+            }) {
+                callback.send(event_from_run(run.clone(), Vec::new(), false));
+                if callback.last_enqueued_applied_revision() < projection.applied_revision {
+                    return Err(CoreError::InternalError {
+                        message: format!(
+                            "durable realtime projection {} callback notification remains retryable",
+                            projection.applied_revision
+                        ),
+                    });
+                }
+            }
             if complete_projection {
+                let search_result = (|| -> Result<(), CoreError> {
+                    let visible = self
+                        .notebook_capture_store
+                        .list_utterances(&run.session_id)
+                        .map_err(store_error)?;
+                    self.rebuild_finalized_capture_search_index_through(
+                        &run.session_id,
+                        &visible,
+                        projection.applied_revision,
+                    )
+                })();
+                if let Err(error) = search_result {
+                    tracing::warn!(
+                        session_id = %run.session_id,
+                        applied_revision = projection.applied_revision,
+                        error = %error,
+                        "durable realtime projection is editable; disposable search repair remains retryable"
+                    );
+                }
                 self.notebook_capture_store
                     .complete_projection_unless_purging(&run.id)
                     .map_err(store_error)?;
             }
             return Ok(());
         }
-        use vt_store::{BuiltinNotebookTab, EditOp};
-        let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
-
-        self.notebook_store
-            .ensure_session_projection(
-                &run.notebook_id,
-                BuiltinNotebookTab::RealtimeTranscript,
-                &run.session_id,
-                None,
-            )
-            .map_err(store_error)?;
+        use vt_store::BuiltinNotebookTab;
         let tab = self
             .notebook_store
             .list_tabs(&run.notebook_id)
@@ -6190,6 +7538,35 @@ impl ZulangueCore {
             .ok_or_else(|| CoreError::NotFound {
                 message: format!("Realtime Transcript tab for notebook {}", run.notebook_id),
             })?;
+        let projection_count = self
+            .notebook_store
+            .list_session_projections(&tab.id)
+            .map_err(store_error)?
+            .into_iter()
+            .filter(|projection| {
+                projection.notebook_id == run.notebook_id && projection.session_id == run.session_id
+            })
+            .count();
+        match projection_count {
+            1 => {}
+            0 => {
+                return Err(CoreError::NotFound {
+                    message: format!(
+                        "Realtime Transcript projection for capture session {} in notebook {}",
+                        run.session_id, run.notebook_id
+                    ),
+                });
+            }
+            count => {
+                return Err(CoreError::ValidationFailed {
+                    message: format!(
+                        "capture session {} has {count} active Realtime Transcript projections",
+                        run.session_id
+                    ),
+                });
+            }
+        }
+
         crate::editor_api::open_editor_session_strict(
             &self.data_dir,
             &self.editor_bridge,
@@ -6199,6 +7576,7 @@ impl ZulangueCore {
             .editor_bridge
             .export_snapshot(&tab.doc_id)
             .map_err(store_error)?;
+        let mut loro_snapshot_durable = false;
         let apply_result = (|| -> Result<(), CoreError> {
             let delta = self
                 .editor_bridge
@@ -6210,83 +7588,131 @@ impl ZulangueCore {
                 &run.session_id,
                 &delta,
             )?;
-            if let Some(range) = existing_range {
-                sync_capture_section_incrementally(
-                    &self.editor_bridge,
-                    &tab.doc_id,
-                    &run.session_id,
-                    range,
-                    utterances,
-                )?;
-                crate::editor_api::flush_snapshot_to_disk_result(
-                    &self.data_dir,
-                    &self.editor_bridge,
-                    &tab.doc_id,
-                )
-                .map_err(|message| CoreError::InternalError { message })?;
-                if complete_projection {
-                    self.rebuild_capture_search_index(&run.session_id, utterances)?;
-                    self.notebook_capture_store
-                        .complete_projection_unless_purging(&run.id)
-                        .map_err(store_error)?;
-                }
-                return Ok(());
-            }
-            let current_len = self
-                .editor_bridge
-                .get_content(&tab.doc_id)
-                .map_err(store_error)?
-                .chars()
-                .count();
-            let insert_pos = current_len;
-            self.editor_bridge
-                .clear_capture_owned_ranges_for_session(&tab.doc_id, &run.session_id)
-                .map_err(store_error)?;
-            let rendered =
-                render_bilingual_capture_section(&run.session_id, utterances, insert_pos > 0);
-            let rendered_len = rendered.text.chars().count();
-            self.editor_bridge
-                .apply(
-                    &tab.doc_id,
-                    EditOp::Insert {
-                        pos: insert_pos,
-                        text: rendered.text,
-                    },
-                )
-                .map_err(store_error)?;
-            for mark in rendered.marks {
-                self.editor_bridge
-                    .apply(
+            let (plan, should_refresh_anchor) = if let Some(range) = existing_range {
+                (
+                    plan_capture_section_incrementally(
+                        &self.editor_bridge,
                         &tab.doc_id,
-                        EditOp::Mark {
-                            pos: insert_pos + mark.pos,
-                            len: mark.len,
-                            key: mark.key,
-                            value_json: mark.value_json,
+                        &run.session_id,
+                        range,
+                        utterances,
+                    )?,
+                    true,
+                )
+            } else {
+                let current_len = self
+                    .editor_bridge
+                    .get_content(&tab.doc_id)
+                    .map_err(store_error)?
+                    .chars()
+                    .count();
+                let rendered =
+                    render_bilingual_capture_section(&run.session_id, utterances, current_len > 0);
+                if rendered.text.is_empty() {
+                    (
+                        CaptureProjectionPlan {
+                            operations: Vec::new(),
+                            section_start: current_len,
+                            section_end: current_len,
                         },
+                        false,
                     )
+                } else {
+                    let rendered_len = rendered.text.chars().count();
+                    (
+                        CaptureProjectionPlan {
+                            operations: rendered_capture_edit_ops(current_len, rendered),
+                            section_start: current_len,
+                            section_end: current_len + rendered_len,
+                        },
+                        true,
+                    )
+                }
+            };
+
+            // Text, every ownership mark, and the Final-fact receipt share one
+            // Loro batch. Readers can observe only the before or after state;
+            // an empty operation list is the crash-replay path for an already
+            // materialized receipt.
+            let batch = self
+                .editor_bridge
+                .apply_projection_batch(
+                    &tab.doc_id,
+                    plan.operations,
+                    realtime_projection_receipt(&projection),
+                )
+                .map_err(store_error)?;
+            crate::editor_api::persist_snapshot_bytes_to_disk_result(
+                &self.data_dir,
+                &tab.doc_id,
+                &batch.snapshot,
+            )
+            .map_err(|message| CoreError::InternalError { message })?;
+            loro_snapshot_durable = true;
+
+            // The receipt-bearing snapshot is now exact and durable. Advance
+            // the SQLite watermark immediately so this Final lane becomes
+            // editable before any disposable index or acceleration metadata.
+            let callback = self
+                .active_notebook_capture
+                .lock()
+                .unwrap()
+                .as_ref()
+                .filter(|active| active.session_id == run.session_id)
+                .map(|active| active.callback.clone());
+            if let Some(callback) = callback {
+                callback.commit_projection_ack(&run.session_id, || {
+                    self.notebook_capture_store
+                        .ack_realtime_loro_projection(&run.session_id, projection.desired_revision)
+                        .map_err(store_error)
+                })?;
+            } else {
+                self.notebook_capture_store
+                    .ack_realtime_loro_projection(&run.session_id, projection.desired_revision)
                     .map_err(store_error)?;
             }
-            self.editor_bridge
-                .set_capture_owned_range(
+
+            // Anchors are CRDT-relative acceleration metadata. Rich-text
+            // session/lane marks remain the recovery authority, so failure to
+            // refresh this post-batch cache must not undo the already durable
+            // receipt-bearing snapshot.
+            if should_refresh_anchor {
+                if let Err(error) = self.editor_bridge.set_capture_owned_range(
                     &tab.doc_id,
                     &capture_section_owner_key(&run.session_id),
                     &run.session_id,
-                    insert_pos,
-                    insert_pos + rendered_len,
+                    plan.section_start,
+                    plan.section_end,
+                ) {
+                    tracing::warn!(
+                        session_id = %run.session_id,
+                        doc_id = %tab.doc_id,
+                        error = %error,
+                        "capture projection is durable; section anchor refresh remains retryable"
+                    );
+                }
+            }
+
+            let search_result = (|| -> Result<(), CoreError> {
+                let visible = self
+                    .notebook_capture_store
+                    .list_utterances(&run.session_id)
+                    .map_err(store_error)?;
+                self.rebuild_finalized_capture_search_index_through(
+                    &run.session_id,
+                    &visible,
+                    projection.desired_revision,
                 )
-                .map_err(store_error)?;
-            crate::editor_api::flush_snapshot_to_disk_result(
-                &self.data_dir,
-                &self.editor_bridge,
-                &tab.doc_id,
-            )
-            .map_err(|message| CoreError::InternalError { message })?;
-            // This is the final projection commit. Its transaction checks the
-            // durable purge tombstone and performs Projecting -> Ready as one
-            // CAS. Any rejection bubbles into the Loro rollback below.
+            })();
+            if let Err(error) = search_result {
+                tracing::warn!(
+                    session_id = %run.session_id,
+                    applied_revision = projection.desired_revision,
+                    error = %error,
+                    "durable realtime projection is editable; disposable search rebuild remains retryable"
+                );
+            }
             if complete_projection {
-                self.rebuild_capture_search_index(&run.session_id, utterances)?;
                 self.notebook_capture_store
                     .complete_projection_unless_purging(&run.id)
                     .map_err(store_error)?;
@@ -6294,6 +7720,13 @@ impl ZulangueCore {
             Ok(())
         })();
         if let Err(error) = apply_result {
+            if loro_snapshot_durable {
+                // The SQLite applied watermark and Ready are downstream
+                // metadata. Once the exact receipt-bearing bytes have been
+                // fsynced, retries must move those states forward instead of
+                // rolling durable Loro backwards.
+                return Err(error);
+            }
             let rollback_result = self
                 .editor_bridge
                 .replace_document_with_styles(
@@ -6303,10 +7736,10 @@ impl ZulangueCore {
                 )
                 .map_err(|rollback_error| rollback_error.to_string())
                 .and_then(|_| {
-                    crate::editor_api::flush_snapshot_to_disk_result(
+                    crate::editor_api::persist_snapshot_bytes_to_disk_result(
                         &self.data_dir,
-                        &self.editor_bridge,
                         &tab.doc_id,
+                        &rollback_snapshot,
                     )
                 });
             if let Err(rollback_error) = rollback_result {
@@ -6359,12 +7792,196 @@ struct CaptureRenderedMark {
     value_json: String,
 }
 
+#[derive(Clone, Copy)]
+enum FinalizedCaptureLaneKind {
+    Source,
+    Translation,
+}
+
+struct FinalizedCaptureLane<'a> {
+    utterance: &'a RealtimeUtterance,
+    /// Stable identity shared by marks, selectors, receipts, ordering, and
+    /// display labels. Provider casing and BCP-47 region/script suffixes must
+    /// never create a second logical lane.
+    language: String,
+    text: &'a str,
+    revision: u64,
+    kind: FinalizedCaptureLaneKind,
+}
+
+struct CaptureProjectionPlan {
+    operations: Vec<vt_store::EditOp>,
+    section_start: usize,
+    section_end: usize,
+}
+
+fn capture_lane_id(language: &str) -> String {
+    normalize_language(language)
+}
+
 fn capture_section_owner_key(session_id: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"zulangue:capture-section:v1\0");
     hasher.update((session_id.len() as u64).to_le_bytes());
     hasher.update(session_id.as_bytes());
     format!("section-{}", hex::encode(hasher.finalize()))
+}
+
+/// Finds one capture lane using the same canonical-primary identity written by
+/// new projections. Older snapshots may carry marks such as `EN-US` or
+/// `zh-Hans`; treating those as distinct would duplicate the lane on replay or
+/// make it impossible to edit after the SQLite language migration.
+fn find_unique_capture_lane_range(
+    delta_json: &str,
+    session_id: &str,
+    utterance_id: &str,
+    lane_language: &str,
+) -> Result<Option<crate::editor_api::TextRange>, CoreError> {
+    let expected_lane_id = capture_lane_id(lane_language);
+    let value: serde_json::Value =
+        serde_json::from_str(delta_json).map_err(|error| CoreError::ValidationFailed {
+            message: format!("invalid editor Delta JSON: {error}"),
+        })?;
+    let segments = value
+        .as_array()
+        .ok_or_else(|| CoreError::ValidationFailed {
+            message: "editor Delta must be an array".to_string(),
+        })?;
+    let mut cursor = 0_usize;
+    let mut ranges: Vec<crate::editor_api::TextRange> = Vec::new();
+    for segment in segments {
+        let text = segment
+            .get("insert")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| CoreError::ValidationFailed {
+                message: "editor Delta text insert must be a string".to_string(),
+            })?;
+        let len = text.chars().count();
+        let attributes = match segment.get("attributes") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_object()
+                    .ok_or_else(|| CoreError::ValidationFailed {
+                        message: "editor Delta attributes must be an object".to_string(),
+                    })?,
+            ),
+        };
+        let string_attribute = |key: &str| -> Result<Option<&str>, CoreError> {
+            attributes
+                .and_then(|attrs| attrs.get(key))
+                .map(|value| {
+                    value.as_str().ok_or_else(|| CoreError::ValidationFailed {
+                        message: format!("editor ownership attribute {key} must be a string"),
+                    })
+                })
+                .transpose()
+        };
+        let matches = string_attribute("session_id")? == Some(session_id)
+            && string_attribute("utterance_id")? == Some(utterance_id)
+            && string_attribute("lane_language")?
+                .is_some_and(|actual| capture_lane_id(actual) == expected_lane_id);
+        if matches && len > 0 {
+            if let Some(previous) = ranges
+                .last_mut()
+                .filter(|range| range.pos + range.len == cursor)
+            {
+                previous.len += len;
+            } else {
+                ranges.push(crate::editor_api::TextRange { pos: cursor, len });
+            }
+        }
+        cursor = cursor.saturating_add(len);
+    }
+    match ranges.len() {
+        0 => Ok(None),
+        1 => Ok(ranges.pop()),
+        count => Err(CoreError::ValidationFailed {
+            message: format!(
+                "canonical capture lane {utterance_id}/{expected_lane_id} is split across {count} disjoint ranges"
+            ),
+        }),
+    }
+}
+
+/// Finds legacy machine-owned lane fragments that are not backed by a v27
+/// Final lane. v26 rendered `translated_text` whenever the aggregate source
+/// row was Complete, even when the translation variant itself was Partial.
+/// Those bytes are safe to remove only before this session has any v27
+/// projection receipt; user-owned or unowned text is always preserved.
+fn legacy_machine_lane_ranges_outside_finalized(
+    delta_json: &str,
+    session_id: &str,
+    finalized_keys: &std::collections::BTreeSet<(String, String)>,
+) -> Result<Vec<crate::editor_api::TextRange>, CoreError> {
+    let value: serde_json::Value =
+        serde_json::from_str(delta_json).map_err(|error| CoreError::ValidationFailed {
+            message: format!("invalid editor Delta JSON: {error}"),
+        })?;
+    let segments = value
+        .as_array()
+        .ok_or_else(|| CoreError::ValidationFailed {
+            message: "editor Delta must be an array".to_string(),
+        })?;
+    let mut cursor = 0_usize;
+    let mut ranges: Vec<crate::editor_api::TextRange> = Vec::new();
+    for segment in segments {
+        let text = segment
+            .get("insert")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| CoreError::ValidationFailed {
+                message: "editor Delta text insert must be a string".to_string(),
+            })?;
+        let len = text.chars().count();
+        let attributes = match segment.get("attributes") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_object()
+                    .ok_or_else(|| CoreError::ValidationFailed {
+                        message: "editor Delta attributes must be an object".to_string(),
+                    })?,
+            ),
+        };
+        let string_attribute = |key: &str| -> Result<Option<&str>, CoreError> {
+            attributes
+                .and_then(|attrs| attrs.get(key))
+                .map(|value| {
+                    value.as_str().ok_or_else(|| CoreError::ValidationFailed {
+                        message: format!("editor ownership attribute {key} must be a string"),
+                    })
+                })
+                .transpose()
+        };
+        let owned_by_target_session =
+            string_attribute("session_id")? == Some(session_id) && len > 0;
+        let stale_machine_lane = if owned_by_target_session {
+            match (
+                string_attribute("utterance_id")?,
+                string_attribute("lane_language")?,
+                string_attribute("content_owner")?,
+            ) {
+                (Some(utterance_id), Some(language), Some("machine")) => {
+                    !finalized_keys.contains(&(utterance_id.to_string(), capture_lane_id(language)))
+                }
+                _ => false,
+            }
+        } else {
+            false
+        };
+        if stale_machine_lane {
+            if let Some(previous) = ranges
+                .last_mut()
+                .filter(|range| range.pos + range.len == cursor)
+            {
+                previous.len += len;
+            } else {
+                ranges.push(crate::editor_api::TextRange { pos: cursor, len });
+            }
+        }
+        cursor = cursor.saturating_add(len);
+    }
+    Ok(ranges)
 }
 
 /// Prefers the durable CRDT-relative section boundary and validates that all
@@ -6418,7 +8035,7 @@ fn render_replacement_lane(
     mutation: &NotebookProjectionMutation,
 ) -> CaptureRenderedSection {
     let mut prospective = current.clone();
-    prospective.revision = mutation.expected_revision.saturating_add(1);
+    let canonical_lane_id = capture_lane_id(&mutation.lane_language);
     let text = match mutation.lane {
         UtteranceLane::Source => {
             prospective.source_text = mutation.target_text.clone();
@@ -6430,40 +8047,44 @@ fn render_replacement_lane(
             if prospective.alignment == UtteranceAlignment::OutsideLanguagePair {
                 format!(
                     "【超出当前语言对】{}{}: {}\n",
-                    time, prospective.source_language, prospective.source_text
+                    time, canonical_lane_id, prospective.source_text
                 )
             } else {
                 format!(
                     "{}{}: {}\n",
-                    time, prospective.source_language, prospective.source_text
+                    time, canonical_lane_id, prospective.source_text
                 )
             }
         }
-        UtteranceLane::Translated => {
-            prospective.translated_text = Some(mutation.target_text.clone());
-            format!(
-                "{}: {}\n",
-                prospective
-                    .translated_language
-                    .as_deref()
-                    .unwrap_or_default(),
-                mutation.target_text
-            )
-        }
+        UtteranceLane::Translated => format!("{canonical_lane_id}: {}\n", mutation.target_text),
     };
     let len = text.chars().count();
     let mut marks = Vec::new();
-    let language = match mutation.lane {
-        UtteranceLane::Source => prospective.source_language.as_str(),
-        UtteranceLane::Translated => prospective
-            .translated_language
-            .as_deref()
-            .unwrap_or_default(),
-    };
     let timestamp = (mutation.lane == UtteranceLane::Source)
         .then_some(prospective.source_start_ms)
         .flatten();
-    push_lane_marks(&mut marks, 0, len, &prospective, language, timestamp);
+    let lane_revision = match mutation.lane {
+        UtteranceLane::Source => prospective.source_projection_revision,
+        UtteranceLane::Translated => prospective
+            .variants
+            .iter()
+            .find(|variant| {
+                capture_lane_id(&variant.language) == canonical_lane_id
+                    && variant.role == UtteranceVariantRole::Translation
+                    && variant.state == UtteranceVariantState::Ready
+                    && variant.completion == Some(UtteranceCompletion::Complete)
+            })
+            .map_or(0, |variant| variant.projection_revision),
+    };
+    push_lane_marks(
+        &mut marks,
+        0,
+        len,
+        &prospective,
+        &canonical_lane_id,
+        lane_revision,
+        timestamp,
+    );
     CaptureRenderedSection { text, marks }
 }
 
@@ -6472,138 +8093,291 @@ fn render_bilingual_capture_section(
     utterances: &[RealtimeUtterance],
     leading_separator: bool,
 ) -> CaptureRenderedSection {
-    let mut text = String::new();
-    let mut marks = Vec::new();
+    let lanes = finalized_capture_lanes(utterances);
+    if lanes.is_empty() {
+        return CaptureRenderedSection {
+            text: String::new(),
+            marks: Vec::new(),
+        };
+    }
+
+    let mut rendered = CaptureRenderedSection {
+        text: String::new(),
+        marks: Vec::new(),
+    };
     let section_start = 0;
     if leading_separator {
-        text.push_str("\n\n");
+        rendered.text.push_str("\n\n");
     }
-    text.push_str(&format!("## {session_id}\n"));
+    rendered.text.push_str(&format!("## {session_id}\n"));
 
-    for utterance in utterances {
-        if !text.ends_with('\n') {
-            text.push('\n');
+    for (index, lane) in lanes.iter().enumerate() {
+        append_rendered_capture_section(&mut rendered, render_finalized_capture_lane(lane));
+        if lanes
+            .get(index + 1)
+            .is_none_or(|next| next.utterance.sequence != lane.utterance.sequence)
+        {
+            rendered.text.push('\n');
         }
-        let outside_pair = utterance.alignment == UtteranceAlignment::OutsideLanguagePair;
-        let source_start = text.chars().count();
-        let time = utterance
-            .source_start_ms
-            .map(format_capture_timestamp)
-            .map(|value| format!("[{value}] "))
-            .unwrap_or_default();
-        if outside_pair {
-            text.push_str(&format!(
-                "【超出当前语言对】{}{}: {}\n",
-                time, utterance.source_language, utterance.source_text
-            ));
-        } else {
-            text.push_str(&format!(
-                "{}{}: {}\n",
-                time, utterance.source_language, utterance.source_text
-            ));
-        }
-        let source_len = text.chars().count() - source_start;
-        push_lane_marks(
-            &mut marks,
-            source_start,
-            source_len,
-            utterance,
-            &utterance.source_language,
-            utterance.source_start_ms,
-        );
-
-        if let (Some(language), Some(translated)) = (
-            utterance.translated_language.as_deref(),
-            utterance.translated_text.as_deref(),
-        ) {
-            let translated_start = text.chars().count();
-            text.push_str(&format!("{language}: {translated}\n"));
-            let translated_len = text.chars().count() - translated_start;
-            // Deliberately None: Soniox translation tokens have no source
-            // audio timestamp and must never inherit one.
-            push_lane_marks(
-                &mut marks,
-                translated_start,
-                translated_len,
-                utterance,
-                language,
-                None,
-            );
-        }
-        text.push('\n');
     }
 
-    let section_len = text.chars().count() - section_start;
-    marks.push(CaptureRenderedMark {
+    let section_len = rendered.text.chars().count() - section_start;
+    rendered.marks.push(CaptureRenderedMark {
         pos: section_start,
         len: section_len,
         key: "session_id".to_string(),
         value_json: serde_json::to_string(session_id).unwrap_or_else(|_| "\"\"".to_string()),
     });
-    CaptureRenderedSection { text, marks }
+    rendered
 }
 
-fn render_bilingual_capture_utterance(utterance: &RealtimeUtterance) -> CaptureRenderedSection {
-    let mut source = render_capture_lane(utterance, UtteranceLane::Source);
-    if let (Some(_), Some(_)) = (
-        utterance.translated_language.as_deref(),
-        utterance.translated_text.as_deref(),
-    ) {
-        let translated = render_capture_lane(utterance, UtteranceLane::Translated);
-        let offset = source.text.chars().count();
-        source.text.push_str(&translated.text);
-        source
-            .marks
-            .extend(translated.marks.into_iter().map(|mut mark| {
-                mark.pos += offset;
-                mark
-            }));
-    }
-    source.text.push('\n');
-    source
-}
-
-fn render_capture_lane(
-    utterance: &RealtimeUtterance,
-    lane: UtteranceLane,
-) -> CaptureRenderedSection {
-    let (text, language, timestamp) = match lane {
-        UtteranceLane::Source => {
-            let time = utterance
-                .source_start_ms
-                .map(format_capture_timestamp)
-                .map(|value| format!("[{value}] "))
-                .unwrap_or_default();
-            let text = if utterance.alignment == UtteranceAlignment::OutsideLanguagePair {
-                format!(
-                    "【超出当前语言对】{}{}: {}\n",
-                    time, utterance.source_language, utterance.source_text
-                )
-            } else {
-                format!(
-                    "{}{}: {}\n",
-                    time, utterance.source_language, utterance.source_text
-                )
-            };
-            (
-                text,
-                utterance.source_language.as_str(),
-                utterance.source_start_ms,
-            )
+fn finalized_capture_lanes(utterances: &[RealtimeUtterance]) -> Vec<FinalizedCaptureLane<'_>> {
+    let mut lanes = Vec::new();
+    for utterance in utterances {
+        if utterance.source_lane_is_complete() {
+            lanes.push(FinalizedCaptureLane {
+                utterance,
+                language: capture_lane_id(&utterance.source_language),
+                text: &utterance.source_text,
+                revision: utterance.source_projection_revision,
+                kind: FinalizedCaptureLaneKind::Source,
+            });
         }
-        UtteranceLane::Translated => (
-            format!(
-                "{}: {}\n",
-                utterance.translated_language.as_deref().unwrap_or_default(),
-                utterance.translated_text.as_deref().unwrap_or_default()
-            ),
-            utterance.translated_language.as_deref().unwrap_or_default(),
-            None,
+        for variant in finalized_translation_variants(utterance) {
+            lanes.push(FinalizedCaptureLane {
+                utterance,
+                language: capture_lane_id(&variant.language),
+                text: variant.text.as_deref().unwrap_or_default(),
+                revision: variant.projection_revision,
+                kind: FinalizedCaptureLaneKind::Translation,
+            });
+        }
+    }
+    lanes.sort_by(|left, right| {
+        let left_rank = matches!(left.kind, FinalizedCaptureLaneKind::Translation) as u8;
+        let right_rank = matches!(right.kind, FinalizedCaptureLaneKind::Translation) as u8;
+        left.utterance
+            .sequence
+            .cmp(&right.utterance.sequence)
+            .then_with(|| left_rank.cmp(&right_rank))
+            .then_with(|| left.language.cmp(&right.language))
+            .then_with(|| left.utterance.id.cmp(&right.utterance.id))
+    });
+    lanes
+}
+
+fn render_finalized_capture_lane(lane: &FinalizedCaptureLane<'_>) -> CaptureRenderedSection {
+    match lane.kind {
+        FinalizedCaptureLaneKind::Source => {
+            render_capture_source_lane(lane.utterance, lane.revision)
+        }
+        FinalizedCaptureLaneKind::Translation => render_capture_translation_lane(
+            lane.utterance,
+            &lane.language,
+            lane.text,
+            lane.revision,
         ),
+    }
+}
+
+fn finalized_translation_variants(
+    utterance: &RealtimeUtterance,
+) -> impl Iterator<Item = &RealtimeUtteranceVariant> {
+    utterance.variants.iter().filter(|variant| {
+        variant.role == UtteranceVariantRole::Translation
+            && variant.state == UtteranceVariantState::Ready
+            && variant.completion == Some(UtteranceCompletion::Complete)
+            && variant.text.is_some()
+    })
+}
+
+fn realtime_projection_receipt(
+    projection: &RealtimeLoroProjectionSnapshot,
+) -> vt_store::editor_bridge::ProjectionReceipt {
+    fn field(hasher: &mut Sha256, value: &[u8]) {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value);
+    }
+    fn optional_u64(hasher: &mut Sha256, value: Option<u64>) {
+        match value {
+            Some(value) => {
+                hasher.update([1]);
+                hasher.update(value.to_be_bytes());
+            }
+            None => hasher.update([0]),
+        }
+    }
+
+    let mut hasher = Sha256::new();
+    field(&mut hasher, b"zulangue:realtime-loro-projection:v1");
+    field(&mut hasher, projection.session_id.as_bytes());
+    hasher.update(projection.desired_revision.to_be_bytes());
+    for lane in finalized_capture_lanes(&projection.machine_utterances) {
+        field(
+            &mut hasher,
+            match lane.kind {
+                FinalizedCaptureLaneKind::Source => b"source",
+                FinalizedCaptureLaneKind::Translation => b"translation",
+            },
+        );
+        field(&mut hasher, lane.utterance.id.as_bytes());
+        hasher.update(lane.utterance.sequence.to_be_bytes());
+        field(&mut hasher, lane.language.as_bytes());
+        field(&mut hasher, lane.text.as_bytes());
+        hasher.update(lane.revision.to_be_bytes());
+        if matches!(lane.kind, FinalizedCaptureLaneKind::Source) {
+            optional_u64(&mut hasher, lane.utterance.source_start_ms);
+            optional_u64(&mut hasher, lane.utterance.source_end_ms);
+            field(
+                &mut hasher,
+                match lane.utterance.alignment {
+                    UtteranceAlignment::Paired => b"paired",
+                    UtteranceAlignment::SourceOnly => b"source_only",
+                    UtteranceAlignment::TranslationPending => b"translation_pending",
+                    UtteranceAlignment::OutsideLanguagePair => b"outside_language_pair",
+                },
+            );
+        }
+    }
+    vt_store::editor_bridge::ProjectionReceipt {
+        session_id: projection.session_id.clone(),
+        fact_revision: projection.desired_revision,
+        digest: hex::encode(hasher.finalize()),
+    }
+}
+
+fn notebook_projection_mutation_receipt(
+    mutation: &NotebookProjectionMutation,
+) -> vt_store::editor_bridge::UserMutationReceipt {
+    fn field(hasher: &mut Sha256, value: &[u8]) {
+        hasher.update((value.len() as u64).to_be_bytes());
+        hasher.update(value);
+    }
+
+    let mut hasher = Sha256::new();
+    field(&mut hasher, b"zulangue:notebook-capture-lane-mutation:v2");
+    field(&mut hasher, mutation.id.as_bytes());
+    field(&mut hasher, mutation.session_id.as_bytes());
+    field(&mut hasher, mutation.utterance_id.as_bytes());
+    field(
+        &mut hasher,
+        match mutation.lane {
+            UtteranceLane::Source => b"source",
+            UtteranceLane::Translated => b"translation",
+        },
+    );
+    field(
+        &mut hasher,
+        capture_lane_id(&mutation.lane_language).as_bytes(),
+    );
+    hasher.update(mutation.expected_revision.to_be_bytes());
+    field(&mut hasher, mutation.target_text.as_bytes());
+    vt_store::editor_bridge::UserMutationReceipt {
+        // v2 binds `expected_revision` to the lane-local visible edit
+        // revision. A pre-v27 receipt remains isolated in the v1 namespace,
+        // so a migrated pending Replace may be reapplied idempotently before
+        // the new SQLite CAS commits.
+        namespace: "notebook_capture_lane_edit_v2".to_string(),
+        mutation_id: mutation.id.clone(),
+        digest: hex::encode(hasher.finalize()),
+    }
+}
+
+#[cfg(test)]
+fn finalized_capture_search_content(utterances: &[RealtimeUtterance]) -> String {
+    finalized_capture_search_content_through(utterances, u64::MAX)
+}
+
+fn finalized_capture_search_content_through(
+    utterances: &[RealtimeUtterance],
+    applied_revision: u64,
+) -> String {
+    let mut content = String::new();
+    for lane in finalized_capture_lanes(utterances)
+        .into_iter()
+        .filter(|lane| lane.revision > 0 && lane.revision <= applied_revision)
+    {
+        if lane.text.is_empty() {
+            continue;
+        }
+        if !content.is_empty() {
+            content.push(' ');
+        }
+        content.push('[');
+        content.push_str(&lane.language);
+        content.push_str("] ");
+        content.push_str(lane.text);
+    }
+    content
+}
+
+fn append_rendered_capture_section(
+    destination: &mut CaptureRenderedSection,
+    rendered: CaptureRenderedSection,
+) {
+    let offset = destination.text.chars().count();
+    destination.text.push_str(&rendered.text);
+    destination
+        .marks
+        .extend(rendered.marks.into_iter().map(|mut mark| {
+            mark.pos += offset;
+            mark
+        }));
+}
+
+fn render_capture_source_lane(
+    utterance: &RealtimeUtterance,
+    lane_revision: u64,
+) -> CaptureRenderedSection {
+    let language = capture_lane_id(&utterance.source_language);
+    let time = utterance
+        .source_start_ms
+        .map(format_capture_timestamp)
+        .map(|value| format!("[{value}] "))
+        .unwrap_or_default();
+    let text = if utterance.alignment == UtteranceAlignment::OutsideLanguagePair {
+        format!(
+            "【超出当前语言对】{}{}: {}\n",
+            time, language, utterance.source_text
+        )
+    } else {
+        format!("{}{}: {}\n", time, language, utterance.source_text)
     };
     let len = text.chars().count();
     let mut marks = Vec::new();
-    push_lane_marks(&mut marks, 0, len, utterance, language, timestamp);
+    push_lane_marks(
+        &mut marks,
+        0,
+        len,
+        utterance,
+        &language,
+        lane_revision,
+        utterance.source_start_ms,
+    );
+    CaptureRenderedSection { text, marks }
+}
+
+fn render_capture_translation_lane(
+    utterance: &RealtimeUtterance,
+    language: &str,
+    translated_text: &str,
+    lane_revision: u64,
+) -> CaptureRenderedSection {
+    let language = capture_lane_id(language);
+    let text = format!("{language}: {translated_text}\n");
+    let len = text.chars().count();
+    let mut marks = Vec::new();
+    // Deliberately no timestamp: translation tokens have no source audio
+    // timestamp and must never inherit one.
+    push_lane_marks(
+        &mut marks,
+        0,
+        len,
+        utterance,
+        &language,
+        lane_revision,
+        None,
+    );
     CaptureRenderedSection { text, marks }
 }
 
@@ -6613,8 +8387,10 @@ fn push_lane_marks(
     len: usize,
     utterance: &RealtimeUtterance,
     lane_language: &str,
+    lane_revision: u64,
     source_timestamp_ms: Option<u64>,
 ) {
+    let lane_language = capture_lane_id(lane_language);
     for (key, value_json) in [
         (
             "session_id",
@@ -6626,9 +8402,9 @@ fn push_lane_marks(
         ),
         (
             "lane_language",
-            serde_json::to_string(lane_language).unwrap_or_else(|_| "\"\"".to_string()),
+            serde_json::to_string(&lane_language).unwrap_or_else(|_| "\"\"".to_string()),
         ),
-        ("utterance_revision", utterance.revision.to_string()),
+        ("utterance_revision", lane_revision.to_string()),
         ("content_owner", "\"machine\"".to_string()),
     ] {
         marks.push(CaptureRenderedMark {
@@ -6648,119 +8424,275 @@ fn push_lane_marks(
     }
 }
 
+fn plan_capture_section_incrementally(
+    bridge: &vt_store::EditorBridge,
+    document_id: &str,
+    session_id: &str,
+    section: crate::editor_api::TextRange,
+    utterances: &[RealtimeUtterance],
+) -> Result<CaptureProjectionPlan, CoreError> {
+    let delta = bridge.get_delta(document_id).map_err(store_error)?;
+    let lanes = finalized_capture_lanes(utterances);
+    let finalized_keys = lanes
+        .iter()
+        .map(|lane| (lane.utterance.id.clone(), lane.language.clone()))
+        .collect::<std::collections::BTreeSet<_>>();
+    let legacy_machine_deletions = if bridge
+        .get_projection_receipt(document_id, session_id)
+        .map_err(store_error)?
+        .is_none()
+    {
+        legacy_machine_lane_ranges_outside_finalized(&delta, session_id, &finalized_keys)?
+    } else {
+        Vec::new()
+    };
+    let mut lane_ranges = Vec::with_capacity(lanes.len());
+    for lane in &lanes {
+        let range =
+            find_unique_capture_lane_range(&delta, session_id, &lane.utterance.id, &lane.language)?;
+        lane_ranges.push(range);
+    }
+
+    let section_end =
+        section
+            .pos
+            .checked_add(section.len)
+            .ok_or_else(|| CoreError::ValidationFailed {
+                message: format!("capture section range overflow for session {session_id}"),
+            })?;
+    let mut previous_existing_end = None;
+    for range in lane_ranges.iter().flatten() {
+        let range_end =
+            range
+                .pos
+                .checked_add(range.len)
+                .ok_or_else(|| CoreError::ValidationFailed {
+                    message: format!("capture lane range overflow for session {session_id}"),
+                })?;
+        if range.pos < section.pos || range_end > section_end {
+            return Err(CoreError::ValidationFailed {
+                message: format!("capture lane escaped section for session {session_id}"),
+            });
+        }
+        if previous_existing_end.is_some_and(|previous| previous > range.pos) {
+            return Err(CoreError::ValidationFailed {
+                message: format!(
+                    "capture lanes are not in canonical sequence/language order for session {session_id}"
+                ),
+            });
+        }
+        previous_existing_end = Some(range_end);
+    }
+    for range in &legacy_machine_deletions {
+        let range_end =
+            range
+                .pos
+                .checked_add(range.len)
+                .ok_or_else(|| CoreError::ValidationFailed {
+                    message: format!("legacy capture lane range overflow for session {session_id}"),
+                })?;
+        if range.pos < section.pos || range_end > section_end {
+            return Err(CoreError::ValidationFailed {
+                message: format!("legacy machine lane escaped section for session {session_id}"),
+            });
+        }
+    }
+
+    let mut groups = Vec::new();
+    let mut utterance_start = 0;
+    while utterance_start < lanes.len() {
+        let sequence = lanes[utterance_start].utterance.sequence;
+        let utterance_id = lanes[utterance_start].utterance.id.as_str();
+        let mut utterance_end = utterance_start + 1;
+        while utterance_end < lanes.len()
+            && lanes[utterance_end].utterance.sequence == sequence
+            && lanes[utterance_end].utterance.id == utterance_id
+        {
+            utterance_end += 1;
+        }
+        let utterance_has_existing_lane = lane_ranges[utterance_start..utterance_end]
+            .iter()
+            .any(Option::is_some);
+
+        let mut index = utterance_start;
+        while index < utterance_end {
+            if lane_ranges[index].is_some() {
+                index += 1;
+                continue;
+            }
+            let start = index;
+            while index < utterance_end && lane_ranges[index].is_none() {
+                index += 1;
+            }
+            let end = index;
+
+            // A late lane for an existing utterance belongs immediately next
+            // to that utterance's lanes, before its unmarked blank separator.
+            // A wholly new utterance is an independent block inserted before
+            // the first later utterance (or at section end). This makes the
+            // final bytes independent of Final arrival order.
+            let insert_pos = if utterance_has_existing_lane {
+                lane_ranges[end..utterance_end]
+                    .iter()
+                    .flatten()
+                    .next()
+                    .map(|range| range.pos)
+                    .or_else(|| {
+                        lane_ranges[utterance_start..start]
+                            .iter()
+                            .rev()
+                            .flatten()
+                            .next()
+                            .and_then(|range| range.pos.checked_add(range.len))
+                    })
+                    .ok_or_else(|| CoreError::ValidationFailed {
+                        message: format!(
+                            "capture utterance {utterance_id} lost its existing lane boundary"
+                        ),
+                    })?
+            } else {
+                lane_ranges[utterance_end..]
+                    .iter()
+                    .flatten()
+                    .next()
+                    .map_or(section_end, |range| range.pos)
+            };
+
+            let mut rendered = CaptureRenderedSection {
+                text: String::new(),
+                marks: Vec::new(),
+            };
+            for lane in lanes.iter().take(end).skip(start) {
+                append_rendered_capture_section(&mut rendered, render_finalized_capture_lane(lane));
+            }
+            if !utterance_has_existing_lane {
+                rendered.text.push('\n');
+            }
+            groups.push((insert_pos, start, rendered));
+        }
+        utterance_start = utterance_end;
+    }
+
+    // Every position above is relative to the same pre-batch snapshot. Applying
+    // groups right-to-left keeps those positions valid inside one atomic batch.
+    groups.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1)));
+    let inserted_len = groups
+        .iter()
+        .map(|(_, _, rendered)| rendered.text.chars().count())
+        .sum::<usize>();
+    let deleted_len = legacy_machine_deletions
+        .iter()
+        .map(|range| range.len)
+        .sum::<usize>();
+    // All coordinates refer to the same pre-batch Delta. Merge deletes and
+    // inserts into one descending-position schedule; at an equal position a
+    // delete must run first or it would consume the newly inserted text.
+    let mut edit_groups = legacy_machine_deletions
+        .into_iter()
+        .map(|range| {
+            (
+                range.pos,
+                false,
+                0_usize,
+                vec![vt_store::EditOp::Delete {
+                    pos: range.pos,
+                    len: range.len,
+                }],
+            )
+        })
+        .collect::<Vec<_>>();
+    for (pos, lane_start, rendered) in groups {
+        edit_groups.push((
+            pos,
+            true,
+            lane_start,
+            rendered_capture_edit_ops(pos, rendered),
+        ));
+    }
+    edit_groups.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| right.2.cmp(&left.2))
+    });
+    let operations = edit_groups
+        .into_iter()
+        .flat_map(|(_, _, _, operations)| operations)
+        .collect();
+    let projected_end = section_end
+        .checked_add(inserted_len)
+        .and_then(|end| end.checked_sub(deleted_len))
+        .ok_or_else(|| CoreError::ValidationFailed {
+            message: format!("capture section edit size overflow for session {session_id}"),
+        })?;
+    Ok(CaptureProjectionPlan {
+        operations,
+        section_start: section.pos,
+        section_end: projected_end,
+    })
+}
+
+fn rendered_capture_edit_ops(
+    pos: usize,
+    rendered: CaptureRenderedSection,
+) -> Vec<vt_store::EditOp> {
+    let mut operations = vec![vt_store::EditOp::Insert {
+        pos,
+        text: rendered.text,
+    }];
+    for mark in rendered.marks {
+        operations.push(vt_store::EditOp::Mark {
+            pos: pos + mark.pos,
+            len: mark.len,
+            key: mark.key,
+            value_json: mark.value_json,
+        });
+    }
+    operations
+}
+
+#[cfg(test)]
 fn sync_capture_section_incrementally(
     bridge: &vt_store::EditorBridge,
     document_id: &str,
     session_id: &str,
-    initial_section: crate::editor_api::TextRange,
+    section: crate::editor_api::TextRange,
     utterances: &[RealtimeUtterance],
 ) -> Result<(), CoreError> {
-    for utterance in utterances
-        .iter()
-        .filter(|utterance| utterance.completion == UtteranceCompletion::Complete)
-    {
-        let source_selector = crate::editor_api::DeltaMarkSelector {
-            session_id: Some(session_id),
-            utterance_id: Some(&utterance.id),
-            lane_language: Some(&utterance.source_language),
-        };
-        let delta = bridge.get_delta(document_id).map_err(store_error)?;
-        let source_range = crate::editor_api::find_unique_marked_range(&delta, source_selector)?;
-        if source_range.is_none() {
-            let section = resolve_capture_section_range(bridge, document_id, session_id, &delta)?
-                .unwrap_or(initial_section);
-            let rendered = render_bilingual_capture_utterance(utterance);
-            let inserted_len = rendered.text.chars().count();
-            apply_rendered_capture_text(bridge, document_id, section.pos + section.len, rendered)?;
-            bridge
-                .set_capture_owned_range(
-                    document_id,
-                    &capture_section_owner_key(session_id),
-                    session_id,
-                    section.pos,
-                    section.pos + section.len + inserted_len,
-                )
-                .map_err(store_error)?;
-            continue;
-        }
-        if let (Some(language), Some(_)) = (
-            utterance.translated_language.as_deref(),
-            utterance.translated_text.as_deref(),
-        ) {
-            let delta = bridge.get_delta(document_id).map_err(store_error)?;
-            let translated_range = crate::editor_api::find_unique_marked_range(
-                &delta,
-                crate::editor_api::DeltaMarkSelector {
-                    session_id: Some(session_id),
-                    utterance_id: Some(&utterance.id),
-                    lane_language: Some(language),
-                },
-            )?;
-            if translated_range.is_none() {
-                if let Some(source_range) = crate::editor_api::find_unique_marked_range(
-                    &delta,
-                    crate::editor_api::DeltaMarkSelector {
-                        session_id: Some(session_id),
-                        utterance_id: Some(&utterance.id),
-                        lane_language: Some(&utterance.source_language),
-                    },
-                )? {
-                    let rendered = render_capture_lane(utterance, UtteranceLane::Translated);
-                    apply_rendered_capture_text(
-                        bridge,
-                        document_id,
-                        source_range.pos + source_range.len,
-                        rendered,
-                    )?;
-                }
-            }
-        }
-    }
-
     let delta = bridge.get_delta(document_id).map_err(store_error)?;
-    if let Some(range) = resolve_capture_section_range(bridge, document_id, session_id, &delta)? {
-        bridge
-            .set_capture_owned_range(
-                document_id,
-                &capture_section_owner_key(session_id),
-                session_id,
-                range.pos,
-                range.pos + range.len,
-            )
-            .map_err(store_error)?;
+    let section =
+        resolve_capture_section_range(bridge, document_id, session_id, &delta)?.unwrap_or(section);
+    let plan =
+        plan_capture_section_incrementally(bridge, document_id, session_id, section, utterances)?;
+    if plan.operations.is_empty() {
+        return Ok(());
     }
-    Ok(())
-}
-
-fn apply_rendered_capture_text(
-    bridge: &vt_store::EditorBridge,
-    document_id: &str,
-    pos: usize,
-    rendered: CaptureRenderedSection,
-) -> Result<(), CoreError> {
+    let next_revision = bridge
+        .get_projection_receipt(document_id, session_id)
+        .map_err(store_error)?
+        .map_or(1, |receipt| receipt.fact_revision.saturating_add(1));
+    let digest = hex::encode(Sha256::digest(format!("{:?}", plan.operations).as_bytes()));
     bridge
-        .apply(
+        .apply_projection_batch(
             document_id,
-            vt_store::EditOp::Insert {
-                pos,
-                text: rendered.text,
+            plan.operations,
+            vt_store::editor_bridge::ProjectionReceipt {
+                session_id: session_id.to_string(),
+                fact_revision: next_revision,
+                digest,
             },
         )
         .map_err(store_error)?;
-    for mark in rendered.marks {
-        bridge
-            .apply(
-                document_id,
-                vt_store::EditOp::Mark {
-                    pos: pos + mark.pos,
-                    len: mark.len,
-                    key: mark.key,
-                    value_json: mark.value_json,
-                },
-            )
-            .map_err(store_error)?;
-    }
-    Ok(())
+    bridge
+        .set_capture_owned_range(
+            document_id,
+            &capture_section_owner_key(session_id),
+            session_id,
+            plan.section_start,
+            plan.section_end,
+        )
+        .map_err(store_error)
 }
 
 fn format_capture_timestamp(milliseconds: u64) -> String {
@@ -7035,6 +8967,54 @@ mod tests {
             .unwrap();
         assert_eq!(factory.pcm_send_count.load(Ordering::SeqCst), 0);
         assert_eq!(factory.constructor_count.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn failed_remote_start_cannot_install_connecting_owner_when_unavailable_write_fails() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Unavailable truth failure".into()))
+            .unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        // Deliberately leave the Soniox key absent so construction fails after
+        // the run is created but before a provider owner exists.
+        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        db.execute_batch(
+            "CREATE TRIGGER fail_start_unavailable_health
+             BEFORE UPDATE OF remote_health ON notebook_capture_runs
+             WHEN NEW.remote_health = 'unavailable'
+             BEGIN
+                 SELECT RAISE(FAIL, 'injected unavailable health persistence failure');
+             END;",
+        )
+        .unwrap();
+
+        let error = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .expect_err("remote=None + Connecting must never become an active owner");
+        assert!(error
+            .to_string()
+            .contains("injected unavailable health persistence failure"));
+        assert!(core.active_notebook_capture.lock().unwrap().is_none());
+        let active_rows: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM notebook_capture_runs
+                 WHERE capture_state IN ('recording', 'paused', 'draining')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(active_rows, 0);
     }
 
     #[test]
@@ -7511,6 +9491,13 @@ mod tests {
             .unwrap();
         assert_eq!(resumed.capture_state, FfiNotebookCaptureState::Recording);
         assert_eq!(resumed.remote_health, FfiNotebookRemoteHealth::Degraded);
+        let durable_resumed = core
+            .notebook_capture_store
+            .get_run_for_session(&started.session_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(durable_resumed.capture_state, CaptureState::Recording);
+        assert_eq!(durable_resumed.remote_health, RemoteHealth::Degraded);
         assert_eq!(
             factory.constructor_count.load(Ordering::SeqCst),
             1,
@@ -7695,6 +9682,160 @@ mod tests {
         .unwrap();
     }
 
+    #[test]
+    fn pause_state_commit_is_success_even_when_degraded_health_write_fails() {
+        let (temp, core, factory, _notebook_id, _profile, started) =
+            start_remote_tracking_capture("Pause commit point");
+        {
+            let active = core.active_notebook_capture.lock().unwrap();
+            let remote = active.as_ref().unwrap().remote.as_ref().unwrap();
+            for stream in &remote.streams {
+                while stream.control_tx.capacity() > 0 {
+                    stream.control_tx.try_send(SttStreamControl::Pause).unwrap();
+                }
+            }
+        }
+        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        db.execute_batch(
+            "CREATE TRIGGER fail_pause_remote_health
+             BEFORE UPDATE OF remote_health ON notebook_capture_runs
+             WHEN NEW.remote_health = 'degraded'
+             BEGIN
+                 SELECT RAISE(FAIL, 'injected pause remote health persistence failure');
+             END;",
+        )
+        .unwrap();
+
+        let paused = core
+            .pause_notebook_capture_session(started.session_id.clone(), true)
+            .expect("the already-committed pause must not be reported as a failed command");
+        assert_eq!(paused.capture_state, FfiNotebookCaptureState::Paused);
+        assert_eq!(paused.remote_health, FfiNotebookRemoteHealth::Degraded);
+        let durable = core
+            .notebook_capture_store
+            .get_run_for_session(&started.session_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(durable.capture_state, CaptureState::Paused);
+        assert!(core
+            .active_notebook_capture
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .remote
+            .is_none());
+        assert_eq!(factory.active_stream_count.load(Ordering::SeqCst), 0);
+
+        let reconciled = core
+            .get_notebook_capture_session_event(started.session_id.clone())
+            .unwrap();
+        assert_eq!(reconciled.capture_state, FfiNotebookCaptureState::Paused);
+        assert_eq!(reconciled.remote_health, FfiNotebookRemoteHealth::Degraded);
+
+        let resume_error = core
+            .pause_notebook_capture_session(started.session_id.clone(), false)
+            .expect_err("resume must stay Paused until Degraded is durable");
+        assert!(resume_error
+            .to_string()
+            .contains("injected pause remote health persistence failure"));
+        let still_paused = core
+            .notebook_capture_store
+            .get_run_for_session(&started.session_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(still_paused.capture_state, CaptureState::Paused);
+
+        db.execute_batch("DROP TRIGGER fail_pause_remote_health;")
+            .unwrap();
+        let resumed = core
+            .pause_notebook_capture_session(started.session_id.clone(), false)
+            .expect("resume may continue local-only once Degraded is durable");
+        assert_eq!(resumed.capture_state, FfiNotebookCaptureState::Recording);
+        assert_eq!(resumed.remote_health, FfiNotebookRemoteHealth::Degraded);
+        let durable_resumed = core
+            .notebook_capture_store
+            .get_run_for_session(&started.session_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(durable_resumed.capture_state, CaptureState::Recording);
+        assert_eq!(durable_resumed.remote_health, RemoteHealth::Degraded);
+        assert_eq!(
+            factory.constructor_count.load(Ordering::SeqCst),
+            1,
+            "local-only resume must not rebuild an assembler/provider owner"
+        );
+        core.interrupt_notebook_capture_session(
+            started.session_id,
+            FfiNotebookCaptureInterruptReason::LocalAudioUnavailable,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn stop_projects_final_lanes_even_when_remote_diagnostic_persistence_fails() {
+        let (temp, core, _factory, notebook_id, _profile, started) =
+            start_remote_tracking_capture("Stop projection error domains");
+        let final_utterance = upsert_test_lanes(
+            &core.notebook_capture_store,
+            &NewRealtimeUtterance {
+                id: "stop-projection-utterance".into(),
+                session_id: started.session_id.clone(),
+                sequence: 0,
+                session_speaker_id: None,
+                source_language: "en".into(),
+                source_text: "durable stop transcript".into(),
+                source_start_ms: Some(0),
+                source_end_ms: Some(100),
+                translated_language: Some("zh".into()),
+                translated_text: Some("持久停止转录".into()),
+                completion: UtteranceCompletion::Complete,
+                alignment: UtteranceAlignment::Paired,
+            },
+            None,
+        )
+        .unwrap();
+        {
+            let active = core.active_notebook_capture.lock().unwrap();
+            for stream in &active.as_ref().unwrap().remote.as_ref().unwrap().streams {
+                stream.stream_task.abort();
+            }
+        }
+        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        db.execute_batch(
+            "CREATE TRIGGER fail_stop_remote_diagnostic
+             BEFORE UPDATE OF remote_health ON notebook_capture_runs
+             WHEN NEW.remote_health IN ('degraded', 'unavailable')
+             BEGIN
+                 SELECT RAISE(FAIL, 'injected stop diagnostic failure');
+             END;",
+        )
+        .unwrap();
+
+        let stopped = core
+            .stop_notebook_capture_session(started.session_id.clone())
+            .expect("remote diagnostic persistence must not suppress independent Loro projection");
+        assert_eq!(stopped.capture_state, FfiNotebookCaptureState::Completed);
+        assert_eq!(stopped.projection_state, FfiNotebookProjectionState::Ready);
+        assert!(
+            stopped.realtime_loro_applied_revision >= final_utterance.source_projection_revision
+        );
+        let doc_id = core
+            .list_notebook_tabs(notebook_id)
+            .unwrap()
+            .into_iter()
+            .find(|tab| tab.builtin_kind == "realtime_transcript")
+            .unwrap()
+            .doc_id;
+        assert!(core
+            .editor_bridge
+            .get_content(&doc_id)
+            .unwrap()
+            .contains("en: durable stop transcript"));
+        db.execute_batch("DROP TRIGGER fail_stop_remote_diagnostic;")
+            .unwrap();
+    }
+
     fn profile() -> NotebookCaptureProfile {
         NotebookCaptureProfile {
             notebook_id: "notebook-a".into(),
@@ -7770,6 +9911,81 @@ mod tests {
             utterance.translated_text.is_some(),
             utterance.translated_language.is_some()
         );
+    }
+
+    fn assembler_store_fixture(
+        session_id: &str,
+    ) -> (tempfile::TempDir, ZulangueCore, NotebookCaptureProfile) {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Independent assembler lanes".into()))
+            .unwrap();
+        let stored_profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let session = vt_store::SessionRecord {
+            id: session_id.into(),
+            title: "Independent assembler lanes".into(),
+            session_type: "recording".into(),
+            status: "recording".into(),
+            duration_ms: 0,
+            created_at: "2001-01-05T00:00:00Z".into(),
+            deleted_at: None,
+        };
+        core.notebook_capture_store
+            .create_session_and_run(
+                &session,
+                &vt_store::notebook_capture_store::NewNotebookCaptureRun {
+                    id: format!("{session_id}-run"),
+                    notebook_id: notebook.id.clone(),
+                    session_id: session.id.clone(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: format!("/private/{session_id}.journal"),
+                    audio_key_ref: format!("{session_id}-key"),
+                    sample_rate: 16_000,
+                    channels: 1,
+                },
+                &stored_profile,
+            )
+            .unwrap();
+        claim_current_realtime_provider(&core.notebook_capture_store, session_id);
+        let mut runtime_profile = profile();
+        runtime_profile.notebook_id = notebook.id;
+        (temp, core, runtime_profile)
+    }
+
+    fn upsert_test_lanes(
+        store: &NotebookCaptureStore,
+        input: &NewRealtimeUtterance,
+        expected_revision: Option<u64>,
+    ) -> Result<RealtimeUtterance, vt_store::NotebookCaptureStoreError> {
+        let translation = input
+            .translated_language
+            .as_deref()
+            .zip(input.translated_text.as_deref())
+            .map(|(language, text)| (language.to_string(), text.to_string(), input.completion));
+        let mut source = input.clone();
+        source.translated_language = None;
+        source.translated_text = None;
+        source.alignment = match source.alignment {
+            UtteranceAlignment::OutsideLanguagePair => UtteranceAlignment::OutsideLanguagePair,
+            _ if translation.is_some() => UtteranceAlignment::TranslationPending,
+            _ => UtteranceAlignment::SourceOnly,
+        };
+        let mut persisted = store.upsert_utterance(&source, expected_revision)?;
+        if let Some((language, text, completion)) = translation {
+            persisted = store.upsert_translation_variant(
+                &source.session_id,
+                source.sequence,
+                &language,
+                Some(&text),
+                UtteranceVariantState::Ready,
+                Some(completion),
+            )?;
+        }
+        Ok(persisted)
     }
 
     #[test]
@@ -7945,6 +10161,622 @@ mod tests {
             utterance.translated_text.is_some()
                 == (utterance.alignment == UtteranceAlignment::Paired)
         }));
+    }
+
+    #[test]
+    fn canonical_source_final_and_late_translation_final_are_lane_independent() {
+        let (_temp, core, runtime_profile) = assembler_store_fixture("lane-source-first-session");
+        let mut assembler =
+            RealtimeUtteranceAssembler::new("lane-source-first-session".into(), &runtime_profile);
+
+        let initial = assembler.apply_tokens(&[
+            attributed_token(
+                "hello",
+                SttStreamTranslationStatus::Original,
+                Some("en"),
+                None,
+                Some("speaker-a"),
+                true,
+            ),
+            attributed_token(
+                "你",
+                SttStreamTranslationStatus::Translation,
+                Some("zh"),
+                Some("en"),
+                Some("speaker-a"),
+                false,
+            ),
+        ]);
+        assert_eq!(initial.len(), 1);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, initial, 0)
+            .unwrap();
+
+        let closed = assembler.finalize();
+        assert_eq!(closed.len(), 1);
+        assert_eq!(
+            closed[0].utterance.completion,
+            UtteranceCompletion::Complete
+        );
+        assert_eq!(
+            closed[0].translation_completion,
+            Some(UtteranceCompletion::Partial)
+        );
+        let source_final =
+            persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, closed, 0)
+                .unwrap()
+                .remove(0);
+        let partial_translation = source_final
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert!(source_final.source_projection_revision > 0);
+        assert_eq!(partial_translation.projection_revision, 0);
+        assert_eq!(
+            partial_translation.completion,
+            Some(UtteranceCompletion::Partial)
+        );
+        let source_revision = source_final.revision;
+
+        let late_translation = assembler.apply_tokens(&[attributed_token(
+            "你好",
+            SttStreamTranslationStatus::Translation,
+            Some("zh"),
+            Some("en"),
+            Some("speaker-a"),
+            true,
+        )]);
+        assert_eq!(late_translation.len(), 1);
+        assert!(!late_translation[0].source_dirty);
+        assert_eq!(
+            late_translation[0].translation_completion,
+            Some(UtteranceCompletion::Complete)
+        );
+        let completed = persist_assembled_utterances(
+            &core.notebook_capture_store,
+            &mut assembler,
+            late_translation,
+            0,
+        )
+        .unwrap()
+        .remove(0);
+        let final_translation = completed
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert_eq!(
+            completed.revision, source_revision,
+            "translation must not advance the source-lane CAS"
+        );
+        assert_eq!(
+            final_translation.completion,
+            Some(UtteranceCompletion::Complete)
+        );
+        assert!(
+            final_translation.projection_revision > completed.source_projection_revision,
+            "the late translation Final must receive its own projection revision"
+        );
+        assert_eq!(completed.translated_text.as_deref(), Some("你好"));
+        assert_eq!(completed.alignment, UtteranceAlignment::Paired);
+    }
+
+    #[test]
+    fn canonical_translation_can_finalize_before_the_source_lane() {
+        let (_temp, core, runtime_profile) =
+            assembler_store_fixture("lane-translation-first-session");
+        let mut assembler = RealtimeUtteranceAssembler::new(
+            "lane-translation-first-session".into(),
+            &runtime_profile,
+        );
+        let initial = assembler.apply_tokens(&[
+            attributed_token(
+                "hel",
+                SttStreamTranslationStatus::Original,
+                Some("en"),
+                None,
+                Some("speaker-a"),
+                false,
+            ),
+            attributed_token(
+                "你好",
+                SttStreamTranslationStatus::Translation,
+                Some("zh"),
+                Some("en"),
+                Some("speaker-a"),
+                true,
+            ),
+        ]);
+        assert_eq!(initial.len(), 1);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, initial, 0)
+            .unwrap();
+
+        let closed = assembler.finalize();
+        assert_eq!(closed.len(), 1);
+        assert_eq!(closed[0].utterance.completion, UtteranceCompletion::Partial);
+        assert_eq!(
+            closed[0].translation_completion,
+            Some(UtteranceCompletion::Complete)
+        );
+        let translation_final =
+            persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, closed, 0)
+                .unwrap()
+                .remove(0);
+        let zh = translation_final
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert_eq!(translation_final.source_projection_revision, 0);
+        assert_eq!(
+            zh.completion,
+            Some(UtteranceCompletion::Complete),
+            "translation closure must not depend on source closure stability"
+        );
+        assert!(zh.projection_revision > 0);
+        assert_eq!(translation_final.source_text, "hel");
+    }
+
+    #[test]
+    fn replacement_response_withdraws_partial_translation_and_legacy_shadow() {
+        let (_temp, core, runtime_profile) =
+            assembler_store_fixture("lane-withdraw-translation-session");
+        let mut assembler = RealtimeUtteranceAssembler::new(
+            "lane-withdraw-translation-session".into(),
+            &runtime_profile,
+        );
+        let initial = assembler.apply_tokens(&[
+            attributed_token(
+                "hello",
+                SttStreamTranslationStatus::Original,
+                Some("en"),
+                None,
+                Some("speaker-a"),
+                true,
+            ),
+            attributed_token(
+                "临时",
+                SttStreamTranslationStatus::Translation,
+                Some("zh"),
+                Some("en"),
+                Some("speaker-a"),
+                false,
+            ),
+        ]);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, initial, 0)
+            .unwrap();
+        let withdrawn = assembler.apply_tokens(&[]);
+        assert_eq!(withdrawn.len(), 1);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, withdrawn, 0)
+            .unwrap();
+
+        let stored = core
+            .notebook_capture_store
+            .list_machine_utterances("lane-withdraw-translation-session")
+            .unwrap()
+            .remove(0);
+        let zh = stored
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert_eq!(zh.state, UtteranceVariantState::Waiting);
+        assert_eq!(zh.text, None);
+        assert_eq!(zh.completion, None);
+        assert_eq!(zh.projection_revision, 0);
+        assert_eq!(stored.translated_language, None);
+        assert_eq!(stored.translated_text, None);
+        assert_eq!(stored.alignment, UtteranceAlignment::TranslationPending);
+    }
+
+    #[test]
+    fn replacement_response_removes_a_wholly_speculative_source_row() {
+        let (_temp, core, runtime_profile) =
+            assembler_store_fixture("lane-withdraw-source-session");
+        let mut assembler = RealtimeUtteranceAssembler::new(
+            "lane-withdraw-source-session".into(),
+            &runtime_profile,
+        );
+        let initial = assembler.apply_tokens(&[
+            attributed_token(
+                "ghost",
+                SttStreamTranslationStatus::Original,
+                Some("en"),
+                None,
+                Some("speaker-a"),
+                false,
+            ),
+            attributed_token(
+                "临时译文",
+                SttStreamTranslationStatus::Translation,
+                Some("zh"),
+                Some("en"),
+                Some("speaker-a"),
+                true,
+            ),
+        ]);
+        assert_eq!(initial.len(), 1);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, initial, 0)
+            .unwrap();
+        assert_eq!(
+            core.notebook_capture_store
+                .list_machine_utterances("lane-withdraw-source-session")
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let withdrawn = assembler.apply_tokens(&[]);
+        assert_eq!(withdrawn.len(), 1);
+        assert!(withdrawn[0].remove_partial);
+        let removal = persist_assembled_utterances(
+            &core.notebook_capture_store,
+            &mut assembler,
+            withdrawn,
+            0,
+        )
+        .unwrap();
+        assert!(
+            removal.requires_full_snapshot,
+            "a durable deletion must force a replace-in-full callback"
+        );
+        assert!(
+            core.notebook_capture_store
+                .list_machine_utterances("lane-withdraw-source-session")
+                .unwrap()
+                .is_empty(),
+            "a replacement response must not leave an empty or stale source row"
+        );
+        let run = core
+            .notebook_capture_store
+            .get_run_for_session("lane-withdraw-source-session")
+            .unwrap()
+            .unwrap();
+        let event = event_full_snapshot_from_run(&core.notebook_capture_store, run).unwrap();
+        assert!(event.is_full_snapshot);
+        assert!(event.utterances.is_empty());
+    }
+
+    #[test]
+    fn source_withdrawal_preserves_an_independently_final_translation_lane() {
+        let (_temp, core, runtime_profile) =
+            assembler_store_fixture("lane-withdraw-source-final-translation");
+        let mut assembler = RealtimeUtteranceAssembler::new(
+            "lane-withdraw-source-final-translation".into(),
+            &runtime_profile,
+        );
+        let initial = assembler.apply_tokens(&[
+            attributed_token(
+                "ghost",
+                SttStreamTranslationStatus::Original,
+                Some("en"),
+                None,
+                Some("speaker-a"),
+                false,
+            ),
+            attributed_token(
+                "临时",
+                SttStreamTranslationStatus::Translation,
+                Some("zh"),
+                Some("en"),
+                Some("speaker-a"),
+                true,
+            ),
+        ]);
+        let source =
+            persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, initial, 0)
+                .unwrap()
+                .remove(0);
+        core.notebook_capture_store
+            .upsert_translation_variant(
+                &source.session_id,
+                source.sequence,
+                "zh",
+                Some("独立终稿"),
+                UtteranceVariantState::Ready,
+                Some(UtteranceCompletion::Complete),
+            )
+            .unwrap();
+
+        let withdrawn = assembler.apply_tokens(&[]);
+        assert_eq!(withdrawn.len(), 1);
+        assert!(withdrawn[0].remove_partial);
+        let removal = persist_assembled_utterances(
+            &core.notebook_capture_store,
+            &mut assembler,
+            withdrawn,
+            0,
+        )
+        .unwrap();
+        assert!(removal.requires_full_snapshot);
+
+        let shell = core
+            .notebook_capture_store
+            .list_machine_utterances(&source.session_id)
+            .unwrap()
+            .remove(0);
+        assert!(!shell.has_source_lane());
+        let lanes = finalized_capture_lanes(std::slice::from_ref(&shell));
+        assert_eq!(lanes.len(), 1);
+        assert!(matches!(
+            lanes[0].kind,
+            FinalizedCaptureLaneKind::Translation
+        ));
+        assert_eq!(lanes[0].language, "zh");
+        assert_eq!(lanes[0].text, "独立终稿");
+    }
+
+    #[test]
+    fn hidden_same_language_aux_partial_survives_source_language_revision_and_withdrawal() {
+        let session_id = "lane-hidden-aux-source-withdrawal";
+        let (_temp, core, mut runtime_profile) = assembler_store_fixture(session_id);
+        runtime_profile.language_a = "zh".into();
+        runtime_profile.language_b = "th".into();
+        runtime_profile.left_language = "zh".into();
+        runtime_profile.right_language = "th".into();
+        runtime_profile.selected_languages = vec!["zh".into(), "th".into()];
+        let mut assembler =
+            RealtimeUtteranceAssembler::new(session_id.to_string(), &runtime_profile);
+
+        assert!(assembler
+            .apply_tokens(&[attributed_token(
+                "暂定",
+                SttStreamTranslationStatus::Original,
+                Some("zh"),
+                None,
+                Some("speaker-a"),
+                false,
+            )])
+            .is_empty());
+        let preview = assembler.live_previews().remove(0);
+        let initial = AssembledRealtimeUtterance {
+            utterance: NewRealtimeUtterance {
+                source_language: "zh".into(),
+                ..preview.utterance
+            },
+            source_dirty: true,
+            translation_dirty: false,
+            translation_completion: None,
+            translation_clear_language: None,
+            remove_partial: false,
+            provider_speaker: None,
+            expected_revision: None,
+        };
+        let source = persist_assembled_utterances(
+            &core.notebook_capture_store,
+            &mut assembler,
+            vec![initial],
+            0,
+        )
+        .unwrap()
+        .utterances
+        .remove(0);
+        assert!(source.has_source_lane());
+        assert_eq!(source.completion, UtteranceCompletion::Partial);
+
+        let accepted = core
+            .notebook_capture_store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: session_id.into(),
+                    lane_index: 1,
+                    group_epoch: 0,
+                    provider_sequence: 0,
+                    target_language: "zh".into(),
+                },
+                source_language: "zh".into(),
+                source_text: "暂定".into(),
+                source_start_ms: None,
+                source_end_ms: None,
+                translated_text: Some("辅助 Partial".into()),
+                completion: Some(UtteranceCompletion::Partial),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(accepted.item.bound_sequence, Some(0));
+        assert_eq!(
+            accepted.bound_utterance, None,
+            "the provisional source retains same-language display priority"
+        );
+
+        let mut revised = assembler.apply_tokens(&[attributed_token(
+            "ภาษาไทยชั่วคราว",
+            SttStreamTranslationStatus::Original,
+            Some("th"),
+            None,
+            Some("speaker-a"),
+            false,
+        )]);
+        assert_eq!(
+            revised.len(),
+            1,
+            "a segment already durable in SQLite must publish its replacement"
+        );
+        revised[0].utterance.source_language = "th".into();
+        let revised =
+            persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, revised, 0)
+                .unwrap()
+                .utterances
+                .remove(0);
+        assert!(revised.has_source_lane());
+        let auxiliary = revised
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .expect("source language revision materializes the bound auxiliary lane");
+        assert_eq!(auxiliary.role, UtteranceVariantRole::Translation);
+        assert_eq!(auxiliary.text.as_deref(), Some("辅助 Partial"));
+        assert_eq!(
+            assembler
+                .segments
+                .iter()
+                .find(|segment| segment.id == revised.id)
+                .and_then(|segment| segment.persisted_translation_language.as_deref()),
+            None,
+            "external lanes must not become the canonical inline-translation clear target"
+        );
+
+        let withdrawn = assembler.apply_tokens(&[]);
+        assert_eq!(withdrawn.len(), 1);
+        assert!(withdrawn[0].remove_partial);
+        let removal = persist_assembled_utterances(
+            &core.notebook_capture_store,
+            &mut assembler,
+            withdrawn,
+            0,
+        )
+        .unwrap();
+        assert!(removal.requires_full_snapshot);
+        let shell = removal
+            .utterances
+            .first()
+            .expect("the bound auxiliary Partial keeps the shell alive");
+        assert!(!shell.has_source_fact());
+        assert!(!shell.has_source_lane());
+        let auxiliary = shell
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert_eq!(auxiliary.role, UtteranceVariantRole::Translation);
+        assert_eq!(auxiliary.completion, Some(UtteranceCompletion::Partial));
+        assert_eq!(auxiliary.text.as_deref(), Some("辅助 Partial"));
+        assert_eq!(auxiliary.projection_revision, 0);
+    }
+
+    #[test]
+    fn canonical_finalize_never_clears_bound_external_partial_or_final() {
+        for (suffix, completion, text) in [
+            ("partial", UtteranceCompletion::Partial, "辅助 Partial"),
+            ("final", UtteranceCompletion::Complete, "辅助 Final"),
+        ] {
+            let session_id = format!("lane-external-survives-finalize-{suffix}");
+            let (_temp, core, runtime_profile) = assembler_store_fixture(&session_id);
+            let mut assembler =
+                RealtimeUtteranceAssembler::new(session_id.clone(), &runtime_profile);
+            let initial = assembler.apply_tokens(&[attributed_token(
+                "hello",
+                SttStreamTranslationStatus::Original,
+                Some("en"),
+                None,
+                Some("speaker-a"),
+                true,
+            )]);
+            assert_eq!(initial.len(), 1);
+            let source = persist_assembled_utterances(
+                &core.notebook_capture_store,
+                &mut assembler,
+                initial,
+                0,
+            )
+            .unwrap()
+            .utterances
+            .remove(0);
+            assert_eq!(source.completion, UtteranceCompletion::Partial);
+
+            let accepted = core
+                .notebook_capture_store
+                .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                    key: RealtimeTranslationInboxKey {
+                        session_id: session_id.clone(),
+                        lane_index: 1,
+                        group_epoch: 0,
+                        provider_sequence: 0,
+                        target_language: "zh".into(),
+                    },
+                    source_language: "en".into(),
+                    source_text: "hello".into(),
+                    source_start_ms: None,
+                    source_end_ms: None,
+                    translated_text: Some(text.into()),
+                    completion: Some(completion),
+                    withdrawn: false,
+                })
+                .unwrap();
+            let visible = accepted
+                .bound_utterance
+                .expect("different-language auxiliary fact materializes");
+            canonical_assembler_record_external_state(&mut assembler, &visible, "zh");
+            assert_eq!(
+                assembler
+                    .segments
+                    .iter()
+                    .find(|segment| segment.id == source.id)
+                    .and_then(|segment| segment.persisted_translation_language.as_deref()),
+                None
+            );
+
+            let finalized = assembler.finalize();
+            assert_eq!(finalized.len(), 1);
+            assert_eq!(finalized[0].translation_clear_language, None);
+            let finalized = persist_assembled_utterances(
+                &core.notebook_capture_store,
+                &mut assembler,
+                finalized,
+                0,
+            )
+            .unwrap()
+            .utterances
+            .remove(0);
+            assert!(finalized.source_lane_is_complete());
+            let auxiliary = finalized
+                .variants
+                .iter()
+                .find(|variant| variant.language == "zh")
+                .unwrap();
+            assert_eq!(auxiliary.text.as_deref(), Some(text));
+            assert_eq!(auxiliary.completion, Some(completion));
+        }
+    }
+
+    #[test]
+    fn one_assembled_delta_can_withdraw_source_and_finalize_translation_atomically() {
+        let (_temp, core, runtime_profile) = assembler_store_fixture("lane-atomic-withdraw-final");
+        let mut assembler =
+            RealtimeUtteranceAssembler::new("lane-atomic-withdraw-final".into(), &runtime_profile);
+        let initial = assembler.apply_tokens(&[
+            attributed_token(
+                "temporary",
+                SttStreamTranslationStatus::Original,
+                Some("en"),
+                None,
+                Some("speaker-a"),
+                false,
+            ),
+            attributed_token(
+                "临时",
+                SttStreamTranslationStatus::Translation,
+                Some("zh"),
+                Some("en"),
+                Some("speaker-a"),
+                true,
+            ),
+        ]);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, initial, 0)
+            .unwrap();
+
+        let mut delta = assembler.apply_tokens(&[]);
+        assert_eq!(delta.len(), 1);
+        assert!(delta[0].remove_partial);
+        delta[0].translation_dirty = true;
+        delta[0].translation_clear_language = None;
+        delta[0].utterance.translated_language = Some("zh".into());
+        delta[0].utterance.translated_text = Some("终稿".into());
+        delta[0].translation_completion = Some(UtteranceCompletion::Complete);
+        let persisted =
+            persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, delta, 0)
+                .unwrap();
+        assert!(persisted.requires_full_snapshot);
+        let shell = persisted.utterances.first().unwrap();
+        assert!(!shell.has_source_lane());
+        let zh = shell
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert_eq!(zh.text.as_deref(), Some("终稿"));
+        assert_eq!(zh.completion, Some(UtteranceCompletion::Complete));
+        assert!(zh.projection_revision > 0);
     }
 
     #[test]
@@ -8317,7 +11149,8 @@ mod tests {
         assert_eq!(finalized.len(), 1);
         assert_eq!(
             finalized[0].utterance.completion,
-            UtteranceCompletion::Complete
+            UtteranceCompletion::Partial,
+            "provider-pending text remains SQLite-only when the stream is forced closed"
         );
         assert!(assembler.live_previews().is_empty());
     }
@@ -8403,7 +11236,7 @@ mod tests {
         let neutral = only_utterance(provisional_only.finalize());
         assert_eq!(neutral.source_language, "und");
         assert_eq!(neutral.source_text, "你好 hello");
-        assert_eq!(neutral.completion, UtteranceCompletion::Complete);
+        assert_eq!(neutral.completion, UtteranceCompletion::Partial);
         assert_eq!(neutral.alignment, UtteranceAlignment::SourceOnly);
         assert_store_valid_alignment_shape(&neutral);
 
@@ -8441,7 +11274,7 @@ mod tests {
             assert_eq!(finalized[1].utterance.source_text, pending_text);
             assert_eq!(
                 finalized[1].utterance.completion,
-                UtteranceCompletion::Complete
+                UtteranceCompletion::Partial
             );
             assert_eq!(
                 finalized[1].utterance.alignment,
@@ -8876,6 +11709,7 @@ mod tests {
             }
         };
         let pending = PendingTranslationVariant {
+            session_id: "matching-session".into(),
             group_epoch: 0,
             source_sequence: 99,
             source_language: "th".into(),
@@ -8883,8 +11717,7 @@ mod tests {
             source_start_ms: Some(120),
             source_end_ms: Some(220),
             target_language: "zh".into(),
-            translated_text: "你好".into(),
-            completion: UtteranceCompletion::Complete,
+            completion: UtteranceCompletion::Partial,
         };
         let candidates = [
             candidate(0, 0, Some(0), Some(100)),
@@ -8905,6 +11738,15 @@ mod tests {
             match_canonical_sequence(&pending, ambiguous.iter()),
             Some(1),
             "the strongest temporal overlap must win deterministically"
+        );
+        let equal_evidence = [
+            candidate(98, 0, Some(110), Some(230)),
+            candidate(100, 0, Some(110), Some(230)),
+        ];
+        assert_eq!(
+            match_canonical_sequence(&pending, equal_evidence.iter()),
+            None,
+            "canonical sequence is not evidence; equal best rows stay durably unbound"
         );
         let mut different_text = candidate(1, 0, Some(110), Some(230));
         different_text.utterance.source_text = "คนละประโยค".into();
@@ -8945,6 +11787,7 @@ mod tests {
             }
         };
         let pending = PendingTranslationVariant {
+            session_id: "matching-session".into(),
             group_epoch: 4,
             source_sequence: 7,
             source_language: "th".into(),
@@ -8952,7 +11795,6 @@ mod tests {
             source_start_ms: None,
             source_end_ms: None,
             target_language: "en".into(),
-            translated_text: "hello".into(),
             completion: UtteranceCompletion::Partial,
         };
         let candidates = [candidate(6), candidate(7)];
@@ -8973,6 +11815,7 @@ mod tests {
     fn stable_aux_binding_survives_timeline_language_identification_revision() {
         let pending_key = (1, 0, 7);
         let pending = PendingTranslationVariant {
+            session_id: "matching-session".into(),
             group_epoch: 0,
             source_sequence: 7,
             source_language: "th".into(),
@@ -8980,8 +11823,7 @@ mod tests {
             source_start_ms: Some(100),
             source_end_ms: Some(300),
             target_language: "zh".into(),
-            translated_text: "你好".into(),
-            completion: UtteranceCompletion::Complete,
+            completion: UtteranceCompletion::Partial,
         };
         let mut utterance = projected_utterance();
         utterance.sequence = 4;
@@ -9048,6 +11890,8 @@ mod tests {
                     revision: 1,
                     created_at: String::new(),
                     updated_at: String::new(),
+                    projection_revision: 1,
+                    edit_revision: 0,
                 },
                 vt_store::notebook_capture_store::RealtimeUtteranceVariant {
                     language: "th".into(),
@@ -9058,6 +11902,10 @@ mod tests {
                     revision: 1,
                     created_at: String::new(),
                     updated_at: String::new(),
+                    projection_revision: u64::from(
+                        thai_completion == UtteranceCompletion::Complete,
+                    ),
+                    edit_revision: 0,
                 },
             ];
             CanonicalUtteranceMatch {
@@ -9098,34 +11946,36 @@ mod tests {
                 .insert((0, unfinished_sequence, language.to_string()), pending_key);
             initialized_variants.insert((unfinished_sequence, language.to_string()));
         }
+        let mut pending_variants = std::collections::HashMap::new();
 
         let recycled = prune_resolved_stream_aggregation_history(
             &selected_languages,
             &mut canonical_matches,
+            &mut pending_variants,
             &mut variant_bindings,
             &mut reverse_variant_bindings,
             &mut initialized_variants,
         );
 
-        assert_eq!(recycled, 12);
+        assert_eq!(recycled, 13);
         assert_eq!(
             canonical_matches.len(),
-            STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW + 1
+            STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW
         );
         assert!(!canonical_matches.contains_key(&(0, 0)));
-        assert!(canonical_matches.contains_key(&(0, 12)));
+        assert!(!canonical_matches.contains_key(&(0, 12)));
         assert!(canonical_matches.contains_key(&(0, unfinished_sequence)));
         assert_eq!(
             variant_bindings.len(),
-            (STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW + 1) * 2
+            STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW * 2
         );
         assert_eq!(
             reverse_variant_bindings.len(),
-            (STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW + 1) * 2
+            STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW * 2
         );
         assert_eq!(
             initialized_variants.len(),
-            (STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW + 1) * 2
+            STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW * 2
         );
     }
 
@@ -9219,6 +12069,11 @@ mod tests {
                         UtteranceAlignment::SourceOnly
                     },
                 },
+                source_dirty: true,
+                translation_dirty: translated_text.is_some(),
+                translation_completion: translated_text.map(|_| completion),
+                translation_clear_language: None,
+                remove_partial: false,
                 provider_speaker: None,
                 expected_revision: None,
             }
@@ -9268,26 +12123,33 @@ mod tests {
             &mut initialized_variants,
         )
         .unwrap();
-        assert!(
-            timeline_partial.is_empty(),
-            "a speculative source revision must stay outside the durable timeline"
-        );
-        assert!(core
+        assert_eq!(timeline_partial.len(), 1);
+        let durable_partial = core
             .notebook_capture_store
             .list_utterances(&session.id)
             .unwrap()
-            .is_empty());
+            .remove(0);
+        assert_eq!(durable_partial.completion, UtteranceCompletion::Partial);
+        assert_eq!(durable_partial.source_text, "สวัสดี");
+        let durable_partial_translation = durable_partial
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .expect("the pending auxiliary partial should bind durably");
+        assert_eq!(
+            durable_partial_translation.completion,
+            Some(UtteranceCompletion::Partial)
+        );
 
+        let mut canonical_final =
+            update("canonical-utterance", None, UtteranceCompletion::Complete);
+        canonical_final.expected_revision = Some(durable_partial.revision);
         let canonical = persist_stream_lane_updates(
             &core.notebook_capture_store,
             &mut lanes,
             0,
             0,
-            vec![update(
-                "canonical-utterance",
-                None,
-                UtteranceCompletion::Complete,
-            )],
+            vec![canonical_final],
             &selected_languages,
             &mut canonical_matches,
             &mut pending_variants,
@@ -9388,82 +12250,6 @@ mod tests {
         assert_eq!(zh.text.as_deref(), Some("你好"));
         assert_eq!(zh.state, UtteranceVariantState::Ready);
         assert_eq!(zh.completion, Some(UtteranceCompletion::Complete));
-
-        let source_revision = |source_language: &str, source_text: &str, expected_revision: u64| {
-            AssembledRealtimeUtterance {
-                utterance: NewRealtimeUtterance {
-                    id: "canonical-utterance".into(),
-                    session_id: session.id.clone(),
-                    sequence: 0,
-                    session_speaker_id: None,
-                    source_language: source_language.to_string(),
-                    source_text: source_text.to_string(),
-                    source_start_ms: Some(100),
-                    source_end_ms: Some(300),
-                    translated_language: None,
-                    translated_text: None,
-                    completion: UtteranceCompletion::Complete,
-                    alignment: UtteranceAlignment::SourceOnly,
-                },
-                provider_speaker: None,
-                expected_revision: Some(expected_revision),
-            }
-        };
-        let revised_to_zh = persist_stream_lane_updates(
-            &core.notebook_capture_store,
-            &mut lanes,
-            0,
-            0,
-            vec![source_revision("zh", "你好", utterances[0].revision)],
-            &selected_languages,
-            &mut canonical_matches,
-            &mut pending_variants,
-            &mut variant_bindings,
-            &mut reverse_variant_bindings,
-            &mut initialized_variants,
-        )
-        .unwrap();
-        assert_eq!(revised_to_zh.len(), 1);
-        let revised_to_zh = core
-            .notebook_capture_store
-            .list_utterances(&session.id)
-            .unwrap()
-            .remove(0);
-        assert_eq!(revised_to_zh.source_language, "zh");
-        assert!(revised_to_zh
-            .variants
-            .iter()
-            .any(|variant| variant.language == "th"
-                && variant.state == UtteranceVariantState::Waiting));
-
-        let revised_back_to_th = persist_stream_lane_updates(
-            &core.notebook_capture_store,
-            &mut lanes,
-            0,
-            0,
-            vec![source_revision("th", "สวัสดี", revised_to_zh.revision)],
-            &selected_languages,
-            &mut canonical_matches,
-            &mut pending_variants,
-            &mut variant_bindings,
-            &mut reverse_variant_bindings,
-            &mut initialized_variants,
-        )
-        .unwrap();
-        assert_eq!(revised_back_to_th.len(), 1);
-        let revised_back_to_th = core
-            .notebook_capture_store
-            .list_utterances(&session.id)
-            .unwrap()
-            .remove(0);
-        assert_eq!(revised_back_to_th.source_language, "th");
-        let zh = revised_back_to_th
-            .variants
-            .iter()
-            .find(|variant| variant.language == "zh")
-            .expect("former source language must be reinitialized as a target");
-        assert_eq!(zh.text, None);
-        assert_eq!(zh.state, UtteranceVariantState::Waiting);
     }
 
     #[test]
@@ -9557,8 +12343,369 @@ mod tests {
             alignment: UtteranceAlignment::Paired,
             created_at: String::new(),
             updated_at: String::new(),
-            variants: Vec::new(),
+            source_projection_revision: 1,
+            source_edit_revision: 0,
+            variants: vec![
+                RealtimeUtteranceVariant {
+                    language: "zh".into(),
+                    role: UtteranceVariantRole::Translation,
+                    text: Some("早上好".into()),
+                    state: UtteranceVariantState::Ready,
+                    completion: Some(UtteranceCompletion::Complete),
+                    revision: 0,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                    projection_revision: 2,
+                    edit_revision: 0,
+                },
+                RealtimeUtteranceVariant {
+                    language: "en".into(),
+                    role: UtteranceVariantRole::Source,
+                    text: Some("good morning 🌏".into()),
+                    state: UtteranceVariantState::Ready,
+                    completion: Some(UtteranceCompletion::Complete),
+                    revision: 0,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                    projection_revision: 1,
+                    edit_revision: 0,
+                },
+            ],
         }
+    }
+
+    #[test]
+    fn projection_receipt_binds_only_snapshot_final_lanes_and_global_watermark() {
+        let mut utterance = projected_utterance();
+        utterance.variants[0].completion = Some(UtteranceCompletion::Partial);
+        let snapshot =
+            |utterance: RealtimeUtterance, desired_revision| RealtimeLoroProjectionSnapshot {
+                session_id: "session-a".into(),
+                desired_revision,
+                applied_revision: 0,
+                machine_utterances: vec![utterance],
+            };
+        let base = realtime_projection_receipt(&snapshot(utterance.clone(), 7));
+
+        utterance.translated_text = Some("legacy speculative shadow changed".into());
+        utterance.variants[0].text = Some("partial variant changed".into());
+        utterance.revision += 1;
+        let partial_changed = realtime_projection_receipt(&snapshot(utterance.clone(), 7));
+        assert_eq!(
+            partial_changed.digest, base.digest,
+            "a legacy translation Partial may bump the aggregate row, but the source Final receipt is lane-local"
+        );
+
+        utterance.variants[0].completion = Some(UtteranceCompletion::Complete);
+        utterance.variants[0].projection_revision = 8;
+        let translation_final = realtime_projection_receipt(&snapshot(utterance.clone(), 8));
+        assert_ne!(translation_final.digest, base.digest);
+        assert_eq!(translation_final.fact_revision, 8);
+
+        utterance.source_text = "new final source".into();
+        let source_changed = realtime_projection_receipt(&snapshot(utterance, 9));
+        assert_ne!(source_changed.digest, translation_final.digest);
+        assert_eq!(source_changed.fact_revision, 9);
+    }
+
+    fn projected_translation_variant(
+        language: &str,
+        text: &str,
+        projection_revision: u64,
+    ) -> RealtimeUtteranceVariant {
+        RealtimeUtteranceVariant {
+            language: language.into(),
+            role: UtteranceVariantRole::Translation,
+            text: Some(text.into()),
+            state: UtteranceVariantState::Ready,
+            completion: Some(UtteranceCompletion::Complete),
+            revision: 0,
+            created_at: String::new(),
+            updated_at: String::new(),
+            projection_revision,
+            edit_revision: 0,
+        }
+    }
+
+    fn projected_source_variant(
+        language: &str,
+        text: &str,
+        projection_revision: u64,
+    ) -> RealtimeUtteranceVariant {
+        RealtimeUtteranceVariant {
+            language: language.into(),
+            role: UtteranceVariantRole::Source,
+            text: Some(text.into()),
+            state: UtteranceVariantState::Ready,
+            completion: Some(UtteranceCompletion::Complete),
+            revision: 0,
+            created_at: String::new(),
+            updated_at: String::new(),
+            projection_revision,
+            edit_revision: 0,
+        }
+    }
+
+    fn two_multilingual_final_utterances() -> Vec<RealtimeUtterance> {
+        let mut first = projected_utterance();
+        first.id = "utterance-0".into();
+        first.sequence = 0;
+        first.source_text = "source zero".into();
+        first.source_start_ms = None;
+        first.source_end_ms = None;
+        first.source_projection_revision = 1;
+        first.translated_language = Some("zh".into());
+        first.translated_text = Some("零".into());
+        first.variants = vec![
+            projected_translation_variant("ZH-Hans", "零", 3),
+            projected_translation_variant("th-TH", "ศูนย์", 5),
+            projected_source_variant("en", "source zero", 1),
+        ];
+
+        let mut second = projected_utterance();
+        second.id = "utterance-1".into();
+        second.sequence = 1;
+        second.source_text = "source one".into();
+        second.source_start_ms = None;
+        second.source_end_ms = None;
+        second.source_projection_revision = 2;
+        second.translated_language = Some("zh".into());
+        second.translated_text = Some("一".into());
+        second.variants = vec![
+            projected_translation_variant("zh", "一", 4),
+            projected_translation_variant("TH", "หนึ่ง", 6),
+            projected_source_variant("en", "source one", 2),
+        ];
+        vec![first, second]
+    }
+
+    fn project_test_snapshots(snapshots: Vec<Vec<RealtimeUtterance>>) -> String {
+        let bridge = vt_store::EditorBridge::new();
+        let doc = loro::LoroDoc::new();
+        doc.config_text_style(crate::editor_api::voice_tool_style_config());
+        bridge.open("realtime-doc", doc).unwrap();
+        let first = snapshots.first().expect("at least one projection snapshot");
+        let rendered = render_bilingual_capture_section("session-a", first, false);
+        assert!(!rendered.text.is_empty());
+        let initial_len = rendered.text.chars().count();
+        apply_rendered(&bridge, "realtime-doc", 0, rendered);
+        bridge
+            .set_capture_owned_range(
+                "realtime-doc",
+                &capture_section_owner_key("session-a"),
+                "session-a",
+                0,
+                initial_len,
+            )
+            .unwrap();
+        for snapshot in snapshots.into_iter().skip(1) {
+            sync_capture_section_incrementally(
+                &bridge,
+                "realtime-doc",
+                "session-a",
+                crate::editor_api::TextRange {
+                    pos: 0,
+                    len: initial_len,
+                },
+                &snapshot,
+            )
+            .unwrap();
+        }
+        bridge.get_content("realtime-doc").unwrap()
+    }
+
+    #[test]
+    fn incremental_projection_converges_to_identical_bytes_for_out_of_order_finals() {
+        let finals = two_multilingual_final_utterances();
+        let expected = render_bilingual_capture_section("session-a", &finals, false).text;
+
+        let sources_first = finals
+            .iter()
+            .cloned()
+            .map(|mut utterance| {
+                utterance
+                    .variants
+                    .retain(|variant| variant.role == UtteranceVariantRole::Source);
+                utterance.translated_language = None;
+                utterance.translated_text = None;
+                utterance
+            })
+            .collect::<Vec<_>>();
+
+        let mut translation_first = finals.clone();
+        for utterance in &mut translation_first {
+            utterance.completion = UtteranceCompletion::Partial;
+            utterance.source_projection_revision = 0;
+            utterance.variants.clear();
+        }
+        translation_first[1].variants = vec![projected_translation_variant("ZH-hans", "一", 4)];
+
+        let mut first_sparse = translation_first.clone();
+        first_sparse[1].variants = vec![projected_translation_variant("TH-th", "หนึ่ง", 6)];
+        let mut second_sparse = first_sparse.clone();
+        second_sparse[0].variants = vec![projected_translation_variant("zh-Hans", "零", 3)];
+        let mut sources_with_sparse_translations = finals.clone();
+        sources_with_sparse_translations[0]
+            .variants
+            .retain(|variant| {
+                variant.role == UtteranceVariantRole::Source
+                    || capture_lane_id(&variant.language) == "zh"
+            });
+        sources_with_sparse_translations[1]
+            .variants
+            .retain(|variant| {
+                variant.role == UtteranceVariantRole::Source
+                    || capture_lane_id(&variant.language) == "th"
+            });
+
+        for projected in [
+            project_test_snapshots(vec![sources_first, finals.clone()]),
+            project_test_snapshots(vec![translation_first, finals.clone()]),
+            project_test_snapshots(vec![
+                first_sparse,
+                second_sparse,
+                sources_with_sparse_translations,
+                finals.clone(),
+            ]),
+        ] {
+            assert_eq!(projected, expected);
+        }
+    }
+
+    #[test]
+    fn canonical_lane_identity_finds_legacy_full_tags_without_duplicate_insert() {
+        let bridge = vt_store::EditorBridge::new();
+        let doc = loro::LoroDoc::new();
+        doc.config_text_style(crate::editor_api::voice_tool_style_config());
+        bridge.open("realtime-doc", doc).unwrap();
+        let source = "EN-US: legacy source\n";
+        let translation = "zh-Hans: 旧译文\n";
+        let content = format!("{source}{translation}\n");
+        bridge
+            .apply(
+                "realtime-doc",
+                vt_store::EditOp::Insert {
+                    pos: 0,
+                    text: content.clone(),
+                },
+            )
+            .unwrap();
+        for (pos, len, language) in [
+            (0, source.chars().count(), "EN-US"),
+            (
+                source.chars().count(),
+                translation.chars().count(),
+                "zh-Hans",
+            ),
+        ] {
+            for (key, value) in [
+                ("session_id", "session-a"),
+                ("utterance_id", "utterance-a"),
+                ("lane_language", language),
+            ] {
+                bridge
+                    .apply(
+                        "realtime-doc",
+                        vt_store::EditOp::Mark {
+                            pos,
+                            len,
+                            key: key.into(),
+                            value_json: serde_json::to_string(value).unwrap(),
+                        },
+                    )
+                    .unwrap();
+            }
+        }
+
+        let mut machine = projected_utterance();
+        machine.source_language = " en-US ".into();
+        machine.source_text = "legacy source".into();
+        machine.variants[0].language = "ZH-HANS".into();
+        machine.variants[0].text = Some("旧译文".into());
+        let plan = plan_capture_section_incrementally(
+            &bridge,
+            "realtime-doc",
+            "session-a",
+            crate::editor_api::TextRange {
+                pos: 0,
+                len: content.chars().count(),
+            },
+            std::slice::from_ref(&machine),
+        )
+        .unwrap();
+        assert!(plan.operations.is_empty());
+        assert_eq!(bridge.get_content("realtime-doc").unwrap(), content);
+
+        let delta = bridge.get_delta("realtime-doc").unwrap();
+        assert_eq!(
+            find_unique_capture_lane_range(&delta, "session-a", "utterance-a", "en")
+                .unwrap()
+                .unwrap()
+                .len,
+            source.chars().count()
+        );
+        assert!(
+            find_unique_capture_lane_range(&delta, "session-a", "utterance-a", "ZH-hant")
+                .unwrap()
+                .is_some()
+        );
+
+        let mut mutation = projection_mutation(UtteranceLane::Source, 0, "edited");
+        mutation.lane_language = "en-US".into();
+        let replacement = render_replacement_lane(&machine, &mutation);
+        assert_eq!(replacement.text, "[00:01] en: edited\n");
+        assert!(replacement
+            .marks
+            .iter()
+            .any(|mark| { mark.key == "lane_language" && mark.value_json == "\"en\"" }));
+    }
+
+    #[test]
+    fn finalized_search_content_matches_projectable_lanes_and_visible_overrides() {
+        let mut utterance = projected_utterance();
+        utterance.source_language = "EN-us".into();
+        utterance.completion = UtteranceCompletion::Partial;
+        utterance.source_text = "speculative source".into();
+        utterance.translated_text = Some("legacy speculative shadow".into());
+        let source = utterance
+            .variants
+            .iter_mut()
+            .find(|variant| variant.role == UtteranceVariantRole::Source)
+            .unwrap();
+        source.text = Some("speculative source".into());
+        source.completion = Some(UtteranceCompletion::Partial);
+        source.projection_revision = 0;
+        utterance.variants[0].language = "ZH-Hans".into();
+        utterance.variants[0].text = Some("speculative variant".into());
+        utterance.variants[0].completion = Some(UtteranceCompletion::Partial);
+        assert_eq!(finalized_capture_search_content(&[utterance.clone()]), "");
+
+        utterance.variants[0].completion = Some(UtteranceCompletion::Complete);
+        utterance.variants[0].text = Some("visible translated override".into());
+        assert_eq!(
+            finalized_capture_search_content(&[utterance.clone()]),
+            "[zh] visible translated override"
+        );
+
+        utterance.completion = UtteranceCompletion::Complete;
+        utterance.source_text = "visible source override".into();
+        let source = utterance
+            .variants
+            .iter_mut()
+            .find(|variant| variant.role == UtteranceVariantRole::Source)
+            .unwrap();
+        source.text = Some("visible source override".into());
+        source.completion = Some(UtteranceCompletion::Complete);
+        source.projection_revision = 1;
+        assert_eq!(
+            finalized_capture_search_content(&[utterance.clone()]),
+            "[en] visible source override [zh] visible translated override"
+        );
+        assert_eq!(
+            finalized_capture_search_content_through(&[utterance], 1),
+            "[en] visible source override",
+            "an R snapshot must not index the concurrently committed R+1 lane"
+        );
     }
 
     #[test]
@@ -9569,6 +12716,10 @@ mod tests {
         let ffi: FfiNotebookCaptureUtterance = utterance.into();
 
         assert_eq!(ffi.session_speaker_id.as_deref(), Some("speaker-a"));
+        assert_eq!(ffi.source_projection_revision, 1);
+        assert_eq!(ffi.source_edit_revision, 0);
+        assert_eq!(ffi.language_variants[0].projection_revision, 2);
+        assert_eq!(ffi.language_variants[0].edit_revision, 0);
     }
 
     fn projection_mutation(
@@ -9705,7 +12856,164 @@ mod tests {
     }
 
     #[test]
-    fn incremental_projection_never_rewrites_finalized_lanes() {
+    fn incremental_projection_ignores_partial_lanes_until_each_lane_is_final() {
+        let bridge = vt_store::EditorBridge::new();
+        let doc = loro::LoroDoc::new();
+        doc.config_text_style(crate::editor_api::voice_tool_style_config());
+        bridge.open("realtime-doc", doc).unwrap();
+        let initial = crate::editor_api::TextRange { pos: 0, len: 0 };
+        let mut utterance = projected_utterance();
+        utterance.completion = UtteranceCompletion::Partial;
+        utterance.source_text = "speculative source".into();
+        utterance.translated_text = Some("推测译文".into());
+        let source = utterance
+            .variants
+            .iter_mut()
+            .find(|variant| variant.role == UtteranceVariantRole::Source)
+            .unwrap();
+        source.text = Some("speculative source".into());
+        source.completion = Some(UtteranceCompletion::Partial);
+        source.projection_revision = 0;
+        utterance.variants[0].text = Some("推测译文".into());
+        utterance.variants[0].completion = Some(UtteranceCompletion::Partial);
+
+        sync_capture_section_incrementally(
+            &bridge,
+            "realtime-doc",
+            "session-a",
+            initial,
+            &[utterance.clone()],
+        )
+        .unwrap();
+        assert_eq!(bridge.get_content("realtime-doc").unwrap(), "");
+
+        utterance.completion = UtteranceCompletion::Complete;
+        utterance.source_text = "final source".into();
+        let source = utterance
+            .variants
+            .iter_mut()
+            .find(|variant| variant.role == UtteranceVariantRole::Source)
+            .unwrap();
+        source.text = Some("final source".into());
+        source.completion = Some(UtteranceCompletion::Complete);
+        source.projection_revision = 1;
+        sync_capture_section_incrementally(
+            &bridge,
+            "realtime-doc",
+            "session-a",
+            initial,
+            &[utterance.clone()],
+        )
+        .unwrap();
+        let source_only = bridge.get_content("realtime-doc").unwrap();
+        assert!(source_only.contains("en: final source\n"));
+        assert!(!source_only.contains("推测译文"));
+
+        utterance.variants[0].text = Some("最终译文".into());
+        utterance.variants[0].completion = Some(UtteranceCompletion::Complete);
+        sync_capture_section_incrementally(
+            &bridge,
+            "realtime-doc",
+            "session-a",
+            initial,
+            &[utterance],
+        )
+        .unwrap();
+        let finalized = bridge.get_content("realtime-doc").unwrap();
+        assert!(finalized.contains("en: final source\n"));
+        assert!(finalized.contains("zh: 最终译文\n"));
+        assert!(!finalized.contains("推测译文"));
+    }
+
+    #[test]
+    fn first_v27_projection_removes_legacy_machine_partial_translation() {
+        let bridge = vt_store::EditorBridge::new();
+        let doc = loro::LoroDoc::new();
+        doc.config_text_style(crate::editor_api::voice_tool_style_config());
+        bridge.open("realtime-doc", doc).unwrap();
+        let mut utterance = projected_utterance();
+        utterance.variants[0].completion = Some(UtteranceCompletion::Partial);
+        utterance.variants[0].projection_revision = 0;
+        utterance.variants[0].text = Some("v26 幽灵 Partial".into());
+        utterance.translated_text = Some("v26 幽灵 Partial".into());
+
+        // Recreate the v26 shape: aggregate source Complete caused both lanes
+        // to be rendered even though the translation fact was still Partial.
+        let rendered = render_bilingual_capture_section("session-a", &[utterance.clone()], false);
+        apply_rendered(&bridge, "realtime-doc", 0, rendered);
+        let delta = bridge.get_delta("realtime-doc").unwrap();
+        let source = find_unique_capture_lane_range(&delta, "session-a", "utterance-a", "en")
+            .unwrap()
+            .unwrap();
+        apply_rendered(
+            &bridge,
+            "realtime-doc",
+            source.pos + source.len,
+            render_capture_translation_lane(&utterance, "zh-Hans", "v26 幽灵 Partial", 0),
+        );
+        let legacy_len = bridge.get_content("realtime-doc").unwrap().chars().count();
+        assert!(bridge
+            .get_projection_receipt("realtime-doc", "session-a")
+            .unwrap()
+            .is_none());
+        assert!(bridge
+            .get_content("realtime-doc")
+            .unwrap()
+            .contains("v26 幽灵 Partial"));
+        let finalized_keys = finalized_capture_lanes(std::slice::from_ref(&utterance))
+            .into_iter()
+            .map(|lane| (lane.utterance.id.clone(), lane.language))
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut user_owned_delta: serde_json::Value =
+            serde_json::from_str(&bridge.get_delta("realtime-doc").unwrap()).unwrap();
+        for segment in user_owned_delta.as_array_mut().unwrap() {
+            if segment
+                .get("attributes")
+                .and_then(|attributes| attributes.get("lane_language"))
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|language| capture_lane_id(language) == "zh")
+            {
+                segment
+                    .get_mut("attributes")
+                    .and_then(serde_json::Value::as_object_mut)
+                    .unwrap()
+                    .insert(
+                        "content_owner".into(),
+                        serde_json::Value::String("user".into()),
+                    );
+            }
+        }
+        assert!(legacy_machine_lane_ranges_outside_finalized(
+            &user_owned_delta.to_string(),
+            "session-a",
+            &finalized_keys,
+        )
+        .unwrap()
+        .is_empty());
+
+        sync_capture_section_incrementally(
+            &bridge,
+            "realtime-doc",
+            "session-a",
+            crate::editor_api::TextRange {
+                pos: 0,
+                len: legacy_len,
+            },
+            &[utterance],
+        )
+        .unwrap();
+
+        let recovered = bridge.get_content("realtime-doc").unwrap();
+        assert!(recovered.contains("en: good morning 🌏\n"));
+        assert!(!recovered.contains("v26 幽灵 Partial"));
+        assert!(bridge
+            .get_projection_receipt("realtime-doc", "session-a")
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn incremental_projection_never_rewrites_user_lane_when_other_language_finalizes() {
         let bridge = vt_store::EditorBridge::new();
         let doc = loro::LoroDoc::new();
         doc.config_text_style(crate::editor_api::voice_tool_style_config());
@@ -9766,7 +13074,20 @@ mod tests {
 
         let mut revised = utterance;
         revised.source_text = "machine revision".into();
-        revised.translated_text = Some("机器修订".into());
+        revised.translated_language = Some("th".into());
+        revised.translated_text = Some("คำแปลใหม่".into());
+        revised.variants.push(RealtimeUtteranceVariant {
+            language: "th".into(),
+            role: UtteranceVariantRole::Translation,
+            text: Some("คำแปลใหม่".into()),
+            state: UtteranceVariantState::Ready,
+            completion: Some(UtteranceCompletion::Complete),
+            revision: 0,
+            created_at: String::new(),
+            updated_at: String::new(),
+            projection_revision: 3,
+            edit_revision: 0,
+        });
         revised.revision = 1;
         sync_capture_section_incrementally(
             &bridge,
@@ -9784,7 +13105,24 @@ mod tests {
         assert!(content.contains("en: good morning 🌏\n"));
         assert!(!content.contains("machine revision"));
         assert!(content.contains("zh: 我写的版本\n"));
-        assert!(!content.contains("机器修订"));
+        assert!(content.contains("th: คำแปลใหม่\n"));
+        let delta: serde_json::Value =
+            serde_json::from_str(&bridge.get_delta("realtime-doc").unwrap()).unwrap();
+        assert!(delta.as_array().unwrap().iter().any(|segment| {
+            let attributes = segment.get("attributes");
+            attributes
+                .and_then(|value| value.get("utterance_id"))
+                .and_then(serde_json::Value::as_str)
+                == Some("utterance-a")
+                && attributes
+                    .and_then(|value| value.get("lane_language"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some("zh")
+                && attributes
+                    .and_then(|value| value.get("content_owner"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some("user")
+        }));
     }
 
     #[test]
@@ -9796,6 +13134,9 @@ mod tests {
         let mut utterance = projected_utterance();
         utterance.translated_language = None;
         utterance.translated_text = None;
+        utterance
+            .variants
+            .retain(|variant| variant.role == UtteranceVariantRole::Source);
         utterance.alignment = UtteranceAlignment::SourceOnly;
         let rendered = render_bilingual_capture_section("session-a", &[utterance.clone()], false);
         let section_len = rendered.text.chars().count();
@@ -9812,6 +13153,18 @@ mod tests {
 
         utterance.translated_language = Some("zh".into());
         utterance.translated_text = Some("迟到的翻译".into());
+        utterance.variants.push(RealtimeUtteranceVariant {
+            language: "zh".into(),
+            role: UtteranceVariantRole::Translation,
+            text: Some("迟到的翻译".into()),
+            state: UtteranceVariantState::Ready,
+            completion: Some(UtteranceCompletion::Complete),
+            revision: 0,
+            created_at: String::new(),
+            updated_at: String::new(),
+            projection_revision: 2,
+            edit_revision: 0,
+        });
         utterance.alignment = UtteranceAlignment::Paired;
         utterance.revision = 1;
         sync_capture_section_incrementally(
@@ -9829,6 +13182,119 @@ mod tests {
         let content = bridge.get_content("realtime-doc").unwrap();
         assert!(content.contains("en: good morning 🌏\n"));
         assert!(content.contains("zh: 迟到的翻译\n"));
+    }
+
+    #[test]
+    fn applied_lane_edit_does_not_wait_for_or_project_a_newer_pending_lane() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Lane-local editability".into()))
+            .unwrap();
+        let profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id.clone(),
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        claim_current_realtime_provider(&core.notebook_capture_store, &started.session_id);
+        let source = core
+            .notebook_capture_store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "lane-local-utterance".into(),
+                    session_id: started.session_id.clone(),
+                    sequence: 0,
+                    session_speaker_id: None,
+                    source_language: "en".into(),
+                    source_text: "applied source".into(),
+                    source_start_ms: None,
+                    source_end_ms: None,
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Complete,
+                    alignment: UtteranceAlignment::SourceOnly,
+                },
+                None,
+            )
+            .unwrap();
+        core.project_notebook_realtime_incremental(started.session_id.clone())
+            .unwrap();
+        core.notebook_capture_store
+            .upsert_translation_variant(
+                &started.session_id,
+                0,
+                "zh",
+                Some("newer pending lane"),
+                UtteranceVariantState::Ready,
+                Some(UtteranceCompletion::Complete),
+            )
+            .unwrap();
+        let before = core
+            .notebook_capture_store
+            .get_run_for_session(&started.session_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (
+                before.realtime_loro_applied_revision,
+                before.realtime_loro_desired_revision
+            ),
+            (
+                source.source_projection_revision,
+                source.source_projection_revision + 1
+            )
+        );
+        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        db.execute_batch(
+            "CREATE TRIGGER fail_unrelated_projection_ack
+             BEFORE UPDATE OF realtime_loro_applied_revision ON notebook_capture_runs
+             WHEN NEW.realtime_loro_applied_revision > OLD.realtime_loro_applied_revision
+             BEGIN
+                 SELECT RAISE(FAIL, 'unrelated pending lane must not be projected by edit');
+             END;",
+        )
+        .unwrap();
+
+        let edited = core
+            .replace_notebook_utterance_lane(
+                "lane-local-utterance".into(),
+                "en".into(),
+                "user edits already applied lane".into(),
+                source.source_edit_revision,
+            )
+            .expect("lane A edit must not depend on pending lane B projection");
+        assert_eq!(edited.source_text, "user edits already applied lane");
+        let after = core
+            .notebook_capture_store
+            .get_run_for_session(&started.session_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            after.realtime_loro_applied_revision,
+            before.realtime_loro_applied_revision
+        );
+        assert_eq!(
+            after.realtime_loro_desired_revision,
+            before.realtime_loro_desired_revision
+        );
+        assert!(core
+            .search_sessions("newer pending lane".into(), 10)
+            .unwrap()
+            .is_empty());
+
+        db.execute_batch("DROP TRIGGER fail_unrelated_projection_ack;")
+            .unwrap();
+        core.interrupt_notebook_capture_session(
+            started.session_id,
+            FfiNotebookCaptureInterruptReason::LocalAudioUnavailable,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -10026,25 +13492,25 @@ mod tests {
         let mut changed = None;
         for sequence in 0..128_u64 {
             changed = Some(
-                core.notebook_capture_store
-                    .upsert_utterance(
-                        &NewRealtimeUtterance {
-                            id: format!("utterance-{sequence}"),
-                            session_id: "session-a".into(),
-                            sequence,
-                            session_speaker_id: None,
-                            source_language: "en".into(),
-                            source_text: format!("source-{sequence}"),
-                            source_start_ms: Some(sequence * 100),
-                            source_end_ms: Some(sequence * 100 + 50),
-                            translated_language: Some("zh".into()),
-                            translated_text: Some(format!("translated-{sequence}")),
-                            completion: UtteranceCompletion::Complete,
-                            alignment: UtteranceAlignment::Paired,
-                        },
-                        None,
-                    )
-                    .unwrap(),
+                upsert_test_lanes(
+                    &core.notebook_capture_store,
+                    &NewRealtimeUtterance {
+                        id: format!("utterance-{sequence}"),
+                        session_id: "session-a".into(),
+                        sequence,
+                        session_speaker_id: None,
+                        source_language: "en".into(),
+                        source_text: format!("source-{sequence}"),
+                        source_start_ms: Some(sequence * 100),
+                        source_end_ms: Some(sequence * 100 + 50),
+                        translated_language: Some("zh".into()),
+                        translated_text: Some(format!("translated-{sequence}")),
+                        completion: UtteranceCompletion::Complete,
+                        alignment: UtteranceAlignment::Paired,
+                    },
+                    None,
+                )
+                .unwrap(),
             );
         }
         let run = core
@@ -10052,8 +13518,29 @@ mod tests {
             .get_run(&run.id)
             .unwrap()
             .unwrap();
-        let (callback_tx, _callback_rx) = std::sync::mpsc::channel();
-        let callback = CaptureCallbackSink::new(Arc::new(CaptureEventSender(callback_tx))).unwrap();
+        // Corrupt an unrelated row's edit overlay. A callback implementation
+        // that scans all 128 rows will fail before enqueueing sequence 127;
+        // the O(delta) snapshot never touches sequence 0.
+        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        db.pragma_update(None, "ignore_check_constraints", true)
+            .unwrap();
+        db.execute(
+            "INSERT INTO realtime_utterance_overrides
+             (utterance_id, lane, lane_language, text,
+              machine_utterance_revision, machine_variant_revision,
+              edit_revision, created_at, updated_at)
+             VALUES (?1, 'invalid_lane', 'en', 'corrupt unrelated row',
+                     0, 0, 1, ?2, ?2)",
+            rusqlite::params!["utterance-0", chrono::Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+
+        let (callback_tx, callback_rx) = std::sync::mpsc::channel();
+        let callback = CaptureCallbackSink::new(
+            Arc::new(CaptureEventSender(callback_tx)),
+            core.notebook_capture_store.clone(),
+        )
+        .unwrap();
 
         let first_preview = callback.send_preview(FfiNotebookCaptureLivePreview {
             session_id: run.session_id.clone(),
@@ -10070,6 +13557,11 @@ mod tests {
             vec![changed.expect("the final changed utterance")],
             false,
         ));
+        let delivered = callback_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("the changed row must enqueue without scanning corrupt unrelated history");
+        assert_eq!(delivered.utterances.len(), 1);
+        assert_eq!(delivered.utterances[0].sequence, 127);
         let second = callback.send(event_from_run(run.clone(), Vec::new(), false));
 
         assert_eq!(first_preview.preview_revision, 1);
@@ -10092,12 +13584,377 @@ mod tests {
 
         // Full materialization remains available only at explicit boundaries
         // such as stop/reopen, never once per live token batch.
+        db.execute(
+            "DELETE FROM realtime_utterance_overrides
+             WHERE utterance_id = 'utterance-0' AND lane = 'invalid_lane'",
+            [],
+        )
+        .unwrap();
         let full = event_full_snapshot_from_run(&core.notebook_capture_store, run).unwrap();
         assert!(full.is_full_snapshot);
         assert_eq!(full.utterances.len(), 128);
     }
 
-    fn projected_core_fixture() -> (tempfile::TempDir, ZulangueCore, String, String, String) {
+    #[test]
+    fn callback_publication_refreshes_stale_recording_state_after_pause_commit() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core.create_notebook(Some("Callback order".into())).unwrap();
+        let profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let recording = core
+            .notebook_capture_store
+            .create_run(
+                &vt_store::NewNotebookCaptureRun {
+                    id: "callback-order-run".into(),
+                    notebook_id: notebook.id,
+                    session_id: "callback-order-session".into(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "callback-order.journal".into(),
+                    audio_key_ref: "callback-order-key".into(),
+                    sample_rate: 16_000,
+                    channels: 1,
+                },
+                &profile,
+            )
+            .unwrap();
+        let paused = core
+            .notebook_capture_store
+            .transition_capture(&recording.id, CaptureState::Recording, CaptureState::Paused)
+            .unwrap();
+        let (callback_tx, callback_rx) = std::sync::mpsc::channel();
+        let callback = CaptureCallbackSink::new(
+            Arc::new(CaptureEventSender(callback_tx)),
+            core.notebook_capture_store.clone(),
+        )
+        .unwrap();
+
+        // Models a delta that captured Recording before the pause transaction
+        // committed, but reached the publication boundary afterwards.
+        let published = callback.send(event_from_run(recording, Vec::new(), false));
+
+        assert_eq!(published.capture_state, FfiNotebookCaptureState::Paused);
+        assert_eq!(
+            callback_rx
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap()
+                .capture_state,
+            FfiNotebookCaptureState::Paused
+        );
+        assert_eq!(paused.capture_state, CaptureState::Paused);
+    }
+
+    #[test]
+    fn remote_truth_overlay_survives_full_reconcile_and_projection_ack_fallback() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Remote truth overlay".into()))
+            .unwrap();
+        let profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let run = core
+            .notebook_capture_store
+            .create_run(
+                &vt_store::NewNotebookCaptureRun {
+                    id: "remote-overlay-run".into(),
+                    notebook_id: notebook.id,
+                    session_id: "remote-overlay-session".into(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "remote-overlay.journal".into(),
+                    audio_key_ref: "remote-overlay-key".into(),
+                    sample_rate: 16_000,
+                    channels: 1,
+                },
+                &profile,
+            )
+            .unwrap();
+        let (callback_tx, callback_rx) = std::sync::mpsc::channel();
+        let callback = CaptureCallbackSink::new(
+            Arc::new(CaptureEventSender(callback_tx)),
+            core.notebook_capture_store.clone(),
+        )
+        .unwrap();
+        callback.set_remote_truth_overlay(
+            &run.session_id,
+            RemoteHealth::Degraded,
+            ProviderFailure {
+                error_type: "control_unavailable".into(),
+                request_id: None,
+            },
+        );
+
+        let reconciled = callback
+            .full_snapshot_with_remote_truth(&run.session_id)
+            .unwrap();
+        assert_eq!(reconciled.remote_health, FfiNotebookRemoteHealth::Degraded);
+        assert_eq!(
+            reconciled.provider_error_type.as_deref(),
+            Some("control_unavailable")
+        );
+
+        callback
+            .commit_projection_ack(&run.session_id, || {
+                Ok(RealtimeLoroProjectionAck {
+                    session_id: run.session_id.clone(),
+                    desired_revision: 1,
+                    applied_revision: 1,
+                    advanced: true,
+                })
+            })
+            .unwrap();
+        let delivered = callback_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(delivered.remote_health, FfiNotebookRemoteHealth::Degraded);
+        assert_eq!(
+            delivered.provider_error_type.as_deref(),
+            Some("control_unavailable")
+        );
+    }
+
+    #[test]
+    fn pause_event_orders_after_a_send_that_read_recording_before_the_commit() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Linearized pause".into()))
+            .unwrap();
+        let profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let recording = core
+            .notebook_capture_store
+            .create_run(
+                &vt_store::NewNotebookCaptureRun {
+                    id: "linearized-pause-run".into(),
+                    notebook_id: notebook.id,
+                    session_id: "linearized-pause-session".into(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "linearized-pause.journal".into(),
+                    audio_key_ref: "linearized-pause-key".into(),
+                    sample_rate: 16_000,
+                    channels: 1,
+                },
+                &profile,
+            )
+            .unwrap();
+        let (callback_tx, _callback_rx) = std::sync::mpsc::channel();
+        let callback = CaptureCallbackSink::new(
+            Arc::new(CaptureEventSender(callback_tx)),
+            core.notebook_capture_store.clone(),
+        )
+        .unwrap();
+        let (read_tx, read_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let stale_callback = callback.clone();
+        let stale_recording = recording.clone();
+        let stale = std::thread::spawn(move || {
+            stale_callback.send_with_refresh_hook(
+                event_from_run(stale_recording, Vec::new(), false),
+                || {
+                    read_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                },
+            )
+        });
+        read_rx.recv().unwrap();
+
+        // The stale sender has read Recording and still owns the mailbox.
+        // Pause may durably commit now, but its mandatory send must wait and
+        // therefore receives the next event revision.
+        let paused = core
+            .notebook_capture_store
+            .transition_capture(&recording.id, CaptureState::Recording, CaptureState::Paused)
+            .unwrap();
+        let pause_callback = callback.clone();
+        let pause = std::thread::spawn(move || {
+            pause_callback.send(event_from_run(paused, Vec::new(), false))
+        });
+        release_tx.send(()).unwrap();
+
+        let stale = stale.join().unwrap();
+        let pause = pause.join().unwrap();
+        assert_eq!(stale.capture_state, FfiNotebookCaptureState::Recording);
+        assert_eq!(pause.capture_state, FfiNotebookCaptureState::Paused);
+        assert!(pause.event_revision > stale.event_revision);
+    }
+
+    #[test]
+    fn pause_direct_result_keeps_monotonic_revision_when_refresh_cannot_enqueue() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Direct pause revision".into()))
+            .unwrap();
+        let profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let recording = core
+            .notebook_capture_store
+            .create_run(
+                &vt_store::NewNotebookCaptureRun {
+                    id: "direct-pause-run".into(),
+                    notebook_id: notebook.id,
+                    session_id: "direct-pause-session".into(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "direct-pause.journal".into(),
+                    audio_key_ref: "direct-pause-key".into(),
+                    sample_rate: 16_000,
+                    channels: 1,
+                },
+                &profile,
+            )
+            .unwrap();
+        let paused = core
+            .notebook_capture_store
+            .transition_capture(&recording.id, CaptureState::Recording, CaptureState::Paused)
+            .unwrap();
+        let (callback_tx, callback_rx) = std::sync::mpsc::channel();
+        let callback = CaptureCallbackSink::new(
+            Arc::new(CaptureEventSender(callback_tx)),
+            core.notebook_capture_store.clone(),
+        )
+        .unwrap();
+        rusqlite::Connection::open(temp.path().join("zulangue.db"))
+            .unwrap()
+            .execute(
+                "DELETE FROM notebook_capture_runs WHERE id = 'direct-pause-run'",
+                [],
+            )
+            .unwrap();
+
+        let direct = callback.send(event_from_run(paused, Vec::new(), false));
+
+        assert_eq!(direct.capture_state, FfiNotebookCaptureState::Paused);
+        assert_eq!(direct.event_revision, 1);
+        assert!(callback_rx
+            .recv_timeout(std::time::Duration::from_millis(50))
+            .is_err());
+    }
+
+    #[test]
+    fn projection_ack_after_queued_pause_only_raises_its_watermark() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core.create_notebook(Some("ACK order".into())).unwrap();
+        let profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let recording = core
+            .notebook_capture_store
+            .create_run(
+                &vt_store::NewNotebookCaptureRun {
+                    id: "ack-order-run".into(),
+                    notebook_id: notebook.id,
+                    session_id: "ack-order-session".into(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "ack-order.journal".into(),
+                    audio_key_ref: "ack-order-key".into(),
+                    sample_rate: 16_000,
+                    channels: 1,
+                },
+                &profile,
+            )
+            .unwrap();
+        let mut paused = core
+            .notebook_capture_store
+            .transition_capture(&recording.id, CaptureState::Recording, CaptureState::Paused)
+            .unwrap();
+        paused.remote_health = RemoteHealth::Degraded;
+        let (callback_tx, callback_rx) = std::sync::mpsc::channel();
+        let callback = CaptureCallbackSink::new(
+            Arc::new(CaptureEventSender(callback_tx)),
+            core.notebook_capture_store.clone(),
+        )
+        .unwrap();
+        {
+            // Install the already-queued pause without waking the worker until
+            // the ACK merge completes, making the critical ordering exact.
+            let mut pending = callback.mailbox.pending.lock().unwrap();
+            let mut event = event_from_run(paused, Vec::new(), false);
+            event.event_revision = 41;
+            pending.event = Some(event);
+        }
+
+        let receipt = callback
+            .commit_projection_ack("ack-order-session", || {
+                Ok(RealtimeLoroProjectionAck {
+                    session_id: "ack-order-session".into(),
+                    desired_revision: 7,
+                    applied_revision: 7,
+                    advanced: true,
+                })
+            })
+            .unwrap();
+        assert!(receipt.advanced);
+        let delivered = callback_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(delivered.event_revision, 41);
+        assert_eq!(delivered.capture_state, FfiNotebookCaptureState::Paused);
+        assert_eq!(delivered.remote_health, FfiNotebookRemoteHealth::Degraded);
+        assert_eq!(delivered.realtime_loro_applied_revision, 7);
+    }
+
+    #[test]
+    fn callback_delta_refresh_preserves_a_concurrent_user_lane_override() {
+        let (_temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
+        core.project_notebook_capture(&run_id).unwrap();
+        let stale_run = core
+            .notebook_capture_store
+            .get_run(&run_id)
+            .unwrap()
+            .unwrap();
+        let stale_utterance = core
+            .notebook_capture_store
+            .list_utterances("session-a")
+            .unwrap()
+            .remove(0);
+        let expected_revision = stale_utterance
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .map(|variant| variant.edit_revision)
+            .unwrap_or(0);
+        core.replace_notebook_utterance_lane(
+            "utterance-a".into(),
+            "zh".into(),
+            "用户 A 在 B delta 发布前已提交".into(),
+            expected_revision,
+        )
+        .unwrap();
+
+        let (callback_tx, callback_rx) = std::sync::mpsc::channel();
+        let callback = CaptureCallbackSink::new(
+            Arc::new(CaptureEventSender(callback_tx)),
+            core.notebook_capture_store.clone(),
+        )
+        .unwrap();
+        let published = callback.send(event_from_run(stale_run, vec![stale_utterance], false));
+        assert_eq!(
+            published.utterances[0].translated_text.as_deref(),
+            Some("用户 A 在 B delta 发布前已提交")
+        );
+        let delivered = callback_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(
+            delivered.utterances[0].translated_text.as_deref(),
+            Some("用户 A 在 B delta 发布前已提交")
+        );
+    }
+
+    fn projected_core_fixture_with_projection(
+        attach_projection: bool,
+    ) -> (tempfile::TempDir, ZulangueCore, String, String, String) {
         let temp = tempfile::tempdir().unwrap();
         let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
@@ -10123,26 +13980,31 @@ mod tests {
                 &profile,
             )
             .unwrap();
+        if attach_projection {
+            core.notebook_store
+                .attach_session_with_builtin_projections(&notebook.id, &run.session_id)
+                .unwrap();
+        }
         claim_current_realtime_provider(&core.notebook_capture_store, &run.session_id);
-        core.notebook_capture_store
-            .upsert_utterance(
-                &NewRealtimeUtterance {
-                    id: "utterance-a".into(),
-                    session_id: "session-a".into(),
-                    sequence: 0,
-                    session_speaker_id: None,
-                    source_language: "en".into(),
-                    source_text: "hello".into(),
-                    source_start_ms: Some(0),
-                    source_end_ms: Some(500),
-                    translated_language: Some("zh".into()),
-                    translated_text: Some("你好".into()),
-                    completion: UtteranceCompletion::Complete,
-                    alignment: UtteranceAlignment::Paired,
-                },
-                None,
-            )
-            .unwrap();
+        upsert_test_lanes(
+            &core.notebook_capture_store,
+            &NewRealtimeUtterance {
+                id: "utterance-a".into(),
+                session_id: "session-a".into(),
+                sequence: 0,
+                session_speaker_id: None,
+                source_language: "en".into(),
+                source_text: "hello".into(),
+                source_start_ms: Some(0),
+                source_end_ms: Some(500),
+                translated_language: Some("zh".into()),
+                translated_text: Some("你好".into()),
+                completion: UtteranceCompletion::Complete,
+                alignment: UtteranceAlignment::Paired,
+            },
+            None,
+        )
+        .unwrap();
         core.notebook_capture_store
             .transition_capture(&run.id, CaptureState::Recording, CaptureState::Draining)
             .unwrap();
@@ -10157,6 +14019,85 @@ mod tests {
             .unwrap()
             .doc_id;
         (temp, core, notebook.id, run.id, doc_id)
+    }
+
+    fn projected_core_fixture() -> (tempfile::TempDir, ZulangueCore, String, String, String) {
+        projected_core_fixture_with_projection(true)
+    }
+
+    #[test]
+    fn local_persistence_failure_projects_committed_final_prefix_before_failed_state() {
+        let (temp, core, _notebook_id, run_id, doc_id) = projected_core_fixture();
+        let before = core
+            .notebook_capture_store
+            .load_realtime_loro_projection("session-a")
+            .unwrap();
+        assert!(before.desired_revision > 0);
+        assert_eq!(before.applied_revision, 0);
+        rusqlite::Connection::open(temp.path().join("zulangue.db"))
+            .unwrap()
+            .execute(
+                "UPDATE notebook_capture_runs
+                 SET provider_error_type = 'local_persistence'
+                 WHERE id = ?1",
+                [&run_id],
+            )
+            .unwrap();
+
+        let error = core
+            .project_notebook_capture(&run_id)
+            .expect_err("an incomplete run retains Failed as its quality signal");
+        assert!(error
+            .to_string()
+            .contains("committed Final lanes remain editable"));
+        let failed = core
+            .notebook_capture_store
+            .get_run(&run_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(failed.projection_state, ProjectionState::Failed);
+        let after = core
+            .notebook_capture_store
+            .load_realtime_loro_projection("session-a")
+            .unwrap();
+        assert_eq!(after.applied_revision, after.desired_revision);
+        assert_eq!(after.desired_revision, before.desired_revision);
+        assert!(core
+            .editor_bridge
+            .get_content(&doc_id)
+            .unwrap()
+            .contains("你好"));
+
+        let machine = core
+            .notebook_capture_store
+            .get_machine_utterance_by_id("utterance-a")
+            .unwrap()
+            .unwrap();
+        let zh = machine
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert!(zh.projection_revision <= after.applied_revision);
+        core.replace_notebook_utterance_lane(
+            machine.id,
+            "zh".into(),
+            "失败前已提交的 Final 仍可编辑".into(),
+            zh.edit_revision,
+        )
+        .unwrap();
+        let edited = core
+            .notebook_capture_store
+            .get_utterance_by_id("utterance-a")
+            .unwrap()
+            .unwrap();
+        let zh = edited
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert_eq!(zh.text.as_deref(), Some("失败前已提交的 Final 仍可编辑"));
+        assert_eq!(zh.edit_revision, 1);
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -10572,6 +14513,329 @@ mod tests {
     }
 
     #[test]
+    fn realtime_projection_requires_preexisting_notebook_resource_and_never_repairs_it() {
+        let (_temp, core, notebook_id, run_id, _doc_id) =
+            projected_core_fixture_with_projection(false);
+        let realtime_tab = core
+            .notebook_store
+            .list_tabs(&notebook_id)
+            .unwrap()
+            .into_iter()
+            .find(|tab| tab.builtin_kind == vt_store::BuiltinNotebookTab::RealtimeTranscript)
+            .unwrap();
+        assert!(core
+            .notebook_store
+            .list_session_projections(&realtime_tab.id)
+            .unwrap()
+            .is_empty());
+
+        let error = core.project_notebook_capture(&run_id).unwrap_err();
+        assert!(error.to_string().contains("Realtime Transcript projection"));
+        assert!(core
+            .notebook_store
+            .list_session_projections(&realtime_tab.id)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn ffi_events_history_and_lanes_expose_durable_projection_watermarks() {
+        let (_temp, core, notebook_id, run_id, _doc_id) = projected_core_fixture();
+        core.project_notebook_capture(&run_id).unwrap();
+        let run = core
+            .notebook_capture_store
+            .get_run(&run_id)
+            .unwrap()
+            .unwrap();
+        assert!(run.realtime_loro_applied_revision > 0);
+
+        let event = core.capture_event_for_run(&run_id).unwrap();
+        assert_eq!(
+            event.realtime_loro_applied_revision,
+            run.realtime_loro_applied_revision
+        );
+        assert!(event.utterances[0].source_projection_revision > 0);
+        assert!(event.utterances[0]
+            .language_variants
+            .iter()
+            .all(|variant| variant.projection_revision > 0));
+
+        core.session_store
+            .insert_session(&vt_store::SessionRecord {
+                id: "session-a".into(),
+                title: "Projection mapping".into(),
+                session_type: "recording".into(),
+                status: "completed".into(),
+                duration_ms: 0,
+                created_at: "2001-01-01 00:00:00".into(),
+                deleted_at: None,
+            })
+            .unwrap();
+        let history = core.list_notebook_capture_history(notebook_id).unwrap();
+        assert_eq!(
+            history[0].realtime_loro_applied_revision,
+            run.realtime_loro_applied_revision
+        );
+    }
+
+    #[test]
+    fn failed_fts_after_loro_fsync_does_not_block_ack_or_lane_editability() {
+        let (temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
+        rusqlite::Connection::open(temp.path().join("zulangue.db"))
+            .unwrap()
+            .execute_batch("DROP TABLE search_index;")
+            .unwrap();
+
+        core.project_notebook_capture(&run_id)
+            .expect("disposable FTS failure must not fail durable projection");
+        let projected = core
+            .notebook_capture_store
+            .get_run(&run_id)
+            .unwrap()
+            .unwrap();
+        assert!(projected.realtime_loro_desired_revision > 0);
+        assert_eq!(
+            projected.realtime_loro_applied_revision,
+            projected.realtime_loro_desired_revision
+        );
+        assert_eq!(projected.projection_state, ProjectionState::Ready);
+
+        let visible = core
+            .notebook_capture_store
+            .get_utterance_by_id("utterance-a")
+            .unwrap()
+            .unwrap();
+        let expected_edit_revision = visible
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .map(|variant| variant.edit_revision)
+            .unwrap_or(0);
+        let edited = core
+            .replace_notebook_utterance_lane(
+                "utterance-a".into(),
+                "zh".into(),
+                "FTS 故障后仍可编辑".into(),
+                expected_edit_revision,
+            )
+            .expect("applied watermark must open the exact projected lane");
+        assert_eq!(
+            edited.translated_text.as_deref(),
+            Some("FTS 故障后仍可编辑")
+        );
+    }
+
+    #[test]
+    fn durable_user_lane_receipt_replays_only_the_sqlite_commit_after_crash() {
+        let (temp, core, _notebook_id, run_id, doc_id) = projected_core_fixture();
+        core.project_notebook_capture(&run_id).unwrap();
+        let visible = core
+            .notebook_capture_store
+            .get_utterance_by_id("utterance-a")
+            .unwrap()
+            .unwrap();
+        let expected_edit_revision = visible
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .map(|variant| variant.edit_revision)
+            .unwrap_or(0);
+        let mutation = core
+            .notebook_capture_store
+            .stage_utterance_variant_replacement(
+                "utterance-a",
+                "zh",
+                "用户崩溃重放",
+                expected_edit_revision,
+            )
+            .unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        db.execute_batch(
+            "CREATE TRIGGER fail_lane_override_commit
+             BEFORE INSERT ON realtime_utterance_overrides
+             BEGIN
+                 SELECT RAISE(FAIL, 'injected override commit failure');
+             END;",
+        )
+        .unwrap();
+
+        {
+            let _guard = crate::editor_api::editor_document_mutation_guard();
+            core.apply_notebook_projection_mutation(&mutation)
+                .expect_err("SQLite failure must leave the durable mutation pending");
+        }
+        assert!(core
+            .notebook_capture_store
+            .get_projection_mutation(&mutation.id)
+            .unwrap()
+            .is_some());
+        assert_eq!(
+            core.editor_bridge
+                .get_content(&doc_id)
+                .unwrap()
+                .matches("用户崩溃重放")
+                .count(),
+            1
+        );
+
+        // Evict the live document so replay must discover the receipt in the
+        // exact snapshot bytes fsynced before the injected SQLite failure.
+        core.editor_bridge.evict(&doc_id);
+        db.execute_batch("DROP TRIGGER fail_lane_override_commit;")
+            .unwrap();
+        let updated = {
+            let _guard = crate::editor_api::editor_document_mutation_guard();
+            core.apply_notebook_projection_mutation(&mutation).unwrap()
+        };
+        assert_eq!(updated.translated_text.as_deref(), Some("用户崩溃重放"));
+        assert_eq!(
+            updated
+                .variants
+                .iter()
+                .find(|variant| variant.language == "zh")
+                .map(|variant| variant.edit_revision),
+            Some(1)
+        );
+        assert!(core
+            .notebook_capture_store
+            .get_projection_mutation(&mutation.id)
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            core.editor_bridge
+                .get_content(&doc_id)
+                .unwrap()
+                .matches("用户崩溃重放")
+                .count(),
+            1,
+            "receipt replay must not apply Replace twice"
+        );
+        let receipt = notebook_projection_mutation_receipt(&mutation);
+        assert!(core
+            .editor_bridge
+            .has_user_mutation_receipt(&doc_id, &receipt)
+            .unwrap());
+        let machine_after = core
+            .notebook_capture_store
+            .get_machine_utterance_by_id("utterance-a")
+            .unwrap()
+            .unwrap();
+        assert_eq!(machine_after.translated_text.as_deref(), Some("你好"));
+        assert!(core
+            .search_sessions("用户崩溃重放".into(), 10)
+            .unwrap()
+            .iter()
+            .any(|result| result.session_id == "session-a"));
+
+        // Simulate the smaller crash window after the SQLite override commit
+        // but before its disposable FTS rebuild. No pending mutation remains;
+        // startup must repair from the visible overlay and applied watermark.
+        core.search_store
+            .index_session("session-a", "[zh] stale machine index")
+            .unwrap();
+        assert!(core
+            .search_sessions("用户崩溃重放".into(), 10)
+            .unwrap()
+            .is_empty());
+        drop(db);
+        drop(core);
+        let reopened =
+            ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        assert!(reopened
+            .search_sessions("用户崩溃重放".into(), 10)
+            .unwrap()
+            .iter()
+            .any(|result| result.session_id == "session-a"));
+    }
+
+    #[test]
+    fn startup_realtime_fts_repair_preserves_ready_async_search_authority() {
+        let (temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
+        core.project_notebook_capture(&run_id).unwrap();
+        let run = core
+            .notebook_capture_store
+            .get_run(&run_id)
+            .unwrap()
+            .unwrap();
+        rusqlite::Connection::open(temp.path().join("zulangue.db"))
+            .unwrap()
+            .execute(
+                "UPDATE notebook_capture_runs
+                 SET audio_path = ?1, captured_frames = 16000
+                 WHERE id = ?2",
+                rusqlite::params![
+                    temp.path()
+                        .join("ready-async-search-retained.enc")
+                        .to_string_lossy()
+                        .into_owned(),
+                    run.id,
+                ],
+            )
+            .unwrap();
+        core.notebook_capture_store
+            .authorize_async_transcription(&run.session_id, 1, Some("en"))
+            .unwrap();
+        let task_id = "ready-async-search-task";
+        core.notebook_capture_store
+            .reserve_async_task(&run.id, task_id, &"a".repeat(64))
+            .unwrap();
+        core.notebook_capture_store
+            .mark_async_task_enqueued(&run.id, task_id)
+            .unwrap();
+        claim_current_post_stop_provider(&core.notebook_capture_store, &run.session_id);
+        let token = vt_model::Token {
+            text: "async authority only".into(),
+            start_ms: 0,
+            end_ms: 500,
+            is_final: true,
+            language: "en".into(),
+            confidence: 1.0,
+            translation_status: vt_model::TranslationStatus::Original,
+            speaker: None,
+        };
+        let result_json = serde_json::json!({
+            "session_id": run.session_id,
+            "token_count": 1,
+            "full_text": "async authority only",
+            "duration_ms": 500,
+        })
+        .to_string();
+        let receipt = core
+            .notebook_capture_store
+            .commit_async_provider_success(&run.session_id, task_id, &[token], &result_json)
+            .unwrap();
+        crate::transcribe_api::project_transcribe_search_receipt(
+            &temp.path().join("zulangue.db"),
+            &receipt,
+        )
+        .unwrap();
+        assert_eq!(
+            core.notebook_capture_store
+                .get_async_provider_receipt(&run.session_id, task_id)
+                .unwrap()
+                .unwrap()
+                .search_projection_state,
+            AsyncSearchProjectionState::Ready
+        );
+        assert_eq!(
+            core.search_sessions("authority".into(), 10).unwrap().len(),
+            1
+        );
+        assert!(core.search_sessions("hello".into(), 10).unwrap().is_empty());
+
+        // Exercise the startup repair routine directly. SearchStore has replace
+        // semantics, so a realtime-only rebuild here would erase the already
+        // Ready post-stop transcript and it would never be replayed.
+        core.resume_pending_notebook_projection_mutations().unwrap();
+
+        assert_eq!(
+            core.search_sessions("authority".into(), 10).unwrap().len(),
+            1
+        );
+        assert!(core.search_sessions("hello".into(), 10).unwrap().is_empty());
+    }
+
+    #[test]
     fn corrupt_snapshot_never_commits_projection_lane_mutation_or_purge() {
         let (temp, core, _notebook_id, run_id, doc_id) = projected_core_fixture();
         let path = crate::editor_api::snapshot_path(temp.path(), &doc_id);
@@ -10602,12 +14866,18 @@ mod tests {
             .get_utterance_by_id("utterance-a")
             .unwrap()
             .unwrap();
+        let original_edit_revision = original
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .map(|variant| variant.edit_revision)
+            .unwrap_or(0);
         assert!(core
             .replace_notebook_utterance_lane(
                 "utterance-a".into(),
                 "zh".into(),
                 "损坏快照不得提交".into(),
-                original.revision,
+                original_edit_revision,
             )
             .is_err());
         let after_lane = core
@@ -10709,9 +14979,13 @@ mod tests {
             .get_session_purge_job("session-a")
             .unwrap()
             .expect("the failed purge must remain retryable");
-        assert!(quarantined.last_error.as_deref().is_some_and(|message| {
-            message.contains("snapshot") || message.contains("Loro") || message.contains("loro")
-        }));
+        assert!(
+            quarantined.last_error.as_deref().is_some_and(|message| {
+                message.contains("snapshot") || message.contains("Loro") || message.contains("loro")
+            }),
+            "unexpected durable purge error: {:?}",
+            quarantined.last_error
+        );
     }
 
     #[test]

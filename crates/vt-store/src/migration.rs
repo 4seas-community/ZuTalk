@@ -1,6 +1,6 @@
-//! Zulangue SQLite v26 schema.
+//! Zulangue SQLite v28 schema.
 //!
-//! Fresh databases are installed directly at v26. The three immediately
+//! Fresh databases are installed directly at v28. The five immediately
 //! preceding Notebook schemas are migrated in place so existing capture data
 //! remains available; older retired product schemas are still rejected.
 
@@ -9,7 +9,9 @@ use rusqlite::{Connection, OptionalExtension, Result as SqlResult};
 const LEGACY_VERSION: i32 = 23;
 const SPEAKER_VERSION: i32 = 24;
 const PREVIOUS_VERSION: i32 = 25;
-const CURRENT_VERSION: i32 = 26;
+const MULTILINGUAL_VERSION: i32 = 26;
+const REALTIME_LORO_VERSION: i32 = 27;
+const CURRENT_VERSION: i32 = 28;
 
 const V23_TABLES: &[&str] = &[
     "audio_retention_chunks",
@@ -180,6 +182,120 @@ const V26_INDEXES: &[&str] = &[
     "idx_session_speakers_session_epoch",
 ];
 const V26_TRIGGERS: &[&str] = V25_TRIGGERS;
+const V27_TABLES: &[&str] = &[
+    "audio_retention_chunks",
+    "context_pack_sources",
+    "context_packs",
+    "notebook_capture_profiles",
+    "notebook_capture_runs",
+    "notebook_context_pack_bindings",
+    "notebook_projection_mutations",
+    "notebook_session_projections",
+    "notebook_sessions",
+    "notebook_tabs",
+    "notebooks",
+    "participants",
+    "realtime_utterance_overrides",
+    "realtime_utterance_variants",
+    "realtime_utterances",
+    "search_index",
+    "search_index_config",
+    "search_index_content",
+    "search_index_data",
+    "search_index_docsize",
+    "search_index_idx",
+    "session_meta",
+    "session_purge_jobs",
+    "session_records",
+    "session_speakers",
+];
+const V27_INDEXES: &[&str] = &[
+    "idx_audio_retention_chunks_due",
+    "idx_audio_retention_chunks_session",
+    "idx_context_pack_sources_pack_order",
+    "idx_context_packs_library",
+    "idx_context_packs_private_owner",
+    "idx_notebook_capture_runs_notebook_created",
+    "idx_notebook_capture_runs_single_active",
+    "idx_notebook_context_bindings_order",
+    "idx_notebook_projection_mutations_session",
+    "idx_notebook_projection_mutations_utterance_language",
+    "idx_notebook_session_projections_notebook_session",
+    "idx_notebook_session_projections_tab",
+    "idx_notebook_sessions_session_unique",
+    "idx_notebook_tabs_builtin_unique",
+    "idx_notebook_tabs_notebook_position",
+    "idx_notebooks_updated",
+    "idx_participants_display_name",
+    "idx_realtime_utterance_variants_language",
+    "idx_realtime_utterance_variants_one_source",
+    "idx_realtime_utterances_session_sequence",
+    "idx_realtime_utterances_session_speaker",
+    "idx_session_purge_jobs_updated",
+    "idx_session_records_active_created",
+    "idx_session_speakers_participant",
+    "idx_session_speakers_session_epoch",
+];
+const V27_TRIGGERS: &[&str] = V26_TRIGGERS;
+const V28_TABLES: &[&str] = &[
+    "audio_retention_chunks",
+    "context_pack_sources",
+    "context_packs",
+    "notebook_capture_profiles",
+    "notebook_capture_runs",
+    "notebook_context_pack_bindings",
+    "notebook_projection_mutations",
+    "notebook_session_projections",
+    "notebook_sessions",
+    "notebook_tabs",
+    "notebooks",
+    "participants",
+    "realtime_translation_inbox",
+    "realtime_utterance_overrides",
+    "realtime_utterance_variants",
+    "realtime_utterances",
+    "search_index",
+    "search_index_config",
+    "search_index_content",
+    "search_index_data",
+    "search_index_docsize",
+    "search_index_idx",
+    "session_meta",
+    "session_purge_jobs",
+    "session_records",
+    "session_speakers",
+];
+const V28_INDEXES: &[&str] = &[
+    "idx_audio_retention_chunks_due",
+    "idx_audio_retention_chunks_session",
+    "idx_context_pack_sources_pack_order",
+    "idx_context_packs_library",
+    "idx_context_packs_private_owner",
+    "idx_notebook_capture_runs_notebook_created",
+    "idx_notebook_capture_runs_single_active",
+    "idx_notebook_context_bindings_order",
+    "idx_notebook_projection_mutations_session",
+    "idx_notebook_projection_mutations_utterance_language",
+    "idx_notebook_session_projections_notebook_session",
+    "idx_notebook_session_projections_tab",
+    "idx_notebook_sessions_session_unique",
+    "idx_notebook_tabs_builtin_unique",
+    "idx_notebook_tabs_notebook_position",
+    "idx_notebooks_updated",
+    "idx_participants_display_name",
+    "idx_realtime_translation_inbox_bound_lane",
+    "idx_realtime_translation_inbox_unbound",
+    "idx_realtime_utterance_variants_language",
+    "idx_realtime_utterance_variants_one_source",
+    "idx_realtime_utterances_id_sequence",
+    "idx_realtime_utterances_session_sequence",
+    "idx_realtime_utterances_session_speaker",
+    "idx_session_purge_jobs_updated",
+    "idx_session_records_active_created",
+    "idx_session_speakers_participant",
+    "idx_session_speakers_session_epoch",
+];
+const V28_TRIGGERS: &[&str] = V27_TRIGGERS;
 
 /// Install, migrate, or validate the supported main-database schema.
 pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
@@ -188,7 +304,7 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
 
     match current {
         0 if database_has_user_objects(conn)? => Err(schema_reset_required(0)),
-        0 => install_v26_baseline(conn),
+        0 => install_v28_baseline(conn),
         LEGACY_VERSION => {
             validate_v23_baseline(conn)?;
             migrate_v23_to_v24(conn)?;
@@ -196,21 +312,45 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v24_to_v25(conn)?;
             validate_v25_baseline(conn)?;
             migrate_v25_to_v26(conn)?;
-            validate_v26_baseline(conn)
+            validate_v26_baseline(conn)?;
+            migrate_v26_to_v27(conn)?;
+            validate_v27_baseline(conn)?;
+            migrate_v27_to_v28(conn)?;
+            validate_v28_baseline(conn)
         }
         SPEAKER_VERSION => {
             validate_v24_baseline(conn)?;
             migrate_v24_to_v25(conn)?;
             validate_v25_baseline(conn)?;
             migrate_v25_to_v26(conn)?;
-            validate_v26_baseline(conn)
+            validate_v26_baseline(conn)?;
+            migrate_v26_to_v27(conn)?;
+            validate_v27_baseline(conn)?;
+            migrate_v27_to_v28(conn)?;
+            validate_v28_baseline(conn)
         }
         PREVIOUS_VERSION => {
             validate_v25_baseline(conn)?;
             migrate_v25_to_v26(conn)?;
-            validate_v26_baseline(conn)
+            validate_v26_baseline(conn)?;
+            migrate_v26_to_v27(conn)?;
+            validate_v27_baseline(conn)?;
+            migrate_v27_to_v28(conn)?;
+            validate_v28_baseline(conn)
         }
-        CURRENT_VERSION => validate_v26_baseline(conn),
+        MULTILINGUAL_VERSION => {
+            validate_v26_baseline(conn)?;
+            migrate_v26_to_v27(conn)?;
+            validate_v27_baseline(conn)?;
+            migrate_v27_to_v28(conn)?;
+            validate_v28_baseline(conn)
+        }
+        REALTIME_LORO_VERSION => {
+            validate_v27_baseline(conn)?;
+            migrate_v27_to_v28(conn)?;
+            validate_v28_baseline(conn)
+        }
+        CURRENT_VERSION => validate_v28_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
     }?;
 
@@ -244,7 +384,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {LEGACY_VERSION}, schema {SPEAKER_VERSION}, schema {PREVIOUS_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {LEGACY_VERSION}, schema {SPEAKER_VERSION}, schema {PREVIOUS_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -332,15 +472,23 @@ fn validate_v23_baseline(conn: &Connection) -> SqlResult<()> {
 }
 
 fn validate_v24_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, SPEAKER_VERSION, false, false)
+    validate_v24_or_later_baseline(conn, SPEAKER_VERSION, false, false, false, false)
 }
 
 fn validate_v25_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, PREVIOUS_VERSION, true, false)
+    validate_v24_or_later_baseline(conn, PREVIOUS_VERSION, true, false, false, false)
 }
 
 fn validate_v26_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, CURRENT_VERSION, true, true)
+    validate_v24_or_later_baseline(conn, MULTILINGUAL_VERSION, true, true, false, false)
+}
+
+fn validate_v27_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v24_or_later_baseline(conn, REALTIME_LORO_VERSION, true, true, true, false)
+}
+
+fn validate_v28_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v24_or_later_baseline(conn, CURRENT_VERSION, true, true, true, true)
 }
 
 fn validate_v24_or_later_baseline(
@@ -348,8 +496,14 @@ fn validate_v24_or_later_baseline(
     claimed_version: i32,
     has_multilingual_profile: bool,
     has_utterance_variants: bool,
+    has_realtime_loro_projection: bool,
+    has_translation_inbox: bool,
 ) -> SqlResult<()> {
-    let (tables, indexes, triggers) = if has_utterance_variants {
+    let (tables, indexes, triggers) = if has_translation_inbox {
+        (V28_TABLES, V28_INDEXES, V28_TRIGGERS)
+    } else if has_realtime_loro_projection {
+        (V27_TABLES, V27_INDEXES, V27_TRIGGERS)
+    } else if has_utterance_variants {
         (V26_TABLES, V26_INDEXES, V26_TRIGGERS)
     } else if has_multilingual_profile {
         (V25_TABLES, V25_INDEXES, V25_TRIGGERS)
@@ -432,6 +586,57 @@ fn validate_v24_or_later_baseline(
                 "SELECT utterance_id, language, role, text, state, completion,
                         revision, created_at, updated_at
                  FROM realtime_utterance_variants LIMIT 0",
+            )
+            .is_err()
+    {
+        return Err(schema_reset_required(claimed_version));
+    }
+    if has_realtime_loro_projection
+        && (conn
+            .prepare(
+                "SELECT realtime_loro_desired_revision, realtime_loro_applied_revision
+                 FROM notebook_capture_runs LIMIT 0",
+            )
+            .is_err()
+            || conn
+                .prepare(
+                    "SELECT utterance_id, lane, lane_language, text,
+                            machine_utterance_revision, machine_variant_revision,
+                            edit_revision,
+                            created_at, updated_at
+                     FROM realtime_utterance_overrides LIMIT 0",
+                )
+                .is_err()
+            || conn
+                .prepare(
+                    "SELECT expected_variant_revision
+                     FROM notebook_projection_mutations LIMIT 0",
+                )
+                .is_err()
+            || conn
+                .prepare(
+                    "SELECT source_projection_revision
+                     FROM realtime_utterances LIMIT 0",
+                )
+                .is_err()
+            || conn
+                .prepare(
+                    "SELECT projection_revision
+                     FROM realtime_utterance_variants LIMIT 0",
+                )
+                .is_err())
+    {
+        return Err(schema_reset_required(claimed_version));
+    }
+    if has_translation_inbox
+        && conn
+            .prepare(
+                "SELECT session_id, lane_index, group_epoch, provider_sequence,
+                        target_language, source_language, source_text,
+                        source_start_ms, source_end_ms, translated_text,
+                        completion, state, revision, bound_utterance_id,
+                        bound_sequence, created_at, updated_at
+                 FROM realtime_translation_inbox LIMIT 0",
             )
             .is_err()
     {
@@ -687,13 +892,325 @@ fn migrate_v25_to_v26(conn: &Connection) -> SqlResult<()> {
             ON notebook_projection_mutations(session_id, created_at, id);
         "#,
     )?;
-    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+    tx.pragma_update(None, "user_version", MULTILINGUAL_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{PREVIOUS_VERSION} to v{CURRENT_VERSION}");
+    tracing::info!("migrated Zulangue schema v{PREVIOUS_VERSION} to v{MULTILINGUAL_VERSION}");
     Ok(())
 }
 
-fn install_v26_baseline(conn: &Connection) -> SqlResult<()> {
+fn migrate_v26_to_v27(conn: &Connection) -> SqlResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    // This migration owns SQLite only. Existing Loro rich-text marks may
+    // still contain region/script tags such as `EN-US` or `zh-Hans`; the
+    // projector must match those selectors by the same canonical primary
+    // language. Rewriting Loro here would cross the SQLite transaction
+    // boundary and recreate the dual-write failure this outbox removes.
+    let has_primary_language_collision = tx
+        .query_row(
+            "SELECT 1
+             FROM realtime_utterance_variants
+             GROUP BY
+                 utterance_id,
+                 lower(
+                     CASE
+                         WHEN instr(trim(language), '-') > 0
+                             THEN substr(
+                                 trim(language),
+                                 1,
+                                 instr(trim(language), '-') - 1
+                             )
+                         ELSE trim(language)
+                     END
+                 )
+             HAVING COUNT(*) > 1
+             LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    let has_base_language_collision = tx
+        .query_row(
+            "SELECT 1
+             FROM realtime_utterances
+             WHERE translated_language IS NOT NULL
+               AND lower(
+                       CASE
+                           WHEN instr(trim(source_language), '-') > 0
+                               THEN substr(
+                                   trim(source_language),
+                                   1,
+                                   instr(trim(source_language), '-') - 1
+                               )
+                           ELSE trim(source_language)
+                       END
+                   )
+                   =
+                   lower(
+                       CASE
+                           WHEN instr(trim(translated_language), '-') > 0
+                               THEN substr(
+                                   trim(translated_language),
+                                   1,
+                                   instr(trim(translated_language), '-') - 1
+                               )
+                           ELSE trim(translated_language)
+                       END
+                   )
+             LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if has_primary_language_collision || has_base_language_collision {
+        return Err(schema_reset_required(MULTILINGUAL_VERSION));
+    }
+    tx.execute_batch(
+        r#"
+        ALTER TABLE notebook_capture_runs
+            ADD COLUMN realtime_loro_desired_revision
+                INTEGER NOT NULL DEFAULT 0 CHECK(realtime_loro_desired_revision >= 0);
+        ALTER TABLE notebook_capture_runs
+            ADD COLUMN realtime_loro_applied_revision
+                INTEGER NOT NULL DEFAULT 0
+                CHECK(
+                    realtime_loro_applied_revision >= 0
+                    AND realtime_loro_applied_revision <= realtime_loro_desired_revision
+                );
+        ALTER TABLE realtime_utterances
+            ADD COLUMN source_projection_revision
+                INTEGER NOT NULL DEFAULT 0 CHECK(source_projection_revision >= 0);
+        ALTER TABLE realtime_utterance_variants
+            ADD COLUMN projection_revision
+                INTEGER NOT NULL DEFAULT 0 CHECK(projection_revision >= 0);
+
+        UPDATE realtime_utterances
+        SET source_language = lower(
+                CASE
+                    WHEN instr(trim(source_language), '-') > 0
+                        THEN substr(
+                            trim(source_language),
+                            1,
+                            instr(trim(source_language), '-') - 1
+                        )
+                    ELSE trim(source_language)
+                END
+            ),
+            translated_language = CASE
+                WHEN translated_language IS NULL THEN NULL
+                ELSE lower(
+                    CASE
+                        WHEN instr(trim(translated_language), '-') > 0
+                            THEN substr(
+                                trim(translated_language),
+                                1,
+                                instr(trim(translated_language), '-') - 1
+                            )
+                        ELSE trim(translated_language)
+                    END
+                )
+            END;
+        UPDATE realtime_utterance_variants
+        SET language = lower(
+                CASE
+                    WHEN instr(trim(language), '-') > 0
+                        THEN substr(
+                            trim(language),
+                            1,
+                            instr(trim(language), '-') - 1
+                        )
+                    ELSE trim(language)
+                END
+            );
+        UPDATE notebook_projection_mutations
+        SET lane_language = lower(
+                CASE
+                    WHEN instr(trim(lane_language), '-') > 0
+                        THEN substr(
+                            trim(lane_language),
+                            1,
+                            instr(trim(lane_language), '-') - 1
+                        )
+                    ELSE trim(lane_language)
+                END
+            );
+
+        UPDATE notebook_capture_runs AS run
+        SET realtime_loro_desired_revision = 1
+        WHERE EXISTS (
+                  SELECT 1
+                  FROM realtime_utterances utterance
+                  WHERE utterance.session_id = run.session_id
+                    AND utterance.completion = 'complete'
+              )
+           OR EXISTS (
+                  SELECT 1
+                  FROM realtime_utterances utterance
+                  JOIN realtime_utterance_variants variant
+                    ON variant.utterance_id = utterance.id
+                  WHERE utterance.session_id = run.session_id
+                    AND variant.role = 'translation'
+                    AND variant.state = 'ready'
+                    AND variant.completion = 'complete'
+              );
+        UPDATE realtime_utterances
+        SET source_projection_revision = 1
+        WHERE completion = 'complete';
+        UPDATE realtime_utterance_variants
+        SET projection_revision = 1
+        WHERE state = 'ready' AND completion = 'complete';
+
+        DROP INDEX idx_notebook_projection_mutations_session;
+        ALTER TABLE notebook_projection_mutations
+            RENAME TO notebook_projection_mutations_v26;
+        CREATE TABLE notebook_projection_mutations (
+            id                        TEXT PRIMARY KEY,
+            session_id                TEXT NOT NULL,
+            utterance_id              TEXT NOT NULL
+                                             REFERENCES realtime_utterances(id)
+                                             ON DELETE CASCADE,
+            lane                      TEXT NOT NULL
+                                             CHECK(lane IN ('source', 'translated')),
+            lane_language             TEXT NOT NULL
+                                             CHECK(length(trim(lane_language)) > 0),
+            expected_revision         INTEGER NOT NULL
+                                             CHECK(expected_revision >= 0),
+            expected_variant_revision INTEGER NOT NULL
+                                             CHECK(expected_variant_revision >= 0),
+            target_text               TEXT NOT NULL,
+            state                     TEXT NOT NULL DEFAULT 'pending'
+                                             CHECK(state = 'pending'),
+            created_at                TEXT NOT NULL,
+            updated_at                TEXT NOT NULL
+        );
+        INSERT INTO notebook_projection_mutations (
+            id, session_id, utterance_id, lane, lane_language,
+            expected_revision, expected_variant_revision, target_text,
+            state, created_at, updated_at
+        )
+        SELECT
+            mutation.id,
+            mutation.session_id,
+            mutation.utterance_id,
+            mutation.lane,
+            mutation.lane_language,
+            -- v26 used the aggregate machine utterance revision here. v27
+            -- defines this value as the lane-local visible edit revision;
+            -- there were no override rows before v27, so every migrated lane
+            -- starts at zero.
+            0,
+            COALESCE((
+                SELECT variant.revision
+                FROM realtime_utterance_variants variant
+                WHERE variant.utterance_id = mutation.utterance_id
+                  AND lower(trim(variant.language))
+                      = lower(trim(mutation.lane_language))
+            ), 0),
+            mutation.target_text,
+            mutation.state,
+            mutation.created_at,
+            mutation.updated_at
+        FROM notebook_projection_mutations_v26 mutation;
+        DROP TABLE notebook_projection_mutations_v26;
+        CREATE INDEX idx_notebook_projection_mutations_session
+            ON notebook_projection_mutations(session_id, created_at, id);
+        CREATE UNIQUE INDEX idx_notebook_projection_mutations_utterance_language
+            ON notebook_projection_mutations(
+                utterance_id,
+                lower(trim(lane_language))
+            );
+
+        CREATE TABLE realtime_utterance_overrides (
+            utterance_id               TEXT NOT NULL
+                                              REFERENCES realtime_utterances(id)
+                                              ON DELETE CASCADE,
+            lane                       TEXT NOT NULL
+                                              CHECK(lane IN ('source', 'translated')),
+            lane_language              TEXT NOT NULL
+                                              CHECK(length(trim(lane_language)) > 0),
+            text                       TEXT NOT NULL,
+            machine_utterance_revision INTEGER NOT NULL
+                                              CHECK(machine_utterance_revision >= 0),
+            machine_variant_revision   INTEGER NOT NULL
+                                              CHECK(machine_variant_revision >= 0),
+            edit_revision              INTEGER NOT NULL
+                                              CHECK(edit_revision > 0),
+            created_at                 TEXT NOT NULL,
+            updated_at                 TEXT NOT NULL,
+            PRIMARY KEY(utterance_id, lane_language)
+        );
+        "#,
+    )?;
+    tx.pragma_update(None, "user_version", REALTIME_LORO_VERSION)?;
+    tx.commit()?;
+    tracing::info!("migrated Zulangue schema v{MULTILINGUAL_VERSION} to v{REALTIME_LORO_VERSION}");
+    Ok(())
+}
+
+fn migrate_v27_to_v28(conn: &Connection) -> SqlResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(
+        r#"
+        CREATE UNIQUE INDEX idx_realtime_utterances_id_sequence
+            ON realtime_utterances(id, sequence);
+        CREATE TABLE realtime_translation_inbox (
+            session_id          TEXT NOT NULL
+                                     REFERENCES notebook_capture_runs(session_id)
+                                     ON DELETE CASCADE,
+            lane_index          INTEGER NOT NULL CHECK(lane_index >= 0),
+            group_epoch         INTEGER NOT NULL CHECK(group_epoch >= 0),
+            provider_sequence   INTEGER NOT NULL CHECK(provider_sequence >= 0),
+            target_language     TEXT NOT NULL CHECK(length(trim(target_language)) > 0),
+            source_language     TEXT NOT NULL CHECK(length(trim(source_language)) > 0),
+            source_text         TEXT NOT NULL,
+            source_start_ms     INTEGER CHECK(source_start_ms IS NULL OR source_start_ms >= 0),
+            source_end_ms       INTEGER CHECK(source_end_ms IS NULL OR source_end_ms >= 0),
+            translated_text     TEXT,
+            completion          TEXT CHECK(completion IS NULL
+                                            OR completion IN ('partial', 'complete')),
+            state               TEXT NOT NULL CHECK(state IN ('present', 'withdrawn')),
+            revision            INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0),
+            bound_utterance_id  TEXT,
+            bound_sequence      INTEGER CHECK(bound_sequence IS NULL OR bound_sequence >= 0),
+            created_at          TEXT NOT NULL,
+            updated_at          TEXT NOT NULL,
+            PRIMARY KEY(
+                session_id, group_epoch, provider_sequence, target_language
+            ),
+            CHECK(source_end_ms IS NULL OR source_start_ms IS NULL
+                  OR source_end_ms >= source_start_ms),
+            CHECK(
+                (state = 'present'
+                    AND translated_text IS NOT NULL
+                    AND completion IS NOT NULL)
+                OR
+                (state = 'withdrawn'
+                    AND translated_text IS NULL
+                    AND completion IS NULL)
+            ),
+            CHECK((bound_utterance_id IS NULL) = (bound_sequence IS NULL)),
+            FOREIGN KEY(bound_utterance_id, bound_sequence)
+                REFERENCES realtime_utterances(id, sequence)
+                ON DELETE SET NULL
+        );
+        CREATE UNIQUE INDEX idx_realtime_translation_inbox_bound_lane
+            ON realtime_translation_inbox(bound_utterance_id, target_language)
+            WHERE bound_utterance_id IS NOT NULL;
+        CREATE INDEX idx_realtime_translation_inbox_unbound
+            ON realtime_translation_inbox(
+                session_id, group_epoch, provider_sequence, target_language
+            )
+            WHERE bound_utterance_id IS NULL;
+        "#,
+    )?;
+    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+    tx.commit()?;
+    tracing::info!("migrated Zulangue schema v{REALTIME_LORO_VERSION} to v{CURRENT_VERSION}");
+    Ok(())
+}
+
+fn install_v28_baseline(conn: &Connection) -> SqlResult<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(
         r#"
@@ -912,6 +1429,14 @@ fn install_v26_baseline(conn: &Connection) -> SqlResult<()> {
             created_at                  TEXT NOT NULL,
             updated_at                  TEXT NOT NULL,
             completed_at                TEXT,
+            realtime_loro_desired_revision INTEGER NOT NULL DEFAULT 0
+                                                 CHECK(realtime_loro_desired_revision >= 0),
+            realtime_loro_applied_revision INTEGER NOT NULL DEFAULT 0
+                                                 CHECK(
+                                                     realtime_loro_applied_revision >= 0
+                                                     AND realtime_loro_applied_revision
+                                                         <= realtime_loro_desired_revision
+                                                 ),
             CHECK(
                 (context_snapshot_ciphertext IS NULL
                     AND context_snapshot_key_ref IS NULL
@@ -1042,6 +1567,8 @@ fn install_v26_baseline(conn: &Connection) -> SqlResult<()> {
                                  )),
             created_at           TEXT NOT NULL,
             updated_at           TEXT NOT NULL,
+            source_projection_revision INTEGER NOT NULL DEFAULT 0
+                                               CHECK(source_projection_revision >= 0),
             UNIQUE(session_id, sequence),
             CHECK(source_end_ms IS NULL OR source_start_ms IS NULL
                   OR source_end_ms >= source_start_ms),
@@ -1051,6 +1578,8 @@ fn install_v26_baseline(conn: &Connection) -> SqlResult<()> {
             ON realtime_utterances(session_id, sequence);
         CREATE INDEX idx_realtime_utterances_session_speaker
             ON realtime_utterances(session_speaker_id, session_id, sequence);
+        CREATE UNIQUE INDEX idx_realtime_utterances_id_sequence
+            ON realtime_utterances(id, sequence);
 
         CREATE TRIGGER realtime_utterances_require_realtime_provenance
         BEFORE INSERT ON realtime_utterances
@@ -1077,6 +1606,8 @@ fn install_v26_baseline(conn: &Connection) -> SqlResult<()> {
             revision      INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0),
             created_at    TEXT NOT NULL,
             updated_at    TEXT NOT NULL,
+            projection_revision INTEGER NOT NULL DEFAULT 0
+                                        CHECK(projection_revision >= 0),
             PRIMARY KEY(utterance_id, language),
             CHECK(
                 (state = 'ready' AND text IS NOT NULL AND completion IS NOT NULL)
@@ -1089,6 +1620,82 @@ fn install_v26_baseline(conn: &Connection) -> SqlResult<()> {
         CREATE UNIQUE INDEX idx_realtime_utterance_variants_one_source
             ON realtime_utterance_variants(utterance_id)
             WHERE role = 'source';
+
+        -- Provider output remains immutable machine evidence. User edits are
+        -- overlaid for the UI and never rewritten into provider-owned rows.
+        CREATE TABLE realtime_utterance_overrides (
+            utterance_id               TEXT NOT NULL
+                                              REFERENCES realtime_utterances(id)
+                                              ON DELETE CASCADE,
+            lane                       TEXT NOT NULL
+                                              CHECK(lane IN ('source', 'translated')),
+            lane_language              TEXT NOT NULL
+                                              CHECK(length(trim(lane_language)) > 0),
+            text                       TEXT NOT NULL,
+            machine_utterance_revision INTEGER NOT NULL
+                                              CHECK(machine_utterance_revision >= 0),
+            machine_variant_revision   INTEGER NOT NULL
+                                              CHECK(machine_variant_revision >= 0),
+            edit_revision              INTEGER NOT NULL
+                                              CHECK(edit_revision > 0),
+            created_at                 TEXT NOT NULL,
+            updated_at                 TEXT NOT NULL,
+            PRIMARY KEY(utterance_id, lane_language)
+        );
+
+        -- One-way target streams are physically independent from the
+        -- canonical timeline. Persist every auxiliary Partial/Final before
+        -- correlation so process loss cannot erase an unbound provider fact.
+        -- A withdrawn row is a durable tombstone; a binding is unique per
+        -- canonical utterance/language lane.
+        CREATE TABLE realtime_translation_inbox (
+            session_id          TEXT NOT NULL
+                                     REFERENCES notebook_capture_runs(session_id)
+                                     ON DELETE CASCADE,
+            lane_index          INTEGER NOT NULL CHECK(lane_index >= 0),
+            group_epoch         INTEGER NOT NULL CHECK(group_epoch >= 0),
+            provider_sequence   INTEGER NOT NULL CHECK(provider_sequence >= 0),
+            target_language     TEXT NOT NULL CHECK(length(trim(target_language)) > 0),
+            source_language     TEXT NOT NULL CHECK(length(trim(source_language)) > 0),
+            source_text         TEXT NOT NULL,
+            source_start_ms     INTEGER CHECK(source_start_ms IS NULL OR source_start_ms >= 0),
+            source_end_ms       INTEGER CHECK(source_end_ms IS NULL OR source_end_ms >= 0),
+            translated_text     TEXT,
+            completion          TEXT CHECK(completion IS NULL
+                                            OR completion IN ('partial', 'complete')),
+            state               TEXT NOT NULL CHECK(state IN ('present', 'withdrawn')),
+            revision            INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0),
+            bound_utterance_id  TEXT,
+            bound_sequence      INTEGER CHECK(bound_sequence IS NULL OR bound_sequence >= 0),
+            created_at          TEXT NOT NULL,
+            updated_at          TEXT NOT NULL,
+            PRIMARY KEY(
+                session_id, group_epoch, provider_sequence, target_language
+            ),
+            CHECK(source_end_ms IS NULL OR source_start_ms IS NULL
+                  OR source_end_ms >= source_start_ms),
+            CHECK(
+                (state = 'present'
+                    AND translated_text IS NOT NULL
+                    AND completion IS NOT NULL)
+                OR
+                (state = 'withdrawn'
+                    AND translated_text IS NULL
+                    AND completion IS NULL)
+            ),
+            CHECK((bound_utterance_id IS NULL) = (bound_sequence IS NULL)),
+            FOREIGN KEY(bound_utterance_id, bound_sequence)
+                REFERENCES realtime_utterances(id, sequence)
+                ON DELETE SET NULL
+        );
+        CREATE UNIQUE INDEX idx_realtime_translation_inbox_bound_lane
+            ON realtime_translation_inbox(bound_utterance_id, target_language)
+            WHERE bound_utterance_id IS NOT NULL;
+        CREATE INDEX idx_realtime_translation_inbox_unbound
+            ON realtime_translation_inbox(
+                session_id, group_epoch, provider_sequence, target_language
+            )
+            WHERE bound_utterance_id IS NULL;
 
         -- Encrypted Context Pack records. No plaintext Knowledge snapshot is
         -- represented by this schema.
@@ -1170,21 +1777,32 @@ fn install_v26_baseline(conn: &Connection) -> SqlResult<()> {
         -- A post-projection edit is a short-lived durable mutation receipt;
         -- the Loro document remains the editable source after commit.
         CREATE TABLE notebook_projection_mutations (
-            id                 TEXT PRIMARY KEY,
-            session_id         TEXT NOT NULL,
-            utterance_id       TEXT NOT NULL
-                                      REFERENCES realtime_utterances(id) ON DELETE CASCADE,
-            lane               TEXT NOT NULL CHECK(lane IN ('source', 'translated')),
-            lane_language      TEXT NOT NULL CHECK(length(trim(lane_language)) > 0),
-            expected_revision  INTEGER NOT NULL CHECK(expected_revision >= 0),
-            target_text        TEXT NOT NULL,
-            state              TEXT NOT NULL DEFAULT 'pending' CHECK(state = 'pending'),
-            created_at         TEXT NOT NULL,
-            updated_at         TEXT NOT NULL,
-            UNIQUE(utterance_id)
+            id                        TEXT PRIMARY KEY,
+            session_id                TEXT NOT NULL,
+            utterance_id              TEXT NOT NULL
+                                             REFERENCES realtime_utterances(id)
+                                             ON DELETE CASCADE,
+            lane                      TEXT NOT NULL
+                                             CHECK(lane IN ('source', 'translated')),
+            lane_language             TEXT NOT NULL
+                                             CHECK(length(trim(lane_language)) > 0),
+            expected_revision         INTEGER NOT NULL
+                                             CHECK(expected_revision >= 0),
+            expected_variant_revision INTEGER NOT NULL
+                                             CHECK(expected_variant_revision >= 0),
+            target_text               TEXT NOT NULL,
+            state                     TEXT NOT NULL DEFAULT 'pending'
+                                             CHECK(state = 'pending'),
+            created_at                TEXT NOT NULL,
+            updated_at                TEXT NOT NULL
         );
         CREATE INDEX idx_notebook_projection_mutations_session
             ON notebook_projection_mutations(session_id, created_at, id);
+        CREATE UNIQUE INDEX idx_notebook_projection_mutations_utterance_language
+            ON notebook_projection_mutations(
+                utterance_id,
+                lower(trim(lane_language))
+            );
 
         -- The tombstone intentionally has no FK: it must survive deletion of
         -- all session-owned rows until file, key, task, and Loro cleanup ends.
@@ -1407,8 +2025,61 @@ mod tests {
         .unwrap();
     }
 
+    fn downgrade_v27_to_v26(conn: &Connection) {
+        conn.execute_batch(
+            r#"
+            DROP INDEX idx_realtime_translation_inbox_unbound;
+            DROP INDEX idx_realtime_translation_inbox_bound_lane;
+            DROP TABLE realtime_translation_inbox;
+            DROP INDEX idx_realtime_utterances_id_sequence;
+
+            DROP INDEX idx_notebook_projection_mutations_utterance_language;
+            DROP INDEX idx_notebook_projection_mutations_session;
+            ALTER TABLE notebook_projection_mutations
+                RENAME TO notebook_projection_mutations_v27;
+            CREATE TABLE notebook_projection_mutations (
+                id                 TEXT PRIMARY KEY,
+                session_id         TEXT NOT NULL,
+                utterance_id       TEXT NOT NULL
+                                          REFERENCES realtime_utterances(id) ON DELETE CASCADE,
+                lane               TEXT NOT NULL CHECK(lane IN ('source', 'translated')),
+                lane_language      TEXT NOT NULL CHECK(length(trim(lane_language)) > 0),
+                expected_revision  INTEGER NOT NULL CHECK(expected_revision >= 0),
+                target_text        TEXT NOT NULL,
+                state              TEXT NOT NULL DEFAULT 'pending' CHECK(state = 'pending'),
+                created_at         TEXT NOT NULL,
+                updated_at         TEXT NOT NULL,
+                UNIQUE(utterance_id)
+            );
+            INSERT INTO notebook_projection_mutations (
+                id, session_id, utterance_id, lane, lane_language,
+                expected_revision, target_text, state, created_at, updated_at
+            )
+            SELECT id, session_id, utterance_id, lane, lane_language,
+                   expected_revision, target_text, state, created_at, updated_at
+            FROM notebook_projection_mutations_v27;
+            DROP TABLE notebook_projection_mutations_v27;
+            CREATE INDEX idx_notebook_projection_mutations_session
+                ON notebook_projection_mutations(session_id, created_at, id);
+
+            DROP TABLE realtime_utterance_overrides;
+            ALTER TABLE realtime_utterance_variants
+                DROP COLUMN projection_revision;
+            ALTER TABLE realtime_utterances
+                DROP COLUMN source_projection_revision;
+            ALTER TABLE notebook_capture_runs
+                DROP COLUMN realtime_loro_applied_revision;
+            ALTER TABLE notebook_capture_runs
+                DROP COLUMN realtime_loro_desired_revision;
+            PRAGMA user_version = 26;
+            "#,
+        )
+        .unwrap();
+        validate_v26_baseline(conn).unwrap();
+    }
+
     #[test]
-    fn migration_fresh_database_has_exact_v26_objects() {
+    fn migration_fresh_database_has_exact_v28_objects() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
 
@@ -1427,6 +2098,8 @@ mod tests {
                 "notebook_tabs",
                 "notebooks",
                 "participants",
+                "realtime_translation_inbox",
+                "realtime_utterance_overrides",
                 "realtime_utterance_variants",
                 "realtime_utterances",
                 "search_index",
@@ -1453,6 +2126,7 @@ mod tests {
                 "idx_notebook_capture_runs_single_active",
                 "idx_notebook_context_bindings_order",
                 "idx_notebook_projection_mutations_session",
+                "idx_notebook_projection_mutations_utterance_language",
                 "idx_notebook_session_projections_notebook_session",
                 "idx_notebook_session_projections_tab",
                 "idx_notebook_sessions_session_unique",
@@ -1460,8 +2134,11 @@ mod tests {
                 "idx_notebook_tabs_notebook_position",
                 "idx_notebooks_updated",
                 "idx_participants_display_name",
+                "idx_realtime_translation_inbox_bound_lane",
+                "idx_realtime_translation_inbox_unbound",
                 "idx_realtime_utterance_variants_language",
                 "idx_realtime_utterance_variants_one_source",
+                "idx_realtime_utterances_id_sequence",
                 "idx_realtime_utterances_session_sequence",
                 "idx_realtime_utterances_session_speaker",
                 "idx_session_purge_jobs_updated",
@@ -1567,6 +2244,8 @@ mod tests {
                 "created_at",
                 "updated_at",
                 "completed_at",
+                "realtime_loro_desired_revision",
+                "realtime_loro_applied_revision",
             ]
         );
 
@@ -1613,6 +2292,9 @@ mod tests {
         assert!(realtime_utterance_columns
             .iter()
             .any(|column| column == "session_speaker_id"));
+        assert!(realtime_utterance_columns
+            .iter()
+            .any(|column| column == "source_projection_revision"));
         let realtime_variant_columns = conn
             .prepare("PRAGMA table_info(realtime_utterance_variants)")
             .unwrap()
@@ -1632,6 +2314,7 @@ mod tests {
                 "revision",
                 "created_at",
                 "updated_at",
+                "projection_revision",
             ]
         );
         let projection_mutation_columns = conn
@@ -1644,6 +2327,30 @@ mod tests {
         assert!(projection_mutation_columns
             .iter()
             .any(|column| column == "lane_language"));
+        assert!(projection_mutation_columns
+            .iter()
+            .any(|column| column == "expected_variant_revision"));
+        let override_columns = conn
+            .prepare("PRAGMA table_info(realtime_utterance_overrides)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            override_columns,
+            vec![
+                "utterance_id",
+                "lane",
+                "lane_language",
+                "text",
+                "machine_utterance_revision",
+                "machine_variant_revision",
+                "edit_revision",
+                "created_at",
+                "updated_at",
+            ]
+        );
 
         for column in participant_columns
             .iter()
@@ -1808,7 +2515,7 @@ mod tests {
 
     #[test]
     fn migration_rejects_every_historical_or_future_nonzero_version() {
-        for version in [1, 7, 21, 22, 27] {
+        for version in [1, 7, 21, 22, 29] {
             let conn = Connection::open_in_memory().unwrap();
             conn.pragma_update(None, "user_version", version).unwrap();
             let error = run_migrations(&conn).unwrap_err();
@@ -1846,7 +2553,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_rejects_incomplete_database_claiming_v26() {
+    fn migration_rejects_incomplete_database_claiming_v28() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute("CREATE TABLE notebooks (id TEXT PRIMARY KEY)", [])
             .unwrap();
@@ -1856,11 +2563,11 @@ mod tests {
         let error = run_migrations(&conn).unwrap_err();
         assert!(error
             .to_string()
-            .contains("unsupported schema 26; reset required"));
+            .contains("unsupported schema 28; reset required"));
     }
 
     #[test]
-    fn migration_v26_is_idempotent() {
+    fn migration_v28_is_idempotent() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         let tables = names(&conn, "table");
@@ -1871,11 +2578,283 @@ mod tests {
     }
 
     #[test]
-    fn migration_v23_to_v26_preserves_existing_utterances() {
+    fn migration_v26_to_v27_preserves_machine_facts_and_lane_cas() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
+        downgrade_v27_to_v26(&conn);
 
-        // Reconstruct the supported v23 shape from the fresh v26
+        insert_notebook(&conn, "v26-notebook");
+        insert_run(&conn, "v26-run", "v26-notebook", "recording");
+        conn.execute(
+            "UPDATE notebook_capture_runs
+             SET realtime_provider_id = 'soniox', realtime_model_id = 'stt-rt-v5'
+             WHERE id = 'v26-run'",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "INSERT INTO realtime_utterances (
+                 id, session_id, sequence, source_language, source_text,
+                 translated_language, translated_text, revision,
+                 completion, alignment, created_at, updated_at
+             ) VALUES (
+                 'v26-utterance', 'session-v26-run', 0, 'en', 'hello',
+                 'ZH-Hant', '你好', 4, 'complete', 'paired', 'created', 'updated'
+             );
+             INSERT INTO realtime_utterance_variants (
+                 utterance_id, language, role, text, state, completion,
+                 revision, created_at, updated_at
+             ) VALUES
+                 ('v26-utterance', 'en', 'source', 'hello', 'ready',
+                  'complete', 4, 'created', 'updated'),
+                 ('v26-utterance', 'ZH-Hant', 'translation', '你好', 'ready',
+                  'complete', 7, 'created', 'updated');
+             INSERT INTO notebook_projection_mutations (
+                 id, session_id, utterance_id, lane, lane_language,
+                 expected_revision, target_text, state, created_at, updated_at
+             ) VALUES (
+                 'v26-mutation', 'session-v26-run', 'v26-utterance',
+                 'translated', ' ZH-Hant ', 4, '您好', 'pending', 'created', 'updated'
+             );",
+        )
+        .unwrap();
+        for (run_id, session_id) in [
+            ("v26-translation-only-run", "session-v26-translation-only"),
+            ("v26-partial-only-run", "session-v26-partial-only"),
+        ] {
+            insert_run(&conn, run_id, "v26-notebook", "completed");
+            conn.execute(
+                "UPDATE notebook_capture_runs
+                 SET session_id = ?1,
+                     realtime_provider_id = 'soniox',
+                     realtime_model_id = 'stt-rt-v5'
+                 WHERE id = ?2",
+                rusqlite::params![session_id, run_id],
+            )
+            .unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO realtime_utterances (
+                 id, session_id, sequence, source_language, source_text,
+                 revision, completion, alignment, created_at, updated_at
+             ) VALUES
+                 ('v26-translation-only-utterance',
+                  'session-v26-translation-only', 0, 'en', 'partial',
+                  0, 'partial', 'translation_pending', 'created', 'updated'),
+                 ('v26-partial-only-utterance',
+                  'session-v26-partial-only', 0, 'en', 'partial',
+                  0, 'partial', 'source_only', 'created', 'updated');
+             INSERT INTO realtime_utterance_variants (
+                 utterance_id, language, role, text, state, completion,
+                 revision, created_at, updated_at
+             ) VALUES
+                 ('v26-translation-only-utterance', 'en', 'source',
+                  'partial', 'ready', 'partial', 0, 'created', 'updated'),
+                 ('v26-translation-only-utterance', 'zh', 'translation',
+                  '最终译文', 'ready', 'complete', 0, 'created', 'updated'),
+                 ('v26-partial-only-utterance', 'en', 'source',
+                  'partial', 'ready', 'partial', 0, 'created', 'updated');",
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        assert_eq!(
+            conn.query_row(
+                "SELECT source_language, translated_language,
+                        source_text, translated_text,
+                        source_projection_revision
+                 FROM realtime_utterances WHERE id = 'v26-utterance'",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                        row.get::<_, i64>(4)?,
+                    ))
+                },
+            )
+            .unwrap(),
+            (
+                "en".to_string(),
+                Some("zh".to_string()),
+                "hello".to_string(),
+                Some("你好".to_string()),
+                1,
+            )
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT language, projection_revision
+                 FROM realtime_utterance_variants
+                 WHERE utterance_id = 'v26-utterance' AND role = 'translation'",
+                [],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .unwrap(),
+            ("zh".to_string(), 1)
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT realtime_loro_desired_revision,
+                        realtime_loro_applied_revision
+                 FROM notebook_capture_runs WHERE id = 'v26-run'",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .unwrap(),
+            (1, 0),
+            "pre-v27 Finals must be conservatively scheduled for one recovery projection"
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT realtime_loro_desired_revision,
+                        realtime_loro_applied_revision
+                 FROM notebook_capture_runs
+                 WHERE id = 'v26-translation-only-run'",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .unwrap(),
+            (1, 0),
+            "a translation Final must schedule recovery even while source is partial"
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT realtime_loro_desired_revision,
+                        realtime_loro_applied_revision
+                 FROM notebook_capture_runs
+                 WHERE id = 'v26-partial-only-run'",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .unwrap(),
+            (0, 0),
+            "partial-only history must remain SQLite-only"
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT lane_language, expected_revision,
+                        expected_variant_revision
+                 FROM notebook_projection_mutations WHERE id = 'v26-mutation'",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .unwrap(),
+            ("zh".to_string(), 0, 7),
+            "v26 aggregate expected revision must migrate to the v27 lane edit baseline"
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM realtime_utterance_overrides",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+            0
+        );
+        validate_v28_baseline(&conn).unwrap();
+    }
+
+    #[test]
+    fn migration_v26_to_v27_rejects_primary_language_collisions_without_mutation() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        downgrade_v27_to_v26(&conn);
+
+        insert_notebook(&conn, "primary-collision-notebook");
+        insert_run(
+            &conn,
+            "primary-collision-run",
+            "primary-collision-notebook",
+            "recording",
+        );
+        conn.execute(
+            "UPDATE notebook_capture_runs
+             SET realtime_provider_id = 'soniox',
+                 realtime_model_id = 'stt-rt-v5'
+             WHERE id = 'primary-collision-run'",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "INSERT INTO realtime_utterances (
+                 id, session_id, sequence, source_language, source_text,
+                 revision, completion, alignment, created_at, updated_at
+             ) VALUES (
+                 'primary-collision-utterance',
+                 'session-primary-collision-run',
+                 0, 'th', 'ข้อความ', 0, 'partial', 'translation_pending',
+                 'created', 'updated'
+             );
+             INSERT INTO realtime_utterance_variants (
+                 utterance_id, language, role, text, state, completion,
+                 revision, created_at, updated_at
+             ) VALUES
+                 ('primary-collision-utterance', 'en-US', 'translation',
+                  'color', 'ready', 'partial', 0, 'created', 'updated'),
+                 ('primary-collision-utterance', 'en-GB', 'translation',
+                  'colour', 'ready', 'partial', 0, 'created', 'updated');",
+        )
+        .unwrap();
+
+        let error = run_migrations(&conn).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("unsupported schema 26; reset required"));
+        assert_eq!(
+            conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
+                .unwrap(),
+            MULTILINGUAL_VERSION
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('notebook_capture_runs')
+                 WHERE name = 'realtime_loro_desired_revision'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('realtime_utterance_variants')
+                 WHERE name = 'projection_revision'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM realtime_utterance_variants
+                 WHERE utterance_id = 'primary-collision-utterance'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+            2
+        );
+        validate_v26_baseline(&conn).unwrap();
+    }
+
+    #[test]
+    fn migration_v23_to_v27_preserves_existing_utterances() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        downgrade_v27_to_v26(&conn);
+
+        // Reconstruct the supported v23 shape from the fresh v27
         // baseline, then seed data that must survive the in-place migration.
         conn.execute_batch(
             "ALTER TABLE notebook_projection_mutations DROP COLUMN lane_language;
@@ -1967,13 +2946,14 @@ mod tests {
                 ),
             ]
         );
-        validate_v26_baseline(&conn).unwrap();
+        validate_v28_baseline(&conn).unwrap();
     }
 
     #[test]
-    fn migration_v24_to_v26_derives_selected_languages_from_legacy_pair() {
+    fn migration_v24_to_v27_derives_selected_languages_from_legacy_pair() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
+        downgrade_v27_to_v26(&conn);
         conn.execute_batch(
             "ALTER TABLE notebook_projection_mutations DROP COLUMN lane_language;
              DROP TABLE realtime_utterance_variants;
@@ -2009,13 +2989,14 @@ mod tests {
         assert_eq!(selected, r#"["th","ja"]"#);
         assert_eq!(common, None);
         assert_eq!(revision, 7);
-        validate_v26_baseline(&conn).unwrap();
+        validate_v28_baseline(&conn).unwrap();
     }
 
     #[test]
-    fn migration_v25_to_v26_backfills_variants_and_preserves_private_capture_data() {
+    fn migration_v25_to_v27_backfills_variants_and_preserves_private_capture_data() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
+        downgrade_v27_to_v26(&conn);
         conn.execute_batch(
             "ALTER TABLE notebook_projection_mutations DROP COLUMN lane_language;
              DROP TABLE realtime_utterance_variants;
@@ -2164,7 +3145,10 @@ mod tests {
             .unwrap(),
             2
         );
-        validate_v26_baseline(&conn).unwrap();
+        assert!(conn
+            .prepare("SELECT session_id FROM realtime_translation_inbox LIMIT 0")
+            .is_ok());
+        validate_v28_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -2208,13 +3192,14 @@ mod tests {
             .unwrap(),
             4
         );
-        validate_v26_baseline(&conn).unwrap();
+        validate_v28_baseline(&conn).unwrap();
     }
 
     #[test]
-    fn migration_v25_to_v26_rolls_back_on_case_insensitive_language_collision() {
+    fn migration_v25_to_v27_rolls_back_on_case_insensitive_language_collision() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
+        downgrade_v27_to_v26(&conn);
         conn.execute_batch(
             "ALTER TABLE notebook_projection_mutations DROP COLUMN lane_language;
              DROP TABLE realtime_utterance_variants;

@@ -547,11 +547,11 @@ mod tests {
         core.session_meta.set_tokens(sid, tokens).unwrap();
     }
 
-    fn seed_two_way_capture(core: &ZulangueCore, sid: &str) {
+    fn seed_two_way_capture(core: &ZulangueCore, sid: &str) -> String {
         use vt_model::{Token, TranslationStatus};
         use vt_store::notebook_capture_store::{
             CaptureMode, NewNotebookCaptureRun, NewRealtimeUtterance, NotebookCaptureProfileUpdate,
-            RemoteHealth, UtteranceAlignment, UtteranceCompletion,
+            RemoteHealth, UtteranceAlignment, UtteranceCompletion, UtteranceVariantState,
         };
 
         let notebook = core
@@ -614,6 +614,10 @@ mod tests {
                 vt_stt::CURRENT_NOTEBOOK_CAPTURE_ENGINE.realtime_model_id,
             )
             .unwrap();
+        let first_speaker = core
+            .notebook_capture_store
+            .ensure_session_speaker(sid, 0, "soniox", "1")
+            .unwrap();
         for (sequence, source_language, source_text, translated_language, translated_text) in [
             (0, "en", "Realtime source", "zh", "实时原文"),
             (1, "zh", "第二句话", "en", "Second sentence"),
@@ -624,17 +628,27 @@ mod tests {
                         id: format!("utterance-{sid}-{sequence}"),
                         session_id: sid.into(),
                         sequence,
-                        session_speaker_id: None,
+                        session_speaker_id: (sequence == 0).then(|| first_speaker.id.clone()),
                         source_language: source_language.into(),
                         source_text: source_text.into(),
                         source_start_ms: Some(sequence * 1_000),
                         source_end_ms: Some(sequence * 1_000 + 900),
-                        translated_language: Some(translated_language.into()),
-                        translated_text: Some(translated_text.into()),
+                        translated_language: None,
+                        translated_text: None,
                         completion: UtteranceCompletion::Complete,
-                        alignment: UtteranceAlignment::Paired,
+                        alignment: UtteranceAlignment::TranslationPending,
                     },
                     None,
+                )
+                .unwrap();
+            core.notebook_capture_store
+                .upsert_translation_variant(
+                    sid,
+                    sequence,
+                    translated_language,
+                    Some(translated_text),
+                    UtteranceVariantState::Ready,
+                    Some(UtteranceCompletion::Complete),
                 )
                 .unwrap();
         }
@@ -655,12 +669,13 @@ mod tests {
                 }],
             )
             .unwrap();
+        first_speaker.id
     }
 
     fn seed_multilingual_one_way_capture(core: &ZulangueCore, sid: &str) {
         use vt_store::notebook_capture_store::{
             CaptureMode, NewNotebookCaptureRun, NewRealtimeUtterance, NotebookCaptureProfileUpdate,
-            RemoteHealth, UtteranceAlignment, UtteranceCompletion,
+            RemoteHealth, UtteranceAlignment, UtteranceCompletion, UtteranceVariantState,
         };
 
         let notebook = core
@@ -734,12 +749,22 @@ mod tests {
                     source_text: "สวัสดี".into(),
                     source_start_ms: Some(0),
                     source_end_ms: Some(900),
-                    translated_language: Some("en".into()),
-                    translated_text: Some("Hello".into()),
+                    translated_language: None,
+                    translated_text: None,
                     completion: UtteranceCompletion::Complete,
-                    alignment: UtteranceAlignment::Paired,
+                    alignment: UtteranceAlignment::TranslationPending,
                 },
                 None,
+            )
+            .unwrap();
+        core.notebook_capture_store
+            .upsert_translation_variant(
+                sid,
+                0,
+                "en",
+                Some("Hello"),
+                UtteranceVariantState::Ready,
+                Some(UtteranceCompletion::Complete),
             )
             .unwrap();
         core.notebook_capture_store
@@ -814,7 +839,7 @@ mod tests {
     #[test]
     fn realtime_export_and_home_preview_use_utterances_not_stale_tokens() {
         let (tmp, core) = make_core();
-        seed_two_way_capture(&core, "capture-facts");
+        let _ = seed_two_way_capture(&core, "capture-facts");
 
         let output = tmp.path().join("capture-facts.zip");
         core.export_session_zip(
@@ -869,50 +894,19 @@ mod tests {
 
     #[test]
     fn clipboard_transcript_uses_durable_facts_and_manual_speaker_names() {
-        use vt_store::notebook_capture_store::NewRealtimeUtterance;
-
         let (_tmp, core) = make_core();
         let session_id = "clipboard-facts";
-        seed_two_way_capture(&core, session_id);
+        let speaker_id = seed_two_way_capture(&core, session_id);
 
         let participant = core
             .notebook_capture_store
             .create_participant("Cross-session host")
             .unwrap();
-        let speaker = core
-            .notebook_capture_store
-            .ensure_session_speaker(session_id, 0, "soniox", "1")
+        core.notebook_capture_store
+            .link_session_speaker(&speaker_id, &participant.id)
             .unwrap();
         core.notebook_capture_store
-            .link_session_speaker(&speaker.id, &participant.id)
-            .unwrap();
-        core.notebook_capture_store
-            .rename_session_speaker(&speaker.id, Some("Session host"))
-            .unwrap();
-
-        let first = core
-            .notebook_capture_store
-            .list_utterances(session_id)
-            .unwrap()
-            .remove(0);
-        core.notebook_capture_store
-            .upsert_utterance(
-                &NewRealtimeUtterance {
-                    id: first.id,
-                    session_id: first.session_id,
-                    sequence: first.sequence,
-                    session_speaker_id: Some(speaker.id.clone()),
-                    source_language: first.source_language,
-                    source_text: first.source_text,
-                    source_start_ms: first.source_start_ms,
-                    source_end_ms: first.source_end_ms,
-                    translated_language: first.translated_language,
-                    translated_text: first.translated_text,
-                    completion: first.completion,
-                    alignment: first.alignment,
-                },
-                Some(first.revision),
-            )
+            .rename_session_speaker(&speaker_id, Some("Session host"))
             .unwrap();
 
         let text = core
@@ -926,7 +920,7 @@ mod tests {
         assert!(!text.contains("---"));
 
         core.notebook_capture_store
-            .rename_session_speaker(&speaker.id, None)
+            .rename_session_speaker(&speaker_id, None)
             .unwrap();
         let text = core
             .get_session_transcript_clipboard_text(session_id.into())

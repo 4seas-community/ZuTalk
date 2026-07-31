@@ -154,6 +154,7 @@ struct NotebookCaptureUtteranceDTO: Codable, Equatable, Identifiable {
     let sessionId: String
     let sequence: UInt64
     var sessionSpeakerId: String? = nil
+    /// Aggregate provider-machine revision; never use this for a lane edit CAS.
     var revision: UInt64
     var sourceLanguage: String
     var sourceText: String
@@ -167,6 +168,195 @@ struct NotebookCaptureUtteranceDTO: Codable, Equatable, Identifiable {
     /// leave this empty and are projected from the source/translated shadow
     /// fields above.
     var languageVariants: [NotebookCaptureLanguageVariantDTO] = []
+    /// Session Loro watermark at which the immutable source Final was emitted.
+    var sourceProjectionRevision: UInt64 = 0
+    /// Lane-local revision of the source's user-visible override.
+    var sourceEditRevision: UInt64 = 0
+
+    /// The normalized source variant is authoritative. Aggregate source
+    /// fields may remain as inert compatibility bytes when a translation Final
+    /// keeps the utterance shell alive after a speculative source withdrawal.
+    var hasSourceLane: Bool {
+        let sourceVariants = languageVariants.filter { $0.role == "source" }
+        if sourceVariants.isEmpty {
+            return languageVariants.isEmpty
+        }
+        return sourceVariants.contains {
+            $0.state == "ready" && $0.text != nil && $0.completion != nil
+        }
+    }
+
+    func isFinalLane(language: String) -> Bool {
+        let language = Self.languageKey(language)
+        if hasSourceLane && Self.languageKey(sourceLanguage) == language {
+            return completion == "complete"
+        }
+        if let variant = languageVariants.first(where: {
+            Self.languageKey($0.language) == language
+        }) {
+            return ["translation", "translated"].contains(variant.role)
+                && variant.state == "ready"
+                && variant.completion == "complete"
+                && variant.text != nil
+        }
+        return translatedLanguage.map(Self.languageKey) == language
+            && translatedText != nil
+            && completion == "complete"
+    }
+
+    var hasFinalLaneReadyForProjection: Bool {
+        if hasSourceLane && completion == "complete" {
+            return true
+        }
+        return languageVariants.contains {
+            ["translation", "translated"].contains($0.role)
+                && $0.state == "ready"
+                && $0.completion == "complete"
+                && $0.text != nil
+        }
+    }
+
+    func isLoroEditableLane(
+        language: String,
+        appliedRevision: UInt64
+    ) -> Bool {
+        let language = Self.languageKey(language)
+        if hasSourceLane && Self.languageKey(sourceLanguage) == language {
+            return completion == "complete"
+                && sourceProjectionRevision > 0
+                && sourceProjectionRevision <= appliedRevision
+        }
+        guard let variant = languageVariants.first(where: {
+            Self.languageKey($0.language) == language
+        }) else { return false }
+        return ["translation", "translated"].contains(variant.role)
+            && variant.state == "ready"
+            && variant.completion == "complete"
+            && variant.text != nil
+            && variant.projectionRevision > 0
+            && variant.projectionRevision <= appliedRevision
+    }
+
+    func mergingCommittedLane(
+        from committed: NotebookCaptureUtteranceDTO,
+        language: String
+    ) -> NotebookCaptureUtteranceDTO {
+        guard id == committed.id, sessionId == committed.sessionId else { return self }
+        let language = Self.languageKey(language)
+        var merged = self
+        merged.revision = max(revision, committed.revision)
+
+        if committed.hasSourceLane
+            && Self.languageKey(committed.sourceLanguage) == language {
+            merged.sourceText = committed.sourceText
+            merged.sourceProjectionRevision = max(
+                sourceProjectionRevision,
+                committed.sourceProjectionRevision
+            )
+            merged.sourceEditRevision = max(
+                sourceEditRevision,
+                committed.sourceEditRevision
+            )
+            if let index = merged.languageVariants.firstIndex(where: {
+                Self.languageKey($0.language) == language
+            }),
+            let committedVariant = committed.languageVariants.first(where: {
+                Self.languageKey($0.language) == language
+            }) {
+                merged.languageVariants[index].text = committedVariant.text
+                merged.languageVariants[index].projectionRevision = max(
+                    merged.languageVariants[index].projectionRevision,
+                    committedVariant.projectionRevision
+                )
+                merged.languageVariants[index].editRevision = max(
+                    merged.languageVariants[index].editRevision,
+                    committedVariant.editRevision
+                )
+            }
+            return merged
+        }
+
+        let committedVariant = committed.languageVariants.first {
+            Self.languageKey($0.language) == language
+        }
+        let committedLaneText: String?
+        if let committedVariant {
+            committedLaneText = committedVariant.text
+        } else if committed.translatedLanguage.map(Self.languageKey) == language {
+            committedLaneText = committed.translatedText
+        } else {
+            committedLaneText = nil
+        }
+        if let index = merged.languageVariants.firstIndex(where: {
+            Self.languageKey($0.language) == language
+        }) {
+            merged.languageVariants[index].text = committedLaneText
+            if let committedVariant {
+                merged.languageVariants[index].projectionRevision = max(
+                    merged.languageVariants[index].projectionRevision,
+                    committedVariant.projectionRevision
+                )
+                merged.languageVariants[index].editRevision = max(
+                    merged.languageVariants[index].editRevision,
+                    committedVariant.editRevision
+                )
+            }
+        } else if let committedVariant {
+            merged.languageVariants.append(committedVariant)
+        }
+        if merged.translatedLanguage.map(Self.languageKey) == language {
+            merged.translatedText = committedLaneText
+        }
+        return merged
+    }
+
+    func laneText(language: String) -> String? {
+        let language = Self.languageKey(language)
+        if hasSourceLane && Self.languageKey(sourceLanguage) == language {
+            return sourceText
+        }
+        if let variant = languageVariants.first(where: {
+            Self.languageKey($0.language) == language
+        }) {
+            return variant.text
+        }
+        guard translatedLanguage.map(Self.languageKey) == language else { return nil }
+        return translatedText
+    }
+
+    func laneEditRevision(language: String) -> UInt64 {
+        let language = Self.languageKey(language)
+        if hasSourceLane && Self.languageKey(sourceLanguage) == language {
+            return sourceEditRevision
+        }
+        return languageVariants.first {
+            Self.languageKey($0.language) == language
+        }?.editRevision ?? 0
+    }
+
+    nonisolated static func languageKey(_ language: String) -> String {
+        language
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .split(separator: "-")
+            .first
+            .map(String.init) ?? ""
+    }
+}
+
+private struct NotebookCaptureLaneMutationKey: Hashable {
+    let utteranceId: String
+    let language: String
+
+    init(utteranceId: String, language: String) {
+        self.utteranceId = utteranceId
+        self.language = NotebookCaptureUtteranceDTO.languageKey(language)
+    }
+}
+
+private struct NotebookCaptureCommittedLaneOverrideBarrier {
+    let machineRevision: UInt64
+    let committedUtterance: NotebookCaptureUtteranceDTO
 }
 
 struct NotebookCaptureLanguageVariantDTO: Codable, Equatable, Identifiable {
@@ -175,6 +365,8 @@ struct NotebookCaptureLanguageVariantDTO: Codable, Equatable, Identifiable {
     var text: String?
     var state: String
     var completion: String?
+    var projectionRevision: UInt64 = 0
+    var editRevision: UInt64 = 0
 
     var id: String { language }
 }
@@ -221,6 +413,7 @@ struct NotebookCaptureHistoryRunDTO: Equatable, Identifiable {
     /// with existing fixture memberwise initializers; presentation never mutates it.
     var selectedLanguages: [String] = []
     var commonCaptionLanguage: String? = nil
+    var realtimeLoroAppliedRevision: UInt64 = 0
 
     var id: String { sessionId }
 
@@ -247,7 +440,8 @@ struct NotebookCaptureHistoryRunDTO: Equatable, Identifiable {
             privacyLevel: privacyLevel,
             utterances: utterances,
             selectedLanguages: selectedLanguages,
-            commonCaptionLanguage: commonCaptionLanguage
+            commonCaptionLanguage: commonCaptionLanguage,
+            realtimeLoroAppliedRevision: realtimeLoroAppliedRevision
         )
     }
 }
@@ -287,6 +481,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
     let postStopAsyncProjectionState: NotebookAsyncProjectionState
     let selectedLanguages: [String]
     let commonCaptionLanguage: String?
+    let realtimeLoroAppliedRevision: UInt64
 
     init(
         sessionId: String,
@@ -313,7 +508,8 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         postStopAsyncState: String = "none",
         postStopAsyncProjectionState: NotebookAsyncProjectionState = .none,
         selectedLanguages: [String] = [],
-        commonCaptionLanguage: String? = nil
+        commonCaptionLanguage: String? = nil,
+        realtimeLoroAppliedRevision: UInt64 = 0
     ) {
         self.sessionId = sessionId
         self.eventRevision = eventRevision
@@ -340,6 +536,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         self.postStopAsyncProjectionState = postStopAsyncProjectionState
         self.selectedLanguages = selectedLanguages
         self.commonCaptionLanguage = commonCaptionLanguage
+        self.realtimeLoroAppliedRevision = realtimeLoroAppliedRevision
     }
 }
 
@@ -420,13 +617,19 @@ protocol NotebookCaptureClienting: AnyObject {
     /// invokes this sink off the main actor so realtime PCM never queues one
     /// MainActor task per frame.
     func makeNotebookCaptureAudioPusher(sessionId: String) -> @Sendable (Data) -> String?
-    func pauseNotebookCaptureSession(sessionId: String, paused: Bool) throws -> NotebookCaptureEventDTO
+    func pauseNotebookCaptureSession(
+        sessionId: String,
+        paused: Bool
+    ) async throws -> NotebookCaptureEventDTO
     func stopNotebookCaptureSession(sessionId: String) async throws -> NotebookCaptureEventDTO
     func interruptNotebookCaptureSession(
         sessionId: String,
         reason: NotebookCaptureInterruptReason
     ) async throws -> NotebookCaptureEventDTO
     func getNotebookCaptureSessionEvent(sessionId: String) throws -> NotebookCaptureEventDTO
+    func reconcileNotebookCaptureSessionEvent(
+        sessionId: String
+    ) async throws -> NotebookCaptureEventDTO
     func listNotebookCaptureUtterances(sessionId: String) throws -> [NotebookCaptureUtteranceDTO]
     func listSpeakerParticipants() throws -> [SpeakerParticipantDTO]
     func createSpeakerParticipant(displayName: String) throws -> SpeakerParticipantDTO
@@ -455,8 +658,9 @@ protocol NotebookCaptureClienting: AnyObject {
         laneLanguage: String,
         text: String,
         expectedRevision: UInt64
-    ) throws -> NotebookCaptureUtteranceDTO
+    ) async throws -> NotebookCaptureUtteranceDTO
     func projectNotebookRealtimeIncremental(sessionId: String) throws
+    func cancelNotebookRealtimeProjection(sessionId: String)
 }
 
 extension NotebookCaptureClienting {
@@ -477,6 +681,14 @@ extension NotebookCaptureClienting {
     func projectNotebookRealtimeIncremental(sessionId: String) throws {
         throw NotebookCaptureClientError.ffiUnavailable
     }
+
+    func reconcileNotebookCaptureSessionEvent(
+        sessionId: String
+    ) async throws -> NotebookCaptureEventDTO {
+        try getNotebookCaptureSessionEvent(sessionId: sessionId)
+    }
+
+    func cancelNotebookRealtimeProjection(sessionId: String) {}
 
     func listSpeakerParticipants() throws -> [SpeakerParticipantDTO] {
         throw NotebookCaptureClientError.ffiUnavailable
@@ -522,11 +734,185 @@ extension NotebookCaptureClienting {
 
 // MARK: - Live Rust adapter
 
+/// Coalesces durable Final-watermark wakes onto one utility queue. The capture
+/// callback runs on MainActor and must never perform Loro snapshot fsync there.
+final class NotebookRealtimeProjectionScheduler: @unchecked Sendable {
+    typealias Projection = @Sendable (String) throws -> Void
+
+    private struct Job: @unchecked Sendable {
+        var projection: Projection
+        var generation: UInt64
+        var fastFailureCount: Int
+        var runningGeneration: UInt64?
+        var scheduledWorkItem: DispatchWorkItem?
+    }
+
+    private let lock = NSLock()
+    private let queue = DispatchQueue(
+        label: "xyz.voice.zulangue.realtime-projection",
+        qos: .utility
+    )
+    private let maximumFastRetries: Int
+    private let initialFastRetryDelay: TimeInterval
+    private let cappedRetryDelay: TimeInterval
+    private var nextGeneration: UInt64 = 0
+    private var jobs: [String: Job] = [:]
+
+    init(
+        maximumFastRetries: Int = 3,
+        initialFastRetryDelay: TimeInterval = 0.025,
+        cappedRetryDelay: TimeInterval = 2
+    ) {
+        let normalizedFastRetryDelay = max(0, initialFastRetryDelay)
+        self.maximumFastRetries = max(0, maximumFastRetries)
+        self.initialFastRetryDelay = normalizedFastRetryDelay
+        self.cappedRetryDelay = max(
+            normalizedFastRetryDelay,
+            max(0.001, cappedRetryDelay)
+        )
+    }
+
+    func schedule(sessionId: String, projection: @escaping Projection) {
+        lock.lock()
+        nextGeneration &+= 1
+        let generation = nextGeneration
+        if var job = jobs[sessionId] {
+            job.projection = projection
+            job.generation = generation
+            job.fastFailureCount = 0
+            job.scheduledWorkItem?.cancel()
+            job.scheduledWorkItem = nil
+            let isRunning = job.runningGeneration != nil
+            jobs[sessionId] = job
+            if isRunning == false {
+                enqueueLocked(sessionId: sessionId, generation: generation, after: 0)
+            }
+        } else {
+            jobs[sessionId] = Job(
+                projection: projection,
+                generation: generation,
+                fastFailureCount: 0,
+                runningGeneration: nil,
+                scheduledWorkItem: nil
+            )
+            enqueueLocked(sessionId: sessionId, generation: generation, after: 0)
+        }
+        lock.unlock()
+    }
+
+    func cancel(sessionId: String) {
+        lock.lock()
+        let job = jobs.removeValue(forKey: sessionId)
+        job?.scheduledWorkItem?.cancel()
+        lock.unlock()
+    }
+
+    private func enqueueLocked(
+        sessionId: String,
+        generation: UInt64,
+        after delay: TimeInterval
+    ) {
+        guard var job = jobs[sessionId],
+              job.generation == generation,
+              job.runningGeneration == nil,
+              job.scheduledWorkItem == nil
+        else { return }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.run(sessionId: sessionId, generation: generation)
+        }
+        job.scheduledWorkItem = workItem
+        jobs[sessionId] = job
+        queue.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func run(sessionId: String, generation: UInt64) {
+        let projection: (String) throws -> Void
+        lock.lock()
+        guard var job = jobs[sessionId],
+              job.generation == generation,
+              job.runningGeneration == nil
+        else {
+            lock.unlock()
+            return
+        }
+        job.scheduledWorkItem = nil
+        job.runningGeneration = generation
+        projection = job.projection
+        jobs[sessionId] = job
+        lock.unlock()
+
+        let succeeded: Bool
+        do {
+            try projection(sessionId)
+            succeeded = true
+        } catch {
+            succeeded = false
+        }
+        finish(
+            sessionId: sessionId,
+            attemptedGeneration: generation,
+            succeeded: succeeded
+        )
+    }
+
+    private func finish(
+        sessionId: String,
+        attemptedGeneration: UInt64,
+        succeeded: Bool
+    ) {
+        lock.lock()
+        guard var job = jobs[sessionId],
+              job.runningGeneration == attemptedGeneration
+        else {
+            lock.unlock()
+            return
+        }
+        job.runningGeneration = nil
+
+        if job.generation != attemptedGeneration {
+            // A new durable wake replaces any stale in-flight outcome and
+            // restores the fast retry budget.
+            let refreshedGeneration = job.generation
+            jobs[sessionId] = job
+            enqueueLocked(
+                sessionId: sessionId,
+                generation: refreshedGeneration,
+                after: 0
+            )
+            lock.unlock()
+            return
+        }
+
+        if succeeded {
+            jobs.removeValue(forKey: sessionId)
+            lock.unlock()
+            return
+        }
+
+        job.fastFailureCount += 1
+        let failureCount = job.fastFailureCount
+        jobs[sessionId] = job
+        let delay: TimeInterval
+        if failureCount <= maximumFastRetries {
+            delay = initialFastRetryDelay * pow(2, Double(failureCount - 1))
+        } else {
+            // Keep the durable wake alive through a quiet period without a
+            // busy loop. Terminal/session teardown is the explicit owner of
+            // cancellation.
+            delay = cappedRetryDelay
+        }
+        enqueueLocked(sessionId: sessionId, generation: job.generation, after: delay)
+        lock.unlock()
+    }
+}
+
 /// Mechanical UniFFI adapter. Rust remains the only owner of capture state,
 /// context compilation, persistence, projection, and terminal transitions.
 @MainActor
 final class RustNotebookCaptureClient: NotebookCaptureClienting {
     private let coreProvider: @MainActor () -> (any ZulangueCoreProtocol)?
+    private let realtimeProjectionScheduler = NotebookRealtimeProjectionScheduler()
 
     init(
         coreProvider: @escaping @MainActor () -> (any ZulangueCoreProtocol)? = {
@@ -672,11 +1058,15 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
     func pauseNotebookCaptureSession(
         sessionId: String,
         paused: Bool
-    ) throws -> NotebookCaptureEventDTO {
-        Self.map(try requireCore().pauseNotebookCaptureSession(
-            sessionId: sessionId,
-            paused: paused
-        ))
+    ) async throws -> NotebookCaptureEventDTO {
+        let core = try requireCore()
+        let event = try await Task.detached {
+            try core.pauseNotebookCaptureSession(
+                sessionId: sessionId,
+                paused: paused
+            )
+        }.value
+        return Self.map(event)
     }
 
     func stopNotebookCaptureSession(sessionId: String) async throws -> NotebookCaptureEventDTO {
@@ -704,6 +1094,16 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
 
     func getNotebookCaptureSessionEvent(sessionId: String) throws -> NotebookCaptureEventDTO {
         Self.map(try requireCore().getNotebookCaptureSessionEvent(sessionId: sessionId))
+    }
+
+    func reconcileNotebookCaptureSessionEvent(
+        sessionId: String
+    ) async throws -> NotebookCaptureEventDTO {
+        let core = try requireCore()
+        let event = try await Task.detached {
+            try core.getNotebookCaptureSessionEvent(sessionId: sessionId)
+        }.value
+        return Self.map(event)
     }
 
     func listNotebookCaptureUtterances(
@@ -791,17 +1191,28 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
         laneLanguage: String,
         text: String,
         expectedRevision: UInt64
-    ) throws -> NotebookCaptureUtteranceDTO {
-        Self.map(try requireCore().replaceNotebookUtteranceLane(
-            utteranceId: utteranceId,
-            laneLanguage: laneLanguage,
-            text: text,
-            expectedRevision: expectedRevision
-        ))
+    ) async throws -> NotebookCaptureUtteranceDTO {
+        let core = try requireCore()
+        let utterance = try await Task.detached {
+            try core.replaceNotebookUtteranceLane(
+                utteranceId: utteranceId,
+                laneLanguage: laneLanguage,
+                text: text,
+                expectedRevision: expectedRevision
+            )
+        }.value
+        return Self.map(utterance)
     }
 
     func projectNotebookRealtimeIncremental(sessionId: String) throws {
-        try requireCore().projectNotebookRealtimeIncremental(sessionId: sessionId)
+        let core = try requireCore()
+        realtimeProjectionScheduler.schedule(sessionId: sessionId) { sessionId in
+            try core.projectNotebookRealtimeIncremental(sessionId: sessionId)
+        }
+    }
+
+    func cancelNotebookRealtimeProjection(sessionId: String) {
+        realtimeProjectionScheduler.cancel(sessionId: sessionId)
     }
 
     private func requireCore() throws -> any ZulangueCoreProtocol {
@@ -939,7 +1350,8 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             postStopAsyncState: value.postStopAsyncState,
             postStopAsyncProjectionState: map(value.postStopAsyncProjectionState),
             selectedLanguages: selectedLanguages,
-            commonCaptionLanguage: nil
+            commonCaptionLanguage: nil,
+            realtimeLoroAppliedRevision: value.realtimeLoroAppliedRevision
         )
     }
 
@@ -986,7 +1398,8 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             privacyLevel: value.privacyLevel.flatMap(NotebookAudioRetentionLevel.init(rawValue:)),
             utterances: value.utterances.map(Self.map),
             selectedLanguages: selectedLanguages,
-            commonCaptionLanguage: nil
+            commonCaptionLanguage: nil,
+            realtimeLoroAppliedRevision: value.realtimeLoroAppliedRevision
         )
     }
 
@@ -1011,9 +1424,13 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
                     role: variant.role,
                     text: variant.text,
                     state: variant.state,
-                    completion: variant.completion
+                    completion: variant.completion,
+                    projectionRevision: variant.projectionRevision,
+                    editRevision: variant.editRevision
                 )
-            }
+            },
+            sourceProjectionRevision: value.sourceProjectionRevision,
+            sourceEditRevision: value.sourceEditRevision
         )
     }
 
@@ -1126,13 +1543,15 @@ final class RustNotebookCaptureCallback: FfiNotebookCaptureCallback, @unchecked 
     }
 }
 
-/// UniFFI callbacks return before their MainActor work runs. Durable callbacks
-/// remain ordered while the replace-in-full preview keeps one newest-only
-/// slot. One shared drain also makes final-row promotion run before the empty
-/// preview that follows it.
+/// UniFFI callbacks return before their MainActor work runs. Both callback
+/// classes keep one newest-only slot so a busy MainActor cannot turn realtime
+/// delivery into an unbounded queue. A skipped durable revision is repaired
+/// asynchronously from the authoritative snapshot by the store below.
+/// One shared drain also makes final-row promotion run before the empty preview
+/// that follows it.
 private final class NotebookCaptureCallbackDispatcher: @unchecked Sendable {
     nonisolated private let lock = NSLock()
-    nonisolated(unsafe) private var pendingEvents: [FfiNotebookCaptureEvent] = []
+    nonisolated(unsafe) private var pendingEvent: FfiNotebookCaptureEvent?
     nonisolated(unsafe) private var pending: FfiNotebookCaptureLivePreview?
     nonisolated(unsafe) private var drainScheduled = false
     nonisolated private let deliverEvent:
@@ -1150,7 +1569,11 @@ private final class NotebookCaptureCallbackDispatcher: @unchecked Sendable {
 
     nonisolated func submit(_ event: FfiNotebookCaptureEvent) {
         lock.lock()
-        pendingEvents.append(event)
+        if pendingEvent == nil
+            || pendingEvent?.sessionId != event.sessionId
+            || (pendingEvent?.eventRevision ?? 0) <= event.eventRevision {
+            pendingEvent = event
+        }
         let shouldSchedule = scheduleDrainIfNeededLocked()
         lock.unlock()
         scheduleDrain(shouldSchedule)
@@ -1158,7 +1581,11 @@ private final class NotebookCaptureCallbackDispatcher: @unchecked Sendable {
 
     nonisolated func submit(_ preview: FfiNotebookCaptureLivePreview) {
         lock.lock()
-        pending = preview
+        if pending == nil
+            || pending?.sessionId != preview.sessionId
+            || (pending?.previewRevision ?? 0) <= preview.previewRevision {
+            pending = preview
+        }
         let shouldSchedule = scheduleDrainIfNeededLocked()
         lock.unlock()
         scheduleDrain(shouldSchedule)
@@ -1177,16 +1604,16 @@ private final class NotebookCaptureCallbackDispatcher: @unchecked Sendable {
 
     @MainActor
     private func drainOne() {
-        let events: [FfiNotebookCaptureEvent]
+        let event: FfiNotebookCaptureEvent?
         let preview: FfiNotebookCaptureLivePreview?
         lock.lock()
-        events = pendingEvents
-        pendingEvents.removeAll(keepingCapacity: true)
+        event = pendingEvent
+        pendingEvent = nil
         preview = pending
         pending = nil
         lock.unlock()
 
-        for event in events {
+        if let event {
             deliverEvent(RustNotebookCaptureClient.map(event))
         }
         if let preview {
@@ -1194,7 +1621,7 @@ private final class NotebookCaptureCallbackDispatcher: @unchecked Sendable {
         }
 
         lock.lock()
-        let hasPending = pendingEvents.isEmpty == false || pending != nil
+        let hasPending = pendingEvent != nil || pending != nil
         if hasPending == false {
             drainScheduled = false
         }
@@ -1322,7 +1749,10 @@ final class UnavailableNotebookCaptureClient: NotebookCaptureClienting {
         { _ in NotebookCaptureClientError.ffiUnavailable.localizedDescription }
     }
 
-    func pauseNotebookCaptureSession(sessionId: String, paused: Bool) throws -> NotebookCaptureEventDTO {
+    func pauseNotebookCaptureSession(
+        sessionId: String,
+        paused: Bool
+    ) async throws -> NotebookCaptureEventDTO {
         throw NotebookCaptureClientError.ffiUnavailable
     }
 
@@ -1358,7 +1788,7 @@ final class UnavailableNotebookCaptureClient: NotebookCaptureClienting {
         laneLanguage: String,
         text: String,
         expectedRevision: UInt64
-    ) throws -> NotebookCaptureUtteranceDTO {
+    ) async throws -> NotebookCaptureUtteranceDTO {
         throw NotebookCaptureClientError.ffiUnavailable
     }
 }
@@ -1523,7 +1953,8 @@ enum NotebookCaptureHistoryPolicy {
         }
 
         let source = normalizedLanguage(utterance.sourceLanguage)
-        if let source, source != "und",
+        if utterance.hasSourceLane,
+           let source, source != "und",
            languages.contains(source),
            utterance.sourceText.isEmpty == false {
             textsByLanguage[source] = utterance.sourceText
@@ -1556,10 +1987,18 @@ enum NotebookCaptureHistoryPolicy {
             )
         }
         let sourceLanguageIsPending = source == nil || source == "und"
+        let hasVisibleLaneText = lanes.contains {
+            $0.text?.isEmpty == false
+        }
         return NotebookCaptureLaneProjection(
             lanes: lanes,
-            pendingLanguage: sourceLanguageIsPending ? utterance.sourceText : nil,
-            unselectedLanguageText: !sourceLanguageIsPending
+            pendingLanguage: utterance.hasSourceLane
+                && sourceLanguageIsPending
+                && hasVisibleLaneText == false
+                ? utterance.sourceText
+                : nil,
+            unselectedLanguageText: utterance.hasSourceLane
+                && !sourceLanguageIsPending
                 && source.map { !languages.contains($0) } == true
                 ? utterance.sourceText
                 : nil
@@ -1604,6 +2043,7 @@ enum NotebookCaptureHistoryPolicy {
         captureState: NotebookCaptureState,
         remoteHealth: NotebookRemoteHealth,
         projectionState: NotebookProjectionState,
+        realtimeLoroAppliedRevision: UInt64,
         profile: NotebookCaptureProfileDTO,
         utterances: [NotebookCaptureUtteranceDTO]
     ) -> [NotebookCaptureHistoryRunDTO] {
@@ -1638,7 +2078,11 @@ enum NotebookCaptureHistoryPolicy {
                     legacyLeftLanguage: profile.leftLanguage,
                     legacyRightLanguage: profile.rightLanguage
                 ),
-                commonCaptionLanguage: nil
+                commonCaptionLanguage: nil,
+                realtimeLoroAppliedRevision: max(
+                    run.realtimeLoroAppliedRevision,
+                    realtimeLoroAppliedRevision
+                )
             )
         }
     }
@@ -1707,6 +2151,7 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     @Published private(set) var sessionSpeakersBySession: [String: [NotebookSessionSpeakerDTO]] = [:]
 
     private let client: NotebookCaptureClienting
+    private var laneMutationsInFlight: Set<NotebookCaptureLaneMutationKey> = []
 
     init(client: NotebookCaptureClienting? = nil) {
         self.client = client ?? RustNotebookCaptureClient()
@@ -1879,7 +2324,16 @@ final class NotebookCaptureHistoryStore: ObservableObject {
         utteranceId: String,
         language: String,
         text: String
-    ) throws {
+    ) async throws {
+        let mutationKey = NotebookCaptureLaneMutationKey(
+            utteranceId: utteranceId,
+            language: language
+        )
+        guard laneMutationsInFlight.insert(mutationKey).inserted else {
+            throw NotebookCaptureClientError.projectionLocked
+        }
+        defer { laneMutationsInFlight.remove(mutationKey) }
+
         guard let runIndex = runs.firstIndex(where: { run in
             run.utterances.contains(where: { $0.id == utteranceId })
         }),
@@ -1890,21 +2344,37 @@ final class NotebookCaptureHistoryStore: ObservableObject {
         }
 
         let current = runs[runIndex].utterances[utteranceIndex]
-        guard current.completion == "complete",
-              runs[runIndex].captureState.isActive
-                || runs[runIndex].projectionState == .ready else {
+        guard current.isLoroEditableLane(
+            language: language,
+            appliedRevision: runs[runIndex].realtimeLoroAppliedRevision
+        ) else {
             throw NotebookCaptureClientError.projectionLocked
         }
-        let updated = try client.replaceNotebookUtteranceLane(
+        let updated = try await client.replaceNotebookUtteranceLane(
             utteranceId: utteranceId,
-            laneLanguage: language,
+            laneLanguage: mutationKey.language,
             text: text,
-            expectedRevision: current.revision
+            expectedRevision: current.laneEditRevision(language: mutationKey.language)
         )
-        var nextUtterances = runs[runIndex].utterances
-        nextUtterances[utteranceIndex] = updated
+
+        // The active overlay or a history refresh may have advanced unrelated
+        // fields while SQLite/Loro fsync was in flight. Re-find by durable ID
+        // and merge only the committed lane into that newest snapshot.
+        guard let latestRunIndex = runs.firstIndex(where: { run in
+            run.utterances.contains(where: { $0.id == utteranceId })
+        }),
+        let latestUtteranceIndex = runs[latestRunIndex].utterances.firstIndex(where: {
+            $0.id == utteranceId
+        }) else { return }
+        let latest = runs[latestRunIndex].utterances[latestUtteranceIndex]
+        guard latest.sessionId == updated.sessionId else { return }
+        var nextUtterances = runs[latestRunIndex].utterances
+        nextUtterances[latestUtteranceIndex] = latest.mergingCommittedLane(
+            from: updated,
+            language: mutationKey.language
+        )
         var nextRuns = runs
-        nextRuns[runIndex] = runs[runIndex].replacingUtterances(nextUtterances)
+        nextRuns[latestRunIndex] = runs[latestRunIndex].replacingUtterances(nextUtterances)
         runs = nextRuns
     }
 
@@ -2272,6 +2742,13 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         let generation: UInt64
     }
 
+    private struct UtteranceGapRepair {
+        let id: UUID
+        let sessionId: String
+        let generation: UInt64?
+        var targetEventRevision: UInt64
+    }
+
     @Published private(set) var sessionId: String?
     @Published private(set) var notebookId: String?
     @Published private(set) var profile = NotebookCaptureProfileDTO.localDefault(notebookId: "")
@@ -2279,6 +2756,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     @Published private(set) var remoteHealth: NotebookRemoteHealth = .off
     @Published private(set) var realtimeLagMs: UInt64?
     @Published private(set) var projectionState: NotebookProjectionState = .ready
+    @Published private(set) var realtimeLoroAppliedRevision: UInt64 = 0
     /// Process-local Soniox speculative tail. Durable transcript consumers
     /// must continue to use `utterances`.
     @Published private(set) var livePreviewUtterances: [NotebookCaptureUtteranceDTO] = []
@@ -2312,6 +2790,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private let elapsedTimerInterval: TimeInterval
     private let audioQueueCapacity: Int
     private let audioDrainWatchdogInterval: TimeInterval
+    private var laneMutationsInFlight: Set<NotebookCaptureLaneMutationKey> = []
+    private var committedLaneOverrideBarriers:
+        [NotebookCaptureLaneMutationKey: NotebookCaptureCommittedLaneOverrideBarrier] = [:]
     private var audioToken: NotebookCaptureAudioToken?
     private var audioPushGate: NotebookCaptureAudioPushGate?
     private var elapsedTimer: AnyCancellable?
@@ -2325,8 +2806,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private var callbackSessionId: String?
     private var lastAppliedEventRevision: UInt64?
     private var lastAppliedLivePreviewRevision: UInt64?
-    private var pendingCallbackEvents: [NotebookCaptureEventDTO] = []
+    private var pendingCallbackEvent: NotebookCaptureEventDTO?
     private var pendingLivePreview: NotebookCaptureLivePreviewDTO?
+    private var utteranceGapRepair: UtteranceGapRepair?
+    private var utteranceGapRepairTask: Task<Void, Never>?
     private var terminalTransitionLease: TerminalTransitionLease?
     private var terminalTransitionDrainPending = false
     private var pendingTerminalTransitionEvent: NotebookCaptureEventDTO?
@@ -2377,9 +2860,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             || isCaptureActive
     }
     var isEditable: Bool {
-        terminalTransitionLease == nil
-            && captureState.isActive == false
-            && projectionState == .ready
+        sessionId != nil && terminalTransitionLease == nil
     }
 
     var leftLanguage: String {
@@ -2713,8 +3194,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         acceptedCallbackGeneration = generation
         readyCallbackGeneration = nil
         callbackSessionId = nil
-        pendingCallbackEvents.removeAll(keepingCapacity: true)
+        pendingCallbackEvent = nil
         pendingLivePreview = nil
+        cancelUtteranceGapRepair()
 
         let initial: NotebookCaptureEventDTO
         do {
@@ -2795,7 +3277,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         beginLifecycleOperation()
         defer { endLifecycleOperation() }
         guard let sessionId,
-              captureState.isActive,
+              (paused ? captureState == .recording : captureState == .paused),
               terminalTransitionLease == nil
         else {
             throw NotebookCaptureClientError.captureNotActive
@@ -2830,54 +3312,75 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                 )
                 throw NotebookCaptureClientError.captureNotActive
             }
-            clearTerminalTransition(drainLease)
-            captureState = preDrainState
-            guard terminalSessionId == nil,
-                  self.sessionId == sessionId,
-                  captureState.isActive
-            else { throw NotebookCaptureClientError.captureNotActive }
+
             do {
-                let event = try client.pauseNotebookCaptureSession(
+                let event = try await client.pauseNotebookCaptureSession(
                     sessionId: sessionId,
                     paused: true
                 )
+                guard isCurrentTerminalTransition(drainLease),
+                      event.sessionId == sessionId
+                else { throw NotebookCaptureClientError.captureNotActive }
+                if event.captureState.isActive == false {
+                    _ = applyAuthoritativeTerminal(event, for: drainLease)
+                    throw NotebookCaptureClientError.captureNotActive
+                }
+                guard event.captureState == .paused else {
+                    clearTerminalTransition(drainLease)
+                    apply(event)
+                    try restoreMicrophoneAfterRejectedPause(
+                        sessionId: sessionId,
+                        gate: gate
+                    )
+                    throw NotebookCaptureClientError.captureNotActive
+                }
+                clearTerminalTransition(drainLease)
                 apply(event)
                 MenuBarRuntimeStore.shared.updateRecording { $0.isPaused = true }
             } catch let pauseError {
+                guard isCurrentTerminalTransition(drainLease) else {
+                    throw pauseError
+                }
                 // The Rust transition and its response are not one failure
                 // boundary: SQLite may already contain Paused even if a later
                 // provider-health write or FFI response failed. Reconcile the
                 // durable state before reopening the microphone, otherwise a
                 // successful pause is falsely reported as failed and local
                 // audio resumes against a paused capture.
-                if let authoritative = try? client.getNotebookCaptureSessionEvent(
+                let authoritative = try? await client.reconcileNotebookCaptureSessionEvent(
                     sessionId: sessionId
-                ),
-                   authoritative.sessionId == sessionId,
-                   authoritative.captureState == .paused {
+                )
+                if let authoritative, authoritative.sessionId == sessionId {
+                    if authoritative.captureState.isActive == false {
+                        _ = applyAuthoritativeTerminal(authoritative, for: drainLease)
+                        throw pauseError
+                    }
+                    if authoritative.captureState == .paused {
+                        clearTerminalTransition(drainLease)
+                        apply(authoritative)
+                        MenuBarRuntimeStore.shared.updateRecording { $0.isPaused = true }
+                        return
+                    }
+                    clearTerminalTransition(drainLease)
                     apply(authoritative)
-                    MenuBarRuntimeStore.shared.updateRecording { $0.isPaused = true }
-                    return
+                } else {
+                    clearTerminalTransition(drainLease)
+                    captureState = preDrainState
                 }
 
                 // Rust did not commit the pause. Restore local recording with
                 // one fresh microphone generation; if that cannot be done,
                 // fail closed and durably interrupt the run.
-                if terminalSessionId == nil, captureState.isActive {
-                    if let gate = audioPushGate, gate.reopen() {
-                        do {
-                            try subscribeMicrophone(sessionId: sessionId, gate: gate)
-                        } catch {
-                            await handleLocalInterrupt(
-                                .localAudioUnavailable,
-                                message: error.localizedDescription,
-                                sessionId: sessionId
-                            )
-                        }
-                    } else {
+                if terminalSessionId == nil, captureState == .recording {
+                    do {
+                        try restoreMicrophoneAfterRejectedPause(
+                            sessionId: sessionId,
+                            gate: gate
+                        )
+                    } catch {
                         await handleLocalInterrupt(
                             .localAudioUnavailable,
-                            message: "local audio queue could not reopen after pause failure",
+                            message: error.localizedDescription,
                             sessionId: sessionId
                         )
                     }
@@ -2887,25 +3390,64 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             return
         }
 
+        guard let resumeLease = beginTerminalTransition(sessionId: sessionId) else {
+            throw NotebookCaptureClientError.captureNotActive
+        }
+        captureState = .draining
+        // Paused capture has no open microphone stream to fence. The lease is
+        // still retained across the detached FFI request so Stop/Start and
+        // callbacks cannot create a silent Recording state.
+        audioFenceDidDrain(for: resumeLease)
+
         let event: NotebookCaptureEventDTO
         do {
-            event = try client.pauseNotebookCaptureSession(sessionId: sessionId, paused: false)
+            event = try await client.pauseNotebookCaptureSession(
+                sessionId: sessionId,
+                paused: false
+            )
         } catch let resumeError {
-            guard let authoritative = try? client.getNotebookCaptureSessionEvent(
+            guard isCurrentTerminalTransition(resumeLease) else {
+                throw resumeError
+            }
+            guard let authoritative = try? await client.reconcileNotebookCaptureSessionEvent(
                 sessionId: sessionId
             ),
-            authoritative.sessionId == sessionId,
-            authoritative.captureState == .recording else {
+            authoritative.sessionId == sessionId else {
+                clearTerminalTransition(resumeLease)
+                captureState = .paused
+                throw resumeError
+            }
+            if authoritative.captureState.isActive == false {
+                _ = applyAuthoritativeTerminal(authoritative, for: resumeLease)
+                throw resumeError
+            }
+            guard authoritative.captureState == .recording else {
+                clearTerminalTransition(resumeLease)
+                apply(authoritative)
                 throw resumeError
             }
             event = authoritative
         }
+
+        guard isCurrentTerminalTransition(resumeLease),
+              event.sessionId == sessionId
+        else { throw NotebookCaptureClientError.captureNotActive }
+        if event.captureState.isActive == false {
+            _ = applyAuthoritativeTerminal(event, for: resumeLease)
+            throw NotebookCaptureClientError.captureNotActive
+        }
+        guard event.captureState == .recording else {
+            clearTerminalTransition(resumeLease)
+            apply(event)
+            throw NotebookCaptureClientError.captureNotActive
+        }
         guard terminalSessionId == nil,
               self.sessionId == sessionId,
-              captureState.isActive,
               let gate = audioPushGate,
               gate.reopen()
         else {
+            clearTerminalTransition(resumeLease)
+            apply(event)
             await handleLocalInterrupt(
                 .localAudioUnavailable,
                 message: "local audio queue could not reopen",
@@ -2916,6 +3458,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         do {
             try subscribeMicrophone(sessionId: sessionId, gate: gate)
         } catch {
+            clearTerminalTransition(resumeLease)
+            apply(event)
             await handleLocalInterrupt(
                 .localAudioUnavailable,
                 message: error.localizedDescription,
@@ -2923,6 +3467,12 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             )
             throw error
         }
+        guard isCurrentTerminalTransition(resumeLease) else {
+            _ = releaseMicrophoneSubscription()
+            gate.close()
+            throw NotebookCaptureClientError.captureNotActive
+        }
+        clearTerminalTransition(resumeLease)
         apply(event)
         MenuBarRuntimeStore.shared.updateRecording { $0.isPaused = false }
     }
@@ -3081,7 +3631,16 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
     }
 
-    func replaceLane(utteranceId: String, language: String, text: String) throws {
+    func replaceLane(utteranceId: String, language: String, text: String) async throws {
+        let mutationKey = NotebookCaptureLaneMutationKey(
+            utteranceId: utteranceId,
+            language: language
+        )
+        guard laneMutationsInFlight.insert(mutationKey).inserted else {
+            throw NotebookCaptureClientError.projectionLocked
+        }
+        defer { laneMutationsInFlight.remove(mutationKey) }
+
         guard isEditable else { throw NotebookCaptureClientError.projectionLocked }
         guard let index = utterances.firstIndex(where: { $0.id == utteranceId }) else {
             throw NotebookCaptureClientError.projectionLocked
@@ -3089,13 +3648,37 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         guard utterances[index].sessionId == sessionId else {
             throw NotebookCaptureClientError.projectionLocked
         }
-        let updated = try client.replaceNotebookUtteranceLane(
-            utteranceId: utteranceId,
-            laneLanguage: normalizedLanguage(language),
-            text: text,
-            expectedRevision: utterances[index].revision
+        guard utterances[index].isLoroEditableLane(
+            language: language,
+            appliedRevision: realtimeLoroAppliedRevision
+        ) else {
+            throw NotebookCaptureClientError.projectionLocked
+        }
+        let expectedRevision = utterances[index].laneEditRevision(
+            language: mutationKey.language
         )
-        utterances[index] = updated
+        let updated = try await client.replaceNotebookUtteranceLane(
+            utteranceId: utteranceId,
+            laneLanguage: mutationKey.language,
+            text: text,
+            expectedRevision: expectedRevision
+        )
+
+        guard let latestIndex = utterances.firstIndex(where: { $0.id == utteranceId }) else {
+            return
+        }
+        let latest = utterances[latestIndex]
+        guard latest.sessionId == updated.sessionId,
+              latest.sessionId == sessionId else { return }
+        utterances[latestIndex] = latest.mergingCommittedLane(
+            from: updated,
+            language: mutationKey.language
+        )
+        committedLaneOverrideBarriers[mutationKey] =
+            NotebookCaptureCommittedLaneOverrideBarrier(
+                machineRevision: updated.revision,
+                committedUtterance: updated
+            )
     }
 
     func swapDisplayLanguages() {
@@ -3186,6 +3769,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         remoteHealth = .off
         projectionState = .ready
         utterances = []
+        committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
         livePreviewUtterances = []
         lastAppliedEventRevision = nil
         lastAppliedLivePreviewRevision = nil
@@ -3213,8 +3797,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         acceptedCallbackGeneration = nil
         readyCallbackGeneration = nil
         callbackSessionId = nil
-        pendingCallbackEvents.removeAll(keepingCapacity: true)
+        pendingCallbackEvent = nil
         pendingLivePreview = nil
+        cancelUtteranceGapRepair()
         lifecycleOperationCount = 0
         let lifecycleWaiters = lifecycleOperationWaiters
         lifecycleOperationWaiters.removeAll(keepingCapacity: false)
@@ -3317,6 +3902,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         remoteHealth = event.remoteHealth
         realtimeLagMs = event.realtimeLagMs
         projectionState = event.projectionState
+        realtimeLoroAppliedRevision = max(
+            realtimeLoroAppliedRevision,
+            event.realtimeLoroAppliedRevision
+        )
         providerErrorType = event.providerErrorType
         providerRequestId = event.providerRequestId
         postStopAsyncState = event.postStopAsyncState
@@ -3375,7 +3964,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
         reconcileUtterances(for: event)
         if event.captureState.isActive,
-           event.utterances.contains(where: { $0.completion == "complete" }) {
+           utterances.contains(where: \.hasFinalLaneReadyForProjection) {
             try? client.projectNotebookRealtimeIncremental(sessionId: event.sessionId)
         }
         if let receipt = event.contextReceipt, receipt.applied {
@@ -3414,7 +4003,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     private func merge(_ updates: [NotebookCaptureUtteranceDTO]) {
-        for update in updates {
+        for unprotectedUpdate in updates {
+            let update = protectingCommittedLaneOverrides(in: unprotectedUpdate)
             guard update.sessionId == sessionId else { continue }
             if let index = utterances.firstIndex(where: {
                 $0.sessionId == update.sessionId && $0.sequence == update.sequence
@@ -3428,6 +4018,63 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
         utterances.sort { $0.sequence < $1.sequence }
         refreshRecentTranscriptPresentation()
+    }
+
+    private func protectingCommittedLaneOverrides(
+        in update: NotebookCaptureUtteranceDTO
+    ) -> NotebookCaptureUtteranceDTO {
+        let matchingKeys = committedLaneOverrideBarriers.keys.filter {
+            $0.utteranceId == update.id
+        }
+        guard matchingKeys.isEmpty == false else { return update }
+
+        var protected = update
+        for key in matchingKeys {
+            guard let barrier = committedLaneOverrideBarriers[key],
+                  barrier.committedUtterance.sessionId == update.sessionId
+            else { continue }
+
+            let committedEditRevision = barrier.committedUtterance.laneEditRevision(
+                language: key.language
+            )
+            let updateEditRevision = update.laneEditRevision(language: key.language)
+            if update.revision > barrier.machineRevision {
+                if updateEditRevision >= committedEditRevision {
+                    committedLaneOverrideBarriers.removeValue(forKey: key)
+                } else {
+                    // A newer provider revision does not supersede a user
+                    // override. Until the callback carries at least the
+                    // committed lane edit revision, retain that lane while
+                    // still accepting every unrelated machine field.
+                    protected = protected.mergingCommittedLane(
+                        from: barrier.committedUtterance,
+                        language: key.language
+                    )
+                }
+                continue
+            }
+            guard update.revision == barrier.machineRevision else { continue }
+
+            let committedText = barrier.committedUtterance.laneText(
+                language: key.language
+            )
+            if update.laneText(language: key.language) == committedText,
+               updateEditRevision >= committedEditRevision {
+                // A callback or authoritative snapshot now contains the
+                // durable override, so subsequent machine revisions can flow
+                // normally without retaining process-local state.
+                committedLaneOverrideBarriers.removeValue(forKey: key)
+                continue
+            }
+            // This callback was read before the override commit but delivered
+            // afterward. Advance every unrelated field/lane from the callback
+            // while retaining only the just-committed lane text.
+            protected = protected.mergingCommittedLane(
+                from: barrier.committedUtterance,
+                language: key.language
+            )
+        }
+        return protected
     }
 
     private func applyLivePreview(_ preview: NotebookCaptureLivePreviewDTO) {
@@ -3447,19 +4094,31 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
     private func refreshRecentTranscriptPresentation() {
         let recent = presentedUtterances.suffix(2).map { utterance in
-            let lanes = texts(for: utterance)
-            let text = lanes.pendingLanguage
-                ?? lanes.outsidePair
-                ?? lanes.left
-                ?? lanes.right
-                ?? ""
+            let laneProjection = projection(for: utterance)
+            let displayedLane: (language: String, text: String)
+            if let pendingLanguage = laneProjection.pendingLanguage {
+                displayedLane = (utterance.sourceLanguage, pendingLanguage)
+            } else if let outsideText = laneProjection.unselectedLanguageText {
+                displayedLane = (utterance.sourceLanguage, outsideText)
+            } else if let lane = laneProjection.lanes.first(where: {
+                $0.text?.isEmpty == false
+            }), let text = lane.text {
+                displayedLane = (lane.language, text)
+            } else {
+                displayedLane = (
+                    utterance.hasSourceLane ? utterance.sourceLanguage : "",
+                    ""
+                )
+            }
             return TranscriptLine(
                 id: utterance.id,
-                timestamp: formatTimestamp(utterance.sourceStartMs),
-                languageLabel: lanes.pendingLanguage == nil
-                    ? displayLanguage(utterance.sourceLanguage)
+                timestamp: formatTimestamp(
+                    utterance.hasSourceLane ? utterance.sourceStartMs : nil
+                ),
+                languageLabel: laneProjection.pendingLanguage == nil
+                    ? displayLanguage(displayedLane.language)
                     : String(localized: "capture.transcript.language_pending"),
-                text: text
+                text: displayedLane.text
             )
         }
         MenuBarRuntimeStore.shared.updateRecordingRecentLines(Array(recent))
@@ -3467,6 +4126,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
     private func reconcileUtterances(for event: NotebookCaptureEventDTO) {
         if event.isFullSnapshot {
+            cancelUtteranceGapRepair()
             utterances = []
             merge(event.utterances)
             lastAppliedEventRevision = event.eventRevision
@@ -3481,23 +4141,129 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
 
         let expectedRevision = lastAppliedEventRevision.map { $0 &+ 1 }
-        if expectedRevision == event.eventRevision {
-            merge(event.utterances)
-            lastAppliedEventRevision = event.eventRevision
+        let hasGap = expectedRevision != event.eventRevision
+
+        // Apply the newest durable delta immediately. If the dispatcher
+        // coalesced one or more revisions, the async authoritative pass below
+        // fills in omitted rows without blocking the MainActor.
+        merge(event.utterances)
+        lastAppliedEventRevision = event.eventRevision
+
+        if var repair = utteranceGapRepair,
+           repair.sessionId == event.sessionId {
+            // Any event that arrives while a snapshot is in flight can make
+            // that snapshot stale, even when the event itself is sequential.
+            // Advancing the target makes the repair discard that result and
+            // fetch again after the newest observed durable revision.
+            repair.targetEventRevision = max(
+                repair.targetEventRevision,
+                event.eventRevision
+            )
+            utteranceGapRepair = repair
             return
         }
 
-        // The Rust callback mailbox intentionally coalesces under UI pressure.
-        // Rebuild once from durable source facts when a revision was skipped;
-        // subsequent callbacks return to O(changed utterances) upserts.
-        do {
-            let rebuilt = try client.listNotebookCaptureUtterances(sessionId: event.sessionId)
-            utterances = []
-            merge(rebuilt)
-            lastAppliedEventRevision = event.eventRevision
-        } catch {
-            lastError = error.localizedDescription
+        guard hasGap else { return }
+        beginUtteranceGapRepair(
+            sessionId: event.sessionId,
+            targetEventRevision: event.eventRevision
+        )
+    }
+
+    private func beginUtteranceGapRepair(
+        sessionId: String,
+        targetEventRevision: UInt64
+    ) {
+        guard utteranceGapRepair == nil else { return }
+        let repair = UtteranceGapRepair(
+            id: UUID(),
+            sessionId: sessionId,
+            generation: acceptedCallbackGeneration,
+            targetEventRevision: targetEventRevision
+        )
+        utteranceGapRepair = repair
+        utteranceGapRepairTask = Task { @MainActor [weak self] in
+            await self?.runUtteranceGapRepair(id: repair.id)
         }
+    }
+
+    private func runUtteranceGapRepair(id: UUID) async {
+        var retryDelayNanoseconds: UInt64 = 20_000_000
+        let maximumRetryDelayNanoseconds: UInt64 = 1_000_000_000
+        while let repair = currentUtteranceGapRepair(id: id) {
+            let targetEventRevision = repair.targetEventRevision
+            let snapshot: NotebookCaptureEventDTO
+            do {
+                // The live adapter performs the blocking UniFFI read on a
+                // detached worker. The MainActor only awaits its result.
+                snapshot = try await client.reconcileNotebookCaptureSessionEvent(
+                    sessionId: repair.sessionId
+                )
+            } catch {
+                guard currentUtteranceGapRepair(id: id) != nil else { return }
+                lastError = error.localizedDescription
+                try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
+                guard Task.isCancelled == false,
+                      currentUtteranceGapRepair(id: id) != nil
+                else { return }
+                retryDelayNanoseconds = min(
+                    retryDelayNanoseconds &* 2,
+                    maximumRetryDelayNanoseconds
+                )
+                continue
+            }
+
+            guard let current = currentUtteranceGapRepair(id: id) else { return }
+            guard snapshot.sessionId == current.sessionId,
+                  snapshot.isFullSnapshot else {
+                lastError = NotebookCaptureClientError.captureNotActive.localizedDescription
+                try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
+                guard Task.isCancelled == false,
+                      currentUtteranceGapRepair(id: id) != nil
+                else { return }
+                retryDelayNanoseconds = min(
+                    retryDelayNanoseconds &* 2,
+                    maximumRetryDelayNanoseconds
+                )
+                continue
+            }
+
+            guard current.targetEventRevision == targetEventRevision else {
+                // The snapshot may have been read before a callback observed
+                // during this await. Discard it completely so deletions and
+                // variant removals cannot resurrect stale local data.
+                retryDelayNanoseconds = 20_000_000
+                continue
+            }
+
+            // No higher event revision arrived during the read, so this full
+            // durable snapshot is authoritative for the stable target. Route
+            // every row through `merge` to preserve committed edit barriers.
+            utterances = []
+            merge(snapshot.utterances)
+            utteranceGapRepair = nil
+            utteranceGapRepairTask = nil
+            return
+        }
+    }
+
+    private func currentUtteranceGapRepair(id: UUID) -> UtteranceGapRepair? {
+        guard let repair = utteranceGapRepair,
+              repair.id == id,
+              repair.sessionId == sessionId,
+              repair.generation == acceptedCallbackGeneration
+        else { return nil }
+        if repair.generation != nil,
+           callbackSessionId != repair.sessionId {
+            return nil
+        }
+        return repair
+    }
+
+    private func cancelUtteranceGapRepair() {
+        utteranceGapRepairTask?.cancel()
+        utteranceGapRepairTask = nil
+        utteranceGapRepair = nil
     }
 
     @discardableResult
@@ -3525,6 +4291,21 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                 }
             }
         )
+    }
+
+    private func restoreMicrophoneAfterRejectedPause(
+        sessionId: String,
+        gate: NotebookCaptureAudioPushGate?
+    ) throws {
+        guard terminalSessionId == nil,
+              self.sessionId == sessionId,
+              captureState == .recording,
+              let gate,
+              gate.reopen()
+        else {
+            throw NotebookCaptureClientError.captureNotActive
+        }
+        try subscribeMicrophone(sessionId: sessionId, gate: gate)
     }
 
     private func terminalMessage(
@@ -3607,7 +4388,12 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     private func clearSessionScopedDisplayState() {
+        if let sessionId {
+            client.cancelNotebookRealtimeProjection(sessionId: sessionId)
+        }
+        cancelUtteranceGapRepair()
         utterances = []
+        committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
         livePreviewUtterances = []
         lastAppliedEventRevision = nil
         lastAppliedLivePreviewRevision = nil
@@ -3621,6 +4407,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         postStopModelId = nil
         postStopAsyncState = "none"
         postStopAsyncProjectionState = .none
+        realtimeLoroAppliedRevision = 0
         hasValidRunProfileSnapshot = true
         elapsedRecordingTime = 0
         terminalSessionId = nil
@@ -3648,7 +4435,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     ) {
         guard acceptedCallbackGeneration == generation else { return }
         guard readyCallbackGeneration == generation else {
-            pendingCallbackEvents.append(event)
+            if pendingCallbackEvent == nil
+                || (pendingCallbackEvent?.eventRevision ?? 0) <= event.eventRevision {
+                pendingCallbackEvent = event
+            }
             return
         }
         guard callbackSessionId == event.sessionId else { return }
@@ -3671,16 +4461,11 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private func drainPendingCaptureCallback(generation: UInt64) {
         guard acceptedCallbackGeneration == generation,
               readyCallbackGeneration == generation,
-              pendingCallbackEvents.isEmpty == false
+              let event = pendingCallbackEvent
         else { return }
-        let events = pendingCallbackEvents
-        pendingCallbackEvents.removeAll(keepingCapacity: true)
-        for event in events {
-            guard acceptedCallbackGeneration == generation,
-                  callbackSessionId == event.sessionId
-            else { break }
-            apply(event)
-        }
+        pendingCallbackEvent = nil
+        guard callbackSessionId == event.sessionId else { return }
+        apply(event)
     }
 
     private func drainPendingLivePreview(generation: UInt64) {
@@ -3698,8 +4483,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         acceptedCallbackGeneration = nil
         readyCallbackGeneration = nil
         callbackSessionId = nil
-        pendingCallbackEvents.removeAll(keepingCapacity: true)
+        pendingCallbackEvent = nil
         pendingLivePreview = nil
+        cancelUtteranceGapRepair()
     }
 
     private func beginTerminalTransition(
@@ -3741,6 +4527,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
               self.sessionId == sessionId
         else { return (nil, nil) }
 
+        client.cancelNotebookRealtimeProjection(sessionId: sessionId)
         let gate = audioPushGate
         audioPushGate = nil
         // Unsubscribe first so frames already admitted by the microphone ring
@@ -3824,6 +4611,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         state: NotebookCaptureState,
         abortPendingAudio: Bool
     ) -> NotebookCaptureAudioPushGate? {
+        client.cancelNotebookRealtimeProjection(sessionId: sessionId)
         if callbackSessionId == sessionId {
             invalidateCaptureCallback()
         }

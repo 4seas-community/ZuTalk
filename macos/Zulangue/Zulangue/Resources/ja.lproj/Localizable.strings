@@ -720,7 +720,7 @@
 "subtitle.overlay.mode.conversation" = "対照";
 "subtitle.overlay.mode.audience" = "観客";
 "subtitle.overlay.mode.conversation.help" = "言語間の会話、確認、理解のために直近の発話を表示します。";
-"subtitle.overlay.mode.audience.help" = "最大4言語で最新の発話を同じ優先度で表示します。";
+"subtitle.overlay.mode.audience.help" = "最大3言語で最新の発話を同じ優先度で表示します。";
 "capture.toolbar.start" = "録音開始";
 "capture.toolbar.starting" = "開始中…";
 "capture.toolbar.start_hint" = "録音と、選択した言語のリアルタイム文字起こしを開始します。サービスを一時的に利用できなくても録音は続行します。";
@@ -780,7 +780,7 @@
 "capture.settings.languages.ordered_detail" = "表示順に追加してください。選択した各言語はそれぞれの列に表示され、発言の原文が先に現れた後、ほかの列が追って補われます。";
 "capture.settings.languages.search" = "追加する言語を検索";
 "capture.settings.languages.no_results" = "未選択の言語に一致するものがありません。";
-"capture.settings.languages.maximum_reached" = "1セッションにつき最大4言語まで選択できます。";
+"capture.settings.languages.maximum_reached" = "1セッションにつき最大3言語まで選択できます。";
 "capture.settings.languages.add_format" = "%@を追加";
 "capture.settings.languages.move_earlier" = "言語を前へ移動";
 "capture.settings.languages.move_later" = "言語を後ろへ移動";

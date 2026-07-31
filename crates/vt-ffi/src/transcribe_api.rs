@@ -523,21 +523,16 @@ pub(crate) fn project_transcribe_search_receipt(
     db_path: &Path,
     receipt: &AsyncProviderReceipt,
 ) -> Result<(), String> {
-    project_transcribe_search_receipt_with(db_path, receipt, |session_id, full_text| {
-        SearchStore::new(db_path)
-            .map_err(|error| format!("open search projection: {error}"))?
-            .index_session(session_id, full_text)
-            .map_err(|error| format!("index transcript: {error}"))
-    })
+    project_transcribe_search_receipt_with(db_path, receipt, |_, _| Ok(()))
 }
 
-fn project_transcribe_search_receipt_with<I>(
+fn project_transcribe_search_receipt_with<P>(
     db_path: &Path,
     receipt: &AsyncProviderReceipt,
-    index: I,
+    preflight: P,
 ) -> Result<(), String>
 where
-    I: FnOnce(&str, &str) -> Result<(), String>,
+    P: FnOnce(&str, &str) -> Result<(), String>,
 {
     let capture_store = NotebookCaptureStore::new(db_path)
         .map_err(|error| format!("open capture store for search projection: {error}"))?;
@@ -551,11 +546,22 @@ where
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| "provider receipt result has no full_text".to_string())?
         .to_string();
-    let projection = index(&receipt.session_id, &full_text);
-    let success = projection.is_ok();
-    capture_store
-        .mark_async_search_projection(&receipt.session_id, &receipt.task_id, success)
-        .map_err(|error| format!("persist search projection state: {error}"))?;
+    let projection = preflight(&receipt.session_id, &full_text).and_then(|()| {
+        SearchStore::new(db_path)
+            .map_err(|error| format!("open search projection: {error}"))?
+            .replace_session_from_async_receipt(
+                &receipt.session_id,
+                &receipt.task_id,
+                &receipt.output_sha256,
+                &full_text,
+            )
+            .map_err(|error| format!("atomically index transcript and publish Ready: {error}"))
+    });
+    if projection.is_err() {
+        capture_store
+            .mark_async_search_projection(&receipt.session_id, &receipt.task_id, false)
+            .map_err(|error| format!("persist failed search projection state: {error}"))?;
+    }
     projection
 }
 
@@ -1262,6 +1268,120 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn async_fts_replace_and_ready_publish_roll_back_together() {
+        let (_temp, db, store) = provider_output_fixture();
+        let result_json = transcribe_result_json("provider-session", "async authority", 1, 100);
+        let receipt = store
+            .commit_async_provider_success(
+                "provider-session",
+                "provider-task",
+                &[make_token("async authority", 0, 100, true)],
+                &result_json,
+            )
+            .unwrap();
+        let search = SearchStore::new(&db).unwrap();
+        search
+            .index_session("provider-session", "old realtime content")
+            .unwrap();
+        assert!(
+            store
+                .mark_async_search_projection("provider-session", "provider-task", true)
+                .is_err(),
+            "Ready must not be publishable without the atomic FTS API"
+        );
+
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_atomic_async_ready
+             BEFORE UPDATE OF async_search_projection_state ON notebook_capture_runs
+             WHEN NEW.async_search_projection_state = 'ready'
+             BEGIN
+                 SELECT RAISE(FAIL, 'injected Ready failure');
+             END;",
+        )
+        .unwrap();
+        let error = search
+            .replace_session_from_async_receipt(
+                &receipt.session_id,
+                &receipt.task_id,
+                &receipt.output_sha256,
+                "async authority",
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("injected Ready failure"),
+            "unexpected atomic projection error: {error}"
+        );
+        assert_eq!(search.search("old", 10).unwrap().len(), 1);
+        assert!(
+            search.search("authority", 10).unwrap().is_empty(),
+            "the FTS replacement must roll back when Ready cannot commit"
+        );
+        assert_ne!(
+            store
+                .get_async_provider_receipt("provider-session", "provider-task")
+                .unwrap()
+                .unwrap()
+                .search_projection_state,
+            vt_store::AsyncSearchProjectionState::Ready
+        );
+
+        conn.execute_batch("DROP TRIGGER fail_atomic_async_ready;")
+            .unwrap();
+        project_transcribe_search_receipt(&db, &receipt).unwrap();
+        assert_eq!(search.search("authority", 10).unwrap().len(), 1);
+        assert!(search.search("old", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn async_and_realtime_fts_serial_orders_both_converge_to_async_content() {
+        for realtime_first in [true, false] {
+            let (_temp, db, store) = provider_output_fixture();
+            let result_json = transcribe_result_json("provider-session", "async authority", 1, 100);
+            let receipt = store
+                .commit_async_provider_success(
+                    "provider-session",
+                    "provider-task",
+                    &[make_token("async authority", 0, 100, true)],
+                    &result_json,
+                )
+                .unwrap();
+            let search = SearchStore::new(&db).unwrap();
+            if realtime_first {
+                search
+                    .replace_session_from_realtime_unless_async_ready(
+                        "provider-session",
+                        "realtime draft",
+                    )
+                    .unwrap();
+                project_transcribe_search_receipt(&db, &receipt).unwrap();
+            } else {
+                project_transcribe_search_receipt(&db, &receipt).unwrap();
+                assert_eq!(
+                    search
+                        .replace_session_from_realtime_unless_async_ready(
+                            "provider-session",
+                            "realtime draft",
+                        )
+                        .unwrap(),
+                    vt_store::RealtimeSearchProjectionOutcome::SkippedAsyncReady
+                );
+            }
+            assert_eq!(search.search("authority", 10).unwrap().len(), 1);
+            assert!(search.search("draft", 10).unwrap().is_empty());
+            assert_eq!(
+                store
+                    .get_async_provider_receipt("provider-session", "provider-task")
+                    .unwrap()
+                    .unwrap()
+                    .search_projection_state,
+                vt_store::AsyncSearchProjectionState::Ready
+            );
+        }
     }
 
     #[test]

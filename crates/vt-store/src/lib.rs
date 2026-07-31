@@ -29,10 +29,12 @@ pub use diagnostics_projection::{
 pub use editor_bridge::{EditOp, EditorBridge, EditorBridgeError, EditorEvent, EditorHandle};
 pub use notebook_capture_store::{
     AsyncProjectionState, AsyncProviderReceipt, AsyncSearchProjectionState, AsyncTaskState,
-    CaptureMode, CaptureState, NewNotebookCaptureRun, NewRealtimeUtterance, NotebookCaptureProfile,
-    NotebookCaptureProfileUpdate, NotebookCaptureRun, NotebookCaptureStore,
-    NotebookCaptureStoreError, NotebookProjectionMutation, Participant, ProjectionMutationState,
-    ProjectionPurgeTarget, ProjectionState, ProviderFailure, RealtimeUtterance,
+    CaptureMode, CaptureState, NewNotebookCaptureRun, NewRealtimeTranslationInboxItem,
+    NewRealtimeUtterance, NotebookCaptureProfile, NotebookCaptureProfileUpdate, NotebookCaptureRun,
+    NotebookCaptureStore, NotebookCaptureStoreError, NotebookProjectionMutation, Participant,
+    ProjectionMutationState, ProjectionPurgeTarget, ProjectionState, ProviderFailure,
+    RealtimeTranslationInboxBinding, RealtimeTranslationInboxItem, RealtimeTranslationInboxKey,
+    RealtimeTranslationInboxPersistence, RealtimeTranslationLaneUpdate, RealtimeUtterance,
     RealtimeUtteranceVariant, RemoteHealth, SessionPurgeJob, SessionPurgePlan, SessionSpeaker,
     UtteranceAlignment, UtteranceCompletion, UtteranceLane, UtteranceVariantRole,
     UtteranceVariantState,
@@ -41,7 +43,7 @@ pub use notebook_store::{
     BuiltinNotebookTab, NotebookRecord, NotebookSessionLinkRecord, NotebookSessionProjectionRecord,
     NotebookStore, NotebookStoreError, NotebookTabRecord,
 };
-pub use search::{SearchResult, SearchStore, SearchStoreError};
+pub use search::{RealtimeSearchProjectionOutcome, SearchResult, SearchStore, SearchStoreError};
 pub use session_meta::{
     AudioChunkRetentionRecord, AudioRetentionCounts, SessionMeta, SessionMetaError,
     SessionMetaStore,

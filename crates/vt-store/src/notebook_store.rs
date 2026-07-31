@@ -1,6 +1,7 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use thiserror::Error;
 
 /// The only durable Notebook tabs in the MVP.
@@ -95,6 +96,12 @@ pub struct NotebookStore {
 impl NotebookStore {
     pub fn new(db_path: &Path) -> Result<Self, NotebookStoreError> {
         let conn = Connection::open(db_path).map_err(NotebookStoreError::Sqlite)?;
+        // Realtime capture and Loro projection use independent connections to
+        // the same main database. A short busy wait turns momentary
+        // single-writer overlap into bounded backpressure instead of a
+        // user-visible projection/capture failure.
+        conn.busy_timeout(Duration::from_secs(1))
+            .map_err(NotebookStoreError::Sqlite)?;
         crate::migration::run_migrations(&conn).map_err(NotebookStoreError::Sqlite)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -254,7 +261,7 @@ impl NotebookStore {
         let now = chrono::Utc::now().to_rfc3339();
 
         let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let existing = tx
             .query_row(
                 "SELECT id, notebook_id, tab_id, session_id, section_title,

@@ -3,8 +3,9 @@
 
 use std::path::Path;
 use std::sync::Mutex;
+use std::time::Duration;
 
-use rusqlite::Connection;
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 /// 搜索结果
 #[derive(Debug, Clone)]
@@ -19,9 +20,16 @@ pub struct SearchStore {
     conn: Mutex<Connection>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RealtimeSearchProjectionOutcome {
+    Replaced,
+    SkippedAsyncReady,
+}
+
 impl SearchStore {
     pub fn new(db_path: &Path) -> Result<Self, SearchStoreError> {
         let conn = Connection::open(db_path)?;
+        conn.busy_timeout(Duration::from_secs(1))?;
         crate::migration::run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
@@ -42,6 +50,121 @@ impl SearchStore {
         )?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Atomically installs the post-stop transcript and publishes the Ready
+    /// authority bit in the same main-database transaction. Revalidating the
+    /// exact immutable receipt under `BEGIN IMMEDIATE` prevents a realtime
+    /// writer from slipping between the FTS replace and the Ready transition.
+    pub fn replace_session_from_async_receipt(
+        &self,
+        session_id: &str,
+        task_id: &str,
+        output_sha256: &str,
+        content: &str,
+    ) -> Result<(), SearchStoreError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let purge_exists = tx.query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM session_purge_jobs WHERE session_id = ?1
+             )",
+            [session_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if purge_exists {
+            return Err(SearchStoreError::ProjectionConflict(format!(
+                "session {session_id} is pending permanent deletion"
+            )));
+        }
+        let receipt = tx
+            .query_row(
+                "SELECT async_task_id, async_provider_output_sha256,
+                        async_search_projection_state
+                 FROM notebook_capture_runs
+                 WHERE session_id = ?1
+                   AND async_provider_output_sha256 IS NOT NULL",
+                [session_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| {
+                SearchStoreError::ProjectionConflict(format!(
+                    "provider success receipt for session {session_id} is missing"
+                ))
+            })?;
+        if receipt.0 != task_id || receipt.1 != output_sha256 {
+            return Err(SearchStoreError::ProjectionConflict(format!(
+                "provider success receipt for session {session_id} changed"
+            )));
+        }
+        if !matches!(receipt.2.as_str(), "pending" | "failed" | "ready") {
+            return Err(SearchStoreError::ProjectionConflict(format!(
+                "session {session_id} search projection is {}",
+                receipt.2
+            )));
+        }
+        replace_session_in_transaction(&tx, session_id, content)?;
+        tx.execute(
+            "UPDATE notebook_capture_runs
+             SET async_search_projection_state = 'ready', updated_at = ?1
+             WHERE session_id = ?2
+               AND async_task_id = ?3
+               AND async_provider_output_sha256 = ?4
+               AND async_search_projection_state IN ('pending', 'failed', 'ready')",
+            params![
+                chrono::Utc::now().to_rfc3339(),
+                session_id,
+                task_id,
+                output_sha256
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Replaces the realtime search document only while post-stop search has
+    /// not become authoritative. The Ready check and FTS replace share one
+    /// `BEGIN IMMEDIATE`, so every serialization order converges to async
+    /// content once Ready is visible.
+    pub fn replace_session_from_realtime_unless_async_ready(
+        &self,
+        session_id: &str,
+        content: &str,
+    ) -> Result<RealtimeSearchProjectionOutcome, SearchStoreError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let state = tx
+            .query_row(
+                "SELECT async_search_projection_state
+                 FROM notebook_capture_runs
+                 WHERE session_id = ?1
+                   AND NOT EXISTS (
+                       SELECT 1 FROM session_purge_jobs
+                       WHERE session_id = notebook_capture_runs.session_id
+                   )",
+                [session_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or_else(|| {
+                SearchStoreError::ProjectionConflict(format!(
+                    "capture session {session_id} is missing or pending permanent deletion"
+                ))
+            })?;
+        if state == "ready" {
+            tx.commit()?;
+            return Ok(RealtimeSearchProjectionOutcome::SkippedAsyncReady);
+        }
+        replace_session_in_transaction(&tx, session_id, content)?;
+        tx.commit()?;
+        Ok(RealtimeSearchProjectionOutcome::Replaced)
     }
 
     /// 全文搜索
@@ -116,12 +239,30 @@ impl SearchStore {
 pub enum SearchStoreError {
     #[error("database error: {0}")]
     DbError(String),
+    #[error("search projection conflict: {0}")]
+    ProjectionConflict(String),
 }
 
 impl From<rusqlite::Error> for SearchStoreError {
     fn from(e: rusqlite::Error) -> Self {
         SearchStoreError::DbError(e.to_string())
     }
+}
+
+fn replace_session_in_transaction(
+    tx: &rusqlite::Transaction<'_>,
+    session_id: &str,
+    content: &str,
+) -> Result<(), rusqlite::Error> {
+    tx.execute(
+        "DELETE FROM search_index WHERE session_id = ?1",
+        [session_id],
+    )?;
+    tx.execute(
+        "INSERT INTO search_index (session_id, content) VALUES (?1, ?2)",
+        params![session_id, content],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

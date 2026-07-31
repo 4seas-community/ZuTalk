@@ -923,6 +923,353 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testEmptyDeltaStillWakesPendingFinalProjectionFromDurableLocalRows() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [.sample],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        XCTAssertEqual(client.realtimeProjectionCount, 1)
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 2,
+            isFullSnapshot: false
+        ))
+
+        XCTAssertEqual(
+            client.realtimeProjectionCount,
+            2,
+            "a coalesced empty callback must still retry the durable Final watermark"
+        )
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testTranslationFinalWakesProjectionWhileSourceRemainsPartial() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var translationFirst = NotebookCaptureUtteranceDTO.sample
+        translationFirst.completion = "partial"
+        translationFirst.languageVariants = [
+            NotebookCaptureLanguageVariantDTO(
+                language: "zh",
+                role: "translation",
+                text: "你好",
+                state: "ready",
+                completion: "complete",
+                projectionRevision: 1
+            ),
+        ]
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [translationFirst],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+
+        XCTAssertTrue(translationFirst.isFinalLane(language: "zh"))
+        XCTAssertFalse(translationFirst.isFinalLane(language: "en"))
+        XCTAssertEqual(client.realtimeProjectionCount, 1)
+        store.resetForTesting()
+    }
+
+    func testLaneEditabilityUsesIndependentDurableProjectionWatermarks() {
+        var utterance = NotebookCaptureUtteranceDTO.sample
+        utterance.completion = "partial"
+        utterance.sourceProjectionRevision = 0
+        utterance.languageVariants = [
+            NotebookCaptureLanguageVariantDTO(
+                language: "zh-Hans",
+                role: "translation",
+                text: "你好",
+                state: "ready",
+                completion: "complete",
+                projectionRevision: 1
+            ),
+            NotebookCaptureLanguageVariantDTO(
+                language: "th",
+                role: "translation",
+                text: "สวัสดี",
+                state: "ready",
+                completion: "complete",
+                projectionRevision: 2
+            ),
+        ]
+
+        XCTAssertTrue(utterance.isLoroEditableLane(language: "ZH-cn", appliedRevision: 1))
+        XCTAssertFalse(
+            utterance.isLoroEditableLane(language: "th", appliedRevision: 1),
+            "a later Final lane must remain locked without relocking an earlier durable lane"
+        )
+        XCTAssertFalse(utterance.isLoroEditableLane(language: "en", appliedRevision: 1))
+        XCTAssertTrue(utterance.isLoroEditableLane(language: "th", appliedRevision: 2))
+
+        utterance.completion = "complete"
+        utterance.sourceProjectionRevision = 3
+        utterance.languageVariants.append(NotebookCaptureLanguageVariantDTO(
+            language: "en",
+            role: "source",
+            text: "hello",
+            state: "ready",
+            completion: "complete",
+            projectionRevision: 3
+        ))
+        XCTAssertFalse(utterance.isLoroEditableLane(language: "en-US", appliedRevision: 2))
+        XCTAssertTrue(utterance.isLoroEditableLane(language: "en-US", appliedRevision: 3))
+    }
+
+    func testTranslationCanReuseTheWithdrawnAggregateSourceLanguage() {
+        var utterance = NotebookCaptureUtteranceDTO.sample
+        utterance.sourceLanguage = "en"
+        utterance.sourceText = ""
+        utterance.completion = "partial"
+        utterance.sourceProjectionRevision = 0
+        utterance.sourceEditRevision = 9
+        utterance.languageVariants = [
+            NotebookCaptureLanguageVariantDTO(
+                language: "en",
+                role: "translation",
+                text: "independent lane",
+                state: "ready",
+                completion: "complete",
+                projectionRevision: 2,
+                editRevision: 3
+            ),
+        ]
+
+        XCTAssertFalse(utterance.hasSourceLane)
+        XCTAssertTrue(utterance.isFinalLane(language: "en"))
+        XCTAssertTrue(utterance.isLoroEditableLane(language: "en", appliedRevision: 2))
+        XCTAssertEqual(utterance.laneText(language: "en"), "independent lane")
+        XCTAssertEqual(utterance.laneEditRevision(language: "en"), 3)
+        let projection = NotebookCaptureHistoryPolicy.laneProjection(
+            for: utterance,
+            selectedLanguages: ["en", "zh"],
+            commonCaptionLanguage: nil
+        )
+        XCTAssertEqual(projection.lanes.first?.text, "independent lane")
+    }
+
+    @MainActor
+    func testMenuBarRecentLineLabelsTranslationOnlyShellFromVisibleLane() async throws {
+        MenuBarRuntimeStore.shared.resetForTesting()
+        defer { MenuBarRuntimeStore.shared.resetForTesting() }
+
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a")
+        )
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var shell = NotebookCaptureUtteranceDTO.sample
+        shell.sourceText = ""
+        shell.sourceStartMs = nil
+        shell.sourceEndMs = nil
+        shell.completion = "partial"
+        shell.sourceProjectionRevision = 0
+        shell.languageVariants = [
+            NotebookCaptureLanguageVariantDTO(
+                language: "zh",
+                role: "translation",
+                text: "只剩翻译",
+                state: "ready",
+                completion: "complete",
+                projectionRevision: 1
+            ),
+        ]
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [shell],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+
+        let recent = try XCTUnwrap(MenuBarRuntimeStore.shared.cachedRecentLines.first)
+        XCTAssertEqual(recent.text, "只剩翻译")
+        XCTAssertEqual(recent.languageLabel, "中")
+        XCTAssertEqual(recent.timestamp, "")
+        store.resetForTesting()
+    }
+
+    func testRealtimeProjectionSchedulerReturnsImmediatelyAndCoalescesBackpressure() {
+        let scheduler = NotebookRealtimeProjectionScheduler()
+        let firstStarted = expectation(description: "first projection started")
+        let completed = expectation(description: "coalesced projections completed")
+        completed.expectedFulfillmentCount = 2
+        let releaseFirst = DispatchSemaphore(value: 0)
+        let recorder = FakeAudioPushRecorder()
+        let projection: NotebookRealtimeProjectionScheduler.Projection = { _ in
+            recorder.record()
+            if recorder.value == 1 {
+                firstStarted.fulfill()
+                releaseFirst.wait()
+            }
+            completed.fulfill()
+        }
+
+        scheduler.schedule(sessionId: "session-a", projection: projection)
+        wait(for: [firstStarted], timeout: 1)
+        for _ in 0..<20 {
+            scheduler.schedule(sessionId: "session-a", projection: projection)
+        }
+        releaseFirst.signal()
+        wait(for: [completed], timeout: 1)
+
+        XCTAssertEqual(
+            recorder.value,
+            2,
+            "one in-flight projection plus one coalesced retry should absorb callback bursts"
+        )
+    }
+
+    func testRealtimeProjectionSchedulerRetriesTransientFailureWithoutAnotherWake() {
+        let scheduler = NotebookRealtimeProjectionScheduler(
+            maximumFastRetries: 3,
+            initialFastRetryDelay: 0.001,
+            cappedRetryDelay: 0.02
+        )
+        let converged = expectation(description: "projection converged")
+        let attempts = FakeAudioPushRecorder()
+
+        scheduler.schedule(sessionId: "session-a") { _ in
+            attempts.record()
+            if attempts.value < 3 {
+                throw NotebookCaptureClientError.ffiUnavailable
+            }
+            converged.fulfill()
+        }
+
+        wait(for: [converged], timeout: 1)
+        XCTAssertEqual(
+            attempts.value,
+            3,
+            "one Final wake must survive two transient projection failures"
+        )
+    }
+
+    func testRealtimeProjectionSchedulerKeepsQuietWakeUntilSlowRetrySucceeds() {
+        let scheduler = NotebookRealtimeProjectionScheduler(
+            maximumFastRetries: 3,
+            initialFastRetryDelay: 0.001,
+            cappedRetryDelay: 0.02
+        )
+        let converged = expectation(description: "slow retry converged")
+        let attempts = FakeAudioPushRecorder()
+
+        scheduler.schedule(sessionId: "session-a") { _ in
+            attempts.record()
+            if attempts.value <= 4 {
+                throw NotebookCaptureClientError.ffiUnavailable
+            }
+            converged.fulfill()
+        }
+
+        wait(for: [converged], timeout: 1)
+        XCTAssertEqual(
+            attempts.value,
+            5,
+            "the fourth failure must retain the wake for a capped slow retry"
+        )
+    }
+
+    func testRealtimeProjectionSchedulerCancelStopsPermanentRetry() {
+        let scheduler = NotebookRealtimeProjectionScheduler(
+            maximumFastRetries: 0,
+            initialFastRetryDelay: 0,
+            cappedRetryDelay: 0.05
+        )
+        let firstAttempt = expectation(description: "first projection attempted")
+        let unexpectedRetry = expectation(description: "retry after cancellation")
+        unexpectedRetry.isInverted = true
+        let attempts = FakeAudioPushRecorder()
+        let releaseFirstAttempt = DispatchSemaphore(value: 0)
+
+        scheduler.schedule(sessionId: "session-a") { _ in
+            attempts.record()
+            if attempts.value == 1 {
+                firstAttempt.fulfill()
+                releaseFirstAttempt.wait()
+            } else {
+                unexpectedRetry.fulfill()
+            }
+            throw NotebookCaptureClientError.ffiUnavailable
+        }
+
+        wait(for: [firstAttempt], timeout: 1)
+        scheduler.cancel(sessionId: "session-a")
+        releaseFirstAttempt.signal()
+        wait(for: [unexpectedRetry], timeout: 0.1)
+        XCTAssertEqual(attempts.value, 1)
+    }
+
+    func testRealtimeProjectionSchedulerOldFinishCannotDuplicateRescheduledGeneration() {
+        let scheduler = NotebookRealtimeProjectionScheduler(
+            maximumFastRetries: 0,
+            initialFastRetryDelay: 0,
+            cappedRetryDelay: 10
+        )
+        let oldGenerationStarted = expectation(description: "old generation started")
+        let releaseOldGeneration = DispatchSemaphore(value: 0)
+
+        scheduler.schedule(sessionId: "session-a") { _ in
+            oldGenerationStarted.fulfill()
+            releaseOldGeneration.wait()
+            throw NotebookCaptureClientError.ffiUnavailable
+        }
+        wait(for: [oldGenerationStarted], timeout: 1)
+
+        scheduler.cancel(sessionId: "session-a")
+        let newGenerationAttempted = expectation(description: "new generation attempted")
+        let newGenerationAttempts = FakeAudioPushRecorder()
+        scheduler.schedule(sessionId: "session-a") { _ in
+            newGenerationAttempts.record()
+            if newGenerationAttempts.value == 1 {
+                newGenerationAttempted.fulfill()
+            }
+            throw NotebookCaptureClientError.ffiUnavailable
+        }
+
+        releaseOldGeneration.signal()
+        wait(for: [newGenerationAttempted], timeout: 1)
+
+        // Both sessions share one serial projection queue. Any duplicate G2
+        // work item created by G1's stale finish is already ahead of this
+        // probe, while G2's legitimate retry remains delayed by ten seconds.
+        // Draining to the probe therefore proves the count without a timing
+        // window or an inverted expectation.
+        let queueDrained = expectation(description: "projection queue drained")
+        scheduler.schedule(sessionId: "session-b") { _ in
+            queueDrained.fulfill()
+        }
+        wait(for: [queueDrained], timeout: 1)
+
+        scheduler.cancel(sessionId: "session-a")
+        XCTAssertEqual(newGenerationAttempts.value, 1)
+    }
+
+    @MainActor
     func testLivePreviewReplacesInPlaceWithoutEnteringDurableUtterances() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         let store = ActiveBilingualTranscriptStore(
@@ -1008,7 +1355,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
 
         var second = first.replacingIdentity(id: "utt-2", sequence: 1)
         second.sourceText = "Recovered from durable rows"
-        client.listUtterancesOverride = [first, second]
+        client.reconcileEvents = [captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first, second]
+        )]
         client.emitCaptureEvent(captureEvent(
             sessionId: "session-a",
             state: .recording,
@@ -1017,7 +1368,12 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             isFullSnapshot: false
         ))
 
-        XCTAssertEqual(client.listUtterancesCount, 1)
+        let didRepair = await waitUntil {
+            client.reconcileCallCount == 1 && store.utterances.map(\.sequence) == [0, 1]
+        }
+        XCTAssertTrue(didRepair)
+        XCTAssertEqual(client.sessionEventCount, 1)
+        XCTAssertEqual(client.listUtterancesCount, 0)
         XCTAssertEqual(store.utterances.map(\.sequence), [0, 1])
 
         second.revision = 2
@@ -1030,13 +1386,243 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             isFullSnapshot: false
         ))
 
-        XCTAssertEqual(client.listUtterancesCount, 1)
+        XCTAssertEqual(client.reconcileCallCount, 1)
+        XCTAssertEqual(client.listUtterancesCount, 0)
         XCTAssertEqual(store.utterances.last?.sourceText, "Next delta")
         store.resetForTesting()
     }
 
     @MainActor
-    func testInactiveSessionChangeClearsOldRowsWhenNewSessionIsEmptyAndCannotEditOldRow() {
+    func testCaptureGapRepairLeavesMainActorResponsiveWhileSnapshotIsBlocked() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let controller = BlockingNotebookReconcileController()
+        client.reconcileController = controller
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var first = NotebookCaptureUtteranceDTO.sample.replacingIdentity(sequence: 0)
+        first.revision = 1
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+
+        var second = first.replacingIdentity(id: "utt-2", sequence: 1)
+        second.sourceText = "Recovered asynchronously"
+        client.reconcileEvents = [captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first, second]
+        )]
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [second],
+            eventRevision: 3,
+            isFullSnapshot: false
+        ))
+
+        let didBlockSnapshot = await waitUntil { controller.isWaiting(call: 0) }
+        XCTAssertTrue(didBlockSnapshot)
+
+        var heartbeat = false
+        Task { @MainActor in heartbeat = true }
+        let didReceiveHeartbeat = await waitUntil { heartbeat }
+        XCTAssertTrue(
+            didReceiveHeartbeat,
+            "a full repair read must never synchronously block the MainActor"
+        )
+
+        controller.release(call: 0)
+        let didRepair = await waitUntil {
+            store.utterances.map(\.sourceText).contains("Recovered asynchronously")
+        }
+        XCTAssertTrue(didRepair)
+        XCTAssertEqual(client.listUtterancesCount, 0)
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testCaptureGapRepairRetriesAfterFailureWithoutAnotherCallback() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var first = NotebookCaptureUtteranceDTO.sample.replacingIdentity(sequence: 0)
+        first.revision = 1
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+
+        var missing = first.replacingIdentity(id: "utt-missing", sequence: 1)
+        missing.sourceText = "recovered after retry"
+        let snapshot = captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first, missing]
+        )
+        client.reconcileEvents = [snapshot, snapshot]
+        client.reconcileErrors = [.ffiUnavailable, nil]
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 3,
+            isFullSnapshot: false
+        ))
+
+        let didRecover = await waitUntil {
+            client.reconcileCallCount >= 2
+                && store.utterances.map(\.sourceText).contains("recovered after retry")
+        }
+        XCTAssertTrue(
+            didRecover,
+            "a transient snapshot failure must remain repair-required without another callback"
+        )
+        XCTAssertEqual(client.listUtterancesCount, 0)
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testCaptureGapRepairFromOldGenerationCannotOverwriteNewSession() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let controller = BlockingNotebookReconcileController()
+        client.reconcileController = controller
+        client.reconcileEvents = [captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [.sample]
+        )]
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [.sample],
+            eventRevision: 2,
+            isFullSnapshot: false
+        ))
+        let didBlockOldRepair = await waitUntil { controller.isWaiting(call: 0) }
+        XCTAssertTrue(didBlockOldRepair)
+
+        store.resetForTesting()
+        client.nextSessionId = "session-b"
+        try await store.start(notebookId: "notebook-a")
+        XCTAssertEqual(store.sessionId, "session-b")
+        XCTAssertTrue(store.utterances.isEmpty)
+
+        controller.release(call: 0)
+        _ = await waitUntil { controller.isWaiting(call: 0) == false }
+        XCTAssertEqual(store.sessionId, "session-b")
+        XCTAssertTrue(
+            store.utterances.isEmpty,
+            "the completed repair for session A must fail its generation guard"
+        )
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testSecondGapDiscardsInFlightSnapshotAndRepairsDeletedRow() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let controller = BlockingNotebookReconcileController()
+        client.reconcileController = controller
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var current = NotebookCaptureUtteranceDTO.sample.replacingIdentity(sequence: 0)
+        current.revision = 1
+        var deleted = current.replacingIdentity(id: "utt-deleted", sequence: 1)
+        deleted.sourceText = "must disappear"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [current, deleted],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+
+        var firstGap = current
+        firstGap.revision = 2
+        firstGap.sourceText = "first gap"
+        var latest = firstGap
+        latest.revision = 3
+        latest.sourceText = "after deletion"
+        client.reconcileEvents = [
+            captureEvent(
+                sessionId: "session-a",
+                state: .recording,
+                utterances: [firstGap, deleted]
+            ),
+            captureEvent(
+                sessionId: "session-a",
+                state: .recording,
+                utterances: [latest]
+            ),
+        ]
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [firstGap],
+            eventRevision: 3,
+            isFullSnapshot: false
+        ))
+        let didBlockFirstRepair = await waitUntil { controller.isWaiting(call: 0) }
+        XCTAssertTrue(didBlockFirstRepair)
+
+        // Revision 4 carried the durable deletion but its callback was
+        // coalesced. Revision 5 must invalidate the already-read first
+        // snapshot and force a second authoritative read.
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [latest],
+            eventRevision: 5,
+            isFullSnapshot: false
+        ))
+        controller.release(call: 0)
+
+        let didStartSecondRepair = await waitUntil { controller.isWaiting(call: 1) }
+        XCTAssertTrue(didStartSecondRepair)
+        XCTAssertEqual(
+            store.utterances.map(\.sourceText),
+            ["after deletion", "must disappear"],
+            "the stale first snapshot must not be installed"
+        )
+
+        controller.release(call: 1)
+        let didConverge = await waitUntil {
+            store.utterances.map(\.sourceText) == ["after deletion"]
+        }
+        XCTAssertTrue(didConverge)
+        XCTAssertEqual(client.reconcileCallCount, 2)
+        XCTAssertEqual(client.listUtterancesCount, 0)
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testInactiveSessionChangeClearsOldRowsWhenNewSessionIsEmptyAndCannotEditOldRow() async {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         let store = ActiveBilingualTranscriptStore(
             client: client,
@@ -1051,11 +1637,14 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
 
         XCTAssertEqual(store.sessionId, "session-b")
         XCTAssertTrue(store.utterances.isEmpty)
-        XCTAssertThrowsError(try store.replaceLane(
-            utteranceId: "utt-1",
-            language: "en",
-            text: "must not edit A"
-        )) { error in
+        do {
+            try await store.replaceLane(
+                utteranceId: "utt-1",
+                language: "en",
+                text: "must not edit A"
+            )
+            XCTFail("an utterance from the previous session must stay unavailable")
+        } catch {
             XCTAssertEqual(error as? NotebookCaptureClientError, .projectionLocked)
         }
         XCTAssertNil(client.lastReplaceExpectedRevision)
@@ -1848,6 +2437,40 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testBlockingPauseRequestLeavesMainActorResponsiveAndSettlesPaused() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let pauseController = BlockingNotebookPauseController()
+        client.pauseController = pauseController
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        let pauseTask = Task { @MainActor in
+            try await store.setPaused(true)
+        }
+        let didEnterPauseRequest = await waitUntil { pauseController.isWaiting }
+        XCTAssertTrue(didEnterPauseRequest)
+        XCTAssertEqual(store.captureState, .draining)
+        XCTAssertFalse(store.hasAudioSubscription)
+
+        var heartbeat = false
+        Task { @MainActor in heartbeat = true }
+        let didReceiveHeartbeat = await waitUntil { heartbeat }
+        XCTAssertTrue(
+            didReceiveHeartbeat,
+            "the MainActor must keep servicing UI work while pause waits on FFI"
+        )
+
+        pauseController.release()
+        try await pauseTask.value
+
+        XCTAssertEqual(store.captureState, .paused)
+        XCTAssertFalse(store.hasAudioSubscription)
+    }
+
+    @MainActor
     func testPauseErrorReconcilesACommittedDurablePauseBeforeReopeningAudio() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         client.pauseError = .ffiUnavailable
@@ -2423,6 +3046,121 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(client.profileUpdateCount, 0, "display changes must never write capture settings")
     }
 
+    @MainActor
+    func testHistoryStoreUsesLaneWatermarksWhenTerminalProjectionHasFailed() async throws {
+        var utterance = NotebookCaptureUtteranceDTO.sample
+        utterance.completion = "partial"
+        utterance.sourceProjectionRevision = 0
+        utterance.languageVariants = [
+            NotebookCaptureLanguageVariantDTO(
+                language: "zh",
+                role: "translation",
+                text: "你好",
+                state: "ready",
+                completion: "complete",
+                projectionRevision: 1
+            ),
+            NotebookCaptureLanguageVariantDTO(
+                language: "th",
+                role: "translation",
+                text: "สวัสดี",
+                state: "ready",
+                completion: "complete",
+                projectionRevision: 2
+            ),
+        ]
+        let run = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: "session-a",
+            createdAt: "2001-01-02T08:00:00Z",
+            projection: .failed,
+            utterances: [utterance],
+            selectedLanguages: ["en", "zh", "th"],
+            realtimeLoroAppliedRevision: 1
+        )
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a"),
+            startUtterances: [utterance],
+            historyRuns: [run]
+        )
+        let store = NotebookCaptureHistoryStore(client: client)
+        store.load(notebookId: "notebook-a")
+
+        do {
+            try await store.replaceLane(
+                utteranceId: utterance.id,
+                language: "en",
+                text: "source is still partial"
+            )
+            XCTFail("partial source must remain locked")
+        } catch {
+            XCTAssertEqual(error as? NotebookCaptureClientError, .projectionLocked)
+        }
+        try await store.replaceLane(
+            utteranceId: utterance.id,
+            language: "zh",
+            text: "已编辑"
+        )
+        do {
+            try await store.replaceLane(
+                utteranceId: utterance.id,
+                language: "th",
+                text: "ยังล็อกอยู่"
+            )
+            XCTFail("a lane beyond the applied watermark must remain locked")
+        } catch {
+            XCTAssertEqual(error as? NotebookCaptureClientError, .projectionLocked)
+        }
+
+        XCTAssertEqual(
+            client.lastReplaceExpectedRevision,
+            utterance.laneEditRevision(language: "zh")
+        )
+    }
+
+    @MainActor
+    func testHistoryStoreEditsDurableFinalSourceOutsideSelectedLanguages() async throws {
+        var utterance = NotebookCaptureUtteranceDTO.sample
+        utterance.sourceLanguage = "ja"
+        utterance.sourceText = "こんにちは"
+        utterance.translatedLanguage = nil
+        utterance.translatedText = nil
+        utterance.languageVariants = []
+        utterance.sourceProjectionRevision = 1
+        let run = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: "session-a",
+            createdAt: "2001-01-02T08:00:00Z",
+            projection: .failed,
+            utterances: [utterance],
+            selectedLanguages: ["en", "zh"],
+            realtimeLoroAppliedRevision: 1
+        )
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a"),
+            startUtterances: [utterance],
+            historyRuns: [run]
+        )
+        let store = NotebookCaptureHistoryStore(client: client)
+        store.load(notebookId: "notebook-a")
+
+        let laneProjection = NotebookCaptureHistoryPolicy.laneProjection(
+            for: utterance,
+            selectedLanguages: ["en", "zh"],
+            commonCaptionLanguage: nil
+        )
+        XCTAssertEqual(laneProjection.unselectedLanguageText, "こんにちは")
+        XCTAssertTrue(utterance.isLoroEditableLane(language: "ja", appliedRevision: 1))
+
+        try await store.replaceLane(
+            utteranceId: utterance.id,
+            language: "ja",
+            text: "編集済み"
+        )
+        XCTAssertEqual(
+            client.lastReplaceExpectedRevision,
+            utterance.sourceEditRevision
+        )
+    }
+
     func testRealtimeLanguagePickerCoversEverySupportedSonioxLanguageExactlyOnce() {
         let expected = [
             "af", "sq", "ar", "az", "eu", "be", "bn", "bs", "bg", "ca",
@@ -2795,6 +3533,13 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         utterance.languageVariants = [
             NotebookCaptureLanguageVariantDTO(
+                language: "zh",
+                role: "source",
+                text: "正在发言",
+                state: "ready",
+                completion: "partial"
+            ),
+            NotebookCaptureLanguageVariantDTO(
                 language: "en",
                 role: "translated",
                 text: "Speaking now",
@@ -2869,6 +3614,42 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertNil(unselected.pendingLanguage)
         XCTAssertEqual(unselected.unselectedLanguageText, "こんにちは")
         XCTAssertTrue(unselected.lanes.allSatisfy { $0.text == nil })
+    }
+
+    func testUnknownPartialSourceDoesNotHideAnIndependentFinalTranslationLane() {
+        var utterance = NotebookCaptureUtteranceDTO(
+            id: "utt-translation-first",
+            sessionId: "session-a",
+            sequence: 1,
+            revision: 2,
+            sourceLanguage: "und",
+            sourceText: "provisional source",
+            sourceStartMs: 0,
+            sourceEndMs: nil,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "partial",
+            alignment: "translation_pending"
+        )
+        utterance.languageVariants = [
+            NotebookCaptureLanguageVariantDTO(
+                language: "zh",
+                role: "translation",
+                text: "已完成的翻译",
+                state: "ready",
+                completion: "complete"
+            ),
+        ]
+
+        let projection = NotebookCaptureHistoryPolicy.laneProjection(
+            for: utterance,
+            selectedLanguages: ["en", "zh"],
+            commonCaptionLanguage: nil
+        )
+
+        XCTAssertNil(projection.pendingLanguage)
+        XCTAssertNil(projection.lanes[0].text)
+        XCTAssertEqual(projection.lanes[1].text, "已完成的翻译")
     }
 
     @MainActor
@@ -2959,6 +3740,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             captureState: .paused,
             remoteHealth: .live,
             projectionState: .pending,
+            realtimeLoroAppliedRevision: 0,
             profile: activeProfile,
             utterances: [liveUtterance]
         )
@@ -3165,6 +3947,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             remoteHealth: .off,
             realtimeLagMs: nil,
             projectionState: .ready,
+            realtimeLoroAppliedRevision: 9,
             mode: .multilingualOneWay,
             languageA: "fr",
             languageB: "de",
@@ -3198,6 +3981,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(mapped.realtimeModelId, "stt-rt-v5")
         XCTAssertEqual(mapped.postStopProviderId, "soniox")
         XCTAssertEqual(mapped.postStopModelId, "stt-rt-v5")
+        XCTAssertEqual(mapped.realtimeLoroAppliedRevision, 9)
 
         let corrupt = RustNotebookCaptureClient.map(FfiNotebookCaptureEvent(
             sessionId: "session-corrupt",
@@ -3207,6 +3991,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             remoteHealth: .off,
             realtimeLagMs: nil,
             projectionState: .failed,
+            realtimeLoroAppliedRevision: 0,
             mode: nil,
             languageA: nil,
             languageB: nil,
@@ -3503,6 +4288,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             remoteHealth: .live,
             realtimeLagMs: 8_000,
             projectionState: .pending,
+            realtimeLoroAppliedRevision: 0,
             mode: .twoWay,
             languageA: "en",
             languageB: "zh",
@@ -3732,7 +4518,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testTranscriptLaneIsLockedUntilProjectionReadyAndUsesExpectedRevision() async throws {
+    func testTranscriptLaneUnlocksAtAppliedWatermarkDuringRecording() async throws {
         let utterance = NotebookCaptureUtteranceDTO.sample
         let client = FakeNotebookCaptureClient(
             profile: .twoWay(notebookId: "notebook-a"),
@@ -3745,18 +4531,181 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         store.loadProfile(notebookId: "notebook-a")
         try await store.start(notebookId: "notebook-a")
 
-        XCTAssertThrowsError(try store.replaceLane(
-            utteranceId: utterance.id,
-            language: "en",
-            text: "Edited"
-        )) { error in
+        do {
+            try await store.replaceLane(
+                utteranceId: utterance.id,
+                language: "en",
+                text: "Edited"
+            )
+            XCTFail("the lane must remain locked below its projection watermark")
+        } catch {
             XCTAssertEqual(error as? NotebookCaptureClientError, .projectionLocked)
         }
 
-        try await store.stop()
-        try store.replaceLane(utteranceId: utterance.id, language: "en", text: "Edited")
-        XCTAssertEqual(client.lastReplaceExpectedRevision, utterance.revision)
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [utterance],
+            eventRevision: 1,
+            isFullSnapshot: true,
+            realtimeLoroAppliedRevision: 1
+        ))
+
+        XCTAssertEqual(store.captureState, .recording)
+        XCTAssertEqual(store.projectionState, .pending)
+        XCTAssertTrue(store.isEditable)
+        try await store.replaceLane(
+            utteranceId: utterance.id,
+            language: "en",
+            text: "Edited"
+        )
+        XCTAssertEqual(
+            client.lastReplaceExpectedRevision,
+            utterance.sourceEditRevision
+        )
+        XCTAssertEqual(store.utterances.first?.sourceEditRevision, 1)
         XCTAssertEqual(store.utterances.first?.sourceText, "Edited")
+    }
+
+    @MainActor
+    func testLaneEditStaysResponsiveAndMergesOnlyCommittedLaneIntoNewerEvent() async throws {
+        let utterance = NotebookCaptureUtteranceDTO.sample
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a"),
+            startUtterances: [utterance]
+        )
+        let replaceController = BlockingNotebookPauseController()
+        client.replaceController = replaceController
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [utterance],
+            eventRevision: 1,
+            realtimeLoroAppliedRevision: 1
+        ))
+
+        let editTask = Task { @MainActor in
+            try await store.replaceLane(
+                utteranceId: utterance.id,
+                language: "en",
+                text: "User edit"
+            )
+        }
+        let didEnterEdit = await waitUntil { replaceController.isWaiting }
+        XCTAssertTrue(didEnterEdit)
+
+        do {
+            try await store.replaceLane(
+                utteranceId: utterance.id,
+                language: "en",
+                text: "Duplicate edit"
+            )
+            XCTFail("one lane must allow only one durable mutation in flight")
+        } catch {
+            XCTAssertEqual(error as? NotebookCaptureClientError, .projectionLocked)
+        }
+
+        var heartbeat = false
+        Task { @MainActor in heartbeat = true }
+        let didReceiveHeartbeat = await waitUntil { heartbeat }
+        XCTAssertTrue(didReceiveHeartbeat)
+
+        var newer = utterance
+        newer.revision = 9
+        newer.sessionSpeakerId = "speaker-new"
+        newer.translatedText = "并行更新"
+        newer.languageVariants[0].text = "并行更新"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [newer],
+            eventRevision: 2,
+            realtimeLoroAppliedRevision: 1
+        ))
+
+        replaceController.release()
+        try await editTask.value
+
+        let merged = try XCTUnwrap(store.utterances.first)
+        XCTAssertEqual(merged.sourceText, "User edit")
+        XCTAssertEqual(merged.translatedText, "并行更新")
+        XCTAssertEqual(merged.languageVariants.first?.text, "并行更新")
+        XCTAssertEqual(merged.sessionSpeakerId, "speaker-new")
+        XCTAssertEqual(merged.revision, 9)
+    }
+
+    @MainActor
+    func testCommittedLaneRejectsStaleEqualRevisionCallbackWithoutBlockingOtherFields() async throws {
+        let utterance = NotebookCaptureUtteranceDTO.sample
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a"),
+            startUtterances: [utterance]
+        )
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [utterance],
+            eventRevision: 1,
+            realtimeLoroAppliedRevision: 1
+        ))
+
+        try await store.replaceLane(
+            utteranceId: utterance.id,
+            language: "en",
+            text: "User edit"
+        )
+        XCTAssertEqual(store.utterances.first?.revision, 7)
+        XCTAssertEqual(store.utterances.first?.sourceEditRevision, 1)
+
+        var staleEqualRevision = utterance
+        staleEqualRevision.revision = 7
+        staleEqualRevision.sessionSpeakerId = "speaker-late"
+        staleEqualRevision.translatedText = "晚到的其他语言"
+        staleEqualRevision.languageVariants[0].text = "晚到的其他语言"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [staleEqualRevision],
+            eventRevision: 2,
+            realtimeLoroAppliedRevision: 1
+        ))
+
+        let protected = try XCTUnwrap(store.utterances.first)
+        XCTAssertEqual(protected.sourceText, "User edit")
+        XCTAssertEqual(protected.translatedText, "晚到的其他语言")
+        XCTAssertEqual(protected.languageVariants.first?.text, "晚到的其他语言")
+        XCTAssertEqual(protected.sessionSpeakerId, "speaker-late")
+        XCTAssertEqual(protected.revision, 7)
+        XCTAssertEqual(protected.sourceEditRevision, 1)
+
+        var higherMachineRevision = staleEqualRevision
+        higherMachineRevision.revision = 8
+        higherMachineRevision.sourceText = "Higher machine source"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [higherMachineRevision],
+            eventRevision: 3,
+            realtimeLoroAppliedRevision: 1
+        ))
+
+        XCTAssertEqual(
+            store.utterances.first?.sourceText,
+            "User edit",
+            "a newer machine fact must not erase a committed user override"
+        )
+        XCTAssertEqual(store.utterances.first?.sourceEditRevision, 1)
+        XCTAssertEqual(store.utterances.first?.revision, 8)
     }
 
     @MainActor
@@ -3830,9 +4779,19 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         state: NotebookCaptureState = .completed,
         utterances: [NotebookCaptureUtteranceDTO],
         eventRevision: UInt64 = 0,
-        isFullSnapshot: Bool = true
+        isFullSnapshot: Bool = true,
+        realtimeLoroAppliedRevision: UInt64? = nil
     ) -> NotebookCaptureEventDTO {
-        NotebookCaptureEventDTO(
+        let durableRevision = utterances.reduce(UInt64(0)) { current, utterance in
+            max(
+                current,
+                max(
+                    utterance.sourceProjectionRevision,
+                    utterance.languageVariants.map(\.projectionRevision).max() ?? 0
+                )
+            )
+        }
+        return NotebookCaptureEventDTO(
             sessionId: sessionId,
             eventRevision: eventRevision,
             isFullSnapshot: isFullSnapshot,
@@ -3850,7 +4809,9 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             rightLanguage: "zh",
             postStopAsyncState: "none",
             selectedLanguages: ["en", "zh"],
-            commonCaptionLanguage: nil
+            commonCaptionLanguage: nil,
+            realtimeLoroAppliedRevision: realtimeLoroAppliedRevision
+                ?? (state.isActive ? 0 : durableRevision)
         )
     }
 
@@ -4220,7 +5181,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(realtimeConsole.contains("removeLanguage(at:"))
         XCTAssertTrue(realtimeConsole.contains("moveLanguage(at:"))
         XCTAssertTrue(realtimeConsole.contains("draft.selectedLanguages.count > 1"))
-        XCTAssertTrue(realtimeConsole.contains("maximumSelectedCount"))
+        XCTAssertTrue(captureViews.contains("maximumSelectedCount = 3"))
         XCTAssertFalse(realtimeConsole.contains("isCommonCaption"))
         XCTAssertFalse(realtimeConsole.contains("capture.settings.languages.common_caption"))
         XCTAssertTrue(realtimeConsole.contains("NotebookCaptureSupportedLanguages.options()"))
@@ -4654,6 +5615,61 @@ private final class BlockingNotebookInterruptController {
     }
 }
 
+@MainActor
+private final class BlockingNotebookPauseController {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var isReleased = false
+    private(set) var isWaiting = false
+
+    func wait() async {
+        guard isReleased == false else { return }
+        isWaiting = true
+        await withCheckedContinuation { continuation in
+            if isReleased {
+                continuation.resume()
+            } else {
+                self.continuation = continuation
+            }
+        }
+        isWaiting = false
+    }
+
+    func release() {
+        isReleased = true
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+@MainActor
+private final class BlockingNotebookReconcileController {
+    private var continuations: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var releasedCalls: Set<Int> = []
+    private(set) var waitingCalls: Set<Int> = []
+
+    func wait(call: Int) async {
+        guard releasedCalls.contains(call) == false else { return }
+        waitingCalls.insert(call)
+        await withCheckedContinuation { continuation in
+            if releasedCalls.contains(call) {
+                continuation.resume()
+            } else {
+                continuations[call] = continuation
+            }
+        }
+        waitingCalls.remove(call)
+    }
+
+    func release(call: Int) {
+        releasedCalls.insert(call)
+        continuations.removeValue(forKey: call)?.resume()
+    }
+
+    func isWaiting(call: Int) -> Bool {
+        waitingCalls.contains(call)
+    }
+}
+
 private final class LockedStrings: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String] = []
@@ -4825,6 +5841,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     private(set) var lastContextSourceNotebookId: String?
     private(set) var interruptCount = 0
     private(set) var sessionEventCount = 0
+    private(set) var reconcileCallCount = 0
     private(set) var previewCount = 0
     private(set) var profileUpdateCount = 0
     private(set) var contextBindingPackIds: [String] = []
@@ -4833,6 +5850,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     private(set) var pauseCount = 0
     private(set) var stopCount = 0
     private(set) var listUtterancesCount = 0
+    private(set) var realtimeProjectionCount = 0
     private(set) var asyncProjectionRetryCount = 0
     private(set) var historyNotebookIds: [String] = []
     var shouldFailStop = false
@@ -4843,6 +5861,11 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     var sessionEventError: NotebookCaptureClientError?
     var interruptError: NotebookCaptureClientError?
     var interruptController: BlockingNotebookInterruptController?
+    var pauseController: BlockingNotebookPauseController?
+    var replaceController: BlockingNotebookPauseController?
+    var reconcileController: BlockingNotebookReconcileController?
+    var reconcileEvents: [NotebookCaptureEventDTO] = []
+    var reconcileErrors: [NotebookCaptureClientError?] = []
     var previewDigest = "context-digest"
     var previewDigestAfterProfileUpdate: String?
     var contextPackListError: NotebookCaptureClientError?
@@ -5079,8 +6102,14 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         }
     }
 
-    func pauseNotebookCaptureSession(sessionId: String, paused: Bool) throws -> NotebookCaptureEventDTO {
+    func pauseNotebookCaptureSession(
+        sessionId: String,
+        paused: Bool
+    ) async throws -> NotebookCaptureEventDTO {
         pauseCount += 1
+        if let pauseController {
+            await pauseController.wait()
+        }
         if let pauseError { throw pauseError }
         return event(
             sessionId: sessionId,
@@ -5128,6 +6157,36 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
             projection: .pending,
             providerErrorType: "local_audio_persistence"
         )
+    }
+
+    func reconcileNotebookCaptureSessionEvent(
+        sessionId: String
+    ) async throws -> NotebookCaptureEventDTO {
+        sessionEventCount += 1
+        let call = reconcileCallCount
+        reconcileCallCount += 1
+        let capturedEvent: NotebookCaptureEventDTO? = reconcileEvents.indices.contains(call)
+            ? reconcileEvents[call]
+            : sessionEventOverride
+        let capturedError = reconcileErrors.indices.contains(call)
+            ? reconcileErrors[call]
+            : sessionEventError
+        if let reconcileController {
+            await reconcileController.wait(call: call)
+        }
+        if let capturedError { throw capturedError }
+        if let capturedEvent { return capturedEvent }
+        return event(
+            sessionId: sessionId,
+            state: .interrupted,
+            remote: .off,
+            projection: .pending,
+            providerErrorType: "local_audio_persistence"
+        )
+    }
+
+    func projectNotebookRealtimeIncremental(sessionId: String) throws {
+        realtimeProjectionCount += 1
     }
 
     func emitCaptureEvent(_ event: NotebookCaptureEventDTO) {
@@ -5252,15 +6311,35 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         laneLanguage: String,
         text: String,
         expectedRevision: UInt64
-    ) throws -> NotebookCaptureUtteranceDTO {
+    ) async throws -> NotebookCaptureUtteranceDTO {
         lastReplaceExpectedRevision = expectedRevision
-        var updated = startUtterances.first(where: { $0.id == utteranceId }) ?? .sample
-        if laneLanguage == "en" {
-            updated.sourceText = text
-        } else {
-            updated.translatedText = text
+        if let replaceController {
+            await replaceController.wait()
         }
-        updated.revision += 1
+        var updated = startUtterances.first(where: { $0.id == utteranceId }) ?? .sample
+        let laneLanguage = NotebookCaptureUtteranceDTO.languageKey(laneLanguage)
+        if NotebookCaptureUtteranceDTO.languageKey(updated.sourceLanguage) == laneLanguage {
+            updated.sourceText = text
+            updated.sourceEditRevision = expectedRevision &+ 1
+            if let index = updated.languageVariants.firstIndex(where: {
+                NotebookCaptureUtteranceDTO.languageKey($0.language) == laneLanguage
+            }) {
+                updated.languageVariants[index].text = text
+                updated.languageVariants[index].editRevision = expectedRevision &+ 1
+            }
+        } else {
+            if let index = updated.languageVariants.firstIndex(where: {
+                NotebookCaptureUtteranceDTO.languageKey($0.language) == laneLanguage
+            }) {
+                updated.languageVariants[index].text = text
+                updated.languageVariants[index].editRevision = expectedRevision &+ 1
+            }
+            if updated.translatedLanguage.map(
+                NotebookCaptureUtteranceDTO.languageKey
+            ) == laneLanguage {
+                updated.translatedText = text
+            }
+        }
         return updated
     }
 
@@ -5287,7 +6366,16 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         projection: NotebookProjectionState,
         providerErrorType: String? = nil
     ) -> NotebookCaptureEventDTO {
-        NotebookCaptureEventDTO(
+        let durableRevision = startUtterances.reduce(UInt64(0)) { current, utterance in
+            max(
+                current,
+                max(
+                    utterance.sourceProjectionRevision,
+                    utterance.languageVariants.map(\.projectionRevision).max() ?? 0
+                )
+            )
+        }
+        return NotebookCaptureEventDTO(
             sessionId: sessionId ?? lastStartedSessionId,
             captureState: state,
             remoteHealth: remote,
@@ -5303,7 +6391,8 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
             rightLanguage: profile.rightLanguage,
             postStopAsyncState: "none",
             selectedLanguages: profile.selectedLanguages,
-            commonCaptionLanguage: profile.commonCaptionLanguage
+            commonCaptionLanguage: profile.commonCaptionLanguage,
+            realtimeLoroAppliedRevision: projection == .ready ? durableRevision : 0
         )
     }
 }
@@ -5342,7 +6431,9 @@ private extension NotebookCaptureUtteranceDTO {
             translatedLanguage: translatedLanguage,
             translatedText: translatedText,
             completion: completion,
-            alignment: alignment
+            alignment: alignment,
+            languageVariants: languageVariants,
+            sourceProjectionRevision: sourceProjectionRevision
         )
     }
 
@@ -5359,7 +6450,26 @@ private extension NotebookCaptureUtteranceDTO {
             translatedLanguage: "zh",
             translatedText: "你好",
             completion: "complete",
-            alignment: "response_order"
+            alignment: "response_order",
+            languageVariants: [
+                NotebookCaptureLanguageVariantDTO(
+                    language: "zh",
+                    role: "translation",
+                    text: "你好",
+                    state: "ready",
+                    completion: "complete",
+                    projectionRevision: 1
+                ),
+                NotebookCaptureLanguageVariantDTO(
+                    language: "en",
+                    role: "source",
+                    text: "Hello",
+                    state: "ready",
+                    completion: "complete",
+                    projectionRevision: 1
+                ),
+            ],
+            sourceProjectionRevision: 1
         )
     }
 }
@@ -5374,7 +6484,8 @@ private extension NotebookCaptureHistoryRunDTO {
         utterances: [NotebookCaptureUtteranceDTO] = [],
         hasAudio: Bool = true,
         selectedLanguages: [String]? = nil,
-        commonCaptionLanguage: String? = nil
+        commonCaptionLanguage: String? = nil,
+        realtimeLoroAppliedRevision: UInt64? = nil
     ) -> Self {
         let frozenLanguages = selectedLanguages ?? {
             switch mode {
@@ -5388,6 +6499,15 @@ private extension NotebookCaptureHistoryRunDTO {
                 return []
             }
         }()
+        let durableRevision = utterances.reduce(UInt64(0)) { current, utterance in
+            max(
+                current,
+                max(
+                    utterance.sourceProjectionRevision,
+                    utterance.languageVariants.map(\.projectionRevision).max() ?? 0
+                )
+            )
+        }
         return Self(
             sessionId: sessionId,
             createdAt: createdAt,
@@ -5408,7 +6528,9 @@ private extension NotebookCaptureHistoryRunDTO {
             privacyLevel: mode == nil ? nil : .standard,
             utterances: utterances,
             selectedLanguages: frozenLanguages,
-            commonCaptionLanguage: commonCaptionLanguage
+            commonCaptionLanguage: commonCaptionLanguage,
+            realtimeLoroAppliedRevision: realtimeLoroAppliedRevision
+                ?? (projection == .ready ? durableRevision : 0)
         )
     }
 }

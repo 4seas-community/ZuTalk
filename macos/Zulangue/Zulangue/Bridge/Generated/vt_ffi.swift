@@ -3055,6 +3055,11 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
     public var realtimeLagMs: UInt64?
     public var projectionState: FfiNotebookProjectionState
     /**
+     * Highest session Final watermark whose receipt-bearing Loro snapshot is
+     * durably fsynced and acknowledged.
+     */
+    public var realtimeLoroAppliedRevision: UInt64
+    /**
      * Immutable per-run display configuration. `None` means the durable
      * profile snapshot is corrupt; clients must show an error instead of
      * guessing en/zh or reading the Notebook's newer profile.
@@ -3101,6 +3106,10 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
          * durable snapshots leave it absent.
          */realtimeLagMs: UInt64?, projectionState: FfiNotebookProjectionState,
         /**
+         * Highest session Final watermark whose receipt-bearing Loro snapshot is
+         * durably fsynced and acknowledged.
+         */realtimeLoroAppliedRevision: UInt64,
+        /**
          * Immutable per-run display configuration. `None` means the durable
          * profile snapshot is corrupt; clients must show an error instead of
          * guessing en/zh or reading the Notebook's newer profile.
@@ -3117,6 +3126,7 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
         self.remoteHealth = remoteHealth
         self.realtimeLagMs = realtimeLagMs
         self.projectionState = projectionState
+        self.realtimeLoroAppliedRevision = realtimeLoroAppliedRevision
         self.mode = mode
         self.languageA = languageA
         self.languageB = languageB
@@ -3160,6 +3170,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
                 remoteHealth: FfiConverterTypeFfiNotebookRemoteHealth.read(from: &buf),
                 realtimeLagMs: FfiConverterOptionUInt64.read(from: &buf),
                 projectionState: FfiConverterTypeFfiNotebookProjectionState.read(from: &buf),
+                realtimeLoroAppliedRevision: FfiConverterUInt64.read(from: &buf),
                 mode: FfiConverterOptionTypeFfiNotebookCaptureMode.read(from: &buf),
                 languageA: FfiConverterOptionString.read(from: &buf),
                 languageB: FfiConverterOptionString.read(from: &buf),
@@ -3189,6 +3200,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
         FfiConverterTypeFfiNotebookRemoteHealth.write(value.remoteHealth, into: &buf)
         FfiConverterOptionUInt64.write(value.realtimeLagMs, into: &buf)
         FfiConverterTypeFfiNotebookProjectionState.write(value.projectionState, into: &buf)
+        FfiConverterUInt64.write(value.realtimeLoroAppliedRevision, into: &buf)
         FfiConverterOptionTypeFfiNotebookCaptureMode.write(value.mode, into: &buf)
         FfiConverterOptionString.write(value.languageA, into: &buf)
         FfiConverterOptionString.write(value.languageB, into: &buf)
@@ -3243,6 +3255,11 @@ public struct FfiNotebookCaptureHistoryRun: Equatable, Hashable {
     public var captureState: FfiNotebookCaptureState
     public var remoteHealth: FfiNotebookRemoteHealth
     public var projectionState: FfiNotebookProjectionState
+    /**
+     * Highest session Final watermark whose receipt-bearing Loro snapshot is
+     * durably fsynced and acknowledged.
+     */
+    public var realtimeLoroAppliedRevision: UInt64
     public var mode: FfiNotebookCaptureMode?
     public var languageA: String?
     public var languageB: String?
@@ -3267,7 +3284,11 @@ public struct FfiNotebookCaptureHistoryRun: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(runId: String, notebookId: String, sessionId: String, profileRevision: UInt64, createdAt: String, updatedAt: String, completedAt: String?, captureState: FfiNotebookCaptureState, remoteHealth: FfiNotebookRemoteHealth, projectionState: FfiNotebookProjectionState, mode: FfiNotebookCaptureMode?, languageA: String?, languageB: String?, leftLanguage: String?, rightLanguage: String?, selectedLanguages: [String], commonCaptionLanguage: String?, privacyLevel: String?, postStopAsyncState: String, postStopAsyncProjectionState: FfiNotebookAsyncProjectionState, realtimeProviderId: String?, realtimeModelId: String?, postStopProviderId: String?, postStopModelId: String?, providerErrorType: String?, providerRequestId: String?, sampleRate: UInt32?, channels: UInt16?, capturedFrames: UInt64, hasAudio: Bool, utterances: [FfiNotebookCaptureUtterance]) {
+    public init(runId: String, notebookId: String, sessionId: String, profileRevision: UInt64, createdAt: String, updatedAt: String, completedAt: String?, captureState: FfiNotebookCaptureState, remoteHealth: FfiNotebookRemoteHealth, projectionState: FfiNotebookProjectionState,
+        /**
+         * Highest session Final watermark whose receipt-bearing Loro snapshot is
+         * durably fsynced and acknowledged.
+         */realtimeLoroAppliedRevision: UInt64, mode: FfiNotebookCaptureMode?, languageA: String?, languageB: String?, leftLanguage: String?, rightLanguage: String?, selectedLanguages: [String], commonCaptionLanguage: String?, privacyLevel: String?, postStopAsyncState: String, postStopAsyncProjectionState: FfiNotebookAsyncProjectionState, realtimeProviderId: String?, realtimeModelId: String?, postStopProviderId: String?, postStopModelId: String?, providerErrorType: String?, providerRequestId: String?, sampleRate: UInt32?, channels: UInt16?, capturedFrames: UInt64, hasAudio: Bool, utterances: [FfiNotebookCaptureUtterance]) {
         self.runId = runId
         self.notebookId = notebookId
         self.sessionId = sessionId
@@ -3278,6 +3299,7 @@ public struct FfiNotebookCaptureHistoryRun: Equatable, Hashable {
         self.captureState = captureState
         self.remoteHealth = remoteHealth
         self.projectionState = projectionState
+        self.realtimeLoroAppliedRevision = realtimeLoroAppliedRevision
         self.mode = mode
         self.languageA = languageA
         self.languageB = languageB
@@ -3327,6 +3349,7 @@ public struct FfiConverterTypeFfiNotebookCaptureHistoryRun: FfiConverterRustBuff
                 captureState: FfiConverterTypeFfiNotebookCaptureState.read(from: &buf),
                 remoteHealth: FfiConverterTypeFfiNotebookRemoteHealth.read(from: &buf),
                 projectionState: FfiConverterTypeFfiNotebookProjectionState.read(from: &buf),
+                realtimeLoroAppliedRevision: FfiConverterUInt64.read(from: &buf),
                 mode: FfiConverterOptionTypeFfiNotebookCaptureMode.read(from: &buf),
                 languageA: FfiConverterOptionString.read(from: &buf),
                 languageB: FfiConverterOptionString.read(from: &buf),
@@ -3362,6 +3385,7 @@ public struct FfiConverterTypeFfiNotebookCaptureHistoryRun: FfiConverterRustBuff
         FfiConverterTypeFfiNotebookCaptureState.write(value.captureState, into: &buf)
         FfiConverterTypeFfiNotebookRemoteHealth.write(value.remoteHealth, into: &buf)
         FfiConverterTypeFfiNotebookProjectionState.write(value.projectionState, into: &buf)
+        FfiConverterUInt64.write(value.realtimeLoroAppliedRevision, into: &buf)
         FfiConverterOptionTypeFfiNotebookCaptureMode.write(value.mode, into: &buf)
         FfiConverterOptionString.write(value.languageA, into: &buf)
         FfiConverterOptionString.write(value.languageB, into: &buf)
@@ -3408,15 +3432,33 @@ public struct FfiNotebookCaptureLanguageVariant: Equatable, Hashable {
     public var text: String?
     public var state: String
     public var completion: String?
+    /**
+     * Session Final watermark that makes this lane safe to show from Loro.
+     * Zero means the lane is still SQLite-only.
+     */
+    public var projectionRevision: UInt64
+    /**
+     * Lane-local revision of the user-visible override.
+     */
+    public var editRevision: UInt64
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(language: String, role: String, text: String?, state: String, completion: String?) {
+    public init(language: String, role: String, text: String?, state: String, completion: String?,
+        /**
+         * Session Final watermark that makes this lane safe to show from Loro.
+         * Zero means the lane is still SQLite-only.
+         */projectionRevision: UInt64,
+        /**
+         * Lane-local revision of the user-visible override.
+         */editRevision: UInt64) {
         self.language = language
         self.role = role
         self.text = text
         self.state = state
         self.completion = completion
+        self.projectionRevision = projectionRevision
+        self.editRevision = editRevision
     }
 
 
@@ -3439,7 +3481,9 @@ public struct FfiConverterTypeFfiNotebookCaptureLanguageVariant: FfiConverterRus
                 role: FfiConverterString.read(from: &buf),
                 text: FfiConverterOptionString.read(from: &buf),
                 state: FfiConverterString.read(from: &buf),
-                completion: FfiConverterOptionString.read(from: &buf)
+                completion: FfiConverterOptionString.read(from: &buf),
+                projectionRevision: FfiConverterUInt64.read(from: &buf),
+                editRevision: FfiConverterUInt64.read(from: &buf)
         )
     }
 
@@ -3449,6 +3493,8 @@ public struct FfiConverterTypeFfiNotebookCaptureLanguageVariant: FfiConverterRus
         FfiConverterOptionString.write(value.text, into: &buf)
         FfiConverterString.write(value.state, into: &buf)
         FfiConverterOptionString.write(value.completion, into: &buf)
+        FfiConverterUInt64.write(value.projectionRevision, into: &buf)
+        FfiConverterUInt64.write(value.editRevision, into: &buf)
     }
 }
 
@@ -3647,11 +3693,27 @@ public struct FfiNotebookCaptureUtterance: Equatable, Hashable {
     public var translatedText: String?
     public var completion: String
     public var alignment: String
+    /**
+     * Session Final watermark that makes the source lane safe to show from
+     * Loro. Zero means the source is still SQLite-only.
+     */
+    public var sourceProjectionRevision: UInt64
+    /**
+     * Lane-local revision of the source's user-visible override.
+     */
+    public var sourceEditRevision: UInt64
     public var languageVariants: [FfiNotebookCaptureLanguageVariant]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, sessionId: String, sequence: UInt64, revision: UInt64, sessionSpeakerId: String?, sourceLanguage: String, sourceText: String, sourceStartMs: UInt64?, sourceEndMs: UInt64?, translatedLanguage: String?, translatedText: String?, completion: String, alignment: String, languageVariants: [FfiNotebookCaptureLanguageVariant]) {
+    public init(id: String, sessionId: String, sequence: UInt64, revision: UInt64, sessionSpeakerId: String?, sourceLanguage: String, sourceText: String, sourceStartMs: UInt64?, sourceEndMs: UInt64?, translatedLanguage: String?, translatedText: String?, completion: String, alignment: String,
+        /**
+         * Session Final watermark that makes the source lane safe to show from
+         * Loro. Zero means the source is still SQLite-only.
+         */sourceProjectionRevision: UInt64,
+        /**
+         * Lane-local revision of the source's user-visible override.
+         */sourceEditRevision: UInt64, languageVariants: [FfiNotebookCaptureLanguageVariant]) {
         self.id = id
         self.sessionId = sessionId
         self.sequence = sequence
@@ -3665,6 +3727,8 @@ public struct FfiNotebookCaptureUtterance: Equatable, Hashable {
         self.translatedText = translatedText
         self.completion = completion
         self.alignment = alignment
+        self.sourceProjectionRevision = sourceProjectionRevision
+        self.sourceEditRevision = sourceEditRevision
         self.languageVariants = languageVariants
     }
 
@@ -3697,6 +3761,8 @@ public struct FfiConverterTypeFfiNotebookCaptureUtterance: FfiConverterRustBuffe
                 translatedText: FfiConverterOptionString.read(from: &buf),
                 completion: FfiConverterString.read(from: &buf),
                 alignment: FfiConverterString.read(from: &buf),
+                sourceProjectionRevision: FfiConverterUInt64.read(from: &buf),
+                sourceEditRevision: FfiConverterUInt64.read(from: &buf),
                 languageVariants: FfiConverterSequenceTypeFfiNotebookCaptureLanguageVariant.read(from: &buf)
         )
     }
@@ -3715,6 +3781,8 @@ public struct FfiConverterTypeFfiNotebookCaptureUtterance: FfiConverterRustBuffe
         FfiConverterOptionString.write(value.translatedText, into: &buf)
         FfiConverterString.write(value.completion, into: &buf)
         FfiConverterString.write(value.alignment, into: &buf)
+        FfiConverterUInt64.write(value.sourceProjectionRevision, into: &buf)
+        FfiConverterUInt64.write(value.sourceEditRevision, into: &buf)
         FfiConverterSequenceTypeFfiNotebookCaptureLanguageVariant.write(value.languageVariants, into: &buf)
     }
 }

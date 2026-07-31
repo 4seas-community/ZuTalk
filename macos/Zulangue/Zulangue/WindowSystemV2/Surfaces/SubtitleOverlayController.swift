@@ -33,7 +33,7 @@ enum SubtitleOverlayConversationLayout: Equatable {
 }
 
 enum SubtitleOverlayLayoutPolicy {
-    static let maximumLanguageCount = 4
+    static let maximumLanguageCount = 3
 
     static func conversationLayout(
         width: CGFloat,

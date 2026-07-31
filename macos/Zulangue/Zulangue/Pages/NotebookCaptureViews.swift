@@ -932,7 +932,7 @@ private func notebookCaptureProviderDisplayName(_ providerId: String) -> String 
 /// list and applies equally to every language; these codes define the ordered
 /// language lanes for one capture.
 enum NotebookCaptureSupportedLanguages {
-    static let maximumSelectedCount = 4
+    static let maximumSelectedCount = 3
 
     static let codes = [
         "af", "sq", "ar", "az", "eu", "be", "bn", "bs", "bg", "ca",
@@ -2506,6 +2506,7 @@ private struct NotebookRealtimeHistoryView: View {
             captureState: capture.captureState,
             remoteHealth: capture.remoteHealth,
             projectionState: capture.projectionState,
+            realtimeLoroAppliedRevision: capture.realtimeLoroAppliedRevision,
             profile: capture.profile,
             utterances: capture.utterances
         )
@@ -2745,8 +2746,22 @@ struct NotebookRealtimeUtteranceView: View {
         )
     }
 
-    private var isEditable: Bool {
-        run.captureState.isActive || run.projectionState == .ready
+    private var sourceTimelineUtterances: [NotebookCaptureUtteranceDTO] {
+        displayUtterances.filter(\.hasSourceLane)
+    }
+
+    private var hasAnyEditableLane: Bool {
+        displayUtterances.contains { utterance in
+            utterance.isLoroEditableLane(
+                language: utterance.sourceLanguage,
+                appliedRevision: run.realtimeLoroAppliedRevision
+            ) || utterance.languageVariants.contains { variant in
+                utterance.isLoroEditableLane(
+                    language: variant.language,
+                    appliedRevision: run.realtimeLoroAppliedRevision
+                )
+            }
+        }
     }
 
     private var runHeader: some View {
@@ -2874,7 +2889,7 @@ struct NotebookRealtimeUtteranceView: View {
         .accessibilityLabel(Text(String(localized: "capture.transcript.copy")))
         .accessibilityHint(Text(copyTranscriptHint))
 
-        if isEditable == false {
+        if hasAnyEditableLane == false {
             Label(String(localized: "capture.transcript.read_only"), systemImage: "lock.fill")
                 .font(.caption)
                 .foregroundColor(.textOnBpDim)
@@ -2967,9 +2982,9 @@ struct NotebookRealtimeUtteranceView: View {
                         ),
                         speakerDisplayName: speakerDisplayName(for: utterance),
                         onManageSpeaker: { selectSpeaker(for: utterance) },
-                        isEditable: isEditable && utterance.completion == "complete",
+                        realtimeLoroAppliedRevision: run.realtimeLoroAppliedRevision,
                         onReplace: { language, text in
-                            try history.replaceLane(
+                            try await history.replaceLane(
                                 utteranceId: utterance.id,
                                 language: language,
                                 text: text
@@ -2989,7 +3004,7 @@ struct NotebookRealtimeUtteranceView: View {
 
     @ViewBuilder
     private var transcriptionBody: some View {
-        if displayUtterances.isEmpty {
+        if sourceTimelineUtterances.isEmpty {
             compactEmptyRun(
                 title: run.captureState.isActive
                     ? String(localized: "capture.transcript.waiting_title")
@@ -3000,14 +3015,17 @@ struct NotebookRealtimeUtteranceView: View {
             )
         } else {
             LazyVStack(spacing: 0) {
-                ForEach(displayUtterances) { utterance in
+                ForEach(sourceTimelineUtterances) { utterance in
                     TranscriptionUtteranceRow(
                         utterance: utterance,
                         speakerDisplayName: speakerDisplayName(for: utterance),
                         onManageSpeaker: { selectSpeaker(for: utterance) },
-                        isEditable: isEditable && utterance.completion == "complete",
+                        isEditable: utterance.isLoroEditableLane(
+                            language: utterance.sourceLanguage,
+                            appliedRevision: run.realtimeLoroAppliedRevision
+                        ),
                         onReplace: { language, text in
-                            try history.replaceLane(
+                            try await history.replaceLane(
                                 utteranceId: utterance.id,
                                 language: language,
                                 text: text
@@ -3352,7 +3370,7 @@ private struct TranscriptionUtteranceRow: View {
     let speakerDisplayName: String?
     let onManageSpeaker: () -> Void
     let isEditable: Bool
-    let onReplace: (String, String) throws -> Void
+    let onReplace: (String, String) async throws -> Void
     let onEditingChanged: (BilingualLaneEditTarget, Bool) -> Void
 
     var body: some View {
@@ -3384,7 +3402,7 @@ private struct TranscriptionUtteranceRow: View {
                 text: utterance.sourceText,
                 isEditable: isEditable,
                 onCommit: { target, text in
-                    try onReplace(target.laneLanguage, text)
+                    try await onReplace(target.laneLanguage, text)
                 },
                 onEditingChanged: onEditingChanged
             )
@@ -3432,8 +3450,8 @@ private struct MultilingualUtteranceRow: View {
     let projection: NotebookCaptureLaneProjection
     let speakerDisplayName: String?
     let onManageSpeaker: () -> Void
-    let isEditable: Bool
-    let onReplace: (String, String) throws -> Void
+    let realtimeLoroAppliedRevision: UInt64
+    let onReplace: (String, String) async throws -> Void
     let onEditingChanged: (BilingualLaneEditTarget, Bool) -> Void
 
     var body: some View {
@@ -3503,9 +3521,12 @@ private struct MultilingualUtteranceRow: View {
                                 laneLanguage: normalizedSourceLanguage
                             ),
                             text: unselectedLanguageText,
-                            isEditable: isEditable,
+                            isEditable: utterance.isLoroEditableLane(
+                                language: normalizedSourceLanguage,
+                                appliedRevision: realtimeLoroAppliedRevision
+                            ),
                             onCommit: { target, text in
-                                try onReplace(target.laneLanguage, text)
+                                try await onReplace(target.laneLanguage, text)
                             },
                             onEditingChanged: onEditingChanged
                         )
@@ -3525,10 +3546,11 @@ private struct MultilingualUtteranceRow: View {
                             projectedLane in
                             lane(
                                 projectedLane,
-                                showsSourceTimestamp: sameLanguage(
-                                    utterance.sourceLanguage,
-                                    projectedLane.language
-                                )
+                                showsSourceTimestamp: utterance.hasSourceLane
+                                    && sameLanguage(
+                                        utterance.sourceLanguage,
+                                        projectedLane.language
+                                    )
                             )
                             if index < projection.lanes.count - 1 {
                                 Divider().background(Color.bpLineGhost.opacity(0.3))
@@ -3564,9 +3586,12 @@ private struct MultilingualUtteranceRow: View {
                 ),
                 text: projectedLane.text,
                 missingLaneState: projectedLane.missingLaneState,
-                isEditable: isEditable,
+                isEditable: utterance.isLoroEditableLane(
+                    language: projectedLane.language,
+                    appliedRevision: realtimeLoroAppliedRevision
+                ),
                 onCommit: { target, text in
-                    try onReplace(target.laneLanguage, text)
+                    try await onReplace(target.laneLanguage, text)
                 },
                 onEditingChanged: onEditingChanged
             )
@@ -3680,7 +3705,6 @@ struct BilingualLaneDraftBuffer {
 
     mutating func markCommitted(_ text: String) {
         baseline = text
-        draft = text
     }
 }
 
@@ -3689,9 +3713,10 @@ private struct BilingualLaneText: View {
     let text: String?
     let missingLaneState: NotebookCaptureMissingLaneState
     let isEditable: Bool
-    let onCommit: (BilingualLaneEditTarget, String) throws -> Void
+    let onCommit: (BilingualLaneEditTarget, String) async throws -> Void
     let onEditingChanged: (BilingualLaneEditTarget, Bool) -> Void
     @State private var buffer: BilingualLaneDraftBuffer
+    @State private var isCommitInFlight = false
     @FocusState private var isFocused: Bool
 
     init(
@@ -3699,7 +3724,7 @@ private struct BilingualLaneText: View {
         text: String?,
         missingLaneState: NotebookCaptureMissingLaneState = .unavailable,
         isEditable: Bool,
-        onCommit: @escaping (BilingualLaneEditTarget, String) throws -> Void,
+        onCommit: @escaping (BilingualLaneEditTarget, String) async throws -> Void,
         onEditingChanged: @escaping (BilingualLaneEditTarget, Bool) -> Void
     ) {
         self.target = target
@@ -3723,6 +3748,7 @@ private struct BilingualLaneText: View {
                     .foregroundColor(.bpLine)
                     .lineLimit(2...10)
                     .focused($isFocused)
+                    .disabled(isCommitInFlight)
                     .onSubmit { isFocused = false }
                     .onChange(of: isFocused) { wasFocused, focused in
                         scheduleFocusChange(wasFocused: wasFocused, focused: focused)
@@ -3798,7 +3824,7 @@ private struct BilingualLaneText: View {
             if focused {
                 onEditingChanged(editTarget, true)
             } else if wasFocused {
-                if commit(request) {
+                if await commit(request) {
                     onEditingChanged(editTarget, false)
                 } else {
                     // Keep the swap barrier active until the edit persists or
@@ -3826,19 +3852,24 @@ private struct BilingualLaneText: View {
         let request = buffer.pendingCommit()
         Task { @MainActor in
             await Task.yield()
-            _ = commit(request)
+            _ = await commit(request)
             onEditingChanged(editTarget, false)
         }
     }
 
     @discardableResult
-    private func commit(_ request: BilingualLaneDraftCommit?) -> Bool {
+    private func commit(_ request: BilingualLaneDraftCommit?) async -> Bool {
         guard let request else { return true }
         guard buffer.target == request.target,
               buffer.pendingCommit() == request else { return true }
+        guard isCommitInFlight == false else { return false }
+        isCommitInFlight = true
+        defer { isCommitInFlight = false }
         do {
-            try onCommit(request.target, request.text)
-            buffer.markCommitted(request.text)
+            try await onCommit(request.target, request.text)
+            if buffer.target == request.target {
+                buffer.markCommitted(request.text)
+            }
             return true
         } catch {
             ToastCenter.shared.error(

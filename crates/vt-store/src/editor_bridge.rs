@@ -8,6 +8,7 @@ use loro::{
     cursor::{Cursor, Side},
     ContainerTrait, LoroDoc, LoroValue, StyleConfigMap,
 };
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tokio::sync::mpsc;
 
@@ -43,6 +44,100 @@ pub enum EditOp {
         len: usize,
         key: String,
     },
+}
+
+/// Durable proof that one finalized SQLite fact revision has been projected
+/// into this Loro document.
+///
+/// The receipt is stored inside the Loro snapshot. A projector must persist
+/// the snapshot returned by [`EditorBridge::apply_projection_batch`] before it
+/// acknowledges the corresponding SQLite outbox revision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectionReceipt {
+    pub session_id: String,
+    pub fact_revision: u64,
+    pub digest: String,
+}
+
+/// Exact-once receipt for an editable user mutation.
+///
+/// `namespace` separates mutation producers that may otherwise reuse the same
+/// opaque `mutation_id`. Unlike projection revisions, mutation receipts do not
+/// supersede one another: every `(namespace, mutation_id)` is retained.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserMutationReceipt {
+    pub namespace: String,
+    pub mutation_id: String,
+    pub digest: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectionBatchOutcome {
+    /// The operations and receipt were applied by this call.
+    Applied,
+    /// This revision, or a newer revision for the same session, was already
+    /// present. No edit, generation advance, or callback occurred.
+    AlreadyApplied,
+}
+
+/// The exact snapshot that callers should durably persist before acknowledging
+/// the projected SQLite revision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectionBatchResult {
+    pub outcome: ProjectionBatchOutcome,
+    pub generation: u64,
+    pub snapshot: Vec<u8>,
+}
+
+/// User mutation batches have the same snapshot/generation result contract as
+/// projection batches.
+pub type UserMutationBatchResult = ProjectionBatchResult;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DurableReceipt {
+    namespace: String,
+    id: String,
+    sequence: Option<u64>,
+    digest: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct StoredDurableReceipt {
+    schema_version: u8,
+    namespace: String,
+    id: String,
+    sequence: Option<u64>,
+    digest: String,
+}
+
+/// Compatibility decoder for projection receipts written by the initial
+/// session/revision-specific implementation.
+#[derive(Debug, Deserialize)]
+struct LegacyStoredProjectionReceipt {
+    schema_version: u8,
+    session_id: String,
+    fact_revision: u64,
+    digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum StoredReceiptCompatibility {
+    Durable(StoredDurableReceipt),
+    LegacyProjection(LegacyStoredProjectionReceipt),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ReceiptPolicy {
+    ProjectionLatestWins,
+    UserMutationExactOnce,
+}
+
+struct BatchReceiptSpec {
+    map_name: &'static str,
+    map_key: String,
+    receipt: DurableReceipt,
+    policy: ReceiptPolicy,
 }
 
 /// 把 UI 层传来的 JSON 字符串转成 Loro 接受的 LoroValue。
@@ -110,6 +205,190 @@ pub struct EditorBridge {
 const CAPTURE_ANCHOR_STARTS: &str = "zulangue_capture_anchor_starts";
 const CAPTURE_ANCHOR_ENDS: &str = "zulangue_capture_anchor_ends";
 const CAPTURE_ANCHOR_SESSIONS: &str = "zulangue_capture_anchor_sessions";
+const PROJECTION_RECEIPTS: &str = "zulangue_realtime_projection_receipts";
+const USER_MUTATION_RECEIPTS: &str = "zulangue_user_mutation_receipts";
+const PROJECTION_RECEIPT_NAMESPACE: &str = "realtime_projection";
+const DURABLE_RECEIPT_SCHEMA_VERSION: u8 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CaptureAnchorWrite {
+    Start,
+    End,
+    Session,
+}
+
+fn apply_edit_op(doc: &LoroDoc, op: &EditOp) -> Result<(), EditorBridgeError> {
+    let loro_text = doc.get_text("content");
+    match op {
+        EditOp::Insert { pos, text } => {
+            loro_text
+                .insert(*pos, text)
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
+        }
+        EditOp::Delete { pos, len } => {
+            loro_text
+                .delete(*pos, *len)
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
+        }
+        EditOp::Replace { pos, len, text } => {
+            loro_text
+                .delete(*pos, *len)
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
+            loro_text
+                .insert(*pos, text)
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
+        }
+        EditOp::Mark {
+            pos,
+            len,
+            key,
+            value_json,
+        } => {
+            let end = pos.saturating_add(*len);
+            let value = json_to_loro_value(value_json);
+            loro_text
+                .mark(*pos..end, key, value)
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
+        }
+        EditOp::Unmark { pos, len, key } => {
+            let end = pos.saturating_add(*len);
+            loro_text
+                .unmark(*pos..end, key)
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
+        }
+    }
+    Ok(())
+}
+
+fn user_mutation_receipt_key(namespace: &str, mutation_id: &str) -> String {
+    // The namespace byte length makes this collision-free even when either
+    // component itself contains ':' or arbitrary user-provided text.
+    format!("v1:{}:{namespace}{mutation_id}", namespace.len())
+}
+
+fn encode_durable_receipt(receipt: &DurableReceipt) -> Result<String, EditorBridgeError> {
+    serde_json::to_string(&StoredDurableReceipt {
+        schema_version: DURABLE_RECEIPT_SCHEMA_VERSION,
+        namespace: receipt.namespace.clone(),
+        id: receipt.id.clone(),
+        sequence: receipt.sequence,
+        digest: receipt.digest.clone(),
+    })
+    .map_err(|error| EditorBridgeError::InvalidDurableReceipt(error.to_string()))
+}
+
+fn get_durable_receipt_from_doc(
+    doc: &LoroDoc,
+    map_name: &str,
+    map_key: &str,
+    expected_namespace: &str,
+    expected_id: &str,
+) -> Result<Option<DurableReceipt>, EditorBridgeError> {
+    let Some(value) = doc.get_map(map_name).get(map_key) else {
+        return Ok(None);
+    };
+    let LoroValue::String(encoded) = value.get_deep_value() else {
+        return Err(EditorBridgeError::InvalidDurableReceipt(format!(
+            "receipt {expected_namespace}/{expected_id} is not a string"
+        )));
+    };
+    let stored: StoredReceiptCompatibility = serde_json::from_str(&encoded).map_err(|error| {
+        EditorBridgeError::InvalidDurableReceipt(format!(
+            "decode receipt {expected_namespace}/{expected_id}: {error}"
+        ))
+    })?;
+    let (schema_version, stored) = match stored {
+        StoredReceiptCompatibility::Durable(stored) => (
+            stored.schema_version,
+            DurableReceipt {
+                namespace: stored.namespace,
+                id: stored.id,
+                sequence: stored.sequence,
+                digest: stored.digest,
+            },
+        ),
+        StoredReceiptCompatibility::LegacyProjection(stored) => {
+            if expected_namespace != PROJECTION_RECEIPT_NAMESPACE {
+                return Err(EditorBridgeError::InvalidDurableReceipt(format!(
+                    "legacy projection receipt found at {expected_namespace}/{expected_id}"
+                )));
+            }
+            (
+                stored.schema_version,
+                DurableReceipt {
+                    namespace: PROJECTION_RECEIPT_NAMESPACE.to_string(),
+                    id: stored.session_id,
+                    sequence: Some(stored.fact_revision),
+                    digest: stored.digest,
+                },
+            )
+        }
+    };
+    if schema_version != DURABLE_RECEIPT_SCHEMA_VERSION {
+        return Err(EditorBridgeError::InvalidDurableReceipt(format!(
+            "unsupported receipt schema {schema_version} for {expected_namespace}/{expected_id}"
+        )));
+    }
+    if stored.namespace != expected_namespace || stored.id != expected_id {
+        return Err(EditorBridgeError::InvalidDurableReceipt(format!(
+            "receipt key/payload mismatch for {expected_namespace}/{expected_id}"
+        )));
+    }
+    Ok(Some(stored))
+}
+
+fn get_projection_receipt_from_doc(
+    doc: &LoroDoc,
+    session_id: &str,
+) -> Result<Option<ProjectionReceipt>, EditorBridgeError> {
+    let Some(receipt) = get_durable_receipt_from_doc(
+        doc,
+        PROJECTION_RECEIPTS,
+        session_id,
+        PROJECTION_RECEIPT_NAMESPACE,
+        session_id,
+    )?
+    else {
+        return Ok(None);
+    };
+    let fact_revision = receipt.sequence.ok_or_else(|| {
+        EditorBridgeError::InvalidDurableReceipt(format!(
+            "projection receipt has no revision for session {session_id}"
+        ))
+    })?;
+    Ok(Some(ProjectionReceipt {
+        session_id: receipt.id,
+        fact_revision,
+        digest: receipt.digest,
+    }))
+}
+
+fn get_user_mutation_receipt_from_doc(
+    doc: &LoroDoc,
+    namespace: &str,
+    mutation_id: &str,
+) -> Result<Option<UserMutationReceipt>, EditorBridgeError> {
+    let Some(receipt) = get_durable_receipt_from_doc(
+        doc,
+        USER_MUTATION_RECEIPTS,
+        &user_mutation_receipt_key(namespace, mutation_id),
+        namespace,
+        mutation_id,
+    )?
+    else {
+        return Ok(None);
+    };
+    if receipt.sequence.is_some() {
+        return Err(EditorBridgeError::InvalidDurableReceipt(format!(
+            "user mutation receipt unexpectedly has a sequence for {namespace}/{mutation_id}"
+        )));
+    }
+    Ok(Some(UserMutationReceipt {
+        namespace: receipt.namespace,
+        mutation_id: receipt.id,
+        digest: receipt.digest,
+    }))
+}
 
 impl EditorBridge {
     pub fn new() -> Self {
@@ -179,45 +458,7 @@ impl EditorBridge {
             .get_mut(session_id)
             .ok_or(EditorBridgeError::SessionNotOpen)?;
 
-        let loro_text = session.doc.get_text("content");
-        match &op {
-            EditOp::Insert { pos, text } => {
-                loro_text
-                    .insert(*pos, text)
-                    .map_err(|e| EditorBridgeError::LoroError(e.to_string()))?;
-            }
-            EditOp::Delete { pos, len } => {
-                loro_text
-                    .delete(*pos, *len)
-                    .map_err(|e| EditorBridgeError::LoroError(e.to_string()))?;
-            }
-            EditOp::Replace { pos, len, text } => {
-                loro_text
-                    .delete(*pos, *len)
-                    .map_err(|e| EditorBridgeError::LoroError(e.to_string()))?;
-                loro_text
-                    .insert(*pos, text)
-                    .map_err(|e| EditorBridgeError::LoroError(e.to_string()))?;
-            }
-            EditOp::Mark {
-                pos,
-                len,
-                key,
-                value_json,
-            } => {
-                let end = pos.saturating_add(*len);
-                let value = json_to_loro_value(value_json);
-                loro_text
-                    .mark(*pos..end, key, value)
-                    .map_err(|e| EditorBridgeError::LoroError(e.to_string()))?;
-            }
-            EditOp::Unmark { pos, len, key } => {
-                let end = pos.saturating_add(*len);
-                loro_text
-                    .unmark(*pos..end, key)
-                    .map_err(|e| EditorBridgeError::LoroError(e.to_string()))?;
-            }
-        }
+        apply_edit_op(&session.doc, &op)?;
 
         session.generation += 1;
         if let Some(cb) = &session.callback {
@@ -232,6 +473,264 @@ impl EditorBridge {
         }
 
         Ok(())
+    }
+
+    /// Atomically applies a finalized machine projection and its durable
+    /// receipt under one open-session lock.
+    ///
+    /// All operations plus the receipt form one Loro auto-commit group. The
+    /// bridge advances `generation` once and attempts one callback regardless
+    /// of operation count. If any operation, receipt write, or snapshot export
+    /// fails, the pre-batch document is restored and neither generation nor the
+    /// callback advances.
+    ///
+    /// Replaying the same revision and digest is a no-op. A lower revision is
+    /// also a no-op because a newer receipt subsumes it. Reusing a revision with
+    /// a different digest fails closed as nondeterministic projection input.
+    pub fn apply_projection_batch(
+        &self,
+        document_id: &str,
+        operations: Vec<EditOp>,
+        receipt: ProjectionReceipt,
+    ) -> Result<ProjectionBatchResult, EditorBridgeError> {
+        if receipt.session_id.is_empty() {
+            return Err(EditorBridgeError::InvalidDurableReceipt(
+                "session_id must not be empty".to_string(),
+            ));
+        }
+        if receipt.digest.is_empty() {
+            return Err(EditorBridgeError::InvalidDurableReceipt(
+                "digest must not be empty".to_string(),
+            ));
+        }
+        let session_id = receipt.session_id;
+        self.apply_batch_with_receipt(
+            document_id,
+            operations,
+            BatchReceiptSpec {
+                map_name: PROJECTION_RECEIPTS,
+                map_key: session_id.clone(),
+                receipt: DurableReceipt {
+                    namespace: PROJECTION_RECEIPT_NAMESPACE.to_string(),
+                    id: session_id,
+                    sequence: Some(receipt.fact_revision),
+                    digest: receipt.digest,
+                },
+                policy: ReceiptPolicy::ProjectionLatestWins,
+            },
+        )
+    }
+
+    /// Atomically applies one editable user mutation with an exact-once
+    /// durable receipt.
+    ///
+    /// Replaying the same `(namespace, mutation_id, digest)` is a no-op.
+    /// Reusing `(namespace, mutation_id)` with a different digest fails closed.
+    /// Different mutation IDs never supersede or overwrite one another.
+    pub fn apply_user_mutation_batch(
+        &self,
+        document_id: &str,
+        operations: Vec<EditOp>,
+        receipt: UserMutationReceipt,
+    ) -> Result<UserMutationBatchResult, EditorBridgeError> {
+        if receipt.namespace.is_empty() {
+            return Err(EditorBridgeError::InvalidDurableReceipt(
+                "namespace must not be empty".to_string(),
+            ));
+        }
+        if receipt.mutation_id.is_empty() {
+            return Err(EditorBridgeError::InvalidDurableReceipt(
+                "mutation_id must not be empty".to_string(),
+            ));
+        }
+        if receipt.digest.is_empty() {
+            return Err(EditorBridgeError::InvalidDurableReceipt(
+                "digest must not be empty".to_string(),
+            ));
+        }
+        let namespace = receipt.namespace;
+        let mutation_id = receipt.mutation_id;
+        self.apply_batch_with_receipt(
+            document_id,
+            operations,
+            BatchReceiptSpec {
+                map_name: USER_MUTATION_RECEIPTS,
+                map_key: user_mutation_receipt_key(&namespace, &mutation_id),
+                receipt: DurableReceipt {
+                    namespace,
+                    id: mutation_id,
+                    sequence: None,
+                    digest: receipt.digest,
+                },
+                policy: ReceiptPolicy::UserMutationExactOnce,
+            },
+        )
+    }
+
+    fn apply_batch_with_receipt(
+        &self,
+        document_id: &str,
+        operations: Vec<EditOp>,
+        spec: BatchReceiptSpec,
+    ) -> Result<ProjectionBatchResult, EditorBridgeError> {
+        let stored_receipt = encode_durable_receipt(&spec.receipt)?;
+
+        let mut sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get_mut(document_id)
+            .ok_or(EditorBridgeError::SessionNotOpen)?;
+
+        if let Some(existing) = get_durable_receipt_from_doc(
+            &session.doc,
+            spec.map_name,
+            &spec.map_key,
+            &spec.receipt.namespace,
+            &spec.receipt.id,
+        )? {
+            let already_applied = match spec.policy {
+                ReceiptPolicy::ProjectionLatestWins => {
+                    let existing_revision = existing.sequence.ok_or_else(|| {
+                        EditorBridgeError::InvalidDurableReceipt(format!(
+                            "projection receipt has no revision for session {}",
+                            spec.receipt.id
+                        ))
+                    })?;
+                    let requested_revision = spec.receipt.sequence.ok_or_else(|| {
+                        EditorBridgeError::InvalidDurableReceipt(format!(
+                            "requested projection receipt has no revision for session {}",
+                            spec.receipt.id
+                        ))
+                    })?;
+                    if existing_revision == requested_revision
+                        && existing.digest != spec.receipt.digest
+                    {
+                        return Err(EditorBridgeError::ProjectionReceiptConflict {
+                            session_id: spec.receipt.id,
+                            fact_revision: requested_revision,
+                        });
+                    }
+                    existing_revision >= requested_revision
+                }
+                ReceiptPolicy::UserMutationExactOnce => {
+                    if existing.sequence.is_some() {
+                        return Err(EditorBridgeError::InvalidDurableReceipt(format!(
+                            "user mutation receipt unexpectedly has a sequence for {}/{}",
+                            spec.receipt.namespace, spec.receipt.id
+                        )));
+                    }
+                    if existing.digest != spec.receipt.digest {
+                        return Err(EditorBridgeError::UserMutationReceiptConflict {
+                            namespace: spec.receipt.namespace,
+                            mutation_id: spec.receipt.id,
+                        });
+                    }
+                    true
+                }
+            };
+            if already_applied {
+                let snapshot = session
+                    .doc
+                    .export(loro::ExportMode::Snapshot)
+                    .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
+                return Ok(ProjectionBatchResult {
+                    outcome: ProjectionBatchOutcome::AlreadyApplied,
+                    generation: session.generation,
+                    snapshot,
+                });
+            }
+        }
+
+        // Loro transactions group history/events but do not roll back. Keep an
+        // isolated pre-batch copy so a later failing operation cannot leak a
+        // partially projected lane to readers.
+        let rollback_doc = session.doc.fork();
+        let batch_result = (|| {
+            for operation in &operations {
+                apply_edit_op(&session.doc, operation)?;
+            }
+            session
+                .doc
+                .get_map(spec.map_name)
+                .insert(&spec.map_key, stored_receipt)
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
+            session
+                .doc
+                .export(loro::ExportMode::Snapshot)
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))
+        })();
+        let snapshot = match batch_result {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                session.doc = rollback_doc;
+                return Err(error);
+            }
+        };
+
+        session.generation += 1;
+        if let Some(callback) = &session.callback {
+            let _ = callback.try_send(EditorEvent::Change {
+                delta: snapshot.clone(),
+                generation: session.generation,
+            });
+        }
+
+        Ok(ProjectionBatchResult {
+            outcome: ProjectionBatchOutcome::Applied,
+            generation: session.generation,
+            snapshot,
+        })
+    }
+
+    /// Returns the latest durable projection receipt stored for a capture
+    /// session in this open Loro document.
+    pub fn get_projection_receipt(
+        &self,
+        document_id: &str,
+        session_id: &str,
+    ) -> Result<Option<ProjectionReceipt>, EditorBridgeError> {
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get(document_id)
+            .ok_or(EditorBridgeError::SessionNotOpen)?;
+        get_projection_receipt_from_doc(&session.doc, session_id)
+    }
+
+    /// Exact receipt check for the common crash-replay path. Call
+    /// [`Self::get_projection_receipt`] when a newer revision may subsume the
+    /// revision awaiting SQLite acknowledgement.
+    pub fn has_projection_receipt(
+        &self,
+        document_id: &str,
+        receipt: &ProjectionReceipt,
+    ) -> Result<bool, EditorBridgeError> {
+        Ok(self
+            .get_projection_receipt(document_id, &receipt.session_id)?
+            .as_ref()
+            == Some(receipt))
+    }
+
+    pub fn get_user_mutation_receipt(
+        &self,
+        document_id: &str,
+        namespace: &str,
+        mutation_id: &str,
+    ) -> Result<Option<UserMutationReceipt>, EditorBridgeError> {
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions
+            .get(document_id)
+            .ok_or(EditorBridgeError::SessionNotOpen)?;
+        get_user_mutation_receipt_from_doc(&session.doc, namespace, mutation_id)
+    }
+
+    pub fn has_user_mutation_receipt(
+        &self,
+        document_id: &str,
+        receipt: &UserMutationReceipt,
+    ) -> Result<bool, EditorBridgeError> {
+        Ok(self
+            .get_user_mutation_receipt(document_id, &receipt.namespace, &receipt.mutation_id)?
+            .as_ref()
+            == Some(receipt))
     }
 
     /// UI 侧回写，附带 generation 防回环
@@ -293,9 +792,31 @@ impl EditorBridge {
         start: usize,
         end: usize,
     ) -> Result<(), EditorBridgeError> {
-        let sessions = self.sessions.lock().unwrap();
+        self.set_capture_owned_range_with_before_write(
+            document_id,
+            owner_key,
+            capture_session_id,
+            start,
+            end,
+            |_| Ok(()),
+        )
+    }
+
+    fn set_capture_owned_range_with_before_write<F>(
+        &self,
+        document_id: &str,
+        owner_key: &str,
+        capture_session_id: &str,
+        start: usize,
+        end: usize,
+        mut before_write: F,
+    ) -> Result<(), EditorBridgeError>
+    where
+        F: FnMut(CaptureAnchorWrite) -> Result<(), EditorBridgeError>,
+    {
+        let mut sessions = self.sessions.lock().unwrap();
         let session = sessions
-            .get(document_id)
+            .get_mut(document_id)
             .ok_or(EditorBridgeError::SessionNotOpen)?;
         let text = session.doc.get_text("content");
         if start > end || end > text.len_unicode() {
@@ -327,21 +848,38 @@ impl EditorBridge {
                 ))
             })?
         };
-        session
-            .doc
-            .get_map(CAPTURE_ANCHOR_STARTS)
-            .insert(owner_key, LoroValue::Binary(start_cursor.encode().into()))
-            .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
-        session
-            .doc
-            .get_map(CAPTURE_ANCHOR_ENDS)
-            .insert(owner_key, LoroValue::Binary(end_cursor.encode().into()))
-            .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
-        session
-            .doc
-            .get_map(CAPTURE_ANCHOR_SESSIONS)
-            .insert(owner_key, capture_session_id)
-            .map_err(|error| EditorBridgeError::LoroError(error.to_string()))
+
+        // Loro auto-commit groups history but does not roll back a partially
+        // failed sequence. Preserve the entire pre-call document so the three
+        // anchor maps are exposed either together or not at all.
+        let rollback_doc = session.doc.fork();
+        let result = (|| {
+            before_write(CaptureAnchorWrite::Start)?;
+            session
+                .doc
+                .get_map(CAPTURE_ANCHOR_STARTS)
+                .insert(owner_key, LoroValue::Binary(start_cursor.encode().into()))
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
+
+            before_write(CaptureAnchorWrite::End)?;
+            session
+                .doc
+                .get_map(CAPTURE_ANCHOR_ENDS)
+                .insert(owner_key, LoroValue::Binary(end_cursor.encode().into()))
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))?;
+
+            before_write(CaptureAnchorWrite::Session)?;
+            session
+                .doc
+                .get_map(CAPTURE_ANCHOR_SESSIONS)
+                .insert(owner_key, capture_session_id)
+                .map_err(|error| EditorBridgeError::LoroError(error.to_string()))
+        })();
+        if let Err(error) = result {
+            session.doc = rollback_doc;
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Resolves a capture-owned CRDT range. A partially present or malformed
@@ -673,6 +1211,26 @@ pub enum EditorBridgeError {
 
     #[error("invalid capture anchor: {0}")]
     InvalidCaptureAnchor(String),
+
+    #[error("invalid projection receipt: {0}")]
+    InvalidProjectionReceipt(String),
+
+    #[error("invalid durable editor receipt: {0}")]
+    InvalidDurableReceipt(String),
+
+    #[error(
+        "projection receipt conflict for session {session_id} at fact revision {fact_revision}"
+    )]
+    ProjectionReceiptConflict {
+        session_id: String,
+        fact_revision: u64,
+    },
+
+    #[error("user mutation receipt conflict for {namespace}/{mutation_id}")]
+    UserMutationReceiptConflict {
+        namespace: String,
+        mutation_id: String,
+    },
 }
 
 #[cfg(test)]
@@ -685,6 +1243,22 @@ mod tests {
         let text = doc.get_text("content");
         text.insert(0, "initial content").unwrap();
         doc
+    }
+
+    fn projection_receipt(fact_revision: u64, digest: &str) -> ProjectionReceipt {
+        ProjectionReceipt {
+            session_id: "capture-session".to_string(),
+            fact_revision,
+            digest: digest.to_string(),
+        }
+    }
+
+    fn user_mutation_receipt(mutation_id: &str, digest: &str) -> UserMutationReceipt {
+        UserMutationReceipt {
+            namespace: "user_edit".to_string(),
+            mutation_id: mutation_id.to_string(),
+            digest: digest.to_string(),
+        }
     }
 
     #[tokio::test]
@@ -716,6 +1290,308 @@ mod tests {
 
         let content = bridge.get_content("test-session").unwrap();
         assert!(content.starts_with("Hello "));
+    }
+
+    #[tokio::test]
+    async fn projection_batch_applies_all_operations_and_receipt_once() {
+        let bridge = EditorBridge::new();
+        let (tx, mut rx) = mpsc::channel::<EditorEvent>(10);
+        bridge
+            .open_with_callback("document", load_test_doc(), tx)
+            .unwrap();
+        let receipt = projection_receipt(7, "sha256:final-seven");
+
+        let result = bridge
+            .apply_projection_batch(
+                "document",
+                vec![
+                    EditOp::Replace {
+                        pos: 0,
+                        len: "initial".chars().count(),
+                        text: "batched".to_string(),
+                    },
+                    EditOp::Insert {
+                        pos: "batched".chars().count(),
+                        text: " final".to_string(),
+                    },
+                ],
+                receipt.clone(),
+            )
+            .unwrap();
+
+        assert_eq!(result.outcome, ProjectionBatchOutcome::Applied);
+        assert_eq!(result.generation, 1);
+        assert_eq!(
+            bridge.get_content("document").unwrap(),
+            "batched final content"
+        );
+        assert_eq!(
+            bridge
+                .get_projection_receipt("document", "capture-session")
+                .unwrap(),
+            Some(receipt.clone())
+        );
+        assert!(bridge.has_projection_receipt("document", &receipt).unwrap());
+
+        let event = rx.recv().await.unwrap();
+        match event {
+            EditorEvent::Change { delta, generation } => {
+                assert_eq!(generation, 1);
+                assert_eq!(delta, result.snapshot);
+            }
+        }
+        assert!(
+            tokio::time::timeout(tokio::time::Duration::from_millis(50), rx.recv())
+                .await
+                .is_err(),
+            "one batch must emit only one callback"
+        );
+
+        // The receipt travels with the returned Loro snapshot, so a restarted
+        // projector can acknowledge SQLite without replaying text operations.
+        let reopened_doc = LoroDoc::new();
+        reopened_doc.import(&result.snapshot).unwrap();
+        let reopened = EditorBridge::new();
+        reopened.open("document", reopened_doc).unwrap();
+        assert_eq!(
+            reopened
+                .get_projection_receipt("document", "capture-session")
+                .unwrap(),
+            Some(receipt)
+        );
+        assert_eq!(
+            reopened.get_content("document").unwrap(),
+            "batched final content"
+        );
+    }
+
+    #[tokio::test]
+    async fn projection_batch_replay_is_idempotent_and_conflicts_fail_closed() {
+        let bridge = EditorBridge::new();
+        let (tx, mut rx) = mpsc::channel::<EditorEvent>(10);
+        bridge
+            .open_with_callback("document", load_test_doc(), tx)
+            .unwrap();
+        let receipt = projection_receipt(7, "sha256:stable");
+        let operations = vec![EditOp::Insert {
+            pos: 0,
+            text: "once ".to_string(),
+        }];
+
+        let first = bridge
+            .apply_projection_batch("document", operations.clone(), receipt.clone())
+            .unwrap();
+        assert_eq!(first.outcome, ProjectionBatchOutcome::Applied);
+        let _ = rx.recv().await.unwrap();
+
+        let replay = bridge
+            .apply_projection_batch("document", operations, receipt.clone())
+            .unwrap();
+        assert_eq!(replay.outcome, ProjectionBatchOutcome::AlreadyApplied);
+        assert_eq!(replay.generation, first.generation);
+        assert_eq!(
+            bridge.get_content("document").unwrap(),
+            "once initial content"
+        );
+
+        let stale = bridge
+            .apply_projection_batch(
+                "document",
+                vec![EditOp::Insert {
+                    pos: 0,
+                    text: "stale ".to_string(),
+                }],
+                projection_receipt(6, "sha256:older"),
+            )
+            .unwrap();
+        assert_eq!(stale.outcome, ProjectionBatchOutcome::AlreadyApplied);
+        assert_eq!(stale.generation, first.generation);
+        assert_eq!(
+            bridge.get_content("document").unwrap(),
+            "once initial content"
+        );
+
+        let conflict = bridge.apply_projection_batch(
+            "document",
+            vec![EditOp::Insert {
+                pos: 0,
+                text: "conflict ".to_string(),
+            }],
+            projection_receipt(7, "sha256:different"),
+        );
+        assert!(matches!(
+            conflict,
+            Err(EditorBridgeError::ProjectionReceiptConflict {
+                fact_revision: 7,
+                ..
+            })
+        ));
+        assert_eq!(
+            bridge.get_content("document").unwrap(),
+            "once initial content"
+        );
+        assert!(
+            tokio::time::timeout(tokio::time::Duration::from_millis(50), rx.recv())
+                .await
+                .is_err(),
+            "replay, stale input, and receipt conflict must not notify"
+        );
+    }
+
+    #[tokio::test]
+    async fn projection_batch_rolls_back_partial_operations_on_error() {
+        let bridge = EditorBridge::new();
+        let (tx, mut rx) = mpsc::channel::<EditorEvent>(10);
+        bridge
+            .open_with_callback("document", load_test_doc(), tx)
+            .unwrap();
+
+        let result = bridge.apply_projection_batch(
+            "document",
+            vec![
+                EditOp::Insert {
+                    pos: 0,
+                    text: "must roll back ".to_string(),
+                },
+                EditOp::Delete { pos: 999, len: 1 },
+            ],
+            projection_receipt(1, "sha256:failed"),
+        );
+
+        assert!(matches!(result, Err(EditorBridgeError::LoroError(_))));
+        assert_eq!(bridge.get_content("document").unwrap(), "initial content");
+        assert_eq!(
+            bridge
+                .get_projection_receipt("document", "capture-session")
+                .unwrap(),
+            None
+        );
+        assert!(
+            tokio::time::timeout(tokio::time::Duration::from_millis(50), rx.recv())
+                .await
+                .is_err(),
+            "failed batch must not notify"
+        );
+
+        bridge
+            .apply(
+                "document",
+                EditOp::Insert {
+                    pos: 0,
+                    text: "next ".to_string(),
+                },
+            )
+            .unwrap();
+        match rx.recv().await.unwrap() {
+            EditorEvent::Change { generation, .. } => assert_eq!(generation, 1),
+        }
+    }
+
+    #[tokio::test]
+    async fn user_mutation_receipts_are_exact_once_and_do_not_overwrite_each_other() {
+        let bridge = EditorBridge::new();
+        let (tx, mut rx) = mpsc::channel::<EditorEvent>(10);
+        bridge
+            .open_with_callback("document", load_test_doc(), tx)
+            .unwrap();
+        let first_receipt = user_mutation_receipt("mutation-1", "sha256:first");
+        let first_operations = vec![EditOp::Insert {
+            pos: 0,
+            text: "one ".to_string(),
+        }];
+
+        let first = bridge
+            .apply_user_mutation_batch("document", first_operations.clone(), first_receipt.clone())
+            .unwrap();
+        assert_eq!(first.outcome, ProjectionBatchOutcome::Applied);
+        assert_eq!(first.generation, 1);
+        let _ = rx.recv().await.unwrap();
+
+        let replay = bridge
+            .apply_user_mutation_batch("document", first_operations, first_receipt.clone())
+            .unwrap();
+        assert_eq!(replay.outcome, ProjectionBatchOutcome::AlreadyApplied);
+        assert_eq!(replay.generation, 1);
+        assert_eq!(
+            bridge.get_content("document").unwrap(),
+            "one initial content"
+        );
+
+        let conflict = bridge.apply_user_mutation_batch(
+            "document",
+            vec![EditOp::Insert {
+                pos: 0,
+                text: "conflict ".to_string(),
+            }],
+            user_mutation_receipt("mutation-1", "sha256:different"),
+        );
+        assert!(matches!(
+            conflict,
+            Err(EditorBridgeError::UserMutationReceiptConflict {
+                ref namespace,
+                ref mutation_id,
+            }) if namespace == "user_edit" && mutation_id == "mutation-1"
+        ));
+        assert_eq!(
+            bridge.get_content("document").unwrap(),
+            "one initial content"
+        );
+
+        let second_receipt = user_mutation_receipt("mutation-2", "sha256:second");
+        let second = bridge
+            .apply_user_mutation_batch(
+                "document",
+                vec![EditOp::Insert {
+                    pos: 0,
+                    text: "two ".to_string(),
+                }],
+                second_receipt.clone(),
+            )
+            .unwrap();
+        assert_eq!(second.outcome, ProjectionBatchOutcome::Applied);
+        assert_eq!(second.generation, 2);
+        match rx.recv().await.unwrap() {
+            EditorEvent::Change { generation, .. } => assert_eq!(generation, 2),
+        }
+        assert_eq!(
+            bridge.get_content("document").unwrap(),
+            "two one initial content"
+        );
+        assert!(bridge
+            .has_user_mutation_receipt("document", &first_receipt)
+            .unwrap());
+        assert!(bridge
+            .has_user_mutation_receipt("document", &second_receipt)
+            .unwrap());
+        assert_eq!(
+            bridge
+                .get_user_mutation_receipt("document", "user_edit", "mutation-1")
+                .unwrap(),
+            Some(first_receipt.clone())
+        );
+        assert_eq!(
+            bridge
+                .get_user_mutation_receipt("document", "user_edit", "mutation-2")
+                .unwrap(),
+            Some(second_receipt.clone())
+        );
+        assert!(
+            tokio::time::timeout(tokio::time::Duration::from_millis(50), rx.recv())
+                .await
+                .is_err(),
+            "replay and digest conflict must not emit callbacks"
+        );
+
+        let reopened_doc = LoroDoc::new();
+        reopened_doc.import(&second.snapshot).unwrap();
+        let reopened = EditorBridge::new();
+        reopened.open("document", reopened_doc).unwrap();
+        assert!(reopened
+            .has_user_mutation_receipt("document", &first_receipt)
+            .unwrap());
+        assert!(reopened
+            .has_user_mutation_receipt("document", &second_receipt)
+            .unwrap());
     }
 
     #[tokio::test]
@@ -946,6 +1822,131 @@ mod tests {
             .clear_capture_owned_ranges_for_session("doc", "session-a")
             .unwrap();
         assert_eq!(reopened.get_content("doc").unwrap(), "前置\n后置");
+    }
+
+    #[test]
+    fn capture_anchor_second_write_failure_leaves_no_partial_metadata() {
+        let bridge = EditorBridge::new();
+        let doc = LoroDoc::new();
+        let mut styles = StyleConfigMap::new();
+        styles.insert(
+            "session_id".into(),
+            loro::StyleConfig {
+                expand: loro::ExpandType::None,
+            },
+        );
+        doc.config_text_style(styles);
+        doc.get_text("content").insert(0, "capture").unwrap();
+        bridge.open("doc", doc).unwrap();
+        bridge
+            .apply(
+                "doc",
+                EditOp::Mark {
+                    pos: 0,
+                    len: 7,
+                    key: "session_id".into(),
+                    value_json: "\"session-a\"".into(),
+                },
+            )
+            .unwrap();
+        let fallback_delta = bridge.get_delta("doc").unwrap();
+
+        let result = bridge.set_capture_owned_range_with_before_write(
+            "doc",
+            "section",
+            "session-a",
+            0,
+            7,
+            |write| {
+                if write == CaptureAnchorWrite::End {
+                    Err(EditorBridgeError::LoroError(
+                        "injected second anchor write failure".into(),
+                    ))
+                } else {
+                    Ok(())
+                }
+            },
+        );
+
+        assert!(matches!(result, Err(EditorBridgeError::LoroError(_))));
+        assert_eq!(
+            bridge
+                .resolve_capture_owned_range("doc", "section", "session-a")
+                .unwrap(),
+            None
+        );
+
+        // A later flusher must not be able to persist the successful first
+        // write. After export/import the mark-based fallback is unchanged and
+        // no partial anchor can make resolution fail closed.
+        let snapshot = bridge.export_snapshot("doc").unwrap();
+        let reopened_doc = LoroDoc::new();
+        reopened_doc.import(&snapshot).unwrap();
+        assert!(reopened_doc.get_map(CAPTURE_ANCHOR_STARTS).is_empty());
+        assert!(reopened_doc.get_map(CAPTURE_ANCHOR_ENDS).is_empty());
+        assert!(reopened_doc.get_map(CAPTURE_ANCHOR_SESSIONS).is_empty());
+        let reopened = EditorBridge::new();
+        reopened.open("doc", reopened_doc).unwrap();
+        assert_eq!(
+            reopened
+                .resolve_capture_owned_range("doc", "section", "session-a")
+                .unwrap(),
+            None
+        );
+        assert_eq!(reopened.get_delta("doc").unwrap(), fallback_delta);
+    }
+
+    #[test]
+    fn capture_anchor_second_write_failure_restores_existing_anchor() {
+        let bridge = EditorBridge::new();
+        let doc = LoroDoc::new();
+        doc.get_text("content")
+            .insert(0, "prefix capture suffix")
+            .unwrap();
+        bridge.open("doc", doc).unwrap();
+        bridge
+            .set_capture_owned_range("doc", "section", "session-a", 7, 14)
+            .unwrap();
+        let original = bridge
+            .resolve_capture_owned_range("doc", "section", "session-a")
+            .unwrap();
+
+        let result = bridge.set_capture_owned_range_with_before_write(
+            "doc",
+            "section",
+            "session-a",
+            0,
+            6,
+            |write| {
+                if write == CaptureAnchorWrite::End {
+                    Err(EditorBridgeError::LoroError(
+                        "injected second anchor write failure".into(),
+                    ))
+                } else {
+                    Ok(())
+                }
+            },
+        );
+
+        assert!(matches!(result, Err(EditorBridgeError::LoroError(_))));
+        assert_eq!(
+            bridge
+                .resolve_capture_owned_range("doc", "section", "session-a")
+                .unwrap(),
+            original
+        );
+
+        let snapshot = bridge.export_snapshot("doc").unwrap();
+        let reopened_doc = LoroDoc::new();
+        reopened_doc.import(&snapshot).unwrap();
+        let reopened = EditorBridge::new();
+        reopened.open("doc", reopened_doc).unwrap();
+        assert_eq!(
+            reopened
+                .resolve_capture_owned_range("doc", "section", "session-a")
+                .unwrap(),
+            original
+        );
     }
 
     #[test]

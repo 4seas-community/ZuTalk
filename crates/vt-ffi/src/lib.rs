@@ -1498,38 +1498,75 @@ impl ZulangueCore {
 pub(crate) fn capture_utterance_search_content(
     utterances: &[vt_store::notebook_capture_store::RealtimeUtterance],
 ) -> String {
+    use vt_store::notebook_capture_store::{
+        UtteranceCompletion, UtteranceVariantRole, UtteranceVariantState,
+    };
+
+    let lane_id = |language: &str| {
+        language
+            .trim()
+            .to_lowercase()
+            .split('-')
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    };
     let mut out = String::new();
-    for utterance in utterances {
-        if !utterance.source_text.is_empty() {
-            if !out.is_empty() {
-                out.push(' ');
-            }
-            out.push('[');
-            out.push_str(&utterance.source_language);
-            out.push_str("] ");
-            out.push_str(&utterance.source_text);
+    let mut append_lane = |language: &str, text: &str| {
+        if text.is_empty() {
+            return;
         }
-        if let (Some(language), Some(text)) = (
-            utterance.translated_language.as_deref(),
-            utterance.translated_text.as_deref(),
-        ) {
-            if !text.is_empty() {
-                if !out.is_empty() {
-                    out.push(' ');
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push('[');
+        out.push_str(&lane_id(language));
+        out.push_str("] ");
+        out.push_str(text);
+    };
+
+    for utterance in utterances {
+        if utterance.completion == UtteranceCompletion::Complete {
+            append_lane(&utterance.source_language, &utterance.source_text);
+        }
+
+        let mut translations = utterance
+            .variants
+            .iter()
+            .filter(|variant| {
+                variant.role == UtteranceVariantRole::Translation
+                    && variant.state == UtteranceVariantState::Ready
+                    && variant.completion == Some(UtteranceCompletion::Complete)
+                    && variant.text.as_deref().is_some_and(|text| !text.is_empty())
+            })
+            .collect::<Vec<_>>();
+        translations.sort_by_key(|variant| lane_id(&variant.language));
+        if translations.is_empty() && utterance.variants.is_empty() {
+            // Compatibility for snapshots created before language variants.
+            if utterance.completion == UtteranceCompletion::Complete {
+                if let (Some(language), Some(text)) = (
+                    utterance.translated_language.as_deref(),
+                    utterance.translated_text.as_deref(),
+                ) {
+                    append_lane(language, text);
                 }
-                out.push('[');
-                out.push_str(language);
-                out.push_str("] ");
-                out.push_str(text);
             }
+            continue;
+        }
+        for variant in translations {
+            append_lane(
+                &variant.language,
+                variant.text.as_deref().unwrap_or_default(),
+            );
         }
     }
     out
 }
 
 impl ZulangueCore {
-    /// Rebuilds the disposable FTS projection from durable realtime facts.
-    /// Callers must invoke this before publishing ProjectionState::Ready.
+    /// Test seam for rebuilding the disposable FTS projection from durable
+    /// realtime facts.
+    #[cfg(test)]
     pub(crate) fn rebuild_capture_search_index(
         &self,
         session_id: &str,

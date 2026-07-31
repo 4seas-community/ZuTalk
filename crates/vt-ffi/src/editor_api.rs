@@ -223,10 +223,39 @@ fn flush_snapshot_to_disk_result_with_temp_path(
     let _flush_guard = SNAPSHOT_FLUSH_LOCK
         .lock()
         .map_err(|_| "snapshot flush lock poisoned".to_string())?;
-    ensure_snapshot_dir(data_dir).map_err(|e| format!("mkdir snapshot dir failed: {e}"))?;
     let bytes = bridge
         .export_snapshot(session_id)
         .map_err(|e| format!("export_snapshot failed for {session_id}: {e}"))?;
+    persist_snapshot_bytes_unlocked(data_dir, session_id, &bytes, temp_path)
+}
+
+/// Persists the exact snapshot returned by an atomic EditorBridge batch.
+///
+/// Callers can therefore bind the bytes they fsync to the receipt they later
+/// acknowledge in SQLite, rather than re-exporting a potentially newer doc.
+pub(crate) fn persist_snapshot_bytes_to_disk_result(
+    data_dir: &Path,
+    session_id: &str,
+    bytes: &[u8],
+) -> Result<(), String> {
+    let _flush_guard = SNAPSHOT_FLUSH_LOCK
+        .lock()
+        .map_err(|_| "snapshot flush lock poisoned".to_string())?;
+    persist_snapshot_bytes_unlocked(
+        data_dir,
+        session_id,
+        bytes,
+        snapshot_temp_path(data_dir, session_id),
+    )
+}
+
+fn persist_snapshot_bytes_unlocked(
+    data_dir: &Path,
+    session_id: &str,
+    bytes: &[u8],
+    temp_path: PathBuf,
+) -> Result<(), String> {
+    ensure_snapshot_dir(data_dir).map_err(|e| format!("mkdir snapshot dir failed: {e}"))?;
     let path = snapshot_path(data_dir, session_id);
     {
         let mut file = fs::OpenOptions::new()
@@ -234,7 +263,7 @@ fn flush_snapshot_to_disk_result_with_temp_path(
             .create_new(true)
             .open(&temp_path)
             .map_err(|e| format!("snapshot temp write failed for {session_id}: {e}"))?;
-        file.write_all(&bytes)
+        file.write_all(bytes)
             .map_err(|e| format!("snapshot temp write failed for {session_id}: {e}"))?;
         file.sync_all()
             .map_err(|e| format!("snapshot temp sync failed for {session_id}: {e}"))?;
@@ -244,11 +273,13 @@ fn flush_snapshot_to_disk_result_with_temp_path(
         let _ = fs::remove_file(&temp_path);
         format!("snapshot rename failed for {session_id}: {e}")
     })?;
-    if let Some(parent) = path.parent() {
-        if let Ok(dir) = fs::File::open(parent) {
-            let _ = dir.sync_all();
-        }
-    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("snapshot path has no parent for {session_id}"))?;
+    let dir = fs::File::open(parent)
+        .map_err(|e| format!("snapshot directory open failed for {session_id}: {e}"))?;
+    dir.sync_all()
+        .map_err(|e| format!("snapshot directory sync failed for {session_id}: {e}"))?;
     Ok(())
 }
 

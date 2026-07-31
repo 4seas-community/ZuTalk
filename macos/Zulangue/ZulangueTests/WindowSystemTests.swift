@@ -527,7 +527,7 @@ final class WindowSystemTests: XCTestCase {
                 languageCount: 4,
                 fontSize: 30
             ),
-            2
+            3
         )
         XCTAssertEqual(
             SubtitleOverlayLayoutPolicy.audienceColumnCount(
@@ -535,7 +535,7 @@ final class WindowSystemTests: XCTestCase {
                 languageCount: 4,
                 fontSize: 30
             ),
-            4
+            3
         )
         XCTAssertEqual(
             SubtitleOverlayLayoutPolicy.audienceColumnCount(
@@ -545,7 +545,7 @@ final class WindowSystemTests: XCTestCase {
             ),
             1
         )
-        XCTAssertEqual(SubtitleOverlayLayoutPolicy.maximumLanguageCount, 4)
+        XCTAssertEqual(SubtitleOverlayLayoutPolicy.maximumLanguageCount, 3)
     }
 
     func testSubtitleOverlayFontPolicy_clampsAndStepsWithinReadableRange() {
