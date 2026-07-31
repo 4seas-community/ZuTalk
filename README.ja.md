@@ -1,6 +1,6 @@
 # Zulangue
 
-[English](README.md) | [ไทย](README.th.md) | [မြန်မာ](README.my.md) | **日本語** | [Français](README.fr.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [简体中文](README.zh-Hans.md)
+[English](README.md) | [ไทย](README.th.md) | **日本語** | [Français](README.fr.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [简体中文](README.zh-Hans.md)
 
 Zulangue は macOS ネイティブのボイスノートアプリです。録音・文字起こし・
 コンテンツの整理を支援し、フローティング字幕で多言語の会話を追いかけられます。

@@ -1,6 +1,6 @@
 # Zulangue
 
-[English](README.md) | [ไทย](README.th.md) | [မြန်မာ](README.my.md) | [日本語](README.ja.md) | [Français](README.fr.md) | [Español](README.es.md) | [Deutsch](README.de.md) | **简体中文**
+[English](README.md) | [ไทย](README.th.md) | [日本語](README.ja.md) | [Français](README.fr.md) | [Español](README.es.md) | [Deutsch](README.de.md) | **简体中文**
 
 Zulangue 是一款原生 macOS 语音笔记应用，帮助你录音、转录、整理内容，
 并用悬浮字幕跟随多语言对话。

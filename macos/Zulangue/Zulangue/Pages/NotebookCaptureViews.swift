@@ -936,7 +936,7 @@ enum NotebookCaptureSupportedLanguages {
 
     /// Surfaced as one-tap suggestions before the user types a search query.
     /// Ordered for the primary deployment region (Thailand).
-    static let suggestedCodes = ["th", "en", "my", "zh"]
+    static let suggestedCodes = ["th", "en", "zh"]
 
     static let codes = [
         "af", "sq", "ar", "az", "eu", "be", "bn", "bs", "bg", "ca",

@@ -9,7 +9,7 @@
 //! let msg = tr!("error.stt.ws_failed", detail = "dns".to_string());
 //! ```
 //!
-//! 支持的 locale：`en` / `th` / `my` / `ja` / `fr` / `es` / `de` / `zh-Hans`，
+//! 支持的 locale：`en` / `th` / `ja` / `fr` / `es` / `de` / `zh-Hans`，
 //! fallback = `en`。
 //!
 //! 权威：docs/i18n.md（待建）
@@ -49,7 +49,7 @@ pub fn t_args(key: &str, args: &[(&str, &str)]) -> String {
 /// 切换全局 locale。accepted 形式：
 /// - "en" / "en-US" → `"en"`
 /// - "zh" 系全部标签（zh-Hans / zh-CN / zh-Hant / zh-TW / …）→ `"zh-Hans"`（暂无繁体，回退简体）
-/// - "th" / "my" / "ja" / "fr" / "es" / "de"（含带区域后缀形式）→ 各自基础标签
+/// - "th" / "ja" / "fr" / "es" / "de"（含带区域后缀形式）→ 各自基础标签
 /// - 其它 → `"en"`
 pub fn set_locale(tag: &str) {
     rust_i18n::set_locale(normalize_tag(tag));
@@ -62,7 +62,7 @@ pub fn current_locale() -> String {
 
 /// 列出支持的 locale 标签。
 pub fn available_locales() -> &'static [&'static str] {
-    &["en", "th", "my", "ja", "fr", "es", "de", "zh-Hans"]
+    &["en", "th", "ja", "fr", "es", "de", "zh-Hans"]
 }
 
 fn normalize_tag(tag: &str) -> &'static str {
@@ -71,7 +71,6 @@ fn normalize_tag(tag: &str) -> &'static str {
     match base {
         "zh" => "zh-Hans",
         "th" => "th",
-        "my" => "my",
         "ja" => "ja",
         "fr" => "fr",
         "es" => "es",
@@ -106,7 +105,7 @@ mod tests {
         assert_eq!(normalize_tag("ja-JP"), "ja");
         assert_eq!(normalize_tag("th"), "th");
         assert_eq!(normalize_tag("th-TH"), "th");
-        assert_eq!(normalize_tag("my"), "my");
+        assert_eq!(normalize_tag("my"), "en");
         assert_eq!(normalize_tag("fr"), "fr");
         assert_eq!(normalize_tag("fr-FR"), "fr");
         assert_eq!(normalize_tag("es-419"), "es");
