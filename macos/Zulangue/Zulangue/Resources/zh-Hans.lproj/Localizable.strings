@@ -818,6 +818,7 @@
 "capture.settings.languages.question" = "本场会使用哪些语言？";
 "capture.settings.languages.ordered_detail" = "请按显示顺序添加。每种所选语言都会显示为一栏；说话原文先出现，其余栏目通常稍后补齐。";
 "capture.settings.languages.search" = "搜索并添加语言";
+"capture.settings.languages.suggested" = "常用语言";
 "capture.settings.languages.no_results" = "没有找到尚未选择的匹配语言。";
 "capture.settings.languages.maximum_reached" = "每场最多可选择三种语言。";
 "capture.settings.languages.add_format" = "添加 %@";

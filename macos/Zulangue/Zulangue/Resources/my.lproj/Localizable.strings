@@ -818,6 +818,7 @@
 "capture.settings.languages.question" = "ဤစက်ရှင်တွင် မည်သည့် ဘာသာစကားများ သုံးမည်နည်း။";
 "capture.settings.languages.ordered_detail" = "ပြသလိုသော အစီအစဉ်အတိုင်း ဘာသာစကားများ ထည့်ပါ။ ရွေးထားသော ဘာသာစကားတစ်ခုစီအတွက် ကိုယ်ပိုင်ကော်လံ ရရှိပြီး ပြောသောစာသား ဦးစွာပေါ်ကာ အခြားကော်လံများ ခဏအကြာတွင် ဖြည့်သွားပါမည်။";
 "capture.settings.languages.search" = "ထည့်ရန် ဘာသာစကားများ ရှာပါ";
+"capture.settings.languages.suggested" = "အသုံးများသော ဘာသာစကားများ";
 "capture.settings.languages.no_results" = "မရွေးရသေးသော ဘာသာစကားများတွင် ကိုက်ညီမှု မရှိပါ။";
 "capture.settings.languages.maximum_reached" = "စက်ရှင်တစ်ခုအတွက် ဘာသာစကား သုံးမျိုးအထိသာ ရွေးနိုင်ပါသည်။";
 "capture.settings.languages.add_format" = "%@ ထည့်ရန်";

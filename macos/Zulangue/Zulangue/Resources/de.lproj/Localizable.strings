@@ -817,6 +817,7 @@
 "capture.settings.languages.question" = "Welche Sprachen werden in dieser Sitzung verwendet?";
 "capture.settings.languages.ordered_detail" = "Füge Sprachen in Anzeigereihenfolge hinzu. Jede ausgewählte Sprache erhält ihre eigene Spalte; gesprochener Text erscheint zuerst, die anderen Spalten füllen sich kurz danach.";
 "capture.settings.languages.search" = "Sprachen zum Hinzufügen suchen";
+"capture.settings.languages.suggested" = "Häufige Sprachen";
 "capture.settings.languages.no_results" = "Keine nicht ausgewählte Sprache entspricht deiner Suche.";
 "capture.settings.languages.maximum_reached" = "Du kannst bis zu drei Sprachen pro Sitzung auswählen.";
 "capture.settings.languages.add_format" = "%@ hinzufügen";

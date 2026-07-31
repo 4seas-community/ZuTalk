@@ -806,6 +806,7 @@
 "capture.settings.languages.question" = "このセッションではどの言語を使用しますか？";
 "capture.settings.languages.ordered_detail" = "表示順に追加してください。選択した各言語はそれぞれの列に表示され、発言の原文が先に現れた後、ほかの列が追って補われます。";
 "capture.settings.languages.search" = "追加する言語を検索";
+"capture.settings.languages.suggested" = "よく使う言語";
 "capture.settings.languages.no_results" = "未選択の言語に一致するものがありません。";
 "capture.settings.languages.maximum_reached" = "1セッションにつき最大3言語まで選択できます。";
 "capture.settings.languages.add_format" = "%@を追加";

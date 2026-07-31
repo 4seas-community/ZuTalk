@@ -934,6 +934,10 @@ private func notebookCaptureProviderDisplayName(_ providerId: String) -> String 
 enum NotebookCaptureSupportedLanguages {
     static let maximumSelectedCount = 3
 
+    /// Surfaced as one-tap suggestions before the user types a search query.
+    /// Ordered for the primary deployment region (Thailand).
+    static let suggestedCodes = ["th", "en", "my", "zh"]
+
     static let codes = [
         "af", "sq", "ar", "az", "eu", "be", "bn", "bs", "bg", "ca",
         "zh", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "gl",
@@ -1004,30 +1008,13 @@ private struct NotebookRealtimeCaptureConsole: View {
         }
     }
 
+    /// While capture is active the language columns identify themselves in the
+    /// transcript header, so this row stays a single thin status line and does
+    /// not repeat the selected languages.
     private var activeRunSummary: some View {
         let profile = capture.profile
-        return VStack(alignment: .leading, spacing: Spacing.sm) {
-            HStack(alignment: .top, spacing: Spacing.md) {
-                scopeCopy
-                Spacer(minLength: Spacing.sm)
-                if presentation == .drainingSummary {
-                    HStack(spacing: Spacing.xs) {
-                        if capture.isAudioDrainDelayed {
-                            Image(systemName: "externaldrive.badge.timemachine")
-                                .accessibilityHidden(true)
-                            Text(String(localized: "capture.state.audio_drain_delayed"))
-                        } else {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text(String(localized: "capture.state.draining"))
-                        }
-                    }
-                    .font(.captionMedium)
-                    .foregroundColor(.textOnBpDim)
-                    .accessibilityElement(children: .combine)
-                }
-            }
-
+        return HStack(alignment: .center, spacing: Spacing.md) {
+            scopeCopy
             if presentation == .activeElsewhereSummary {
                 Label(
                     String(localized: "capture.toolbar.active_other_notebook"),
@@ -1036,19 +1023,26 @@ private struct NotebookRealtimeCaptureConsole: View {
                 .font(.captionMedium)
                 .foregroundColor(.textOnBpDim)
             } else {
-                HStack(spacing: Spacing.sm) {
-                    summaryChip(
-                        activeRemoteStatus(for: profile),
-                        systemImage: profile.remoteRealtimeEnabled ? "network" : "lock.fill"
-                    )
-                    if profile.remoteRealtimeEnabled,
-                       profile.selectedLanguages.isEmpty == false {
-                        summaryChip(
-                            profile.selectedLanguages.map(languageLabel).joined(separator: " · "),
-                            systemImage: "character.bubble"
-                        )
+                summaryChip(
+                    activeRemoteStatus(for: profile),
+                    systemImage: profile.remoteRealtimeEnabled ? "network" : "lock.fill"
+                )
+            }
+            Spacer(minLength: Spacing.sm)
+            if presentation == .drainingSummary {
+                HStack(spacing: Spacing.xs) {
+                    if capture.isAudioDrainDelayed {
+                        Image(systemName: "externaldrive.badge.timemachine")
+                            .accessibilityHidden(true)
+                        Text(String(localized: "capture.state.audio_drain_delayed"))
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(String(localized: "capture.state.draining"))
                     }
                 }
+                .font(.captionMedium)
+                .foregroundColor(.textOnBpDim)
                 .accessibilityElement(children: .combine)
             }
         }
@@ -1150,7 +1144,9 @@ private struct NotebookRealtimeCaptureConsole: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: Radius.xs))
 
-            if languageSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            if languageSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                suggestedLanguageResults
+            } else {
                 languageSearchResults
             }
         }
@@ -1201,31 +1197,55 @@ private struct NotebookRealtimeCaptureConsole: View {
                     .foregroundColor(.textOnBpFaint)
                     .padding(.vertical, Spacing.xs)
             } else {
-                ScrollView(.horizontal) {
-                    HStack(spacing: Spacing.xs) {
-                        ForEach(matches, id: \.code) { language in
-                            Button {
-                                addLanguage(language.code)
-                            } label: {
-                                Label(language.label, systemImage: "plus")
-                                    .font(.caption)
-                                    .padding(.horizontal, Spacing.sm)
-                                    .frame(minHeight: 32)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundColor(.bpLine)
-                            .background(Color.bpBlueLight.opacity(0.42))
-                            .clipShape(Capsule())
-                            .accessibilityLabel(Text(String(
-                                format: String(localized: "capture.settings.languages.add_format"),
-                                language.label
-                            )))
-                        }
-                    }
-                }
-                .scrollIndicators(.visible)
+                addLanguageChipRow(matches)
             }
         }
+    }
+
+    @ViewBuilder
+    private var suggestedLanguageResults: some View {
+        let selected = Set(draft.selectedLanguages)
+        let suggestions = NotebookCaptureSupportedLanguages.suggestedCodes
+            .filter { selected.contains($0) == false }
+            .compactMap { code in languages.first { $0.code == code } }
+
+        if draft.selectedLanguages.count < NotebookCaptureSupportedLanguages.maximumSelectedCount,
+           suggestions.isEmpty == false {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(String(localized: "capture.settings.languages.suggested"))
+                    .font(.system(size: 10))
+                    .foregroundColor(.textOnBpFaint)
+                addLanguageChipRow(suggestions)
+            }
+        }
+    }
+
+    private func addLanguageChipRow(
+        _ options: [(code: String, label: String)]
+    ) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: Spacing.xs) {
+                ForEach(options, id: \.code) { language in
+                    Button {
+                        addLanguage(language.code)
+                    } label: {
+                        Label(language.label, systemImage: "plus")
+                            .font(.caption)
+                            .padding(.horizontal, Spacing.sm)
+                            .frame(minHeight: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.bpLine)
+                    .background(Color.bpBlueLight.opacity(0.42))
+                    .clipShape(Capsule())
+                    .accessibilityLabel(Text(String(
+                        format: String(localized: "capture.settings.languages.add_format"),
+                        language.label
+                    )))
+                }
+            }
+        }
+        .scrollIndicators(.visible)
     }
 
     private func selectedLanguageChip(language: String, index: Int) -> some View {
@@ -2856,13 +2876,21 @@ struct NotebookRealtimeUtteranceView: View {
     }
 
     private func languageHeading(_ code: String) -> some View {
-        Text(code.uppercased())
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-            .tracking(0.8)
-            .foregroundColor(.bpLine)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Spacing.md)
-            .accessibilityAddTraits(.isHeader)
+        HStack(spacing: Spacing.xs) {
+            if let name = Locale.current.localizedString(forLanguageCode: code) {
+                Text(name)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.bpLine)
+            }
+            Text(code.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .tracking(0.8)
+                .foregroundColor(.textOnBpFaint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Spacing.md)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private var captureStateLabel: some View {

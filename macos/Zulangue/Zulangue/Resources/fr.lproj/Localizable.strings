@@ -818,6 +818,7 @@
 "capture.settings.languages.question" = "Quelles langues seront utilisées dans cette session ?";
 "capture.settings.languages.ordered_detail" = "Ajoutez les langues dans l’ordre d’affichage. Chaque langue sélectionnée a sa propre colonne ; le texte prononcé apparaît en premier, puis les autres colonnes se remplissent peu après.";
 "capture.settings.languages.search" = "Rechercher des langues à ajouter";
+"capture.settings.languages.suggested" = "Langues courantes";
 "capture.settings.languages.no_results" = "Aucune langue non sélectionnée ne correspond à votre recherche.";
 "capture.settings.languages.maximum_reached" = "Vous pouvez sélectionner jusqu’à trois langues par session.";
 "capture.settings.languages.add_format" = "Ajouter %@";

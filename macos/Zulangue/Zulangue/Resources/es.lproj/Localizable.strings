@@ -817,6 +817,7 @@
 "capture.settings.languages.question" = "¿Qué idiomas se usarán en esta sesión?";
 "capture.settings.languages.ordered_detail" = "Agregue los idiomas en el orden de visualización. Cada idioma seleccionado tiene su propia columna; el texto hablado aparece primero y las demás columnas se completan poco después.";
 "capture.settings.languages.search" = "Buscar idiomas para agregar";
+"capture.settings.languages.suggested" = "Idiomas frecuentes";
 "capture.settings.languages.no_results" = "Ningún idioma sin seleccionar coincide con su búsqueda.";
 "capture.settings.languages.maximum_reached" = "Puede seleccionar hasta tres idiomas por sesión.";
 "capture.settings.languages.add_format" = "Agregar %@";

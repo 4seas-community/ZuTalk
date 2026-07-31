@@ -818,6 +818,7 @@
 "capture.settings.languages.question" = "เซสชันนี้จะใช้ภาษาใดบ้าง";
 "capture.settings.languages.ordered_detail" = "เพิ่มภาษาตามลำดับการแสดงผล แต่ละภาษาที่เลือกจะมีคอลัมน์ของตัวเอง ข้อความที่พูดจะปรากฏก่อน แล้วคอลัมน์อื่นจะเติมตามมาในไม่ช้า";
 "capture.settings.languages.search" = "ค้นหาภาษาที่จะเพิ่ม";
+"capture.settings.languages.suggested" = "ภาษาที่ใช้บ่อย";
 "capture.settings.languages.no_results" = "ไม่มีภาษาที่ยังไม่ได้เลือกตรงกับการค้นหาของคุณ";
 "capture.settings.languages.maximum_reached" = "เลือกได้สูงสุดสามภาษาต่อหนึ่งเซสชัน";
 "capture.settings.languages.add_format" = "เพิ่ม %@";
