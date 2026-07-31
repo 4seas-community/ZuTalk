@@ -565,7 +565,15 @@ fn validate_v27_baseline(conn: &Connection) -> SqlResult<()> {
 }
 
 fn validate_v28_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, TRANSLATION_INBOX_VERSION, true, true, true, true, false)
+    validate_v24_or_later_baseline(
+        conn,
+        TRANSLATION_INBOX_VERSION,
+        true,
+        true,
+        true,
+        true,
+        false,
+    )
 }
 
 fn validate_v29_baseline(conn: &Connection) -> SqlResult<()> {
