@@ -133,8 +133,7 @@ DEVICE=""
 mkdir -p "$(dirname "$OUTPUT_DMG")"
 rm -f -- "$OUTPUT_DMG"
 hdiutil convert "$WRITABLE_DMG" \
-  -format UDZO \
-  -imagekey zlib-level=9 \
+  -format ULMO \
   -o "$OUTPUT_DMG" >/dev/null
 
 VERIFY_ATTACH_OUTPUT="$(

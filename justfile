@@ -671,6 +671,11 @@ sparkle-appcast:
     cp "$DMG" "$UPDATE_DIR/"
     BASENAME="$(basename "$DMG" .dmg)"
     cp "{{ project_dir }}/packaging/release-notes.md" "$UPDATE_DIR/${BASENAME}.md"
+    # Delta updates need the published DMGs of the two previous versions in
+    # place; a full download stays available for everyone else.
+    ls -t {{ dmg_dir }}/Zulangue-*.dmg 2>/dev/null | sed -n '2,3p' | while read -r OLD; do
+        cp "$OLD" "$UPDATE_DIR/"
+    done
 
     TOOL_DIR="$(mktemp -d)"
     trap 'find "$TOOL_DIR" -depth -delete 2>/dev/null || true' EXIT
@@ -691,7 +696,8 @@ sparkle-appcast:
         --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
         --link "https://github.com/${GITHUB_REPOSITORY}" \
         --embed-release-notes \
-        --maximum-deltas 0 \
+        --maximum-deltas 2 \
+        --maximum-versions 1 \
         -o "$UPDATE_DIR/appcast.xml" \
         "$UPDATE_DIR"
     test -f "$UPDATE_DIR/appcast.xml" \

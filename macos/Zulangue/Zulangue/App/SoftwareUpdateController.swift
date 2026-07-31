@@ -5,13 +5,21 @@ import Sparkle
 ///
 /// Sparkle starts only in a real app process. Unit and UI tests can exercise
 /// routing without contacting the public appcast or changing updater defaults.
+///
+/// Transient network failures (an interrupted download or an unreachable
+/// appcast) are retried automatically a few times before the user has to act,
+/// because the public release CDN is unreliable from some networks.
 @MainActor
-final class SoftwareUpdateController {
+final class SoftwareUpdateController: NSObject {
     static let shared = SoftwareUpdateController()
 
-    private let updaterController: SPUStandardUpdaterController
+    static let maximumNetworkRetries = 2
+    private static let retryDelaySeconds: TimeInterval = 6
+
+    private var updaterController: SPUStandardUpdaterController!
     private var testCheckAction: (() -> Void)?
-    private let isConfigured: Bool
+    private var isConfigured = false
+    private var retriesRemaining = SoftwareUpdateController.maximumNetworkRetries
 
     var isAvailable: Bool { isConfigured }
 
@@ -19,11 +27,12 @@ final class SoftwareUpdateController {
         isConfigured && updaterController.updater.automaticallyChecksForUpdates
     }
 
-    private init() {
+    override private init() {
+        super.init()
         isConfigured = Self.hasReleaseConfiguration
         updaterController = SPUStandardUpdaterController(
             startingUpdater: false,
-            updaterDelegate: nil,
+            updaterDelegate: self,
             userDriverDelegate: nil
         )
         if isConfigured && !TestEnvironment.isAnyTestMode {
@@ -45,6 +54,7 @@ final class SoftwareUpdateController {
             alert.runModal()
             return
         }
+        retriesRemaining = Self.maximumNetworkRetries
         updaterController.checkForUpdates(nil)
     }
 
@@ -58,6 +68,34 @@ final class SoftwareUpdateController {
         updaterController.updater.automaticallyChecksForUpdates = enabled
     }
 
+    /// Whether an aborted update cycle failed on the network rather than on
+    /// policy, signatures, or the user cancelling, and is worth retrying.
+    static func isTransientNetworkFailure(_ error: NSError) -> Bool {
+        guard error.domain == SUSparkleErrorDomain else { return false }
+        let retryableCodes = [
+            Int(SUError.downloadError.rawValue),
+            Int(SUError.appcastError.rawValue),
+        ]
+        guard retryableCodes.contains(error.code) else { return false }
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError,
+            underlying.domain == NSURLErrorDomain,
+            underlying.code == NSURLErrorCancelled
+        {
+            return false
+        }
+        return true
+    }
+
+    private func handleAbort(_ error: NSError) {
+        guard isConfigured, !TestEnvironment.isAnyTestMode else { return }
+        guard Self.isTransientNetworkFailure(error), retriesRemaining > 0 else { return }
+        retriesRemaining -= 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.retryDelaySeconds) { [weak self] in
+            guard let self, self.isConfigured else { return }
+            self.updaterController.checkForUpdates(nil)
+        }
+    }
+
     private static var hasReleaseConfiguration: Bool {
         guard
             let feedURL = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
@@ -68,5 +106,25 @@ final class SoftwareUpdateController {
         return feedURL.hasPrefix("https://")
             && !publicKey.isEmpty
             && !publicKey.contains("$(")
+    }
+}
+
+extension SoftwareUpdateController: SPUUpdaterDelegate {
+    nonisolated func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        let nsError = error as NSError
+        Task { @MainActor in
+            self.handleAbort(nsError)
+        }
+    }
+
+    nonisolated func updater(
+        _ updater: SPUUpdater,
+        didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
+        error: Error?
+    ) {
+        guard error == nil else { return }
+        Task { @MainActor in
+            self.retriesRemaining = Self.maximumNetworkRetries
+        }
     }
 }
