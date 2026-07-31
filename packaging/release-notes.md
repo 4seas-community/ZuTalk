@@ -1,14 +1,16 @@
-# Zulangue 0.1.3
+# Zulangue 0.1.4
 
-This release makes live multilingual transcription safer to edit and easier to
-follow.
+This release keeps multilingual transcripts durable across restarts and
+network interruptions.
 
-- Preserves transcript lanes that you have corrected while recording continues.
-- Keeps finalized transcript lanes stable instead of rewriting them with stale
-  provider updates.
-- Improves live capture updates and multilingual subtitle presentation.
-- Retains the movable, resizable, always-on-top subtitle window and Notebook
-  resource timeline introduced in 0.1.2.
+- Persists realtime translation lanes so multilingual transcripts survive
+  app restarts without losing corrections.
+- Preserves captured audio across realtime network interruptions and records
+  the gaps so the missing transcript can be repaired.
+- Recovers realtime transcription automatically after temporary service
+  interruptions.
+- Audience subtitle mode now shows the latest utterance in up to three equal
+  languages.
 - Continues to verify updates with the project-specific Sparkle signing key.
 
 Zulangue requires macOS 15.5 or later.
