@@ -91,6 +91,293 @@ enum SubtitleOverlayLayoutPolicy {
     }
 }
 
+/// The multilingual audience canvas as per-language tracks on one shared
+/// capture timeline — the caption-format shape (WebVTT/TTML: one track per
+/// language, cues anchored to time, no cross-track binding).
+///
+/// A column holds the source lines placed in its language plus the
+/// translation cues targeting it, each in its own segmentation. Columns do
+/// not row-align: every column bottom-anchors, so "now" is the bottom edge
+/// of every column and cross-language correspondence holds exactly where the
+/// audience is reading. History above may drift out of row alignment; the
+/// standing invariant already prefers the present over the past.
+enum SubtitleAudienceTimeline {
+    struct Item: Identifiable, Equatable {
+        enum Kind: Equatable {
+            case source
+            case translation
+        }
+
+        let id: String
+        let kind: Kind
+        let text: String
+        /// Capture-timeline start of the words this item covers. Translation
+        /// items inherit their segment's source-token range — translation
+        /// tokens themselves carry no provider timestamps.
+        let anchorMs: UInt64?
+        /// Provider order, the tiebreak within one stream's own output.
+        let order: UInt64
+    }
+
+    /// Spoken order: anchored items by time (source before its own
+    /// translation on a tie), unanchored items after everything timed.
+    /// Timestamps restart when a whole stream group restarts, so ordering
+    /// across a restart leans on the fact that old-epoch items leave the
+    /// visible suffix almost immediately.
+    static func columns(
+        languages: [String],
+        utterances: [NotebookCaptureUtteranceDTO],
+        placement: (NotebookCaptureUtteranceDTO) -> String?,
+        cues: (String) -> [NotebookCaptureTranslationCueDTO]
+    ) -> [String: [Item]] {
+        var columns: [String: [Item]] = [:]
+        for language in languages {
+            columns[language] = []
+        }
+        for utterance in utterances {
+            guard let language = placement(utterance),
+                  columns[language] != nil
+            else { continue }
+            columns[language]?.append(Item(
+                id: "source:\(utterance.id)",
+                kind: .source,
+                text: utterance.sourceText,
+                anchorMs: utterance.sourceStartMs,
+                order: utterance.sequence
+            ))
+        }
+        for language in languages {
+            for cue in cues(language) where cue.text.isEmpty == false {
+                // A cue that "translates" its own language would double the
+                // source line; providers do not emit these, and one arriving
+                // anyway must not duplicate the column.
+                guard cue.sourceLanguage != cue.targetLanguage else { continue }
+                columns[language]?.append(Item(
+                    id: "cue:\(cue.id)",
+                    kind: .translation,
+                    text: cue.text,
+                    anchorMs: cue.sourceStartMs,
+                    order: cue.providerSequence
+                ))
+            }
+        }
+        for language in languages {
+            columns[language]?.sort { left, right in
+                switch (left.anchorMs, right.anchorMs) {
+                case let (.some(leftAnchor), .some(rightAnchor)) where leftAnchor != rightAnchor:
+                    return leftAnchor < rightAnchor
+                case (.some, .none):
+                    return true
+                case (.none, .some):
+                    return false
+                default:
+                    if left.kind != right.kind {
+                        return left.kind == .source
+                    }
+                    return left.order < right.order
+                }
+            }
+        }
+        return columns
+    }
+
+    /// Columns whose newest content trails the newest spoken words. The
+    /// waiting placeholder keeps the lane visibly alive instead of letting an
+    /// absent column read as "this language is broken". A column already
+    /// carrying a partial cue for the current sentence is not waiting: its
+    /// anchor matches the newest source anchor.
+    static func waitingLanguages(columns: [String: [Item]]) -> Set<String> {
+        let newestSpoken = columns.values
+            .joined()
+            .filter { $0.kind == .source }
+            .compactMap(\.anchorMs)
+            .max()
+        guard let newestSpoken else { return [] }
+        var waiting: Set<String> = []
+        for (language, items) in columns {
+            let newest = items.compactMap(\.anchorMs).max() ?? 0
+            if newest < newestSpoken {
+                waiting.insert(language)
+            }
+        }
+        return waiting
+    }
+
+    /// The newest line no column claims — an unselected known language, or a
+    /// line whose identity is still pending with no usable hint. Only the
+    /// newest one: speech is still speech and must appear, but yesterday's
+    /// unrouted line must not pin a permanent strip under the columns.
+    static func unroutedText(
+        utterances: [NotebookCaptureUtteranceDTO],
+        placement: (NotebookCaptureUtteranceDTO) -> String?
+    ) -> String? {
+        guard let last = utterances.last,
+              last.hasSourceLane,
+              last.sourceText.isEmpty == false,
+              placement(last) == nil
+        else { return nil }
+        return last.sourceText
+    }
+}
+
+/// Paces a translation card's text onto the screen at reading speed instead of
+/// painting each provider batch as one slab.
+///
+/// Translations arrive in mouthfuls — measured p50 15 tokens per batch, p50
+/// 1.4 s between batches — because the provider needs source context before it
+/// can translate at all. The gap between mouthfuls is idle screen time; the
+/// reveal cursor spends exactly that time walking through the buffered text,
+/// so the column reads as flowing words while adding only bounded latency.
+///
+/// The unrevealed tail is also a free mask: a provider rewrite that lands
+/// beyond the cursor was never on screen, so it costs zero visible erasure —
+/// masking priced in idle time instead of MeetDot's constant four words or the
+/// 4-second lag Google pays for erasure 0.1.
+enum SubtitlePacedReveal {
+    struct State: Equatable {
+        /// Fractional so per-tick advances below one character accumulate.
+        var revealedChars: Double = 0
+
+        func revealedPrefix(of text: String) -> String {
+            let whole = Int(revealedChars)
+            if whole >= text.count { return text }
+            return String(text.prefix(whole))
+        }
+    }
+
+    /// Dense scripts (CJK, Thai) carry a word per character or two and are
+    /// read at far fewer characters per second than spaced Latin text.
+    enum Script {
+        case dense
+        case spaced
+    }
+
+    /// Base rates hold a column legible; the adaptive term above them exists
+    /// to drain a measured-size backlog inside one measured batch gap
+    /// (~90 Latin / ~25 dense chars per mouthful, ~1.4 s to the next one).
+    static func characterRate(script: Script, backlogChars: Int) -> Double {
+        let (base, halfway): (Double, Double) = switch script {
+        case .dense: (13, 20)
+        case .spaced: (40, 60)
+        }
+        return base * (1 + Double(max(backlogChars, 0)) / halfway)
+    }
+
+    /// Beyond four mouthfuls of backlog (a reconnect flood, not live speech),
+    /// pacing would turn into visible lag; the cursor snaps forward instead.
+    static func snapBacklogLimit(script: Script) -> Int {
+        switch script {
+        case .dense: 100
+        case .spaced: 360
+        }
+    }
+
+    static func script(for text: String) -> Script {
+        var dense = 0
+        var scored = 0
+        for scalar in text.unicodeScalars {
+            guard scalar.properties.isAlphabetic else { continue }
+            scored += 1
+            switch scalar.value {
+            case 0x2E80...0x9FFF,       // CJK radicals through unified ideographs
+                 0x3040...0x30FF,       // kana
+                 0xF900...0xFAFF,       // compatibility ideographs
+                 0x0E00...0x0E7F:       // Thai
+                dense += 1
+            default:
+                break
+            }
+        }
+        guard scored > 0 else { return .spaced }
+        return dense * 2 >= scored ? .dense : .spaced
+    }
+
+    /// A text change keeps every already-revealed character that survived and
+    /// never re-reveals what the reader has seen: appends and beyond-cursor
+    /// rewrites leave the cursor alone; a rewrite that reaches under the
+    /// cursor snaps it back to the surviving prefix so the correction shows
+    /// immediately instead of replaying the whole card.
+    static func reconcile(state: State, oldText: String, newText: String) -> State {
+        var state = state
+        let survivingPrefix = zip(oldText, newText)
+            .prefix(while: { $0 == $1 })
+            .count
+        if state.revealedChars > Double(survivingPrefix) {
+            state.revealedChars = Double(survivingPrefix)
+        }
+        return state
+    }
+
+    static func advance(state: State, elapsedSeconds: Double, text: String) -> State {
+        var state = state
+        let total = Double(text.count)
+        guard state.revealedChars < total else {
+            state.revealedChars = total
+            return state
+        }
+        let script = script(for: text)
+        let backlog = Int(total - state.revealedChars)
+        if backlog > snapBacklogLimit(script: script) {
+            state.revealedChars = total - Double(snapBacklogLimit(script: script))
+        }
+        let rate = characterRate(script: script, backlogChars: backlog)
+        state.revealedChars = min(total, state.revealedChars + rate * elapsedSeconds)
+        return state
+    }
+}
+
+/// Drives `SubtitlePacedReveal` at caption frame rate. The task restarts on
+/// every text revision: reconcile decides what the cursor keeps, then the
+/// loop walks the remainder out at reading speed and ends when the card is
+/// fully revealed — an idle card costs no timer.
+private struct AudiencePacedText: View {
+    let text: String
+    let fontSize: Double
+    let startsRevealed: Bool
+
+    @State private var reveal: SubtitlePacedReveal.State
+    @State private var revealedText: String
+    @State private var lastText: String
+
+    init(text: String, fontSize: Double, startsRevealed: Bool) {
+        self.text = text
+        self.fontSize = fontSize
+        self.startsRevealed = startsRevealed
+        _reveal = State(initialValue: SubtitlePacedReveal.State(
+            revealedChars: startsRevealed ? Double(text.count) : 0
+        ))
+        _revealedText = State(initialValue: startsRevealed ? text : "")
+        _lastText = State(initialValue: text)
+    }
+
+    var body: some View {
+        Text(revealedText)
+            .font(.system(size: CGFloat(fontSize), weight: .semibold))
+            .foregroundColor(.primary)
+            .textSelection(.enabled)
+            .multilineTextAlignment(.leading)
+            .task(id: text) {
+                reveal = SubtitlePacedReveal.reconcile(
+                    state: reveal,
+                    oldText: lastText,
+                    newText: text
+                )
+                lastText = text
+                revealedText = reveal.revealedPrefix(of: text)
+                while !Task.isCancelled, Int(reveal.revealedChars) < text.count {
+                    try? await Task.sleep(for: .milliseconds(33))
+                    if Task.isCancelled { return }
+                    reveal = SubtitlePacedReveal.advance(
+                        state: reveal,
+                        elapsedSeconds: 0.033,
+                        text: text
+                    )
+                    revealedText = reveal.revealedPrefix(of: text)
+                }
+            }
+    }
+}
+
 /// The overlay paints on an opaque surface instead of a blurred material.
 ///
 /// A translucent window makes the compositor re-run a CoreImage backdrop blur
@@ -534,6 +821,157 @@ struct SubtitleOverlayView: View {
     /// already-read head and keeps the live tail on screen.
     @ViewBuilder
     private func audienceBody(geometry: GeometryProxy) -> some View {
+        // Multilingual capture reads translations as time-anchored cues on
+        // per-language tracks; the row model would gate every translation on
+        // the slower canonical row it binds to. Two-way capture has no
+        // auxiliary streams and no cues, so it keeps the row model.
+        if store.profile.mode == .multilingualOneWay {
+            audienceTimelineBody(geometry: geometry)
+        } else {
+            audienceRowsBody(geometry: geometry)
+        }
+    }
+
+    @ViewBuilder
+    private func audienceTimelineBody(geometry: GeometryProxy) -> some View {
+        let languages = store.selectedLanguages
+        let columns = SubtitleAudienceTimeline.columns(
+            languages: languages,
+            utterances: store.presentedUtterances,
+            placement: { store.audienceSourcePlacement(for: $0) },
+            cues: { store.presentedTranslationCues(for: $0) }
+        )
+        let waiting = SubtitleAudienceTimeline.waitingLanguages(columns: columns)
+        let unrouted = SubtitleAudienceTimeline.unroutedText(
+            utterances: store.presentedUtterances,
+            placement: { store.audienceSourcePlacement(for: $0) }
+        )
+        let bandSize = SubtitleOverlayLayoutPolicy.audienceColumnCount(
+            width: geometry.size.width - 24,
+            languageCount: languages.count,
+            fontSize: fontSize
+        )
+        let bandStarts = Array(stride(from: 0, to: max(languages.count, 1), by: bandSize))
+        let itemBudget = SubtitleOverlayLayoutPolicy.audienceRowCount(
+            height: geometry.size.height / CGFloat(max(bandStarts.count, 1)),
+            fontSize: fontSize
+        )
+        let hasWords = columns.values.contains { $0.isEmpty == false } || unrouted != nil
+
+        if store.isCaptureActive, hasWords {
+            VStack(spacing: 8) {
+                ForEach(bandStarts, id: \.self) { start in
+                    HStack(alignment: .bottom, spacing: 8) {
+                        ForEach(
+                            Array(languages[start..<min(start + bandSize, languages.count)]),
+                            id: \.self
+                        ) { language in
+                            audienceCueColumn(
+                                language: language,
+                                items: Array((columns[language] ?? []).suffix(itemBudget)),
+                                waiting: waiting.contains(language)
+                            )
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                if let unrouted {
+                    audiencePlainText(unrouted)
+                }
+            }
+            .padding(12)
+            .frame(
+                width: geometry.size.width,
+                height: geometry.size.height,
+                alignment: .bottom
+            )
+            .clipped()
+        } else {
+            Color.clear
+        }
+    }
+
+    /// One language's track: its own cards, its own segmentation, bottom
+    /// anchored so the newest words sit on the shared "now" edge. Card counts
+    /// deliberately do not match across columns — a translation stream that
+    /// segments coarser than the canonical one produces fewer, longer cards,
+    /// and forcing them into row alignment is exactly the binding this layout
+    /// retires.
+    private func audienceCueColumn(
+        language: String,
+        items: [SubtitleAudienceTimeline.Item],
+        waiting: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(items) { item in
+                audienceCueCard(
+                    item: item,
+                    // Only the live tail paces from zero. Cards already on
+                    // screen keep their reveal state across updates (stable
+                    // ForEach identity); finished cards arriving with a
+                    // reopened window render instantly instead of replaying
+                    // history.
+                    startsRevealed: item.id != items.last?.id
+                )
+            }
+            if waiting {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: max(CGFloat(fontSize) * 0.55, 12), weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.55))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: CGFloat(fontSize) * 1.6,
+                        alignment: .bottomLeading
+                    )
+                    .background(subtitleCardBackground)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .bottom)
+        .animation(.easeOut(duration: 0.22), value: items.map(\.id))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(languageName(language)))
+    }
+
+    /// Source cards paint as delivered — the canonical preview already flows
+    /// at word grain. Translation cards pace: the provider hands translations
+    /// over in measured ~15-token mouthfuls every ~1.4 s, and painting a
+    /// mouthful as one slab is exactly the "blocky translation" complaint.
+    @ViewBuilder
+    private func audienceCueCard(
+        item: SubtitleAudienceTimeline.Item,
+        startsRevealed: Bool
+    ) -> some View {
+        if item.kind == .translation {
+            AudiencePacedText(
+                text: item.text,
+                fontSize: fontSize,
+                startsRevealed: startsRevealed
+            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .bottomLeading)
+            .background(subtitleCardBackground)
+        } else {
+            Text(item.text)
+                .font(.system(size: CGFloat(fontSize), weight: .semibold))
+                .foregroundColor(.primary)
+                .contentTransition(.opacity)
+                .animation(.easeOut(duration: 0.18), value: item.text)
+                .textSelection(.enabled)
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .bottomLeading)
+                .background(subtitleCardBackground)
+        }
+    }
+
+    @ViewBuilder
+    private func audienceRowsBody(geometry: GeometryProxy) -> some View {
         let utterances = Array(
             store.presentedUtterances.suffix(
                 SubtitleOverlayLayoutPolicy.audienceRowCount(

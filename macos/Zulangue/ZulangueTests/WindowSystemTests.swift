@@ -505,6 +505,188 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    func testAudienceTimelineColumnsAnchorByTimeAndKeepIndependentSegmentation() {
+        let source = { (sequence: UInt64, language: String, text: String, start: UInt64) in
+            NotebookCaptureUtteranceDTO(
+                id: "utt-\(sequence)",
+                sessionId: "session",
+                sequence: sequence,
+                revision: 1,
+                sourceLanguage: language,
+                sourceText: text,
+                sourceStartMs: start,
+                sourceEndMs: start + 500,
+                translatedLanguage: nil,
+                translatedText: nil,
+                completion: "complete",
+                alignment: "source_only"
+            )
+        }
+        let cue = { (sequence: UInt64, target: String, text: String, start: UInt64?) in
+            NotebookCaptureTranslationCueDTO(
+                targetLanguage: target,
+                groupEpoch: 0,
+                providerSequence: sequence,
+                sourceLanguage: "zh",
+                sourceStartMs: start,
+                sourceEndMs: start.map { $0 + 500 },
+                text: text,
+                completion: "partial",
+                withdrawn: false,
+                revision: 1
+            )
+        }
+        // One coarse English cue spans two Chinese source rows — the exact
+        // shape the old row binding lost 17% of translations to.
+        let columns = SubtitleAudienceTimeline.columns(
+            languages: ["zh", "en"],
+            utterances: [
+                source(0, "zh", "第一句", 1_000),
+                source(1, "zh", "第二句", 2_000),
+            ],
+            placement: { $0.sourceLanguage },
+            cues: { language in
+                language == "en"
+                    ? [
+                        cue(0, "en", "First and second sentence.", 1_000),
+                        cue(1, "en", "Untimed tail", nil),
+                    ]
+                    : []
+            }
+        )
+        XCTAssertEqual(columns["zh"]?.map(\.text), ["第一句", "第二句"])
+        // The coarse cue is one card, not a lost binding; the untimed cue
+        // sorts after every timed sibling.
+        XCTAssertEqual(
+            columns["en"]?.map(\.text),
+            ["First and second sentence.", "Untimed tail"]
+        )
+        // A source and its own-language cue never duplicate a column.
+        let echoed = SubtitleAudienceTimeline.columns(
+            languages: ["zh"],
+            utterances: [source(0, "zh", "你好", 1_000)],
+            placement: { $0.sourceLanguage },
+            cues: { _ in
+                [NotebookCaptureTranslationCueDTO(
+                    targetLanguage: "zh",
+                    groupEpoch: 0,
+                    providerSequence: 0,
+                    sourceLanguage: "zh",
+                    sourceStartMs: 1_000,
+                    sourceEndMs: 1_500,
+                    text: "你好",
+                    completion: "complete",
+                    withdrawn: false,
+                    revision: 1
+                )]
+            }
+        )
+        XCTAssertEqual(echoed["zh"]?.count, 1)
+
+        // The column still catching up shows as waiting; the column whose
+        // partial cue already covers the newest words does not.
+        let waiting = SubtitleAudienceTimeline.waitingLanguages(columns: SubtitleAudienceTimeline.columns(
+            languages: ["zh", "en", "th"],
+            utterances: [source(0, "zh", "新话", 5_000)],
+            placement: { $0.sourceLanguage },
+            cues: { language in
+                language == "en" ? [cue(0, "en", "New words", 5_000)] : []
+            }
+        ))
+        XCTAssertEqual(waiting, ["th"])
+
+        // Only the newest unplaced line surfaces as the unrouted strip.
+        let unrouted = SubtitleAudienceTimeline.unroutedText(
+            utterances: [source(0, "fr", "vieux", 1_000), source(1, "zh", "新", 2_000)],
+            placement: { $0.sourceLanguage == "zh" ? "zh" : nil }
+        )
+        XCTAssertNil(unrouted)
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.unroutedText(
+                utterances: [source(0, "zh", "旧", 1_000), source(1, "fr", "nouveau", 2_000)],
+                placement: { $0.sourceLanguage == "zh" ? "zh" : nil }
+            ),
+            "nouveau"
+        )
+    }
+
+    func testPacedRevealFlowsMouthfulsAndAbsorbsTailRewrites() {
+        // Reading rates are calibrated against the measured provider batch
+        // shape: ~15 tokens per mouthful, ~1.4 s until the next one. One
+        // mouthful must finish revealing inside that gap for either script.
+        for (text, budgetSeconds) in [
+            (String(repeating: "词", count: 25), 1.4),
+            (String(repeating: "word ", count: 15), 1.4),
+        ] {
+            var state = SubtitlePacedReveal.State()
+            var elapsed = 0.0
+            while Int(state.revealedChars) < text.count, elapsed < 10 {
+                state = SubtitlePacedReveal.advance(
+                    state: state,
+                    elapsedSeconds: 0.033,
+                    text: text
+                )
+                elapsed += 0.033
+            }
+            XCTAssertLessThanOrEqual(
+                elapsed,
+                budgetSeconds,
+                "one mouthful of \(text.prefix(4))… must drain within a batch gap"
+            )
+        }
+
+        // An append keeps the cursor: nothing the reader saw is replayed.
+        var state = SubtitlePacedReveal.State(revealedChars: 5)
+        state = SubtitlePacedReveal.reconcile(
+            state: state,
+            oldText: "hello",
+            newText: "hello world"
+        )
+        XCTAssertEqual(state.revealedChars, 5)
+
+        // A rewrite beyond the cursor is invisible and free.
+        state = SubtitlePacedReveal.State(revealedChars: 3)
+        state = SubtitlePacedReveal.reconcile(
+            state: state,
+            oldText: "helXYZ",
+            newText: "hello!"
+        )
+        XCTAssertEqual(state.revealedChars, 3)
+
+        // A rewrite under the cursor snaps back to the surviving prefix so
+        // the correction shows immediately.
+        state = SubtitlePacedReveal.State(revealedChars: 9)
+        state = SubtitlePacedReveal.reconcile(
+            state: state,
+            oldText: "hello red",
+            newText: "hello blue"
+        )
+        XCTAssertEqual(state.revealedChars, 6)
+
+        // A reconnect flood snaps forward: backlog never exceeds the cap
+        // after one tick.
+        let flood = String(repeating: "字", count: 500)
+        var flooded = SubtitlePacedReveal.State()
+        flooded = SubtitlePacedReveal.advance(
+            state: flooded,
+            elapsedSeconds: 0.033,
+            text: flood
+        )
+        XCTAssertGreaterThanOrEqual(
+            flooded.revealedChars,
+            Double(flood.count - SubtitlePacedReveal.snapBacklogLimit(script: .dense))
+        )
+
+        XCTAssertEqual(SubtitlePacedReveal.script(for: "สวัสดีครับ"), .dense)
+        XCTAssertEqual(SubtitlePacedReveal.script(for: "你好，世界"), .dense)
+        XCTAssertEqual(SubtitlePacedReveal.script(for: "Hello, world"), .spaced)
+        // Mixed line with a majority of spaced words stays spaced.
+        XCTAssertEqual(
+            SubtitlePacedReveal.script(for: "Der Begriff 道 im Kontext"),
+            .spaced
+        )
+    }
+
     func testSubtitleOverlayLayoutPolicyAdaptsConversationAndAudienceLayouts() {
         XCTAssertEqual(
             SubtitleOverlayLayoutPolicy.conversationLayout(

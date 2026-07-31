@@ -308,9 +308,45 @@ pub struct FfiNotebookCaptureEvent {
     pub post_stop_provider_id: Option<String>,
     pub post_stop_model_id: Option<String>,
     pub utterances: Vec<FfiNotebookCaptureUtterance>,
+    /// Auxiliary translation facts as time-anchored cues, independent of any
+    /// canonical row binding. On a full snapshot this replaces the client's
+    /// cue view with every present cue of the session; on a delta it carries
+    /// only cues changed by this event, applied by
+    /// `(group_epoch, provider_sequence, target_language)` upsert, where a
+    /// `withdrawn` cue removes the entry. Coalescing gaps heal through the
+    /// same full-snapshot rebuild as `utterances`.
+    pub translation_cues: Vec<FfiNotebookCaptureTranslationCue>,
     pub context_receipt: Option<FfiNotebookCaptureContextReceipt>,
     pub provider_error_type: Option<String>,
     pub provider_request_id: Option<String>,
+}
+
+/// One auxiliary translation segment, anchored to the capture-wide audio
+/// timeline it inherited from its own source tokens.
+///
+/// A cue never references a canonical utterance: which row's words it
+/// translates is a read-time question answered by time overlap, not a stored
+/// relationship. This is what lets a translation be visible the moment the
+/// provider produces it instead of waiting for the slower canonical lane.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiNotebookCaptureTranslationCue {
+    pub target_language: String,
+    pub group_epoch: u64,
+    pub provider_sequence: u64,
+    pub source_language: String,
+    /// Capture-timeline range of the segment's source tokens. Translation
+    /// tokens carry no provider timestamps, so this inherited range is the
+    /// cue's only — and deliberately segment-grained — time anchor.
+    pub source_start_ms: Option<u64>,
+    pub source_end_ms: Option<u64>,
+    pub text: String,
+    /// "partial" while the segment is still being revised, "complete" once
+    /// the provider finalized it.
+    pub completion: String,
+    /// A withdrawn cue is a removal instruction: the provider retracted the
+    /// speculative segment and nothing replaces it.
+    pub withdrawn: bool,
+    pub revision: u64,
 }
 
 /// Process-local, replace-in-full presentation state for the current Soniox
@@ -854,6 +890,10 @@ fn event_from_run(
         post_stop_provider_id: run.post_stop_provider_id.clone(),
         post_stop_model_id: run.post_stop_model_id.clone(),
         utterances: utterances.into_iter().map(Into::into).collect(),
+        // Cues are attached at the three re-materialization points (delta
+        // emission, refresh, full snapshot), not here: most events carry none
+        // and the builder has no store access.
+        translation_cues: Vec::new(),
         context_receipt: parse_context_receipt(&run),
         provider_error_type: run.provider_error_type,
         provider_request_id: run.provider_request_id,
@@ -1087,6 +1127,9 @@ struct PersistedCaptureChanges {
     utterances: Vec<RealtimeUtterance>,
     removed_sequences: Vec<u64>,
     requires_full_snapshot: bool,
+    /// Auxiliary cue facts changed by this batch, including withdrawal
+    /// tombstones. Emitted on the durable delta channel alongside utterances.
+    translation_cues: Vec<FfiNotebookCaptureTranslationCue>,
 }
 
 impl std::ops::Deref for PersistedCaptureChanges {
@@ -1463,7 +1506,7 @@ async fn collect_stream_events(
                     Ok(_) => {
                         context_applied = true;
                         if let Ok(Some(run)) = store.get_run(&run_id) {
-                            emit_capture_delta(run, Vec::new(), &callback);
+                            emit_capture_delta(run, Vec::new(), Vec::new(), &callback);
                         }
                     }
                     Err(error) => {
@@ -1510,7 +1553,7 @@ async fn collect_stream_events(
                         .map_err(|error| {
                             local_persistence_failure("persist Soniox live state", error)
                         })?;
-                    emit_capture_delta(run, Vec::new(), &callback);
+                    emit_capture_delta(run, Vec::new(), Vec::new(), &callback);
                 }
                 PersistedCaptureChanges::default()
             }
@@ -1592,7 +1635,7 @@ async fn collect_stream_events(
                     .map_err(|error| {
                         local_persistence_failure("persist Soniox reconnecting state", error)
                     })?;
-                emit_capture_delta(run, Vec::new(), &callback);
+                emit_capture_delta(run, Vec::new(), Vec::new(), &callback);
                 persisted
             }
             SttStreamEvent::Tokens(tokens) => {
@@ -1671,7 +1714,7 @@ async fn collect_stream_events(
                 let run = store
                     .update_remote_health(&run_id, health, Some(&failure))
                     .map_err(|error| local_persistence_failure("persist Soniox failure", error))?;
-                emit_capture_delta(run, Vec::new(), &callback);
+                emit_capture_delta(run, Vec::new(), Vec::new(), &callback);
                 persisted
             }
         };
@@ -1686,9 +1729,11 @@ async fn collect_stream_events(
                 })?;
                 callback.send(event_from_run(run, utterances, true));
             }
-        } else if !persisted.is_empty() {
+        } else if !persisted.is_empty() || !persisted.translation_cues.is_empty() {
+            // A cue-only batch is a real delta: an auxiliary partial can grow
+            // for seconds before the slower canonical lane persists any row.
             if let Ok(Some(run)) = store.get_run(&run_id) {
-                emit_capture_delta(run, persisted.utterances, &callback);
+                emit_capture_delta(run, persisted.utterances, persisted.translation_cues, &callback);
             }
         }
         if publishes_canonical_preview {
@@ -1703,7 +1748,7 @@ async fn collect_stream_events(
         mark_waiting_translation_variants_unavailable(&store, &session_id, &mut canonical_matches)?;
     if !unavailable.is_empty() {
         if let Ok(Some(run)) = store.get_run(&run_id) {
-            emit_capture_delta(run, unavailable, &callback);
+            emit_capture_delta(run, unavailable, Vec::new(), &callback);
         }
     }
     Ok(())
@@ -1859,6 +1904,7 @@ fn persist_stream_lane_updates(
     };
     let mut persisted = Vec::new();
     let mut removed_sequences = Vec::new();
+    let mut translation_cues = Vec::new();
     for update in updates {
         let translation_completion = update.translation_completion;
         let translation_clear_language = update
@@ -1954,6 +2000,13 @@ fn persist_stream_lane_updates(
             &provider_utterance_id,
             (!persistence.item.withdrawn).then_some(target_language.as_str()),
         );
+        // Every accepted revision of the durable cue fact — partial growth,
+        // finalization, withdrawal — goes out on the delta channel. Binding
+        // is not consulted: cue visibility no longer waits for the slower
+        // canonical lane to produce a row.
+        if persistence.changed {
+            translation_cues.push(translation_cue_from_inbox_item(&persistence.item));
+        }
         if let Some(sequence) = persistence.removed_bound_sequence {
             removed_sequences.push(sequence);
             forget_canonical_sequence(
@@ -2019,6 +2072,7 @@ fn persist_stream_lane_updates(
         utterances: latest_utterance_revisions(persisted),
         requires_full_snapshot: !removed_sequences.is_empty(),
         removed_sequences,
+        translation_cues,
     })
 }
 
@@ -2293,12 +2347,7 @@ fn flush_pending_translation_variants(
                         )
                     })?
             else {
-                warn_reverse_segment_conflict(
-                    &pending_key,
-                    pending_variants,
-                    canonical_matches,
-                    reverse_variant_bindings,
-                );
+                warn_unbound_auxiliary_final(&pending_key, pending_variants, canonical_matches);
                 continue;
             };
             (binding.canonical_sequence, binding.utterance)
@@ -2362,18 +2411,12 @@ fn resolve_canonical_sequence(
         }
     }
 
-    let sequence = ranked_canonical_sequences(pending, canonical_matches.values())
+    // A row already holding a sibling segment of this language is not a
+    // blocker: the store concatenates the segments into one lane, so the best
+    // row by evidence is still the right answer.
+    ranked_canonical_sequences(pending, canonical_matches.values())
         .into_iter()
-        .next()?;
-    let reverse_key = (
-        pending.group_epoch,
-        sequence,
-        pending.target_language.clone(),
-    );
-    reverse_variant_bindings
-        .get(&reverse_key)
-        .is_none_or(|bound| bound == &pending_key)
-        .then_some(sequence)
+        .next()
 }
 
 #[cfg(test)]
@@ -2389,6 +2432,10 @@ fn match_canonical_sequence<'a>(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TimelineAlignmentScore {
     exact_source_text: bool,
+    contained_source_text: bool,
+    /// Length of the containing row; smaller is a tighter fit. Only compared
+    /// between two rows that both contain the segment.
+    canonical_text_chars: usize,
     overlap_per_mille: u16,
     source_language_matches: bool,
     midpoint_distance_ms: u64,
@@ -2409,6 +2456,16 @@ fn ranked_canonical_sequences<'a>(
         right_score
             .exact_source_text
             .cmp(&left_score.exact_source_text)
+            .then_with(|| {
+                right_score
+                    .contained_source_text
+                    .cmp(&left_score.contained_source_text)
+            })
+            .then_with(|| {
+                left_score
+                    .canonical_text_chars
+                    .cmp(&right_score.canonical_text_chars)
+            })
             .then_with(|| {
                 right_score
                     .overlap_per_mille
@@ -2456,6 +2513,8 @@ fn timeline_alignment_evidence_eq(
     right: &TimelineAlignmentScore,
 ) -> bool {
     left.exact_source_text == right.exact_source_text
+        && left.contained_source_text == right.contained_source_text
+        && left.canonical_text_chars == right.canonical_text_chars
         && left.overlap_per_mille == right.overlap_per_mille
         && left.source_language_matches == right.source_language_matches
         && left.midpoint_distance_ms == right.midpoint_distance_ms
@@ -2469,14 +2528,31 @@ fn timeline_alignment_score(
     if candidate.group_epoch != pending.group_epoch {
         return None;
     }
-    let exact_source_text =
-        source_texts_match(&pending.source_text, &candidate.utterance.source_text);
+    let alignment =
+        vt_model::align_source_text(&pending.source_text, &candidate.utterance.source_text);
+    let exact_source_text = alignment == vt_model::SourceTextAlignment::Exact;
+    let contained_source_text =
+        matches!(alignment, vt_model::SourceTextAlignment::Contained { .. });
+    let has_text_evidence = exact_source_text || contained_source_text;
     let source_language_matches =
         normalize_language(&candidate.utterance.source_language) == pending.source_language;
     let sequence_distance = candidate
         .utterance
         .sequence
         .abs_diff(pending.source_sequence);
+    let mut score = TimelineAlignmentScore {
+        exact_source_text,
+        contained_source_text,
+        canonical_text_chars: match alignment {
+            vt_model::SourceTextAlignment::Contained { canonical_chars } => canonical_chars,
+            _ => usize::MAX,
+        },
+        overlap_per_mille: 0,
+        source_language_matches,
+        midpoint_distance_ms: u64::MAX,
+        sequence_distance,
+        sequence: candidate.utterance.sequence,
+    };
 
     match (
         pending.source_start_ms,
@@ -2485,28 +2561,27 @@ fn timeline_alignment_score(
         candidate.utterance.source_end_ms,
     ) {
         (Some(left_start), Some(left_end), Some(right_start), Some(right_end)) => {
-            let overlap_per_mille =
-                timestamp_overlap_per_mille(left_start, left_end, right_start, right_end)?;
-            let left_midpoint = left_start.saturating_add(left_end) / 2;
-            let right_midpoint = right_start.saturating_add(right_end) / 2;
-            Some(TimelineAlignmentScore {
-                exact_source_text,
-                overlap_per_mille,
-                source_language_matches,
-                midpoint_distance_ms: left_midpoint.abs_diff(right_midpoint),
-                sequence_distance,
-                sequence: candidate.utterance.sequence,
-            })
+            if left_end < left_start || right_end < right_start {
+                return None;
+            }
+            score.midpoint_distance_ms = (left_start.saturating_add(left_end) / 2)
+                .abs_diff(right_start.saturating_add(right_end) / 2);
+            match timestamp_overlap_per_mille(left_start, left_end, right_start, right_end) {
+                Some(overlap_per_mille) => {
+                    score.overlap_per_mille = overlap_per_mille;
+                    Some(score)
+                }
+                // Disjoint in time. Sibling connection clocks drift apart over
+                // a long run, so this rules the row out only when the words
+                // vouch for the row instead. A matching sequence number does
+                // not: two connections number their own segments, and the
+                // numbers mean nothing to each other.
+                None if has_text_evidence => Some(score),
+                None => None,
+            }
         }
-        _ if exact_source_text || candidate.utterance.sequence == pending.source_sequence => {
-            Some(TimelineAlignmentScore {
-                exact_source_text,
-                overlap_per_mille: 0,
-                source_language_matches,
-                midpoint_distance_ms: u64::MAX,
-                sequence_distance,
-                sequence: candidate.utterance.sequence,
-            })
+        _ if has_text_evidence || candidate.utterance.sequence == pending.source_sequence => {
+            Some(score)
         }
         _ => None,
     }
@@ -2546,18 +2621,17 @@ fn cross_row_translation_spans(
     spanning
 }
 
-/// The reverse of cross-row divergence, made visible: a Final auxiliary
-/// segment whose uniquely best row already carries this language from a
-/// sibling segment means the auxiliary stream segmented more finely than the
-/// canonical one, and that row's translation is missing the tail held here.
-/// The fact stays durably unbound (an owner withdrawal can still adopt it
-/// later); this warns exactly once per segment and carries no transcript
-/// text.
-fn warn_reverse_segment_conflict(
+/// A Final auxiliary segment the store could not place on any canonical row.
+///
+/// A row already holding a sibling segment is no longer a reason for this: the
+/// lane concatenates them. What remains is genuinely unplaceable evidence —
+/// two rows with equal claim on the words, or a row that has not arrived — so
+/// this is now a real gap in the translated text rather than a known-lossy
+/// path. Warns exactly once per segment and carries no transcript text.
+fn warn_unbound_auxiliary_final(
     pending_key: &(usize, u64, u64),
     pending_variants: &mut std::collections::HashMap<(usize, u64, u64), PendingTranslationVariant>,
     canonical_matches: &std::collections::HashMap<(u64, u64), CanonicalUtteranceMatch>,
-    reverse_variant_bindings: &std::collections::HashMap<(u64, u64, String), (usize, u64, u64)>,
 ) {
     let Some(pending) = pending_variants.get_mut(pending_key) else {
         return;
@@ -2565,29 +2639,19 @@ fn warn_reverse_segment_conflict(
     if pending.reverse_conflict_warned || pending.completion != UtteranceCompletion::Complete {
         return;
     }
-    let Some(best_sequence) = ranked_canonical_sequences(pending, canonical_matches.values())
-        .into_iter()
-        .next()
-    else {
-        return;
-    };
-    let owner = reverse_variant_bindings.get(&(
-        pending.group_epoch,
-        best_sequence,
-        pending.target_language.clone(),
-    ));
-    if owner.is_none_or(|owner| owner == pending_key) {
-        return;
-    }
+    let candidate_rows = canonical_matches
+        .values()
+        .filter(|candidate| timeline_alignment_score(pending, candidate).is_some())
+        .count();
     pending.reverse_conflict_warned = true;
     tracing::warn!(
         target_language = %pending.target_language,
         source_language = %pending.source_language,
-        occupied_sequence = best_sequence,
+        candidate_rows,
         provider_sequence = pending.source_sequence,
         source_start_ms = pending.source_start_ms,
         source_end_ms = pending.source_end_ms,
-        "auxiliary translation segment lost its row to a sibling segment; auxiliary stream segmented more finely than canonical"
+        "auxiliary translation segment matched no unique canonical row; fact stays durably unbound"
     );
 }
 
@@ -2614,18 +2678,6 @@ fn warn_cross_row_translation_span(
         source_end_ms = pending.source_end_ms,
         "auxiliary translation segment spans multiple canonical rows; sibling-stream endpointing diverged"
     );
-}
-
-fn source_texts_match(left: &str, right: &str) -> bool {
-    let normalize = |value: &str| {
-        value
-            .chars()
-            .filter(|character| !character.is_whitespace())
-            .flat_map(char::to_lowercase)
-            .collect::<String>()
-    };
-    let left = normalize(left);
-    !left.is_empty() && left == normalize(right)
 }
 
 fn timestamp_overlap_per_mille(
@@ -2886,6 +2938,7 @@ fn persist_assembled_utterances(
         utterances: persisted_updates,
         requires_full_snapshot: !removed_sequences.is_empty(),
         removed_sequences,
+        translation_cues: Vec::new(),
     })
 }
 
@@ -2937,12 +2990,52 @@ fn missing_remote_truth(run: &NotebookCaptureRun) -> (RemoteHealth, ProviderFail
 fn emit_capture_delta(
     run: NotebookCaptureRun,
     changed_utterances: Vec<RealtimeUtterance>,
+    changed_translation_cues: Vec<FfiNotebookCaptureTranslationCue>,
     callback: &CaptureCallbackSink,
 ) {
     // The callback mailbox may coalesce an intermediate delta while Swift is
     // busy. `CaptureCallbackSink` revisions make that loss explicit so Swift
     // performs one bounded full rebuild instead of receiving O(n^2) snapshots.
-    callback.send(event_from_run(run, changed_utterances, false));
+    let mut event = event_from_run(run, changed_utterances, false);
+    event.translation_cues = changed_translation_cues;
+    callback.send(event);
+}
+
+fn translation_cue_from_inbox_item(
+    item: &RealtimeTranslationInboxItem,
+) -> FfiNotebookCaptureTranslationCue {
+    FfiNotebookCaptureTranslationCue {
+        target_language: item.key.target_language.clone(),
+        group_epoch: item.key.group_epoch,
+        provider_sequence: item.key.provider_sequence,
+        source_language: item.source_language.clone(),
+        source_start_ms: item.source_start_ms,
+        source_end_ms: item.source_end_ms,
+        text: item.translated_text.clone().unwrap_or_default(),
+        completion: match item.completion {
+            Some(UtteranceCompletion::Complete) => "complete".to_string(),
+            // A withdrawn tombstone has no completion; "partial" keeps the
+            // field total without inventing a third state.
+            Some(UtteranceCompletion::Partial) | None => "partial".to_string(),
+        },
+        withdrawn: item.withdrawn,
+        revision: item.revision,
+    }
+}
+
+/// Every present cue of a session, for full-snapshot events. Partial cues are
+/// included: they are durable inbox facts and the client's only view of a
+/// translation whose canonical row has not caught up yet.
+fn list_present_translation_cues(
+    store: &NotebookCaptureStore,
+    session_id: &str,
+) -> Result<Vec<FfiNotebookCaptureTranslationCue>, vt_store::notebook_capture_store::NotebookCaptureStoreError> {
+    Ok(store
+        .list_translation_inbox(session_id)?
+        .iter()
+        .filter(|item| !item.withdrawn && item.translated_text.is_some())
+        .map(translation_cue_from_inbox_item)
+        .collect())
 }
 
 fn emit_realtime_progress(run: NotebookCaptureRun, lag_ms: u64, callback: &CaptureCallbackSink) {
@@ -2970,7 +3063,11 @@ fn event_full_snapshot_from_run(
     let utterances = store
         .list_utterances(&run.session_id)
         .map_err(store_error)?;
-    Ok(event_from_run(run, utterances, true))
+    let translation_cues =
+        list_present_translation_cues(store, &run.session_id).map_err(store_error)?;
+    let mut event = event_from_run(run, utterances, true);
+    event.translation_cues = translation_cues;
+    Ok(event)
 }
 
 pub(crate) struct CaptureCallbackSink {
@@ -3038,39 +3135,60 @@ impl CaptureCallbackSink {
         let worker_mailbox = mailbox.clone();
         std::thread::Builder::new()
             .name("zulangue-capture-callback".to_string())
-            .spawn(move || loop {
-                let (event, preview) = {
-                    let mut pending = worker_mailbox.pending.lock().unwrap();
-                    while pending.event.is_none()
-                        && pending.preview.is_none()
-                        && !worker_mailbox.closed.load(Ordering::Acquire)
-                    {
-                        pending = worker_mailbox.wake.wait(pending).unwrap();
+            .spawn(move || {
+                // Post-coalescing delivery is the one point where what Swift
+                // will present is known exactly, so the erasure baseline is
+                // metered here. Counts and language codes only.
+                let mut erasure = crate::capture_erasure::ErasureMeter::default();
+                loop {
+                    let (event, preview) = {
+                        let mut pending = worker_mailbox.pending.lock().unwrap();
+                        while pending.event.is_none()
+                            && pending.preview.is_none()
+                            && !worker_mailbox.closed.load(Ordering::Acquire)
+                        {
+                            pending = worker_mailbox.wake.wait(pending).unwrap();
+                        }
+                        let event = pending.event.take();
+                        let preview = pending.preview.take();
+                        if event.is_none()
+                            && preview.is_none()
+                            && worker_mailbox.closed.load(Ordering::Acquire)
+                        {
+                            break;
+                        }
+                        (event, preview)
+                    };
+                    if let Some(event) = &event {
+                        erasure.absorb_event_utterances(&event.session_id, &event.utterances);
+                        if matches!(
+                            event.capture_state,
+                            FfiNotebookCaptureState::Completed
+                                | FfiNotebookCaptureState::Interrupted
+                                | FfiNotebookCaptureState::Failed
+                        ) {
+                            erasure.finish_session();
+                        }
                     }
-                    let event = pending.event.take();
-                    let preview = pending.preview.take();
-                    if event.is_none()
-                        && preview.is_none()
-                        && worker_mailbox.closed.load(Ordering::Acquire)
+                    if let Some(preview) = &preview {
+                        erasure.absorb_preview(preview);
+                    }
+                    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        if let Some(event) = event {
+                            callback.on_capture_event(event);
+                        }
+                        if let Some(preview) = preview {
+                            callback.on_live_preview(preview);
+                        }
+                    }))
+                    .is_err()
                     {
+                        tracing::error!("Notebook capture callback panicked; dispatcher stopped");
+                        worker_mailbox.closed.store(true, Ordering::Release);
                         break;
                     }
-                    (event, preview)
-                };
-                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    if let Some(event) = event {
-                        callback.on_capture_event(event);
-                    }
-                    if let Some(preview) = preview {
-                        callback.on_live_preview(preview);
-                    }
-                }))
-                .is_err()
-                {
-                    tracing::error!("Notebook capture callback panicked; dispatcher stopped");
-                    worker_mailbox.closed.store(true, Ordering::Release);
-                    break;
                 }
+                erasure.finish_session();
             })
             .map_err(|error| CoreError::InternalError {
                 message: format!("start capture callback dispatcher: {error}"),
@@ -3084,7 +3202,7 @@ impl CaptureCallbackSink {
 
     fn send_with_refresh_hook<H>(
         &self,
-        event: FfiNotebookCaptureEvent,
+        mut event: FfiNotebookCaptureEvent,
         after_refresh: H,
     ) -> FfiNotebookCaptureEvent
     where
@@ -3121,6 +3239,26 @@ impl CaptureCallbackSink {
         ) {
             Ok(Some((run, utterances))) => {
                 let mut refreshed = event_from_run(run, utterances, event.is_full_snapshot);
+                // A full snapshot re-reads every present cue; a delta keeps
+                // the cue payload it was emitted with. A cue delta can only
+                // be stale toward a lower per-key revision, which the client
+                // upsert ignores; coalescing losses heal through the same
+                // gap-repair snapshot as utterances.
+                refreshed.translation_cues = if event.is_full_snapshot {
+                    match list_present_translation_cues(&self.store, &event.session_id) {
+                        Ok(translation_cues) => translation_cues,
+                        Err(error) => {
+                            tracing::warn!(
+                                session_id = %event.session_id,
+                                error = %error,
+                                "capture snapshot cue load failed; snapshot sent without cues"
+                            );
+                            Vec::new()
+                        }
+                    }
+                } else {
+                    std::mem::take(&mut event.translation_cues)
+                };
                 refreshed.realtime_lag_ms = event.realtime_lag_ms;
                 if matches!(
                     refreshed.capture_state,
@@ -3218,6 +3356,8 @@ impl CaptureCallbackSink {
                 message: format!("capture session {session_id}"),
             })?;
         let mut event = event_from_run(run, utterances, true);
+        event.translation_cues =
+            list_present_translation_cues(&self.store, session_id).map_err(store_error)?;
         if matches!(
             event.capture_state,
             FfiNotebookCaptureState::Completed
@@ -8750,6 +8890,29 @@ fn plan_capture_section_incrementally(
         lane_ranges.push(range);
     }
 
+    // A lane the reader has already seen is never rewritten, but it can grow.
+    // A later auxiliary segment can bind to a row whose lane is already Final,
+    // and the store appends it, leaving the projected lane one segment short.
+    //
+    // Only a pure append is projected, and the proof is the projected text
+    // itself: if it is still a prefix of the machine text, nobody has edited it
+    // and nothing a reader has already read is about to change. Any other
+    // difference — a lane edit, a manual edit in the document — fails that test
+    // and is left exactly as it is.
+    let document = bridge.get_content(document_id).map_err(store_error)?;
+    let mut lane_extensions = Vec::new();
+    for (lane, range) in lanes.iter().zip(lane_ranges.iter()) {
+        let Some(range) = range else { continue };
+        let Some(projected) = document_char_slice(&document, *range) else {
+            continue;
+        };
+        let rendered = render_finalized_capture_lane(lane);
+        if !rendered_lane_appends_to(&projected, &rendered.text) {
+            continue;
+        }
+        lane_extensions.push((*range, rendered));
+    }
+
     let section_end =
         section
             .pos
@@ -8876,11 +9039,19 @@ fn plan_capture_section_incrementally(
     let inserted_len = groups
         .iter()
         .map(|(_, _, rendered)| rendered.text.chars().count())
-        .sum::<usize>();
+        .sum::<usize>()
+        + lane_extensions
+            .iter()
+            .map(|(_, rendered)| rendered.text.chars().count())
+            .sum::<usize>();
     let deleted_len = legacy_machine_deletions
         .iter()
         .map(|range| range.len)
-        .sum::<usize>();
+        .sum::<usize>()
+        + lane_extensions
+            .iter()
+            .map(|(range, _)| range.len)
+            .sum::<usize>();
     // All coordinates refer to the same pre-batch Delta. Merge deletes and
     // inserts into one descending-position schedule; at an equal position a
     // delete must run first or it would consume the newly inserted text.
@@ -8898,6 +9069,17 @@ fn plan_capture_section_incrementally(
             )
         })
         .collect::<Vec<_>>();
+    for (range, rendered) in lane_extensions {
+        // Replaces before inserts at the same position, like a delete: an
+        // insert scheduled at this lane's start belongs before the lane, not
+        // inside the text this replacement is about to lay down.
+        edit_groups.push((
+            range.pos,
+            false,
+            0,
+            replaced_capture_lane_edit_ops(range, rendered),
+        ));
+    }
     for (pos, lane_start, rendered) in groups {
         edit_groups.push((
             pos,
@@ -8928,6 +9110,56 @@ fn plan_capture_section_incrementally(
         section_start: section.pos,
         section_end: projected_end,
     })
+}
+
+/// Char-indexed slice of the document, or `None` when the range does not sit
+/// inside it — a stale range is a reason to leave the lane alone, never to
+/// panic on a byte boundary.
+fn document_char_slice(document: &str, range: crate::editor_api::TextRange) -> Option<String> {
+    let end = range.pos.checked_add(range.len)?;
+    let mut characters = document.chars();
+    let slice = characters
+        .by_ref()
+        .skip(range.pos)
+        .take(range.len)
+        .collect::<String>();
+    (slice.chars().count() == range.len && end <= document.chars().count()).then_some(slice)
+}
+
+/// Whether the freshly rendered lane is the projected one plus more text at the
+/// end. Both carry the lane's trailing newline, so the comparison is between
+/// the bodies.
+fn rendered_lane_appends_to(projected: &str, rendered: &str) -> bool {
+    let (Some(projected), Some(rendered)) = (
+        projected.strip_suffix('\n'),
+        rendered.strip_suffix('\n'),
+    ) else {
+        return false;
+    };
+    rendered.len() > projected.len() && rendered.starts_with(projected)
+}
+
+fn replaced_capture_lane_edit_ops(
+    range: crate::editor_api::TextRange,
+    rendered: CaptureRenderedSection,
+) -> Vec<vt_store::EditOp> {
+    let pos = range.pos;
+    let mut operations = vec![vt_store::EditOp::Replace {
+        pos,
+        len: range.len,
+        text: rendered.text,
+    }];
+    // Every mark is re-applied over the replacement, so no key survives with a
+    // value from the shorter lane — the lane revision above all.
+    for mark in rendered.marks {
+        operations.push(vt_store::EditOp::Mark {
+            pos: pos + mark.pos,
+            len: mark.len,
+            key: mark.key,
+            value_json: mark.value_json,
+        });
+    }
+    operations
 }
 
 fn rendered_capture_edit_ops(
@@ -10735,6 +10967,105 @@ mod tests {
     }
 
     #[test]
+    fn translation_cues_flow_through_deltas_and_snapshots_without_binding() {
+        let (_temp, core, _profile) = assembler_store_fixture("cue-flow-session");
+        let key = |provider_sequence: u64, target_language: &str| RealtimeTranslationInboxKey {
+            session_id: "cue-flow-session".into(),
+            lane_index: 1,
+            group_epoch: 0,
+            provider_sequence,
+            target_language: target_language.into(),
+        };
+
+        // A partial auxiliary segment is durable and publishable immediately —
+        // its canonical row does not exist yet and never has to.
+        let partial = core
+            .notebook_capture_store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: key(0, "th"),
+                source_language: "zh".into(),
+                source_text: "你好".into(),
+                source_start_ms: Some(1_000),
+                source_end_ms: Some(1_600),
+                translated_text: Some("สวัส".into()),
+                completion: Some(UtteranceCompletion::Partial),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert!(partial.changed);
+        let cue = translation_cue_from_inbox_item(&partial.item);
+        assert_eq!(cue.target_language, "th");
+        assert_eq!(cue.completion, "partial");
+        assert_eq!(cue.source_start_ms, Some(1_000));
+        assert!(!cue.withdrawn);
+
+        let finalized = core
+            .notebook_capture_store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: key(0, "th"),
+                source_language: "zh".into(),
+                source_text: "你好".into(),
+                source_start_ms: Some(1_000),
+                source_end_ms: Some(1_600),
+                translated_text: Some("สวัสดี".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert!(finalized.changed);
+        let final_cue = translation_cue_from_inbox_item(&finalized.item);
+        assert_eq!(final_cue.completion, "complete");
+        assert!(final_cue.revision > cue.revision);
+
+        // A second segment is withdrawn: the tombstone instructs removal.
+        core.notebook_capture_store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: key(1, "th"),
+                source_language: "zh".into(),
+                source_text: "再见".into(),
+                source_start_ms: Some(2_000),
+                source_end_ms: Some(2_400),
+                translated_text: Some("ลาก่อน".into()),
+                completion: Some(UtteranceCompletion::Partial),
+                withdrawn: false,
+            })
+            .unwrap();
+        let withdrawn = core
+            .notebook_capture_store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: key(1, "th"),
+                source_language: "zh".into(),
+                source_text: "再见".into(),
+                source_start_ms: Some(2_000),
+                source_end_ms: Some(2_400),
+                translated_text: None,
+                completion: None,
+                withdrawn: true,
+            })
+            .unwrap();
+        assert!(withdrawn.changed);
+        let tombstone = translation_cue_from_inbox_item(&withdrawn.item);
+        assert!(tombstone.withdrawn);
+        assert!(tombstone.text.is_empty());
+
+        // The full snapshot carries every present cue — the still-partial and
+        // the complete alike — and never a withdrawn tombstone. A canonical
+        // utterance row was never created in this test.
+        let run = core
+            .notebook_capture_store
+            .get_run_for_session("cue-flow-session")
+            .unwrap()
+            .unwrap();
+        let event = event_full_snapshot_from_run(&core.notebook_capture_store, run).unwrap();
+        assert!(event.utterances.is_empty());
+        assert_eq!(event.translation_cues.len(), 1);
+        assert_eq!(event.translation_cues[0].text, "สวัสดี");
+        assert_eq!(event.translation_cues[0].completion, "complete");
+        assert_eq!(event.translation_cues[0].group_epoch, 0);
+        assert_eq!(event.translation_cues[0].provider_sequence, 0);
+    }
+
+    #[test]
     fn source_withdrawal_preserves_an_independently_final_translation_lane() {
         let (_temp, core, runtime_profile) =
             assembler_store_fixture("lane-withdraw-source-final-translation");
@@ -12103,11 +12434,22 @@ mod tests {
             "source text may disambiguate otherwise overlapping time windows"
         );
 
-        let contradictory = [candidate(99, 0, Some(300), Some(400))];
+        let mut contradictory = candidate(99, 0, Some(300), Some(400));
+        contradictory.utterance.source_text = "คนละประโยค".into();
         assert_eq!(
-            match_canonical_sequence(&pending, contradictory.iter()),
+            match_canonical_sequence(&pending, std::iter::once(&contradictory)),
             None,
             "an equal sequence must not override contradictory timestamps"
+        );
+
+        // The sibling connections' clocks drift apart over a long run — the
+        // same sentence has been observed reported four seconds apart. Words
+        // outlive timestamps, so identical text still identifies the row.
+        let drifted = [candidate(7, 0, Some(4_300), Some(4_400))];
+        assert_eq!(
+            match_canonical_sequence(&pending, drifted.iter()),
+            Some(7),
+            "identical source text identifies the row across a drifted clock"
         );
 
         let mut language_drift = candidate(4, 0, Some(110), Some(230));
@@ -12173,7 +12515,7 @@ mod tests {
     }
 
     #[test]
-    fn reverse_segment_conflict_latches_once_and_only_for_owned_final_rows() {
+    fn an_unbound_auxiliary_final_latches_one_warning_and_a_partial_latches_none() {
         let row = |sequence, start_ms, end_ms| {
             let mut utterance = projected_utterance();
             utterance.sequence = sequence;
@@ -12190,9 +12532,7 @@ mod tests {
         };
         let canonical_matches = std::collections::HashMap::from([row(0, 0, 10_000)]);
         let pending_key = (3, 0, 1);
-        let owner_key = (3, 0, 0);
-        // The tail half of a row whose language is already owned by the
-        // sibling segment that carried the head half.
+        // A Final segment the store refused to place on any row.
         let pending = PendingTranslationVariant {
             session_id: "reverse-session".into(),
             group_epoch: 0,
@@ -12206,18 +12546,11 @@ mod tests {
             reverse_conflict_warned: false,
         };
         let mut pending_variants = std::collections::HashMap::from([(pending_key, pending)]);
-        let reverse_variant_bindings =
-            std::collections::HashMap::from([((0, 0, "th".to_string()), owner_key)]);
 
-        warn_reverse_segment_conflict(
-            &pending_key,
-            &mut pending_variants,
-            &canonical_matches,
-            &reverse_variant_bindings,
-        );
+        warn_unbound_auxiliary_final(&pending_key, &mut pending_variants, &canonical_matches);
         assert!(
             pending_variants[&pending_key].reverse_conflict_warned,
-            "a Final tail losing its row to a sibling segment must latch the warning"
+            "an unplaceable Final segment must latch the warning"
         );
 
         let mut partial_variants = pending_variants.clone();
@@ -12226,33 +12559,10 @@ mod tests {
             .unwrap()
             .reverse_conflict_warned = false;
         partial_variants.get_mut(&pending_key).unwrap().completion = UtteranceCompletion::Partial;
-        warn_reverse_segment_conflict(
-            &pending_key,
-            &mut partial_variants,
-            &canonical_matches,
-            &reverse_variant_bindings,
-        );
+        warn_unbound_auxiliary_final(&pending_key, &mut partial_variants, &canonical_matches);
         assert!(
             !partial_variants[&pending_key].reverse_conflict_warned,
             "a still-open Partial legitimately waits and must not raise the flag"
-        );
-
-        let mut self_owned_variants = pending_variants.clone();
-        self_owned_variants
-            .get_mut(&pending_key)
-            .unwrap()
-            .reverse_conflict_warned = false;
-        let self_bindings =
-            std::collections::HashMap::from([((0, 0, "th".to_string()), pending_key)]);
-        warn_reverse_segment_conflict(
-            &pending_key,
-            &mut self_owned_variants,
-            &canonical_matches,
-            &self_bindings,
-        );
-        assert!(
-            !self_owned_variants[&pending_key].reverse_conflict_warned,
-            "owning the row yourself is the normal path, not a conflict"
         );
     }
 
@@ -13766,6 +14076,104 @@ mod tests {
         let content = bridge.get_content("realtime-doc").unwrap();
         assert!(content.contains("en: good morning 🌏\n"));
         assert!(content.contains("zh: 迟到的翻译\n"));
+    }
+
+    /// Builds a document holding one source lane and one translation lane, and
+    /// returns the bridge plus the section length.
+    fn projected_translation_lane_fixture(
+        translated: &str,
+    ) -> (vt_store::EditorBridge, RealtimeUtterance, usize) {
+        let bridge = vt_store::EditorBridge::new();
+        let doc = loro::LoroDoc::new();
+        doc.config_text_style(crate::editor_api::voice_tool_style_config());
+        bridge.open("realtime-doc", doc).unwrap();
+        let mut utterance = projected_utterance();
+        utterance.translated_text = Some(translated.into());
+        for variant in &mut utterance.variants {
+            if variant.role == UtteranceVariantRole::Translation {
+                variant.text = Some(translated.into());
+            }
+        }
+        let rendered = render_bilingual_capture_section("session-a", &[utterance.clone()], false);
+        let section_len = rendered.text.chars().count();
+        apply_rendered(&bridge, "realtime-doc", 0, rendered);
+        bridge
+            .set_capture_owned_range(
+                "realtime-doc",
+                &capture_section_owner_key("session-a"),
+                "session-a",
+                0,
+                section_len,
+            )
+            .unwrap();
+        (bridge, utterance, section_len)
+    }
+
+    fn extend_projected_translation_lane(
+        bridge: &vt_store::EditorBridge,
+        mut utterance: RealtimeUtterance,
+        section_len: usize,
+        composed: &str,
+    ) {
+        utterance.translated_text = Some(composed.into());
+        for variant in &mut utterance.variants {
+            if variant.role == UtteranceVariantRole::Translation {
+                variant.text = Some(composed.into());
+                variant.projection_revision += 1;
+            }
+        }
+        utterance.revision += 1;
+        sync_capture_section_incrementally(
+            bridge,
+            "realtime-doc",
+            "session-a",
+            crate::editor_api::TextRange {
+                pos: 0,
+                len: section_len,
+            },
+            &[utterance],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_later_auxiliary_segment_extends_an_already_projected_translation_lane() {
+        // The auxiliary connection ended its segment mid-row; the store bound
+        // the tail to the same lane afterwards. The reader has already seen the
+        // first half, so the projection may only grow it at the end.
+        let (bridge, utterance, section_len) = projected_translation_lane_fixture("早上好");
+        extend_projected_translation_lane(&bridge, utterance, section_len, "早上好 世界");
+
+        let content = bridge.get_content("realtime-doc").unwrap();
+        assert!(content.contains("zh: 早上好 世界\n"), "{content}");
+        assert_eq!(content.matches("zh: ").count(), 1, "{content}");
+        assert!(content.contains("en: good morning 🌏\n"), "{content}");
+    }
+
+    #[test]
+    fn a_projected_lane_the_user_has_changed_is_never_extended() {
+        let (bridge, utterance, section_len) = projected_translation_lane_fixture("早上好");
+        // Whatever produced it, the projected text is no longer a prefix of the
+        // machine text, so the machine has lost the right to touch it.
+        let content = bridge.get_content("realtime-doc").unwrap();
+        let marker = content.find("zh: ").unwrap();
+        let lane_start = content[..marker].chars().count() + "zh: ".chars().count();
+        bridge
+            .apply(
+                "realtime-doc",
+                vt_store::EditOp::Replace {
+                    pos: lane_start,
+                    len: "早上好".chars().count(),
+                    text: "我自己写的".into(),
+                },
+            )
+            .unwrap();
+
+        extend_projected_translation_lane(&bridge, utterance, section_len, "早上好 世界");
+
+        let content = bridge.get_content("realtime-doc").unwrap();
+        assert!(content.contains("zh: 我自己写的\n"), "{content}");
+        assert!(!content.contains("世界"), "{content}");
     }
 
     #[test]
@@ -15331,6 +15739,56 @@ mod tests {
             .unwrap()
             .iter()
             .any(|result| result.session_id == "session-a"));
+    }
+
+    /// Every recording made before composition existed still holds the
+    /// segments that were rejected at the time, so startup recovery is the
+    /// backfill: it binds them and the projection grows the lane.
+    #[test]
+    fn startup_recovery_recovers_a_previously_rejected_segment_into_the_projected_lane() {
+        let (temp, core, _notebook_id, run_id, doc_id) = projected_core_fixture();
+        core.project_notebook_capture(&run_id).unwrap();
+        let projected = core.editor_bridge.get_content(&doc_id).unwrap();
+        assert!(projected.contains("zh: 你好\n"), "{projected}");
+
+        // The row's translation as an old build left it: the head segment bound
+        // and projected, the tail durably in the inbox but rejected from the
+        // lane, and both now beyond the active-session API this recording has
+        // long since left behind.
+        rusqlite::Connection::open(temp.path().join("zulangue.db"))
+            .unwrap()
+            .execute(
+                "INSERT INTO realtime_translation_inbox
+                 (session_id, lane_index, group_epoch, provider_sequence,
+                  target_language, source_language, source_text,
+                  source_start_ms, source_end_ms, translated_text,
+                  completion, state, revision, bound_utterance_id, bound_sequence,
+                  created_at, updated_at)
+                 VALUES
+                 ('session-a', 1, 0, 0, 'zh', 'en', 'hello', 0, 500,
+                  '你好', 'complete', 'present', 0, 'utterance-a', 0, '', ''),
+                 ('session-a', 1, 0, 1, 'zh', 'en', 'hello', 0, 500,
+                  '世界', 'complete', 'present', 0, NULL, NULL, '', '')",
+                [],
+            )
+            .unwrap();
+
+        core.resume_pending_notebook_projection_mutations().unwrap();
+
+        let machine = core
+            .notebook_capture_store
+            .get_machine_utterance_by_id("utterance-a")
+            .unwrap()
+            .unwrap();
+        let lane = machine
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert_eq!(lane.text.as_deref(), Some("你好 世界"));
+        let recovered = core.editor_bridge.get_content(&doc_id).unwrap();
+        assert!(recovered.contains("zh: 你好 世界\n"), "{recovered}");
+        assert_eq!(recovered.matches("zh: ").count(), 1, "{recovered}");
     }
 
     #[test]

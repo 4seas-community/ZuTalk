@@ -3265,6 +3265,16 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
     public var postStopProviderId: String?
     public var postStopModelId: String?
     public var utterances: [FfiNotebookCaptureUtterance]
+    /**
+     * Auxiliary translation facts as time-anchored cues, independent of any
+     * canonical row binding. On a full snapshot this replaces the client's
+     * cue view with every present cue of the session; on a delta it carries
+     * only cues changed by this event, applied by
+     * `(group_epoch, provider_sequence, target_language)` upsert, where a
+     * `withdrawn` cue removes the entry. Coalescing gaps heal through the
+     * same full-snapshot rebuild as `utterances`.
+     */
+    public var translationCues: [FfiNotebookCaptureTranslationCue]
     public var contextReceipt: FfiNotebookCaptureContextReceipt?
     public var providerErrorType: String?
     public var providerRequestId: String?
@@ -3299,7 +3309,16 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
          * Immutable provider/model truth claimed before each remote role begins.
          * These fields are absent for a local-only run or a role that never crossed
          * its durable provider boundary.
-         */realtimeProviderId: String?, realtimeModelId: String?, postStopProviderId: String?, postStopModelId: String?, utterances: [FfiNotebookCaptureUtterance], contextReceipt: FfiNotebookCaptureContextReceipt?, providerErrorType: String?, providerRequestId: String?) {
+         */realtimeProviderId: String?, realtimeModelId: String?, postStopProviderId: String?, postStopModelId: String?, utterances: [FfiNotebookCaptureUtterance],
+        /**
+         * Auxiliary translation facts as time-anchored cues, independent of any
+         * canonical row binding. On a full snapshot this replaces the client's
+         * cue view with every present cue of the session; on a delta it carries
+         * only cues changed by this event, applied by
+         * `(group_epoch, provider_sequence, target_language)` upsert, where a
+         * `withdrawn` cue removes the entry. Coalescing gaps heal through the
+         * same full-snapshot rebuild as `utterances`.
+         */translationCues: [FfiNotebookCaptureTranslationCue], contextReceipt: FfiNotebookCaptureContextReceipt?, providerErrorType: String?, providerRequestId: String?) {
         self.sessionId = sessionId
         self.eventRevision = eventRevision
         self.isFullSnapshot = isFullSnapshot
@@ -3323,6 +3342,7 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
         self.postStopProviderId = postStopProviderId
         self.postStopModelId = postStopModelId
         self.utterances = utterances
+        self.translationCues = translationCues
         self.contextReceipt = contextReceipt
         self.providerErrorType = providerErrorType
         self.providerRequestId = providerRequestId
@@ -3367,6 +3387,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
                 postStopProviderId: FfiConverterOptionString.read(from: &buf),
                 postStopModelId: FfiConverterOptionString.read(from: &buf),
                 utterances: FfiConverterSequenceTypeFfiNotebookCaptureUtterance.read(from: &buf),
+                translationCues: FfiConverterSequenceTypeFfiNotebookCaptureTranslationCue.read(from: &buf),
                 contextReceipt: FfiConverterOptionTypeFfiNotebookCaptureContextReceipt.read(from: &buf),
                 providerErrorType: FfiConverterOptionString.read(from: &buf),
                 providerRequestId: FfiConverterOptionString.read(from: &buf)
@@ -3397,6 +3418,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.postStopProviderId, into: &buf)
         FfiConverterOptionString.write(value.postStopModelId, into: &buf)
         FfiConverterSequenceTypeFfiNotebookCaptureUtterance.write(value.utterances, into: &buf)
+        FfiConverterSequenceTypeFfiNotebookCaptureTranslationCue.write(value.translationCues, into: &buf)
         FfiConverterOptionTypeFfiNotebookCaptureContextReceipt.write(value.contextReceipt, into: &buf)
         FfiConverterOptionString.write(value.providerErrorType, into: &buf)
         FfiConverterOptionString.write(value.providerRequestId, into: &buf)
@@ -3857,6 +3879,127 @@ public func FfiConverterTypeFfiNotebookCaptureProfile_lift(_ buf: RustBuffer) th
 #endif
 public func FfiConverterTypeFfiNotebookCaptureProfile_lower(_ value: FfiNotebookCaptureProfile) -> RustBuffer {
     return FfiConverterTypeFfiNotebookCaptureProfile.lower(value)
+}
+
+
+/**
+ * One auxiliary translation segment, anchored to the capture-wide audio
+ * timeline it inherited from its own source tokens.
+ *
+ * A cue never references a canonical utterance: which row's words it
+ * translates is a read-time question answered by time overlap, not a stored
+ * relationship. This is what lets a translation be visible the moment the
+ * provider produces it instead of waiting for the slower canonical lane.
+ */
+public struct FfiNotebookCaptureTranslationCue: Equatable, Hashable {
+    public var targetLanguage: String
+    public var groupEpoch: UInt64
+    public var providerSequence: UInt64
+    public var sourceLanguage: String
+    /**
+     * Capture-timeline range of the segment's source tokens. Translation
+     * tokens carry no provider timestamps, so this inherited range is the
+     * cue's only — and deliberately segment-grained — time anchor.
+     */
+    public var sourceStartMs: UInt64?
+    public var sourceEndMs: UInt64?
+    public var text: String
+    /**
+     * "partial" while the segment is still being revised, "complete" once
+     * the provider finalized it.
+     */
+    public var completion: String
+    /**
+     * A withdrawn cue is a removal instruction: the provider retracted the
+     * speculative segment and nothing replaces it.
+     */
+    public var withdrawn: Bool
+    public var revision: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(targetLanguage: String, groupEpoch: UInt64, providerSequence: UInt64, sourceLanguage: String,
+        /**
+         * Capture-timeline range of the segment's source tokens. Translation
+         * tokens carry no provider timestamps, so this inherited range is the
+         * cue's only — and deliberately segment-grained — time anchor.
+         */sourceStartMs: UInt64?, sourceEndMs: UInt64?, text: String,
+        /**
+         * "partial" while the segment is still being revised, "complete" once
+         * the provider finalized it.
+         */completion: String,
+        /**
+         * A withdrawn cue is a removal instruction: the provider retracted the
+         * speculative segment and nothing replaces it.
+         */withdrawn: Bool, revision: UInt64) {
+        self.targetLanguage = targetLanguage
+        self.groupEpoch = groupEpoch
+        self.providerSequence = providerSequence
+        self.sourceLanguage = sourceLanguage
+        self.sourceStartMs = sourceStartMs
+        self.sourceEndMs = sourceEndMs
+        self.text = text
+        self.completion = completion
+        self.withdrawn = withdrawn
+        self.revision = revision
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNotebookCaptureTranslationCue: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNotebookCaptureTranslationCue: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNotebookCaptureTranslationCue {
+        return
+            try FfiNotebookCaptureTranslationCue(
+                targetLanguage: FfiConverterString.read(from: &buf),
+                groupEpoch: FfiConverterUInt64.read(from: &buf),
+                providerSequence: FfiConverterUInt64.read(from: &buf),
+                sourceLanguage: FfiConverterString.read(from: &buf),
+                sourceStartMs: FfiConverterOptionUInt64.read(from: &buf),
+                sourceEndMs: FfiConverterOptionUInt64.read(from: &buf),
+                text: FfiConverterString.read(from: &buf),
+                completion: FfiConverterString.read(from: &buf),
+                withdrawn: FfiConverterBool.read(from: &buf),
+                revision: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNotebookCaptureTranslationCue, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.targetLanguage, into: &buf)
+        FfiConverterUInt64.write(value.groupEpoch, into: &buf)
+        FfiConverterUInt64.write(value.providerSequence, into: &buf)
+        FfiConverterString.write(value.sourceLanguage, into: &buf)
+        FfiConverterOptionUInt64.write(value.sourceStartMs, into: &buf)
+        FfiConverterOptionUInt64.write(value.sourceEndMs, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterString.write(value.completion, into: &buf)
+        FfiConverterBool.write(value.withdrawn, into: &buf)
+        FfiConverterUInt64.write(value.revision, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNotebookCaptureTranslationCue_lift(_ buf: RustBuffer) throws -> FfiNotebookCaptureTranslationCue {
+    return try FfiConverterTypeFfiNotebookCaptureTranslationCue.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNotebookCaptureTranslationCue_lower(_ value: FfiNotebookCaptureTranslationCue) -> RustBuffer {
+    return FfiConverterTypeFfiNotebookCaptureTranslationCue.lower(value)
 }
 
 
@@ -7084,6 +7227,31 @@ fileprivate struct FfiConverterSequenceTypeFfiNotebookCaptureLanguageVariant: Ff
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFfiNotebookCaptureLanguageVariant.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiNotebookCaptureTranslationCue: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiNotebookCaptureTranslationCue]
+
+    public static func write(_ value: [FfiNotebookCaptureTranslationCue], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiNotebookCaptureTranslationCue.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiNotebookCaptureTranslationCue] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiNotebookCaptureTranslationCue]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiNotebookCaptureTranslationCue.read(from: &buf))
         }
         return seq
     }

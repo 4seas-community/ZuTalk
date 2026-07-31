@@ -4,6 +4,7 @@
 //! 设计文档：docs/design/D5-uniffi-api.md
 //! 权威 API 定义：docs/architecture/TYPE_SYSTEM.md §7
 
+pub(crate) mod capture_erasure;
 pub mod diagnostics_api;
 pub mod editor_api;
 pub mod notebook_api;

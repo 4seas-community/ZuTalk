@@ -468,6 +468,9 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
     var realtimeLagMs: UInt64? = nil
     let projectionState: NotebookProjectionState
     let utterances: [NotebookCaptureUtteranceDTO]
+    /// Deltas carry only cues changed by this event; a full snapshot replaces
+    /// the session's whole cue view. A withdrawn cue removes its entry.
+    let translationCues: [NotebookCaptureTranslationCueDTO]
     let contextReceipt: NotebookCaptureContextReceiptDTO?
     let providerErrorType: String?
     let providerRequestId: String?
@@ -496,6 +499,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         realtimeLagMs: UInt64? = nil,
         projectionState: NotebookProjectionState,
         utterances: [NotebookCaptureUtteranceDTO],
+        translationCues: [NotebookCaptureTranslationCueDTO] = [],
         contextReceipt: NotebookCaptureContextReceiptDTO?,
         providerErrorType: String?,
         providerRequestId: String?,
@@ -523,6 +527,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         self.realtimeLagMs = realtimeLagMs
         self.projectionState = projectionState
         self.utterances = utterances
+        self.translationCues = translationCues
         self.contextReceipt = contextReceipt
         self.providerErrorType = providerErrorType
         self.providerRequestId = providerRequestId
@@ -550,6 +555,29 @@ struct NotebookCaptureLivePreviewDTO: Equatable {
     let sessionId: String
     let previewRevision: UInt64
     let utterances: [NotebookCaptureUtteranceDTO]
+}
+
+/// One auxiliary translation segment anchored to the capture audio timeline.
+///
+/// A cue never references a canonical row. Which words it translates is a
+/// read-time question answered by time overlap, which is what lets the
+/// audience canvas show a translation the moment the provider produces it
+/// instead of waiting for the slower canonical lane.
+struct NotebookCaptureTranslationCueDTO: Codable, Equatable, Identifiable {
+    let targetLanguage: String
+    let groupEpoch: UInt64
+    let providerSequence: UInt64
+    let sourceLanguage: String
+    let sourceStartMs: UInt64?
+    let sourceEndMs: UInt64?
+    let text: String
+    /// "partial" while the provider is still revising, "complete" once final.
+    let completion: String
+    /// A withdrawn cue is a removal instruction for a retracted segment.
+    let withdrawn: Bool
+    let revision: UInt64
+
+    var id: String { "\(groupEpoch):\(providerSequence):\(targetLanguage)" }
 }
 
 enum NotebookCaptureLivePresentation {
@@ -1384,6 +1412,20 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             realtimeLagMs: value.realtimeLagMs,
             projectionState: map(value.projectionState),
             utterances: value.utterances.map(Self.map),
+            translationCues: value.translationCues.map { cue in
+                NotebookCaptureTranslationCueDTO(
+                    targetLanguage: cue.targetLanguage,
+                    groupEpoch: cue.groupEpoch,
+                    providerSequence: cue.providerSequence,
+                    sourceLanguage: cue.sourceLanguage,
+                    sourceStartMs: cue.sourceStartMs,
+                    sourceEndMs: cue.sourceEndMs,
+                    text: cue.text,
+                    completion: cue.completion,
+                    withdrawn: cue.withdrawn,
+                    revision: cue.revision
+                )
+            },
             contextReceipt: value.contextReceipt.map { receipt in
                 NotebookCaptureContextReceiptDTO(
                     digest: receipt.digest,
@@ -2092,6 +2134,30 @@ enum NotebookCaptureHistoryPolicy {
                 ? utterance.sourceText
                 : nil
         )
+    }
+
+    /// Which audience column a source line joins. The same source rules as
+    /// `laneProjection`, without materializing lanes: a committed identity
+    /// goes to its own selected column; a pending identity borrows the
+    /// provider hint, then the caller's last-identified fallback; an
+    /// unselected known language joins no column and stays a full-width line.
+    static func audienceSourcePlacement(
+        for utterance: NotebookCaptureUtteranceDTO,
+        selectedLanguages: [String],
+        lastIdentifiedSourceLanguage: String?
+    ) -> String? {
+        guard utterance.hasSourceLane, utterance.sourceText.isEmpty == false else {
+            return nil
+        }
+        let languages = orderedLanguages(selectedLanguages)
+        if let source = normalizedLanguage(utterance.sourceLanguage), source != "und" {
+            return languages.contains(source) ? source : nil
+        }
+        return normalizedLanguage(utterance.provisionalSourceLanguage)
+            .flatMap { $0 == "und" ? nil : $0 }
+            .flatMap { languages.contains($0) ? $0 : nil }
+            ?? normalizedLanguage(lastIdentifiedSourceLanguage)
+                .flatMap { languages.contains($0) ? $0 : nil }
     }
 
     /// Response-order pairing is the durable source fact. An unidentified
@@ -2850,6 +2916,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// must continue to use `utterances`.
     @Published private(set) var livePreviewUtterances: [NotebookCaptureUtteranceDTO] = []
     @Published private(set) var utterances: [NotebookCaptureUtteranceDTO] = []
+    /// Time-anchored auxiliary translation cues, keyed by cue identity.
+    /// The audience canvas reads translations from here in multilingual mode;
+    /// the durable transcript keeps reading bound utterance variants.
+    @Published private(set) var translationCues: [String: NotebookCaptureTranslationCueDTO] = [:]
     @Published private(set) var contextPreview: NotebookCaptureContextPreviewDTO?
     @Published private(set) var contextPacks: [NotebookContextPackDTO] = []
     @Published private(set) var contextSources: [NotebookContextPackSourceDTO] = []
@@ -3946,6 +4016,19 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         )
     }
 
+    /// Which audience column a source line joins; nil keeps it a full-width
+    /// unrouted line. Mirrors the audience-mode lane rules exactly.
+    func audienceSourcePlacement(
+        for utterance: NotebookCaptureUtteranceDTO
+    ) -> String? {
+        NotebookCaptureHistoryPolicy.audienceSourcePlacement(
+            for: utterance,
+            selectedLanguages: selectedLanguages,
+            lastIdentifiedSourceLanguage: lastIdentifiedSourceLanguage
+                ?? selectedLanguages.first
+        )
+    }
+
     /// The most recent language the provider actually identified in this
     /// session. Used only as the last resort for placing an `und` line, after
     /// the provider's own per-utterance hint.
@@ -4098,6 +4181,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             }
         }
         reconcileUtterances(for: event)
+        reconcileTranslationCues(for: event)
         if event.captureState.isActive,
            utterances.contains(where: \.hasFinalLaneReadyForProjection) {
             try? client.projectNotebookRealtimeIncremental(sessionId: event.sessionId)
@@ -4316,6 +4400,57 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             )
         }
         MenuBarRuntimeStore.shared.updateRecordingRecentLines(Array(recent))
+    }
+
+    /// Cue deltas upsert by identity and only ever move a key's revision
+    /// forward; a stale redelivery after mailbox coalescing is ignored. A
+    /// coalescing gap heals through the same full-snapshot rebuild as
+    /// utterances, because snapshots carry the whole present cue set.
+    private func reconcileTranslationCues(for event: NotebookCaptureEventDTO) {
+        if event.isFullSnapshot {
+            translationCues = Dictionary(
+                event.translationCues.filter { $0.withdrawn == false }.map { ($0.id, $0) },
+                uniquingKeysWith: { left, right in right.revision >= left.revision ? right : left }
+            )
+            return
+        }
+        guard event.translationCues.isEmpty == false else { return }
+        for cue in event.translationCues {
+            if cue.withdrawn {
+                translationCues.removeValue(forKey: cue.id)
+                continue
+            }
+            if let existing = translationCues[cue.id], existing.revision > cue.revision {
+                continue
+            }
+            translationCues[cue.id] = cue
+        }
+    }
+
+    /// The audience canvas's per-language cue view: present cues targeting
+    /// `language`, in spoken order. Epoch first — timestamps restart when a
+    /// whole stream group restarts, so they are only comparable within one
+    /// epoch. Cues without a time anchor sort after timed siblings of the
+    /// same epoch, by provider order.
+    func presentedTranslationCues(for language: String) -> [NotebookCaptureTranslationCueDTO] {
+        let normalized = normalizedLanguage(language)
+        return translationCues.values
+            .filter { normalizedLanguage($0.targetLanguage) == normalized }
+            .sorted { left, right in
+                if left.groupEpoch != right.groupEpoch {
+                    return left.groupEpoch < right.groupEpoch
+                }
+                switch (left.sourceStartMs, right.sourceStartMs) {
+                case let (.some(leftStart), .some(rightStart)) where leftStart != rightStart:
+                    return leftStart < rightStart
+                case (.some, .none):
+                    return true
+                case (.none, .some):
+                    return false
+                default:
+                    return left.providerSequence < right.providerSequence
+                }
+            }
     }
 
     private func reconcileUtterances(for event: NotebookCaptureEventDTO) {
@@ -4587,6 +4722,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
         cancelUtteranceGapRepair()
         utterances = []
+        translationCues = [:]
         committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
         cancelLivePreviewCoalescing()
         livePreviewUtterances = []
