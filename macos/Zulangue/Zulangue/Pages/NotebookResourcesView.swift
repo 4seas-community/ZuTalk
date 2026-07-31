@@ -106,6 +106,29 @@ final class NotebookResourcesViewModel: ObservableObject {
             loadFailed = true
         }
     }
+
+    func destroyAudio(sessionId: String, core: (any ZulangueCoreProtocol)? = nil) -> Bool {
+        guard let core = core ?? CoreClient.shared.core else { return false }
+        do {
+            try core.destroySessionAudioAndKey(sessionId: sessionId)
+            NotificationCenter.default.post(name: .zulangueSessionUpdated, object: nil)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func moveToTrash(sessionId: String, core: (any ZulangueCoreProtocol)? = nil) -> Bool {
+        guard let core = core ?? CoreClient.shared.core else { return false }
+        do {
+            try core.softDeleteSession(sessionId: sessionId)
+            items.removeAll { $0.id == sessionId }
+            NotificationCenter.default.post(name: .zulangueSessionUpdated, object: nil)
+            return true
+        } catch {
+            return false
+        }
+    }
 }
 
 struct NotebookResourcesView: View {
@@ -139,11 +162,26 @@ struct NotebookResourcesView: View {
                         title: String(localized: "resources.empty")
                     )
                 } else {
-                    LazyVStack(spacing: Spacing.sm) {
+                    LazyVStack(alignment: .leading, spacing: Spacing.md) {
                         ForEach(viewModel.items) { item in
-                            NotebookResourceRow(item: item) {
-                                onOpenSession(item.id)
-                            }
+                            NotebookResourceBlock(
+                                item: item,
+                                onOpen: { onOpenSession(item.id) },
+                                onDestroyAudio: {
+                                    if viewModel.destroyAudio(sessionId: item.id) == false {
+                                        ToastCenter.shared.error(
+                                            String(localized: "resources.audio.destroy.failed")
+                                        )
+                                    }
+                                },
+                                onMoveToTrash: {
+                                    if viewModel.moveToTrash(sessionId: item.id) == false {
+                                        ToastCenter.shared.error(
+                                            String(localized: "resources.delete.failed")
+                                        )
+                                    }
+                                }
+                            )
                         }
                     }
                 }
@@ -174,14 +212,19 @@ struct NotebookResourcesView: View {
     }
 }
 
-private struct NotebookResourceRow: View {
+private struct NotebookResourceBlock: View {
     let item: NotebookResourceItem
     let onOpen: () -> Void
+    let onDestroyAudio: () -> Void
+    let onMoveToTrash: () -> Void
+
+    @State private var isConfirmingAudioDestroy = false
+    @State private var isConfirmingTrash = false
 
     var body: some View {
-        Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: Spacing.md) {
-                HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
+                Button(action: onOpen) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(displayTitle)
                             .font(.bodyMedium)
@@ -190,75 +233,175 @@ private struct NotebookResourceRow: View {
                             .font(.caption)
                             .foregroundColor(.textOnBpFaint)
                     }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("resources.session.\(item.id)")
 
-                    Spacer()
+                Spacer()
 
-                    Text(duration)
-                        .font(.captionMedium)
+                Text(duration)
+                    .font(.captionMedium)
+                    .foregroundColor(.textOnBpDim)
+
+                Menu {
+                    Button(role: .destructive) {
+                        isConfirmingTrash = true
+                    } label: {
+                        Label(
+                            String(localized: "resources.delete"),
+                            systemImage: "trash"
+                        )
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.textOnBpDim)
                 }
-
-                HStack(spacing: Spacing.sm) {
-                    statusChip(
-                        title: String(localized: "resources.audio"),
-                        icon: "waveform",
-                        status: item.audio
-                    )
-                    statusChip(
-                        title: String(localized: "resources.realtime"),
-                        icon: "captions.bubble",
-                        status: item.realtimeTranscript
-                    )
-                    statusChip(
-                        title: String(localized: "resources.async"),
-                        icon: "text.document",
-                        status: item.asyncTranscript
-                    )
-                    statusChip(
-                        title: String(localized: "resources.note"),
-                        icon: "note.text",
-                        status: item.manualNote
-                    )
-                    Spacer()
-                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .accessibilityIdentifier("resources.menu.\(item.id)")
             }
-            .padding(Spacing.md)
-            .background(Color.bpBlueLight.opacity(0.3))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.sm)
-                    .strokeBorder(Color.bpLineGhost.opacity(0.5), lineWidth: Stroke.thin)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-            .contentShape(RoundedRectangle(cornerRadius: Radius.sm))
+
+            VStack(spacing: Spacing.xs) {
+                resourceBar(
+                    title: String(localized: "resources.audio"),
+                    icon: "waveform",
+                    status: item.audio,
+                    detail: audioDetail
+                ) {
+                    if item.audio == .ready {
+                        Button {
+                            isConfirmingAudioDestroy = true
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.signalRed)
+                        }
+                        .buttonStyle(.plain)
+                        .help(String(localized: "resources.audio.destroy"))
+                        .accessibilityIdentifier("resources.audio.destroy.\(item.id)")
+                    }
+                }
+                resourceBar(
+                    title: String(localized: "resources.realtime"),
+                    icon: "captions.bubble",
+                    status: item.realtimeTranscript
+                )
+                resourceBar(
+                    title: String(localized: "resources.async"),
+                    icon: "text.document",
+                    status: item.asyncTranscript
+                )
+                resourceBar(
+                    title: String(localized: "resources.note"),
+                    icon: "note.text",
+                    status: item.manualNote
+                )
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("resources.session.\(item.id)")
+        .padding(Spacing.md)
+        .background(Color.bpBlueLight.opacity(0.3))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.sm)
+                .strokeBorder(Color.bpLineGhost.opacity(0.5), lineWidth: Stroke.thin)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        .confirmationDialog(
+            String(
+                format: String(localized: "resources.audio.destroy.confirm_title"),
+                displayTitle
+            ),
+            isPresented: $isConfirmingAudioDestroy,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "resources.audio.destroy.confirm_button"), role: .destructive) {
+                onDestroyAudio()
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "resources.audio.destroy.confirm_message"))
+        }
+        .confirmationDialog(
+            String(
+                format: String(localized: "resources.delete.confirm_title"),
+                displayTitle
+            ),
+            isPresented: $isConfirmingTrash,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "resources.delete.confirm_button"), role: .destructive) {
+                onMoveToTrash()
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "resources.delete.confirm_message"))
+        }
     }
 
-    private func statusChip(
+    private func resourceBar(
         title: String,
         icon: String,
-        status: NotebookResourceStatus
+        status: NotebookResourceStatus,
+        detail: String? = nil,
+        @ViewBuilder actions: () -> some View = { EmptyView() }
     ) -> some View {
-        Label(title, systemImage: icon)
-            .font(.caption)
-            .foregroundColor(statusColor(status))
-            .padding(.horizontal, Spacing.sm)
-            .padding(.vertical, Spacing.xs)
-            .background(statusColor(status).opacity(0.09))
-            .clipShape(Capsule())
-            .help(statusText(status))
+        HStack(spacing: Spacing.sm) {
+            Button(action: onOpen) {
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.textOnBpDim)
+                        .frame(width: 18)
+
+                    Text(title)
+                        .font(.bodySM)
+                        .foregroundColor(.bpLine)
+
+                    if let detail {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundColor(.textOnBpFaint)
+                    }
+
+                    Spacer()
+
+                    Circle()
+                        .fill(statusColor(status))
+                        .frame(width: 6, height: 6)
+                    Text(statusText(status))
+                        .font(.caption)
+                        .foregroundColor(statusColor(status))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             .accessibilityLabel("\(title), \(statusText(status))")
+
+            actions()
+        }
+        .padding(.horizontal, Spacing.md)
+        .padding(.vertical, Spacing.sm)
+        .background(Color.bpBlue.opacity(0.45))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+    }
+
+    private var audioDetail: String? {
+        switch item.audio {
+        case .ready: String(localized: "resources.audio.saved")
+        case .missing: String(localized: "resources.audio.not_saved")
+        case .pending, .failed: nil
+        }
+    }
+
+    private var timestamp: String {
+        item.createdAt.formatted(date: .abbreviated, time: .shortened)
     }
 
     private var displayTitle: String {
         item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? String(localized: "resources.untitled_recording")
             : item.title
-    }
-
-    private var timestamp: String {
-        item.createdAt.formatted(date: .abbreviated, time: .shortened)
     }
 
     private var duration: String {
