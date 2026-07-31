@@ -1213,6 +1213,11 @@ struct PendingTranslationVariant {
     source_end_ms: Option<u64>,
     target_language: String,
     completion: UtteranceCompletion,
+    /// One-shot latch for the reverse-divergence WARN: a Final auxiliary
+    /// segment whose best row is already owned by a sibling segment stays
+    /// durably pending and is re-examined on every flush, so without this
+    /// flag the observation log would drown in repeats of one fact.
+    reverse_conflict_warned: bool,
 }
 
 fn pending_translation_from_inbox(
@@ -1233,6 +1238,7 @@ fn pending_translation_from_inbox(
         source_end_ms: item.source_end_ms,
         target_language: normalize_language(&item.key.target_language),
         completion,
+        reverse_conflict_warned: false,
     })
 }
 
@@ -1264,9 +1270,9 @@ fn broadcast_segment_boundary_to_auxiliary_lanes(
     last_broadcast: &mut Option<tokio::time::Instant>,
 ) {
     let now = tokio::time::Instant::now();
-    if last_broadcast
-        .is_some_and(|previous| now.duration_since(previous) < SEGMENT_BOUNDARY_BROADCAST_MIN_INTERVAL)
-    {
+    if last_broadcast.is_some_and(|previous| {
+        now.duration_since(previous) < SEGMENT_BOUNDARY_BROADCAST_MIN_INTERVAL
+    }) {
         return;
     }
     let mut broadcast = false;
@@ -1474,9 +1480,7 @@ async fn collect_stream_events(
             }
         }
         let lane_index = tagged.lane_index;
-        if lane_index == canonical_lane_index
-            && matches!(&tagged.event, SttStreamEvent::Endpoint)
-        {
+        if lane_index == canonical_lane_index && matches!(&tagged.event, SttStreamEvent::Endpoint) {
             broadcast_segment_boundary_to_auxiliary_lanes(
                 &lanes,
                 &lane_controls,
@@ -2293,6 +2297,12 @@ fn flush_pending_translation_variants(
                         )
                     })?
             else {
+                warn_reverse_segment_conflict(
+                    &pending_key,
+                    pending_variants,
+                    canonical_matches,
+                    reverse_variant_bindings,
+                );
                 continue;
             };
             (binding.canonical_sequence, binding.utterance)
@@ -2540,6 +2550,51 @@ fn cross_row_translation_spans(
     spanning
 }
 
+/// The reverse of cross-row divergence, made visible: a Final auxiliary
+/// segment whose uniquely best row already carries this language from a
+/// sibling segment means the auxiliary stream segmented more finely than the
+/// canonical one, and that row's translation is missing the tail held here.
+/// The fact stays durably unbound (an owner withdrawal can still adopt it
+/// later); this warns exactly once per segment and carries no transcript
+/// text.
+fn warn_reverse_segment_conflict(
+    pending_key: &(usize, u64, u64),
+    pending_variants: &mut std::collections::HashMap<(usize, u64, u64), PendingTranslationVariant>,
+    canonical_matches: &std::collections::HashMap<(u64, u64), CanonicalUtteranceMatch>,
+    reverse_variant_bindings: &std::collections::HashMap<(u64, u64, String), (usize, u64, u64)>,
+) {
+    let Some(pending) = pending_variants.get_mut(pending_key) else {
+        return;
+    };
+    if pending.reverse_conflict_warned || pending.completion != UtteranceCompletion::Complete {
+        return;
+    }
+    let Some(best_sequence) = ranked_canonical_sequences(pending, canonical_matches.values())
+        .into_iter()
+        .next()
+    else {
+        return;
+    };
+    let owner = reverse_variant_bindings.get(&(
+        pending.group_epoch,
+        best_sequence,
+        pending.target_language.clone(),
+    ));
+    if owner.is_none_or(|owner| owner == pending_key) {
+        return;
+    }
+    pending.reverse_conflict_warned = true;
+    tracing::warn!(
+        target_language = %pending.target_language,
+        source_language = %pending.source_language,
+        occupied_sequence = best_sequence,
+        provider_sequence = pending.source_sequence,
+        source_start_ms = pending.source_start_ms,
+        source_end_ms = pending.source_end_ms,
+        "auxiliary translation segment lost its row to a sibling segment; auxiliary stream segmented more finely than canonical"
+    );
+}
+
 /// Observability only; carries no transcript text. Finals only, because a live
 /// Partial legitimately sweeps across rows while its segment is still open.
 fn warn_cross_row_translation_span(
@@ -2550,8 +2605,7 @@ fn warn_cross_row_translation_span(
     if pending.completion != UtteranceCompletion::Complete {
         return;
     }
-    let spanning =
-        cross_row_translation_spans(pending, bound_sequence, canonical_matches.values());
+    let spanning = cross_row_translation_spans(pending, bound_sequence, canonical_matches.values());
     if spanning.is_empty() {
         return;
     }
@@ -6740,9 +6794,7 @@ impl ZulangueCore {
             .collect::<Vec<_>>();
         let lane_controls = streams
             .iter()
-            .map(|stream| {
-                (!stream.descriptor.canonical).then(|| stream.control_tx.clone())
-            })
+            .map(|stream| (!stream.descriptor.canonical).then(|| stream.control_tx.clone()))
             .collect::<Vec<_>>();
         let store = self.notebook_capture_store.clone();
         let context_store = self.context_pack_store.clone();
@@ -12030,6 +12082,7 @@ mod tests {
             source_end_ms: Some(220),
             target_language: "zh".into(),
             completion: UtteranceCompletion::Partial,
+            reverse_conflict_warned: false,
         };
         let candidates = [
             candidate(0, 0, Some(0), Some(100)),
@@ -12110,6 +12163,7 @@ mod tests {
             source_end_ms: Some(28_920),
             target_language: "th".into(),
             completion: UtteranceCompletion::Complete,
+            reverse_conflict_warned: false,
         };
         let rows = [
             candidate(0, 0, Some(600), Some(5_160)),
@@ -12134,6 +12188,90 @@ mod tests {
             cross_row_translation_spans(&aligned, 0, rows.iter()),
             Vec::<u64>::new(),
             "boundary skew from network lag must not raise the divergence flag"
+        );
+    }
+
+    #[test]
+    fn reverse_segment_conflict_latches_once_and_only_for_owned_final_rows() {
+        let row = |sequence, start_ms, end_ms| {
+            let mut utterance = projected_utterance();
+            utterance.sequence = sequence;
+            utterance.source_language = "zh".into();
+            utterance.source_start_ms = Some(start_ms);
+            utterance.source_end_ms = Some(end_ms);
+            (
+                (0, sequence),
+                CanonicalUtteranceMatch {
+                    group_epoch: 0,
+                    utterance,
+                },
+            )
+        };
+        let canonical_matches = std::collections::HashMap::from([row(0, 0, 10_000)]);
+        let pending_key = (3, 0, 1);
+        let owner_key = (3, 0, 0);
+        // The tail half of a row whose language is already owned by the
+        // sibling segment that carried the head half.
+        let pending = PendingTranslationVariant {
+            session_id: "reverse-session".into(),
+            group_epoch: 0,
+            source_sequence: 1,
+            source_language: "zh".into(),
+            source_text: "后半段".into(),
+            source_start_ms: Some(5_000),
+            source_end_ms: Some(10_000),
+            target_language: "th".into(),
+            completion: UtteranceCompletion::Complete,
+            reverse_conflict_warned: false,
+        };
+        let mut pending_variants = std::collections::HashMap::from([(pending_key, pending)]);
+        let reverse_variant_bindings =
+            std::collections::HashMap::from([((0, 0, "th".to_string()), owner_key)]);
+
+        warn_reverse_segment_conflict(
+            &pending_key,
+            &mut pending_variants,
+            &canonical_matches,
+            &reverse_variant_bindings,
+        );
+        assert!(
+            pending_variants[&pending_key].reverse_conflict_warned,
+            "a Final tail losing its row to a sibling segment must latch the warning"
+        );
+
+        let mut partial_variants = pending_variants.clone();
+        partial_variants
+            .get_mut(&pending_key)
+            .unwrap()
+            .reverse_conflict_warned = false;
+        partial_variants.get_mut(&pending_key).unwrap().completion = UtteranceCompletion::Partial;
+        warn_reverse_segment_conflict(
+            &pending_key,
+            &mut partial_variants,
+            &canonical_matches,
+            &reverse_variant_bindings,
+        );
+        assert!(
+            !partial_variants[&pending_key].reverse_conflict_warned,
+            "a still-open Partial legitimately waits and must not raise the flag"
+        );
+
+        let mut self_owned_variants = pending_variants.clone();
+        self_owned_variants
+            .get_mut(&pending_key)
+            .unwrap()
+            .reverse_conflict_warned = false;
+        let self_bindings =
+            std::collections::HashMap::from([((0, 0, "th".to_string()), pending_key)]);
+        warn_reverse_segment_conflict(
+            &pending_key,
+            &mut self_owned_variants,
+            &canonical_matches,
+            &self_bindings,
+        );
+        assert!(
+            !self_owned_variants[&pending_key].reverse_conflict_warned,
+            "owning the row yourself is the normal path, not a conflict"
         );
     }
 
@@ -12220,6 +12358,7 @@ mod tests {
             source_end_ms: None,
             target_language: "en".into(),
             completion: UtteranceCompletion::Partial,
+            reverse_conflict_warned: false,
         };
         let candidates = [candidate(6), candidate(7)];
         assert_eq!(
@@ -12248,6 +12387,7 @@ mod tests {
             source_end_ms: Some(300),
             target_language: "zh".into(),
             completion: UtteranceCompletion::Partial,
+            reverse_conflict_warned: false,
         };
         let mut utterance = projected_utterance();
         utterance.sequence = 4;
