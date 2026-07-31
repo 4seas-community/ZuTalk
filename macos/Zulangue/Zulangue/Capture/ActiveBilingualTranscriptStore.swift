@@ -568,6 +568,44 @@ enum NotebookCaptureLivePresentation {
     }
 }
 
+/// Bounds how often interim preview revisions reach the published transcript.
+///
+/// The realtime provider emits a preview revision at roughly speaking cadence —
+/// on the order of ten or more per second — and each one replaces the whole
+/// preview array, which redraws the subtitle canvas end to end. That canvas is
+/// a window floating over a live meeting, so its redraws are work the display
+/// compositor cannot cache; left unbounded they are the dominant cost of
+/// showing subtitles at all.
+///
+/// Only the interim path is bounded. Committed text reaches the transcript
+/// through the durable utterance list, so the sole thing a held revision
+/// delays is an interim string that a newer revision is about to overwrite.
+///
+/// The first revision after a quiet gap publishes immediately, so the first
+/// word after silence is never late; only a burst is held, and the caller's
+/// trailing flush guarantees the last revision of a burst still lands.
+enum NotebookCaptureLivePreviewCoalescing {
+    static let interval: TimeInterval = 0.1
+
+    enum Decision: Equatable {
+        case publishNow
+        case hold(after: TimeInterval)
+    }
+
+    static func decide(
+        now: TimeInterval,
+        lastPublishedAt: TimeInterval?,
+        interval: TimeInterval = interval
+    ) -> Decision {
+        guard interval > 0, let lastPublishedAt else { return .publishNow }
+        let elapsed = now - lastPublishedAt
+        // A non-monotonic or rewound clock reads as "long enough ago" rather
+        // than stranding the canvas behind a hold that never expires.
+        guard elapsed >= 0, elapsed < interval else { return .publishNow }
+        return .hold(after: interval - elapsed)
+    }
+}
+
 enum NotebookCaptureInterruptReason: String, Codable, Equatable, Sendable {
     case localAudioOverflow = "local_audio_overflow"
     case localAudioUnavailable = "local_audio_unavailable"
@@ -2824,6 +2862,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private var callbackSessionId: String?
     private var lastAppliedEventRevision: UInt64?
     private var lastAppliedLivePreviewRevision: UInt64?
+    private var lastLivePreviewPublishedAt: TimeInterval?
+    private var heldLivePreview: [NotebookCaptureUtteranceDTO]?
+    private var livePreviewFlushTask: Task<Void, Never>?
     private var pendingCallbackEvent: NotebookCaptureEventDTO?
     private var pendingLivePreview: NotebookCaptureLivePreviewDTO?
     private var utteranceGapRepair: UtteranceGapRepair?
@@ -3238,6 +3279,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         self.notebookId = notebookId
         self.profile = startProfile
         self.utterances = []
+        cancelLivePreviewCoalescing()
         self.livePreviewUtterances = []
         self.lastAppliedEventRevision = nil
         self.lastAppliedLivePreviewRevision = nil
@@ -3788,6 +3830,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         projectionState = .ready
         utterances = []
         committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
+        cancelLivePreviewCoalescing()
         livePreviewUtterances = []
         lastAppliedEventRevision = nil
         lastAppliedLivePreviewRevision = nil
@@ -3991,6 +4034,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
 
         if event.captureState.isActive == false {
+            cancelLivePreviewCoalescing()
             livePreviewUtterances = []
             lastAppliedLivePreviewRevision = nil
             refreshRecentTranscriptPresentation()
@@ -4106,8 +4150,60 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
         lastAppliedLivePreviewRevision = preview.previewRevision
         guard next != livePreviewUtterances else { return }
+
+        switch NotebookCaptureLivePreviewCoalescing.decide(
+            now: Self.livePreviewClock(),
+            lastPublishedAt: lastLivePreviewPublishedAt
+        ) {
+        case .publishNow:
+            publishLivePreview(next)
+        case .hold(let delay):
+            // Newer revisions overwrite the held one, so a burst collapses to
+            // whatever was most recent when the window closes.
+            heldLivePreview = next
+            scheduleLivePreviewFlush(after: delay)
+        }
+    }
+
+    private static func livePreviewClock() -> TimeInterval {
+        ProcessInfo.processInfo.systemUptime
+    }
+
+    private func publishLivePreview(_ next: [NotebookCaptureUtteranceDTO]) {
+        livePreviewFlushTask?.cancel()
+        livePreviewFlushTask = nil
+        heldLivePreview = nil
+        lastLivePreviewPublishedAt = Self.livePreviewClock()
+        guard next != livePreviewUtterances else { return }
         livePreviewUtterances = next
         refreshRecentTranscriptPresentation()
+    }
+
+    private func scheduleLivePreviewFlush(after delay: TimeInterval) {
+        // An in-flight flush already covers the newly held revision; letting it
+        // stand is what keeps a burst to one publish per window.
+        guard livePreviewFlushTask == nil else { return }
+        livePreviewFlushTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard Task.isCancelled == false else { return }
+            self?.flushHeldLivePreview()
+        }
+    }
+
+    private func flushHeldLivePreview() {
+        livePreviewFlushTask = nil
+        guard let next = heldLivePreview else { return }
+        publishLivePreview(next)
+    }
+
+    /// Drops any held revision without publishing it. Every path that clears
+    /// the preview must call this, otherwise a flush scheduled moments earlier
+    /// would repopulate the canvas after the session that produced it is gone.
+    private func cancelLivePreviewCoalescing() {
+        livePreviewFlushTask?.cancel()
+        livePreviewFlushTask = nil
+        heldLivePreview = nil
+        lastLivePreviewPublishedAt = nil
     }
 
     private func refreshRecentTranscriptPresentation() {
@@ -4412,6 +4508,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         cancelUtteranceGapRepair()
         utterances = []
         committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
+        cancelLivePreviewCoalescing()
         livePreviewUtterances = []
         lastAppliedEventRevision = nil
         lastAppliedLivePreviewRevision = nil
