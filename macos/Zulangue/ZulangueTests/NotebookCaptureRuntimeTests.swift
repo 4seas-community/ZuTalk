@@ -161,14 +161,16 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         editor.load()
 
         let addThai = editor.scheduleUpdate(.addLanguage("th"))
-        let addJapanese = editor.scheduleUpdate(.addLanguage("ja"))
-        let moveJapaneseFirst = editor.scheduleUpdate(.moveLanguage("ja", offset: -3))
+        let addJapaneseAtLimit = editor.scheduleUpdate(.addLanguage("ja"))
         let removeChinese = editor.scheduleUpdate(.removeLanguage("zh"))
+        let addJapanese = editor.scheduleUpdate(.addLanguage("ja"))
+        let moveJapaneseFirst = editor.scheduleUpdate(.moveLanguage("ja", offset: -2))
 
         await addThai.value
+        await addJapaneseAtLimit.value
+        await removeChinese.value
         await addJapanese.value
         await moveJapaneseFirst.value
-        await removeChinese.value
 
         XCTAssertEqual(editor.draft.selectedLanguages, ["ja", "en", "th"])
         XCTAssertNil(editor.draft.commonCaptionLanguage)
@@ -176,8 +178,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             persistence.saveRequests.map(\.selectedLanguages),
             [
                 ["en", "zh", "th"],
-                ["en", "zh", "th", "ja"],
-                ["ja", "en", "zh", "th"],
+                ["en", "th"],
+                ["en", "th", "ja"],
                 ["ja", "en", "th"],
             ]
         )
@@ -475,7 +477,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             (["en"], .transcriptionOnly),
             (["en", "zh"], .twoWay),
             (["en", "zh", "th"], .multilingualOneWay),
-            (["ja", "en", "zh", "th"], .multilingualOneWay),
+            (["ja", "en", "zh"], .multilingualOneWay),
         ]
 
         for (languages, expectedMode) in cases {
@@ -501,8 +503,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         duplicateProfile.selectedLanguages = ["en", "zh", "th", "ja", "fr"]
         XCTAssertEqual(
             NotebookCaptureProfileEditorModel.normalized(duplicateProfile).selectedLanguages,
-            ["en", "zh", "th", "ja"],
-            "legacy profiles must preserve language order while adopting the four-language limit"
+            ["en", "zh", "th"],
+            "legacy profiles must preserve language order while adopting the three-language limit"
         )
 
         duplicateProfile.selectedLanguages = []
