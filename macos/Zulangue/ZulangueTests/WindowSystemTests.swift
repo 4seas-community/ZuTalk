@@ -549,12 +549,33 @@ final class WindowSystemTests: XCTestCase {
     }
 
     func testSubtitleOverlayFontPolicy_clampsAndStepsWithinReadableRange() {
-        XCTAssertEqual(SubtitleOverlayFontPolicy.clamped(2), 18)
-        XCTAssertEqual(SubtitleOverlayFontPolicy.clamped(100), 64)
-        XCTAssertEqual(SubtitleOverlayFontPolicy.smaller(than: 30), 26)
-        XCTAssertEqual(SubtitleOverlayFontPolicy.larger(than: 30), 34)
-        XCTAssertEqual(SubtitleOverlayFontPolicy.smaller(than: 18), 18)
-        XCTAssertEqual(SubtitleOverlayFontPolicy.larger(than: 64), 64)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.clamped(2), 16)
+        // Projector-canvas sizes are legitimate values, not clamp targets.
+        XCTAssertEqual(SubtitleOverlayFontPolicy.clamped(100), 100)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.clamped(500), 160)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.smaller(than: 30), 28)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.larger(than: 30), 32)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.smaller(than: 16), 16)
+        XCTAssertEqual(SubtitleOverlayFontPolicy.larger(than: 160), 160)
+    }
+
+    func testSubtitleOverlayLayoutPolicy_audienceRowCountFollowsCanvasHeight() {
+        // A short window at projector font sizes still keeps the live exchange.
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceRowCount(height: 200, fontSize: 96),
+            2
+        )
+        // A tall canvas retains more finished rows so a translation that
+        // lands one utterance late is still on screen to be read.
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceRowCount(height: 320, fontSize: 30),
+            3
+        )
+        // Bounded above: the overlay never becomes a scrollback log.
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceRowCount(height: 1_000, fontSize: 24),
+            4
+        )
     }
 
     func testWindowCoordinator_registrySnapshot_listsAllKnownWindowSurfaces() {

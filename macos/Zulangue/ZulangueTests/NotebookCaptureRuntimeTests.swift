@@ -5375,7 +5375,13 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(overlayViews.contains("SubtitleOverlayDisplayMode"))
         XCTAssertTrue(overlayViews.contains("SubtitleOverlayLayoutPolicy"))
         XCTAssertTrue(overlayViews.contains("LazyVGrid(columns: columns"))
-        XCTAssertTrue(overlayViews.contains("presentedUtterances.suffix(2)"))
+        XCTAssertTrue(overlayViews.contains(
+            "SubtitleOverlayLayoutPolicy.audienceRowCount("
+        ))
+        XCTAssertFalse(
+            overlayViews.contains("presentedUtterances.suffix(2)"),
+            "audience retention is height-driven; a fixed pair evicts a translation before it can be read"
+        )
         XCTAssertFalse(overlayViews.contains("commonCaptionLanguage"))
         XCTAssertFalse(overlayViews.contains("capture.settings.languages.common_caption"))
         XCTAssertFalse(overlayViews.contains("isCommonCaption"))

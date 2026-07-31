@@ -4,10 +4,13 @@ import SwiftUI
 
 enum SubtitleOverlayFontPolicy {
     static let defaultsKey = "zulangue.subtitleOverlay.fontSize"
-    static let minimum = 18.0
-    static let maximum = 64.0
+    /// The ceiling is sized for a projector canvas read from the back of a
+    /// meeting room, not for a laptop panel; the slider spans the full range
+    /// continuously and the step only serves the fine-tune buttons.
+    static let minimum = 16.0
+    static let maximum = 160.0
     static let defaultValue = 30.0
-    static let step = 4.0
+    static let step = 2.0
 
     static func clamped(_ value: Double) -> Double {
         min(max(value, minimum), maximum)
@@ -68,6 +71,16 @@ enum SubtitleOverlayLayoutPolicy {
             if capacity >= 2 { return 2 }
             return 1
         }
+    }
+
+    /// Audience retention is height-driven, not a fixed pair: a translation
+    /// arrives one beat after its source, so the window keeps as many finished
+    /// rows readable as the canvas affords instead of evicting on every new
+    /// utterance. Bounded so a tiny window still shows the live exchange and a
+    /// tall canvas never turns into a scrollback log.
+    static func audienceRowCount(height: CGFloat, fontSize: Double) -> Int {
+        let estimatedRowHeight = max(CGFloat(fontSize) * 3.2, 1)
+        return min(4, max(2, Int(height / estimatedRowHeight)))
     }
 
     static func minimumColumnWidth(fontSize: Double) -> CGFloat {
@@ -132,11 +145,14 @@ struct SubtitleOverlayView: View {
     @ObservedObject private var presentationSettings = SubtitleOverlayPresentationSettings.shared
     @AppStorage(SubtitleOverlayFontPolicy.defaultsKey)
     private var storedFontSize = SubtitleOverlayFontPolicy.defaultValue
+    @State private var isHoveringOverlay = false
 
     var body: some View {
         VStack(spacing: 0) {
-            controlBar
-            Divider().overlay(Color.white.opacity(0.12))
+            if showsPersistentControlBar {
+                controlBar
+                Divider().overlay(Color.white.opacity(0.12))
+            }
             subtitleBody
         }
         .frame(minWidth: 560, minHeight: 180)
@@ -148,13 +164,39 @@ struct SubtitleOverlayView: View {
                         .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
                 )
         )
+        .overlay(alignment: .top) { hoverControlBar }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.15)) {
+                isHoveringOverlay = hovering
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "subtitle.overlay.accessibility_label")))
         .accessibilityValue(Text(String(
             format: String(localized: "subtitle.overlay.language_count"),
             store.selectedLanguages.count
         )))
+    }
+
+    /// The audience surface is a projection canvas: while it is being watched
+    /// rather than operated, the operator chrome stays off-screen entirely and
+    /// returns only under the pointer. The window itself remains movable by
+    /// its background.
+    private var showsPersistentControlBar: Bool {
+        presentationSettings.displayMode == .conversation
+    }
+
+    @ViewBuilder
+    private var hoverControlBar: some View {
+        if showsPersistentControlBar == false, isHoveringOverlay {
+            VStack(spacing: 0) {
+                controlBar
+                Divider().overlay(Color.white.opacity(0.12))
+            }
+            .background(.regularMaterial)
+            .transition(.opacity)
+        }
     }
 
     private var controlBar: some View {
@@ -258,7 +300,7 @@ struct SubtitleOverlayView: View {
     }
 
     private var fontControls: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 4) {
             fontButton(
                 systemImage: "textformat.size.smaller",
                 label: String(localized: "subtitle.overlay.font_smaller"),
@@ -268,12 +310,21 @@ struct SubtitleOverlayView: View {
                 storedFontSize = SubtitleOverlayFontPolicy.smaller(than: fontSize)
             }
 
+            Slider(
+                value: $storedFontSize,
+                in: SubtitleOverlayFontPolicy.minimum...SubtitleOverlayFontPolicy.maximum
+            )
+            .controlSize(.mini)
+            .frame(width: 110)
+            .help(String(localized: "subtitle.overlay.font_size"))
+            .accessibilityLabel(Text(String(localized: "subtitle.overlay.font_size")))
+            .accessibilityValue(Text(verbatim: "\(Int(fontSize))"))
+
             Text(verbatim: "\(Int(fontSize))")
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundColor(.secondary)
-                .frame(width: 28)
-                .accessibilityLabel(Text(String(localized: "subtitle.overlay.font_size")))
-                .accessibilityValue(Text(verbatim: "\(Int(fontSize))"))
+                .frame(width: 30)
+                .accessibilityHidden(true)
 
             fontButton(
                 systemImage: "textformat.size.larger",
@@ -396,36 +447,35 @@ struct SubtitleOverlayView: View {
         }
     }
 
+    /// The audience never reads system prose. Silence, session start, and
+    /// session end all present the same way — a quiet canvas — and words are
+    /// the only thing that ever appears on it.
     @ViewBuilder
     private func audienceBody(geometry: GeometryProxy) -> some View {
-        if store.isCaptureActive == false {
-            emptyState(
-                String(localized: "subtitle.overlay.recording_ended"),
-                systemImage: "checkmark.circle"
+        let utterances = Array(
+            store.presentedUtterances.suffix(
+                SubtitleOverlayLayoutPolicy.audienceRowCount(
+                    height: geometry.size.height,
+                    fontSize: fontSize
+                )
             )
-        } else if store.presentedUtterances.isEmpty == false {
-            let utterances = Array(store.presentedUtterances.suffix(2))
+        )
+
+        if store.isCaptureActive, utterances.isEmpty == false {
             ScrollView {
                 LazyVStack(spacing: 10) {
-                    ForEach(Array(utterances.enumerated()), id: \.element.id) {
-                        index,
-                        utterance in
-                        audienceRow(
-                            utterance,
-                            width: geometry.size.width - 24,
-                            isCurrent: index == utterances.count - 1
-                        )
+                    ForEach(utterances) { utterance in
+                        audienceRow(utterance, width: geometry.size.width - 24)
+                            .transition(.opacity)
                     }
                 }
                 .padding(12)
+                .animation(.easeOut(duration: 0.22), value: utterances.map(\.id))
             }
             .defaultScrollAnchor(.bottom)
-            .scrollIndicators(.visible)
+            .scrollIndicators(.hidden)
         } else {
-            emptyState(
-                String(localized: "subtitle.overlay.waiting"),
-                systemImage: "waveform"
-            )
+            Color.clear
         }
     }
 
@@ -490,35 +540,20 @@ struct SubtitleOverlayView: View {
         }
     }
 
+    /// Result-only projection: lanes appear when they have words and stay
+    /// blank otherwise. A line whose language is still unrouted (pending
+    /// identification or outside the selection) is still speech — it shows
+    /// full-width as plain text, with no label explaining itself, and the
+    /// columns catch up silently on the next revision.
     @ViewBuilder
     private func audienceRow(
         _ utterance: NotebookCaptureUtteranceDTO,
-        width: CGFloat,
-        isCurrent: Bool
+        width: CGFloat
     ) -> some View {
         let projection = store.projection(for: utterance)
+        let lanes = displayLanes(projection).filter { $0.text?.isEmpty == false }
 
-        if let pendingLanguage = projection.pendingLanguage {
-            statusRow(
-                title: String(localized: "capture.transcript.language_pending"),
-                detail: pendingLanguage,
-                systemImage: "ellipsis",
-                color: .secondary
-            )
-            .opacity(isCurrent ? 1 : 0.72)
-        } else if let outsideText = projection.unselectedLanguageText {
-            statusRow(
-                title: String(
-                    format: String(localized: "capture.transcript.unselected_language"),
-                    displayLanguageCode(utterance.sourceLanguage)
-                ),
-                detail: outsideText,
-                systemImage: "character.bubble",
-                color: .secondary
-            )
-            .opacity(isCurrent ? 1 : 0.72)
-        } else {
-            let lanes = displayLanes(projection)
+        if lanes.isEmpty == false {
             let columnCount = SubtitleOverlayLayoutPolicy.audienceColumnCount(
                 width: width,
                 languageCount: lanes.count,
@@ -531,10 +566,27 @@ struct SubtitleOverlayView: View {
 
             LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                 ForEach(Array(lanes.enumerated()), id: \.offset) { _, lane in
-                    audienceLane(lane, isCurrent: isCurrent)
+                    audienceLane(lane)
                 }
             }
+        } else if let unroutedText = projection.pendingLanguage
+            ?? projection.unselectedLanguageText,
+            unroutedText.isEmpty == false {
+            audiencePlainText(unroutedText)
         }
+    }
+
+    private func audiencePlainText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: CGFloat(fontSize), weight: .semibold))
+            .foregroundColor(.primary)
+            .textSelection(.enabled)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(subtitleCardBackground)
     }
 
     private func conversationLane(
@@ -556,33 +608,26 @@ struct SubtitleOverlayView: View {
         .frame(maxWidth: .infinity, minHeight: CGFloat(fontSize * 2.35), alignment: .topLeading)
     }
 
-    private func audienceLane(
-        _ lane: NotebookCaptureLanguageLane,
-        isCurrent: Bool
-    ) -> some View {
-        let audienceFontSize = isCurrent ? fontSize : max(fontSize * 0.84, 18)
-
-        return VStack(alignment: .leading, spacing: 8) {
-            languageLabel(lane.language)
-            laneContent(lane)
-                .font(.system(size: CGFloat(audienceFontSize), weight: .semibold))
-                .lineLimit(2)
-                .minimumScaleFactor(0.78)
-        }
-        .multilineTextAlignment(.leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(
-            maxWidth: .infinity,
-            minHeight: CGFloat(fontSize * 2.8),
-            alignment: .topLeading
-        )
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(isCurrent ? 0.075 : 0.038))
-        )
-        .opacity(isCurrent ? 1 : 0.74)
-        .accessibilityElement(children: .combine)
+    /// One lane, words only: no per-row language caption, no line cap, no
+    /// dimming. The row being read is usually the one whose translation just
+    /// filled in, so every visible row keeps full size and full brightness,
+    /// and a long sentence wraps instead of scaling away its tail.
+    private func audienceLane(_ lane: NotebookCaptureLanguageLane) -> some View {
+        Text(lane.text ?? "")
+            .font(.system(size: CGFloat(fontSize), weight: .semibold))
+            .foregroundColor(.primary)
+            .contentTransition(.opacity)
+            .animation(.easeOut(duration: 0.18), value: lane.text)
+            .textSelection(.enabled)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(subtitleCardBackground)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text(languageName(lane.language)))
+            .accessibilityValue(Text(lane.text ?? ""))
     }
 
     @ViewBuilder
