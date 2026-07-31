@@ -9,7 +9,8 @@
 //! let msg = tr!("error.stt.ws_failed", detail = "dns".to_string());
 //! ```
 //!
-//! 支持的 locale：`en` / `zh-Hans` / `ja`，fallback = `en`。
+//! 支持的 locale：`en` / `th` / `my` / `ja` / `fr` / `es` / `de` / `zh-Hans`，
+//! fallback = `en`。
 //!
 //! 权威：docs/i18n.md（待建）
 
@@ -47,9 +48,8 @@ pub fn t_args(key: &str, args: &[(&str, &str)]) -> String {
 
 /// 切换全局 locale。accepted 形式：
 /// - "en" / "en-US" → `"en"`
-/// - "zh" / "zh-Hans" / "zh-CN" → `"zh-Hans"`
-/// - "zh-Hant" / "zh-TW" → `"zh-Hans"`（暂无繁体，回退简体）
-/// - "ja" / "ja-JP" → `"ja"`
+/// - "zh" 系全部标签（zh-Hans / zh-CN / zh-Hant / zh-TW / …）→ `"zh-Hans"`（暂无繁体，回退简体）
+/// - "th" / "my" / "ja" / "fr" / "es" / "de"（含带区域后缀形式）→ 各自基础标签
 /// - 其它 → `"en"`
 pub fn set_locale(tag: &str) {
     rust_i18n::set_locale(normalize_tag(tag));
@@ -62,16 +62,21 @@ pub fn current_locale() -> String {
 
 /// 列出支持的 locale 标签。
 pub fn available_locales() -> &'static [&'static str] {
-    &["en", "zh-Hans", "ja"]
+    &["en", "th", "my", "ja", "fr", "es", "de", "zh-Hans"]
 }
 
 fn normalize_tag(tag: &str) -> &'static str {
     let lower = tag.to_ascii_lowercase();
     let base = lower.split('-').next().unwrap_or("");
-    match (base, lower.as_str()) {
-        ("zh", _) => "zh-Hans",
-        ("ja", _) => "ja",
-        ("en", _) => "en",
+    match base {
+        "zh" => "zh-Hans",
+        "th" => "th",
+        "my" => "my",
+        "ja" => "ja",
+        "fr" => "fr",
+        "es" => "es",
+        "de" => "de",
+        "en" => "en",
         _ => "en",
     }
 }
@@ -94,9 +99,19 @@ mod tests {
         assert_eq!(normalize_tag("zh"), "zh-Hans");
         assert_eq!(normalize_tag("zh-CN"), "zh-Hans");
         assert_eq!(normalize_tag("zh-Hant"), "zh-Hans");
+        assert_eq!(normalize_tag("zh-Hant-TW"), "zh-Hans");
+        assert_eq!(normalize_tag("zh-TW"), "zh-Hans");
+        assert_eq!(normalize_tag("zh-HK"), "zh-Hans");
         assert_eq!(normalize_tag("ja"), "ja");
         assert_eq!(normalize_tag("ja-JP"), "ja");
-        assert_eq!(normalize_tag("fr"), "en");
+        assert_eq!(normalize_tag("th"), "th");
+        assert_eq!(normalize_tag("th-TH"), "th");
+        assert_eq!(normalize_tag("my"), "my");
+        assert_eq!(normalize_tag("fr"), "fr");
+        assert_eq!(normalize_tag("fr-FR"), "fr");
+        assert_eq!(normalize_tag("es-419"), "es");
+        assert_eq!(normalize_tag("de-AT"), "de");
+        assert_eq!(normalize_tag("ko"), "en");
         assert_eq!(normalize_tag(""), "en");
     }
 
@@ -116,15 +131,15 @@ mod tests {
         // 通过 rust-i18n 内部的 _rust_i18n_available_locales 访问
         let locales = rust_i18n::available_locales!();
         println!("rust-i18n available: {locales:?}");
-        assert!(locales.contains(&"en"));
-        assert!(locales.contains(&"zh-Hans"));
-        assert!(locales.contains(&"ja"));
+        for expected in available_locales() {
+            assert!(locales.contains(expected), "missing locale {expected}");
+        }
     }
 
     #[test]
     fn tr_falls_back_to_english_for_missing_locale() {
         let _g = LOCALE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        set_locale("fr");
+        set_locale("ko");
         let s = t_args("error.core.init_failed", &[("detail", "x")]);
         assert!(s.contains("x"));
     }

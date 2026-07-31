@@ -1,0 +1,22 @@
+error:
+  core:
+    init_failed: "การเริ่มต้นล้มเหลว: %{detail}"
+    validation_failed: "การตรวจสอบความถูกต้องล้มเหลว: %{detail}"
+    not_found: "ไม่พบ: %{detail}"
+    internal: "ข้อผิดพลาดภายใน: %{detail}"
+
+  stt:
+    ws_failed: "การเชื่อมต่อ WebSocket ล้มเหลว: %{detail}"
+    read_timeout: "การอ่าน WebSocket หมดเวลาหลังจาก %{duration}"
+    server_closed: "เซิร์ฟเวอร์ปิดการเชื่อมต่อ: code=%{code}, reason=%{reason}"
+    auth_failed: "การยืนยันตัวตนล้มเหลว: %{detail}"
+    quota_exhausted: "โควตาหมดแล้ว: %{detail}"
+    rate_limited: "ถูกจำกัดอัตราคำขอ"
+    parse: "ข้อผิดพลาดในการแยกวิเคราะห์: %{detail}"
+    server_error: "ข้อผิดพลาดของเซิร์ฟเวอร์ %{status}: %{detail}"
+    api_error: "ข้อผิดพลาดของ API %{status}: [%{kind}] %{detail}"
+    transcription_failed: "การถอดเสียงล้มเหลว: [%{kind}] %{detail}"
+    http: "ข้อผิดพลาด HTTP: %{detail}"
+    timeout: "หมดเวลา: %{operation} หลังจาก %{duration}"
+    cancelled: "ยกเลิกแล้ว"
+    upload_failed: "การอัปโหลดล้มเหลว: %{detail}"

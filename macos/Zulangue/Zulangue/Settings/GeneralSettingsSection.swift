@@ -18,9 +18,15 @@ import SwiftUI
 /// App UI 语言。只保留显式可选的语言;"跟随系统" 不作为用户选项,
 /// 只在首次启动时用来"猜一次"默认值。
 enum AppLanguage: String, CaseIterable, Identifiable {
+    // 声明顺序即 Picker 展示顺序: 英 → 泰 → 缅 → 日 → 法 → 西 → 德 → 简
     case en
-    case zhHans = "zh-Hans"
+    case th
+    case my
     case ja
+    case fr
+    case es
+    case de
+    case zhHans = "zh-Hans"
 
     var id: String { rawValue }
 
@@ -28,8 +34,13 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     var displayNameKey: String.LocalizationValue {
         switch self {
         case .en:     return "lang.en"
-        case .zhHans: return "lang.zh"
+        case .th:     return "lang.th"
+        case .my:     return "lang.my"
         case .ja:     return "lang.ja"
+        case .fr:     return "lang.fr"
+        case .es:     return "lang.es"
+        case .de:     return "lang.de"
+        case .zhHans: return "lang.zh_hans"
         }
     }
 
@@ -58,9 +69,13 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     /// 把任意 BCP-47 / ICU 区域标签映射到支持的语言,不支持时返回 nil。
     static func match(_ tag: String) -> AppLanguage? {
         let lower = tag.replacingOccurrences(of: "_", with: "-").lowercased()
-        if lower == "zh-hant" || lower.hasPrefix("zh-hant-") { return .zhHans }
         if lower == "zh" || lower.hasPrefix("zh-") { return .zhHans }
+        if lower == "th" || lower.hasPrefix("th-") { return .th }
+        if lower == "my" || lower.hasPrefix("my-") { return .my }
         if lower == "ja" || lower.hasPrefix("ja-") { return .ja }
+        if lower == "fr" || lower.hasPrefix("fr-") { return .fr }
+        if lower == "es" || lower.hasPrefix("es-") { return .es }
+        if lower == "de" || lower.hasPrefix("de-") { return .de }
         if lower == "en" || lower.hasPrefix("en-") { return .en }
         return nil
     }

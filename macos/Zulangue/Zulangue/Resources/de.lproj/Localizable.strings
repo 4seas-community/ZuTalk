@@ -1,0 +1,965 @@
+/* Zulangue English Localization */
+
+/* General */
+"app.name" = "Zulangue";
+"app.tagline" = "Open Source · Lokal zuerst · Deine Schlüssel, deine Daten";
+"common.cancel" = "Abbrechen";
+"common.save" = "Sichern";
+"common.delete" = "Löschen";
+"common.export" = "Exportieren";
+"common.search" = "Suchen";
+"common.settings" = "Einstellungen";
+"common.test" = "Testen";
+"common.back" = "Zurück";
+"common.finish" = "Fertig";
+"common.required" = "Erforderlich";
+"common.optional" = "Optional";
+"common.connected" = "Verbunden";
+"common.testing" = "Wird getestet…";
+"common.not_configured" = "Nicht konfiguriert";
+"common.failed" = "Fehlgeschlagen";
+
+/* Onboarding — Welcome */
+"onboarding.welcome.button" = "Weiter →";
+"onboarding.welcome.bullet1" = "Erstelle ein Notebook für eine Art von Gespräch, zum Beispiel „Interviews auf Englisch“.";
+"onboarding.welcome.bullet2" = "Öffne das Notebook und klicke auf „Aufnahme starten“.";
+"onboarding.welcome.bullet3" = "Nach dem Stoppen findest du Untertitel, Audio und Notizen an einem Ort.";
+"onboarding.welcome.privacy" = "Daten bleiben standardmäßig auf diesem Mac. Du entscheidest für jedes Meeting, ob die Remote-Transkription aktiviert wird.";
+"onboarding.visual.live" = "LIVE-TRANSKRIPT";
+"onboarding.visual.speaker.host" = "Gastgeber";
+"onboarding.visual.speaker.guest" = "Teilnehmer";
+"onboarding.visual.language.zh" = "中文";
+"onboarding.visual.language.en" = "English";
+"onboarding.visual.language.ja" = "日本語";
+"onboarding.visual.microphone.title" = "Mikrofon bereit";
+"onboarding.visual.microphone.detail" = "Den Raum aufnehmen · Das Live-Transkript erstellen";
+
+/* Onboarding — Permissions */
+"onboarding.permissions.title" = "Mach dich bereit für dein erstes Gespräch";
+"onboarding.permissions.subtitle" = "Erlaube den Mikrofonzugriff, um den Raum aufzunehmen und ein Live-Transkript zu erstellen.";
+"onboarding.permissions.hint" = "Du kannst die App auch jetzt öffnen und den Zugriff bei der ersten Aufnahme erteilen.";
+"onboarding.permissions.mic.name" = "Mikrofon";
+"onboarding.permissions.mic.usage" = "Nimmt das Gespräch auf und liefert das Live-Transkript.";
+"onboarding.permissions.action.grant" = "ZUGRIFF ERLAUBEN";
+"onboarding.permissions.action.open_settings" = "EINSTELLUNGEN ÖFFNEN";
+"onboarding.permissions.action.restart" = "APP NEU STARTEN";
+"onboarding.permissions.status.granted" = "ERLAUBT";
+"onboarding.permissions.status.denied" = "VERWEIGERT";
+"onboarding.permissions.status.not_granted" = "NICHT ERLAUBT";
+"onboarding.permissions.continue" = "ZULANGUE ÖFFNEN →";
+
+/* Onboarding — API Keys */
+"onboarding.keys.title" = "Live-Untertitel aktivieren";
+"onboarding.keys.subtitle" = "Verwende eine Community-Einladung oder verbinde deinen eigenen Transkriptionsdienst.";
+"onboarding.keys.own_key.option" = "Mein eigener Schlüssel";
+"community_invite.option" = "Community-Einladung";
+"community_invite.placeholder" = "Einladungscode eingeben";
+"community_invite.action" = "Einladung aktivieren";
+"community_invite.active" = "Community-Einladung aktiv";
+"community_invite.thirty_hours" = "5 Give · etwa 30 Stunden";
+"community_invite.shared_detail" = "Live-Transkription, Übersetzung und die Transkription von Audiodateien teilen sich diese Zeit.";
+"community_invite.invalid" = "Dieser Einladungscode ist ungültig. Wende dich an die Person, die dich eingeladen hat.";
+"community_invite.unavailable" = "Der Community-Dienst ist vorübergehend nicht verfügbar. Versuche es später erneut.";
+"community_invite.remaining_hours_format" = "Noch etwa %lld Stunden";
+"community_invite.settings.title" = "Community-Einladung";
+"community_invite.settings.subtitle" = "Sieh dir deine verfügbare Nutzungszeit an oder gib einen Einladungscode ein.";
+"community_invite.resources.remaining" = "Verbleibende Zeit";
+"community_invite.remaining_detail_format" = "%1$lld Std. %2$lld Min.";
+"community_invite.refresh" = "Verbleibende Zeit aktualisieren";
+"community_invite.replace" = "Neuen Code verwenden";
+"community_invite.inactive" = "Keine Community-Einladung aktiv";
+"community_invite.use_toggle" = "Mit Community-Einladung transkribieren";
+"community_invite.use_toggle_detail" = "Wenn aktiviert, nutzen Aufnahmen zuerst die Einladungszeit. Wenn deaktiviert, wird dein eigener gesicherter Schlüssel verwendet.";
+"editor.transcript.async.start" = "Dieses Audio transkribieren";
+"editor.transcript.async.start_failed" = "Audiotranskription konnte nicht gestartet werden";
+"onboarding.keys.voice_label" = "LIVE-UNTERTITEL-DIENST";
+"onboarding.keys.guide.create" = "Registrieren";
+"onboarding.keys.guide.copy" = "Schlüssel kopieren";
+"onboarding.keys.guide.paste" = "Unten einsetzen";
+"onboarding.keys.open_soniox" = "Schlüssel von Soniox holen";
+"onboarding.keys.soniox.help" = "„Prüfen & Sichern“ testet nur, ob der Schlüssel funktioniert. Es wird keine Aufnahme hochgeladen.";
+"onboarding.keys.paste" = "Soniox-API-Schlüssel";
+"onboarding.keys.verify_and_save" = "Prüfen & Sichern";
+"onboarding.keys.verify_saved" = "Verbindung prüfen";
+"onboarding.keys.skip" = "Vorerst überspringen";
+"onboarding.keys.continue" = "Weiter";
+"onboarding.keys.private_status" = "Vor dem lokalen Sichern geprüft";
+
+/* Onboarding — Step Indicator */
+"onboarding.step.signup" = "Zulangue kennenlernen";
+"onboarding.step.setup" = "Bereit zur Aufnahme";
+"onboarding.step.tryout" = "Live-Untertitel";
+
+/* Onboarding — Common */
+"onboarding.common.back" = "← ZURÜCK";
+
+"sidebar.help" = "So verwendest du Zulangue";
+"sidebar.help.hint" = "Den Einstiegsleitfaden erneut öffnen";
+
+/* Library */
+"library.title" = "Sitzungen";
+"library.empty.title" = "Noch keine Sitzungen";
+"library.empty.live_hint" = "um eine Live-Transkription zu starten";
+"library.empty.drop_hint" = "oder ziehe eine Audiodatei zum Importieren hierher";
+"library.empty.drop_label" = "Audiodatei ablegen";
+"library.empty.drop_formats" = "m4a · mp3 · wav · aac · ogg · flac";
+"library.empty.configure_hint" = "Anbieter konfigurieren?";
+"library.empty.configure_link" = "Einstellungen öffnen";
+"library.no_selection.title" = "Keine Sitzung ausgewählt";
+"library.no_selection.detail" = "Wähle eine Sitzung aus der Liste.";
+"library.search_placeholder" = "Sitzungen durchsuchen…";
+"library.filter.all" = "Alle";
+"library.filter.overlay" = "Overlay";
+"library.filter.recording" = "Aufnahme";
+"library.filter.import" = "Import";
+
+/* Recording */
+"recording.start" = "Aufnahme starten";
+"recording.stop" = "Aufnahme stoppen";
+"recording.status.idle" = "Inaktiv";
+"recording.status.recording" = "Aufnahme läuft";
+"recording.status.listening" = "Hört zu";
+"recording.status.error" = "Fehler";
+
+/* Session Detail */
+"session.tab.transcript" = "Transkript";
+"session.tab.audio" = "Audio";
+"session.metadata.language" = "Sprache";
+"session.metadata.crdt" = "CRDT";
+
+/* Settings */
+"settings.section.recording" = "Aufnahme";
+"settings.section.privacy" = "Datenschutz & Sicherheit";
+"settings.section.shortcuts" = "Kurzbefehle";
+"settings.privacy.standard" = "Standard";
+"settings.privacy.standard.description" = "Aufnahme und Transkript unbegrenzt behalten";
+"settings.privacy.high" = "Hoch";
+"settings.privacy.high.description" = "Aufnahme nach der Transkription automatisch löschen";
+"settings.privacy.maximum" = "Maximal";
+"settings.privacy.maximum.description" = "Schlüssel nach der Transkription automatisch vernichten (die Aufnahme ist danach nicht wiederherstellbar)";
+
+/* Export */
+"export.title" = "Exportoptionen";
+"export.markdown" = "Markdown (.md)";
+"export.srt" = "SRT-Untertitel (.srt)";
+"export.vtt" = "WebVTT (.vtt)";
+"export.txt" = "Reiner Text (.txt)";
+"export.audio" = "Audio einschließen (.wav)";
+
+/* Trust Bar */
+
+/* Toast labels */
+"toast.label.info" = "Info";
+"toast.label.success" = "OK";
+"toast.label.warning" = "Warnung";
+"toast.label.error" = "Fehler";
+
+/* Common language labels (self-describing; same string in each locale uses native script) */
+"lang.auto_detect" = "Automatisch erkennen";
+"lang.zh" = "中文";
+"lang.zh_full" = "中文 (Chinese Simplified)";
+"lang.zh_tw" = "繁體中文";
+"lang.en" = "English";
+"lang.ja" = "日本語";
+"lang.ja_full" = "日本語 (Japanese)";
+"lang.ko" = "한국어";
+"lang.ko_full" = "한국어 (Korean)";
+"lang.fr" = "Français";
+"lang.fr_full" = "Français (French)";
+"lang.de" = "Deutsch";
+"lang.de_full" = "Deutsch (German)";
+"lang.es" = "Español";
+"lang.es_full" = "Español (Spanish)";
+"lang.th" = "ไทย";
+"lang.th_full" = "ไทย (Thai)";
+"lang.my" = "မြန်မာ";
+"lang.my_full" = "မြန်မာ (Burmese)";
+"lang.zh_hans" = "简体中文";
+
+/* Appearance */
+"appearance.system" = "Dem System folgen";
+"appearance.light" = "Hell";
+"appearance.dark" = "Dunkel";
+
+/* General settings section */
+"settings.general.title" = "Allgemein";
+"settings.general.subtitle" = "Sprache und Erscheinungsbild für die ganze App.";
+"settings.language.title" = "APP-SPRACHE";
+"settings.language.system" = "Dem System folgen";
+"settings.language.hint" = "Steuert Oberfläche, Menüs und Fehlermeldungen in der Swift- und Rust-Ebene.";
+"settings.language.restart_hint" = "Der Sprachwechsel wird nach einem Neustart von Zulangue vollständig wirksam. Rust-Fehlermeldungen sind bereits aktualisiert.";
+"settings.appearance.title" = "ERSCHEINUNGSBILD";
+
+
+
+
+
+/* Permissions */
+"permission.microphone.name" = "Mikrofon";
+"permission.microphone.usage" = "Nimmt deine Stimme auf und sendet sie zur Transkription an Soniox";
+
+/* Library — export sheet */
+"export.dialog.title" = "Exportoptionen";
+"export.dialog.text_format" = "Textformate";
+"export.dialog.audio_group" = "Audio";
+"export.dialog.audio_include" = "Audiodatei einschließen (.wav)";
+"export.dialog.markdown" = "Markdown (.md)";
+"export.dialog.srt" = "SRT-Untertitel (.srt)";
+"export.dialog.vtt" = "WebVTT (.vtt)";
+"export.dialog.txt" = "Reiner Text (.txt)";
+"export.progress" = "Wird exportiert…";
+"export.dialog.location" = "Exportziel wählen";
+"export.error_format" = "Export fehlgeschlagen: %@";
+"common.export.action" = "Exportieren";
+
+
+
+/* Recording settings */
+
+
+"doc.delete_current.hint" = "Aktuelles Dokument löschen";
+"editor.export.title" = "Sitzung exportieren";
+"editor.export.hint" = "Diese Sitzung als ZIP exportieren";
+"editor.export.no_session" = "Keine Aufnahmesitzung zum Exportieren";
+"doc.scratchpad" = "Notizzettel";
+"doc.enhanced" = "Optimiert";
+"doc.untitled" = "Ohne Titel";
+
+
+/* Onboarding brand line */
+"onboarding.brand.subtitle" = "MEHRSPRACHIGE KOMMUNIKATION · LIVE-MEETINGS";
+
+/* Settings sidebar section rawValues (localized names) */
+"settings.section.general_name" = "Allgemein";
+"settings.section.services_name" = "Dienste & API";
+"settings.section.privacy_name" = "Datenschutz";
+"settings.section.shortcuts_name" = "Kurzbefehle";
+"settings.section.diagnostics_name" = "Diagnose";
+"settings.sidebar.configuration" = "KONFIGURATION";
+
+/* Settings sidebar groups */
+"settings.group.services" = "VERBINDUNGEN";
+"settings.group.privacy" = "DATENSCHUTZ & DATEN";
+"settings.group.general" = "ALLGEMEIN";
+"settings.group.advanced" = "ERWEITERT";
+
+/* Settings — API panels (Voice / AI) */
+"settings.api.test_button" = "TESTEN";
+"settings.credentials.enter_key" = "API-Schlüssel eingeben";
+"settings.credentials.local_storage_hint" = "Wird unverschlüsselt in einer app-eigenen Datei gesichert, die für diesen macOS-Account lesbar ist, und beim Start automatisch geladen.";
+"settings.credentials.trust_boundary_notice" = "Hier gesicherte Zugangsdaten sind nicht verschlüsselt. Zulangue verlässt sich auf diesen vertrauenswürdigen macOS-Account und eine app-eigene lokale Datei und lädt sie beim Start automatisch.";
+"settings.credentials.apply" = "SICHERN";
+"settings.credentials.verify" = "Prüfen";
+"settings.credentials.verify_and_save" = "PRÜFEN & SICHERN";
+"settings.credentials.verifying" = "Wird geprüft…";
+"settings.credentials.verified" = "Geprüft";
+"settings.credentials.verification_failed" = "Prüfung fehlgeschlagen";
+"settings.credentials.verifying_hint" = "Verbindung zu Soniox wird hergestellt, um diesen Schlüssel zu prüfen.";
+"settings.credentials.verified_hint" = "Soniox hat diesen Schlüssel akzeptiert. Er ist bereit für die Remote-Transkription.";
+"settings.credentials.verify_before_save_hint" = "Zulangue sichert einen neuen Schlüssel erst, nachdem Soniox ihn geprüft hat.";
+"settings.credentials.verify_and_save_accessibility_format" = "%@-Schlüssel prüfen und sichern";
+"settings.credentials.verification.ready" = "Soniox-Verbindung geprüft";
+"settings.credentials.verification.invalid" = "Soniox hat diesen Schlüssel abgelehnt. Er ist möglicherweise ungültig oder widerrufen.";
+"settings.credentials.verification.organization_balance_exhausted" = "Das Guthaben der Soniox-Organisation ist aufgebraucht.";
+"settings.credentials.verification.organization_budget_exhausted" = "Das Monatsbudget der Soniox-Organisation ist aufgebraucht.";
+"settings.credentials.verification.project_budget_exhausted" = "Das Monatsbudget des Soniox-Projekts ist aufgebraucht.";
+"settings.credentials.verification.quota_exhausted" = "Das Soniox-Konto hat kein verfügbares Kontingent.";
+"settings.credentials.verification.network_unavailable" = "Soniox ist nicht erreichbar. Prüfe das Netzwerk und versuche es erneut.";
+"settings.credentials.verification.rate_limited" = "Soniox begrenzt derzeit die Anfragen. Versuche es gleich noch einmal.";
+"settings.credentials.verification.service_unavailable" = "Die Soniox-Prüfung ist vorübergehend nicht verfügbar.";
+"settings.credentials.applied" = "Gesichert · Geladen";
+"settings.credentials.saved_inactive" = "Gesichert · Erfordert Aufmerksamkeit";
+"settings.credentials.runtime_only" = "Für diese Sitzung geladen · Nicht gesichert";
+"settings.credentials.missing" = "Nicht gesichert";
+"settings.credentials.clear" = "Gesicherten Schlüssel löschen";
+"settings.credentials.apply_failed" = "Dieser Schlüssel konnte nicht gesichert und aktiviert werden.";
+"settings.credentials.accessibility_applied_format" = "Der %@-Schlüssel ist auf diesem Mac gesichert und in Zulangue aktiv. Die Anbieterverbindung wurde nicht getestet.";
+"settings.credentials.accessibility_saved_inactive_format" = "Der %@-Schlüssel ist auf diesem Mac gesichert, aber in Zulangue nicht aktiv. Prüfe die Wiederherstellungsmeldung.";
+"settings.credentials.accessibility_runtime_only_format" = "Der %@-Schlüssel ist für diese Sitzung geladen, aber nicht gesichert. Die Anbieterverbindung wurde nicht getestet.";
+"settings.credentials.accessibility_missing_format" = "Es ist kein %@-Schlüssel gesichert. Gib einen Schlüssel ein und sichere ihn.";
+"settings.credentials.field_accessibility_format" = "%@-API-Schlüssel";
+"settings.credentials.apply_accessibility_format" = "%@-Schlüssel sichern";
+"settings.credentials.clear_accessibility_format" = "Gesicherten %@-Schlüssel löschen";
+"settings.credentials.operation_failed" = "Vorgang mit Anbieterschlüssel fehlgeschlagen";
+"settings.credentials.recovery_title" = "Gesicherte Anbieterschlüssel erfordern Aufmerksamkeit";
+"settings.credentials.recovery_hint" = "Sichere einen neuen Schlüssel, um die unlesbare Datei zu ersetzen, oder lösche die Datei, um alle gesicherten Anbieterschlüssel zu entfernen.";
+"settings.credentials.reset_file" = "GESICHERTE SCHLÜSSELDATEI LÖSCHEN";
+"settings.credentials.reset_file_accessibility_hint" = "Löscht alle von Zulangue auf diesem Mac gesicherten Anbieterschlüssel. Lokale Aufnahmen bleiben verfügbar.";
+"settings.credentials.provider_not_tested_hint" = "Für die Verwendung in Zulangue geladen. Anbieterverbindung und Schlüsselgültigkeit wurden nicht getestet.";
+"settings.credentials.saved_inactive_hint" = "Auf diesem Mac gesichert, aber nicht zur Verwendung geladen. Prüfe die Wiederherstellungsmeldung, bevor du die Remote-Verarbeitung aktivierst.";
+"settings.credentials.runtime_only_hint" = "Für diese Sitzung geladen, aber nicht gesichert. Anbieterverbindung und Schlüsselgültigkeit wurden nicht getestet.";
+"settings.credentials.operation_error_format" = "Aktualisierung der Dienst-Zugangsdaten fehlgeschlagen: %@";
+"settings.credentials.delete_confirmation_title" = "Gesicherten %@-Schlüssel löschen?";
+"settings.credentials.delete_confirmation_message" = "Zulangue entfernt die gesicherten %@-Zugangsdaten von diesem Mac. Lokale Aufnahmen bleiben verfügbar.";
+"settings.credentials.delete_confirmation_action" = "Schlüssel löschen";
+"settings.credentials.reset_confirmation_title" = "Alle gesicherten Dienst-Zugangsdaten löschen?";
+"settings.credentials.reset_confirmation_message" = "Zulangue löscht seine private Zugangsdatendatei von diesem Mac. Dies kann nicht widerrufen werden.";
+"settings.credentials.reset_confirmation_action" = "Zugangsdatendatei löschen";
+"settings.credentials.replace" = "Gesicherten Schlüssel ersetzen";
+"settings.credentials.replace_accessibility_format" = "Gesicherten %@-Schlüssel ersetzen";
+"settings.credentials.field_replacement_hint" = "Gib einen Ersatzschlüssel ein und prüfe ihn vor dem Sichern.";
+"settings.credentials.autosave_commit_hint" = "Klicke auf „Sichern“, drücke den Zeilenschalter oder verschiebe den Fokus, um diesen Wert zu übernehmen.";
+"settings.credentials.error.unsupported_version_format" = "Nicht unterstützte Version der Anbieter-Zugangsdatendatei: %d.";
+"settings.credentials.error.malformed_document" = "Die Anbieter-Zugangsdatendatei ist fehlerhaft.";
+"settings.credentials.error.unknown_accounts" = "Die Anbieter-Zugangsdatendatei enthält nicht unterstützte Kontoeinträge.";
+"settings.credentials.error.empty_credential_format" = "Die gesicherten Zugangsdaten für %@ sind leer.";
+"settings.credentials.error.credential_too_large_format" = "Die gesicherten Zugangsdaten für %@ überschreiten die Größenbeschränkung.";
+"settings.credentials.error.file_too_large" = "Die Anbieter-Zugangsdatendatei überschreitet die Größenbeschränkung.";
+"settings.credentials.error.unsafe_path_format" = "Der Pfad der Anbieter-Zugangsdaten ist keine reguläre private Datei: %@.";
+"settings.credentials.error.wrong_owner_format" = "Der Pfad der Anbieter-Zugangsdaten gehört nicht zum aktuellen macOS-Account: %@.";
+"settings.credentials.error.operation_failed_format" = "Der Anbieter-Zugangsdaten-Vorgang %@ ist fehlgeschlagen (POSIX %d).";
+"settings.credentials.error.core_unavailable" = "Der lokale App-Dienst ist noch nicht bereit.";
+"settings.credentials.error.empty_value" = "Gib vor dem Sichern einen API-Schlüssel ein.";
+"settings.credentials.error.activation_failed_format" = "Die gesicherten Zugangsdaten wurden für %@ nicht aktiviert.";
+"settings.credentials.error.clear_failed_format" = "Die Zugangsdaten für %@ konnten nicht gelöscht werden.";
+"settings.credentials.error.persistence_failed" = "Die Anbieter-Zugangsdaten konnten nicht in der privaten lokalen Datei gesichert werden.";
+"settings.credentials.error.runtime_cleanup_failed" = "Die Laufzeitdaten der Anbieter-Zugangsdaten konnten nicht sicher gelöscht werden. Starte Zulangue neu oder repariere den lokalen App-Dienst, bevor du Remote-Anbieter verwendest.";
+
+/* Settings — Services & API */
+"settings.services.title" = "Dienste & API";
+"settings.services.subtitle" = "Verwalte globale Dienst-Zugangsdaten und sieh dir die fest eingestellte Aufnahme-Engine an. Die Entscheidungen zur Datenfreigabe verbleiben im jeweiligen Notebook.";
+"settings.services.connection.title" = "Dienstverbindung";
+"settings.services.connection.subtitle" = "Zulangue unterstützt derzeit nur Soniox.";
+"settings.services.no_egress_notice" = "Das Sichern eines Schlüssels erlaubt keine neue Datenfreigabe. Jedes Notebook muss die Remote-Verarbeitung separat autorisieren. Arbeit, die ein Notebook bereits autorisiert hat und die auf Zugangsdaten wartet, darf erst fortgesetzt werden, nachdem der Schlüssel dauerhaft gesichert und geladen wurde.";
+"settings.services.engine.title" = "Aufnahme-Engine";
+"settings.services.engine.subtitle" = "Schreibgeschützt. Der Rust-Kern besitzt diese Engine-Auswahl im aktuellen MVP.";
+"settings.services.engine.service" = "Dienst";
+"settings.services.engine.realtime" = "Echtzeit-Aufnahme";
+"settings.services.engine.realtime_detail" = "Wird für die mehrsprachige Live-Transkription und Sprach-Untertitel verwendet, wenn ein Notebook die Remote-Verarbeitung ausdrücklich aktiviert.";
+"settings.services.engine.post_stop" = "Verarbeitung nach dem Stoppen";
+"settings.services.engine.post_stop_detail" = "Streamt die abgeschlossene lokale Aufnahme erneut durch die aktuelle Echtzeit-Engine. Die asynchrone Soniox-API wird dabei nicht aufgerufen.";
+"settings.services.engine.post_stop_unavailable_detail" = "Der Kern hat keinen Ausführungsdeskriptor für die Verarbeitung nach dem Stoppen bereitgestellt.";
+"settings.services.engine.realtime_replay" = "Echtzeit-Wiedergabe";
+"settings.services.engine.execution_unavailable" = "Ausführung nicht verfügbar";
+"settings.services.engine.fixed" = "Fest";
+"settings.services.engine.unavailable" = "Engine nicht verfügbar";
+"settings.services.engine.accessibility_format" = "Feste Echtzeit-Engine: %@";
+"settings.services.engine.post_stop_accessibility_format" = "Feste Engine für die Verarbeitung nach dem Stoppen: %@. Echtzeit-Wiedergabe, nicht die asynchrone Soniox-API.";
+"settings.services.engine.post_stop_unavailable_accessibility_format" = "Engine für die Verarbeitung nach dem Stoppen: %@. Der Ausführungsdeskriptor ist nicht verfügbar.";
+
+/* Settings — Privacy section */
+"settings.privacy.title" = "Datenschutz & Sicherheit";
+"settings.privacy.subtitle" = "Lokale Daten und Aufbewahrungseinstellungen.";
+"settings.privacy.level_label" = "DATENSCHUTZSTUFE";
+"settings.privacy.standard_name" = "Standard";
+"settings.privacy.standard_desc" = "Aufnahme und Transkript unbegrenzt behalten";
+"settings.privacy.high_name" = "Hoch";
+"settings.privacy.high_desc" = "Aufnahme nach der Transkription automatisch löschen";
+"settings.privacy.maximum_name" = "Maximal";
+"settings.privacy.maximum_desc" = "Schlüssel nach der Transkription automatisch vernichten (die Aufnahme ist danach nicht wiederherstellbar)";
+"settings.privacy.save_failed" = "Datenschutzstufe nicht gesichert";
+
+/* Settings — Shortcuts */
+"settings.shortcuts.title" = "Tastaturkurzbefehle";
+"settings.shortcuts.subtitle" = "Globale Kurzbefehle für Zulangue-Aktionen.";
+"settings.shortcuts.toggle_recording" = "Notebook-Aufnahme öffnen";
+"settings.shortcuts.cycle_display" = "Anzeigemodus wechseln";
+"settings.shortcuts.font_bigger" = "Schrift vergrößern";
+"settings.shortcuts.font_smaller" = "Schrift verkleinern";
+"settings.shortcuts.open_settings" = "Einstellungen öffnen";
+
+
+/* Diagnostics section */
+"diagnostics.title" = "Diagnose";
+"diagnostics.subtitle" = "Ausführliche Toasts und Protokolldatei für das Debugging aktivieren.";
+"diagnostics.debug_mode" = "Debugmodus";
+"diagnostics.debug_mode_desc" = "Jede Loro-Bearbeitung / Markierung / Aktualisierung zeigt einen Info-Toast und schreibt eine Zeile in debug.log. Standardmäßig aus.";
+"diagnostics.log_file" = "Protokolldatei";
+"diagnostics.crash_file" = "Absturzdiagnose";
+"diagnostics.reveal_finder" = "Im Finder zeigen";
+"diagnostics.open_console" = "In der Konsole öffnen";
+"diagnostics.clear_log" = "Protokoll löschen";
+"diagnostics.no_log_file" = "— keine Datei";
+"diagnostics.no_crash_file" = "— kein Absturzbericht";
+"diagnostics.operational.title" = "Systemzustand";
+"diagnostics.operational.subtitle" = "Laufzeit, Dienst-Zugangsdaten und Datenschutzstatus.";
+"diagnostics.operational.refresh" = "Aktualisieren";
+"diagnostics.operational.not_loaded" = "Systemzustand nicht geladen.";
+"diagnostics.operational.provider_keys" = "Dienst-Zugangsdaten";
+"diagnostics.operational.privacy" = "Datenschutz";
+"diagnostics.operational.provider_key_missing" = "Dienst-Zugangsdaten erforderlich";
+"diagnostics.operational.provider_optional_off" = "Keine Dienst-Zugangsdaten gesichert; lokale Aufnahmen bleiben verfügbar.";
+"diagnostics.operational.provider_configured_format" = "%d gesicherte Dienst-Zugangsdaten sind geladen";
+"diagnostics.operational.provider_inactive_format" = "%d gesicherte Dienst-Zugangsdaten erfordern Aufmerksamkeit";
+"diagnostics.operational.detail.state" = "Status";
+"diagnostics.operational.detail.actionable" = "Handlungsbedarf";
+"diagnostics.operational.severity.info" = "OK";
+"diagnostics.operational.severity.warning" = "WARNUNG";
+"diagnostics.operational.severity.blocked" = "BLOCKIERT";
+
+/* Toast center — Floating panel */
+
+/* Toast center — Microphone permission (shared) */
+"toast.mic.denied.title" = "Mikrofonzugriff verweigert";
+"toast.mic.denied.detail" = "Öffne Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon und aktiviere Zulangue.";
+
+/* Toast center — Recording */
+"toast.recording.started.title" = "Aufnahme gestartet";
+"toast.recording.start_failed.title" = "Aufnahme konnte nicht gestartet werden";
+"toast.recording.session_format" = "Sitzung %@";
+"toast.recording.saved.detail.transcribing_format" = "%llds · wird im Hintergrund transkribiert…";
+"toast.recording.saved.detail.no_transcription_format" = "%llds · ohne Transkription gesichert";
+"toast.recording.saved.detail.auto_transcribe_off_format" = "%llds · automatische Transkription aus";
+
+/* Toast center — Generic */
+"toast.export.succeeded" = "Exportiert";
+"toast.export.failed" = "Export fehlgeschlagen";
+"toast.core.not_initialized" = "Kern nicht initialisiert";
+
+/* Toast — Document editor */
+"toast.enhance.started" = "Optimierung gestartet";
+"toast.enhance.failed" = "Optimierung fehlgeschlagen";
+
+/* Sidebar (main window) */
+"sidebar.search_placeholder" = "Suchen";
+"sidebar.home" = "Startseite";
+"sidebar.tags" = "Tags";
+"sidebar.tag.general" = "allgemein";
+"sidebar.new_tag" = "Neues Tag";
+"sidebar.trash" = "Papierkorb";
+"sidebar.tab.editor_dev" = "Editor (Dev)";
+"sidebar.tab.editor" = "Editor";
+"sidebar.tab.settings" = "Einstellungen";
+"sidebar.local_first" = "Lokal zuerst";
+"sidebar.notebook" = "Notebook";
+"sidebar.tab.github" = "GitHub";
+"sidebar.collapse" = "Seitenleiste einklappen";
+"sidebar.expand" = "Seitenleiste ausklappen";
+"sidebar.new_session" = "Neue Sitzung";
+"sidebar.back_to_home" = "Zurück zur Startseite";
+"menubar.action.quit" = "Zulangue beenden";
+"menubar.action.quit_hint" = "Beendet die App. Eine aktive Aufnahme erfordert eine Bestätigung und wird vor dem Beenden gesichert.";
+"app.quit.confirm.title" = "Diese Aufnahme wurde noch nicht beendet. Zulangue beenden?";
+"app.quit.confirm.message" = "Beim Beenden wird die aktuelle Aufnahme gestoppt. Zulangue sichert das bereits empfangene lokale Audio und versucht dann, das Remote-Transkript sauber abzuschließen.";
+"app.quit.confirm.cancel" = "Nicht beenden";
+"app.quit.confirm.action" = "Aufnahme stoppen und beenden";
+
+/* Session list group labels */
+"library.group.today" = "HEUTE";
+"library.group.yesterday" = "GESTERN";
+
+/* Document editor residuals */
+"editor.tab.transcript" = "Live-Transkript";
+"editor.transcript.realtime.local_recording_title" = "Lokale Aufnahme läuft";
+"editor.transcript.realtime.local_recording_desc" = "Remote-Echtzeitverarbeitung ist aus. Das Audio bleibt lokal.";
+"editor.transcript.realtime.remote_waiting_title" = "Verbindung zu Soniox wird hergestellt";
+"editor.transcript.realtime.remote_waiting_desc" = "Die lokale Aufnahme läuft weiter, während das Remote-Echtzeittranskript verfügbar wird.";
+"editor.transcript.realtime.empty_title" = "Kein Echtzeittranskript";
+"editor.transcript.realtime.empty_desc" = "Diese Sitzung hat kein Echtzeitergebnis.";
+"editor.transcript.async.pending_title" = "Hintergrundtranskription läuft";
+"editor.transcript.async.pending_desc" = "Die ausdrücklich angeforderte Wiedergabe durch die aktuelle Echtzeit-Engine wird noch verarbeitet.";
+"editor.transcript.async.failed_title" = "Hintergrundtranskription fehlgeschlagen";
+"editor.transcript.async.failed_desc" = "Die Remote-Transkription ist fehlgeschlagen. Die Aufnahme bleibt lokal gespeichert.";
+"editor.transcript.async.empty_title" = "Kein Transkript nach dem Stoppen";
+"editor.transcript.async.empty_desc" = "Die Hintergrundtranskription nach dem Stoppen ist standardmäßig aus und wurde für diese Sitzung nicht angefordert.";
+"editor.transcript.async.projection_pending_desc" = "Das Anbieterergebnis ist gesichert und wird in dieses Notebook geschrieben.";
+"editor.transcript.async.projection_failed_title" = "Transkript empfangen, Schreiben ins Notebook fehlgeschlagen";
+"editor.transcript.async.projection_failed_desc" = "Wiederhole das lokale Schreiben ins Notebook. Zulangue lädt die Aufnahme nicht erneut hoch.";
+"editor.transcript.async.status.loading" = "Status der Hintergrundtranskription wird geladen";
+"editor.transcript.async.status.off" = "Keine Hintergrundtranskription nach dem Stoppen angefordert";
+"editor.transcript.async.status.provider_pending" = "Wiedergabe durch die Echtzeit-Engine läuft";
+"editor.transcript.async.status.provider_failed" = "Wiedergabe durch die Echtzeit-Engine fehlgeschlagen";
+"editor.transcript.async.status.projection_pending" = "Anbieterergebnis gesichert · wartet auf das Schreiben ins Notebook";
+"editor.transcript.async.status.projecting" = "Gesichertes Transkript wird ins Notebook geschrieben";
+"editor.transcript.async.status.ready" = "Transkript nach dem Stoppen bereit";
+"editor.transcript.async.status.projection_failed" = "Anbieterergebnis gesichert · Schreiben ins Notebook fehlgeschlagen";
+"editor.transcript.async.retry_projection" = "Lokales Schreiben wiederholen";
+"editor.transcript.async.retry_projection_hint" = "Schreibt das gesicherte Anbieterergebnis in dieses Notebook, ohne Audio erneut hochzuladen.";
+"editor.transcript.async.retry_failed" = "Das gesicherte Transkript konnte nicht geschrieben werden";
+"menubar.recording.mode.local" = "LOKAL";
+"menubar.recording.mode.remote" = "SONIOX RT5";
+"editor.title.untitled" = "Notiz ohne Titel";
+"editor.footer.local_encrypted" = "Auf diesem Mac gesichert";
+"editor.ai.simulate" = "KI simulieren";
+"editor.ai.stop" = "KI stoppen";
+"editor.relative.just_now" = "gerade eben";
+"editor.relative.min_ago" = "vor %lld Min.";
+"editor.relative.hour_ago" = "vor %lld Std.";
+"editor.relative.day_ago" = "vor %lld Tg.";
+
+/* Home page */
+"home.workspace.load_failed" = "Notebook-Daten konnten nicht geladen werden.";
+"home.workspace.select_failed" = "Dieses Notebook konnte nicht geöffnet werden.";
+"home.workspace.resolve_failed" = "Das Notebook der Aufnahme konnte nicht ermittelt werden.";
+"home.workspace.refresh_failed" = "Notebook-Daten konnten nicht aktualisiert werden.";
+"home.workspace.load_failed.title" = "Notebook nicht verfügbar";
+"home.workspace.load_failed.description" = "Deine vorhandenen Daten wurden nicht verändert. Versuche, sie erneut zu laden.";
+"home.workspace.retry" = "Erneut versuchen";
+"home.notebook.current" = "AKTUELLES NOTEBOOK";
+"home.notebook.new" = "Neues Notebook";
+"home.notebook.new.help" = "Ein Notebook erstellen und benennen";
+"home.notebook.none" = "Kein Notebook";
+"home.notebook.switch" = "Notebook wechseln";
+"home.notebook.description" = "Nimm auf, folge mehrsprachigen Transkripten und schreibe Notizen an einem Ort.";
+"home.notebook.description.detail" = "Die Aufnahmesteuerung befindet sich im Notebook, damit jede Sitzung den richtigen Besitzer und Kontext behält.";
+"home.notebook.local_first" = "Auf diesem Mac gesichert";
+"home.library.title" = "Notebooks";
+"home.library.subtitle" = "Wähle ein Notebook zum Aufnehmen, Transkribieren und Organisieren.";
+"home.library.open_hint" = "Notebook öffnen";
+"home.library.session_count_format" = "%lld Aufnahmen";
+"home.notebook.open" = "Notebook öffnen";
+"home.capture.return" = "Zurück zur Aufnahme";
+"home.capture.owner_here" = "Gehört zum ausgewählten Notebook";
+"home.capture.owner_elsewhere" = "Gehört zu einem anderen Notebook";
+"home.no_notebook.title" = "Erstelle dein erstes Notebook";
+"home.no_notebook.description" = "Ein Notebook hält Aufnahmen, Transkripte, Notizen und optionale Transkriptionsreferenzen zusammen.";
+"home.first_use.step1.title" = "Notebook erstellen";
+"home.first_use.step1.detail" = "Stell es dir wie einen Ordner für eine Art von Gespräch vor.";
+"home.first_use.step2.title" = "Aufnahme starten";
+"home.first_use.step2.detail" = "Öffne das Notebook. Die rote Aufnahmetaste ist oben.";
+"home.first_use.step3.title" = "Ergebnis ansehen";
+"home.first_use.step3.detail" = "Nach dem Stoppen bleiben Untertitel, Audio und Notizen zusammen.";
+"home.first_use.action" = "Mein erstes Notebook erstellen";
+"home.import.action" = "Audio importieren";
+"home.import.in_progress" = "Wird importiert…";
+"home.import.panel.title" = "Audio in Notebook importieren";
+"home.import.panel.action" = "Importieren";
+"home.import.completed" = "Audio importiert";
+"home.import.failed" = "Audio konnte nicht importiert werden";
+"home.import.failed.detail" = "Die ausgewählte Datei wurde nicht verändert. Prüfe das Format und versuche es erneut.";
+"home.import.no_notebook" = "Kein Notebook ausgewählt";
+"home.import.no_notebook.detail" = "Erstelle oder wähle ein Notebook, bevor du Audio importierst.";
+"home.import.already_running" = "Import läuft bereits";
+"home.import.already_running.detail" = "Warte, bis die aktuelle Audiodatei fertig importiert ist.";
+"home.recent.title" = "Letzte Aufnahmen";
+"home.recent.count_format" = "%lld in diesem Notebook";
+"home.recent.search_placeholder" = "Dieses Notebook durchsuchen…";
+"home.recent.search.clear" = "Suche löschen";
+"home.recent.empty.title" = "Keine Aufnahmen in diesem Notebook";
+"home.recent.empty.description" = "Öffne das Notebook, um eine Aufnahme zu starten, oder importiere eine vorhandene Audiodatei.";
+"home.recent.no_match.title" = "Keine passenden Aufnahmen";
+"home.recent.no_match.description" = "Versuche es mit einem anderen Titel oder einer anderen Transkriptstelle.";
+"home.recent.row.open_hint" = "Öffnet diese Aufnahme in ihrem Notebook";
+"home.recent.row.actions_format" = "Aktionen für %@";
+"home.recent.row.imported" = "Importiert";
+"home.recent.row.untitled" = "Aufnahme ohne Titel";
+"home.recordings.load_failed" = "Aufnahmen konnten nicht geladen werden.";
+"home.recording.delete_failed" = "Die Aufnahme konnte nicht in den Papierkorb bewegt werden.";
+"home.recording.bulk_delete_failed" = "Die Aufnahmen konnten nicht in den Papierkorb bewegt werden.";
+"home.create.title" = "Neues Notebook";
+"home.create.description" = "Benenne es, bevor etwas erstellt wird.";
+"home.create.name_label" = "Notebook-Name";
+"home.create.name_placeholder" = "Zum Beispiel „Wöchentliche Gespräche“";
+"home.create.local_first" = "Das Notebook und seine drei integrierten Tabs werden lokal erstellt.";
+"home.create.action" = "Notebook erstellen";
+"home.create.completed" = "Notebook erstellt";
+"home.create.failed" = "Das Notebook konnte nicht erstellt werden.";
+"home.create.invalid_title" = "Notebook-Name erforderlich";
+"home.create.invalid_title.detail" = "Gib einen Namen ein, bevor du das Notebook erstellst.";
+"home.create.title_too_long" = "Notebook-Name ist zu lang";
+"resources.tab" = "Ressourcen";
+"resources.tab.hint" = "Dateien und Status jeder Aufnahme in diesem Notebook anzeigen";
+"resources.title" = "Ressourcen";
+"resources.subtitle" = "Audio-, Transkript- und persönliche Notizdateien für jede Aufnahme.";
+"resources.load_failed" = "Ressourcen konnten nicht geladen werden";
+"resources.empty" = "Dieses Notebook hat noch keine Aufnahmeressourcen";
+"resources.audio" = "Audio";
+"resources.realtime" = "Live-Transkript";
+"resources.async" = "Async-Transkript";
+"resources.note" = "Persönliche Notiz";
+"resources.untitled_recording" = "Aufnahme ohne Titel";
+"resources.status.missing" = "Nicht erzeugt";
+"resources.status.pending" = "In Verarbeitung";
+"resources.status.ready" = "Verfügbar";
+"resources.status.failed" = "Fehlgeschlagen";
+"manual_note.title.placeholder" = "Diese Zeitnotiz benennen (optional)";
+"manual_note.title.save" = "Notiztitel sichern";
+"manual_note.title.save_failed" = "Der Notiztitel konnte nicht gesichert werden";
+"manual_note.created_at_format" = "Erstellt %@";
+"manual_note.timeline.title" = "Persönliche Notizen";
+"manual_note.timeline.subtitle" = "Nach Zeit geordnet. Titel sind optional und direkt auf jeder Karte bearbeitbar.";
+"manual_note.timeline.load_failed" = "Persönliche Notizen konnten nicht geladen werden";
+"manual_note.timeline.empty" = "Nach einer Aufnahme erscheint hier die zugehörige persönliche Notiz";
+"manual_note.timeline.open" = "Notiz öffnen";
+"home.create.title_too_long.detail_format" = "Verwende höchstens %lld Zeichen.";
+"home.search_placeholder" = "Sitzungen durchsuchen…";
+"home.empty.no_match_title" = "Keine Treffer";
+"home.empty.no_match_desc" = "Versuche es mit einem anderen Suchbegriff.";
+"home.empty.no_recording_title" = "Noch keine Aufnahmen";
+"home.empty.no_recording_desc" = "Drücke ⌃⌥R oder klicke auf „Neue Sitzung“, um zu starten. Deine bearbeitbare Notiz und das Transkript erscheinen hier.";
+"home.empty.start_button" = "Aufnahme starten";
+"home.notebook.workspace.board.title" = "Arbeitsbereich";
+"home.notebook.workspace.board.record" = "Aufnehmen";
+"home.notebook.workspace.board.tabs" = "Tabs";
+"home.notebook.workspace.board.tabs.empty" = "Noch keine Tabs";
+"home.notebook.workspace.board.recent" = "Zuletzt";
+"home.notebook.workspace.board.recent.empty" = "Noch keine Sitzungen";
+"home.notebook.workspace.board.manual" = "Manuelle Notiz";
+"home.action.select" = "Auswählen";
+"home.selection.count_format" = "%lld ausgewählt";
+"home.selection.delete_format" = "%lld löschen";
+"home.row.preview.pending"   = "Wird transkribiert…";
+"home.row.preview.recording" = "Aufnahme läuft…";
+"home.row.preview.no_speech" = "Keine Sprache erkannt";
+"home.row.preview.not_transcribed" = "Nicht transkribiert";
+"home.row.preview.failed"    = "Transkription fehlgeschlagen";
+"home.row.status.completed" = "Aufnahme abgeschlossen";
+"home.row.status.imported" = "Audio importiert";
+"library.toast.moved_to_trash" = "In den Papierkorb gelegt";
+"library.toast.bulk_moved_to_trash" = "%lld Sitzungen in den Papierkorb gelegt";
+"doc.transcript_hd" = "Async-Transkript";
+"editor.tab.transcript.live.hint" = "Live-Transkript — Aufnahme läuft";
+"editor.tab.transcript.hint" = "Audiotranskript";
+"editor.transcript.listening" = "Warten auf Sprache…";
+"toast.soniox.missing" = "Soniox-Schlüssel nicht konfiguriert";
+"toast.soniox.missing.detail" = "Live-Transkript deaktiviert. Füge unter Einstellungen → Verbindungen einen Soniox-Schlüssel hinzu.";
+
+
+
+/* Document editor empty states */
+"editor.empty.no_transcript_title" = "Noch kein Transkript";
+"editor.empty.no_transcript_desc" = "Das Transkript wird verfügbar, sobald die Aufnahme beendet ist.";
+"editor.empty.no_transcript_desc_live" = "Das Transkript erscheint hier, sobald die automatische Transkription abgeschlossen ist – oder starte eine neue Aufnahme, um es live zu sehen.";
+"editor.empty.transcript_unavailable" = "Transkript nicht verfügbar";
+"editor.empty.unavailable_title" = "Editor nicht verfügbar";
+"editor.empty.no_doc_title" = "Kein aktives Dokument";
+"editor.empty.no_doc_desc" = "Starte eine Aufnahme, um ein neues Dokument zu erstellen, das du während der Audioaufnahme live bearbeiten kannst.";
+
+/* Async transcription in-progress & failed states */
+"editor.pending.transcribing" = "Wird transkribiert…";
+"editor.pending.generic"      = "Wird verarbeitet…";
+"editor.pending.subtitle"     = "Läuft im Hintergrund. Inhalte erscheinen, sobald sie bereit sind.";
+"editor.failed.transcribing"  = "Transkription fehlgeschlagen";
+"editor.failed.generic"       = "Aufgabe fehlgeschlagen";
+"editor.failed.subtitle"      = "Wahrscheinlich eine Netzwerkstörung oder ein API-Limit. Tippe auf „Wiederholen“.";
+"editor.failed.retry"         = "Transkription wiederholen";
+"toast.retry.data_invalid.title"  = "Transkription kann nicht wiederholt werden";
+"toast.retry.data_invalid.detail" = "Diese Aufnahme ist unvollständig (vermutlich durch einen früheren Absturz). Bitte lösche sie aus der Startliste.";
+
+/* Trash page */
+"trash.empty.title" = "Der Papierkorb ist leer";
+"trash.empty.desc" = "Gelöschte Aufnahmen bleiben hier 30 Tage, bevor sie endgültig entfernt werden.";
+"trash.action.restore" = "Wiederherstellen";
+"trash.action.purge" = "Endgültig löschen";
+"trash.toast.restored" = "Sitzung wiederhergestellt";
+"trash.toast.purged" = "Endgültig gelöscht";
+"trash.purge.confirm_title" = "Endgültig löschen?";
+"trash.purge.confirm_desc" = "Dadurch werden Aufnahme, Transkript und zugehörige Daten gelöscht. Dies kann nicht widerrufen werden.";
+"trash.purge.confirm_button" = "Endgültig löschen";
+
+/* Onboarding — residuals */
+"onboarding.brand.name" = "Zulangue";
+"onboarding.brand.tagline" = "Behalte jedes mehrsprachige Gespräch an einem Ort – vom Live-Verstehen bis zum späteren Organisieren.";
+"onboarding.keys.testing_status" = "WIRD GETESTET…";
+"onboarding.keys.connected_status" = "VERBUNDEN";
+
+/* Trust bar */
+"trust.version_format" = "Zulangue · v%@";
+"trust.label.aes" = "AES-256";
+"trust.label.local_secrets" = "LOKALE SCHLÜSSEL";
+"trust.label.remote_opt_in" = "REMOTE OPT-IN";
+
+/* Menu Bar status item — popover content */
+"menubar.action.recording" = "Aufnahme starten";
+"menubar.action.settings" = "Einstellungen";
+"updates.check" = "Nach Updates suchen…";
+"updates.unavailable.title" = "Updates sind nicht konfiguriert";
+"updates.unavailable.message" = "Dieser Entwicklungs-Build enthält nicht den öffentlichen Update-Signaturschlüssel.";
+"updates.unavailable.dismiss" = "OK";
+"settings.updates.title" = "Softwareupdates";
+"settings.updates.subtitle" = "Signierte Updates werden sicher über Sparkle bereitgestellt.";
+"settings.updates.automatic" = "Automatisch nach Updates suchen";
+"settings.updates.automatic_hint" = "Zulangue prüft den signierten Update-Feed regelmäßig und benachrichtigt dich, wenn eine neue Version verfügbar ist.";
+"menubar.recording.pause" = "Pausieren";
+"menubar.recording.resume" = "Fortsetzen";
+"menubar.recording.stop" = "Stoppen";
+"menubar.recording.live_transcript" = "Live-Transkript";
+"menubar.recording.open_subtitles" = "Live-Untertitel öffnen";
+"menubar.recording.close_subtitles" = "Live-Untertitel schließen";
+"menubar.recording.open_notebook" = "Notebook öffnen";
+"menubar.processing.open_session" = "Sitzung öffnen";
+"menubar.suppressed.privacy.title" = "Mikrofonzugriff verweigert";
+"menubar.suppressed.privacy.body" = "Zulangue kann erst aufnehmen, wenn du den Mikrofonzugriff in den Systemeinstellungen erlaubst.";
+"menubar.suppressed.privacy.action" = "Systemeinstellungen öffnen";
+"menubar.suppressed.disabled.title" = "Zulangue ist pausiert";
+"menubar.suppressed.disabled.body" = "Der Menüleisteneintrag ist in den Einstellungen deaktiviert.";
+"menubar.suppressed.disabled.action" = "Zulangue-Einstellungen öffnen";
+"menubar.suppressed.onboarding.title" = "Einrichtung abschließen";
+"menubar.suppressed.onboarding.body" = "Schließe die Ersteinrichtung ab, um Zulangue zu aktivieren.";
+"menubar.suppressed.onboarding.action" = "Einrichtung fortsetzen";
+"hud.recording.active" = "REC";
+"hud.recording.paused" = "PAUSIERT";
+"hud.a11y.recording_active_format" = "Aufnahme %@";
+"hud.a11y.recording_paused_format" = "Aufnahme pausiert %@";
+
+/* DesignSystem previews (P2) */
+"preview.empty.session_title" = "Noch keine Sitzungen";
+"preview.empty.session_desc" = "Ziehe eine Audiodatei hierher oder klicke auf „Aufnehmen“, um deine erste Sitzung zu starten.";
+"preview.crosshair.blueprint" = "BLUEPRINT-INHALT";
+"preview.crosshair.hardware" = "HARDWARE-INHALT";
+"preview.loading.rec" = "REC";
+
+
+/* Document editor */
+"editor.status.saved" = "Gesichert";
+"editor.status.saved.local" = "Lokal";
+"editor.status.saved.loading" = "Wird geladen";
+"editor.status.saved.pending" = "Ausstehend";
+"editor.status.saved.failed" = "Fehlgeschlagen";
+"editor.status.saved.needs_attention" = "Erfordert Aufmerksamkeit";
+"editor.status.transcript" = "Transkript";
+"editor.status.transcript.live_view" = "Live-Ansicht";
+"editor.status.transcript.available" = "Verfügbar";
+"editor.status.transcript.none" = "Keines";
+"editor.status.quality" = "Qualität";
+"editor.status.quality.good" = "Gut";
+"editor.status.quality.check" = "Prüfen";
+"editor.status.quality.blocked" = "Blockiert";
+"editor.toolbar.show_sources" = "Quellen einblenden";
+"editor.toolbar.show_tasks" = "Aufgaben einblenden";
+"editor.tasks.title" = "Aufgaben";
+"editor.tasks.count_format" = "%lld Hintergrundaufgaben";
+"editor.tasks.refresh" = "Aufgaben aktualisieren";
+"editor.tasks.empty" = "Noch keine Aufgaben";
+"editor.tasks.empty.detail" = "Hintergrund-Transkriptionsaufträge erscheinen hier.";
+"editor.tasks.owner_format" = "Läuft auf %@";
+"editor.tasks.retry_format" = "%lld Wiederholungen";
+/* Accessibility labels */
+"a11y.record.stop" = "Aufnahme stoppen";
+"a11y.record.start" = "Aufnahme starten";
+"a11y.record.hint_stop" = "Doppelklicken, um die aktuelle Aufnahme zu stoppen";
+"a11y.record.hint_start" = "Doppelklicken, um eine neue Aufnahme zu starten";
+"a11y.session_card" = "%@, %@, Dauer %@";
+
+/* Notebook multilingual capture */
+"common.close" = "Schließen";
+"capture.error.ffi_unavailable" = "Der Notebook-Aufnahmedienst ist noch nicht verfügbar.";
+"capture.error.already_active" = "Eine andere Notebook-Aufnahme ist bereits aktiv.";
+"capture.error.remote_required" = "Sprach-Untertitel erfordern die Remote-Echtzeitverarbeitung.";
+"capture.error.context_requires_remote" = "Aktiviere die Live-Transkription, bevor du Referenzmaterial verwendest.";
+"capture.error.languages_must_differ" = "Wähle Sprachen ohne Duplikate.";
+"capture.error.context_confirmation_required" = "Prüfe und bestätige zuerst das Referenzmaterial für diese Aufnahme.";
+"capture.error.not_active" = "Es gibt keine aktive Notebook-Aufnahme.";
+"capture.error.projection_locked" = "Das Transkript ist schreibgeschützt, bis die Projektion bereit ist.";
+"capture.error.profile_snapshot_unavailable" = "Das gesicherte Aufnahmeprofil für diese Aufnahme ist nicht verfügbar.";
+"capture.route.no_notebook" = "Kein Notebook ausgewählt";
+"capture.route.no_notebook_detail" = "Erstelle oder wähle ein Notebook, bevor du die Aufnahme öffnest.";
+"capture.route.unavailable" = "Notebook-Aufnahme kann nicht geöffnet werden";
+"capture.route.unavailable_detail" = "Der lokale Zulangue-Dienst ist nicht bereit.";
+"session.route.unavailable" = "Aufnahme kann nicht geöffnet werden";
+"session.route.unavailable_detail" = "Die Aufnahme bleibt unverändert. Versuche es erneut.";
+"capture.open_notebook" = "Notebook öffnen";
+"capture.open_notebook_hint" = "Die Aufnahmesteuerung ist nur im zugehörigen Notebook verfügbar.";
+"subtitle.overlay.title" = "Live-Untertitel";
+"subtitle.overlay.read_only" = "Live-Untertitel · Schreibgeschützt";
+"subtitle.overlay.accessibility_label" = "Mehrsprachiges Live-Untertitelfenster";
+"subtitle.overlay.language_count" = "%lld Sprachen";
+"subtitle.overlay.waiting" = "Warten auf Sprache…";
+"subtitle.overlay.recording_ended" = "Aufnahme beendet";
+"subtitle.overlay.font_size" = "Untertitelgröße";
+"subtitle.overlay.font_smaller" = "Kleinere Untertitel";
+"subtitle.overlay.font_larger" = "Größere Untertitel";
+"subtitle.overlay.move_resize_hint" = "Bewege das Fenster durch Ziehen. Ziehe an einer Kante oder Ecke, um die Größe zu ändern.";
+"subtitle.overlay.pin" = "Untertitel im Vordergrund behalten";
+"subtitle.overlay.unpin" = "Untertitel nicht mehr im Vordergrund behalten";
+"subtitle.overlay.pinned" = "Über anderen Fenstern auf jedem Schreibtisch angeheftet";
+"subtitle.overlay.unpinned" = "Nicht angeheftet";
+"subtitle.overlay.mode" = "Untertitelmodus";
+"subtitle.overlay.mode.conversation" = "Vergleich";
+"subtitle.overlay.mode.audience" = "Publikum";
+"subtitle.overlay.mode.conversation.help" = "Behält die letzten Äußerungen für sprachübergreifende Gespräche, Rückblick und Verständnis.";
+"subtitle.overlay.mode.audience.help" = "Zeigt die neueste Äußerung in bis zu drei gleichwertigen Publikumssprachen.";
+"capture.toolbar.start" = "Aufnahme starten";
+"capture.toolbar.starting" = "Wird gestartet…";
+"capture.toolbar.start_hint" = "Startet Aufnahme und Live-Transkription in den ausgewählten Sprachen. Die Aufnahme läuft weiter, wenn der Dienst vorübergehend nicht verfügbar ist.";
+"capture.toolbar.pause" = "Pausieren";
+"capture.toolbar.pause_billing" = "Remote-Verbindung wird möglicherweise weiter berechnet";
+"capture.toolbar.pause_billing_detail" = "Das Pausieren schließt die aktuelle Äußerung ab, hält aber die Soniox-Verbindung mit Keepalives offen und kann weiterhin Kosten verursachen.";
+"capture.toolbar.resume" = "Fortsetzen";
+"capture.toolbar.stop" = "Stoppen";
+"capture.toolbar.stop_hint" = "Stoppt die Audioeingabe. Wenn die Remote-Verarbeitung aktiv ist, wartet Zulangue zusätzlich auf deren letzte Token.";
+"capture.toolbar.active_other_notebook" = "Die Aufnahme gehört zu einem anderen Notebook";
+"capture.toolbar.subtitle_window.open" = "Live-Untertitel öffnen";
+"capture.toolbar.subtitle_window.close" = "Live-Untertitel schließen";
+"capture.toolbar.subtitle_window.hint" = "Öffnet ein mehrsprachiges Untertitelfenster, das immer im Vordergrund bleibt.";
+"capture.toolbar.subtitle_window.unavailable_hint" = "Starte eine Aufnahme in diesem Notebook, bevor du die Live-Untertitel öffnest.";
+"capture.toast.start_failed" = "Aufnahme konnte nicht gestartet werden";
+"capture.toast.pause_failed" = "Aufnahmestatus konnte nicht geändert werden";
+"capture.toast.stop_failed" = "Aufnahme konnte nicht gestoppt werden";
+"capture.toast.context_preview_failed" = "Referenzmaterial konnte nicht geprüft werden";
+"capture.toast.context_load_failed" = "Referenzmaterial konnte nicht geladen werden";
+"capture.toast.context_update_failed" = "Referenzmaterial konnte nicht aktualisiert werden";
+"capture.toast.settings_failed" = "Aufnahmeeinstellungen konnten nicht gesichert werden";
+"capture.toast.edit_failed" = "Transkriptspur konnte nicht aktualisiert werden";
+"capture.toast.projection_retry_failed" = "Transkriptprojektion konnte nicht wiederholt werden";
+"capture.settings.title" = "Aufnahmeeinstellungen";
+"capture.settings.subtitle" = "Füge Transkriptionsreferenzen hinzu und lege fest, wie eine Aufnahme nach dem Ende verarbeitet wird.";
+"capture.settings.realtime_moved" = "Sprachen und Live-Transkription";
+"capture.settings.realtime_moved_detail" = "Wähle die Sitzungssprachen und dann „Aufnahme starten“ für die Live-Transkription.";
+"capture.settings.realtime_moved_action" = "Zum Echtzeittranskript";
+"capture.settings.tab" = "Aufnahmeeinstellungen";
+"capture.settings.tab_hint" = "Aufnahme-, Sprach- und Untertiteleinstellungen dieses Notebooks öffnen.";
+"capture.settings.notebook_scope" = "Die Einstellungen in diesem Tab gelten nur für dieses Notebook.";
+"capture.settings.active_locked" = "Eine Aufnahme ist aktiv. Ihre Konfiguration ist eingefroren; Einstellungen können nach dem Stoppen der Aufnahme geändert werden.";
+"capture.settings.autosave.loading" = "Einstellungen werden geladen…";
+"capture.settings.autosave.saving" = "Wird gesichert…";
+"capture.settings.autosave.saved" = "Automatisch gesichert";
+"capture.settings.autosave.detail" = "Jede Änderung gilt sofort für dieses Notebook.";
+"capture.settings.autosave.load_failed" = "Einstellungen konnten nicht geladen werden";
+"capture.settings.autosave.save_failed" = "Änderung nicht gesichert";
+"capture.settings.autosave.context_review" = "Einstellungen gesichert; prüfe das Referenzmaterial erneut";
+"capture.settings.autosave.retry" = "Wiederholen";
+"capture.settings.realtime.start_disclosure" = "„Aufnahme starten“ beginnt die Live-Transkription in den ausgewählten Sprachen. Die Aufnahme läuft weiter, wenn der Dienst vorübergehend nicht verfügbar ist.";
+"capture.settings.remote.credential.loaded_unverified" = "Soniox-Schlüssel · Gesichert und geladen · Nicht geprüft";
+"capture.settings.remote.credential.saved_inactive" = "Soniox-Schlüssel · Gesichert · Erfordert Aufmerksamkeit";
+"capture.settings.remote.credential.runtime_only_unverified" = "Soniox-Schlüssel · Für diese Sitzung geladen · Nicht gesichert oder geprüft";
+"capture.settings.remote.credential.missing" = "Soniox-Schlüssel · Nicht gesichert";
+"capture.settings.remote.credential.hint" = "Dies zeigt nur die lokale Schlüsselbereitschaft an. Die Audiofreigabe für eine Aufnahme wird erst mit dem Klick auf „Aufnahme starten“ autorisiert.";
+"capture.settings.mode.title" = "Live-Modus";
+"capture.settings.mode.transcription_only" = "Nur Transkription";
+"capture.settings.mode.two_way" = "Zwei-Wege-Übersetzung";
+"capture.settings.mode.transcription_detail" = "Zeigt eine Transkript-Zeitleiste in der Ausgangssprache.";
+"capture.settings.mode.two_way_detail" = "Zeigt feste linke und rechte Sprachspalten mit Live-Übersetzung.";
+"capture.settings.languages.title" = "Übersetzungsspalten";
+"capture.settings.languages.detail" = "Jede Sprache bleibt in ihrer gewählten Spalte, unabhängig davon, wer sie spricht.";
+"capture.settings.languages.left" = "Linke Spalte";
+"capture.settings.languages.right" = "Rechte Spalte";
+"capture.settings.languages.question" = "Welche Sprachen werden in dieser Sitzung verwendet?";
+"capture.settings.languages.ordered_detail" = "Füge Sprachen in Anzeigereihenfolge hinzu. Jede ausgewählte Sprache erhält ihre eigene Spalte; gesprochener Text erscheint zuerst, die anderen Spalten füllen sich kurz danach.";
+"capture.settings.languages.search" = "Sprachen zum Hinzufügen suchen";
+"capture.settings.languages.no_results" = "Keine nicht ausgewählte Sprache entspricht deiner Suche.";
+"capture.settings.languages.maximum_reached" = "Du kannst bis zu drei Sprachen pro Sitzung auswählen.";
+"capture.settings.languages.add_format" = "%@ hinzufügen";
+"capture.settings.languages.move_earlier" = "Sprache nach vorne bewegen";
+"capture.settings.languages.move_later" = "Sprache nach hinten bewegen";
+"capture.settings.languages.remove" = "Sprache entfernen";
+"capture.settings.two_way.detail" = "Soniox stt-rt-v5 hält beide Sprachrichtungen in festen Spalten.";
+"capture.realtime.controls.current_title" = "Aktuelle Aufnahmekonfiguration";
+"capture.realtime.controls.profile_group" = "Echtzeit-Aufnahmekonfiguration";
+"capture.realtime.controls.swap_pair" = "Sprachpaar für die nächste Aufnahme tauschen";
+"capture.realtime.controls.swap_pair_hint" = "Tauscht Sprache A und Sprache B für die nächste Aufnahme, ohne bestehende Transkripte umzuschreiben.";
+"capture.realtime.controls.review_context" = "Referenzen prüfen";
+"capture.settings.context.title" = "Transkriptionsreferenzen";
+"capture.settings.context.send" = "Für die Live-Transkription verwenden";
+"capture.settings.context.send_detail" = "Wenn aktiviert, verwendet diese Aufnahme das hier angezeigte Referenzmaterial.";
+"capture.settings.context.preview" = "Prüfen, was verwendet wird";
+"capture.settings.context.preview_count" = "%lld Zeichen";
+"capture.settings.context.empty" = "Noch kein verwendbares Referenzmaterial.";
+"capture.settings.context.confirm_exact" = "Diese Referenzen verwenden";
+"capture.settings.context.applied" = "Für diese Aufnahme verwendet";
+"capture.settings.context.not_applied" = "Für diese Aufnahme nicht verwendet";
+"capture.settings.context.pack_detail" = "Füge Begriffe, Personen, Organisationen und Sitzungshintergrund hinzu, um die Transkriptionsgenauigkeit zu verbessern.";
+"capture.settings.context.packs" = "Referenzumfang";
+"capture.settings.context.no_packs" = "Noch kein Referenzmaterial.";
+"capture.settings.context.private_pack" = "Aktuelles Notebook";
+"capture.settings.context.current_notebook_detail" = "In diesem Notebook verwendet";
+"capture.settings.context.library_pack" = "Bibliothek";
+"capture.settings.context.selected" = "Wird bearbeitet";
+"capture.settings.context.not_selected" = "Nicht ausgewählt";
+"capture.settings.context.always_bound" = "Standardmäßig verwendet";
+"capture.settings.context.select_pack_hint" = "Dieses Referenzset prüfen und bearbeiten.";
+"capture.settings.context.bind_pack" = "%@ in diesem Notebook verwenden";
+"capture.settings.context.delete_pack" = "%@ löschen";
+"capture.settings.context.delete_pack_confirm" = "Diese Bibliothek löschen? Jedes Notebook, das sie verwendet, ist davon betroffen.";
+"capture.settings.context.library_title" = "Bibliotheksname";
+"capture.settings.context.new_library" = "Bibliothek erstellen";
+"capture.settings.context.copy_private" = "Aktuelle Referenzen in Bibliothek sichern";
+"capture.settings.context.editing_pack" = "Referenzen in %@";
+"capture.settings.context.import_file" = ".txt, .md oder .csv importieren";
+"capture.settings.context.no_sources" = "Es wurde noch kein Referenzmaterial hinzugefügt.";
+"capture.settings.context.paste_title" = "Referenztitel";
+"capture.settings.context.content_kind" = "Referenztyp";
+"capture.settings.context.kind_general" = "Hintergrund";
+"capture.settings.context.kind_terms" = "Begriffe";
+"capture.settings.context.kind_text" = "Referenztext";
+"capture.settings.context.paste_content" = "Referenztext einsetzen";
+"capture.settings.context.import_limits" = "Unterstützt UTF-8-Text oder Markdown bis 256 KiB sowie zweisprachige CSV-Dateien mit bis zu 1.000 Zeilen.";
+"capture.settings.context.add_paste" = "Inhalt hinzufügen";
+"capture.settings.context.untrusted" = "Quelle muss geprüft werden";
+"capture.settings.context.delete_source" = "Quelle %@ löschen";
+"capture.settings.context.delete_source_confirm" = "Diese Referenz löschen?";
+"capture.settings.context.file_picker_message" = "Wähle eine UTF-8-Datei (.txt/.md) oder eine .csv-Datei mit zweisprachiger Kopfzeile.";
+"capture.settings.context.local_only" = "Nach dem Start der Aufnahme können diese Referenzen für die Live-Transkription verwendet werden.";
+"capture.settings.after_stop.title" = "Verarbeitung nach der Aufnahme";
+"capture.settings.after_stop.engine" = "Verarbeitungsmethode";
+"capture.settings.after_stop.toggle" = "Nach dem Stoppen transkribieren";
+"capture.settings.after_stop.detail" = "Nach dem Stoppen der Aufnahme kann die aktuelle Transkriptions-Engine verbleibende Transkriptionen abschließen.";
+"capture.settings.after_stop.unavailable_detail" = "Die Verarbeitung nach der Aufnahme ist in dieser Version nicht verfügbar.";
+"capture.settings.after_stop.two_way_disabled" = "Im Zwei-Wege-Übersetzungsmodus nicht verfügbar.";
+"capture.state.recording" = "Aufnahme läuft";
+"capture.state.paused" = "Pausiert";
+"capture.state.draining" = "Wird abgeschlossen";
+"capture.state.audio_drain_delayed" = "Lokales Audio wird noch gesichert";
+"capture.state.completed" = "Abgeschlossen";
+"capture.state.interrupted" = "Unterbrochen";
+"capture.state.failed" = "Fehlgeschlagen";
+"capture.remote.off" = "Remote aus";
+"capture.remote.connecting" = "Remote-Verbindung wird hergestellt";
+"capture.remote.catching_up" = "Untertitel holen auf, %d Sekunden Rückstand";
+"capture.remote.live" = "Remote live";
+"capture.remote.degraded" = "Remote beeinträchtigt";
+"capture.remote.unavailable" = "Remote nicht verfügbar";
+"capture.projection.pending" = "Projektion ausstehend";
+"capture.projection.projecting" = "Projektion läuft";
+"capture.projection.ready" = "Bearbeitbar";
+"capture.projection.failed" = "Projektion fehlgeschlagen";
+"capture.transcript.accessibility_label" = "Geordnetes Transkript mit Sprachspalten";
+"capture.transcript.swap" = "Linke und rechte Sprachspalte tauschen";
+"capture.transcript.swap_hint" = "Ändert nur die linke und rechte Anzeige im Speicher; Aufnahme und Transkript werden nicht umgeschrieben.";
+"capture.transcript.realtime_accessibility_label" = "Echtzeittranskript";
+"capture.transcript.engine.realtime_format" = "Echtzeit · %@";
+"capture.transcript.engine.post_stop_format" = "Wiedergabe nach dem Stoppen · %@";
+"capture.transcript.transcription_heading" = "Transkriptionszeitleiste";
+"capture.transcript.transcription_empty_title" = "Keine Echtzeitäußerungen";
+"capture.transcript.transcription_empty_detail" = "Aktiviere die Remote-Echtzeitverarbeitung und starte eine Aufnahme, um das Sitzungstranskript aufzubauen.";
+"capture.transcript.snapshot_unavailable_detail" = "Die gespeicherten Äußerungen bleiben erhalten, aber diese Ansicht kann ohne die gesicherte Sprachspalten-Konfiguration der Aufnahme kein Layout wählen.";
+"capture.transcript.read_only" = "Schreibgeschützt während Aufnahme oder Projektion";
+"capture.transcript.copy" = "Transkript kopieren";
+"capture.transcript.copy_hint" = "Kopiert das Transkript dieser Sitzung mit Zeitstempeln, Sprechernamen und Sprachbezeichnungen.";
+"capture.transcript.copy_empty_hint" = "Es gibt noch keinen Transkriptinhalt zum Kopieren.";
+"capture.transcript.copy_finish_edit_hint" = "Beende oder verwirf die aktuelle Bearbeitung vor dem Kopieren.";
+"capture.transcript.copy_success" = "Transkript kopiert";
+"capture.transcript.copy_success_detail" = "Du kannst es jetzt in eine andere App einsetzen.";
+"capture.transcript.copy_success_live_detail" = "Der aktuelle Transkript-Schnappschuss wurde kopiert; die Aufnahme läuft noch.";
+"capture.transcript.copy_failed" = "Transkript konnte nicht kopiert werden";
+"capture.transcript.copy_clipboard_failed" = "Die Zwischenablage konnte nicht aktualisiert werden.";
+"capture.transcript.waiting_title" = "Warten auf die erste Äußerung";
+"capture.transcript.waiting_detail" = "Die lokale Aufnahme läuft weiter, auch wenn die Remote-Verarbeitung aus oder nicht verfügbar ist.";
+"capture.transcript.empty_title" = "Keine zweisprachigen Äußerungen";
+"capture.transcript.empty_detail" = "Starte eine Zwei-Wege-Aufnahme in diesem Notebook, um die festen Sprachspalten zu füllen.";
+"capture.transcript.active_other_session.title" = "Eine andere Sitzung nimmt gerade auf";
+"capture.transcript.active_other_session.detail" = "Dieses Transkript ist von der aktiven Aufnahme getrennt. Kehre zu ihrem Notebook zurück, um sie zu pausieren oder zu stoppen.";
+"capture.transcript.outside_pair" = "Außerhalb des aktuellen Sprachpaars";
+"capture.transcript.language_pending" = "Sprache muss bestätigt werden…";
+"capture.transcript.unselected_language" = "%@ wurde erkannt, ist aber für diese Sitzung nicht ausgewählt";
+"capture.transcript.presentation.timeline" = "Zeitleiste";
+"capture.transcript.presentation.timeline_detail" = "Zeigt jede Äußerung einmal in chronologischer Reihenfolge.";
+"capture.transcript.presentation.language_columns" = "Sprachspalten";
+"capture.transcript.presentation.language_columns_detail" = "Hält jede ausgewählte Sprache in ihrer eigenen geordneten Spalte.";
+"capture.transcript.waiting_lane" = "Warten auf %@";
+"capture.transcript.failed_lane" = "Die Spalte „%@“ konnte nicht gefüllt werden";
+"capture.transcript.row_accessibility" = "Äußerung %lld";
+"capture.transcript.source_timestamp" = "Zeitstempel im Quellaudio %@";
+"capture.speaker.fallback" = "Sprecher";
+"capture.speaker.fallback_format" = "Sprecher %@";
+"capture.speaker.manage" = "Sprecher verwalten";
+"capture.speaker.chip_accessibility_format" = "Sprecher: %@";
+"capture.speaker.manage_hint" = "Benennung und Teilnehmerzuordnung für diesen anonymen Sprecher öffnen.";
+"capture.speaker.editor.title" = "Anonymer Sprecher";
+"capture.speaker.close" = "Schließen";
+"capture.speaker.privacy_detail" = "Es werden nur anonyme Anbieterbezeichnungen und von dir eingegebene Namen gespeichert. Stimmabdrücke oder Audiomerkmale werden lokal nicht gespeichert.";
+"capture.speaker.session_name" = "Name für diese Sitzung";
+"capture.speaker.session_name_detail" = "Überschreibt diesen anonymen Sprecher nur in dieser Aufnahme.";
+"capture.speaker.session_name_placeholder" = "Zum Beispiel „Gastgeber“";
+"capture.speaker.save" = "Sichern";
+"capture.speaker.clear" = "Entfernen";
+"capture.speaker.participant" = "Teilnehmer über Sitzungen hinweg";
+"capture.speaker.participant_detail" = "Verknüpfe diese anonyme Bezeichnung mit einem von dir verwalteten Namen. Die Zuordnung erfolgt manuell und wird nie aus der Sprache abgeleitet.";
+"capture.speaker.select_participant" = "Teilnehmer auswählen";
+"capture.speaker.link" = "Verknüpfen";
+"capture.speaker.new_participant_placeholder" = "Name des neuen Teilnehmers";
+"capture.speaker.create_and_link" = "Erstellen und verknüpfen";
+"capture.speaker.unlink" = "Teilnehmerverknüpfung aufheben";
+"capture.speaker.identity_format" = "%@ · Sprecher %@ · Verbindung %@";
+"capture.transcript.edit_lane" = "Spur „%@“ bearbeiten";
+"capture.transcript.edit_hint" = "Drücke den Zeilenschalter oder verschiebe den Fokus, um diese Spur zu sichern.";
+"capture.transcript.retry_projection" = "Projektion wiederholen";
+"capture.transcript.retry_projection_hint" = "Versucht erneut, gespeicherte Äußerungen in das Notebook-Transkript zu schreiben.";
+"capture.settings.retention.title" = "Audioaufbewahrung";
+"capture.settings.retention.subtitle" = "Dieses Notebook hält seine Aufbewahrungsrichtlinie beim Start jeder Aufnahme fest.";
+"capture.settings.retention.standard.title" = "Audio behalten";
+"capture.settings.retention.standard.detail" = "Die Aufnahme behalten, bis du „Endgültig löschen“ wählst.";
+"capture.settings.retention.high.title" = "Nach dem Async-Transkript löschen";
+"capture.settings.retention.high.detail" = "Audio und zugehörigen Schlüssel löschen, nachdem eine ausdrücklich angeforderte Async-Transkription erfolgreich war.";
+"capture.settings.retention.maximum.title" = "Nach jedem Transkript löschen";
+"capture.settings.retention.maximum.detail" = "Audio und zugehörigen Schlüssel löschen, sobald dauerhafte Transkriptfakten vorliegen. Wenn kein Transkript existiert, wird die einzige Quelle behalten, um Datenverlust zu verhindern.";

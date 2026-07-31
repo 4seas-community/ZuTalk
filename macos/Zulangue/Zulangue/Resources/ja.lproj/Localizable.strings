@@ -170,6 +170,11 @@
 "lang.de_full" = "Deutsch (German)";
 "lang.es" = "Español";
 "lang.es_full" = "Español (Spanish)";
+"lang.th" = "ไทย";
+"lang.th_full" = "ไทย (Thai)";
+"lang.my" = "မြန်မာ";
+"lang.my_full" = "မြန်မာ (Burmese)";
+"lang.zh_hans" = "简体中文";
 
 /* Appearance */
 "appearance.system" = "システムに従う";
@@ -551,6 +556,9 @@
 "home.notebook.workspace.board.recent" = "最近";
 "home.notebook.workspace.board.recent.empty" = "セッションはまだありません";
 "home.notebook.workspace.board.manual" = "手動ノート";
+"home.action.select" = "選択";
+"home.selection.count_format" = "%lld件を選択中";
+"home.selection.delete_format" = "%lld件を削除";
 
 
 
@@ -585,7 +593,10 @@
 "editor.transcript.async.retry_projection_hint" = "音声を再送信せず、保存済み結果をこの Notebook に書き込みます。";
 "editor.transcript.async.retry_failed" = "保存済み文字起こしを書き込めませんでした";
 "editor.tab.transcript.live.hint" = "リアルタイム文字起こし — 録音中";
+"editor.tab.transcript.hint" = "音声の文字起こし";
 "editor.transcript.listening" = "音声を待っています…";
+"toast.soniox.missing" = "Soniox キーが未設定です";
+"toast.soniox.missing.detail" = "ライブ文字起こしは無効です。設定 → サービス接続 で Soniox キーを追加してください。";
 "menubar.recording.mode.local" = "ローカル";
 "menubar.recording.mode.remote" = "SONIOX RT5";
 "editor.empty.transcript_unavailable" = "文字起こし利用不可";
@@ -607,6 +618,13 @@
 /* Trash page */
 "trash.empty.title" = "ゴミ箱は空です";
 "trash.empty.desc" = "削除した録音は 30 日間保管された後、完全に削除されます。";
+"trash.action.restore" = "復元";
+"trash.action.purge" = "完全に削除";
+"trash.toast.restored" = "セッションを復元しました";
+"trash.toast.purged" = "完全に削除しました";
+"trash.purge.confirm_title" = "完全に削除しますか？";
+"trash.purge.confirm_desc" = "録音、文字起こし、関連データが消去されます。この操作は取り消せません。";
+"trash.purge.confirm_button" = "完全に削除";
 
 /* Onboarding — residuals */
 "onboarding.brand.name" = "Zulangue";
@@ -935,6 +953,9 @@
 "home.row.preview.failed"    = "文字起こし失敗";
 "home.row.status.completed" = "録音完了";
 "home.row.status.imported" = "音声を読み込み済み";
+"library.toast.moved_to_trash" = "ゴミ箱に入れました";
+"library.toast.bulk_moved_to_trash" = "%lld件のセッションをゴミ箱に入れました";
+"doc.transcript_hd" = "非同期文字起こし";
 "capture.settings.retention.title" = "音声の保持";
 "capture.settings.retention.subtitle" = "録音開始時に、この Notebook の保持ポリシーを録音ごとに固定します。";
 "capture.settings.retention.standard.title" = "音声を保持";

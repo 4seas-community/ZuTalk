@@ -170,6 +170,11 @@
 "lang.de_full" = "Deutsch (German)";
 "lang.es" = "Español";
 "lang.es_full" = "Español (Spanish)";
+"lang.th" = "ไทย";
+"lang.th_full" = "ไทย (Thai)";
+"lang.my" = "မြန်မာ";
+"lang.my_full" = "မြန်မာ (Burmese)";
+"lang.zh_hans" = "简体中文";
 
 /* Appearance */
 "appearance.system" = "Follow system";

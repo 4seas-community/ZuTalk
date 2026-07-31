@@ -1,0 +1,22 @@
+error:
+  core:
+    init_failed: "Error de inicialización: %{detail}"
+    validation_failed: "Error de validación: %{detail}"
+    not_found: "No encontrado: %{detail}"
+    internal: "Error interno: %{detail}"
+
+  stt:
+    ws_failed: "Falló la conexión WebSocket: %{detail}"
+    read_timeout: "Tiempo de espera de lectura del WebSocket agotado tras %{duration}"
+    server_closed: "conexión cerrada por el servidor: code=%{code}, reason=%{reason}"
+    auth_failed: "falló la autenticación: %{detail}"
+    quota_exhausted: "cuota agotada: %{detail}"
+    rate_limited: "límite de solicitudes alcanzado"
+    parse: "error de análisis: %{detail}"
+    server_error: "error del servidor %{status}: %{detail}"
+    api_error: "error de API %{status}: [%{kind}] %{detail}"
+    transcription_failed: "falló la transcripción: [%{kind}] %{detail}"
+    http: "error HTTP: %{detail}"
+    timeout: "tiempo de espera agotado: %{operation} tras %{duration}"
+    cancelled: "cancelado"
+    upload_failed: "falló la subida: %{detail}"

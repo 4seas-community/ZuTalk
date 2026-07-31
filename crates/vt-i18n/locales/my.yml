@@ -1,0 +1,22 @@
+error:
+  core:
+    init_failed: "စတင်မှု မအောင်မြင်ပါ: %{detail}"
+    validation_failed: "အတည်ပြုစစ်ဆေးမှု မအောင်မြင်ပါ: %{detail}"
+    not_found: "ရှာမတွေ့ပါ: %{detail}"
+    internal: "စနစ်တွင်း အမှား: %{detail}"
+
+  stt:
+    ws_failed: "WebSocket ချိတ်ဆက်မှု မအောင်မြင်ပါ: %{detail}"
+    read_timeout: "%{duration} အကြာ WebSocket ဖတ်ရှုချိန် ကုန်ဆုံးသွားသည်"
+    server_closed: "ဆာဗာက ချိတ်ဆက်မှုကို ပိတ်လိုက်သည်: code=%{code}, reason=%{reason}"
+    auth_failed: "အထောက်အထား စိစစ်မှု မအောင်မြင်ပါ: %{detail}"
+    quota_exhausted: "ခွဲတမ်း ကုန်သွားပြီ: %{detail}"
+    rate_limited: "နှုန်းကန့်သတ်ခံထားရသည်"
+    parse: "ဖတ်ရှုခွဲခြမ်းမှု အမှား: %{detail}"
+    server_error: "ဆာဗာ အမှား %{status}: %{detail}"
+    api_error: "API အမှား %{status}: [%{kind}] %{detail}"
+    transcription_failed: "စာသားပြောင်းခြင်း မအောင်မြင်ပါ: [%{kind}] %{detail}"
+    http: "HTTP အမှား: %{detail}"
+    timeout: "အချိန်ကုန်ဆုံး: %{operation} — %{duration} အကြာ"
+    cancelled: "ပယ်ဖျက်လိုက်သည်"
+    upload_failed: "တင်ပို့မှု မအောင်မြင်ပါ: %{detail}"

@@ -1,0 +1,966 @@
+/* Zulangue English Localization */
+
+/* General */
+"app.name" = "Zulangue";
+"app.tagline" = "โอเพนซอร์ส · เก็บข้อมูลในเครื่องเป็นหลัก · คีย์ของคุณ ข้อมูลของคุณ";
+"common.cancel" = "ยกเลิก";
+"common.save" = "บันทึก";
+"common.delete" = "ลบ";
+"common.export" = "ส่งออก";
+"common.search" = "ค้นหา";
+"common.settings" = "การตั้งค่า";
+"common.test" = "ทดสอบ";
+"common.back" = "ย้อนกลับ";
+"common.finish" = "เสร็จสิ้น";
+"common.required" = "จำเป็น";
+"common.optional" = "ไม่บังคับ";
+"common.connected" = "เชื่อมต่อแล้ว";
+"common.testing" = "กำลังทดสอบ…";
+"common.not_configured" = "ยังไม่ได้กำหนดค่า";
+"common.failed" = "ล้มเหลว";
+
+/* Onboarding — Welcome */
+"onboarding.welcome.button" = "ดำเนินการต่อ →";
+"onboarding.welcome.bullet1" = "สร้าง Notebook สำหรับบทสนทนาประเภทเดียวกัน เช่น “สัมภาษณ์ภาษาอังกฤษ”";
+"onboarding.welcome.bullet2" = "เปิด Notebook แล้วคลิกเริ่มบันทึก";
+"onboarding.welcome.bullet3" = "เมื่อคุณหยุด จะพบคำบรรยาย เสียง และโน้ตอยู่ด้วยกัน";
+"onboarding.welcome.privacy" = "ข้อมูลจะอยู่บน Mac เครื่องนี้ตามค่าเริ่มต้น คุณเป็นผู้เลือกว่าจะเปิดใช้การถอดเสียงระยะไกลสำหรับการประชุมแต่ละครั้งหรือไม่";
+"onboarding.visual.live" = "บทถอดเสียงสด";
+"onboarding.visual.speaker.host" = "ผู้ดำเนินรายการ";
+"onboarding.visual.speaker.guest" = "ผู้เข้าร่วม";
+"onboarding.visual.language.zh" = "中文";
+"onboarding.visual.language.en" = "English";
+"onboarding.visual.language.ja" = "日本語";
+"onboarding.visual.microphone.title" = "ไมโครโฟนพร้อมแล้ว";
+"onboarding.visual.microphone.detail" = "บันทึกเสียงในห้อง · สร้างบทถอดเสียงสด";
+
+/* Onboarding — Permissions */
+"onboarding.permissions.title" = "เตรียมพร้อมสำหรับบทสนทนาแรกของคุณ";
+"onboarding.permissions.subtitle" = "อนุญาตการเข้าถึงไมโครโฟนเพื่อบันทึกเสียงในห้องและสร้างบทถอดเสียงสด";
+"onboarding.permissions.hint" = "คุณสามารถเข้าใช้แอปตอนนี้ แล้วค่อยให้สิทธิ์เมื่อบันทึกครั้งแรกก็ได้";
+"onboarding.permissions.mic.name" = "ไมโครโฟน";
+"onboarding.permissions.mic.usage" = "บันทึกเสียงบทสนทนาและขับเคลื่อนบทถอดเสียงสด";
+"onboarding.permissions.action.grant" = "อนุญาตการเข้าถึง";
+"onboarding.permissions.action.open_settings" = "เปิดการตั้งค่า";
+"onboarding.permissions.action.restart" = "เริ่มแอปใหม่";
+"onboarding.permissions.status.granted" = "อนุญาตแล้ว";
+"onboarding.permissions.status.denied" = "ถูกปฏิเสธ";
+"onboarding.permissions.status.not_granted" = "ยังไม่ได้อนุญาต";
+"onboarding.permissions.continue" = "เข้าสู่ ZULANGUE →";
+
+/* Onboarding — API Keys */
+"onboarding.keys.title" = "เปิดใช้คำบรรยายสด";
+"onboarding.keys.subtitle" = "ใช้คำเชิญชุมชนหรือเชื่อมต่อบริการถอดเสียงของคุณเอง";
+"onboarding.keys.own_key.option" = "คีย์ของฉันเอง";
+"community_invite.option" = "คำเชิญชุมชน";
+"community_invite.placeholder" = "ป้อนรหัสคำเชิญ";
+"community_invite.action" = "เปิดใช้งานคำเชิญ";
+"community_invite.active" = "คำเชิญชุมชนใช้งานอยู่";
+"community_invite.thirty_hours" = "5 Give · ประมาณ 30 ชั่วโมง";
+"community_invite.shared_detail" = "การถอดเสียงสด การแปล และการถอดเสียงจากไฟล์เสียงใช้เวลานี้ร่วมกัน";
+"community_invite.invalid" = "รหัสคำเชิญนี้ไม่ถูกต้อง โปรดตรวจสอบกับผู้ที่เชิญคุณ";
+"community_invite.unavailable" = "บริการชุมชนไม่พร้อมใช้งานชั่วคราว โปรดลองใหม่ภายหลัง";
+"community_invite.remaining_hours_format" = "เหลือประมาณ %lld ชั่วโมง";
+"community_invite.settings.title" = "คำเชิญชุมชน";
+"community_invite.settings.subtitle" = "ดูเวลาการใช้งานที่คุณมี หรือป้อนรหัสคำเชิญ";
+"community_invite.resources.remaining" = "เวลาที่เหลือ";
+"community_invite.remaining_detail_format" = "%1$lld ชม. %2$lld นาที";
+"community_invite.refresh" = "รีเฟรชเวลาที่เหลือ";
+"community_invite.replace" = "ใช้รหัสใหม่";
+"community_invite.inactive" = "ไม่มีคำเชิญชุมชนที่ใช้งานอยู่";
+"community_invite.use_toggle" = "ถอดเสียงด้วยคำเชิญชุมชน";
+"community_invite.use_toggle_detail" = "เมื่อเปิด การบันทึกจะใช้เวลาจากคำเชิญก่อน เมื่อปิด จะใช้คีย์ที่คุณบันทึกไว้เอง";
+"editor.transcript.async.start" = "ถอดเสียงไฟล์เสียงนี้";
+"editor.transcript.async.start_failed" = "ไม่สามารถเริ่มการถอดเสียงจากไฟล์เสียงได้";
+"onboarding.keys.voice_label" = "บริการคำบรรยายสด";
+"onboarding.keys.guide.create" = "สมัครใช้งาน";
+"onboarding.keys.guide.copy" = "คัดลอกคีย์";
+"onboarding.keys.guide.paste" = "วางด้านล่าง";
+"onboarding.keys.open_soniox" = "รับคีย์จาก Soniox";
+"onboarding.keys.soniox.help" = "ตรวจสอบและบันทึกเป็นเพียงการตรวจว่าคีย์ใช้งานได้ ไม่มีการอัปโหลดการบันทึกใด ๆ";
+"onboarding.keys.paste" = "คีย์ API ของ Soniox";
+"onboarding.keys.verify_and_save" = "ตรวจสอบและบันทึก";
+"onboarding.keys.verify_saved" = "ตรวจสอบการเชื่อมต่อ";
+"onboarding.keys.skip" = "ข้ามไปก่อน";
+"onboarding.keys.continue" = "ดำเนินการต่อ";
+"onboarding.keys.private_status" = "ตรวจสอบแล้วก่อนบันทึกลงเครื่อง";
+
+/* Onboarding — Step Indicator */
+"onboarding.step.signup" = "รู้จัก Zulangue";
+"onboarding.step.setup" = "พร้อมบันทึก";
+"onboarding.step.tryout" = "คำบรรยายสด";
+
+/* Onboarding — Common */
+"onboarding.common.back" = "← ย้อนกลับ";
+
+"sidebar.help" = "วิธีใช้ Zulangue";
+"sidebar.help.hint" = "เปิดคู่มือเริ่มต้นใช้งานอีกครั้ง";
+
+/* Library */
+"library.title" = "เซสชัน";
+"library.empty.title" = "ยังไม่มีเซสชัน";
+"library.empty.live_hint" = "เพื่อเริ่มการถอดเสียงสด";
+"library.empty.drop_hint" = "หรือลากไฟล์เสียงมาที่นี่เพื่อนำเข้า";
+"library.empty.drop_label" = "วางไฟล์เสียงที่นี่";
+"library.empty.drop_formats" = "m4a · mp3 · wav · aac · ogg · flac";
+"library.empty.configure_hint" = "ต้องการกำหนดค่าผู้ให้บริการหรือไม่";
+"library.empty.configure_link" = "เปิดการตั้งค่า";
+"library.no_selection.title" = "ไม่ได้เลือกเซสชัน";
+"library.no_selection.detail" = "เลือกเซสชันจากรายการ";
+"library.search_placeholder" = "ค้นหาเซสชัน…";
+"library.filter.all" = "ทั้งหมด";
+"library.filter.overlay" = "โอเวอร์เลย์";
+"library.filter.recording" = "การบันทึก";
+"library.filter.import" = "นำเข้า";
+
+/* Recording */
+"recording.start" = "เริ่มบันทึก";
+"recording.stop" = "หยุดบันทึก";
+"recording.status.idle" = "ว่าง";
+"recording.status.recording" = "กำลังบันทึก";
+"recording.status.listening" = "กำลังฟัง";
+"recording.status.error" = "ข้อผิดพลาด";
+
+/* Session Detail */
+"session.tab.transcript" = "บทถอดเสียง";
+"session.tab.audio" = "เสียง";
+"session.metadata.language" = "ภาษา";
+"session.metadata.crdt" = "CRDT";
+
+/* Settings */
+"settings.section.recording" = "การบันทึก";
+"settings.section.privacy" = "ความเป็นส่วนตัวและความปลอดภัย";
+"settings.section.shortcuts" = "แป้นพิมพ์ลัด";
+"settings.privacy.standard" = "มาตรฐาน";
+"settings.privacy.standard.description" = "เก็บการบันทึกและบทถอดเสียงไว้ตลอดไป";
+"settings.privacy.high" = "สูง";
+"settings.privacy.high.description" = "ลบการบันทึกอัตโนมัติหลังถอดเสียงเสร็จ";
+"settings.privacy.maximum" = "สูงสุด";
+"settings.privacy.maximum.description" = "ทำลายคีย์อัตโนมัติหลังถอดเสียงเสร็จ (จะไม่สามารถกู้คืนการบันทึกได้)";
+
+/* Export */
+"export.title" = "ตัวเลือกการส่งออก";
+"export.markdown" = "Markdown (.md)";
+"export.srt" = "คำบรรยาย SRT (.srt)";
+"export.vtt" = "WebVTT (.vtt)";
+"export.txt" = "ข้อความธรรมดา (.txt)";
+"export.audio" = "รวมไฟล์เสียง (.wav)";
+
+/* Trust Bar */
+
+/* Toast labels */
+"toast.label.info" = "ข้อมูล";
+"toast.label.success" = "สำเร็จ";
+"toast.label.warning" = "เตือน";
+"toast.label.error" = "ผิดพลาด";
+
+/* Common language labels (self-describing; same string in each locale uses native script) */
+"lang.auto_detect" = "ตรวจจับอัตโนมัติ";
+"lang.zh" = "中文";
+"lang.zh_full" = "中文 (Chinese Simplified)";
+"lang.zh_tw" = "繁體中文";
+"lang.en" = "English";
+"lang.ja" = "日本語";
+"lang.ja_full" = "日本語 (Japanese)";
+"lang.ko" = "한국어";
+"lang.ko_full" = "한국어 (Korean)";
+"lang.fr" = "Français";
+"lang.fr_full" = "Français (French)";
+"lang.de" = "Deutsch";
+"lang.de_full" = "Deutsch (German)";
+"lang.es" = "Español";
+"lang.es_full" = "Español (Spanish)";
+"lang.th" = "ไทย";
+"lang.th_full" = "ไทย (Thai)";
+"lang.my" = "မြန်မာ";
+"lang.my_full" = "မြန်မာ (Burmese)";
+"lang.zh_hans" = "简体中文";
+
+/* Appearance */
+"appearance.system" = "ตามระบบ";
+"appearance.light" = "สว่าง";
+"appearance.dark" = "มืด";
+
+/* General settings section */
+"settings.general.title" = "ทั่วไป";
+"settings.general.subtitle" = "ภาษาและลักษณะที่ปรากฏของทั้งแอป";
+"settings.language.title" = "ภาษาของแอป";
+"settings.language.system" = "ตามระบบ";
+"settings.language.hint" = "ควบคุมส่วนติดต่อผู้ใช้ เมนู และข้อความแสดงข้อผิดพลาดทั้งในเลเยอร์ Swift และ Rust";
+"settings.language.restart_hint" = "การเปลี่ยนภาษาจะมีผลสมบูรณ์หลังจากคุณเริ่ม Zulangue ใหม่ ข้อความแสดงข้อผิดพลาดของ Rust อัปเดตแล้ว";
+"settings.appearance.title" = "ลักษณะที่ปรากฏ";
+
+
+
+
+
+
+/* Permissions */
+"permission.microphone.name" = "ไมโครโฟน";
+"permission.microphone.usage" = "บันทึกเสียงของคุณและส่งไปยัง Soniox เพื่อถอดเสียง";
+
+/* Library — export sheet */
+"export.dialog.title" = "ตัวเลือกการส่งออก";
+"export.dialog.text_format" = "รูปแบบข้อความ";
+"export.dialog.audio_group" = "เสียง";
+"export.dialog.audio_include" = "รวมไฟล์เสียง (.wav)";
+"export.dialog.markdown" = "Markdown (.md)";
+"export.dialog.srt" = "คำบรรยาย SRT (.srt)";
+"export.dialog.vtt" = "WebVTT (.vtt)";
+"export.dialog.txt" = "ข้อความธรรมดา (.txt)";
+"export.progress" = "กำลังส่งออก…";
+"export.dialog.location" = "เลือกตำแหน่งส่งออก";
+"export.error_format" = "การส่งออกล้มเหลว: %@";
+"common.export.action" = "ส่งออก";
+
+
+
+/* Recording settings */
+
+
+"doc.delete_current.hint" = "ลบเอกสารปัจจุบัน";
+"editor.export.title" = "ส่งออกเซสชัน";
+"editor.export.hint" = "ส่งออกเซสชันนี้เป็นไฟล์ ZIP";
+"editor.export.no_session" = "ไม่มีเซสชันการบันทึกให้ส่งออก";
+"doc.scratchpad" = "กระดาษทด";
+"doc.enhanced" = "ฉบับปรับปรุง";
+"doc.untitled" = "ไม่มีชื่อ";
+
+
+/* Onboarding brand line */
+"onboarding.brand.subtitle" = "การสื่อสารหลายภาษา · การประชุมสด";
+
+/* Settings sidebar section rawValues (localized names) */
+"settings.section.general_name" = "ทั่วไป";
+"settings.section.services_name" = "บริการและ API";
+"settings.section.privacy_name" = "ความเป็นส่วนตัว";
+"settings.section.shortcuts_name" = "แป้นพิมพ์ลัด";
+"settings.section.diagnostics_name" = "การวินิจฉัย";
+"settings.sidebar.configuration" = "การกำหนดค่า";
+
+/* Settings sidebar groups */
+"settings.group.services" = "การเชื่อมต่อ";
+"settings.group.privacy" = "ความเป็นส่วนตัวและข้อมูล";
+"settings.group.general" = "ทั่วไป";
+"settings.group.advanced" = "ขั้นสูง";
+
+/* Settings — API panels (Voice / AI) */
+"settings.api.test_button" = "ทดสอบ";
+"settings.credentials.enter_key" = "ป้อนคีย์ API";
+"settings.credentials.local_storage_hint" = "บันทึกโดยไม่เข้ารหัสในไฟล์ส่วนตัวของแอปซึ่งบัญชี macOS นี้อ่านได้ และจะโหลดอัตโนมัติเมื่อเปิดแอป";
+"settings.credentials.trust_boundary_notice" = "ข้อมูลรับรองที่บันทึกไว้ที่นี่ไม่ได้เข้ารหัส Zulangue อาศัยบัญชี macOS ที่เชื่อถือได้นี้และไฟล์ในเครื่องที่เป็นส่วนตัวของแอป แล้วโหลดโดยอัตโนมัติเมื่อเปิดแอป";
+"settings.credentials.apply" = "บันทึก";
+"settings.credentials.verify" = "ตรวจสอบ";
+"settings.credentials.verify_and_save" = "ตรวจสอบและบันทึก";
+"settings.credentials.verifying" = "กำลังตรวจสอบ…";
+"settings.credentials.verified" = "ตรวจสอบแล้ว";
+"settings.credentials.verification_failed" = "การตรวจสอบล้มเหลว";
+"settings.credentials.verifying_hint" = "กำลังเชื่อมต่อกับ Soniox เพื่อตรวจสอบคีย์นี้";
+"settings.credentials.verified_hint" = "Soniox ยอมรับคีย์นี้แล้ว พร้อมสำหรับการถอดเสียงระยะไกล";
+"settings.credentials.verify_before_save_hint" = "Zulangue จะบันทึกคีย์ใหม่ต่อเมื่อ Soniox ตรวจสอบแล้วเท่านั้น";
+"settings.credentials.verify_and_save_accessibility_format" = "ตรวจสอบและบันทึกคีย์ %@";
+"settings.credentials.verification.ready" = "ตรวจสอบการเชื่อมต่อ Soniox แล้ว";
+"settings.credentials.verification.invalid" = "Soniox ปฏิเสธคีย์นี้ คีย์อาจไม่ถูกต้องหรือถูกเพิกถอน";
+"settings.credentials.verification.organization_balance_exhausted" = "ยอดคงเหลือขององค์กร Soniox หมดแล้ว";
+"settings.credentials.verification.organization_budget_exhausted" = "งบประมาณรายเดือนขององค์กร Soniox หมดแล้ว";
+"settings.credentials.verification.project_budget_exhausted" = "งบประมาณรายเดือนของโปรเจ็กต์ Soniox หมดแล้ว";
+"settings.credentials.verification.quota_exhausted" = "บัญชี Soniox ไม่มีโควตาเหลือ";
+"settings.credentials.verification.network_unavailable" = "ไม่สามารถติดต่อ Soniox ได้ ตรวจสอบเครือข่ายแล้วลองอีกครั้ง";
+"settings.credentials.verification.rate_limited" = "Soniox กำลังจำกัดอัตราคำขอ โปรดลองใหม่ในอีกสักครู่";
+"settings.credentials.verification.service_unavailable" = "การตรวจสอบของ Soniox ไม่พร้อมใช้งานชั่วคราว";
+"settings.credentials.applied" = "บันทึกแล้ว · โหลดแล้ว";
+"settings.credentials.saved_inactive" = "บันทึกแล้ว · ต้องดำเนินการ";
+"settings.credentials.runtime_only" = "โหลดสำหรับการทำงานครั้งนี้ · ไม่ได้บันทึก";
+"settings.credentials.missing" = "ยังไม่ได้บันทึก";
+"settings.credentials.clear" = "ลบคีย์ที่บันทึกไว้";
+"settings.credentials.apply_failed" = "ไม่สามารถบันทึกและเปิดใช้งานคีย์นี้ได้";
+"settings.credentials.accessibility_applied_format" = "คีย์ %@ ถูกบันทึกบน Mac เครื่องนี้และใช้งานอยู่ใน Zulangue ยังไม่ได้ทดสอบการเชื่อมต่อกับผู้ให้บริการ";
+"settings.credentials.accessibility_saved_inactive_format" = "คีย์ %@ ถูกบันทึกบน Mac เครื่องนี้แต่ไม่ได้ใช้งานอยู่ใน Zulangue โปรดดูข้อความการกู้คืน";
+"settings.credentials.accessibility_runtime_only_format" = "คีย์ %@ ถูกโหลดสำหรับการทำงานครั้งนี้แต่ไม่ได้บันทึก ยังไม่ได้ทดสอบการเชื่อมต่อกับผู้ให้บริการ";
+"settings.credentials.accessibility_missing_format" = "ยังไม่ได้บันทึกคีย์ %@ โปรดป้อนและบันทึกคีย์";
+"settings.credentials.field_accessibility_format" = "คีย์ API ของ %@";
+"settings.credentials.apply_accessibility_format" = "บันทึกคีย์ %@";
+"settings.credentials.clear_accessibility_format" = "ลบคีย์ %@ ที่บันทึกไว้";
+"settings.credentials.operation_failed" = "การดำเนินการกับคีย์ผู้ให้บริการล้มเหลว";
+"settings.credentials.recovery_title" = "คีย์ผู้ให้บริการที่บันทึกไว้ต้องดำเนินการ";
+"settings.credentials.recovery_hint" = "บันทึกคีย์ใหม่เพื่อแทนที่ไฟล์ที่อ่านไม่ได้ หรือลบไฟล์เพื่อลบคีย์ผู้ให้บริการที่บันทึกไว้ทั้งหมด";
+"settings.credentials.reset_file" = "ลบไฟล์คีย์ที่บันทึกไว้";
+"settings.credentials.reset_file_accessibility_hint" = "ลบคีย์ผู้ให้บริการทุกรายการที่ Zulangue บันทึกไว้บน Mac เครื่องนี้ การบันทึกในเครื่องยังใช้งานได้";
+"settings.credentials.provider_not_tested_hint" = "โหลดสำหรับใช้ใน Zulangue แล้ว ยังไม่ได้ทดสอบการเชื่อมต่อกับผู้ให้บริการและความถูกต้องของคีย์";
+"settings.credentials.saved_inactive_hint" = "บันทึกบน Mac เครื่องนี้แต่ไม่ได้โหลดเพื่อใช้งาน โปรดดูข้อความการกู้คืนก่อนเปิดใช้การประมวลผลระยะไกล";
+"settings.credentials.runtime_only_hint" = "โหลดสำหรับการทำงานครั้งนี้แต่ไม่ได้บันทึก ยังไม่ได้ทดสอบการเชื่อมต่อกับผู้ให้บริการและความถูกต้องของคีย์";
+"settings.credentials.operation_error_format" = "การอัปเดตข้อมูลรับรองบริการล้มเหลว: %@";
+"settings.credentials.delete_confirmation_title" = "ลบคีย์ %@ ที่บันทึกไว้หรือไม่";
+"settings.credentials.delete_confirmation_message" = "Zulangue จะลบข้อมูลรับรอง %@ ที่บันทึกไว้ออกจาก Mac เครื่องนี้ การบันทึกในเครื่องยังใช้งานได้";
+"settings.credentials.delete_confirmation_action" = "ลบคีย์";
+"settings.credentials.reset_confirmation_title" = "ลบข้อมูลรับรองบริการที่บันทึกไว้ทั้งหมดหรือไม่";
+"settings.credentials.reset_confirmation_message" = "Zulangue จะลบไฟล์ข้อมูลรับรองส่วนตัวของแอปออกจาก Mac เครื่องนี้ การกระทำนี้ไม่สามารถเลิกทำได้";
+"settings.credentials.reset_confirmation_action" = "ลบไฟล์ข้อมูลรับรอง";
+"settings.credentials.replace" = "แทนที่คีย์ที่บันทึกไว้";
+"settings.credentials.replace_accessibility_format" = "แทนที่คีย์ %@ ที่บันทึกไว้";
+"settings.credentials.field_replacement_hint" = "ป้อนคีย์ใหม่ แล้วตรวจสอบก่อนบันทึก";
+"settings.credentials.autosave_commit_hint" = "คลิกบันทึก กด Return หรือย้ายโฟกัสออกเพื่อใช้ค่านี้";
+"settings.credentials.error.unsupported_version_format" = "ไม่รองรับเวอร์ชันของไฟล์ข้อมูลรับรองผู้ให้บริการ: %d";
+"settings.credentials.error.malformed_document" = "ไฟล์ข้อมูลรับรองผู้ให้บริการมีรูปแบบไม่ถูกต้อง";
+"settings.credentials.error.unknown_accounts" = "ไฟล์ข้อมูลรับรองผู้ให้บริการมีรายการบัญชีที่ไม่รองรับ";
+"settings.credentials.error.empty_credential_format" = "ข้อมูลรับรองที่บันทึกไว้สำหรับ %@ ว่างเปล่า";
+"settings.credentials.error.credential_too_large_format" = "ข้อมูลรับรองที่บันทึกไว้สำหรับ %@ เกินขีดจำกัดขนาด";
+"settings.credentials.error.file_too_large" = "ไฟล์ข้อมูลรับรองผู้ให้บริการเกินขีดจำกัดขนาด";
+"settings.credentials.error.unsafe_path_format" = "เส้นทางไฟล์ข้อมูลรับรองผู้ให้บริการไม่ใช่ไฟล์ส่วนตัวปกติ: %@";
+"settings.credentials.error.wrong_owner_format" = "เส้นทางไฟล์ข้อมูลรับรองผู้ให้บริการไม่ได้เป็นของบัญชี macOS ปัจจุบัน: %@";
+"settings.credentials.error.operation_failed_format" = "การดำเนินการ %@ กับข้อมูลรับรองผู้ให้บริการล้มเหลว (POSIX %d)";
+"settings.credentials.error.core_unavailable" = "บริการแอปในเครื่องยังไม่พร้อม";
+"settings.credentials.error.empty_value" = "ป้อนคีย์ API ก่อนบันทึก";
+"settings.credentials.error.activation_failed_format" = "ข้อมูลรับรองที่บันทึกไว้ไม่ได้ถูกเปิดใช้งานสำหรับ %@";
+"settings.credentials.error.clear_failed_format" = "ไม่สามารถล้างข้อมูลรับรองสำหรับ %@ ได้";
+"settings.credentials.error.persistence_failed" = "ไม่สามารถบันทึกข้อมูลรับรองผู้ให้บริการลงในไฟล์ส่วนตัวในเครื่องได้";
+"settings.credentials.error.runtime_cleanup_failed" = "ไม่สามารถล้างรันไทม์ของข้อมูลรับรองผู้ให้บริการได้อย่างปลอดภัย เริ่ม Zulangue ใหม่หรือซ่อมแซมบริการแอปในเครื่องก่อนใช้ผู้ให้บริการระยะไกล";
+
+/* Settings — Services & API */
+"settings.services.title" = "บริการและ API";
+"settings.services.subtitle" = "จัดการข้อมูลรับรองบริการส่วนกลางและตรวจดูเอนจินบันทึกเสียงแบบคงที่ ตัวเลือกการแชร์ข้อมูลจะอยู่ในแต่ละ Notebook";
+"settings.services.connection.title" = "การเชื่อมต่อบริการ";
+"settings.services.connection.subtitle" = "ขณะนี้ Zulangue รองรับเฉพาะ Soniox เท่านั้น";
+"settings.services.no_egress_notice" = "การบันทึกคีย์ไม่ได้ให้สิทธิ์แชร์ข้อมูลใหม่ แต่ละ Notebook ต้องอนุญาตการประมวลผลระยะไกลแยกกัน งานที่ Notebook อนุญาตไว้แล้วและค้างรอข้อมูลรับรองอยู่จะดำเนินต่อได้ก็ต่อเมื่อคีย์ถูกบันทึกอย่างถาวรและโหลดแล้วเท่านั้น";
+"settings.services.engine.title" = "เอนจินบันทึกเสียง";
+"settings.services.engine.subtitle" = "อ่านอย่างเดียว แกนหลัก Rust เป็นผู้กำหนดการเลือกเอนจินนี้สำหรับ MVP ปัจจุบัน";
+"settings.services.engine.service" = "บริการ";
+"settings.services.engine.realtime" = "การบันทึกแบบเรียลไทม์";
+"settings.services.engine.realtime_detail" = "ใช้สำหรับการถอดเสียงหลายภาษาแบบสดและคำบรรยายภาษาเมื่อ Notebook เปิดใช้การประมวลผลระยะไกลอย่างชัดแจ้ง";
+"settings.services.engine.post_stop" = "การประมวลผลหลังหยุดบันทึก";
+"settings.services.engine.post_stop_detail" = "สตรีมการบันทึกในเครื่องที่เสร็จสมบูรณ์แล้วผ่านเอนจินเรียลไทม์ปัจจุบันอีกครั้ง ไม่ได้เรียกใช้ Soniox asynchronous API";
+"settings.services.engine.post_stop_unavailable_detail" = "แกนหลักไม่ได้ให้ตัวอธิบายการประมวลผลหลังหยุดบันทึก";
+"settings.services.engine.realtime_replay" = "การเล่นซ้ำแบบเรียลไทม์";
+"settings.services.engine.execution_unavailable" = "การประมวลผลไม่พร้อมใช้งาน";
+"settings.services.engine.fixed" = "คงที่";
+"settings.services.engine.unavailable" = "เอนจินไม่พร้อมใช้งาน";
+"settings.services.engine.accessibility_format" = "เอนจินเรียลไทม์แบบคงที่: %@";
+"settings.services.engine.post_stop_accessibility_format" = "เอนจินหลังหยุดบันทึกแบบคงที่: %@ เป็นการเล่นซ้ำแบบเรียลไทม์ ไม่ใช่ Soniox asynchronous API";
+"settings.services.engine.post_stop_unavailable_accessibility_format" = "เอนจินหลังหยุดบันทึก: %@ ตัวอธิบายการประมวลผลไม่พร้อมใช้งาน";
+
+/* Settings — Privacy section */
+"settings.privacy.title" = "ความเป็นส่วนตัวและความปลอดภัย";
+"settings.privacy.subtitle" = "ข้อมูลในเครื่องและการตั้งค่าการเก็บรักษา";
+"settings.privacy.level_label" = "ระดับความเป็นส่วนตัว";
+"settings.privacy.standard_name" = "มาตรฐาน";
+"settings.privacy.standard_desc" = "เก็บการบันทึกและบทถอดเสียงไว้ตลอดไป";
+"settings.privacy.high_name" = "สูง";
+"settings.privacy.high_desc" = "ลบการบันทึกอัตโนมัติหลังถอดเสียงเสร็จ";
+"settings.privacy.maximum_name" = "สูงสุด";
+"settings.privacy.maximum_desc" = "ทำลายคีย์อัตโนมัติหลังถอดเสียงเสร็จ (จะไม่สามารถกู้คืนการบันทึกได้)";
+"settings.privacy.save_failed" = "ไม่ได้บันทึกระดับความเป็นส่วนตัว";
+
+/* Settings — Shortcuts */
+"settings.shortcuts.title" = "แป้นพิมพ์ลัด";
+"settings.shortcuts.subtitle" = "ปุ่มลัดส่วนกลางสำหรับการทำงานของ Zulangue";
+"settings.shortcuts.toggle_recording" = "เปิดการบันทึกของ Notebook";
+"settings.shortcuts.cycle_display" = "สลับโหมดการแสดงผล";
+"settings.shortcuts.font_bigger" = "เพิ่มขนาดแบบอักษร";
+"settings.shortcuts.font_smaller" = "ลดขนาดแบบอักษร";
+"settings.shortcuts.open_settings" = "เปิดการตั้งค่า";
+
+
+/* Diagnostics section */
+"diagnostics.title" = "การวินิจฉัย";
+"diagnostics.subtitle" = "เปิดการแจ้งเตือนแบบละเอียดและไฟล์ log สำหรับการดีบัก";
+"diagnostics.debug_mode" = "โหมดดีบัก";
+"diagnostics.debug_mode_desc" = "ทุกการแก้ไข / ทำเครื่องหมาย / รีเฟรชของ Loro จะแสดงการแจ้งเตือนข้อมูลและเขียนหนึ่งบรรทัดลงใน debug.log ปิดตามค่าเริ่มต้น";
+"diagnostics.log_file" = "ไฟล์ log";
+"diagnostics.crash_file" = "การวินิจฉัยการขัดข้อง";
+"diagnostics.reveal_finder" = "แสดงใน Finder";
+"diagnostics.open_console" = "เปิดในคอนโซล";
+"diagnostics.clear_log" = "ล้าง log";
+"diagnostics.no_log_file" = "— ไม่มีไฟล์";
+"diagnostics.no_crash_file" = "— ไม่มีรายงานการขัดข้อง";
+"diagnostics.operational.title" = "สถานะระบบ";
+"diagnostics.operational.subtitle" = "รันไทม์ ข้อมูลรับรองบริการ และสถานะความเป็นส่วนตัว";
+"diagnostics.operational.refresh" = "รีเฟรช";
+"diagnostics.operational.not_loaded" = "ยังไม่ได้โหลดสถานะระบบ";
+"diagnostics.operational.provider_keys" = "ข้อมูลรับรองบริการ";
+"diagnostics.operational.privacy" = "ความเป็นส่วนตัว";
+"diagnostics.operational.provider_key_missing" = "ต้องมีข้อมูลรับรองบริการ";
+"diagnostics.operational.provider_optional_off" = "ไม่มีข้อมูลรับรองบริการที่บันทึกไว้ การบันทึกในเครื่องยังใช้งานได้";
+"diagnostics.operational.provider_configured_format" = "โหลดข้อมูลรับรองบริการที่บันทึกไว้แล้ว %d รายการ";
+"diagnostics.operational.provider_inactive_format" = "ข้อมูลรับรองบริการที่บันทึกไว้ %d รายการต้องดำเนินการ";
+"diagnostics.operational.detail.state" = "สถานะ";
+"diagnostics.operational.detail.actionable" = "ดำเนินการได้";
+"diagnostics.operational.severity.info" = "ปกติ";
+"diagnostics.operational.severity.warning" = "เตือน";
+"diagnostics.operational.severity.blocked" = "ถูกบล็อก";
+
+/* Toast center — Floating panel */
+
+/* Toast center — Microphone permission (shared) */
+"toast.mic.denied.title" = "การอนุญาตไมโครโฟนถูกปฏิเสธ";
+"toast.mic.denied.detail" = "เปิดการตั้งค่าระบบ → ความเป็นส่วนตัวและความปลอดภัย → ไมโครโฟน แล้วเปิดใช้ Zulangue";
+
+/* Toast center — Recording */
+"toast.recording.started.title" = "เริ่มบันทึกแล้ว";
+"toast.recording.start_failed.title" = "ไม่สามารถเริ่มบันทึกได้";
+"toast.recording.session_format" = "เซสชัน %@";
+"toast.recording.saved.detail.transcribing_format" = "%lld วินาที · กำลังถอดเสียงในเบื้องหลัง…";
+"toast.recording.saved.detail.no_transcription_format" = "%lld วินาที · บันทึกแล้วโดยไม่ถอดเสียง";
+"toast.recording.saved.detail.auto_transcribe_off_format" = "%lld วินาที · ปิดการถอดเสียงอัตโนมัติ";
+
+/* Toast center — Generic */
+"toast.export.succeeded" = "ส่งออกแล้ว";
+"toast.export.failed" = "การส่งออกล้มเหลว";
+"toast.core.not_initialized" = "แกนหลักยังไม่ได้เริ่มต้น";
+
+/* Toast — Document editor */
+"toast.enhance.started" = "เริ่มการปรับปรุงแล้ว";
+"toast.enhance.failed" = "การปรับปรุงล้มเหลว";
+
+/* Sidebar (main window) */
+"sidebar.search_placeholder" = "ค้นหา";
+"sidebar.home" = "หน้าแรก";
+"sidebar.tags" = "แท็ก";
+"sidebar.tag.general" = "ทั่วไป";
+"sidebar.new_tag" = "แท็กใหม่";
+"sidebar.trash" = "ถังขยะ";
+"sidebar.tab.editor_dev" = "ตัวแก้ไข (dev)";
+"sidebar.tab.editor" = "ตัวแก้ไข";
+"sidebar.tab.settings" = "การตั้งค่า";
+"sidebar.local_first" = "จัดเก็บในเครื่อง";
+"sidebar.notebook" = "Notebook";
+"sidebar.tab.github" = "GitHub";
+"sidebar.collapse" = "ยุบแถบด้านข้าง";
+"sidebar.expand" = "ขยายแถบด้านข้าง";
+"sidebar.new_session" = "เซสชันใหม่";
+"sidebar.back_to_home" = "กลับสู่หน้าแรก";
+"menubar.action.quit" = "ออกจาก Zulangue";
+"menubar.action.quit_hint" = "ออกจากแอปพลิเคชัน หากมีการบันทึกที่กำลังทำงานอยู่จะต้องยืนยันก่อน และระบบจะบันทึกไว้ก่อนปิดแอป";
+"app.quit.confirm.title" = "การบันทึกนี้ยังไม่สิ้นสุด ต้องการออกจาก Zulangue หรือไม่";
+"app.quit.confirm.message" = "การออกจะหยุดการบันทึกปัจจุบัน Zulangue จะบันทึกไฟล์เสียงในเครื่องที่ได้รับมาแล้ว จากนั้นจะพยายามปิดท้ายบทถอดเสียงระยะไกลให้เรียบร้อย";
+"app.quit.confirm.cancel" = "ไม่ออก";
+"app.quit.confirm.action" = "หยุดบันทึกแล้วออก";
+
+/* Session list group labels */
+"library.group.today" = "วันนี้";
+"library.group.yesterday" = "เมื่อวาน";
+
+/* Document editor residuals */
+"editor.tab.transcript" = "บทถอดเสียงสด";
+"editor.transcript.realtime.local_recording_title" = "กำลังบันทึกในเครื่อง";
+"editor.transcript.realtime.local_recording_desc" = "การประมวลผลเรียลไทม์ระยะไกลปิดอยู่ เสียงยังคงอยู่ในเครื่อง";
+"editor.transcript.realtime.remote_waiting_title" = "กำลังเชื่อมต่อกับ Soniox";
+"editor.transcript.realtime.remote_waiting_desc" = "การบันทึกในเครื่องดำเนินต่อไประหว่างรอบทถอดเสียงเรียลไทม์ระยะไกลพร้อมใช้งาน";
+"editor.transcript.realtime.empty_title" = "ไม่มีบทถอดเสียงเรียลไทม์";
+"editor.transcript.realtime.empty_desc" = "เซสชันนี้ไม่มีผลลัพธ์เรียลไทม์";
+"editor.transcript.async.pending_title" = "กำลังถอดเสียงในเบื้องหลัง";
+"editor.transcript.async.pending_desc" = "การเล่นซ้ำผ่านเอนจินเรียลไทม์ปัจจุบันที่ร้องขอไว้อย่างชัดแจ้งยังประมวลผลอยู่";
+"editor.transcript.async.failed_title" = "การถอดเสียงในเบื้องหลังล้มเหลว";
+"editor.transcript.async.failed_desc" = "การถอดเสียงระยะไกลล้มเหลว การบันทึกยังคงจัดเก็บอยู่ในเครื่อง";
+"editor.transcript.async.empty_title" = "ไม่มีบทถอดเสียงหลังหยุดบันทึก";
+"editor.transcript.async.empty_desc" = "การถอดเสียงในเบื้องหลังหลังหยุดบันทึกปิดอยู่ตามค่าเริ่มต้น และไม่ได้ร้องขอสำหรับเซสชันนี้";
+"editor.transcript.async.projection_pending_desc" = "ผลลัพธ์จากผู้ให้บริการถูกบันทึกแล้วและกำลังเขียนลงใน Notebook นี้";
+"editor.transcript.async.projection_failed_title" = "ได้รับบทถอดเสียงแล้ว แต่เขียนลง Notebook ล้มเหลว";
+"editor.transcript.async.projection_failed_desc" = "ลองเขียนลง Notebook ในเครื่องอีกครั้ง Zulangue จะไม่อัปโหลดการบันทึกซ้ำ";
+"editor.transcript.async.status.loading" = "กำลังโหลดสถานะบทถอดเสียงเบื้องหลัง";
+"editor.transcript.async.status.off" = "ไม่ได้ร้องขอการถอดเสียงในเบื้องหลังหลังหยุดบันทึก";
+"editor.transcript.async.status.provider_pending" = "กำลังเล่นซ้ำด้วยเอนจินเรียลไทม์";
+"editor.transcript.async.status.provider_failed" = "การเล่นซ้ำด้วยเอนจินเรียลไทม์ล้มเหลว";
+"editor.transcript.async.status.projection_pending" = "บันทึกผลลัพธ์จากผู้ให้บริการแล้ว · รอเขียนลง Notebook";
+"editor.transcript.async.status.projecting" = "กำลังเขียนบทถอดเสียงที่บันทึกไว้ลงใน Notebook";
+"editor.transcript.async.status.ready" = "บทถอดเสียงหลังหยุดบันทึกพร้อมแล้ว";
+"editor.transcript.async.status.projection_failed" = "บันทึกผลลัพธ์จากผู้ให้บริการแล้ว · เขียนลง Notebook ล้มเหลว";
+"editor.transcript.async.retry_projection" = "ลองเขียนในเครื่องอีกครั้ง";
+"editor.transcript.async.retry_projection_hint" = "เขียนผลลัพธ์จากผู้ให้บริการที่บันทึกไว้ลงใน Notebook นี้โดยไม่อัปโหลดเสียงอีกครั้ง";
+"editor.transcript.async.retry_failed" = "ไม่สามารถเขียนบทถอดเสียงที่บันทึกไว้ได้";
+"menubar.recording.mode.local" = "ในเครื่อง";
+"menubar.recording.mode.remote" = "SONIOX RT5";
+"editor.title.untitled" = "โน้ตไม่มีชื่อ";
+"editor.footer.local_encrypted" = "บันทึกไว้บน Mac เครื่องนี้";
+"editor.ai.simulate" = "จำลอง AI";
+"editor.ai.stop" = "หยุด AI";
+"editor.relative.just_now" = "เมื่อสักครู่";
+"editor.relative.min_ago" = "%lld นาทีที่แล้ว";
+"editor.relative.hour_ago" = "%lld ชั่วโมงที่แล้ว";
+"editor.relative.day_ago" = "%lld วันที่แล้ว";
+
+/* Home page */
+"home.workspace.load_failed" = "ไม่สามารถโหลดข้อมูล Notebook ได้";
+"home.workspace.select_failed" = "ไม่สามารถเปิด Notebook นี้ได้";
+"home.workspace.resolve_failed" = "ไม่สามารถระบุ Notebook ของการบันทึกนี้ได้";
+"home.workspace.refresh_failed" = "ไม่สามารถรีเฟรชข้อมูล Notebook ได้";
+"home.workspace.load_failed.title" = "Notebook ไม่พร้อมใช้งาน";
+"home.workspace.load_failed.description" = "ข้อมูลเดิมของคุณไม่มีการเปลี่ยนแปลง ลองโหลดอีกครั้ง";
+"home.workspace.retry" = "ลองอีกครั้ง";
+"home.notebook.current" = "Notebook ปัจจุบัน";
+"home.notebook.new" = "Notebook ใหม่";
+"home.notebook.new.help" = "สร้างและตั้งชื่อ Notebook";
+"home.notebook.none" = "ไม่มี Notebook";
+"home.notebook.switch" = "สลับ Notebook";
+"home.notebook.description" = "บันทึกเสียง ติดตามบทถอดเสียงหลายภาษา และเขียนโน้ตในที่เดียว";
+"home.notebook.description.detail" = "ตัวควบคุมการบันทึกอยู่ภายใน Notebook เพื่อให้ทุกเซสชันมีเจ้าของและบริบทที่ถูกต้อง";
+"home.notebook.local_first" = "บันทึกไว้บน Mac เครื่องนี้";
+"home.library.title" = "Notebook ทั้งหมด";
+"home.library.subtitle" = "เลือก Notebook เพื่อบันทึกเสียง ถอดเสียง และจัดระเบียบ";
+"home.library.open_hint" = "เปิด Notebook";
+"home.library.session_count_format" = "การบันทึก %lld รายการ";
+"home.notebook.open" = "เปิด Notebook";
+"home.capture.return" = "กลับไปที่การบันทึก";
+"home.capture.owner_here" = "เป็นของ Notebook ที่เลือกอยู่";
+"home.capture.owner_elsewhere" = "เป็นของ Notebook อื่น";
+"home.no_notebook.title" = "สร้าง Notebook แรกของคุณ";
+"home.no_notebook.description" = "Notebook จะเก็บการบันทึก บทถอดเสียง โน้ต และข้อมูลอ้างอิงการถอดเสียง (ถ้ามี) ไว้ด้วยกัน";
+"home.first_use.step1.title" = "สร้าง Notebook";
+"home.first_use.step1.detail" = "คิดเสมือนเป็นโฟลเดอร์สำหรับบทสนทนาประเภทเดียวกัน";
+"home.first_use.step2.title" = "เริ่มบันทึก";
+"home.first_use.step2.detail" = "เปิด Notebook ปุ่มบันทึกสีแดงอยู่ด้านบน";
+"home.first_use.step3.title" = "ตรวจดูผลลัพธ์";
+"home.first_use.step3.detail" = "หลังจากคุณหยุด คำบรรยาย เสียง และโน้ตจะยังอยู่ด้วยกัน";
+"home.first_use.action" = "สร้าง Notebook แรกของฉัน";
+"home.import.action" = "นำเข้าไฟล์เสียง";
+"home.import.in_progress" = "กำลังนำเข้า…";
+"home.import.panel.title" = "นำเข้าไฟล์เสียงไปยัง Notebook";
+"home.import.panel.action" = "นำเข้า";
+"home.import.completed" = "นำเข้าไฟล์เสียงแล้ว";
+"home.import.failed" = "ไม่สามารถนำเข้าไฟล์เสียงได้";
+"home.import.failed.detail" = "ไฟล์ที่เลือกไม่มีการเปลี่ยนแปลง ตรวจสอบรูปแบบไฟล์แล้วลองอีกครั้ง";
+"home.import.no_notebook" = "ยังไม่ได้เลือก Notebook";
+"home.import.no_notebook.detail" = "สร้างหรือเลือก Notebook ก่อนนำเข้าไฟล์เสียง";
+"home.import.already_running" = "การนำเข้ากำลังดำเนินอยู่แล้ว";
+"home.import.already_running.detail" = "รอให้ไฟล์เสียงปัจจุบันนำเข้าเสร็จก่อน";
+"home.recent.title" = "การบันทึกล่าสุด";
+"home.recent.count_format" = "%lld รายการใน Notebook นี้";
+"home.recent.search_placeholder" = "ค้นหาใน Notebook นี้…";
+"home.recent.search.clear" = "ล้างการค้นหา";
+"home.recent.empty.title" = "ไม่มีการบันทึกใน Notebook นี้";
+"home.recent.empty.description" = "เปิด Notebook เพื่อเริ่มบันทึก หรือนำเข้าไฟล์เสียงที่มีอยู่";
+"home.recent.no_match.title" = "ไม่มีการบันทึกที่ตรงกัน";
+"home.recent.no_match.description" = "ลองใช้ชื่อหรือวลีจากบทถอดเสียงอื่น";
+"home.recent.row.open_hint" = "เปิดการบันทึกนี้ใน Notebook ของมัน";
+"home.recent.row.actions_format" = "การกระทำสำหรับ %@";
+"home.recent.row.imported" = "นำเข้าแล้ว";
+"home.recent.row.untitled" = "การบันทึกไม่มีชื่อ";
+"home.recordings.load_failed" = "ไม่สามารถโหลดการบันทึกได้";
+"home.recording.delete_failed" = "ไม่สามารถย้ายการบันทึกไปถังขยะได้";
+"home.recording.bulk_delete_failed" = "ไม่สามารถย้ายการบันทึกเหล่านี้ไปถังขยะได้";
+"home.create.title" = "Notebook ใหม่";
+"home.create.description" = "ตั้งชื่อก่อนที่จะสร้างสิ่งใด";
+"home.create.name_label" = "ชื่อ Notebook";
+"home.create.name_placeholder" = "เช่น บทสนทนาประจำสัปดาห์";
+"home.create.local_first" = "Notebook และแท็บในตัวทั้งสามแท็บจะถูกสร้างในเครื่อง";
+"home.create.action" = "สร้าง Notebook";
+"home.create.completed" = "สร้าง Notebook แล้ว";
+"home.create.failed" = "ไม่สามารถสร้าง Notebook ได้";
+"home.create.invalid_title" = "ต้องระบุชื่อ Notebook";
+"home.create.invalid_title.detail" = "ป้อนชื่อก่อนสร้าง Notebook";
+"home.create.title_too_long" = "ชื่อ Notebook ยาวเกินไป";
+"resources.tab" = "ทรัพยากร";
+"resources.tab.hint" = "ดูไฟล์และสถานะของการบันทึกทุกรายการใน Notebook นี้";
+"resources.title" = "ทรัพยากร";
+"resources.subtitle" = "ไฟล์เสียง บทถอดเสียง และโน้ตส่วนตัวของการบันทึกทุกรายการ";
+"resources.load_failed" = "ไม่สามารถโหลดทรัพยากรได้";
+"resources.empty" = "Notebook นี้ยังไม่มีทรัพยากรการบันทึก";
+"resources.audio" = "เสียง";
+"resources.realtime" = "บทถอดเสียงสด";
+"resources.async" = "บทถอดเสียงภายหลัง";
+"resources.note" = "โน้ตส่วนตัว";
+"resources.untitled_recording" = "การบันทึกไม่มีชื่อ";
+"resources.status.missing" = "ยังไม่ได้สร้าง";
+"resources.status.pending" = "กำลังประมวลผล";
+"resources.status.ready" = "พร้อมใช้งาน";
+"resources.status.failed" = "ล้มเหลว";
+"manual_note.title.placeholder" = "ตั้งชื่อโน้ตประจำเวลานี้ (ไม่บังคับ)";
+"manual_note.title.save" = "บันทึกชื่อโน้ต";
+"manual_note.title.save_failed" = "ไม่สามารถบันทึกชื่อโน้ตได้";
+"manual_note.created_at_format" = "สร้างเมื่อ %@";
+"manual_note.timeline.title" = "โน้ตส่วนตัว";
+"manual_note.timeline.subtitle" = "เรียงตามเวลา ชื่อโน้ตไม่บังคับและแก้ไขได้โดยตรงบนการ์ดแต่ละใบ";
+"manual_note.timeline.load_failed" = "ไม่สามารถโหลดโน้ตส่วนตัวได้";
+"manual_note.timeline.empty" = "โน้ตส่วนตัวที่เกี่ยวข้องจะปรากฏที่นี่หลังการบันทึก";
+"manual_note.timeline.open" = "เปิดโน้ต";
+"home.create.title_too_long.detail_format" = "ใช้ไม่เกิน %lld ตัวอักษร";
+"home.search_placeholder" = "ค้นหาเซสชัน…";
+"home.empty.no_match_title" = "ไม่พบรายการที่ตรงกัน";
+"home.empty.no_match_desc" = "ลองใช้คำค้นหาอื่น";
+"home.empty.no_recording_title" = "ยังไม่มีการบันทึก";
+"home.empty.no_recording_desc" = "กด ⌃⌥R หรือคลิกเซสชันใหม่เพื่อเริ่ม โน้ตที่แก้ไขได้และบทถอดเสียงของคุณจะปรากฏที่นี่";
+"home.empty.start_button" = "เริ่มบันทึก";
+"home.notebook.workspace.board.title" = "พื้นที่ทำงาน";
+"home.notebook.workspace.board.record" = "บันทึกเสียง";
+"home.notebook.workspace.board.tabs" = "แท็บ";
+"home.notebook.workspace.board.tabs.empty" = "ยังไม่มีแท็บ";
+"home.notebook.workspace.board.recent" = "ล่าสุด";
+"home.notebook.workspace.board.recent.empty" = "ยังไม่มีเซสชัน";
+"home.notebook.workspace.board.manual" = "โน้ตที่เขียนเอง";
+"home.action.select" = "เลือก";
+"home.selection.count_format" = "เลือกแล้ว %lld รายการ";
+"home.selection.delete_format" = "ลบ %lld รายการ";
+"home.row.preview.pending"   = "กำลังถอดเสียง…";
+"home.row.preview.recording" = "กำลังบันทึก…";
+"home.row.preview.no_speech" = "ไม่พบเสียงพูด";
+"home.row.preview.not_transcribed" = "ยังไม่ได้ถอดเสียง";
+"home.row.preview.failed"    = "การถอดเสียงล้มเหลว";
+"home.row.status.completed" = "บันทึกเสร็จสิ้น";
+"home.row.status.imported" = "นำเข้าไฟล์เสียงแล้ว";
+"library.toast.moved_to_trash" = "ย้ายไปถังขยะแล้ว";
+"library.toast.bulk_moved_to_trash" = "ย้าย %lld เซสชันไปถังขยะแล้ว";
+"doc.transcript_hd" = "บทถอดเสียงภายหลัง";
+"editor.tab.transcript.live.hint" = "บทถอดเสียงสด — กำลังบันทึกอยู่";
+"editor.tab.transcript.hint" = "บทถอดเสียงของไฟล์เสียง";
+"editor.transcript.listening" = "กำลังฟังเสียงพูด…";
+"toast.soniox.missing" = "ยังไม่ได้กำหนดค่าคีย์ Soniox";
+"toast.soniox.missing.detail" = "บทถอดเสียงสดถูกปิดใช้งาน เพิ่มคีย์ Soniox ในการตั้งค่า → การเชื่อมต่อ";
+
+
+
+/* Document editor empty states */
+"editor.empty.no_transcript_title" = "ยังไม่มีบทถอดเสียง";
+"editor.empty.no_transcript_desc" = "บทถอดเสียงจะพร้อมใช้งานหลังการบันทึกเสร็จสิ้น";
+"editor.empty.no_transcript_desc_live" = "บทถอดเสียงจะปรากฏที่นี่เมื่อการถอดเสียงอัตโนมัติเสร็จสิ้น หรือเริ่มการบันทึกใหม่เพื่อดูแบบสด";
+"editor.empty.transcript_unavailable" = "บทถอดเสียงไม่พร้อมใช้งาน";
+"editor.empty.unavailable_title" = "ตัวแก้ไขไม่พร้อมใช้งาน";
+"editor.empty.no_doc_title" = "ไม่มีเอกสารที่ใช้งานอยู่";
+"editor.empty.no_doc_desc" = "เริ่มการบันทึกเพื่อสร้างเอกสารใหม่ที่คุณแก้ไขได้แบบสดระหว่างบันทึกเสียง";
+
+/* Async transcription in-progress & failed states */
+"editor.pending.transcribing" = "กำลังถอดเสียง…";
+"editor.pending.generic"      = "กำลังประมวลผล…";
+"editor.pending.subtitle"     = "กำลังทำงานในเบื้องหลัง เนื้อหาจะปรากฏเมื่อพร้อม";
+"editor.failed.transcribing"  = "การถอดเสียงล้มเหลว";
+"editor.failed.generic"       = "งานล้มเหลว";
+"editor.failed.subtitle"      = "อาจเกิดจากเครือข่ายขัดข้องชั่วคราวหรือขีดจำกัดอัตราของ API แตะเพื่อลองใหม่";
+"editor.failed.retry"         = "ลองถอดเสียงใหม่";
+"toast.retry.data_invalid.title"  = "ไม่สามารถลองถอดเสียงใหม่ได้";
+"toast.retry.data_invalid.detail" = "การบันทึกนี้ไม่สมบูรณ์ (อาจมาจากการขัดข้องครั้งก่อน) โปรดลบออกจากรายการหน้าแรก";
+
+/* Trash page */
+"trash.empty.title" = "ถังขยะว่างเปล่า";
+"trash.empty.desc" = "การบันทึกที่ลบแล้วจะอยู่ที่นี่ 30 วันก่อนถูกลบอย่างถาวร";
+"trash.action.restore" = "กู้คืน";
+"trash.action.purge" = "ลบอย่างถาวร";
+"trash.toast.restored" = "กู้คืนเซสชันแล้ว";
+"trash.toast.purged" = "ลบอย่างถาวรแล้ว";
+"trash.purge.confirm_title" = "ลบอย่างถาวรหรือไม่";
+"trash.purge.confirm_desc" = "การกระทำนี้จะลบการบันทึก บทถอดเสียง และข้อมูลที่เกี่ยวข้อง และไม่สามารถเลิกทำได้";
+"trash.purge.confirm_button" = "ลบอย่างถาวร";
+
+/* Onboarding — residuals */
+"onboarding.brand.name" = "Zulangue";
+"onboarding.brand.tagline" = "เก็บทุกบทสนทนาหลายภาษาไว้ในที่เดียว ตั้งแต่การทำความเข้าใจแบบสดไปจนถึงการจัดระเบียบในภายหลัง";
+"onboarding.keys.testing_status" = "กำลังทดสอบ…";
+"onboarding.keys.connected_status" = "เชื่อมต่อแล้ว";
+
+/* Trust bar */
+"trust.version_format" = "Zulangue · v%@";
+"trust.label.aes" = "AES-256";
+"trust.label.local_secrets" = "ความลับเก็บในเครื่อง";
+"trust.label.remote_opt_in" = "รีโมตเมื่อยินยอม";
+
+/* Menu Bar status item — popover content */
+"menubar.action.recording" = "เริ่มบันทึก";
+"menubar.action.settings" = "การตั้งค่า";
+"updates.check" = "ตรวจหาอัปเดต…";
+"updates.unavailable.title" = "ยังไม่ได้กำหนดค่าการอัปเดต";
+"updates.unavailable.message" = "รุ่นพัฒนานี้ไม่มีคีย์สาธารณะสำหรับตรวจสอบลายเซ็นอัปเดต";
+"updates.unavailable.dismiss" = "ตกลง";
+"settings.updates.title" = "การอัปเดตซอฟต์แวร์";
+"settings.updates.subtitle" = "อัปเดตที่มีลายเซ็นจะถูกส่งอย่างปลอดภัยผ่าน Sparkle";
+"settings.updates.automatic" = "ตรวจหาอัปเดตโดยอัตโนมัติ";
+"settings.updates.automatic_hint" = "Zulangue จะตรวจสอบฟีดอัปเดตที่มีลายเซ็นเป็นระยะ และแจ้งให้คุณทราบเมื่อมีเวอร์ชันใหม่";
+"menubar.recording.pause" = "หยุดชั่วคราว";
+"menubar.recording.resume" = "ทำต่อ";
+"menubar.recording.stop" = "หยุด";
+"menubar.recording.live_transcript" = "บทถอดเสียงสด";
+"menubar.recording.open_subtitles" = "เปิดคำบรรยายสด";
+"menubar.recording.close_subtitles" = "ปิดคำบรรยายสด";
+"menubar.recording.open_notebook" = "เปิด Notebook";
+"menubar.processing.open_session" = "เปิดเซสชัน";
+"menubar.suppressed.privacy.title" = "การเข้าถึงไมโครโฟนถูกปฏิเสธ";
+"menubar.suppressed.privacy.body" = "Zulangue ไม่สามารถบันทึกได้จนกว่าคุณจะอนุญาตการเข้าถึงไมโครโฟนในการตั้งค่าระบบ";
+"menubar.suppressed.privacy.action" = "เปิดการตั้งค่าระบบ";
+"menubar.suppressed.disabled.title" = "Zulangue ถูกหยุดชั่วคราว";
+"menubar.suppressed.disabled.body" = "รายการแถบเมนูถูกปิดใช้ในการตั้งค่า";
+"menubar.suppressed.disabled.action" = "เปิดการตั้งค่า Zulangue";
+"menubar.suppressed.onboarding.title" = "ทำการตั้งค่าให้เสร็จ";
+"menubar.suppressed.onboarding.body" = "ทำการตั้งค่าครั้งแรกให้เสร็จเพื่อเปิดใช้ Zulangue";
+"menubar.suppressed.onboarding.action" = "ตั้งค่าต่อ";
+"hud.recording.active" = "REC";
+"hud.recording.paused" = "หยุดชั่วคราว";
+"hud.a11y.recording_active_format" = "กำลังบันทึก %@";
+"hud.a11y.recording_paused_format" = "หยุดบันทึกชั่วคราว %@";
+
+/* DesignSystem previews (P2) */
+"preview.empty.session_title" = "ยังไม่มีเซสชัน";
+"preview.empty.session_desc" = "ลากไฟล์เสียงมาที่นี่ หรือคลิกบันทึกเสียงเพื่อเริ่มเซสชันแรกของคุณ";
+"preview.crosshair.blueprint" = "เนื้อหาพิมพ์เขียว";
+"preview.crosshair.hardware" = "เนื้อหาฮาร์ดแวร์";
+"preview.loading.rec" = "REC";
+
+
+/* Document editor */
+"editor.status.saved" = "บันทึกแล้ว";
+"editor.status.saved.local" = "ในเครื่อง";
+"editor.status.saved.loading" = "กำลังโหลด";
+"editor.status.saved.pending" = "รอดำเนินการ";
+"editor.status.saved.failed" = "ล้มเหลว";
+"editor.status.saved.needs_attention" = "ต้องดำเนินการ";
+"editor.status.transcript" = "บทถอดเสียง";
+"editor.status.transcript.live_view" = "มุมมองสด";
+"editor.status.transcript.available" = "พร้อมใช้งาน";
+"editor.status.transcript.none" = "ไม่มี";
+"editor.status.quality" = "คุณภาพ";
+"editor.status.quality.good" = "ดี";
+"editor.status.quality.check" = "ตรวจสอบ";
+"editor.status.quality.blocked" = "ถูกบล็อก";
+"editor.toolbar.show_sources" = "แสดงแหล่งที่มา";
+"editor.toolbar.show_tasks" = "แสดงงาน";
+"editor.tasks.title" = "งาน";
+"editor.tasks.count_format" = "งานเบื้องหลัง %lld งาน";
+"editor.tasks.refresh" = "รีเฟรชงาน";
+"editor.tasks.empty" = "ยังไม่มีงาน";
+"editor.tasks.empty.detail" = "งานถอดเสียงในเบื้องหลังจะปรากฏที่นี่";
+"editor.tasks.owner_format" = "กำลังทำงานบน %@";
+"editor.tasks.retry_format" = "ลองใหม่ %lld ครั้ง";
+/* Accessibility labels */
+"a11y.record.stop" = "หยุดบันทึก";
+"a11y.record.start" = "เริ่มบันทึก";
+"a11y.record.hint_stop" = "คลิกสองครั้งเพื่อหยุดการบันทึกปัจจุบัน";
+"a11y.record.hint_start" = "คลิกสองครั้งเพื่อเริ่มการบันทึกใหม่";
+"a11y.session_card" = "%@, %@, ความยาว %@";
+
+/* Notebook multilingual capture */
+"common.close" = "ปิด";
+"capture.error.ffi_unavailable" = "บริการบันทึกของ Notebook ยังไม่พร้อมใช้งาน";
+"capture.error.already_active" = "มีการบันทึกของ Notebook อื่นทำงานอยู่แล้ว";
+"capture.error.remote_required" = "คำบรรยายภาษาต้องใช้การประมวลผลเรียลไทม์ระยะไกล";
+"capture.error.context_requires_remote" = "เปิดใช้การถอดเสียงสดก่อนใช้ข้อมูลอ้างอิง";
+"capture.error.languages_must_differ" = "เลือกภาษาโดยไม่ให้ซ้ำกัน";
+"capture.error.context_confirmation_required" = "โปรดตรวจทานและยืนยันข้อมูลอ้างอิงสำหรับการบันทึกนี้ก่อน";
+"capture.error.not_active" = "ไม่มีการบันทึกของ Notebook ที่ทำงานอยู่";
+"capture.error.projection_locked" = "บทถอดเสียงจะอ่านได้อย่างเดียวจนกว่าการเขียนผลลัพธ์จะพร้อม";
+"capture.error.profile_snapshot_unavailable" = "โปรไฟล์การบันทึกที่จัดเก็บไว้ของการบันทึกนี้ไม่พร้อมใช้งาน";
+"capture.route.no_notebook" = "ยังไม่ได้เลือก Notebook";
+"capture.route.no_notebook_detail" = "สร้างหรือเลือก Notebook ก่อนเปิดการบันทึก";
+"capture.route.unavailable" = "ไม่สามารถเปิดการบันทึกของ Notebook ได้";
+"capture.route.unavailable_detail" = "บริการ Zulangue ในเครื่องยังไม่พร้อม";
+"session.route.unavailable" = "ไม่สามารถเปิดการบันทึกได้";
+"session.route.unavailable_detail" = "การบันทึกไม่มีการเปลี่ยนแปลง ลองอีกครั้ง";
+"capture.open_notebook" = "เปิด Notebook";
+"capture.open_notebook_hint" = "ตัวควบคุมการบันทึกใช้ได้เฉพาะภายใน Notebook ที่เป็นเจ้าของเท่านั้น";
+"subtitle.overlay.title" = "คำบรรยายสด";
+"subtitle.overlay.read_only" = "คำบรรยายสด · อ่านอย่างเดียว";
+"subtitle.overlay.accessibility_label" = "หน้าต่างคำบรรยายสดหลายภาษา";
+"subtitle.overlay.language_count" = "%lld ภาษา";
+"subtitle.overlay.waiting" = "กำลังฟังเสียงพูด…";
+"subtitle.overlay.recording_ended" = "การบันทึกสิ้นสุดแล้ว";
+"subtitle.overlay.font_size" = "ขนาดคำบรรยาย";
+"subtitle.overlay.font_smaller" = "คำบรรยายเล็กลง";
+"subtitle.overlay.font_larger" = "คำบรรยายใหญ่ขึ้น";
+"subtitle.overlay.move_resize_hint" = "ลากหน้าต่างเพื่อย้ายตำแหน่ง ลากขอบหรือมุมใดก็ได้เพื่อปรับขนาด";
+"subtitle.overlay.pin" = "ตรึงคำบรรยายไว้ด้านบนสุด";
+"subtitle.overlay.unpin" = "เลิกตรึงคำบรรยายไว้ด้านบนสุด";
+"subtitle.overlay.pinned" = "ตรึงเหนือหน้าต่างอื่นบนทุกเดสก์ท็อป";
+"subtitle.overlay.unpinned" = "ไม่ได้ตรึง";
+"subtitle.overlay.mode" = "โหมดคำบรรยาย";
+"subtitle.overlay.mode.conversation" = "เปรียบเทียบ";
+"subtitle.overlay.mode.audience" = "ผู้ชม";
+"subtitle.overlay.mode.conversation.help" = "เก็บถ้อยคำล่าสุดไว้สำหรับการสนทนาข้ามภาษา การทบทวน และการทำความเข้าใจ";
+"subtitle.overlay.mode.audience.help" = "แสดงถ้อยคำล่าสุดในภาษาของผู้ชมสูงสุดสามภาษาอย่างเท่ากัน";
+"capture.toolbar.start" = "เริ่มบันทึก";
+"capture.toolbar.starting" = "กำลังเริ่ม…";
+"capture.toolbar.start_hint" = "เริ่มการบันทึกและการถอดเสียงสดในภาษาที่เลือก การบันทึกจะดำเนินต่อแม้บริการไม่พร้อมใช้งานชั่วคราว";
+"capture.toolbar.pause" = "หยุดชั่วคราว";
+"capture.toolbar.pause_billing" = "การเชื่อมต่อระยะไกลอาจยังคิดค่าใช้จ่าย";
+"capture.toolbar.pause_billing_detail" = "การหยุดชั่วคราวจะปิดท้ายถ้อยคำปัจจุบัน แต่ยังคงการเชื่อมต่อ Soniox ไว้ด้วย keepalive และอาจมีการคิดค่าใช้จ่ายต่อไป";
+"capture.toolbar.resume" = "ทำต่อ";
+"capture.toolbar.stop" = "หยุด";
+"capture.toolbar.stop_hint" = "หยุดรับเสียงเข้า หากการประมวลผลระยะไกลทำงานอยู่ Zulangue จะรอโทเค็นสุดท้ายด้วย";
+"capture.toolbar.active_other_notebook" = "การบันทึกเป็นของ Notebook อื่น";
+"capture.toolbar.subtitle_window.open" = "เปิดคำบรรยายสด";
+"capture.toolbar.subtitle_window.close" = "ปิดคำบรรยายสด";
+"capture.toolbar.subtitle_window.hint" = "เปิดหน้าต่างคำบรรยายหลายภาษาที่อยู่ด้านบนสุดเสมอ";
+"capture.toolbar.subtitle_window.unavailable_hint" = "เริ่มบันทึกใน Notebook นี้ก่อนเปิดคำบรรยายสด";
+"capture.toast.start_failed" = "ไม่สามารถเริ่มบันทึกได้";
+"capture.toast.pause_failed" = "ไม่สามารถเปลี่ยนสถานะการบันทึกได้";
+"capture.toast.stop_failed" = "ไม่สามารถหยุดบันทึกได้";
+"capture.toast.context_preview_failed" = "ไม่สามารถตรวจทานข้อมูลอ้างอิงได้";
+"capture.toast.context_load_failed" = "ไม่สามารถโหลดข้อมูลอ้างอิงได้";
+"capture.toast.context_update_failed" = "ไม่สามารถอัปเดตข้อมูลอ้างอิงได้";
+"capture.toast.settings_failed" = "ไม่สามารถบันทึกการตั้งค่าการบันทึกได้";
+"capture.toast.edit_failed" = "ไม่สามารถอัปเดตเลนบทถอดเสียงได้";
+"capture.toast.projection_retry_failed" = "ไม่สามารถลองเขียนผลลัพธ์บทถอดเสียงอีกครั้งได้";
+"capture.settings.title" = "การตั้งค่าการบันทึก";
+"capture.settings.subtitle" = "เพิ่มข้อมูลอ้างอิงสำหรับการถอดเสียง และเลือกวิธีประมวลผลการบันทึกหลังสิ้นสุด";
+"capture.settings.realtime_moved" = "ภาษาและการถอดเสียงสด";
+"capture.settings.realtime_moved_detail" = "เลือกภาษาของเซสชัน แล้วเลือกเริ่มบันทึกเพื่อถอดเสียงสด";
+"capture.settings.realtime_moved_action" = "ไปที่บทถอดเสียงเรียลไทม์";
+"capture.settings.tab" = "การตั้งค่าการบันทึก";
+"capture.settings.tab_hint" = "เปิดการตั้งค่าการบันทึก ภาษา และคำบรรยายของ Notebook นี้";
+"capture.settings.notebook_scope" = "การตั้งค่าในแท็บนี้ใช้กับ Notebook นี้เท่านั้น";
+"capture.settings.active_locked" = "มีการบันทึกกำลังทำงานอยู่ การกำหนดค่าถูกตรึงไว้ และจะเปลี่ยนการตั้งค่าได้หลังหยุดบันทึก";
+"capture.settings.autosave.loading" = "กำลังโหลดการตั้งค่า…";
+"capture.settings.autosave.saving" = "กำลังบันทึก…";
+"capture.settings.autosave.saved" = "บันทึกอัตโนมัติแล้ว";
+"capture.settings.autosave.detail" = "ทุกการเปลี่ยนแปลงมีผลกับ Notebook นี้ทันที";
+"capture.settings.autosave.load_failed" = "ไม่สามารถโหลดการตั้งค่าได้";
+"capture.settings.autosave.save_failed" = "ยังไม่ได้บันทึกการเปลี่ยนแปลง";
+"capture.settings.autosave.context_review" = "บันทึกการตั้งค่าแล้ว โปรดตรวจทานข้อมูลอ้างอิงอีกครั้ง";
+"capture.settings.autosave.retry" = "ลองใหม่";
+"capture.settings.realtime.start_disclosure" = "เริ่มบันทึกจะเริ่มการถอดเสียงสดในภาษาที่เลือก การบันทึกจะดำเนินต่อแม้บริการไม่พร้อมใช้งานชั่วคราว";
+"capture.settings.remote.credential.loaded_unverified" = "คีย์ Soniox · บันทึกและโหลดแล้ว · ยังไม่ได้ตรวจสอบ";
+"capture.settings.remote.credential.saved_inactive" = "คีย์ Soniox · บันทึกแล้ว · ต้องดำเนินการ";
+"capture.settings.remote.credential.runtime_only_unverified" = "คีย์ Soniox · โหลดสำหรับการทำงานครั้งนี้ · ยังไม่ได้บันทึกหรือตรวจสอบ";
+"capture.settings.remote.credential.missing" = "คีย์ Soniox · ยังไม่ได้บันทึก";
+"capture.settings.remote.credential.hint" = "ข้อมูลนี้รายงานเฉพาะความพร้อมของคีย์ในเครื่องเท่านั้น การแชร์เสียงของการบันทึกจะได้รับอนุญาตก็ต่อเมื่อคลิกเริ่มบันทึก";
+"capture.settings.mode.title" = "โหมดสด";
+"capture.settings.mode.transcription_only" = "ถอดเสียงอย่างเดียว";
+"capture.settings.mode.two_way" = "การแปลสองทาง";
+"capture.settings.mode.transcription_detail" = "แสดงไทม์ไลน์บทถอดเสียงภาษาต้นทางหนึ่งภาษา";
+"capture.settings.mode.two_way_detail" = "แสดงคอลัมน์ภาษาซ้ายและขวาแบบตายตัวพร้อมการแปลสด";
+"capture.settings.languages.title" = "คอลัมน์การแปล";
+"capture.settings.languages.detail" = "แต่ละภาษาจะอยู่ในคอลัมน์ที่เลือกไว้ ไม่ว่าใครจะเป็นผู้พูดภาษานั้น";
+"capture.settings.languages.left" = "คอลัมน์ซ้าย";
+"capture.settings.languages.right" = "คอลัมน์ขวา";
+"capture.settings.languages.question" = "เซสชันนี้จะใช้ภาษาใดบ้าง";
+"capture.settings.languages.ordered_detail" = "เพิ่มภาษาตามลำดับการแสดงผล แต่ละภาษาที่เลือกจะมีคอลัมน์ของตัวเอง ข้อความที่พูดจะปรากฏก่อน แล้วคอลัมน์อื่นจะเติมตามมาในไม่ช้า";
+"capture.settings.languages.search" = "ค้นหาภาษาที่จะเพิ่ม";
+"capture.settings.languages.no_results" = "ไม่มีภาษาที่ยังไม่ได้เลือกตรงกับการค้นหาของคุณ";
+"capture.settings.languages.maximum_reached" = "เลือกได้สูงสุดสามภาษาต่อหนึ่งเซสชัน";
+"capture.settings.languages.add_format" = "เพิ่ม %@";
+"capture.settings.languages.move_earlier" = "เลื่อนภาษาขึ้น";
+"capture.settings.languages.move_later" = "เลื่อนภาษาลง";
+"capture.settings.languages.remove" = "เอาภาษาออก";
+"capture.settings.two_way.detail" = "Soniox stt-rt-v5 จะเก็บทั้งสองทิศทางภาษาไว้ในคอลัมน์ตายตัว";
+"capture.realtime.controls.current_title" = "การกำหนดค่าการบันทึกปัจจุบัน";
+"capture.realtime.controls.profile_group" = "การกำหนดค่าการบันทึกเรียลไทม์";
+"capture.realtime.controls.swap_pair" = "สลับคู่ภาษาสำหรับการบันทึกครั้งถัดไป";
+"capture.realtime.controls.swap_pair_hint" = "สลับภาษา A และภาษา B สำหรับการบันทึกครั้งถัดไปโดยไม่เขียนทับบทถอดเสียงที่มีอยู่";
+"capture.realtime.controls.review_context" = "ตรวจทานข้อมูลอ้างอิง";
+"capture.settings.context.title" = "ข้อมูลอ้างอิงสำหรับการถอดเสียง";
+"capture.settings.context.send" = "ใช้สำหรับการถอดเสียงสด";
+"capture.settings.context.send_detail" = "เมื่อเปิดใช้ การบันทึกนี้จะใช้ข้อมูลอ้างอิงที่แสดงอยู่นี้";
+"capture.settings.context.preview" = "ตรวจทานสิ่งที่จะถูกใช้";
+"capture.settings.context.preview_count" = "%lld ตัวอักษร";
+"capture.settings.context.empty" = "ยังไม่มีข้อมูลอ้างอิงที่ใช้ได้";
+"capture.settings.context.confirm_exact" = "ใช้ข้อมูลอ้างอิงเหล่านี้";
+"capture.settings.context.applied" = "ใช้กับการบันทึกนี้";
+"capture.settings.context.not_applied" = "ไม่ได้ใช้กับการบันทึกนี้";
+"capture.settings.context.pack_detail" = "เพิ่มคำศัพท์ บุคคล องค์กร และข้อมูลพื้นหลังของเซสชันเพื่อเพิ่มความแม่นยำของการถอดเสียง";
+"capture.settings.context.packs" = "ขอบเขตข้อมูลอ้างอิง";
+"capture.settings.context.no_packs" = "ยังไม่มีข้อมูลอ้างอิง";
+"capture.settings.context.private_pack" = "Notebook ปัจจุบัน";
+"capture.settings.context.current_notebook_detail" = "ใช้ใน Notebook นี้";
+"capture.settings.context.library_pack" = "คลัง";
+"capture.settings.context.selected" = "กำลังแก้ไข";
+"capture.settings.context.not_selected" = "ไม่ได้เลือก";
+"capture.settings.context.always_bound" = "ใช้ตามค่าเริ่มต้น";
+"capture.settings.context.select_pack_hint" = "ตรวจทานและแก้ไขชุดข้อมูลอ้างอิงนี้";
+"capture.settings.context.bind_pack" = "ใช้ %@ ใน Notebook นี้";
+"capture.settings.context.delete_pack" = "ลบ %@";
+"capture.settings.context.delete_pack_confirm" = "ลบคลังนี้หรือไม่ ทุก Notebook ที่ใช้อยู่จะได้รับผลกระทบ";
+"capture.settings.context.library_title" = "ชื่อคลัง";
+"capture.settings.context.new_library" = "สร้างคลัง";
+"capture.settings.context.copy_private" = "บันทึกข้อมูลอ้างอิงปัจจุบันไปยังคลัง";
+"capture.settings.context.editing_pack" = "ข้อมูลอ้างอิงใน %@";
+"capture.settings.context.import_file" = "นำเข้า .txt, .md หรือ .csv";
+"capture.settings.context.no_sources" = "ยังไม่ได้เพิ่มข้อมูลอ้างอิงใด ๆ";
+"capture.settings.context.paste_title" = "ชื่อข้อมูลอ้างอิง";
+"capture.settings.context.content_kind" = "ประเภทข้อมูลอ้างอิง";
+"capture.settings.context.kind_general" = "ข้อมูลพื้นหลัง";
+"capture.settings.context.kind_terms" = "คำศัพท์";
+"capture.settings.context.kind_text" = "ข้อความอ้างอิง";
+"capture.settings.context.paste_content" = "วางข้อความอ้างอิง";
+"capture.settings.context.import_limits" = "รองรับข้อความ UTF-8 หรือ Markdown ขนาดไม่เกิน 256 KiB และ CSV สองภาษาไม่เกิน 1,000 แถว";
+"capture.settings.context.add_paste" = "เพิ่มเนื้อหา";
+"capture.settings.context.untrusted" = "แหล่งที่มาต้องตรวจทาน";
+"capture.settings.context.delete_source" = "ลบแหล่งที่มา %@";
+"capture.settings.context.delete_source_confirm" = "ลบข้อมูลอ้างอิงนี้หรือไม่";
+"capture.settings.context.file_picker_message" = "เลือกไฟล์ .txt/.md แบบ UTF-8 หรือไฟล์ .csv ที่มีส่วนหัวเป็นสองภาษา";
+"capture.settings.context.local_only" = "หลังเริ่มบันทึกแล้ว ข้อมูลอ้างอิงเหล่านี้สามารถใช้สำหรับการถอดเสียงสดได้";
+"capture.settings.after_stop.title" = "การประมวลผลหลังการบันทึก";
+"capture.settings.after_stop.engine" = "วิธีการประมวลผล";
+"capture.settings.after_stop.toggle" = "ถอดเสียงหลังหยุดบันทึก";
+"capture.settings.after_stop.detail" = "หลังหยุดบันทึกแล้ว เอนจินถอดเสียงปัจจุบันสามารถถอดเสียงส่วนที่เหลือให้เสร็จสมบูรณ์ได้";
+"capture.settings.after_stop.unavailable_detail" = "การประมวลผลหลังการบันทึกไม่พร้อมใช้งานในเวอร์ชันนี้";
+"capture.settings.after_stop.two_way_disabled" = "ใช้ไม่ได้ในโหมดการแปลสองทาง";
+"capture.state.recording" = "กำลังบันทึก";
+"capture.state.paused" = "หยุดชั่วคราว";
+"capture.state.draining" = "กำลังปิดท้าย";
+"capture.state.audio_drain_delayed" = "ยังกำลังบันทึกไฟล์เสียงในเครื่องอยู่";
+"capture.state.completed" = "เสร็จสิ้น";
+"capture.state.interrupted" = "ถูกขัดจังหวะ";
+"capture.state.failed" = "ล้มเหลว";
+"capture.remote.off" = "รีโมตปิดอยู่";
+"capture.remote.connecting" = "รีโมตกำลังเชื่อมต่อ";
+"capture.remote.catching_up" = "คำบรรยายกำลังตามให้ทัน ช้าอยู่ %d วินาที";
+"capture.remote.live" = "รีโมตทำงานสด";
+"capture.remote.degraded" = "รีโมตคุณภาพลดลง";
+"capture.remote.unavailable" = "รีโมตไม่พร้อมใช้งาน";
+"capture.projection.pending" = "รอเขียนผลลัพธ์";
+"capture.projection.projecting" = "กำลังเขียนผลลัพธ์";
+"capture.projection.ready" = "แก้ไขได้";
+"capture.projection.failed" = "เขียนผลลัพธ์ล้มเหลว";
+"capture.transcript.accessibility_label" = "บทถอดเสียงแบบคอลัมน์ภาษาตามลำดับ";
+"capture.transcript.swap" = "สลับคอลัมน์ภาษาซ้ายและขวา";
+"capture.transcript.swap_hint" = "เปลี่ยนเฉพาะการแสดงผลซ้ายขวาในหน่วยความจำเท่านั้น ไม่เขียนทับการบันทึกหรือบทถอดเสียง";
+"capture.transcript.realtime_accessibility_label" = "บทถอดเสียงเรียลไทม์";
+"capture.transcript.engine.realtime_format" = "เรียลไทม์ · %@";
+"capture.transcript.engine.post_stop_format" = "เล่นซ้ำหลังหยุดบันทึก · %@";
+"capture.transcript.transcription_heading" = "ไทม์ไลน์การถอดเสียง";
+"capture.transcript.transcription_empty_title" = "ไม่มีถ้อยคำแบบเรียลไทม์";
+"capture.transcript.transcription_empty_detail" = "เปิดใช้การประมวลผลเรียลไทม์ระยะไกลแล้วเริ่มบันทึกเพื่อสร้างบทถอดเสียงของเซสชัน";
+"capture.transcript.snapshot_unavailable_detail" = "ถ้อยคำที่จัดเก็บไว้ยังคงอยู่ แต่มุมมองนี้ไม่สามารถเลือกเลย์เอาต์ได้หากไม่มีการกำหนดค่าคอลัมน์ภาษาที่บันทึกไว้ของการบันทึกนี้";
+"capture.transcript.read_only" = "อ่านอย่างเดียวระหว่างบันทึกหรือเขียนผลลัพธ์";
+"capture.transcript.copy" = "คัดลอกบทถอดเสียง";
+"capture.transcript.copy_hint" = "คัดลอกบทถอดเสียงของเซสชันนี้พร้อมประทับเวลา ชื่อผู้พูด และป้ายภาษา";
+"capture.transcript.copy_empty_hint" = "ยังไม่มีเนื้อหาบทถอดเสียงให้คัดลอก";
+"capture.transcript.copy_finish_edit_hint" = "จบหรือยกเลิกการแก้ไขปัจจุบันก่อนคัดลอก";
+"capture.transcript.copy_success" = "คัดลอกบทถอดเสียงแล้ว";
+"capture.transcript.copy_success_detail" = "ตอนนี้คุณสามารถวางในแอปอื่นได้";
+"capture.transcript.copy_success_live_detail" = "คัดลอกสแนปช็อตบทถอดเสียงปัจจุบันแล้ว การบันทึกยังดำเนินอยู่";
+"capture.transcript.copy_failed" = "ไม่สามารถคัดลอกบทถอดเสียงได้";
+"capture.transcript.copy_clipboard_failed" = "ไม่สามารถอัปเดตคลิปบอร์ดของระบบได้";
+"capture.transcript.waiting_title" = "กำลังฟังถ้อยคำแรก";
+"capture.transcript.waiting_detail" = "การบันทึกในเครื่องจะดำเนินต่อแม้การประมวลผลระยะไกลปิดอยู่หรือไม่พร้อมใช้งาน";
+"capture.transcript.empty_title" = "ไม่มีถ้อยคำสองภาษา";
+"capture.transcript.empty_detail" = "เริ่มการบันทึกแบบสองทางใน Notebook นี้เพื่อเติมคอลัมน์ภาษาตายตัว";
+"capture.transcript.active_other_session.title" = "อีกเซสชันหนึ่งกำลังบันทึกอยู่";
+"capture.transcript.active_other_session.detail" = "บทถอดเสียงนี้แยกจากการบันทึกที่กำลังทำงาน กลับไปที่ Notebook ของการบันทึกนั้นเพื่อหยุดชั่วคราวหรือหยุด";
+"capture.transcript.outside_pair" = "อยู่นอกคู่ภาษาปัจจุบัน";
+"capture.transcript.language_pending" = "ภาษารอการยืนยัน…";
+"capture.transcript.unselected_language" = "ตรวจพบ %@ แต่ไม่ได้เลือกไว้สำหรับเซสชันนี้";
+"capture.transcript.presentation.timeline" = "ไทม์ไลน์";
+"capture.transcript.presentation.timeline_detail" = "แสดงแต่ละถ้อยคำเพียงครั้งเดียวตามลำดับเวลา";
+"capture.transcript.presentation.language_columns" = "คอลัมน์ภาษา";
+"capture.transcript.presentation.language_columns_detail" = "เก็บทุกภาษาที่เลือกไว้ในคอลัมน์ของตัวเองตามลำดับ";
+"capture.transcript.waiting_lane" = "กำลังรอ %@";
+"capture.transcript.failed_lane" = "ไม่สามารถเติมคอลัมน์ %@ ได้";
+"capture.transcript.row_accessibility" = "ถ้อยคำที่ %lld";
+"capture.transcript.source_timestamp" = "ประทับเวลาเสียงต้นฉบับ %@";
+"capture.speaker.fallback" = "ผู้พูด";
+"capture.speaker.fallback_format" = "ผู้พูด %@";
+"capture.speaker.manage" = "จัดการผู้พูด";
+"capture.speaker.chip_accessibility_format" = "ผู้พูด: %@";
+"capture.speaker.manage_hint" = "เปิดการตั้งชื่อและการจับคู่ผู้เข้าร่วมสำหรับผู้พูดนิรนามนี้";
+"capture.speaker.editor.title" = "ผู้พูดนิรนาม";
+"capture.speaker.close" = "ปิด";
+"capture.speaker.privacy_detail" = "ระบบจัดเก็บเฉพาะป้ายนิรนามจากผู้ให้บริการและชื่อที่คุณป้อนเท่านั้น ไม่มีการจัดเก็บลายเสียงหรือคุณลักษณะเสียงไว้ในเครื่อง";
+"capture.speaker.session_name" = "ชื่อสำหรับเซสชันนี้";
+"capture.speaker.session_name_detail" = "แทนที่ผู้พูดนิรนามนี้เฉพาะในการบันทึกนี้เท่านั้น";
+"capture.speaker.session_name_placeholder" = "เช่น ผู้ดำเนินรายการ";
+"capture.speaker.save" = "บันทึก";
+"capture.speaker.clear" = "ล้าง";
+"capture.speaker.participant" = "ผู้เข้าร่วมข้ามเซสชัน";
+"capture.speaker.participant_detail" = "เชื่อมป้ายนิรนามนี้กับชื่อที่คุณจัดการเอง การจับคู่ทำด้วยตนเองและไม่มีการอนุมานจากภาษา";
+"capture.speaker.select_participant" = "เลือกผู้เข้าร่วม";
+"capture.speaker.link" = "เชื่อม";
+"capture.speaker.new_participant_placeholder" = "ชื่อผู้เข้าร่วมใหม่";
+"capture.speaker.create_and_link" = "สร้างและเชื่อม";
+"capture.speaker.unlink" = "เลิกเชื่อมผู้เข้าร่วม";
+"capture.speaker.identity_format" = "%@ · ผู้พูด %@ · การเชื่อมต่อ %@";
+"capture.transcript.edit_lane" = "แก้ไขเลน %@";
+"capture.transcript.edit_hint" = "กด Return หรือย้ายโฟกัสเพื่อบันทึกเลนนี้";
+"capture.transcript.retry_projection" = "ลองเขียนผลลัพธ์อีกครั้ง";
+"capture.transcript.retry_projection_hint" = "ลองเขียนถ้อยคำที่บันทึกไว้ลงในบทถอดเสียงของ Notebook อีกครั้ง";
+"capture.settings.retention.title" = "การเก็บรักษาไฟล์เสียง";
+"capture.settings.retention.subtitle" = "Notebook นี้จะเก็บสแนปช็อตนโยบายการเก็บรักษาเมื่อเริ่มการบันทึกแต่ละครั้ง";
+"capture.settings.retention.standard.title" = "เก็บไฟล์เสียง";
+"capture.settings.retention.standard.detail" = "เก็บการบันทึกไว้จนกว่าคุณจะเลือกลบอย่างถาวร";
+"capture.settings.retention.high.title" = "ลบหลังได้บทถอดเสียงภายหลัง";
+"capture.settings.retention.high.detail" = "ลบไฟล์เสียงและคีย์ของมันหลังการถอดเสียงภายหลังที่ร้องขอไว้อย่างชัดแจ้งสำเร็จ";
+"capture.settings.retention.maximum.title" = "ลบหลังได้บทถอดเสียงใด ๆ";
+"capture.settings.retention.maximum.detail" = "ลบไฟล์เสียงและคีย์ของมันทันทีที่มีข้อมูลบทถอดเสียงถาวร หากยังไม่มีบทถอดเสียง จะเก็บแหล่งข้อมูลเดียวที่มีไว้เพื่อป้องกันข้อมูลสูญหาย";

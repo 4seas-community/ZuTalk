@@ -219,7 +219,8 @@ final class WindowSystemTests: XCTestCase {
             "app.quit.confirm.action",
         ]
 
-        for languageDirectory in ["en.lproj", "zh-Hans.lproj", "ja.lproj"] {
+        let languageDirectories = AppLanguage.allCases.map { "\($0.rawValue).lproj" }
+        for languageDirectory in languageDirectories {
             let strings = try String(
                 contentsOf: root
                     .appendingPathComponent(languageDirectory, isDirectory: true)

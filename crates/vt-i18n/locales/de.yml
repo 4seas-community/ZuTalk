@@ -1,0 +1,22 @@
+error:
+  core:
+    init_failed: "Initialisierung fehlgeschlagen: %{detail}"
+    validation_failed: "Validierung fehlgeschlagen: %{detail}"
+    not_found: "Nicht gefunden: %{detail}"
+    internal: "Interner Fehler: %{detail}"
+
+  stt:
+    ws_failed: "WebSocket-Verbindung fehlgeschlagen: %{detail}"
+    read_timeout: "Zeitüberschreitung beim Lesen vom WebSocket nach %{duration}"
+    server_closed: "Verbindung vom Server geschlossen: code=%{code}, reason=%{reason}"
+    auth_failed: "Authentifizierung fehlgeschlagen: %{detail}"
+    quota_exhausted: "Kontingent aufgebraucht: %{detail}"
+    rate_limited: "Anfragelimit erreicht"
+    parse: "Parse-Fehler: %{detail}"
+    server_error: "Serverfehler %{status}: %{detail}"
+    api_error: "API-Fehler %{status}: [%{kind}] %{detail}"
+    transcription_failed: "Transkription fehlgeschlagen: [%{kind}] %{detail}"
+    http: "HTTP-Fehler: %{detail}"
+    timeout: "Zeitüberschreitung: %{operation} nach %{duration}"
+    cancelled: "abgebrochen"
+    upload_failed: "Upload fehlgeschlagen: %{detail}"

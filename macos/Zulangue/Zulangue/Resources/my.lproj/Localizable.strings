@@ -1,0 +1,966 @@
+/* Zulangue English Localization */
+
+/* General */
+"app.name" = "Zulangue";
+"app.tagline" = "ပွင့်လင်းရင်းမြစ် · စက်တွင်းဦးစားပေး · သင့်ကီး၊ သင့်ဒေတာ";
+"common.cancel" = "မလုပ်တော့ပါ";
+"common.save" = "သိမ်းရန်";
+"common.delete" = "ဖျက်ရန်";
+"common.export" = "ထုတ်ယူရန်";
+"common.search" = "ရှာဖွေရန်";
+"common.settings" = "ဆက်တင်များ";
+"common.test" = "စမ်းသပ်ရန်";
+"common.back" = "နောက်သို့";
+"common.finish" = "ပြီးပါပြီ";
+"common.required" = "လိုအပ်သည်";
+"common.optional" = "ရွေးချယ်နိုင်သည်";
+"common.connected" = "ချိတ်ဆက်ပြီးပါပြီ";
+"common.testing" = "စမ်းသပ်နေသည်…";
+"common.not_configured" = "မသတ်မှတ်ရသေးပါ";
+"common.failed" = "မအောင်မြင်ပါ";
+
+/* Onboarding — Welcome */
+"onboarding.welcome.button" = "ရှေ့ဆက်ရန် →";
+"onboarding.welcome.bullet1" = "စကားဝိုင်းအမျိုးအစားတစ်ခုအတွက် Notebook တစ်ခု ဖန်တီးပါ။ ဥပမာ — “အင်္ဂလိပ် အင်တာဗျူးများ”။";
+"onboarding.welcome.bullet2" = "Notebook ကိုဖွင့်ပြီး အသံသွင်းခြင်း စတင်ရန်ကို နှိပ်ပါ။";
+"onboarding.welcome.bullet3" = "ရပ်လိုက်သောအခါ စာတန်းများ၊ အသံနှင့် မှတ်စုများကို တစ်နေရာတည်းတွင် တွေ့နိုင်ပါသည်။";
+"onboarding.welcome.privacy" = "ပုံမှန်အားဖြင့် ဒေတာသည် ဤ Mac ပေါ်တွင်သာ ရှိနေပါသည်။ အစည်းအဝေးတစ်ခုချင်းစီအတွက် အဝေးမှ စာသားပြောင်းခြင်းကို ဖွင့်မဖွင့် သင်ကိုယ်တိုင် ရွေးချယ်နိုင်ပါသည်။";
+"onboarding.visual.live" = "တိုက်ရိုက် စာသားမှတ်တမ်း";
+"onboarding.visual.speaker.host" = "အိမ်ရှင်";
+"onboarding.visual.speaker.guest" = "ပါဝင်သူ";
+"onboarding.visual.language.zh" = "中文";
+"onboarding.visual.language.en" = "English";
+"onboarding.visual.language.ja" = "日本語";
+"onboarding.visual.microphone.title" = "မိုက်ခရိုဖုန်း အသင့်ဖြစ်ပါပြီ";
+"onboarding.visual.microphone.detail" = "အခန်းတွင်းအသံ ဖမ်းယူရန် · တိုက်ရိုက် စာသားမှတ်တမ်း တည်ဆောက်ရန်";
+
+/* Onboarding — Permissions */
+"onboarding.permissions.title" = "ပထမဆုံး စကားဝိုင်းအတွက် ပြင်ဆင်လိုက်ပါ";
+"onboarding.permissions.subtitle" = "အခန်းတွင်းအသံကို ဖမ်းယူပြီး တိုက်ရိုက် စာသားမှတ်တမ်း ဖန်တီးနိုင်ရန် မိုက်ခရိုဖုန်း အသုံးပြုခွင့် ပေးပါ။";
+"onboarding.permissions.hint" = "ယခုပင် အက်ပ်ထဲသို့ ဝင်ပြီး ပထမဆုံး အသံသွင်းချိန်တွင် ခွင့်ပြုချက် ပေးလို့လည်း ရပါသည်။";
+"onboarding.permissions.mic.name" = "မိုက်ခရိုဖုန်း";
+"onboarding.permissions.mic.usage" = "စကားဝိုင်းကို ဖမ်းယူပြီး တိုက်ရိုက် စာသားမှတ်တမ်းကို လည်ပတ်စေပါသည်။";
+"onboarding.permissions.action.grant" = "ခွင့်ပြုချက် ပေးရန်";
+"onboarding.permissions.action.open_settings" = "ဆက်တင်များ ဖွင့်ရန်";
+"onboarding.permissions.action.restart" = "အက်ပ် ပြန်စတင်ရန်";
+"onboarding.permissions.status.granted" = "ခွင့်ပြုပြီး";
+"onboarding.permissions.status.denied" = "ငြင်းပယ်ထား";
+"onboarding.permissions.status.not_granted" = "ခွင့်မပြုရသေး";
+"onboarding.permissions.continue" = "ZULANGUE ထဲသို့ ဝင်ရန် →";
+
+/* Onboarding — API Keys */
+"onboarding.keys.title" = "တိုက်ရိုက်စာတန်းများ ဖွင့်ရန်";
+"onboarding.keys.subtitle" = "အသိုင်းအဝိုင်း ဖိတ်ကြားချက်ကို သုံးပါ သို့မဟုတ် သင့်ကိုယ်ပိုင် စာသားပြောင်း ဝန်ဆောင်မှုကို ချိတ်ဆက်ပါ။";
+"onboarding.keys.own_key.option" = "ကျွန်ုပ်၏ ကိုယ်ပိုင်ကီး";
+"community_invite.option" = "အသိုင်းအဝိုင်း ဖိတ်ကြားချက်";
+"community_invite.placeholder" = "ဖိတ်ကြားချက်ကုဒ် ထည့်ပါ";
+"community_invite.action" = "ဖိတ်ကြားချက် အသက်သွင်းရန်";
+"community_invite.active" = "အသိုင်းအဝိုင်း ဖိတ်ကြားချက် အသက်ဝင်နေသည်";
+"community_invite.thirty_hours" = "5 Give · နာရီ 30 ခန့်";
+"community_invite.shared_detail" = "တိုက်ရိုက် စာသားပြောင်းခြင်း၊ ဘာသာပြန်ခြင်းနှင့် အသံဖိုင် စာသားပြောင်းခြင်းတို့သည် ဤအချိန်ကို မျှဝေသုံးစွဲပါသည်။";
+"community_invite.invalid" = "ဤဖိတ်ကြားချက်ကုဒ် မမှန်ကန်ပါ။ သင့်ကို ဖိတ်ကြားသူနှင့် ပြန်စစ်ဆေးပါ။";
+"community_invite.unavailable" = "အသိုင်းအဝိုင်း ဝန်ဆောင်မှု ယာယီ မရရှိနိုင်ပါ။ နောက်မှ ထပ်ကြိုးစားပါ။";
+"community_invite.remaining_hours_format" = "%lld နာရီခန့် ကျန်ရှိသည်";
+"community_invite.settings.title" = "အသိုင်းအဝိုင်း ဖိတ်ကြားချက်";
+"community_invite.settings.subtitle" = "သင်ပိုင်ဆိုင်သော အသုံးပြုချိန်ကို ကြည့်ပါ သို့မဟုတ် ဖိတ်ကြားချက်ကုဒ် ထည့်ပါ။";
+"community_invite.resources.remaining" = "ကျန်ရှိချိန်";
+"community_invite.remaining_detail_format" = "%1$lld နာရီ %2$lld မိနစ်";
+"community_invite.refresh" = "ကျန်ရှိချိန် ပြန်လည်စစ်ဆေးရန်";
+"community_invite.replace" = "ကုဒ်အသစ် သုံးရန်";
+"community_invite.inactive" = "အသက်ဝင်နေသော အသိုင်းအဝိုင်း ဖိတ်ကြားချက် မရှိပါ";
+"community_invite.use_toggle" = "အသိုင်းအဝိုင်း ဖိတ်ကြားချက်ဖြင့် စာသားပြောင်းရန်";
+"community_invite.use_toggle_detail" = "ဖွင့်ထားလျှင် အသံသွင်းချက်များသည် ဖိတ်ကြားချက်အချိန်ကို ဦးစွာသုံးပါသည်။ ပိတ်ထားလျှင် သင့်ကိုယ်ပိုင် သိမ်းထားသောကီးကို သုံးပါသည်။";
+"editor.transcript.async.start" = "ဤအသံဖိုင်ကို စာသားပြောင်းရန်";
+"editor.transcript.async.start_failed" = "အသံဖိုင် စာသားပြောင်းခြင်း စတင်၍ မရပါ";
+"onboarding.keys.voice_label" = "တိုက်ရိုက်စာတန်း ဝန်ဆောင်မှု";
+"onboarding.keys.guide.create" = "အကောင့်ဖွင့်ရန်";
+"onboarding.keys.guide.copy" = "ကီး ကူးယူရန်";
+"onboarding.keys.guide.paste" = "အောက်တွင် ကူးထည့်ရန်";
+"onboarding.keys.open_soniox" = "Soniox မှ ကီးရယူရန်";
+"onboarding.keys.soniox.help" = "စစ်ဆေးပြီး သိမ်းရန်သည် ကီးအလုပ်လုပ်မလုပ်ကိုသာ စစ်ဆေးပါသည်။ အသံသွင်းချက်ကို တင်ပို့ခြင်း မရှိပါ။";
+"onboarding.keys.paste" = "Soniox API ကီး";
+"onboarding.keys.verify_and_save" = "စစ်ဆေးပြီး သိမ်းရန်";
+"onboarding.keys.verify_saved" = "ချိတ်ဆက်မှု စစ်ဆေးရန်";
+"onboarding.keys.skip" = "လောလောဆယ် ကျော်ရန်";
+"onboarding.keys.continue" = "ရှေ့ဆက်ရန်";
+"onboarding.keys.private_status" = "စက်တွင်း မသိမ်းမီ စစ်ဆေးပြီး";
+
+/* Onboarding — Step Indicator */
+"onboarding.step.signup" = "Zulangue နှင့် မိတ်ဆက်";
+"onboarding.step.setup" = "အသံသွင်းရန် အသင့်";
+"onboarding.step.tryout" = "တိုက်ရိုက်စာတန်းများ";
+
+/* Onboarding — Common */
+"onboarding.common.back" = "← နောက်သို့";
+
+"sidebar.help" = "Zulangue အသုံးပြုနည်း";
+"sidebar.help.hint" = "စတင်အသုံးပြုနည်း လမ်းညွှန်ကို ပြန်ဖွင့်ရန်";
+
+/* Library */
+"library.title" = "စက်ရှင်များ";
+"library.empty.title" = "စက်ရှင် မရှိသေးပါ";
+"library.empty.live_hint" = "တိုက်ရိုက် စာသားပြောင်းခြင်း စတင်ရန်";
+"library.empty.drop_hint" = "သို့မဟုတ် အသံဖိုင်ကို ဤနေရာသို့ ဆွဲချ၍ တင်သွင်းပါ";
+"library.empty.drop_label" = "အသံဖိုင် ချထည့်ပါ";
+"library.empty.drop_formats" = "m4a · mp3 · wav · aac · ogg · flac";
+"library.empty.configure_hint" = "ဝန်ဆောင်မှုများ သတ်မှတ်ရန် လိုပါသလား။";
+"library.empty.configure_link" = "ဆက်တင်များ ဖွင့်ရန်";
+"library.no_selection.title" = "စက်ရှင် ရွေးထားခြင်း မရှိပါ";
+"library.no_selection.detail" = "စာရင်းထဲမှ စက်ရှင်တစ်ခုကို ရွေးပါ။";
+"library.search_placeholder" = "စက်ရှင်များ ရှာရန်…";
+"library.filter.all" = "အားလုံး";
+"library.filter.overlay" = "Overlay";
+"library.filter.recording" = "အသံသွင်းချက်";
+"library.filter.import" = "တင်သွင်းမှု";
+
+/* Recording */
+"recording.start" = "အသံသွင်းခြင်း စတင်ရန်";
+"recording.stop" = "အသံသွင်းခြင်း ရပ်ရန်";
+"recording.status.idle" = "မစတင်ရသေး";
+"recording.status.recording" = "အသံသွင်းနေသည်";
+"recording.status.listening" = "နားထောင်နေသည်";
+"recording.status.error" = "အမှား";
+
+/* Session Detail */
+"session.tab.transcript" = "စာသားမှတ်တမ်း";
+"session.tab.audio" = "အသံ";
+"session.metadata.language" = "ဘာသာစကား";
+"session.metadata.crdt" = "CRDT";
+
+/* Settings */
+"settings.section.recording" = "အသံသွင်းခြင်း";
+"settings.section.privacy" = "ကိုယ်ရေးလုံခြုံမှုနှင့် လုံခြုံရေး";
+"settings.section.shortcuts" = "ဖြတ်လမ်းခလုတ်များ";
+"settings.privacy.standard" = "ပုံမှန်";
+"settings.privacy.standard.description" = "အသံသွင်းချက်နှင့် စာသားမှတ်တမ်းကို အကန့်အသတ်မရှိ သိမ်းထားရန်";
+"settings.privacy.high" = "မြင့်";
+"settings.privacy.high.description" = "စာသားပြောင်းပြီးနောက် အသံသွင်းချက်ကို အလိုအလျောက် ဖျက်ရန်";
+"settings.privacy.maximum" = "အမြင့်ဆုံး";
+"settings.privacy.maximum.description" = "စာသားပြောင်းပြီးနောက် ကီးများကို အလိုအလျောက် ဖျက်ဆီးရန် (အသံသွင်းချက်ကို ပြန်လည်ရယူ၍ မရတော့ပါ)";
+
+/* Export */
+"export.title" = "ထုတ်ယူမှု ရွေးချယ်စရာများ";
+"export.markdown" = "Markdown (.md)";
+"export.srt" = "SRT စာတန်းထိုး (.srt)";
+"export.vtt" = "WebVTT (.vtt)";
+"export.txt" = "စာသားသက်သက် (.txt)";
+"export.audio" = "အသံ ထည့်သွင်းရန် (.wav)";
+
+/* Trust Bar */
+
+/* Toast labels */
+"toast.label.info" = "အချက်အလက်";
+"toast.label.success" = "OK";
+"toast.label.warning" = "သတိပေး";
+"toast.label.error" = "အမှား";
+
+/* Common language labels (self-describing; same string in each locale uses native script) */
+"lang.auto_detect" = "အလိုအလျောက် သိရှိရန်";
+"lang.zh" = "中文";
+"lang.zh_full" = "中文 (Chinese Simplified)";
+"lang.zh_tw" = "繁體中文";
+"lang.en" = "English";
+"lang.ja" = "日本語";
+"lang.ja_full" = "日本語 (Japanese)";
+"lang.ko" = "한국어";
+"lang.ko_full" = "한국어 (Korean)";
+"lang.fr" = "Français";
+"lang.fr_full" = "Français (French)";
+"lang.de" = "Deutsch";
+"lang.de_full" = "Deutsch (German)";
+"lang.es" = "Español";
+"lang.es_full" = "Español (Spanish)";
+"lang.th" = "ไทย";
+"lang.th_full" = "ไทย (Thai)";
+"lang.my" = "မြန်မာ";
+"lang.my_full" = "မြန်မာ (Burmese)";
+"lang.zh_hans" = "简体中文";
+
+/* Appearance */
+"appearance.system" = "စနစ်အတိုင်း";
+"appearance.light" = "အလင်း";
+"appearance.dark" = "အမှောင်";
+
+/* General settings section */
+"settings.general.title" = "အထွေထွေ";
+"settings.general.subtitle" = "အက်ပ်တစ်ခုလုံးအတွက် ဘာသာစကားနှင့် အသွင်အပြင်။";
+"settings.language.title" = "အက်ပ် ဘာသာစကား";
+"settings.language.system" = "စနစ်အတိုင်း";
+"settings.language.hint" = "Swift နှင့် Rust အလွှာများရှိ UI၊ မီနူးများနှင့် အမှားစာများကို ထိန်းချုပ်ပါသည်။";
+"settings.language.restart_hint" = "ဘာသာစကား ပြောင်းလဲမှုသည် Zulangue ကို ပြန်စတင်ပြီးမှ အပြည့်အဝ သက်ရောက်ပါသည်။ Rust အမှားစာများ ပြောင်းလဲပြီးဖြစ်ပါသည်။";
+"settings.appearance.title" = "အသွင်အပြင်";
+
+
+
+
+
+
+/* Permissions */
+"permission.microphone.name" = "မိုက်ခရိုဖုန်း";
+"permission.microphone.usage" = "သင့်အသံကို သွင်းယူပြီး စာသားပြောင်းရန် Soniox သို့ ပေးပို့ပါသည်";
+
+/* Library — export sheet */
+"export.dialog.title" = "ထုတ်ယူမှု ရွေးချယ်စရာများ";
+"export.dialog.text_format" = "စာသားပုံစံများ";
+"export.dialog.audio_group" = "အသံ";
+"export.dialog.audio_include" = "အသံဖိုင် ထည့်သွင်းရန် (.wav)";
+"export.dialog.markdown" = "Markdown (.md)";
+"export.dialog.srt" = "SRT စာတန်းထိုး (.srt)";
+"export.dialog.vtt" = "WebVTT (.vtt)";
+"export.dialog.txt" = "စာသားသက်သက် (.txt)";
+"export.progress" = "ထုတ်ယူနေသည်…";
+"export.dialog.location" = "ထုတ်ယူမည့်နေရာ ရွေးပါ";
+"export.error_format" = "ထုတ်ယူမှု မအောင်မြင်ပါ: %@";
+"common.export.action" = "ထုတ်ယူရန်";
+
+
+
+/* Recording settings */
+
+
+"doc.delete_current.hint" = "လက်ရှိ စာတမ်းကို ဖျက်ရန်";
+"editor.export.title" = "စက်ရှင် ထုတ်ယူရန်";
+"editor.export.hint" = "ဤစက်ရှင်ကို ZIP အဖြစ် ထုတ်ယူရန်";
+"editor.export.no_session" = "ထုတ်ယူရန် အသံသွင်းစက်ရှင် မရှိပါ";
+"doc.scratchpad" = "မှတ်စုကြမ်း";
+"doc.enhanced" = "အဆင့်မြှင့်ထား";
+"doc.untitled" = "ခေါင်းစဉ်မဲ့";
+
+
+/* Onboarding brand line */
+"onboarding.brand.subtitle" = "ဘာသာစကားစုံ ဆက်သွယ်မှု · တိုက်ရိုက် အစည်းအဝေးများ";
+
+/* Settings sidebar section rawValues (localized names) */
+"settings.section.general_name" = "အထွေထွေ";
+"settings.section.services_name" = "ဝန်ဆောင်မှုများနှင့် API";
+"settings.section.privacy_name" = "ကိုယ်ရေးလုံခြုံမှု";
+"settings.section.shortcuts_name" = "ဖြတ်လမ်းခလုတ်များ";
+"settings.section.diagnostics_name" = "ပြဿနာရှာဖွေမှု";
+"settings.sidebar.configuration" = "ပြင်ဆင်သတ်မှတ်မှု";
+
+/* Settings sidebar groups */
+"settings.group.services" = "ချိတ်ဆက်မှုများ";
+"settings.group.privacy" = "ကိုယ်ရေးလုံခြုံမှုနှင့် ဒေတာ";
+"settings.group.general" = "အထွေထွေ";
+"settings.group.advanced" = "အဆင့်မြင့်";
+
+/* Settings — API panels (Voice / AI) */
+"settings.api.test_button" = "စမ်းသပ်ရန်";
+"settings.credentials.enter_key" = "API ကီး ထည့်ပါ";
+"settings.credentials.local_storage_hint" = "ဤ macOS လော့ဂ်အင်မှ ဖတ်နိုင်သော အက်ပ်သီးသန့်ဖိုင်တွင် စာဝှက်မထားဘဲ သိမ်းဆည်းပြီး အက်ပ်စတင်ချိန်တွင် အလိုအလျောက် ဖွင့်တင်ပါသည်။";
+"settings.credentials.trust_boundary_notice" = "ဤနေရာတွင် သိမ်းဆည်းသော အထောက်အထားများကို စာဝှက်မထားပါ။ Zulangue သည် ဤယုံကြည်ရသော macOS လော့ဂ်အင်နှင့် အက်ပ်သီးသန့် စက်တွင်းဖိုင်ကို အားကိုးပြီး စတင်ချိန်တွင် ၎င်းတို့ကို အလိုအလျောက် ဖွင့်တင်ပါသည်။";
+"settings.credentials.apply" = "သိမ်းရန်";
+"settings.credentials.verify" = "စစ်ဆေးရန်";
+"settings.credentials.verify_and_save" = "စစ်ဆေးပြီး သိမ်းရန်";
+"settings.credentials.verifying" = "စစ်ဆေးနေသည်…";
+"settings.credentials.verified" = "စစ်ဆေးပြီး";
+"settings.credentials.verification_failed" = "စစ်ဆေးမှု မအောင်မြင်ပါ";
+"settings.credentials.verifying_hint" = "ဤကီးကို စစ်ဆေးရန် Soniox သို့ ချိတ်ဆက်နေပါသည်။";
+"settings.credentials.verified_hint" = "Soniox က ဤကီးကို လက်ခံပါပြီ။ အဝေးမှ စာသားပြောင်းခြင်းအတွက် အသင့်ဖြစ်ပါပြီ။";
+"settings.credentials.verify_before_save_hint" = "Soniox က စစ်ဆေးပြီးမှသာ Zulangue သည် ကီးအသစ်ကို သိမ်းဆည်းပါသည်။";
+"settings.credentials.verify_and_save_accessibility_format" = "%@ ကီးကို စစ်ဆေးပြီး သိမ်းရန်";
+"settings.credentials.verification.ready" = "Soniox ချိတ်ဆက်မှု စစ်ဆေးပြီးပါပြီ";
+"settings.credentials.verification.invalid" = "Soniox က ဤကီးကို ငြင်းပယ်လိုက်ပါသည်။ မမှန်ကန်ခြင်း သို့မဟုတ် ရုပ်သိမ်းခံထားရခြင်း ဖြစ်နိုင်ပါသည်။";
+"settings.credentials.verification.organization_balance_exhausted" = "Soniox အဖွဲ့အစည်း လက်ကျန်ငွေ ကုန်သွားပါပြီ။";
+"settings.credentials.verification.organization_budget_exhausted" = "Soniox အဖွဲ့အစည်း၏ လစဉ်ဘတ်ဂျက် ကုန်သွားပါပြီ။";
+"settings.credentials.verification.project_budget_exhausted" = "Soniox ပရောဂျက်၏ လစဉ်ဘတ်ဂျက် ကုန်သွားပါပြီ။";
+"settings.credentials.verification.quota_exhausted" = "Soniox အကောင့်တွင် သုံးစွဲနိုင်သော ခွဲတမ်း မကျန်တော့ပါ။";
+"settings.credentials.verification.network_unavailable" = "Soniox သို့ ချိတ်ဆက်၍ မရပါ။ ကွန်ရက်ကို စစ်ဆေးပြီး ထပ်ကြိုးစားပါ။";
+"settings.credentials.verification.rate_limited" = "Soniox က တောင်းဆိုမှုများကို နှုန်းကန့်သတ်နေပါသည်။ ခဏနေ ထပ်ကြိုးစားပါ။";
+"settings.credentials.verification.service_unavailable" = "Soniox စစ်ဆေးမှု ယာယီ မရရှိနိုင်ပါ။";
+"settings.credentials.applied" = "သိမ်းပြီး · ဖွင့်တင်ပြီး";
+"settings.credentials.saved_inactive" = "သိမ်းပြီး · ဂရုပြုရန် လိုသည်";
+"settings.credentials.runtime_only" = "ဤတစ်ကြိမ်အတွက် ဖွင့်တင်ထား · မသိမ်းရသေး";
+"settings.credentials.missing" = "မသိမ်းရသေးပါ";
+"settings.credentials.clear" = "သိမ်းထားသောကီး ဖျက်ရန်";
+"settings.credentials.apply_failed" = "ဤကီးကို သိမ်းဆည်း၍ အသက်သွင်း၍ မရပါ။";
+"settings.credentials.accessibility_applied_format" = "%@ ကီးကို ဤ Mac တွင် သိမ်းထားပြီး Zulangue တွင် အသက်ဝင်နေပါသည်။ ဝန်ဆောင်မှု ချိတ်ဆက်မှုကို မစမ်းသပ်ရသေးပါ။";
+"settings.credentials.accessibility_saved_inactive_format" = "%@ ကီးကို ဤ Mac တွင် သိမ်းထားသော်လည်း Zulangue တွင် အသက်မဝင်ပါ။ ပြန်လည်ကုစားရေး စာကို ပြန်ကြည့်ပါ။";
+"settings.credentials.accessibility_runtime_only_format" = "%@ ကီးကို ဤတစ်ကြိမ်အတွက် ဖွင့်တင်ထားသော်လည်း မသိမ်းရသေးပါ။ ဝန်ဆောင်မှု ချိတ်ဆက်မှုကို မစမ်းသပ်ရသေးပါ။";
+"settings.credentials.accessibility_missing_format" = "%@ ကီး မသိမ်းရသေးပါ။ ကီးတစ်ခု ထည့်၍ သိမ်းပါ။";
+"settings.credentials.field_accessibility_format" = "%@ API ကီး";
+"settings.credentials.apply_accessibility_format" = "%@ ကီး သိမ်းရန်";
+"settings.credentials.clear_accessibility_format" = "သိမ်းထားသော %@ ကီး ဖျက်ရန်";
+"settings.credentials.operation_failed" = "ဝန်ဆောင်မှုကီး လုပ်ဆောင်ချက် မအောင်မြင်ပါ";
+"settings.credentials.recovery_title" = "သိမ်းထားသော ဝန်ဆောင်မှုကီးများ ဂရုပြုရန် လိုနေသည်";
+"settings.credentials.recovery_hint" = "ဖတ်၍မရသောဖိုင်ကို အစားထိုးရန် ကီးအသစ် သိမ်းပါ သို့မဟုတ် သိမ်းထားသော ဝန်ဆောင်မှုကီးအားလုံး ဖယ်ရှားရန် ဖိုင်ကို ဖျက်ပါ။";
+"settings.credentials.reset_file" = "သိမ်းထားသော ကီးဖိုင် ဖျက်ရန်";
+"settings.credentials.reset_file_accessibility_hint" = "Zulangue က ဤ Mac တွင် သိမ်းထားသော ဝန်ဆောင်မှုကီးအားလုံးကို ဖျက်ပါသည်။ စက်တွင်း အသံသွင်းခြင်းကိုတော့ ဆက်သုံးနိုင်ပါသည်။";
+"settings.credentials.provider_not_tested_hint" = "Zulangue တွင် အသုံးပြုရန် ဖွင့်တင်ထားပါသည်။ ဝန်ဆောင်မှု ချိတ်ဆက်နိုင်မှုနှင့် ကီးမှန်ကန်မှုကို မစမ်းသပ်ရသေးပါ။";
+"settings.credentials.saved_inactive_hint" = "ဤ Mac တွင် သိမ်းထားသော်လည်း အသုံးပြုရန် ဖွင့်တင်မထားပါ။ အဝေးမှ လုပ်ဆောင်မှု မဖွင့်မီ ပြန်လည်ကုစားရေး စာကို ပြန်ကြည့်ပါ။";
+"settings.credentials.runtime_only_hint" = "ဤတစ်ကြိမ်အတွက် ဖွင့်တင်ထားသော်လည်း မသိမ်းရသေးပါ။ ဝန်ဆောင်မှု ချိတ်ဆက်နိုင်မှုနှင့် ကီးမှန်ကန်မှုကို မစမ်းသပ်ရသေးပါ။";
+"settings.credentials.operation_error_format" = "ဝန်ဆောင်မှု အထောက်အထား အပ်ဒိတ် မအောင်မြင်ပါ: %@";
+"settings.credentials.delete_confirmation_title" = "သိမ်းထားသော %@ ကီးကို ဖျက်မလား။";
+"settings.credentials.delete_confirmation_message" = "Zulangue သည် သိမ်းထားသော %@ အထောက်အထားကို ဤ Mac မှ ဖယ်ရှားပါမည်။ စက်တွင်း အသံသွင်းခြင်းကိုတော့ ဆက်သုံးနိုင်ပါသည်။";
+"settings.credentials.delete_confirmation_action" = "ကီး ဖျက်ရန်";
+"settings.credentials.reset_confirmation_title" = "သိမ်းထားသော ဝန်ဆောင်မှု အထောက်အထားအားလုံး ဖျက်မလား။";
+"settings.credentials.reset_confirmation_message" = "Zulangue သည် ၎င်း၏ သီးသန့် အထောက်အထားဖိုင်ကို ဤ Mac မှ ဖျက်ပါမည်။ ဤလုပ်ဆောင်ချက်ကို ပြန်ပြင်၍ မရပါ။";
+"settings.credentials.reset_confirmation_action" = "အထောက်အထားဖိုင် ဖျက်ရန်";
+"settings.credentials.replace" = "သိမ်းထားသောကီး အစားထိုးရန်";
+"settings.credentials.replace_accessibility_format" = "သိမ်းထားသော %@ ကီး အစားထိုးရန်";
+"settings.credentials.field_replacement_hint" = "အစားထိုးကီးကို ထည့်ပြီး မသိမ်းမီ စစ်ဆေးပါ။";
+"settings.credentials.autosave_commit_hint" = "ဤတန်ဖိုးကို အသက်ဝင်စေရန် သိမ်းရန်ကို နှိပ်ပါ၊ Return နှိပ်ပါ သို့မဟုတ် focus ကို အခြားနေရာသို့ ရွှေ့ပါ။";
+"settings.credentials.error.unsupported_version_format" = "ပံ့ပိုးမထားသော ဝန်ဆောင်မှု အထောက်အထားဖိုင် ဗားရှင်း: %d။";
+"settings.credentials.error.malformed_document" = "ဝန်ဆောင်မှု အထောက်အထားဖိုင် ပုံစံမမှန်ပါ။";
+"settings.credentials.error.unknown_accounts" = "ဝန်ဆောင်မှု အထောက်အထားဖိုင်တွင် ပံ့ပိုးမထားသော အကောင့်များ ပါဝင်နေပါသည်။";
+"settings.credentials.error.empty_credential_format" = "%@ အတွက် သိမ်းထားသော အထောက်အထား ဗလာဖြစ်နေပါသည်။";
+"settings.credentials.error.credential_too_large_format" = "%@ အတွက် သိမ်းထားသော အထောက်အထားသည် အရွယ်အစား ကန့်သတ်ချက်ကို ကျော်လွန်နေပါသည်။";
+"settings.credentials.error.file_too_large" = "ဝန်ဆောင်မှု အထောက်အထားဖိုင်သည် အရွယ်အစား ကန့်သတ်ချက်ကို ကျော်လွန်နေပါသည်။";
+"settings.credentials.error.unsafe_path_format" = "ဝန်ဆောင်မှု အထောက်အထား လမ်းကြောင်းသည် ပုံမှန် သီးသန့်ဖိုင် မဟုတ်ပါ: %@။";
+"settings.credentials.error.wrong_owner_format" = "ဝန်ဆောင်မှု အထောက်အထား လမ်းကြောင်းကို လက်ရှိ macOS အကောင့်က ပိုင်ဆိုင်ခြင်း မရှိပါ: %@။";
+"settings.credentials.error.operation_failed_format" = "ဝန်ဆောင်မှု အထောက်အထား %@ မအောင်မြင်ပါ (POSIX %d)။";
+"settings.credentials.error.core_unavailable" = "စက်တွင်း အက်ပ်ဝန်ဆောင်မှု အသင့်မဖြစ်သေးပါ။";
+"settings.credentials.error.empty_value" = "မသိမ်းမီ API ကီးတစ်ခု ထည့်ပါ။";
+"settings.credentials.error.activation_failed_format" = "သိမ်းထားသော အထောက်အထားကို %@ အတွက် အသက်သွင်း၍ မရပါ။";
+"settings.credentials.error.clear_failed_format" = "%@ အတွက် အထောက်အထားကို ဖယ်ရှား၍ မရပါ။";
+"settings.credentials.error.persistence_failed" = "ဝန်ဆောင်မှု အထောက်အထားကို သီးသန့် စက်တွင်းဖိုင်သို့ သိမ်း၍ မရပါ။";
+"settings.credentials.error.runtime_cleanup_failed" = "ဝန်ဆောင်မှု အထောက်အထား runtime ကို ဘေးကင်းစွာ ရှင်းလင်း၍ မရပါ။ အဝေးဝန်ဆောင်မှုများ မသုံးမီ Zulangue ကို ပြန်စတင်ပါ သို့မဟုတ် စက်တွင်း အက်ပ်ဝန်ဆောင်မှုကို ပြုပြင်ပါ။";
+
+/* Settings — Services & API */
+"settings.services.title" = "ဝန်ဆောင်မှုများနှင့် API";
+"settings.services.subtitle" = "ဝန်ဆောင်မှု အထောက်အထားများကို စီမံပြီး ပုံသေ ဖမ်းယူရေးအင်ဂျင်ကို ကြည့်ရှုပါ။ Notebook ဒေတာမျှဝေမှု ရွေးချယ်မှုများသည် Notebook တစ်ခုချင်းစီတွင်သာ ရှိပါသည်။";
+"settings.services.connection.title" = "ဝန်ဆောင်မှု ချိတ်ဆက်မှု";
+"settings.services.connection.subtitle" = "Zulangue သည် လက်ရှိတွင် Soniox ကိုသာ ပံ့ပိုးပါသည်။";
+"settings.services.no_egress_notice" = "ကီးသိမ်းခြင်းက ဒေတာမျှဝေမှုအသစ် ခွင့်မပြုပါ။ Notebook တစ်ခုချင်းစီက အဝေးမှ လုပ်ဆောင်မှုကို သီးခြားစီ ခွင့်ပြုရပါမည်။ Notebook က ခွင့်ပြုပြီး အထောက်အထား စောင့်နေခဲ့သော အလုပ်များသည် ကီးကို တာရှည် သိမ်းဆည်း၍ ဖွင့်တင်ပြီးမှသာ ပြန်စနိုင်ပါသည်။";
+"settings.services.engine.title" = "ဖမ်းယူရေး အင်ဂျင်";
+"settings.services.engine.subtitle" = "ဖတ်ရှုရန်သာ။ လက်ရှိ MVP အတွက် ဤအင်ဂျင် ရွေးချယ်မှုကို Rust core က ပိုင်ဆိုင်ပါသည်။";
+"settings.services.engine.service" = "ဝန်ဆောင်မှု";
+"settings.services.engine.realtime" = "အချိန်နှင့်တပြေးညီ ဖမ်းယူမှု";
+"settings.services.engine.realtime_detail" = "Notebook က အဝေးမှ လုပ်ဆောင်မှုကို အတိအလင်း ဖွင့်ထားသောအခါ တိုက်ရိုက် ဘာသာစကားစုံ စာသားပြောင်းခြင်းနှင့် ဘာသာစကား စာတန်းများအတွက် သုံးပါသည်။";
+"settings.services.engine.post_stop" = "ရပ်ပြီးနောက် လုပ်ဆောင်မှု";
+"settings.services.engine.post_stop_detail" = "ပြီးဆုံးပြီးသော စက်တွင်း အသံသွင်းချက်ကို လက်ရှိ အချိန်နှင့်တပြေးညီ အင်ဂျင်မှတစ်ဆင့် ပြန်လည် စီးဆင်းစေပါသည်။ Soniox ၏ asynchronous API ကို မခေါ်ပါ။";
+"settings.services.engine.post_stop_unavailable_detail" = "core က ရပ်ပြီးနောက် လုပ်ဆောင်မှု ဖော်ပြချက်ကို မပေးခဲ့ပါ။";
+"settings.services.engine.realtime_replay" = "အချိန်နှင့်တပြေးညီ ပြန်ဖွင့်မှု";
+"settings.services.engine.execution_unavailable" = "လုပ်ဆောင်၍ မရနိုင်ပါ";
+"settings.services.engine.fixed" = "ပုံသေ";
+"settings.services.engine.unavailable" = "အင်ဂျင် မရရှိနိုင်ပါ";
+"settings.services.engine.accessibility_format" = "ပုံသေ အချိန်နှင့်တပြေးညီ အင်ဂျင်: %@";
+"settings.services.engine.post_stop_accessibility_format" = "ပုံသေ ရပ်ပြီးနောက် အင်ဂျင်: %@။ Soniox asynchronous API မဟုတ်ဘဲ အချိန်နှင့်တပြေးညီ ပြန်ဖွင့်မှု ဖြစ်ပါသည်။";
+"settings.services.engine.post_stop_unavailable_accessibility_format" = "ရပ်ပြီးနောက် အင်ဂျင်: %@။ လုပ်ဆောင်မှု ဖော်ပြချက် မရရှိနိုင်ပါ။";
+
+/* Settings — Privacy section */
+"settings.privacy.title" = "ကိုယ်ရေးလုံခြုံမှုနှင့် လုံခြုံရေး";
+"settings.privacy.subtitle" = "စက်တွင်း ဒေတာနှင့် သိမ်းဆည်းကာလ ဆက်တင်များ။";
+"settings.privacy.level_label" = "ကိုယ်ရေးလုံခြုံမှု အဆင့်";
+"settings.privacy.standard_name" = "ပုံမှန်";
+"settings.privacy.standard_desc" = "အသံသွင်းချက်နှင့် စာသားမှတ်တမ်းကို အကန့်အသတ်မရှိ သိမ်းထားရန်";
+"settings.privacy.high_name" = "မြင့်";
+"settings.privacy.high_desc" = "စာသားပြောင်းပြီးနောက် အသံသွင်းချက်ကို အလိုအလျောက် ဖျက်ရန်";
+"settings.privacy.maximum_name" = "အမြင့်ဆုံး";
+"settings.privacy.maximum_desc" = "စာသားပြောင်းပြီးနောက် ကီးများကို အလိုအလျောက် ဖျက်ဆီးရန် (အသံသွင်းချက်ကို ပြန်လည်ရယူ၍ မရတော့ပါ)";
+"settings.privacy.save_failed" = "ကိုယ်ရေးလုံခြုံမှုအဆင့် မသိမ်းနိုင်ပါ";
+
+/* Settings — Shortcuts */
+"settings.shortcuts.title" = "ကီးဘုတ် ဖြတ်လမ်းများ";
+"settings.shortcuts.subtitle" = "Zulangue လုပ်ဆောင်ချက်များအတွက် global ဖြတ်လမ်းခလုတ်များ။";
+"settings.shortcuts.toggle_recording" = "Notebook ဖမ်းယူမှု ဖွင့်ရန်";
+"settings.shortcuts.cycle_display" = "ပြသမှုပုံစံ လှည့်ပြောင်းရန်";
+"settings.shortcuts.font_bigger" = "စာလုံးအရွယ် ချဲ့ရန်";
+"settings.shortcuts.font_smaller" = "စာလုံးအရွယ် ချုံ့ရန်";
+"settings.shortcuts.open_settings" = "ဆက်တင်များ ဖွင့်ရန်";
+
+
+/* Diagnostics section */
+"diagnostics.title" = "ပြဿနာရှာဖွေမှု";
+"diagnostics.subtitle" = "အမှားရှာရန် အသေးစိတ် toast များနှင့် log ဖိုင်ကို ဖွင့်ပါ။";
+"diagnostics.debug_mode" = "Debug မုဒ်";
+"diagnostics.debug_mode_desc" = "Loro ပြင်ဆင်မှု / mark / refresh တစ်ခုစီတိုင်း အချက်အလက် toast ပြပြီး debug.log ထဲ စာကြောင်းတစ်ကြောင်း ရေးပါသည်။ ပုံမှန်အားဖြင့် ပိတ်ထားပါသည်။";
+"diagnostics.log_file" = "Log ဖိုင်";
+"diagnostics.crash_file" = "Crash မှတ်တမ်းများ";
+"diagnostics.reveal_finder" = "Finder တွင် ပြရန်";
+"diagnostics.open_console" = "Console တွင် ဖွင့်ရန်";
+"diagnostics.clear_log" = "Log ရှင်းရန်";
+"diagnostics.no_log_file" = "— ဖိုင်မရှိပါ";
+"diagnostics.no_crash_file" = "— crash အစီရင်ခံစာ မရှိပါ";
+"diagnostics.operational.title" = "စနစ် ကျန်းမာရေး";
+"diagnostics.operational.subtitle" = "Runtime၊ ဝန်ဆောင်မှု အထောက်အထားများနှင့် ကိုယ်ရေးလုံခြုံမှု အခြေအနေ။";
+"diagnostics.operational.refresh" = "ပြန်လည်ဆန်းသစ်ရန်";
+"diagnostics.operational.not_loaded" = "စနစ်ကျန်းမာရေး အချက်အလက် မဖွင့်တင်ရသေးပါ။";
+"diagnostics.operational.provider_keys" = "ဝန်ဆောင်မှု အထောက်အထားများ";
+"diagnostics.operational.privacy" = "ကိုယ်ရေးလုံခြုံမှု";
+"diagnostics.operational.provider_key_missing" = "ဝန်ဆောင်မှု အထောက်အထား လိုအပ်သည်";
+"diagnostics.operational.provider_optional_off" = "ဝန်ဆောင်မှု အထောက်အထား သိမ်းမထားပါ။ စက်တွင်း အသံသွင်းခြင်းကိုတော့ ဆက်သုံးနိုင်ပါသည်။";
+"diagnostics.operational.provider_configured_format" = "သိမ်းထားသော ဝန်ဆောင်မှု အထောက်အထား %d ခု ဖွင့်တင်ထားသည်";
+"diagnostics.operational.provider_inactive_format" = "သိမ်းထားသော ဝန်ဆောင်မှု အထောက်အထား %d ခု ဂရုပြုရန် လိုသည်";
+"diagnostics.operational.detail.state" = "အခြေအနေ";
+"diagnostics.operational.detail.actionable" = "ဆောင်ရွက်နိုင်သည်";
+"diagnostics.operational.severity.info" = "OK";
+"diagnostics.operational.severity.warning" = "သတိပေး";
+"diagnostics.operational.severity.blocked" = "ပိတ်ဆို့ထား";
+
+/* Toast center — Floating panel */
+
+/* Toast center — Microphone permission (shared) */
+"toast.mic.denied.title" = "မိုက်ခရိုဖုန်း ခွင့်ပြုချက် ငြင်းပယ်ထားသည်";
+"toast.mic.denied.detail" = "System Settings → Privacy & Security → Microphone ကိုဖွင့်ပြီး Zulangue ကို ခွင့်ပြုပါ။";
+
+/* Toast center — Recording */
+"toast.recording.started.title" = "အသံသွင်းခြင်း စတင်ပြီ";
+"toast.recording.start_failed.title" = "အသံသွင်းခြင်း စတင်၍ မရပါ";
+"toast.recording.session_format" = "စက်ရှင် %@";
+"toast.recording.saved.detail.transcribing_format" = "%llds · နောက်ကွယ်တွင် စာသားပြောင်းနေသည်…";
+"toast.recording.saved.detail.no_transcription_format" = "%llds · စာသားမပြောင်းဘဲ သိမ်းထားသည်";
+"toast.recording.saved.detail.auto_transcribe_off_format" = "%llds · အလိုအလျောက် စာသားပြောင်းခြင်း ပိတ်ထား";
+
+/* Toast center — Generic */
+"toast.export.succeeded" = "ထုတ်ယူပြီးပါပြီ";
+"toast.export.failed" = "ထုတ်ယူမှု မအောင်မြင်ပါ";
+"toast.core.not_initialized" = "Core မစတင်ရသေးပါ";
+
+/* Toast — Document editor */
+"toast.enhance.started" = "အဆင့်မြှင့်ခြင်း စတင်ပြီ";
+"toast.enhance.failed" = "အဆင့်မြှင့်ခြင်း မအောင်မြင်ပါ";
+
+/* Sidebar (main window) */
+"sidebar.search_placeholder" = "ရှာဖွေရန်";
+"sidebar.home" = "ပင်မ";
+"sidebar.tags" = "တဂ်များ";
+"sidebar.tag.general" = "အထွေထွေ";
+"sidebar.new_tag" = "တဂ်အသစ်";
+"sidebar.trash" = "အမှိုက်ပုံး";
+"sidebar.tab.editor_dev" = "အယ်ဒီတာ (dev)";
+"sidebar.tab.editor" = "အယ်ဒီတာ";
+"sidebar.tab.settings" = "ဆက်တင်များ";
+"sidebar.local_first" = "စက်တွင်းဦးစားပေး";
+"sidebar.notebook" = "Notebook";
+"sidebar.tab.github" = "GitHub";
+"sidebar.collapse" = "ဘေးဘား ခေါက်ရန်";
+"sidebar.expand" = "ဘေးဘား ဖြန့်ရန်";
+"sidebar.new_session" = "စက်ရှင်အသစ်";
+"sidebar.back_to_home" = "ပင်မသို့ ပြန်ရန်";
+"menubar.action.quit" = "Zulangue မှ ထွက်ရန်";
+"menubar.action.quit_hint" = "အက်ပ်မှ ထွက်ပါသည်။ အသံသွင်းနေဆဲဖြစ်ပါက အတည်ပြုချက် လိုအပ်ပြီး အက်ပ်မပိတ်မီ သိမ်းဆည်းပေးပါသည်။";
+"app.quit.confirm.title" = "ဤအသံသွင်းမှု မပြီးဆုံးသေးပါ။ Zulangue မှ ထွက်မလား။";
+"app.quit.confirm.message" = "ထွက်လိုက်ပါက လက်ရှိ အသံသွင်းမှု ရပ်သွားပါမည်။ Zulangue သည် လက်ခံပြီးသား စက်တွင်းအသံကို သိမ်းဆည်းပြီး အဝေးမှ စာသားမှတ်တမ်းကို သန့်ရှင်းစွာ အဆုံးသတ်ရန် ကြိုးစားပါမည်။";
+"app.quit.confirm.cancel" = "မထွက်တော့ပါ";
+"app.quit.confirm.action" = "အသံသွင်းခြင်း ရပ်ပြီး ထွက်ရန်";
+
+/* Session list group labels */
+"library.group.today" = "ယနေ့";
+"library.group.yesterday" = "မနေ့က";
+
+/* Document editor residuals */
+"editor.tab.transcript" = "တိုက်ရိုက် စာသားမှတ်တမ်း";
+"editor.transcript.realtime.local_recording_title" = "စက်တွင်း အသံသွင်းနေသည်";
+"editor.transcript.realtime.local_recording_desc" = "အဝေးမှ အချိန်နှင့်တပြေးညီ လုပ်ဆောင်မှု ပိတ်ထားပါသည်။ အသံသည် စက်တွင်း၌သာ ရှိနေပါသည်။";
+"editor.transcript.realtime.remote_waiting_title" = "Soniox သို့ ချိတ်ဆက်နေသည်";
+"editor.transcript.realtime.remote_waiting_desc" = "အဝေးမှ အချိန်နှင့်တပြေးညီ စာသားမှတ်တမ်း မရမီအတွင်း စက်တွင်း အသံသွင်းမှု ဆက်လက် လုပ်ဆောင်နေပါသည်။";
+"editor.transcript.realtime.empty_title" = "အချိန်နှင့်တပြေးညီ စာသားမှတ်တမ်း မရှိပါ";
+"editor.transcript.realtime.empty_desc" = "ဤစက်ရှင်တွင် အချိန်နှင့်တပြေးညီ ရလဒ် မရှိပါ။";
+"editor.transcript.async.pending_title" = "နောက်ကွယ် စာသားပြောင်းခြင်း ဆောင်ရွက်နေသည်";
+"editor.transcript.async.pending_desc" = "လက်ရှိ အချိန်နှင့်တပြေးညီ အင်ဂျင်မှတစ်ဆင့် အတိအလင်း တောင်းဆိုထားသော ပြန်ဖွင့်မှု ဆက်လက် လုပ်ဆောင်နေပါသည်။";
+"editor.transcript.async.failed_title" = "နောက်ကွယ် စာသားပြောင်းခြင်း မအောင်မြင်ပါ";
+"editor.transcript.async.failed_desc" = "အဝေးမှ စာသားပြောင်းခြင်း မအောင်မြင်ပါ။ အသံသွင်းချက်ကို စက်တွင်း၌ ဆက်သိမ်းထားပါသည်။";
+"editor.transcript.async.empty_title" = "ရပ်ပြီးနောက် စာသားမှတ်တမ်း မရှိပါ";
+"editor.transcript.async.empty_desc" = "ရပ်ပြီးနောက် နောက်ကွယ် စာသားပြောင်းခြင်းကို ပုံမှန်အားဖြင့် ပိတ်ထားပြီး ဤစက်ရှင်အတွက် မတောင်းဆိုခဲ့ပါ။";
+"editor.transcript.async.projection_pending_desc" = "ဝန်ဆောင်မှုရလဒ်ကို သိမ်းထားပြီး ဤ Notebook ထဲသို့ ရေးသွင်းနေပါသည်။";
+"editor.transcript.async.projection_failed_title" = "စာသားမှတ်တမ်း ရရှိသော်လည်း Notebook ရေးသွင်းမှု မအောင်မြင်ပါ";
+"editor.transcript.async.projection_failed_desc" = "စက်တွင်း Notebook ရေးသွင်းမှုကို ပြန်ကြိုးစားပါ။ Zulangue သည် အသံသွင်းချက်ကို ထပ်မံ တင်ပို့မည် မဟုတ်ပါ။";
+"editor.transcript.async.status.loading" = "နောက်ကွယ် စာသားမှတ်တမ်း အခြေအနေ ဖွင့်တင်နေသည်";
+"editor.transcript.async.status.off" = "ရပ်ပြီးနောက် နောက်ကွယ် စာသားပြောင်းခြင်း မတောင်းဆိုထားပါ";
+"editor.transcript.async.status.provider_pending" = "အချိန်နှင့်တပြေးညီ အင်ဂျင် ပြန်ဖွင့်မှု ဆောင်ရွက်နေသည်";
+"editor.transcript.async.status.provider_failed" = "အချိန်နှင့်တပြေးညီ အင်ဂျင် ပြန်ဖွင့်မှု မအောင်မြင်ပါ";
+"editor.transcript.async.status.projection_pending" = "ဝန်ဆောင်မှုရလဒ် သိမ်းပြီး · Notebook ရေးသွင်းမှု စောင့်နေသည်";
+"editor.transcript.async.status.projecting" = "သိမ်းထားသော စာသားမှတ်တမ်းကို Notebook ထဲ ရေးသွင်းနေသည်";
+"editor.transcript.async.status.ready" = "ရပ်ပြီးနောက် စာသားမှတ်တမ်း အသင့်ဖြစ်ပြီ";
+"editor.transcript.async.status.projection_failed" = "ဝန်ဆောင်မှုရလဒ် သိမ်းပြီး · Notebook ရေးသွင်းမှု မအောင်မြင်ပါ";
+"editor.transcript.async.retry_projection" = "စက်တွင်း ရေးသွင်းမှု ပြန်ကြိုးစားရန်";
+"editor.transcript.async.retry_projection_hint" = "အသံကို ထပ်မတင်ဘဲ သိမ်းထားသော ဝန်ဆောင်မှုရလဒ်ကို ဤ Notebook ထဲ ရေးသွင်းပါသည်။";
+"editor.transcript.async.retry_failed" = "သိမ်းထားသော စာသားမှတ်တမ်းကို ရေးသွင်း၍ မရပါ";
+"menubar.recording.mode.local" = "စက်တွင်း";
+"menubar.recording.mode.remote" = "SONIOX RT5";
+"editor.title.untitled" = "ခေါင်းစဉ်မဲ့ မှတ်စု";
+"editor.footer.local_encrypted" = "ဤ Mac တွင် သိမ်းထားသည်";
+"editor.ai.simulate" = "AI အတုပြုလုပ်ရန်";
+"editor.ai.stop" = "AI ရပ်ရန်";
+"editor.relative.just_now" = "ခုလေးတင်";
+"editor.relative.min_ago" = "လွန်ခဲ့သော %lld မိနစ်";
+"editor.relative.hour_ago" = "လွန်ခဲ့သော %lld နာရီ";
+"editor.relative.day_ago" = "လွန်ခဲ့သော %lld ရက်";
+
+/* Home page */
+"home.workspace.load_failed" = "Notebook ဒေတာ ဖွင့်တင်၍ မရပါ။";
+"home.workspace.select_failed" = "ဤ Notebook ကို ဖွင့်၍ မရပါ။";
+"home.workspace.resolve_failed" = "အသံသွင်းချက်၏ Notebook ကို ရှာဖွေသတ်မှတ်၍ မရပါ။";
+"home.workspace.refresh_failed" = "Notebook ဒေတာ ပြန်လည်ဆန်းသစ်၍ မရပါ။";
+"home.workspace.load_failed.title" = "Notebook မရရှိနိုင်ပါ";
+"home.workspace.load_failed.description" = "ရှိပြီးသား ဒေတာ မပြောင်းလဲပါ။ ထပ်မံ ဖွင့်တင်ကြည့်ပါ။";
+"home.workspace.retry" = "ထပ်ကြိုးစားရန်";
+"home.notebook.current" = "လက်ရှိ NOTEBOOK";
+"home.notebook.new" = "Notebook အသစ်";
+"home.notebook.new.help" = "Notebook တစ်ခု ဖန်တီး၍ အမည်ပေးရန်";
+"home.notebook.none" = "Notebook မရှိပါ";
+"home.notebook.switch" = "Notebook ပြောင်းရန်";
+"home.notebook.description" = "အသံသွင်းခြင်း၊ ဘာသာစကားစုံ စာသားမှတ်တမ်းများ လိုက်ကြည့်ခြင်းနှင့် မှတ်စုရေးခြင်းတို့ကို တစ်နေရာတည်းတွင် ပြုလုပ်ပါ။";
+"home.notebook.description.detail" = "စက်ရှင်တိုင်း မှန်ကန်သော ပိုင်ရှင်နှင့် အကြောင်းအရာကို ထိန်းသိမ်းနိုင်ရန် အသံသွင်း ထိန်းချုပ်ခလုတ်များသည် Notebook အတွင်း၌ ရှိပါသည်။";
+"home.notebook.local_first" = "ဤ Mac တွင် သိမ်းထားသည်";
+"home.library.title" = "Notebook များ";
+"home.library.subtitle" = "အသံသွင်းရန်၊ စာသားပြောင်းရန်နှင့် စုစည်းရန် Notebook တစ်ခု ရွေးပါ။";
+"home.library.open_hint" = "Notebook ဖွင့်ရန်";
+"home.library.session_count_format" = "အသံသွင်းချက် %lld ခု";
+"home.notebook.open" = "Notebook ဖွင့်ရန်";
+"home.capture.return" = "ဖမ်းယူမှုသို့ ပြန်သွားရန်";
+"home.capture.owner_here" = "ရွေးထားသော Notebook က ပိုင်ဆိုင်သည်";
+"home.capture.owner_elsewhere" = "အခြား Notebook က ပိုင်ဆိုင်သည်";
+"home.no_notebook.title" = "ပထမဆုံး Notebook ဖန်တီးပါ";
+"home.no_notebook.description" = "Notebook သည် အသံသွင်းချက်များ၊ စာသားမှတ်တမ်းများ၊ မှတ်စုများနှင့် ရွေးချယ်နိုင်သော စာသားပြောင်း ကိုးကားချက်များကို တစ်စုတစ်စည်းတည်း ထိန်းသိမ်းပေးပါသည်။";
+"home.first_use.step1.title" = "Notebook တစ်ခု ဖန်တီးပါ";
+"home.first_use.step1.detail" = "စကားဝိုင်း အမျိုးအစားတစ်ခုအတွက် ဖိုင်တွဲတစ်ခုအဖြစ် သဘောထားပါ။";
+"home.first_use.step2.title" = "အသံသွင်းခြင်း စတင်ပါ";
+"home.first_use.step2.detail" = "Notebook ကို ဖွင့်ပါ။ အနီရောင် အသံသွင်းခလုတ်သည် ထိပ်တွင် ရှိပါသည်။";
+"home.first_use.step3.title" = "ရလဒ်ကို ပြန်ကြည့်ပါ";
+"home.first_use.step3.detail" = "ရပ်ပြီးနောက် စာတန်းများ၊ အသံနှင့် မှတ်စုများ အတူတကွ ရှိနေပါသည်။";
+"home.first_use.action" = "ကျွန်ုပ်၏ ပထမဆုံး Notebook ဖန်တီးရန်";
+"home.import.action" = "အသံ တင်သွင်းရန်";
+"home.import.in_progress" = "တင်သွင်းနေသည်…";
+"home.import.panel.title" = "Notebook ထဲသို့ အသံ တင်သွင်းရန်";
+"home.import.panel.action" = "တင်သွင်းရန်";
+"home.import.completed" = "အသံ တင်သွင်းပြီးပါပြီ";
+"home.import.failed" = "အသံ တင်သွင်း၍ မရပါ";
+"home.import.failed.detail" = "ရွေးထားသောဖိုင် မပြောင်းလဲပါ။ ဖော်မတ်ကို စစ်ဆေးပြီး ထပ်ကြိုးစားပါ။";
+"home.import.no_notebook" = "Notebook ရွေးထားခြင်း မရှိပါ";
+"home.import.no_notebook.detail" = "အသံ မတင်သွင်းမီ Notebook တစ်ခု ဖန်တီးပါ သို့မဟုတ် ရွေးပါ။";
+"home.import.already_running" = "တင်သွင်းမှု ဆောင်ရွက်နေဆဲ ဖြစ်သည်";
+"home.import.already_running.detail" = "လက်ရှိ အသံဖိုင် တင်သွင်းပြီးဆုံးသည်အထိ စောင့်ပါ။";
+"home.recent.title" = "မကြာသေးမီ အသံသွင်းချက်များ";
+"home.recent.count_format" = "ဤ Notebook တွင် %lld ခု";
+"home.recent.search_placeholder" = "ဤ Notebook တွင် ရှာရန်…";
+"home.recent.search.clear" = "ရှာဖွေမှု ရှင်းရန်";
+"home.recent.empty.title" = "ဤ Notebook တွင် အသံသွင်းချက် မရှိပါ";
+"home.recent.empty.description" = "အသံသွင်းရန် Notebook ကို ဖွင့်ပါ သို့မဟုတ် ရှိပြီးသား အသံဖိုင်ကို တင်သွင်းပါ။";
+"home.recent.no_match.title" = "ကိုက်ညီသော အသံသွင်းချက် မရှိပါ";
+"home.recent.no_match.description" = "အခြား ခေါင်းစဉ် သို့မဟုတ် စာသားမှတ်တမ်း စကားစုဖြင့် ကြိုးစားကြည့်ပါ။";
+"home.recent.row.open_hint" = "ဤအသံသွင်းချက်ကို ၎င်း၏ Notebook တွင် ဖွင့်ပါသည်";
+"home.recent.row.actions_format" = "%@ အတွက် လုပ်ဆောင်ချက်များ";
+"home.recent.row.imported" = "တင်သွင်းထား";
+"home.recent.row.untitled" = "ခေါင်းစဉ်မဲ့ အသံသွင်းချက်";
+"home.recordings.load_failed" = "အသံသွင်းချက်များ ဖွင့်တင်၍ မရပါ။";
+"home.recording.delete_failed" = "အသံသွင်းချက်ကို အမှိုက်ပုံးသို့ ရွှေ့၍ မရပါ။";
+"home.recording.bulk_delete_failed" = "အသံသွင်းချက်များကို အမှိုက်ပုံးသို့ ရွှေ့၍ မရပါ။";
+"home.create.title" = "Notebook အသစ်";
+"home.create.description" = "မည်သည့်အရာမျှ မဖန်တီးမီ အမည်ပေးပါ။";
+"home.create.name_label" = "Notebook အမည်";
+"home.create.name_placeholder" = "ဥပမာ — အပတ်စဉ် စကားဝိုင်းများ";
+"home.create.local_first" = "Notebook နှင့် ၎င်း၏ built-in တဘ် သုံးခုကို စက်တွင်း၌ ဖန်တီးပါသည်။";
+"home.create.action" = "Notebook ဖန်တီးရန်";
+"home.create.completed" = "Notebook ဖန်တီးပြီးပါပြီ";
+"home.create.failed" = "Notebook ဖန်တီး၍ မရပါ။";
+"home.create.invalid_title" = "Notebook အမည် လိုအပ်သည်";
+"home.create.invalid_title.detail" = "Notebook မဖန်တီးမီ အမည်တစ်ခု ထည့်ပါ။";
+"home.create.title_too_long" = "Notebook အမည် ရှည်လွန်းသည်";
+"resources.tab" = "အရင်းအမြစ်များ";
+"resources.tab.hint" = "ဤ Notebook ရှိ အသံသွင်းချက်တိုင်း၏ ဖိုင်များနှင့် အခြေအနေကို ကြည့်ရန်";
+"resources.title" = "အရင်းအမြစ်များ";
+"resources.subtitle" = "အသံသွင်းချက်တိုင်းအတွက် အသံ၊ စာသားမှတ်တမ်းနှင့် ကိုယ်ပိုင်မှတ်စု ဖိုင်များ။";
+"resources.load_failed" = "အရင်းအမြစ်များ ဖွင့်တင်၍ မရပါ";
+"resources.empty" = "ဤ Notebook တွင် အသံသွင်း အရင်းအမြစ် မရှိသေးပါ";
+"resources.audio" = "အသံ";
+"resources.realtime" = "တိုက်ရိုက် စာသားမှတ်တမ်း";
+"resources.async" = "Async စာသားမှတ်တမ်း";
+"resources.note" = "ကိုယ်ပိုင် မှတ်စု";
+"resources.untitled_recording" = "ခေါင်းစဉ်မဲ့ အသံသွင်းချက်";
+"resources.status.missing" = "မထုတ်လုပ်ရသေးပါ";
+"resources.status.pending" = "ဆောင်ရွက်နေသည်";
+"resources.status.ready" = "ရရှိနိုင်သည်";
+"resources.status.failed" = "မအောင်မြင်ပါ";
+"manual_note.title.placeholder" = "ဤအချိန်မှတ်စုကို အမည်ပေးပါ (ရွေးချယ်နိုင်)";
+"manual_note.title.save" = "မှတ်စုခေါင်းစဉ် သိမ်းရန်";
+"manual_note.title.save_failed" = "မှတ်စုခေါင်းစဉ် သိမ်း၍ မရပါ";
+"manual_note.created_at_format" = "ဖန်တီးချိန် %@";
+"manual_note.timeline.title" = "ကိုယ်ပိုင် မှတ်စုများ";
+"manual_note.timeline.subtitle" = "အချိန်အလိုက် စီထားသည်။ ခေါင်းစဉ်များသည် ရွေးချယ်နိုင်ပြီး ကတ်တစ်ခုစီပေါ်တွင် တိုက်ရိုက် ပြင်နိုင်ပါသည်။";
+"manual_note.timeline.load_failed" = "ကိုယ်ပိုင် မှတ်စုများ ဖွင့်တင်၍ မရပါ";
+"manual_note.timeline.empty" = "အသံသွင်းပြီးနောက် သက်ဆိုင်ရာ ကိုယ်ပိုင်မှတ်စု ဤနေရာတွင် ပေါ်လာပါမည်";
+"manual_note.timeline.open" = "မှတ်စု ဖွင့်ရန်";
+"home.create.title_too_long.detail_format" = "စာလုံး %lld လုံး သို့မဟုတ် ထို့ထက်နည်း သုံးပါ။";
+"home.search_placeholder" = "စက်ရှင်များ ရှာရန်…";
+"home.empty.no_match_title" = "ကိုက်ညီမှု မရှိပါ";
+"home.empty.no_match_desc" = "အခြား ရှာဖွေစကားလုံးဖြင့် ကြိုးစားကြည့်ပါ။";
+"home.empty.no_recording_title" = "အသံသွင်းချက် မရှိသေးပါ";
+"home.empty.no_recording_desc" = "⌃⌥R နှိပ်ပါ သို့မဟုတ် စက်ရှင်အသစ်ကို နှိပ်၍ စတင်ပါ။ ပြင်နိုင်သော မှတ်စုနှင့် စာသားမှတ်တမ်း ဤနေရာတွင် ပေါ်လာပါမည်။";
+"home.empty.start_button" = "အသံသွင်းခြင်း စတင်ရန်";
+"home.notebook.workspace.board.title" = "လုပ်ငန်းခွင်";
+"home.notebook.workspace.board.record" = "အသံသွင်းရန်";
+"home.notebook.workspace.board.tabs" = "တဘ်များ";
+"home.notebook.workspace.board.tabs.empty" = "တဘ် မရှိသေးပါ";
+"home.notebook.workspace.board.recent" = "မကြာသေးမီ";
+"home.notebook.workspace.board.recent.empty" = "စက်ရှင် မရှိသေးပါ";
+"home.notebook.workspace.board.manual" = "ကိုယ်တိုင်ရေး မှတ်စု";
+"home.action.select" = "ရွေးရန်";
+"home.selection.count_format" = "%lld ခု ရွေးထားသည်";
+"home.selection.delete_format" = "%lld ခု ဖျက်ရန်";
+"home.row.preview.pending"   = "စာသားပြောင်းနေသည်…";
+"home.row.preview.recording" = "အသံသွင်းနေသည်…";
+"home.row.preview.no_speech" = "စကားသံ မတွေ့ပါ";
+"home.row.preview.not_transcribed" = "စာသားမပြောင်းရသေးပါ";
+"home.row.preview.failed"    = "စာသားပြောင်းခြင်း မအောင်မြင်ပါ";
+"home.row.status.completed" = "အသံသွင်းမှု ပြီးဆုံးပြီ";
+"home.row.status.imported" = "အသံ တင်သွင်းပြီး";
+"library.toast.moved_to_trash" = "အမှိုက်ပုံးသို့ ရွှေ့ပြီးပါပြီ";
+"library.toast.bulk_moved_to_trash" = "စက်ရှင် %lld ခု အမှိုက်ပုံးသို့ ရွှေ့ပြီးပါပြီ";
+"doc.transcript_hd" = "Async စာသားမှတ်တမ်း";
+"editor.tab.transcript.live.hint" = "တိုက်ရိုက် စာသားမှတ်တမ်း — အသံသွင်းနေဆဲ";
+"editor.tab.transcript.hint" = "အသံ စာသားမှတ်တမ်း";
+"editor.transcript.listening" = "စကားသံကို နားထောင်နေသည်…";
+"toast.soniox.missing" = "Soniox ကီး မသတ်မှတ်ရသေးပါ";
+"toast.soniox.missing.detail" = "တိုက်ရိုက် စာသားမှတ်တမ်း ပိတ်ထားသည်။ ဆက်တင်များ → ချိတ်ဆက်မှုများ တွင် Soniox ကီး ထည့်ပါ။";
+
+
+
+/* Document editor empty states */
+"editor.empty.no_transcript_title" = "စာသားမှတ်တမ်း မရှိသေးပါ";
+"editor.empty.no_transcript_desc" = "အသံသွင်းမှု ပြီးဆုံးပြီးနောက် စာသားမှတ်တမ်း ရရှိပါမည်။";
+"editor.empty.no_transcript_desc_live" = "အလိုအလျောက် စာသားပြောင်းခြင်း ပြီးဆုံးသောအခါ စာသားမှတ်တမ်း ဤနေရာတွင် ပေါ်လာပါမည်။ သို့မဟုတ် တိုက်ရိုက်ကြည့်ရန် အသံသွင်းမှုအသစ် စတင်ပါ။";
+"editor.empty.transcript_unavailable" = "စာသားမှတ်တမ်း မရရှိနိုင်ပါ";
+"editor.empty.unavailable_title" = "အယ်ဒီတာ မရရှိနိုင်ပါ";
+"editor.empty.no_doc_title" = "ဖွင့်ထားသော စာတမ်း မရှိပါ";
+"editor.empty.no_doc_desc" = "အသံဖမ်းယူနေစဉ် တိုက်ရိုက် ပြင်ဆင်နိုင်သော စာတမ်းအသစ် ဖန်တီးရန် အသံသွင်းမှုတစ်ခု စတင်ပါ။";
+
+/* Async transcription in-progress & failed states */
+"editor.pending.transcribing" = "စာသားပြောင်းနေသည်…";
+"editor.pending.generic"      = "ဆောင်ရွက်နေသည်…";
+"editor.pending.subtitle"     = "နောက်ကွယ်တွင် လုပ်ဆောင်နေပါသည်။ အသင့်ဖြစ်သောအခါ အကြောင်းအရာ ပေါ်လာပါမည်။";
+"editor.failed.transcribing"  = "စာသားပြောင်းခြင်း မအောင်မြင်ပါ";
+"editor.failed.generic"       = "အလုပ် မအောင်မြင်ပါ";
+"editor.failed.subtitle"      = "ကွန်ရက် ခဏပြတ်တောက်မှု သို့မဟုတ် API နှုန်းကန့်သတ်မှု ဖြစ်နိုင်ပါသည်။ ထပ်ကြိုးစားရန် နှိပ်ပါ။";
+"editor.failed.retry"         = "စာသားပြောင်းခြင်း ထပ်ကြိုးစားရန်";
+"toast.retry.data_invalid.title"  = "စာသားပြောင်းခြင်း ထပ်ကြိုးစား၍ မရပါ";
+"toast.retry.data_invalid.detail" = "ဤအသံသွင်းချက် မပြည့်စုံပါ (ယခင် crash ကြောင့် ဖြစ်နိုင်ပါသည်)။ ပင်မစာရင်းမှ ဖျက်ပေးပါ။";
+
+/* Trash page */
+"trash.empty.title" = "အမှိုက်ပုံး ဗလာဖြစ်နေသည်";
+"trash.empty.desc" = "ဖျက်ထားသော အသံသွင်းချက်များကို အပြီးမဖျက်မီ ဤနေရာတွင် ရက် 30 ထားရှိပါသည်။";
+"trash.action.restore" = "ပြန်ယူရန်";
+"trash.action.purge" = "အပြီး ဖျက်ရန်";
+"trash.toast.restored" = "စက်ရှင် ပြန်ယူပြီးပါပြီ";
+"trash.toast.purged" = "အပြီး ဖျက်ပြီးပါပြီ";
+"trash.purge.confirm_title" = "အပြီး ဖျက်မလား။";
+"trash.purge.confirm_desc" = "အသံသွင်းချက်၊ စာသားမှတ်တမ်းနှင့် ဆက်စပ်ဒေတာများ ပျက်သွားပါမည်။ ပြန်ပြင်၍ မရပါ။";
+"trash.purge.confirm_button" = "အပြီး ဖျက်ရန်";
+
+/* Onboarding — residuals */
+"onboarding.brand.name" = "Zulangue";
+"onboarding.brand.tagline" = "ဘာသာစကားစုံ စကားဝိုင်းတိုင်းကို တိုက်ရိုက် နားလည်ခြင်းမှ နောက်ပိုင်း စုစည်းခြင်းအထိ တစ်နေရာတည်းတွင် ထိန်းသိမ်းပါ။";
+"onboarding.keys.testing_status" = "စမ်းသပ်နေသည်…";
+"onboarding.keys.connected_status" = "ချိတ်ဆက်ပြီး";
+
+/* Trust bar */
+"trust.version_format" = "Zulangue · v%@";
+"trust.label.aes" = "AES-256";
+"trust.label.local_secrets" = "စက်တွင်း လျှို့ဝှက်ချက်များ";
+"trust.label.remote_opt_in" = "အဝေးမှ ရွေးချယ်မှသာ";
+
+/* Menu Bar status item — popover content */
+"menubar.action.recording" = "အသံသွင်းခြင်း စတင်ရန်";
+"menubar.action.settings" = "ဆက်တင်များ";
+"updates.check" = "အပ်ဒိတ်များ စစ်ဆေးရန်…";
+"updates.unavailable.title" = "အပ်ဒိတ်များ မသတ်မှတ်ရသေးပါ";
+"updates.unavailable.message" = "ဤ development build တွင် အများသုံး update-signing ကီး မပါဝင်ပါ။";
+"updates.unavailable.dismiss" = "OK";
+"settings.updates.title" = "ဆော့ဖ်ဝဲ အပ်ဒိတ်များ";
+"settings.updates.subtitle" = "လက်မှတ်ရေးထိုးထားသော အပ်ဒိတ်များကို Sparkle မှတစ်ဆင့် လုံခြုံစွာ ပေးပို့ပါသည်။";
+"settings.updates.automatic" = "အပ်ဒိတ်များကို အလိုအလျောက် စစ်ဆေးရန်";
+"settings.updates.automatic_hint" = "Zulangue သည် လက်မှတ်ရေးထိုးထားသော အပ်ဒိတ် feed ကို အခါအားလျော်စွာ စစ်ဆေးပြီး ဗားရှင်းအသစ် ရရှိနိုင်သည့်အခါ အသိပေးပါသည်။";
+"menubar.recording.pause" = "ခဏရပ်ရန်";
+"menubar.recording.resume" = "ဆက်လုပ်ရန်";
+"menubar.recording.stop" = "ရပ်ရန်";
+"menubar.recording.live_transcript" = "တိုက်ရိုက် စာသားမှတ်တမ်း";
+"menubar.recording.open_subtitles" = "တိုက်ရိုက် စာတန်းများ ဖွင့်ရန်";
+"menubar.recording.close_subtitles" = "တိုက်ရိုက် စာတန်းများ ပိတ်ရန်";
+"menubar.recording.open_notebook" = "Notebook ဖွင့်ရန်";
+"menubar.processing.open_session" = "စက်ရှင် ဖွင့်ရန်";
+"menubar.suppressed.privacy.title" = "မိုက်ခရိုဖုန်း အသုံးပြုခွင့် ငြင်းပယ်ထားသည်";
+"menubar.suppressed.privacy.body" = "System Settings တွင် မိုက်ခရိုဖုန်း အသုံးပြုခွင့် မပေးမချင်း Zulangue အသံသွင်း၍ မရပါ။";
+"menubar.suppressed.privacy.action" = "System Settings ဖွင့်ရန်";
+"menubar.suppressed.disabled.title" = "Zulangue ခဏရပ်ထားသည်";
+"menubar.suppressed.disabled.body" = "မီနူးဘား ဝင်ရောက်မှုကို ဆက်တင်များတွင် ပိတ်ထားပါသည်။";
+"menubar.suppressed.disabled.action" = "Zulangue ဆက်တင်များ ဖွင့်ရန်";
+"menubar.suppressed.onboarding.title" = "စနစ်ထည့်သွင်းမှု ပြီးအောင်လုပ်ပါ";
+"menubar.suppressed.onboarding.body" = "Zulangue ကို ဖွင့်ရန် ပထမအကြိမ် စနစ်ထည့်သွင်းမှုကို ပြီးအောင် လုပ်ပါ။";
+"menubar.suppressed.onboarding.action" = "စနစ်ထည့်သွင်းမှု ဆက်လုပ်ရန်";
+"hud.recording.active" = "REC";
+"hud.recording.paused" = "ခဏရပ်ထား";
+"hud.a11y.recording_active_format" = "အသံသွင်းနေသည် %@";
+"hud.a11y.recording_paused_format" = "အသံသွင်းမှု ခဏရပ်ထား %@";
+
+/* DesignSystem previews (P2) */
+"preview.empty.session_title" = "စက်ရှင် မရှိသေးပါ";
+"preview.empty.session_desc" = "အသံဖိုင်ကို ဤနေရာသို့ ဆွဲချပါ သို့မဟုတ် ပထမဆုံး စက်ရှင် စတင်ရန် အသံသွင်းရန်ကို နှိပ်ပါ။";
+"preview.crosshair.blueprint" = "ပုံကြမ်း အကြောင်းအရာ";
+"preview.crosshair.hardware" = "ဟာ့ဒ်ဝဲ အကြောင်းအရာ";
+"preview.loading.rec" = "REC";
+
+
+/* Document editor */
+"editor.status.saved" = "သိမ်းပြီး";
+"editor.status.saved.local" = "စက်တွင်း";
+"editor.status.saved.loading" = "ဖွင့်တင်နေသည်";
+"editor.status.saved.pending" = "စောင့်ဆိုင်းနေသည်";
+"editor.status.saved.failed" = "မအောင်မြင်ပါ";
+"editor.status.saved.needs_attention" = "ဂရုပြုရန် လိုသည်";
+"editor.status.transcript" = "စာသားမှတ်တမ်း";
+"editor.status.transcript.live_view" = "တိုက်ရိုက်မြင်ကွင်း";
+"editor.status.transcript.available" = "ရရှိနိုင်သည်";
+"editor.status.transcript.none" = "မရှိပါ";
+"editor.status.quality" = "အရည်အသွေး";
+"editor.status.quality.good" = "ကောင်း";
+"editor.status.quality.check" = "စစ်ဆေးရန်";
+"editor.status.quality.blocked" = "ပိတ်ဆို့ထား";
+"editor.toolbar.show_sources" = "အရင်းအမြစ်များ ပြရန်";
+"editor.toolbar.show_tasks" = "အလုပ်များ ပြရန်";
+"editor.tasks.title" = "အလုပ်များ";
+"editor.tasks.count_format" = "နောက်ကွယ် အလုပ် %lld ခု";
+"editor.tasks.refresh" = "အလုပ်များ ပြန်လည်ဆန်းသစ်ရန်";
+"editor.tasks.empty" = "အလုပ် မရှိသေးပါ";
+"editor.tasks.empty.detail" = "နောက်ကွယ် စာသားပြောင်း အလုပ်များ ဤနေရာတွင် ပေါ်လာပါမည်။";
+"editor.tasks.owner_format" = "%@ ပေါ်တွင် လုပ်ဆောင်နေသည်";
+"editor.tasks.retry_format" = "ထပ်ကြိုးစားမှု %lld ကြိမ်";
+/* Accessibility labels */
+"a11y.record.stop" = "အသံသွင်းခြင်း ရပ်ရန်";
+"a11y.record.start" = "အသံသွင်းခြင်း စတင်ရန်";
+"a11y.record.hint_stop" = "လက်ရှိ အသံသွင်းမှုကို ရပ်ရန် နှစ်ချက်နှိပ်ပါ";
+"a11y.record.hint_start" = "အသံသွင်းမှုအသစ် စတင်ရန် နှစ်ချက်နှိပ်ပါ";
+"a11y.session_card" = "%@၊ %@၊ ကြာချိန် %@";
+
+/* Notebook multilingual capture */
+"common.close" = "ပိတ်ရန်";
+"capture.error.ffi_unavailable" = "Notebook ဖမ်းယူရေး ဝန်ဆောင်မှု အသင့်မဖြစ်သေးပါ။";
+"capture.error.already_active" = "အခြား Notebook ဖမ်းယူမှုတစ်ခု အသက်ဝင်နေပြီး ဖြစ်ပါသည်။";
+"capture.error.remote_required" = "ဘာသာစကား စာတန်းများအတွက် အဝေးမှ အချိန်နှင့်တပြေးညီ လုပ်ဆောင်မှု လိုအပ်ပါသည်။";
+"capture.error.context_requires_remote" = "ကိုးကားချက်များ မသုံးမီ တိုက်ရိုက် စာသားပြောင်းခြင်းကို ဖွင့်ပါ။";
+"capture.error.languages_must_differ" = "ထပ်နေခြင်းမရှိသော ဘာသာစကားများ ရွေးပါ။";
+"capture.error.context_confirmation_required" = "ဤအသံသွင်းမှုအတွက် ကိုးကားချက်များကို ဦးစွာ ပြန်ကြည့်၍ အတည်ပြုပါ။";
+"capture.error.not_active" = "အသက်ဝင်နေသော Notebook ဖမ်းယူမှု မရှိပါ။";
+"capture.error.projection_locked" = "ရေးသွင်းမှု အသင့်မဖြစ်မချင်း စာသားမှတ်တမ်းကို ဖတ်ရှုရုံသာ ရနိုင်ပါသည်။";
+"capture.error.profile_snapshot_unavailable" = "ဤအသံသွင်းမှုအတွက် သိမ်းထားသော ဖမ်းယူမှု ပရိုဖိုင် မရရှိနိုင်ပါ။";
+"capture.route.no_notebook" = "Notebook ရွေးထားခြင်း မရှိပါ";
+"capture.route.no_notebook_detail" = "ဖမ်းယူမှု မဖွင့်မီ Notebook တစ်ခု ဖန်တီးပါ သို့မဟုတ် ရွေးပါ။";
+"capture.route.unavailable" = "Notebook ဖမ်းယူမှု ဖွင့်၍ မရပါ";
+"capture.route.unavailable_detail" = "စက်တွင်း Zulangue ဝန်ဆောင်မှု အသင့်မဖြစ်သေးပါ။";
+"session.route.unavailable" = "အသံသွင်းချက် ဖွင့်၍ မရပါ";
+"session.route.unavailable_detail" = "အသံသွင်းချက် မပြောင်းလဲပါ။ ထပ်ကြိုးစားပါ။";
+"capture.open_notebook" = "Notebook ဖွင့်ရန်";
+"capture.open_notebook_hint" = "ဖမ်းယူရေး ထိန်းချုပ်ခလုတ်များကို ပိုင်ဆိုင်သော Notebook အတွင်း၌သာ ရနိုင်ပါသည်။";
+"subtitle.overlay.title" = "တိုက်ရိုက် စာတန်းများ";
+"subtitle.overlay.read_only" = "တိုက်ရိုက် စာတန်းများ · ဖတ်ရှုရန်သာ";
+"subtitle.overlay.accessibility_label" = "တိုက်ရိုက် ဘာသာစကားစုံ စာတန်းဝင်းဒိုး";
+"subtitle.overlay.language_count" = "ဘာသာစကား %lld မျိုး";
+"subtitle.overlay.waiting" = "စကားသံကို နားထောင်နေသည်…";
+"subtitle.overlay.recording_ended" = "အသံသွင်းမှု ပြီးဆုံးပြီ";
+"subtitle.overlay.font_size" = "စာတန်း အရွယ်အစား";
+"subtitle.overlay.font_smaller" = "စာတန်း ချုံ့ရန်";
+"subtitle.overlay.font_larger" = "စာတန်း ချဲ့ရန်";
+"subtitle.overlay.move_resize_hint" = "ရွှေ့ရန် ဝင်းဒိုးကို ဆွဲပါ။ အရွယ်ပြောင်းရန် အနား သို့မဟုတ် ထောင့်တစ်ခုခုကို ဆွဲပါ။";
+"subtitle.overlay.pin" = "စာတန်းများကို အပေါ်ဆုံးတွင် ထားရန်";
+"subtitle.overlay.unpin" = "စာတန်းများကို အပေါ်ဆုံးတွင် မထားတော့ရန်";
+"subtitle.overlay.pinned" = "Desktop တိုင်းတွင် အခြားဝင်းဒိုးများ အပေါ်၌ တွယ်ထားသည်";
+"subtitle.overlay.unpinned" = "မတွယ်ထားပါ";
+"subtitle.overlay.mode" = "စာတန်း မုဒ်";
+"subtitle.overlay.mode.conversation" = "နှိုင်းယှဉ်";
+"subtitle.overlay.mode.audience" = "ပရိသတ်";
+"subtitle.overlay.mode.conversation.help" = "ဘာသာစကားချင်း ပြောဆိုမှု၊ ပြန်ကြည့်မှုနှင့် နားလည်မှုအတွက် မကြာသေးမီ ပြောဆိုချက်များကို ထိန်းသိမ်းထားပါသည်။";
+"subtitle.overlay.mode.audience.help" = "နောက်ဆုံး ပြောဆိုချက်ကို အညီအမျှ ပရိသတ် ဘာသာစကား သုံးမျိုးအထိ ပြသပါသည်။";
+"capture.toolbar.start" = "အသံသွင်းခြင်း စတင်ရန်";
+"capture.toolbar.starting" = "စတင်နေသည်…";
+"capture.toolbar.start_hint" = "ရွေးထားသော ဘာသာစကားများဖြင့် အသံသွင်းခြင်းနှင့် တိုက်ရိုက် စာသားပြောင်းခြင်းကို စတင်ပါသည်။ ဝန်ဆောင်မှု ယာယီ မရရှိလျှင်လည်း အသံသွင်းမှု ဆက်လက် လုပ်ဆောင်နေပါမည်။";
+"capture.toolbar.pause" = "ခဏရပ်ရန်";
+"capture.toolbar.pause_billing" = "အဝေးချိတ်ဆက်မှုအတွက် ငွေဆက်တောင်းခံနိုင်သည်";
+"capture.toolbar.pause_billing_detail" = "ခဏရပ်ခြင်းက လက်ရှိ ပြောဆိုချက်ကို အပြီးသတ်စေသော်လည်း Soniox ချိတ်ဆက်မှုကို keepalive များဖြင့် ဆက်ထားသောကြောင့် ငွေတောင်းခံမှု ဆက်ရှိနိုင်ပါသည်။";
+"capture.toolbar.resume" = "ဆက်လုပ်ရန်";
+"capture.toolbar.stop" = "ရပ်ရန်";
+"capture.toolbar.stop_hint" = "အသံအဝင်ကို ရပ်ပါသည်။ အဝေးမှ လုပ်ဆောင်မှု အသက်ဝင်နေပါက Zulangue သည် ၎င်း၏ နောက်ဆုံး token များကိုလည်း စောင့်ပါသည်။";
+"capture.toolbar.active_other_notebook" = "အသံသွင်းမှုသည် အခြား Notebook နှင့် သက်ဆိုင်သည်";
+"capture.toolbar.subtitle_window.open" = "တိုက်ရိုက် စာတန်းများ ဖွင့်ရန်";
+"capture.toolbar.subtitle_window.close" = "တိုက်ရိုက် စာတန်းများ ပိတ်ရန်";
+"capture.toolbar.subtitle_window.hint" = "အမြဲအပေါ်ဆုံးရှိ ဘာသာစကားစုံ စာတန်းဝင်းဒိုးကို ဖွင့်ပါသည်။";
+"capture.toolbar.subtitle_window.unavailable_hint" = "တိုက်ရိုက် စာတန်းများ မဖွင့်မီ ဤ Notebook တွင် အသံသွင်းခြင်း စတင်ပါ။";
+"capture.toast.start_failed" = "အသံသွင်းခြင်း စတင်၍ မရပါ";
+"capture.toast.pause_failed" = "အသံသွင်းမှု အခြေအနေ ပြောင်း၍ မရပါ";
+"capture.toast.stop_failed" = "အသံသွင်းခြင်း ရပ်၍ မရပါ";
+"capture.toast.context_preview_failed" = "ကိုးကားချက်များ ပြန်ကြည့်၍ မရပါ";
+"capture.toast.context_load_failed" = "ကိုးကားချက်များ ဖွင့်တင်၍ မရပါ";
+"capture.toast.context_update_failed" = "ကိုးကားချက်များ အပ်ဒိတ်လုပ်၍ မရပါ";
+"capture.toast.settings_failed" = "ဖမ်းယူမှု ဆက်တင်များ သိမ်း၍ မရပါ";
+"capture.toast.edit_failed" = "စာသားမှတ်တမ်း လိုင်း အပ်ဒိတ်လုပ်၍ မရပါ";
+"capture.toast.projection_retry_failed" = "စာသားမှတ်တမ်း ရေးသွင်းမှု ထပ်ကြိုးစား၍ မရပါ";
+"capture.settings.title" = "အသံသွင်း ဆက်တင်များ";
+"capture.settings.subtitle" = "စာသားပြောင်း ကိုးကားချက်များ ထည့်ပြီး အသံသွင်းမှု ပြီးဆုံးပြီးနောက် မည်သို့ ဆောင်ရွက်မည်ကို ရွေးပါ။";
+"capture.settings.realtime_moved" = "ဘာသာစကားများနှင့် တိုက်ရိုက် စာသားပြောင်းခြင်း";
+"capture.settings.realtime_moved_detail" = "စက်ရှင် ဘာသာစကားများကို ရွေးပြီး တိုက်ရိုက် စာသားပြောင်းရန် အသံသွင်းခြင်း စတင်ရန်ကို ရွေးပါ။";
+"capture.settings.realtime_moved_action" = "အချိန်နှင့်တပြေးညီ စာသားမှတ်တမ်းသို့ သွားရန်";
+"capture.settings.tab" = "ဖမ်းယူမှု ဆက်တင်များ";
+"capture.settings.tab_hint" = "ဤ Notebook ၏ အသံသွင်းမှု၊ ဘာသာစကားနှင့် စာတန်း ဆက်တင်များကို ဖွင့်ရန်။";
+"capture.settings.notebook_scope" = "ဤတဘ်ရှိ ဆက်တင်များသည် ဤ Notebook အတွက်သာ သက်ရောက်ပါသည်။";
+"capture.settings.active_locked" = "အသံသွင်းမှု အသက်ဝင်နေပါသည်။ ၎င်း၏ ပြင်ဆင်သတ်မှတ်မှုကို ခေတ္တ ချိတ်ပိတ်ထားပြီး အသံသွင်းမှု ရပ်ပြီးမှ ဆက်တင်များ ပြောင်းနိုင်ပါသည်။";
+"capture.settings.autosave.loading" = "ဆက်တင်များ ဖွင့်တင်နေသည်…";
+"capture.settings.autosave.saving" = "သိမ်းနေသည်…";
+"capture.settings.autosave.saved" = "အလိုအလျောက် သိမ်းပြီး";
+"capture.settings.autosave.detail" = "ပြောင်းလဲမှုတိုင်း ဤ Notebook တွင် ချက်ချင်း သက်ရောက်ပါသည်။";
+"capture.settings.autosave.load_failed" = "ဆက်တင်များ ဖွင့်တင်၍ မရပါ";
+"capture.settings.autosave.save_failed" = "ပြောင်းလဲမှု မသိမ်းနိုင်ပါ";
+"capture.settings.autosave.context_review" = "ဆက်တင်များ သိမ်းပြီးပါပြီ။ ကိုးကားချက်များကို ထပ်မံ ပြန်ကြည့်ပါ";
+"capture.settings.autosave.retry" = "ထပ်ကြိုးစားရန်";
+"capture.settings.realtime.start_disclosure" = "အသံသွင်းခြင်း စတင်ရန်က ရွေးထားသော ဘာသာစကားများဖြင့် တိုက်ရိုက် စာသားပြောင်းခြင်းကို စတင်ပါသည်။ ဝန်ဆောင်မှု ယာယီ မရရှိလျှင်လည်း အသံသွင်းမှု ဆက်လက် လုပ်ဆောင်နေပါမည်။";
+"capture.settings.remote.credential.loaded_unverified" = "Soniox ကီး · သိမ်းပြီး ဖွင့်တင်ထား · မစစ်ဆေးရသေး";
+"capture.settings.remote.credential.saved_inactive" = "Soniox ကီး · သိမ်းပြီး · ဂရုပြုရန် လိုသည်";
+"capture.settings.remote.credential.runtime_only_unverified" = "Soniox ကီး · ဤတစ်ကြိမ်အတွက် ဖွင့်တင်ထား · မသိမ်း၊ မစစ်ဆေးရသေး";
+"capture.settings.remote.credential.missing" = "Soniox ကီး · မသိမ်းရသေး";
+"capture.settings.remote.credential.hint" = "ဤအချက်သည် စက်တွင်း ကီး အသင့်ဖြစ်မှုကိုသာ ဖော်ပြပါသည်။ အသံသွင်းမှုတစ်ခုအတွက် အသံမျှဝေမှုကို အသံသွင်းခြင်း စတင်ရန် နှိပ်မှသာ ခွင့်ပြုပါသည်။";
+"capture.settings.mode.title" = "တိုက်ရိုက် မုဒ်";
+"capture.settings.mode.transcription_only" = "စာသားပြောင်းခြင်းသာ";
+"capture.settings.mode.two_way" = "နှစ်လမ်းသွား ဘာသာပြန်ခြင်း";
+"capture.settings.mode.transcription_detail" = "မူရင်းဘာသာစကား စာသားမှတ်တမ်း အချိန်ဇယားတစ်ခုကို ပြပါသည်။";
+"capture.settings.mode.two_way_detail" = "ပုံသေ ဘယ်/ညာ ဘာသာစကား ကော်လံများနှင့် တိုက်ရိုက် ဘာသာပြန်ချက်ကို ပြပါသည်။";
+"capture.settings.languages.title" = "ဘာသာပြန် ကော်လံများ";
+"capture.settings.languages.detail" = "မည်သူပြောသည်ဖြစ်စေ ဘာသာစကားတစ်ခုစီသည် ၎င်းရွေးထားသော ကော်လံတွင်သာ ရှိနေပါသည်။";
+"capture.settings.languages.left" = "ဘယ်ဘက် ကော်လံ";
+"capture.settings.languages.right" = "ညာဘက် ကော်လံ";
+"capture.settings.languages.question" = "ဤစက်ရှင်တွင် မည်သည့် ဘာသာစကားများ သုံးမည်နည်း။";
+"capture.settings.languages.ordered_detail" = "ပြသလိုသော အစီအစဉ်အတိုင်း ဘာသာစကားများ ထည့်ပါ။ ရွေးထားသော ဘာသာစကားတစ်ခုစီအတွက် ကိုယ်ပိုင်ကော်လံ ရရှိပြီး ပြောသောစာသား ဦးစွာပေါ်ကာ အခြားကော်လံများ ခဏအကြာတွင် ဖြည့်သွားပါမည်။";
+"capture.settings.languages.search" = "ထည့်ရန် ဘာသာစကားများ ရှာပါ";
+"capture.settings.languages.no_results" = "မရွေးရသေးသော ဘာသာစကားများတွင် ကိုက်ညီမှု မရှိပါ။";
+"capture.settings.languages.maximum_reached" = "စက်ရှင်တစ်ခုအတွက် ဘာသာစကား သုံးမျိုးအထိသာ ရွေးနိုင်ပါသည်။";
+"capture.settings.languages.add_format" = "%@ ထည့်ရန်";
+"capture.settings.languages.move_earlier" = "ဘာသာစကားကို ရှေ့သို့ ရွှေ့ရန်";
+"capture.settings.languages.move_later" = "ဘာသာစကားကို နောက်သို့ ရွှေ့ရန်";
+"capture.settings.languages.remove" = "ဘာသာစကား ဖယ်ရန်";
+"capture.settings.two_way.detail" = "Soniox stt-rt-v5 သည် ဘာသာစကား ဦးတည်ရာ နှစ်ဖက်စလုံးကို ပုံသေကော်လံများတွင် ထိန်းထားပါသည်။";
+"capture.realtime.controls.current_title" = "လက်ရှိ အသံသွင်းမှု ပြင်ဆင်သတ်မှတ်မှု";
+"capture.realtime.controls.profile_group" = "အချိန်နှင့်တပြေးညီ အသံသွင်းမှု ပြင်ဆင်သတ်မှတ်မှု";
+"capture.realtime.controls.swap_pair" = "နောက်အသံသွင်းမှု၏ ဘာသာစကားအတွဲကို လဲလှယ်ရန်";
+"capture.realtime.controls.swap_pair_hint" = "ရှိပြီးသား စာသားမှတ်တမ်းများ မပြောင်းဘဲ နောက်အသံသွင်းမှုအတွက် ဘာသာစကား A နှင့် B ကို လဲလှယ်ပါသည်။";
+"capture.realtime.controls.review_context" = "ကိုးကားချက်များ ပြန်ကြည့်ရန်";
+"capture.settings.context.title" = "စာသားပြောင်း ကိုးကားချက်များ";
+"capture.settings.context.send" = "တိုက်ရိုက် စာသားပြောင်းခြင်းအတွက် သုံးရန်";
+"capture.settings.context.send_detail" = "ဖွင့်ထားလျှင် ဤအသံသွင်းမှုသည် ဤနေရာတွင် ပြထားသော ကိုးကားချက်များကို သုံးပါသည်။";
+"capture.settings.context.preview" = "သုံးမည့်အရာကို ပြန်ကြည့်ရန်";
+"capture.settings.context.preview_count" = "စာလုံး %lld လုံး";
+"capture.settings.context.empty" = "သုံးနိုင်သော ကိုးကားချက် မရှိသေးပါ။";
+"capture.settings.context.confirm_exact" = "ဤကိုးကားချက်များကို သုံးရန်";
+"capture.settings.context.applied" = "ဤအသံသွင်းမှုအတွက် သုံးထားသည်";
+"capture.settings.context.not_applied" = "ဤအသံသွင်းမှုအတွက် မသုံးပါ";
+"capture.settings.context.pack_detail" = "စာသားပြောင်း တိကျမှု တိုးတက်စေရန် ဝေါဟာရများ၊ လူပုဂ္ဂိုလ်များ၊ အဖွဲ့အစည်းများနှင့် စက်ရှင် နောက်ခံအကြောင်းအရာ ထည့်ပါ။";
+"capture.settings.context.packs" = "ကိုးကားချက် အတိုင်းအတာ";
+"capture.settings.context.no_packs" = "ကိုးကားချက် မရှိသေးပါ။";
+"capture.settings.context.private_pack" = "လက်ရှိ Notebook";
+"capture.settings.context.current_notebook_detail" = "ဤ Notebook တွင် သုံးသည်";
+"capture.settings.context.library_pack" = "စာကြည့်တိုက်";
+"capture.settings.context.selected" = "ပြင်ဆင်နေသည်";
+"capture.settings.context.not_selected" = "မရွေးထားပါ";
+"capture.settings.context.always_bound" = "ပုံမှန်အားဖြင့် သုံးသည်";
+"capture.settings.context.select_pack_hint" = "ဤကိုးကားချက်အစုကို ပြန်ကြည့်၍ ပြင်ဆင်ပါ။";
+"capture.settings.context.bind_pack" = "%@ ကို ဤ Notebook တွင် သုံးရန်";
+"capture.settings.context.delete_pack" = "%@ ဖျက်ရန်";
+"capture.settings.context.delete_pack_confirm" = "ဤစာကြည့်တိုက်ကို ဖျက်မလား။ ၎င်းကို သုံးနေသော Notebook တိုင်း သက်ရောက်ပါမည်။";
+"capture.settings.context.library_title" = "စာကြည့်တိုက် အမည်";
+"capture.settings.context.new_library" = "စာကြည့်တိုက် ဖန်တီးရန်";
+"capture.settings.context.copy_private" = "လက်ရှိ ကိုးကားချက်များကို စာကြည့်တိုက်သို့ သိမ်းရန်";
+"capture.settings.context.editing_pack" = "%@ ရှိ ကိုးကားချက်များ";
+"capture.settings.context.import_file" = ".txt၊ .md သို့မဟုတ် .csv တင်သွင်းရန်";
+"capture.settings.context.no_sources" = "ကိုးကားချက် တစ်ခုမျှ မထည့်ရသေးပါ။";
+"capture.settings.context.paste_title" = "ကိုးကားချက် ခေါင်းစဉ်";
+"capture.settings.context.content_kind" = "ကိုးကားချက် အမျိုးအစား";
+"capture.settings.context.kind_general" = "နောက်ခံအကြောင်းအရာ";
+"capture.settings.context.kind_terms" = "ဝေါဟာရများ";
+"capture.settings.context.kind_text" = "ကိုးကား စာသား";
+"capture.settings.context.paste_content" = "ကိုးကားစာသား ကူးထည့်ပါ";
+"capture.settings.context.import_limits" = "UTF-8 စာသား သို့မဟုတ် Markdown ကို 256 KiB အထိ၊ ဘာသာစကားနှစ်မျိုး CSV ကို အတန်း 1,000 အထိ ပံ့ပိုးပါသည်။";
+"capture.settings.context.add_paste" = "အကြောင်းအရာ ထည့်ရန်";
+"capture.settings.context.untrusted" = "ရင်းမြစ်ကို ပြန်စစ်ရန် လိုသည်";
+"capture.settings.context.delete_source" = "ရင်းမြစ် %@ ဖျက်ရန်";
+"capture.settings.context.delete_source_confirm" = "ဤကိုးကားချက်ကို ဖျက်မလား။";
+"capture.settings.context.file_picker_message" = "UTF-8 .txt/.md သို့မဟုတ် ဘာသာစကားနှစ်မျိုး ခေါင်းစီးပါ .csv ဖိုင် ရွေးပါ။";
+"capture.settings.context.local_only" = "အသံသွင်းမှု စတင်ပြီးနောက် ဤကိုးကားချက်များကို တိုက်ရိုက် စာသားပြောင်းခြင်းအတွက် သုံးနိုင်ပါသည်။";
+"capture.settings.after_stop.title" = "အသံသွင်းပြီးနောက် လုပ်ဆောင်မှု";
+"capture.settings.after_stop.engine" = "လုပ်ဆောင်နည်း";
+"capture.settings.after_stop.toggle" = "ရပ်ပြီးနောက် စာသားပြောင်းရန်";
+"capture.settings.after_stop.detail" = "အသံသွင်းမှု ရပ်ပြီးနောက် လက်ရှိ စာသားပြောင်းအင်ဂျင်က ကျန်ရှိသော စာသားပြောင်းမှုများကို အပြီးသတ်နိုင်ပါသည်။";
+"capture.settings.after_stop.unavailable_detail" = "ဤဗားရှင်းတွင် အသံသွင်းပြီးနောက် လုပ်ဆောင်မှု မရရှိနိုင်ပါ။";
+"capture.settings.after_stop.two_way_disabled" = "နှစ်လမ်းသွား ဘာသာပြန်မုဒ်တွင် မရရှိနိုင်ပါ။";
+"capture.state.recording" = "အသံသွင်းနေသည်";
+"capture.state.paused" = "ခဏရပ်ထား";
+"capture.state.draining" = "အပြီးသတ်နေသည်";
+"capture.state.audio_drain_delayed" = "စက်တွင်း အသံကို သိမ်းဆည်းနေဆဲ ဖြစ်သည်";
+"capture.state.completed" = "ပြီးဆုံးပြီ";
+"capture.state.interrupted" = "ပြတ်တောက်ခဲ့သည်";
+"capture.state.failed" = "မအောင်မြင်ပါ";
+"capture.remote.off" = "အဝေးဝန်ဆောင်မှု ပိတ်ထား";
+"capture.remote.connecting" = "အဝေးသို့ ချိတ်ဆက်နေသည်";
+"capture.remote.catching_up" = "စာတန်းများ လိုက်မီအောင် ဆောင်ရွက်နေသည်၊ %d စက္ကန့် နောက်ကျနေသည်";
+"capture.remote.live" = "အဝေးမှ တိုက်ရိုက်";
+"capture.remote.degraded" = "အဝေးဝန်ဆောင်မှု အားနည်းနေသည်";
+"capture.remote.unavailable" = "အဝေးဝန်ဆောင်မှု မရရှိနိုင်ပါ";
+"capture.projection.pending" = "ရေးသွင်းရန် စောင့်ဆိုင်းနေသည်";
+"capture.projection.projecting" = "ရေးသွင်းနေသည်";
+"capture.projection.ready" = "ပြင်ဆင်နိုင်သည်";
+"capture.projection.failed" = "ရေးသွင်းမှု မအောင်မြင်ပါ";
+"capture.transcript.accessibility_label" = "အစီအစဉ်တကျ ဘာသာစကားကော်လံ စာသားမှတ်တမ်း";
+"capture.transcript.swap" = "ဘယ်ညာ ဘာသာစကားကော်လံများ လဲလှယ်ရန်";
+"capture.transcript.swap_hint" = "memory ထဲရှိ ဘယ်ညာ ပြသမှုကိုသာ ပြောင်းပါသည်။ အသံသွင်းချက် သို့မဟုတ် စာသားမှတ်တမ်းကို ပြန်မရေးပါ။";
+"capture.transcript.realtime_accessibility_label" = "အချိန်နှင့်တပြေးညီ စာသားမှတ်တမ်း";
+"capture.transcript.engine.realtime_format" = "အချိန်နှင့်တပြေးညီ · %@";
+"capture.transcript.engine.post_stop_format" = "ရပ်ပြီးနောက် ပြန်ဖွင့်မှု · %@";
+"capture.transcript.transcription_heading" = "စာသားပြောင်း အချိန်ဇယား";
+"capture.transcript.transcription_empty_title" = "အချိန်နှင့်တပြေးညီ ပြောဆိုချက် မရှိပါ";
+"capture.transcript.transcription_empty_detail" = "စက်ရှင် စာသားမှတ်တမ်း တည်ဆောက်ရန် အဝေးမှ အချိန်နှင့်တပြေးညီ လုပ်ဆောင်မှုကို ဖွင့်ပြီး အသံသွင်းခြင်း စတင်ပါ။";
+"capture.transcript.snapshot_unavailable_detail" = "သိမ်းထားသော ပြောဆိုချက်များ ရှိနေဆဲဖြစ်သော်လည်း အသံသွင်းမှု၏ သိမ်းထားသော ဘာသာစကားကော်လံ ပြင်ဆင်သတ်မှတ်မှု မရှိသောကြောင့် ဤမြင်ကွင်းက အပြင်အဆင်ကို ရွေး၍ မရပါ။";
+"capture.transcript.read_only" = "အသံသွင်းနေစဉ် သို့မဟုတ် ရေးသွင်းနေစဉ် ဖတ်ရှုရုံသာ";
+"capture.transcript.copy" = "စာသားမှတ်တမ်း ကူးယူရန်";
+"capture.transcript.copy_hint" = "ဤစက်ရှင်၏ စာသားမှတ်တမ်းကို အချိန်တံဆိပ်များ၊ စကားပြောသူ အမည်များနှင့် ဘာသာစကား တံဆိပ်များနှင့်အတူ ကူးယူပါသည်။";
+"capture.transcript.copy_empty_hint" = "ကူးယူရန် စာသားမှတ်တမ်း အကြောင်းအရာ မရှိသေးပါ။";
+"capture.transcript.copy_finish_edit_hint" = "မကူးယူမီ လက်ရှိ ပြင်ဆင်မှုကို ပြီးအောင်လုပ်ပါ သို့မဟုတ် ပယ်ဖျက်ပါ။";
+"capture.transcript.copy_success" = "စာသားမှတ်တမ်း ကူးယူပြီးပါပြီ";
+"capture.transcript.copy_success_detail" = "ယခု အခြားအက်ပ်တစ်ခုတွင် ကူးထည့်နိုင်ပါပြီ။";
+"capture.transcript.copy_success_live_detail" = "လက်ရှိ စာသားမှတ်တမ်း snapshot ကို ကူးယူပြီးပါပြီ။ အသံသွင်းမှု ဆက်လက် လုပ်ဆောင်နေပါသည်။";
+"capture.transcript.copy_failed" = "စာသားမှတ်တမ်း ကူးယူ၍ မရပါ";
+"capture.transcript.copy_clipboard_failed" = "စနစ် clipboard ကို အပ်ဒိတ်လုပ်၍ မရပါ။";
+"capture.transcript.waiting_title" = "ပထမဆုံး ပြောဆိုချက်ကို နားထောင်နေသည်";
+"capture.transcript.waiting_detail" = "အဝေးမှ လုပ်ဆောင်မှု ပိတ်ထားလျှင် သို့မဟုတ် မရရှိလျှင်လည်း စက်တွင်း အသံသွင်းမှု ဆက်လက် လုပ်ဆောင်နေပါသည်။";
+"capture.transcript.empty_title" = "ဘာသာစကားနှစ်မျိုး ပြောဆိုချက် မရှိပါ";
+"capture.transcript.empty_detail" = "ပုံသေ ဘာသာစကားကော်လံများ ဖြည့်ရန် ဤ Notebook တွင် နှစ်လမ်းသွား ဖမ်းယူမှု စတင်ပါ။";
+"capture.transcript.active_other_session.title" = "အခြားစက်ရှင်တစ်ခု အသံသွင်းနေသည်";
+"capture.transcript.active_other_session.detail" = "ဤစာသားမှတ်တမ်းသည် အသက်ဝင်နေသော အသံသွင်းမှုနှင့် သီးခြားဖြစ်ပါသည်။ ခဏရပ်ရန် သို့မဟုတ် ရပ်ရန် ၎င်း၏ Notebook သို့ ပြန်သွားပါ။";
+"capture.transcript.outside_pair" = "လက်ရှိ ဘာသာစကားအတွဲ ပြင်ပ";
+"capture.transcript.language_pending" = "ဘာသာစကား အတည်ပြုရန် လိုသည်…";
+"capture.transcript.unselected_language" = "%@ ကို တွေ့ရှိသော်လည်း ဤစက်ရှင်အတွက် ရွေးမထားပါ";
+"capture.transcript.presentation.timeline" = "အချိန်ဇယား";
+"capture.transcript.presentation.timeline_detail" = "ပြောဆိုချက်တစ်ခုစီကို အချိန်အစီအစဉ်အတိုင်း တစ်ကြိမ်သာ ပြပါသည်။";
+"capture.transcript.presentation.language_columns" = "ဘာသာစကား ကော်လံများ";
+"capture.transcript.presentation.language_columns_detail" = "ရွေးထားသော ဘာသာစကားတိုင်းကို ၎င်း၏ အစီအစဉ်တကျ ကော်လံတွင် ထိန်းထားပါသည်။";
+"capture.transcript.waiting_lane" = "%@ ကို စောင့်နေသည်";
+"capture.transcript.failed_lane" = "%@ ကော်လံ မဖြည့်နိုင်ပါ";
+"capture.transcript.row_accessibility" = "ပြောဆိုချက် %lld";
+"capture.transcript.source_timestamp" = "မူရင်းအသံ အချိန်တံဆိပ် %@";
+"capture.speaker.fallback" = "စကားပြောသူ";
+"capture.speaker.fallback_format" = "စကားပြောသူ %@";
+"capture.speaker.manage" = "စကားပြောသူ စီမံရန်";
+"capture.speaker.chip_accessibility_format" = "စကားပြောသူ: %@";
+"capture.speaker.manage_hint" = "ဤအမည်မသိ စကားပြောသူအတွက် အမည်ပေးခြင်းနှင့် ပါဝင်သူ ချိတ်ဆက်ခြင်းကို ဖွင့်ပါသည်။";
+"capture.speaker.editor.title" = "အမည်မသိ စကားပြောသူ";
+"capture.speaker.close" = "ပိတ်ရန်";
+"capture.speaker.privacy_detail" = "အမည်မသိ ဝန်ဆောင်မှုတံဆိပ်များနှင့် သင်ထည့်သော အမည်များကိုသာ သိမ်းပါသည်။ အသံလက္ခဏာ သို့မဟုတ် အသံဒေတာများကို စက်တွင်း၌ မသိမ်းပါ။";
+"capture.speaker.session_name" = "ဤစက်ရှင်အတွက် အမည်";
+"capture.speaker.session_name_detail" = "ဤအသံသွင်းမှုတွင်သာ ဤအမည်မသိ စကားပြောသူကို အစားထိုးပါသည်။";
+"capture.speaker.session_name_placeholder" = "ဥပမာ — အိမ်ရှင်";
+"capture.speaker.save" = "သိမ်းရန်";
+"capture.speaker.clear" = "ရှင်းရန်";
+"capture.speaker.participant" = "စက်ရှင်များတစ်လျှောက် ပါဝင်သူ";
+"capture.speaker.participant_detail" = "ဤအမည်မသိ တံဆိပ်ကို သင်စီမံသော အမည်တစ်ခုနှင့် ချိတ်ပါ။ ချိတ်ဆက်မှုကို ကိုယ်တိုင်ပြုလုပ်ရပြီး ဘာသာစကားမှ ခန့်မှန်းခြင်း မရှိပါ။";
+"capture.speaker.select_participant" = "ပါဝင်သူ ရွေးရန်";
+"capture.speaker.link" = "ချိတ်ရန်";
+"capture.speaker.new_participant_placeholder" = "ပါဝင်သူအသစ် အမည်";
+"capture.speaker.create_and_link" = "ဖန်တီးပြီး ချိတ်ရန်";
+"capture.speaker.unlink" = "ပါဝင်သူ ချိတ်ဆက်မှု ဖြုတ်ရန်";
+"capture.speaker.identity_format" = "%@ · စကားပြောသူ %@ · ချိတ်ဆက်မှု %@";
+"capture.transcript.edit_lane" = "%@ လိုင်း ပြင်ရန်";
+"capture.transcript.edit_hint" = "ဤလိုင်းကို သိမ်းရန် Return နှိပ်ပါ သို့မဟုတ် focus ကို ရွှေ့ပါ။";
+"capture.transcript.retry_projection" = "ရေးသွင်းမှု ထပ်ကြိုးစားရန်";
+"capture.transcript.retry_projection_hint" = "သိမ်းထားသော ပြောဆိုချက်များကို Notebook စာသားမှတ်တမ်းထဲ ရေးသွင်းရန် ထပ်ကြိုးစားပါသည်။";
+"capture.settings.retention.title" = "အသံ သိမ်းဆည်းကာလ";
+"capture.settings.retention.subtitle" = "အသံသွင်းမှုတစ်ခုစီ စတင်ချိန်တွင် ဤ Notebook သည် ၎င်း၏ သိမ်းဆည်းမူဝါဒကို မှတ်တမ်းတင်ပါသည်။";
+"capture.settings.retention.standard.title" = "အသံ သိမ်းထားရန်";
+"capture.settings.retention.standard.detail" = "အပြီး ဖျက်ရန်ကို ရွေးသည်အထိ အသံသွင်းချက်ကို သိမ်းထားပါသည်။";
+"capture.settings.retention.high.title" = "Async စာသားမှတ်တမ်းရပြီးနောက် ဖျက်ရန်";
+"capture.settings.retention.high.detail" = "အတိအလင်း တောင်းဆိုထားသော async စာသားပြောင်းမှု အောင်မြင်ပြီးနောက် အသံနှင့် ၎င်း၏ကီးကို ဖျက်ပါသည်။";
+"capture.settings.retention.maximum.title" = "မည်သည့် စာသားမှတ်တမ်းရပြီးနောက်မဆို ဖျက်ရန်";
+"capture.settings.retention.maximum.detail" = "တာရှည်ခံ စာသားမှတ်တမ်း အချက်အလက်များ ရှိသည်နှင့် အသံနှင့် ၎င်း၏ကီးကို ချက်ချင်း ဖျက်ပါသည်။ စာသားမှတ်တမ်း မရှိပါက ဒေတာဆုံးရှုံးမှု မဖြစ်စေရန် တစ်ခုတည်းသော ရင်းမြစ်ကို သိမ်းထားပါသည်။";
