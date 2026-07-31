@@ -585,7 +585,12 @@ enum NotebookCaptureLivePresentation {
 /// word after silence is never late; only a burst is held, and the caller's
 /// trailing flush guarantees the last revision of a burst still lands.
 enum NotebookCaptureLivePreviewCoalescing {
-    static let interval: TimeInterval = 0.1
+    /// Thirty publishes a second is past the point where a reader can tell
+    /// coalescing is happening, so the words appear to flow. The window is not
+    /// removed entirely because it is the only ceiling on a provider that
+    /// revises in bursts; without it a pathological run of revisions has
+    /// nothing standing between it and the compositor.
+    static let interval: TimeInterval = 1.0 / 30.0
 
     enum Decision: Equatable {
         case publishNow
@@ -640,12 +645,15 @@ protocol NotebookCaptureClienting: AnyObject {
         text: String,
         contentKind: String
     ) throws -> NotebookContextPackSourceDTO
-    func importContextPackFile(
+    func exportContextPack(
         notebookId: String,
         packId: String,
-        path: String,
-        contentKind: String
-    ) throws -> NotebookContextPackSourceDTO
+        destinationPath: String
+    ) throws -> UInt32
+    func importContextPack(
+        sourcePath: String,
+        titleOverride: String?
+    ) throws -> NotebookContextPackDTO
     func deleteContextPackSource(notebookId: String, sourceId: String) throws -> Bool
     func deleteLibraryContextPack(packId: String, expectedRevision: UInt64) throws -> Bool
     func startNotebookCaptureSession(
@@ -1036,17 +1044,25 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
         ))
     }
 
-    func importContextPackFile(
+    func exportContextPack(
         notebookId: String,
         packId: String,
-        path: String,
-        contentKind: String
-    ) throws -> NotebookContextPackSourceDTO {
-        Self.map(try requireCore().importContextPackFile(
+        destinationPath: String
+    ) throws -> UInt32 {
+        try requireCore().exportContextPack(
             notebookId: notebookId,
             packId: packId,
-            path: path,
-            contentKind: contentKind
+            destinationPath: destinationPath
+        )
+    }
+
+    func importContextPack(
+        sourcePath: String,
+        titleOverride: String?
+    ) throws -> NotebookContextPackDTO {
+        Self.map(try requireCore().importContextPack(
+            sourcePath: sourcePath,
+            titleOverride: titleOverride
         ))
     }
 
@@ -1761,12 +1777,18 @@ final class UnavailableNotebookCaptureClient: NotebookCaptureClienting {
         throw NotebookCaptureClientError.ffiUnavailable
     }
 
-    func importContextPackFile(
+    func exportContextPack(
         notebookId: String,
         packId: String,
-        path: String,
-        contentKind: String
-    ) throws -> NotebookContextPackSourceDTO {
+        destinationPath: String
+    ) throws -> UInt32 {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
+    func importContextPack(
+        sourcePath: String,
+        titleOverride: String?
+    ) throws -> NotebookContextPackDTO {
         throw NotebookCaptureClientError.ffiUnavailable
     }
 
@@ -1971,7 +1993,8 @@ enum NotebookCaptureHistoryPolicy {
     static func laneProjection(
         for utterance: NotebookCaptureUtteranceDTO,
         selectedLanguages: [String],
-        commonCaptionLanguage: String?
+        commonCaptionLanguage: String?,
+        provisionalSourceLanguage: String? = nil
     ) -> NotebookCaptureLaneProjection {
         _ = commonCaptionLanguage
         let languages = orderedLanguages(selectedLanguages)
@@ -2046,11 +2069,38 @@ enum NotebookCaptureHistoryPolicy {
         let hasVisibleLaneText = lanes.contains {
             $0.text?.isEmpty == false
         }
+
+        // A line the provider has not yet tagged still belongs in a column.
+        // Spilling it across the full canvas and snapping it into place once
+        // the tag arrives makes the layout jump under the audience, which is
+        // worse than briefly borrowing a column: a speaker rarely changes
+        // language between sentences, so the words nearly always land where
+        // they will stay.
+        let borrowedLane = utterance.hasSourceLane
+            && sourceLanguageIsPending
+            && hasVisibleLaneText == false
+            ? normalizedLanguage(provisionalSourceLanguage).flatMap({
+                languages.contains($0) ? $0 : nil
+            }) ?? languages.first
+            : nil
+        let projectedLanes = borrowedLane.map { borrowed in
+            lanes.map { lane in
+                lane.language == borrowed
+                    ? NotebookCaptureLanguageLane(
+                        language: lane.language,
+                        text: utterance.sourceText,
+                        missingLaneState: .unavailable
+                    )
+                    : lane
+            }
+        } ?? lanes
+
         return NotebookCaptureLaneProjection(
-            lanes: lanes,
+            lanes: projectedLanes,
             pendingLanguage: utterance.hasSourceLane
                 && sourceLanguageIsPending
                 && hasVisibleLaneText == false
+                && borrowedLane == nil
                 ? utterance.sourceText
                 : nil,
             unselectedLanguageText: utterance.hasSourceLane
@@ -3199,20 +3249,32 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         try loadContextSources(notebookId: notebookId, packId: packId)
     }
 
-    func importContextFile(
+    /// Writes the whole Pack to one shareable file. The file is plaintext, so
+    /// the caller must have asked for this explicitly.
+    @discardableResult
+    func exportContextPack(
         notebookId: String,
         packId: String,
-        path: String,
-        contentKind: String
-    ) throws {
-        _ = try client.importContextPackFile(
+        destinationPath: String
+    ) throws -> UInt32 {
+        try client.exportContextPack(
             notebookId: notebookId,
             packId: packId,
-            path: path,
-            contentKind: contentKind
+            destinationPath: destinationPath
         )
+    }
+
+    /// Loads a Pack file into a brand-new Library Pack and selects it.
+    @discardableResult
+    func importContextPack(
+        notebookId: String,
+        sourcePath: String
+    ) throws -> NotebookContextPackDTO {
+        let pack = try client.importContextPack(sourcePath: sourcePath, titleOverride: nil)
         invalidateContextPreview()
-        try loadContextSources(notebookId: notebookId, packId: packId)
+        try loadContextPacks(notebookId: notebookId)
+        try selectContextPack(pack.id, notebookId: notebookId)
+        return pack
     }
 
     func deleteContextSource(notebookId: String, sourceId: String, packId: String) throws {
@@ -3893,8 +3955,27 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         NotebookCaptureHistoryPolicy.laneProjection(
             for: utterance,
             selectedLanguages: selectedLanguages,
-            commonCaptionLanguage: commonCaptionLanguage
+            commonCaptionLanguage: commonCaptionLanguage,
+            provisionalSourceLanguage: provisionalSourceLanguage
         )
+    }
+
+    /// The most recent language the provider actually identified in this
+    /// session, used to place a line that arrives tagged `und`.
+    ///
+    /// This reads the durable rows rather than the live preview: a committed
+    /// language is a settled fact, while a preview row can still be the very
+    /// `und` line being placed. The scan runs backwards and almost always
+    /// stops on the first row, because the immediately preceding sentence is
+    /// normally tagged.
+    private var provisionalSourceLanguage: String? {
+        for utterance in utterances.reversed() where utterance.hasSourceLane {
+            let language = utterance.sourceLanguage.lowercased()
+            if language.isEmpty == false, language != "und" {
+                return language
+            }
+        }
+        return nil
     }
 
     private var captureLanguageSummary: String {

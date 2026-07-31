@@ -15,10 +15,11 @@ pub mod session_query;
 
 pub use context_pack_store::{
     BoundContextPack, ContextCompilation, ContextContentKind, ContextOmission,
-    ContextOmissionReason, ContextPackRecord, ContextPackScope, ContextPackSourceRecord,
-    ContextPackStore, ContextPackStoreError, ContextReceipt, ContextReceiptSource,
-    ContextSourceFormat, NewContextSource, SonioxContext, SonioxGeneralContext,
-    SonioxTranslationTerm, CONTEXT_CSV_MAX_CELL_SCALARS, CONTEXT_CSV_MAX_ROWS,
+    ContextOmissionReason, ContextPackDocument, ContextPackDocumentSource, ContextPackRecord,
+    ContextPackScope, ContextPackSourceRecord, ContextPackStore, ContextPackStoreError,
+    ContextReceipt, ContextReceiptSource, ContextSourceFormat, NewContextSource, SonioxContext,
+    SonioxGeneralContext, SonioxTranslationTerm, CONTEXT_CSV_MAX_CELL_SCALARS,
+    CONTEXT_CSV_MAX_ROWS, CONTEXT_PACK_DOCUMENT_MAX_BYTES, CONTEXT_PACK_DOCUMENT_SCHEMA,
     CONTEXT_TEXT_MAX_BYTES, SONIOX_CONTEXT_MAX_SCALARS,
 };
 pub use diagnostics_projection::{

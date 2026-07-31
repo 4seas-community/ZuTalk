@@ -882,7 +882,8 @@
 "capture.settings.context.create_library" = "สร้าง";
 "capture.settings.context.copy_private" = "บันทึกข้อมูลอ้างอิงปัจจุบันไปยังคลัง";
 "capture.settings.context.editing_pack" = "ข้อมูลอ้างอิงใน %@";
-"capture.settings.context.import_file" = "นำเข้า .txt, .md หรือ .csv";
+"capture.settings.context.import_pack" = "นำเข้าคลังข้อมูล";
+"capture.settings.context.export_pack" = "ส่งออก";
 "capture.settings.context.no_sources" = "ยังไม่ได้เพิ่มข้อมูลอ้างอิงใด ๆ";
 "capture.settings.context.paste_title" = "ชื่อข้อมูลอ้างอิง";
 "capture.settings.context.content_kind" = "ประเภทข้อมูลอ้างอิง";
@@ -890,12 +891,15 @@
 "capture.settings.context.kind_terms" = "คำศัพท์";
 "capture.settings.context.kind_text" = "ข้อความอ้างอิง";
 "capture.settings.context.paste_content" = "วางข้อความอ้างอิง";
-"capture.settings.context.import_limits" = "รองรับข้อความ UTF-8 หรือ Markdown ขนาดไม่เกิน 256 KiB และ CSV สองภาษาไม่เกิน 1,000 แถว";
+"capture.settings.context.import_limits" = "รองรับข้อความ UTF-8 หรือ Markdown ขนาดไม่เกิน 256 KiB";
 "capture.settings.context.add_paste" = "เพิ่มเนื้อหา";
 "capture.settings.context.untrusted" = "แหล่งที่มาต้องตรวจทาน";
 "capture.settings.context.delete_source" = "ลบแหล่งที่มา %@";
 "capture.settings.context.delete_source_confirm" = "ลบข้อมูลอ้างอิงนี้หรือไม่";
-"capture.settings.context.file_picker_message" = "เลือกไฟล์ .txt/.md แบบ UTF-8 หรือไฟล์ .csv ที่มีส่วนหัวเป็นสองภาษา";
+"capture.settings.context.export_pack_message" = "บันทึกคลังข้อมูลนี้เป็นไฟล์เดียวที่แชร์ได้ ไฟล์เป็นข้อความธรรมดาและไม่ได้รับการปกป้องด้วยกุญแจของคลังข้อมูลอีกต่อไป";
+"capture.settings.context.export_pack_done" = "ส่งออกแล้ว %ld รายการ";
+"capture.settings.context.import_pack_message" = "เลือกไฟล์คลังข้อมูล Zulangue (.zulangue-pack.json)";
+"capture.settings.context.import_pack_done" = "นำเข้าคลังข้อมูล “%@” แล้ว";
 "capture.settings.context.local_only" = "หลังเริ่มบันทึกแล้ว ข้อมูลอ้างอิงเหล่านี้สามารถใช้สำหรับการถอดเสียงสดได้";
 "capture.settings.after_stop.title" = "การประมวลผลหลังการบันทึก";
 "capture.settings.after_stop.engine" = "วิธีการประมวลผล";

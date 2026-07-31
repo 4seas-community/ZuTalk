@@ -881,7 +881,8 @@
 "capture.settings.context.create_library" = "Crear";
 "capture.settings.context.copy_private" = "Guardar las referencias actuales en la biblioteca";
 "capture.settings.context.editing_pack" = "Referencias en %@";
-"capture.settings.context.import_file" = "Importar .txt, .md o .csv";
+"capture.settings.context.import_pack" = "Importar una biblioteca";
+"capture.settings.context.export_pack" = "Exportar";
 "capture.settings.context.no_sources" = "Aún no se ha agregado material de referencia.";
 "capture.settings.context.paste_title" = "Título de la referencia";
 "capture.settings.context.content_kind" = "Tipo de referencia";
@@ -889,12 +890,15 @@
 "capture.settings.context.kind_terms" = "Términos";
 "capture.settings.context.kind_text" = "Texto de referencia";
 "capture.settings.context.paste_content" = "Pegar texto de referencia";
-"capture.settings.context.import_limits" = "Admite texto UTF-8 o Markdown de hasta 256 KiB y CSV bilingüe de hasta 1.000 filas.";
+"capture.settings.context.import_limits" = "Admite texto UTF-8 o Markdown de hasta 256 KiB.";
 "capture.settings.context.add_paste" = "Agregar contenido";
 "capture.settings.context.untrusted" = "La fuente requiere revisión";
 "capture.settings.context.delete_source" = "Eliminar la fuente %@";
 "capture.settings.context.delete_source_confirm" = "¿Eliminar esta referencia?";
-"capture.settings.context.file_picker_message" = "Elija un archivo .txt/.md en UTF-8 o un .csv con encabezado de dos idiomas.";
+"capture.settings.context.export_pack_message" = "Guarde esta biblioteca como un único archivo para compartir. El archivo está en texto plano y ya no está protegido por la clave de la biblioteca.";
+"capture.settings.context.export_pack_done" = "Se exportaron %ld elementos.";
+"capture.settings.context.import_pack_message" = "Elija un archivo de biblioteca de Zulangue (.zulangue-pack.json).";
+"capture.settings.context.import_pack_done" = "Se importó la biblioteca «%@».";
 "capture.settings.context.local_only" = "Cuando comience la grabación, estas referencias podrán usarse para la transcripción en vivo.";
 "capture.settings.after_stop.title" = "Procesamiento tras la grabación";
 "capture.settings.after_stop.engine" = "Método de procesamiento";

@@ -1922,18 +1922,31 @@ struct NotebookCaptureSettingsView: View {
                 }
             }
 
-            Button {
-                isCreatingLibrary = true
-            } label: {
-                Label(
-                    String(localized: "capture.settings.context.new_library"),
-                    systemImage: "plus"
-                )
-                .font(.caption)
-            }
-            .buttonStyle(.bordered)
-            .popover(isPresented: $isCreatingLibrary, arrowEdge: .bottom) {
-                libraryCreationPopover
+            HStack(spacing: Spacing.sm) {
+                Button {
+                    isCreatingLibrary = true
+                } label: {
+                    Label(
+                        String(localized: "capture.settings.context.new_library"),
+                        systemImage: "plus"
+                    )
+                    .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .popover(isPresented: $isCreatingLibrary, arrowEdge: .bottom) {
+                    libraryCreationPopover
+                }
+
+                Button {
+                    chooseContextPackToImport()
+                } label: {
+                    Label(
+                        String(localized: "capture.settings.context.import_pack"),
+                        systemImage: "square.and.arrow.down"
+                    )
+                    .font(.caption)
+                }
+                .buttonStyle(.bordered)
             }
         }
     }
@@ -2049,10 +2062,17 @@ struct NotebookCaptureSettingsView: View {
                     .font(.captionMedium)
                     .foregroundColor(.bpLine)
                     Spacer()
-                    Button(String(localized: "capture.settings.context.import_file")) {
-                        chooseContextFile(packId: pack.id)
+                    Button {
+                        exportContextPack(pack)
+                    } label: {
+                        Label(
+                            String(localized: "capture.settings.context.export_pack"),
+                            systemImage: "square.and.arrow.up"
+                        )
+                        .font(.caption)
                     }
                     .buttonStyle(.bordered)
+                    .disabled(capture.contextSources.isEmpty)
                 }
 
                 if capture.contextSources.isEmpty {
@@ -2432,23 +2452,49 @@ struct NotebookCaptureSettingsView: View {
         }
     }
 
-    private func chooseContextFile(packId: String) {
+    /// Writes the selected Pack out as one shareable file. The export leaves
+    /// the Pack's encryption boundary, so the save panel says so plainly
+    /// rather than burying it.
+    private func exportContextPack(_ pack: NotebookContextPackDTO) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType.json]
+        panel.nameFieldStringValue = "\(contextPackDisplayTitle(pack)).zulangue-pack.json"
+        panel.message = String(localized: "capture.settings.context.export_pack_message")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let count = try capture.exportContextPack(
+                notebookId: notebookId,
+                packId: pack.id,
+                destinationPath: url.path
+            )
+            ToastCenter.shared.success(String(
+                format: String(localized: "capture.settings.context.export_pack_done"),
+                Int(count)
+            ))
+        } catch {
+            showContextError(error)
+        }
+    }
+
+    /// Loads a Pack file into a brand-new Library Pack. The new Pack gets its
+    /// own ID and its own key; nothing is merged into an existing Pack.
+    private func chooseContextPackToImport() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = ["txt", "md", "csv"].compactMap {
-            UTType(filenameExtension: $0)
-        }
-        panel.message = String(localized: "capture.settings.context.file_picker_message")
+        panel.allowedContentTypes = [UTType.json]
+        panel.message = String(localized: "capture.settings.context.import_pack_message")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try capture.importContextFile(
+            let pack = try capture.importContextPack(
                 notebookId: notebookId,
-                packId: packId,
-                path: url.path,
-                contentKind: contextContentKind
+                sourcePath: url.path
             )
             resetContextEgressConsent()
+            ToastCenter.shared.success(String(
+                format: String(localized: "capture.settings.context.import_pack_done"),
+                pack.title
+            ))
         } catch {
             showContextError(error)
         }

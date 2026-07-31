@@ -882,7 +882,8 @@
 "capture.settings.context.create_library" = "创建";
 "capture.settings.context.copy_private" = "保存当前资料到资料库";
 "capture.settings.context.editing_pack" = "%@ 的参考资料";
-"capture.settings.context.import_file" = "导入 .txt、.md 或 .csv";
+"capture.settings.context.import_pack" = "导入资料库";
+"capture.settings.context.export_pack" = "导出";
 "capture.settings.context.no_sources" = "还没有添加参考资料。";
 "capture.settings.context.paste_title" = "资料标题";
 "capture.settings.context.content_kind" = "资料类型";
@@ -890,12 +891,15 @@
 "capture.settings.context.kind_terms" = "术语";
 "capture.settings.context.kind_text" = "参考文本";
 "capture.settings.context.paste_content" = "粘贴参考内容";
-"capture.settings.context.import_limits" = "支持 UTF-8 文本或 Markdown（最大 256 KiB），以及双语 CSV（最多 1,000 行）。";
+"capture.settings.context.import_limits" = "支持 UTF-8 文本或 Markdown（最大 256 KiB）。";
 "capture.settings.context.add_paste" = "添加内容";
 "capture.settings.context.untrusted" = "来源待确认";
 "capture.settings.context.delete_source" = "删除来源 %@";
 "capture.settings.context.delete_source_confirm" = "要删除这份参考资料吗？";
-"capture.settings.context.file_picker_message" = "选择 UTF-8 .txt/.md 文件，或表头为两个语言代码的 .csv 文件。";
+"capture.settings.context.export_pack_message" = "把这个资料库存成一个可分享的文件。文件是明文，不再受资料库密钥保护。";
+"capture.settings.context.export_pack_done" = "已导出 %ld 项内容。";
+"capture.settings.context.import_pack_message" = "选择一个 Zulangue 资料库文件（.zulangue-pack.json）。";
+"capture.settings.context.import_pack_done" = "已导入资料库「%@」。";
 "capture.settings.context.local_only" = "开始录音后，可将这些资料用于实时转录。";
 "capture.settings.after_stop.title" = "录音后处理";
 "capture.settings.after_stop.engine" = "处理方式";

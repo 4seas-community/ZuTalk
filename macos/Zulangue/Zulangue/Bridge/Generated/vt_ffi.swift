@@ -833,6 +833,13 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
 
     func deleteLibraryContextPack(packId: String, expectedRevision: UInt64) throws  -> Bool
 
+    /**
+     * Writes a whole Context Pack to one shareable JSON file. The file is
+     * plaintext — it has left the Pack's encryption boundary — so this only
+     * runs on an explicit user export.
+     */
+    func exportContextPack(notebookId: String, packId: String, destinationPath: String) throws  -> UInt32
+
     func getNotebookCaptureEngineDescriptor()  -> FfiNotebookCaptureEngineDescriptor
 
     func getNotebookCaptureProfile(notebookId: String) throws  -> FfiNotebookCaptureProfile
@@ -844,7 +851,11 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      */
     func getNotebookCaptureSessionEvent(sessionId: String) throws  -> FfiNotebookCaptureEvent
 
-    func importContextPackFile(notebookId: String, packId: String, path: String, contentKind: String) throws  -> FfiContextPackSourceInfo
+    /**
+     * Reads a Pack file exported by `export_context_pack` and materializes it
+     * as a new Library Pack with a fresh ID and a fresh key.
+     */
+    func importContextPack(sourcePath: String, titleOverride: String?) throws  -> FfiContextPackInfo
 
     func importContextPackText(notebookId: String, packId: String, title: String, text: String, contentKind: String) throws  -> FfiContextPackSourceInfo
 
@@ -1590,6 +1601,22 @@ open func deleteLibraryContextPack(packId: String, expectedRevision: UInt64)thro
 })
 }
 
+    /**
+     * Writes a whole Context Pack to one shareable JSON file. The file is
+     * plaintext — it has left the Pack's encryption boundary — so this only
+     * runs on an explicit user export.
+     */
+open func exportContextPack(notebookId: String, packId: String, destinationPath: String)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_export_context_pack(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),
+        FfiConverterString.lower(packId),
+        FfiConverterString.lower(destinationPath),$0
+    )
+})
+}
+
 open func getNotebookCaptureEngineDescriptor() -> FfiNotebookCaptureEngineDescriptor  {
     return try!  FfiConverterTypeFfiNotebookCaptureEngineDescriptor_lift(try! rustCall() {
     uniffi_vt_ffi_fn_method_zulanguecore_get_notebook_capture_engine_descriptor(
@@ -1621,14 +1648,16 @@ open func getNotebookCaptureSessionEvent(sessionId: String)throws  -> FfiNoteboo
 })
 }
 
-open func importContextPackFile(notebookId: String, packId: String, path: String, contentKind: String)throws  -> FfiContextPackSourceInfo  {
-    return try  FfiConverterTypeFfiContextPackSourceInfo_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zulanguecore_import_context_pack_file(
+    /**
+     * Reads a Pack file exported by `export_context_pack` and materializes it
+     * as a new Library Pack with a fresh ID and a fresh key.
+     */
+open func importContextPack(sourcePath: String, titleOverride: String?)throws  -> FfiContextPackInfo  {
+    return try  FfiConverterTypeFfiContextPackInfo_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_import_context_pack(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(notebookId),
-        FfiConverterString.lower(packId),
-        FfiConverterString.lower(path),
-        FfiConverterString.lower(contentKind),$0
+        FfiConverterString.lower(sourcePath),
+        FfiConverterOptionString.lower(titleOverride),$0
     )
 })
 }
@@ -7502,6 +7531,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_delete_library_context_pack() != 51560) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_export_context_pack() != 22871) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_get_notebook_capture_engine_descriptor() != 63537) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7511,7 +7543,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_get_notebook_capture_session_event() != 35126) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_import_context_pack_file() != 49755) {
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_import_context_pack() != 16136) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_import_context_pack_text() != 14394) {

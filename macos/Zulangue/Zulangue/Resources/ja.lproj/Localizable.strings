@@ -870,7 +870,8 @@
 "capture.settings.context.create_library" = "作成";
 "capture.settings.context.copy_private" = "現在の資料をライブラリに保存";
 "capture.settings.context.editing_pack" = "%@ の参考資料";
-"capture.settings.context.import_file" = ".txt、.md、.csv を読み込む";
+"capture.settings.context.import_pack" = "ライブラリを読み込む";
+"capture.settings.context.export_pack" = "書き出す";
 "capture.settings.context.no_sources" = "参考資料はまだ追加されていません。";
 "capture.settings.context.paste_title" = "資料のタイトル";
 "capture.settings.context.content_kind" = "資料の種類";
@@ -878,12 +879,15 @@
 "capture.settings.context.kind_terms" = "用語";
 "capture.settings.context.kind_text" = "参考テキスト";
 "capture.settings.context.paste_content" = "参考内容を貼り付け";
-"capture.settings.context.import_limits" = "UTF-8 テキストまたは Markdown は 256 KiB まで、対訳 CSV は 1,000 行まで対応します。";
+"capture.settings.context.import_limits" = "UTF-8 テキストまたは Markdown は 256 KiB まで対応します。";
 "capture.settings.context.add_paste" = "内容を追加";
 "capture.settings.context.untrusted" = "出典を要確認";
 "capture.settings.context.delete_source" = "ソース %@ を削除";
 "capture.settings.context.delete_source_confirm" = "この参考資料を削除しますか？";
-"capture.settings.context.file_picker_message" = "UTF-8 の .txt/.md、または言語コード 2 列の .csv を選択してください。";
+"capture.settings.context.export_pack_message" = "このライブラリを共有できる 1 つのファイルとして保存します。ファイルは平文で、ライブラリの鍵では保護されません。";
+"capture.settings.context.export_pack_done" = "%ld 件を書き出しました。";
+"capture.settings.context.import_pack_message" = "Zulangue のライブラリファイル（.zulangue-pack.json）を選択してください。";
+"capture.settings.context.import_pack_done" = "ライブラリ「%@」を読み込みました。";
 "capture.settings.context.local_only" = "録音開始後、この資料をリアルタイム文字起こしに使用できます。";
 "capture.settings.after_stop.title" = "録音後の処理";
 "capture.settings.after_stop.engine" = "処理方法";

@@ -28,9 +28,9 @@ use vt_store::notebook_capture_store::{
     UtteranceVariantRole, UtteranceVariantState,
 };
 use vt_store::{
-    ContextCompilation, ContextContentKind, ContextOmissionReason, ContextPackRecord,
-    ContextPackScope, ContextPackSourceRecord, ContextPackStore, ContextReceipt,
-    ContextSourceFormat, NewContextSource,
+    ContextCompilation, ContextContentKind, ContextOmissionReason, ContextPackDocument,
+    ContextPackRecord, ContextPackScope, ContextPackSourceRecord, ContextPackStore, ContextReceipt,
+    ContextSourceFormat, NewContextSource, CONTEXT_PACK_DOCUMENT_MAX_BYTES,
 };
 use vt_stt::{
     soniox_stream_context_json, ContextConfig, SonioxStreamClient, SonioxStreamRuntime, SttConfig,
@@ -42,11 +42,6 @@ use crate::task_worker::{
     reconcile_capture_async_task_receipt_on_startup, StartupCaptureAsyncReceiptOutcome,
 };
 use crate::{CoreError, ZulangueCore};
-
-const CONTEXT_TEXT_FILE_MAX_BYTES: u64 = 256 * 1024;
-// 1,000 rows × two 256-scalar cells at four UTF-8 bytes/scalar, plus CSV
-// delimiters and headers. The semantic row/cell limits remain authoritative.
-const CONTEXT_CSV_FILE_MAX_BYTES: u64 = 2 * 1024 * 1024 + 16 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum FfiNotebookCaptureMode {
@@ -4444,52 +4439,42 @@ impl ZulangueCore {
             .map_err(store_error)
     }
 
-    pub fn import_context_pack_file(
+    /// Writes a whole Context Pack to one shareable JSON file. The file is
+    /// plaintext — it has left the Pack's encryption boundary — so this only
+    /// runs on an explicit user export.
+    pub fn export_context_pack(
         &self,
         notebook_id: String,
         pack_id: String,
-        path: String,
-        content_kind: String,
-    ) -> Result<FfiContextPackSourceInfo, CoreError> {
+        destination_path: String,
+    ) -> Result<u32, CoreError> {
         require_context_pack_access(&self.context_pack_store, &notebook_id, &pack_id)?;
-        let path = std::path::PathBuf::from(path);
-        let extension = path
-            .extension()
-            .and_then(|value| value.to_str())
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        let (format, kind) = match extension.as_str() {
-            "txt" => (
-                ContextSourceFormat::Text,
-                parse_context_kind(&content_kind)?,
-            ),
-            "md" => (
-                ContextSourceFormat::Markdown,
-                parse_context_kind(&content_kind)?,
-            ),
-            "csv" => (
-                ContextSourceFormat::TranslationCsv,
-                ContextContentKind::TranslationTerms,
-            ),
-            _ => {
-                return Err(CoreError::ValidationFailed {
-                    message: "Context Pack files must be UTF-8 .txt, .md, or bilingual .csv"
-                        .to_string(),
-                })
+        let document = self
+            .context_pack_store
+            .export_pack_document(&pack_id)
+            .map_err(store_error)?;
+        let serialized =
+            serde_json::to_string_pretty(&document).map_err(|error| CoreError::InternalError {
+                message: format!("serialize Context Pack document: {error}"),
+            })?;
+        std::fs::write(&destination_path, serialized).map_err(|error| {
+            CoreError::ValidationFailed {
+                message: format!("write Context Pack file: {error}"),
             }
-        };
-        if format != ContextSourceFormat::TranslationCsv
-            && kind == ContextContentKind::TranslationTerms
-        {
-            return Err(CoreError::ValidationFailed {
-                message: "translation_terms require .csv".to_string(),
-            });
-        }
-        let byte_limit = if format == ContextSourceFormat::TranslationCsv {
-            CONTEXT_CSV_FILE_MAX_BYTES
-        } else {
-            CONTEXT_TEXT_FILE_MAX_BYTES
-        };
+        })?;
+        u32::try_from(document.sources.len()).map_err(|_| CoreError::InternalError {
+            message: "Context Pack source count overflowed".to_string(),
+        })
+    }
+
+    /// Reads a Pack file exported by `export_context_pack` and materializes it
+    /// as a new Library Pack with a fresh ID and a fresh key.
+    pub fn import_context_pack(
+        &self,
+        source_path: String,
+        title_override: Option<String>,
+    ) -> Result<FfiContextPackInfo, CoreError> {
+        let path = std::path::PathBuf::from(&source_path);
         let file = std::fs::File::open(&path).map_err(|error| CoreError::ValidationFailed {
             message: format!("open Context Pack file: {error}"),
         })?;
@@ -4498,39 +4483,34 @@ impl ZulangueCore {
             .map_err(|error| CoreError::ValidationFailed {
                 message: format!("inspect Context Pack file: {error}"),
             })?;
-        if !metadata.is_file() || metadata.len() > byte_limit {
+        let limit = CONTEXT_PACK_DOCUMENT_MAX_BYTES as u64;
+        if !metadata.is_file() || metadata.len() > limit {
             return Err(CoreError::ValidationFailed {
-                message: format!("Context Pack file exceeds the {byte_limit}-byte safety limit"),
+                message: format!("Context Pack file exceeds the {limit}-byte safety limit"),
             });
         }
-        let mut content = Vec::with_capacity(metadata.len() as usize);
-        file.take(byte_limit + 1)
-            .read_to_end(&mut content)
+        let mut raw = Vec::with_capacity(metadata.len() as usize);
+        file.take(limit + 1)
+            .read_to_end(&mut raw)
             .map_err(|error| CoreError::ValidationFailed {
                 message: format!("read Context Pack file: {error}"),
             })?;
-        if content.len() as u64 > byte_limit {
+        if raw.len() as u64 > limit {
             return Err(CoreError::ValidationFailed {
-                message: format!("Context Pack file exceeds the {byte_limit}-byte safety limit"),
+                message: format!("Context Pack file exceeds the {limit}-byte safety limit"),
             });
         }
-        let title = path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("Imported Context")
-            .to_string();
+        let document: ContextPackDocument =
+            serde_json::from_slice(&raw).map_err(|error| CoreError::ValidationFailed {
+                message: format!("this is not a Zulangue Context Pack file: {error}"),
+            })?;
+        let title_override = title_override
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         self.context_pack_store
-            .import_source(
-                &pack_id,
-                &NewContextSource {
-                    title,
-                    format,
-                    content_kind: kind,
-                    content,
-                    metadata: serde_json::json!({"origin": "file"}),
-                },
-            )
-            .map(context_source_info)
+            .import_pack_document(&document, title_override)
+            .map(|pack| context_pack_info(pack, None))
             .map_err(store_error)
     }
 

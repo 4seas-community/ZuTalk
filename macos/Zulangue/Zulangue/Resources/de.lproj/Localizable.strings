@@ -881,7 +881,8 @@
 "capture.settings.context.create_library" = "Erstellen";
 "capture.settings.context.copy_private" = "Aktuelle Referenzen in Bibliothek sichern";
 "capture.settings.context.editing_pack" = "Referenzen in %@";
-"capture.settings.context.import_file" = ".txt, .md oder .csv importieren";
+"capture.settings.context.import_pack" = "Bibliothek importieren";
+"capture.settings.context.export_pack" = "Exportieren";
 "capture.settings.context.no_sources" = "Es wurde noch kein Referenzmaterial hinzugefügt.";
 "capture.settings.context.paste_title" = "Referenztitel";
 "capture.settings.context.content_kind" = "Referenztyp";
@@ -889,12 +890,15 @@
 "capture.settings.context.kind_terms" = "Begriffe";
 "capture.settings.context.kind_text" = "Referenztext";
 "capture.settings.context.paste_content" = "Referenztext einsetzen";
-"capture.settings.context.import_limits" = "Unterstützt UTF-8-Text oder Markdown bis 256 KiB sowie zweisprachige CSV-Dateien mit bis zu 1.000 Zeilen.";
+"capture.settings.context.import_limits" = "Unterstützt UTF-8-Text oder Markdown bis 256 KiB.";
 "capture.settings.context.add_paste" = "Inhalt hinzufügen";
 "capture.settings.context.untrusted" = "Quelle muss geprüft werden";
 "capture.settings.context.delete_source" = "Quelle %@ löschen";
 "capture.settings.context.delete_source_confirm" = "Diese Referenz löschen?";
-"capture.settings.context.file_picker_message" = "Wähle eine UTF-8-Datei (.txt/.md) oder eine .csv-Datei mit zweisprachiger Kopfzeile.";
+"capture.settings.context.export_pack_message" = "Sichere diese Bibliothek als eine teilbare Datei. Die Datei ist Klartext und wird nicht mehr durch den Schlüssel der Bibliothek geschützt.";
+"capture.settings.context.export_pack_done" = "%ld Einträge exportiert.";
+"capture.settings.context.import_pack_message" = "Wähle eine Zulangue-Bibliotheksdatei (.zulangue-pack.json).";
+"capture.settings.context.import_pack_done" = "Bibliothek „%@“ importiert.";
 "capture.settings.context.local_only" = "Nach dem Start der Aufnahme können diese Referenzen für die Live-Transkription verwendet werden.";
 "capture.settings.after_stop.title" = "Verarbeitung nach der Aufnahme";
 "capture.settings.after_stop.engine" = "Verarbeitungsmethode";

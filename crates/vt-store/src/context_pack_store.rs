@@ -236,6 +236,33 @@ pub struct BoundContextPack {
     pub pack: ContextPackRecord,
 }
 
+/// Schema tag written into every exported Pack document. Import refuses
+/// anything else rather than guessing at an unknown layout.
+pub const CONTEXT_PACK_DOCUMENT_SCHEMA: &str = "zulangue.context-pack.v1";
+
+/// Upper bound on a Pack document accepted for import. Generous enough for a
+/// Pack of maximum-size sources, small enough to reject a mistaken file.
+pub const CONTEXT_PACK_DOCUMENT_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+/// One source inside an exported Pack document. `content` is plaintext: a
+/// Pack document has left the Pack's encryption boundary by definition.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextPackDocumentSource {
+    pub title: String,
+    pub format: ContextSourceFormat,
+    pub content_kind: ContextContentKind,
+    pub sha256: String,
+    pub content: String,
+}
+
+/// A whole Context Pack as one shareable, human-readable file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextPackDocument {
+    pub schema: String,
+    pub title: String,
+    pub sources: Vec<ContextPackDocumentSource>,
+}
+
 #[derive(Debug, Error)]
 pub enum ContextPackStoreError {
     #[error("SQLite error: {0}")]
@@ -595,6 +622,108 @@ impl ContextPackStore {
         )?;
         tx.commit()?;
         Ok(true)
+    }
+
+    /// Decrypts one source for egress outside the Pack's encryption boundary.
+    /// Callers own what happens next: the returned plaintext is no longer
+    /// protected by the Pack key, so this is only for explicit user-initiated
+    /// export.
+    pub fn export_source_plaintext(
+        &self,
+        source_id: &str,
+    ) -> Result<Vec<u8>, ContextPackStoreError> {
+        let source = self.require_active_source(source_id)?;
+        let pack = self.require_active_pack(&source.pack_id)?;
+        self.read_source_plaintext(&pack, &source)
+    }
+
+    /// Serializes a whole Pack into one shareable document. Every source is
+    /// decrypted, so the result is plaintext and no longer protected by the
+    /// Pack key — only call this for an export the user explicitly asked for.
+    pub fn export_pack_document(
+        &self,
+        pack_id: &str,
+    ) -> Result<ContextPackDocument, ContextPackStoreError> {
+        let pack = self.require_active_pack(pack_id)?;
+        let records = self.list_sources(pack_id)?;
+        if records.is_empty() {
+            return Err(ContextPackStoreError::Validation(format!(
+                "Context Pack '{}' has no sources to export",
+                pack.title
+            )));
+        }
+        let mut sources = Vec::with_capacity(records.len());
+        for record in records {
+            let plaintext = self.read_source_plaintext(&pack, &record)?;
+            let content = String::from_utf8(plaintext).map_err(|_| {
+                ContextPackStoreError::CorruptData(format!("source {} is not UTF-8", record.id))
+            })?;
+            sources.push(ContextPackDocumentSource {
+                title: record.title,
+                format: record.format,
+                content_kind: record.content_kind,
+                sha256: record.plaintext_sha256,
+                content,
+            });
+        }
+        Ok(ContextPackDocument {
+            schema: CONTEXT_PACK_DOCUMENT_SCHEMA.to_string(),
+            title: pack.title,
+            sources,
+        })
+    }
+
+    /// Materializes a Pack document as a new Library Pack with a fresh ID and
+    /// a fresh key. Fails closed: a bad schema, a digest mismatch, or a
+    /// rejected source aborts the whole import and leaves nothing behind.
+    pub fn import_pack_document(
+        &self,
+        document: &ContextPackDocument,
+        title_override: Option<&str>,
+    ) -> Result<ContextPackRecord, ContextPackStoreError> {
+        if document.schema != CONTEXT_PACK_DOCUMENT_SCHEMA {
+            return Err(ContextPackStoreError::Validation(format!(
+                "unsupported Context Pack document schema '{}'",
+                document.schema
+            )));
+        }
+        if document.sources.is_empty() {
+            return Err(ContextPackStoreError::Validation(
+                "Context Pack document contains no sources".into(),
+            ));
+        }
+        for source in &document.sources {
+            let actual = sha256_hex(source.content.as_bytes());
+            if actual != source.sha256 {
+                return Err(ContextPackStoreError::CorruptData(format!(
+                    "source '{}' digest mismatch: expected {}, got {actual}",
+                    source.title, source.sha256
+                )));
+            }
+        }
+
+        let title = title_override.unwrap_or(&document.title);
+        let destination = self.create_library_pack(title)?;
+        let result = (|| {
+            for source in &document.sources {
+                self.import_source(
+                    &destination.id,
+                    &NewContextSource {
+                        title: source.title.clone(),
+                        format: source.format,
+                        content_kind: source.content_kind,
+                        content: source.content.clone().into_bytes(),
+                        metadata: serde_json::json!({"origin": "pack_document"}),
+                    },
+                )?;
+            }
+            self.require_active_pack(&destination.id)
+        })();
+        if result.is_err() {
+            let _ = self.hard_delete_pack(&destination.id);
+            let _ = self.keys.delete_key(&destination.key_ref);
+        }
+        result
     }
 
     /// Copies decrypted content through a fresh encryption boundary. The new
@@ -2525,5 +2654,131 @@ mod tests {
         assert_eq!(parsed.language_a, "en");
         assert_eq!(parsed.rows[0], ("Voice, Tool".into(), "声音工具".into()));
         assert_eq!(parsed.rows[1], ("say \"hi\"".into(), "说\n你好".into()));
+    }
+
+    fn seeded_library_pack(fixture: &Fixture) -> ContextPackRecord {
+        let pack = fixture.store.create_library_pack("Field Camp").unwrap();
+        fixture
+            .store
+            .import_source(
+                &pack.id,
+                &NewContextSource {
+                    title: "Background".into(),
+                    format: ContextSourceFormat::Text,
+                    content_kind: ContextContentKind::General,
+                    content: b"domain=Social anthropology\ntopic=Zomia".to_vec(),
+                    metadata: json!({}),
+                },
+            )
+            .unwrap();
+        fixture
+            .store
+            .import_source(
+                &pack.id,
+                &NewContextSource {
+                    title: "Speakers".into(),
+                    format: ContextSourceFormat::Text,
+                    content_kind: ContextContentKind::Terms,
+                    content: "阿嘎佐诗\n和文臻\nZuzalu".as_bytes().to_vec(),
+                    metadata: json!({}),
+                },
+            )
+            .unwrap();
+        fixture.store.require_active_pack(&pack.id).unwrap()
+    }
+
+    #[test]
+    fn pack_document_round_trip_preserves_every_source() {
+        let fixture = fixture();
+        let original = seeded_library_pack(&fixture);
+        let document = fixture.store.export_pack_document(&original.id).unwrap();
+        assert_eq!(document.schema, CONTEXT_PACK_DOCUMENT_SCHEMA);
+        assert_eq!(document.title, "Field Camp");
+        assert_eq!(document.sources.len(), 2);
+
+        let imported = fixture.store.import_pack_document(&document, None).unwrap();
+        assert_ne!(imported.id, original.id, "import must mint a fresh Pack ID");
+        assert_ne!(
+            imported.key_ref, original.key_ref,
+            "import must mint a fresh Pack key"
+        );
+        assert_eq!(imported.title, "Field Camp");
+
+        let before = fixture.store.list_sources(&original.id).unwrap();
+        let after = fixture.store.list_sources(&imported.id).unwrap();
+        assert_eq!(before.len(), after.len());
+        for (before, after) in before.iter().zip(after.iter()) {
+            assert_eq!(before.title, after.title);
+            assert_eq!(before.content_kind, after.content_kind);
+            assert_eq!(before.format, after.format);
+            assert_eq!(before.plaintext_sha256, after.plaintext_sha256);
+            assert_ne!(before.id, after.id);
+        }
+    }
+
+    #[test]
+    fn pack_document_import_honors_a_title_override() {
+        let fixture = fixture();
+        let pack = seeded_library_pack(&fixture);
+        let document = fixture.store.export_pack_document(&pack.id).unwrap();
+        let imported = fixture
+            .store
+            .import_pack_document(&document, Some("人类学论坛"))
+            .unwrap();
+        assert_eq!(imported.title, "人类学论坛");
+    }
+
+    #[test]
+    fn pack_document_import_rejects_an_unknown_schema() {
+        let fixture = fixture();
+        let pack = seeded_library_pack(&fixture);
+        let mut document = fixture.store.export_pack_document(&pack.id).unwrap();
+        document.schema = "zulangue.context-pack.v99".into();
+        let error = fixture
+            .store
+            .import_pack_document(&document, None)
+            .unwrap_err();
+        assert!(matches!(error, ContextPackStoreError::Validation(_)));
+        assert_eq!(fixture.store.list_library_packs().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn pack_document_import_rejects_tampered_content_and_leaves_nothing_behind() {
+        let fixture = fixture();
+        let pack = seeded_library_pack(&fixture);
+        let mut document = fixture.store.export_pack_document(&pack.id).unwrap();
+        document.sources[1].content.push_str("\n混入的内容");
+
+        let error = fixture
+            .store
+            .import_pack_document(&document, None)
+            .unwrap_err();
+        assert!(matches!(error, ContextPackStoreError::CorruptData(_)));
+        assert_eq!(
+            fixture.store.list_library_packs().unwrap().len(),
+            1,
+            "a rejected import must not leave a half-built Pack behind"
+        );
+    }
+
+    #[test]
+    fn pack_document_export_rejects_an_empty_pack() {
+        let fixture = fixture();
+        let pack = fixture.store.create_library_pack("Empty").unwrap();
+        let error = fixture.store.export_pack_document(&pack.id).unwrap_err();
+        assert!(matches!(error, ContextPackStoreError::Validation(_)));
+    }
+
+    #[test]
+    fn exported_pack_document_survives_json_serialization() {
+        let fixture = fixture();
+        let pack = seeded_library_pack(&fixture);
+        let document = fixture.store.export_pack_document(&pack.id).unwrap();
+        let json = serde_json::to_string_pretty(&document).unwrap();
+        assert!(json.contains("阿嘎佐诗"), "export must stay human-readable");
+        let parsed: ContextPackDocument = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, document);
+        let imported = fixture.store.import_pack_document(&parsed, None).unwrap();
+        assert_eq!(fixture.store.list_sources(&imported.id).unwrap().len(), 2);
     }
 }

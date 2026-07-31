@@ -882,7 +882,8 @@
 "capture.settings.context.create_library" = "Créer";
 "capture.settings.context.copy_private" = "Enregistrer les références actuelles dans la bibliothèque";
 "capture.settings.context.editing_pack" = "Références dans %@";
-"capture.settings.context.import_file" = "Importer un fichier .txt, .md ou .csv";
+"capture.settings.context.import_pack" = "Importer une bibliothèque";
+"capture.settings.context.export_pack" = "Exporter";
 "capture.settings.context.no_sources" = "Aucun document de référence n’a encore été ajouté.";
 "capture.settings.context.paste_title" = "Titre de la référence";
 "capture.settings.context.content_kind" = "Type de référence";
@@ -890,12 +891,15 @@
 "capture.settings.context.kind_terms" = "Termes";
 "capture.settings.context.kind_text" = "Texte de référence";
 "capture.settings.context.paste_content" = "Coller le texte de référence";
-"capture.settings.context.import_limits" = "Prend en charge le texte UTF-8 ou Markdown jusqu’à 256 Kio, et le CSV bilingue jusqu’à 1 000 lignes.";
+"capture.settings.context.import_limits" = "Prend en charge le texte UTF-8 ou Markdown jusqu’à 256 Kio.";
 "capture.settings.context.add_paste" = "Ajouter le contenu";
 "capture.settings.context.untrusted" = "Source à vérifier";
 "capture.settings.context.delete_source" = "Supprimer la source %@";
 "capture.settings.context.delete_source_confirm" = "Supprimer cette référence ?";
-"capture.settings.context.file_picker_message" = "Choisissez un fichier .txt/.md en UTF-8 ou un fichier .csv avec un en-tête à deux langues.";
+"capture.settings.context.export_pack_message" = "Enregistrez cette bibliothèque dans un fichier unique et partageable. Le fichier est en clair et n’est plus protégé par la clé de la bibliothèque.";
+"capture.settings.context.export_pack_done" = "%ld éléments exportés.";
+"capture.settings.context.import_pack_message" = "Choisissez un fichier de bibliothèque Zulangue (.zulangue-pack.json).";
+"capture.settings.context.import_pack_done" = "Bibliothèque « %@ » importée.";
 "capture.settings.context.local_only" = "Après le démarrage de l’enregistrement, ces références peuvent être utilisées pour la transcription en direct.";
 "capture.settings.after_stop.title" = "Traitement après l’enregistrement";
 "capture.settings.after_stop.engine" = "Méthode de traitement";

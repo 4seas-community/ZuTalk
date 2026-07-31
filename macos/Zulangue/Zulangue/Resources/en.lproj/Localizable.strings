@@ -882,7 +882,8 @@
 "capture.settings.context.create_library" = "Create";
 "capture.settings.context.copy_private" = "Save current references to library";
 "capture.settings.context.editing_pack" = "References in %@";
-"capture.settings.context.import_file" = "Import .txt, .md, or .csv";
+"capture.settings.context.import_pack" = "Import a library";
+"capture.settings.context.export_pack" = "Export";
 "capture.settings.context.no_sources" = "No reference material has been added yet.";
 "capture.settings.context.paste_title" = "Reference title";
 "capture.settings.context.content_kind" = "Reference type";
@@ -890,12 +891,15 @@
 "capture.settings.context.kind_terms" = "Terms";
 "capture.settings.context.kind_text" = "Reference text";
 "capture.settings.context.paste_content" = "Paste reference text";
-"capture.settings.context.import_limits" = "Supports UTF-8 text or Markdown up to 256 KiB, and bilingual CSV up to 1,000 rows.";
+"capture.settings.context.import_limits" = "Supports UTF-8 text or Markdown up to 256 KiB.";
 "capture.settings.context.add_paste" = "Add content";
 "capture.settings.context.untrusted" = "Source needs review";
 "capture.settings.context.delete_source" = "Delete source %@";
 "capture.settings.context.delete_source_confirm" = "Delete this reference?";
-"capture.settings.context.file_picker_message" = "Choose UTF-8 .txt/.md or a two-language-header .csv file.";
+"capture.settings.context.export_pack_message" = "Save this library as one shareable file. The file is plain text and is no longer protected by the library's key.";
+"capture.settings.context.export_pack_done" = "Exported %ld items.";
+"capture.settings.context.import_pack_message" = "Choose a Zulangue library file (.zulangue-pack.json).";
+"capture.settings.context.import_pack_done" = "Imported library “%@”.";
 "capture.settings.context.local_only" = "After recording starts, these references can be used for live transcription.";
 "capture.settings.after_stop.title" = "After-recording processing";
 "capture.settings.after_stop.engine" = "Processing method";

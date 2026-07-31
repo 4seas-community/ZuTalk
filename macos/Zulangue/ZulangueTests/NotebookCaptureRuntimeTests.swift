@@ -5998,6 +5998,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     private(set) var lastConfirmedContextDigest: String?
     private(set) var lastReplaceExpectedRevision: UInt64?
     private(set) var lastContextSourceNotebookId: String?
+    private(set) var lastExportedContextPackPath: String?
     private(set) var interruptCount = 0
     private(set) var sessionEventCount = 0
     private(set) var reconcileCallCount = 0
@@ -6195,19 +6196,31 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         return source
     }
 
-    func importContextPackFile(
+    func exportContextPack(
         notebookId: String,
         packId: String,
-        path: String,
-        contentKind: String
-    ) throws -> NotebookContextPackSourceDTO {
-        try importContextPackText(
-            notebookId: notebookId,
-            packId: packId,
-            title: URL(fileURLWithPath: path).lastPathComponent,
-            text: path,
-            contentKind: contentKind
+        destinationPath: String
+    ) throws -> UInt32 {
+        lastContextSourceNotebookId = notebookId
+        lastExportedContextPackPath = destinationPath
+        return UInt32(contextSources[packId, default: []].count)
+    }
+
+    func importContextPack(
+        sourcePath: String,
+        titleOverride: String?
+    ) throws -> NotebookContextPackDTO {
+        let pack = NotebookContextPackDTO(
+            id: "imported-pack-\(contextPacks.count)",
+            scope: "library",
+            ownerNotebookId: nil,
+            title: titleOverride ?? URL(fileURLWithPath: sourcePath)
+                .deletingPathExtension().lastPathComponent,
+            revision: 0,
+            boundPosition: nil
         )
+        contextPacks.append(pack)
+        return pack
     }
 
     func deleteContextPackSource(notebookId: String, sourceId: String) throws -> Bool {
