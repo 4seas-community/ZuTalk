@@ -3661,6 +3661,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             )
         }
 
+        // With no caller-supplied guess the strict rule holds: a row must not
+        // claim a language identity the provider never established.
         let pending = NotebookCaptureHistoryPolicy.laneProjection(
             for: utterance(language: "und", text: "provisional"),
             selectedLanguages: ["en", "zh", "th"],
@@ -3669,6 +3671,28 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(pending.pendingLanguage, "provisional")
         XCTAssertNil(pending.unselectedLanguageText)
         XCTAssertTrue(pending.lanes.allSatisfy { $0.text == nil })
+
+        // The audience canvas supplies a guess, which places the words in a
+        // column instead of spilling them across the full width.
+        let borrowed = NotebookCaptureHistoryPolicy.laneProjection(
+            for: utterance(language: "und", text: "provisional"),
+            selectedLanguages: ["en", "zh", "th"],
+            commonCaptionLanguage: nil,
+            lastIdentifiedSourceLanguage: "zh"
+        )
+        XCTAssertNil(borrowed.pendingLanguage)
+        XCTAssertEqual(borrowed.lanes.first(where: { $0.text != nil })?.language, "zh")
+        XCTAssertEqual(borrowed.lanes.first(where: { $0.text != nil })?.text, "provisional")
+
+        // A guess naming a column that is not on screen cannot place anything.
+        let unusable = NotebookCaptureHistoryPolicy.laneProjection(
+            for: utterance(language: "und", text: "provisional"),
+            selectedLanguages: ["en", "zh", "th"],
+            commonCaptionLanguage: nil,
+            lastIdentifiedSourceLanguage: "ja"
+        )
+        XCTAssertEqual(unusable.pendingLanguage, "provisional")
+        XCTAssertTrue(unusable.lanes.allSatisfy { $0.text == nil })
 
         let unselected = NotebookCaptureHistoryPolicy.laneProjection(
             for: utterance(language: "ja", text: "こんにちは"),

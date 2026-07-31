@@ -1994,7 +1994,7 @@ enum NotebookCaptureHistoryPolicy {
         for utterance: NotebookCaptureUtteranceDTO,
         selectedLanguages: [String],
         commonCaptionLanguage: String?,
-        provisionalSourceLanguage: String? = nil
+        lastIdentifiedSourceLanguage: String? = nil
     ) -> NotebookCaptureLaneProjection {
         _ = commonCaptionLanguage
         let languages = orderedLanguages(selectedLanguages)
@@ -2029,14 +2029,24 @@ enum NotebookCaptureHistoryPolicy {
         // provisional provider language places the text in its lane
         // immediately instead of a full-width language-pending row. A later
         // provider correction re-homes the text on the next callback.
+        //
+        // `lastIdentifiedSourceLanguage` is a caller-supplied guess for when
+        // the provider offers no hint at all. Only the audience canvas passes
+        // it: there, a full-width row that snaps into a column a moment later
+        // makes the layout jump under the room, so borrowing a column reads
+        // better than spilling. The durable transcript passes nothing and
+        // keeps the stricter rule, because a stored row must not claim a
+        // language identity the provider never established.
         if utterance.hasSourceLane,
            source == nil || source == "und",
-           let provisional = normalizedLanguage(utterance.provisionalSourceLanguage),
-           provisional != "und",
-           languages.contains(provisional),
            utterance.sourceText.isEmpty == false,
-           textsByLanguage[provisional] == nil {
-            textsByLanguage[provisional] = utterance.sourceText
+           let placement = normalizedLanguage(utterance.provisionalSourceLanguage)
+               .flatMap({ $0 == "und" ? nil : $0 })
+               .flatMap({ languages.contains($0) ? $0 : nil })
+               ?? normalizedLanguage(lastIdentifiedSourceLanguage)
+                   .flatMap({ languages.contains($0) ? $0 : nil }),
+           textsByLanguage[placement] == nil {
+            textsByLanguage[placement] = utterance.sourceText
         }
         let translated = normalizedLanguage(utterance.translatedLanguage)
         if let translated,
@@ -2069,38 +2079,11 @@ enum NotebookCaptureHistoryPolicy {
         let hasVisibleLaneText = lanes.contains {
             $0.text?.isEmpty == false
         }
-
-        // A line the provider has not yet tagged still belongs in a column.
-        // Spilling it across the full canvas and snapping it into place once
-        // the tag arrives makes the layout jump under the audience, which is
-        // worse than briefly borrowing a column: a speaker rarely changes
-        // language between sentences, so the words nearly always land where
-        // they will stay.
-        let borrowedLane = utterance.hasSourceLane
-            && sourceLanguageIsPending
-            && hasVisibleLaneText == false
-            ? normalizedLanguage(provisionalSourceLanguage).flatMap({
-                languages.contains($0) ? $0 : nil
-            }) ?? languages.first
-            : nil
-        let projectedLanes = borrowedLane.map { borrowed in
-            lanes.map { lane in
-                lane.language == borrowed
-                    ? NotebookCaptureLanguageLane(
-                        language: lane.language,
-                        text: utterance.sourceText,
-                        missingLaneState: .unavailable
-                    )
-                    : lane
-            }
-        } ?? lanes
-
         return NotebookCaptureLaneProjection(
-            lanes: projectedLanes,
+            lanes: lanes,
             pendingLanguage: utterance.hasSourceLane
                 && sourceLanguageIsPending
                 && hasVisibleLaneText == false
-                && borrowedLane == nil
                 ? utterance.sourceText
                 : nil,
             unselectedLanguageText: utterance.hasSourceLane
@@ -3956,19 +3939,23 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             for: utterance,
             selectedLanguages: selectedLanguages,
             commonCaptionLanguage: commonCaptionLanguage,
-            provisionalSourceLanguage: provisionalSourceLanguage
+            // The leading selected column carries the first line of a session,
+            // before any language has been identified to inherit.
+            lastIdentifiedSourceLanguage: lastIdentifiedSourceLanguage
+                ?? selectedLanguages.first
         )
     }
 
     /// The most recent language the provider actually identified in this
-    /// session, used to place a line that arrives tagged `und`.
+    /// session. Used only as the last resort for placing an `und` line, after
+    /// the provider's own per-utterance hint.
     ///
     /// This reads the durable rows rather than the live preview: a committed
     /// language is a settled fact, while a preview row can still be the very
     /// `und` line being placed. The scan runs backwards and almost always
     /// stops on the first row, because the immediately preceding sentence is
     /// normally tagged.
-    private var provisionalSourceLanguage: String? {
+    private var lastIdentifiedSourceLanguage: String? {
         for utterance in utterances.reversed() where utterance.hasSourceLane {
             let language = utterance.sourceLanguage.lowercased()
             if language.isEmpty == false, language != "und" {
