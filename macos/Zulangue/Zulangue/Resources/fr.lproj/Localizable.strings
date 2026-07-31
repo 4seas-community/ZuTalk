@@ -772,6 +772,7 @@
 "subtitle.overlay.accessibility_label" = "Fenêtre de sous-titres multilingues en direct";
 "subtitle.overlay.language_count" = "%lld langues";
 "subtitle.overlay.waiting" = "En attente de parole…";
+"subtitle.overlay.degraded_lanes" = "Ces colonnes de traduction sont en retard ou indisponibles ; la transcription continue.";
 "subtitle.overlay.recording_ended" = "Enregistrement terminé";
 "subtitle.overlay.font_size" = "Taille des sous-titres";
 "subtitle.overlay.font_smaller" = "Sous-titres plus petits";

@@ -3275,6 +3275,11 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
      * same full-snapshot rebuild as `utterances`.
      */
     public var translationCues: [FfiNotebookCaptureTranslationCue]
+    /**
+     * Present only on live transition deltas; empty means "no change to
+     * report", so clients keep the last non-empty set for the session.
+     */
+    public var laneHealth: [FfiNotebookCaptureLaneHealth]
     public var contextReceipt: FfiNotebookCaptureContextReceipt?
     public var providerErrorType: String?
     public var providerRequestId: String?
@@ -3318,7 +3323,11 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
          * `(group_epoch, provider_sequence, target_language)` upsert, where a
          * `withdrawn` cue removes the entry. Coalescing gaps heal through the
          * same full-snapshot rebuild as `utterances`.
-         */translationCues: [FfiNotebookCaptureTranslationCue], contextReceipt: FfiNotebookCaptureContextReceipt?, providerErrorType: String?, providerRequestId: String?) {
+         */translationCues: [FfiNotebookCaptureTranslationCue],
+        /**
+         * Present only on live transition deltas; empty means "no change to
+         * report", so clients keep the last non-empty set for the session.
+         */laneHealth: [FfiNotebookCaptureLaneHealth], contextReceipt: FfiNotebookCaptureContextReceipt?, providerErrorType: String?, providerRequestId: String?) {
         self.sessionId = sessionId
         self.eventRevision = eventRevision
         self.isFullSnapshot = isFullSnapshot
@@ -3343,6 +3352,7 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
         self.postStopModelId = postStopModelId
         self.utterances = utterances
         self.translationCues = translationCues
+        self.laneHealth = laneHealth
         self.contextReceipt = contextReceipt
         self.providerErrorType = providerErrorType
         self.providerRequestId = providerRequestId
@@ -3388,6 +3398,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
                 postStopModelId: FfiConverterOptionString.read(from: &buf),
                 utterances: FfiConverterSequenceTypeFfiNotebookCaptureUtterance.read(from: &buf),
                 translationCues: FfiConverterSequenceTypeFfiNotebookCaptureTranslationCue.read(from: &buf),
+                laneHealth: FfiConverterSequenceTypeFfiNotebookCaptureLaneHealth.read(from: &buf),
                 contextReceipt: FfiConverterOptionTypeFfiNotebookCaptureContextReceipt.read(from: &buf),
                 providerErrorType: FfiConverterOptionString.read(from: &buf),
                 providerRequestId: FfiConverterOptionString.read(from: &buf)
@@ -3419,6 +3430,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.postStopModelId, into: &buf)
         FfiConverterSequenceTypeFfiNotebookCaptureUtterance.write(value.utterances, into: &buf)
         FfiConverterSequenceTypeFfiNotebookCaptureTranslationCue.write(value.translationCues, into: &buf)
+        FfiConverterSequenceTypeFfiNotebookCaptureLaneHealth.write(value.laneHealth, into: &buf)
         FfiConverterOptionTypeFfiNotebookCaptureContextReceipt.write(value.contextReceipt, into: &buf)
         FfiConverterOptionString.write(value.providerErrorType, into: &buf)
         FfiConverterOptionString.write(value.providerRequestId, into: &buf)
@@ -3626,6 +3638,80 @@ public func FfiConverterTypeFfiNotebookCaptureHistoryRun_lift(_ buf: RustBuffer)
 #endif
 public func FfiConverterTypeFfiNotebookCaptureHistoryRun_lower(_ value: FfiNotebookCaptureHistoryRun) -> RustBuffer {
     return FfiConverterTypeFfiNotebookCaptureHistoryRun.lower(value)
+}
+
+
+/**
+ * Process-local health of one stream lane inside the active capture group.
+ *
+ * Operator chrome only: the audience canvas never explains a lane, it just
+ * stops showing the waiting ellipsis for a lane that will never fill again.
+ * Absent on durable snapshots — after a process restart the old group is
+ * gone and lane health starts over with the next stream group.
+ */
+public struct FfiNotebookCaptureLaneHealth: Equatable, Hashable {
+    /**
+     * `None` is the canonical transcription lane.
+     */
+    public var targetLanguage: String?
+    /**
+     * "live" | "connecting" | "failed"
+     */
+    public var state: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `None` is the canonical transcription lane.
+         */targetLanguage: String?,
+        /**
+         * "live" | "connecting" | "failed"
+         */state: String) {
+        self.targetLanguage = targetLanguage
+        self.state = state
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNotebookCaptureLaneHealth: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNotebookCaptureLaneHealth: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNotebookCaptureLaneHealth {
+        return
+            try FfiNotebookCaptureLaneHealth(
+                targetLanguage: FfiConverterOptionString.read(from: &buf),
+                state: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNotebookCaptureLaneHealth, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.targetLanguage, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNotebookCaptureLaneHealth_lift(_ buf: RustBuffer) throws -> FfiNotebookCaptureLaneHealth {
+    return try FfiConverterTypeFfiNotebookCaptureLaneHealth.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNotebookCaptureLaneHealth_lower(_ value: FfiNotebookCaptureLaneHealth) -> RustBuffer {
+    return FfiConverterTypeFfiNotebookCaptureLaneHealth.lower(value)
 }
 
 
@@ -7202,6 +7288,31 @@ fileprivate struct FfiConverterSequenceTypeFfiNotebookCaptureHistoryRun: FfiConv
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFfiNotebookCaptureHistoryRun.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiNotebookCaptureLaneHealth: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiNotebookCaptureLaneHealth]
+
+    public static func write(_ value: [FfiNotebookCaptureLaneHealth], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiNotebookCaptureLaneHealth.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiNotebookCaptureLaneHealth] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiNotebookCaptureLaneHealth]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiNotebookCaptureLaneHealth.read(from: &buf))
         }
         return seq
     }

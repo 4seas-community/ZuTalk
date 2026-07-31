@@ -471,6 +471,9 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
     /// Deltas carry only cues changed by this event; a full snapshot replaces
     /// the session's whole cue view. A withdrawn cue removes its entry.
     let translationCues: [NotebookCaptureTranslationCueDTO]
+    /// Present only on lane transitions and always the whole group; empty
+    /// means "nothing to report", so the last non-empty set stands.
+    let laneHealth: [NotebookCaptureLaneHealthDTO]
     let contextReceipt: NotebookCaptureContextReceiptDTO?
     let providerErrorType: String?
     let providerRequestId: String?
@@ -500,6 +503,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         projectionState: NotebookProjectionState,
         utterances: [NotebookCaptureUtteranceDTO],
         translationCues: [NotebookCaptureTranslationCueDTO] = [],
+        laneHealth: [NotebookCaptureLaneHealthDTO] = [],
         contextReceipt: NotebookCaptureContextReceiptDTO?,
         providerErrorType: String?,
         providerRequestId: String?,
@@ -528,6 +532,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         self.projectionState = projectionState
         self.utterances = utterances
         self.translationCues = translationCues
+        self.laneHealth = laneHealth
         self.contextReceipt = contextReceipt
         self.providerErrorType = providerErrorType
         self.providerRequestId = providerRequestId
@@ -578,6 +583,23 @@ struct NotebookCaptureTranslationCueDTO: Codable, Equatable, Identifiable {
     let revision: UInt64
 
     var id: String { "\(groupEpoch):\(providerSequence):\(targetLanguage)" }
+}
+
+/// Health of one stream lane in the running capture group.
+///
+/// Operator chrome only. The audience canvas consumes exactly one bit of it —
+/// a lane that will never fill again stops showing the waiting ellipsis,
+/// because a placeholder promises "it's coming" and a dead lane is not.
+struct NotebookCaptureLaneHealthDTO: Codable, Equatable {
+    enum State: String, Codable {
+        case live
+        case connecting
+        case failed
+    }
+
+    /// nil is the canonical transcription lane.
+    let targetLanguage: String?
+    let state: State
 }
 
 enum NotebookCaptureLivePresentation {
@@ -1425,6 +1447,17 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
                     withdrawn: cue.withdrawn,
                     revision: cue.revision
                 )
+            },
+            laneHealth: value.laneHealth.compactMap { lane in
+                // An unknown state string is dropped rather than guessed:
+                // inventing "live" for it would hide a degradation, and
+                // inventing "failed" would kill a healthy column.
+                NotebookCaptureLaneHealthDTO.State(rawValue: lane.state).map { state in
+                    NotebookCaptureLaneHealthDTO(
+                        targetLanguage: lane.targetLanguage,
+                        state: state
+                    )
+                }
             },
             contextReceipt: value.contextReceipt.map { receipt in
                 NotebookCaptureContextReceiptDTO(
@@ -2920,6 +2953,13 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// The audience canvas reads translations from here in multilingual mode;
     /// the durable transcript keeps reading bound utterance variants.
     @Published private(set) var translationCues: [String: NotebookCaptureTranslationCueDTO] = [:]
+    /// Per-lane health of the running stream group, keyed by target language;
+    /// the canonical lane is keyed by `canonicalLaneHealthKey`. Process-local:
+    /// it describes a live group, so it is empty outside one.
+    @Published private(set) var laneHealth: [String: NotebookCaptureLaneHealthDTO.State] = [:]
+
+    /// The canonical transcription lane has no target language of its own.
+    static let canonicalLaneHealthKey = "#canonical"
     @Published private(set) var contextPreview: NotebookCaptureContextPreviewDTO?
     @Published private(set) var contextPacks: [NotebookContextPackDTO] = []
     @Published private(set) var contextSources: [NotebookContextPackSourceDTO] = []
@@ -4182,6 +4222,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
         reconcileUtterances(for: event)
         reconcileTranslationCues(for: event)
+        reconcileLaneHealth(for: event)
         if event.captureState.isActive,
            utterances.contains(where: \.hasFinalLaneReadyForProjection) {
             try? client.projectNotebookRealtimeIncremental(sessionId: event.sessionId)
@@ -4425,6 +4466,46 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             }
             translationCues[cue.id] = cue
         }
+    }
+
+    /// Lane health arrives whole or not at all, so an empty payload means
+    /// "no transition to report" and the last known set stands. A terminal
+    /// capture state ends the group, and with it any claim about its lanes.
+    private func reconcileLaneHealth(for event: NotebookCaptureEventDTO) {
+        if event.captureState.isActive == false {
+            laneHealth = [:]
+            return
+        }
+        guard event.laneHealth.isEmpty == false else { return }
+        laneHealth = Dictionary(
+            event.laneHealth.map { lane in
+                (
+                    lane.targetLanguage.map(normalizedLanguage)
+                        ?? Self.canonicalLaneHealthKey,
+                    lane.state
+                )
+            },
+            uniquingKeysWith: { _, right in right }
+        )
+    }
+
+    /// Languages whose column is dark for good. The canvas uses this to stay
+    /// silent instead of promising a translation that will never arrive.
+    var failedTranslationLanguages: Set<String> {
+        Set(
+            laneHealth
+                .filter { $0.key != Self.canonicalLaneHealthKey && $0.value == .failed }
+                .keys
+        )
+    }
+
+    /// Languages the operator should be told are degraded right now — dark
+    /// for good, or mid-reconnect. Operator chrome only.
+    var degradedTranslationLanguages: [String] {
+        laneHealth
+            .filter { $0.key != Self.canonicalLaneHealthKey && $0.value != .live }
+            .keys
+            .sorted()
     }
 
     /// The audience canvas's per-language cue view: present cues targeting
@@ -4723,6 +4804,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         cancelUtteranceGapRepair()
         utterances = []
         translationCues = [:]
+        laneHealth = [:]
         committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
         cancelLivePreviewCoalescing()
         livePreviewUtterances = []

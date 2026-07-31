@@ -316,9 +316,26 @@ pub struct FfiNotebookCaptureEvent {
     /// `withdrawn` cue removes the entry. Coalescing gaps heal through the
     /// same full-snapshot rebuild as `utterances`.
     pub translation_cues: Vec<FfiNotebookCaptureTranslationCue>,
+    /// Present only on live transition deltas; empty means "no change to
+    /// report", so clients keep the last non-empty set for the session.
+    pub lane_health: Vec<FfiNotebookCaptureLaneHealth>,
     pub context_receipt: Option<FfiNotebookCaptureContextReceipt>,
     pub provider_error_type: Option<String>,
     pub provider_request_id: Option<String>,
+}
+
+/// Process-local health of one stream lane inside the active capture group.
+///
+/// Operator chrome only: the audience canvas never explains a lane, it just
+/// stops showing the waiting ellipsis for a lane that will never fill again.
+/// Absent on durable snapshots — after a process restart the old group is
+/// gone and lane health starts over with the next stream group.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiNotebookCaptureLaneHealth {
+    /// `None` is the canonical transcription lane.
+    pub target_language: Option<String>,
+    /// "live" | "connecting" | "failed"
+    pub state: String,
 }
 
 /// One auxiliary translation segment, anchored to the capture-wide audio
@@ -894,6 +911,7 @@ fn event_from_run(
         // emission, refresh, full snapshot), not here: most events carry none
         // and the builder has no store access.
         translation_cues: Vec::new(),
+        lane_health: Vec::new(),
         context_receipt: parse_context_receipt(&run),
         provider_error_type: run.provider_error_type,
         provider_request_id: run.provider_request_id,
@@ -1229,6 +1247,10 @@ struct StreamAggregationLane {
     awaiting_reconnect: bool,
     connected: bool,
     ever_connected: bool,
+    /// Terminal: this lane's stream runtime exhausted its own retries and
+    /// exited. A failed auxiliary lane stays in the group as a tombstone —
+    /// its column stops updating — while every sibling keeps running.
+    failed: bool,
     provider_accepted_configuration: bool,
     disconnected_at_frame: Option<u64>,
 }
@@ -1381,6 +1403,7 @@ async fn collect_stream_events(
                 awaiting_reconnect: false,
                 connected: false,
                 ever_connected: false,
+                failed: false,
                 provider_accepted_configuration: false,
                 disconnected_at_frame: None,
             }
@@ -1547,13 +1570,23 @@ async fn collect_stream_events(
                     lane.connected = true;
                     lane.ever_connected = true;
                 }
-                if lanes.iter().all(|lane| lane.connected) {
-                    let run = store
-                        .update_remote_health(&run_id, RemoteHealth::Live, None)
-                        .map_err(|error| {
-                            local_persistence_failure("persist Soniox live state", error)
-                        })?;
-                    emit_capture_delta(run, Vec::new(), Vec::new(), &callback);
+                // A dead auxiliary lane never reconnects; it must not hold
+                // the group's health at Connecting forever. Live requires
+                // every lane that can still connect to be connected, and an
+                // existing tombstone keeps the group honestly Degraded.
+                if lanes.iter().all(|lane| lane.failed || lane.connected) {
+                    let health = if lanes.iter().any(|lane| lane.failed) {
+                        RemoteHealth::Degraded
+                    } else {
+                        RemoteHealth::Live
+                    };
+                    let run =
+                        store
+                            .update_remote_health(&run_id, health, None)
+                            .map_err(|error| {
+                                local_persistence_failure("persist Soniox live state", error)
+                            })?;
+                    emit_capture_lane_transition(run, &lanes, &callback);
                 }
                 PersistedCaptureChanges::default()
             }
@@ -1609,33 +1642,29 @@ async fn collect_stream_events(
                 )?;
                 lanes[lane_index].assembler.advance();
                 lanes[lane_index].connected = false;
-                let group_reconnect_failure = (lanes.len() > 1).then(|| ProviderFailure {
-                    error_type: "stream_group_reconnect_required".to_string(),
-                    request_id: None,
-                });
-                if group_reconnect_failure.is_some() {
-                    // Independent Soniox reconnects reset timestamps, anonymous
-                    // speaker labels, and audio origins. Until vt-stt exposes a
-                    // coordinated reconnect barrier, fail the multi-target
-                    // group closed instead of letting one lane silently drift.
-                    group_cancel.cancel();
+                // One lane reconnecting no longer fails the group. The old
+                // fail-closed rule existed because a replacement session's
+                // token timestamps restarted at zero and the row binding
+                // could not survive the jump; tokens are now projected onto
+                // the capture-wide timeline through connection_origin_ms
+                // (sibling agreement measured at p95 ≤ one PCM block), and
+                // translation visibility is time-anchored rather than bound.
+                // The lane's own runtime replays and re-anchors; a canonical
+                // outage degrades every column and reports Connecting, an
+                // auxiliary outage degrades one column and the group stays
+                // on the air.
+                lanes[lane_index].awaiting_reconnect = true;
+                let health = if lane_index == canonical_lane_index {
+                    RemoteHealth::Connecting
                 } else {
-                    lanes[lane_index].awaiting_reconnect = true;
-                }
+                    RemoteHealth::Degraded
+                };
                 let run = store
-                    .update_remote_health(
-                        &run_id,
-                        if group_reconnect_failure.is_some() {
-                            RemoteHealth::Degraded
-                        } else {
-                            RemoteHealth::Connecting
-                        },
-                        group_reconnect_failure.as_ref(),
-                    )
+                    .update_remote_health(&run_id, health, None)
                     .map_err(|error| {
                         local_persistence_failure("persist Soniox reconnecting state", error)
                     })?;
-                emit_capture_delta(run, Vec::new(), Vec::new(), &callback);
+                emit_capture_lane_transition(run, &lanes, &callback);
                 persisted
             }
             SttStreamEvent::Tokens(tokens) => {
@@ -1700,21 +1729,32 @@ async fn collect_stream_events(
                 )?;
                 lanes[lane_index].assembler.advance();
                 lanes[lane_index].connected = false;
+                lanes[lane_index].failed = true;
                 let failure = provider_failure(&error);
-                let health = if lanes.iter().any(|lane| lane.ever_connected) {
-                    RemoteHealth::Degraded
+                let canonical_failed = lane_index == canonical_lane_index;
+                let health = if canonical_failed {
+                    if lanes.iter().any(|lane| lane.ever_connected) {
+                        RemoteHealth::Degraded
+                    } else {
+                        RemoteHealth::Unavailable
+                    }
                 } else {
-                    RemoteHealth::Unavailable
+                    // One translation column went dark; transcription and
+                    // every other column keep running. The persisted failure
+                    // gives the operator the cause without stopping the room.
+                    RemoteHealth::Degraded
                 };
-                // A target-specific terminal failure invalidates the remote
-                // column set as a whole. Local capture remains authoritative,
-                // while every sibling WebSocket is stopped to prevent silently
-                // diverging audio windows.
-                group_cancel.cancel();
+                if canonical_failed {
+                    // The canonical lane is the transcript authority: without
+                    // it there is no timeline to anchor to, so the remote
+                    // column set ends as a whole. Local capture remains
+                    // authoritative either way.
+                    group_cancel.cancel();
+                }
                 let run = store
                     .update_remote_health(&run_id, health, Some(&failure))
                     .map_err(|error| local_persistence_failure("persist Soniox failure", error))?;
-                emit_capture_delta(run, Vec::new(), Vec::new(), &callback);
+                emit_capture_lane_transition(run, &lanes, &callback);
                 persisted
             }
         };
@@ -1733,7 +1773,12 @@ async fn collect_stream_events(
             // A cue-only batch is a real delta: an auxiliary partial can grow
             // for seconds before the slower canonical lane persists any row.
             if let Ok(Some(run)) = store.get_run(&run_id) {
-                emit_capture_delta(run, persisted.utterances, persisted.translation_cues, &callback);
+                emit_capture_delta(
+                    run,
+                    persisted.utterances,
+                    persisted.translation_cues,
+                    &callback,
+                );
             }
         }
         if publishes_canonical_preview {
@@ -3001,6 +3046,35 @@ fn emit_capture_delta(
     callback.send(event);
 }
 
+/// A lane transition delta: carries the whole group's current lane health so
+/// the operator surface never has to reconstruct state from event order.
+fn emit_capture_lane_transition(
+    run: NotebookCaptureRun,
+    lanes: &[StreamAggregationLane],
+    callback: &CaptureCallbackSink,
+) {
+    let mut event = event_from_run(run, Vec::new(), false);
+    event.lane_health = lane_health_snapshot(lanes);
+    callback.send(event);
+}
+
+fn lane_health_snapshot(lanes: &[StreamAggregationLane]) -> Vec<FfiNotebookCaptureLaneHealth> {
+    lanes
+        .iter()
+        .map(|lane| FfiNotebookCaptureLaneHealth {
+            target_language: lane.descriptor.target_language.clone(),
+            state: if lane.failed {
+                "failed"
+            } else if lane.connected {
+                "live"
+            } else {
+                "connecting"
+            }
+            .to_string(),
+        })
+        .collect()
+}
+
 fn translation_cue_from_inbox_item(
     item: &RealtimeTranslationInboxItem,
 ) -> FfiNotebookCaptureTranslationCue {
@@ -3029,7 +3103,10 @@ fn translation_cue_from_inbox_item(
 fn list_present_translation_cues(
     store: &NotebookCaptureStore,
     session_id: &str,
-) -> Result<Vec<FfiNotebookCaptureTranslationCue>, vt_store::notebook_capture_store::NotebookCaptureStoreError> {
+) -> Result<
+    Vec<FfiNotebookCaptureTranslationCue>,
+    vt_store::notebook_capture_store::NotebookCaptureStoreError,
+> {
     Ok(store
         .list_translation_inbox(session_id)?
         .iter()
@@ -3259,6 +3336,9 @@ impl CaptureCallbackSink {
                 } else {
                     std::mem::take(&mut event.translation_cues)
                 };
+                // Lane health is process-local and rides deltas untouched;
+                // a durable snapshot has no live stream group to describe.
+                refreshed.lane_health = std::mem::take(&mut event.lane_health);
                 refreshed.realtime_lag_ms = event.realtime_lag_ms;
                 if matches!(
                     refreshed.capture_state,
@@ -4272,16 +4352,26 @@ pub(crate) struct ActiveRemoteCapture {
 }
 
 impl ActiveRemoteCapture {
+    /// Audio keeps flowing as long as the canonical lane can take it.
+    ///
+    /// A dead auxiliary lane's channel is closed forever; treating that as
+    /// group-wide unavailability would turn one translation column's death
+    /// into a capture failure. A stalled-but-alive auxiliary lane (zero
+    /// capacity mid-backoff) loses the frames it cannot take — its column
+    /// degrades, its own replay may bridge part of the hole — which is the
+    /// isolation contract: one column's trouble never stops the room.
     fn try_fanout_pcm(&self, audio_data: &[u8]) -> Result<(), String> {
-        if self.streams.is_empty()
-            || self
-                .streams
-                .iter()
-                .any(|stream| stream.audio_tx.is_closed() || stream.audio_tx.capacity() == 0)
-        {
+        if self.streams.is_empty() {
             return Err("Soniox stream group audio unavailable".to_string());
         }
         for stream in &self.streams {
+            let unusable = stream.audio_tx.is_closed() || stream.audio_tx.capacity() == 0;
+            if unusable {
+                if stream.descriptor.canonical {
+                    return Err("Soniox stream group audio unavailable".to_string());
+                }
+                continue;
+            }
             self.stream_factory
                 .try_send_pcm(&stream.audio_tx, audio_data.to_vec())?;
         }
@@ -4289,15 +4379,17 @@ impl ActiveRemoteCapture {
     }
 
     fn try_fanout_control(&self, control: SttStreamControl) -> Result<(), String> {
-        if self.streams.is_empty()
-            || self
-                .streams
-                .iter()
-                .any(|stream| stream.control_tx.is_closed() || stream.control_tx.capacity() == 0)
-        {
+        if self.streams.is_empty() {
             return Err("Soniox stream group control unavailable".to_string());
         }
         for stream in &self.streams {
+            let unusable = stream.control_tx.is_closed() || stream.control_tx.capacity() == 0;
+            if unusable {
+                if stream.descriptor.canonical {
+                    return Err("Soniox stream group control unavailable".to_string());
+                }
+                continue;
+            }
             stream
                 .control_tx
                 .try_send(control)
@@ -9130,10 +9222,9 @@ fn document_char_slice(document: &str, range: crate::editor_api::TextRange) -> O
 /// end. Both carry the lane's trailing newline, so the comparison is between
 /// the bodies.
 fn rendered_lane_appends_to(projected: &str, rendered: &str) -> bool {
-    let (Some(projected), Some(rendered)) = (
-        projected.strip_suffix('\n'),
-        rendered.strip_suffix('\n'),
-    ) else {
+    let (Some(projected), Some(rendered)) =
+        (projected.strip_suffix('\n'), rendered.strip_suffix('\n'))
+    else {
         return false;
     };
     rendered.len() > projected.len() && rendered.starts_with(projected)
@@ -10966,6 +11057,128 @@ mod tests {
         assert!(event.utterances.is_empty());
     }
 
+    struct RecordingFanoutFactory {
+        sent: std::sync::Mutex<Vec<usize>>,
+    }
+
+    impl NotebookSonioxStreamFactory for RecordingFanoutFactory {
+        fn start(
+            &self,
+            _endpoint: &str,
+            _api_key: String,
+            _config: SttConfig,
+            _cancel: tokio_util::sync::CancellationToken,
+        ) -> SonioxStreamRuntime {
+            unreachable!("fan-out tests never construct a stream")
+        }
+
+        fn try_send_pcm(
+            &self,
+            audio_tx: &tokio::sync::mpsc::Sender<Vec<u8>>,
+            audio_data: Vec<u8>,
+        ) -> Result<(), String> {
+            self.sent.lock().unwrap().push(audio_data.len());
+            audio_tx
+                .try_send(audio_data)
+                .map_err(|error| error.to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn fanout_skips_a_dead_auxiliary_lane_and_fails_only_on_canonical() {
+        let factory = Arc::new(RecordingFanoutFactory {
+            sent: std::sync::Mutex::new(Vec::new()),
+        });
+        let make_stream = |canonical: bool, target: Option<&str>, closed: bool| {
+            let (audio_tx, audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+            let (control_tx, control_rx) = tokio::sync::mpsc::channel(4);
+            if closed {
+                drop(audio_rx);
+                drop(control_rx);
+            } else {
+                // Keep receivers alive for the duration of the test.
+                std::mem::forget(audio_rx);
+                std::mem::forget(control_rx);
+            }
+            ActiveRemoteStream {
+                descriptor: RemoteStreamLane {
+                    target_language: target.map(str::to_string),
+                    canonical,
+                },
+                audio_tx,
+                control_tx,
+                stream_task: tokio::spawn(async { Ok(()) }),
+                forward_task: tokio::spawn(async {}),
+            }
+        };
+
+        // A dead auxiliary lane is skipped; the group keeps taking audio.
+        let capture = ActiveRemoteCapture {
+            stream_factory: factory.clone(),
+            streams: vec![
+                make_stream(true, None, false),
+                make_stream(false, Some("en"), true),
+                make_stream(false, Some("th"), false),
+            ],
+            cancel: tokio_util::sync::CancellationToken::new(),
+            event_task: tokio::spawn(async { Ok(()) }),
+        };
+        capture
+            .try_fanout_pcm(&[7u8; 64])
+            .expect("a dead auxiliary lane must not stop capture audio");
+        assert_eq!(factory.sent.lock().unwrap().len(), 2);
+        capture
+            .try_fanout_control(SttStreamControl::Keepalive)
+            .expect("a dead auxiliary lane must not stop group control");
+
+        // A dead canonical lane is group-wide unavailability, exactly as before.
+        let canonical_down = ActiveRemoteCapture {
+            stream_factory: factory.clone(),
+            streams: vec![
+                make_stream(true, None, true),
+                make_stream(false, Some("en"), false),
+            ],
+            cancel: tokio_util::sync::CancellationToken::new(),
+            event_task: tokio::spawn(async { Ok(()) }),
+        };
+        assert!(canonical_down.try_fanout_pcm(&[7u8; 64]).is_err());
+        assert!(canonical_down
+            .try_fanout_control(SttStreamControl::Keepalive)
+            .is_err());
+    }
+
+    #[test]
+    fn lane_health_snapshot_reports_failed_over_connecting_over_live() {
+        let lane = |canonical: bool, target: Option<&str>, connected: bool, failed: bool| {
+            StreamAggregationLane {
+                descriptor: RemoteStreamLane {
+                    target_language: target.map(str::to_string),
+                    canonical,
+                },
+                assembler: RealtimeUtteranceAssembler::new("health-session".into(), &profile()),
+                provider_session_epoch: 0,
+                group_epoch: 0,
+                awaiting_reconnect: !connected && !failed,
+                connected,
+                ever_connected: true,
+                failed,
+                provider_accepted_configuration: true,
+                disconnected_at_frame: None,
+            }
+        };
+        let snapshot = lane_health_snapshot(&[
+            lane(true, None, true, false),
+            lane(false, Some("en"), false, false),
+            lane(false, Some("th"), false, true),
+        ]);
+        assert_eq!(snapshot[0].target_language, None);
+        assert_eq!(snapshot[0].state, "live");
+        assert_eq!(snapshot[1].target_language.as_deref(), Some("en"));
+        assert_eq!(snapshot[1].state, "connecting");
+        assert_eq!(snapshot[2].target_language.as_deref(), Some("th"));
+        assert_eq!(snapshot[2].state, "failed");
+    }
+
     #[test]
     fn translation_cues_flow_through_deltas_and_snapshots_without_binding() {
         let (_temp, core, _profile) = assembler_store_fixture("cue-flow-session");
@@ -12580,6 +12793,7 @@ mod tests {
                 awaiting_reconnect,
                 connected,
                 ever_connected: connected,
+                failed: false,
                 provider_accepted_configuration: connected,
                 disconnected_at_frame: None,
             }
@@ -12890,6 +13104,7 @@ mod tests {
                 awaiting_reconnect: false,
                 connected: true,
                 ever_connected: true,
+                failed: false,
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
             }

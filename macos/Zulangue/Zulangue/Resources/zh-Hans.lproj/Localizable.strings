@@ -772,6 +772,7 @@
 "subtitle.overlay.accessibility_label" = "多语言实时字幕悬浮窗";
 "subtitle.overlay.language_count" = "%lld 种语言";
 "subtitle.overlay.waiting" = "正在等待语音…";
+"subtitle.overlay.degraded_lanes" = "这些译文栏落后或不可用，转录仍在继续。";
 "subtitle.overlay.recording_ended" = "录音已结束";
 "subtitle.overlay.font_size" = "字幕字号";
 "subtitle.overlay.font_smaller" = "减小字幕";

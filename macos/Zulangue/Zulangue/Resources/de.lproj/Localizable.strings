@@ -771,6 +771,7 @@
 "subtitle.overlay.accessibility_label" = "Mehrsprachiges Live-Untertitelfenster";
 "subtitle.overlay.language_count" = "%lld Sprachen";
 "subtitle.overlay.waiting" = "Warten auf Sprache…";
+"subtitle.overlay.degraded_lanes" = "Diese Übersetzungsspalten sind im Rückstand oder nicht verfügbar; die Transkription läuft weiter.";
 "subtitle.overlay.recording_ended" = "Aufnahme beendet";
 "subtitle.overlay.font_size" = "Untertitelgröße";
 "subtitle.overlay.font_smaller" = "Kleinere Untertitel";

@@ -760,6 +760,7 @@
 "subtitle.overlay.accessibility_label" = "多言語ライブ字幕ウィンドウ";
 "subtitle.overlay.language_count" = "%lld 言語";
 "subtitle.overlay.waiting" = "音声を待っています…";
+"subtitle.overlay.degraded_lanes" = "これらの翻訳列は遅延または利用できません。文字起こしは継続中です。";
 "subtitle.overlay.recording_ended" = "録音が終了しました";
 "subtitle.overlay.font_size" = "字幕サイズ";
 "subtitle.overlay.font_smaller" = "字幕を小さく";

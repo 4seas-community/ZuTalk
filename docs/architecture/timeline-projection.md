@@ -251,18 +251,18 @@ canonical 断线才整组停。
 - 代价：静默降级成为常态，必须同时落地控制台第 1 条不变量
 - 前置：阶段一（否则重连后时间戳倒跳，隔离出来的那段会错位）
 
-阶段一二落地后的具体形状：
+落地形状：
 
 - vt-stt 每条连接本就自带重连与 replay（3 次退避 + 2s 重叠回放），时间戳重基准
-  已实测。隔离只是让 vt-ffi **不再把辅助 lane 的抖动升级成组失败**。
-- 新规则：辅助 lane `Reconnecting` → 组继续，该列的 cue 流自然停顿又自然恢复；
-  辅助 lane 终态失败 → 只标记该 lane 不可用；**canonical 终态失败才整组停**
-  （它是转录记录的权威）。
-- 画布侧必须区分「还在追」和「lane 已死」：死 lane 的列不显示等待省略号
-  （安静画布规则——等待暗示会来，死 lane 不会来），
-  `SubtitleAudienceTimeline.waitingLanguages` 需要 lane 健康输入。
-- 事件需带每 lane 健康（现在 `remote_health` 是组级的），操作者 hover chrome
-  显示降级徽记；观众永远看不到。
+  已由阶段一实测保证。隔离只是让 vt-ffi **不再把辅助 lane 的抖动升级成组失败**。
+- 规则：辅助 lane `Reconnecting` → 组继续、该列自然停顿又自然恢复；辅助 lane
+  终态失败 → 只置 `StreamAggregationLane::failed`；**canonical 终态失败才整组停**
+  （它是转录记录与时间轴的权威）。
+- 音频扇出对不可用的辅助 lane 跳过而非整组报错；canonical 不可用仍是组级失败。
+- 每 lane 健康作为 `FfiNotebookCaptureLaneHealth` 随转换 delta 过 FFI（进程内状态，
+  不落盘）。画布据此区分「还在追」和「lane 已死」：死 lane 不显示等待省略号
+  ——省略号是「就来」的承诺，对死 lane 是假话。
+- 操作者 hover chrome 列出降级语言（不变量：降级必须可见，且只对操作者可见）。
 
 ### 阶段四 · canonical Finalize 广播退役
 

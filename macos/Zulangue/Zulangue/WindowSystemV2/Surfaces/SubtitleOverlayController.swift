@@ -186,7 +186,14 @@ enum SubtitleAudienceTimeline {
     /// absent column read as "this language is broken". A column already
     /// carrying a partial cue for the current sentence is not waiting: its
     /// anchor matches the newest source anchor.
-    static func waitingLanguages(columns: [String: [Item]]) -> Set<String> {
+    ///
+    /// A lane whose stream died is never "waiting": the ellipsis is a promise
+    /// that words are coming, and for a dead lane that promise is false. Its
+    /// column simply stops, and the operator — not the audience — is told why.
+    static func waitingLanguages(
+        columns: [String: [Item]],
+        failedLanguages: Set<String> = []
+    ) -> Set<String> {
         let newestSpoken = columns.values
             .joined()
             .filter { $0.kind == .source }
@@ -194,7 +201,7 @@ enum SubtitleAudienceTimeline {
             .max()
         guard let newestSpoken else { return [] }
         var waiting: Set<String> = []
-        for (language, items) in columns {
+        for (language, items) in columns where !failedLanguages.contains(language) {
             let newest = items.compactMap(\.anchorMs).max() ?? 0
             if newest < newestSpoken {
                 waiting.insert(language)
@@ -576,11 +583,34 @@ struct SubtitleOverlayView: View {
     }
 
     private var captureStatus: some View {
-        CaptureStateLabel(
-            captureState: store.captureState,
-            remoteHealth: store.remoteHealth,
-            projectionState: store.projectionState
-        )
+        HStack(spacing: 8) {
+            CaptureStateLabel(
+                captureState: store.captureState,
+                remoteHealth: store.remoteHealth,
+                projectionState: store.projectionState
+            )
+            degradedLanesBadge
+        }
+    }
+
+    /// A single translation lane can now go dark without stopping the room,
+    /// which trades a loud failure for a quiet one. The operator's invariant
+    /// is that any degradation stays visible — so the languages that are
+    /// behind or dark are named here, in the hover chrome the audience never
+    /// sees, at a fixed small size that ignores the subtitle font slider.
+    @ViewBuilder
+    private var degradedLanesBadge: some View {
+        let degraded = store.degradedTranslationLanguages
+        if degraded.isEmpty == false {
+            Label(
+                degraded.map { displayLanguageCode($0) }.joined(separator: " · "),
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(.secondary)
+            .help(String(localized: "subtitle.overlay.degraded_lanes"))
+            .accessibilityLabel(Text(String(localized: "subtitle.overlay.degraded_lanes")))
+        }
     }
 
     private var pinButton: some View {
@@ -841,7 +871,10 @@ struct SubtitleOverlayView: View {
             placement: { store.audienceSourcePlacement(for: $0) },
             cues: { store.presentedTranslationCues(for: $0) }
         )
-        let waiting = SubtitleAudienceTimeline.waitingLanguages(columns: columns)
+        let waiting = SubtitleAudienceTimeline.waitingLanguages(
+            columns: columns,
+            failedLanguages: store.failedTranslationLanguages
+        )
         let unrouted = SubtitleAudienceTimeline.unroutedText(
             utterances: store.presentedUtterances,
             placement: { store.audienceSourcePlacement(for: $0) }

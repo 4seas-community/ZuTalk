@@ -771,6 +771,7 @@
 "subtitle.overlay.accessibility_label" = "Ventana de subtítulos multilingües en vivo";
 "subtitle.overlay.language_count" = "%lld idiomas";
 "subtitle.overlay.waiting" = "Escuchando si hay voz…";
+"subtitle.overlay.degraded_lanes" = "Estas columnas de traducción están retrasadas o no disponibles; la transcripción continúa.";
 "subtitle.overlay.recording_ended" = "Grabación finalizada";
 "subtitle.overlay.font_size" = "Tamaño de los subtítulos";
 "subtitle.overlay.font_smaller" = "Subtítulos más pequeños";

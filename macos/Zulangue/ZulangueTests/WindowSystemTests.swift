@@ -595,6 +595,26 @@ final class WindowSystemTests: XCTestCase {
         ))
         XCTAssertEqual(waiting, ["th"])
 
+        // A dead lane is never "waiting": the ellipsis promises words are
+        // coming, and for a failed stream that promise is false.
+        let behindColumns = SubtitleAudienceTimeline.columns(
+            languages: ["zh", "en", "th"],
+            utterances: [source(0, "zh", "新话", 5_000)],
+            placement: { $0.sourceLanguage },
+            cues: { _ in [] }
+        )
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.waitingLanguages(columns: behindColumns),
+            ["en", "th"]
+        )
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.waitingLanguages(
+                columns: behindColumns,
+                failedLanguages: ["th"]
+            ),
+            ["en"]
+        )
+
         // Only the newest unplaced line surfaces as the unrouted strip.
         let unrouted = SubtitleAudienceTimeline.unroutedText(
             utterances: [source(0, "fr", "vieux", 1_000), source(1, "zh", "新", 2_000)],

@@ -772,6 +772,7 @@
 "subtitle.overlay.accessibility_label" = "Live multilingual subtitle window";
 "subtitle.overlay.language_count" = "%lld languages";
 "subtitle.overlay.waiting" = "Listening for speech…";
+"subtitle.overlay.degraded_lanes" = "These translation columns are behind or unavailable; transcription continues.";
 "subtitle.overlay.recording_ended" = "Recording ended";
 "subtitle.overlay.font_size" = "Caption size";
 "subtitle.overlay.font_smaller" = "Smaller captions";
