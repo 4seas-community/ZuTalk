@@ -541,20 +541,27 @@ struct SubtitleOverlayView: View {
         }
     }
 
-    /// Result-only projection: lanes appear when they have words and stay
-    /// blank otherwise. A line whose language is still unrouted (pending
-    /// identification or outside the selection) is still speech — it shows
-    /// full-width as plain text, with no label explaining itself, and the
-    /// columns catch up silently on the next revision.
+    /// Words-first projection with a quiet promise: lanes carrying words show
+    /// them, and a lane whose translation is still on its way holds its place
+    /// with a dimmed ellipsis card instead of vanishing — an absent column
+    /// reads as "this language is broken", while a placeholder reads as "it's
+    /// coming". Lanes that will never fill (unavailable, failed) stay hidden;
+    /// the audience is never shown error prose. A line whose language is
+    /// still unrouted (pending identification or outside the selection) is
+    /// still speech — it shows full-width as plain text, with no label
+    /// explaining itself, and the columns catch up silently on the next
+    /// revision.
     @ViewBuilder
     private func audienceRow(
         _ utterance: NotebookCaptureUtteranceDTO,
         width: CGFloat
     ) -> some View {
         let projection = store.projection(for: utterance)
-        let lanes = displayLanes(projection).filter { $0.text?.isEmpty == false }
+        let lanes = displayLanes(projection).filter {
+            $0.text?.isEmpty == false || $0.missingLaneState == .waiting
+        }
 
-        if lanes.isEmpty == false {
+        if lanes.contains(where: { $0.text?.isEmpty == false }) {
             let columnCount = SubtitleOverlayLayoutPolicy.audienceColumnCount(
                 width: width,
                 languageCount: lanes.count,
@@ -572,7 +579,11 @@ struct SubtitleOverlayView: View {
                             Array(lanes[start..<min(start + columnCount, lanes.count)].enumerated()),
                             id: \.offset
                         ) { _, lane in
-                            audienceLane(lane)
+                            if lane.text?.isEmpty == false {
+                                audienceLane(lane)
+                            } else {
+                                audienceWaitingLane(lane)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -643,6 +654,31 @@ struct SubtitleOverlayView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Text(languageName(lane.language)))
             .accessibilityValue(Text(lane.text ?? ""))
+    }
+
+    /// A lane whose translation is still in flight keeps its column with a
+    /// dimmed ellipsis — never prose, so the quiet-canvas rule holds. The
+    /// ellipsis scales with the subtitle font so the placeholder reads at the
+    /// same distance the words will.
+    private func audienceWaitingLane(_ lane: NotebookCaptureLanguageLane) -> some View {
+        Image(systemName: "ellipsis")
+            .font(.system(size: max(CGFloat(fontSize) * 0.55, 12), weight: .semibold))
+            .foregroundColor(.secondary.opacity(0.55))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: CGFloat(fontSize) * 1.6,
+                maxHeight: .infinity,
+                alignment: .bottomLeading
+            )
+            .background(subtitleCardBackground)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text(languageName(lane.language)))
+            .accessibilityValue(Text(String(
+                format: String(localized: "capture.transcript.waiting_lane"),
+                displayLanguageCode(lane.language)
+            )))
     }
 
     @ViewBuilder

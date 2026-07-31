@@ -1240,6 +1240,60 @@ fn pending_translation_from_inbox(
 /// retaining an entire lecture in the in-memory cross-stream indexes.
 const STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW: usize = 128;
 
+/// Minimum spacing between segmentation-barrier broadcasts. Provider `<end>`
+/// markers arrive at natural speech pauses (seconds apart); this only guards
+/// against a pathological burst flooding the auxiliary control channels.
+const SEGMENT_BOUNDARY_BROADCAST_MIN_INTERVAL: std::time::Duration =
+    std::time::Duration::from_millis(750);
+
+/// One auxiliary provider segment overlapping a second canonical row by at
+/// least this much means provider endpointing diverged across sibling streams
+/// and whole-segment binding is degrading into cross-row content.
+const CROSS_ROW_OVERLAP_WARN_PER_MILLE: u16 = 500;
+
+/// The canonical stream is the segmentation authority. Its semantic endpoint
+/// closes the current row, so every connected auxiliary stream is told to
+/// finalize at the same audio position; auxiliary endpoint detection stays
+/// enabled purely as a fallback, and a finalize racing a natural `<end>`
+/// merely finalizes an empty tail. Best-effort by design: a full or closed
+/// control channel skips the lane instead of stalling the event loop, because
+/// the next canonical endpoint repeats the barrier.
+fn broadcast_segment_boundary_to_auxiliary_lanes(
+    lanes: &[StreamAggregationLane],
+    lane_controls: &[Option<tokio::sync::mpsc::Sender<SttStreamControl>>],
+    last_broadcast: &mut Option<tokio::time::Instant>,
+) {
+    let now = tokio::time::Instant::now();
+    if last_broadcast
+        .is_some_and(|previous| now.duration_since(previous) < SEGMENT_BOUNDARY_BROADCAST_MIN_INTERVAL)
+    {
+        return;
+    }
+    let mut broadcast = false;
+    for (lane, control) in lanes.iter().zip(lane_controls.iter()) {
+        let Some(control) = control else { continue };
+        if lane.descriptor.canonical || !lane.connected || lane.awaiting_reconnect {
+            // A disconnected or reconnecting lane would apply the finalize to
+            // a stale audio position once its socket returns; skipping keeps
+            // the barrier tied to live streams only.
+            continue;
+        }
+        match control.try_send(SttStreamControl::Finalize) {
+            Ok(()) => broadcast = true,
+            Err(error) => {
+                tracing::debug!(
+                    target_language = lane.descriptor.target_language.as_deref().unwrap_or("und"),
+                    %error,
+                    "segmentation barrier skipped an auxiliary lane"
+                );
+            }
+        }
+    }
+    if broadcast {
+        *last_broadcast = Some(now);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn collect_stream_events(
     store: NotebookCaptureStore,
@@ -1248,6 +1302,7 @@ async fn collect_stream_events(
     profile: NotebookCaptureProfile,
     context_digest: Option<String>,
     lane_descriptors: Vec<RemoteStreamLane>,
+    lane_controls: Vec<Option<tokio::sync::mpsc::Sender<SttStreamControl>>>,
     mut event_rx: tokio::sync::mpsc::Receiver<TaggedStreamEvent>,
     group_cancel: tokio_util::sync::CancellationToken,
     captured_frames: Arc<AtomicU64>,
@@ -1375,6 +1430,7 @@ async fn collect_stream_events(
         }
     }
 
+    let mut last_boundary_broadcast: Option<tokio::time::Instant> = None;
     while let Some(tagged) = event_rx.recv().await {
         let Some(lane) = lanes.get_mut(tagged.lane_index) else {
             group_cancel.cancel();
@@ -1418,6 +1474,15 @@ async fn collect_stream_events(
             }
         }
         let lane_index = tagged.lane_index;
+        if lane_index == canonical_lane_index
+            && matches!(&tagged.event, SttStreamEvent::Endpoint)
+        {
+            broadcast_segment_boundary_to_auxiliary_lanes(
+                &lanes,
+                &lane_controls,
+                &mut last_boundary_broadcast,
+            );
+        }
         let publishes_canonical_preview = lane_index == canonical_lane_index
             && matches!(
                 &tagged.event,
@@ -2232,6 +2297,7 @@ fn flush_pending_translation_variants(
             };
             (binding.canonical_sequence, binding.utterance)
         };
+        warn_cross_row_translation_span(&pending, sequence, canonical_matches);
         let candidate_key = (pending.group_epoch, sequence);
         let reverse_key = (
             pending.group_epoch,
@@ -2445,6 +2511,59 @@ fn pending_matches_candidate_identity(
     candidate: &CanonicalUtteranceMatch,
 ) -> bool {
     timeline_alignment_score(pending, candidate).is_some()
+}
+
+/// Returns the other canonical rows this auxiliary segment materially overlaps.
+/// A non-empty result means sibling-stream endpointing diverged: the provider
+/// packed audio from several canonical rows into one segment, and whole-segment
+/// binding is about to place cross-row content into a single row.
+fn cross_row_translation_spans(
+    pending: &PendingTranslationVariant,
+    bound_sequence: u64,
+    candidates: impl Iterator<Item = impl std::borrow::Borrow<CanonicalUtteranceMatch>>,
+) -> Vec<u64> {
+    let mut spanning = candidates
+        .filter_map(|candidate| {
+            let candidate = candidate.borrow();
+            if candidate.group_epoch != pending.group_epoch
+                || candidate.utterance.sequence == bound_sequence
+            {
+                return None;
+            }
+            timeline_alignment_score(pending, candidate)
+                .filter(|score| score.overlap_per_mille >= CROSS_ROW_OVERLAP_WARN_PER_MILLE)
+                .map(|_| candidate.utterance.sequence)
+        })
+        .collect::<Vec<_>>();
+    spanning.sort_unstable();
+    spanning.dedup();
+    spanning
+}
+
+/// Observability only; carries no transcript text. Finals only, because a live
+/// Partial legitimately sweeps across rows while its segment is still open.
+fn warn_cross_row_translation_span(
+    pending: &PendingTranslationVariant,
+    bound_sequence: u64,
+    canonical_matches: &std::collections::HashMap<(u64, u64), CanonicalUtteranceMatch>,
+) {
+    if pending.completion != UtteranceCompletion::Complete {
+        return;
+    }
+    let spanning =
+        cross_row_translation_spans(pending, bound_sequence, canonical_matches.values());
+    if spanning.is_empty() {
+        return;
+    }
+    tracing::warn!(
+        target_language = %pending.target_language,
+        source_language = %pending.source_language,
+        bound_sequence,
+        spanning_sequences = ?spanning,
+        source_start_ms = pending.source_start_ms,
+        source_end_ms = pending.source_end_ms,
+        "auxiliary translation segment spans multiple canonical rows; sibling-stream endpointing diverged"
+    );
 }
 
 fn source_texts_match(left: &str, right: &str) -> bool {
@@ -6619,6 +6738,12 @@ impl ZulangueCore {
             .iter()
             .map(|stream| stream.descriptor.clone())
             .collect::<Vec<_>>();
+        let lane_controls = streams
+            .iter()
+            .map(|stream| {
+                (!stream.descriptor.canonical).then(|| stream.control_tx.clone())
+            })
+            .collect::<Vec<_>>();
         let store = self.notebook_capture_store.clone();
         let context_store = self.context_pack_store.clone();
         let profile = profile.clone();
@@ -6633,6 +6758,7 @@ impl ZulangueCore {
                 profile,
                 context_digest,
                 lane_descriptors,
+                lane_controls,
                 tagged_rx,
                 event_cancel,
                 captured_frames,
@@ -11956,6 +12082,118 @@ mod tests {
             match_canonical_sequence(&pending, std::iter::once(&language_drift)),
             Some(4),
             "a target stream language disagreement must not veto the shared audio time"
+        );
+    }
+
+    #[test]
+    fn cross_row_spans_flag_only_material_overlap_within_the_bound_epoch() {
+        let candidate = |sequence, group_epoch, start_ms, end_ms| {
+            let mut utterance = projected_utterance();
+            utterance.sequence = sequence;
+            utterance.source_language = "zh".into();
+            utterance.source_start_ms = start_ms;
+            utterance.source_end_ms = end_ms;
+            CanonicalUtteranceMatch {
+                group_epoch,
+                utterance,
+            }
+        };
+        // The observed field failure: one auxiliary segment swallowing the
+        // first canonical row plus most of the second.
+        let pending = PendingTranslationVariant {
+            session_id: "cross-row-session".into(),
+            group_epoch: 0,
+            source_sequence: 0,
+            source_language: "zh".into(),
+            source_text: "跨行的辅助段".into(),
+            source_start_ms: Some(600),
+            source_end_ms: Some(28_920),
+            target_language: "th".into(),
+            completion: UtteranceCompletion::Complete,
+        };
+        let rows = [
+            candidate(0, 0, Some(600), Some(5_160)),
+            candidate(1, 0, Some(6_180), Some(56_640)),
+            candidate(2, 1, Some(6_180), Some(56_640)),
+        ];
+        assert_eq!(
+            cross_row_translation_spans(&pending, 0, rows.iter()),
+            vec![1],
+            "a segment covering most of a second row is a divergence signal; \
+             another epoch's identical window is not comparable evidence"
+        );
+
+        // Aligned endpointing: the segment matches its own row and only grazes
+        // the neighbor across the boundary silence.
+        let aligned = PendingTranslationVariant {
+            source_start_ms: Some(600),
+            source_end_ms: Some(6_500),
+            ..pending.clone()
+        };
+        assert_eq!(
+            cross_row_translation_spans(&aligned, 0, rows.iter()),
+            Vec::<u64>::new(),
+            "boundary skew from network lag must not raise the divergence flag"
+        );
+    }
+
+    #[test]
+    fn segmentation_barrier_reaches_only_live_auxiliary_lanes_and_debounces() {
+        let lane = |canonical: bool, target: Option<&str>, connected, awaiting_reconnect| {
+            StreamAggregationLane {
+                descriptor: RemoteStreamLane {
+                    target_language: target.map(str::to_string),
+                    canonical,
+                },
+                assembler: RealtimeUtteranceAssembler::new("barrier-session".into(), &profile()),
+                provider_session_epoch: 0,
+                group_epoch: 0,
+                awaiting_reconnect,
+                connected,
+                ever_connected: connected,
+                provider_accepted_configuration: connected,
+                disconnected_at_frame: None,
+            }
+        };
+        let lanes = vec![
+            lane(true, None, true, false),
+            lane(false, Some("en"), true, false),
+            lane(false, Some("th"), false, false),
+            lane(false, Some("ja"), true, true),
+        ];
+        let (canonical_tx, mut canonical_rx) = tokio::sync::mpsc::channel(4);
+        let (en_tx, mut en_rx) = tokio::sync::mpsc::channel(4);
+        let (th_tx, mut th_rx) = tokio::sync::mpsc::channel(4);
+        let (ja_tx, mut ja_rx) = tokio::sync::mpsc::channel(4);
+        // The canonical lane keeps `None` in production; a live sender here
+        // proves the guard on the descriptor, not just on the caller.
+        let controls = vec![Some(canonical_tx), Some(en_tx), Some(th_tx), Some(ja_tx)];
+
+        let mut last_broadcast = None;
+        broadcast_segment_boundary_to_auxiliary_lanes(&lanes, &controls, &mut last_broadcast);
+        assert_eq!(
+            en_rx.try_recv(),
+            Ok(SttStreamControl::Finalize),
+            "a connected auxiliary lane finalizes at the canonical boundary"
+        );
+        assert!(
+            th_rx.try_recv().is_err(),
+            "a disconnected lane must not queue a finalize for a stale audio position"
+        );
+        assert!(
+            ja_rx.try_recv().is_err(),
+            "a lane awaiting reconnect must not queue a finalize either"
+        );
+        assert!(
+            canonical_rx.try_recv().is_err(),
+            "the segmentation authority never finalizes itself"
+        );
+        assert!(last_broadcast.is_some());
+
+        broadcast_segment_boundary_to_auxiliary_lanes(&lanes, &controls, &mut last_broadcast);
+        assert!(
+            en_rx.try_recv().is_err(),
+            "a second endpoint inside the debounce window must not repeat the barrier"
         );
     }
 
