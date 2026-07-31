@@ -5246,9 +5246,16 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertFalse(realtimeConsole.contains("isCommonCaption"))
         XCTAssertFalse(realtimeConsole.contains("capture.settings.languages.common_caption"))
         XCTAssertTrue(realtimeConsole.contains("NotebookCaptureSupportedLanguages.options()"))
-        XCTAssertTrue(realtimeConsole.contains("engineStore.engine.realtimeSummary"))
+        XCTAssertFalse(
+            realtimeConsole.contains("engineStore"),
+            "provider and model identity belong in settings, not the recording console"
+        )
         XCTAssertTrue(realtimeConsole.contains("credentialSession.snapshot()"))
-        XCTAssertTrue(realtimeConsole.contains("credential.loaded_unverified"))
+        XCTAssertTrue(realtimeConsole.contains("credentialAttentionTitle"))
+        XCTAssertFalse(
+            realtimeConsole.contains("credential.loaded_unverified"),
+            "a healthy credential must stay silent in the recording console"
+        )
         XCTAssertGreaterThanOrEqual(
             realtimeConsole
                 .components(separatedBy: "NotebookRealtimeControlLayoutPolicy.minimumInteractiveTarget")

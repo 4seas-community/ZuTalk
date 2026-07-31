@@ -801,9 +801,7 @@
 "capture.settings.autosave.context_review" = "设置已保存，请重新确认参考资料";
 "capture.settings.autosave.retry" = "重试";
 "capture.settings.realtime.start_disclosure" = "点击「开始录音」后，将按所选语言实时转录；服务暂时不可用时，录音仍会继续。";
-"capture.settings.remote.credential.loaded_unverified" = "Soniox 密钥 · 已保存并加载 · 尚未验证";
 "capture.settings.remote.credential.saved_inactive" = "Soniox 密钥 · 已保存 · 需要处理";
-"capture.settings.remote.credential.runtime_only_unverified" = "Soniox 密钥 · 本次运行已加载 · 未保存且未验证";
 "capture.settings.remote.credential.missing" = "Soniox 密钥 · 未保存";
 "capture.settings.remote.credential.hint" = "此状态只表示密钥在本机的保存和加载情况；只有点击「开始录音」才会授权本场音频外发。";
 "capture.settings.mode.title" = "实时模式";

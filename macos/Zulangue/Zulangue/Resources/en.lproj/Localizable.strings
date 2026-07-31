@@ -801,9 +801,7 @@
 "capture.settings.autosave.context_review" = "Settings saved; review the reference material again";
 "capture.settings.autosave.retry" = "Retry";
 "capture.settings.realtime.start_disclosure" = "Start Recording begins live transcription in the selected languages. Recording continues if the service is temporarily unavailable.";
-"capture.settings.remote.credential.loaded_unverified" = "Soniox key · Saved and loaded · Not verified";
 "capture.settings.remote.credential.saved_inactive" = "Soniox key · Saved · Needs attention";
-"capture.settings.remote.credential.runtime_only_unverified" = "Soniox key · Loaded for this run · Not saved or verified";
 "capture.settings.remote.credential.missing" = "Soniox key · Not saved";
 "capture.settings.remote.credential.hint" = "This only reports local key readiness. Audio sharing for a recording is authorized only when Start Recording is clicked.";
 "capture.settings.mode.title" = "Live mode";

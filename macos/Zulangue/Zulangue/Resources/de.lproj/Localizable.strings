@@ -800,9 +800,7 @@
 "capture.settings.autosave.context_review" = "Einstellungen gesichert; prüfe das Referenzmaterial erneut";
 "capture.settings.autosave.retry" = "Wiederholen";
 "capture.settings.realtime.start_disclosure" = "„Aufnahme starten“ beginnt die Live-Transkription in den ausgewählten Sprachen. Die Aufnahme läuft weiter, wenn der Dienst vorübergehend nicht verfügbar ist.";
-"capture.settings.remote.credential.loaded_unverified" = "Soniox-Schlüssel · Gesichert und geladen · Nicht geprüft";
 "capture.settings.remote.credential.saved_inactive" = "Soniox-Schlüssel · Gesichert · Erfordert Aufmerksamkeit";
-"capture.settings.remote.credential.runtime_only_unverified" = "Soniox-Schlüssel · Für diese Sitzung geladen · Nicht gesichert oder geprüft";
 "capture.settings.remote.credential.missing" = "Soniox-Schlüssel · Nicht gesichert";
 "capture.settings.remote.credential.hint" = "Dies zeigt nur die lokale Schlüsselbereitschaft an. Die Audiofreigabe für eine Aufnahme wird erst mit dem Klick auf „Aufnahme starten“ autorisiert.";
 "capture.settings.mode.title" = "Live-Modus";

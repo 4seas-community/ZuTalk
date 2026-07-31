@@ -300,9 +300,7 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
     func testNotebookCredentialReadinessCopyNeverClaimsConnectionSuccess() throws {
         let keys = [
             "capture.settings.realtime.start_disclosure",
-            "capture.settings.remote.credential.loaded_unverified",
             "capture.settings.remote.credential.saved_inactive",
-            "capture.settings.remote.credential.runtime_only_unverified",
             "capture.settings.remote.credential.missing",
             "capture.settings.remote.credential.hint",
         ]

@@ -789,9 +789,7 @@
 "capture.settings.autosave.context_review" = "設定は保存済みです。参考資料をもう一度確認してください";
 "capture.settings.autosave.retry" = "再試行";
 "capture.settings.realtime.start_disclosure" = "「録音開始」で、選択した言語のリアルタイム文字起こしが始まります。サービスを一時的に利用できなくても録音は続行します。";
-"capture.settings.remote.credential.loaded_unverified" = "Soniox キー · 保存・読み込み済み · 未確認";
 "capture.settings.remote.credential.saved_inactive" = "Soniox キー · 保存済み · 要確認";
-"capture.settings.remote.credential.runtime_only_unverified" = "Soniox キー · 今回のみ読み込み済み · 未保存・未確認";
 "capture.settings.remote.credential.missing" = "Soniox キー · 未保存";
 "capture.settings.remote.credential.hint" = "これはローカルのキー準備状態だけを示します。録音の音声送信は「録音開始」をクリックしたときだけ許可されます。";
 "capture.settings.mode.title" = "ライブモード";

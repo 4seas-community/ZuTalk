@@ -801,9 +801,7 @@
 "capture.settings.autosave.context_review" = "Réglages enregistrés ; vérifiez à nouveau les documents de référence";
 "capture.settings.autosave.retry" = "Réessayer";
 "capture.settings.realtime.start_disclosure" = "Démarrer l’enregistrement lance la transcription en direct dans les langues sélectionnées. L’enregistrement continue si le service est temporairement indisponible.";
-"capture.settings.remote.credential.loaded_unverified" = "Clé Soniox · Enregistrée et chargée · Non vérifiée";
 "capture.settings.remote.credential.saved_inactive" = "Clé Soniox · Enregistrée · Attention requise";
-"capture.settings.remote.credential.runtime_only_unverified" = "Clé Soniox · Chargée pour cette session · Non enregistrée ni vérifiée";
 "capture.settings.remote.credential.missing" = "Clé Soniox · Non enregistrée";
 "capture.settings.remote.credential.hint" = "Ceci indique seulement l’état local de la clé. Le partage audio d’un enregistrement n’est autorisé qu’au clic sur Démarrer l’enregistrement.";
 "capture.settings.mode.title" = "Mode en direct";

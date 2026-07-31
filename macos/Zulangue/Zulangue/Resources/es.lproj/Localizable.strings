@@ -800,9 +800,7 @@
 "capture.settings.autosave.context_review" = "Ajustes guardados; revise de nuevo el material de referencia";
 "capture.settings.autosave.retry" = "Reintentar";
 "capture.settings.realtime.start_disclosure" = "Iniciar grabación comienza la transcripción en vivo en los idiomas seleccionados. La grabación continúa aunque el servicio no esté disponible temporalmente.";
-"capture.settings.remote.credential.loaded_unverified" = "Clave de Soniox · Guardada y cargada · Sin verificar";
 "capture.settings.remote.credential.saved_inactive" = "Clave de Soniox · Guardada · Requiere atención";
-"capture.settings.remote.credential.runtime_only_unverified" = "Clave de Soniox · Cargada para esta ejecución · Sin guardar ni verificar";
 "capture.settings.remote.credential.missing" = "Clave de Soniox · Sin guardar";
 "capture.settings.remote.credential.hint" = "Esto solo informa de la preparación local de la clave. El envío de audio de una grabación se autoriza únicamente al hacer clic en Iniciar grabación.";
 "capture.settings.mode.title" = "Modo en vivo";

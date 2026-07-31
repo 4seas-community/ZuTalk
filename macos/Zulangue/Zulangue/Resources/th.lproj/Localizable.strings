@@ -801,9 +801,7 @@
 "capture.settings.autosave.context_review" = "บันทึกการตั้งค่าแล้ว โปรดตรวจทานข้อมูลอ้างอิงอีกครั้ง";
 "capture.settings.autosave.retry" = "ลองใหม่";
 "capture.settings.realtime.start_disclosure" = "เริ่มบันทึกจะเริ่มการถอดเสียงสดในภาษาที่เลือก การบันทึกจะดำเนินต่อแม้บริการไม่พร้อมใช้งานชั่วคราว";
-"capture.settings.remote.credential.loaded_unverified" = "คีย์ Soniox · บันทึกและโหลดแล้ว · ยังไม่ได้ตรวจสอบ";
 "capture.settings.remote.credential.saved_inactive" = "คีย์ Soniox · บันทึกแล้ว · ต้องดำเนินการ";
-"capture.settings.remote.credential.runtime_only_unverified" = "คีย์ Soniox · โหลดสำหรับการทำงานครั้งนี้ · ยังไม่ได้บันทึกหรือตรวจสอบ";
 "capture.settings.remote.credential.missing" = "คีย์ Soniox · ยังไม่ได้บันทึก";
 "capture.settings.remote.credential.hint" = "ข้อมูลนี้รายงานเฉพาะความพร้อมของคีย์ในเครื่องเท่านั้น การแชร์เสียงของการบันทึกจะได้รับอนุญาตก็ต่อเมื่อคลิกเริ่มบันทึก";
 "capture.settings.mode.title" = "โหมดสด";

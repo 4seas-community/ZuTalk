@@ -801,9 +801,7 @@
 "capture.settings.autosave.context_review" = "ဆက်တင်များ သိမ်းပြီးပါပြီ။ ကိုးကားချက်များကို ထပ်မံ ပြန်ကြည့်ပါ";
 "capture.settings.autosave.retry" = "ထပ်ကြိုးစားရန်";
 "capture.settings.realtime.start_disclosure" = "အသံသွင်းခြင်း စတင်ရန်က ရွေးထားသော ဘာသာစကားများဖြင့် တိုက်ရိုက် စာသားပြောင်းခြင်းကို စတင်ပါသည်။ ဝန်ဆောင်မှု ယာယီ မရရှိလျှင်လည်း အသံသွင်းမှု ဆက်လက် လုပ်ဆောင်နေပါမည်။";
-"capture.settings.remote.credential.loaded_unverified" = "Soniox ကီး · သိမ်းပြီး ဖွင့်တင်ထား · မစစ်ဆေးရသေး";
 "capture.settings.remote.credential.saved_inactive" = "Soniox ကီး · သိမ်းပြီး · ဂရုပြုရန် လိုသည်";
-"capture.settings.remote.credential.runtime_only_unverified" = "Soniox ကီး · ဤတစ်ကြိမ်အတွက် ဖွင့်တင်ထား · မသိမ်း၊ မစစ်ဆေးရသေး";
 "capture.settings.remote.credential.missing" = "Soniox ကီး · မသိမ်းရသေး";
 "capture.settings.remote.credential.hint" = "ဤအချက်သည် စက်တွင်း ကီး အသင့်ဖြစ်မှုကိုသာ ဖော်ပြပါသည်။ အသံသွင်းမှုတစ်ခုအတွက် အသံမျှဝေမှုကို အသံသွင်းခြင်း စတင်ရန် နှိပ်မှသာ ခွင့်ပြုပါသည်။";
 "capture.settings.mode.title" = "တိုက်ရိုက် မုဒ်";

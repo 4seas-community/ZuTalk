@@ -969,7 +969,6 @@ private struct NotebookRealtimeCaptureConsole: View {
     @ObservedObject var editor: NotebookCaptureProfileEditorModel
     let onOpenAdvancedSettings: () -> Void
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
-    @ObservedObject private var engineStore = NotebookCaptureEnginePresentationStore.shared
     @ObservedObject private var credentialSession = ProviderCredentialSession.shared
     @State private var languageSearch = ""
 
@@ -1003,9 +1002,6 @@ private struct NotebookRealtimeCaptureConsole: View {
         .background(Color.bpBlueLight.opacity(0.2))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "capture.realtime.controls.profile_group")))
-        .onAppear {
-            engineStore.refresh()
-        }
     }
 
     /// While capture is active the language columns identify themselves in the
@@ -1163,11 +1159,8 @@ private struct NotebookRealtimeCaptureConsole: View {
                 .foregroundColor(.textOnBpFaint)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: Spacing.md) {
-                Label(engineStore.engine.realtimeSummary, systemImage: "lock.fill")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.textOnBpDim)
-                credentialStatusLabel
+            if let credentialAttentionTitle {
+                credentialStatusLabel(title: credentialAttentionTitle)
             }
         }
         .padding(.vertical, Spacing.sm)
@@ -1327,8 +1320,8 @@ private struct NotebookRealtimeCaptureConsole: View {
         editor.scheduleUpdate(.moveLanguage(draft.selectedLanguages[index], offset: offset))
     }
 
-    private var credentialStatusLabel: some View {
-        Label(credentialStatusTitle, systemImage: credentialStatusIcon)
+    private func credentialStatusLabel(title: String) -> some View {
+        Label(title, systemImage: credentialStatusIcon)
             .font(.system(size: 10))
             .foregroundColor(credentialStatusColor)
             .fixedSize(horizontal: false, vertical: true)
@@ -1348,14 +1341,14 @@ private struct NotebookRealtimeCaptureConsole: View {
         return .resolve(snapshot)
     }
 
-    private var credentialStatusTitle: String {
+    // A healthy credential is the expected default and stays silent here;
+    // only states that block or degrade recording surface a status line.
+    private var credentialAttentionTitle: String? {
         switch credentialPresentationState {
-        case .savedLoadedUnverified:
-            String(localized: "capture.settings.remote.credential.loaded_unverified")
+        case .savedLoadedUnverified, .runtimeOnlyUnverified:
+            nil
         case .savedInactive:
             String(localized: "capture.settings.remote.credential.saved_inactive")
-        case .runtimeOnlyUnverified:
-            String(localized: "capture.settings.remote.credential.runtime_only_unverified")
         case .missing:
             String(localized: "capture.settings.remote.credential.missing")
         }
