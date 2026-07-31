@@ -207,6 +207,8 @@ struct ProviderSettingsView: View {
                 }
             }
 
+            CommunityInviteSettingsCard()
+
             Label(
                 String(localized: "settings.credentials.trust_boundary_notice"),
                 systemImage: "externaldrive.fill.badge.checkmark"

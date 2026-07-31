@@ -61,6 +61,15 @@
 "community_invite.invalid" = "That invitation code is not valid. Check with the person who invited you.";
 "community_invite.unavailable" = "The community service is temporarily unavailable. Try again later.";
 "community_invite.remaining_hours_format" = "About %lld hours left";
+"community_invite.settings.title" = "Community invite";
+"community_invite.settings.subtitle" = "See the usage time you own, or enter an invitation code.";
+"community_invite.resources.remaining" = "Time remaining";
+"community_invite.remaining_detail_format" = "%1$lld h %2$lld min";
+"community_invite.refresh" = "Refresh remaining time";
+"community_invite.replace" = "Use a new code";
+"community_invite.inactive" = "No community invitation active";
+"community_invite.use_toggle" = "Transcribe with community invite";
+"community_invite.use_toggle_detail" = "When on, recordings use invite time first. When off, your own saved key is used.";
 "editor.transcript.async.start" = "Transcribe this audio";
 "editor.transcript.async.start_failed" = "Could not start audio transcription";
 "onboarding.keys.voice_label" = "LIVE CAPTION SERVICE";

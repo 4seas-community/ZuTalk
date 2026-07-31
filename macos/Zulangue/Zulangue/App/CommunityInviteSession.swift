@@ -74,7 +74,7 @@ final class CommunityInviteSession: ObservableObject {
     }
 
     private func prepareCredential(requestedSeconds: Int) async throws -> String? {
-        guard let token = accessToken else { return nil }
+        guard isEnabled, let token = accessToken else { return nil }
         let response: RealtimeSessionResponse = try await request(
             path: "/v1/realtime-session",
             method: "POST",

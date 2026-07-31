@@ -61,6 +61,15 @@
 "community_invite.invalid" = "招待コードが無効です。招待者に確認してください。";
 "community_invite.unavailable" = "コミュニティサービスを一時的に利用できません。後でもう一度お試しください。";
 "community_invite.remaining_hours_format" = "残り約 %lld 時間";
+"community_invite.settings.title" = "コミュニティ招待";
+"community_invite.settings.subtitle" = "利用できる残り時間を確認するか、招待コードを入力します。";
+"community_invite.resources.remaining" = "残り時間";
+"community_invite.remaining_detail_format" = "%1$lld 時間 %2$lld 分";
+"community_invite.refresh" = "残り時間を更新";
+"community_invite.replace" = "新しい招待コードを使う";
+"community_invite.inactive" = "コミュニティ招待は未使用です";
+"community_invite.use_toggle" = "コミュニティ招待で文字起こし";
+"community_invite.use_toggle_detail" = "オンのときは招待時間を優先し、オフのときは自分の保存済みキーを使用します。";
 "editor.transcript.async.start" = "この音声を文字起こし";
 "editor.transcript.async.start_failed" = "音声の文字起こしを開始できませんでした";
 "onboarding.keys.voice_label" = "ライブ字幕サービス";

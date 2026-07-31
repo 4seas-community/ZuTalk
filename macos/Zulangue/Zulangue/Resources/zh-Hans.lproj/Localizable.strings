@@ -61,6 +61,15 @@
 "community_invite.invalid" = "邀请码无效，请向邀请人确认。";
 "community_invite.unavailable" = "社区服务暂时不可用，请稍后再试。";
 "community_invite.remaining_hours_format" = "剩余约 %lld 小时";
+"community_invite.settings.title" = "社区邀请";
+"community_invite.settings.subtitle" = "查看你拥有的使用时长，或输入邀请码启用。";
+"community_invite.resources.remaining" = "剩余时间";
+"community_invite.remaining_detail_format" = "%1$lld 小时 %2$lld 分钟";
+"community_invite.refresh" = "刷新剩余时间";
+"community_invite.replace" = "更换邀请码";
+"community_invite.inactive" = "未启用社区邀请";
+"community_invite.use_toggle" = "用社区邀请进行转录";
+"community_invite.use_toggle_detail" = "开启时录音优先使用邀请时长；关闭后使用自己保存的密钥。";
 "editor.transcript.async.start" = "转录这段音频";
 "editor.transcript.async.start_failed" = "无法开始音频转录";
 "onboarding.keys.voice_label" = "实时字幕服务";
