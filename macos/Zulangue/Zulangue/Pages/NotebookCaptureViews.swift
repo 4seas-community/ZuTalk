@@ -3428,9 +3428,22 @@ private struct TranscriptionUtteranceRow: View {
     }
 
     private var sourceLanguageLabel: String {
-        normalizedSourceLanguage == "und"
-            ? String(localized: "capture.transcript.language_pending")
-            : normalizedSourceLanguage.uppercased()
+        if normalizedSourceLanguage == "und" {
+            // The live tail's provisional provider language labels the row
+            // immediately; the pending placeholder remains only when the
+            // provider has not yet sent any language signal.
+            if let provisional = utterance.provisionalSourceLanguage?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .split(separator: "-")
+                .first
+                .map(String.init),
+               provisional.isEmpty == false, provisional != "und" {
+                return provisional.uppercased()
+            }
+            return String(localized: "capture.transcript.language_pending")
+        }
+        return normalizedSourceLanguage.uppercased()
     }
 
     private var timestampText: String? {

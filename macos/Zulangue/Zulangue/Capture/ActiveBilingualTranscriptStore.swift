@@ -157,6 +157,10 @@ struct NotebookCaptureUtteranceDTO: Codable, Equatable, Identifiable {
     /// Aggregate provider-machine revision; never use this for a lane edit CAS.
     var revision: UInt64
     var sourceLanguage: String
+    /// Display-only hint from the live speculative tail: the unambiguous
+    /// pending provider language while `sourceLanguage` is still `und`.
+    /// Never present on durable rows.
+    var provisionalSourceLanguage: String? = nil
     var sourceText: String
     var sourceStartMs: UInt64?
     var sourceEndMs: UInt64?
@@ -1411,6 +1415,7 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             sessionSpeakerId: value.sessionSpeakerId,
             revision: value.revision,
             sourceLanguage: value.sourceLanguage,
+            provisionalSourceLanguage: value.provisionalSourceLanguage,
             sourceText: value.sourceText,
             sourceStartMs: value.sourceStartMs,
             sourceEndMs: value.sourceEndMs,
@@ -1958,6 +1963,19 @@ enum NotebookCaptureHistoryPolicy {
            languages.contains(source),
            utterance.sourceText.isEmpty == false {
             textsByLanguage[source] = utterance.sourceText
+        }
+        // While the durable identity is still `und`, the live tail's
+        // provisional provider language places the text in its lane
+        // immediately instead of a full-width language-pending row. A later
+        // provider correction re-homes the text on the next callback.
+        if utterance.hasSourceLane,
+           source == nil || source == "und",
+           let provisional = normalizedLanguage(utterance.provisionalSourceLanguage),
+           provisional != "und",
+           languages.contains(provisional),
+           utterance.sourceText.isEmpty == false,
+           textsByLanguage[provisional] == nil {
+            textsByLanguage[provisional] = utterance.sourceText
         }
         let translated = normalizedLanguage(utterance.translatedLanguage)
         if let translated,

@@ -3618,6 +3618,65 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(unselected.lanes.allSatisfy { $0.text == nil })
     }
 
+    func testProvisionalLanguagePlacesPendingTextInItsLaneImmediately() {
+        func utterance(
+            provisional: String?,
+            sourceLanguage: String = "und"
+        ) -> NotebookCaptureUtteranceDTO {
+            NotebookCaptureUtteranceDTO(
+                id: "utt-provisional",
+                sessionId: "session-a",
+                sequence: 1,
+                revision: 1,
+                sourceLanguage: sourceLanguage,
+                provisionalSourceLanguage: provisional,
+                sourceText: "你好世界",
+                sourceStartMs: 0,
+                sourceEndMs: 200,
+                translatedLanguage: nil,
+                translatedText: nil,
+                completion: "partial",
+                alignment: "source_only"
+            )
+        }
+
+        let placed = NotebookCaptureHistoryPolicy.laneProjection(
+            for: utterance(provisional: "zh"),
+            selectedLanguages: ["en", "zh"],
+            commonCaptionLanguage: nil
+        )
+        XCTAssertNil(
+            placed.pendingLanguage,
+            "a provisional selected language must replace the pending placeholder"
+        )
+        XCTAssertNil(placed.lanes[0].text)
+        XCTAssertEqual(placed.lanes[1].text, "你好世界")
+
+        let outsideSelection = NotebookCaptureHistoryPolicy.laneProjection(
+            for: utterance(provisional: "ja"),
+            selectedLanguages: ["en", "zh"],
+            commonCaptionLanguage: nil
+        )
+        XCTAssertEqual(
+            outsideSelection.pendingLanguage,
+            "你好世界",
+            "an unselected provisional language stays outside the ordered lanes"
+        )
+        XCTAssertTrue(outsideSelection.lanes.allSatisfy { $0.text == nil })
+
+        let committed = NotebookCaptureHistoryPolicy.laneProjection(
+            for: utterance(provisional: "zh", sourceLanguage: "en"),
+            selectedLanguages: ["en", "zh"],
+            commonCaptionLanguage: nil
+        )
+        XCTAssertEqual(
+            committed.lanes[0].text,
+            "你好世界",
+            "a committed identity always outranks a stale provisional hint"
+        )
+        XCTAssertNil(committed.lanes[1].text)
+    }
+
     func testUnknownPartialSourceDoesNotHideAnIndependentFinalTranslationLane() {
         var utterance = NotebookCaptureUtteranceDTO(
             id: "utt-translation-first",

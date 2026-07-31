@@ -3686,6 +3686,13 @@ public struct FfiNotebookCaptureUtterance: Equatable, Hashable {
     public var revision: UInt64
     public var sessionSpeakerId: String?
     public var sourceLanguage: String
+    /**
+     * Display-only hint for a live speculative tail whose durable source
+     * language is still `und`. Carries the unambiguous pending provider
+     * language so clients can place the text in its lane immediately.
+     * Never persisted; always absent on durable rows.
+     */
+    public var provisionalSourceLanguage: String?
     public var sourceText: String
     public var sourceStartMs: UInt64?
     public var sourceEndMs: UInt64?
@@ -3706,7 +3713,13 @@ public struct FfiNotebookCaptureUtterance: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, sessionId: String, sequence: UInt64, revision: UInt64, sessionSpeakerId: String?, sourceLanguage: String, sourceText: String, sourceStartMs: UInt64?, sourceEndMs: UInt64?, translatedLanguage: String?, translatedText: String?, completion: String, alignment: String,
+    public init(id: String, sessionId: String, sequence: UInt64, revision: UInt64, sessionSpeakerId: String?, sourceLanguage: String,
+        /**
+         * Display-only hint for a live speculative tail whose durable source
+         * language is still `und`. Carries the unambiguous pending provider
+         * language so clients can place the text in its lane immediately.
+         * Never persisted; always absent on durable rows.
+         */provisionalSourceLanguage: String?, sourceText: String, sourceStartMs: UInt64?, sourceEndMs: UInt64?, translatedLanguage: String?, translatedText: String?, completion: String, alignment: String,
         /**
          * Session Final watermark that makes the source lane safe to show from
          * Loro. Zero means the source is still SQLite-only.
@@ -3720,6 +3733,7 @@ public struct FfiNotebookCaptureUtterance: Equatable, Hashable {
         self.revision = revision
         self.sessionSpeakerId = sessionSpeakerId
         self.sourceLanguage = sourceLanguage
+        self.provisionalSourceLanguage = provisionalSourceLanguage
         self.sourceText = sourceText
         self.sourceStartMs = sourceStartMs
         self.sourceEndMs = sourceEndMs
@@ -3754,6 +3768,7 @@ public struct FfiConverterTypeFfiNotebookCaptureUtterance: FfiConverterRustBuffe
                 revision: FfiConverterUInt64.read(from: &buf),
                 sessionSpeakerId: FfiConverterOptionString.read(from: &buf),
                 sourceLanguage: FfiConverterString.read(from: &buf),
+                provisionalSourceLanguage: FfiConverterOptionString.read(from: &buf),
                 sourceText: FfiConverterString.read(from: &buf),
                 sourceStartMs: FfiConverterOptionUInt64.read(from: &buf),
                 sourceEndMs: FfiConverterOptionUInt64.read(from: &buf),
@@ -3774,6 +3789,7 @@ public struct FfiConverterTypeFfiNotebookCaptureUtterance: FfiConverterRustBuffe
         FfiConverterUInt64.write(value.revision, into: &buf)
         FfiConverterOptionString.write(value.sessionSpeakerId, into: &buf)
         FfiConverterString.write(value.sourceLanguage, into: &buf)
+        FfiConverterOptionString.write(value.provisionalSourceLanguage, into: &buf)
         FfiConverterString.write(value.sourceText, into: &buf)
         FfiConverterOptionUInt64.write(value.sourceStartMs, into: &buf)
         FfiConverterOptionUInt64.write(value.sourceEndMs, into: &buf)

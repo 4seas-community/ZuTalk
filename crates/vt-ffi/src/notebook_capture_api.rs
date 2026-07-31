@@ -209,6 +209,11 @@ pub struct FfiNotebookCaptureUtterance {
     pub revision: u64,
     pub session_speaker_id: Option<String>,
     pub source_language: String,
+    /// Display-only hint for a live speculative tail whose durable source
+    /// language is still `und`. Carries the unambiguous pending provider
+    /// language so clients can place the text in its lane immediately.
+    /// Never persisted; always absent on durable rows.
+    pub provisional_source_language: Option<String>,
     pub source_text: String,
     pub source_start_ms: Option<u64>,
     pub source_end_ms: Option<u64>,
@@ -475,6 +480,7 @@ impl From<RealtimeUtterance> for FfiNotebookCaptureUtterance {
             revision: value.revision,
             session_speaker_id: value.session_speaker_id,
             source_language: value.source_language,
+            provisional_source_language: None,
             source_text: value.source_text,
             source_start_ms: value.source_start_ms,
             source_end_ms: value.source_end_ms,
@@ -500,6 +506,7 @@ impl From<RealtimeUtterance> for FfiNotebookCaptureUtterance {
 }
 
 fn ffi_live_preview(value: AssembledRealtimeUtterance) -> FfiNotebookCaptureUtterance {
+    let provisional_source_language = value.provisional_source_language;
     let value = value.utterance;
     FfiNotebookCaptureUtterance {
         id: value.id,
@@ -510,6 +517,7 @@ fn ffi_live_preview(value: AssembledRealtimeUtterance) -> FfiNotebookCaptureUtte
         revision: 0,
         session_speaker_id: None,
         source_language: value.source_language,
+        provisional_source_language,
         source_text: value.source_text,
         source_start_ms: value.source_start_ms,
         source_end_ms: value.source_end_ms,
@@ -1066,6 +1074,9 @@ impl RealtimeSegmentRevision {
 #[derive(Debug)]
 struct AssembledRealtimeUtterance {
     utterance: NewRealtimeUtterance,
+    /// Unambiguous pending provider language while the durable source language
+    /// is still `und`. Presentation-only; never persisted.
+    provisional_source_language: Option<String>,
     source_dirty: bool,
     translation_dirty: bool,
     translation_completion: Option<UtteranceCompletion>,
@@ -3637,6 +3648,13 @@ fn assemble_segment(
     let source_text = segment.source.text(include_pending_source);
     let source_language = segment.source_language();
     let source_is_unknown = source_language == "und";
+    // Identity commitment stays strict: the durable language remains `und`
+    // until the provider commits it. The unambiguous pending language is only
+    // surfaced as a display hint so live captions can enter their lane
+    // without waiting for that commitment.
+    let provisional_source_language = source_is_unknown
+        .then(|| normalized_optional_language(segment.matching_source_language()))
+        .flatten();
     let source_is_selected = selected_languages.contains(&source_language);
     let outside_pair = !source_is_unknown && !source_is_selected;
     let include_pending_translation = !identity_conflicts(
@@ -3737,6 +3755,7 @@ fn assemble_segment(
             completion: source_completion,
             alignment,
         },
+        provisional_source_language,
         source_dirty,
         translation_dirty,
         translation_completion,
@@ -10625,6 +10644,7 @@ mod tests {
                 source_language: "zh".into(),
                 ..preview.utterance
             },
+            provisional_source_language: None,
             source_dirty: true,
             translation_dirty: false,
             translation_completion: None,
@@ -11244,6 +11264,53 @@ mod tests {
             "provider-pending text remains SQLite-only when the stream is forced closed"
         );
         assert!(assembler.live_previews().is_empty());
+    }
+
+    #[test]
+    fn live_preview_carries_provisional_language_before_identity_commit() {
+        let mut assembler =
+            RealtimeUtteranceAssembler::new("session-provisional".into(), &profile());
+
+        assert!(assembler
+            .apply_tokens(&[attributed_token(
+                "你好",
+                SttStreamTranslationStatus::Original,
+                Some("zh"),
+                None,
+                None,
+                false,
+            )])
+            .is_empty());
+        let pending = assembler.live_previews();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].utterance.source_language, "und");
+        assert_eq!(
+            pending[0].provisional_source_language.as_deref(),
+            Some("zh"),
+            "the unambiguous pending provider language surfaces as a display hint"
+        );
+        let ffi = ffi_live_preview(pending.into_iter().next().unwrap());
+        assert_eq!(ffi.source_language, "und");
+        assert_eq!(ffi.provisional_source_language.as_deref(), Some("zh"));
+
+        let committed = assembler.apply_tokens(&[attributed_token(
+            "你好",
+            SttStreamTranslationStatus::Original,
+            Some("zh"),
+            None,
+            None,
+            true,
+        )]);
+        let committed_previews = assembler.live_previews();
+        assert_eq!(committed_previews.len(), 1);
+        assert_eq!(committed_previews[0].utterance.source_language, "zh");
+        assert_eq!(
+            committed_previews[0].provisional_source_language, None,
+            "a committed identity never needs the display hint"
+        );
+        for update in committed {
+            assert_eq!(update.provisional_source_language, None);
+        }
     }
 
     #[test]
@@ -12161,6 +12228,7 @@ mod tests {
                         UtteranceAlignment::SourceOnly
                     },
                 },
+                provisional_source_language: None,
                 source_dirty: true,
                 translation_dirty: translated_text.is_some(),
                 translation_completion: translated_text.map(|_| completion),
