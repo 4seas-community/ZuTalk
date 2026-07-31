@@ -13,7 +13,8 @@ const MULTILINGUAL_VERSION: i32 = 26;
 const REALTIME_LORO_VERSION: i32 = 27;
 const TRANSLATION_INBOX_VERSION: i32 = 28;
 const TRANSCRIPT_GAPS_VERSION: i32 = 29;
-const CURRENT_VERSION: i32 = 30;
+const REMOTE_ARTIFACTS_VERSION: i32 = 30;
+const CURRENT_VERSION: i32 = 31;
 
 const V23_TABLES: &[&str] = &[
     "audio_retention_chunks",
@@ -397,7 +398,7 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
 
     match current {
         0 if database_has_user_objects(conn)? => Err(schema_reset_required(0)),
-        0 => install_v30_baseline(conn),
+        0 => install_current_baseline(conn),
         LEGACY_VERSION => {
             validate_v23_baseline(conn)?;
             migrate_v23_to_v24(conn)?;
@@ -413,7 +414,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v28_to_v29(conn)?;
             validate_v29_baseline(conn)?;
             migrate_v29_to_v30(conn)?;
-            validate_v30_baseline(conn)
+            validate_v30_baseline(conn)?;
+            migrate_v30_to_v31(conn)?;
+            validate_v31_baseline(conn)
         }
         SPEAKER_VERSION => {
             validate_v24_baseline(conn)?;
@@ -428,7 +431,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v28_to_v29(conn)?;
             validate_v29_baseline(conn)?;
             migrate_v29_to_v30(conn)?;
-            validate_v30_baseline(conn)
+            validate_v30_baseline(conn)?;
+            migrate_v30_to_v31(conn)?;
+            validate_v31_baseline(conn)
         }
         PREVIOUS_VERSION => {
             validate_v25_baseline(conn)?;
@@ -441,7 +446,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v28_to_v29(conn)?;
             validate_v29_baseline(conn)?;
             migrate_v29_to_v30(conn)?;
-            validate_v30_baseline(conn)
+            validate_v30_baseline(conn)?;
+            migrate_v30_to_v31(conn)?;
+            validate_v31_baseline(conn)
         }
         MULTILINGUAL_VERSION => {
             validate_v26_baseline(conn)?;
@@ -452,7 +459,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v28_to_v29(conn)?;
             validate_v29_baseline(conn)?;
             migrate_v29_to_v30(conn)?;
-            validate_v30_baseline(conn)
+            validate_v30_baseline(conn)?;
+            migrate_v30_to_v31(conn)?;
+            validate_v31_baseline(conn)
         }
         REALTIME_LORO_VERSION => {
             validate_v27_baseline(conn)?;
@@ -461,19 +470,25 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v28_to_v29(conn)?;
             validate_v29_baseline(conn)?;
             migrate_v29_to_v30(conn)?;
-            validate_v30_baseline(conn)
+            validate_v30_baseline(conn)?;
+            migrate_v30_to_v31(conn)?;
+            validate_v31_baseline(conn)
         }
         TRANSLATION_INBOX_VERSION => {
             validate_v28_baseline(conn)?;
             migrate_v28_to_v29(conn)?;
             validate_v29_baseline(conn)?;
             migrate_v29_to_v30(conn)?;
-            validate_v30_baseline(conn)
+            validate_v30_baseline(conn)?;
+            migrate_v30_to_v31(conn)?;
+            validate_v31_baseline(conn)
         }
         TRANSCRIPT_GAPS_VERSION => {
             validate_v29_baseline(conn)?;
             migrate_v29_to_v30(conn)?;
-            validate_v30_baseline(conn)
+            validate_v30_baseline(conn)?;
+            migrate_v30_to_v31(conn)?;
+            validate_v31_baseline(conn)
         }
         CURRENT_VERSION => validate_v30_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
@@ -509,7 +524,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {LEGACY_VERSION}, schema {SPEAKER_VERSION}, schema {PREVIOUS_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {LEGACY_VERSION}, schema {SPEAKER_VERSION}, schema {PREVIOUS_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -621,11 +636,26 @@ fn validate_v29_baseline(conn: &Connection) -> SqlResult<()> {
 }
 
 fn validate_v30_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, CURRENT_VERSION)?;
-    // v30 的实质变化只在 CHECK 文本里:post-stop 必须允许异步文件 API 模型。
+    validate_v30_baseline_objects(conn, REMOTE_ARTIFACTS_VERSION)
+}
+
+fn validate_v31_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v30_baseline_objects(conn, CURRENT_VERSION)?;
+    // v31 的实质变化只在索引唯一性里:一条 canonical 语言车道可以持有多个
+    // 辅助分段,所以绑定索引不再是 UNIQUE。
+    let index_sql = schema_object_sql(conn, "index", "idx_realtime_translation_inbox_bound_lane")?
+        .to_ascii_lowercase();
+    if index_sql.contains("unique") {
+        return Err(schema_reset_required(CURRENT_VERSION));
+    }
+    Ok(())
+}
+
+fn validate_v30_baseline_objects(conn: &Connection, claimed_version: i32) -> SqlResult<()> {
+    validate_v24_or_later_baseline(conn, claimed_version)?;
     let table_sql = schema_object_sql(conn, "table", "notebook_capture_runs")?.to_ascii_lowercase();
     if !table_sql.contains("'stt-async-v5'") {
-        return Err(schema_reset_required(CURRENT_VERSION));
+        return Err(schema_reset_required(claimed_version));
     }
     Ok(())
 }
@@ -638,9 +668,10 @@ fn validate_v24_or_later_baseline(conn: &Connection, claimed_version: i32) -> Sq
     let has_realtime_loro_projection = claimed_version >= REALTIME_LORO_VERSION;
     let has_translation_inbox = claimed_version >= TRANSLATION_INBOX_VERSION;
     let has_transcript_gaps = claimed_version >= TRANSCRIPT_GAPS_VERSION;
-    let has_remote_artifact_journal = claimed_version >= CURRENT_VERSION;
+    let has_remote_artifact_journal = claimed_version >= REMOTE_ARTIFACTS_VERSION;
     let (tables, indexes, triggers) = match claimed_version {
-        CURRENT_VERSION => (V30_TABLES, V29_INDEXES, V29_TRIGGERS),
+        // v31 changed one index's uniqueness, not the object set.
+        CURRENT_VERSION | REMOTE_ARTIFACTS_VERSION => (V30_TABLES, V29_INDEXES, V29_TRIGGERS),
         TRANSCRIPT_GAPS_VERSION => (V29_TABLES, V29_INDEXES, V29_TRIGGERS),
         TRANSLATION_INBOX_VERSION => (V28_TABLES, V28_INDEXES, V28_TRIGGERS),
         REALTIME_LORO_VERSION => (V27_TABLES, V27_INDEXES, V27_TRIGGERS),
@@ -1407,7 +1438,7 @@ fn realtime_transcript_gaps_schema() -> &'static str {
     "#
 }
 
-fn install_v30_baseline(conn: &Connection) -> SqlResult<()> {
+fn install_current_baseline(conn: &Connection) -> SqlResult<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(
         r#"
@@ -1741,7 +1772,10 @@ fn install_v30_baseline(conn: &Connection) -> SqlResult<()> {
                 REFERENCES realtime_utterances(id, sequence)
                 ON DELETE SET NULL
         );
-        CREATE UNIQUE INDEX idx_realtime_translation_inbox_bound_lane
+        -- Deliberately not UNIQUE: one canonical language lane holds every
+        -- auxiliary segment whose words belong to that row, concatenated in
+        -- provider order. See migrate_v30_to_v31.
+        CREATE INDEX idx_realtime_translation_inbox_bound_lane
             ON realtime_translation_inbox(bound_utterance_id, target_language)
             WHERE bound_utterance_id IS NOT NULL;
         CREATE INDEX idx_realtime_translation_inbox_unbound
@@ -2304,6 +2338,33 @@ fn migrate_v29_to_v30(conn: &Connection) -> SqlResult<()> {
     conn.pragma_update(None, "legacy_alter_table", "OFF")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
     result
+}
+
+/// v30 -> v31: one canonical language lane may hold several auxiliary segments.
+///
+/// The auxiliary translating connection ends a segment wherever it hears a
+/// pause, which is routinely mid-row for the canonical connection. The unique
+/// binding index made the first segment to arrive the only one that could ever
+/// reach that row, so every later segment stayed durably unbound — measured at
+/// roughly a third of the translated text in a long run. Dropping uniqueness
+/// lets the store concatenate them in provider order instead.
+///
+/// Nothing is lost by relaxing this: the previously rejected segments are still
+/// in the inbox with their text, and the repair pass binds them on next launch.
+fn migrate_v30_to_v31(conn: &Connection) -> SqlResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(
+        r#"
+        DROP INDEX IF EXISTS idx_realtime_translation_inbox_bound_lane;
+        CREATE INDEX idx_realtime_translation_inbox_bound_lane
+            ON realtime_translation_inbox(bound_utterance_id, target_language)
+            WHERE bound_utterance_id IS NOT NULL;
+        "#,
+    )?;
+    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+    tx.commit()?;
+    tracing::info!("migrated Zulangue schema v{REMOTE_ARTIFACTS_VERSION} to v{CURRENT_VERSION}");
+    Ok(())
 }
 
 #[cfg(test)]

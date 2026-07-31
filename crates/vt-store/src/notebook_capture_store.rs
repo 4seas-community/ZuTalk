@@ -4106,7 +4106,14 @@ impl NotebookCaptureStore {
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_active_realtime_session(&tx, session_id)?;
         let utterance = upsert_translation_variant_from_conn(
-            &tx, session_id, sequence, language, text, state, completion,
+            &tx,
+            session_id,
+            sequence,
+            language,
+            text,
+            state,
+            completion,
+            TranslationLaneWrite::FinalIsImmutable,
         )?;
         tx.commit()?;
         Ok(utterance)
@@ -4148,6 +4155,7 @@ impl NotebookCaptureStore {
                 None,
                 UtteranceVariantState::Unavailable,
                 None,
+                TranslationLaneWrite::FinalIsImmutable,
             )?);
         }
         tx.commit()?;
@@ -4242,6 +4250,7 @@ impl NotebookCaptureStore {
                 update.text.as_deref(),
                 update.state,
                 update.completion,
+                TranslationLaneWrite::FinalIsImmutable,
             )?;
         } else {
             utterance =
@@ -5057,7 +5066,29 @@ fn list_translation_inbox_from_conn(
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+/// Binding and lane composition are one step, so they need one savepoint.
+///
+/// Composition can fail after the binding row is written — an out-of-order
+/// segment would rewrite text a reader has already seen, and that is refused.
+/// Callers treat a Conflict as "this fact stays unbound and the pass carries
+/// on", which is only true if the rejected attempt leaves nothing behind.
 fn bind_translation_inbox_item_from_conn(
+    conn: &Connection,
+    key: &RealtimeTranslationInboxKey,
+    canonical_sequence: u64,
+) -> Result<Option<RealtimeUtterance>, NotebookCaptureStoreError> {
+    conn.execute_batch("SAVEPOINT bind_translation_inbox")?;
+    let result = bind_translation_inbox_item_within_savepoint(conn, key, canonical_sequence);
+    let unwind = if result.is_ok() {
+        "RELEASE bind_translation_inbox"
+    } else {
+        "ROLLBACK TO bind_translation_inbox; RELEASE bind_translation_inbox"
+    };
+    conn.execute_batch(unwind)?;
+    result
+}
+
+fn bind_translation_inbox_item_within_savepoint(
     conn: &Connection,
     key: &RealtimeTranslationInboxKey,
     canonical_sequence: u64,
@@ -5106,32 +5137,34 @@ fn bind_translation_inbox_item_from_conn(
         && !canonical.source_lane_is_complete()
         && item.completion == Some(UtteranceCompletion::Complete);
     let evidence_only = target_is_current_source && !auxiliary_final_claims_owner;
-    let occupied = conn
+    // A canonical lane holds every auxiliary segment whose words belong to this
+    // row, not just the first one to arrive. The auxiliary connection routinely
+    // ends a segment mid-row, and rejecting the remainder used to discard it
+    // permanently — a third of a long run's translated text.
+    //
+    // Composition is still refused across a stream-group epoch: segments from
+    // two different provider connections have no shared ordering, so they
+    // cannot be concatenated into one lane.
+    let cross_epoch_owner = conn
         .query_row(
             "SELECT 1
              FROM realtime_translation_inbox
              WHERE bound_utterance_id = ?1
                AND target_language = ?2
-               AND NOT (
-                   session_id = ?3
-                   AND group_epoch = ?4
-                   AND provider_sequence = ?5
-               )
+               AND group_epoch <> ?3
              LIMIT 1",
             params![
                 canonical.id,
                 canonical_language(&key.target_language),
-                key.session_id,
                 u64_to_i64(key.group_epoch, "translation group epoch")?,
-                u64_to_i64(key.provider_sequence, "translation provider sequence")?,
             ],
             |_| Ok(()),
         )
         .optional()?
         .is_some();
-    if occupied {
+    if cross_epoch_owner {
         return Err(NotebookCaptureStoreError::Conflict(format!(
-            "canonical translation lane {}:{canonical_sequence}:{} is already bound",
+            "canonical translation lane {}:{canonical_sequence}:{} is bound to another stream epoch",
             key.session_id, key.target_language
         )));
     }
@@ -5572,22 +5605,128 @@ fn apply_translation_inbox_to_bound_utterance(
             None,
             UtteranceVariantState::Waiting,
             None,
+            TranslationLaneWrite::FinalIsImmutable,
         )?;
         return collect_empty_translation_shell_after_withdrawal(conn, visible);
     }
+    let composed = composed_translation_lane_from_conn(
+        conn,
+        &canonical.id,
+        &item.key.target_language,
+        item.key.group_epoch,
+    )?;
     if auxiliary_final_claims_owner {
-        return claim_auxiliary_final_from_provisional_source(conn, &canonical, item).map(Some);
+        return claim_auxiliary_final_from_provisional_source(
+            conn,
+            &canonical,
+            item,
+            composed.as_ref().map(|composed| composed.text.as_str()),
+        )
+        .map(Some);
     }
+    let (text, completion) = match composed {
+        Some(composed) => (Some(composed.text), composed.completion),
+        None => (item.translated_text.clone(), item.completion),
+    };
     upsert_translation_variant_from_conn(
         conn,
         &item.key.session_id,
         canonical_sequence,
         &item.key.target_language,
-        item.translated_text.as_deref(),
+        text.as_deref(),
         UtteranceVariantState::Ready,
-        item.completion,
+        completion,
+        TranslationLaneWrite::ComposeAuxiliarySegments,
     )
     .map(Some)
+}
+
+struct ComposedTranslationLane {
+    text: String,
+    completion: Option<UtteranceCompletion>,
+}
+
+/// Concatenates every auxiliary segment bound to one canonical row's language
+/// lane, in the order the words were spoken.
+///
+/// Ordering is by provider sequence, not by timestamp: within one connection
+/// the sequence is the connection's own account of what came first, and it
+/// stays monotonic through exactly the timestamp drift that made this
+/// composition necessary. Because the order is append-only as later segments
+/// arrive, the resulting text only ever grows at the end — which is what lets
+/// an already-projected lane be extended without rewriting what a reader has
+/// already seen.
+fn composed_translation_lane_from_conn(
+    conn: &Connection,
+    utterance_id: &str,
+    target_language: &str,
+    group_epoch: u64,
+) -> Result<Option<ComposedTranslationLane>, NotebookCaptureStoreError> {
+    let mut statement = conn.prepare(
+        "SELECT translated_text, completion
+         FROM realtime_translation_inbox
+         WHERE bound_utterance_id = ?1
+           AND target_language = ?2
+           AND group_epoch = ?3
+           AND state <> 'withdrawn'
+           AND translated_text IS NOT NULL
+         ORDER BY provider_sequence, lane_index",
+    )?;
+    let rows = statement
+        .query_map(
+            params![
+                utterance_id,
+                canonical_language(target_language),
+                u64_to_i64(group_epoch, "translation group epoch")?,
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                ))
+            },
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+    if rows.is_empty() {
+        return Ok(None);
+    }
+    let mut text = String::new();
+    let mut every_segment_is_final = true;
+    let mut any_completion = false;
+    for (segment, completion) in &rows {
+        match completion.as_deref().map(UtteranceCompletion::parse).transpose()? {
+            Some(UtteranceCompletion::Complete) => any_completion = true,
+            Some(UtteranceCompletion::Partial) => {
+                any_completion = true;
+                every_segment_is_final = false;
+            }
+            None => every_segment_is_final = false,
+        }
+        let segment = segment.trim_end();
+        if segment.is_empty() {
+            continue;
+        }
+        // The first segment is copied verbatim so a single-segment lane keeps
+        // the provider's own leading spacing, byte for byte.
+        if !text.is_empty()
+            && !text.ends_with(char::is_whitespace)
+            && !segment.starts_with(char::is_whitespace)
+        {
+            text.push(' ');
+        }
+        text.push_str(segment);
+    }
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let completion = match (every_segment_is_final, any_completion) {
+        (true, _) => Some(UtteranceCompletion::Complete),
+        // One segment still open keeps the whole lane open: a reader must not
+        // be told the row is settled while its tail is still arriving.
+        (false, true) => Some(UtteranceCompletion::Partial),
+        (false, false) => None,
+    };
+    Ok(Some(ComposedTranslationLane { text, completion }))
 }
 
 /// The per-language owner CAS for `Partial(source) -> Final(auxiliary)`.
@@ -5599,13 +5738,16 @@ fn claim_auxiliary_final_from_provisional_source(
     conn: &Connection,
     canonical: &RealtimeUtterance,
     item: &RealtimeTranslationInboxItem,
+    composed_text: Option<&str>,
 ) -> Result<RealtimeUtterance, NotebookCaptureStoreError> {
     let language = canonical_language(&item.key.target_language);
-    let text = item.translated_text.as_deref().ok_or_else(|| {
-        NotebookCaptureStoreError::CorruptData(
-            "auxiliary Final owner claim has no translated text".into(),
-        )
-    })?;
+    let text = composed_text
+        .or(item.translated_text.as_deref())
+        .ok_or_else(|| {
+            NotebookCaptureStoreError::CorruptData(
+                "auxiliary Final owner claim has no translated text".into(),
+            )
+        })?;
     let now = chrono::Utc::now().to_rfc3339();
     let claimed = conn.execute(
         "UPDATE realtime_utterance_variants
@@ -5708,32 +5850,16 @@ fn translation_inbox_matches_utterance(
     item: &RealtimeTranslationInboxItem,
     utterance: &RealtimeUtterance,
 ) -> bool {
-    let normalize_text = |value: &str| {
-        value
-            .chars()
-            .filter(|character| !character.is_whitespace())
-            .flat_map(char::to_lowercase)
-            .collect::<String>()
-    };
-    let source_text = normalize_text(&item.source_text);
-    let exact_text =
-        !source_text.is_empty() && source_text == normalize_text(&utterance.source_text);
-    match (
-        item.source_start_ms,
-        item.source_end_ms,
-        utterance.source_start_ms,
-        utterance.source_end_ms,
-    ) {
-        (Some(left_start), Some(left_end), Some(right_start), Some(right_end)) => {
-            left_start <= right_end && right_start <= left_end
-        }
-        _ => exact_text || item.key.provider_sequence == utterance.sequence,
-    }
+    translation_inbox_alignment_score(item, utterance).is_some()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TranslationInboxAlignmentScore {
     exact_source_text: bool,
+    contained_source_text: bool,
+    /// Length of the containing row; smaller is a tighter fit. Only compared
+    /// between two rows that both contain the segment.
+    canonical_text_chars: usize,
     overlap_per_mille: u16,
     source_language_matches: bool,
     midpoint_distance_ms: u64,
@@ -5745,19 +5871,28 @@ fn translation_inbox_alignment_score(
     item: &RealtimeTranslationInboxItem,
     utterance: &RealtimeUtterance,
 ) -> Option<TranslationInboxAlignmentScore> {
-    let normalize_text = |value: &str| {
-        value
-            .chars()
-            .filter(|character| !character.is_whitespace())
-            .flat_map(char::to_lowercase)
-            .collect::<String>()
+    let alignment = vt_model::align_source_text(&item.source_text, &utterance.source_text);
+    let exact_source_text = alignment == vt_model::SourceTextAlignment::Exact;
+    let contained_source_text =
+        matches!(alignment, vt_model::SourceTextAlignment::Contained { .. });
+    let canonical_text_chars = match alignment {
+        vt_model::SourceTextAlignment::Contained { canonical_chars } => canonical_chars,
+        _ => usize::MAX,
     };
-    let source_text = normalize_text(&item.source_text);
-    let exact_source_text =
-        !source_text.is_empty() && source_text == normalize_text(&utterance.source_text);
+    let has_text_evidence = exact_source_text || contained_source_text;
     let source_language_matches =
         canonical_language(&item.source_language) == canonical_language(&utterance.source_language);
     let sequence_distance = item.key.provider_sequence.abs_diff(utterance.sequence);
+    let mut score = TranslationInboxAlignmentScore {
+        exact_source_text,
+        contained_source_text,
+        canonical_text_chars,
+        overlap_per_mille: 0,
+        source_language_matches,
+        midpoint_distance_ms: u64::MAX,
+        sequence_distance,
+        sequence: utterance.sequence,
+    };
     match (
         item.source_start_ms,
         item.source_end_ms,
@@ -5768,43 +5903,36 @@ fn translation_inbox_alignment_score(
             if left_end < left_start || right_end < right_start {
                 return None;
             }
+            score.midpoint_distance_ms = left_start
+                .saturating_add(left_end)
+                .abs_diff(right_start.saturating_add(right_end))
+                / 2;
             let intersection_start = left_start.max(right_start);
             let intersection_end = left_end.min(right_end);
             if intersection_end < intersection_start {
-                return None;
+                // Disjoint in time. Sibling connection clocks drift apart over
+                // a long run, so this rules the row out only when the words
+                // vouch for the row instead. A matching sequence number does
+                // not: two connections number their own segments, and the
+                // numbers mean nothing to each other.
+                if !has_text_evidence {
+                    return None;
+                }
+                return Some(score);
             }
             let shorter = left_end
                 .saturating_sub(left_start)
                 .min(right_end.saturating_sub(right_start));
-            let overlap_per_mille = if shorter == 0 {
+            score.overlap_per_mille = if shorter == 0 {
                 1_000
             } else {
                 ((u128::from(intersection_end.saturating_sub(intersection_start)) * 1_000)
                     / u128::from(shorter))
                 .min(1_000) as u16
             };
-            Some(TranslationInboxAlignmentScore {
-                exact_source_text,
-                overlap_per_mille,
-                source_language_matches,
-                midpoint_distance_ms: left_start
-                    .saturating_add(left_end)
-                    .abs_diff(right_start.saturating_add(right_end))
-                    / 2,
-                sequence_distance,
-                sequence: utterance.sequence,
-            })
+            Some(score)
         }
-        _ if exact_source_text || item.key.provider_sequence == utterance.sequence => {
-            Some(TranslationInboxAlignmentScore {
-                exact_source_text,
-                overlap_per_mille: 0,
-                source_language_matches,
-                midpoint_distance_ms: u64::MAX,
-                sequence_distance,
-                sequence: utterance.sequence,
-            })
-        }
+        _ if has_text_evidence || item.key.provider_sequence == utterance.sequence => Some(score),
         _ => None,
     }
 }
@@ -5814,6 +5942,8 @@ fn translation_inbox_evidence_eq(
     right: &TranslationInboxAlignmentScore,
 ) -> bool {
     left.exact_source_text == right.exact_source_text
+        && left.contained_source_text == right.contained_source_text
+        && left.canonical_text_chars == right.canonical_text_chars
         && left.overlap_per_mille == right.overlap_per_mille
         && left.source_language_matches == right.source_language_matches
         && left.midpoint_distance_ms == right.midpoint_distance_ms
@@ -5833,6 +5963,8 @@ fn unique_translation_inbox_candidate<'a>(
         right
             .exact_source_text
             .cmp(&left.exact_source_text)
+            .then_with(|| right.contained_source_text.cmp(&left.contained_source_text))
+            .then_with(|| left.canonical_text_chars.cmp(&right.canonical_text_chars))
             .then_with(|| right.overlap_per_mille.cmp(&left.overlap_per_mille))
             .then_with(|| {
                 right
@@ -5852,6 +5984,18 @@ fn unique_translation_inbox_candidate<'a>(
     (equally_supported.len() == 1).then_some(candidate.sequence)
 }
 
+/// Whether this write is allowed to grow a lane that already reached Final.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TranslationLaneWrite {
+    /// Final is immutable. Every caller outside auxiliary composition.
+    FinalIsImmutable,
+    /// The text is the concatenation of the auxiliary segments bound to this
+    /// row, so a later segment extends the lane at the end. What a reader has
+    /// already seen is still immutable — an extension that would rewrite any
+    /// earlier character is rejected exactly like any other Final mutation.
+    ComposeAuxiliarySegments,
+}
+
 fn upsert_translation_variant_from_conn(
     conn: &Connection,
     session_id: &str,
@@ -5860,6 +6004,7 @@ fn upsert_translation_variant_from_conn(
     text: Option<&str>,
     state: UtteranceVariantState,
     completion: Option<UtteranceCompletion>,
+    lane_write: TranslationLaneWrite,
 ) -> Result<RealtimeUtterance, NotebookCaptureStoreError> {
     let language = canonical_language(language);
     let now = chrono::Utc::now().to_rfc3339();
@@ -5893,7 +6038,14 @@ fn upsert_translation_variant_from_conn(
         {
             let incoming_is_final = state == UtteranceVariantState::Ready
                 && completion == Some(UtteranceCompletion::Complete);
-            if !incoming_is_final {
+            let extends_final_lane = lane_write == TranslationLaneWrite::ComposeAuxiliarySegments
+                && incoming_is_final
+                && existing.text.as_deref().is_some_and(|settled| {
+                    text.is_some_and(|incoming| {
+                        incoming.len() > settled.len() && incoming.starts_with(settled)
+                    })
+                });
+            if !incoming_is_final && !extends_final_lane {
                 // Complete is the absorbing owner state for one normalized
                 // language lane. A later producer Partial, withdrawal, or
                 // health-state downgrade is evidence only and cannot turn a
@@ -5902,9 +6054,11 @@ fn upsert_translation_variant_from_conn(
                 apply_utterance_overrides(conn, &mut visible)?;
                 return Ok(visible);
             }
-            return Err(NotebookCaptureStoreError::Conflict(format!(
-                "final machine utterance variant {session_id}:{sequence}:{language} is immutable"
-            )));
+            if !extends_final_lane {
+                return Err(NotebookCaptureStoreError::Conflict(format!(
+                    "final machine utterance variant {session_id}:{sequence}:{language} is immutable"
+                )));
+            }
         }
     }
 
@@ -10690,7 +10844,7 @@ mod tests {
     }
 
     #[test]
-    fn contested_unique_binding_stays_unbound_instead_of_conflicting() {
+    fn a_second_auxiliary_segment_extends_the_lane_it_shares_with_its_sibling() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
         create_catalogued_run(&store, &notebook_id, "aux-occupied-lane");
@@ -10735,10 +10889,9 @@ mod tests {
         assert_eq!(owner.item.bound_sequence, Some(0));
 
         // A second auxiliary fact whose only alignment candidate is the same
-        // canonical row. Its target lane is already owned, so the
-        // store-authoritative fallback must keep the durable fact unbound for
-        // a later pass instead of escalating the ownership conflict into a
-        // capture-fatal persistence error.
+        // canonical row: the auxiliary connection ended its segment mid-row.
+        // The row's lane holds both segments in provider order rather than
+        // discarding the tail.
         let late_key = RealtimeTranslationInboxKey {
             session_id: "session-aux-occupied-lane".into(),
             lane_index: 1,
@@ -10758,18 +10911,125 @@ mod tests {
                 withdrawn: false,
             })
             .unwrap();
-        assert_eq!(accepted.item.bound_sequence, None);
+        assert_eq!(accepted.item.bound_sequence, Some(0));
 
-        let resolved = store
-            .bind_translation_inbox_item_if_unique(&late_key)
-            .unwrap();
-        assert!(resolved.is_none());
         let inbox = store
             .list_translation_inbox("session-aux-occupied-lane")
             .unwrap();
         assert_eq!(inbox.len(), 2);
         assert_eq!(inbox[0].bound_sequence, Some(0));
-        assert_eq!(inbox[1].bound_sequence, None);
+        assert_eq!(inbox[1].bound_sequence, Some(0));
+
+        let utterance = store
+            .get_machine_utterance_by_id("utt-aux-occupied-lane")
+            .unwrap()
+            .expect("canonical row");
+        let lane = utterance
+            .variants
+            .iter()
+            .find(|variant| variant.language == "en")
+            .expect("english lane");
+        assert_eq!(lane.text.as_deref(), Some("Heavy rain Just the beginning"));
+        assert_eq!(lane.completion, Some(UtteranceCompletion::Complete));
+    }
+
+    /// The two sibling connections' clocks have drifted, so every auxiliary
+    /// segment's time window sits over the *next* canonical row. Reproduced
+    /// from a real 2026-08-01 run in which this cost a third of the translated
+    /// text: the first segment bound to the following row and the second lost
+    /// that row's lane to it.
+    #[test]
+    fn drifted_segment_timestamps_bind_by_words_rather_than_to_the_neighbouring_row() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "aux-drift");
+        claim_realtime(&store, "session-aux-drift");
+        let row = |id: &str, sequence: u64, text: &str, start: u64, end: u64| {
+            store
+                .upsert_utterance(
+                    &NewRealtimeUtterance {
+                        id: id.into(),
+                        session_id: "session-aux-drift".into(),
+                        sequence,
+                        session_speaker_id: None,
+                        source_language: "zh".into(),
+                        source_text: text.into(),
+                        source_start_ms: Some(start),
+                        source_end_ms: Some(end),
+                        translated_language: None,
+                        translated_text: None,
+                        completion: UtteranceCompletion::Complete,
+                        alignment: UtteranceAlignment::TranslationPending,
+                    },
+                    None,
+                )
+                .unwrap();
+        };
+        row("utt-drift-short", 0, "不重要。", 79_860, 80_280);
+        row(
+            "utt-drift-long",
+            1,
+            "不重要，因为他觉得重要的是要超越这个东西。",
+            80_460,
+            83_280,
+        );
+
+        let segment = |provider_sequence: u64,
+                       source_text: &str,
+                       start: u64,
+                       end: u64,
+                       translated: &str| {
+            store
+                .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                    key: RealtimeTranslationInboxKey {
+                        session_id: "session-aux-drift".into(),
+                        lane_index: 1,
+                        group_epoch: 0,
+                        provider_sequence,
+                        target_language: "en".into(),
+                    },
+                    source_language: "zh".into(),
+                    source_text: source_text.into(),
+                    source_start_ms: Some(start),
+                    source_end_ms: Some(end),
+                    translated_text: Some(translated.into()),
+                    completion: Some(UtteranceCompletion::Complete),
+                    withdrawn: false,
+                })
+                .unwrap()
+        };
+
+        // Both windows overlap only the long row; only the words tell them apart.
+        let short = segment(11, "不重要。", 80_880, 81_480, "Not important.");
+        let long = segment(
+            12,
+            "因为他觉得重要的是要超越这个东西。",
+            81_660,
+            83_640,
+            "Because what he finds important is transcending it.",
+        );
+        assert_eq!(short.item.bound_sequence, Some(0), "exact words win over time");
+        assert_eq!(
+            long.item.bound_sequence,
+            Some(1),
+            "containment places the remainder on the row that holds its words"
+        );
+
+        let lane_text = |id: &str| {
+            store
+                .get_machine_utterance_by_id(id)
+                .unwrap()
+                .expect("canonical row")
+                .variants
+                .iter()
+                .find(|variant| variant.language == "en")
+                .and_then(|variant| variant.text.clone())
+        };
+        assert_eq!(lane_text("utt-drift-short").as_deref(), Some("Not important."));
+        assert_eq!(
+            lane_text("utt-drift-long").as_deref(),
+            Some("Because what he finds important is transcending it.")
+        );
     }
 
     #[test]
