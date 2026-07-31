@@ -5393,6 +5393,14 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             overlayViews.contains(".fixedSize(horizontal: false, vertical: true)"),
             "audience rows keep their natural text height instead of truncating inside equal slices"
         )
+        XCTAssertTrue(
+            overlayViews.contains("alignment: .bottomLeading"),
+            "lane text anchors to the card bottom so a short language survives top-edge clipping"
+        )
+        XCTAssertFalse(
+            overlayViews.contains("maxHeight: .infinity, alignment: .topLeading"),
+            "a top-anchored lane vanishes entirely when a taller sibling clips the row through the top"
+        )
         XCTAssertFalse(
             overlayViews.contains("LazyVGrid"),
             "audience lanes stretch to fill their share; a content-sized grid leaves blank canvas"

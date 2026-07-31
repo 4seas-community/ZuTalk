@@ -567,7 +567,7 @@ struct SubtitleOverlayView: View {
             // cut to fit a pre-sliced tile.
             VStack(spacing: 8) {
                 ForEach(rowStarts, id: \.self) { start in
-                    HStack(alignment: .top, spacing: 8) {
+                    HStack(alignment: .bottom, spacing: 8) {
                         ForEach(
                             Array(lanes[start..<min(start + columnCount, lanes.count)].enumerated()),
                             id: \.offset
@@ -594,7 +594,7 @@ struct SubtitleOverlayView: View {
             .multilineTextAlignment(.leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .bottomLeading)
             .fixedSize(horizontal: false, vertical: true)
             .background(subtitleCardBackground)
     }
@@ -622,6 +622,12 @@ struct SubtitleOverlayView: View {
     /// dimming. The row being read is usually the one whose translation just
     /// filled in, so every visible row keeps full size and full brightness,
     /// and a long sentence wraps instead of scaling away its tail.
+    ///
+    /// Lane text anchors to the bottom of its card: languages run different
+    /// lengths, so a row taller than the canvas clips through its top edge —
+    /// a top-anchored short lane would sit entirely inside that clipped band
+    /// and vanish, while bottom-anchored lanes all keep their live tail in
+    /// the visible bottom region.
     private func audienceLane(_ lane: NotebookCaptureLanguageLane) -> some View {
         Text(lane.text ?? "")
             .font(.system(size: CGFloat(fontSize), weight: .semibold))
@@ -632,7 +638,7 @@ struct SubtitleOverlayView: View {
             .multilineTextAlignment(.leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .background(subtitleCardBackground)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Text(languageName(lane.language)))
