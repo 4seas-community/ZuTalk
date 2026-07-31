@@ -453,6 +453,8 @@
 "editor.transcript.async.failed_desc" = "Remote transcription failed. The recording remains stored locally.";
 "editor.transcript.async.empty_title" = "No after-stop transcript";
 "editor.transcript.async.empty_desc" = "After-stop background transcription is off by default and was not requested for this session.";
+"editor.transcript.async.no_session_title" = "No recording selected";
+"editor.transcript.async.no_session_desc" = "Pick a recording in the Resources tab to view or start its after-stop transcription.";
 "editor.transcript.async.projection_pending_desc" = "The provider result is saved and is being written into this Notebook.";
 "editor.transcript.async.projection_failed_title" = "Transcript received, Notebook write failed";
 "editor.transcript.async.projection_failed_desc" = "Retry the local Notebook write. Zulangue will not upload the recording again.";

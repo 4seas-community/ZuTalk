@@ -453,6 +453,8 @@
 "editor.transcript.async.failed_desc" = "远端转录失败，录音仍安全保存在本机。";
 "editor.transcript.async.empty_title" = "没有停止后转录";
 "editor.transcript.async.empty_desc" = "停止后后台转录默认关闭，本次 session 未提交该请求。";
+"editor.transcript.async.no_session_title" = "未选择录音";
+"editor.transcript.async.no_session_desc" = "在“资源”页选择一段录音，即可查看或发起停止后转录。";
 "editor.transcript.async.projection_pending_desc" = "供应商结果已保存，正在写入当前 Notebook。";
 "editor.transcript.async.projection_failed_title" = "转录已收到，但写入 Notebook 失败";
 "editor.transcript.async.projection_failed_desc" = "可只重试本地写入；Zulangue 不会再次上传录音。";

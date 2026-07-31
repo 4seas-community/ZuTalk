@@ -452,6 +452,8 @@
 "editor.transcript.async.failed_desc" = "La transcripción remota falló. La grabación sigue guardada localmente.";
 "editor.transcript.async.empty_title" = "Sin transcripción tras detener";
 "editor.transcript.async.empty_desc" = "La transcripción en segundo plano tras detener está desactivada por defecto y no se solicitó para esta sesión.";
+"editor.transcript.async.no_session_title" = "Ninguna grabación seleccionada";
+"editor.transcript.async.no_session_desc" = "Elige una grabación en la pestaña Recursos para ver o iniciar su transcripción tras detener.";
 "editor.transcript.async.projection_pending_desc" = "El resultado del proveedor está guardado y se está escribiendo en este Notebook.";
 "editor.transcript.async.projection_failed_title" = "Transcripción recibida, error al escribir en el Notebook";
 "editor.transcript.async.projection_failed_desc" = "Reintente la escritura local en el Notebook. Zulangue no volverá a subir la grabación.";

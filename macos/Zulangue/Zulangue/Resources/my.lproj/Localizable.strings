@@ -453,6 +453,8 @@
 "editor.transcript.async.failed_desc" = "အဝေးမှ စာသားပြောင်းခြင်း မအောင်မြင်ပါ။ အသံသွင်းချက်ကို စက်တွင်း၌ ဆက်သိမ်းထားပါသည်။";
 "editor.transcript.async.empty_title" = "ရပ်ပြီးနောက် စာသားမှတ်တမ်း မရှိပါ";
 "editor.transcript.async.empty_desc" = "ရပ်ပြီးနောက် နောက်ကွယ် စာသားပြောင်းခြင်းကို ပုံမှန်အားဖြင့် ပိတ်ထားပြီး ဤစက်ရှင်အတွက် မတောင်းဆိုခဲ့ပါ။";
+"editor.transcript.async.no_session_title" = "ရွေးထားသော အသံဖမ်းချက် မရှိပါ";
+"editor.transcript.async.no_session_desc" = "ရပ်ပြီးနောက် စာသားပြောင်းခြင်းကို ကြည့်ရန် သို့မဟုတ် စတင်ရန် အရင်းအမြစ်များ တက်ဘ်တွင် အသံဖမ်းချက်တစ်ခုကို ရွေးပါ။";
 "editor.transcript.async.projection_pending_desc" = "ဝန်ဆောင်မှုရလဒ်ကို သိမ်းထားပြီး ဤ Notebook ထဲသို့ ရေးသွင်းနေပါသည်။";
 "editor.transcript.async.projection_failed_title" = "စာသားမှတ်တမ်း ရရှိသော်လည်း Notebook ရေးသွင်းမှု မအောင်မြင်ပါ";
 "editor.transcript.async.projection_failed_desc" = "စက်တွင်း Notebook ရေးသွင်းမှုကို ပြန်ကြိုးစားပါ။ Zulangue သည် အသံသွင်းချက်ကို ထပ်မံ တင်ပို့မည် မဟုတ်ပါ။";

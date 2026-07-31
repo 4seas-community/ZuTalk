@@ -453,6 +453,8 @@
 "editor.transcript.async.failed_desc" = "การถอดเสียงระยะไกลล้มเหลว การบันทึกยังคงจัดเก็บอยู่ในเครื่อง";
 "editor.transcript.async.empty_title" = "ไม่มีบทถอดเสียงหลังหยุดบันทึก";
 "editor.transcript.async.empty_desc" = "การถอดเสียงในเบื้องหลังหลังหยุดบันทึกปิดอยู่ตามค่าเริ่มต้น และไม่ได้ร้องขอสำหรับเซสชันนี้";
+"editor.transcript.async.no_session_title" = "ยังไม่ได้เลือกการบันทึก";
+"editor.transcript.async.no_session_desc" = "เลือกการบันทึกในแท็บทรัพยากรเพื่อดูหรือเริ่มการถอดเสียงหลังหยุดบันทึก";
 "editor.transcript.async.projection_pending_desc" = "ผลลัพธ์จากผู้ให้บริการถูกบันทึกแล้วและกำลังเขียนลงใน Notebook นี้";
 "editor.transcript.async.projection_failed_title" = "ได้รับบทถอดเสียงแล้ว แต่เขียนลง Notebook ล้มเหลว";
 "editor.transcript.async.projection_failed_desc" = "ลองเขียนลง Notebook ในเครื่องอีกครั้ง Zulangue จะไม่อัปโหลดการบันทึกซ้ำ";

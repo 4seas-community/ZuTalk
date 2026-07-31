@@ -419,6 +419,15 @@ struct DocumentEditorPage: View {
                 )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if activeNotebookTab?.displayType == .asyncTranscript {
+            // Async tab reached without a selected session: the transcript
+            // layer is session-scoped, so the editor layer must own this state
+            // instead of falling through to a blank surface.
+            EmptyState(
+                illustration: { Arcanum003WaveformRuler() },
+                title: String(localized: "editor.transcript.async.no_session_title"),
+                description: String(localized: "editor.transcript.async.no_session_desc")
+            )
         } else {
             Color.clear
         }

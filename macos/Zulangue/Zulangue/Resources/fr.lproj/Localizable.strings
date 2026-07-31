@@ -453,6 +453,8 @@
 "editor.transcript.async.failed_desc" = "La transcription à distance a échoué. L’enregistrement reste stocké localement.";
 "editor.transcript.async.empty_title" = "Aucune transcription après l’arrêt";
 "editor.transcript.async.empty_desc" = "La transcription en arrière-plan après l’arrêt est désactivée par défaut et n’a pas été demandée pour cette session.";
+"editor.transcript.async.no_session_title" = "Aucun enregistrement sélectionné";
+"editor.transcript.async.no_session_desc" = "Choisissez un enregistrement dans l’onglet Ressources pour afficher ou lancer sa transcription après l’arrêt.";
 "editor.transcript.async.projection_pending_desc" = "Le résultat du fournisseur est enregistré et en cours d’écriture dans ce Notebook.";
 "editor.transcript.async.projection_failed_title" = "Transcription reçue, échec de l’écriture dans le Notebook";
 "editor.transcript.async.projection_failed_desc" = "Réessayez l’écriture locale dans le Notebook. Zulangue n’enverra pas l’enregistrement une nouvelle fois.";

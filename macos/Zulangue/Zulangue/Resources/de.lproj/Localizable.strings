@@ -452,6 +452,8 @@
 "editor.transcript.async.failed_desc" = "Die Remote-Transkription ist fehlgeschlagen. Die Aufnahme bleibt lokal gespeichert.";
 "editor.transcript.async.empty_title" = "Kein Transkript nach dem Stoppen";
 "editor.transcript.async.empty_desc" = "Die Hintergrundtranskription nach dem Stoppen ist standardmäßig aus und wurde für diese Sitzung nicht angefordert.";
+"editor.transcript.async.no_session_title" = "Keine Aufnahme ausgewählt";
+"editor.transcript.async.no_session_desc" = "Wählen Sie im Tab „Ressourcen“ eine Aufnahme, um deren Transkription nach dem Stoppen anzuzeigen oder zu starten.";
 "editor.transcript.async.projection_pending_desc" = "Das Anbieterergebnis ist gesichert und wird in dieses Notebook geschrieben.";
 "editor.transcript.async.projection_failed_title" = "Transkript empfangen, Schreiben ins Notebook fehlgeschlagen";
 "editor.transcript.async.projection_failed_desc" = "Wiederhole das lokale Schreiben ins Notebook. Zulangue lädt die Aufnahme nicht erneut hoch.";

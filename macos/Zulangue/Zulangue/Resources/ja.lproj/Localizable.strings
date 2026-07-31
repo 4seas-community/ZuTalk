@@ -590,6 +590,8 @@
 "editor.transcript.async.failed_desc" = "リモート文字起こしに失敗しました。録音はローカルに保存されています。";
 "editor.transcript.async.empty_title" = "停止後の文字起こしなし";
 "editor.transcript.async.empty_desc" = "停止後のバックグラウンド文字起こしは既定でオフで、このセッションでは要求されていません。";
+"editor.transcript.async.no_session_title" = "録音が選択されていません";
+"editor.transcript.async.no_session_desc" = "「リソース」タブで録音を選ぶと、停止後の文字起こしを表示または開始できます。";
 "editor.transcript.async.projection_pending_desc" = "プロバイダー結果は保存済みで、この Notebook に書き込んでいます。";
 "editor.transcript.async.projection_failed_title" = "文字起こし受信済み、Notebook への書き込みに失敗";
 "editor.transcript.async.projection_failed_desc" = "ローカル書き込みのみ再試行できます。録音は再送信されません。";
