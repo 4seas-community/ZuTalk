@@ -770,7 +770,7 @@
 "subtitle.overlay.unpinned" = "Nicht angeheftet";
 "subtitle.overlay.mode" = "Untertitelmodus";
 "subtitle.overlay.mode.conversation" = "Vergleich";
-"subtitle.overlay.mode.audience" = "Publikum";
+"subtitle.overlay.mode.audience" = "Event";
 "subtitle.overlay.mode.conversation.help" = "Behält die letzten Äußerungen für sprachübergreifende Gespräche, Rückblick und Verständnis.";
 "subtitle.overlay.mode.audience.help" = "Zeigt die neueste Äußerung in bis zu drei gleichwertigen Publikumssprachen.";
 "capture.toolbar.start" = "Aufnahme starten";

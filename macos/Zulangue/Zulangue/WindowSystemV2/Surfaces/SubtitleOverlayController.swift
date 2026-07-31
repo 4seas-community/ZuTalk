@@ -73,14 +73,13 @@ enum SubtitleOverlayLayoutPolicy {
         }
     }
 
-    /// Audience retention is height-driven, not a fixed pair: a translation
-    /// arrives one beat after its source, so the window keeps as many finished
-    /// rows readable as the canvas affords instead of evicting on every new
-    /// utterance. Bounded so a tiny window still shows the live exchange and a
-    /// tall canvas never turns into a scrollback log.
+    /// Audience retention is canvas-driven: the row count is whatever the box
+    /// affords at the current font size — a squat strip carries a single live
+    /// line, a stretched canvas keeps more finished rows on screen. Bounded
+    /// above only so an ultra-tall canvas never turns into a scrollback log.
     static func audienceRowCount(height: CGFloat, fontSize: Double) -> Int {
         let estimatedRowHeight = max(CGFloat(fontSize) * 3.2, 1)
-        return min(4, max(2, Int(height / estimatedRowHeight)))
+        return min(8, max(1, Int(height / estimatedRowHeight)))
     }
 
     static func minimumColumnWidth(fontSize: Double) -> CGFloat {
@@ -130,7 +129,7 @@ final class SubtitleOverlayPresentationSettings: ObservableObject {
         }
         displayMode = defaults.string(forKey: Self.displayModeDefaultsKey)
             .flatMap(SubtitleOverlayDisplayMode.init(rawValue:))
-            ?? .conversation
+            ?? .audience
     }
 
     func togglePinned(defaults: UserDefaults = .standard) {
@@ -148,48 +147,38 @@ struct SubtitleOverlayView: View {
     @State private var isHoveringOverlay = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            if showsPersistentControlBar {
-                controlBar
-                Divider().overlay(Color.white.opacity(0.12))
+        subtitleBody
+            .frame(minWidth: 560, minHeight: 180)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.regularMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                    )
+            )
+            .overlay(alignment: .top) { hoverControlBar }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .onHover { hovering in
+                withAnimation(.easeOut(duration: 0.15)) {
+                    isHoveringOverlay = hovering
+                }
             }
-            subtitleBody
-        }
-        .frame(minWidth: 560, minHeight: 180)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.regularMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
-                )
-        )
-        .overlay(alignment: .top) { hoverControlBar }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) {
-                isHoveringOverlay = hovering
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(String(localized: "subtitle.overlay.accessibility_label")))
-        .accessibilityValue(Text(String(
-            format: String(localized: "subtitle.overlay.language_count"),
-            store.selectedLanguages.count
-        )))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(Text(String(localized: "subtitle.overlay.accessibility_label")))
+            .accessibilityValue(Text(String(
+                format: String(localized: "subtitle.overlay.language_count"),
+                store.selectedLanguages.count
+            )))
     }
 
-    /// The audience surface is a projection canvas: while it is being watched
-    /// rather than operated, the operator chrome stays off-screen entirely and
-    /// returns only under the pointer. The window itself remains movable by
-    /// its background.
-    private var showsPersistentControlBar: Bool {
-        presentationSettings.displayMode == .conversation
-    }
-
+    /// The overlay is a projection canvas in every mode: while it is being
+    /// watched rather than operated, the operator chrome stays off-screen
+    /// entirely and returns only under the pointer. The window itself remains
+    /// movable by its background.
     @ViewBuilder
     private var hoverControlBar: some View {
-        if showsPersistentControlBar == false, isHoveringOverlay {
+        if isHoveringOverlay {
             VStack(spacing: 0) {
                 controlBar
                 Divider().overlay(Color.white.opacity(0.12))
@@ -462,26 +451,26 @@ struct SubtitleOverlayView: View {
         )
 
         if store.isCaptureActive, utterances.isEmpty == false {
-            ScrollView {
-                LazyVStack(spacing: 10) {
-                    ForEach(utterances) { utterance in
-                        audienceRow(utterance, width: geometry.size.width - 24)
-                            .transition(.opacity)
-                    }
+            VStack(spacing: 10) {
+                ForEach(utterances) { utterance in
+                    audienceRow(utterance, width: geometry.size.width - 24)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .transition(.opacity)
                 }
-                .padding(12)
-                .animation(.easeOut(duration: 0.22), value: utterances.map(\.id))
             }
-            .defaultScrollAnchor(.bottom)
-            .scrollIndicators(.hidden)
+            .padding(12)
+            .animation(.easeOut(duration: 0.22), value: utterances.map(\.id))
+            .frame(width: geometry.size.width, height: geometry.size.height)
         } else {
             Color.clear
         }
     }
 
+    /// Status prose is operator chrome, not subtitle content: it keeps a fixed
+    /// small size no matter how large the audience font is cranked.
     private func emptyState(_ title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
-            .font(.system(size: max(fontSize * 0.58, 14), weight: .medium))
+            .font(.system(size: 14, weight: .medium))
             .foregroundColor(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(24)
@@ -559,14 +548,21 @@ struct SubtitleOverlayView: View {
                 languageCount: lanes.count,
                 fontSize: fontSize
             )
-            let columns = Array(
-                repeating: GridItem(.flexible(minimum: 0), spacing: 8),
-                count: columnCount
-            )
+            let rowStarts = Array(stride(from: 0, to: lanes.count, by: columnCount))
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                ForEach(Array(lanes.enumerated()), id: \.offset) { _, lane in
-                    audienceLane(lane)
+            // Lane cards tile the row and rows tile the canvas: every card
+            // stretches to its equal share so the box has no leftover blank.
+            VStack(spacing: 8) {
+                ForEach(rowStarts, id: \.self) { start in
+                    HStack(alignment: .top, spacing: 8) {
+                        ForEach(
+                            Array(lanes[start..<min(start + columnCount, lanes.count)].enumerated()),
+                            id: \.offset
+                        ) { _, lane in
+                            audienceLane(lane)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         } else if let unroutedText = projection.pendingLanguage
@@ -582,10 +578,9 @@ struct SubtitleOverlayView: View {
             .foregroundColor(.primary)
             .textSelection(.enabled)
             .multilineTextAlignment(.leading)
-            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(subtitleCardBackground)
     }
 
@@ -620,10 +615,9 @@ struct SubtitleOverlayView: View {
             .animation(.easeOut(duration: 0.18), value: lane.text)
             .textSelection(.enabled)
             .multilineTextAlignment(.leading)
-            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(subtitleCardBackground)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Text(languageName(lane.language)))
@@ -643,6 +637,7 @@ struct SubtitleOverlayView: View {
                 ),
                 systemImage: "ellipsis"
             )
+            .font(.system(size: 12, weight: .medium))
             .foregroundColor(.secondary)
         } else if lane.missingLaneState == .failed {
             Label(
@@ -652,6 +647,7 @@ struct SubtitleOverlayView: View {
                 ),
                 systemImage: "exclamationmark.triangle.fill"
             )
+            .font(.system(size: 12, weight: .medium))
             .foregroundColor(.orange)
         } else {
             Text("—")

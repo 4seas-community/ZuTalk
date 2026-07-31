@@ -770,7 +770,7 @@
 "subtitle.overlay.unpinned" = "Sin fijar";
 "subtitle.overlay.mode" = "Modo de subtítulos";
 "subtitle.overlay.mode.conversation" = "Comparar";
-"subtitle.overlay.mode.audience" = "Audiencia";
+"subtitle.overlay.mode.audience" = "Evento";
 "subtitle.overlay.mode.conversation.help" = "Conserva las intervenciones recientes para conversar entre idiomas, revisar y comprender.";
 "subtitle.overlay.mode.audience.help" = "Muestra la última intervención en hasta tres idiomas de audiencia por igual.";
 "capture.toolbar.start" = "Iniciar grabación";

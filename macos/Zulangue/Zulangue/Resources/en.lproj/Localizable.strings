@@ -771,7 +771,7 @@
 "subtitle.overlay.unpinned" = "Not pinned";
 "subtitle.overlay.mode" = "Subtitle mode";
 "subtitle.overlay.mode.conversation" = "Compare";
-"subtitle.overlay.mode.audience" = "Audience";
+"subtitle.overlay.mode.audience" = "Event";
 "subtitle.overlay.mode.conversation.help" = "Keep recent utterances for cross-language conversation, review, and understanding.";
 "subtitle.overlay.mode.audience.help" = "Show the latest utterance in up to three equal audience languages.";
 "capture.toolbar.start" = "Start Recording";

@@ -771,7 +771,7 @@
 "subtitle.overlay.unpinned" = "မတွယ်ထားပါ";
 "subtitle.overlay.mode" = "စာတန်း မုဒ်";
 "subtitle.overlay.mode.conversation" = "နှိုင်းယှဉ်";
-"subtitle.overlay.mode.audience" = "ပရိသတ်";
+"subtitle.overlay.mode.audience" = "ပွဲ";
 "subtitle.overlay.mode.conversation.help" = "ဘာသာစကားချင်း ပြောဆိုမှု၊ ပြန်ကြည့်မှုနှင့် နားလည်မှုအတွက် မကြာသေးမီ ပြောဆိုချက်များကို ထိန်းသိမ်းထားပါသည်။";
 "subtitle.overlay.mode.audience.help" = "နောက်ဆုံး ပြောဆိုချက်ကို အညီအမျှ ပရိသတ် ဘာသာစကား သုံးမျိုးအထိ ပြသပါသည်။";
 "capture.toolbar.start" = "အသံသွင်းခြင်း စတင်ရန်";

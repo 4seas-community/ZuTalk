@@ -771,7 +771,7 @@
 "subtitle.overlay.unpinned" = "ไม่ได้ตรึง";
 "subtitle.overlay.mode" = "โหมดคำบรรยาย";
 "subtitle.overlay.mode.conversation" = "เปรียบเทียบ";
-"subtitle.overlay.mode.audience" = "ผู้ชม";
+"subtitle.overlay.mode.audience" = "กิจกรรม";
 "subtitle.overlay.mode.conversation.help" = "เก็บถ้อยคำล่าสุดไว้สำหรับการสนทนาข้ามภาษา การทบทวน และการทำความเข้าใจ";
 "subtitle.overlay.mode.audience.help" = "แสดงถ้อยคำล่าสุดในภาษาของผู้ชมสูงสุดสามภาษาอย่างเท่ากัน";
 "capture.toolbar.start" = "เริ่มบันทึก";

@@ -561,10 +561,10 @@ final class WindowSystemTests: XCTestCase {
     }
 
     func testSubtitleOverlayLayoutPolicy_audienceRowCountFollowsCanvasHeight() {
-        // A short window at projector font sizes still keeps the live exchange.
+        // A squat strip at projector font sizes carries a single live line.
         XCTAssertEqual(
             SubtitleOverlayLayoutPolicy.audienceRowCount(height: 200, fontSize: 96),
-            2
+            1
         )
         // A tall canvas retains more finished rows so a translation that
         // lands one utterance late is still on screen to be read.
@@ -574,8 +574,8 @@ final class WindowSystemTests: XCTestCase {
         )
         // Bounded above: the overlay never becomes a scrollback log.
         XCTAssertEqual(
-            SubtitleOverlayLayoutPolicy.audienceRowCount(height: 1_000, fontSize: 24),
-            4
+            SubtitleOverlayLayoutPolicy.audienceRowCount(height: 3_000, fontSize: 24),
+            8
         )
     }
 

@@ -771,7 +771,7 @@
 "subtitle.overlay.unpinned" = "未置顶";
 "subtitle.overlay.mode" = "字幕模式";
 "subtitle.overlay.mode.conversation" = "对照";
-"subtitle.overlay.mode.audience" = "观众";
+"subtitle.overlay.mode.audience" = "活动";
 "subtitle.overlay.mode.conversation.help" = "保留最近几句话，便于跨语言沟通、校对和理解。";
 "subtitle.overlay.mode.audience.help" = "以平等层级向观众显示最多三种语言的最新一句。";
 "capture.toolbar.start" = "开始录音";

@@ -759,7 +759,7 @@
 "subtitle.overlay.unpinned" = "固定されていません";
 "subtitle.overlay.mode" = "字幕モード";
 "subtitle.overlay.mode.conversation" = "対照";
-"subtitle.overlay.mode.audience" = "観客";
+"subtitle.overlay.mode.audience" = "イベント";
 "subtitle.overlay.mode.conversation.help" = "言語間の会話、確認、理解のために直近の発話を表示します。";
 "subtitle.overlay.mode.audience.help" = "最大3言語で最新の発話を同じ優先度で表示します。";
 "capture.toolbar.start" = "録音開始";

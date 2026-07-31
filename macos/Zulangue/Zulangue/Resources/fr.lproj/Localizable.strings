@@ -771,7 +771,7 @@
 "subtitle.overlay.unpinned" = "Non épinglés";
 "subtitle.overlay.mode" = "Mode des sous-titres";
 "subtitle.overlay.mode.conversation" = "Comparer";
-"subtitle.overlay.mode.audience" = "Public";
+"subtitle.overlay.mode.audience" = "Événement";
 "subtitle.overlay.mode.conversation.help" = "Conserve les derniers énoncés pour la conversation multilingue, la relecture et la compréhension.";
 "subtitle.overlay.mode.audience.help" = "Affiche le dernier énoncé dans jusqu’à trois langues égales pour le public.";
 "capture.toolbar.start" = "Démarrer l’enregistrement";

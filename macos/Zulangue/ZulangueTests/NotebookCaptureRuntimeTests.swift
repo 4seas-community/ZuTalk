@@ -5381,7 +5381,14 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(overlayViews.contains("ForEach(Array(displayLanes(projection).enumerated())"))
         XCTAssertTrue(overlayViews.contains("SubtitleOverlayDisplayMode"))
         XCTAssertTrue(overlayViews.contains("SubtitleOverlayLayoutPolicy"))
-        XCTAssertTrue(overlayViews.contains("LazyVGrid(columns: columns"))
+        XCTAssertTrue(
+            overlayViews.contains(".frame(maxWidth: .infinity, maxHeight: .infinity)"),
+            "audience rows tile the canvas edge to edge instead of scrolling"
+        )
+        XCTAssertFalse(
+            overlayViews.contains("LazyVGrid"),
+            "audience lanes stretch to fill their share; a content-sized grid leaves blank canvas"
+        )
         XCTAssertTrue(overlayViews.contains(
             "SubtitleOverlayLayoutPolicy.audienceRowCount("
         ))
