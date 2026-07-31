@@ -870,7 +870,12 @@ async fn run_stream_session(
                                 suppress_replay_until_provider_ms = 0;
                             }
                         }
-                        emit_response_events(event_tx, response.tokens).await?;
+                        emit_response_events(
+                            event_tx,
+                            response.tokens,
+                            recovery.connection_origin_ms,
+                        )
+                        .await?;
                         if response.finished {
                             send_event(event_tx, SttStreamEvent::Finished).await?;
                             return Ok(());
@@ -1013,13 +1018,30 @@ pub fn soniox_stream_context_json(context: &ContextConfig) -> Result<Option<Stri
         .transpose()
 }
 
+/// `connection_origin_ms` is where the current WebSocket's own audio clock sits
+/// on the capture-wide timeline. A replacement session numbers its audio from
+/// zero, so without this projection a lane's token timestamps jump backwards the
+/// moment it reconnects — and one lane's timestamps drifting out of step with
+/// its siblings' is the stated reason multilingual capture fails the whole
+/// stream group closed rather than reconnecting a single lane.
+///
+/// The replay filter above this call compares against connection-relative
+/// positions, so the projection has to happen after it, not before.
 async fn emit_response_events(
     event_tx: &mpsc::Sender<SttStreamEvent>,
     tokens: Vec<SonioxStreamTokenWire>,
+    connection_origin_ms: u64,
 ) -> Result<(), StreamFailure> {
     let mut batch = Vec::new();
     let mut control_events = Vec::new();
-    for token in tokens {
+    for mut token in tokens {
+        // Translation tokens carry no timestamps at all; `None` stays `None`.
+        token.start_ms = token
+            .start_ms
+            .map(|start_ms| start_ms.saturating_add(connection_origin_ms));
+        token.end_ms = token
+            .end_ms
+            .map(|end_ms| end_ms.saturating_add(connection_origin_ms));
         let control_event = match token.text.as_str() {
             "<end>" => Some(SttStreamEvent::Endpoint),
             "<fin>" => Some(SttStreamEvent::Finalized),
@@ -1432,6 +1454,133 @@ mod tests {
             Some(SttStreamEvent::Finished)
         );
         assert!(runtime.task.await.unwrap().is_ok());
+    }
+
+    /// A replacement WebSocket numbers its own audio from zero, so the token
+    /// timestamps it reports are connection-relative. Both `AudioProgress` and
+    /// tokens are projected back onto the capture-wide timeline through
+    /// `connection_origin_ms`, so a lane's timestamps stay comparable with its
+    /// siblings' across a reconnect.
+    ///
+    /// Sibling connections fed byte-identical audio agree on a word's position
+    /// to within one PCM block (measured: p95 = 0 ms, max 180 ms over eight
+    /// minutes), and this is what keeps that true after a reconnect.
+    #[tokio::test]
+    async fn reconnected_tokens_are_projected_onto_the_capture_wide_timeline() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            let (first_stream, _) = listener.accept().await.unwrap();
+            let mut first_ws = accept_async(first_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = first_ws.next().await else {
+                panic!("first session configuration missing");
+            };
+            // Five seconds of audio accepted and acknowledged, then the
+            // connection drops.
+            let mut accepted_chunks = 0;
+            while let Some(Ok(message)) = first_ws.next().await {
+                if matches!(message, Message::Binary(_)) {
+                    accepted_chunks += 1;
+                    if accepted_chunks == 50 {
+                        break;
+                    }
+                }
+            }
+            first_ws
+                .send(Message::Text(
+                    json!({
+                        "tokens": [{
+                            "text": "前",
+                            "is_final": true,
+                            "language": "zh",
+                            "start_ms": 4_000,
+                            "end_ms": 4_500
+                        }],
+                        "final_audio_proc_ms": 5_000,
+                        "total_audio_proc_ms": 5_000
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            first_ws.close(None).await.unwrap();
+
+            let (second_stream, _) = listener.accept().await.unwrap();
+            let mut second_ws = accept_async(second_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = second_ws.next().await else {
+                panic!("replacement session configuration missing");
+            };
+            // The replacement session restarts its own clock at the replay
+            // point, so 2_500 here is 3_000 + 2_500 on the capture timeline.
+            let mut answered = false;
+            while let Some(Ok(message)) = second_ws.next().await {
+                match message {
+                    Message::Binary(_) if !answered => {
+                        answered = true;
+                        second_ws
+                            .send(Message::Text(
+                                json!({
+                                    "tokens": [{
+                                        "text": "后",
+                                        "is_final": true,
+                                        "language": "zh",
+                                        "start_ms": 2_500,
+                                        "end_ms": 2_600
+                                    }],
+                                    "final_audio_proc_ms": 2_600,
+                                    "total_audio_proc_ms": 2_600
+                                })
+                                .to_string()
+                                .into(),
+                            ))
+                            .await
+                            .unwrap();
+                    }
+                    Message::Text(text) if text.is_empty() => {
+                        second_ws
+                            .send(Message::Text(
+                                json!({"tokens": [], "finished": true}).to_string().into(),
+                            ))
+                            .await
+                            .unwrap();
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            "key",
+            SttConfig::default(),
+            CancellationToken::new(),
+            short_timeouts(),
+        );
+        for _ in 0..50 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+
+        let mut source_start_ms = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while let Ok(Some(event)) =
+            tokio::time::timeout_at(deadline, runtime.event_rx.recv()).await
+        {
+            if let SttStreamEvent::Tokens(tokens) = event {
+                source_start_ms.extend(tokens.iter().filter_map(|token| token.start_ms));
+            }
+            if source_start_ms.len() >= 2 {
+                break;
+            }
+        }
+
+        assert_eq!(
+            source_start_ms,
+            vec![4_000, 5_500],
+            "the replacement session's 2_500 ms token must be reported at \
+             connection_origin_ms (3_000) + 2_500 on the capture timeline"
+        );
     }
 
     #[tokio::test]
