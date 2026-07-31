@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import SwiftUI
 
@@ -6,6 +7,9 @@ enum NotebookResourceStatus: Equatable {
     case pending
     case ready
     case failed
+    /// The resource existed and was verifiably destroyed — distinct from
+    /// `.missing`, which means it was never generated at all.
+    case destroyed
 }
 
 struct NotebookResourceItem: Identifiable, Equatable {
@@ -14,6 +18,7 @@ struct NotebookResourceItem: Identifiable, Equatable {
     let createdAt: Date
     let durationMs: UInt64
     let audio: NotebookResourceStatus
+    let audioDestroyedAt: Date?
     let realtimeTranscript: NotebookResourceStatus
     let asyncTranscript: NotebookResourceStatus
     let manualNote: NotebookResourceStatus
@@ -74,10 +79,21 @@ final class NotebookResourcesViewModel: ObservableObject {
                 }
 
                 let audioStatus: NotebookResourceStatus
+                var audioDestroyedAt: Date?
                 if session.status.lowercased() == "recording" {
                     audioStatus = .pending
                 } else if session.hasEncryptedAudio {
                     audioStatus = .ready
+                } else if let report = try? core.getAudioDestructionReport(sessionId: session.id),
+                    report.chunkTotal > 0,
+                    report.chunksDeleted == report.chunkTotal {
+                    // The ledger proves audio existed and every chunk was
+                    // overwritten and deleted — this is "destroyed", not
+                    // "never generated".
+                    audioStatus = .destroyed
+                    audioDestroyedAt = report.destroyedAtMs.map {
+                        Date(timeIntervalSince1970: TimeInterval($0) / 1_000)
+                    }
                 } else {
                     audioStatus = .missing
                 }
@@ -88,6 +104,7 @@ final class NotebookResourcesViewModel: ObservableObject {
                     createdAt: Date(timeIntervalSince1970: TimeInterval(session.createdAtUnixMs) / 1_000),
                     durationMs: session.durationMs,
                     audio: audioStatus,
+                    audioDestroyedAt: audioDestroyedAt,
                     realtimeTranscript: projectionsByKind[
                         "realtime_transcript",
                         default: []
@@ -116,6 +133,16 @@ final class NotebookResourcesViewModel: ObservableObject {
         } catch {
             return false
         }
+    }
+
+    /// Recompute the destruction receipt from the ledger, the filesystem, and
+    /// the key store right now. Read-only: verification never mutates state.
+    func verifyAudioDestruction(
+        sessionId: String,
+        core: (any ZulangueCoreProtocol)? = nil
+    ) -> AudioDestructionReportInfo? {
+        guard let core = core ?? CoreClient.shared.core else { return nil }
+        return try? core.getAudioDestructionReport(sessionId: sessionId)
     }
 
     func moveToTrash(sessionId: String, core: (any ZulangueCoreProtocol)? = nil) -> Bool {
@@ -174,6 +201,9 @@ struct NotebookResourcesView: View {
                                         )
                                     }
                                 },
+                                onVerifyAudioDestruction: {
+                                    verifyAudioDestruction(sessionId: item.id)
+                                },
                                 onMoveToTrash: {
                                     if viewModel.moveToTrash(sessionId: item.id) == false {
                                         ToastCenter.shared.error(
@@ -199,6 +229,40 @@ struct NotebookResourcesView: View {
         }
     }
 
+    /// User-facing "prove it": recompute the receipt, report it, and reveal
+    /// the audio storage folder in Finder so the user can look for themselves.
+    private func verifyAudioDestruction(sessionId: String) {
+        guard let report = viewModel.verifyAudioDestruction(sessionId: sessionId) else {
+            ToastCenter.shared.error(String(localized: "resources.audio.verify.failed"))
+            return
+        }
+
+        let clean = report.filesRemaining == 0
+            && report.keyDeleted
+            && report.deleteErrors.isEmpty
+        if clean {
+            ToastCenter.shared.success(
+                String(localized: "resources.audio.verify.ok"),
+                detail: String(
+                    format: String(localized: "resources.audio.verify.ok.detail"),
+                    Int(report.chunksDeleted)
+                )
+            )
+        } else {
+            ToastCenter.shared.warning(
+                String(localized: "resources.audio.verify.residue"),
+                detail: String(
+                    format: String(localized: "resources.audio.verify.residue.detail"),
+                    Int(report.filesRemaining)
+                )
+            )
+        }
+
+        NSWorkspace.shared.activateFileViewerSelecting(
+            [URL(fileURLWithPath: CoreClient.defaultDataDir(), isDirectory: true)]
+        )
+    }
+
     private func resourceMessage(icon: String, title: String) -> some View {
         VStack(spacing: Spacing.md) {
             Image(systemName: icon)
@@ -216,6 +280,7 @@ private struct NotebookResourceBlock: View {
     let item: NotebookResourceItem
     let onOpen: () -> Void
     let onDestroyAudio: () -> Void
+    let onVerifyAudioDestruction: () -> Void
     let onMoveToTrash: () -> Void
 
     @State private var isConfirmingAudioDestroy = false
@@ -281,6 +346,16 @@ private struct NotebookResourceBlock: View {
                         .buttonStyle(.plain)
                         .help(String(localized: "resources.audio.destroy"))
                         .accessibilityIdentifier("resources.audio.destroy.\(item.id)")
+                    }
+                    if item.audio == .destroyed {
+                        Button(action: onVerifyAudioDestruction) {
+                            Image(systemName: "checkmark.shield")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.textOnBpDim)
+                        }
+                        .buttonStyle(.plain)
+                        .help(String(localized: "resources.audio.verify"))
+                        .accessibilityIdentifier("resources.audio.verify.\(item.id)")
                     }
                 }
                 resourceBar(
@@ -390,6 +465,13 @@ private struct NotebookResourceBlock: View {
         switch item.audio {
         case .ready: String(localized: "resources.audio.saved")
         case .missing: String(localized: "resources.audio.not_saved")
+        case .destroyed:
+            item.audioDestroyedAt.map {
+                String(
+                    format: String(localized: "resources.audio.destroyed_at"),
+                    $0.formatted(date: .abbreviated, time: .shortened)
+                )
+            }
         case .pending, .failed: nil
         }
     }
@@ -415,6 +497,7 @@ private struct NotebookResourceBlock: View {
         case .pending: String(localized: "resources.status.pending")
         case .ready: String(localized: "resources.status.ready")
         case .failed: String(localized: "resources.status.failed")
+        case .destroyed: String(localized: "resources.status.destroyed")
         }
     }
 
@@ -424,6 +507,7 @@ private struct NotebookResourceBlock: View {
         case .pending: .signalAmber
         case .ready: .signalGreen
         case .failed: .signalRed
+        case .destroyed: .textOnBpDim
         }
     }
 }

@@ -580,6 +580,14 @@
 "resources.audio.destroy.confirm_button" = "Audio löschen";
 "resources.audio.destroy.confirm_message" = "Die Audiodatei wird sicher vernichtet und kann nicht wiederhergestellt werden. Transkripte und persönliche Notiz bleiben erhalten.";
 "resources.audio.destroy.failed" = "Das Audio konnte nicht gelöscht werden";
+"resources.status.destroyed" = "Gelöscht";
+"resources.audio.destroyed_at" = "Vernichtet am %@";
+"resources.audio.verify" = "Löschung überprüfen und Speicherordner im Finder anzeigen";
+"resources.audio.verify.failed" = "Die Löschung des Audios konnte nicht überprüft werden";
+"resources.audio.verify.ok" = "Audiovernichtung bestätigt";
+"resources.audio.verify.ok.detail" = "%d verschlüsselte Blöcke wurden überschrieben und gelöscht, der Schlüssel ist vernichtet, keine Dateien verbleiben. Der Speicherordner ist jetzt im Finder geöffnet.";
+"resources.audio.verify.residue" = "Zurückgebliebene Audiodateien gefunden";
+"resources.audio.verify.residue.detail" = "Im Speicherordner existieren noch %d Datei(en) — er ist zur Überprüfung im Finder geöffnet.";
 "manual_note.title.placeholder" = "Diese Zeitnotiz benennen (optional)";
 "manual_note.title.save" = "Notiztitel sichern";
 "manual_note.title.save_failed" = "Der Notiztitel konnte nicht gesichert werden";

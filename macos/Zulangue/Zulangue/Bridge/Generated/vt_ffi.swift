@@ -914,6 +914,15 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func updateNotebookCaptureProfile(profile: FfiNotebookCaptureProfile) throws  -> FfiNotebookCaptureProfile
 
     /**
+     * 音频销毁核验报告。
+     *
+     * 每次调用都实时重扫:retention ledger、磁盘残留(含 data_dir 里
+     * `<session_id>.*.enc` 的防御性扫描)、key store。资源页用它区分
+     * "已删除"与"从未生成",并支持用户随时重新验证真删。
+     */
+    func getAudioDestructionReport(sessionId: String) throws  -> AudioDestructionReportInfo
+
+    /**
      * 获取音频片段（解密指定时间范围的 PCM）
      */
     func getAudioSegment(sessionId: String, startMs: UInt64, endMs: UInt64) throws  -> Data
@@ -1831,6 +1840,22 @@ open func updateNotebookCaptureProfile(profile: FfiNotebookCaptureProfile)throws
 }
 
     /**
+     * 音频销毁核验报告。
+     *
+     * 每次调用都实时重扫:retention ledger、磁盘残留(含 data_dir 里
+     * `<session_id>.*.enc` 的防御性扫描)、key store。资源页用它区分
+     * "已删除"与"从未生成",并支持用户随时重新验证真删。
+     */
+open func getAudioDestructionReport(sessionId: String)throws  -> AudioDestructionReportInfo  {
+    return try  FfiConverterTypeAudioDestructionReportInfo_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_get_audio_destruction_report(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
      * 获取音频片段（解密指定时间范围的 PCM）
      */
 open func getAudioSegment(sessionId: String, startMs: UInt64, endMs: UInt64)throws  -> Data  {
@@ -2027,6 +2052,133 @@ public func FfiConverterTypeZulangueCore_lower(_ value: ZulangueCore) -> UInt64 
 }
 
 
+
+
+/**
+ * Destruction receipt for one session's audio (FFI DTO).
+ *
+ * Every field is recomputed from the ledger, the filesystem, and the key
+ * store at call time, so the UI can let the user re-verify "really deleted"
+ * instead of trusting a cached flag.
+ */
+public struct AudioDestructionReportInfo: Equatable, Hashable {
+    /**
+     * Chunks the retention ledger ever recorded for this session.
+     */
+    public var chunkTotal: UInt32
+    /**
+     * Chunks the ledger marks as overwritten-and-deleted.
+     */
+    public var chunksDeleted: UInt32
+    /**
+     * Files that still exist on disk right now: recorded chunk paths plus a
+     * defensive scan for `<session_id>.*.enc` leftovers in the data dir.
+     */
+    public var filesRemaining: UInt32
+    /**
+     * True when neither the session metadata nor the key store holds the
+     * session's audio key any longer.
+     */
+    public var keyDeleted: Bool
+    /**
+     * True when session metadata no longer references an encrypted payload.
+     */
+    public var encryptedPathCleared: Bool
+    /**
+     * Latest ledger deletion timestamp (unix ms), if any chunk was deleted.
+     */
+    public var destroyedAtMs: Int64?
+    /**
+     * Ledger-recorded deletion failures, newest state per chunk.
+     */
+    public var deleteErrors: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Chunks the retention ledger ever recorded for this session.
+         */chunkTotal: UInt32,
+        /**
+         * Chunks the ledger marks as overwritten-and-deleted.
+         */chunksDeleted: UInt32,
+        /**
+         * Files that still exist on disk right now: recorded chunk paths plus a
+         * defensive scan for `<session_id>.*.enc` leftovers in the data dir.
+         */filesRemaining: UInt32,
+        /**
+         * True when neither the session metadata nor the key store holds the
+         * session's audio key any longer.
+         */keyDeleted: Bool,
+        /**
+         * True when session metadata no longer references an encrypted payload.
+         */encryptedPathCleared: Bool,
+        /**
+         * Latest ledger deletion timestamp (unix ms), if any chunk was deleted.
+         */destroyedAtMs: Int64?,
+        /**
+         * Ledger-recorded deletion failures, newest state per chunk.
+         */deleteErrors: [String]) {
+        self.chunkTotal = chunkTotal
+        self.chunksDeleted = chunksDeleted
+        self.filesRemaining = filesRemaining
+        self.keyDeleted = keyDeleted
+        self.encryptedPathCleared = encryptedPathCleared
+        self.destroyedAtMs = destroyedAtMs
+        self.deleteErrors = deleteErrors
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AudioDestructionReportInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAudioDestructionReportInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AudioDestructionReportInfo {
+        return
+            try AudioDestructionReportInfo(
+                chunkTotal: FfiConverterUInt32.read(from: &buf),
+                chunksDeleted: FfiConverterUInt32.read(from: &buf),
+                filesRemaining: FfiConverterUInt32.read(from: &buf),
+                keyDeleted: FfiConverterBool.read(from: &buf),
+                encryptedPathCleared: FfiConverterBool.read(from: &buf),
+                destroyedAtMs: FfiConverterOptionInt64.read(from: &buf),
+                deleteErrors: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AudioDestructionReportInfo, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.chunkTotal, into: &buf)
+        FfiConverterUInt32.write(value.chunksDeleted, into: &buf)
+        FfiConverterUInt32.write(value.filesRemaining, into: &buf)
+        FfiConverterBool.write(value.keyDeleted, into: &buf)
+        FfiConverterBool.write(value.encryptedPathCleared, into: &buf)
+        FfiConverterOptionInt64.write(value.destroyedAtMs, into: &buf)
+        FfiConverterSequenceString.write(value.deleteErrors, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioDestructionReportInfo_lift(_ buf: RustBuffer) throws -> AudioDestructionReportInfo {
+    return try FfiConverterTypeAudioDestructionReportInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioDestructionReportInfo_lower(_ value: AudioDestructionReportInfo) -> RustBuffer {
+    return FfiConverterTypeAudioDestructionReportInfo.lower(value)
+}
 
 
 /**
@@ -7407,6 +7559,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_update_notebook_capture_profile() != 29989) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_get_audio_destruction_report() != 49269) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_get_audio_segment() != 49382) {

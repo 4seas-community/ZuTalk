@@ -580,6 +580,14 @@
 "resources.audio.destroy.confirm_button" = "Eliminar el audio";
 "resources.audio.destroy.confirm_message" = "El archivo de audio se destruye de forma segura y no puede recuperarse. Las transcripciones y la nota personal se conservan.";
 "resources.audio.destroy.failed" = "No se pudo eliminar el audio";
+"resources.status.destroyed" = "Eliminado";
+"resources.audio.destroyed_at" = "Destruido el %@";
+"resources.audio.verify" = "Verificar la eliminación y mostrar la carpeta de almacenamiento en Finder";
+"resources.audio.verify.failed" = "No se pudo verificar la eliminación del audio";
+"resources.audio.verify.ok" = "Destrucción del audio verificada";
+"resources.audio.verify.ok.detail" = "%d fragmento(s) cifrado(s) se sobrescribieron y eliminaron, la clave fue destruida y no quedan archivos. La carpeta de almacenamiento está abierta en Finder.";
+"resources.audio.verify.residue" = "Se encontraron archivos de audio residuales";
+"resources.audio.verify.residue.detail" = "Aún quedan %d archivo(s) en la carpeta de almacenamiento; se abrió en Finder para su inspección.";
 "manual_note.title.placeholder" = "Ponga nombre a esta nota temporal (opcional)";
 "manual_note.title.save" = "Guardar el título de la nota";
 "manual_note.title.save_failed" = "No se pudo guardar el título de la nota";

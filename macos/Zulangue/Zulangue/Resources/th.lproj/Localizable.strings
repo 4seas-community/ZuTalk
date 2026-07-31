@@ -581,6 +581,14 @@
 "resources.audio.destroy.confirm_button" = "ลบไฟล์เสียง";
 "resources.audio.destroy.confirm_message" = "ไฟล์เสียงจะถูกทำลายอย่างปลอดภัยและกู้คืนไม่ได้ ทรานสคริปต์และโน้ตส่วนตัวจะยังคงอยู่";
 "resources.audio.destroy.failed" = "ไม่สามารถลบไฟล์เสียงได้";
+"resources.status.destroyed" = "ลบแล้ว";
+"resources.audio.destroyed_at" = "ทำลายเมื่อ %@";
+"resources.audio.verify" = "ตรวจสอบการลบและแสดงโฟลเดอร์จัดเก็บใน Finder";
+"resources.audio.verify.failed" = "ไม่สามารถตรวจสอบการลบไฟล์เสียงได้";
+"resources.audio.verify.ok" = "ยืนยันแล้วว่าไฟล์เสียงถูกทำลาย";
+"resources.audio.verify.ok.detail" = "ชิ้นส่วนที่เข้ารหัส %d ชิ้นถูกเขียนทับและลบแล้ว กุญแจถูกทำลาย และไม่มีไฟล์หลงเหลือ เปิดโฟลเดอร์จัดเก็บใน Finder แล้ว";
+"resources.audio.verify.residue" = "พบไฟล์เสียงหลงเหลือ";
+"resources.audio.verify.residue.detail" = "ยังมีไฟล์เหลืออยู่ %d ไฟล์ในโฟลเดอร์จัดเก็บ เปิดใน Finder เพื่อตรวจสอบแล้ว";
 "manual_note.title.placeholder" = "ตั้งชื่อโน้ตประจำเวลานี้ (ไม่บังคับ)";
 "manual_note.title.save" = "บันทึกชื่อโน้ต";
 "manual_note.title.save_failed" = "ไม่สามารถบันทึกชื่อโน้ตได้";

@@ -72,6 +72,43 @@ pub struct AudioRetentionChunkInfo {
     pub deleted_at_ms: Option<i64>,
 }
 
+/// Destruction receipt for one session's audio (FFI DTO).
+///
+/// Every field is recomputed from the ledger, the filesystem, and the key
+/// store at call time, so the UI can let the user re-verify "really deleted"
+/// instead of trusting a cached flag.
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct AudioDestructionReportInfo {
+    /// Chunks the retention ledger ever recorded for this session.
+    pub chunk_total: u32,
+    /// Chunks the ledger marks as overwritten-and-deleted.
+    pub chunks_deleted: u32,
+    /// Files that still exist on disk right now: recorded chunk paths plus a
+    /// defensive scan for `<session_id>.*.enc` leftovers in the data dir.
+    pub files_remaining: u32,
+    /// True when neither the session metadata nor the key store holds the
+    /// session's audio key any longer.
+    pub key_deleted: bool,
+    /// True when session metadata no longer references an encrypted payload.
+    pub encrypted_path_cleared: bool,
+    /// Latest ledger deletion timestamp (unix ms), if any chunk was deleted.
+    pub destroyed_at_ms: Option<i64>,
+    /// Ledger-recorded deletion failures, newest state per chunk.
+    pub delete_errors: Vec<String>,
+}
+
+impl AudioDestructionReportInfo {
+    /// The audio existed and every trace verifiably converged to zero.
+    pub fn is_verified_destroyed(&self) -> bool {
+        self.chunk_total > 0
+            && self.chunks_deleted == self.chunk_total
+            && self.files_remaining == 0
+            && self.key_deleted
+            && self.encrypted_path_cleared
+            && self.delete_errors.is_empty()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AudioRetentionRunInfo {
     pub scanned_count: u32,
@@ -502,6 +539,77 @@ impl ZulangueCore {
 
         decrypt_range(&enc_path, &key, &range).map_err(|e| CoreError::InternalError {
             message: format!("decrypt: {e}"),
+        })
+    }
+
+    /// 音频销毁核验报告。
+    ///
+    /// 每次调用都实时重扫:retention ledger、磁盘残留(含 data_dir 里
+    /// `<session_id>.*.enc` 的防御性扫描)、key store。资源页用它区分
+    /// "已删除"与"从未生成",并支持用户随时重新验证真删。
+    pub fn get_audio_destruction_report(
+        &self,
+        session_id: String,
+    ) -> Result<AudioDestructionReportInfo, CoreError> {
+        if session_id.trim().is_empty() {
+            return Err(CoreError::ValidationFailed {
+                message: "session_id must not be empty".to_string(),
+            });
+        }
+        let chunks = self
+            .session_meta
+            .list_audio_retention_chunks(&session_id)
+            .map_err(|e| CoreError::InternalError {
+                message: format!("list audio retention chunks: {e}"),
+            })?;
+
+        let chunk_total = chunks.len() as u32;
+        let chunks_deleted = chunks.iter().filter(|chunk| chunk.deleted).count() as u32;
+        let destroyed_at_ms = chunks.iter().filter_map(|chunk| chunk.deleted_at_ms).max();
+        let delete_errors = chunks
+            .iter()
+            .filter_map(|chunk| chunk.delete_error.clone())
+            .collect::<Vec<_>>();
+
+        let mut remaining_paths = chunks
+            .iter()
+            .map(|chunk| PathBuf::from(&chunk.local_path))
+            .filter(|path| path.exists())
+            .collect::<std::collections::HashSet<_>>();
+        // 防御性扫描:凡是叫 <session_id>.*.enc 的文件都算残留,即使 ledger 没记。
+        if let Ok(entries) = std::fs::read_dir(&self.data_dir) {
+            let prefix = format!("{session_id}.");
+            for entry in entries.filter_map(Result::ok) {
+                let name = entry.file_name();
+                let Some(name) = name.to_str() else { continue };
+                if name.starts_with(&prefix) && name.ends_with(".enc") {
+                    remaining_paths.insert(entry.path());
+                }
+            }
+        }
+
+        let meta = self.session_meta.get_meta(&session_id).ok();
+        let meta_key_id = meta.as_ref().and_then(|m| m.key_id.clone());
+        let canonical_key_ref = format!("zulangue.audio.{session_id}");
+        let key_deleted = meta_key_id
+            .as_deref()
+            .map(|key_id| !self.key_store.key_exists(key_id))
+            .unwrap_or(true)
+            && !self.key_store.key_exists(&canonical_key_ref);
+        let encrypted_path_cleared = meta
+            .as_ref()
+            .and_then(|m| m.encrypted_path.as_deref())
+            .map(str::is_empty)
+            .unwrap_or(true);
+
+        Ok(AudioDestructionReportInfo {
+            chunk_total,
+            chunks_deleted,
+            files_remaining: remaining_paths.len() as u32,
+            key_deleted,
+            encrypted_path_cleared,
+            destroyed_at_ms,
+            delete_errors,
         })
     }
 }
@@ -1071,6 +1179,66 @@ mod tests {
         let tokens = core.session_meta.get_tokens("s-retain").unwrap();
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].text, "keep transcript");
+    }
+
+    #[test]
+    fn destruction_report_verifies_destroy_and_flags_leftovers() {
+        let tmp = TempDir::new().unwrap();
+        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../vt-audio/tests/fixtures/test_16k_mono.wav");
+        if !fixture.exists() {
+            return; // skip if no fixture
+        }
+
+        let notebook = core.create_notebook(Some("Destroy report".into())).unwrap();
+        let imported = core
+            .import_audio_into_notebook(fixture.to_str().unwrap().to_string(), notebook.id)
+            .unwrap();
+        let session_id = imported.session_id;
+
+        // 销毁前:有 chunk、有 key、有文件,不可能是 verified destroyed。
+        let before = core
+            .get_audio_destruction_report(session_id.clone())
+            .unwrap();
+        assert!(before.chunk_total > 0);
+        assert_eq!(before.chunks_deleted, 0);
+        assert!(before.files_remaining > 0);
+        assert!(!before.key_deleted);
+        assert!(!before.encrypted_path_cleared);
+        assert!(!before.is_verified_destroyed());
+
+        core.destroy_session_audio_and_key(session_id.clone())
+            .unwrap();
+
+        let after = core
+            .get_audio_destruction_report(session_id.clone())
+            .unwrap();
+        assert_eq!(after.chunk_total, before.chunk_total);
+        assert_eq!(after.chunks_deleted, after.chunk_total);
+        assert_eq!(after.files_remaining, 0);
+        assert!(after.key_deleted);
+        assert!(after.encrypted_path_cleared);
+        assert!(after.destroyed_at_ms.is_some());
+        assert!(after.delete_errors.is_empty());
+        assert!(after.is_verified_destroyed());
+
+        // 防御性扫描:ledger 之外的同名残留文件必须被算进 files_remaining。
+        let stray = tmp.path().join(format!("{session_id}.stray.enc"));
+        std::fs::write(&stray, b"leftover").unwrap();
+        let with_stray = core
+            .get_audio_destruction_report(session_id.clone())
+            .unwrap();
+        assert_eq!(with_stray.files_remaining, 1);
+        assert!(!with_stray.is_verified_destroyed());
+
+        // 从未保存音频的 session:chunk_total 为 0,报告为"从未生成"而非"已删除"。
+        let never = core
+            .get_audio_destruction_report("never-recorded-session".into())
+            .unwrap();
+        assert_eq!(never.chunk_total, 0);
+        assert!(!never.is_verified_destroyed());
     }
 
     #[test]

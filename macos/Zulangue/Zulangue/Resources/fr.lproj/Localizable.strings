@@ -581,6 +581,14 @@
 "resources.audio.destroy.confirm_button" = "Supprimer l’audio";
 "resources.audio.destroy.confirm_message" = "Le fichier audio est détruit de manière sécurisée et ne peut pas être récupéré. Les transcriptions et la note personnelle sont conservées.";
 "resources.audio.destroy.failed" = "Impossible de supprimer l’audio";
+"resources.status.destroyed" = "Supprimé";
+"resources.audio.destroyed_at" = "Détruit le %@";
+"resources.audio.verify" = "Vérifier la suppression et afficher le dossier de stockage dans le Finder";
+"resources.audio.verify.failed" = "Impossible de vérifier la suppression de l’audio";
+"resources.audio.verify.ok" = "Destruction de l’audio vérifiée";
+"resources.audio.verify.ok.detail" = "%d fragment(s) chiffré(s) ont été écrasés puis supprimés, la clé est détruite et aucun fichier ne subsiste. Le dossier de stockage est ouvert dans le Finder.";
+"resources.audio.verify.residue" = "Fichiers audio résiduels détectés";
+"resources.audio.verify.residue.detail" = "%d fichier(s) subsistent dans le dossier de stockage — il est ouvert dans le Finder pour inspection.";
 "manual_note.title.placeholder" = "Nommez cette note horodatée (facultatif)";
 "manual_note.title.save" = "Enregistrer le titre de la note";
 "manual_note.title.save_failed" = "Le titre de la note n’a pas pu être enregistré";

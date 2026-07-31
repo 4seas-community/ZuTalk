@@ -581,6 +581,14 @@
 "resources.audio.destroy.confirm_button" = "Delete audio";
 "resources.audio.destroy.confirm_message" = "The audio file is securely destroyed and can’t be recovered. Transcripts and personal notes are kept.";
 "resources.audio.destroy.failed" = "Could not delete the audio";
+"resources.status.destroyed" = "Deleted";
+"resources.audio.destroyed_at" = "Destroyed %@";
+"resources.audio.verify" = "Verify deletion and show the storage folder in Finder";
+"resources.audio.verify.failed" = "Could not verify the audio deletion";
+"resources.audio.verify.ok" = "Audio verifiably destroyed";
+"resources.audio.verify.ok.detail" = "%d encrypted chunk(s) were overwritten and deleted, the key is gone, and no files remain. The storage folder is now open in Finder.";
+"resources.audio.verify.residue" = "Leftover audio files found";
+"resources.audio.verify.residue.detail" = "%d file(s) still exist in the storage folder — it is now open in Finder for inspection.";
 "manual_note.title.placeholder" = "Name this time note (optional)";
 "manual_note.title.save" = "Save note title";
 "manual_note.title.save_failed" = "The note title could not be saved";
