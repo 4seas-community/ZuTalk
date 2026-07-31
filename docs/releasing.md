@@ -60,13 +60,15 @@ GitHub Actions 不接收也不使用这把私钥。
    just release-sparkle-adhoc
    ```
 
-5. 为 DMG 生成 SHA-256 文件。
+5. 为 DMG 生成 SHA-256 文件（`build/dmg/Zulangue-macOS.sha256` 不会自动
+   跟随新版本，必须重新生成后再上传）。
 6. 创建 OpenPGP 签名标签并推送提交与标签。
-7. 从本机上传以下三个文件到 GitHub Release：
+7. 从本机上传以下五个文件到 GitHub Release（delta 产物在 `build/update/`）：
 
-   - `Zulangue-0.1.3.dmg`
+   - `Zulangue-X.Y.Z.dmg`
    - `Zulangue-macOS.sha256`
    - `appcast.xml`
+   - 两个 `ZulangueN-M.delta`（Sparkle 增量更新包）
 
 标签 CI 会重新运行秘密检查、Rust/Swift 测试，并独立编译一个 Ad Hoc
 Universal DMG 作为验证产物。CI 不生成 appcast，也不创建 GitHub Release。
