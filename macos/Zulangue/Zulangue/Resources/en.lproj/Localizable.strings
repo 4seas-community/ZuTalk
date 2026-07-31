@@ -222,7 +222,7 @@
 "editor.export.title" = "Export session";
 "editor.export.hint" = "Export this session as a ZIP";
 "editor.export.no_session" = "No recording session to export";
-"doc.scratchpad" = "Scratchpad";
+"doc.scratchpad" = "Personal notes";
 "doc.enhanced" = "Enhanced";
 "doc.untitled" = "Untitled";
 

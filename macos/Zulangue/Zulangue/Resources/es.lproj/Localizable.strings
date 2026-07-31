@@ -221,7 +221,7 @@
 "editor.export.title" = "Exportar sesión";
 "editor.export.hint" = "Exportar esta sesión como ZIP";
 "editor.export.no_session" = "No hay ninguna sesión de grabación para exportar";
-"doc.scratchpad" = "Borrador";
+"doc.scratchpad" = "Notas personales";
 "doc.enhanced" = "Versión mejorada";
 "doc.untitled" = "Sin título";
 

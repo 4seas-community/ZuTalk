@@ -222,7 +222,7 @@
 "editor.export.title" = "စက်ရှင် ထုတ်ယူရန်";
 "editor.export.hint" = "ဤစက်ရှင်ကို ZIP အဖြစ် ထုတ်ယူရန်";
 "editor.export.no_session" = "ထုတ်ယူရန် အသံသွင်းစက်ရှင် မရှိပါ";
-"doc.scratchpad" = "မှတ်စုကြမ်း";
+"doc.scratchpad" = "ကိုယ်ပိုင် မှတ်စုများ";
 "doc.enhanced" = "အဆင့်မြှင့်ထား";
 "doc.untitled" = "ခေါင်းစဉ်မဲ့";
 

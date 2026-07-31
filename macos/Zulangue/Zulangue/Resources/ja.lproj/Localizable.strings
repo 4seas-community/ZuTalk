@@ -222,7 +222,7 @@
 "editor.export.title" = "セッションを書き出し";
 "editor.export.hint" = "このセッションを ZIP として書き出す";
 "editor.export.no_session" = "書き出せる録音セッションがありません";
-"doc.scratchpad" = "下書き";
+"doc.scratchpad" = "個人メモ";
 "doc.enhanced" = "整形稿";
 "doc.untitled" = "無題";
 

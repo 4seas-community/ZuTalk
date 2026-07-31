@@ -221,7 +221,7 @@
 "editor.export.title" = "Sitzung exportieren";
 "editor.export.hint" = "Diese Sitzung als ZIP exportieren";
 "editor.export.no_session" = "Keine Aufnahmesitzung zum Exportieren";
-"doc.scratchpad" = "Notizzettel";
+"doc.scratchpad" = "Persönliche Notizen";
 "doc.enhanced" = "Optimiert";
 "doc.untitled" = "Ohne Titel";
 

@@ -222,7 +222,7 @@
 "editor.export.title" = "ส่งออกเซสชัน";
 "editor.export.hint" = "ส่งออกเซสชันนี้เป็นไฟล์ ZIP";
 "editor.export.no_session" = "ไม่มีเซสชันการบันทึกให้ส่งออก";
-"doc.scratchpad" = "กระดาษทด";
+"doc.scratchpad" = "โน้ตส่วนตัว";
 "doc.enhanced" = "ฉบับปรับปรุง";
 "doc.untitled" = "ไม่มีชื่อ";
 

@@ -222,7 +222,7 @@
 "editor.export.title" = "导出会话";
 "editor.export.hint" = "将这个会话导出为 ZIP";
 "editor.export.no_session" = "没有可导出的录音会话";
-"doc.scratchpad" = "草稿";
+"doc.scratchpad" = "个人笔记";
 "doc.enhanced" = "精修稿";
 "doc.untitled" = "未命名";
 
