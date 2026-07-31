@@ -55,7 +55,13 @@ fn soniox_async_task_timeout(audio_bytes: usize) -> Duration {
         audio_bytes.saturating_add(SONIOX_AUDIO_CHUNK_BYTES - 1) / SONIOX_AUDIO_CHUNK_BYTES;
     let paced_send_ms =
         (chunk_count as u64).saturating_mul(SONIOX_AUDIO_CHUNK_PACING.as_millis() as u64);
+    // The restream outruns the provider (~5x realtime), so the server keeps
+    // transcribing backlog after EOF at roughly realtime speed. The deadline
+    // must cover that tail, not just the paced send.
+    let audio_duration_ms = (audio_bytes as u64).saturating_mul(1000)
+        / (SONIOX_CANONICAL_SAMPLE_RATE as u64 * 2).max(1);
     Duration::from_millis(paced_send_ms)
+        .saturating_add(Duration::from_millis(audio_duration_ms))
         .saturating_add(Duration::from_secs(60))
         .clamp(SONIOX_ASYNC_TASK_MIN_TIMEOUT, SONIOX_ASYNC_TASK_MAX_TIMEOUT)
 }
@@ -754,6 +760,10 @@ mod tests {
         let ten_minute_timeout = soniox_async_task_timeout(ten_minutes_of_s16_mono);
         assert!(ten_minute_timeout > SONIOX_ASYNC_TASK_MIN_TIMEOUT);
         assert!(ten_minute_timeout <= SONIOX_ASYNC_TASK_MAX_TIMEOUT);
+        assert!(
+            ten_minute_timeout >= Duration::from_secs(120 + 600),
+            "deadline must cover the paced send plus the server's realtime backlog tail"
+        );
 
         assert_eq!(
             soniox_async_task_timeout(usize::MAX),

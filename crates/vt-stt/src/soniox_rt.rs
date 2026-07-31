@@ -19,6 +19,10 @@ const SONIOX_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const SONIOX_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const SONIOX_RECEIVE_IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const SONIOX_DRAIN_TIMEOUT: Duration = Duration::from_secs(20);
+/// Post-stop restreams push audio faster than the server transcribes, so the
+/// post-EOF backlog routinely needs minutes, not seconds. The whole-task
+/// deadline in vt-ffi::transcribe_api still bounds a hung drain.
+const SONIOX_POST_STOP_DRAIN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const SONIOX_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Copy)]
@@ -618,6 +622,12 @@ impl SonioxRtClient {
     /// Replay stored audio after capture through the current MVP post-stop
     /// engine role. This remains a realtime WebSocket restream, not a claim of
     /// support for a separate Soniox async model or REST API.
+    ///
+    /// Post-stop audio is pushed at ~5x realtime, so the server's transcript
+    /// lags the stream and keeps working long after EOF. The live drain window
+    /// is sized for a caught-up realtime session and times the backlog out; the
+    /// post-stop drain must instead outlast the backlog, bounded by the
+    /// caller's whole-task deadline.
     pub async fn run_post_stop(
         endpoint: &str,
         api_key: &str,
@@ -636,7 +646,10 @@ impl SonioxRtClient {
             token_tx,
             status_tx,
             cancel,
-            SonioxRtTimeouts::default(),
+            SonioxRtTimeouts {
+                drain: SONIOX_POST_STOP_DRAIN_TIMEOUT,
+                ..SonioxRtTimeouts::default()
+            },
         )
         .await
     }
@@ -1032,6 +1045,14 @@ mod run_tests {
     use tokio_tungstenite::accept_async;
     use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
     use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+
+    #[test]
+    fn post_stop_drain_outlasts_the_realtime_drain_window() {
+        // A 5x-realtime restream leaves the server minutes of backlog at EOF;
+        // draining it inside the live 20 s window is a guaranteed timeout.
+        assert!(SONIOX_POST_STOP_DRAIN_TIMEOUT >= Duration::from_secs(5 * 60));
+        assert!(SONIOX_POST_STOP_DRAIN_TIMEOUT > SONIOX_DRAIN_TIMEOUT);
+    }
 
     fn short_timeouts() -> SonioxRtTimeouts {
         SonioxRtTimeouts {
