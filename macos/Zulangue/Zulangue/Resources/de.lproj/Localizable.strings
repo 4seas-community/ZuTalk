@@ -70,6 +70,12 @@
 "community_invite.inactive" = "Keine Community-Einladung aktiv";
 "community_invite.use_toggle" = "Mit Community-Einladung transkribieren";
 "community_invite.use_toggle_detail" = "Wenn aktiviert, nutzen Aufnahmen zuerst die Einladungszeit. Wenn deaktiviert, wird dein eigener gesicherter Schlüssel verwendet.";
+"community_invite.remove" = "Einladung entfernen";
+"community_invite.remove_detail" = "Löscht die Einladung von diesem Mac und kehrt zu deinem eigenen Schlüssel zurück.";
+"community_invite.remove_confirm_title" = "Diese Einladung entfernen?";
+"community_invite.remove_confirm_message" = "Die verbleibende gemeinsame Zeit bleibt beim Einladungscode. Du kannst den Code später erneut eingeben.";
+"community_invite.remove_confirm_action" = "Einladung entfernen";
+"community_invite.fallback_personal_key" = "Einladungszeit ist derzeit nicht verfügbar — diese Aufnahme verwendet stattdessen deinen eigenen Schlüssel.";
 "editor.transcript.async.start" = "Dieses Audio transkribieren";
 "editor.transcript.async.start_failed" = "Audiotranskription konnte nicht gestartet werden";
 "onboarding.keys.voice_label" = "LIVE-UNTERTITEL-DIENST";

@@ -521,6 +521,13 @@ struct NotebookCaptureToolbar: View {
         }
     }
 
+    /// Mirrors the Rust core's `remote_stream_plan`: one or two languages run
+    /// on a single WebSocket, three or more open one canonical lane plus one
+    /// translation lane per language. Invite billing charges per lane.
+    static func remoteLaneCount(selectedLanguages: [String]) -> Int {
+        selectedLanguages.count <= 2 ? 1 : selectedLanguages.count + 1
+    }
+
     private var startButton: some View {
         Button {
             guard isStarting == false,
@@ -530,13 +537,30 @@ struct NotebookCaptureToolbar: View {
             Task { @MainActor in
                 defer { isStarting = false }
                 do {
-                    try await CommunityInviteSession.shared.prepareRealtimeCredential()
+                    // Local-only recordings open no Soniox lanes; reserving
+                    // invite time for them would silently burn shared quota.
+                    if profileEditor.draft.remoteRealtimeEnabled {
+                        let preparation = try await CommunityInviteSession.shared
+                            .prepareRealtimeCredential(
+                                laneCount: Self.remoteLaneCount(
+                                    selectedLanguages: profileEditor.draft.selectedLanguages
+                                )
+                            )
+                        if preparation == .personalKeyFallback {
+                            ToastCenter.shared.info(
+                                String(localized: "community_invite.fallback_personal_key")
+                            )
+                        }
+                    }
                     try await profileEditor.prepareForCaptureStart()
                     try await NotebookCaptureStartCoordinator(
                         capture: capture,
                         navigation: MainNavigationStoreV2.shared
                     ).start(notebookId: notebookId)
                 } catch {
+                    // Return any invite reservation made above; a no-op when
+                    // none exists.
+                    await CommunityInviteSession.shared.settleRealtimeSession(usedSeconds: 0)
                     ToastCenter.shared.error(
                         String(localized: "capture.toast.start_failed"),
                         detail: error.localizedDescription

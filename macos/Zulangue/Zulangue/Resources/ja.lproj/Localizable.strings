@@ -70,6 +70,12 @@
 "community_invite.inactive" = "コミュニティ招待は未使用です";
 "community_invite.use_toggle" = "コミュニティ招待で文字起こし";
 "community_invite.use_toggle_detail" = "オンのときは招待時間を優先し、オフのときは自分の保存済みキーを使用します。";
+"community_invite.remove" = "招待を削除";
+"community_invite.remove_detail" = "この Mac から招待を削除し、自分のキーの使用に戻します。";
+"community_invite.remove_confirm_title" = "この招待を削除しますか？";
+"community_invite.remove_confirm_message" = "残りの共有時間は招待コード側に保持されます。コードは後で再入力できます。";
+"community_invite.remove_confirm_action" = "招待を削除";
+"community_invite.fallback_personal_key" = "招待時間が現在利用できないため、この録音は自分のキーを使用します。";
 "editor.transcript.async.start" = "この音声を文字起こし";
 "editor.transcript.async.start_failed" = "音声の文字起こしを開始できませんでした";
 "onboarding.keys.voice_label" = "ライブ字幕サービス";

@@ -70,6 +70,12 @@
 "community_invite.inactive" = "Aucune invitation communautaire active";
 "community_invite.use_toggle" = "Transcrire avec l’invitation communautaire";
 "community_invite.use_toggle_detail" = "Lorsque cette option est activée, les enregistrements utilisent d’abord le temps de l’invitation. Sinon, votre propre clé enregistrée est utilisée.";
+"community_invite.remove" = "Supprimer l’invitation";
+"community_invite.remove_detail" = "Supprime l’invitation de ce Mac et revient à votre propre clé.";
+"community_invite.remove_confirm_title" = "Supprimer cette invitation ?";
+"community_invite.remove_confirm_message" = "Le temps partagé restant reste associé au code d’invitation. Vous pourrez saisir le code à nouveau plus tard.";
+"community_invite.remove_confirm_action" = "Supprimer l’invitation";
+"community_invite.fallback_personal_key" = "Le temps d’invitation est indisponible pour le moment — cet enregistrement utilise votre propre clé.";
 "editor.transcript.async.start" = "Transcrire cet audio";
 "editor.transcript.async.start_failed" = "Impossible de démarrer la transcription audio";
 "onboarding.keys.voice_label" = "SERVICE DE SOUS-TITRES EN DIRECT";

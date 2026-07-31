@@ -70,6 +70,12 @@
 "community_invite.inactive" = "未启用社区邀请";
 "community_invite.use_toggle" = "用社区邀请进行转录";
 "community_invite.use_toggle_detail" = "开启时录音优先使用邀请时长；关闭后使用自己保存的密钥。";
+"community_invite.remove" = "删除邀请";
+"community_invite.remove_detail" = "从这台 Mac 上删除邀请，恢复使用自己的密钥。";
+"community_invite.remove_confirm_title" = "要删除这个邀请吗？";
+"community_invite.remove_confirm_message" = "剩余的共享时长仍保留在邀请码上，之后可以重新输入邀请码。";
+"community_invite.remove_confirm_action" = "删除邀请";
+"community_invite.fallback_personal_key" = "邀请时长暂时不可用——本次录音将使用你自己的密钥。";
 "editor.transcript.async.start" = "转录这段音频";
 "editor.transcript.async.start_failed" = "无法开始音频转录";
 "onboarding.keys.voice_label" = "实时字幕服务";

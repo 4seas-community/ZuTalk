@@ -8,6 +8,7 @@ struct CommunityInviteSettingsCard: View {
     @ObservedObject private var invite = CommunityInviteSession.shared
     @State private var code = ""
     @State private var isReplacing = false
+    @State private var isConfirmingRemoval = false
 
     var body: some View {
         SettingsCard(
@@ -24,11 +25,29 @@ struct CommunityInviteSettingsCard: View {
                 } else {
                     replaceRow
                 }
+                SettingsRowDivider()
+                removeRow
             } else {
                 inactiveEditor
             }
         }
         .task { await invite.refreshQuota() }
+        .alert(
+            String(localized: "community_invite.remove_confirm_title"),
+            isPresented: $isConfirmingRemoval
+        ) {
+            Button(
+                String(localized: "community_invite.remove_confirm_action"),
+                role: .destructive
+            ) {
+                invite.removeInvite()
+                code = ""
+                isReplacing = false
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "community_invite.remove_confirm_message"))
+        }
     }
 
     private var remainingRow: some View {
@@ -94,6 +113,20 @@ struct CommunityInviteSettingsCard: View {
             }
             .buttonStyle(.bordered)
             .frame(minHeight: 44)
+        }
+    }
+
+    private var removeRow: some View {
+        SettingsRow(
+            String(localized: "community_invite.remove"),
+            description: String(localized: "community_invite.remove_detail")
+        ) {
+            Button(String(localized: "community_invite.remove"), role: .destructive) {
+                isConfirmingRemoval = true
+            }
+            .buttonStyle(.bordered)
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("settings.community-invite.remove")
         }
     }
 

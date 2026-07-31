@@ -70,6 +70,12 @@
 "community_invite.inactive" = "No community invitation active";
 "community_invite.use_toggle" = "Transcribe with community invite";
 "community_invite.use_toggle_detail" = "When on, recordings use invite time first. When off, your own saved key is used.";
+"community_invite.remove" = "Remove invitation";
+"community_invite.remove_detail" = "Delete the invitation from this Mac and go back to using your own key.";
+"community_invite.remove_confirm_title" = "Remove this invitation?";
+"community_invite.remove_confirm_message" = "Remaining shared time stays with the invitation code. You can enter the code again later.";
+"community_invite.remove_confirm_action" = "Remove invitation";
+"community_invite.fallback_personal_key" = "Invite time is unavailable right now — this recording uses your own key instead.";
 "editor.transcript.async.start" = "Transcribe this audio";
 "editor.transcript.async.start_failed" = "Could not start audio transcription";
 "onboarding.keys.voice_label" = "LIVE CAPTION SERVICE";

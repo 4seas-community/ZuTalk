@@ -18,7 +18,7 @@ import sqlite3
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -26,6 +26,9 @@ DEFAULT_QUOTA_SECONDS = 30 * 60 * 60
 SECONDS_PER_GIVE = 6 * 60 * 60
 DEFAULT_GIVES = 5
 MAX_SESSION_SECONDS = 5 * 60 * 60
+# A reservation that was never settled (client crash, network loss) must not
+# hold invite quota forever. Anything older than this settles at zero seconds.
+RESERVATION_TTL_SECONDS = 6 * 60 * 60
 
 
 def now_iso() -> str:
@@ -106,7 +109,28 @@ class Store:
             )
             return {"access_token": token, **quota_payload(invite)}
 
+    def expire_stale_reservations(self) -> None:
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(seconds=RESERVATION_TTL_SECONDS)
+        ).isoformat()
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            stale = db.execute(
+                "SELECT * FROM sessions WHERE settled_seconds IS NULL AND created_at < ?",
+                (cutoff,),
+            ).fetchall()
+            for session in stale:
+                db.execute(
+                    "UPDATE sessions SET settled_seconds = 0, settled_at = ? WHERE id = ?",
+                    (now_iso(), session["id"]),
+                )
+                db.execute(
+                    "UPDATE invites SET reserved_seconds = reserved_seconds - ? WHERE id = ?",
+                    (session["reserved_seconds"], session["invite_id"]),
+                )
+
     def invite_for_token(self, token: str) -> sqlite3.Row | None:
+        self.expire_stale_reservations()
         with self.connect() as db:
             return db.execute(
                 """
@@ -204,12 +228,15 @@ def quota_payload(invite: sqlite3.Row) -> dict:
 def create_soniox_temporary_key(
     master_key: str, session_id: str, duration_seconds: int
 ) -> dict:
+    # Deliberately NOT single_use: one capture opens several concurrent
+    # WebSocket lanes (canonical + per-language translation) with this same
+    # key, and mid-session reconnects also need it. The short expiry and
+    # max_session_duration_seconds remain the abuse bounds.
     body = json.dumps(
         {
             "usage_type": "transcribe_websocket",
             "expires_in_seconds": 3_600,
             "client_reference_id": f"zulangue-community:{session_id}",
-            "single_use": True,
             "max_session_duration_seconds": duration_seconds,
         }
     ).encode()
