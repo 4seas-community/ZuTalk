@@ -2846,6 +2846,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private let elapsedTimerInterval: TimeInterval
     private let audioQueueCapacity: Int
     private let audioDrainWatchdogInterval: TimeInterval
+    /// Zero publishes every revision synchronously, which is what a test that
+    /// asserts on preview content wants: the coalescing window is a rendering
+    /// budget, not a contract about what the transcript contains.
+    private let livePreviewCoalescingInterval: TimeInterval
     private var laneMutationsInFlight: Set<NotebookCaptureLaneMutationKey> = []
     private var committedLaneOverrideBarriers:
         [NotebookCaptureLaneMutationKey: NotebookCaptureCommittedLaneOverrideBarrier] = [:]
@@ -2888,13 +2892,15 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         audioSource: NotebookCaptureAudioSourcing? = nil,
         elapsedTimerInterval: TimeInterval = 1,
         audioQueueCapacity: Int = ActiveBilingualTranscriptStore.defaultAudioQueueCapacity,
-        audioDrainWatchdogInterval: TimeInterval = 5
+        audioDrainWatchdogInterval: TimeInterval = 5,
+        livePreviewCoalescingInterval: TimeInterval = NotebookCaptureLivePreviewCoalescing.interval
     ) {
         self.client = client ?? RustNotebookCaptureClient()
         self.audioSource = audioSource ?? LiveNotebookCaptureAudioSource()
         self.elapsedTimerInterval = max(0.001, elapsedTimerInterval)
         self.audioQueueCapacity = max(1, audioQueueCapacity)
         self.audioDrainWatchdogInterval = max(0.001, audioDrainWatchdogInterval)
+        self.livePreviewCoalescingInterval = max(0, livePreviewCoalescingInterval)
     }
 
     var hasAudioSubscription: Bool { audioToken != nil }
@@ -4149,11 +4155,17 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             $0.sessionId == preview.sessionId
         }
         lastAppliedLivePreviewRevision = preview.previewRevision
-        guard next != livePreviewUtterances else { return }
+        // Compare against whatever the canvas is next going to show, which is
+        // the held revision when one is waiting. Comparing against the
+        // published value instead would let a revision that reverts to the
+        // published text return early while a stale held revision stayed
+        // queued, and the flush would then publish that stale text.
+        guard next != (heldLivePreview ?? livePreviewUtterances) else { return }
 
         switch NotebookCaptureLivePreviewCoalescing.decide(
             now: Self.livePreviewClock(),
-            lastPublishedAt: lastLivePreviewPublishedAt
+            lastPublishedAt: lastLivePreviewPublishedAt,
+            interval: livePreviewCoalescingInterval
         ) {
         case .publishNow:
             publishLivePreview(next)

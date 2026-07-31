@@ -1274,9 +1274,12 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     @MainActor
     func testLivePreviewReplacesInPlaceWithoutEnteringDurableUtterances() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        // Preview coalescing is a rendering budget; this test asserts what the
+        // transcript contains, so it publishes every revision synchronously.
         let store = ActiveBilingualTranscriptStore(
             client: client,
-            audioSource: FakeNotebookCaptureAudioSource()
+            audioSource: FakeNotebookCaptureAudioSource(),
+            livePreviewCoalescingInterval: 0
         )
         try await store.start(notebookId: "notebook-a")
 
@@ -1333,6 +1336,65 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             utterances: []
         ))
         XCTAssertEqual(store.presentedUtterances.map(\.sourceText), ["Hello."])
+        store.resetForTesting()
+    }
+
+    /// A revision that reverts to the currently published text must still
+    /// displace a newer revision waiting inside the coalescing window.
+    /// Comparing an arriving revision against the published text alone would
+    /// treat the revert as a no-op and leave the superseded revision queued,
+    /// so the window would close by publishing text the provider had already
+    /// taken back.
+    @MainActor
+    func testLivePreviewRevertDisplacesTheRevisionHeldInsideTheWindow() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource(),
+            livePreviewCoalescingInterval: 0.1
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var preview = NotebookCaptureUtteranceDTO.sample
+        preview.revision = 0
+        preview.sourceLanguage = "und"
+        preview.translatedLanguage = nil
+        preview.translatedText = nil
+        preview.completion = "partial"
+        preview.alignment = "source_only"
+
+        func emit(_ text: String, revision: UInt64) {
+            preview.sourceText = text
+            client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+                sessionId: "session-a",
+                previewRevision: revision,
+                utterances: [preview]
+            ))
+        }
+
+        // Opens the window on the leading edge.
+        emit("recognised", revision: 1)
+        XCTAssertEqual(store.presentedUtterances.map(\.sourceText), ["recognised"])
+
+        // Held: the window is still open.
+        emit("recognised the", revision: 2)
+        XCTAssertEqual(
+            store.presentedUtterances.map(\.sourceText),
+            ["recognised"],
+            "a revision inside the window must not publish yet"
+        )
+
+        // The provider retracts the trailing word, landing back on the text
+        // that is already on screen.
+        emit("recognised", revision: 3)
+
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertEqual(
+            store.presentedUtterances.map(\.sourceText),
+            ["recognised"],
+            "the window must close on the retraction, not on the text it replaced"
+        )
         store.resetForTesting()
     }
 
