@@ -230,7 +230,10 @@ mod tests {
 
     #[test]
     fn an_empty_or_punctuation_only_segment_carries_no_evidence() {
-        assert_eq!(align_source_text("", "anything"), SourceTextAlignment::Unrelated);
+        assert_eq!(
+            align_source_text("", "anything"),
+            SourceTextAlignment::Unrelated
+        );
         assert_eq!(
             align_source_text("。 ", "anything"),
             SourceTextAlignment::Unrelated

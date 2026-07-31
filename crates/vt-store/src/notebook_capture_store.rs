@@ -5679,12 +5679,7 @@ fn composed_translation_lane_from_conn(
                 canonical_language(target_language),
                 u64_to_i64(group_epoch, "translation group epoch")?,
             ],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                ))
-            },
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
         )?
         .collect::<Result<Vec<_>, _>>()?;
     if rows.is_empty() {
@@ -5694,7 +5689,11 @@ fn composed_translation_lane_from_conn(
     let mut every_segment_is_final = true;
     let mut any_completion = false;
     for (segment, completion) in &rows {
-        match completion.as_deref().map(UtteranceCompletion::parse).transpose()? {
+        match completion
+            .as_deref()
+            .map(UtteranceCompletion::parse)
+            .transpose()?
+        {
             Some(UtteranceCompletion::Complete) => any_completion = true,
             Some(UtteranceCompletion::Partial) => {
                 any_completion = true;
@@ -5996,6 +5995,7 @@ enum TranslationLaneWrite {
     ComposeAuxiliarySegments,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn upsert_translation_variant_from_conn(
     conn: &Connection,
     session_id: &str,
@@ -10974,30 +10974,27 @@ mod tests {
             83_280,
         );
 
-        let segment = |provider_sequence: u64,
-                       source_text: &str,
-                       start: u64,
-                       end: u64,
-                       translated: &str| {
-            store
-                .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
-                    key: RealtimeTranslationInboxKey {
-                        session_id: "session-aux-drift".into(),
-                        lane_index: 1,
-                        group_epoch: 0,
-                        provider_sequence,
-                        target_language: "en".into(),
-                    },
-                    source_language: "zh".into(),
-                    source_text: source_text.into(),
-                    source_start_ms: Some(start),
-                    source_end_ms: Some(end),
-                    translated_text: Some(translated.into()),
-                    completion: Some(UtteranceCompletion::Complete),
-                    withdrawn: false,
-                })
-                .unwrap()
-        };
+        let segment =
+            |provider_sequence: u64, source_text: &str, start: u64, end: u64, translated: &str| {
+                store
+                    .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                        key: RealtimeTranslationInboxKey {
+                            session_id: "session-aux-drift".into(),
+                            lane_index: 1,
+                            group_epoch: 0,
+                            provider_sequence,
+                            target_language: "en".into(),
+                        },
+                        source_language: "zh".into(),
+                        source_text: source_text.into(),
+                        source_start_ms: Some(start),
+                        source_end_ms: Some(end),
+                        translated_text: Some(translated.into()),
+                        completion: Some(UtteranceCompletion::Complete),
+                        withdrawn: false,
+                    })
+                    .unwrap()
+            };
 
         // Both windows overlap only the long row; only the words tell them apart.
         let short = segment(11, "不重要。", 80_880, 81_480, "Not important.");
@@ -11008,7 +11005,11 @@ mod tests {
             83_640,
             "Because what he finds important is transcending it.",
         );
-        assert_eq!(short.item.bound_sequence, Some(0), "exact words win over time");
+        assert_eq!(
+            short.item.bound_sequence,
+            Some(0),
+            "exact words win over time"
+        );
         assert_eq!(
             long.item.bound_sequence,
             Some(1),
@@ -11025,7 +11026,10 @@ mod tests {
                 .find(|variant| variant.language == "en")
                 .and_then(|variant| variant.text.clone())
         };
-        assert_eq!(lane_text("utt-drift-short").as_deref(), Some("Not important."));
+        assert_eq!(
+            lane_text("utt-drift-short").as_deref(),
+            Some("Not important.")
+        );
         assert_eq!(
             lane_text("utt-drift-long").as_deref(),
             Some("Because what he finds important is transcending it.")

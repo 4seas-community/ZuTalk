@@ -1564,8 +1564,7 @@ mod tests {
 
         let mut source_start_ms = Vec::new();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
-        while let Ok(Some(event)) =
-            tokio::time::timeout_at(deadline, runtime.event_rx.recv()).await
+        while let Ok(Some(event)) = tokio::time::timeout_at(deadline, runtime.event_rx.recv()).await
         {
             if let SttStreamEvent::Tokens(tokens) = event {
                 source_start_ms.extend(tokens.iter().filter_map(|token| token.start_ms));

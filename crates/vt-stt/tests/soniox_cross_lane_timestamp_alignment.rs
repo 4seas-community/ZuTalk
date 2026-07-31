@@ -280,17 +280,21 @@ fn per_minute(pairings: &[Pairing]) -> Vec<MinuteStats> {
         .collect()
 }
 
+/// The four handles one spawned lane hands back: its audio sink, its control
+/// sink, the task collecting what the lane observed, and the stream task.
+type SpawnedLane = (
+    tokio::sync::mpsc::Sender<Vec<u8>>,
+    tokio::sync::mpsc::Sender<SttStreamControl>,
+    tokio::task::JoinHandle<LaneObservation>,
+    tokio::task::JoinHandle<Result<(), vt_stt::SttError>>,
+);
+
 fn spawn_lane(
     api_key: String,
     config: SttConfig,
     cancel: CancellationToken,
     started: Instant,
-) -> (
-    tokio::sync::mpsc::Sender<Vec<u8>>,
-    tokio::sync::mpsc::Sender<SttStreamControl>,
-    tokio::task::JoinHandle<LaneObservation>,
-    tokio::task::JoinHandle<Result<(), vt_stt::SttError>>,
-) {
+) -> SpawnedLane {
     let runtime = SonioxStreamClient::start(
         CURRENT_NOTEBOOK_CAPTURE_ENGINE.realtime_endpoint,
         api_key,
@@ -322,8 +326,7 @@ fn spawn_lane(
                         observation.translation_batch_sizes.push(translation_tokens);
                         if observation.last_translation_batch_at_ms > 0 {
                             observation.translation_batch_gap_ms.push(
-                                arrival_ms
-                                    .saturating_sub(observation.last_translation_batch_at_ms),
+                                arrival_ms.saturating_sub(observation.last_translation_batch_at_ms),
                             );
                         }
                         observation.last_translation_batch_at_ms = arrival_ms;
@@ -505,8 +508,12 @@ async fn sibling_connections_agree_on_token_timestamps_over_a_long_run() {
         .map(|pairing| pairing.delta_start_ms.unsigned_abs())
         .max()
         .unwrap_or(0);
-    let first_minute = per_minute(&pairings).first().map(|stats| stats.mean_abs_start);
-    let last_minute = per_minute(&pairings).last().map(|stats| stats.mean_abs_start);
+    let first_minute = per_minute(&pairings)
+        .first()
+        .map(|stats| stats.mean_abs_start);
+    let last_minute = per_minute(&pairings)
+        .last()
+        .map(|stats| stats.mean_abs_start);
     println!(
         "verdict: max|dStart|={overall_max}ms first_minute_mean={first_minute:?} \
          last_minute_mean={last_minute:?}"

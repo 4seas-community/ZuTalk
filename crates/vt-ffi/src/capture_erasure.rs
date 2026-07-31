@@ -119,7 +119,12 @@ impl ErasureMeter {
             if text.is_empty() {
                 continue;
             }
-            self.record(utterance.sequence, &variant.language, &variant.language, text);
+            self.record(
+                utterance.sequence,
+                &variant.language,
+                &variant.language,
+                text,
+            );
         }
         if let (Some(language), Some(text)) = (
             utterance.translated_language.as_deref(),
@@ -159,7 +164,10 @@ impl ErasureMeter {
             if let Some(totals) = self.totals.get_mut(previous_language) {
                 totals.presented_chars -= moved;
             }
-            self.totals.entry(language.to_string()).or_default().presented_chars += moved;
+            self.totals
+                .entry(language.to_string())
+                .or_default()
+                .presented_chars += moved;
         }
 
         // presented_chars tracks the sum of the language's current lane
@@ -259,15 +267,17 @@ mod tests {
     fn variant_lanes_are_scored_per_language() {
         let mut meter = ErasureMeter::default();
         let mut row = utterance(0, "zh", "你好");
-        row.language_variants = vec![crate::notebook_capture_api::FfiNotebookCaptureLanguageVariant {
-            language: "en".to_string(),
-            role: "translation".to_string(),
-            text: Some("Hel".to_string()),
-            state: "ready".to_string(),
-            completion: Some("partial".to_string()),
-            projection_revision: 0,
-            edit_revision: 0,
-        }];
+        row.language_variants = vec![
+            crate::notebook_capture_api::FfiNotebookCaptureLanguageVariant {
+                language: "en".to_string(),
+                role: "translation".to_string(),
+                text: Some("Hel".to_string()),
+                state: "ready".to_string(),
+                completion: Some("partial".to_string()),
+                projection_revision: 0,
+                edit_revision: 0,
+            },
+        ];
         meter.absorb_event_utterances("session", &[row.clone()]);
         row.language_variants[0].text = Some("Hi there".to_string());
         meter.absorb_event_utterances("session", &[row]);
