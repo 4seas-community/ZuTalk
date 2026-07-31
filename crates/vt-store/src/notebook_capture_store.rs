@@ -3440,7 +3440,7 @@ impl NotebookCaptureStore {
                     .into(),
             ));
         }
-        let source_language = canonical_language(&input.source_language);
+        let mut source_language = canonical_language(&input.source_language);
         let input_translated_language =
             input.translated_language.as_deref().map(canonical_language);
         let mut stored_translated_language = input_translated_language.clone();
@@ -3475,6 +3475,19 @@ impl NotebookCaptureStore {
             &input.session_id,
             input.sequence,
         )?;
+        // Source language is monotone over a flat lattice with `und` at the
+        // bottom: a provider revision that carries no language claim must not
+        // erase a language this row already learned (from its own earlier
+        // tokens or from an adopted auxiliary identification).
+        if source_language == "und" {
+            if let Some(known) = existing_machine
+                .as_ref()
+                .map(|existing| canonical_language(&existing.source_language))
+                .filter(|stored| stored != "und")
+            {
+                source_language = known;
+            }
+        }
         let mut preserve_final_translation_variant = false;
         let mut source_coalesces_with_final_translation = false;
         if let Some(existing) = existing_machine.as_ref() {
@@ -3657,7 +3670,7 @@ impl NotebookCaptureStore {
         // translation occupying the newly identified language before the
         // source row is inserted, otherwise the per-utterance language key
         // would abort the whole realtime stream group.
-        let source_variant_language = canonical_language(&input.source_language);
+        let source_variant_language = source_language.clone();
         if source_coalesces_with_final_translation {
             tx.execute(
                 "DELETE FROM realtime_utterance_variants
@@ -5272,6 +5285,111 @@ fn upsert_translation_inbox_item_from_conn(
     })
 }
 
+/// Adopts a bound auxiliary fact's identified source language onto a
+/// canonical utterance whose own lane never received language identification.
+///
+/// `und` is the bottom of a flat language lattice: it means "the canonical
+/// stream made no claim", never "the language is officially unknown". An
+/// auxiliary producer fact carries the provider's own identification of the
+/// same audio, so binding it to an `und` canonical row is strictly stronger
+/// evidence and upgrades the row in the same transaction as the bind. A
+/// concrete language is never displaced (first evidence wins), and the
+/// adopted language must not already be owned by a Ready translation variant
+/// — that would be provider evidence that the source is a different language.
+///
+/// Language is the Loro lane key, so a completed source lane re-materializes
+/// under its real language via a fresh desired revision.
+fn adopt_translation_inbox_source_language(
+    conn: &Connection,
+    item: &RealtimeTranslationInboxItem,
+    canonical: RealtimeUtterance,
+) -> Result<RealtimeUtterance, NotebookCaptureStoreError> {
+    if item.withdrawn {
+        return Ok(canonical);
+    }
+    let adopted = canonical_language(&item.source_language);
+    if adopted == "und" || canonical_language(&canonical.source_language) != "und" {
+        return Ok(canonical);
+    }
+    let adopted_lane_is_occupied = canonical.variants.iter().any(|variant| {
+        canonical_language(&variant.language) == adopted
+            && variant.role == UtteranceVariantRole::Translation
+            && variant.state == UtteranceVariantState::Ready
+    });
+    if adopted_lane_is_occupied {
+        return Ok(canonical);
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    // The adopted language stops being a translation target, so its
+    // placeholder lane dissolves into the source lane instead of waiting for
+    // a same-language translation that the provider will never produce.
+    conn.execute(
+        "DELETE FROM realtime_utterance_variants
+         WHERE utterance_id = ?1
+           AND role = 'translation'
+           AND lower(trim(language)) = ?2
+           AND state IN ('waiting', 'failed', 'unavailable')",
+        params![canonical.id, adopted],
+    )?;
+    let renamed = conn.execute(
+        "UPDATE realtime_utterance_variants
+         SET language = ?1, revision = revision + 1, updated_at = ?2
+         WHERE utterance_id = ?3
+           AND role = 'source'
+           AND lower(trim(language)) = 'und'",
+        params![adopted, now, canonical.id],
+    )?;
+    conn.execute(
+        "UPDATE realtime_utterances
+         SET source_language = ?1, updated_at = ?2
+         WHERE id = ?3",
+        params![adopted, now, canonical.id],
+    )?;
+    if renamed == 1 {
+        if canonical.source_lane_is_complete() {
+            let projection_revision =
+                bump_realtime_loro_desired_revision(conn, &canonical.session_id)?;
+            conn.execute(
+                "UPDATE realtime_utterances
+                 SET source_projection_revision = ?1
+                 WHERE id = ?2",
+                params![
+                    u64_to_i64(projection_revision, "source projection revision")?,
+                    canonical.id
+                ],
+            )?;
+            conn.execute(
+                "UPDATE realtime_utterance_variants
+                 SET projection_revision = ?1
+                 WHERE utterance_id = ?2 AND role = 'source'",
+                params![
+                    u64_to_i64(projection_revision, "source projection revision")?,
+                    canonical.id
+                ],
+            )?;
+        } else {
+            conn.execute(
+                "UPDATE realtime_utterances
+                 SET source_projection_revision = 0
+                 WHERE id = ?1",
+                [&canonical.id],
+            )?;
+            conn.execute(
+                "UPDATE realtime_utterance_variants
+                 SET projection_revision = 0
+                 WHERE utterance_id = ?1 AND role = 'source'",
+                [&canonical.id],
+            )?;
+        }
+    }
+    let mut visible =
+        get_machine_utterance_by_id_from_conn(conn, &canonical.id)?.ok_or_else(|| {
+            NotebookCaptureStoreError::NotFound(format!("utterance {}", canonical.id))
+        })?;
+    apply_utterance_overrides(conn, &mut visible)?;
+    Ok(visible)
+}
+
 fn apply_translation_inbox_to_bound_utterance(
     conn: &Connection,
     item: &RealtimeTranslationInboxItem,
@@ -5288,6 +5406,7 @@ fn apply_translation_inbox_to_bound_utterance(
             item.key.session_id
         ))
     })?;
+    let canonical = adopt_translation_inbox_source_language(conn, item, canonical)?;
     let target_is_current_source = canonical.has_source_lane()
         && canonical_language(&canonical.source_language)
             == canonical_language(&item.key.target_language);
@@ -6127,12 +6246,20 @@ fn machine_utterance_matches_input(
         }
         _ => false,
     };
+    // `und` is the absence of a language claim, so it can never contradict a
+    // concrete language on the other side of an otherwise byte-identical
+    // replay (an auxiliary identification may have upgraded the stored row
+    // after the canonical Final was persisted without one).
+    let source_language_matches = {
+        let stored = canonical_language(&utterance.source_language);
+        let incoming = canonical_language(&input.source_language);
+        stored == incoming || stored == "und" || incoming == "und"
+    };
     utterance.id == input.id
         && utterance.session_id == input.session_id
         && utterance.sequence == input.sequence
         && utterance.session_speaker_id == input.session_speaker_id
-        && canonical_language(&utterance.source_language)
-            == canonical_language(&input.source_language)
+        && source_language_matches
         && utterance.source_text == input.source_text
         && utterance.source_start_ms == input.source_start_ms
         && utterance.source_end_ms == input.source_end_ms
@@ -10196,6 +10323,241 @@ mod tests {
             durable.bound_utterance_id.as_deref(),
             Some("utt-aux-final-bind")
         );
+    }
+
+    #[test]
+    fn binding_auxiliary_fact_adopts_identified_source_language_onto_und_canonical() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "aux-adopt-lang");
+        claim_realtime(&store, "session-aux-adopt-lang");
+        // The canonical lane finalized without any language identification.
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-aux-adopt-lang".into(),
+                    session_id: "session-aux-adopt-lang".into(),
+                    sequence: 0,
+                    session_speaker_id: None,
+                    source_language: "und".into(),
+                    source_text: "现在正在出发。".into(),
+                    source_start_ms: Some(100),
+                    source_end_ms: Some(900),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Complete,
+                    alignment: UtteranceAlignment::SourceOnly,
+                },
+                None,
+            )
+            .unwrap();
+        // The runtime treated every selected language as a translation target
+        // because the source claimed none of them.
+        store
+            .upsert_translation_variant(
+                "session-aux-adopt-lang",
+                0,
+                "zh",
+                None,
+                UtteranceVariantState::Waiting,
+                None,
+            )
+            .unwrap();
+        let baseline_revision = store
+            .load_realtime_loro_projection("session-aux-adopt-lang")
+            .unwrap()
+            .desired_revision;
+
+        // An auxiliary one-way lane identified the same audio as zh.
+        let accepted = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: "session-aux-adopt-lang".into(),
+                    lane_index: 2,
+                    group_epoch: 0,
+                    provider_sequence: 0,
+                    target_language: "th".into(),
+                },
+                source_language: "zh".into(),
+                source_text: "现在正在出发。".into(),
+                source_start_ms: Some(100),
+                source_end_ms: Some(900),
+                translated_text: Some("ตอนนี้กำลังออกเดินทาง".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(accepted.item.bound_sequence, Some(0));
+        let bound = accepted
+            .bound_utterance
+            .expect("binding materializes the upgraded canonical row");
+
+        assert_eq!(bound.source_language, "zh");
+        let source = bound
+            .variants
+            .iter()
+            .find(|variant| variant.role == UtteranceVariantRole::Source)
+            .expect("source lane survives adoption");
+        assert_eq!(source.language, "zh");
+        assert_eq!(source.text.as_deref(), Some("现在正在出发。"));
+        assert!(
+            !bound.variants.iter().any(|variant| {
+                variant.role == UtteranceVariantRole::Translation && variant.language == "zh"
+            }),
+            "the adopted language stops being a translation target"
+        );
+        let th = bound
+            .variants
+            .iter()
+            .find(|variant| variant.language == "th")
+            .expect("the auxiliary translation lane is materialized");
+        assert_eq!(th.role, UtteranceVariantRole::Translation);
+        assert_eq!(th.completion, Some(UtteranceCompletion::Complete));
+        // The completed source lane re-materializes under its real language
+        // key: adoption bumps once, the Final translation lane bumps again.
+        assert_eq!(
+            store
+                .load_realtime_loro_projection("session-aux-adopt-lang")
+                .unwrap()
+                .desired_revision,
+            baseline_revision + 2
+        );
+        assert!(source.projection_revision > baseline_revision);
+    }
+
+    #[test]
+    fn und_source_replay_does_not_clobber_adopted_language() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "aux-adopt-replay");
+        claim_realtime(&store, "session-aux-adopt-replay");
+        let partial = NewRealtimeUtterance {
+            id: "utt-aux-adopt-replay".into(),
+            session_id: "session-aux-adopt-replay".into(),
+            sequence: 0,
+            session_speaker_id: None,
+            source_language: "und".into(),
+            source_text: "说是中文".into(),
+            source_start_ms: Some(0),
+            source_end_ms: Some(400),
+            translated_language: None,
+            translated_text: None,
+            completion: UtteranceCompletion::Partial,
+            alignment: UtteranceAlignment::SourceOnly,
+        };
+        let persisted = store.upsert_utterance(&partial, None).unwrap();
+        store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: "session-aux-adopt-replay".into(),
+                    lane_index: 3,
+                    group_epoch: 0,
+                    provider_sequence: 0,
+                    target_language: "en".into(),
+                },
+                source_language: "zh".into(),
+                source_text: "说是中文".into(),
+                source_start_ms: Some(0),
+                source_end_ms: Some(400),
+                translated_text: Some("He said it's Chinese".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+
+        // The canonical assembler still believes `und` and revises the
+        // partial; the learned language must survive monotonically.
+        let mut revised = partial.clone();
+        revised.source_text = "说是中文，为什么没有识别出来？".into();
+        revised.completion = UtteranceCompletion::Complete;
+        let revised = store
+            .upsert_utterance(&revised, Some(persisted.revision))
+            .unwrap();
+        assert_eq!(revised.source_language, "zh");
+        assert_eq!(revised.source_text, "说是中文，为什么没有识别出来？");
+        let source = revised
+            .variants
+            .iter()
+            .find(|variant| variant.role == UtteranceVariantRole::Source)
+            .unwrap();
+        assert_eq!(source.language, "zh");
+
+        // A byte-identical replay of the now-Final fact that still carries no
+        // language claim must be accepted as the same immutable fact.
+        let mut replay = partial.clone();
+        replay.source_text = "说是中文，为什么没有识别出来？".into();
+        replay.completion = UtteranceCompletion::Complete;
+        let replayed = store.upsert_utterance(&replay, None).unwrap();
+        assert_eq!(replayed.source_language, "zh");
+    }
+
+    #[test]
+    fn source_language_adoption_never_displaces_a_ready_translation_lane() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "aux-adopt-occupied");
+        claim_realtime(&store, "session-aux-adopt-occupied");
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-aux-adopt-occupied".into(),
+                    session_id: "session-aux-adopt-occupied".into(),
+                    sequence: 0,
+                    session_speaker_id: None,
+                    source_language: "und".into(),
+                    source_text: "ทดสอบ".into(),
+                    source_start_ms: Some(0),
+                    source_end_ms: Some(300),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Complete,
+                    alignment: UtteranceAlignment::SourceOnly,
+                },
+                None,
+            )
+            .unwrap();
+        // A provider translation INTO th already owns that lane, so a later
+        // fact claiming th as the source language is contested evidence.
+        store
+            .upsert_translation_variant(
+                "session-aux-adopt-occupied",
+                0,
+                "th",
+                Some("ทดสอบ"),
+                UtteranceVariantState::Ready,
+                Some(UtteranceCompletion::Complete),
+            )
+            .unwrap();
+        let accepted = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: "session-aux-adopt-occupied".into(),
+                    lane_index: 3,
+                    group_epoch: 0,
+                    provider_sequence: 0,
+                    target_language: "en".into(),
+                },
+                source_language: "th".into(),
+                source_text: "ทดสอบ".into(),
+                source_start_ms: Some(0),
+                source_end_ms: Some(300),
+                translated_text: Some("Test".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        let bound = accepted.bound_utterance.expect("binding still succeeds");
+        assert_eq!(
+            bound.source_language, "und",
+            "a Ready translation lane blocks adoption of its language"
+        );
+        let th = bound
+            .variants
+            .iter()
+            .find(|variant| variant.language == "th")
+            .unwrap();
+        assert_eq!(th.role, UtteranceVariantRole::Translation);
+        assert_eq!(th.text.as_deref(), Some("ทดสอบ"));
     }
 
     #[test]
