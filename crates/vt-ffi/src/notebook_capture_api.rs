@@ -1822,8 +1822,8 @@ fn persist_stream_lane_updates(
             });
         }
         let pending_key = (lane_index, group_epoch, utterance.sequence);
-        let persistence = store
-            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+        let persistence = match store.upsert_translation_inbox_item(
+            &NewRealtimeTranslationInboxItem {
                 key: RealtimeTranslationInboxKey {
                     session_id: utterance.session_id.clone(),
                     lane_index: u64::try_from(lane_index).map_err(|_| ProviderFailure {
@@ -1852,16 +1852,39 @@ fn persist_stream_lane_updates(
                     None
                 },
                 withdrawn: is_withdrawn,
-            })
-            .map_err(|error| {
-                local_persistence_failure(
+            },
+        ) {
+            Ok(persistence) => persistence,
+            Err(vt_store::NotebookCaptureStoreError::Conflict(conflict)) => {
+                // A non-withdrawn Complete inbox fact is immutable, so a late
+                // provider revision for the same key can never be applied; the
+                // durable final translation already owns this lane. Dropping
+                // the revision keeps the live capture healthy instead of
+                // interrupting every sibling stream.
+                tracing::warn!(
+                    session_id = %utterance.session_id,
+                    group_epoch,
+                    sequence = utterance.sequence,
+                    target_language = %target_language,
+                    conflict = %conflict,
+                    "late translation revision rejected by final inbox fact; live capture continues"
+                );
+                lanes[lane_index].assembler.record_translation_persisted(
+                    &provider_utterance_id,
+                    Some(target_language.as_str()),
+                );
+                continue;
+            }
+            Err(error) => {
+                return Err(local_persistence_failure(
                     &format!(
                         "persist auxiliary translation inbox {}:{}:{}:{}",
                         utterance.session_id, group_epoch, utterance.sequence, target_language
                     ),
                     error,
-                )
-            })?;
+                ));
+            }
+        };
         lanes[lane_index].assembler.record_translation_persisted(
             &provider_utterance_id,
             (!persistence.item.withdrawn).then_some(target_language.as_str()),
@@ -5173,6 +5196,27 @@ impl ZulangueCore {
                 "capture stopped; remote shutdown diagnostics were not persisted"
             );
         }
+        // Auxiliary translation facts that lost their binding while the
+        // capture was live (ambiguity, contested lane) get one final
+        // best-evidence pass now that every canonical Final row is durable.
+        // The run is already terminal, so ambiguity keeps facts unbound
+        // rather than delaying the stop.
+        match self
+            .notebook_capture_store
+            .reconcile_translation_inbox_after_recovery(&session_id)
+        {
+            Ok(0) => {}
+            Ok(bound) => tracing::info!(
+                session_id,
+                bound,
+                "stop bound remaining auxiliary translation facts"
+            ),
+            Err(error) => tracing::warn!(
+                session_id,
+                error = %error,
+                "stop left ambiguous auxiliary translation facts durably unbound"
+            ),
+        }
         let projection_result = self.project_notebook_capture_with_ownership(&active.run_id);
         let retention_result = self.enforce_realtime_capture_retention(&completed_run);
 
@@ -7483,31 +7527,15 @@ impl ZulangueCore {
         }
         if run.provider_error_type.as_deref() == Some("local_persistence") {
             // Capture completeness and committed lane durability are separate
-            // domains. A failure in one provider lane must not strand Final
-            // facts that already reached the SQLite ledger: project and ACK
-            // that known prefix first, then retain Failed as the run-quality
-            // signal for the missing suffix.
-            let prefix_projection = self.sync_bilingual_capture_into_realtime_tab(&run, false);
-            let failed_state = self
-                .notebook_capture_store
-                .set_projection_state(run_id, ProjectionState::Pending, ProjectionState::Failed)
-                .map_err(store_error);
-            if let Err(error) = prefix_projection {
-                return Err(match failed_state {
-                    Ok(_) => error,
-                    Err(state_error) => CoreError::InternalError {
-                        message: format!(
-                            "project committed Final prefix failed ({error}); mark incomplete projection failed also failed ({state_error})"
-                        ),
-                    },
-                });
-            }
-            failed_state?;
-            return Err(CoreError::InternalError {
-                message:
-                    "realtime utterance persistence failed; committed Final lanes remain editable and local encrypted audio was preserved"
-                        .to_string(),
-            });
+            // domains. A run interrupted by a local persistence failure still
+            // projects every Final fact that reached the SQLite ledger and
+            // lands Ready so the transcript stays visible and editable; the
+            // run keeps provider_error_type as the quality signal for the
+            // missing suffix.
+            tracing::info!(
+                session_id = %run.session_id,
+                "projecting committed Final facts of an interrupted capture; provider_error_type retains the run-quality signal"
+            );
         }
         self.notebook_capture_store
             .set_projection_state(
@@ -12410,6 +12438,43 @@ mod tests {
         assert_eq!(zh.text.as_deref(), Some("你好"));
         assert_eq!(zh.state, UtteranceVariantState::Ready);
         assert_eq!(zh.completion, Some(UtteranceCompletion::Complete));
+
+        // A late provider revision for the same key after its inbox fact went
+        // Complete is rejected by the immutable fact, and that rejection must
+        // stay non-fatal to the live capture.
+        let late_revision = persist_stream_lane_updates(
+            &core.notebook_capture_store,
+            &mut lanes,
+            0,
+            1,
+            vec![update(
+                "aux-utterance",
+                Some("你们好"),
+                UtteranceCompletion::Complete,
+            )],
+            &selected_languages,
+            &mut canonical_matches,
+            &mut pending_variants,
+            &mut variant_bindings,
+            &mut reverse_variant_bindings,
+            &mut initialized_variants,
+        )
+        .expect("a late revision of a final inbox fact must not interrupt the capture");
+        assert!(late_revision.is_empty());
+        let zh_after = core
+            .notebook_capture_store
+            .list_utterances(&session.id)
+            .unwrap()
+            .remove(0)
+            .variants
+            .into_iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert_eq!(
+            zh_after.text.as_deref(),
+            Some("你好"),
+            "the durable final translation stays authoritative"
+        );
     }
 
     #[test]
@@ -14186,7 +14251,7 @@ mod tests {
     }
 
     #[test]
-    fn local_persistence_failure_projects_committed_final_prefix_before_failed_state() {
+    fn local_persistence_failure_projects_committed_final_facts_and_lands_ready() {
         let (temp, core, _notebook_id, run_id, doc_id) = projected_core_fixture();
         let before = core
             .notebook_capture_store
@@ -14204,18 +14269,19 @@ mod tests {
             )
             .unwrap();
 
-        let error = core
-            .project_notebook_capture(&run_id)
-            .expect_err("an incomplete run retains Failed as its quality signal");
-        assert!(error
-            .to_string()
-            .contains("committed Final lanes remain editable"));
-        let failed = core
+        core.project_notebook_capture(&run_id)
+            .expect("an interrupted run still projects its committed Final facts");
+        let projected = core
             .notebook_capture_store
             .get_run(&run_id)
             .unwrap()
             .unwrap();
-        assert_eq!(failed.projection_state, ProjectionState::Failed);
+        assert_eq!(projected.projection_state, ProjectionState::Ready);
+        assert_eq!(
+            projected.provider_error_type.as_deref(),
+            Some("local_persistence"),
+            "the run keeps its quality signal for the missing suffix"
+        );
         let after = core
             .notebook_capture_store
             .load_realtime_loro_projection("session-a")
