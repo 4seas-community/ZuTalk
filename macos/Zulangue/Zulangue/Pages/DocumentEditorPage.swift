@@ -1483,20 +1483,15 @@ private struct NotebookSettingsNotebookHeader: View {
     let title: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title?.isEmpty == false ? title! : String(localized: "home.notebook.new"))
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(.bpLine)
-                .lineLimit(1)
-            Text(String(localized: "capture.settings.notebook_scope"))
-                .font(.caption)
-                .foregroundColor(.textOnBpDim)
-        }
-        .padding(.horizontal, Spacing.lg)
-        .padding(.top, Spacing.sm)
-        .padding(.bottom, Spacing.sm)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        Text(title?.isEmpty == false ? title! : String(localized: "home.notebook.new"))
+            .font(.system(size: 22, weight: .semibold))
+            .foregroundColor(.bpLine)
+            .lineLimit(1)
+            .padding(.horizontal, Spacing.lg)
+            .padding(.top, Spacing.sm)
+            .padding(.bottom, Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 

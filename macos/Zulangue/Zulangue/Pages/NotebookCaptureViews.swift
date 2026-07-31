@@ -1508,7 +1508,9 @@ struct NotebookCaptureSettingsView: View {
     @State private var pasteTitle = ""
     @State private var pasteText = ""
     @State private var contextContentKind = "general"
+    @State private var isComposingPaste = false
     @State private var libraryTitle = ""
+    @State private var isCreatingLibrary = false
     @State private var packPendingDeletion: NotebookContextPackDTO?
     @State private var sourcePendingDeletion: NotebookContextPackSourceDTO?
     @State private var isLoadingContextPacks = true
@@ -1529,7 +1531,6 @@ struct NotebookCaptureSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.lg) {
                 header
-                realtimeControlsMovedNotice
 
                 if capture.isCaptureActive {
                     Label(
@@ -1546,10 +1547,14 @@ struct NotebookCaptureSettingsView: View {
 
                 VStack(alignment: .leading, spacing: Spacing.lg) {
                     contextBrowserSection
+                    contextEgressSection
                     postStopRemoteProcessingSection
+                    retentionSection
                 }
                 .disabled(editor.canEdit == false)
                 .opacity(editor.canEdit ? 1 : 0.62)
+
+                realtimeFooterLink
             }
             .frame(maxWidth: 820, alignment: .leading)
             .padding(Spacing.xl)
@@ -1634,42 +1639,22 @@ struct NotebookCaptureSettingsView: View {
         }
     }
 
-    private var realtimeControlsMovedNotice: some View {
+    private var realtimeFooterLink: some View {
         Button(action: onOpenRealtimeControls) {
-            HStack(spacing: Spacing.md) {
+            HStack(spacing: Spacing.xs) {
                 Image(systemName: "waveform.and.mic")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.brandAccent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(localized: "capture.settings.realtime_moved"))
-                        .font(.captionMedium)
-                        .foregroundColor(.bpLine)
-                    Text(String(localized: "capture.settings.realtime_moved_detail"))
-                        .font(.caption)
-                        .foregroundColor(.textOnBpDim)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Text(String(localized: "capture.settings.realtime_moved_action"))
-                    .font(.captionMedium)
-                    .foregroundColor(.brandAccent)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(String(localized: "capture.settings.footer.realtime"))
+                    .fixedSize(horizontal: false, vertical: true)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.brandAccent)
+                    .font(.system(size: 9, weight: .semibold))
             }
-            .padding(Spacing.md)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(Color.brandAccent.opacity(0.07))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.sm)
-                    .strokeBorder(Color.brandAccent.opacity(0.25), lineWidth: 0.5)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            .font(.caption)
+            .foregroundColor(.textOnBpDim)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(String(localized: "capture.settings.realtime_moved")))
-        .accessibilityHint(Text(String(localized: "capture.settings.realtime_moved_action")))
+        .accessibilityLabel(Text(String(localized: "capture.settings.footer.realtime")))
     }
 
     @ViewBuilder
@@ -1688,16 +1673,11 @@ struct NotebookCaptureSettingsView: View {
                 color: .textOnBpDim
             )
         case .saved:
-            VStack(alignment: .trailing, spacing: 3) {
-                settingsStatusLabel(
-                    String(localized: "capture.settings.autosave.saved"),
-                    systemImage: "checkmark.circle.fill",
-                    color: .signalGreen
-                )
-                Text(String(localized: "capture.settings.autosave.detail"))
-                    .font(.caption2)
-                    .foregroundColor(.textOnBpFaint)
-            }
+            settingsStatusLabel(
+                String(localized: "capture.settings.autosave.saved"),
+                systemImage: "checkmark.circle.fill",
+                color: .signalGreen
+            )
         case .loadFailed(let message):
             settingsFailureStatus(
                 title: String(localized: "capture.settings.autosave.load_failed"),
@@ -1772,18 +1752,50 @@ struct NotebookCaptureSettingsView: View {
 
             Divider().background(Color.bpLineGhost.opacity(0.3))
             contextPackEditor
-            Divider().background(Color.bpLineGhost.opacity(0.3))
+        }
+    }
 
-            Toggle(isOn: contextEgressBinding) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(String(localized: "capture.settings.context.send"))
-                        .font(.bodyMedium)
-                        .foregroundColor(.bpLine)
-                    Text(String(localized: "capture.settings.context.send_detail"))
-                        .font(.caption)
-                        .foregroundColor(.textOnBpDim)
-                        .fixedSize(horizontal: false, vertical: true)
+    @ViewBuilder
+    private var contextBrowserSection: some View {
+        if isLoadingContextPacks {
+            settingsCard(
+                title: String(localized: "capture.settings.context.title"),
+                icon: "doc.text.magnifyingglass"
+            ) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(Text(String(localized: "capture.settings.autosave.loading")))
+            }
+        } else if let contextLoadError {
+            settingsCard(
+                title: String(localized: "capture.settings.context.title"),
+                icon: "exclamationmark.triangle.fill"
+            ) {
+                Text(contextLoadError)
+                    .font(.caption)
+                    .foregroundColor(.signalAmber)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                Button(String(localized: "capture.settings.autosave.retry")) {
+                    loadContextBrowser()
                 }
+                .buttonStyle(.bordered)
+            }
+        } else if capture.loadedContextNotebookId == notebookId {
+            contextSection
+        }
+    }
+
+    private var contextEgressSection: some View {
+        settingsCard(
+            title: String(localized: "capture.settings.context.send"),
+            icon: "antenna.radiowaves.left.and.right"
+        ) {
+            Toggle(isOn: contextEgressBinding) {
+                Text(String(localized: "capture.settings.context.send_detail"))
+                    .font(.caption)
+                    .foregroundColor(.textOnBpDim)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .toggleStyle(.switch)
 
@@ -1820,35 +1832,51 @@ struct NotebookCaptureSettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private var contextBrowserSection: some View {
-        if isLoadingContextPacks {
-            settingsCard(
-                title: String(localized: "capture.settings.context.title"),
-                icon: "doc.text.magnifyingglass"
-            ) {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel(Text(String(localized: "capture.settings.autosave.loading")))
+    private var retentionSection: some View {
+        settingsCard(
+            title: String(localized: "capture.settings.retention.title"),
+            icon: "internaldrive"
+        ) {
+            Text(String(localized: "capture.settings.retention.subtitle"))
+                .font(.caption)
+                .foregroundColor(.textOnBpDim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(NotebookAudioRetentionLevel.allCases) { level in
+                retentionOptionRow(AudioPrivacyOptionSummary(level: level))
             }
-        } else if let contextLoadError {
-            settingsCard(
-                title: String(localized: "capture.settings.context.title"),
-                icon: "exclamationmark.triangle.fill"
-            ) {
-                Text(contextLoadError)
-                    .font(.caption)
-                    .foregroundColor(.signalAmber)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-                Button(String(localized: "capture.settings.autosave.retry")) {
-                    loadContextBrowser()
-                }
-                .buttonStyle(.bordered)
-            }
-        } else if capture.loadedContextNotebookId == notebookId {
-            contextSection
         }
+    }
+
+    private func retentionOptionRow(_ option: AudioPrivacyOptionSummary) -> some View {
+        let isSelected = draft.privacyLevel == option.level
+        return Button {
+            editor.update { $0.privacyLevel = option.level }
+        } label: {
+            HStack(alignment: .top, spacing: Spacing.sm) {
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 12))
+                    .foregroundColor(isSelected ? .brandAccent : .textOnBpFaint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(option.title)
+                        .font(.captionMedium)
+                        .foregroundColor(.bpLine)
+                    Text(option.storageText)
+                        .font(.caption)
+                        .foregroundColor(.textOnBpDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: Spacing.sm)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(option.title))
+        .accessibilityValue(Text(isSelected
+                                 ? String(localized: "capture.settings.context.selected")
+                                 : String(localized: "capture.settings.context.not_selected")))
+        .accessibilityHint(Text(option.storageText))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var contextPackList: some View {
@@ -1870,35 +1898,46 @@ struct NotebookCaptureSettingsView: View {
                 }
             }
 
+            Button {
+                isCreatingLibrary = true
+            } label: {
+                Label(
+                    String(localized: "capture.settings.context.new_library"),
+                    systemImage: "plus"
+                )
+                .font(.caption)
+            }
+            .buttonStyle(.bordered)
+            .popover(isPresented: $isCreatingLibrary, arrowEdge: .bottom) {
+                libraryCreationPopover
+            }
+        }
+    }
+
+    private var libraryCreationPopover: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
             TextField(
                 String(localized: "capture.settings.context.library_title"),
                 text: $libraryTitle
             )
             .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 240)
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Spacing.sm) {
-                    libraryPackButtons
+            HStack(spacing: Spacing.sm) {
+                Button(String(localized: "capture.settings.context.create_library")) {
+                    createLibraryPack(copyPrivate: false)
                 }
-                VStack(alignment: .leading, spacing: Spacing.sm) {
-                    libraryPackButtons
+                .buttonStyle(.borderedProminent)
+                .disabled(trimmedLibraryTitle.isEmpty)
+
+                Button(String(localized: "capture.settings.context.copy_private")) {
+                    createLibraryPack(copyPrivate: true)
                 }
+                .disabled(trimmedLibraryTitle.isEmpty)
             }
             .font(.caption)
         }
-    }
-
-    @ViewBuilder
-    private var libraryPackButtons: some View {
-        Button(String(localized: "capture.settings.context.new_library")) {
-            createLibraryPack(copyPrivate: false)
-        }
-        .disabled(trimmedLibraryTitle.isEmpty)
-
-        Button(String(localized: "capture.settings.context.copy_private")) {
-            createLibraryPack(copyPrivate: true)
-        }
-        .disabled(trimmedLibraryTitle.isEmpty)
+        .padding(Spacing.md)
     }
 
     private func contextPackRow(_ pack: NotebookContextPackDTO) -> some View {
@@ -1993,50 +2032,78 @@ struct NotebookCaptureSettingsView: View {
                 }
 
                 if capture.contextSources.isEmpty {
-                    Text(String(localized: "capture.settings.context.no_sources"))
-                        .font(.caption)
-                        .foregroundColor(.textOnBpDim)
+                    Label(
+                        String(localized: "capture.settings.context.no_sources"),
+                        systemImage: "tray"
+                    )
+                    .font(.caption)
+                    .foregroundColor(.textOnBpDim)
                 } else {
                     ForEach(capture.contextSources) { source in
                         contextSourceRow(source)
                     }
                 }
 
-                TextField(
-                    String(localized: "capture.settings.context.paste_title"),
-                    text: $pasteTitle
-                )
-                .textFieldStyle(.roundedBorder)
-
-                Picker(String(localized: "capture.settings.context.content_kind"), selection: $contextContentKind) {
-                    Text(String(localized: "capture.settings.context.kind_general")).tag("general")
-                    Text(String(localized: "capture.settings.context.kind_terms")).tag("terms")
-                    Text(String(localized: "capture.settings.context.kind_text")).tag("text")
-                }
-                .pickerStyle(.segmented)
-
-                TextEditor(text: $pasteText)
-                    .font(.system(size: 11, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .padding(Spacing.xs)
-                    .frame(minHeight: 84, maxHeight: 140)
-                    .background(Color.bpBlueDeep.opacity(0.6))
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-                    .accessibilityLabel(Text(String(localized: "capture.settings.context.paste_content")))
-
-                HStack {
-                    Text(String(localized: "capture.settings.context.import_limits"))
-                        .font(.system(size: 10))
-                        .foregroundColor(.textOnBpFaint)
-                    Spacer()
-                    Button(String(localized: "capture.settings.context.add_paste")) {
-                        importPastedContext(packId: pack.id)
+                if isComposingPaste {
+                    pasteComposer(packId: pack.id)
+                } else {
+                    Button {
+                        isComposingPaste = true
+                    } label: {
+                        Label(
+                            String(localized: "capture.settings.context.paste_content"),
+                            systemImage: "plus"
+                        )
+                        .font(.caption)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(trimmedPasteTitle.isEmpty || trimmedPasteText.isEmpty)
+                    .buttonStyle(.bordered)
                 }
             }
         }
+    }
+
+    private func pasteComposer(packId: String) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            TextField(
+                String(localized: "capture.settings.context.paste_title"),
+                text: $pasteTitle
+            )
+            .textFieldStyle(.roundedBorder)
+
+            Picker(String(localized: "capture.settings.context.content_kind"), selection: $contextContentKind) {
+                Text(String(localized: "capture.settings.context.kind_general")).tag("general")
+                Text(String(localized: "capture.settings.context.kind_terms")).tag("terms")
+                Text(String(localized: "capture.settings.context.kind_text")).tag("text")
+            }
+            .pickerStyle(.segmented)
+
+            TextEditor(text: $pasteText)
+                .font(.system(size: 11, design: .monospaced))
+                .scrollContentBackground(.hidden)
+                .padding(Spacing.xs)
+                .frame(minHeight: 84, maxHeight: 140)
+                .background(Color.bpBlueDeep.opacity(0.6))
+                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                .accessibilityLabel(Text(String(localized: "capture.settings.context.paste_content")))
+
+            HStack {
+                Text(String(localized: "capture.settings.context.import_limits"))
+                    .font(.system(size: 10))
+                    .foregroundColor(.textOnBpFaint)
+                Spacer()
+                Button(String(localized: "common.cancel")) {
+                    isComposingPaste = false
+                }
+                Button(String(localized: "capture.settings.context.add_paste")) {
+                    importPastedContext(packId: packId)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(trimmedPasteTitle.isEmpty || trimmedPasteText.isEmpty)
+            }
+        }
+        .padding(Spacing.sm)
+        .background(Color.bpBlueDeep.opacity(0.3))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
     }
 
     private func contextSourceRow(_ source: NotebookContextPackSourceDTO) -> some View {
@@ -2082,31 +2149,16 @@ struct NotebookCaptureSettingsView: View {
             title: String(localized: "capture.settings.after_stop.title"),
             icon: "waveform.badge.plus"
         ) {
-            HStack(alignment: .center, spacing: Spacing.md) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(String(localized: "capture.settings.after_stop.engine"))
-                        .font(.caption)
-                        .foregroundColor(.textOnBpDim)
-                    Text(engineStore.engine.postStopSummary)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.bpLine)
-                }
-                Spacer(minLength: Spacing.md)
-                Label(
-                    engineStore.engine.postStopExecutionSummary,
-                    systemImage: "arrow.triangle.2.circlepath"
-                )
-                .font(.caption)
-                .foregroundColor(.textOnBpDim)
-            }
-
-            Divider().background(Color.bpLineGhost.opacity(0.3))
-
             Text(String(localized: engineStore.engine.postStopUsesRealtimeRestream == true
                 ? "capture.settings.after_stop.detail"
                 : "capture.settings.after_stop.unavailable_detail"))
                 .font(.caption)
                 .foregroundColor(.textOnBpDim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("\(String(localized: "capture.settings.after_stop.engine")) · \(engineStore.engine.postStopSummary) · \(engineStore.engine.postStopExecutionSummary)")
+                .font(.system(size: 10))
+                .foregroundColor(.textOnBpFaint)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -2331,6 +2383,7 @@ struct NotebookCaptureSettingsView: View {
                 _ = try capture.createLibraryContextPack(title: title, notebookId: notebookId)
             }
             libraryTitle = ""
+            isCreatingLibrary = false
             resetContextEgressConsent()
         } catch {
             showContextError(error)
@@ -2348,6 +2401,7 @@ struct NotebookCaptureSettingsView: View {
             )
             pasteTitle = ""
             pasteText = ""
+            isComposingPaste = false
             resetContextEgressConsent()
         } catch {
             showContextError(error)
