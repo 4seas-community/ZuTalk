@@ -439,6 +439,13 @@ struct SubtitleOverlayView: View {
     /// The audience never reads system prose. Silence, session start, and
     /// session end all present the same way — a quiet canvas — and words are
     /// the only thing that ever appears on it.
+    ///
+    /// Retention favors the present over the past: rows keep their natural
+    /// text height and stack from the bottom edge, so a long monologue pushes
+    /// finished rows off the top instead of squeezing every row into an equal
+    /// slice that truncates the words currently being spoken. When a single
+    /// utterance outgrows the whole canvas, the bottom anchor clips its
+    /// already-read head and keeps the live tail on screen.
     @ViewBuilder
     private func audienceBody(geometry: GeometryProxy) -> some View {
         let utterances = Array(
@@ -454,13 +461,18 @@ struct SubtitleOverlayView: View {
             VStack(spacing: 10) {
                 ForEach(utterances) { utterance in
                     audienceRow(utterance, width: geometry.size.width - 24)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(maxWidth: .infinity)
                         .transition(.opacity)
                 }
             }
             .padding(12)
             .animation(.easeOut(duration: 0.22), value: utterances.map(\.id))
-            .frame(width: geometry.size.width, height: geometry.size.height)
+            .frame(
+                width: geometry.size.width,
+                height: geometry.size.height,
+                alignment: .bottom
+            )
+            .clipped()
         } else {
             Color.clear
         }
@@ -550,8 +562,9 @@ struct SubtitleOverlayView: View {
             )
             let rowStarts = Array(stride(from: 0, to: lanes.count, by: columnCount))
 
-            // Lane cards tile the row and rows tile the canvas: every card
-            // stretches to its equal share so the box has no leftover blank.
+            // Lane cards match the tallest lane in their row, and the row
+            // itself takes whatever height its text needs — no line is ever
+            // cut to fit a pre-sliced tile.
             VStack(spacing: 8) {
                 ForEach(rowStarts, id: \.self) { start in
                     HStack(alignment: .top, spacing: 8) {
@@ -562,7 +575,8 @@ struct SubtitleOverlayView: View {
                             audienceLane(lane)
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
             }
         } else if let unroutedText = projection.pendingLanguage
@@ -580,7 +594,8 @@ struct SubtitleOverlayView: View {
             .multilineTextAlignment(.leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .fixedSize(horizontal: false, vertical: true)
             .background(subtitleCardBackground)
     }
 

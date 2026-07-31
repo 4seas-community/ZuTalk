@@ -5382,8 +5382,16 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(overlayViews.contains("SubtitleOverlayDisplayMode"))
         XCTAssertTrue(overlayViews.contains("SubtitleOverlayLayoutPolicy"))
         XCTAssertTrue(
-            overlayViews.contains(".frame(maxWidth: .infinity, maxHeight: .infinity)"),
-            "audience rows tile the canvas edge to edge instead of scrolling"
+            overlayViews.contains("alignment: .bottom"),
+            "audience rows anchor to the bottom edge so the newest words are always fully visible"
+        )
+        XCTAssertTrue(
+            overlayViews.contains(".clipped()"),
+            "overflow leaves through the top edge; history yields to the words being spoken"
+        )
+        XCTAssertTrue(
+            overlayViews.contains(".fixedSize(horizontal: false, vertical: true)"),
+            "audience rows keep their natural text height instead of truncating inside equal slices"
         )
         XCTAssertFalse(
             overlayViews.contains("LazyVGrid"),
