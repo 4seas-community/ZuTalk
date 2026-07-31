@@ -33,10 +33,10 @@ pub use notebook_capture_store::{
     NewRealtimeUtterance, NotebookCaptureProfile, NotebookCaptureProfileUpdate, NotebookCaptureRun,
     NotebookCaptureStore, NotebookCaptureStoreError, NotebookProjectionMutation, Participant,
     ProjectionMutationState, ProjectionPurgeTarget, ProjectionState, ProviderFailure,
-    RealtimeTranslationInboxBinding, RealtimeTranslationInboxItem, RealtimeTranslationInboxKey,
-    RealtimeTranslationInboxPersistence, RealtimeTranslationLaneUpdate, RealtimeUtterance,
-    RealtimeUtteranceVariant, RemoteHealth, SessionPurgeJob, SessionPurgePlan, SessionSpeaker,
-    UtteranceAlignment, UtteranceCompletion, UtteranceLane, UtteranceVariantRole,
+    RealtimeTranscriptGap, RealtimeTranslationInboxBinding, RealtimeTranslationInboxItem,
+    RealtimeTranslationInboxKey, RealtimeTranslationInboxPersistence, RealtimeTranslationLaneUpdate,
+    RealtimeUtterance, RealtimeUtteranceVariant, RemoteHealth, SessionPurgeJob, SessionPurgePlan,
+    SessionSpeaker, UtteranceAlignment, UtteranceCompletion, UtteranceLane, UtteranceVariantRole,
     UtteranceVariantState,
 };
 pub use notebook_store::{

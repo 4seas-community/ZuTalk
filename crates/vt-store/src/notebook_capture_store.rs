@@ -111,6 +111,18 @@ pub enum RemoteHealth {
     Unavailable,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RealtimeTranscriptGap {
+    pub id: String,
+    pub session_id: String,
+    pub start_frame: u64,
+    pub end_frame: u64,
+    pub reason: String,
+    pub repair_state: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 impl RemoteHealth {
     fn as_str(self) -> &'static str {
         match self {
@@ -2646,6 +2658,83 @@ impl NotebookCaptureStore {
         self.require_run(run_id)
     }
 
+    /// Durably records audio that was accepted locally but deliberately not
+    /// sent into a new realtime epoch after a discontinuity.
+    pub fn preserve_network_transcript_gap(
+        &self,
+        session_id: &str,
+        start_frame: u64,
+        end_frame: u64,
+    ) -> Result<RealtimeTranscriptGap, NotebookCaptureStoreError> {
+        if end_frame <= start_frame {
+            return Err(NotebookCaptureStoreError::Conflict(format!(
+                "invalid transcript gap [{start_frame}, {end_frame})"
+            )));
+        }
+        let now = chrono::Utc::now().to_rfc3339();
+        let id = uuid::Uuid::new_v4().to_string();
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO realtime_transcript_gaps
+                (id, session_id, start_frame, end_frame, reason, repair_state,
+                 created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 'network_discontinuity', 'preserved', ?5, ?5)
+             ON CONFLICT(session_id, start_frame, end_frame, reason) DO NOTHING",
+            params![
+                id,
+                session_id,
+                u64_to_i64(start_frame, "start_frame")?,
+                u64_to_i64(end_frame, "end_frame")?,
+                now
+            ],
+        )?;
+        conn.query_row(
+            "SELECT id, session_id, start_frame, end_frame, reason, repair_state,
+                    created_at, updated_at
+             FROM realtime_transcript_gaps
+             WHERE session_id = ?1 AND start_frame = ?2 AND end_frame = ?3
+                   AND reason = 'network_discontinuity'",
+            params![
+                session_id,
+                u64_to_i64(start_frame, "start_frame")?,
+                u64_to_i64(end_frame, "end_frame")?
+            ],
+            |row| {
+                Ok(RealtimeTranscriptGap {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    start_frame: i64_to_u64(row.get(2)?, "start_frame")
+                        .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(2, -1))?,
+                    end_frame: i64_to_u64(row.get(3)?, "end_frame")
+                        .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(3, -1))?,
+                    reason: row.get(4)?,
+                    repair_state: row.get(5)?,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
+                })
+            },
+        )
+        .map_err(Into::into)
+    }
+
+    pub fn has_unrepaired_transcript_gaps(
+        &self,
+        session_id: &str,
+    ) -> Result<bool, NotebookCaptureStoreError> {
+        Ok(self
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT 1 FROM realtime_transcript_gaps
+                 WHERE session_id = ?1 AND repair_state <> 'repaired' LIMIT 1",
+                [session_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
+    }
+
     pub fn finalize_audio(
         &self,
         run_id: &str,
@@ -2827,6 +2916,12 @@ impl NotebookCaptureStore {
                 "run {run_id} async projection is not projecting"
             )));
         }
+        tx.execute(
+            "UPDATE realtime_transcript_gaps
+             SET repair_state = 'repaired', updated_at = ?1
+             WHERE session_id = ?2 AND repair_state <> 'repaired'",
+            params![now, session_id],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -12072,6 +12167,29 @@ mod tests {
         assert!(!store
             .complete_session_purge_job("session-purge-job")
             .unwrap());
+    }
+
+    #[test]
+    fn network_gap_is_idempotent_and_blocks_complete_coverage() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        let run = create_catalogued_run(&store, &notebook_id, "network-gap");
+
+        let first = store
+            .preserve_network_transcript_gap(&run.session_id, 80_000, 320_000)
+            .unwrap();
+        let repeated = store
+            .preserve_network_transcript_gap(&run.session_id, 80_000, 320_000)
+            .unwrap();
+
+        assert_eq!(first.id, repeated.id);
+        assert_eq!((first.start_frame, first.end_frame), (80_000, 320_000));
+        assert!(store
+            .has_unrepaired_transcript_gaps(&run.session_id)
+            .unwrap());
+        assert!(store
+            .preserve_network_transcript_gap(&run.session_id, 10, 10)
+            .is_err());
     }
 
     #[test]

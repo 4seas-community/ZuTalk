@@ -1,6 +1,6 @@
-//! Zulangue SQLite v28 schema.
+//! Zulangue SQLite v29 schema.
 //!
-//! Fresh databases are installed directly at v28. The five immediately
+//! Fresh databases are installed directly at v29. The six immediately
 //! preceding Notebook schemas are migrated in place so existing capture data
 //! remains available; older retired product schemas are still rejected.
 
@@ -11,7 +11,8 @@ const SPEAKER_VERSION: i32 = 24;
 const PREVIOUS_VERSION: i32 = 25;
 const MULTILINGUAL_VERSION: i32 = 26;
 const REALTIME_LORO_VERSION: i32 = 27;
-const CURRENT_VERSION: i32 = 28;
+const TRANSLATION_INBOX_VERSION: i32 = 28;
+const CURRENT_VERSION: i32 = 29;
 
 const V23_TABLES: &[&str] = &[
     "audio_retention_chunks",
@@ -296,6 +297,67 @@ const V28_INDEXES: &[&str] = &[
     "idx_session_speakers_session_epoch",
 ];
 const V28_TRIGGERS: &[&str] = V27_TRIGGERS;
+const V29_TABLES: &[&str] = &[
+    "audio_retention_chunks",
+    "context_pack_sources",
+    "context_packs",
+    "notebook_capture_profiles",
+    "notebook_capture_runs",
+    "notebook_context_pack_bindings",
+    "notebook_projection_mutations",
+    "notebook_session_projections",
+    "notebook_sessions",
+    "notebook_tabs",
+    "notebooks",
+    "participants",
+    "realtime_transcript_gaps",
+    "realtime_translation_inbox",
+    "realtime_utterance_overrides",
+    "realtime_utterance_variants",
+    "realtime_utterances",
+    "search_index",
+    "search_index_config",
+    "search_index_content",
+    "search_index_data",
+    "search_index_docsize",
+    "search_index_idx",
+    "session_meta",
+    "session_purge_jobs",
+    "session_records",
+    "session_speakers",
+];
+const V29_INDEXES: &[&str] = &[
+    "idx_audio_retention_chunks_due",
+    "idx_audio_retention_chunks_session",
+    "idx_context_pack_sources_pack_order",
+    "idx_context_packs_library",
+    "idx_context_packs_private_owner",
+    "idx_notebook_capture_runs_notebook_created",
+    "idx_notebook_capture_runs_single_active",
+    "idx_notebook_context_bindings_order",
+    "idx_notebook_projection_mutations_session",
+    "idx_notebook_projection_mutations_utterance_language",
+    "idx_notebook_session_projections_notebook_session",
+    "idx_notebook_session_projections_tab",
+    "idx_notebook_sessions_session_unique",
+    "idx_notebook_tabs_builtin_unique",
+    "idx_notebook_tabs_notebook_position",
+    "idx_notebooks_updated",
+    "idx_participants_display_name",
+    "idx_realtime_transcript_gaps_pending",
+    "idx_realtime_translation_inbox_bound_lane",
+    "idx_realtime_translation_inbox_unbound",
+    "idx_realtime_utterance_variants_language",
+    "idx_realtime_utterance_variants_one_source",
+    "idx_realtime_utterances_id_sequence",
+    "idx_realtime_utterances_session_sequence",
+    "idx_realtime_utterances_session_speaker",
+    "idx_session_purge_jobs_updated",
+    "idx_session_records_active_created",
+    "idx_session_speakers_participant",
+    "idx_session_speakers_session_epoch",
+];
+const V29_TRIGGERS: &[&str] = V28_TRIGGERS;
 
 /// Install, migrate, or validate the supported main-database schema.
 pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
@@ -304,7 +366,7 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
 
     match current {
         0 if database_has_user_objects(conn)? => Err(schema_reset_required(0)),
-        0 => install_v28_baseline(conn),
+        0 => install_v29_baseline(conn),
         LEGACY_VERSION => {
             validate_v23_baseline(conn)?;
             migrate_v23_to_v24(conn)?;
@@ -316,7 +378,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v26_to_v27(conn)?;
             validate_v27_baseline(conn)?;
             migrate_v27_to_v28(conn)?;
-            validate_v28_baseline(conn)
+            validate_v28_baseline(conn)?;
+            migrate_v28_to_v29(conn)?;
+            validate_v29_baseline(conn)
         }
         SPEAKER_VERSION => {
             validate_v24_baseline(conn)?;
@@ -327,7 +391,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v26_to_v27(conn)?;
             validate_v27_baseline(conn)?;
             migrate_v27_to_v28(conn)?;
-            validate_v28_baseline(conn)
+            validate_v28_baseline(conn)?;
+            migrate_v28_to_v29(conn)?;
+            validate_v29_baseline(conn)
         }
         PREVIOUS_VERSION => {
             validate_v25_baseline(conn)?;
@@ -336,21 +402,32 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v26_to_v27(conn)?;
             validate_v27_baseline(conn)?;
             migrate_v27_to_v28(conn)?;
-            validate_v28_baseline(conn)
+            validate_v28_baseline(conn)?;
+            migrate_v28_to_v29(conn)?;
+            validate_v29_baseline(conn)
         }
         MULTILINGUAL_VERSION => {
             validate_v26_baseline(conn)?;
             migrate_v26_to_v27(conn)?;
             validate_v27_baseline(conn)?;
             migrate_v27_to_v28(conn)?;
-            validate_v28_baseline(conn)
+            validate_v28_baseline(conn)?;
+            migrate_v28_to_v29(conn)?;
+            validate_v29_baseline(conn)
         }
         REALTIME_LORO_VERSION => {
             validate_v27_baseline(conn)?;
             migrate_v27_to_v28(conn)?;
-            validate_v28_baseline(conn)
+            validate_v28_baseline(conn)?;
+            migrate_v28_to_v29(conn)?;
+            validate_v29_baseline(conn)
         }
-        CURRENT_VERSION => validate_v28_baseline(conn),
+        TRANSLATION_INBOX_VERSION => {
+            validate_v28_baseline(conn)?;
+            migrate_v28_to_v29(conn)?;
+            validate_v29_baseline(conn)
+        }
+        CURRENT_VERSION => validate_v29_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
     }?;
 
@@ -384,7 +461,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {LEGACY_VERSION}, schema {SPEAKER_VERSION}, schema {PREVIOUS_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {LEGACY_VERSION}, schema {SPEAKER_VERSION}, schema {PREVIOUS_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -472,23 +549,27 @@ fn validate_v23_baseline(conn: &Connection) -> SqlResult<()> {
 }
 
 fn validate_v24_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, SPEAKER_VERSION, false, false, false, false)
+    validate_v24_or_later_baseline(conn, SPEAKER_VERSION, false, false, false, false, false)
 }
 
 fn validate_v25_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, PREVIOUS_VERSION, true, false, false, false)
+    validate_v24_or_later_baseline(conn, PREVIOUS_VERSION, true, false, false, false, false)
 }
 
 fn validate_v26_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, MULTILINGUAL_VERSION, true, true, false, false)
+    validate_v24_or_later_baseline(conn, MULTILINGUAL_VERSION, true, true, false, false, false)
 }
 
 fn validate_v27_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, REALTIME_LORO_VERSION, true, true, true, false)
+    validate_v24_or_later_baseline(conn, REALTIME_LORO_VERSION, true, true, true, false, false)
 }
 
 fn validate_v28_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, CURRENT_VERSION, true, true, true, true)
+    validate_v24_or_later_baseline(conn, TRANSLATION_INBOX_VERSION, true, true, true, true, false)
+}
+
+fn validate_v29_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v24_or_later_baseline(conn, CURRENT_VERSION, true, true, true, true, true)
 }
 
 fn validate_v24_or_later_baseline(
@@ -498,8 +579,11 @@ fn validate_v24_or_later_baseline(
     has_utterance_variants: bool,
     has_realtime_loro_projection: bool,
     has_translation_inbox: bool,
+    has_transcript_gaps: bool,
 ) -> SqlResult<()> {
-    let (tables, indexes, triggers) = if has_translation_inbox {
+    let (tables, indexes, triggers) = if has_transcript_gaps {
+        (V29_TABLES, V29_INDEXES, V29_TRIGGERS)
+    } else if has_translation_inbox {
         (V28_TABLES, V28_INDEXES, V28_TRIGGERS)
     } else if has_realtime_loro_projection {
         (V27_TABLES, V27_INDEXES, V27_TRIGGERS)
@@ -637,6 +721,17 @@ fn validate_v24_or_later_baseline(
                         completion, state, revision, bound_utterance_id,
                         bound_sequence, created_at, updated_at
                  FROM realtime_translation_inbox LIMIT 0",
+            )
+            .is_err()
+    {
+        return Err(schema_reset_required(claimed_version));
+    }
+    if has_transcript_gaps
+        && conn
+            .prepare(
+                "SELECT id, session_id, start_frame, end_frame, reason, repair_state,
+                        created_at, updated_at
+                 FROM realtime_transcript_gaps LIMIT 0",
             )
             .is_err()
     {
@@ -1204,13 +1299,48 @@ fn migrate_v27_to_v28(conn: &Connection) -> SqlResult<()> {
             WHERE bound_utterance_id IS NULL;
         "#,
     )?;
-    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+    tx.pragma_update(None, "user_version", TRANSLATION_INBOX_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{REALTIME_LORO_VERSION} to v{CURRENT_VERSION}");
+    tracing::info!(
+        "migrated Zulangue schema v{REALTIME_LORO_VERSION} to v{TRANSLATION_INBOX_VERSION}"
+    );
     Ok(())
 }
 
-fn install_v28_baseline(conn: &Connection) -> SqlResult<()> {
+fn migrate_v28_to_v29(conn: &Connection) -> SqlResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(realtime_transcript_gaps_schema())?;
+    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+    tx.commit()?;
+    tracing::info!("migrated Zulangue schema v{TRANSLATION_INBOX_VERSION} to v{CURRENT_VERSION}");
+    Ok(())
+}
+
+fn realtime_transcript_gaps_schema() -> &'static str {
+    r#"
+        CREATE TABLE realtime_transcript_gaps (
+            id            TEXT PRIMARY KEY,
+            session_id    TEXT NOT NULL
+                               REFERENCES notebook_capture_runs(session_id) ON DELETE CASCADE,
+            start_frame   INTEGER NOT NULL CHECK(start_frame >= 0),
+            end_frame     INTEGER NOT NULL CHECK(end_frame > start_frame),
+            reason        TEXT NOT NULL CHECK(reason = 'network_discontinuity'),
+            repair_state  TEXT NOT NULL
+                               CHECK(repair_state IN (
+                                   'preserved', 'enqueued', 'provider_accepted',
+                                   'result_durable', 'projected', 'repaired', 'failed'
+                               )),
+            created_at    TEXT NOT NULL,
+            updated_at    TEXT NOT NULL,
+            UNIQUE(session_id, start_frame, end_frame, reason)
+        );
+        CREATE INDEX idx_realtime_transcript_gaps_pending
+            ON realtime_transcript_gaps(session_id, repair_state, start_frame)
+            WHERE repair_state <> 'repaired';
+    "#
+}
+
+fn install_v29_baseline(conn: &Connection) -> SqlResult<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(
         r#"
@@ -1979,6 +2109,7 @@ fn install_v28_baseline(conn: &Connection) -> SqlResult<()> {
         END;
         "#,
     )?;
+    tx.execute_batch(realtime_transcript_gaps_schema())?;
     tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
     tx.commit()?;
     tracing::info!("installed clean Zulangue schema v{CURRENT_VERSION}");
@@ -2028,6 +2159,8 @@ mod tests {
     fn downgrade_v27_to_v26(conn: &Connection) {
         conn.execute_batch(
             r#"
+            DROP INDEX idx_realtime_transcript_gaps_pending;
+            DROP TABLE realtime_transcript_gaps;
             DROP INDEX idx_realtime_translation_inbox_unbound;
             DROP INDEX idx_realtime_translation_inbox_bound_lane;
             DROP TABLE realtime_translation_inbox;
@@ -2079,7 +2212,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_fresh_database_has_exact_v28_objects() {
+    fn migration_fresh_database_has_exact_v29_objects() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
 
@@ -2098,6 +2231,7 @@ mod tests {
                 "notebook_tabs",
                 "notebooks",
                 "participants",
+                "realtime_transcript_gaps",
                 "realtime_translation_inbox",
                 "realtime_utterance_overrides",
                 "realtime_utterance_variants",
@@ -2134,6 +2268,7 @@ mod tests {
                 "idx_notebook_tabs_notebook_position",
                 "idx_notebooks_updated",
                 "idx_participants_display_name",
+                "idx_realtime_transcript_gaps_pending",
                 "idx_realtime_translation_inbox_bound_lane",
                 "idx_realtime_translation_inbox_unbound",
                 "idx_realtime_utterance_variants_language",
@@ -2515,7 +2650,7 @@ mod tests {
 
     #[test]
     fn migration_rejects_every_historical_or_future_nonzero_version() {
-        for version in [1, 7, 21, 22, 29] {
+        for version in [1, 7, 21, 22, 30] {
             let conn = Connection::open_in_memory().unwrap();
             conn.pragma_update(None, "user_version", version).unwrap();
             let error = run_migrations(&conn).unwrap_err();
@@ -2553,7 +2688,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_rejects_incomplete_database_claiming_v28() {
+    fn migration_rejects_incomplete_database_claiming_v29() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute("CREATE TABLE notebooks (id TEXT PRIMARY KEY)", [])
             .unwrap();
@@ -2563,11 +2698,11 @@ mod tests {
         let error = run_migrations(&conn).unwrap_err();
         assert!(error
             .to_string()
-            .contains("unsupported schema 28; reset required"));
+            .contains("unsupported schema 29; reset required"));
     }
 
     #[test]
-    fn migration_v28_is_idempotent() {
+    fn migration_v29_is_idempotent() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         let tables = names(&conn, "table");
@@ -2761,7 +2896,7 @@ mod tests {
             .unwrap(),
             0
         );
-        validate_v28_baseline(&conn).unwrap();
+        validate_v29_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -2946,7 +3081,7 @@ mod tests {
                 ),
             ]
         );
-        validate_v28_baseline(&conn).unwrap();
+        validate_v29_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -2989,7 +3124,7 @@ mod tests {
         assert_eq!(selected, r#"["th","ja"]"#);
         assert_eq!(common, None);
         assert_eq!(revision, 7);
-        validate_v28_baseline(&conn).unwrap();
+        validate_v29_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -3148,7 +3283,7 @@ mod tests {
         assert!(conn
             .prepare("SELECT session_id FROM realtime_translation_inbox LIMIT 0")
             .is_ok());
-        validate_v28_baseline(&conn).unwrap();
+        validate_v29_baseline(&conn).unwrap();
     }
 
     #[test]
@@ -3192,7 +3327,7 @@ mod tests {
             .unwrap(),
             4
         );
-        validate_v28_baseline(&conn).unwrap();
+        validate_v29_baseline(&conn).unwrap();
     }
 
     #[test]
