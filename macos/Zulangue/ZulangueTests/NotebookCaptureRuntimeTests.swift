@@ -3863,6 +3863,25 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(labels["bn"]?.contains("বাংলা") == true)
     }
 
+    func testRealtimeLanguagePickerAddsTheInterfaceLanguageToSuggestions() {
+        XCTAssertEqual(
+            NotebookCaptureSupportedLanguages.suggestedCodes(interfaceLanguage: .ko),
+            ["th", "en", "zh", "ko"]
+        )
+        XCTAssertEqual(
+            NotebookCaptureSupportedLanguages.suggestedCodes(interfaceLanguage: .ja),
+            ["th", "en", "zh", "ja"]
+        )
+        XCTAssertEqual(
+            NotebookCaptureSupportedLanguages.suggestedCodes(interfaceLanguage: .zhHans),
+            ["th", "en", "zh"]
+        )
+        XCTAssertEqual(
+            NotebookCaptureSupportedLanguages.suggestedCodes(interfaceLanguage: .en),
+            ["th", "en", "zh"]
+        )
+    }
+
     @MainActor
     func testSpeakerNamesPreferSessionOverrideThenManualParticipantThenProviderLabel() throws {
         let utterance = NotebookCaptureUtteranceDTO(
@@ -6067,7 +6086,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(captureViews.contains("history.load(notebookId: notebookId)"))
         XCTAssertTrue(activeCapture.contains("listNotebookCaptureHistory(notebookId:"))
         XCTAssertTrue(realtimeTranscriptView.contains("NotebookCaptureHistoryPolicy.laneProjection("))
-        XCTAssertTrue(realtimeTranscriptView.contains("ForEach(Array(displayLanguages.enumerated())"))
+        XCTAssertTrue(realtimeTranscriptView.contains("languageCount: displayLanguages.count"))
         XCTAssertTrue(captureViews.contains("ForEach(Array(projection.lanes.enumerated())"))
         XCTAssertTrue(captureViews.contains("NotebookCaptureLanguageLane"))
         XCTAssertTrue(laneTextView.contains("scheduleFocusChange"))
@@ -6107,12 +6126,14 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(captureViews.contains("capture.transcript.failed_lane"))
         XCTAssertTrue(captureViews.contains("Text(sourceLanguageLabel)"))
         XCTAssertTrue(captureViews.contains("normalizedSourceLanguage == \"und\""))
-        XCTAssertGreaterThanOrEqual(
+        XCTAssertFalse(realtimeTranscriptView.contains("bilingualHeader"))
+        XCTAssertFalse(realtimeTranscriptView.contains("languageHeading("))
+        XCTAssertEqual(
             realtimeTranscriptView
                 .components(separatedBy: ".frame(height: NotebookRealtimeTranscriptLayout.headerHeight)")
                 .count - 1,
-            2,
-            "both derived transcript layouts must keep an identical fixed header height"
+            1,
+            "comparison columns should begin with text; only the timeline keeps a heading"
         )
         XCTAssertFalse(realtimeTranscriptView.contains("capture.transcript.swap"))
         XCTAssertFalse(realtimeTranscriptView.contains("columnsReversed"))

@@ -959,8 +959,18 @@ enum NotebookCaptureSupportedLanguages {
     static let maximumSelectedCount = 3
 
     /// Surfaced as one-tap suggestions before the user types a search query.
-    /// Ordered for the primary deployment region (Thailand).
-    static let suggestedCodes = ["th", "en", "zh"]
+    /// Keep the primary regional languages first, then make the current UI
+    /// language available without requiring a search.
+    static func suggestedCodes(
+        interfaceLanguage: AppLanguage = .currentFromStorage()
+    ) -> [String] {
+        let interfaceCode = interfaceLanguage == .zhHans
+            ? "zh"
+            : interfaceLanguage.rawValue
+        return ["th", "en", "zh"] + (["th", "en", "zh"].contains(interfaceCode)
+            ? []
+            : [interfaceCode])
+    }
 
     static let codes = [
         "af", "sq", "ar", "az", "eu", "be", "bn", "bs", "bg", "ca",
@@ -1028,9 +1038,8 @@ private struct NotebookRealtimeCaptureConsole: View {
         .accessibilityLabel(Text(String(localized: "capture.realtime.controls.profile_group")))
     }
 
-    /// While capture is active the language columns identify themselves in the
-    /// transcript header, so this row stays a single thin status line and does
-    /// not repeat the selected languages.
+    /// Keep this row to one thin status line. The transcript itself already
+    /// makes the selected languages evident, so repeating them here adds noise.
     private var activeRunSummary: some View {
         let profile = capture.profile
         return HStack(alignment: .center, spacing: Spacing.md) {
@@ -1222,7 +1231,7 @@ private struct NotebookRealtimeCaptureConsole: View {
     @ViewBuilder
     private var suggestedLanguageResults: some View {
         let selected = Set(draft.selectedLanguages)
-        let suggestions = NotebookCaptureSupportedLanguages.suggestedCodes
+        let suggestions = NotebookCaptureSupportedLanguages.suggestedCodes()
             .filter { selected.contains($0) == false }
             .compactMap { code in languages.first { $0.code == code } }
 
@@ -2922,6 +2931,7 @@ private struct NotebookRealtimeHistoryView: View {
     @ObservedObject var history: NotebookCaptureHistoryStore
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isPresentationControlHovered = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2962,40 +2972,64 @@ private struct NotebookRealtimeHistoryView: View {
     }
 
     private var presentationControl: some View {
-        NotebookAdaptiveSingleMountLayout(
-            horizontalSpacing: Spacing.xl,
-            verticalSpacing: Spacing.sm,
-            stackedAlignment: .leading
-        ) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "settings.shortcuts.cycle_display"))
-                    .font(.captionMedium)
-                    .foregroundColor(.bpLine)
-                Text(presentationMode == .bilingualColumns
-                     ? String(localized: "capture.transcript.presentation.language_columns_detail")
-                     : String(localized: "capture.transcript.presentation.timeline_detail"))
-                    .font(.system(size: 10))
-                    .foregroundColor(.textOnBpFaint)
-                    .fixedSize(horizontal: false, vertical: true)
+        HStack {
+            Menu {
+                Button {
+                    presentationBinding.wrappedValue = .sourceTimeline
+                } label: {
+                    if presentationMode == .sourceTimeline {
+                        Label(
+                            String(localized: "capture.transcript.presentation.timeline"),
+                            systemImage: "checkmark"
+                        )
+                    } else {
+                        Text(String(localized: "capture.transcript.presentation.timeline"))
+                    }
+                }
+                Button {
+                    presentationBinding.wrappedValue = .bilingualColumns
+                } label: {
+                    if presentationMode == .bilingualColumns {
+                        Label(
+                            String(localized: "capture.transcript.presentation.language_columns"),
+                            systemImage: "checkmark"
+                        )
+                    } else {
+                        Text(String(localized: "capture.transcript.presentation.language_columns"))
+                    }
+                }
+            } label: {
+                HStack(spacing: Spacing.xs) {
+                    Text(presentationMode == .bilingualColumns
+                         ? String(localized: "capture.transcript.presentation.language_columns")
+                         : String(localized: "capture.transcript.presentation.timeline"))
+                        .font(.captionMedium)
+                        .foregroundColor(.bpLine)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.textOnBpFaint)
+                        .opacity(isPresentationControlHovered ? 1 : 0)
+                }
+                .padding(.horizontal, Spacing.sm)
+                .frame(minHeight: 32)
+                .background(
+                    Color.bpBlueLight.opacity(isPresentationControlHovered ? 0.42 : 0)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: Radius.xs))
             }
-            Picker(String(localized: "settings.shortcuts.cycle_display"), selection: presentationBinding) {
-                Text(String(localized: "capture.transcript.presentation.timeline"))
-                    .tag(NotebookTranscriptPresentationMode.sourceTimeline)
-                Text(String(localized: "capture.transcript.presentation.language_columns"))
-                    .tag(NotebookTranscriptPresentationMode.bilingualColumns)
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 340, minHeight: 44)
-            .accessibilityHint(Text(
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .onHover { isPresentationControlHovered = $0 }
+            .accessibilityLabel(Text(String(localized: "settings.shortcuts.cycle_display")))
+            .accessibilityValue(Text(
                 presentationMode == .bilingualColumns
-                    ? String(localized: "capture.transcript.presentation.language_columns_detail")
-                    : String(localized: "capture.transcript.presentation.timeline_detail")
+                    ? String(localized: "capture.transcript.presentation.language_columns")
+                    : String(localized: "capture.transcript.presentation.timeline")
             ))
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, Spacing.xl)
-        .padding(.vertical, Spacing.sm)
-        .background(Color.bpBlueDeep.opacity(0.3))
+        .padding(.vertical, Spacing.xs)
     }
 
     @ViewBuilder
@@ -3161,11 +3195,7 @@ struct NotebookRealtimeUtteranceView: View {
     }
 
     private var languageColumnContent: some View {
-        VStack(spacing: 0) {
-            bilingualHeader
-            Divider().background(Color.bpLineGhost.opacity(0.35))
-            bilingualBody
-        }
+        bilingualBody
     }
 
     private var transcriptionOnlyLayout: some View {
@@ -3278,21 +3308,6 @@ struct NotebookRealtimeUtteranceView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var bilingualHeader: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(displayLanguages.enumerated()), id: \.element) { index, language in
-                languageHeading(language)
-                if index < displayLanguages.count - 1 {
-                    Divider()
-                        .background(Color.bpLineGhost.opacity(0.35))
-                        .frame(height: 28)
-                }
-            }
-        }
-        .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset)
-        .frame(height: NotebookRealtimeTranscriptLayout.headerHeight)
-    }
-
     private var transcriptionHeader: some View {
         Label(
             String(localized: "capture.transcript.transcription_heading"),
@@ -3303,24 +3318,6 @@ struct NotebookRealtimeUtteranceView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset + Spacing.md)
         .frame(height: NotebookRealtimeTranscriptLayout.headerHeight)
-        .accessibilityAddTraits(.isHeader)
-    }
-
-    private func languageHeading(_ code: String) -> some View {
-        HStack(spacing: Spacing.xs) {
-            if let name = Locale.current.localizedString(forLanguageCode: code) {
-                Text(name)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.bpLine)
-            }
-            Text(code.uppercased())
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .tracking(0.8)
-                .foregroundColor(.textOnBpFaint)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Spacing.md)
-        .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
 
