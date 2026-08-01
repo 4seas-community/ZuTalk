@@ -190,6 +190,26 @@
 /* General settings section */
 "settings.general.title" = "ทั่วไป";
 "settings.general.subtitle" = "ภาษาและลักษณะที่ปรากฏของทั้งแอป";
+"settings.audio_input.title" = "อินพุตเสียง";
+"settings.audio_input.subtitle" = "เลือกไมโครโฟน อินเทอร์เฟซเสียง USB หรือมิกเซอร์ที่ macOS รู้จัก";
+"settings.audio_input.device" = "อุปกรณ์อินพุต";
+"settings.audio_input.channel_one_hint" = "เวอร์ชันนี้บันทึกช่องอินพุตแรกของอุปกรณ์ที่เลือก";
+"settings.audio_input.system_default" = "ค่าเริ่มต้นของระบบ";
+"settings.audio_input.system_default_format" = "ค่าเริ่มต้นของระบบ — %@";
+"settings.audio_input.unavailable_format" = "%@ — ใช้งานไม่ได้";
+"settings.audio_input.refresh" = "รีเฟรชอุปกรณ์อินพุต";
+"settings.audio_input.active_locked" = "อุปกรณ์อินพุตถูกล็อกขณะกำลังบันทึก";
+"settings.audio_input.error.query_format" = "ไม่สามารถอ่านอุปกรณ์เสียงได้ (%1$@, สถานะ %2$@)";
+"settings.audio_input.error.no_device" = "ไม่มีอุปกรณ์อินพุตเสียงที่ใช้งานได้";
+"settings.audio_input.error.unavailable_format" = "อุปกรณ์อินพุตเสียงที่เลือก “%@” ใช้งานไม่ได้ โปรดเชื่อมต่อใหม่หรือเลือกอุปกรณ์อื่น";
+"settings.audio_input.error.audio_unit_format" = "Zulangue ไม่สามารถเปิดอินพุตเสียง “%@” ได้";
+"settings.audio_input.error.binding_format" = "Zulangue ไม่สามารถใช้อินพุตเสียง “%1$@” ได้ (สถานะ %2$@)";
+"settings.audio_input.local_scope" = "การเลือกอุปกรณ์จะบันทึกไว้ใน Mac เครื่องนี้ และใช้กับการบันทึกปัจจุบันและครั้งต่อไปทันที";
+"settings.audio_input.switching" = "กำลังสลับอินพุตเสียง…";
+"settings.audio_input.active_switch_hint" = "สลับอินพุตขณะบันทึกได้ แต่อาจพลาดเสียงช่วงสั้น ๆ ระหว่างการสลับ";
+"settings.audio_input.active_elsewhere" = "Notebook อื่นกำลังบันทึกอยู่ โปรดสลับอินพุตจาก Notebook นั้น";
+"settings.audio_input.error.switch_unavailable" = "ไม่สามารถเปลี่ยนอินพุตเสียงระหว่างการเปลี่ยนสถานะการบันทึกอื่นได้ โปรดลองอีกครั้งในอีกสักครู่";
+"capture.toast.audio_input_switch_failed" = "สลับอินพุตเสียงไม่สำเร็จ";
 "settings.language.title" = "ภาษาของแอป";
 "settings.language.system" = "ตามระบบ";
 "settings.language.hint" = "ควบคุมส่วนติดต่อผู้ใช้ เมนู และข้อความแสดงข้อผิดพลาดทั้งในเลเยอร์ Swift และ Rust";
@@ -823,7 +843,7 @@
 "capture.settings.tab" = "การตั้งค่า";
 "capture.settings.tab_hint" = "เปิดการตั้งค่าการบันทึก ภาษา และคำบรรยายของ Notebook นี้";
 "capture.settings.footer.realtime" = "เลือกภาษาและโหมดเรียลไทม์ได้ในแท็บบทถอดเสียงสด";
-"capture.settings.active_locked" = "มีการบันทึกกำลังทำงานอยู่ การกำหนดค่าถูกตรึงไว้ และจะเปลี่ยนการตั้งค่าได้หลังหยุดบันทึก";
+"capture.settings.active_locked" = "กำลังบันทึกอยู่ การตั้งค่าภาษา บริบท และการเก็บรักษาถูกตรึงไว้ แต่ยังสลับอินพุตเสียงได้";
 "capture.settings.autosave.loading" = "กำลังโหลดการตั้งค่า…";
 "capture.settings.autosave.saving" = "กำลังบันทึก…";
 "capture.settings.autosave.saved" = "บันทึกอัตโนมัติแล้ว";

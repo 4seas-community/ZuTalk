@@ -1,4 +1,5 @@
 import AVFoundation
+import AudioToolbox
 import Foundation
 import Synchronization
 import os
@@ -116,7 +117,7 @@ final class StreamingS16Resampler {
 
 /// Fixed-storage SPSC queue between the AVAudioEngine tap and one capture
 /// worker. The producer path performs only atomic loads/stores and a bounded
-/// memcpy into memory allocated before the tap is installed.
+/// copy into memory allocated before the tap is installed.
 final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
     enum EnqueueResult: Equatable, Sendable {
         case accepted
@@ -162,6 +163,24 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
     /// Realtime producer entrypoint. There is exactly one AVAudioEngine tap.
     @discardableResult
     func enqueue(_ samples: UnsafeBufferPointer<Float>, sampleTime: Int64) -> EnqueueResult {
+        guard let baseAddress = samples.baseAddress else { return .closed }
+        return enqueue(
+            baseAddress,
+            frameCount: samples.count,
+            stride: 1,
+            sampleTime: sampleTime
+        )
+    }
+
+    /// Copies one channel from either planar (`stride == 1`) or interleaved
+    /// hardware input without allocating on the realtime audio thread.
+    @discardableResult
+    func enqueue(
+        _ samples: UnsafePointer<Float>,
+        frameCount: Int,
+        stride: Int,
+        sampleTime: Int64
+    ) -> EnqueueResult {
         _ = producerInFlight.wrappingAdd(1, ordering: .acquiringAndReleasing)
         defer {
             let previous = producerInFlight
@@ -171,8 +190,8 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
         }
 
         guard accepting.load(ordering: .acquiring) else { return .closed }
-        guard samples.isEmpty == false else { return .closed }
-        guard samples.count <= maximumFramesPerSlot else {
+        guard frameCount > 0, stride > 0 else { return .closed }
+        guard frameCount <= maximumFramesPerSlot else {
             return closeForOverflow()
         }
 
@@ -183,10 +202,15 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
         }
 
         let slot = write % capacity
-        sampleStorage
-            .advanced(by: slot * maximumFramesPerSlot)
-            .update(from: samples.baseAddress!, count: samples.count)
-        frameCounts[slot] = samples.count
+        let destination = sampleStorage.advanced(by: slot * maximumFramesPerSlot)
+        if stride == 1 {
+            destination.update(from: samples, count: frameCount)
+        } else {
+            for frame in 0..<frameCount {
+                destination[frame] = samples[frame * stride]
+            }
+        }
+        frameCounts[slot] = frameCount
         sampleTimes[slot] = sampleTime
         writeSequence.store(write + 1, ordering: .releasing)
         return .accepted
@@ -321,6 +345,21 @@ final class MicrophoneCaptureWorker: @unchecked Sendable {
         ring.enqueue(samples, sampleTime: sampleTime)
     }
 
+    @discardableResult
+    func enqueue(
+        _ samples: UnsafePointer<Float>,
+        frameCount: Int,
+        stride: Int,
+        sampleTime: Int64
+    ) -> MicrophoneCaptureSPSCRing.EnqueueResult {
+        ring.enqueue(
+            samples,
+            frameCount: frameCount,
+            stride: stride,
+            sampleTime: sampleTime
+        )
+    }
+
     /// Control-thread fence. Removing the tap happens before this call, so all
     /// frames accepted by that tap generation are delivered before it returns.
     @discardableResult
@@ -394,11 +433,12 @@ final class MicrophoneCapture {
         category: "MicrophoneCapture"
     )
     private static let targetSampleRate: Double = 16_000
-    private static let tapBufferFrames: AVAudioFrameCount = 4_800
+    private static let tapBufferDuration: Double = 0.1
+    private static let maximumTapBufferDuration: Double = 0.4
     private static let ringCapacity = 8
-    private static let maximumFramesPerSlot = 8_192
+    private static let minimumFramesPerSlot = 8_192
 
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     /// Used only by lifecycle callers. The tap and worker never acquire it.
     private let lifecycleLock = NSLock()
     private var didPrewarm = false
@@ -422,6 +462,7 @@ final class MicrophoneCapture {
     /// delivered exactly once from the worker after all earlier accepted slots
     /// have been handed to `callback`.
     func subscribe(
+        inputDevice: AudioInputDevice,
         onOverflow: @escaping @Sendable () -> Void,
         _ callback: @escaping @Sendable (Data, UInt64) -> Void
     ) throws -> SubscriptionToken {
@@ -432,16 +473,33 @@ final class MicrophoneCapture {
         }
 
         let startedAt = Date()
+        // AVAudioEngine keeps the old input node's format after a hardware
+        // route changes. A fresh engine guarantees the selected device is
+        // bound before any format is read or render resources are prepared.
+        engine.stop()
+        engine = AVAudioEngine()
+        didPrewarm = false
         let inputNode = engine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
+        do {
+            try Self.bind(inputDevice, to: inputNode)
+        } catch {
+            lifecycleLock.unlock()
+            throw error
+        }
+        let inputFormat = inputNode.inputFormat(forBus: 0)
         let inputSampleRate = inputFormat.sampleRate
-        guard inputSampleRate > 0,
+        guard inputSampleRate.isFinite,
+              inputSampleRate > 0,
               inputFormat.channelCount > 0,
               inputFormat.commonFormat == .pcmFormatFloat32
         else {
             lifecycleLock.unlock()
             throw CaptureError.formatError
         }
+        let tapBufferFrames = Self.tapBufferFrames(inputSampleRate: inputSampleRate)
+        let maximumFramesPerSlot = Self.maximumFramesPerSlot(
+            inputSampleRate: inputSampleRate
+        )
 
         nextGeneration &+= 1
         let generation = nextGeneration
@@ -450,7 +508,7 @@ final class MicrophoneCapture {
             generation: generation,
             inputSampleRate: inputSampleRate,
             ringCapacity: Self.ringCapacity,
-            maximumFramesPerSlot: Self.maximumFramesPerSlot,
+            maximumFramesPerSlot: maximumFramesPerSlot,
             onAudio: { workerGeneration, data, timestampNs in
                 guard workerGeneration == generation else { return }
                 callback(data, timestampNs)
@@ -468,14 +526,18 @@ final class MicrophoneCapture {
         )
         inputNode.installTap(
             onBus: 0,
-            bufferSize: Self.tapBufferFrames,
+            bufferSize: tapBufferFrames,
             format: inputFormat
         ) { [worker] buffer, time in
             guard let channelData = buffer.floatChannelData else { return }
             let frameCount = Int(buffer.frameLength)
             guard frameCount > 0 else { return }
-            let input = UnsafeBufferPointer(start: channelData[0], count: frameCount)
-            worker.enqueue(input, sampleTime: time.sampleTime)
+            worker.enqueue(
+                channelData[0],
+                frameCount: frameCount,
+                stride: buffer.stride,
+                sampleTime: time.sampleTime
+            )
         }
 
         if didPrewarm == false {
@@ -499,6 +561,85 @@ final class MicrophoneCapture {
             "startEngine: generation \(generation) started in \(elapsed)ms; resampling to \(Self.targetSampleRate)Hz"
         )
         return token
+    }
+
+    private static func bind(
+        _ inputDevice: AudioInputDevice,
+        to inputNode: AVAudioInputNode
+    ) throws {
+        guard let audioUnit = inputNode.audioUnit else {
+            throw AudioInputDeviceError.audioUnitUnavailable(name: inputDevice.name)
+        }
+
+        var requestedDeviceID = inputDevice.deviceID
+        let setStatus = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &requestedDeviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard setStatus == noErr else {
+            throw AudioInputDeviceError.bindingFailed(
+                name: inputDevice.name,
+                status: setStatus
+            )
+        }
+
+        var actualDeviceID = AudioDeviceID(kAudioObjectUnknown)
+        var byteCount = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let getStatus = AudioUnitGetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &actualDeviceID,
+            &byteCount
+        )
+        guard getStatus == noErr, actualDeviceID == requestedDeviceID else {
+            throw AudioInputDeviceError.bindingFailed(
+                name: inputDevice.name,
+                status: getStatus == noErr ? kAudioUnitErr_InvalidPropertyValue : getStatus
+            )
+        }
+
+        var uidAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var uidValue: Unmanaged<CFString>?
+        var uidByteCount = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        let uidStatus = AudioObjectGetPropertyData(
+            actualDeviceID,
+            &uidAddress,
+            0,
+            nil,
+            &uidByteCount,
+            &uidValue
+        )
+        guard uidStatus == noErr,
+              let uidValue,
+              uidValue.takeRetainedValue() as String == inputDevice.uid
+        else {
+            throw AudioInputDeviceError.bindingFailed(
+                name: inputDevice.name,
+                status: uidStatus == noErr ? kAudioUnitErr_InvalidPropertyValue : uidStatus
+            )
+        }
+    }
+
+    private static func tapBufferFrames(inputSampleRate: Double) -> AVAudioFrameCount {
+        let frames = max(1, (inputSampleRate * tapBufferDuration).rounded(.up))
+        return AVAudioFrameCount(min(frames, Double(AVAudioFrameCount.max)))
+    }
+
+    private static func maximumFramesPerSlot(inputSampleRate: Double) -> Int {
+        max(
+            minimumFramesPerSlot,
+            Int((inputSampleRate * maximumTapBufferDuration).rounded(.up))
+        )
     }
 
     /// Idempotent control-thread fence. No worker callback from this generation

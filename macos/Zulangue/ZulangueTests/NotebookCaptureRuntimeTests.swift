@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreAudio
 import XCTest
 @testable import Zulangue
 
@@ -854,6 +855,162 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(audio.unsubscribeCount, 2)
         XCTAssertFalse(store.hasAudioSubscription)
         XCTAssertEqual(store.captureState, .completed)
+    }
+
+    @MainActor
+    func testRecordingInputSwitchKeepsSessionAndPushesOldFramesBeforeNewDeviceFrames() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        try await store.start(notebookId: "notebook-a")
+        let originalSessionId = store.sessionId
+
+        let oldDeviceTail = Data([0x0A])
+        let newDeviceHead = Data([0x0B])
+        audio.emitOnUnsubscribe = oldDeviceTail
+
+        try await store.selectAudioInputDevice(uid: "mixer-b", notebookId: "notebook-a")
+        audio.emit(newDeviceHead)
+        let pushedBoth = await waitUntil { client.audioPushCount == 2 }
+
+        XCTAssertTrue(pushedBoth)
+        XCTAssertEqual(client.audioPushPayloads, [oldDeviceTail, newDeviceHead])
+        XCTAssertEqual(store.sessionId, originalSessionId)
+        XCTAssertEqual(store.captureState, .recording)
+        XCTAssertTrue(store.hasAudioSubscription)
+        XCTAssertEqual(audio.unsubscribeCount, 1)
+        XCTAssertEqual(audio.subscribeCount, 2)
+        XCTAssertEqual(audio.subscribedInputDeviceUIDs, ["test-default-input", "mixer-b"])
+        XCTAssertEqual(audio.selectedInputDeviceUID, "mixer-b")
+        XCTAssertEqual(audio.committedInputDeviceUIDs.count, 1)
+        XCTAssertEqual(audio.committedInputDeviceUIDs[0], "mixer-b")
+        XCTAssertEqual(client.startCount, 1)
+        XCTAssertEqual(client.pauseCount, 0)
+        XCTAssertEqual(client.stopCount, 0)
+        XCTAssertEqual(client.interruptCount, 0)
+
+        try await store.stop()
+    }
+
+    @MainActor
+    func testSameInputUIDWithNewRuntimeDeviceIDRebindsTheMicrophone() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        try await store.start(notebookId: "notebook-a")
+        let firstDeviceID = try XCTUnwrap(audio.subscribedInputDeviceIDs.first)
+        let replacementDeviceID = firstDeviceID &+ 1
+        audio.resolvedDeviceIDs["test-default-input"] = replacementDeviceID
+
+        try await store.selectAudioInputDevice(uid: nil, notebookId: "notebook-a")
+
+        XCTAssertEqual(audio.unsubscribeCount, 1)
+        XCTAssertEqual(audio.subscribeCount, 2)
+        XCTAssertEqual(audio.subscribedInputDeviceIDs.last, replacementDeviceID)
+        XCTAssertEqual(store.captureState, .recording)
+
+        try await store.stop()
+    }
+
+    @MainActor
+    func testFailedInputSwitchRollsBackOldDeviceWithoutStoppingCapture() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        try await store.start(notebookId: "notebook-a")
+        audio.failNextSubscribeCount = 1
+
+        do {
+            try await store.selectAudioInputDevice(uid: "mixer-b", notebookId: "notebook-a")
+            XCTFail("a failed target device must be reported")
+        } catch {
+            XCTAssertTrue(error is CaptureError)
+        }
+
+        XCTAssertEqual(store.captureState, .recording)
+        XCTAssertTrue(store.hasAudioSubscription)
+        XCTAssertNil(audio.selectedInputDeviceUID)
+        XCTAssertEqual(
+            audio.subscribedInputDeviceUIDs,
+            ["test-default-input", "mixer-b", "test-default-input"]
+        )
+        XCTAssertEqual(client.interruptCount, 0)
+
+        try await store.stop()
+    }
+
+    @MainActor
+    func testFailedSwitchFromSystemDefaultRestoresActualPreviousDeviceBeforeLatestDefault() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        try await store.start(notebookId: "notebook-a")
+        audio.defaultInputDeviceUID = "replacement-system-default"
+        audio.failNextSubscribeCount = 1
+
+        do {
+            try await store.selectAudioInputDevice(uid: "mixer-b", notebookId: "notebook-a")
+            XCTFail("a failed target device must be reported")
+        } catch {
+            XCTAssertTrue(error is CaptureError)
+        }
+
+        XCTAssertEqual(
+            audio.subscribedInputDeviceUIDs,
+            ["test-default-input", "mixer-b", "test-default-input"]
+        )
+        XCTAssertEqual(store.activeAudioInputDevice?.uid, "test-default-input")
+        XCTAssertNil(audio.selectedInputDeviceUID)
+        XCTAssertEqual(store.captureState, .recording)
+        XCTAssertTrue(store.hasAudioSubscription)
+        XCTAssertEqual(client.interruptCount, 0)
+
+        try await store.stop()
+    }
+
+    @MainActor
+    func testInputSwitchInterruptsOnceWhenTargetAndRollbackBothFail() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        try await store.start(notebookId: "notebook-a")
+        audio.failNextSubscribeCount = 2
+
+        do {
+            try await store.selectAudioInputDevice(uid: "mixer-b", notebookId: "notebook-a")
+            XCTFail("two failed device starts must interrupt the capture")
+        } catch {
+            XCTAssertTrue(error is CaptureError)
+        }
+
+        XCTAssertEqual(client.interruptCount, 1)
+        XCTAssertEqual(client.lastInterruptReason, .localAudioUnavailable)
+        XCTAssertFalse(store.hasAudioSubscription)
+        XCTAssertFalse(store.isCaptureActive)
+        XCTAssertNil(audio.selectedInputDeviceUID)
+    }
+
+    @MainActor
+    func testPausedInputSelectionAppliesOnlyWhenCaptureResumes() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        try await store.start(notebookId: "notebook-a")
+        try await store.setPaused(true)
+
+        try await store.selectAudioInputDevice(uid: "mixer-b", notebookId: "notebook-a")
+
+        XCTAssertEqual(store.captureState, .paused)
+        XCTAssertEqual(audio.subscribeCount, 1)
+        XCTAssertEqual(audio.selectedInputDeviceUID, "mixer-b")
+        XCTAssertEqual(store.activeAudioInputDevice?.uid, "mixer-b")
+
+        try await store.setPaused(false)
+        XCTAssertEqual(audio.subscribeCount, 2)
+        XCTAssertEqual(audio.subscribedInputDeviceUIDs.last, "mixer-b")
+        XCTAssertEqual(store.captureState, .recording)
+
+        try await store.stop()
     }
 
     @MainActor
@@ -2521,7 +2678,9 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let tap = String(source[start.lowerBound..<end.lowerBound])
 
         XCTAssertTrue(source.contains("import Synchronization"))
-        XCTAssertTrue(tap.contains("worker.enqueue(input, sampleTime: time.sampleTime)"))
+        XCTAssertTrue(tap.contains("worker.enqueue("))
+        XCTAssertTrue(tap.contains("channelData[0]"))
+        XCTAssertTrue(tap.contains("stride: buffer.stride"))
         for forbidden in [
             "NSLock", ".lock()", ".wait()", "DispatchSemaphore", "DispatchQueue",
             ".async", "Data(", "StreamingS16Resampler", ".process(", "Array(",
@@ -6274,23 +6433,51 @@ private final class AudioGateCloseRaceHarness: @unchecked Sendable {
 
 @MainActor
 private final class FakeNotebookCaptureAudioSource: NotebookCaptureAudioSourcing {
+    private(set) var selectedInputDeviceUID: String?
+    private(set) var preparedInputDevice: AudioInputDevice?
     private(set) var prepareCount = 0
     private(set) var subscribeCount = 0
     private(set) var unsubscribeCount = 0
+    private(set) var subscribedInputDeviceUIDs: [String] = []
+    private(set) var subscribedInputDeviceIDs: [AudioDeviceID] = []
+    private(set) var committedInputDeviceUIDs: [String?] = []
     private var handler: (@Sendable (Data) -> Void)?
     private var overflowHandler: (@Sendable () -> Void)?
     var emitOnUnsubscribe: Data?
     var terminalReasonOnUnsubscribe: NotebookCaptureInterruptReason?
+    var failNextSubscribeCount = 0
+    var resolvedDeviceIDs: [String: AudioDeviceID] = [:]
+    var defaultInputDeviceUID = "test-default-input"
 
     func prepare() async throws {
         prepareCount += 1
+        if preparedInputDevice == nil {
+            preparedInputDevice = makeDevice(uid: selectedInputDeviceUID ?? defaultInputDeviceUID)
+        }
+    }
+
+    func resolveInputDevice(uid: String?) throws -> AudioInputDevice {
+        makeDevice(uid: uid ?? defaultInputDeviceUID)
+    }
+
+    func commitInputDeviceSelection(uid: String?, device: AudioInputDevice) {
+        selectedInputDeviceUID = uid
+        preparedInputDevice = device
+        committedInputDeviceUIDs.append(uid)
     }
 
     func subscribe(
+        inputDevice: AudioInputDevice,
         onAudio: @escaping @Sendable (Data) -> Void,
         onOverflow: @escaping @Sendable () -> Void
     ) throws -> NotebookCaptureAudioToken {
         subscribeCount += 1
+        subscribedInputDeviceUIDs.append(inputDevice.uid)
+        subscribedInputDeviceIDs.append(inputDevice.deviceID)
+        if failNextSubscribeCount > 0 {
+            failNextSubscribeCount -= 1
+            throw CaptureError.formatError
+        }
         handler = onAudio
         overflowHandler = onOverflow
         return NotebookCaptureAudioToken(id: UUID())
@@ -6317,15 +6504,26 @@ private final class FakeNotebookCaptureAudioSource: NotebookCaptureAudioSourcing
     func emitOverflow() {
         overflowHandler?()
     }
+
+    private func makeDevice(uid: String) -> AudioInputDevice {
+        AudioInputDevice(
+            deviceID: resolvedDeviceIDs[uid]
+                ?? AudioDeviceID(abs(uid.hashValue % 10_000) + 1),
+            uid: uid,
+            name: uid
+        )
+    }
 }
 
 private final class FakeAudioPushRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
+    private var payloads: [Data] = []
 
-    nonisolated func record() {
+    nonisolated func record(_ data: Data = Data()) {
         lock.lock()
         count += 1
+        payloads.append(data)
         lock.unlock()
     }
 
@@ -6333,6 +6531,12 @@ private final class FakeAudioPushRecorder: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return count
+    }
+
+    nonisolated var values: [Data] {
+        lock.lock()
+        defer { lock.unlock() }
+        return payloads
     }
 }
 
@@ -6397,6 +6601,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     private var contextSources: [String: [NotebookContextPackSourceDTO]] = [:]
 
     var audioPushCount: Int { audioPushRecorder.value }
+    var audioPushPayloads: [Data] { audioPushRecorder.values }
 
     init(
         profile: NotebookCaptureProfileDTO,
@@ -6614,8 +6819,8 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     func makeNotebookCaptureAudioPusher(sessionId: String) -> @Sendable (Data) -> String? {
         if let audioPushHandler { return audioPushHandler }
         let failure = audioPushFailureMessage
-        return { [audioPushRecorder] _ in
-            audioPushRecorder.record()
+        return { [audioPushRecorder] data in
+            audioPushRecorder.record(data)
             return failure
         }
     }

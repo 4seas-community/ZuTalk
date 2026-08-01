@@ -1527,6 +1527,7 @@ struct NotebookCaptureSettingsView: View {
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var editor: NotebookCaptureProfileEditorModel
     @ObservedObject private var engineStore = NotebookCaptureEnginePresentationStore.shared
+    @ObservedObject private var inputDevices = AudioInputDeviceStore.shared
     let onOpenRealtimeControls: () -> Void
     @State private var isReviewingContext = false
     @State private var pasteTitle = ""
@@ -1569,6 +1570,8 @@ struct NotebookCaptureSettingsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
                 }
 
+                audioInputSection
+
                 VStack(alignment: .leading, spacing: Spacing.lg) {
                     contextBrowserSection
                     postStopRemoteProcessingSection
@@ -1586,11 +1589,17 @@ struct NotebookCaptureSettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bpBlue)
         .task(id: notebookId) {
+            inputDevices.refresh()
             engineStore.refresh()
             if case .contextReviewRequired = editor.persistenceState {
                 requestContextPreview()
             }
             loadContextBrowser()
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification
+        )) { _ in
+            inputDevices.refresh()
         }
         .onChange(of: editor.persistenceState) { _, state in
             scheduleContextIntent(.persistenceStateChanged(state))
@@ -1660,6 +1669,179 @@ struct NotebookCaptureSettingsView: View {
                 .foregroundColor(.textOnBpDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var audioInputSection: some View {
+        settingsCard(
+            title: String(localized: "settings.audio_input.title"),
+            icon: "waveform.and.mic"
+        ) {
+            Text(String(localized: "settings.audio_input.subtitle"))
+                .font(.caption)
+                .foregroundColor(.textOnBpDim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: Spacing.sm) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(localized: "settings.audio_input.device"))
+                        .font(.captionMedium)
+                        .foregroundColor(.bpLine)
+                    Text(String(localized: "settings.audio_input.local_scope"))
+                        .font(.system(size: 10))
+                        .foregroundColor(.textOnBpFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: Spacing.sm)
+
+                Picker("", selection: audioInputSelection) {
+                    Text(systemDefaultInputTitle).tag(String?.none)
+                    ForEach(inputDevices.devices) { device in
+                        Text(device.name).tag(Optional(device.uid))
+                    }
+                    if inputDevices.isExplicitSelectionUnavailable,
+                       let missingUID = inputDevices.selectedUID {
+                        Text(unavailableInputTitle).tag(Optional(missingUID))
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(width: 280, alignment: .trailing)
+                .disabled(audioInputSelectionDisabled)
+                .accessibilityLabel(Text(String(localized: "settings.audio_input.device")))
+
+                Button {
+                    inputDevices.refresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.textOnBpDim)
+                .disabled(capture.isAudioInputSwitching)
+                .help(String(localized: "settings.audio_input.refresh"))
+                .accessibilityLabel(Text(String(localized: "settings.audio_input.refresh")))
+            }
+            .padding(Spacing.md)
+            .background(Color.bpBlueDeep.opacity(0.35))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+
+            Text(String(localized: "settings.audio_input.channel_one_hint"))
+                .font(.caption)
+                .foregroundColor(.textOnBpDim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let status = audioInputStatus {
+                Label(status.text, systemImage: status.systemImage)
+                    .font(.captionMedium)
+                    .foregroundColor(status.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var audioInputSelection: Binding<String?> {
+        Binding(
+            get: { inputDevices.selectedUID },
+            set: { requestedUID in
+                Task { @MainActor in
+                    do {
+                        try await capture.selectAudioInputDevice(
+                            uid: requestedUID,
+                            notebookId: notebookId
+                        )
+                    } catch {
+                        ToastCenter.shared.error(
+                            String(localized: "capture.toast.audio_input_switch_failed"),
+                            detail: error.localizedDescription
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    private var audioInputSelectionDisabled: Bool {
+        capture.isAudioInputSwitching
+            || capture.captureState == .draining
+            || (capture.isCaptureActive && capture.notebookId != notebookId)
+    }
+
+    private var systemDefaultInputTitle: String {
+        let resolvedDevice = inputDevices.selectedUID == nil && capture.isCaptureActive
+            ? capture.activeAudioInputDevice
+            : inputDevices.defaultInputDevice
+        guard let name = resolvedDevice?.name else {
+            return String(localized: "settings.audio_input.system_default")
+        }
+        return String(
+            format: String(localized: "settings.audio_input.system_default_format"),
+            name
+        )
+    }
+
+    private var unavailableInputTitle: String {
+        let name = inputDevices.selectedDeviceLastKnownName
+            ?? inputDevices.selectedUID
+            ?? String(localized: "settings.audio_input.device")
+        return String(
+            format: String(localized: "settings.audio_input.unavailable_format"),
+            name
+        )
+    }
+
+    private var audioInputStatus: (text: String, systemImage: String, color: Color)? {
+        if capture.isAudioInputSwitching {
+            return (
+                String(localized: "settings.audio_input.switching"),
+                "arrow.triangle.2.circlepath",
+                .brandAccent
+            )
+        }
+        if capture.isCaptureActive, capture.notebookId != notebookId {
+            return (
+                String(localized: "settings.audio_input.active_elsewhere"),
+                "lock.fill",
+                .signalAmber
+            )
+        }
+        if capture.captureState == .draining {
+            return (
+                String(localized: "settings.audio_input.error.switch_unavailable"),
+                "hourglass",
+                .signalAmber
+            )
+        }
+        if let refreshError = inputDevices.refreshError {
+            return (refreshError, "exclamationmark.triangle.fill", .signalAmber)
+        }
+        if inputDevices.isExplicitSelectionUnavailable {
+            return (
+                String(
+                    format: String(localized: "settings.audio_input.error.unavailable_format"),
+                    inputDevices.selectedDeviceLastKnownName
+                        ?? inputDevices.selectedUID
+                        ?? String(localized: "settings.audio_input.device")
+                ),
+                "exclamationmark.triangle.fill",
+                .signalAmber
+            )
+        }
+        if inputDevices.hasLoadedSnapshot, inputDevices.devices.isEmpty {
+            return (
+                String(localized: "settings.audio_input.error.no_device"),
+                "exclamationmark.triangle.fill",
+                .signalAmber
+            )
+        }
+        if capture.isCaptureActive, capture.notebookId == notebookId {
+            return (
+                String(localized: "settings.audio_input.active_switch_hint"),
+                "arrow.left.arrow.right",
+                .textOnBpDim
+            )
+        }
+        return nil
     }
 
     private var realtimeFooterLink: some View {

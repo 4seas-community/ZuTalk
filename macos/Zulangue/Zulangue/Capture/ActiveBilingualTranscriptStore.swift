@@ -2866,8 +2866,14 @@ final class NotebookCaptureAudioPushGate: @unchecked Sendable {
 
 @MainActor
 protocol NotebookCaptureAudioSourcing: AnyObject {
+    var selectedInputDeviceUID: String? { get }
+    var preparedInputDevice: AudioInputDevice? { get }
+
     func prepare() async throws
+    func resolveInputDevice(uid: String?) throws -> AudioInputDevice
+    func commitInputDeviceSelection(uid: String?, device: AudioInputDevice)
     func subscribe(
+        inputDevice: AudioInputDevice,
         onAudio: @escaping @Sendable (Data) -> Void,
         onOverflow: @escaping @Sendable () -> Void
     ) throws -> NotebookCaptureAudioToken
@@ -2878,12 +2884,20 @@ protocol NotebookCaptureAudioSourcing: AnyObject {
 @MainActor
 final class LiveNotebookCaptureAudioSource: NotebookCaptureAudioSourcing {
     private var subscriptions: [NotebookCaptureAudioToken: MicrophoneCapture.SubscriptionToken] = [:]
+    private let inputDevices: AudioInputDeviceStore
+    private(set) var preparedInputDevice: AudioInputDevice?
+
+    init(inputDevices: AudioInputDeviceStore? = nil) {
+        self.inputDevices = inputDevices ?? .shared
+    }
+
+    var selectedInputDeviceUID: String? { inputDevices.selectedUID }
 
     func prepare() async throws {
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
         switch status {
         case .authorized:
-            return
+            break
         case .notDetermined:
             let granted = await withCheckedContinuation { continuation in
                 AVCaptureDevice.requestAccess(for: .audio) { continuation.resume(returning: $0) }
@@ -2894,13 +2908,25 @@ final class LiveNotebookCaptureAudioSource: NotebookCaptureAudioSourcing {
         @unknown default:
             throw RecordingLiveError.microphonePermissionDenied
         }
+        preparedInputDevice = try inputDevices.resolveDeviceForCapture()
+    }
+
+    func resolveInputDevice(uid: String?) throws -> AudioInputDevice {
+        try inputDevices.resolveDevice(uid: uid)
+    }
+
+    func commitInputDeviceSelection(uid: String?, device: AudioInputDevice) {
+        inputDevices.select(uid: uid)
+        preparedInputDevice = device
     }
 
     func subscribe(
+        inputDevice: AudioInputDevice,
         onAudio: @escaping @Sendable (Data) -> Void,
         onOverflow: @escaping @Sendable () -> Void
     ) throws -> NotebookCaptureAudioToken {
         let sourceToken = try MicrophoneCapture.shared.subscribe(
+            inputDevice: inputDevice,
             onOverflow: onOverflow,
             { data, _ in onAudio(data) }
         )
@@ -2991,6 +3017,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// for the durable capture state; this flag only tells the UI that closing
     /// the admitted local-audio backlog has exceeded the watchdog interval.
     @Published private(set) var isAudioDrainDelayed = false
+    @Published private(set) var isAudioInputSwitching = false
+    @Published private(set) var activeAudioInputDevice: AudioInputDevice?
 
     private let client: NotebookCaptureClienting
     private let audioSource: NotebookCaptureAudioSourcing
@@ -3535,6 +3563,131 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         drainPendingLivePreview(generation: generation)
     }
 
+    /// Rebinds only the local microphone generation. The durable Notebook
+    /// capture, provider stream, callback generation and audio push gate stay
+    /// alive, so changing hardware does not create a new transcript session.
+    func selectAudioInputDevice(uid: String?, notebookId requestedNotebookId: String) async throws {
+        let trimmedUID = uid?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requestedUID = trimmedUID?.isEmpty == false ? trimmedUID : nil
+        guard isAudioInputSwitching == false,
+              lifecycleOperationCount == 0,
+              terminalTransitionLease == nil,
+              isCaptureActive == false || notebookId == requestedNotebookId
+        else {
+            throw AudioInputDeviceError.switchUnavailable
+        }
+        isAudioInputSwitching = true
+        beginLifecycleOperation()
+        defer {
+            endLifecycleOperation()
+            isAudioInputSwitching = false
+        }
+
+        // Resolve without mutating UserDefaults. A failed B bind must leave A
+        // selected and available for an immediate rollback.
+        let candidate = try audioSource.resolveInputDevice(uid: requestedUID)
+        let previousSelectionUID = audioSource.selectedInputDeviceUID
+        let previousDevice = audioSource.preparedInputDevice
+
+        guard isCaptureActive else {
+            audioSource.commitInputDeviceSelection(uid: requestedUID, device: candidate)
+            return
+        }
+        guard captureState == .recording else {
+            if captureState == .paused {
+                audioSource.commitInputDeviceSelection(uid: requestedUID, device: candidate)
+                activeAudioInputDevice = candidate
+                return
+            }
+            throw AudioInputDeviceError.switchUnavailable
+        }
+        guard let sessionId,
+              let gate = audioPushGate,
+              audioToken != nil,
+              let previousDevice
+        else {
+            throw NotebookCaptureClientError.captureNotActive
+        }
+
+        // Switching preference semantics (explicit vs system-default) does not
+        // need a hardware restart when both resolve to the same physical input.
+        if candidate.uid == previousDevice.uid,
+           candidate.deviceID == previousDevice.deviceID {
+            audioSource.commitInputDeviceSelection(uid: requestedUID, device: candidate)
+            activeAudioInputDevice = candidate
+            return
+        }
+
+        let microphoneTerminal = releaseMicrophoneSubscription()
+        if let microphoneTerminal {
+            await handleAudioTerminal(microphoneTerminal.rawValue, sessionId: sessionId)
+            throw NotebookCaptureClientError.captureNotActive
+        }
+        if let gateTerminal = gate.terminalMessage {
+            await handleAudioTerminal(gateTerminal, sessionId: sessionId)
+            throw NotebookCaptureClientError.captureNotActive
+        }
+
+        do {
+            try subscribeMicrophone(
+                sessionId: sessionId,
+                gate: gate,
+                inputDevice: candidate
+            )
+            audioSource.commitInputDeviceSelection(uid: requestedUID, device: candidate)
+        } catch let switchError {
+            var rollbackCandidates: [AudioInputDevice] = []
+            if let previousSelectionUID {
+                if let refreshedExplicitDevice = try? audioSource.resolveInputDevice(
+                    uid: previousSelectionUID
+                ) {
+                    rollbackCandidates.append(refreshedExplicitDevice)
+                }
+                if rollbackCandidates.contains(previousDevice) == false {
+                    rollbackCandidates.append(previousDevice)
+                }
+            } else {
+                // "System default" is a preference, not the identity of the
+                // device that was actually recording. Restore that concrete
+                // device first; if it disappeared, the latest default is a
+                // second recovery option.
+                rollbackCandidates.append(previousDevice)
+                if let latestDefault = try? audioSource.resolveInputDevice(uid: nil),
+                   rollbackCandidates.contains(latestDefault) == false {
+                    rollbackCandidates.append(latestDefault)
+                }
+            }
+
+            var rollbackError: Error?
+            var didRestoreMicrophone = false
+            for rollbackDevice in rollbackCandidates {
+                do {
+                    try subscribeMicrophone(
+                        sessionId: sessionId,
+                        gate: gate,
+                        inputDevice: rollbackDevice
+                    )
+                    audioSource.commitInputDeviceSelection(
+                        uid: previousSelectionUID,
+                        device: rollbackDevice
+                    )
+                    didRestoreMicrophone = true
+                    break
+                } catch let error {
+                    rollbackError = error
+                }
+            }
+            if didRestoreMicrophone == false {
+                await handleLocalInterrupt(
+                    .localAudioUnavailable,
+                    message: "\(switchError.localizedDescription) · \(rollbackError?.localizedDescription ?? AudioInputDeviceError.noInputDevice.localizedDescription)",
+                    sessionId: sessionId
+                )
+            }
+            throw switchError
+        }
+    }
+
     func setPaused(_ paused: Bool) async throws {
         beginLifecycleOperation()
         defer { endLifecycleOperation() }
@@ -4020,6 +4173,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         terminalTransitionDrainPending = false
         pendingTerminalTransitionEvent = nil
         isAudioDrainDelayed = false
+        isAudioInputSwitching = false
+        activeAudioInputDevice = nil
         audioPushGate?.abort()
         audioPushGate = nil
         releaseMicrophoneSubscription()
@@ -4735,10 +4890,15 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
     private func subscribeMicrophone(
         sessionId: String,
-        gate: NotebookCaptureAudioPushGate
+        gate: NotebookCaptureAudioPushGate,
+        inputDevice: AudioInputDevice? = nil
     ) throws {
         guard audioToken == nil else { throw CaptureError.alreadySubscribed }
-        audioToken = try audioSource.subscribe(
+        guard let inputDevice = inputDevice ?? audioSource.preparedInputDevice else {
+            throw AudioInputDeviceError.noInputDevice
+        }
+        let subscription = try audioSource.subscribe(
+            inputDevice: inputDevice,
             onAudio: { audioData in
                 gate.submit(audioData)
             },
@@ -4751,6 +4911,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                 }
             }
         )
+        audioToken = subscription
+        activeAudioInputDevice = inputDevice
     }
 
     private func restoreMicrophoneAfterRejectedPause(

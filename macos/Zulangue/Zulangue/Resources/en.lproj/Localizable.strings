@@ -190,6 +190,26 @@
 /* General settings section */
 "settings.general.title" = "General";
 "settings.general.subtitle" = "Language and appearance for the whole app.";
+"settings.audio_input.title" = "Audio input";
+"settings.audio_input.subtitle" = "Choose a microphone, USB audio interface, or mixer recognized by macOS.";
+"settings.audio_input.device" = "Input device";
+"settings.audio_input.channel_one_hint" = "This version records the first input channel of the selected device.";
+"settings.audio_input.system_default" = "System default";
+"settings.audio_input.system_default_format" = "System default — %@";
+"settings.audio_input.unavailable_format" = "%@ — unavailable";
+"settings.audio_input.refresh" = "Refresh input devices";
+"settings.audio_input.active_locked" = "The input device is locked while a recording is active.";
+"settings.audio_input.error.query_format" = "Could not read audio devices (%1$@, status %2$@).";
+"settings.audio_input.error.no_device" = "No audio input device is available.";
+"settings.audio_input.error.unavailable_format" = "The selected audio input “%@” is unavailable. Reconnect it or choose another device.";
+"settings.audio_input.error.audio_unit_format" = "Zulangue could not open the audio input “%@”.";
+"settings.audio_input.error.binding_format" = "Zulangue could not use the audio input “%1$@” (status %2$@).";
+"settings.audio_input.local_scope" = "The device choice is saved on this Mac and applies immediately to the current and future recordings.";
+"settings.audio_input.switching" = "Switching audio input…";
+"settings.audio_input.active_switch_hint" = "You can switch inputs while recording; a brief moment of audio may be missed.";
+"settings.audio_input.active_elsewhere" = "Another Notebook is recording. Switch the input from that Notebook.";
+"settings.audio_input.error.switch_unavailable" = "The audio input cannot be changed during another recording transition. Try again in a moment.";
+"capture.toast.audio_input_switch_failed" = "Could not switch audio input";
 "settings.language.title" = "APP LANGUAGE";
 "settings.language.system" = "Follow system";
 "settings.language.hint" = "Controls UI, menus, and error messages across Swift and Rust layers.";
@@ -823,7 +843,7 @@
 "capture.settings.tab" = "Settings";
 "capture.settings.tab_hint" = "Open this Notebook's recording, language, and caption settings.";
 "capture.settings.footer.realtime" = "Languages and the live mode are chosen in the Live Transcript tab.";
-"capture.settings.active_locked" = "A recording is active. Its configuration is frozen; settings can be changed after recording stops.";
+"capture.settings.active_locked" = "A recording is active. Language, context, and retention are frozen; the audio input can still be switched.";
 "capture.settings.autosave.loading" = "Loading settings…";
 "capture.settings.autosave.saving" = "Saving…";
 "capture.settings.autosave.saved" = "Saved automatically";

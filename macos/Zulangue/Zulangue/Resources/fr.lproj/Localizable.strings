@@ -190,6 +190,26 @@
 /* General settings section */
 "settings.general.title" = "Général";
 "settings.general.subtitle" = "Langue et apparence de toute l’app.";
+"settings.audio_input.title" = "Entrée audio";
+"settings.audio_input.subtitle" = "Choisissez un micro, une interface audio USB ou une console reconnue par macOS.";
+"settings.audio_input.device" = "Périphérique d’entrée";
+"settings.audio_input.channel_one_hint" = "Cette version enregistre le premier canal d’entrée du périphérique sélectionné.";
+"settings.audio_input.system_default" = "Réglage système";
+"settings.audio_input.system_default_format" = "Réglage système — %@";
+"settings.audio_input.unavailable_format" = "%@ — indisponible";
+"settings.audio_input.refresh" = "Actualiser les entrées audio";
+"settings.audio_input.active_locked" = "Le périphérique d’entrée est verrouillé pendant l’enregistrement.";
+"settings.audio_input.error.query_format" = "Impossible de lire les périphériques audio (%1$@, état %2$@).";
+"settings.audio_input.error.no_device" = "Aucun périphérique d’entrée audio n’est disponible.";
+"settings.audio_input.error.unavailable_format" = "L’entrée audio sélectionnée « %@ » est indisponible. Reconnectez-la ou choisissez-en une autre.";
+"settings.audio_input.error.audio_unit_format" = "Zulangue n’a pas pu ouvrir l’entrée audio « %@ ».";
+"settings.audio_input.error.binding_format" = "Zulangue n’a pas pu utiliser l’entrée audio « %1$@ » (état %2$@).";
+"settings.audio_input.local_scope" = "Le choix du périphérique est enregistré sur ce Mac et s’applique immédiatement à l’enregistrement actuel et aux suivants.";
+"settings.audio_input.switching" = "Changement de l’entrée audio…";
+"settings.audio_input.active_switch_hint" = "Vous pouvez changer d’entrée pendant l’enregistrement ; un très court passage audio peut être perdu.";
+"settings.audio_input.active_elsewhere" = "Un autre Notebook enregistre. Changez l’entrée depuis ce Notebook.";
+"settings.audio_input.error.switch_unavailable" = "L’entrée audio ne peut pas être changée pendant une autre transition d’enregistrement. Réessayez dans un instant.";
+"capture.toast.audio_input_switch_failed" = "Impossible de changer l’entrée audio";
 "settings.language.title" = "LANGUE DE L’APP";
 "settings.language.system" = "Suivre le système";
 "settings.language.hint" = "Contrôle l’interface, les menus et les messages d’erreur des couches Swift et Rust.";
@@ -823,7 +843,7 @@
 "capture.settings.tab" = "Réglages";
 "capture.settings.tab_hint" = "Ouvrir les réglages d’enregistrement, de langue et de sous-titres de ce Notebook.";
 "capture.settings.footer.realtime" = "Les langues et le mode temps réel se choisissent dans l’onglet « Transcription en direct ».";
-"capture.settings.active_locked" = "Un enregistrement est actif. Sa configuration est figée ; les réglages pourront être modifiés après l’arrêt de l’enregistrement.";
+"capture.settings.active_locked" = "Un enregistrement est actif. La langue, le contexte et la conservation sont figés ; l’entrée audio peut toujours être changée.";
 "capture.settings.autosave.loading" = "Chargement des réglages…";
 "capture.settings.autosave.saving" = "Enregistrement…";
 "capture.settings.autosave.saved" = "Enregistré automatiquement";

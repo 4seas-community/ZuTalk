@@ -190,6 +190,26 @@
 /* General settings section */
 "settings.general.title" = "一般";
 "settings.general.subtitle" = "アプリ全体の言語と外観の設定。";
+"settings.audio_input.title" = "オーディオ入力";
+"settings.audio_input.subtitle" = "macOS が認識しているマイク、USB オーディオインターフェース、ミキサーを選択します。";
+"settings.audio_input.device" = "入力デバイス";
+"settings.audio_input.channel_one_hint" = "このバージョンでは、選択したデバイスの最初の入力チャンネルを録音します。";
+"settings.audio_input.system_default" = "システムのデフォルト";
+"settings.audio_input.system_default_format" = "システムのデフォルト — %@";
+"settings.audio_input.unavailable_format" = "%@ — 使用不可";
+"settings.audio_input.refresh" = "入力デバイスを更新";
+"settings.audio_input.active_locked" = "録音中は入力デバイスがロックされます。";
+"settings.audio_input.error.query_format" = "オーディオデバイスを読み込めませんでした（%1$@、ステータス %2$@）。";
+"settings.audio_input.error.no_device" = "利用できるオーディオ入力デバイスがありません。";
+"settings.audio_input.error.unavailable_format" = "選択したオーディオ入力「%@」は利用できません。再接続するか、別のデバイスを選択してください。";
+"settings.audio_input.error.audio_unit_format" = "Zulangue はオーディオ入力「%@」を開けませんでした。";
+"settings.audio_input.error.binding_format" = "Zulangue はオーディオ入力「%1$@」を使用できませんでした（ステータス %2$@）。";
+"settings.audio_input.local_scope" = "デバイスの選択はこのMacに保存され、現在および今後の録音にすぐ適用されます。";
+"settings.audio_input.switching" = "音声入力を切り替えています…";
+"settings.audio_input.active_switch_hint" = "録音中でも切り替えられますが、切り替え時に短い音声が欠ける場合があります。";
+"settings.audio_input.active_elsewhere" = "別のNotebookで録音中です。録音中のNotebookから入力を切り替えてください。";
+"settings.audio_input.error.switch_unavailable" = "別の録音状態の切り替え中は音声入力を変更できません。しばらくしてから再試行してください。";
+"capture.toast.audio_input_switch_failed" = "音声入力を切り替えられませんでした";
 "settings.language.title" = "APP 言語";
 "settings.language.system" = "システムに従う";
 "settings.language.hint" = "Swift UI、メニューバー、Rust 層のエラーメッセージに反映されます。";
@@ -811,7 +831,7 @@
 "capture.settings.tab" = "設定";
 "capture.settings.tab_hint" = "この Notebook の録音、言語、字幕設定を開きます。";
 "capture.settings.footer.realtime" = "言語とリアルタイムモードは「文字起こし」タブで選択します。";
-"capture.settings.active_locked" = "録音中は今回の設定が固定されます。停止後に設定を変更できます。";
+"capture.settings.active_locked" = "録音中です。言語、コンテキスト、保存設定は固定されていますが、音声入力は切り替えられます。";
 "capture.settings.autosave.loading" = "設定を読み込み中…";
 "capture.settings.autosave.saving" = "保存中…";
 "capture.settings.autosave.saved" = "自動保存済み";

@@ -190,6 +190,26 @@
 /* General settings section */
 "settings.general.title" = "Allgemein";
 "settings.general.subtitle" = "Sprache und Erscheinungsbild für die ganze App.";
+"settings.audio_input.title" = "Audioeingang";
+"settings.audio_input.subtitle" = "Wähle ein von macOS erkanntes Mikrofon, USB-Audiointerface oder Mischpult.";
+"settings.audio_input.device" = "Eingabegerät";
+"settings.audio_input.channel_one_hint" = "Diese Version nimmt den ersten Eingangskanal des gewählten Geräts auf.";
+"settings.audio_input.system_default" = "Systemstandard";
+"settings.audio_input.system_default_format" = "Systemstandard — %@";
+"settings.audio_input.unavailable_format" = "%@ — nicht verfügbar";
+"settings.audio_input.refresh" = "Audioeingänge aktualisieren";
+"settings.audio_input.active_locked" = "Das Eingabegerät ist während einer Aufnahme gesperrt.";
+"settings.audio_input.error.query_format" = "Audiogeräte konnten nicht gelesen werden (%1$@, Status %2$@).";
+"settings.audio_input.error.no_device" = "Kein Audioeingabegerät ist verfügbar.";
+"settings.audio_input.error.unavailable_format" = "Der gewählte Audioeingang „%@“ ist nicht verfügbar. Schließe ihn erneut an oder wähle ein anderes Gerät.";
+"settings.audio_input.error.audio_unit_format" = "Zulangue konnte den Audioeingang „%@“ nicht öffnen.";
+"settings.audio_input.error.binding_format" = "Zulangue konnte den Audioeingang „%1$@“ nicht verwenden (Status %2$@).";
+"settings.audio_input.local_scope" = "Die Gerätewahl wird auf diesem Mac gespeichert und gilt sofort für die aktuelle sowie künftige Aufnahmen.";
+"settings.audio_input.switching" = "Audioeingang wird gewechselt…";
+"settings.audio_input.active_switch_hint" = "Der Eingang kann während der Aufnahme gewechselt werden; dabei kann kurz Audio fehlen.";
+"settings.audio_input.active_elsewhere" = "Ein anderes Notebook nimmt gerade auf. Wechseln Sie den Eingang in diesem Notebook.";
+"settings.audio_input.error.switch_unavailable" = "Der Audioeingang kann während eines anderen Aufnahmeübergangs nicht gewechselt werden. Versuchen Sie es gleich erneut.";
+"capture.toast.audio_input_switch_failed" = "Audioeingang konnte nicht gewechselt werden";
 "settings.language.title" = "APP-SPRACHE";
 "settings.language.system" = "Dem System folgen";
 "settings.language.hint" = "Steuert Oberfläche, Menüs und Fehlermeldungen in der Swift- und Rust-Ebene.";
@@ -822,7 +842,7 @@
 "capture.settings.tab" = "Einstellungen";
 "capture.settings.tab_hint" = "Aufnahme-, Sprach- und Untertiteleinstellungen dieses Notebooks öffnen.";
 "capture.settings.footer.realtime" = "Sprachen und Echtzeitmodus werden im Tab „Live-Transkript“ ausgewählt.";
-"capture.settings.active_locked" = "Eine Aufnahme ist aktiv. Ihre Konfiguration ist eingefroren; Einstellungen können nach dem Stoppen der Aufnahme geändert werden.";
+"capture.settings.active_locked" = "Eine Aufnahme ist aktiv. Sprache, Kontext und Aufbewahrung sind gesperrt; der Audioeingang kann weiterhin gewechselt werden.";
 "capture.settings.autosave.loading" = "Einstellungen werden geladen…";
 "capture.settings.autosave.saving" = "Wird gesichert…";
 "capture.settings.autosave.saved" = "Automatisch gesichert";

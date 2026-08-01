@@ -1,3 +1,4 @@
+import CoreAudio
 import XCTest
 @testable import Zulangue
 
@@ -532,6 +533,201 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         XCTAssertFalse(combined.contains("transportInfo.transport"))
     }
 
+}
+
+@MainActor
+final class AudioInputDeviceTests: XCTestCase {
+    func testLiveCoreAudioCatalogProducesStableNonemptyDescriptors() throws {
+        let snapshot = try CoreAudioInputDeviceCatalog().snapshot()
+
+        for device in snapshot.devices {
+            XCTAssertFalse(device.uid.isEmpty)
+            XCTAssertFalse(device.name.isEmpty)
+            XCTAssertNotEqual(device.deviceID, kAudioObjectUnknown)
+        }
+        if let defaultInputDeviceID = snapshot.defaultInputDeviceID {
+            XCTAssertNotEqual(defaultInputDeviceID, kAudioObjectUnknown)
+        }
+    }
+
+    func testExplicitSelectionPersistsStableUIDAndResolvesCurrentDeviceID() throws {
+        let suiteName = "AudioInputDeviceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let mixer = AudioInputDevice(deviceID: 41, uid: "usb-mixer", name: "USB Mixer")
+        let catalog = FakeAudioInputDeviceCatalog(
+            snapshot: AudioInputDeviceSnapshot(
+                devices: [mixer],
+                defaultInputDeviceID: mixer.deviceID
+            )
+        )
+        let store = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+        store.refresh()
+        store.select(uid: mixer.uid)
+
+        let restored = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+        XCTAssertEqual(restored.selectedUID, mixer.uid)
+        XCTAssertEqual(try restored.resolveDeviceForCapture(), mixer)
+        XCTAssertEqual(restored.selectedDeviceLastKnownName, mixer.name)
+    }
+
+    func testMissingExplicitSelectionNeverFallsBackToSystemDefault() throws {
+        let suiteName = "AudioInputDeviceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let mixer = AudioInputDevice(deviceID: 41, uid: "usb-mixer", name: "USB Mixer")
+        let builtIn = AudioInputDevice(deviceID: 7, uid: "built-in", name: "Mac Microphone")
+        let catalog = FakeAudioInputDeviceCatalog(
+            snapshot: AudioInputDeviceSnapshot(
+                devices: [mixer, builtIn],
+                defaultInputDeviceID: builtIn.deviceID
+            )
+        )
+        let store = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+        store.refresh()
+        store.select(uid: mixer.uid)
+
+        catalog.currentSnapshot = AudioInputDeviceSnapshot(
+            devices: [builtIn],
+            defaultInputDeviceID: builtIn.deviceID
+        )
+        store.refresh()
+
+        XCTAssertTrue(store.isExplicitSelectionUnavailable)
+        XCTAssertEqual(store.selectedUID, mixer.uid)
+        XCTAssertThrowsError(try store.resolveDeviceForCapture()) { error in
+            XCTAssertEqual(
+                error as? AudioInputDeviceError,
+                .selectedDeviceUnavailable(name: mixer.name)
+            )
+        }
+        XCTAssertEqual(store.selectedUID, mixer.uid)
+    }
+
+    func testSystemDefaultSelectionResolvesTheLatestDefaultDevice() throws {
+        let suiteName = "AudioInputDeviceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let builtIn = AudioInputDevice(deviceID: 7, uid: "built-in", name: "Mac Microphone")
+        let mixer = AudioInputDevice(deviceID: 41, uid: "usb-mixer", name: "USB Mixer")
+        let catalog = FakeAudioInputDeviceCatalog(
+            snapshot: AudioInputDeviceSnapshot(
+                devices: [builtIn, mixer],
+                defaultInputDeviceID: builtIn.deviceID
+            )
+        )
+        let store = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+
+        XCTAssertNil(store.selectedUID)
+        XCTAssertEqual(try store.resolveDeviceForCapture(), builtIn)
+
+        catalog.currentSnapshot = AudioInputDeviceSnapshot(
+            devices: [builtIn, mixer],
+            defaultInputDeviceID: mixer.deviceID
+        )
+        XCTAssertEqual(try store.resolveDeviceForCapture(), mixer)
+    }
+
+    func testInterleavedInputCopiesOnlyTheFirstChannelWithItsStride() throws {
+        let ring = MicrophoneCaptureSPSCRing(capacity: 1, maximumFramesPerSlot: 4)
+        let interleaved: [Float] = [1, 10, 2, 20, 3, 30]
+        let result = interleaved.withUnsafeBufferPointer { samples in
+            ring.enqueue(
+                samples.baseAddress!,
+                frameCount: 3,
+                stride: 2,
+                sampleTime: 123
+            )
+        }
+
+        XCTAssertEqual(result, .accepted)
+        var captured: [Float] = []
+        var sampleTime: Int64 = 0
+        XCTAssertTrue(ring.consume { samples, time in
+            captured = Array(samples)
+            sampleTime = time
+        })
+        XCTAssertEqual(captured, [1, 2, 3])
+        XCTAssertEqual(sampleTime, 123)
+    }
+
+    func testDeviceBindingHappensBeforeReadingFormatAndInstallingTap() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue/Capture/MicrophoneCapture.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let bind = try XCTUnwrap(source.range(of: "try Self.bind(inputDevice, to: inputNode)"))
+        let format = try XCTUnwrap(source.range(of: "inputNode.inputFormat(forBus: 0)"))
+        let tap = try XCTUnwrap(source.range(of: "inputNode.installTap("))
+        let prepare = try XCTUnwrap(source.range(of: "engine.prepare()", range: tap.upperBound..<source.endIndex))
+
+        XCTAssertLessThan(bind.lowerBound, format.lowerBound)
+        XCTAssertLessThan(format.lowerBound, tap.lowerBound)
+        XCTAssertLessThan(tap.lowerBound, prepare.lowerBound)
+        XCTAssertTrue(source.contains("stride: buffer.stride"))
+        XCTAssertTrue(source.contains("channelData[0]"))
+    }
+
+    func testAudioInputCopyIsLocalizedForEverySupportedInterfaceLanguage() throws {
+        let keys = [
+            "settings.audio_input.title",
+            "settings.audio_input.subtitle",
+            "settings.audio_input.device",
+            "settings.audio_input.channel_one_hint",
+            "settings.audio_input.system_default",
+            "settings.audio_input.system_default_format",
+            "settings.audio_input.unavailable_format",
+            "settings.audio_input.refresh",
+            "settings.audio_input.active_locked",
+            "settings.audio_input.local_scope",
+            "settings.audio_input.switching",
+            "settings.audio_input.active_switch_hint",
+            "settings.audio_input.active_elsewhere",
+            "settings.audio_input.error.query_format",
+            "settings.audio_input.error.no_device",
+            "settings.audio_input.error.unavailable_format",
+            "settings.audio_input.error.audio_unit_format",
+            "settings.audio_input.error.binding_format",
+            "settings.audio_input.error.switch_unavailable",
+            "capture.toast.audio_input_switch_failed",
+        ]
+
+        for language in AppLanguage.allCases {
+            for key in keys {
+                let value = try localizedString(locale: language.rawValue, key: key)
+                XCTAssertFalse(value.isEmpty, "Missing \(language.rawValue) localization for \(key)")
+                XCTAssertNotEqual(value, key, "Missing \(language.rawValue) localization for \(key)")
+            }
+        }
+    }
+
+    private func localizedString(locale: String, key: String) throws -> String {
+        let resources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue/Resources", isDirectory: true)
+        let stringsURL = resources
+            .appendingPathComponent("\(locale).lproj", isDirectory: true)
+            .appendingPathComponent("Localizable.strings")
+        let values = NSDictionary(contentsOf: stringsURL) as? [String: String]
+        return try XCTUnwrap(values?[key])
+    }
+}
+
+private final class FakeAudioInputDeviceCatalog: AudioInputDeviceCataloging {
+    var currentSnapshot: AudioInputDeviceSnapshot
+
+    init(snapshot: AudioInputDeviceSnapshot) {
+        currentSnapshot = snapshot
+    }
+
+    func snapshot() throws -> AudioInputDeviceSnapshot {
+        currentSnapshot
+    }
 }
 
 @MainActor

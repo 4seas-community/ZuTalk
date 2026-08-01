@@ -190,6 +190,26 @@
 /* General settings section */
 "settings.general.title" = "常规";
 "settings.general.subtitle" = "整个 App 的语言与外观设置。";
+"settings.audio_input.title" = "音频输入";
+"settings.audio_input.subtitle" = "选择 macOS 已识别的麦克风、USB 声卡或调音台。";
+"settings.audio_input.device" = "输入设备";
+"settings.audio_input.channel_one_hint" = "当前版本录制所选设备的第 1 个输入通道。";
+"settings.audio_input.system_default" = "跟随系统默认";
+"settings.audio_input.system_default_format" = "跟随系统默认 — %@";
+"settings.audio_input.unavailable_format" = "%@ — 不可用";
+"settings.audio_input.refresh" = "刷新输入设备";
+"settings.audio_input.active_locked" = "录音进行中，输入设备已锁定。";
+"settings.audio_input.error.query_format" = "无法读取音频设备（%1$@，状态 %2$@）。";
+"settings.audio_input.error.no_device" = "当前没有可用的音频输入设备。";
+"settings.audio_input.error.unavailable_format" = "所选音频输入“%@”不可用，请重新连接或选择其他设备。";
+"settings.audio_input.error.audio_unit_format" = "Zulangue 无法打开音频输入“%@”。";
+"settings.audio_input.error.binding_format" = "Zulangue 无法使用音频输入“%1$@”（状态 %2$@）。";
+"settings.audio_input.local_scope" = "设备选择保存在此 Mac，并立即用于当前录音和之后的录音。";
+"settings.audio_input.switching" = "正在切换音频输入…";
+"settings.audio_input.active_switch_hint" = "录音中可以切换；切换瞬间可能漏掉一小段声音。";
+"settings.audio_input.active_elsewhere" = "另一份 Notebook 正在录音，请到当前录音的 Notebook 中切换输入。";
+"settings.audio_input.error.switch_unavailable" = "当前正在进行其他录音状态切换，请稍后再切换音频输入。";
+"capture.toast.audio_input_switch_failed" = "切换音频输入失败";
 "settings.language.title" = "APP 语言";
 "settings.language.system" = "跟随系统";
 "settings.language.hint" = "影响 Swift UI、菜单栏、Rust 端错误消息的显示语言。";
@@ -823,7 +843,7 @@
 "capture.settings.tab" = "设置";
 "capture.settings.tab_hint" = "打开当前 Notebook 的录音、语言与字幕设置。";
 "capture.settings.footer.realtime" = "语言与实时模式在「实时转录」标签中选择。";
-"capture.settings.active_locked" = "录音正在进行，本次配置已冻结；停止录音后可修改设置。";
+"capture.settings.active_locked" = "录音正在进行：语言、参考资料和音频保留设置已冻结；音频输入仍可切换。";
 "capture.settings.autosave.loading" = "正在加载设置…";
 "capture.settings.autosave.saving" = "正在保存…";
 "capture.settings.autosave.saved" = "已自动保存";
