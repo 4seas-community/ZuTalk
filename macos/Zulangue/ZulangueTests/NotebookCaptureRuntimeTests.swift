@@ -1070,6 +1070,65 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(projection.lanes.first?.text, "independent lane")
     }
 
+    func testLanguageColumnsSupplementLatestCueUntilDurableLaneCatchesUp() throws {
+        var utterance = NotebookCaptureUtteranceDTO.sample
+        utterance.sourceLanguage = "zh"
+        utterance.sourceText = "最新中文"
+        utterance.languageVariants = [
+            NotebookCaptureLanguageVariantDTO(
+                language: "en",
+                role: "translation",
+                text: "It.",
+                state: "ready",
+                completion: "complete"
+            ),
+        ]
+        let staleCue = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "en",
+            groupEpoch: 0,
+            providerSequence: 1,
+            sourceLanguage: "zh",
+            sourceStartMs: 1_000,
+            sourceEndMs: 1_500,
+            text: "Older English",
+            completion: "complete",
+            withdrawn: false,
+            revision: 1
+        )
+        let latestCue = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "en-US",
+            groupEpoch: 0,
+            providerSequence: 2,
+            sourceLanguage: "zh-CN",
+            sourceStartMs: 1_500,
+            sourceEndMs: 3_000,
+            text: "The complete latest English sentence.",
+            completion: "partial",
+            withdrawn: false,
+            revision: 3
+        )
+
+        var supplemental = NotebookLanguageColumnCueOverlay.latestSupplementalCues(
+            languages: ["zh", "en", "th"],
+            utterances: [utterance],
+            cues: [latestCue, staleCue]
+        )
+        XCTAssertEqual(supplemental["en"]?.id, latestCue.id)
+        XCTAssertNil(supplemental["zh"], "a source-language echo is never a supplemental cue")
+        XCTAssertNil(supplemental["th"])
+
+        utterance.languageVariants[0].text = "The complete latest English sentence."
+        supplemental = NotebookLanguageColumnCueOverlay.latestSupplementalCues(
+            languages: ["zh", "en", "th"],
+            utterances: [utterance],
+            cues: [latestCue, staleCue]
+        )
+        XCTAssertNil(
+            supplemental["en"],
+            "the temporary live tail disappears when the durable lane contains the cue"
+        )
+    }
+
     @MainActor
     func testMenuBarRecentLineLabelsTranslationOnlyShellFromVisibleLane() async throws {
         MenuBarRuntimeStore.shared.resetForTesting()

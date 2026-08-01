@@ -2617,6 +2617,77 @@ enum NotebookRealtimeAutoscrollPolicy {
     }
 }
 
+/// Bridges the short interval where an auxiliary translation is already a
+/// durable time-anchored cue but cannot yet be attached to one canonical row.
+/// The subtitle canvas reads those cues directly; without this overlay the
+/// Notebook columns can visibly trail even though both surfaces received the
+/// same capture event.
+enum NotebookLanguageColumnCueOverlay {
+    static func latestSupplementalCues(
+        languages: [String],
+        utterances: [NotebookCaptureUtteranceDTO],
+        cues: [NotebookCaptureTranslationCueDTO]
+    ) -> [String: NotebookCaptureTranslationCueDTO] {
+        var seenLanguages: Set<String> = []
+        let languages = languages
+            .map(normalizedLanguage)
+            .filter { $0.isEmpty == false && seenLanguages.insert($0).inserted }
+        var result: [String: NotebookCaptureTranslationCueDTO] = [:]
+
+        for language in languages {
+            let representedTexts = utterances
+                .compactMap { $0.laneText(language: language) }
+                .map(normalizedText)
+                .filter { $0.isEmpty == false }
+            let matchingCues = cues.filter {
+                normalizedLanguage($0.targetLanguage) == language
+                    && normalizedLanguage($0.sourceLanguage) != language
+                    && $0.withdrawn == false
+                    && normalizedText($0.text).isEmpty == false
+            }
+            guard let latest = matchingCues.max(by: cuePrecedes) else { continue }
+
+            let cueText = normalizedText(latest.text)
+            let isAlreadyRepresented = representedTexts.contains { text in
+                text == cueText || text.contains(cueText)
+            }
+            if isAlreadyRepresented == false {
+                result[language] = latest
+            }
+        }
+        return result
+    }
+
+    private static func cuePrecedes(
+        _ left: NotebookCaptureTranslationCueDTO,
+        _ right: NotebookCaptureTranslationCueDTO
+    ) -> Bool {
+        if left.groupEpoch != right.groupEpoch {
+            return left.groupEpoch < right.groupEpoch
+        }
+        if left.providerSequence != right.providerSequence {
+            return left.providerSequence < right.providerSequence
+        }
+        return left.revision < right.revision
+    }
+
+    private static func normalizedLanguage(_ language: String) -> String {
+        language
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .split(separator: "-")
+            .first
+            .map(String.init) ?? ""
+    }
+
+    private static func normalizedText(_ text: String) -> String {
+        text
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .lowercased()
+    }
+}
+
 /// A Notebook timeline owns every durable capture run. `focusSessionId` only
 /// scrolls/highlights a section; it never narrows the Rust history query.
 private struct NotebookRealtimeHistoryView: View {
@@ -2734,6 +2805,9 @@ private struct NotebookRealtimeHistoryView: View {
                                 livePreviewUtterances: run.sessionId == capture.sessionId
                                     ? capture.livePreviewUtterances
                                     : [],
+                                liveTranslationCues: run.sessionId == capture.sessionId
+                                    ? Array(capture.translationCues.values)
+                                    : [],
                                 presentationMode: presentationMode,
                                 isFocused: focusSessionId == run.sessionId,
                                 history: history
@@ -2794,6 +2868,7 @@ private struct NotebookRealtimeHistoryView: View {
 struct NotebookRealtimeUtteranceView: View {
     let run: NotebookCaptureHistoryRunDTO
     let livePreviewUtterances: [NotebookCaptureUtteranceDTO]
+    let liveTranslationCues: [NotebookCaptureTranslationCueDTO]
     let presentationMode: NotebookTranscriptPresentationMode
     let isFocused: Bool
     @ObservedObject var history: NotebookCaptureHistoryStore
@@ -2889,6 +2964,15 @@ struct NotebookRealtimeUtteranceView: View {
 
     private var sourceTimelineUtterances: [NotebookCaptureUtteranceDTO] {
         displayUtterances.filter(\.hasSourceLane)
+    }
+
+    private var supplementalCues: [String: NotebookCaptureTranslationCueDTO] {
+        guard run.captureState.isActive else { return [:] }
+        return NotebookLanguageColumnCueOverlay.latestSupplementalCues(
+            languages: displayLanguages,
+            utterances: displayUtterances,
+            cues: liveTranslationCues
+        )
     }
 
     private var hasAnyEditableLane: Bool {
@@ -3110,7 +3194,7 @@ struct NotebookRealtimeUtteranceView: View {
 
     @ViewBuilder
     private var bilingualBody: some View {
-        if displayUtterances.isEmpty {
+        if displayUtterances.isEmpty, supplementalCues.isEmpty {
             compactEmptyRun(
                 title: run.captureState.isActive
                     ? String(localized: "capture.transcript.waiting_title")
@@ -3144,6 +3228,14 @@ struct NotebookRealtimeUtteranceView: View {
                         }
                     )
                     .id(utterance.id)
+                    Divider().background(Color.bpLineGhost.opacity(0.22))
+                }
+                if supplementalCues.isEmpty == false {
+                    NotebookSupplementalCueRow(
+                        languages: displayLanguages,
+                        cues: supplementalCues
+                    )
+                    .transition(.opacity)
                     Divider().background(Color.bpLineGhost.opacity(0.22))
                 }
             }
@@ -3511,6 +3603,56 @@ private struct NotebookSpeakerEditorSheet: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+/// Read-only live tail for auxiliary text that is visible in the subtitle
+/// timeline but has not acquired a durable row identity yet. It deliberately
+/// has no editor affordance: editing before binding would invent an
+/// `(utterance, language)` target that does not exist.
+private struct NotebookSupplementalCueRow: View {
+    let languages: [String]
+    let cues: [String: NotebookCaptureTranslationCueDTO]
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(languages.enumerated()), id: \.element) { index, language in
+                Group {
+                    if let cue = cue(for: language) {
+                        Text(cue.text)
+                            .font(.bodyMedium)
+                            .foregroundColor(.textOnBp)
+                            .textSelection(.enabled)
+                            .multilineTextAlignment(.leading)
+                            .contentTransition(.opacity)
+                            .animation(.easeOut(duration: 0.18), value: cue.text)
+                            .accessibilityLabel(Text(language.uppercased()))
+                    } else {
+                        Color.clear
+                            .accessibilityHidden(true)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .topLeading)
+                .padding(.horizontal, Spacing.md)
+                .padding(.vertical, Spacing.md)
+
+                if index < languages.count - 1 {
+                    Divider().background(Color.bpLineGhost.opacity(0.35))
+                }
+            }
+        }
+        .background(Color.brandAccent.opacity(0.035))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func cue(for language: String) -> NotebookCaptureTranslationCueDTO? {
+        let key = language
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .split(separator: "-")
+            .first
+            .map(String.init) ?? ""
+        return cues[key]
     }
 }
 
