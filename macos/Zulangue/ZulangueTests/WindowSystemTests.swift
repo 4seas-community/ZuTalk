@@ -682,6 +682,37 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    func testSubtitleOverlayDisplayModeDefaultsToAudienceAndOrdersItFirst() {
+        XCTAssertEqual(SubtitleOverlayDisplayMode.allCases, [.audience, .conversation])
+        XCTAssertEqual(SubtitleOverlayDisplayMode.resolved(storedRawValue: nil), .audience)
+        XCTAssertEqual(SubtitleOverlayDisplayMode.resolved(storedRawValue: "invalid"), .audience)
+        XCTAssertEqual(
+            SubtitleOverlayDisplayMode.resolved(storedRawValue: "conversation"),
+            .conversation,
+            "an explicit prior choice remains durable"
+        )
+    }
+
+    func testAudienceSourceRefreshCoalescesPartialsAndFlushesFinalImmediately() {
+        var state = SubtitleAudienceSourceRefresh.State(text: "中")
+        state.receive(.init(text: "中文", isComplete: false))
+        state.receive(.init(text: "中文高速", isComplete: false))
+
+        XCTAssertEqual(state.displayedText, "中")
+        XCTAssertEqual(state.pendingText, "中文高速")
+        XCTAssertEqual(SubtitleAudienceSourceRefresh.interval, .milliseconds(250))
+
+        state.flush()
+        XCTAssertEqual(state.displayedText, "中文高速")
+
+        state.receive(.init(text: "中文高速。", isComplete: true))
+        XCTAssertEqual(
+            state.displayedText,
+            "中文高速。",
+            "the final correction must not wait for the visual refresh budget"
+        )
+    }
+
     func testAudienceBandSlicesKeepEveryLanguageOnTheCanvas() {
         // Wide canvas, one band: the slice is effectively the whole canvas.
         let single = SubtitleOverlayLayoutPolicy.audienceBandHeight(

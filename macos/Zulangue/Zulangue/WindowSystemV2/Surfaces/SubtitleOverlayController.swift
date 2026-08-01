@@ -73,8 +73,12 @@ enum SubtitleOverlayFontPolicy {
 }
 
 enum SubtitleOverlayDisplayMode: String, CaseIterable {
-    case conversation
     case audience
+    case conversation
+
+    static func resolved(storedRawValue: String?) -> Self {
+        storedRawValue.flatMap(Self.init(rawValue:)) ?? .audience
+    }
 }
 
 enum SubtitleOverlayConversationLayout: Equatable {
@@ -214,6 +218,9 @@ enum SubtitleAudienceTimeline {
         let endMs: UInt64?
         /// Provider order, the tiebreak within one stream's own output.
         let order: UInt64
+        /// A final source line bypasses the visual refresh budget so the
+        /// audience never leaves the last correction buffered off-screen.
+        let isComplete: Bool
     }
 
     /// Spoken order: anchored items by time (source before its own
@@ -241,7 +248,8 @@ enum SubtitleAudienceTimeline {
                 text: utterance.sourceText,
                 anchorMs: utterance.sourceStartMs,
                 endMs: utterance.sourceEndMs,
-                order: utterance.sequence
+                order: utterance.sequence,
+                isComplete: utterance.completion == "complete"
             ))
         }
         for language in languages {
@@ -256,7 +264,8 @@ enum SubtitleAudienceTimeline {
                     text: cue.text,
                     anchorMs: cue.sourceStartMs,
                     endMs: cue.sourceEndMs,
-                    order: cue.providerSequence
+                    order: cue.providerSequence,
+                    isComplete: cue.completion == "complete"
                 ))
             }
         }
@@ -444,6 +453,39 @@ enum SubtitlePacedReveal {
     }
 }
 
+/// The canonical preview can revise several times a second. The audience
+/// needs the newest words, not every intermediate hypothesis: partials share
+/// one trailing-edge refresh while a Final bypasses the budget immediately.
+enum SubtitleAudienceSourceRefresh {
+    static let interval: Duration = .milliseconds(250)
+
+    struct Update: Equatable {
+        let text: String
+        let isComplete: Bool
+    }
+
+    struct State: Equatable {
+        private(set) var displayedText: String
+        private(set) var pendingText: String
+
+        init(text: String) {
+            displayedText = text
+            pendingText = text
+        }
+
+        mutating func receive(_ update: Update) {
+            pendingText = update.text
+            if update.isComplete {
+                displayedText = update.text
+            }
+        }
+
+        mutating func flush() {
+            displayedText = pendingText
+        }
+    }
+}
+
 /// Side table keeping each card's reveal progress across view re-creation.
 /// Not observable on purpose: cards render from their own @State, and
 /// publishing every 33 ms tick would re-render every column.
@@ -532,6 +574,64 @@ private struct AudiencePacedText: View {
                     memory.store(id, state: reveal, text: text)
                 }
             }
+    }
+}
+
+/// Coalesces high-frequency canonical hypotheses without animating the whole
+/// text block. A 180 ms opacity transition restarted by every Chinese partial
+/// produced overlapping snapshots — the visible ghosting reported by users.
+private struct AudienceStableSourceText: View {
+    let update: SubtitleAudienceSourceRefresh.Update
+    let fontSize: Double
+
+    @State private var refresh: SubtitleAudienceSourceRefresh.State
+    @State private var scheduledFlush: Task<Void, Never>?
+
+    init(text: String, isComplete: Bool, fontSize: Double) {
+        update = SubtitleAudienceSourceRefresh.Update(
+            text: text,
+            isComplete: isComplete
+        )
+        self.fontSize = fontSize
+        _refresh = State(initialValue: SubtitleAudienceSourceRefresh.State(text: text))
+    }
+
+    var body: some View {
+        Text(refresh.displayedText)
+            .font(.system(size: CGFloat(fontSize), weight: .semibold))
+            .foregroundColor(.primary)
+            .textSelection(.enabled)
+            .multilineTextAlignment(.leading)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+            .onChange(of: update) { _, value in
+                receive(value)
+            }
+            .onDisappear {
+                scheduledFlush?.cancel()
+                scheduledFlush = nil
+            }
+    }
+
+    private func receive(_ value: SubtitleAudienceSourceRefresh.Update) {
+        refresh.receive(value)
+        if value.isComplete {
+            scheduledFlush?.cancel()
+            scheduledFlush = nil
+        } else {
+            scheduleFlushIfNeeded()
+        }
+    }
+
+    private func scheduleFlushIfNeeded() {
+        guard scheduledFlush == nil else { return }
+        scheduledFlush = Task { @MainActor in
+            try? await Task.sleep(for: SubtitleAudienceSourceRefresh.interval)
+            guard Task.isCancelled == false else { return }
+            refresh.flush()
+            scheduledFlush = nil
+        }
     }
 }
 
@@ -628,9 +728,9 @@ final class SubtitleOverlayPresentationSettings: ObservableObject {
         } else {
             isPinned = defaults.bool(forKey: SubtitleOverlayWindowPolicy.pinnedDefaultsKey)
         }
-        displayMode = defaults.string(forKey: Self.displayModeDefaultsKey)
-            .flatMap(SubtitleOverlayDisplayMode.init(rawValue:))
-            ?? .audience
+        displayMode = SubtitleOverlayDisplayMode.resolved(
+            storedRawValue: defaults.string(forKey: Self.displayModeDefaultsKey)
+        )
         theme = defaults.string(forKey: SubtitleOverlayTheme.defaultsKey)
             .flatMap(SubtitleOverlayTheme.init(rawValue:))
             ?? .dark
@@ -843,10 +943,10 @@ struct SubtitleOverlayView: View {
             String(localized: "subtitle.overlay.mode"),
             selection: $presentationSettings.displayMode
         ) {
-            Text(String(localized: "subtitle.overlay.mode.conversation"))
-                .tag(SubtitleOverlayDisplayMode.conversation)
             Text(String(localized: "subtitle.overlay.mode.audience"))
                 .tag(SubtitleOverlayDisplayMode.audience)
+            Text(String(localized: "subtitle.overlay.mode.conversation"))
+                .tag(SubtitleOverlayDisplayMode.conversation)
         }
         .pickerStyle(.segmented)
         .frame(width: 144)
@@ -1249,13 +1349,11 @@ struct SubtitleOverlayView: View {
             .frame(maxWidth: .infinity, alignment: .bottomLeading)
             .background(subtitleCardBackground)
         } else {
-            Text(item.text)
-                .font(.system(size: CGFloat(fontSize), weight: .semibold))
-                .foregroundColor(.primary)
-                .contentTransition(.opacity)
-                .animation(.easeOut(duration: 0.18), value: item.text)
-                .textSelection(.enabled)
-                .multilineTextAlignment(.leading)
+            AudienceStableSourceText(
+                text: item.text,
+                isComplete: item.isComplete,
+                fontSize: fontSize
+            )
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1463,8 +1561,9 @@ struct SubtitleOverlayView: View {
         Text(lane.text ?? "")
             .font(.system(size: CGFloat(fontSize), weight: .semibold))
             .foregroundColor(.primary)
-            .contentTransition(.opacity)
-            .animation(.easeOut(duration: 0.18), value: lane.text)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
             .textSelection(.enabled)
             .multilineTextAlignment(.leading)
             .padding(.horizontal, 16)
