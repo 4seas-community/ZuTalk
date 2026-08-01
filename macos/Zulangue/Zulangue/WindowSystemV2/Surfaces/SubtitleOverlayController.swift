@@ -2,8 +2,19 @@ import AppKit
 import Combine
 import SwiftUI
 
+/// Automatic is the default: the overlay travels between a desk strip and a
+/// projector canvas, and the right size for one is unreadable on the other.
+/// Touching any manual size control is itself the opt-out — the operator who
+/// asks for a specific size has answered the question automatic exists to
+/// answer, so no separate switch needs flipping.
+enum SubtitleOverlayFontMode: String, CaseIterable {
+    case automatic
+    case manual
+}
+
 enum SubtitleOverlayFontPolicy {
     static let defaultsKey = "zulangue.subtitleOverlay.fontSize"
+    static let modeDefaultsKey = "zulangue.subtitleOverlay.fontMode"
     /// The ceiling is sized for a projector canvas read from the back of a
     /// meeting room, not for a laptop panel; the slider spans the full range
     /// continuously and the step only serves the fine-tune buttons.
@@ -22,6 +33,42 @@ enum SubtitleOverlayFontPolicy {
 
     static func larger(than value: Double) -> Double {
         clamped(value + step)
+    }
+
+    /// Automatic sizes type to the canvas, never to the content: a projector
+    /// canvas gets projector type, the desk strip keeps desk type, and words
+    /// arriving never reflow what is already on screen — content-driven
+    /// fitting would re-rag every visible line on every utterance, which is
+    /// the one motion a live caption wall cannot afford.
+    ///
+    /// The height term targets roughly four visible rows. The width term
+    /// keeps the selected languages viable side by side, using the same
+    /// per-column coefficient the layout policy enforces (8 × font for
+    /// conversation columns, 10 × font for audience tiles), and the result
+    /// quantizes downward to the slider step so rounding can never push the
+    /// columns past the width that was promised to fit.
+    static func automatic(
+        canvasSize: CGSize,
+        languageCount: Int,
+        mode: SubtitleOverlayDisplayMode
+    ) -> Double {
+        guard canvasSize.width > 0, canvasSize.height > 0 else { return defaultValue }
+        let heightBudget = Double(canvasSize.height) / 13
+        let columns = Double(max(languageCount, 1))
+        let perColumnFactor = mode == .audience ? 10.0 : 8.0
+        let widthBudget = Double(canvasSize.width - 24) / (perColumnFactor * columns)
+        let quantized = (min(heightBudget, widthBudget) / step).rounded(.down) * step
+        return clamped(quantized)
+    }
+
+    /// A size the operator explicitly chose before automatic existed keeps
+    /// ruling their venue setup; only installs with no stored size start
+    /// automatic. Runs once — after this the stored mode answers directly.
+    static func migrateStoredModeIfNeeded(defaults: UserDefaults) {
+        guard defaults.string(forKey: modeDefaultsKey) == nil,
+              defaults.object(forKey: defaultsKey) != nil
+        else { return }
+        defaults.set(SubtitleOverlayFontMode.manual.rawValue, forKey: modeDefaultsKey)
     }
 }
 
@@ -80,6 +127,23 @@ enum SubtitleOverlayLayoutPolicy {
     static func audienceRowCount(height: CGFloat, fontSize: Double) -> Int {
         let estimatedRowHeight = max(CGFloat(fontSize) * 3.2, 1)
         return min(8, max(1, Int(height / estimatedRowHeight)))
+    }
+
+    /// Conversation retention is canvas-driven for the same reason audience
+    /// retention is: the transcript keeps as many finished rows as the box
+    /// affords at the current font, so a projector canvas fills with history
+    /// instead of pinning a fixed handful of rows under a third of permanently
+    /// blank canvas. Floored at the old constant four so the desk strip keeps
+    /// its scrollback, and capped so an ultra-tall canvas stays a subtitle
+    /// wall rather than a scrollback log.
+    static func conversationRowCount(
+        height: CGFloat,
+        fontSize: Double,
+        lanesPerRow: Int
+    ) -> Int {
+        let laneHeight = CGFloat(fontSize) * 2.35 + 28
+        let rowHeight = laneHeight * CGFloat(max(lanesPerRow, 1)) + 10
+        return min(12, max(4, Int(height / max(rowHeight, 1))))
     }
 
     static func minimumColumnWidth(fontSize: Double) -> CGFloat {
@@ -558,6 +622,7 @@ final class SubtitleOverlayPresentationSettings: ObservableObject {
     private static let displayModeDefaultsKey = "zulangue.subtitleOverlay.displayMode"
 
     private init(defaults: UserDefaults = .standard) {
+        SubtitleOverlayFontPolicy.migrateStoredModeIfNeeded(defaults: defaults)
         if defaults.object(forKey: SubtitleOverlayWindowPolicy.pinnedDefaultsKey) == nil {
             isPinned = true
         } else {
@@ -583,6 +648,12 @@ struct SubtitleOverlayView: View {
     @ObservedObject private var presentationSettings = SubtitleOverlayPresentationSettings.shared
     @AppStorage(SubtitleOverlayFontPolicy.defaultsKey)
     private var storedFontSize = SubtitleOverlayFontPolicy.defaultValue
+    @AppStorage(SubtitleOverlayFontPolicy.modeDefaultsKey)
+    private var storedFontMode = SubtitleOverlayFontMode.automatic
+    // The canvas size feeds the automatic font, and the control bar lives
+    // outside the content's GeometryReader, so the size passes through view
+    // state instead of a geometry parameter.
+    @State private var canvasSize = CGSize.zero
     @State private var isHoveringOverlay = false
     // Reveal cursors live outside view identity: a resize across a
     // column-count threshold or a font step rebuilds the band structure and
@@ -792,11 +863,14 @@ struct SubtitleOverlayView: View {
                 identifier: AccessibilityID.floatingSubtitleFontSmaller,
                 disabled: fontSize <= SubtitleOverlayFontPolicy.minimum
             ) {
-                storedFontSize = SubtitleOverlayFontPolicy.smaller(than: fontSize)
+                setManualFontSize(SubtitleOverlayFontPolicy.smaller(than: fontSize))
             }
 
             Slider(
-                value: $storedFontSize,
+                value: Binding(
+                    get: { fontSize },
+                    set: { setManualFontSize($0) }
+                ),
                 in: SubtitleOverlayFontPolicy.minimum...SubtitleOverlayFontPolicy.maximum
             )
             .controlSize(.mini)
@@ -817,14 +891,57 @@ struct SubtitleOverlayView: View {
                 identifier: AccessibilityID.floatingSubtitleFontLarger,
                 disabled: fontSize >= SubtitleOverlayFontPolicy.maximum
             ) {
-                storedFontSize = SubtitleOverlayFontPolicy.larger(than: fontSize)
+                setManualFontSize(SubtitleOverlayFontPolicy.larger(than: fontSize))
             }
+
+            fontAutoButton
         }
         .padding(2)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color.primary.opacity(0.07))
         )
+    }
+
+    /// Every manual size control funnels through here: asking for a specific
+    /// size is the opt-out from automatic, so no separate switch needs
+    /// flipping off. The slider grabs from wherever automatic currently sits,
+    /// which makes the handoff a nudge rather than a jump.
+    private func setManualFontSize(_ value: Double) {
+        storedFontSize = value
+        if storedFontMode != .manual {
+            storedFontMode = .manual
+        }
+    }
+
+    private var fontAutoButton: some View {
+        Button {
+            if storedFontMode == .automatic {
+                // Freeze the size automatic chose so leaving it never moves
+                // the canvas.
+                storedFontSize = fontSize
+                storedFontMode = .manual
+            } else {
+                storedFontMode = .automatic
+            }
+        } label: {
+            Image(systemName: storedFontMode == .automatic ? "a.circle.fill" : "a.circle")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 28, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(storedFontMode == .automatic ? .accentColor : .secondary)
+        .help(String(localized: storedFontMode == .automatic
+            ? "subtitle.overlay.font_auto.disable"
+            : "subtitle.overlay.font_auto.enable"))
+        .accessibilityLabel(Text(String(localized: storedFontMode == .automatic
+            ? "subtitle.overlay.font_auto.disable"
+            : "subtitle.overlay.font_auto.enable")))
+        .accessibilityValue(Text(String(localized: storedFontMode == .automatic
+            ? "subtitle.overlay.font_auto.on"
+            : "subtitle.overlay.font_auto.off")))
+        .accessibilityIdentifier(AccessibilityID.floatingSubtitleFontAuto)
     }
 
     private func fontButton(
@@ -851,12 +968,16 @@ struct SubtitleOverlayView: View {
 
     private var subtitleBody: some View {
         GeometryReader { geometry in
-            switch presentationSettings.displayMode {
-            case .conversation:
-                conversationBody(geometry: geometry)
-            case .audience:
-                audienceBody(geometry: geometry)
+            Group {
+                switch presentationSettings.displayMode {
+                case .conversation:
+                    conversationBody(geometry: geometry)
+                case .audience:
+                    audienceBody(geometry: geometry)
+                }
             }
+            .onAppear { canvasSize = geometry.size }
+            .onChange(of: geometry.size) { _, size in canvasSize = size }
         }
     }
 
@@ -866,26 +987,42 @@ struct SubtitleOverlayView: View {
             languageCount: displayLanguages.count,
             fontSize: fontSize
         )
+        let rowBudget = SubtitleOverlayLayoutPolicy.conversationRowCount(
+            height: geometry.size.height,
+            fontSize: fontSize,
+            lanesPerRow: layout == .columns ? 1 : displayLanguages.count
+        )
 
         return VStack(spacing: 0) {
             if layout == .columns {
                 languageHeader
                 Divider().overlay(SubtitleOverlayPalette.hairline)
             }
-            conversationTranscript(layout: layout)
+            conversationTranscript(layout: layout, rowBudget: rowBudget)
         }
         .frame(width: geometry.size.width, height: geometry.size.height)
     }
 
+    /// In the columns layout the header is audience-facing — it is what names
+    /// each column from across a room — so it scales with the caption font
+    /// instead of staying at operator-chrome size, capped so a maxed slider
+    /// never spends a whole band of canvas on labels.
     private var languageHeader: some View {
         HStack(spacing: 0) {
             ForEach(Array(displayLanguages.enumerated()), id: \.offset) { index, language in
                 VStack(alignment: .leading, spacing: 1) {
                     Text(languageName(language))
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(
+                            size: min(max(11, CGFloat(fontSize) * 0.45), 40),
+                            weight: .semibold
+                        ))
                         .lineLimit(1)
                     Text(displayLanguageCode(language))
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .font(.system(
+                            size: min(max(9, CGFloat(fontSize) * 0.3), 24),
+                            weight: .medium,
+                            design: .monospaced
+                        ))
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -899,14 +1036,15 @@ struct SubtitleOverlayView: View {
                 }
             }
         }
-        .frame(height: 48)
+        .frame(minHeight: 48)
         .fixedSize(horizontal: false, vertical: true)
         .layoutPriority(1)
     }
 
     @ViewBuilder
     private func conversationTranscript(
-        layout: SubtitleOverlayConversationLayout
+        layout: SubtitleOverlayConversationLayout,
+        rowBudget: Int
     ) -> some View {
         if store.isCaptureActive == false {
             emptyState(
@@ -921,7 +1059,7 @@ struct SubtitleOverlayView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 10) {
-                    ForEach(store.presentedUtterances.suffix(4)) { utterance in
+                    ForEach(store.presentedUtterances.suffix(rowBudget)) { utterance in
                         conversationRow(utterance, layout: layout)
                     }
                 }
@@ -1427,7 +1565,16 @@ struct SubtitleOverlayView: View {
     }
 
     private var fontSize: Double {
-        SubtitleOverlayFontPolicy.clamped(storedFontSize)
+        switch storedFontMode {
+        case .automatic:
+            return SubtitleOverlayFontPolicy.automatic(
+                canvasSize: canvasSize,
+                languageCount: displayLanguages.count,
+                mode: presentationSettings.displayMode
+            )
+        case .manual:
+            return SubtitleOverlayFontPolicy.clamped(storedFontSize)
+        }
     }
 
     private var displayLanguages: [String] {

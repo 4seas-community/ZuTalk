@@ -777,6 +777,10 @@
 "subtitle.overlay.font_size" = "Taille des sous-titres";
 "subtitle.overlay.font_smaller" = "Sous-titres plus petits";
 "subtitle.overlay.font_larger" = "Sous-titres plus grands";
+"subtitle.overlay.font_auto.enable" = "Adapter la taille des sous-titres à la fenêtre";
+"subtitle.overlay.font_auto.disable" = "Régler la taille des sous-titres manuellement";
+"subtitle.overlay.font_auto.on" = "Taille des sous-titres adaptée à la fenêtre";
+"subtitle.overlay.font_auto.off" = "Taille des sous-titres réglée manuellement";
 "subtitle.overlay.move_resize_hint" = "Faites glisser la fenêtre pour la déplacer. Faites glisser un bord ou un coin pour la redimensionner.";
 "subtitle.overlay.pin" = "Garder les sous-titres au premier plan";
 "subtitle.overlay.unpin" = "Ne plus garder les sous-titres au premier plan";

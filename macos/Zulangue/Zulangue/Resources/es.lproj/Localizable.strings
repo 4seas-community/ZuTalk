@@ -776,6 +776,10 @@
 "subtitle.overlay.font_size" = "Tamaño de los subtítulos";
 "subtitle.overlay.font_smaller" = "Subtítulos más pequeños";
 "subtitle.overlay.font_larger" = "Subtítulos más grandes";
+"subtitle.overlay.font_auto.enable" = "Ajustar los subtítulos al tamaño de la ventana";
+"subtitle.overlay.font_auto.disable" = "Ajustar el tamaño de los subtítulos manualmente";
+"subtitle.overlay.font_auto.on" = "El tamaño de los subtítulos sigue la ventana";
+"subtitle.overlay.font_auto.off" = "Tamaño de los subtítulos fijado manualmente";
 "subtitle.overlay.move_resize_hint" = "Arrastre la ventana para moverla. Arrastre cualquier borde o esquina para cambiar su tamaño.";
 "subtitle.overlay.pin" = "Mantener los subtítulos delante";
 "subtitle.overlay.unpin" = "Dejar de mantener los subtítulos delante";

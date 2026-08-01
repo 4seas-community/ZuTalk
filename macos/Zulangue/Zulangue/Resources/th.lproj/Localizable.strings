@@ -777,6 +777,10 @@
 "subtitle.overlay.font_size" = "ขนาดคำบรรยาย";
 "subtitle.overlay.font_smaller" = "คำบรรยายเล็กลง";
 "subtitle.overlay.font_larger" = "คำบรรยายใหญ่ขึ้น";
+"subtitle.overlay.font_auto.enable" = "ปรับขนาดคำบรรยายตามหน้าต่างอัตโนมัติ";
+"subtitle.overlay.font_auto.disable" = "ปรับขนาดคำบรรยายด้วยตนเอง";
+"subtitle.overlay.font_auto.on" = "ขนาดคำบรรยายปรับตามหน้าต่าง";
+"subtitle.overlay.font_auto.off" = "ขนาดคำบรรยายตั้งค่าเอง";
 "subtitle.overlay.move_resize_hint" = "ลากหน้าต่างเพื่อย้ายตำแหน่ง ลากขอบหรือมุมใดก็ได้เพื่อปรับขนาด";
 "subtitle.overlay.pin" = "ตรึงคำบรรยายไว้ด้านบนสุด";
 "subtitle.overlay.unpin" = "เลิกตรึงคำบรรยายไว้ด้านบนสุด";

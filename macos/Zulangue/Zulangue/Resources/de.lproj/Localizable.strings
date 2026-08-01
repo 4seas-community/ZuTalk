@@ -776,6 +776,10 @@
 "subtitle.overlay.font_size" = "Untertitelgröße";
 "subtitle.overlay.font_smaller" = "Kleinere Untertitel";
 "subtitle.overlay.font_larger" = "Größere Untertitel";
+"subtitle.overlay.font_auto.enable" = "Untertitelgröße an das Fenster anpassen";
+"subtitle.overlay.font_auto.disable" = "Untertitelgröße manuell einstellen";
+"subtitle.overlay.font_auto.on" = "Untertitelgröße folgt dem Fenster";
+"subtitle.overlay.font_auto.off" = "Untertitelgröße manuell eingestellt";
 "subtitle.overlay.move_resize_hint" = "Bewege das Fenster durch Ziehen. Ziehe an einer Kante oder Ecke, um die Größe zu ändern.";
 "subtitle.overlay.pin" = "Untertitel im Vordergrund behalten";
 "subtitle.overlay.unpin" = "Untertitel nicht mehr im Vordergrund behalten";

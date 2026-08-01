@@ -38,6 +38,7 @@ enum AccessibilityID {
     /// 字幕浮窗右上角：减小或放大字号
     static let floatingSubtitleFontSmaller = "capture.floatingSubtitles.fontSmaller"
     static let floatingSubtitleFontLarger = "capture.floatingSubtitles.fontLarger"
+    static let floatingSubtitleFontAuto = "capture.floatingSubtitles.fontAuto"
 
     // MARK: - Main Window
 

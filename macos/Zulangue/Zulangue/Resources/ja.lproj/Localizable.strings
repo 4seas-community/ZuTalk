@@ -765,6 +765,10 @@
 "subtitle.overlay.font_size" = "字幕サイズ";
 "subtitle.overlay.font_smaller" = "字幕を小さく";
 "subtitle.overlay.font_larger" = "字幕を大きく";
+"subtitle.overlay.font_auto.enable" = "字幕サイズをウィンドウに合わせる";
+"subtitle.overlay.font_auto.disable" = "字幕サイズを手動で調整する";
+"subtitle.overlay.font_auto.on" = "字幕サイズはウィンドウに追従します";
+"subtitle.overlay.font_auto.off" = "字幕サイズは手動設定です";
 "subtitle.overlay.move_resize_hint" = "ウィンドウをドラッグして移動し、辺または四隅をドラッグしてサイズを変更できます。";
 "subtitle.overlay.pin" = "字幕を最前面に固定";
 "subtitle.overlay.unpin" = "字幕の固定を解除";

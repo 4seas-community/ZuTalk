@@ -777,6 +777,10 @@
 "subtitle.overlay.font_size" = "字幕字号";
 "subtitle.overlay.font_smaller" = "减小字幕";
 "subtitle.overlay.font_larger" = "放大字幕";
+"subtitle.overlay.font_auto.enable" = "字号随窗口自动适配";
+"subtitle.overlay.font_auto.disable" = "改为手动调整字号";
+"subtitle.overlay.font_auto.on" = "字号跟随窗口大小";
+"subtitle.overlay.font_auto.off" = "字号为手动设定";
 "subtitle.overlay.move_resize_hint" = "拖动窗口可移动；拖动任意边缘或四角可调整大小。";
 "subtitle.overlay.pin" = "将字幕固定在最前";
 "subtitle.overlay.unpin" = "取消字幕置顶";

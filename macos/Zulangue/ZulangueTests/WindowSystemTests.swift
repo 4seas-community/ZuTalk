@@ -875,6 +875,142 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    func testSubtitleOverlayFontPolicy_automaticSizesToCanvasNotContent() {
+        // A projector canvas gets projector type: the height term targets
+        // roughly four visible rows, the width term keeps three conversation
+        // columns viable side by side, and the result quantizes down to the
+        // slider step.
+        let projector = SubtitleOverlayFontPolicy.automatic(
+            canvasSize: CGSize(width: 1_920, height: 1_055),
+            languageCount: 3,
+            mode: .conversation
+        )
+        XCTAssertEqual(projector, 78)
+        XCTAssertLessThanOrEqual(
+            SubtitleOverlayLayoutPolicy.minimumColumnWidth(fontSize: projector) * 3,
+            1_920
+        )
+
+        // Audience tiles are wider per column, so the same canvas chooses a
+        // size that still fits three tiles side by side.
+        let audience = SubtitleOverlayFontPolicy.automatic(
+            canvasSize: CGSize(width: 1_920, height: 1_055),
+            languageCount: 3,
+            mode: .audience
+        )
+        XCTAssertEqual(audience, 62)
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceColumnCount(
+                width: 1_920 - 24,
+                languageCount: 3,
+                fontSize: audience
+            ),
+            3
+        )
+
+        // The desk strip keeps desk type instead of scaling down past
+        // readability.
+        XCTAssertEqual(
+            SubtitleOverlayFontPolicy.automatic(
+                canvasSize: CGSize(width: 560, height: 180),
+                languageCount: 2,
+                mode: .conversation
+            ),
+            SubtitleOverlayFontPolicy.minimum
+        )
+
+        // Bounds still clamp, and a canvas that has not laid out yet falls
+        // back to the manual default rather than to the floor.
+        XCTAssertEqual(
+            SubtitleOverlayFontPolicy.automatic(
+                canvasSize: CGSize(width: 4_000, height: 4_000),
+                languageCount: 1,
+                mode: .conversation
+            ),
+            SubtitleOverlayFontPolicy.maximum
+        )
+        XCTAssertEqual(
+            SubtitleOverlayFontPolicy.automatic(
+                canvasSize: .zero,
+                languageCount: 3,
+                mode: .conversation
+            ),
+            SubtitleOverlayFontPolicy.defaultValue
+        )
+    }
+
+    func testSubtitleOverlayFontPolicy_storedModeMigrationKeepsChosenSizesManual() {
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+
+        // Fresh install: nothing stored, automatic stays the default.
+        SubtitleOverlayFontPolicy.migrateStoredModeIfNeeded(defaults: defaults)
+        XCTAssertNil(defaults.string(forKey: SubtitleOverlayFontPolicy.modeDefaultsKey))
+
+        // An operator who sized their venue before automatic existed keeps
+        // that size ruling.
+        defaults.set(96.0, forKey: SubtitleOverlayFontPolicy.defaultsKey)
+        SubtitleOverlayFontPolicy.migrateStoredModeIfNeeded(defaults: defaults)
+        XCTAssertEqual(
+            defaults.string(forKey: SubtitleOverlayFontPolicy.modeDefaultsKey),
+            SubtitleOverlayFontMode.manual.rawValue
+        )
+
+        // The migration never overrides a mode the operator has since chosen.
+        defaults.set(
+            SubtitleOverlayFontMode.automatic.rawValue,
+            forKey: SubtitleOverlayFontPolicy.modeDefaultsKey
+        )
+        SubtitleOverlayFontPolicy.migrateStoredModeIfNeeded(defaults: defaults)
+        XCTAssertEqual(
+            defaults.string(forKey: SubtitleOverlayFontPolicy.modeDefaultsKey),
+            SubtitleOverlayFontMode.automatic.rawValue
+        )
+        defaults.removePersistentDomain(forName: #function)
+    }
+
+    func testSubtitleOverlayLayoutPolicy_conversationRowCountFollowsCanvasHeight() {
+        // The old fixed four is the floor, so the desk strip keeps its
+        // scrollback.
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.conversationRowCount(
+                height: 180,
+                fontSize: 30,
+                lanesPerRow: 1
+            ),
+            4
+        )
+        // A projector canvas at desk font fills with history instead of
+        // pinning four rows above a third of blank canvas.
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.conversationRowCount(
+                height: 1_055,
+                fontSize: 30,
+                lanesPerRow: 1
+            ),
+            9
+        )
+        // Stacked rows carry every language, so the same canvas affords
+        // fewer of them.
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.conversationRowCount(
+                height: 2_000,
+                fontSize: 30,
+                lanesPerRow: 3
+            ),
+            6
+        )
+        // Bounded above: a wall, not a scrollback log.
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.conversationRowCount(
+                height: 10_000,
+                fontSize: 16,
+                lanesPerRow: 1
+            ),
+            12
+        )
+    }
+
     func testWindowCoordinator_registrySnapshot_listsAllKnownWindowSurfaces() {
         WindowCoordinator.shared.installBaselineCatalog()
 
