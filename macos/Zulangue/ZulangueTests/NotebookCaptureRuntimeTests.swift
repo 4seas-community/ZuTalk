@@ -3064,6 +3064,45 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testAudiencePlacementNeverFilesAnIdentifiedLineUnderAnotherLanguage() {
+        let line = { (source: String, provisional: String?) -> NotebookCaptureUtteranceDTO in
+            var value = NotebookCaptureUtteranceDTO(
+                id: "utt-1",
+                sessionId: "session-a",
+                sequence: 1,
+                revision: 1,
+                sourceLanguage: source,
+                sourceText: "des mots",
+                sourceStartMs: 100,
+                sourceEndMs: 700,
+                translatedLanguage: nil,
+                translatedText: nil,
+                completion: "complete",
+                alignment: "source_only"
+            )
+            value.provisionalSourceLanguage = provisional
+            return value
+        }
+        let place = { (utterance: NotebookCaptureUtteranceDTO) -> String? in
+            NotebookCaptureHistoryPolicy.audienceSourcePlacement(
+                for: utterance,
+                selectedLanguages: ["zh", "en", "th"],
+                lastIdentifiedSourceLanguage: "zh"
+            )
+        }
+
+        // The provider says French. French has no column, so the honest
+        // answer is no column — not the previous speaker's Chinese.
+        XCTAssertNil(place(line("und", "fr")))
+        // A committed identity outside the selection behaves the same way.
+        XCTAssertNil(place(line("fr", nil)))
+        // A provisional hint inside the selection still places immediately.
+        XCTAssertEqual(place(line("und", "en")), "en")
+        // Only a line with no identification at all borrows the last one.
+        XCTAssertEqual(place(line("und", nil)), "zh")
+    }
+
+    @MainActor
     func testTwoLanguageProjectionMapsByLanguageWithoutRewritingUtterance() async throws {
         let utterance = NotebookCaptureUtteranceDTO(
             id: "utt-1",

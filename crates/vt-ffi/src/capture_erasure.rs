@@ -99,19 +99,36 @@ impl ErasureMeter {
         }
     }
 
+    /// A row carries the same text twice: once in `language_variants` and
+    /// once in the aggregate source/translated shadow fields kept for legacy
+    /// rows. Scoring both would count every character of every lane twice.
+    /// The variants are authoritative wherever they exist; the shadow fields
+    /// are read only for a row that has none.
     fn absorb_utterance(&mut self, utterance: &FfiNotebookCaptureUtterance) {
-        let source_language = utterance
-            .provisional_source_language
-            .clone()
-            .unwrap_or_else(|| utterance.source_language.clone());
-        if !utterance.source_text.is_empty() {
-            self.record(
-                utterance.sequence,
-                SOURCE_ROLE_KEY,
-                &source_language,
-                &utterance.source_text,
-            );
+        if utterance.language_variants.is_empty() {
+            let source_language = utterance
+                .provisional_source_language
+                .clone()
+                .unwrap_or_else(|| utterance.source_language.clone());
+            if !utterance.source_text.is_empty() {
+                self.record(
+                    utterance.sequence,
+                    SOURCE_ROLE_KEY,
+                    &source_language,
+                    &utterance.source_text,
+                );
+            }
+            if let (Some(language), Some(text)) = (
+                utterance.translated_language.as_deref(),
+                utterance.translated_text.as_deref(),
+            ) {
+                if !text.is_empty() {
+                    self.record(utterance.sequence, language, language, text);
+                }
+            }
+            return;
         }
+
         for variant in &utterance.language_variants {
             let Some(text) = variant.text.as_deref() else {
                 continue;
@@ -119,56 +136,72 @@ impl ErasureMeter {
             if text.is_empty() {
                 continue;
             }
-            self.record(
-                utterance.sequence,
-                &variant.language,
-                &variant.language,
-                text,
-            );
-        }
-        if let (Some(language), Some(text)) = (
-            utterance.translated_language.as_deref(),
-            utterance.translated_text.as_deref(),
-        ) {
-            if !text.is_empty() {
-                self.record(utterance.sequence, language, language, text);
+            // The source lane keeps the role key so a `und -> zh` identity
+            // commit stays one lane and migrates instead of reading as one
+            // language erasing everything while another appends it. Its
+            // display language follows the live provisional hint, which is
+            // what the canvas actually shows.
+            if variant.role == "source" {
+                let language = utterance
+                    .provisional_source_language
+                    .as_deref()
+                    .unwrap_or(&variant.language);
+                self.record(utterance.sequence, SOURCE_ROLE_KEY, language, text);
+            } else {
+                self.record(
+                    utterance.sequence,
+                    &variant.language,
+                    &variant.language,
+                    text,
+                );
             }
         }
     }
 
+    /// Moves a lane's already-counted characters to the language it now
+    /// belongs to, so the per-language totals describe where the text ended
+    /// up rather than where it first appeared.
+    fn migrate_lane_language(&mut self, key: &(u64, String), language: &str, lane_chars: u64) {
+        let Some(previous_language) = self
+            .lane_language
+            .get(key)
+            .cloned()
+            .filter(|previous_language| previous_language != language)
+        else {
+            return;
+        };
+        let moved = self
+            .totals
+            .get(&previous_language)
+            .map(|totals| totals.presented_chars.min(lane_chars))
+            .unwrap_or(0);
+        if let Some(totals) = self.totals.get_mut(&previous_language) {
+            totals.presented_chars -= moved;
+        }
+        self.totals
+            .entry(language.to_string())
+            .or_default()
+            .presented_chars += moved;
+        self.lane_language.insert(key.clone(), language.to_string());
+    }
+
     fn record(&mut self, sequence: u64, role: &str, language: &str, text: &str) {
         let key = (sequence, role.to_string());
-        let previous = self.presented.get(&key).map(String::as_str).unwrap_or("");
+        let previous = self.presented.get(&key).cloned().unwrap_or_default();
+        let previous_chars = previous.chars().count() as u64;
+        // Identity can commit without the words changing at all — `und -> zh`
+        // on settled text is the common case — so the migration has to run
+        // before the unchanged-text shortcut, or the lane's characters stay
+        // filed under a language the canvas is no longer showing.
+        self.migrate_lane_language(&key, language, previous_chars);
         if previous == text {
             return;
         }
+        let previous = previous.as_str();
         let common = common_prefix_chars(previous, text);
-        let previous_chars = previous.chars().count() as u64;
         let next_chars = text.chars().count() as u64;
         let erased = previous_chars - common;
         let appended = next_chars - common;
-
-        // Attribute the whole lane to its current language. If the identity
-        // moved (und → zh), migrate the lane's presented length so the final
-        // per-language totals describe where the text ended up.
-        let previous_language = self.lane_language.get(&key).cloned();
-        if let Some(previous_language) = previous_language
-            .as_deref()
-            .filter(|previous_language| *previous_language != language)
-        {
-            let moved = self
-                .totals
-                .get(previous_language)
-                .map(|totals| totals.presented_chars.min(previous_chars))
-                .unwrap_or(0);
-            if let Some(totals) = self.totals.get_mut(previous_language) {
-                totals.presented_chars -= moved;
-            }
-            self.totals
-                .entry(language.to_string())
-                .or_default()
-                .presented_chars += moved;
-        }
 
         // presented_chars tracks the sum of the language's current lane
         // lengths; replace this lane's contribution.
@@ -285,6 +318,75 @@ mod tests {
         // "Hel" -> "Hi there": common prefix "H", two chars erased.
         assert_eq!(totals.erased_chars, 2);
         assert_eq!(totals.updates, 2);
+    }
+
+    #[test]
+    fn a_row_carrying_both_variants_and_shadow_fields_is_counted_once() {
+        let mut meter = ErasureMeter::default();
+        let mut row = utterance(0, "zh", "你好");
+        // A live row carries the same words in both representations.
+        row.language_variants = vec![
+            crate::notebook_capture_api::FfiNotebookCaptureLanguageVariant {
+                language: "zh".to_string(),
+                role: "source".to_string(),
+                text: Some("你好".to_string()),
+                state: "ready".to_string(),
+                completion: Some("complete".to_string()),
+                projection_revision: 0,
+                edit_revision: 0,
+            },
+            crate::notebook_capture_api::FfiNotebookCaptureLanguageVariant {
+                language: "en".to_string(),
+                role: "translation".to_string(),
+                text: Some("Hello".to_string()),
+                state: "ready".to_string(),
+                completion: Some("complete".to_string()),
+                projection_revision: 0,
+                edit_revision: 0,
+            },
+        ];
+        row.translated_language = Some("en".to_string());
+        row.translated_text = Some("Hello".to_string());
+        meter.absorb_event_utterances("session", &[row]);
+
+        let zh = meter.totals.get("zh").copied().unwrap();
+        assert_eq!(zh.appended_chars, 2, "the source words are scored once");
+        assert_eq!(zh.updates, 1);
+        let en = meter.totals.get("en").copied().unwrap();
+        assert_eq!(en.appended_chars, 5, "the translation is scored once");
+        assert_eq!(en.updates, 1);
+    }
+
+    #[test]
+    fn an_identity_commit_migrates_the_lane_even_when_the_words_do_not_change() {
+        let mut meter = ErasureMeter::default();
+        let mut pending = utterance(0, "und", "สวัสดี");
+        pending.provisional_source_language = Some("th".to_string());
+        meter.absorb_event_utterances("session", &[pending]);
+        assert_eq!(meter.totals.get("th").copied().unwrap().presented_chars, 6);
+
+        // The durable commit lands the identical text under `und` with no
+        // provisional hint left: the identity is settled, the words never
+        // changed, and the lane must stop being filed under Thai only if it
+        // really moved. Here it moves to the committed language.
+        let settled = utterance(0, "th", "สวัสดี");
+        meter.absorb_event_utterances("session", &[settled]);
+        let th = meter.totals.get("th").copied().unwrap();
+        assert_eq!(th.erased_chars, 0);
+        assert_eq!(th.presented_chars, 6, "the lane stayed with its language");
+
+        // And a lane whose language genuinely changes carries its characters
+        // across without inventing erasure.
+        let mut moved = ErasureMeter::default();
+        let mut guessed = utterance(1, "und", "hello");
+        guessed.provisional_source_language = Some("de".to_string());
+        moved.absorb_event_utterances("session", &[guessed]);
+        assert_eq!(moved.totals.get("de").copied().unwrap().presented_chars, 5);
+        moved.absorb_event_utterances("session", &[utterance(1, "en", "hello")]);
+        assert_eq!(moved.totals.get("de").copied().unwrap().presented_chars, 0);
+        let en = moved.totals.get("en").copied().unwrap();
+        assert_eq!(en.presented_chars, 5);
+        assert_eq!(en.erased_chars, 0, "re-homing is not erasure");
     }
 
     #[test]

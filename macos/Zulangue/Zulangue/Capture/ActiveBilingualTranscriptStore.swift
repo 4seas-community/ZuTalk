@@ -2186,11 +2186,19 @@ enum NotebookCaptureHistoryPolicy {
         if let source = normalizedLanguage(utterance.sourceLanguage), source != "und" {
             return languages.contains(source) ? source : nil
         }
-        return normalizedLanguage(utterance.provisionalSourceLanguage)
-            .flatMap { $0 == "und" ? nil : $0 }
+        // The provider's provisional hint is an identification, not a guess.
+        // If it names a language outside the selection, the honest answer is
+        // "no column" — falling through to the previous speaker's language
+        // would put demonstrably French words in the Chinese column, and a
+        // confidently misfiled line is worse for the room than an unlabelled
+        // one. Only a line with no identification at all borrows the last
+        // identified language, and only if that language has a column.
+        if let provisional = normalizedLanguage(utterance.provisionalSourceLanguage),
+           provisional != "und" {
+            return languages.contains(provisional) ? provisional : nil
+        }
+        return normalizedLanguage(lastIdentifiedSourceLanguage)
             .flatMap { languages.contains($0) ? $0 : nil }
-            ?? normalizedLanguage(lastIdentifiedSourceLanguage)
-                .flatMap { languages.contains($0) ? $0 : nil }
     }
 
     /// Response-order pairing is the durable source fact. An unidentified
