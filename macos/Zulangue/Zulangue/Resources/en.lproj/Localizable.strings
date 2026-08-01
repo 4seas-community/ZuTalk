@@ -869,7 +869,7 @@
 "capture.settings.context.confirm_exact" = "Use these references";
 "capture.settings.context.applied" = "Used for this recording";
 "capture.settings.context.not_applied" = "Not used for this recording";
-"capture.settings.context.pack_detail" = "Add terms, people, organizations, and session background to improve transcription accuracy.";
+"capture.settings.context.pack_detail" = "Your selection is remembered and used for live and asynchronous transcription. Add terms, people, organizations, and session background to improve accuracy.";
 "capture.settings.context.packs" = "Reference scope";
 "capture.settings.context.no_packs" = "No reference material yet.";
 "capture.settings.context.private_pack" = "Current Notebook";
@@ -878,7 +878,7 @@
 "capture.settings.context.selected" = "Editing";
 "capture.settings.context.not_selected" = "Not selected";
 "capture.settings.context.always_bound" = "Used by default";
-"capture.settings.context.select_pack_hint" = "Review and edit this reference set.";
+"capture.settings.context.select_pack_hint" = "Select this knowledge base for live and asynchronous transcription.";
 "capture.settings.context.bind_pack" = "Use %@ in this Notebook";
 "capture.settings.context.delete_pack" = "Delete %@";
 "capture.settings.context.delete_pack_confirm" = "Delete this library? Every Notebook using it will be affected.";

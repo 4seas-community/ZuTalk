@@ -4796,6 +4796,36 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectedLibraryIsPersistedAndRestoredForNotebookTranscription() throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+
+        try store.loadContextPacks(notebookId: "notebook-a")
+        try store.selectContextPackForTranscription(
+            "library-pack",
+            notebookId: "notebook-a"
+        )
+
+        XCTAssertEqual(store.selectedContextPackId, "library-pack")
+        XCTAssertEqual(client.contextBindingPositions, [0])
+        XCTAssertTrue(store.hasConfirmedContext(notebookId: "notebook-a"))
+
+        let reopenedStore = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try reopenedStore.loadContextPacks(notebookId: "notebook-a")
+        XCTAssertEqual(
+            reopenedStore.selectedContextPackId,
+            "library-pack",
+            "the durable Notebook binding must restore the prior knowledge-base selection"
+        )
+    }
+
+    @MainActor
     func testContextBrowserNeverPublishesAnotherNotebooksPartialOrStaleState() throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         let store = ActiveBilingualTranscriptStore(

@@ -3255,7 +3255,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             )
             let selection = priorSelection.flatMap { selectedId in
                 packs.contains(where: { $0.id == selectedId }) ? selectedId : nil
-            } ?? packs.first(where: \.isPrivate)?.id
+            } ?? packs.first(where: { $0.isPrivate == false && $0.isBound })?.id
+                ?? packs.first(where: \.isPrivate)?.id
             let sources = try selection.map { packId in
                 try fetchContextSources(notebookId: notebookId, packId: packId)
             } ?? []
@@ -3288,6 +3289,38 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             clearContextBrowserState()
             lastError = error.localizedDescription
             throw error
+        }
+    }
+
+    /// Makes one Pack the Notebook's durable transcription context. Library
+    /// bindings are the persisted selection, so reopening the Notebook restores
+    /// the same Pack without a second UI-only preference.
+    func selectContextPackForTranscription(_ packId: String, notebookId: String) throws {
+        guard loadedContextNotebookId == notebookId,
+              let selected = contextPacks.first(where: { $0.id == packId })
+        else { return }
+
+        for pack in contextPacks where pack.isPrivate == false && pack.id != packId && pack.isBound {
+            try client.setNotebookContextPackBinding(
+                notebookId: notebookId,
+                packId: pack.id,
+                position: nil
+            )
+        }
+        if selected.isPrivate == false && selected.isBound == false {
+            try client.setNotebookContextPackBinding(
+                notebookId: notebookId,
+                packId: selected.id,
+                position: 0
+            )
+        }
+
+        invalidateContextPreview()
+        try loadContextPacks(notebookId: notebookId)
+        try selectContextPack(packId, notebookId: notebookId)
+        let preview = try previewContext(notebookId: notebookId)
+        if preview.containsSendableContext {
+            confirmContextPreview(digest: preview.digest)
         }
     }
 

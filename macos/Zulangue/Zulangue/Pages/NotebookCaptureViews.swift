@@ -1571,7 +1571,6 @@ struct NotebookCaptureSettingsView: View {
 
                 VStack(alignment: .leading, spacing: Spacing.lg) {
                     contextBrowserSection
-                    contextEgressSection
                     postStopRemoteProcessingSection
                     retentionSection
                 }
@@ -2013,23 +2012,6 @@ struct NotebookCaptureSettingsView: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.textOnBpFaint)
             } else {
-                Toggle("", isOn: Binding(
-                    get: { pack.isBound },
-                    set: { bound in
-                        scheduleContextIntent(.bindContextPack(
-                            notebookId: notebookId,
-                            packId: pack.id,
-                            isBound: bound
-                        ))
-                    }
-                ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .accessibilityLabel(Text(String(
-                    format: String(localized: "capture.settings.context.bind_pack"),
-                    pack.title
-                )))
-
                 Button(role: .destructive) {
                     packPendingDeletion = pack
                 } label: {
@@ -2367,6 +2349,13 @@ struct NotebookCaptureSettingsView: View {
         defer { isLoadingContextPacks = false }
         do {
             try capture.loadContextPacks(notebookId: notebookId)
+            if draft.sendContextToSoniox {
+                let preview = try capture.previewContext(notebookId: notebookId)
+                if preview.containsSendableContext {
+                    capture.confirmContextPreview(digest: preview.digest)
+                    editor.contextReviewConfirmed()
+                }
+            }
         } catch {
             contextLoadError = error.localizedDescription
             ToastCenter.shared.error(
@@ -2395,7 +2384,12 @@ struct NotebookCaptureSettingsView: View {
 
     private func selectContextPack(_ packId: String) {
         do {
-            try capture.selectContextPack(packId, notebookId: notebookId)
+            try capture.selectContextPackForTranscription(packId, notebookId: notebookId)
+            editor.update { profile in
+                profile.remoteRealtimeEnabled = true
+                profile.sendContextToSoniox = true
+            }
+            isReviewingContext = false
         } catch {
             showContextError(error)
         }
@@ -2534,9 +2528,19 @@ struct NotebookCaptureSettingsView: View {
     }
 
     private func resetContextEgressConsent() {
-        capture.revokeContextConfirmation()
-        isReviewingContext = false
-        editor.update { $0.sendContextToSoniox = false }
+        do {
+            let preview = try capture.previewContext(notebookId: notebookId)
+            if preview.containsSendableContext {
+                capture.confirmContextPreview(digest: preview.digest)
+                editor.update { profile in
+                    profile.remoteRealtimeEnabled = true
+                    profile.sendContextToSoniox = true
+                }
+            }
+            isReviewingContext = false
+        } catch {
+            showContextError(error)
+        }
     }
 }
 

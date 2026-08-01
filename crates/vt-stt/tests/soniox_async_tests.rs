@@ -178,6 +178,7 @@ fn request<'a>(base_url: &'a str) -> SonioxAsyncRequest<'a> {
         model: "stt-async-v5",
         language_hints: vec!["en".to_string()],
         enable_language_identification: false,
+        context_json: None,
         client_reference_id: Some("zulangue-task-1".to_string()),
         overall_deadline: Duration::from_secs(30),
         poll_interval: Duration::from_millis(10),
@@ -196,8 +197,11 @@ async fn async_flow_uploads_transcribes_and_deletes_remote_artifacts() {
     let (base_url, requests) = start_mock_api(MockPlan::default()).await;
     let wav = wrap_pcm_s16le_in_wav(&vec![0u8; 3200], 16_000, 1);
     let cancel = CancellationToken::new();
+    let context_json = r#"{"terms":["人类学论坛"],"text":"field notes"}"#;
+    let mut async_request = request(&base_url);
+    async_request.context_json = Some(context_json);
 
-    let tokens = soniox_async_transcribe_wav(&request(&base_url), wav, &cancel, None)
+    let tokens = soniox_async_transcribe_wav(&async_request, wav, &cancel, None)
         .await
         .unwrap();
 
@@ -237,6 +241,10 @@ async fn async_flow_uploads_transcribes_and_deletes_remote_artifacts() {
     assert_eq!(create["model"], "stt-async-v5");
     assert_eq!(create["file_id"], "file-1");
     assert_eq!(create["language_hints"], serde_json::json!(["en"]));
+    assert_eq!(
+        create["context"],
+        serde_json::json!({"terms": ["人类学论坛"], "text": "field notes"})
+    );
     // 工件必须带稳定标签:文件名与 client_reference_id,供启动扫尾识别。
     assert_eq!(create["client_reference_id"], "zulangue-task-1");
     assert!(

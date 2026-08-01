@@ -49,8 +49,8 @@ use vt_crypto::{ApiKeyProvider, KeyProvider};
 use vt_pipeline::{Task, TaskPayload, TaskQueue, TaskQueueError, TaskStatus};
 use vt_store::notebook_capture_store::CaptureProviderRole;
 use vt_store::{
-    AsyncProviderReceipt, AsyncTaskState, AudioChunkRetentionRecord, NotebookCaptureStore,
-    NotebookCaptureStoreError, SessionMeta, SessionMetaStore,
+    AsyncProviderReceipt, AsyncTaskState, AudioChunkRetentionRecord, ContextPackStore,
+    NotebookCaptureStore, NotebookCaptureStoreError, SessionMeta, SessionMetaStore,
 };
 use vt_stt::{
     soniox_async_delete_remote_file, soniox_async_delete_remote_transcription,
@@ -2155,6 +2155,33 @@ async fn dispatch_task(
                 )
             })?;
             let audio_format = immutable_capture_audio_format(&capture_store, &meta, session_id)?;
+            let run = capture_store
+                .get_run_for_session(session_id)
+                .map_err(|error| {
+                    (
+                        "context_snapshot_unavailable".to_string(),
+                        format!("load capture run for Context snapshot: {error}"),
+                    )
+                })?
+                .ok_or_else(|| {
+                    (
+                        "context_snapshot_unavailable".to_string(),
+                        format!("capture session {session_id} disappeared before Context load"),
+                    )
+                })?;
+            let context_store =
+                ContextPackStore::new(db_path, key_store.clone()).map_err(|error| {
+                    (
+                        "context_snapshot_unavailable".to_string(),
+                        format!("open Context snapshot store: {error}"),
+                    )
+                })?;
+            let frozen_context = context_store.load_run_snapshot(&run.id).map_err(|error| {
+                (
+                    "context_snapshot_unavailable".to_string(),
+                    format!("load frozen Context snapshot: {error}"),
+                )
+            })?;
             let key_id = meta.key_id.ok_or_else(|| {
                 (
                     "source_audio_key_unavailable".to_string(),
@@ -2201,6 +2228,9 @@ async fn dispatch_task(
                 session_id,
                 &soniox_api_key,
                 language_hint.as_deref(),
+                frozen_context
+                    .as_ref()
+                    .map(|value| value.context_json.as_str()),
                 chunk_paths,
                 aes_key,
                 audio_format.sample_rate,

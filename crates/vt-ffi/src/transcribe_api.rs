@@ -260,6 +260,7 @@ pub(crate) async fn run_transcribe_chunked_task_async(
     session_id: &str,
     soniox_api_key: &str,
     language: Option<&str>,
+    context_json: Option<&str>,
     chunk_paths: Vec<PathBuf>,
     key: SessionKey,
     source_sample_rate: u32,
@@ -296,6 +297,7 @@ pub(crate) async fn run_transcribe_chunked_task_async(
         session_id,
         soniox_api_key,
         language,
+        context_json,
         pcm_f32_bytes,
         source_sample_rate,
         source_channels,
@@ -314,6 +316,7 @@ async fn run_transcribe_pcm_f32_bytes_async(
     session_id: &str,
     soniox_api_key: &str,
     language: Option<&str>,
+    context_json: Option<&str>,
     pcm_f32_bytes: Vec<u8>,
     source_sample_rate: u32,
     source_channels: u16,
@@ -359,6 +362,7 @@ async fn run_transcribe_pcm_f32_bytes_async(
     let raw_tokens = run_soniox_transcription(
         soniox_api_key,
         language,
+        context_json,
         prepared.s16le,
         cancel.clone(),
         &artifact_reference,
@@ -638,6 +642,7 @@ where
 async fn run_soniox_transcription(
     api_key: &str,
     language: Option<&str>,
+    context_json: Option<&str>,
     s16_pcm: Vec<u8>,
     cancel: CancellationToken,
     artifact_reference: &str,
@@ -664,6 +669,7 @@ async fn run_soniox_transcription(
         model: engine.post_stop_model_id,
         language_hints,
         enable_language_identification: enable_lang_id,
+        context_json,
         client_reference_id: Some(artifact_reference.to_string()),
         overall_deadline,
         poll_interval: SONIOX_ASYNC_POLL_INTERVAL,
@@ -813,8 +819,16 @@ mod tests {
         let cancel = CancellationToken::new();
         cancel.cancel();
 
-        let result =
-            run_soniox_transcription("unused", None, Vec::new(), cancel, "zulangue-t1", None).await;
+        let result = run_soniox_transcription(
+            "unused",
+            None,
+            None,
+            Vec::new(),
+            cancel,
+            "zulangue-t1",
+            None,
+        )
+        .await;
         assert!(matches!(result, Err(SonioxTranscriptionError::Cancelled)));
     }
 

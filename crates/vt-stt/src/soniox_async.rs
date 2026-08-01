@@ -34,6 +34,10 @@ pub struct SonioxAsyncRequest<'a> {
     pub model: &'a str,
     pub language_hints: Vec<String>,
     pub enable_language_identification: bool,
+    /// Exact Context snapshot frozen when the recording started. Keeping the
+    /// serialized form avoids recompiling mutable knowledge-base contents for
+    /// a later asynchronous transcription.
+    pub context_json: Option<&'a str>,
     /// 稳定的工件标签(如 `zulangue-{task_id}`):作为上传文件名与转录任务的
     /// client_reference_id,启动扫尾据此识别崩溃遗留的远端工件。
     pub client_reference_id: Option<String>,
@@ -294,6 +298,12 @@ async fn create_transcription(
     }
     if request.enable_language_identification {
         body["enable_language_identification"] = serde_json::json!(true);
+    }
+    if let Some(context_json) = request.context_json {
+        let context = serde_json::from_str(context_json).map_err(|error| {
+            SttError::ParseError(format!("invalid frozen Soniox context: {error}"))
+        })?;
+        body["context"] = context;
     }
     if let Some(reference) = request.client_reference_id.as_deref() {
         body["client_reference_id"] = serde_json::json!(reference);

@@ -869,7 +869,7 @@
 "capture.settings.context.confirm_exact" = "确认用于实时转录";
 "capture.settings.context.applied" = "本场已使用";
 "capture.settings.context.not_applied" = "本场未使用";
-"capture.settings.context.pack_detail" = "添加术语、人物、机构和会议背景，帮助提高转录准确度。";
+"capture.settings.context.pack_detail" = "选择后会自动记住，并用于实时转录和异步转录。添加术语、人物、机构和会议背景，可提高转录准确度。";
 "capture.settings.context.packs" = "资料范围";
 "capture.settings.context.no_packs" = "暂无参考资料。";
 "capture.settings.context.private_pack" = "当前 Notebook";
@@ -878,7 +878,7 @@
 "capture.settings.context.selected" = "正在编辑";
 "capture.settings.context.not_selected" = "未选中";
 "capture.settings.context.always_bound" = "默认使用";
-"capture.settings.context.select_pack_hint" = "查看和编辑这组资料。";
+"capture.settings.context.select_pack_hint" = "选择并用于实时转录和异步转录。";
 "capture.settings.context.bind_pack" = "在当前 Notebook 使用 %@";
 "capture.settings.context.delete_pack" = "删除 %@";
 "capture.settings.context.delete_pack_confirm" = "要删除这个资料库吗？所有使用它的 Notebook 都会受到影响。";
