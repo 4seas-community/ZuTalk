@@ -1060,3 +1060,7 @@
 "capture.settings.context.current" = "当前知识库";
 "capture.settings.context.no_selection" = "未选择";
 "capture.settings.context.choose" = "切换";
+"knowledge.import_json" = "导入 JSON";
+"knowledge.import_json.message" = "选择一个 Zulangue 知识库 JSON 文件（.zulangue-pack.json）。";
+"knowledge.import_json.done" = "知识库已导入";
+"knowledge.import_json.failed" = "无法导入知识库";

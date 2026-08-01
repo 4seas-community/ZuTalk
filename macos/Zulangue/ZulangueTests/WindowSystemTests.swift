@@ -599,19 +599,16 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(context.translationTerms.first?.target, "参与式观察")
     }
 
-    func testKnowledgeProfileStore_softDeleteRemainsRecoverableOnDisk() {
-        let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("knowledge-profile-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: fileURL) }
+    func testKnowledgeProfileStore_hasNoPlaintextSidecarAuthority() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue/Pages/KnowledgeLibraryPage.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        let store = KnowledgeProfileStore(fileURL: fileURL)
-        let id = store.create(name: "Recoverable")
-        store.delete(id: id)
-
-        let reloaded = KnowledgeProfileStore(fileURL: fileURL)
-        XCTAssertTrue(reloaded.activeProfiles.isEmpty)
-        XCTAssertEqual(reloaded.profiles.count, 1)
-        XCTAssertNotNil(reloaded.profiles.first?.deletedAt)
+        XCTAssertTrue(source.contains("private let client: any NotebookCaptureClienting"))
+        XCTAssertFalse(source.contains("init(fileURL:"))
+        XCTAssertFalse(source.contains("knowledge-profiles.json"))
     }
 
     func testMainShellViewV2_placesTheSidebarCollapseControlInTheHeader() throws {

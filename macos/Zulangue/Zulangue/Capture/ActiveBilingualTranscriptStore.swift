@@ -761,6 +761,13 @@ protocol NotebookCaptureClienting: AnyObject {
     func updateNotebookCaptureProfile(_ profile: NotebookCaptureProfileDTO) throws -> NotebookCaptureProfileDTO
     func previewNotebookCaptureContext(notebookId: String) throws -> NotebookCaptureContextPreviewDTO
     func listNotebookContextPacks(notebookId: String) throws -> [NotebookContextPackDTO]
+    func listLibraryContextPacks() throws -> [NotebookContextPackDTO]
+    func readLibraryContextPack(packId: String) throws -> String
+    func replaceLibraryContextPack(
+        packId: String,
+        expectedRevision: UInt64,
+        documentJson: String
+    ) throws -> NotebookContextPackDTO
     func createLibraryContextPack(title: String) throws -> NotebookContextPackDTO
     func copyNotebookPrivateContextToLibrary(
         notebookId: String,
@@ -851,6 +858,22 @@ protocol NotebookCaptureClienting: AnyObject {
 }
 
 extension NotebookCaptureClienting {
+    func listLibraryContextPacks() throws -> [NotebookContextPackDTO] {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
+    func readLibraryContextPack(packId: String) throws -> String {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
+    func replaceLibraryContextPack(
+        packId: String,
+        expectedRevision: UInt64,
+        documentJson: String
+    ) throws -> NotebookContextPackDTO {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
     /// Keeps lightweight test/platform clients source-compatible while the
     /// live Rust adapter remains the only production history implementation.
     func listNotebookCaptureHistory(
@@ -1127,6 +1150,26 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
 
     func listNotebookContextPacks(notebookId: String) throws -> [NotebookContextPackDTO] {
         try requireCore().listNotebookContextPacks(notebookId: notebookId).map(Self.map)
+    }
+
+    func listLibraryContextPacks() throws -> [NotebookContextPackDTO] {
+        try requireCore().listLibraryContextPacks().map(Self.map)
+    }
+
+    func readLibraryContextPack(packId: String) throws -> String {
+        try requireCore().readLibraryContextPack(packId: packId)
+    }
+
+    func replaceLibraryContextPack(
+        packId: String,
+        expectedRevision: UInt64,
+        documentJson: String
+    ) throws -> NotebookContextPackDTO {
+        Self.map(try requireCore().replaceLibraryContextPack(
+            packId: packId,
+            expectedRevision: expectedRevision,
+            documentJson: documentJson
+        ))
     }
 
     func createLibraryContextPack(title: String) throws -> NotebookContextPackDTO {
@@ -1935,6 +1978,22 @@ final class UnavailableNotebookCaptureClient: NotebookCaptureClienting {
     }
 
     func listNotebookContextPacks(notebookId: String) throws -> [NotebookContextPackDTO] {
+    func listLibraryContextPacks() throws -> [NotebookContextPackDTO] {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
+    func readLibraryContextPack(packId: String) throws -> String {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
+    func replaceLibraryContextPack(
+        packId: String,
+        expectedRevision: UInt64,
+        documentJson: String
+    ) throws -> NotebookContextPackDTO {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
         throw NotebookCaptureClientError.ffiUnavailable
     }
 

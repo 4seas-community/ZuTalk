@@ -27,6 +27,8 @@ use vt_store::notebook_capture_store::{
     SessionPurgeJob, SessionPurgePlan, UtteranceAlignment, UtteranceCompletion, UtteranceLane,
     UtteranceVariantRole, UtteranceVariantState,
 };
+#[cfg(test)]
+use vt_store::ContextPackDocumentSource;
 use vt_store::{
     ContextCompilation, ContextContentKind, ContextOmissionReason, ContextPackDocument,
     ContextPackRecord, ContextPackScope, ContextPackSourceRecord, ContextPackStore, ContextReceipt,
@@ -5050,6 +5052,57 @@ impl ZulangueCore {
         Ok(result)
     }
 
+    /// Lists active Library Packs without requiring a Notebook selection.
+    pub fn list_library_context_packs(&self) -> Result<Vec<FfiContextPackInfo>, CoreError> {
+        self.context_pack_store
+            .list_library_packs()
+            .map(|packs| {
+                packs
+                    .into_iter()
+                    .map(|pack| context_pack_info(pack, None))
+                    .collect()
+            })
+            .map_err(store_error)
+    }
+
+    /// Reads one active Library Pack as editable, human-readable JSON. Empty
+    /// `sources` are valid here even though explicit file export rejects them.
+    pub fn read_library_context_pack(&self, pack_id: String) -> Result<String, CoreError> {
+        let document = self
+            .context_pack_store
+            .read_library_pack_document(&pack_id)
+            .map_err(store_error)?;
+        serde_json::to_string_pretty(&document).map_err(|error| CoreError::InternalError {
+            message: format!("serialize editable Context Pack document: {error}"),
+        })
+    }
+
+    /// Replaces one active Library Pack's title and sources from editable JSON
+    /// while retaining its identity and Notebook bindings.
+    pub fn replace_library_context_pack(
+        &self,
+        pack_id: String,
+        expected_revision: u64,
+        document_json: String,
+    ) -> Result<FfiContextPackInfo, CoreError> {
+        if document_json.len() > CONTEXT_PACK_DOCUMENT_MAX_BYTES {
+            return Err(CoreError::ValidationFailed {
+                message: format!(
+                    "Context Pack document exceeds the {}-byte safety limit",
+                    CONTEXT_PACK_DOCUMENT_MAX_BYTES
+                ),
+            });
+        }
+        let document: ContextPackDocument =
+            serde_json::from_str(&document_json).map_err(|error| CoreError::ValidationFailed {
+                message: format!("this is not a Zulangue Context Pack document: {error}"),
+            })?;
+        self.context_pack_store
+            .replace_library_pack_document(&pack_id, expected_revision, &document)
+            .map(|pack| context_pack_info(pack, None))
+            .map_err(store_error)
+    }
+
     pub fn create_library_context_pack(
         &self,
         title: String,
@@ -9876,6 +9929,86 @@ mod tests {
             descriptor.post_stop_execution,
             FfiNotebookPostStopExecution::AsyncFileApi
         );
+    }
+
+    #[test]
+    fn library_context_pack_document_ffi_lists_reads_and_replaces_json() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Knowledge settings".into()))
+            .unwrap();
+        let pack = core
+            .create_library_context_pack("New knowledge base".into())
+            .unwrap();
+        core.set_notebook_context_pack_binding(notebook.id.clone(), pack.id.clone(), Some(4))
+            .unwrap();
+
+        let notebook_packs = core
+            .list_notebook_context_packs(notebook.id.clone())
+            .unwrap();
+        assert_eq!(notebook_packs.len(), 2);
+        let library_packs = core.list_library_context_packs().unwrap();
+        assert_eq!(library_packs.len(), 1);
+        assert_eq!(library_packs[0].id, pack.id);
+        assert_eq!(library_packs[0].scope, "library");
+        assert_eq!(library_packs[0].bound_position, None);
+
+        let empty_document: ContextPackDocument =
+            serde_json::from_str(&core.read_library_context_pack(pack.id.clone()).unwrap())
+                .unwrap();
+        assert_eq!(
+            empty_document.schema,
+            vt_store::CONTEXT_PACK_DOCUMENT_SCHEMA
+        );
+        assert_eq!(empty_document.title, "New knowledge base");
+        assert!(empty_document.sources.is_empty());
+
+        let content = "Humanity Forum field context".to_string();
+        let document = ContextPackDocument {
+            schema: vt_store::CONTEXT_PACK_DOCUMENT_SCHEMA.into(),
+            title: "人类学论坛".into(),
+            sources: vec![ContextPackDocumentSource {
+                title: "Background".into(),
+                format: ContextSourceFormat::Markdown,
+                content_kind: ContextContentKind::Text,
+                sha256: format!("{:x}", Sha256::digest(content.as_bytes())),
+                content,
+            }],
+        };
+        let replaced = core
+            .replace_library_context_pack(
+                pack.id.clone(),
+                pack.revision,
+                serde_json::to_string_pretty(&document).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(replaced.id, pack.id);
+        assert_eq!(replaced.title, "人类学论坛");
+        assert_eq!(replaced.revision, pack.revision + 1);
+        let round_trip: ContextPackDocument =
+            serde_json::from_str(&core.read_library_context_pack(pack.id.clone()).unwrap())
+                .unwrap();
+        assert_eq!(round_trip, document);
+        let bound_pack = core
+            .list_notebook_context_packs(notebook.id)
+            .unwrap()
+            .into_iter()
+            .find(|candidate| candidate.id == pack.id)
+            .unwrap();
+        assert_eq!(bound_pack.bound_position, Some(4));
+
+        assert!(matches!(
+            core.replace_library_context_pack(
+                pack.id.clone(),
+                replaced.revision,
+                "not JSON".into()
+            ),
+            Err(CoreError::ValidationFailed { .. })
+        ));
+        let after_rejection: ContextPackDocument =
+            serde_json::from_str(&core.read_library_context_pack(pack.id).unwrap()).unwrap();
+        assert_eq!(after_rejection, document);
     }
 
     #[test]

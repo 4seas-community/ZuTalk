@@ -1018,3 +1018,7 @@
 "capture.settings.retention.high.detail" = "Audio und zugehörigen Schlüssel löschen, nachdem eine ausdrücklich angeforderte Async-Transkription erfolgreich war.";
 "capture.settings.retention.maximum.title" = "Nach jedem Transkript löschen";
 "capture.settings.retention.maximum.detail" = "Audio und zugehörigen Schlüssel löschen, sobald dauerhafte Transkriptfakten vorliegen. Wenn kein Transkript existiert, wird die einzige Quelle behalten, um Datenverlust zu verhindern.";
+"knowledge.import_json" = "JSON importieren";
+"knowledge.import_json.message" = "Wähle eine Zulangue-Wissensdatenbank als JSON-Datei (.zulangue-pack.json).";
+"knowledge.import_json.done" = "Wissensdatenbank importiert";
+"knowledge.import_json.failed" = "Wissensdatenbank konnte nicht importiert werden";

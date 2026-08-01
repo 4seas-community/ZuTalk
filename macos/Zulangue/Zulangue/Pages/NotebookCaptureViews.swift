@@ -1,7 +1,6 @@
 import AppKit
 import Combine
 import SwiftUI
-import UniformTypeIdentifiers
 
 // MARK: - Notebook-only capture controls
 
@@ -1521,14 +1520,6 @@ struct NotebookCaptureSettingsView: View {
     @ObservedObject private var inputDevices = AudioInputDeviceStore.shared
     let onOpenRealtimeControls: () -> Void
     @State private var isReviewingContext = false
-    @State private var pasteTitle = ""
-    @State private var pasteText = ""
-    @State private var contextContentKind = "general"
-    @State private var isComposingPaste = false
-    @State private var libraryTitle = ""
-    @State private var isCreatingLibrary = false
-    @State private var packPendingDeletion: NotebookContextPackDTO?
-    @State private var sourcePendingDeletion: NotebookContextPackSourceDTO?
     @State private var isLoadingContextPacks = true
     @State private var contextLoadError: String?
     @State private var contextIntentQueue = NotebookCaptureSettingsIntentQueue()
@@ -1597,36 +1588,6 @@ struct NotebookCaptureSettingsView: View {
         }
         .onChange(of: capture.contextPreview?.digest) { _, digest in
             scheduleContextIntent(.contextDigestChanged(digest))
-        }
-        .confirmationDialog(
-            String(localized: "capture.settings.context.delete_pack_confirm"),
-            isPresented: Binding(
-                get: { packPendingDeletion != nil },
-                set: { if !$0 { packPendingDeletion = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "common.delete"), role: .destructive) {
-                deletePendingPack()
-            }
-            Button(String(localized: "common.cancel"), role: .cancel) {
-                packPendingDeletion = nil
-            }
-        }
-        .confirmationDialog(
-            String(localized: "capture.settings.context.delete_source_confirm"),
-            isPresented: Binding(
-                get: { sourcePendingDeletion != nil },
-                set: { if !$0 { sourcePendingDeletion = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "common.delete"), role: .destructive) {
-                deletePendingSource()
-            }
-            Button(String(localized: "common.cancel"), role: .cancel) {
-                sourcePendingDeletion = nil
-            }
         }
     }
 
@@ -2119,274 +2080,6 @@ struct NotebookCaptureSettingsView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private var contextPackList: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text(String(localized: "capture.settings.context.packs"))
-                .font(.captionMedium)
-                .foregroundColor(.bpLine)
-
-            if capture.contextPacks.isEmpty {
-                Label(
-                    String(localized: "capture.settings.context.no_packs"),
-                    systemImage: "tray"
-                )
-                .font(.caption)
-                .foregroundColor(.textOnBpDim)
-            } else {
-                ForEach(capture.contextPacks) { pack in
-                    contextPackRow(pack)
-                }
-            }
-
-            HStack(spacing: Spacing.sm) {
-                Button {
-                    isCreatingLibrary = true
-                } label: {
-                    Label(
-                        String(localized: "capture.settings.context.new_library"),
-                        systemImage: "plus"
-                    )
-                    .font(.caption)
-                }
-                .buttonStyle(.bordered)
-                .popover(isPresented: $isCreatingLibrary, arrowEdge: .bottom) {
-                    libraryCreationPopover
-                }
-
-                Button {
-                    chooseContextPackToImport()
-                } label: {
-                    Label(
-                        String(localized: "capture.settings.context.import_pack"),
-                        systemImage: "square.and.arrow.down"
-                    )
-                    .font(.caption)
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-    }
-
-    private var libraryCreationPopover: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            TextField(
-                String(localized: "capture.settings.context.library_title"),
-                text: $libraryTitle
-            )
-            .textFieldStyle(.roundedBorder)
-            .frame(minWidth: 240)
-
-            HStack(spacing: Spacing.sm) {
-                Button(String(localized: "capture.settings.context.create_library")) {
-                    createLibraryPack(copyPrivate: false)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(trimmedLibraryTitle.isEmpty)
-
-                Button(String(localized: "capture.settings.context.copy_private")) {
-                    createLibraryPack(copyPrivate: true)
-                }
-                .disabled(trimmedLibraryTitle.isEmpty)
-            }
-            .font(.caption)
-        }
-        .padding(Spacing.md)
-    }
-
-    private func contextPackRow(_ pack: NotebookContextPackDTO) -> some View {
-        HStack(spacing: Spacing.sm) {
-            Button {
-                selectContextPack(pack.id)
-            } label: {
-                HStack(spacing: Spacing.sm) {
-                    Image(systemName: pack.isPrivate ? "doc.text.fill" : "books.vertical.fill")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(contextPackDisplayTitle(pack))
-                            .font(.captionMedium)
-                            .lineLimit(1)
-                        Text(pack.isPrivate
-                             ? String(localized: "capture.settings.context.current_notebook_detail")
-                             : String(localized: "capture.settings.context.library_pack"))
-                            .font(.system(size: 10))
-                            .foregroundColor(.textOnBpFaint)
-                    }
-                    Spacer()
-                    if capture.selectedContextPackId == pack.id {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.brandAccent)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel(Text(contextPackDisplayTitle(pack)))
-            .accessibilityValue(Text(contextPackAccessibilityValue(pack)))
-            .accessibilityHint(Text(String(localized: "capture.settings.context.select_pack_hint")))
-
-            if pack.isPrivate {
-                Text(String(localized: "capture.settings.context.always_bound"))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.textOnBpFaint)
-            } else {
-                Button(role: .destructive) {
-                    packPendingDeletion = pack
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.signalRed)
-                .accessibilityLabel(Text(String(
-                    format: String(localized: "capture.settings.context.delete_pack"),
-                    pack.title
-                )))
-            }
-        }
-        .padding(Spacing.sm)
-        .background(capture.selectedContextPackId == pack.id
-                    ? Color.brandAccent.opacity(0.09)
-                    : Color.bpBlueDeep.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-    }
-
-    @ViewBuilder
-    private var contextPackEditor: some View {
-        if let pack = selectedContextPack {
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                HStack {
-                    Text(String(
-                        format: String(localized: "capture.settings.context.editing_pack"),
-                        contextPackDisplayTitle(pack)
-                    ))
-                    .font(.captionMedium)
-                    .foregroundColor(.bpLine)
-                    Spacer()
-                    Button {
-                        exportContextPack(pack)
-                    } label: {
-                        Label(
-                            String(localized: "capture.settings.context.export_pack"),
-                            systemImage: "square.and.arrow.up"
-                        )
-                        .font(.caption)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(capture.contextSources.isEmpty)
-                }
-
-                if capture.contextSources.isEmpty {
-                    Label(
-                        String(localized: "capture.settings.context.no_sources"),
-                        systemImage: "tray"
-                    )
-                    .font(.caption)
-                    .foregroundColor(.textOnBpDim)
-                } else {
-                    ForEach(capture.contextSources) { source in
-                        contextSourceRow(source)
-                    }
-                }
-
-                if isComposingPaste {
-                    pasteComposer(packId: pack.id)
-                } else {
-                    Button {
-                        isComposingPaste = true
-                    } label: {
-                        Label(
-                            String(localized: "capture.settings.context.paste_content"),
-                            systemImage: "plus"
-                        )
-                        .font(.caption)
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
-        }
-    }
-
-    private func pasteComposer(packId: String) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            TextField(
-                String(localized: "capture.settings.context.paste_title"),
-                text: $pasteTitle
-            )
-            .textFieldStyle(.roundedBorder)
-
-            Picker(String(localized: "capture.settings.context.content_kind"), selection: $contextContentKind) {
-                Text(String(localized: "capture.settings.context.kind_general")).tag("general")
-                Text(String(localized: "capture.settings.context.kind_terms")).tag("terms")
-                Text(String(localized: "capture.settings.context.kind_text")).tag("text")
-            }
-            .pickerStyle(.segmented)
-
-            TextEditor(text: $pasteText)
-                .font(.system(size: 11, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .padding(Spacing.xs)
-                .frame(minHeight: 84, maxHeight: 140)
-                .background(Color.bpBlueDeep.opacity(0.6))
-                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-                .accessibilityLabel(Text(String(localized: "capture.settings.context.paste_content")))
-
-            HStack {
-                Text(String(localized: "capture.settings.context.import_limits"))
-                    .font(.system(size: 10))
-                    .foregroundColor(.textOnBpFaint)
-                Spacer()
-                Button(String(localized: "common.cancel")) {
-                    isComposingPaste = false
-                }
-                Button(String(localized: "capture.settings.context.add_paste")) {
-                    importPastedContext(packId: packId)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(trimmedPasteTitle.isEmpty || trimmedPasteText.isEmpty)
-            }
-        }
-        .padding(Spacing.sm)
-        .background(Color.bpBlueDeep.opacity(0.3))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-    }
-
-    private func contextSourceRow(_ source: NotebookContextPackSourceDTO) -> some View {
-        HStack(spacing: Spacing.sm) {
-            Image(systemName: source.format == "translation_csv"
-                  ? "arrow.left.arrow.right.square"
-                  : "doc.text")
-                .foregroundColor(.textOnBpDim)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(source.title)
-                    .font(.caption)
-                    .foregroundColor(.bpLine)
-                    .lineLimit(1)
-                Text("\(source.contentKind) · \(ByteCountFormatter.string(fromByteCount: Int64(source.plaintextBytes), countStyle: .file))")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.textOnBpFaint)
-            }
-            Spacer()
-            if source.trusted == false {
-                Label(
-                    String(localized: "capture.settings.context.untrusted"),
-                    systemImage: "exclamationmark.shield.fill"
-                )
-                .font(.system(size: 10))
-                .foregroundColor(.signalAmber)
-            }
-            Button(role: .destructive) {
-                sourcePendingDeletion = source
-            } label: {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(.signalRed)
-            .accessibilityLabel(Text(String(
-                format: String(localized: "capture.settings.context.delete_source"),
-                source.title
-            )))
-        }
-    }
-
     private var postStopRemoteProcessingSection: some View {
         settingsCard(
             title: String(localized: "capture.settings.after_stop.title"),
@@ -2410,16 +2103,6 @@ struct NotebookCaptureSettingsView: View {
         pack.isPrivate
             ? String(localized: "capture.settings.context.private_pack")
             : pack.title
-    }
-
-    private func contextPackAccessibilityValue(_ pack: NotebookContextPackDTO) -> String {
-        let scope = pack.isPrivate
-            ? String(localized: "capture.settings.context.private_pack")
-            : String(localized: "capture.settings.context.library_pack")
-        let selection = capture.selectedContextPackId == pack.id
-            ? String(localized: "capture.settings.context.selected")
-            : String(localized: "capture.settings.context.not_selected")
-        return "\(scope), \(selection)"
     }
 
     private var contextEgressBinding: Binding<Bool> {
@@ -2587,18 +2270,6 @@ struct NotebookCaptureSettingsView: View {
         return capture.contextPacks.first(where: { $0.id == id })
     }
 
-    private var trimmedLibraryTitle: String {
-        libraryTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var trimmedPasteTitle: String {
-        pasteTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var trimmedPasteText: String {
-        pasteText.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private func selectContextPack(_ packId: String) {
         do {
             try capture.selectContextPackForTranscription(packId, notebookId: notebookId)
@@ -2618,118 +2289,6 @@ struct NotebookCaptureSettingsView: View {
                 notebookId: notebookId,
                 packId: packId,
                 isBound: bound
-            )
-            resetContextEgressConsent()
-        } catch {
-            showContextError(error)
-        }
-    }
-
-    private func createLibraryPack(copyPrivate: Bool) {
-        let title = trimmedLibraryTitle
-        guard title.isEmpty == false else { return }
-        do {
-            if copyPrivate {
-                _ = try capture.copyPrivateContextToLibrary(
-                    notebookId: notebookId,
-                    title: title
-                )
-            } else {
-                _ = try capture.createLibraryContextPack(title: title, notebookId: notebookId)
-            }
-            libraryTitle = ""
-            isCreatingLibrary = false
-            resetContextEgressConsent()
-        } catch {
-            showContextError(error)
-        }
-    }
-
-    private func importPastedContext(packId: String) {
-        do {
-            try capture.importContextText(
-                notebookId: notebookId,
-                packId: packId,
-                title: trimmedPasteTitle,
-                text: trimmedPasteText,
-                contentKind: contextContentKind
-            )
-            pasteTitle = ""
-            pasteText = ""
-            isComposingPaste = false
-            resetContextEgressConsent()
-        } catch {
-            showContextError(error)
-        }
-    }
-
-    /// Writes the selected Pack out as one shareable file. The export leaves
-    /// the Pack's encryption boundary, so the save panel says so plainly
-    /// rather than burying it.
-    private func exportContextPack(_ pack: NotebookContextPackDTO) {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType.json]
-        panel.nameFieldStringValue = "\(contextPackDisplayTitle(pack)).zulangue-pack.json"
-        panel.message = String(localized: "capture.settings.context.export_pack_message")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let count = try capture.exportContextPack(
-                notebookId: notebookId,
-                packId: pack.id,
-                destinationPath: url.path
-            )
-            ToastCenter.shared.success(String(
-                format: String(localized: "capture.settings.context.export_pack_done"),
-                Int(count)
-            ))
-        } catch {
-            showContextError(error)
-        }
-    }
-
-    /// Loads a Pack file into a brand-new Library Pack. The new Pack gets its
-    /// own ID and its own key; nothing is merged into an existing Pack.
-    private func chooseContextPackToImport() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = [UTType.json]
-        panel.message = String(localized: "capture.settings.context.import_pack_message")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            let pack = try capture.importContextPack(
-                notebookId: notebookId,
-                sourcePath: url.path
-            )
-            resetContextEgressConsent()
-            ToastCenter.shared.success(String(
-                format: String(localized: "capture.settings.context.import_pack_done"),
-                pack.title
-            ))
-        } catch {
-            showContextError(error)
-        }
-    }
-
-    private func deletePendingPack() {
-        guard let pack = packPendingDeletion else { return }
-        defer { packPendingDeletion = nil }
-        do {
-            try capture.deleteLibraryContextPack(pack: pack, notebookId: notebookId)
-            resetContextEgressConsent()
-        } catch {
-            showContextError(error)
-        }
-    }
-
-    private func deletePendingSource() {
-        guard let source = sourcePendingDeletion else { return }
-        defer { sourcePendingDeletion = nil }
-        do {
-            try capture.deleteContextSource(
-                notebookId: notebookId,
-                sourceId: source.id,
-                packId: source.packId
             )
             resetContextEgressConsent()
         } catch {

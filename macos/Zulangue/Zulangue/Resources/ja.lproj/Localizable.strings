@@ -1019,3 +1019,7 @@
 "capture.settings.retention.high.detail" = "明示的な非同期文字起こしが成功した後、音声と鍵を削除します。";
 "capture.settings.retention.maximum.title" = "文字起こし後すぐ削除";
 "capture.settings.retention.maximum.detail" = "永続的な文字起こし事実が得られ次第、音声と鍵を削除します。文字起こしがない場合は、データ損失を防ぐため唯一の原本を保持します。";
+"knowledge.import_json" = "JSONを読み込む";
+"knowledge.import_json.message" = "Zulangue知識ベースのJSONファイル（.zulangue-pack.json）を選択してください。";
+"knowledge.import_json.done" = "知識ベースを読み込みました";
+"knowledge.import_json.failed" = "知識ベースを読み込めませんでした";

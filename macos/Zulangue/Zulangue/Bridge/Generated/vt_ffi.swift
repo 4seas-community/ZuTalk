@@ -871,6 +871,11 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func listContextPackSources(notebookId: String, packId: String) throws  -> [FfiContextPackSourceInfo]
 
     /**
+     * Lists active Library Packs without requiring a Notebook selection.
+     */
+    func listLibraryContextPacks() throws  -> [FfiContextPackInfo]
+
+    /**
      * Rebuilds the complete visible recording history for one Notebook.
      * Ordering is stable by capture `created_at`, then run ID; a selected
      * session in Swift is therefore a focus hint rather than the read scope.
@@ -896,6 +901,18 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func projectNotebookRealtimeIncremental(sessionId: String) throws
 
     func pushNotebookCaptureSession(sessionId: String, audioData: Data) throws
+
+    /**
+     * Reads one active Library Pack as editable, human-readable JSON. Empty
+     * `sources` are valid here even though explicit file export rejects them.
+     */
+    func readLibraryContextPack(packId: String) throws  -> String
+
+    /**
+     * Replaces one active Library Pack's title and sources from editable JSON
+     * while retaining its identity and Notebook bindings.
+     */
+    func replaceLibraryContextPack(packId: String, expectedRevision: UInt64, documentJson: String) throws  -> FfiContextPackInfo
 
     func replaceNotebookUtteranceLane(utteranceId: String, laneLanguage: String, text: String, expectedRevision: UInt64) throws  -> FfiNotebookCaptureUtterance
 
@@ -1703,6 +1720,17 @@ open func listContextPackSources(notebookId: String, packId: String)throws  -> [
 }
 
     /**
+     * Lists active Library Packs without requiring a Notebook selection.
+     */
+open func listLibraryContextPacks()throws  -> [FfiContextPackInfo]  {
+    return try  FfiConverterSequenceTypeFfiContextPackInfo.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_list_library_context_packs(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
      * Rebuilds the complete visible recording history for one Notebook.
      * Ordering is stable by capture `created_at`, then run ID; a selected
      * session in Swift is therefore a focus hint rather than the read scope.
@@ -1776,6 +1804,34 @@ open func pushNotebookCaptureSession(sessionId: String, audioData: Data)throws  
         FfiConverterData.lower(audioData),$0
     )
 }
+}
+
+    /**
+     * Reads one active Library Pack as editable, human-readable JSON. Empty
+     * `sources` are valid here even though explicit file export rejects them.
+     */
+open func readLibraryContextPack(packId: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_read_library_context_pack(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(packId),$0
+    )
+})
+}
+
+    /**
+     * Replaces one active Library Pack's title and sources from editable JSON
+     * while retaining its identity and Notebook bindings.
+     */
+open func replaceLibraryContextPack(packId: String, expectedRevision: UInt64, documentJson: String)throws  -> FfiContextPackInfo  {
+    return try  FfiConverterTypeFfiContextPackInfo_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_replace_library_context_pack(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(packId),
+        FfiConverterUInt64.lower(expectedRevision),
+        FfiConverterString.lower(documentJson),$0
+    )
+})
 }
 
 open func replaceNotebookUtteranceLane(utteranceId: String, laneLanguage: String, text: String, expectedRevision: UInt64)throws  -> FfiNotebookCaptureUtterance  {
@@ -7918,6 +7974,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_list_context_pack_sources() != 41870) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_list_library_context_packs() != 11960) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebook_capture_history() != 32566) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7937,6 +7996,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_push_notebook_capture_session() != 3507) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_read_library_context_pack() != 14946) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_replace_library_context_pack() != 18309) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_replace_notebook_utterance_lane() != 4247) {

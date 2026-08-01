@@ -1060,3 +1060,7 @@
 "capture.settings.context.current" = "Current knowledge base";
 "capture.settings.context.no_selection" = "None selected";
 "capture.settings.context.choose" = "Change";
+"knowledge.import_json" = "Import JSON";
+"knowledge.import_json.message" = "Choose a Zulangue knowledge-base JSON file (.zulangue-pack.json).";
+"knowledge.import_json.done" = "Knowledge base imported";
+"knowledge.import_json.failed" = "Couldn’t import knowledge base";

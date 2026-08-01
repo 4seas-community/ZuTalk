@@ -5156,6 +5156,185 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testKnowledgeLibraryImportsPackJSONAndPersistsEditsThroughRustBoundary() throws {
+        let general = #"{"topic":"Anthropology","location":"Chiang Mai"}"#
+        let document: [String: Any] = [
+            "schema": "zulangue.context-pack.v1",
+            "title": "人类学论坛",
+            "sources": [
+                [
+                    "title": "概况",
+                    "format": "text",
+                    "content_kind": "general",
+                    "sha256": String(repeating: "0", count: 64),
+                    "content": general,
+                ],
+                [
+                    "title": "专有词",
+                    "format": "text",
+                    "content_kind": "terms",
+                    "sha256": String(repeating: "1", count: 64),
+                    "content": "Zuzalu\n参与式观察",
+                ],
+                [
+                    "title": "固定译法",
+                    "format": "translation_csv",
+                    "content_kind": "translation_terms",
+                    "sha256": String(repeating: "2", count: 64),
+                    "content": "en,zh\nparticipant observation,参与式观察",
+                ],
+                [
+                    "title": "背景 A",
+                    "format": "markdown",
+                    "content_kind": "text",
+                    "sha256": String(repeating: "3", count: 64),
+                    "content": "第一段背景。",
+                ],
+                [
+                    "title": "背景 B",
+                    "format": "text",
+                    "content_kind": "text",
+                    "sha256": String(repeating: "4", count: 64),
+                    "content": "第二段背景。",
+                ],
+            ],
+        ]
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("knowledge-import-\(UUID().uuidString).zulangue-pack.json")
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys])
+            .write(to: fileURL, options: .atomic)
+
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = KnowledgeProfileStore(client: client)
+        let importedID = try store.importJSON(from: fileURL)
+        var imported = try XCTUnwrap(store.activeProfiles.first(where: { $0.id == importedID }))
+
+        XCTAssertEqual(imported.name, "人类学论坛")
+        XCTAssertEqual(imported.general.topic, "Anthropology")
+        XCTAssertEqual(imported.general.location, "Chiang Mai")
+        XCTAssertEqual(imported.terms.map(\.value), ["Zuzalu", "参与式观察"])
+        XCTAssertEqual(imported.translationTerms.first?.targetText, "参与式观察")
+        XCTAssertEqual(imported.backgroundText, "第一段背景。\n\n第二段背景。")
+
+        imported.name = "人类学论坛（清迈）"
+        imported = try XCTUnwrap(store.update(imported))
+        let nameOnlyReplacement = try XCTUnwrap(client.lastLibraryReplacementJSON)
+        let nameOnlyObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(nameOnlyReplacement.utf8)) as? [String: Any]
+        )
+        let preservedSources = try XCTUnwrap(nameOnlyObject["sources"] as? [[String: Any]])
+        XCTAssertEqual(
+            preservedSources.compactMap { $0["title"] as? String },
+            ["概况", "专有词", "固定译法", "背景 A", "背景 B"]
+        )
+        XCTAssertEqual(
+            preservedSources.compactMap { $0["sha256"] as? String },
+            (0...4).map { String(repeating: String($0), count: 64) }
+        )
+
+        imported.summary = "帮助识别人类学论坛中的专有名词"
+        imported.terms.append(.init(value: "田野调查"))
+        let saved = try XCTUnwrap(store.update(imported))
+        XCTAssertEqual(saved.revision, 2)
+
+        let replacement = try XCTUnwrap(client.lastLibraryReplacementJSON)
+        let replacementObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(replacement.utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(replacementObject["schema"] as? String, "zulangue.context-pack.v1")
+        let replacementSources = try XCTUnwrap(replacementObject["sources"] as? [[String: Any]])
+        XCTAssertEqual(Set(replacementSources.compactMap { $0["content_kind"] as? String }), [
+            "general", "terms", "text", "translation_terms",
+        ])
+        XCTAssertTrue(replacementSources.allSatisfy {
+            ($0["sha256"] as? String)?.count == 64
+        })
+        let updatedGeneral = try XCTUnwrap(replacementSources.first {
+            ($0["content_kind"] as? String) == "general"
+        })
+        XCTAssertEqual(updatedGeneral["title"] as? String, "概况")
+        XCTAssertEqual(updatedGeneral["format"] as? String, "text")
+        let updatedTerms = try XCTUnwrap(replacementSources.first {
+            ($0["content_kind"] as? String) == "terms"
+        })
+        XCTAssertEqual(updatedTerms["title"] as? String, "专有词")
+        XCTAssertEqual(updatedTerms["format"] as? String, "text")
+        let preservedBackground = replacementSources.filter {
+            ($0["content_kind"] as? String) == "text"
+        }
+        XCTAssertEqual(
+            preservedBackground.compactMap { $0["title"] as? String },
+            ["背景 A", "背景 B"]
+        )
+        XCTAssertEqual(
+            preservedBackground.compactMap { $0["format"] as? String },
+            ["markdown", "text"]
+        )
+        let preservedTranslation = try XCTUnwrap(replacementSources.first {
+            ($0["content_kind"] as? String) == "translation_terms"
+        })
+        XCTAssertEqual(preservedTranslation["title"] as? String, "固定译法")
+        XCTAssertEqual(preservedTranslation["sha256"] as? String, String(repeating: "2", count: 64))
+
+        let reopened = KnowledgeProfileStore(client: client)
+        let restored = try XCTUnwrap(reopened.activeProfiles.first(where: { $0.id == importedID }))
+        XCTAssertEqual(restored.summary, imported.summary)
+        XCTAssertEqual(restored.backgroundText, imported.backgroundText)
+        XCTAssertTrue(restored.terms.contains(where: { $0.value == "田野调查" }))
+
+        var ambiguousBackgroundEdit = restored
+        ambiguousBackgroundEdit.backgroundText = "论坛在清迈举行。"
+        XCTAssertNil(reopened.update(ambiguousBackgroundEdit))
+        XCTAssertTrue(reopened.persistenceError?.contains("multiple JSON sources") == true)
+        let afterAmbiguousEdit = KnowledgeProfileStore(client: client)
+        XCTAssertEqual(
+            afterAmbiguousEdit.activeProfiles.first(where: { $0.id == importedID })?.backgroundText,
+            restored.backgroundText,
+            "an ambiguous many-source edit must not replace or merge the imported sources"
+        )
+
+        client.libraryReplacementError = .ffiUnavailable
+        var rejected = restored
+        rejected.summary = "这次改动不应被伪装成已保存"
+        XCTAssertNil(reopened.update(rejected))
+        XCTAssertNotNil(reopened.persistenceError)
+        client.libraryReplacementError = nil
+        let afterFailure = KnowledgeProfileStore(client: client)
+        XCTAssertEqual(
+            afterFailure.activeProfiles.first(where: { $0.id == importedID })?.summary,
+            restored.summary
+        )
+    }
+
+    func testKnowledgeJSONImportLivesOutsideNotebookSettings() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue", isDirectory: true)
+        let knowledge = try String(
+            contentsOf: root.appendingPathComponent("Pages/KnowledgeLibraryPage.swift"),
+            encoding: .utf8
+        )
+        let captureSettings = try String(
+            contentsOf: root.appendingPathComponent("Pages/NotebookCaptureViews.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(knowledge.contains("knowledge.import_json"))
+        XCTAssertTrue(knowledge.contains("NSOpenPanel()"))
+        XCTAssertTrue(knowledge.contains("store.importJSON(from: url)"))
+        XCTAssertFalse(knowledge.contains("isOn: $term.isEnabled"))
+        XCTAssertTrue(knowledge.contains("guard saveNow() else { return }"))
+        XCTAssertTrue(knowledge.contains("capture.settings.autosave.save_failed"))
+        XCTAssertFalse(captureSettings.contains("chooseContextPackToImport"))
+        XCTAssertFalse(captureSettings.contains("contextPackEditor"))
+        XCTAssertFalse(captureSettings.contains("NSSavePanel()"))
+        XCTAssertTrue(captureSettings.contains("selectContextPackForTranscription"))
+        XCTAssertTrue(captureSettings.contains("requestContextPreview"))
+    }
+
+    @MainActor
     func testProfileSaveDoesNotCreateASecondContextPreparationGate() async throws {
         var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
         let client = FakeNotebookCaptureClient(profile: profile)
@@ -5891,7 +6070,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(captureViews.contains("capture.transcript.waiting_lane"))
         XCTAssertTrue(captureViews.contains("capture.transcript.unselected_language"))
         XCTAssertFalse(captureViews.contains("【超出当前语言对】"))
-        XCTAssertTrue(captureViews.contains(".accessibilityValue(Text(contextPackAccessibilityValue(pack)))"))
         XCTAssertTrue(captureViews.contains("capture.settings.context.selected"))
         XCTAssertTrue(captureViews.contains("capture.settings.context.not_selected"))
         XCTAssertTrue(captureViews.contains("NotebookCaptureProfileEditorModel"))
@@ -6845,6 +7023,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     var previewError: NotebookCaptureClientError?
     var contextPackListError: NotebookCaptureClientError?
     var contextSourceListError: NotebookCaptureClientError?
+    var libraryReplacementError: NotebookCaptureClientError?
     var profileUpdateError: NotebookCaptureClientError?
     var listUtterancesOverride: [NotebookCaptureUtteranceDTO]?
     var historyRuns: [NotebookCaptureHistoryRunDTO]
@@ -6864,6 +7043,9 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     private var lastStartedSessionId = "session-a"
     private var contextPacks: [NotebookContextPackDTO]
     private var contextSources: [String: [NotebookContextPackSourceDTO]] = [:]
+    private var libraryContextPacks: [NotebookContextPackDTO] = []
+    private var libraryDocuments: [String: String] = [:]
+    private(set) var lastLibraryReplacementJSON: String?
 
     var audioPushCount: Int { audioPushRecorder.value }
     var audioPushPayloads: [Data] { audioPushRecorder.values }
@@ -6942,9 +7124,51 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         return contextPacks
     }
 
+    func listLibraryContextPacks() throws -> [NotebookContextPackDTO] {
+        libraryContextPacks
+    }
+
+    func readLibraryContextPack(packId: String) throws -> String {
+        guard let document = libraryDocuments[packId] else {
+            throw NotebookCaptureClientError.ffiUnavailable
+        }
+        return document
+    }
+
+    func replaceLibraryContextPack(
+        packId: String,
+        expectedRevision: UInt64,
+        documentJson: String
+    ) throws -> NotebookContextPackDTO {
+        if let libraryReplacementError { throw libraryReplacementError }
+        guard let index = libraryContextPacks.firstIndex(where: {
+            $0.id == packId && $0.revision == expectedRevision
+        }) else {
+            throw NotebookCaptureClientError.ffiUnavailable
+        }
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(documentJson.utf8)) as? [String: Any]
+        )
+        let title = try XCTUnwrap(object["title"] as? String)
+        let old = libraryContextPacks[index]
+        let saved = NotebookContextPackDTO(
+            id: old.id,
+            scope: old.scope,
+            ownerNotebookId: nil,
+            title: title,
+            revision: old.revision + 1,
+            boundPosition: nil
+        )
+        libraryContextPacks[index] = saved
+        libraryDocuments[packId] = documentJson
+        lastLibraryReplacementJSON = documentJson
+        return saved
+    }
+
     func createLibraryContextPack(title: String) throws -> NotebookContextPackDTO {
+        let id = UUID().uuidString.lowercased()
         let pack = NotebookContextPackDTO(
-            id: "library-\(contextPacks.count)",
+            id: id,
             scope: "library",
             ownerNotebookId: nil,
             title: title,
@@ -6952,6 +7176,8 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
             boundPosition: nil
         )
         contextPacks.append(pack)
+        libraryContextPacks.append(pack)
+        libraryDocuments[id] = "{\"schema\":\"zulangue.context-pack.v1\",\"title\":\"\(title)\",\"sources\":[]}"
         return pack
     }
 
@@ -7027,16 +7253,23 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         sourcePath: String,
         titleOverride: String?
     ) throws -> NotebookContextPackDTO {
+        let rawDocument = try String(contentsOfFile: sourcePath, encoding: .utf8)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(rawDocument.utf8)) as? [String: Any]
+        )
+        let documentTitle = try XCTUnwrap(object["title"] as? String)
+        let id = UUID().uuidString.lowercased()
         let pack = NotebookContextPackDTO(
-            id: "imported-pack-\(contextPacks.count)",
+            id: id,
             scope: "library",
             ownerNotebookId: nil,
-            title: titleOverride ?? URL(fileURLWithPath: sourcePath)
-                .deletingPathExtension().lastPathComponent,
+            title: titleOverride ?? documentTitle,
             revision: 0,
             boundPosition: nil
         )
         contextPacks.append(pack)
+        libraryContextPacks.append(pack)
+        libraryDocuments[id] = rawDocument
         return pack
     }
 
@@ -7052,12 +7285,20 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     }
 
     func deleteLibraryContextPack(packId: String, expectedRevision: UInt64) throws -> Bool {
-        guard let index = contextPacks.firstIndex(where: { $0.id == packId && !$0.isPrivate }) else {
-            return false
+        var deleted = false
+        if let index = contextPacks.firstIndex(where: { $0.id == packId && !$0.isPrivate }) {
+            contextPacks.remove(at: index)
+            contextSources[packId] = nil
+            deleted = true
         }
-        contextPacks.remove(at: index)
-        contextSources[packId] = nil
-        return true
+        if let index = libraryContextPacks.firstIndex(where: {
+            $0.id == packId && $0.revision == expectedRevision
+        }) {
+            libraryContextPacks.remove(at: index)
+            libraryDocuments[packId] = nil
+            deleted = true
+        }
+        return deleted
     }
 
     func startNotebookCaptureSession(

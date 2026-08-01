@@ -1019,3 +1019,7 @@
 "capture.settings.retention.high.detail" = "Supprime l’audio et sa clé après la réussite d’une transcription asynchrone explicite.";
 "capture.settings.retention.maximum.title" = "Supprimer après toute transcription";
 "capture.settings.retention.maximum.detail" = "Supprime l’audio et sa clé dès que des données de transcription durables existent. Sans transcription, la seule source est conservée pour éviter toute perte de données.";
+"knowledge.import_json" = "Importer un JSON";
+"knowledge.import_json.message" = "Choisissez un fichier JSON de base de connaissances Zulangue (.zulangue-pack.json).";
+"knowledge.import_json.done" = "Base de connaissances importée";
+"knowledge.import_json.failed" = "Impossible d’importer la base de connaissances";

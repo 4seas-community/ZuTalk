@@ -645,32 +645,160 @@ impl ContextPackStore {
         pack_id: &str,
     ) -> Result<ContextPackDocument, ContextPackStoreError> {
         let pack = self.require_active_pack(pack_id)?;
-        let records = self.list_sources(pack_id)?;
-        if records.is_empty() {
+        self.materialize_pack_document(pack, true)
+    }
+
+    /// Reads one active Library Pack as an editable document. Unlike explicit
+    /// export, this intentionally permits an empty `sources` array so a newly
+    /// created Pack can be opened in settings before any content is added.
+    pub fn read_library_pack_document(
+        &self,
+        pack_id: &str,
+    ) -> Result<ContextPackDocument, ContextPackStoreError> {
+        let pack = self.require_active_pack(pack_id)?;
+        if pack.scope != ContextPackScope::Library {
+            return Err(ContextPackStoreError::Ownership(
+                "only Library Context Packs can be read as editable documents".into(),
+            ));
+        }
+        self.materialize_pack_document(pack, false)
+    }
+
+    /// Atomically replaces an active Library Pack's editable document while
+    /// retaining its Pack ID, encryption key, and Notebook bindings.
+    pub fn replace_library_pack_document(
+        &self,
+        pack_id: &str,
+        expected_revision: u64,
+        document: &ContextPackDocument,
+    ) -> Result<ContextPackRecord, ContextPackStoreError> {
+        if document.schema != CONTEXT_PACK_DOCUMENT_SCHEMA {
             return Err(ContextPackStoreError::Validation(format!(
-                "Context Pack '{}' has no sources to export",
-                pack.title
+                "unsupported Context Pack document schema '{}'",
+                document.schema
             )));
         }
-        let mut sources = Vec::with_capacity(records.len());
-        for record in records {
-            let plaintext = self.read_source_plaintext(&pack, &record)?;
-            let content = String::from_utf8(plaintext).map_err(|_| {
-                ContextPackStoreError::CorruptData(format!("source {} is not UTF-8", record.id))
-            })?;
-            sources.push(ContextPackDocumentSource {
-                title: record.title,
-                format: record.format,
-                content_kind: record.content_kind,
-                sha256: record.plaintext_sha256,
+
+        // Validate and serialize every source before opening the transaction.
+        // No existing row can change if any later source in the document is
+        // malformed or has been edited without updating its digest.
+        let mut prepared_sources = Vec::with_capacity(document.sources.len());
+        for (index, source) in document.sources.iter().enumerate() {
+            let content = source.content.as_bytes().to_vec();
+            let actual_sha256 = sha256_hex(&content);
+            if actual_sha256 != source.sha256 {
+                return Err(ContextPackStoreError::CorruptData(format!(
+                    "source '{}' digest mismatch: expected {}, got {actual_sha256}",
+                    source.title, source.sha256
+                )));
+            }
+            let input = NewContextSource {
+                title: source.title.clone(),
+                format: source.format,
+                content_kind: source.content_kind,
                 content,
+                metadata: serde_json::json!({"origin": "pack_document_replace"}),
+            };
+            let validated = validate_source(&input)?;
+            prepared_sources.push(PreparedDocumentSource {
+                title: normalize_title(&input.title, "Untitled Context Source").to_string(),
+                format: input.format,
+                content_kind: input.content_kind,
+                plaintext_bytes: usize_to_i64(input.content.len(), "plaintext_bytes")?,
+                content: input.content,
+                sha256: actual_sha256,
+                metadata_json: serde_json::to_string(&validated.metadata)?,
+                order_offset_nanos: i64::try_from(index).map_err(|_| {
+                    ContextPackStoreError::Validation(
+                        "Context Pack source count exceeds timestamp ordering range".into(),
+                    )
+                })?,
             });
         }
-        Ok(ContextPackDocument {
-            schema: CONTEXT_PACK_DOCUMENT_SCHEMA.to_string(),
-            title: pack.title,
-            sources,
-        })
+
+        let expected_revision_sql = u64_to_i64(expected_revision, "expected_revision")?;
+        let replacement_title =
+            normalize_title(&document.title, "Untitled Context Pack").to_string();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let pack = tx
+            .query_row(
+                "SELECT id, scope, owner_notebook_id, title, key_ref, revision,
+                        created_at, updated_at, deleted_at
+                 FROM context_packs WHERE id = ?1 AND deleted_at IS NULL",
+                [pack_id],
+                context_pack_from_row,
+            )
+            .optional()?
+            .ok_or_else(|| ContextPackStoreError::NotFound(format!("Context Pack {pack_id}")))?;
+        if pack.scope != ContextPackScope::Library {
+            return Err(ContextPackStoreError::Ownership(
+                "only Library Context Packs can be replaced from documents".into(),
+            ));
+        }
+        if pack.revision != expected_revision {
+            return Err(ContextPackStoreError::Conflict(format!(
+                "pack {pack_id} expected revision {expected_revision}"
+            )));
+        }
+
+        let key = self.load_pack_key(&pack)?;
+        let mut encrypted_sources = Vec::with_capacity(prepared_sources.len());
+        for source in prepared_sources {
+            let ciphertext = encrypt_chunk(&source.content, &key)?;
+            encrypted_sources.push((source, ciphertext));
+        }
+
+        let updated_at = chrono::Utc::now();
+        let pack_updated_at = updated_at.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
+        let updated = tx.execute(
+            "UPDATE context_packs
+             SET title = ?1, revision = revision + 1, updated_at = ?2
+             WHERE id = ?3 AND scope = 'library' AND deleted_at IS NULL AND revision = ?4",
+            params![
+                replacement_title,
+                pack_updated_at,
+                pack_id,
+                expected_revision_sql
+            ],
+        )?;
+        if updated == 0 {
+            return Err(ContextPackStoreError::Conflict(format!(
+                "pack {pack_id} expected revision {expected_revision}"
+            )));
+        }
+
+        tx.execute(
+            "DELETE FROM context_pack_sources WHERE pack_id = ?1",
+            [pack_id],
+        )?;
+        for (source, ciphertext) in encrypted_sources {
+            let source_id = uuid::Uuid::new_v4().to_string();
+            let source_timestamp = (updated_at
+                + chrono::Duration::nanoseconds(source.order_offset_nanos))
+            .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
+            tx.execute(
+                "INSERT INTO context_pack_sources
+                 (id, pack_id, title, format, content_kind, ciphertext, plaintext_sha256,
+                  plaintext_bytes, metadata_json, trust_state, revision, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'local_trusted', 0, ?10, ?10)",
+                params![
+                    source_id,
+                    pack_id,
+                    source.title,
+                    source.format.as_str(),
+                    source.content_kind.as_str(),
+                    ciphertext,
+                    source.sha256,
+                    source.plaintext_bytes,
+                    source.metadata_json,
+                    source_timestamp,
+                ],
+            )?;
+        }
+        tx.commit()?;
+        drop(conn);
+        self.require_active_pack(pack_id)
     }
 
     /// Materializes a Pack document as a new Library Pack with a fresh ID and
@@ -1446,6 +1574,56 @@ impl ContextPackStore {
         Ok(plaintext)
     }
 
+    fn materialize_pack_document(
+        &self,
+        pack: ContextPackRecord,
+        reject_empty: bool,
+    ) -> Result<ContextPackDocument, ContextPackStoreError> {
+        let encrypted_sources = self.list_encrypted_sources(&pack.id)?;
+        if reject_empty && encrypted_sources.is_empty() {
+            return Err(ContextPackStoreError::Validation(format!(
+                "Context Pack '{}' has no sources to export",
+                pack.title
+            )));
+        }
+        let key = self.load_pack_key(&pack)?;
+        let mut sources = Vec::with_capacity(encrypted_sources.len());
+        for encrypted in encrypted_sources {
+            if !encrypted.record.trusted || encrypted.record.deleted_at.is_some() {
+                return Err(ContextPackStoreError::Trust(format!(
+                    "source {} is unavailable or untrusted",
+                    encrypted.record.id
+                )));
+            }
+            let plaintext = decrypt_chunk(&encrypted.ciphertext, &key)?;
+            let actual_sha256 = sha256_hex(&plaintext);
+            if actual_sha256 != encrypted.record.plaintext_sha256 {
+                return Err(ContextPackStoreError::CorruptData(format!(
+                    "source {} plaintext digest mismatch",
+                    encrypted.record.id
+                )));
+            }
+            let content = String::from_utf8(plaintext).map_err(|_| {
+                ContextPackStoreError::CorruptData(format!(
+                    "source {} is not UTF-8",
+                    encrypted.record.id
+                ))
+            })?;
+            sources.push(ContextPackDocumentSource {
+                title: encrypted.record.title,
+                format: encrypted.record.format,
+                content_kind: encrypted.record.content_kind,
+                sha256: encrypted.record.plaintext_sha256,
+                content,
+            });
+        }
+        Ok(ContextPackDocument {
+            schema: CONTEXT_PACK_DOCUMENT_SCHEMA.to_string(),
+            title: pack.title,
+            sources,
+        })
+    }
+
     fn hard_delete_pack(&self, pack_id: &str) -> Result<(), ContextPackStoreError> {
         self.conn
             .lock()
@@ -1464,6 +1642,18 @@ const SOURCE_SELECT_ID: &str = "SELECT id, pack_id, title, format, content_kind,
 struct EncryptedSource {
     record: ContextPackSourceRecord,
     ciphertext: Vec<u8>,
+}
+
+#[derive(Debug)]
+struct PreparedDocumentSource {
+    title: String,
+    format: ContextSourceFormat,
+    content_kind: ContextContentKind,
+    content: Vec<u8>,
+    sha256: String,
+    plaintext_bytes: i64,
+    metadata_json: String,
+    order_offset_nanos: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -2767,6 +2957,221 @@ mod tests {
         let pack = fixture.store.create_library_pack("Empty").unwrap();
         let error = fixture.store.export_pack_document(&pack.id).unwrap_err();
         assert!(matches!(error, ContextPackStoreError::Validation(_)));
+    }
+
+    #[test]
+    fn editable_library_document_allows_empty_sources_but_stays_library_only() {
+        let fixture = fixture();
+        let pack = fixture.store.create_library_pack("Empty").unwrap();
+
+        let document = fixture.store.read_library_pack_document(&pack.id).unwrap();
+        assert_eq!(document.schema, CONTEXT_PACK_DOCUMENT_SCHEMA);
+        assert_eq!(document.title, "Empty");
+        assert!(document.sources.is_empty());
+        assert!(matches!(
+            fixture.store.export_pack_document(&pack.id),
+            Err(ContextPackStoreError::Validation(_))
+        ));
+
+        let private = fixture
+            .store
+            .get_private_pack(&fixture.notebook_a)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            fixture.store.read_library_pack_document(&private.id),
+            Err(ContextPackStoreError::Ownership(_))
+        ));
+    }
+
+    #[test]
+    fn replacing_library_document_preserves_identity_binding_and_source_order() {
+        let fixture = fixture();
+        let original = seeded_library_pack(&fixture);
+        let original_sources = fixture.store.list_sources(&original.id).unwrap();
+        fixture
+            .store
+            .bind_library_pack(&fixture.notebook_a, &original.id, 7)
+            .unwrap();
+
+        let first_content = "A complete replacement".to_string();
+        let second_content = "人类学\n田野调查\nZomia".to_string();
+        let replacement = ContextPackDocument {
+            schema: CONTEXT_PACK_DOCUMENT_SCHEMA.into(),
+            title: "人类学论坛".into(),
+            sources: vec![
+                ContextPackDocumentSource {
+                    title: "Background".into(),
+                    format: ContextSourceFormat::Markdown,
+                    content_kind: ContextContentKind::Text,
+                    sha256: sha256_hex(first_content.as_bytes()),
+                    content: first_content,
+                },
+                ContextPackDocumentSource {
+                    title: "Terms".into(),
+                    format: ContextSourceFormat::Text,
+                    content_kind: ContextContentKind::Terms,
+                    sha256: sha256_hex(second_content.as_bytes()),
+                    content: second_content,
+                },
+            ],
+        };
+
+        let replaced = fixture
+            .store
+            .replace_library_pack_document(&original.id, original.revision, &replacement)
+            .unwrap();
+        assert_eq!(replaced.id, original.id);
+        assert_eq!(replaced.key_ref, original.key_ref);
+        assert_eq!(replaced.title, replacement.title);
+        assert_eq!(replaced.revision, original.revision + 1);
+        assert_eq!(
+            fixture
+                .store
+                .read_library_pack_document(&original.id)
+                .unwrap(),
+            replacement
+        );
+        let replacement_sources = fixture.store.list_sources(&original.id).unwrap();
+        assert_eq!(replacement_sources.len(), 2);
+        assert_eq!(replacement_sources[0].title, "Background");
+        assert_eq!(replacement_sources[1].title, "Terms");
+        assert!(replacement_sources
+            .iter()
+            .all(|source| !original_sources.iter().any(|old| old.id == source.id)));
+        assert_eq!(
+            fixture
+                .store
+                .list_bound_library_packs(&fixture.notebook_a)
+                .unwrap()[0]
+                .position,
+            7
+        );
+
+        let stale_document = ContextPackDocument {
+            schema: CONTEXT_PACK_DOCUMENT_SCHEMA.into(),
+            title: "Must not win".into(),
+            sources: Vec::new(),
+        };
+        assert!(matches!(
+            fixture.store.replace_library_pack_document(
+                &original.id,
+                original.revision,
+                &stale_document
+            ),
+            Err(ContextPackStoreError::Conflict(_))
+        ));
+        assert_eq!(
+            fixture
+                .store
+                .read_library_pack_document(&original.id)
+                .unwrap(),
+            replacement
+        );
+
+        let empty_document = ContextPackDocument {
+            schema: CONTEXT_PACK_DOCUMENT_SCHEMA.into(),
+            title: "Empty but editable".into(),
+            sources: Vec::new(),
+        };
+        let emptied = fixture
+            .store
+            .replace_library_pack_document(&original.id, replaced.revision, &empty_document)
+            .unwrap();
+        assert_eq!(emptied.revision, replaced.revision + 1);
+        assert_eq!(
+            fixture
+                .store
+                .read_library_pack_document(&original.id)
+                .unwrap(),
+            empty_document
+        );
+        assert_eq!(
+            fixture
+                .store
+                .list_bound_library_packs(&fixture.notebook_a)
+                .unwrap()[0]
+                .pack
+                .id,
+            original.id
+        );
+    }
+
+    #[test]
+    fn failed_library_document_replacement_rolls_back_every_row() {
+        let fixture = fixture();
+        let original = seeded_library_pack(&fixture);
+        fixture
+            .store
+            .bind_library_pack(&fixture.notebook_a, &original.id, 3)
+            .unwrap();
+        let before = fixture
+            .store
+            .read_library_pack_document(&original.id)
+            .unwrap();
+        fixture
+            .store
+            .conn
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "CREATE TRIGGER inject_context_pack_replace_failure
+                 BEFORE INSERT ON context_pack_sources
+                 WHEN NEW.title = 'Injected failure'
+                 BEGIN
+                     SELECT RAISE(ABORT, 'injected replacement failure');
+                 END;",
+            )
+            .unwrap();
+
+        let first_content = "first valid replacement".to_string();
+        let rejected_content = "second valid replacement".to_string();
+        let replacement = ContextPackDocument {
+            schema: CONTEXT_PACK_DOCUMENT_SCHEMA.into(),
+            title: "Half-written title".into(),
+            sources: vec![
+                ContextPackDocumentSource {
+                    title: "Would insert first".into(),
+                    format: ContextSourceFormat::Text,
+                    content_kind: ContextContentKind::Text,
+                    sha256: sha256_hex(first_content.as_bytes()),
+                    content: first_content,
+                },
+                ContextPackDocumentSource {
+                    title: "Injected failure".into(),
+                    format: ContextSourceFormat::Text,
+                    content_kind: ContextContentKind::Text,
+                    sha256: sha256_hex(rejected_content.as_bytes()),
+                    content: rejected_content,
+                },
+            ],
+        };
+        assert!(matches!(
+            fixture.store.replace_library_pack_document(
+                &original.id,
+                original.revision,
+                &replacement
+            ),
+            Err(ContextPackStoreError::Sqlite(_))
+        ));
+
+        let after_pack = fixture.store.require_active_pack(&original.id).unwrap();
+        assert_eq!(after_pack.title, original.title);
+        assert_eq!(after_pack.revision, original.revision);
+        assert_eq!(
+            fixture
+                .store
+                .read_library_pack_document(&original.id)
+                .unwrap(),
+            before
+        );
+        let bindings = fixture
+            .store
+            .list_bound_library_packs(&fixture.notebook_a)
+            .unwrap();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].pack.id, original.id);
+        assert_eq!(bindings[0].position, 3);
     }
 
     #[test]

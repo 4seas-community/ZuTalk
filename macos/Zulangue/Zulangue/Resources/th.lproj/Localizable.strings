@@ -1019,3 +1019,7 @@
 "capture.settings.retention.high.detail" = "ลบไฟล์เสียงและคีย์ของมันหลังการถอดเสียงภายหลังที่ร้องขอไว้อย่างชัดแจ้งสำเร็จ";
 "capture.settings.retention.maximum.title" = "ลบหลังได้บทถอดเสียงใด ๆ";
 "capture.settings.retention.maximum.detail" = "ลบไฟล์เสียงและคีย์ของมันทันทีที่มีข้อมูลบทถอดเสียงถาวร หากยังไม่มีบทถอดเสียง จะเก็บแหล่งข้อมูลเดียวที่มีไว้เพื่อป้องกันข้อมูลสูญหาย";
+"knowledge.import_json" = "นำเข้า JSON";
+"knowledge.import_json.message" = "เลือกไฟล์ JSON ฐานความรู้ Zulangue (.zulangue-pack.json)";
+"knowledge.import_json.done" = "นำเข้าฐานความรู้แล้ว";
+"knowledge.import_json.failed" = "นำเข้าฐานความรู้ไม่ได้";

@@ -1019,3 +1019,7 @@
 "capture.settings.retention.high.detail" = "명시적인 비동기 기록이 성공한 후 오디오와 해당 키를 삭제합니다.";
 "capture.settings.retention.maximum.title" = "스크립트 작성 후 삭제";
 "capture.settings.retention.maximum.detail" = "지속 가능한 기록 사실이 존재하는 즉시 오디오와 해당 키를 삭제합니다. 기록이 없으면 데이터 손실을 방지하기 위해 유일한 소스를 유지하십시오.";
+"knowledge.import_json" = "JSON 가져오기";
+"knowledge.import_json.message" = "Zulangue 지식 베이스 JSON 파일(.zulangue-pack.json)을 선택하세요.";
+"knowledge.import_json.done" = "지식 베이스를 가져왔습니다";
+"knowledge.import_json.failed" = "지식 베이스를 가져올 수 없습니다";
