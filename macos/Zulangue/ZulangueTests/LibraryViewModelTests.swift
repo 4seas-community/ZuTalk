@@ -224,16 +224,50 @@ final class LibraryViewModelTests: XCTestCase {
             makeNotebook(id: "nb-research", title: "Research"),
             makeNotebook(id: "nb-meetings", title: "Meetings")
         ]
-        NotebookSessionContextStore.shared.updateActiveNotebook(
+        let notebookContext = NotebookSessionContextStore()
+        notebookContext.updateActiveNotebook(
             id: "nb-meetings",
             title: "Meetings"
         )
-        defer { NotebookSessionContextStore.shared.clearActiveNotebook() }
+        let restoredViewModel = LibraryViewModel(notebookContext: notebookContext)
 
-        viewModel.loadNotebookWorkspace(client: client)
+        restoredViewModel.loadNotebookWorkspace(client: client)
 
-        XCTAssertEqual(viewModel.activeNotebookId, "nb-meetings")
-        XCTAssertEqual(viewModel.activeNotebook?.title, "Meetings")
+        XCTAssertEqual(restoredViewModel.activeNotebookId, "nb-meetings")
+        XCTAssertEqual(restoredViewModel.activeNotebook?.title, "Meetings")
+    }
+
+    func testLoadNotebookWorkspaceFallsBackWhenLastNotebookNoLongerExists() {
+        let client = StubNotebookWorkspaceClient()
+        client.notebooks = [
+            makeNotebook(id: "nb-research", title: "Research"),
+            makeNotebook(id: "nb-meetings", title: "Meetings")
+        ]
+        let notebookContext = NotebookSessionContextStore(
+            activeNotebookId: "nb-deleted",
+            activeNotebookTitle: "Deleted"
+        )
+        let restoredViewModel = LibraryViewModel(notebookContext: notebookContext)
+
+        restoredViewModel.loadNotebookWorkspace(client: client)
+
+        XCTAssertEqual(restoredViewModel.activeNotebookId, "nb-research")
+        XCTAssertEqual(notebookContext.activeNotebookId, "nb-research")
+    }
+
+    func testNotebookListFailureKeepsLastNotebookForRetry() {
+        let client = StubNotebookWorkspaceClient()
+        client.listNotebooksError = .databaseUnavailable
+        let notebookContext = NotebookSessionContextStore(
+            activeNotebookId: "nb-last",
+            activeNotebookTitle: "Last"
+        )
+        let restoredViewModel = LibraryViewModel(notebookContext: notebookContext)
+
+        restoredViewModel.loadNotebookWorkspace(client: client)
+
+        XCTAssertNil(restoredViewModel.activeNotebookId)
+        XCTAssertEqual(notebookContext.activeNotebookId, "nb-last")
     }
 
     func testInitialWorkspaceLoadFailureShowsStableRetryState() {

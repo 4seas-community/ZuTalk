@@ -641,7 +641,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testCaptureSettingsEditorDistinguishesSavedProfileFromContextPostProcessingFailure() {
+    func testCaptureSettingsEditorTreatsPostWriteFailureAsTechnicalSaveFailure() {
         let persistence = FakeNotebookCaptureProfilePersistence(
             profile: .twoWay(notebookId: "notebook-a")
         )
@@ -655,18 +655,17 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         editor.update { $0.sendContextToSoniox = true }
 
         XCTAssertEqual(editor.draft, persistence.profile)
-        guard case .contextReviewRequired = editor.persistenceState else {
-            return XCTFail("a persisted profile with failed Context review is not an unsaved change")
+        guard case .saveFailed = editor.persistenceState else {
+            return XCTFail("a post-write technical error must never become a review prompt")
         }
 
-        persistence.contextConfirmed = true
-        editor.contextReviewConfirmed()
+        editor.retry()
         XCTAssertEqual(editor.persistenceState, .saved)
-        XCTAssertEqual(persistence.saveRequests.count, 1)
+        XCTAssertEqual(persistence.saveRequests.count, 2)
     }
 
     @MainActor
-    func testContextConsentRemainsReviewRequiredAcrossLoadAndUnrelatedAutosaves() {
+    func testPersistedContextProfileNeverRequiresPerLaunchReview() {
         var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
         profile.sendContextToSoniox = true
         let persistence = FakeNotebookCaptureProfilePersistence(profile: profile)
@@ -676,33 +675,19 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
 
         editor.load()
-        guard case .contextReviewRequired = editor.persistenceState else {
-            return XCTFail("a persisted egress toggle without an in-memory digest needs review")
-        }
-        XCTAssertNotNil(editor.captureStartDisabledReason)
+        XCTAssertEqual(editor.persistenceState, .saved)
+        XCTAssertNil(editor.captureStartDisabledReason)
 
         editor.update {
             $0.languageA = "ja"
             $0.leftLanguage = "ja"
         }
-        guard case .contextReviewRequired = editor.persistenceState else {
-            return XCTFail("an unrelated autosave must not imply exact Context consent")
-        }
-
-        persistence.contextConfirmed = true
-        editor.contextReviewConfirmed()
         XCTAssertEqual(editor.persistenceState, .saved)
         XCTAssertNil(editor.captureStartDisabledReason)
-
-        persistence.contextConfirmed = false
-        editor.contextConsentDidChange()
-        guard case .contextReviewRequired = editor.persistenceState else {
-            return XCTFail("Context Pack changes must invalidate the visible consent state")
-        }
     }
 
     @MainActor
-    func testRepeatedContextInvalidationDoesNotRepublishReviewRequiredState() {
+    func testContextInvalidationDoesNotPublishAReviewRequiredState() {
         var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
         profile.sendContextToSoniox = true
         let persistence = FakeNotebookCaptureProfilePersistence(profile: profile)
@@ -711,9 +696,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             persistence: persistence
         )
         editor.load()
-        guard case .contextReviewRequired = editor.persistenceState else {
-            return XCTFail("precondition: unconfirmed Context egress must require review")
-        }
+        XCTAssertEqual(editor.persistenceState, .saved)
 
         var publicationCount = 0
         let cancellable = editor.$persistenceState.dropFirst().sink { _ in
@@ -727,7 +710,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testRepreviewingTheSameDigestRevokesVisibleConsentUntilReconfirmed() throws {
+    func testOptionalContextPreviewDoesNotBlockCaptureSettings() throws {
         var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
         profile.sendContextToSoniox = true
         let store = ActiveBilingualTranscriptStore(
@@ -747,10 +730,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         editor.contextConsentDidChange()
 
         XCTAssertFalse(store.hasConfirmedContext(notebookId: "notebook-a"))
-        XCTAssertNotNil(editor.captureStartDisabledReason)
-        guard case .contextReviewRequired = editor.persistenceState else {
-            return XCTFail("same-digest preview must still require an explicit renewed confirmation")
-        }
+        XCTAssertNil(editor.captureStartDisabledReason)
+        XCTAssertEqual(editor.persistenceState, .saved)
     }
 
     @MainActor
@@ -5153,35 +5134,29 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testContextMustBePreviewedAndConfirmedBeforeCaptureStart() async throws {
+    func testBoundContextIsPreparedAutomaticallyBeforeCaptureStart() async throws {
         var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
         profile.sendContextToSoniox = true
         let client = FakeNotebookCaptureClient(profile: profile)
+        let audio = FakeNotebookCaptureAudioSource()
         let store = ActiveBilingualTranscriptStore(
             client: client,
-            audioSource: FakeNotebookCaptureAudioSource()
+            audioSource: audio
         )
         store.loadProfile(notebookId: "notebook-a")
 
-        do {
-            try await store.start(notebookId: "notebook-a")
-            XCTFail("context egress without exact confirmation must fail closed")
-        } catch {
-            XCTAssertEqual(error as? NotebookCaptureClientError, .contextConfirmationRequired)
-        }
-        XCTAssertEqual(client.startCount, 0)
-
-        let preview = try store.previewContext(notebookId: "notebook-a")
-        store.confirmContextPreview(digest: preview.digest)
         try await store.start(notebookId: "notebook-a")
 
         XCTAssertEqual(client.startCount, 1)
+        XCTAssertEqual(client.previewCount, 1)
+        XCTAssertEqual(audio.prepareCount, 1)
         XCTAssertEqual(client.lastConfirmedContextDigest, "context-digest")
-        XCTAssertNil(store.appliedContextReceipt, "preview confirmation is not an applied receipt")
+        XCTAssertTrue(store.hasConfirmedContext(notebookId: "notebook-a"))
+        XCTAssertNil(store.appliedContextReceipt, "automatic preparation is not an applied receipt")
     }
 
     @MainActor
-    func testConfirmedContextSurvivesProfileSaveOnlyAfterExactRepreview() async throws {
+    func testProfileSaveDoesNotCreateASecondContextPreparationGate() async throws {
         var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
         let client = FakeNotebookCaptureClient(profile: profile)
         let store = ActiveBilingualTranscriptStore(
@@ -5190,19 +5165,19 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         store.loadProfile(notebookId: "notebook-a")
 
-        let preview = try store.previewContext(notebookId: "notebook-a")
-        store.confirmContextPreview(digest: preview.digest)
         profile.sendContextToSoniox = true
         try store.saveProfile(profile)
+        XCTAssertEqual(client.previewCount, 0, "profile autosave must not compile or block on context")
+
         try await store.start(notebookId: "notebook-a")
 
         XCTAssertEqual(client.startCount, 1)
-        XCTAssertEqual(client.previewCount, 2, "save must recompile the exact consent snapshot")
-        XCTAssertEqual(client.lastConfirmedContextDigest, preview.digest)
+        XCTAssertEqual(client.previewCount, 1, "Start compiles the current bound payload exactly once")
+        XCTAssertEqual(client.lastConfirmedContextDigest, "context-digest")
     }
 
     @MainActor
-    func testProfileSaveInvalidatesConsentWhenContextDigestChangesDuringSave() async throws {
+    func testCaptureStartUsesTheNewestBoundContextDigest() async throws {
         var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
         let client = FakeNotebookCaptureClient(profile: profile)
         client.previewDigestAfterProfileUpdate = "changed-during-save"
@@ -5212,21 +5187,56 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         store.loadProfile(notebookId: "notebook-a")
 
-        let preview = try store.previewContext(notebookId: "notebook-a")
-        store.confirmContextPreview(digest: preview.digest)
         profile.sendContextToSoniox = true
-        XCTAssertThrowsError(try store.saveProfile(profile)) { error in
-            XCTAssertEqual(error as? NotebookCaptureClientError, .contextConfirmationRequired)
-        }
+        try store.saveProfile(profile)
+        try await store.start(notebookId: "notebook-a")
+
+        XCTAssertEqual(client.startCount, 1)
+        XCTAssertEqual(store.contextPreview?.digest, "changed-during-save")
+        XCTAssertEqual(client.lastConfirmedContextDigest, "changed-during-save")
+    }
+
+    @MainActor
+    func testEmptyBoundContextFailsBeforeAudioWithoutAskingForConfirmation() async {
+        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
+        profile.sendContextToSoniox = true
+        let client = FakeNotebookCaptureClient(profile: profile)
+        client.previewSerializedContext = "{}"
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
 
         do {
             try await store.start(notebookId: "notebook-a")
-            XCTFail("changed Context Pack content must require a fresh confirmation")
+            XCTFail("empty bound context must fail before recording")
         } catch {
-            XCTAssertEqual(error as? NotebookCaptureClientError, .contextConfirmationRequired)
+            XCTAssertEqual(error as? NotebookCaptureClientError, .contextUnavailable)
         }
+
+        XCTAssertEqual(client.previewCount, 1)
         XCTAssertEqual(client.startCount, 0)
-        XCTAssertEqual(store.contextPreview?.digest, "changed-during-save")
+        XCTAssertEqual(audio.prepareCount, 0)
+        XCTAssertEqual(store.lastError, String(localized: "capture.settings.context.empty"))
+    }
+
+    @MainActor
+    func testContextCompilationFailureStopsBeforeAudioPreparation() async {
+        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
+        profile.sendContextToSoniox = true
+        let client = FakeNotebookCaptureClient(profile: profile)
+        client.previewError = .ffiUnavailable
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+
+        do {
+            try await store.start(notebookId: "notebook-a")
+            XCTFail("context compilation failure must fail before recording")
+        } catch {
+            XCTAssertEqual(error as? NotebookCaptureClientError, .ffiUnavailable)
+        }
+
+        XCTAssertEqual(client.previewCount, 1)
+        XCTAssertEqual(client.startCount, 0)
+        XCTAssertEqual(audio.prepareCount, 0)
     }
 
     @MainActor
@@ -6831,6 +6841,8 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     var reconcileErrors: [NotebookCaptureClientError?] = []
     var previewDigest = "context-digest"
     var previewDigestAfterProfileUpdate: String?
+    var previewSerializedContext = "{\"terms\":[\"Zulangue\"]}"
+    var previewError: NotebookCaptureClientError?
     var contextPackListError: NotebookCaptureClientError?
     var contextSourceListError: NotebookCaptureClientError?
     var profileUpdateError: NotebookCaptureClientError?
@@ -6907,9 +6919,10 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
 
     func previewNotebookCaptureContext(notebookId: String) throws -> NotebookCaptureContextPreviewDTO {
         previewCount += 1
+        if let previewError { throw previewError }
         return NotebookCaptureContextPreviewDTO(
             notebookId: notebookId,
-            serializedContext: "{\"terms\":[\"Zulangue\"]}",
+            serializedContext: previewSerializedContext,
             sources: [NotebookCaptureContextSourceDTO(
                 id: "source-1",
                 title: "Private terms",

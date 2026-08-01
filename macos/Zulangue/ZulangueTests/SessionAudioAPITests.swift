@@ -59,4 +59,21 @@ final class NotebookSessionContextStoreTests: XCTestCase {
         XCTAssertEqual(try context.requireActiveNotebookId(), "nb-1")
     }
 
+    func testLastNotebookPersistsAcrossStoreInstancesUntilExplicitlyForgotten() throws {
+        let suiteName = "NotebookSessionContextStoreTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let first = NotebookSessionContextStore(defaults: defaults)
+        first.updateActiveNotebook(id: "nb-last", title: "Last Notebook")
+        first.clearActiveNotebook()
+
+        let restored = NotebookSessionContextStore(defaults: defaults)
+        XCTAssertEqual(restored.activeNotebookId, "nb-last")
+        XCTAssertNil(restored.activeNotebookTitle, "titles are resolved fresh from Core")
+
+        restored.forgetLastNotebook()
+        XCTAssertNil(NotebookSessionContextStore(defaults: defaults).activeNotebookId)
+    }
+
 }

@@ -47,6 +47,8 @@ final class MainNavigationStoreV2: ObservableObject {
     private let captureRouteContextProvider: @MainActor () -> CaptureRouteContext
     private let coreProvider: @MainActor () -> (any ZulangueCoreProtocol)?
     private let notebookContext: NotebookSessionContextStore
+    private let launchNotebookID: String?
+    private var didAttemptLaunchNotebookRestore = false
 
     var activeDocID: String? { activeEditorRoute?.documentID }
     var activeNotebookID: String? { activeEditorRoute?.notebookID }
@@ -69,7 +71,9 @@ final class MainNavigationStoreV2: ObservableObject {
         self.activeNotebookIDProvider = activeNotebookIDProvider
         self.captureRouteContextProvider = captureRouteContextProvider
         self.coreProvider = coreProvider
-        self.notebookContext = notebookContext ?? NotebookSessionContextStore.shared
+        let resolvedNotebookContext = notebookContext ?? NotebookSessionContextStore.shared
+        self.notebookContext = resolvedNotebookContext
+        self.launchNotebookID = resolvedNotebookContext.activeNotebookId
         recordSnapshot()
     }
 
@@ -98,6 +102,39 @@ final class MainNavigationStoreV2: ObservableObject {
         select(tab: .home)
     }
 
+    /// Restores the Notebook that was last opened in the previous app process.
+    /// This is deliberately one-shot: choosing Home later in the same process
+    /// must leave the user on Home instead of immediately reopening a Notebook.
+    @discardableResult
+    func restoreLastNotebookOnLaunch() -> Bool {
+        guard needsOnboarding == false,
+              didAttemptLaunchNotebookRestore == false
+        else { return didAttemptLaunchNotebookRestore }
+        guard activeTab == .home,
+              activeEditorRoute == nil
+        else {
+            didAttemptLaunchNotebookRestore = true
+            return true
+        }
+        guard let launchNotebookID,
+              launchNotebookID.isEmpty == false
+        else {
+            didAttemptLaunchNotebookRestore = true
+            return true
+        }
+
+        let completed = openNotebookForCapture(
+            preferredNotebookID: launchNotebookID,
+            selectedSessionID: nil,
+            allowsFallback: true,
+            showsErrors: false
+        )
+        if completed {
+            didAttemptLaunchNotebookRestore = true
+        }
+        return completed
+    }
+
     /// Routes every non-Notebook capture affordance to the active Notebook.
     /// It never starts, pauses, resumes, or stops capture; those controls live
     /// exclusively in `NotebookCaptureToolbar`.
@@ -111,52 +148,18 @@ final class MainNavigationStoreV2: ObservableObject {
         } else {
             activeCaptureNotebookID = nil
         }
-        let notebookID = captureContext.isActive
+        let preferredNotebookID = captureContext.isActive
             ? activeCaptureNotebookID
             : activeNotebookIDProvider()
-
-        guard let notebookID,
-              notebookID.isEmpty == false else {
-            navigateHome()
-            ToastCenter.shared.warning(
-                String(localized: "capture.route.no_notebook"),
-                detail: String(localized: "capture.route.no_notebook_detail")
-            )
-            return
-        }
-        guard let core = coreProvider() else {
-            ToastCenter.shared.error(
-                String(localized: "capture.route.unavailable"),
-                detail: String(localized: "capture.route.unavailable_detail")
-            )
-            return
-        }
-
-        do {
-            guard let tab = try core.listNotebookTabs(notebookId: notebookID)
-                .first(where: {
-                    $0.deletedAt == nil && $0.builtinKind == "realtime_transcript"
-                }) else {
-                throw NotebookSessionLifecycleError.notebookRequired
-            }
-            let selectedSessionID = activeCaptureNotebookID == notebookID
+        openNotebookForCapture(
+            preferredNotebookID: preferredNotebookID,
+            selectedSessionID: captureContext.isActive
+                && activeCaptureNotebookID == preferredNotebookID
                 ? captureContext.sessionID
-                : nil
-            openNotebookTab(
-                notebookID: notebookID,
-                tabID: tab.id,
-                documentID: tab.docId,
-                selectedSessionID: selectedSessionID
-            )
-        } catch {
-            Self.logger.error(
-                "Open active Notebook capture failed: \(String(describing: error), privacy: .private)"
-            )
-            ToastCenter.shared.error(
-                String(localized: "capture.route.unavailable"),
-                detail: String(localized: "capture.route.unavailable_detail")
-            )
-        }
+                : nil,
+            allowsFallback: captureContext.isActive == false,
+            showsErrors: true
+        )
     }
 
     func openNotebookTab(
@@ -317,7 +320,75 @@ final class MainNavigationStoreV2: ObservableObject {
         activeEditorRoute = nil
         activeNotebookTitle = nil
         pendingEditorView = .notes
+        didAttemptLaunchNotebookRestore = false
         recordSnapshot()
+    }
+
+    @discardableResult
+    private func openNotebookForCapture(
+        preferredNotebookID: String?,
+        selectedSessionID: String?,
+        allowsFallback: Bool,
+        showsErrors: Bool
+    ) -> Bool {
+        guard let core = coreProvider() else {
+            if showsErrors {
+                ToastCenter.shared.error(
+                    String(localized: "capture.route.unavailable"),
+                    detail: String(localized: "capture.route.unavailable_detail")
+                )
+            }
+            return false
+        }
+
+        do {
+            let notebooks = try core.listNotebooks()
+            let normalizedPreferredID = preferredNotebookID?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let preferredNotebook = normalizedPreferredID.flatMap { notebookID in
+                notebooks.first(where: { $0.id == notebookID })
+            }
+            let targetNotebook = preferredNotebook ?? (allowsFallback ? notebooks.first : nil)
+
+            guard let targetNotebook else {
+                if notebooks.isEmpty, allowsFallback {
+                    notebookContext.forgetLastNotebook()
+                }
+                navigateHome()
+                if showsErrors {
+                    ToastCenter.shared.warning(
+                        String(localized: "capture.route.no_notebook"),
+                        detail: String(localized: "capture.route.no_notebook_detail")
+                    )
+                }
+                return true
+            }
+
+            guard let tab = try core.listNotebookTabs(notebookId: targetNotebook.id)
+                .first(where: {
+                    $0.deletedAt == nil && $0.builtinKind == "realtime_transcript"
+                }) else {
+                throw NotebookSessionLifecycleError.notebookRequired
+            }
+            openNotebookTab(
+                notebookID: targetNotebook.id,
+                tabID: tab.id,
+                documentID: tab.docId,
+                selectedSessionID: selectedSessionID
+            )
+            return true
+        } catch {
+            Self.logger.error(
+                "Open active Notebook capture failed: \(String(describing: error), privacy: .private)"
+            )
+            if showsErrors {
+                ToastCenter.shared.error(
+                    String(localized: "capture.route.unavailable"),
+                    detail: String(localized: "capture.route.unavailable_detail")
+                )
+            }
+            return false
+        }
     }
 
     private func resolveNotebookTitle(notebookID: String) -> String? {

@@ -129,6 +129,13 @@ class LibraryViewModel: ObservableObject {
     @Published private(set) var isImportingAudio = false
     @Published private(set) var audioImportError: String?
 
+    private let notebookContext: NotebookSessionContextStore
+
+    @MainActor
+    init(notebookContext: NotebookSessionContextStore? = nil) {
+        self.notebookContext = notebookContext ?? .shared
+    }
+
     // 多选模式状态:UI 点顶部 "Select" 进入;每行出 checkbox
     @Published var selectionMode: Bool = false
     @Published var selectedIds: Set<String> = []
@@ -229,9 +236,11 @@ class LibraryViewModel: ObservableObject {
     @MainActor
     func loadNotebookWorkspace(client: (any NotebookWorkspaceClienting)? = nil) {
         let client = client ?? LiveNotebookWorkspaceClient()
+        var didLoadNotebookList = false
         do {
             let loadedNotebooks = try client.listNotebooks()
                 .filter { $0.deletedAt == nil }
+            didLoadNotebookList = true
             notebooks = loadedNotebooks
             notebookSessionCounts = Dictionary(
                 uniqueKeysWithValues: loadedNotebooks.map { notebook in
@@ -240,7 +249,7 @@ class LibraryViewModel: ObservableObject {
                 }
             )
             let preferredNotebookId = activeNotebookId
-                ?? NotebookSessionContextStore.shared.activeNotebookId
+                ?? notebookContext.activeNotebookId
             if let preferredNotebookId,
                loadedNotebooks.contains(where: { $0.id == preferredNotebookId }) {
                 activeNotebookId = preferredNotebookId
@@ -257,7 +266,9 @@ class LibraryViewModel: ObservableObject {
                 activeNotebookId = notebooks.first?.id
             }
             clearActiveNotebookDetails()
-            publishActiveNotebookContext()
+            if didLoadNotebookList {
+                publishActiveNotebookContext()
+            }
             notebookWorkspaceError = String(localized: "home.workspace.load_failed")
             ToastCenter.shared.error(String(localized: "home.workspace.load_failed"))
         }
@@ -466,12 +477,12 @@ class LibraryViewModel: ObservableObject {
     @MainActor
     private func publishActiveNotebookContext() {
         if let activeNotebook {
-            NotebookSessionContextStore.shared.updateActiveNotebook(
+            notebookContext.updateActiveNotebook(
                 id: activeNotebook.id,
                 title: activeNotebook.title
             )
         } else {
-            NotebookSessionContextStore.shared.clearActiveNotebook()
+            notebookContext.forgetLastNotebook()
         }
     }
 

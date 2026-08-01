@@ -34,6 +34,20 @@ struct MainShellViewV2: View {
         .background(Color.bpBlue.ignoresSafeArea())
         .toastOverlay()
         .onAppear { store.recordSnapshot() }
+        .task(id: needsOnboarding) {
+            guard needsOnboarding == false else { return }
+            for attempt in 0..<3 {
+                if store.restoreLastNotebookOnLaunch() {
+                    return
+                }
+                guard attempt < 2 else { return }
+                do {
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                } catch {
+                    return
+                }
+            }
+        }
     }
 
     private var mainContent: some View {

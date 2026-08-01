@@ -1893,6 +1893,7 @@ enum NotebookCaptureClientError: LocalizedError, Equatable {
     case remoteRequiredForContext
     case languagePairMustDiffer
     case contextConfirmationRequired
+    case contextUnavailable
     case captureNotActive
     case projectionLocked
 
@@ -1910,6 +1911,8 @@ enum NotebookCaptureClientError: LocalizedError, Equatable {
             return String(localized: "capture.error.languages_must_differ")
         case .contextConfirmationRequired:
             return String(localized: "capture.error.context_confirmation_required")
+        case .contextUnavailable:
+            return String(localized: "capture.settings.context.empty")
         case .captureNotActive:
             return String(localized: "capture.error.not_active")
         case .projectionLocked:
@@ -3321,8 +3324,6 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         guard isCaptureActive == false else {
             throw NotebookCaptureClientError.captureAlreadyActive
         }
-        let reviewedDigest = confirmedContextDigest
-        let reviewedNotebookId = confirmedContextNotebookId
         var normalized = candidate
         normalized.selectedLanguages = NotebookCaptureHistoryPolicy.resolvedSelectedLanguages(
             candidate.selectedLanguages,
@@ -3357,34 +3358,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         // Persisting a Notebook's next-run capture settings must never rewrite
         // historical transcript lanes or the current run snapshot.
 
-        // Saving the profile increments its revision in Rust, but it must not
-        // silently discard the exact Context Pack consent the user just gave.
-        // Recompile after the save and retain consent only when the reviewed
-        // Notebook, digest and sendable payload are byte-for-byte equivalent.
-        // Any compiler/read failure remains fail-closed even though the profile
-        // itself was persisted successfully.
-        if saved.sendContextToSoniox,
-           let reviewedDigest,
-           reviewedNotebookId == saved.notebookId {
-            let refreshed: NotebookCaptureContextPreviewDTO
-            do {
-                refreshed = try client.previewNotebookCaptureContext(notebookId: saved.notebookId)
-            } catch {
-                invalidateContextPreview()
-                throw error
-            }
-            contextPreview = refreshed
-            if refreshed.notebookId == saved.notebookId,
-               refreshed.digest == reviewedDigest,
-               refreshed.containsSendableContext {
-                confirmedContextDigest = reviewedDigest
-                confirmedContextNotebookId = saved.notebookId
-            } else {
-                confirmedContextDigest = nil
-                confirmedContextNotebookId = nil
-                throw NotebookCaptureClientError.contextConfirmationRequired
-            }
-        } else {
+        // A durable Notebook binding is the user's standing choice. Profile
+        // autosave must not grow a second context-preparation gate: Start
+        // recompiles the latest payload and Rust verifies that exact digest.
+        if saved.sendContextToSoniox == false {
             invalidateContextPreview()
         }
         lastError = nil
@@ -3409,6 +3386,39 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         confirmedContextDigest = nil
         lastError = nil
         return preview
+    }
+
+    /// Compiles the Notebook's currently bound reference material and records
+    /// its exact digest for the imminent capture. Binding is the durable user
+    /// choice; this digest remains a short-lived integrity check, not a second
+    /// per-launch confirmation step.
+    @discardableResult
+    func prepareContextForCapture(
+        notebookId: String
+    ) throws -> NotebookCaptureContextPreviewDTO {
+        do {
+            let preview = try client.previewNotebookCaptureContext(notebookId: notebookId)
+            contextPreview = preview
+            guard preview.notebookId == notebookId,
+                  preview.containsSendableContext
+            else {
+                confirmedContextDigest = nil
+                confirmedContextNotebookId = nil
+                throw NotebookCaptureClientError.contextUnavailable
+            }
+            confirmedContextDigest = preview.digest
+            confirmedContextNotebookId = notebookId
+            lastError = nil
+            return preview
+        } catch {
+            confirmedContextDigest = nil
+            confirmedContextNotebookId = nil
+            if contextPreview?.notebookId != notebookId {
+                contextPreview = nil
+            }
+            lastError = error.localizedDescription
+            throw error
+        }
     }
 
     func confirmContextPreview(digest: String) {
@@ -3624,12 +3634,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         // must never be reused as configuration for a new capture.
         let startProfile = try client.getNotebookCaptureProfile(notebookId: notebookId)
         try validate(startProfile)
-        if startProfile.sendContextToSoniox,
-           confirmedContextDigest == nil
-            || confirmedContextDigest != contextPreview?.digest
-            || confirmedContextNotebookId != notebookId {
-            throw NotebookCaptureClientError.contextConfirmationRequired
-        }
+        let startContextDigest = startProfile.sendContextToSoniox
+            ? try prepareContextForCapture(notebookId: notebookId).digest
+            : nil
 
         try await audioSource.prepare()
         callbackGeneration &+= 1
@@ -3646,7 +3653,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             initial = try client.startNotebookCaptureSession(
                 notebookId: notebookId,
                 profileRevision: startProfile.revision,
-                confirmedContextDigest: startProfile.sendContextToSoniox ? confirmedContextDigest : nil,
+                confirmedContextDigest: startContextDigest,
                 onCaptureEvent: { [weak self] event in
                     self?.receiveCaptureCallback(event, generation: generation)
                 },

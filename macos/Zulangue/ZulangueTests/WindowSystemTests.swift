@@ -26,6 +26,11 @@ private final class TrafficLightWindowActionsSpy: TrafficLightWindowActions {
 }
 
 @MainActor
+private final class NotebookCoreAvailability {
+    var core: (any ZulangueCoreProtocol)?
+}
+
+@MainActor
 private final class ApplicationQuitRequestingSpy: ApplicationQuitRequesting {
     private(set) var requestCount = 0
 
@@ -388,6 +393,101 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(store.activeDocID, "doc-live")
         XCTAssertEqual(store.selectedSessionID, "session-1")
         XCTAssertEqual(store.pendingEditorView, .notes)
+    }
+
+    func testMainNavigationStoreV2_restoresLastNotebookOnceOnLaunch() throws {
+        let tempDir = NSTemporaryDirectory()
+            .appending("zulangue-launch-notebook-\(UUID().uuidString)")
+        let core = try ZulangueCore.newDeferred(dataDir: tempDir)
+        defer {
+            try? core.shutdown()
+            try? FileManager.default.removeItem(atPath: tempDir)
+        }
+        _ = try core.createNotebook(title: "Notebook A")
+        let notebookB = try core.createNotebook(title: "Notebook B")
+        let notebookContext = NotebookSessionContextStore(
+            activeNotebookId: notebookB.id,
+            activeNotebookTitle: nil
+        )
+        let store = MainNavigationStoreV2(
+            activeNotebookIDProvider: { notebookContext.activeNotebookId },
+            captureRouteContextProvider: { (nil, nil, false) },
+            coreProvider: { core },
+            notebookContext: notebookContext
+        )
+        store.completeOnboarding()
+
+        store.restoreLastNotebookOnLaunch()
+
+        XCTAssertEqual(store.activeTab, .editor)
+        XCTAssertEqual(store.activeNotebookID, notebookB.id)
+        XCTAssertEqual(
+            store.activeNotebookTabID,
+            try core.listNotebookTabs(notebookId: notebookB.id)
+                .first(where: { $0.builtinKind == "realtime_transcript" })?.id
+        )
+        XCTAssertEqual(store.activeNotebookTitle, notebookB.title)
+
+        store.navigateHome()
+        store.restoreLastNotebookOnLaunch()
+        XCTAssertEqual(store.activeTab, .home, "launch restoration must not trap later Home navigation")
+    }
+
+    func testMainNavigationStoreV2_retriesLaunchRestoreAfterCoreBecomesAvailable() throws {
+        let tempDir = NSTemporaryDirectory()
+            .appending("zulangue-retry-launch-notebook-\(UUID().uuidString)")
+        let core = try ZulangueCore.newDeferred(dataDir: tempDir)
+        defer {
+            try? core.shutdown()
+            try? FileManager.default.removeItem(atPath: tempDir)
+        }
+        let notebook = try core.createNotebook(title: "Retry Notebook")
+        let notebookContext = NotebookSessionContextStore(
+            activeNotebookId: notebook.id,
+            activeNotebookTitle: nil
+        )
+        let availability = NotebookCoreAvailability()
+        let store = MainNavigationStoreV2(
+            activeNotebookIDProvider: { notebookContext.activeNotebookId },
+            captureRouteContextProvider: { (nil, nil, false) },
+            coreProvider: { availability.core },
+            notebookContext: notebookContext
+        )
+        store.completeOnboarding()
+
+        XCTAssertFalse(store.restoreLastNotebookOnLaunch())
+        XCTAssertEqual(store.activeTab, .home)
+
+        availability.core = core
+        XCTAssertTrue(store.restoreLastNotebookOnLaunch())
+        XCTAssertEqual(store.activeTab, .editor)
+        XCTAssertEqual(store.activeNotebookID, notebook.id)
+    }
+
+    func testMainNavigationStoreV2_staleNotebookFallsBackToAnAvailableNotebook() throws {
+        let tempDir = NSTemporaryDirectory()
+            .appending("zulangue-stale-notebook-\(UUID().uuidString)")
+        let core = try ZulangueCore.newDeferred(dataDir: tempDir)
+        defer {
+            try? core.shutdown()
+            try? FileManager.default.removeItem(atPath: tempDir)
+        }
+        let available = try core.createNotebook(title: "Available")
+        let notebookContext = NotebookSessionContextStore(
+            activeNotebookId: "deleted-notebook",
+            activeNotebookTitle: nil
+        )
+        let store = MainNavigationStoreV2(
+            activeNotebookIDProvider: { notebookContext.activeNotebookId },
+            captureRouteContextProvider: { (nil, nil, false) },
+            coreProvider: { core },
+            notebookContext: notebookContext
+        )
+
+        store.openActiveNotebookForCapture()
+
+        XCTAssertEqual(store.activeNotebookID, available.id)
+        XCTAssertEqual(notebookContext.activeNotebookId, available.id)
     }
 
     func testGlobalCaptureRouteReturnsToCaptureNotebookAfterUserBrowsesAnotherNotebook() throws {

@@ -221,7 +221,9 @@ final class NotebookCaptureProfileEditorModel: ObservableObject {
         draft = loaded
         guard let loadError = persistence.lastError else {
             persistedProfile = loaded
-            persistenceState = postSaveState(for: loaded)
+            // A persisted Notebook-to-Knowledge binding is a standing choice;
+            // reopening the app does not require another review ceremony.
+            persistenceState = .saved
             return
         }
 
@@ -308,22 +310,11 @@ final class NotebookCaptureProfileEditorModel: ObservableObject {
         }
     }
 
-    /// Context Pack edits invalidate the exact digest independently from the
-    /// profile's CAS revision. Keep the visible status fail-closed instead of
-    /// implying that a persisted egress toggle is still authorized.
+    /// Context Pack edits invalidate only the short-lived digest. Start
+    /// recompiles the current durable binding, so this never becomes a manual
+    /// review gate.
     func contextConsentDidChange() {
-        guard persistedProfile != nil,
-              draft.sendContextToSoniox,
-              persistence.hasConfirmedContext(notebookId: notebookId) == false
-        else { return }
-        switch persistenceState {
-        case .saved:
-            persistenceState = .contextReviewRequired(
-                NotebookCaptureClientError.contextConfirmationRequired.localizedDescription
-            )
-        case .loading, .saving, .loadFailed, .saveFailed, .contextReviewRequired:
-            break
-        }
+        // Optional previews remain available in Settings, but are not consent.
     }
 
     static func normalized(_ profile: NotebookCaptureProfileDTO) -> NotebookCaptureProfileDTO {
@@ -419,17 +410,18 @@ final class NotebookCaptureProfileEditorModel: ObservableObject {
             let saved = try persistence.saveProfile(candidate)
             self.persistedProfile = saved
             draft = saved
-            persistenceState = postSaveState(for: saved)
+            persistenceState = .saved
         } catch {
             let saveMessage = error.localizedDescription
             let refreshed = persistence.profileForNotebook(notebookId)
             if persistence.lastError == nil {
                 self.persistedProfile = refreshed
                 if Self.sameConfiguration(refreshed, candidate) {
-                    // The profile write succeeded, but Context recompilation or
-                    // exact-consent verification failed afterwards.
+                    // The write reached durable storage but the caller still
+                    // reported a technical failure. Never turn that into a
+                    // reference-review prompt.
                     draft = refreshed
-                    persistenceState = .contextReviewRequired(saveMessage)
+                    persistenceState = .saveFailed(saveMessage)
                 } else {
                     var rebased = candidate
                     rebased.revision = refreshed.revision
@@ -456,16 +448,6 @@ final class NotebookCaptureProfileEditorModel: ObservableObject {
         }
     }
 
-    private func postSaveState(
-        for profile: NotebookCaptureProfileDTO
-    ) -> NotebookCaptureSettingsPersistenceState {
-        guard profile.sendContextToSoniox,
-              persistence.hasConfirmedContext(notebookId: notebookId) == false
-        else { return .saved }
-        return .contextReviewRequired(
-            NotebookCaptureClientError.contextConfirmationRequired.localizedDescription
-        )
-    }
 }
 
 /// The only UI surface allowed to start, pause, resume, or stop capture.
