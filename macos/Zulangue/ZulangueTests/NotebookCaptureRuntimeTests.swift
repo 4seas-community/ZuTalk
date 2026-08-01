@@ -1399,6 +1399,46 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testLongContinuousPreviewBurstPublishesNewestTailAfterCoalescingBudget() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource(),
+            livePreviewCoalescingInterval: 0.05
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var preview = NotebookCaptureUtteranceDTO.sample
+        preview.revision = 0
+        preview.sourceLanguage = "und"
+        preview.translatedLanguage = nil
+        preview.translatedText = nil
+        preview.completion = "partial"
+        preview.alignment = "source_only"
+
+        for revision in 1...750 {
+            let suffix = revision == 750 ? "[FINAL-TAIL]" : ""
+            preview.sourceText = "continuous partial \(revision)\(suffix)"
+            client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+                sessionId: "session-a",
+                previewRevision: UInt64(revision),
+                utterances: [preview]
+            ))
+        }
+
+        let didPublishTail = await waitUntil {
+            store.presentedUtterances.last?.sourceText.hasSuffix("[FINAL-TAIL]") == true
+        }
+        XCTAssertTrue(
+            didPublishTail,
+            "the display budget may drop intermediate frames but must publish the newest tail"
+        )
+        XCTAssertEqual(store.captureState, .recording)
+        XCTAssertEqual(client.listUtterancesCount, 0)
+        store.resetForTesting()
+    }
+
+    @MainActor
     func testCaptureDeltaRevisionGapRebuildsOnceThenResumesIncrementalUpserts() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         let store = ActiveBilingualTranscriptStore(
@@ -5314,6 +5354,26 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let laneTextView = String(
             captureViews[laneTextStart.lowerBound..<laneTextEnd.lowerBound]
         )
+        let conversationRowStart = try XCTUnwrap(
+            overlayViews.range(of: "private func conversationRow(")
+        )
+        let conversationRowEnd = try XCTUnwrap(
+            overlayViews[conversationRowStart.upperBound...]
+                .range(of: "/// Words-first projection")
+        )
+        let conversationRowView = String(
+            overlayViews[conversationRowStart.lowerBound..<conversationRowEnd.lowerBound]
+        )
+        let conversationLaneStart = try XCTUnwrap(
+            overlayViews.range(of: "private func conversationLane(")
+        )
+        let conversationLaneEnd = try XCTUnwrap(
+            overlayViews[conversationLaneStart.upperBound...]
+                .range(of: "/// One lane, words only")
+        )
+        let conversationLaneView = String(
+            overlayViews[conversationLaneStart.lowerBound..<conversationLaneEnd.lowerBound]
+        )
         XCTAssertTrue(captureViews.contains("try await capture.start(notebookId: notebookId)"))
         XCTAssertTrue(captureViews.contains("try await capture.setPaused"))
         XCTAssertTrue(captureViews.contains("try await capture.stop()"))
@@ -5533,6 +5593,14 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             "the first editable lane appearance must seed the latest authoritative provider text"
         )
         XCTAssertTrue(laneTextView.contains("scheduleDisappear"))
+        XCTAssertTrue(
+            laneTextView.contains(".lineLimit(2...)"),
+            "editable language-column rows must grow with their complete text"
+        )
+        XCTAssertFalse(
+            laneTextView.contains(".lineLimit(2...10)"),
+            "a ten-line editor cap hides the tail instead of growing the utterance row"
+        )
         XCTAssertFalse(
             laneTextView.contains(".onChange(of: target)"),
             "lane identity already retargets with .id; a second synchronous retarget loop re-enters SwiftUI"
@@ -5617,6 +5685,14 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             "audience rows anchor to the bottom edge so the newest words are always fully visible"
         )
         XCTAssertTrue(
+            conversationRowView.contains("HStack(alignment: .bottom, spacing: 0)"),
+            "conversation columns must share a visible bottom edge when language lengths diverge"
+        )
+        XCTAssertFalse(
+            conversationRowView.contains("HStack(alignment: .top, spacing: 0)"),
+            "top-aligned short conversation lanes disappear when the longest lane clips at the top"
+        )
+        XCTAssertTrue(
             overlayViews.contains(".clipped()"),
             "overflow leaves through the top edge; history yields to the words being spoken"
         )
@@ -5627,6 +5703,14 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(
             overlayViews.contains("alignment: .bottomLeading"),
             "lane text anchors to the card bottom so a short language survives top-edge clipping"
+        )
+        XCTAssertTrue(
+            conversationLaneView.contains("alignment: .bottomLeading"),
+            "each conversation lane must keep its newest tail on the shared bottom edge"
+        )
+        XCTAssertFalse(
+            conversationLaneView.contains("alignment: .topLeading"),
+            "a conversation lane must not retain a conflicting top anchor"
         )
         XCTAssertFalse(
             overlayViews.contains("maxHeight: .infinity, alignment: .topLeading"),

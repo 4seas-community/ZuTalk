@@ -3904,7 +3904,10 @@ private struct BilingualLaneText: View {
                     .textFieldStyle(.plain)
                     .font(.body)
                     .foregroundColor(.bpLine)
-                    .lineLimit(2...10)
+                    // The page owns vertical scrolling. Let a continuous
+                    // utterance grow the row instead of hiding its tail in a
+                    // ten-line nested editor.
+                    .lineLimit(2...)
                     .focused($isFocused)
                     .disabled(isCommitInFlight)
                     .onSubmit { isFocused = false }

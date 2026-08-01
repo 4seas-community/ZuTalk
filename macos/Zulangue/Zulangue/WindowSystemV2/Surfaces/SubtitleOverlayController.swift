@@ -1332,7 +1332,9 @@ struct SubtitleOverlayView: View {
             )
         } else {
             if layout == .columns {
-                HStack(alignment: .top, spacing: 0) {
+                // A shared bottom edge keeps every language's newest words in
+                // view when a much longer sibling clips through the row's top.
+                HStack(alignment: .bottom, spacing: 0) {
                     ForEach(Array(displayLanes(projection).enumerated()), id: \.offset) {
                         index,
                         lane in
@@ -1444,7 +1446,7 @@ struct SubtitleOverlayView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, minHeight: CGFloat(fontSize * 2.35), alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: CGFloat(fontSize * 2.35), alignment: .bottomLeading)
     }
 
     /// One lane, words only: no per-row language caption, no line cap, no
