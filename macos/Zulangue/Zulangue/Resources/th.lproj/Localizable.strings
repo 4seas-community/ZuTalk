@@ -795,6 +795,7 @@
 "subtitle.overlay.degraded_lanes" = "คอลัมน์คำแปลเหล่านี้ล่าช้าหรือใช้งานไม่ได้ การถอดเสียงยังดำเนินต่อ";
 "subtitle.overlay.recording_ended" = "การบันทึกสิ้นสุดแล้ว";
 "subtitle.overlay.font_size" = "ขนาดคำบรรยาย";
+"subtitle.overlay.background_opacity" = "ความทึบของพื้นหลังคำบรรยาย";
 "subtitle.overlay.font_smaller" = "คำบรรยายเล็กลง";
 "subtitle.overlay.font_larger" = "คำบรรยายใหญ่ขึ้น";
 "subtitle.overlay.font_auto.enable" = "ปรับขนาดคำบรรยายตามหน้าต่างอัตโนมัติ";

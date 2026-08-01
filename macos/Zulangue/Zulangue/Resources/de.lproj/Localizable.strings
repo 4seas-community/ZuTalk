@@ -794,6 +794,7 @@
 "subtitle.overlay.degraded_lanes" = "Diese Übersetzungsspalten sind im Rückstand oder nicht verfügbar; die Transkription läuft weiter.";
 "subtitle.overlay.recording_ended" = "Aufnahme beendet";
 "subtitle.overlay.font_size" = "Untertitelgröße";
+"subtitle.overlay.background_opacity" = "Deckkraft des Untertitelhintergrunds";
 "subtitle.overlay.font_smaller" = "Kleinere Untertitel";
 "subtitle.overlay.font_larger" = "Größere Untertitel";
 "subtitle.overlay.font_auto.enable" = "Untertitelgröße an das Fenster anpassen";

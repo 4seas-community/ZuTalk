@@ -783,6 +783,7 @@
 "subtitle.overlay.degraded_lanes" = "これらの翻訳列は遅延または利用できません。文字起こしは継続中です。";
 "subtitle.overlay.recording_ended" = "録音が終了しました";
 "subtitle.overlay.font_size" = "字幕サイズ";
+"subtitle.overlay.background_opacity" = "字幕背景の不透明度";
 "subtitle.overlay.font_smaller" = "字幕を小さく";
 "subtitle.overlay.font_larger" = "字幕を大きく";
 "subtitle.overlay.font_auto.enable" = "字幕サイズをウィンドウに合わせる";

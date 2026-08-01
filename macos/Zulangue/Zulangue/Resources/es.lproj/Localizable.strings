@@ -794,6 +794,7 @@
 "subtitle.overlay.degraded_lanes" = "Estas columnas de traducción están retrasadas o no disponibles; la transcripción continúa.";
 "subtitle.overlay.recording_ended" = "Grabación finalizada";
 "subtitle.overlay.font_size" = "Tamaño de los subtítulos";
+"subtitle.overlay.background_opacity" = "Opacidad del fondo de los subtítulos";
 "subtitle.overlay.font_smaller" = "Subtítulos más pequeños";
 "subtitle.overlay.font_larger" = "Subtítulos más grandes";
 "subtitle.overlay.font_auto.enable" = "Ajustar los subtítulos al tamaño de la ventana";

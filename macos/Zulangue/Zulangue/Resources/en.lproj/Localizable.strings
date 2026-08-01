@@ -795,6 +795,7 @@
 "subtitle.overlay.degraded_lanes" = "These translation columns are behind or unavailable; transcription continues.";
 "subtitle.overlay.recording_ended" = "Recording ended";
 "subtitle.overlay.font_size" = "Caption size";
+"subtitle.overlay.background_opacity" = "Caption background opacity";
 "subtitle.overlay.font_smaller" = "Smaller captions";
 "subtitle.overlay.font_larger" = "Larger captions";
 "subtitle.overlay.font_auto.enable" = "Size captions to the window";

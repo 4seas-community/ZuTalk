@@ -6489,6 +6489,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 "subtitle.overlay.title",
                 "subtitle.overlay.accessibility_label",
                 "subtitle.overlay.language_count",
+                "subtitle.overlay.background_opacity",
                 "subtitle.overlay.font_smaller",
                 "subtitle.overlay.font_larger",
                 "subtitle.overlay.move_resize_hint",

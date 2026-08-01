@@ -769,18 +769,18 @@ private struct AudienceStableSourceText: View {
     }
 }
 
-/// The overlay paints on an opaque surface instead of a blurred material.
+/// The overlay paints a plain color instead of a blurred material.
 ///
-/// A translucent window makes the compositor re-run a CoreImage backdrop blur
-/// over whatever sits behind it every time the canvas is dirtied. This canvas
-/// floats above a live meeting and is dirtied by every transcript revision, so
-/// the backdrop never stops changing and the blur can never be cached — the
-/// work lands on the WindowServer main thread and stalls the whole display
-/// pipeline, not just this app. An opaque fill removes that path entirely.
+/// A backdrop blur makes the compositor re-run a CoreImage effect over
+/// whatever sits behind the window every time the canvas is dirtied. This
+/// canvas floats above a live meeting and is dirtied by every transcript
+/// revision, so the blur can never be cached — the work lands on the
+/// WindowServer main thread and stalls the whole display pipeline, not just
+/// this app. Alpha-blending a uniform color gives the audience a view through
+/// to the shared screen without bringing that expensive blur path back.
 ///
-/// Hairlines follow the same constraint: they used to be white-on-material,
-/// which disappears against an opaque light-mode surface, so they resolve
-/// through the semantic separator color instead.
+/// Hairlines follow the same constraint: white-on-material disappears against
+/// the light canvas, so they resolve through the semantic separator color.
 enum SubtitleOverlayPalette {
     static let surface = Color(nsColor: .windowBackgroundColor)
     static let hairline = Color(nsColor: .separatorColor)
@@ -813,6 +813,32 @@ enum SubtitleOverlayTheme: String, CaseIterable {
 
     var toggled: SubtitleOverlayTheme {
         self == .dark ? .light : .dark
+    }
+}
+
+/// Keeps the shared screen visible while retaining enough contrast for text.
+/// The operator can tune a plain-color alpha blend for the surface behind the
+/// captions; the glyphs never inherit this opacity. The hover bar is denser so
+/// controls remain legible over both captions and shared content. macOS'
+/// Reduce Transparency preference always restores an opaque canvas.
+enum SubtitleOverlayBackdropPolicy {
+    static let defaultsKey = "zulangue.subtitleOverlay.backgroundOpacity"
+    static let minimumOpacity = 0.50
+    static let maximumOpacity = 0.90
+    static let defaultOpacity = 0.60
+    static let controlBarOpacity = 0.94
+    static let opacityRange = minimumOpacity...maximumOpacity
+
+    static func canvasOpacity(
+        storedOpacity: Double,
+        reduceTransparency: Bool
+    ) -> Double {
+        guard reduceTransparency == false else { return 1 }
+        return min(max(storedOpacity, minimumOpacity), maximumOpacity)
+    }
+
+    static func controlsOpacity(reduceTransparency: Bool) -> Double {
+        reduceTransparency ? 1 : controlBarOpacity
     }
 }
 
@@ -880,6 +906,10 @@ struct SubtitleOverlayView: View {
     @ObservedObject var store: ActiveBilingualTranscriptStore
     @ObservedObject private var coordinator = SubtitleOverlayCoordinator.shared
     @ObservedObject private var presentationSettings = SubtitleOverlayPresentationSettings.shared
+    @Environment(\.accessibilityReduceTransparency)
+    private var accessibilityReduceTransparency
+    @AppStorage(SubtitleOverlayBackdropPolicy.defaultsKey)
+    private var storedBackdropOpacity = SubtitleOverlayBackdropPolicy.defaultOpacity
     @AppStorage(SubtitleOverlayFontPolicy.defaultsKey)
     private var storedFontSize = SubtitleOverlayFontPolicy.defaultValue
     @AppStorage(SubtitleOverlayFontPolicy.modeDefaultsKey)
@@ -902,7 +932,7 @@ struct SubtitleOverlayView: View {
             .frame(minWidth: 560, minHeight: 180)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(SubtitleOverlayPalette.surface)
+                    .fill(SubtitleOverlayPalette.surface.opacity(canvasOpacity))
                     .overlay(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(SubtitleOverlayPalette.hairline, lineWidth: 0.5)
@@ -935,9 +965,29 @@ struct SubtitleOverlayView: View {
                 controlBar
                 Divider().overlay(SubtitleOverlayPalette.hairline)
             }
-            .background(SubtitleOverlayPalette.surface)
+            .background(SubtitleOverlayPalette.surface.opacity(controlsOpacity))
             .transition(.opacity)
         }
+    }
+
+    private var canvasOpacity: Double {
+        SubtitleOverlayBackdropPolicy.canvasOpacity(
+            storedOpacity: storedBackdropOpacity,
+            reduceTransparency: accessibilityReduceTransparency
+        )
+    }
+
+    private var configuredCanvasOpacity: Double {
+        SubtitleOverlayBackdropPolicy.canvasOpacity(
+            storedOpacity: storedBackdropOpacity,
+            reduceTransparency: false
+        )
+    }
+
+    private var controlsOpacity: Double {
+        SubtitleOverlayBackdropPolicy.controlsOpacity(
+            reduceTransparency: accessibilityReduceTransparency
+        )
     }
 
     private var controlBar: some View {
@@ -953,6 +1003,7 @@ struct SubtitleOverlayView: View {
 
                 modePicker
                 fontControls
+                backdropOpacityControl
                 themeButton
                 pinButton
                 closeButton
@@ -962,6 +1013,7 @@ struct SubtitleOverlayView: View {
                 HStack(spacing: 8) {
                     captureStatus
                     Spacer(minLength: 8)
+                    backdropOpacityControl
                     themeButton
                     pinButton
                     closeButton
@@ -1135,6 +1187,35 @@ struct SubtitleOverlayView: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color.primary.opacity(0.07))
         )
+    }
+
+    private var backdropOpacityControl: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "circle.lefthalf.filled")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+                .accessibilityHidden(true)
+
+            Slider(
+                value: Binding(
+                    get: { configuredCanvasOpacity },
+                    set: { storedBackdropOpacity = $0 }
+                ),
+                in: SubtitleOverlayBackdropPolicy.opacityRange
+            )
+            .controlSize(.mini)
+            .frame(width: 72)
+            .accessibilityLabel(Text(String(localized: "subtitle.overlay.background_opacity")))
+            .accessibilityValue(Text(verbatim: "\(Int(canvasOpacity * 100))%"))
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(0.07))
+        )
+        .disabled(accessibilityReduceTransparency)
+        .help(String(localized: "subtitle.overlay.background_opacity"))
     }
 
     /// Every manual size control funnels through here: asking for a specific

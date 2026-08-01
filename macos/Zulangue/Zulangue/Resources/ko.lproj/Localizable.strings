@@ -795,6 +795,7 @@
 "subtitle.overlay.degraded_lanes" = "이 번역 열은 뒤쳐져 있거나 사용할 수 없습니다. 전사는 계속됩니다.";
 "subtitle.overlay.recording_ended" = "녹음이 종료되었습니다";
 "subtitle.overlay.font_size" = "캡션 크기";
+"subtitle.overlay.background_opacity" = "자막 배경 불투명도";
 "subtitle.overlay.font_smaller" = "더 작은 캡션";
 "subtitle.overlay.font_larger" = "더 큰 캡션";
 "subtitle.overlay.font_auto.enable" = "캡션을 창에 맞게 크기 조정";

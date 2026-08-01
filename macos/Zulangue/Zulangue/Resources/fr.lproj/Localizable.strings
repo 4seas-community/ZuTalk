@@ -795,6 +795,7 @@
 "subtitle.overlay.degraded_lanes" = "Ces colonnes de traduction sont en retard ou indisponibles ; la transcription continue.";
 "subtitle.overlay.recording_ended" = "Enregistrement terminé";
 "subtitle.overlay.font_size" = "Taille des sous-titres";
+"subtitle.overlay.background_opacity" = "Opacité de l’arrière-plan des sous-titres";
 "subtitle.overlay.font_smaller" = "Sous-titres plus petits";
 "subtitle.overlay.font_larger" = "Sous-titres plus grands";
 "subtitle.overlay.font_auto.enable" = "Adapter la taille des sous-titres à la fenêtre";

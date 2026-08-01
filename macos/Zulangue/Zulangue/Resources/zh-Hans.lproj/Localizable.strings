@@ -795,6 +795,7 @@
 "subtitle.overlay.degraded_lanes" = "这些译文栏落后或不可用，转录仍在继续。";
 "subtitle.overlay.recording_ended" = "录音已结束";
 "subtitle.overlay.font_size" = "字幕字号";
+"subtitle.overlay.background_opacity" = "字幕背景不透明度";
 "subtitle.overlay.font_smaller" = "减小字幕";
 "subtitle.overlay.font_larger" = "放大字幕";
 "subtitle.overlay.font_auto.enable" = "字号随窗口自动适配";

@@ -703,6 +703,77 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    func testSubtitleOverlayBackdropIsTranslucentWithoutBackdropBlur() throws {
+        let spec = WindowSpecV2.required(.subtitleOverlay)
+        let panel = NSPanel(
+            contentRect: spec.initialContentRect,
+            styleMask: spec.styleMask,
+            backing: .buffered,
+            defer: false
+        )
+
+        ManagedWindowRuntimeV2.apply(spec: spec, to: panel)
+
+        XCTAssertFalse(panel.isOpaque)
+        XCTAssertEqual(panel.backgroundColor, .clear)
+        XCTAssertTrue(panel.hasShadow)
+        XCTAssertEqual(panel.alphaValue, 1)
+        XCTAssertEqual(
+            SubtitleOverlayBackdropPolicy.minimumOpacity,
+            0.50,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            SubtitleOverlayBackdropPolicy.canvasOpacity(
+                storedOpacity: SubtitleOverlayBackdropPolicy.defaultOpacity,
+                reduceTransparency: false
+            ),
+            0.60,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            SubtitleOverlayBackdropPolicy.canvasOpacity(
+                storedOpacity: 0,
+                reduceTransparency: false
+            ),
+            SubtitleOverlayBackdropPolicy.minimumOpacity,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            SubtitleOverlayBackdropPolicy.canvasOpacity(
+                storedOpacity: 1,
+                reduceTransparency: false
+            ),
+            SubtitleOverlayBackdropPolicy.maximumOpacity,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            SubtitleOverlayBackdropPolicy.canvasOpacity(
+                storedOpacity: SubtitleOverlayBackdropPolicy.minimumOpacity,
+                reduceTransparency: true
+            ),
+            1
+        )
+        XCTAssertEqual(
+            SubtitleOverlayBackdropPolicy.controlsOpacity(reduceTransparency: true),
+            1
+        )
+        XCTAssertGreaterThan(
+            SubtitleOverlayBackdropPolicy.controlBarOpacity,
+            SubtitleOverlayBackdropPolicy.maximumOpacity
+        )
+
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent(
+                "Zulangue/WindowSystemV2/Surfaces/SubtitleOverlayController.swift"
+            )
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        XCTAssertFalse(source.contains(".regularMaterial"))
+        XCTAssertFalse(source.contains("NSVisualEffectView"))
+    }
+
     func testAudienceTimelineColumnsAnchorByTimeAndKeepIndependentSegmentation() {
         let source = { (sequence: UInt64, language: String, text: String, start: UInt64) in
             NotebookCaptureUtteranceDTO(
