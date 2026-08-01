@@ -510,7 +510,8 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
             .appendingPathComponent("Zulangue")
         let files = [
             "Settings/FullSettingsView.swift",
-            "App/OnboardingView.swift"
+            "App/OnboardingView.swift",
+            "App/ProviderCredentialSession.swift"
         ]
         let combined = try files.map { path in
             try String(
@@ -519,7 +520,11 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
             )
         }.joined(separator: "\n")
 
-        XCTAssertTrue(combined.contains("Local app service is not ready yet."))
+        XCTAssertTrue(
+            combined.contains(
+                "String(localized: \"settings.credentials.error.core_unavailable\")"
+            )
+        )
         XCTAssertFalse(combined.contains("Peer sharing status"))
         XCTAssertFalse(combined.contains("DaemonStatusSection()"))
         XCTAssertTrue(combined.contains("sections: [.general, .shortcuts]"))
