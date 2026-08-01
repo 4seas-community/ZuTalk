@@ -316,8 +316,11 @@ pub struct FfiNotebookCaptureEvent {
     /// `withdrawn` cue removes the entry. Coalescing gaps heal through the
     /// same full-snapshot rebuild as `utterances`.
     pub translation_cues: Vec<FfiNotebookCaptureTranslationCue>,
-    /// Present only on live transition deltas; empty means "no change to
-    /// report", so clients keep the last non-empty set for the session.
+    /// Current health of every lane in the running stream group, carried on
+    /// every event of a live capture — state, not an edge. A lane fails once
+    /// per session, and the single-slot callback mailbox coalesces, so an
+    /// edge-triggered payload would be silently dropped exactly when it
+    /// mattered most. Empty means there is no running group.
     pub lane_health: Vec<FfiNotebookCaptureLaneHealth>,
     pub context_receipt: Option<FfiNotebookCaptureContextReceipt>,
     pub provider_error_type: Option<String>,
@@ -3167,6 +3170,13 @@ struct PendingCaptureCallbacks {
     event: Option<FfiNotebookCaptureEvent>,
     preview: Option<FfiNotebookCaptureLivePreview>,
     remote_truth: Option<CaptureRemoteTruthOverlay>,
+    /// Sticky, like `remote_truth`: the mailbox holds one event slot, so a
+    /// transition published as a one-shot payload is lost whenever the next
+    /// delta overwrites it before the dispatcher drains. A lane can fail
+    /// exactly once in a session, and that single edge is precisely what the
+    /// operator must not miss, so lane health is carried as current state on
+    /// every outgoing event instead of as an edge.
+    lane_health: Vec<FfiNotebookCaptureLaneHealth>,
 }
 
 #[derive(Debug, Clone)]
@@ -3336,9 +3346,6 @@ impl CaptureCallbackSink {
                 } else {
                     std::mem::take(&mut event.translation_cues)
                 };
-                // Lane health is process-local and rides deltas untouched;
-                // a durable snapshot has no live stream group to describe.
-                refreshed.lane_health = std::mem::take(&mut event.lane_health);
                 refreshed.realtime_lag_ms = event.realtime_lag_ms;
                 if matches!(
                     refreshed.capture_state,
@@ -3347,9 +3354,15 @@ impl CaptureCallbackSink {
                         | FfiNotebookCaptureState::Failed
                 ) {
                     pending.remote_truth = None;
+                    // The stream group is gone; there are no lanes to describe.
+                    pending.lane_health.clear();
                 } else {
                     Self::apply_remote_truth_overlay(&mut refreshed, pending.remote_truth.as_ref());
+                    if !event.lane_health.is_empty() {
+                        pending.lane_health = std::mem::take(&mut event.lane_health);
+                    }
                 }
+                refreshed.lane_health = pending.lane_health.clone();
                 refreshed
             }
             Ok(None) => {
@@ -3445,9 +3458,13 @@ impl CaptureCallbackSink {
                 | FfiNotebookCaptureState::Failed
         ) {
             pending.remote_truth = None;
+            pending.lane_health.clear();
         } else {
             Self::apply_remote_truth_overlay(&mut event, pending.remote_truth.as_ref());
         }
+        // A snapshot is the client's rebuild path after a coalescing gap, so
+        // it has to carry lane health too or a lost transition never heals.
+        event.lane_health = pending.lane_health.clone();
         Ok(event)
     }
 
@@ -11145,6 +11162,95 @@ mod tests {
         assert!(canonical_down
             .try_fanout_control(SttStreamControl::Keepalive)
             .is_err());
+    }
+
+    #[test]
+    fn a_lane_failure_survives_callback_coalescing_and_reaches_a_snapshot() {
+        // A lane fails exactly once in a session. The callback mailbox holds a
+        // single event slot, so if that one transition were published as an
+        // edge it would be dropped by the very next token delta and the
+        // operator would never learn a column had gone dark.
+        let (_temp, core, _profile) = assembler_store_fixture("lane-health-coalescing");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let callback = CaptureCallbackSink::new(
+            Arc::new(CaptureEventSender(tx)),
+            core.notebook_capture_store.clone(),
+        )
+        .unwrap();
+        let run = core
+            .notebook_capture_store
+            .get_run_for_session("lane-health-coalescing")
+            .unwrap()
+            .unwrap();
+
+        let lanes = [
+            StreamAggregationLane {
+                descriptor: RemoteStreamLane {
+                    target_language: None,
+                    canonical: true,
+                },
+                assembler: RealtimeUtteranceAssembler::new(
+                    "lane-health-coalescing".into(),
+                    &profile(),
+                ),
+                provider_session_epoch: 0,
+                group_epoch: 0,
+                awaiting_reconnect: false,
+                connected: true,
+                ever_connected: true,
+                failed: false,
+                provider_accepted_configuration: true,
+                disconnected_at_frame: None,
+            },
+            StreamAggregationLane {
+                descriptor: RemoteStreamLane {
+                    target_language: Some("th".to_string()),
+                    canonical: false,
+                },
+                assembler: RealtimeUtteranceAssembler::new(
+                    "lane-health-coalescing".into(),
+                    &profile(),
+                ),
+                provider_session_epoch: 0,
+                group_epoch: 0,
+                awaiting_reconnect: false,
+                connected: false,
+                ever_connected: true,
+                failed: true,
+                provider_accepted_configuration: true,
+                disconnected_at_frame: None,
+            },
+        ];
+
+        let mut transition = event_from_run(run.clone(), Vec::new(), false);
+        transition.lane_health = lane_health_snapshot(&lanes);
+        let published = callback.send(transition);
+        assert_eq!(published.lane_health.len(), 2);
+
+        // The next ordinary delta carries no lane payload of its own. It is
+        // what overwrites the single mailbox slot, so it has to keep
+        // describing the lanes or the failure is gone for good.
+        let plain = callback.send(event_from_run(run.clone(), Vec::new(), false));
+        let failed = plain
+            .lane_health
+            .iter()
+            .find(|lane| lane.target_language.as_deref() == Some("th"))
+            .expect("a plain delta still describes the failed lane");
+        assert_eq!(failed.state, "failed");
+        assert!(plain
+            .lane_health
+            .iter()
+            .any(|lane| lane.target_language.is_none() && lane.state == "live"));
+
+        // And the client's rebuild path after a coalescing gap sees it too.
+        let snapshot = callback
+            .full_snapshot_with_remote_truth("lane-health-coalescing")
+            .unwrap();
+        assert!(snapshot
+            .lane_health
+            .iter()
+            .any(|lane| lane.target_language.as_deref() == Some("th") && lane.state == "failed"));
+        drop(rx);
     }
 
     #[test]

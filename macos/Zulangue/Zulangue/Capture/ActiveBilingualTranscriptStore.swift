@@ -4468,9 +4468,11 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
     }
 
-    /// Lane health arrives whole or not at all, so an empty payload means
-    /// "no transition to report" and the last known set stands. A terminal
-    /// capture state ends the group, and with it any claim about its lanes.
+    /// Lane health is current state, not an edge: a live capture carries the
+    /// whole group's health on every event, so a coalesced delta loses
+    /// nothing. An empty payload during a live capture means the group has
+    /// not reported any lane yet; a terminal capture state ends the group,
+    /// and with it any claim about its lanes.
     private func reconcileLaneHealth(for event: NotebookCaptureEventDTO) {
         if event.captureState.isActive == false {
             laneHealth = [:]
@@ -4651,6 +4653,13 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             // every row through `merge` to preserve committed edit barriers.
             utterances = []
             merge(snapshot.utterances)
+            // The gap this repair exists to close swallows whole events, not
+            // just their utterances. A dropped delta can carry a cue
+            // withdrawal — leaving retracted text on the audience canvas for
+            // the rest of the session — or the one lane transition a session
+            // ever produces. Both rebuild from the same snapshot.
+            reconcileTranslationCues(for: snapshot)
+            reconcileLaneHealth(for: snapshot)
             utteranceGapRepair = nil
             utteranceGapRepairTask = nil
             return

@@ -3276,8 +3276,11 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
      */
     public var translationCues: [FfiNotebookCaptureTranslationCue]
     /**
-     * Present only on live transition deltas; empty means "no change to
-     * report", so clients keep the last non-empty set for the session.
+     * Current health of every lane in the running stream group, carried on
+     * every event of a live capture — state, not an edge. A lane fails once
+     * per session, and the single-slot callback mailbox coalesces, so an
+     * edge-triggered payload would be silently dropped exactly when it
+     * mattered most. Empty means there is no running group.
      */
     public var laneHealth: [FfiNotebookCaptureLaneHealth]
     public var contextReceipt: FfiNotebookCaptureContextReceipt?
@@ -3325,8 +3328,11 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
          * same full-snapshot rebuild as `utterances`.
          */translationCues: [FfiNotebookCaptureTranslationCue],
         /**
-         * Present only on live transition deltas; empty means "no change to
-         * report", so clients keep the last non-empty set for the session.
+         * Current health of every lane in the running stream group, carried on
+         * every event of a live capture — state, not an edge. A lane fails once
+         * per session, and the single-slot callback mailbox coalesces, so an
+         * edge-triggered payload would be silently dropped exactly when it
+         * mattered most. Empty means there is no running group.
          */laneHealth: [FfiNotebookCaptureLaneHealth], contextReceipt: FfiNotebookCaptureContextReceipt?, providerErrorType: String?, providerRequestId: String?) {
         self.sessionId = sessionId
         self.eventRevision = eventRevision

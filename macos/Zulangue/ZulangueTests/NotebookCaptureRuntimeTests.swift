@@ -1562,6 +1562,80 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testCaptureGapRepairRebuildsTranslationCuesAndLaneHealth() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        let cue = { (sequence: UInt64, text: String) in
+            NotebookCaptureTranslationCueDTO(
+                targetLanguage: "th",
+                groupEpoch: 0,
+                providerSequence: sequence,
+                sourceLanguage: "zh",
+                sourceStartMs: 1_000 * sequence,
+                sourceEndMs: 1_000 * sequence + 500,
+                text: text,
+                completion: "partial",
+                withdrawn: false,
+                revision: 1
+            )
+        }
+
+        // Two cues reach the canvas.
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 1,
+            isFullSnapshot: false,
+            translationCues: [cue(0, "หนึ่ง"), cue(1, "สอง")]
+        ))
+        let rendered = await waitUntil { store.translationCues.count == 2 }
+        XCTAssertTrue(rendered, "cues must reach the store before the gap opens")
+
+        // The provider retracts the second cue and a lane dies. That delta is
+        // coalesced away — the client never sees it — and the next event
+        // arrives with a revision gap, which is the only signal it gets.
+        let snapshot = captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            translationCues: [cue(0, "หนึ่ง")],
+            laneHealth: [
+                NotebookCaptureLaneHealthDTO(targetLanguage: nil, state: .live),
+                NotebookCaptureLaneHealthDTO(targetLanguage: "th", state: .failed),
+            ]
+        )
+        client.reconcileEvents = [snapshot]
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 5,
+            isFullSnapshot: false
+        ))
+
+        let healed = await waitUntil {
+            store.translationCues.count == 1
+                && store.failedTranslationLanguages == ["th"]
+        }
+        XCTAssertTrue(
+            healed,
+            "the gap-repair snapshot must rebuild cues and lane health, not just utterances"
+        )
+        XCTAssertNil(
+            store.translationCues["0:1:th"],
+            "a withdrawal lost to coalescing must not leave retracted text on the canvas"
+        )
+        store.resetForTesting()
+    }
+
+    @MainActor
     func testCaptureGapRepairFromOldGenerationCannotOverwriteNewSession() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         let controller = BlockingNotebookReconcileController()
@@ -4955,7 +5029,9 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         utterances: [NotebookCaptureUtteranceDTO],
         eventRevision: UInt64 = 0,
         isFullSnapshot: Bool = true,
-        realtimeLoroAppliedRevision: UInt64? = nil
+        realtimeLoroAppliedRevision: UInt64? = nil,
+        translationCues: [NotebookCaptureTranslationCueDTO] = [],
+        laneHealth: [NotebookCaptureLaneHealthDTO] = []
     ) -> NotebookCaptureEventDTO {
         let durableRevision = utterances.reduce(UInt64(0)) { current, utterance in
             max(
@@ -4974,6 +5050,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             remoteHealth: state.isActive ? .live : .off,
             projectionState: state.isActive ? .pending : .ready,
             utterances: utterances,
+            translationCues: translationCues,
+            laneHealth: laneHealth,
             contextReceipt: nil,
             providerErrorType: nil,
             providerRequestId: nil,

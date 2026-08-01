@@ -287,68 +287,6 @@ mod tests {
         assert_eq!(totals.updates, 2);
     }
 
-    fn variant(
-        language: &str,
-        role: &str,
-        text: &str,
-    ) -> crate::notebook_capture_api::FfiNotebookCaptureLanguageVariant {
-        crate::notebook_capture_api::FfiNotebookCaptureLanguageVariant {
-            language: language.to_string(),
-            role: role.to_string(),
-            text: Some(text.to_string()),
-            state: "ready".to_string(),
-            completion: Some("partial".to_string()),
-            projection_revision: 0,
-            edit_revision: 0,
-        }
-    }
-
-    #[test]
-    fn probe_source_lane_double_count() {
-        let mut meter = ErasureMeter::default();
-        let mut row = utterance(0, "zh", "你好世界");
-        row.language_variants = vec![variant("zh", "source", "你好世界")];
-        meter.absorb_event_utterances("session", &[row]);
-        let totals = meter.totals.get("zh").copied().unwrap();
-        println!("PROBE source-double-count zh = {totals:?}");
-    }
-
-    #[test]
-    fn probe_variant_rehoming_strands_the_old_language() {
-        let mut meter = ErasureMeter::default();
-        let mut first = utterance(0, "und", "สวัสดี");
-        first.language_variants = vec![variant("und", "source", "สวัสดี")];
-        meter.absorb_event_utterances("session", &[first]);
-        let mut second = utterance(0, "th", "สวัสดี");
-        second.language_variants = vec![variant("th", "source", "สวัสดี")];
-        meter.absorb_event_utterances("session", &[second]);
-        println!(
-            "PROBE rehome und = {:?} th = {:?}",
-            meter.totals.get("und"),
-            meter.totals.get("th")
-        );
-    }
-
-    #[test]
-    fn probe_terminal_snapshot_after_finish_recounts_everything() {
-        let mut meter = ErasureMeter::default();
-        // A live session that rewrote a lot.
-        meter.absorb_event_utterances("session", &[utterance(0, "en", "hello wor")]);
-        meter.absorb_event_utterances("session", &[utterance(0, "en", "hello word")]);
-        meter.absorb_event_utterances("session", &[utterance(0, "en", "hello world")]);
-        println!("PROBE live-totals en = {:?}", meter.totals.get("en"));
-        // Terminal event #1 (projection ACK, no utterances) flushes.
-        meter.absorb_event_utterances("session", &[]);
-        meter.finish_session();
-        // Terminal event #2: the stop full snapshot carries every row again.
-        meter.absorb_event_utterances("session", &[utterance(0, "en", "hello world")]);
-        println!(
-            "PROBE second-flush en = {:?} (logged again as a second baseline record)",
-            meter.totals.get("en")
-        );
-        meter.finish_session();
-    }
-
     #[test]
     fn session_change_resets_the_meter() {
         let mut meter = ErasureMeter::default();
