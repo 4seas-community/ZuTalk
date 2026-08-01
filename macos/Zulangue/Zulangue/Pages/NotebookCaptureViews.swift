@@ -2166,11 +2166,12 @@ enum NotebookRealtimeAutoscrollPolicy {
         let utterance = utterances.last
         let latestCue = cues.max(by: cuePrecedes)
         guard utterance != nil || latestCue != nil else { return nil }
-        let textExtent = (utterance?.sourceText.count ?? 0)
-            + (utterance?.translatedText?.count ?? 0)
-            + (utterance?.languageVariants.reduce(0) { count, variant in
-                count + (variant.text?.count ?? 0)
-            } ?? 0)
+        let sourceTextExtent: Int = utterance?.sourceText.count ?? 0
+        let translatedTextExtent: Int = utterance?.translatedText?.count ?? 0
+        let variantTextExtent: Int = utterance?.languageVariants.reduce(0) { count, variant in
+            count + (variant.text?.count ?? 0)
+        } ?? 0
+        let textExtent = sourceTextExtent + translatedTextExtent + variantTextExtent
         return NotebookRealtimeAutoscrollSignal(
             utteranceID: utterance?.id,
             revision: utterance?.revision ?? 0,
