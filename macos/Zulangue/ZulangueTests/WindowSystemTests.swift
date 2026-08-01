@@ -395,12 +395,16 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertFalse(contents.contains("sidebarWidth"))
         XCTAssertFalse(contents.contains(".frame(width: 64)"))
 
-        for destination in ["sidebar.home", "sidebar.trash", "sidebar.tab.settings"] {
+        for destination in [
+            "sidebar.home",
+            "sidebar.knowledge",
+            "sidebar.trash",
+            "sidebar.tab.settings"
+        ] {
             XCTAssertTrue(contents.contains(destination), "\(destination) should be present in the MVP navigation shell")
         }
         for deferredDestination in [
             "store.select(tab: .people)",
-            "store.select(tab: .knowledge)",
             "store.select(tab: .templates)",
             "store.select(tab: .activity)"
         ] {
@@ -420,6 +424,44 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertFalse(navigationContents.contains("detail: error.localizedDescription"))
         XCTAssertFalse(navigationContents.contains("detail: \"\\(error)\""))
         XCTAssertTrue(navigationContents.contains("privacy: .private"))
+    }
+
+    func testKnowledgeProfile_compilesEnabledFieldsIntoSonioxContext() {
+        var profile = KnowledgeProfile(name: "Chiang Mai Forum")
+        profile.general.topic = "Anthropology"
+        profile.general.people = "Somchai Prasert"
+        profile.backgroundText = "A forum in Chiang Mai."
+        profile.terms = [
+            KnowledgeTerm(value: "Zuzalu"),
+            KnowledgeTerm(value: "disabled", isEnabled: false),
+        ]
+        profile.translationTerms = [
+            KnowledgeTranslationTerm(
+                sourceText: "participant observation",
+                targetText: "参与式观察"
+            )
+        ]
+
+        let context = profile.sonioxContext
+        XCTAssertEqual(context.general.map(\.key), ["topic", "people"])
+        XCTAssertEqual(context.text, "A forum in Chiang Mai.")
+        XCTAssertEqual(context.terms, ["Zuzalu"])
+        XCTAssertEqual(context.translationTerms.first?.target, "参与式观察")
+    }
+
+    func testKnowledgeProfileStore_softDeleteRemainsRecoverableOnDisk() {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("knowledge-profile-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let store = KnowledgeProfileStore(fileURL: fileURL)
+        let id = store.create(name: "Recoverable")
+        store.delete(id: id)
+
+        let reloaded = KnowledgeProfileStore(fileURL: fileURL)
+        XCTAssertTrue(reloaded.activeProfiles.isEmpty)
+        XCTAssertEqual(reloaded.profiles.count, 1)
+        XCTAssertNotNil(reloaded.profiles.first?.deletedAt)
     }
 
     func testMainShellViewV2_placesTheSidebarCollapseControlInTheHeader() throws {

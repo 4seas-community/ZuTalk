@@ -1764,17 +1764,61 @@ struct NotebookCaptureSettingsView: View {
     private var contextSection: some View {
         settingsCard(
             title: String(localized: "capture.settings.context.title"),
-            icon: "doc.text.magnifyingglass"
+            icon: "books.vertical.fill"
         ) {
             Text(String(localized: "capture.settings.context.pack_detail"))
                 .font(.caption)
                 .foregroundColor(.textOnBpDim)
                 .fixedSize(horizontal: false, vertical: true)
 
-            contextPackList
+            HStack(spacing: Spacing.sm) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(localized: "capture.settings.context.current"))
+                        .font(.system(size: 10))
+                        .foregroundColor(.textOnBpFaint)
+                    Text(selectedContextPack.map(contextPackDisplayTitle)
+                         ?? String(localized: "capture.settings.context.no_selection"))
+                        .font(.captionMedium)
+                        .foregroundColor(.bpLine)
+                        .lineLimit(1)
+                }
 
-            Divider().background(Color.bpLineGhost.opacity(0.3))
-            contextPackEditor
+                Spacer(minLength: Spacing.sm)
+
+                Menu {
+                    ForEach(capture.contextPacks) { pack in
+                        Button {
+                            selectContextPack(pack.id)
+                        } label: {
+                            if capture.selectedContextPackId == pack.id {
+                                Label(contextPackDisplayTitle(pack), systemImage: "checkmark")
+                            } else {
+                                Text(contextPackDisplayTitle(pack))
+                            }
+                        }
+                    }
+                } label: {
+                    Text(String(localized: "capture.settings.context.choose"))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(capture.contextPacks.isEmpty)
+                .accessibilityLabel(Text(String(localized: "capture.settings.context.choose")))
+            }
+            .padding(Spacing.md)
+            .background(Color.bpBlueDeep.opacity(0.35))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+
+            Button(String(localized: "capture.settings.context.preview")) {
+                requestContextPreview()
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .disabled(selectedContextPack == nil)
+
+            if isReviewingContext {
+                contextReview
+            }
         }
     }
 

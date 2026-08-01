@@ -9,6 +9,7 @@ struct EditorRouteV2: Equatable {
 
 enum MainRouteV2: Equatable {
     case home
+    case knowledge
     case trash
     case editor(route: EditorRouteV2, initialView: EditorInitialView)
     case settings
@@ -17,6 +18,8 @@ enum MainRouteV2: Equatable {
         switch self {
         case .home:
             return .home
+        case .knowledge:
+            return .knowledge
         case .trash:
             return .trash
         case .editor:

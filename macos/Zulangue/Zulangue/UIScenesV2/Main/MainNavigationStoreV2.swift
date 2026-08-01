@@ -334,6 +334,8 @@ final class MainNavigationStoreV2: ObservableObject {
         switch tab {
         case .home:
             return .home
+        case .knowledge:
+            return .knowledge
         case .trash:
             return .trash
         case .editor:

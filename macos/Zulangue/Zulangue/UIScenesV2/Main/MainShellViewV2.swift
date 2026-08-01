@@ -76,6 +76,15 @@ struct MainShellViewV2: View {
                 ) {
                     store.select(tab: .home)
                 }
+
+                sidebarItem(
+                    icon: "books.vertical.fill",
+                    label: String(localized: "sidebar.knowledge"),
+                    active: activeTab == .knowledge,
+                    accId: AccessibilityID.mainTabKnowledge
+                ) {
+                    store.select(tab: .knowledge)
+                }
             }
             .padding(.horizontal, Spacing.sm)
 
@@ -269,6 +278,8 @@ struct MainShellViewV2: View {
                     switch activeTab {
                     case .home:
                         HomeView()
+                    case .knowledge:
+                        KnowledgeLibraryPage()
                     case .trash:
                         TrashPage()
                     case .editor:
@@ -329,6 +340,8 @@ struct MainShellViewV2: View {
         switch tab {
         case .home:
             return "house.fill"
+        case .knowledge:
+            return "books.vertical.fill"
         case .trash:
             return "trash"
         case .editor:
@@ -344,6 +357,8 @@ struct MainShellViewV2: View {
         switch tab {
         case .home:
             return String(localized: "sidebar.home")
+        case .knowledge:
+            return String(localized: "sidebar.knowledge")
         case .trash:
             return String(localized: "sidebar.trash")
         case .editor:
