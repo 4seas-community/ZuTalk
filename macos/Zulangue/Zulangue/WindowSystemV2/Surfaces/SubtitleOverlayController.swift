@@ -89,6 +89,34 @@ enum SubtitleOverlayLayoutPolicy {
     static func minimumAudienceTileWidth(fontSize: Double) -> CGFloat {
         max(340, CGFloat(fontSize * 10))
     }
+
+    /// When the canvas is too narrow for every language side by side, the
+    /// languages stack as bands — and each band must own an equal,
+    /// bottom-anchored slice of the canvas. Without the slice, band heights
+    /// are content-driven: five minutes of speech makes every band taller
+    /// than the canvas, the outer bottom-aligned clip keeps only the last
+    /// band, and every other language's newest words silently leave the
+    /// screen. A tall band now clips its own history instead of evicting
+    /// the languages above it.
+    ///
+    /// Floored at roughly one short card so an absurdly small canvas
+    /// degrades to the outer clip rather than zero-height bands.
+    static func audienceBandHeight(
+        canvasHeight: CGFloat,
+        bandCount: Int,
+        reservesUnroutedStrip: Bool,
+        fontSize: Double
+    ) -> CGFloat {
+        let bands = CGFloat(max(bandCount, 1))
+        let verticalPadding: CGFloat = 24
+        let interBandSpacing: CGFloat = 8 * (bands - 1)
+        let unroutedReservation: CGFloat =
+            reservesUnroutedStrip ? CGFloat(fontSize) * 2.4 + 8 : 0
+        let available = canvasHeight - verticalPadding - interBandSpacing - unroutedReservation
+        let slice = available / bands
+        let minimumCard = CGFloat(fontSize) * 2.6
+        return max(slice, minimumCard)
+    }
 }
 
 /// The multilingual audience canvas as per-language tracks on one shared
@@ -946,8 +974,21 @@ struct SubtitleOverlayView: View {
             fontSize: fontSize
         )
         let bandStarts = Array(stride(from: 0, to: max(languages.count, 1), by: bandSize))
+        // The strip probe uses a window-of-one on purpose: it only decides
+        // whether space must be reserved, and the real lookup below reuses
+        // the budget derived from the resulting band height.
+        let reservesStrip = SubtitleAudienceTimeline.unroutedText(
+            utterances: store.presentedUtterances,
+            placement: { store.audienceSourcePlacement(for: $0) }
+        ) != nil
+        let bandHeight = SubtitleOverlayLayoutPolicy.audienceBandHeight(
+            canvasHeight: geometry.size.height,
+            bandCount: bandStarts.count,
+            reservesUnroutedStrip: reservesStrip,
+            fontSize: fontSize
+        )
         let itemBudget = SubtitleOverlayLayoutPolicy.audienceRowCount(
-            height: geometry.size.height / CGFloat(max(bandStarts.count, 1)),
+            height: bandHeight,
             fontSize: fontSize
         )
         let unrouted = SubtitleAudienceTimeline.unroutedText(
@@ -979,6 +1020,11 @@ struct SubtitleOverlayView: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
+                    // Every band keeps its own newest words on its own
+                    // bottom edge; a tall band clips its head instead of
+                    // pushing the bands above it off the canvas.
+                    .frame(height: bandHeight, alignment: .bottom)
+                    .clipped()
                 }
                 if let unrouted {
                     audiencePlainText(unrouted)

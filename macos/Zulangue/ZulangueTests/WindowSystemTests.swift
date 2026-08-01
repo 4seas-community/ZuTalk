@@ -682,6 +682,48 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    func testAudienceBandSlicesKeepEveryLanguageOnTheCanvas() {
+        // Wide canvas, one band: the slice is effectively the whole canvas.
+        let single = SubtitleOverlayLayoutPolicy.audienceBandHeight(
+            canvasHeight: 400,
+            bandCount: 1,
+            reservesUnroutedStrip: false,
+            fontSize: 30
+        )
+        XCTAssertEqual(single, 400 - 24)
+
+        // Narrow canvas, three stacked languages: equal slices, so the last
+        // band can never evict the first two — five minutes of speech clips
+        // its own history instead.
+        let banded = SubtitleOverlayLayoutPolicy.audienceBandHeight(
+            canvasHeight: 400,
+            bandCount: 3,
+            reservesUnroutedStrip: false,
+            fontSize: 30
+        )
+        XCTAssertEqual(banded, (400 - 24 - 16) / 3, accuracy: 0.01)
+        XCTAssertGreaterThan(banded, 100)
+
+        // The unrouted strip reserves its estimated height from the bands.
+        let withStrip = SubtitleOverlayLayoutPolicy.audienceBandHeight(
+            canvasHeight: 400,
+            bandCount: 3,
+            reservesUnroutedStrip: true,
+            fontSize: 30
+        )
+        XCTAssertLessThan(withStrip, banded)
+
+        // A canvas too small for the arithmetic floors at one short card
+        // per band rather than collapsing to zero-height bands.
+        let floored = SubtitleOverlayLayoutPolicy.audienceBandHeight(
+            canvasHeight: 120,
+            bandCount: 3,
+            reservesUnroutedStrip: false,
+            fontSize: 40
+        )
+        XCTAssertEqual(floored, 40 * 2.6, accuracy: 0.01)
+    }
+
     func testPacedRevealFlowsMouthfulsAndAbsorbsTailRewrites() {
         // Reading rates are calibrated against the measured provider batch
         // shape: ~15 tokens per mouthful, ~1.4 s until the next one. One
