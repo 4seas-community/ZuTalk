@@ -50,7 +50,7 @@
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "Activez les sous-titres en direct";
-"onboarding.keys.subtitle" = "Utilisez une invitation communautaire ou connectez votre propre service de transcription.";
+"onboarding.keys.subtitle" = "Saisissez votre propre clé API Soniox pour activer les sous-titres en direct.";
 "onboarding.keys.own_key.option" = "Ma propre clé";
 "community_invite.option" = "Invitation communautaire";
 "community_invite.placeholder" = "Saisissez le code d’invitation";

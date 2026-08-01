@@ -50,7 +50,7 @@
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "Turn on live captions";
-"onboarding.keys.subtitle" = "Use a community invitation or connect your own transcription service.";
+"onboarding.keys.subtitle" = "Enter your own Soniox API key to turn on live captions.";
 "onboarding.keys.own_key.option" = "My own key";
 "community_invite.option" = "Community invite";
 "community_invite.placeholder" = "Enter invitation code";

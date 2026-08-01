@@ -50,7 +50,7 @@
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "실시간 자막 켜기";
-"onboarding.keys.subtitle" = "커뮤니티 초대를 사용하거나 자체 전사 서비스를 연결하세요.";
+"onboarding.keys.subtitle" = "자신의 Soniox API 키를 입력해 실시간 자막을 켜세요.";
 "onboarding.keys.own_key.option" = "나만의 열쇠";
 "community_invite.option" = "커뮤니티 초대";
 "community_invite.placeholder" = "초대코드를 입력하세요";

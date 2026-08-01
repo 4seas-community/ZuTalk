@@ -50,7 +50,7 @@
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "开启实时字幕";
-"onboarding.keys.subtitle" = "使用社区邀请码，或者连接自己的转录服务。";
+"onboarding.keys.subtitle" = "输入你自己的 Soniox API 密钥，开启实时字幕。";
 "onboarding.keys.own_key.option" = "自己的 Key";
 "community_invite.option" = "社区邀请码";
 "community_invite.placeholder" = "输入邀请码";

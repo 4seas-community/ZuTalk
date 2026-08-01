@@ -50,7 +50,7 @@
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "ライブ字幕を有効にする";
-"onboarding.keys.subtitle" = "コミュニティ招待を使うか、自分の文字起こしサービスを接続します。";
+"onboarding.keys.subtitle" = "自分の Soniox API キーを入力して、ライブ字幕を有効にします。";
 "onboarding.keys.own_key.option" = "自分の Key";
 "community_invite.option" = "コミュニティ招待";
 "community_invite.placeholder" = "招待コードを入力";

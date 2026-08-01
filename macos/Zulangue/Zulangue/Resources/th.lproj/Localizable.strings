@@ -50,7 +50,7 @@
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "เปิดใช้คำบรรยายสด";
-"onboarding.keys.subtitle" = "ใช้คำเชิญชุมชนหรือเชื่อมต่อบริการถอดเสียงของคุณเอง";
+"onboarding.keys.subtitle" = "ป้อนคีย์ API Soniox ของคุณเองเพื่อเปิดใช้คำบรรยายสด";
 "onboarding.keys.own_key.option" = "คีย์ของฉันเอง";
 "community_invite.option" = "คำเชิญชุมชน";
 "community_invite.placeholder" = "ป้อนรหัสคำเชิญ";

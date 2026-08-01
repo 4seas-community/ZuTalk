@@ -50,7 +50,7 @@
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "Activar subtítulos en vivo";
-"onboarding.keys.subtitle" = "Use una invitación de la comunidad o conecte su propio servicio de transcripción.";
+"onboarding.keys.subtitle" = "Ingrese su propia clave de API de Soniox para activar los subtítulos en vivo.";
 "onboarding.keys.own_key.option" = "Mi propia clave";
 "community_invite.option" = "Invitación de la comunidad";
 "community_invite.placeholder" = "Ingrese el código de invitación";

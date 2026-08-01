@@ -729,13 +729,10 @@ struct WelcomeScreen: View {
 struct SonioxCredentialScreen: View {
     @ObservedObject var viewModel: ProviderConnectionsViewModel
     @ObservedObject private var verificationStore = ProviderConnectionVerificationStore.shared
-    @ObservedObject private var communityInvite = CommunityInviteSession.shared
     var onContinue: () -> Void
     var onBack: () -> Void
 
     @State private var draft = ""
-    @State private var inviteCode = ""
-    @State private var usesCommunityInvite = true
     @State private var errorMessage: String?
     @State private var isWorking = false
     @State private var appeared = false
@@ -770,15 +767,6 @@ struct SonioxCredentialScreen: View {
             Spacer().frame(height: 28)
 
             VStack(alignment: .leading, spacing: 16) {
-                Picker("", selection: $usesCommunityInvite) {
-                    Text("community_invite.option").tag(true)
-                    Text("onboarding.keys.own_key.option").tag(false)
-                }
-                .pickerStyle(.segmented)
-
-                if usesCommunityInvite {
-                    communityInviteForm
-                } else {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Soniox")
@@ -857,7 +845,6 @@ struct SonioxCredentialScreen: View {
                     .font(.caption)
                     .foregroundColor(.textOnBpFaint)
                     .fixedSize(horizontal: false, vertical: true)
-                }
 
                 if let errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -885,12 +872,10 @@ struct SonioxCredentialScreen: View {
                 Spacer()
 
                 OnbPillButton(
-                    title: (verificationState.isReady
-                        || (usesCommunityInvite && communityInvite.isActive))
+                    title: verificationState.isReady
                         ? "onboarding.keys.continue"
                         : "onboarding.keys.skip",
-                    style: (verificationState.isReady
-                        || (usesCommunityInvite && communityInvite.isActive))
+                    style: verificationState.isReady
                         ? .primary
                         : .ghost,
                     action: onContinue
@@ -904,7 +889,6 @@ struct SonioxCredentialScreen: View {
         .animation(.easeOut(duration: 0.4), value: appeared)
         .onAppear {
             appeared = true
-            usesCommunityInvite = communityInvite.isActive || !isConfigured
             viewModel.refresh()
             if isConfigured {
                 verificationStore.verifyIfNeeded(
@@ -913,64 +897,9 @@ struct SonioxCredentialScreen: View {
                 )
             }
         }
-        .onChange(of: usesCommunityInvite) { _, enabled in
-            communityInvite.setEnabled(enabled)
-        }
         .onDisappear {
             draft = ""
             errorMessage = nil
-        }
-    }
-
-    @ViewBuilder
-    private var communityInviteForm: some View {
-        if communityInvite.isActive {
-            VStack(alignment: .leading, spacing: 8) {
-                Label(
-                    String(localized: "community_invite.active"),
-                    systemImage: "checkmark.circle.fill"
-                )
-                .font(.bodyMedium)
-                .foregroundColor(.signalGreen)
-
-                Text("community_invite.thirty_hours")
-                    .font(.body)
-                    .foregroundColor(.bpLine)
-
-                Text("community_invite.shared_detail")
-                    .font(.caption)
-                    .foregroundColor(.textOnBpDim)
-            }
-        } else {
-            TextField(
-                String(localized: "community_invite.placeholder"),
-                text: $inviteCode
-            )
-            .textFieldStyle(.roundedBorder)
-            .frame(minHeight: 44)
-            .disabled(communityInvite.isWorking)
-
-            Button {
-                Task { await communityInvite.redeem(inviteCode) }
-            } label: {
-                if communityInvite.isWorking {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text(String(localized: "community_invite.action"))
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(
-                communityInvite.isWorking
-                    || inviteCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            )
-
-            if let error = communityInvite.errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundColor(.signalAmber)
-            }
         }
     }
 

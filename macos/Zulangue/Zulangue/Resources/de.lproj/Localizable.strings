@@ -50,7 +50,7 @@
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "Live-Untertitel aktivieren";
-"onboarding.keys.subtitle" = "Verwende eine Community-Einladung oder verbinde deinen eigenen Transkriptionsdienst.";
+"onboarding.keys.subtitle" = "Gib deinen eigenen Soniox-API-Schlüssel ein, um Live-Untertitel zu aktivieren.";
 "onboarding.keys.own_key.option" = "Mein eigener Schlüssel";
 "community_invite.option" = "Community-Einladung";
 "community_invite.placeholder" = "Einladungscode eingeben";
