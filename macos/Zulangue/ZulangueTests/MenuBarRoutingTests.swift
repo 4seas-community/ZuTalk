@@ -123,4 +123,16 @@ final class MenuBarRoutingTests: XCTestCase {
         XCTAssertTrue(MenuBarStatusItemIcon.idle.isTemplate)
         XCTAssertTrue(MenuBarStatusItemIcon.processing.isTemplate)
     }
+
+    func testStatusItemClick_doesNotActivateTheApplication() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue", isDirectory: true)
+        let source = root.appendingPathComponent("MenuBar/MenuBarCoordinator.swift")
+        let contents = try String(contentsOf: source, encoding: .utf8)
+
+        XCTAssertTrue(contents.contains("popover.show(relativeTo:"))
+        XCTAssertFalse(contents.contains("NSApp.activate(ignoringOtherApps: true)"))
+    }
 }

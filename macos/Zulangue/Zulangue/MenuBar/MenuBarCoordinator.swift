@@ -111,10 +111,6 @@ final class MenuBarCoordinator: NSObject {
             popover.performClose(nil)
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            // Without explicit activation the popover renders behind frontmost
-            // apps on first show; this brings Zulangue forward without
-            // stealing focus from a notebook editor that's actively in use.
-            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
