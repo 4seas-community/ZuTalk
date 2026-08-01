@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Sparkle
 
 /// Owns the single Sparkle updater used by the app menu and menu-bar popover.
@@ -10,7 +11,7 @@ import Sparkle
 /// appcast) are retried automatically a few times before the user has to act,
 /// because the public release CDN is unreliable from some networks.
 @MainActor
-final class SoftwareUpdateController: NSObject {
+final class SoftwareUpdateController: NSObject, ObservableObject {
     static let shared = SoftwareUpdateController()
 
     static let maximumNetworkRetries = 2
@@ -20,6 +21,12 @@ final class SoftwareUpdateController: NSObject {
     private var testCheckAction: (() -> Void)?
     private var isConfigured = false
     private var retriesRemaining = SoftwareUpdateController.maximumNetworkRetries
+    private var immediateInstallHandler: (() -> Void)?
+
+    /// Becomes true only after Sparkle has downloaded and prepared a signed
+    /// update. The sidebar observes this instead of showing a permanent help
+    /// action or an update action that may have nothing to install.
+    @Published private(set) var isUpdateReadyToInstall = false
 
     var isAvailable: Bool { isConfigured }
 
@@ -68,6 +75,16 @@ final class SoftwareUpdateController: NSObject {
         updaterController.updater.automaticallyChecksForUpdates = enabled
     }
 
+    func installUpdateAndRelaunch() {
+        guard let immediateInstallHandler else { return }
+        immediateInstallHandler()
+    }
+
+    private func prepareImmediateInstallation(_ handler: @escaping () -> Void) {
+        immediateInstallHandler = handler
+        isUpdateReadyToInstall = true
+    }
+
     /// Whether an aborted update cycle failed on the network rather than on
     /// policy, signatures, or the user cancelling, and is worth retrying.
     static func isTransientNetworkFailure(_ error: NSError) -> Bool {
@@ -110,6 +127,17 @@ final class SoftwareUpdateController: NSObject {
 }
 
 extension SoftwareUpdateController: SPUUpdaterDelegate {
+    nonisolated func updater(
+        _ updater: SPUUpdater,
+        willInstallUpdateOnQuit item: SUAppcastItem,
+        immediateInstallationBlock immediateInstallHandler: @escaping () -> Void
+    ) -> Bool {
+        Task { @MainActor in
+            self.prepareImmediateInstallation(immediateInstallHandler)
+        }
+        return true
+    }
+
     nonisolated func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
         let nsError = error as NSError
         Task { @MainActor in

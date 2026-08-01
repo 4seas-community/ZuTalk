@@ -85,7 +85,8 @@ https://github.com/4seas-community/zulangue/releases/latest/download/appcast.xml
 ## 用户看到的行为
 
 - Zulangue 默认每天检查一次更新，不发送匿名系统画像。
-- 检查到新版本时，Sparkle 显示原生提示，由用户决定下载和安装。
+- 检查到新版本时，Sparkle 在后台下载并验证更新包；准备完成后，主窗口侧栏才显示
+  “更新并重启”，由用户决定何时安装和重启。
 - 用户也可以在 App 菜单或菜单栏弹窗中选择“检查更新…”。
 - 更新在解压前验证 Ed25519 签名；appcast 本身也必须通过签名验证。
 - 首次安装 `0.1.1` 时，用户可能需要手动通过 Gatekeeper 确认。

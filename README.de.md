@@ -1,6 +1,6 @@
 # Zulangue
 
-[English](README.md) | [ไทย](README.th.md) | [日本語](README.ja.md) | [Français](README.fr.md) | [Español](README.es.md) | **Deutsch** | [简体中文](README.zh-Hans.md)
+[ไทย](README.th.md) | [English](README.md) | [Français](README.fr.md) | [Español](README.es.md) | **Deutsch** | [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-Hans.md)
 
 Zulangue ist eine native Sprachnotiz-App für macOS: Aufnehmen, Transkribieren
 und Organisieren von Inhalten – mit schwebenden Untertiteln, die mehrsprachigen

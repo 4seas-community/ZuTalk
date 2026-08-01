@@ -371,6 +371,9 @@ final class WindowArchitectureTests: XCTestCase {
         XCTAssertFalse(contents.contains("notebookContext.activeNotebookTitle"))
         XCTAssertTrue(contents.contains("sidebar.notebook"))
         XCTAssertTrue(contents.contains("sidebar.local_first"))
+        XCTAssertFalse(contents.contains("sidebar.help"))
+        XCTAssertTrue(contents.contains("softwareUpdate.isUpdateReadyToInstall"))
+        XCTAssertTrue(contents.contains("updates.install_and_relaunch"))
         XCTAssertFalse(contents.contains("Text(\"anon\")"))
         XCTAssertFalse(contents.contains("openGitHub"))
     }

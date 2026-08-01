@@ -101,6 +101,8 @@
 
 "sidebar.help" = "使用帮助";
 "sidebar.help.hint" = "重新打开新手引导";
+"updates.install_and_relaunch" = "更新并重启";
+"updates.install_and_relaunch.hint" = "安装已下载的更新并重新启动 Zulangue";
 
 /* Library */
 "library.title" = "会话";
@@ -960,7 +962,7 @@
 "capture.transcript.unselected_language" = "检测到 %@，但本场未选择该语言";
 "capture.transcript.presentation.timeline" = "时间线";
 "capture.transcript.presentation.timeline_detail" = "按时间顺序，每段发言只显示一次。";
-"capture.transcript.presentation.language_columns" = "语言栏目";
+"capture.transcript.presentation.language_columns" = "文字对照版";
 "capture.transcript.presentation.language_columns_detail" = "每种已选择的语言固定显示在自己的有序栏目中。";
 "capture.transcript.waiting_lane" = "等待 %@";
 "capture.transcript.failed_lane" = "未能生成 %@ 栏内容";

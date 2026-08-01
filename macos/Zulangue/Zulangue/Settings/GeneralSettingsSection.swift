@@ -3,7 +3,7 @@
 // 权威:docs/i18n.md (待建)
 //
 // 语言策略:
-//   - 仅支持 en / zh-Hans / ja(之后加新语言再进 enum)
+//   - 支持 th / en / fr / es / de / ko / ja / zh-Hans
 //   - 首次启动探测系统语言,就近映射后写入 ui.language + AppleLanguages
 //   - 设置里不再提供"跟随系统",用户选定即固化
 //
@@ -18,13 +18,14 @@ import SwiftUI
 /// App UI 语言。只保留显式可选的语言;"跟随系统" 不作为用户选项,
 /// 只在首次启动时用来"猜一次"默认值。
 enum AppLanguage: String, CaseIterable, Identifiable {
-    // 声明顺序即 Picker 展示顺序: 英 → 泰 → 日 → 法 → 西 → 德 → 简
-    case en
+    // 声明顺序即 Picker 展示顺序。泰语置顶以尊重产品最初使用地。
     case th
-    case ja
+    case en
     case fr
     case es
     case de
+    case ko
+    case ja
     case zhHans = "zh-Hans"
 
     var id: String { rawValue }
@@ -32,12 +33,13 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     /// 展示名(走 Localizable.strings,picker 里每一条用当前 UI 语言显示)
     var displayNameKey: String.LocalizationValue {
         switch self {
-        case .en:     return "lang.en"
         case .th:     return "lang.th"
-        case .ja:     return "lang.ja"
+        case .en:     return "lang.en"
         case .fr:     return "lang.fr"
         case .es:     return "lang.es"
         case .de:     return "lang.de"
+        case .ko:     return "lang.ko"
+        case .ja:     return "lang.ja"
         case .zhHans: return "lang.zh_hans"
         }
     }
@@ -69,6 +71,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         let lower = tag.replacingOccurrences(of: "_", with: "-").lowercased()
         if lower == "zh" || lower.hasPrefix("zh-") { return .zhHans }
         if lower == "th" || lower.hasPrefix("th-") { return .th }
+        if lower == "ko" || lower.hasPrefix("ko-") { return .ko }
         if lower == "ja" || lower.hasPrefix("ja-") { return .ja }
         if lower == "fr" || lower.hasPrefix("fr-") { return .fr }
         if lower == "es" || lower.hasPrefix("es-") { return .es }

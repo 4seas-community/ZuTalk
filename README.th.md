@@ -1,6 +1,6 @@
 # Zulangue
 
-[English](README.md) | **ไทย** | [日本語](README.ja.md) | [Français](README.fr.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [简体中文](README.zh-Hans.md)
+**ไทย** | [English](README.md) | [Français](README.fr.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-Hans.md)
 
 Zulangue คือแอปจดบันทึกเสียงแบบเนทีฟสำหรับ macOS ช่วยให้คุณอัดเสียง ถอดเสียงเป็นข้อความ
 และจัดระเบียบเนื้อหา พร้อมคำบรรยายแบบลอยที่ติดตามบทสนทนาหลายภาษา

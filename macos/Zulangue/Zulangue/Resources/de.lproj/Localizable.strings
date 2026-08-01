@@ -101,6 +101,8 @@
 
 "sidebar.help" = "So verwendest du Zulangue";
 "sidebar.help.hint" = "Den Einstiegsleitfaden erneut öffnen";
+"updates.install_and_relaunch" = "Aktualisieren und neu starten";
+"updates.install_and_relaunch.hint" = "Das geladene Update installieren und Zulangue neu starten";
 
 /* Library */
 "library.title" = "Sitzungen";
@@ -959,7 +961,7 @@
 "capture.transcript.unselected_language" = "%@ wurde erkannt, ist aber für diese Sitzung nicht ausgewählt";
 "capture.transcript.presentation.timeline" = "Zeitleiste";
 "capture.transcript.presentation.timeline_detail" = "Zeigt jede Äußerung einmal in chronologischer Reihenfolge.";
-"capture.transcript.presentation.language_columns" = "Sprachspalten";
+"capture.transcript.presentation.language_columns" = "Textvergleich";
 "capture.transcript.presentation.language_columns_detail" = "Hält jede ausgewählte Sprache in ihrer eigenen geordneten Spalte.";
 "capture.transcript.waiting_lane" = "Warten auf %@";
 "capture.transcript.failed_lane" = "Die Spalte „%@“ konnte nicht gefüllt werden";

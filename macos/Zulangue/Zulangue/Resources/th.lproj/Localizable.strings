@@ -101,6 +101,8 @@
 
 "sidebar.help" = "วิธีใช้ Zulangue";
 "sidebar.help.hint" = "เปิดคู่มือเริ่มต้นใช้งานอีกครั้ง";
+"updates.install_and_relaunch" = "อัปเดตและเปิดใหม่";
+"updates.install_and_relaunch.hint" = "ติดตั้งอัปเดตที่ดาวน์โหลดแล้วและเปิด Zulangue ใหม่";
 
 /* Library */
 "library.title" = "เซสชัน";
@@ -960,7 +962,7 @@
 "capture.transcript.unselected_language" = "ตรวจพบ %@ แต่ไม่ได้เลือกไว้สำหรับเซสชันนี้";
 "capture.transcript.presentation.timeline" = "ไทม์ไลน์";
 "capture.transcript.presentation.timeline_detail" = "แสดงแต่ละถ้อยคำเพียงครั้งเดียวตามลำดับเวลา";
-"capture.transcript.presentation.language_columns" = "คอลัมน์ภาษา";
+"capture.transcript.presentation.language_columns" = "เปรียบเทียบข้อความ";
 "capture.transcript.presentation.language_columns_detail" = "เก็บทุกภาษาที่เลือกไว้ในคอลัมน์ของตัวเองตามลำดับ";
 "capture.transcript.waiting_lane" = "กำลังรอ %@";
 "capture.transcript.failed_lane" = "ไม่สามารถเติมคอลัมน์ %@ ได้";

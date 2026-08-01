@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct MainShellViewV2: View {
+    @ObservedObject private var softwareUpdate = SoftwareUpdateController.shared
     @ObservedObject private var store: MainNavigationStoreV2
     @ObservedObject private var communityInvite = CommunityInviteSession.shared
     @State private var isSidebarHidden = false
@@ -184,20 +185,22 @@ struct MainShellViewV2: View {
                 .fill(Color.bpLineGhost.opacity(0.4))
                 .frame(height: 0.5)
 
-            Button {
-                store.presentOnboarding()
-            } label: {
-                Label(
-                    String(localized: "sidebar.help"),
-                    systemImage: "questionmark.circle"
-                )
-                .font(.bodySM)
-                .foregroundColor(.textOnBpDim)
-                .frame(minHeight: 36)
+            if softwareUpdate.isUpdateReadyToInstall {
+                Button {
+                    softwareUpdate.installUpdateAndRelaunch()
+                } label: {
+                    Label(
+                        String(localized: "updates.install_and_relaunch"),
+                        systemImage: "arrow.down.circle.fill"
+                    )
+                    .font(.bodySM)
+                    .foregroundColor(.brandAccent)
+                    .frame(minHeight: 36)
+                }
+                .buttonStyle(.plain)
+                .help(String(localized: "updates.install_and_relaunch.hint"))
+                .accessibilityIdentifier("sidebar.update-and-relaunch")
             }
-            .buttonStyle(.plain)
-            .help(String(localized: "sidebar.help.hint"))
-            .accessibilityIdentifier("sidebar.help")
 
             if communityInvite.isEnabled, communityInvite.isActive {
                 Label(

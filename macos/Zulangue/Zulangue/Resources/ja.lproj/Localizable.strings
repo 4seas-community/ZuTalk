@@ -101,6 +101,8 @@
 
 "sidebar.help" = "使い方";
 "sidebar.help.hint" = "初心者ガイドをもう一度開く";
+"updates.install_and_relaunch" = "更新して再起動";
+"updates.install_and_relaunch.hint" = "ダウンロード済みの更新をインストールして Zulangue を再起動します";
 
 /* Library */
 "library.title" = "セッション";
@@ -948,7 +950,7 @@
 "capture.transcript.unselected_language" = "%@を検出しましたが、このセッションでは選択されていません";
 "capture.transcript.presentation.timeline" = "タイムライン";
 "capture.transcript.presentation.timeline_detail" = "各発話を時系列に一度ずつ表示します。";
-"capture.transcript.presentation.language_columns" = "言語列";
+"capture.transcript.presentation.language_columns" = "テキスト対照";
 "capture.transcript.presentation.language_columns_detail" = "選択した各言語を、それぞれの順序付き列に固定して表示します。";
 "capture.transcript.waiting_lane" = "%@ を待っています";
 "capture.transcript.failed_lane" = "%@ 列を生成できませんでした";

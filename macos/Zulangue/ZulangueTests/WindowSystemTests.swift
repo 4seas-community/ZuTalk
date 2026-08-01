@@ -236,6 +236,15 @@ final class WindowSystemTests: XCTestCase {
         }
     }
 
+    func testAppLanguagePickerPrioritizesThaiAndKeepsRequestedRegionalOrder() {
+        XCTAssertEqual(
+            AppLanguage.allCases.map(\.rawValue),
+            ["th", "en", "fr", "es", "de", "ko", "ja", "zh-Hans"]
+        )
+        XCTAssertEqual(AppLanguage.match("ko-KR"), .ko)
+        XCTAssertEqual(AppLanguage.en.rawValue, "en")
+    }
+
     @available(macOS 13.0, *)
     func testWindowHostingV2_makeView_disablesHostingSizingForFixedWindowOwnedViews() {
         let hosting = WindowHostingV2.makeView(rootView: Color.clear.frame(width: 200, height: 100))

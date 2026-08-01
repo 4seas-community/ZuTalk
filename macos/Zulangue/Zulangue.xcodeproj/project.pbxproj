@@ -712,14 +712,15 @@
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				en,
-				Base,
 				th,
-				ja,
+				en,
 				fr,
 				es,
 				de,
+				ko,
+				ja,
 				"zh-Hans",
+				Base,
 			);
 			mainGroup = B77C3BEB2F8937E0000C2429;
 			minimizedProjectReferenceProxies = 1;
