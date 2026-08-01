@@ -241,14 +241,12 @@
 "settings.section.services_name" = "Services et API";
 "settings.section.privacy_name" = "Confidentialité";
 "settings.section.shortcuts_name" = "Raccourcis";
-"settings.section.diagnostics_name" = "Diagnostic";
 "settings.sidebar.configuration" = "CONFIGURATION";
 
 /* Settings sidebar groups */
 "settings.group.services" = "CONNEXIONS";
 "settings.group.privacy" = "CONFIDENTIALITÉ ET DONNÉES";
 "settings.group.general" = "GÉNÉRAL";
-"settings.group.advanced" = "AVANCÉ";
 
 /* Settings — API panels (Voice / AI) */
 "settings.api.test_button" = "TESTER";

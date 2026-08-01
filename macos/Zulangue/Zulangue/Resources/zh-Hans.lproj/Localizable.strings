@@ -241,14 +241,12 @@
 "settings.section.services_name" = "服务与 API";
 "settings.section.privacy_name" = "隐私";
 "settings.section.shortcuts_name" = "快捷键";
-"settings.section.diagnostics_name" = "诊断";
 "settings.sidebar.configuration" = "配置";
 
 /* Settings sidebar groups */
 "settings.group.services" = "服务连接";
 "settings.group.privacy" = "隐私与数据";
 "settings.group.general" = "常规";
-"settings.group.advanced" = "高级";
 
 /* Settings — API panels */
 "settings.api.test_button" = "测试";

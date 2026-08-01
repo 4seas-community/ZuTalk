@@ -509,7 +509,6 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
             .appendingPathComponent("Zulangue")
         let files = [
             "Settings/FullSettingsView.swift",
-            "Settings/DiagnosticsSection.swift",
             "App/OnboardingView.swift"
         ]
         let combined = try files.map { path in
@@ -524,73 +523,13 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         XCTAssertFalse(combined.contains("DaemonStatusSection()"))
         XCTAssertTrue(combined.contains("sections: [.general, .shortcuts]"))
         XCTAssertFalse(combined.contains("sections: [.general, .knowledge, .shortcuts]"))
+        XCTAssertFalse(combined.contains("case diagnostics"))
+        XCTAssertFalse(combined.contains("DiagnosticsSection()"))
         XCTAssertFalse(combined.contains("\"Core unavailable\""))
         XCTAssertFalse(combined.contains("ZulangueCore unavailable"))
         XCTAssertFalse(combined.contains("Rust policy"))
         XCTAssertFalse(combined.contains("Transport not loaded"))
         XCTAssertFalse(combined.contains("transportInfo.transport"))
-    }
-
-    func testSettingsDiagnosticsUseProductCopy() throws {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let projectRoot = testFile
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Zulangue")
-        let combined = try String(
-            contentsOf: projectRoot.appendingPathComponent("Settings/DiagnosticsSection.swift"),
-            encoding: .utf8
-        )
-
-        XCTAssertFalse(combined.contains("Peer sharing status"))
-        XCTAssertFalse(combined.contains("Backend descriptors"))
-    }
-
-    func testProviderDiagnosticsTreatsZeroOptionalKeysAsInformational() {
-        let state = SettingsProviderDiagnosticsState.resolve([])
-
-        XCTAssertEqual(state.configuredCount, 0)
-        XCTAssertEqual(state.mirrorMismatchCount, 0)
-        XCTAssertEqual(state.severity, "info")
-        XCTAssertNil(
-            state.trustKeyState,
-            "local-only mode must not project an actionable missing-provider warning"
-        )
-    }
-
-    func testProviderDiagnosticsStillFlagsConfiguredKeyMirrorMismatch() {
-        let state = SettingsProviderDiagnosticsState.resolve([
-            ProviderCredentialSnapshot(
-                account: .soniox,
-                scope: "soniox",
-                isSaved: true,
-                isActive: false
-            ),
-        ])
-
-        XCTAssertEqual(state.configuredCount, 1)
-        XCTAssertEqual(state.mirrorMismatchCount, 1)
-        XCTAssertEqual(state.severity, "warning")
-        XCTAssertEqual(state.trustKeyState, "provider_api_key_untested")
-    }
-
-    func testProviderDiagnosticsDoesNotCallSavedActiveCredentialHealthy() {
-        let state = SettingsProviderDiagnosticsState.resolve([
-            ProviderCredentialSnapshot(
-                account: .soniox,
-                scope: "soniox",
-                isSaved: true,
-                isActive: true
-            ),
-        ])
-
-        XCTAssertEqual(state.configuredCount, 1)
-        XCTAssertEqual(state.mirrorMismatchCount, 0)
-        XCTAssertEqual(state.severity, "info")
-        XCTAssertNil(
-            state.trustKeyState,
-            "loading a saved key does not prove provider connectivity or validity"
-        )
     }
 
 }

@@ -178,7 +178,6 @@ final class DesignSystemTests: XCTestCase {
             "Pages/NotebookCaptureViews.swift",
             "Pages/TrashPage.swift",
             "MenuBar/MenuBarIdleView.swift",
-            "Settings/DiagnosticsSection.swift",
             "DesignSystem/FocusRing.swift",
             "DesignSystem/Primitives/OutlineButton.swift",
         ] {

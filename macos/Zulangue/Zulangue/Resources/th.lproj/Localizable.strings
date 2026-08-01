@@ -241,14 +241,12 @@
 "settings.section.services_name" = "บริการและ API";
 "settings.section.privacy_name" = "ความเป็นส่วนตัว";
 "settings.section.shortcuts_name" = "แป้นพิมพ์ลัด";
-"settings.section.diagnostics_name" = "การวินิจฉัย";
 "settings.sidebar.configuration" = "การกำหนดค่า";
 
 /* Settings sidebar groups */
 "settings.group.services" = "การเชื่อมต่อ";
 "settings.group.privacy" = "ความเป็นส่วนตัวและข้อมูล";
 "settings.group.general" = "ทั่วไป";
-"settings.group.advanced" = "ขั้นสูง";
 
 /* Settings — API panels (Voice / AI) */
 "settings.api.test_button" = "ทดสอบ";

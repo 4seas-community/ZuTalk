@@ -241,12 +241,10 @@
 "settings.section.services_name" = "サービスと API";
 "settings.section.privacy_name" = "プライバシーとセキュリティ";
 "settings.section.shortcuts_name" = "ショートカット";
-"settings.section.diagnostics_name" = "診断";
 "settings.sidebar.configuration" = "設定";
 "settings.group.services" = "サービス接続";
 "settings.group.privacy" = "プライバシーとデータ";
 "settings.group.general" = "一般";
-"settings.group.advanced" = "詳細";
 
 /* Settings — API panels */
 "settings.api.test_button" = "テスト";

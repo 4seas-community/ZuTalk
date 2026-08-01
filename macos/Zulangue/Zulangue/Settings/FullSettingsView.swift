@@ -16,13 +16,11 @@ private func L(_ key: String.LocalizationValue) -> String {
 // 分组组织:
 //   SERVICES   — 全局服务凭据与只读引擎说明
 //   GENERAL    — general / shortcuts (UI 偏好 + 只读参考)
-//   ADVANCED   — diagnostics (debug mode + log)
 
 enum SettingsSection: String, CaseIterable, Identifiable {
     case services = "Services"
     case general = "General"
     case shortcuts = "Shortcuts"
-    case diagnostics = "Diagnostics"
 
     var id: String { rawValue }
 
@@ -31,7 +29,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .services:    return String(localized: "settings.section.services_name")
         case .general:     return String(localized: "settings.section.general_name")
         case .shortcuts:   return String(localized: "settings.section.shortcuts_name")
-        case .diagnostics: return String(localized: "settings.section.diagnostics_name")
         }
     }
 
@@ -40,7 +37,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .services:    return "network"
         case .general:     return "gearshape"
         case .shortcuts:   return "command"
-        case .diagnostics: return "stethoscope"
         }
     }
 }
@@ -59,10 +55,6 @@ private let settingsGroups: [SettingsGroup] = [
     SettingsGroup(
         titleKey: "settings.group.general",
         sections: [.general, .shortcuts]
-    ),
-    SettingsGroup(
-        titleKey: "settings.group.advanced",
-        sections: [.diagnostics]
     ),
 ]
 
@@ -168,7 +160,6 @@ struct FullSettingsView: View {
         case .services:    ServiceConnectionsSection()
         case .general:     GeneralSettingsSection()
         case .shortcuts:   ShortcutsSection()
-        case .diagnostics: DiagnosticsSection()
         }
     }
 }

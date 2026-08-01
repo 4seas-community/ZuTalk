@@ -241,14 +241,12 @@
 "settings.section.services_name" = "서비스 및 API";
 "settings.section.privacy_name" = "개인 정보 보호";
 "settings.section.shortcuts_name" = "단축키";
-"settings.section.diagnostics_name" = "진단";
 "settings.sidebar.configuration" = "구성";
 
 /* Settings sidebar groups */
 "settings.group.services" = "연결";
 "settings.group.privacy" = "개인정보 보호 및 데이터";
 "settings.group.general" = "일반";
-"settings.group.advanced" = "고급";
 
 /* Settings — API panels (Voice / AI) */
 "settings.api.test_button" = "테스트";

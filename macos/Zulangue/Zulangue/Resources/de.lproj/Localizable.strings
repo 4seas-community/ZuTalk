@@ -240,14 +240,12 @@
 "settings.section.services_name" = "Dienste & API";
 "settings.section.privacy_name" = "Datenschutz";
 "settings.section.shortcuts_name" = "Kurzbefehle";
-"settings.section.diagnostics_name" = "Diagnose";
 "settings.sidebar.configuration" = "KONFIGURATION";
 
 /* Settings sidebar groups */
 "settings.group.services" = "VERBINDUNGEN";
 "settings.group.privacy" = "DATENSCHUTZ & DATEN";
 "settings.group.general" = "ALLGEMEIN";
-"settings.group.advanced" = "ERWEITERT";
 
 /* Settings — API panels (Voice / AI) */
 "settings.api.test_button" = "TESTEN";
