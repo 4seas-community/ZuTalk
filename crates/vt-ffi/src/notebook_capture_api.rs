@@ -5622,68 +5622,70 @@ impl ZulangueCore {
             .take();
         if let Some(remote) = remote {
             let fanout_result = remote.try_fanout_pcm(&audio_data);
-            if fanout_result.is_err() {
-                let backpressure_failure = ProviderFailure {
-                    error_type: "audio_backpressure".to_string(),
-                    request_id: None,
-                };
-                let cleanup = self.begin_failed_remote_capture_cleanup(remote);
-                let active = active_guard
-                    .as_mut()
-                    .expect("active capture was checked above");
-                debug_assert!(active.remote_cleanup.is_none());
-                active.remote_cleanup = Some(cleanup);
-                let run_id = active_guard
-                    .as_ref()
-                    .expect("active capture was checked above")
-                    .run_id
-                    .clone();
-                let (remote_health, failure) = self
-                    .notebook_capture_store
-                    .get_run(&run_id)
-                    .ok()
-                    .flatten()
-                    .and_then(|run| {
-                        run.provider_error_type.map(|error_type| {
-                            (
-                                run.remote_health,
-                                ProviderFailure {
-                                    error_type,
-                                    request_id: run.provider_request_id,
-                                },
-                            )
-                        })
-                    })
-                    .unwrap_or((RemoteHealth::Degraded, backpressure_failure));
-                if let Err(persist_error) = self.notebook_capture_store.update_remote_health(
-                    &run_id,
-                    remote_health,
-                    Some(&failure),
-                ) {
-                    let failed = active_guard
-                        .take()
+            match fanout_result {
+                Err(_) => {
+                    let backpressure_failure = ProviderFailure {
+                        error_type: "audio_backpressure".to_string(),
+                        request_id: None,
+                    };
+                    let cleanup = self.begin_failed_remote_capture_cleanup(remote);
+                    let active = active_guard
+                        .as_mut()
                         .expect("active capture was checked above");
-                    let terminal_error = self.terminate_capture_after_push_error(
-                        &session_id,
-                        failed,
-                        "persist remote health after Soniox audio backpressure",
-                        persist_error,
-                    );
-                    drop(active_guard);
-                    return Err(terminal_error);
+                    debug_assert!(active.remote_cleanup.is_none());
+                    active.remote_cleanup = Some(cleanup);
+                    let run_id = active_guard
+                        .as_ref()
+                        .expect("active capture was checked above")
+                        .run_id
+                        .clone();
+                    let (remote_health, failure) = self
+                        .notebook_capture_store
+                        .get_run(&run_id)
+                        .ok()
+                        .flatten()
+                        .and_then(|run| {
+                            run.provider_error_type.map(|error_type| {
+                                (
+                                    run.remote_health,
+                                    ProviderFailure {
+                                        error_type,
+                                        request_id: run.provider_request_id,
+                                    },
+                                )
+                            })
+                        })
+                        .unwrap_or((RemoteHealth::Degraded, backpressure_failure));
+                    if let Err(persist_error) = self.notebook_capture_store.update_remote_health(
+                        &run_id,
+                        remote_health,
+                        Some(&failure),
+                    ) {
+                        let failed = active_guard
+                            .take()
+                            .expect("active capture was checked above");
+                        let terminal_error = self.terminate_capture_after_push_error(
+                            &session_id,
+                            failed,
+                            "persist remote health after Soniox audio backpressure",
+                            persist_error,
+                        );
+                        drop(active_guard);
+                        return Err(terminal_error);
+                    }
                 }
-            } else {
-                let report = fanout_result.expect("checked successful PCM fanout");
-                if !report.auxiliary_discontinuities.is_empty() {
-                    tracing::warn!(
-                        languages = ?report.auxiliary_discontinuities,
-                        "capture remains live after isolating discontinuous translation lanes"
-                    );
+                Ok(report) => {
+                    if !report.auxiliary_discontinuities.is_empty() {
+                        tracing::warn!(
+                            languages = ?report.auxiliary_discontinuities,
+                            "capture remains live after isolating discontinuous translation lanes"
+                        );
+                    }
+                    active_guard
+                        .as_mut()
+                        .expect("active capture was checked above")
+                        .remote = Some(remote);
                 }
-                active_guard
-                    .as_mut()
-                    .expect("active capture was checked above")
-                    .remote = Some(remote);
             }
         }
         Ok(())
@@ -11983,9 +11985,11 @@ mod tests {
                 source_language: "en".to_string(),
                 source_start_ms: Some(sequence * 100),
                 source_end_ms: Some(sequence * 100 + 80),
-                text: (!withdrawn)
-                    .then(|| format!("{target}-{sequence}-r{revision}"))
-                    .unwrap_or_default(),
+                text: if withdrawn {
+                    String::new()
+                } else {
+                    format!("{target}-{sequence}-r{revision}")
+                },
                 completion: "partial".to_string(),
                 withdrawn,
                 revision,
