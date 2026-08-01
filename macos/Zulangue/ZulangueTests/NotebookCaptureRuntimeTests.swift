@@ -5539,7 +5539,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertFalse(settingsView.contains("remoteSection"))
         XCTAssertFalse(settingsView.contains("translationSection"))
         XCTAssertTrue(settingsView.contains("NotebookCaptureSettingsIntentQueue"))
-        XCTAssertTrue(settingsView.contains("scheduleContextIntent(.bindContextPack("))
+        XCTAssertTrue(settingsView.contains("selectContextPack(pack.id)"))
+        XCTAssertTrue(settingsView.contains(
+            "try capture.selectContextPackForTranscription(packId, notebookId: notebookId)"
+        ))
+        XCTAssertFalse(settingsView.contains("scheduleContextIntent(.bindContextPack("))
         XCTAssertTrue(settingsView.contains(
             "scheduleContextIntent(.persistenceStateChanged(state))"
         ))
