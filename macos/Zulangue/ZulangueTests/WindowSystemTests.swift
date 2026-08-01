@@ -595,6 +595,39 @@ final class WindowSystemTests: XCTestCase {
         ))
         XCTAssertEqual(waiting, ["th"])
 
+        // Coverage decides "behind", not start: a coarse cue that STARTS
+        // before the newest speech but covers through it is current, and
+        // must not pin a perpetual ellipsis on its column.
+        let coarseColumns = SubtitleAudienceTimeline.columns(
+            languages: ["zh", "en"],
+            utterances: [
+                source(0, "zh", "第一句", 6_360),
+                source(1, "zh", "第二句", 9_180),
+            ],
+            placement: { $0.sourceLanguage },
+            cues: { language in
+                language == "en"
+                    ? [NotebookCaptureTranslationCueDTO(
+                        targetLanguage: "en",
+                        groupEpoch: 0,
+                        providerSequence: 2,
+                        sourceLanguage: "zh",
+                        sourceStartMs: 6_300,
+                        sourceEndMs: 18_780,
+                        text: "One coarse segment covering both rows.",
+                        completion: "complete",
+                        withdrawn: false,
+                        revision: 1
+                    )]
+                    : []
+            }
+        )
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.waitingLanguages(columns: coarseColumns),
+            [],
+            "a segment covering the newest words is current even though it starts earlier"
+        )
+
         // A dead lane is never "waiting": the ellipsis promises words are
         // coming, and for a failed stream that promise is false.
         let behindColumns = SubtitleAudienceTimeline.columns(
@@ -615,16 +648,35 @@ final class WindowSystemTests: XCTestCase {
             ["en"]
         )
 
-        // Only the newest unplaced line surfaces as the unrouted strip.
-        let unrouted = SubtitleAudienceTimeline.unroutedText(
-            utterances: [source(0, "fr", "vieux", 1_000), source(1, "zh", "新", 2_000)],
-            placement: { $0.sourceLanguage == "zh" ? "zh" : nil }
+        // An unplaced line stays on the strip while it is still inside the
+        // visible tail; it must not vanish the instant the next placed
+        // sentence lands. Outside the window it ages out like any line.
+        let mixed = [source(0, "fr", "vieux", 1_000), source(1, "zh", "新", 2_000)]
+        let zhOnly: (NotebookCaptureUtteranceDTO) -> String? = {
+            $0.sourceLanguage == "zh" ? "zh" : nil
+        }
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.unroutedText(
+                utterances: mixed,
+                placement: zhOnly,
+                window: 4
+            ),
+            "vieux",
+            "an unplaced line within the window stays visible"
         )
-        XCTAssertNil(unrouted)
+        XCTAssertNil(
+            SubtitleAudienceTimeline.unroutedText(
+                utterances: mixed,
+                placement: zhOnly,
+                window: 1
+            ),
+            "outside the window it ages out"
+        )
         XCTAssertEqual(
             SubtitleAudienceTimeline.unroutedText(
                 utterances: [source(0, "zh", "旧", 1_000), source(1, "fr", "nouveau", 2_000)],
-                placement: { $0.sourceLanguage == "zh" ? "zh" : nil }
+                placement: zhOnly,
+                window: 1
             ),
             "nouveau"
         )

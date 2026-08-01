@@ -2644,9 +2644,26 @@ impl NotebookCaptureStore {
         let (error_type, request_id) = failure
             .map(|value| (Some(value.error_type.as_str()), value.request_id.as_deref()))
             .unwrap_or((None, None));
+        // An absent failure means "nothing new to report", not "the recorded
+        // cause is resolved". Health transitions fire constantly — every lane
+        // connect and reconnect — and blanket-clearing on each one erased the
+        // one provider error the operator still needed while a column was
+        // dark. The recorded cause survives until either a new failure
+        // replaces it or the group reports fully Live, which is the only
+        // state that genuinely means no standing cause remains.
         let updated = self.conn.lock().unwrap().execute(
             "UPDATE notebook_capture_runs
-             SET remote_health = ?1, provider_error_type = ?2, provider_request_id = ?3,
+             SET remote_health = ?1,
+                 provider_error_type = CASE
+                     WHEN ?2 IS NOT NULL THEN ?2
+                     WHEN ?1 = 'live' THEN NULL
+                     ELSE provider_error_type
+                 END,
+                 provider_request_id = CASE
+                     WHEN ?2 IS NOT NULL THEN ?3
+                     WHEN ?1 = 'live' THEN NULL
+                     ELSE provider_request_id
+                 END,
                  updated_at = ?4
              WHERE id = ?5",
             params![health.as_str(), error_type, request_id, now, run_id],
@@ -9251,6 +9268,67 @@ mod tests {
         assert_eq!(run.capture_state, CaptureState::Recording);
         assert_eq!(run.remote_health, RemoteHealth::Degraded);
         assert_eq!(run.provider_request_id.as_deref(), Some("req-1"));
+    }
+
+    #[test]
+    fn a_recorded_failure_cause_survives_health_transitions_until_fully_live() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_run(&store, &new_run(&notebook_id, "cause")).unwrap();
+        store
+            .update_remote_health(
+                "run-cause",
+                RemoteHealth::Degraded,
+                Some(&ProviderFailure {
+                    error_type: "quota_exhausted".into(),
+                    request_id: Some("req-9".into()),
+                }),
+            )
+            .unwrap();
+
+        // Health transitions fire on every lane connect and reconnect. An
+        // absent failure means "nothing new", not "resolved" — the operator
+        // still needs the cause while a column is dark.
+        let still_degraded = store
+            .update_remote_health("run-cause", RemoteHealth::Degraded, None)
+            .unwrap();
+        assert_eq!(
+            still_degraded.provider_error_type.as_deref(),
+            Some("quota_exhausted")
+        );
+        assert_eq!(still_degraded.provider_request_id.as_deref(), Some("req-9"));
+
+        let connecting = store
+            .update_remote_health("run-cause", RemoteHealth::Connecting, None)
+            .unwrap();
+        assert_eq!(
+            connecting.provider_error_type.as_deref(),
+            Some("quota_exhausted")
+        );
+
+        // Fully Live is the one state that genuinely means no standing cause.
+        let live = store
+            .update_remote_health("run-cause", RemoteHealth::Live, None)
+            .unwrap();
+        assert_eq!(live.provider_error_type, None);
+        assert_eq!(live.provider_request_id, None);
+
+        // A new explicit failure still replaces whatever was recorded.
+        let replaced = store
+            .update_remote_health(
+                "run-cause",
+                RemoteHealth::Degraded,
+                Some(&ProviderFailure {
+                    error_type: "rate_limited".into(),
+                    request_id: None,
+                }),
+            )
+            .unwrap();
+        assert_eq!(
+            replaced.provider_error_type.as_deref(),
+            Some("rate_limited")
+        );
+        assert_eq!(replaced.provider_request_id, None);
     }
 
     #[test]

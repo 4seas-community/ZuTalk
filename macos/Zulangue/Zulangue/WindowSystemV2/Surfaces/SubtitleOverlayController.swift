@@ -115,6 +115,11 @@ enum SubtitleAudienceTimeline {
         /// items inherit their segment's source-token range — translation
         /// tokens themselves carry no provider timestamps.
         let anchorMs: UInt64?
+        /// Capture-timeline end of the covered words. Coverage, not start,
+        /// is what decides whether a column is behind: a coarse translation
+        /// segment can START rows before the newest speech and still cover
+        /// it entirely.
+        let endMs: UInt64?
         /// Provider order, the tiebreak within one stream's own output.
         let order: UInt64
     }
@@ -143,6 +148,7 @@ enum SubtitleAudienceTimeline {
                 kind: .source,
                 text: utterance.sourceText,
                 anchorMs: utterance.sourceStartMs,
+                endMs: utterance.sourceEndMs,
                 order: utterance.sequence
             ))
         }
@@ -157,6 +163,7 @@ enum SubtitleAudienceTimeline {
                     kind: .translation,
                     text: cue.text,
                     anchorMs: cue.sourceStartMs,
+                    endMs: cue.sourceEndMs,
                     order: cue.providerSequence
                 ))
             }
@@ -181,11 +188,15 @@ enum SubtitleAudienceTimeline {
         return columns
     }
 
-    /// Columns whose newest content trails the newest spoken words. The
-    /// waiting placeholder keeps the lane visibly alive instead of letting an
-    /// absent column read as "this language is broken". A column already
-    /// carrying a partial cue for the current sentence is not waiting: its
-    /// anchor matches the newest source anchor.
+    /// Columns whose coverage trails the newest spoken words. The waiting
+    /// placeholder keeps the lane visibly alive instead of letting an absent
+    /// column read as "this language is broken".
+    ///
+    /// Behind means "covers less", not "starts earlier": the auxiliary
+    /// streams segment on their own boundaries, so a coarse translation
+    /// segment can start rows before the newest speech and still cover it
+    /// entirely — comparing starts would pin a perpetual ellipsis on a
+    /// column whose text is fully current.
     ///
     /// A lane whose stream died is never "waiting": the ellipsis is a promise
     /// that words are coming, and for a dead lane that promise is false. Its
@@ -202,8 +213,10 @@ enum SubtitleAudienceTimeline {
         guard let newestSpoken else { return [] }
         var waiting: Set<String> = []
         for (language, items) in columns where !failedLanguages.contains(language) {
-            let newest = items.compactMap(\.anchorMs).max() ?? 0
-            if newest < newestSpoken {
+            let covered = items
+                .compactMap { $0.endMs ?? $0.anchorMs }
+                .max() ?? 0
+            if covered < newestSpoken {
                 waiting.insert(language)
             }
         }
@@ -211,19 +224,25 @@ enum SubtitleAudienceTimeline {
     }
 
     /// The newest line no column claims — an unselected known language, or a
-    /// line whose identity is still pending with no usable hint. Only the
-    /// newest one: speech is still speech and must appear, but yesterday's
-    /// unrouted line must not pin a permanent strip under the columns.
+    /// line whose identity is still pending with no usable hint. Spoken words
+    /// must appear, so the strip keeps showing an unplaced line for as long
+    /// as it would still sit in the visible tail — a French interjection must
+    /// not vanish the instant the next Chinese sentence lands. Beyond that
+    /// window it ages out exactly like every placed line does.
     static func unroutedText(
         utterances: [NotebookCaptureUtteranceDTO],
-        placement: (NotebookCaptureUtteranceDTO) -> String?
+        placement: (NotebookCaptureUtteranceDTO) -> String?,
+        window: Int = 1
     ) -> String? {
-        guard let last = utterances.last,
-              last.hasSourceLane,
-              last.sourceText.isEmpty == false,
-              placement(last) == nil
-        else { return nil }
-        return last.sourceText
+        let tail: [NotebookCaptureUtteranceDTO] = Array(utterances.suffix(max(window, 1)))
+        for utterance in tail.reversed() {
+            guard utterance.hasSourceLane,
+                  utterance.sourceText.isEmpty == false,
+                  placement(utterance) == nil
+            else { continue }
+            return utterance.sourceText
+        }
+        return nil
     }
 }
 
@@ -333,28 +352,65 @@ enum SubtitlePacedReveal {
     }
 }
 
+/// Side table keeping each card's reveal progress across view re-creation.
+/// Not observable on purpose: cards render from their own @State, and
+/// publishing every 33 ms tick would re-render every column.
+@MainActor
+final class AudienceRevealMemory {
+    private var progress: [String: (state: SubtitlePacedReveal.State, text: String)] = [:]
+
+    func recall(_ id: String) -> (state: SubtitlePacedReveal.State, text: String)? {
+        progress[id]
+    }
+
+    func store(_ id: String, state: SubtitlePacedReveal.State, text: String) {
+        progress[id] = (state, text)
+    }
+
+    /// Cards fall off the visible suffix as the session grows; their cursors
+    /// go with them so a long meeting cannot accumulate one entry per cue.
+    func prune(keeping visible: Set<String>) {
+        guard progress.count > visible.count else { return }
+        progress = progress.filter { visible.contains($0.key) }
+    }
+}
+
 /// Drives `SubtitlePacedReveal` at caption frame rate. The task restarts on
 /// every text revision: reconcile decides what the cursor keeps, then the
 /// loop walks the remainder out at reading speed and ends when the card is
 /// fully revealed — an idle card costs no timer.
 private struct AudiencePacedText: View {
+    let id: String
     let text: String
     let fontSize: Double
-    let startsRevealed: Bool
+    let memory: AudienceRevealMemory
 
     @State private var reveal: SubtitlePacedReveal.State
     @State private var revealedText: String
     @State private var lastText: String
 
-    init(text: String, fontSize: Double, startsRevealed: Bool) {
+    init(
+        id: String,
+        text: String,
+        fontSize: Double,
+        startsRevealed: Bool,
+        memory: AudienceRevealMemory
+    ) {
+        self.id = id
         self.text = text
         self.fontSize = fontSize
-        self.startsRevealed = startsRevealed
-        _reveal = State(initialValue: SubtitlePacedReveal.State(
-            revealedChars: startsRevealed ? Double(text.count) : 0
-        ))
-        _revealedText = State(initialValue: startsRevealed ? text : "")
-        _lastText = State(initialValue: text)
+        self.memory = memory
+        // A card the memory already knows resumes exactly where it was —
+        // a layout rebuild is not a reason to replay words at the room.
+        let seed = memory.recall(id) ?? (
+            state: SubtitlePacedReveal.State(
+                revealedChars: startsRevealed ? Double(text.count) : 0
+            ),
+            text: text
+        )
+        _reveal = State(initialValue: seed.state)
+        _revealedText = State(initialValue: seed.state.revealedPrefix(of: seed.text))
+        _lastText = State(initialValue: seed.text)
     }
 
     var body: some View {
@@ -371,6 +427,7 @@ private struct AudiencePacedText: View {
                 )
                 lastText = text
                 revealedText = reveal.revealedPrefix(of: text)
+                memory.store(id, state: reveal, text: text)
                 while !Task.isCancelled, Int(reveal.revealedChars) < text.count {
                     try? await Task.sleep(for: .milliseconds(33))
                     if Task.isCancelled { return }
@@ -380,6 +437,7 @@ private struct AudiencePacedText: View {
                         text: text
                     )
                     revealedText = reveal.revealedPrefix(of: text)
+                    memory.store(id, state: reveal, text: text)
                 }
             }
     }
@@ -498,6 +556,13 @@ struct SubtitleOverlayView: View {
     @AppStorage(SubtitleOverlayFontPolicy.defaultsKey)
     private var storedFontSize = SubtitleOverlayFontPolicy.defaultValue
     @State private var isHoveringOverlay = false
+    // Reveal cursors live outside view identity: a resize across a
+    // column-count threshold or a font step rebuilds the band structure and
+    // with it every column view, and per-view state would replay the live
+    // card's reveal from zero each time. The reference itself is stable
+    // @State; the class is deliberately not observable — each card's own
+    // @State drives its rendering, this is only where progress survives.
+    @State private var revealMemory = AudienceRevealMemory()
 
     var body: some View {
         subtitleBody
@@ -875,10 +940,6 @@ struct SubtitleOverlayView: View {
             columns: columns,
             failedLanguages: store.failedTranslationLanguages
         )
-        let unrouted = SubtitleAudienceTimeline.unroutedText(
-            utterances: store.presentedUtterances,
-            placement: { store.audienceSourcePlacement(for: $0) }
-        )
         let bandSize = SubtitleOverlayLayoutPolicy.audienceColumnCount(
             width: geometry.size.width - 24,
             languageCount: languages.count,
@@ -889,7 +950,18 @@ struct SubtitleOverlayView: View {
             height: geometry.size.height / CGFloat(max(bandStarts.count, 1)),
             fontSize: fontSize
         )
-        let hasWords = columns.values.contains { $0.isEmpty == false } || unrouted != nil
+        let unrouted = SubtitleAudienceTimeline.unroutedText(
+            utterances: store.presentedUtterances,
+            placement: { store.audienceSourcePlacement(for: $0) },
+            window: itemBudget
+        )
+        let trimmed = columns.mapValues { items in Array(items.suffix(itemBudget)) }
+        let visibleCueIds = Set(
+            trimmed.values.joined()
+                .filter { $0.kind == .translation }
+                .map(\.id)
+        )
+        let hasWords = trimmed.values.contains { $0.isEmpty == false } || unrouted != nil
 
         if store.isCaptureActive, hasWords {
             VStack(spacing: 8) {
@@ -901,7 +973,7 @@ struct SubtitleOverlayView: View {
                         ) { language in
                             audienceCueColumn(
                                 language: language,
-                                items: Array((columns[language] ?? []).suffix(itemBudget)),
+                                items: trimmed[language] ?? [],
                                 waiting: waiting.contains(language)
                             )
                         }
@@ -919,6 +991,9 @@ struct SubtitleOverlayView: View {
                 alignment: .bottom
             )
             .clipped()
+            .onChange(of: visibleCueIds) { _, visible in
+                revealMemory.prune(keeping: visible)
+            }
         } else {
             Color.clear
         }
@@ -978,9 +1053,11 @@ struct SubtitleOverlayView: View {
     ) -> some View {
         if item.kind == .translation {
             AudiencePacedText(
+                id: item.id,
                 text: item.text,
                 fontSize: fontSize,
-                startsRevealed: startsRevealed
+                startsRevealed: startsRevealed,
+                memory: revealMemory
             )
             .padding(.horizontal, 16)
             .padding(.vertical, 14)

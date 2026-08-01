@@ -1522,10 +1522,18 @@ async fn collect_stream_events(
         if provider_accepted_configuration {
             lane.provider_accepted_configuration = true;
         }
+        // A lane that died before ever accepting its configuration can never
+        // accept it; letting the tombstone gate the receipt would leave the
+        // Context marked un-applied for the whole session even though every
+        // surviving connection is using it. At least one real acceptance is
+        // still required so a group that never connected claims nothing.
         if !context_applied
             && lanes
                 .iter()
-                .all(|lane| lane.provider_accepted_configuration)
+                .all(|lane| lane.provider_accepted_configuration || lane.failed)
+            && lanes
+                .iter()
+                .any(|lane| lane.provider_accepted_configuration)
         {
             if let Some(digest) = context_digest.as_deref() {
                 match context_store.mark_context_applied(&run_id, digest) {
@@ -1600,10 +1608,18 @@ async fn collect_stream_events(
                     &mut lane.provider_session_epoch,
                     &mut lane.awaiting_reconnect,
                 );
+                // The durable gap record says "captured audio went
+                // untranscribed here". That is only true when the canonical
+                // lane — the transcript authority — lost the window; an
+                // auxiliary outage costs one translation column a stretch,
+                // which its own epoch bump already accounts for, and must
+                // not make the session claim audio was lost when the
+                // transcription never stopped.
+                let writes_gap = lane_index == canonical_lane_index;
                 if reconnected && !outage_is_continuous(outage_ms) {
                     let end_frame = captured_frames.load(Ordering::Acquire);
                     if let Some(start_frame) = lane.disconnected_at_frame.take() {
-                        if end_frame > start_frame {
+                        if writes_gap && end_frame > start_frame {
                             store
                                 .preserve_network_transcript_gap(
                                     &session_id,
@@ -4405,6 +4421,14 @@ impl ActiveRemoteCapture {
                 if stream.descriptor.canonical {
                     return Err("Soniox stream group control unavailable".to_string());
                 }
+                // Control ops are rare (pause/resume/finalize), so a skipped
+                // lane is worth a line: a lane that misses a Pause keeps its
+                // provider session ticking until the next control catches it.
+                tracing::warn!(
+                    target_language = stream.descriptor.target_language.as_deref(),
+                    control = ?control,
+                    "auxiliary lane control channel unusable; control skipped for this lane"
+                );
                 continue;
             }
             stream
@@ -7067,19 +7091,30 @@ impl ZulangueCore {
             let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
             let finish_senders = streams
                 .iter()
-                .map(|stream| stream.control_tx.clone())
+                .map(|stream| (stream.descriptor.canonical, stream.control_tx.clone()))
                 .collect::<Vec<_>>();
             let finish_result = tokio::time::timeout_at(
                 deadline,
-                futures::future::join_all(
-                    finish_senders
-                        .into_iter()
-                        .map(|sender| async move { sender.send(SttStreamControl::Finish).await }),
-                ),
+                futures::future::join_all(finish_senders.into_iter().map(
+                    |(canonical, sender)| async move {
+                        (canonical, sender.send(SttStreamControl::Finish).await)
+                    },
+                )),
             )
             .await;
+            // An auxiliary lane that already died cannot take a Finish and
+            // has nothing left to drain; refusing to stop over it would
+            // truncate the transcript tail of every lane that is still
+            // healthy. Only the canonical control channel decides whether
+            // the graceful drain can proceed.
             let finish_control_failure = match finish_result {
-                Ok(results) if results.iter().all(Result::is_ok) => None,
+                Ok(results)
+                    if results
+                        .iter()
+                        .all(|(canonical, result)| result.is_ok() || !*canonical) =>
+                {
+                    None
+                }
                 Ok(_) => Some(ProviderFailure {
                     error_type: "finish_control_closed".to_string(),
                     request_id: None,
