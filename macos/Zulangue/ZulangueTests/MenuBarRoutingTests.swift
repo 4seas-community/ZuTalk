@@ -124,7 +124,7 @@ final class MenuBarRoutingTests: XCTestCase {
         XCTAssertTrue(MenuBarStatusItemIcon.processing.isTemplate)
     }
 
-    func testStatusItemClick_doesNotActivateTheApplication() throws {
+    func testStatusItemClick_activatesBeforeShowingPopover() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -132,7 +132,13 @@ final class MenuBarRoutingTests: XCTestCase {
         let source = root.appendingPathComponent("MenuBar/MenuBarCoordinator.swift")
         let contents = try String(contentsOf: source, encoding: .utf8)
 
-        XCTAssertTrue(contents.contains("popover.show(relativeTo:"))
-        XCTAssertFalse(contents.contains("NSApp.activate(ignoringOtherApps: true)"))
+        let activation = try XCTUnwrap(
+            contents.range(of: "NSApp.activate(ignoringOtherApps: true)")
+        )
+        let presentation = try XCTUnwrap(
+            contents.range(of: "popover.show(relativeTo:")
+        )
+
+        XCTAssertLessThan(activation.lowerBound, presentation.lowerBound)
     }
 }

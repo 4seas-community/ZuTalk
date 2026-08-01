@@ -110,6 +110,13 @@ final class MenuBarCoordinator: NSObject {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            // A status-item action is delivered even while another application
+            // is frontmost, but its popover is not guaranteed to become the
+            // active interactive surface. Activate before presenting so the
+            // popover appears above Chrome and other frontmost applications.
+            // Presenting first and activating afterwards can immediately disturb
+            // a transient popover's focus, which is why the ordering matters.
+            NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
     }
