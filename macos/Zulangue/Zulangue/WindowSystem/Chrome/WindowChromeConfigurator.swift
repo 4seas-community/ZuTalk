@@ -8,7 +8,7 @@
 // 红黄绿. 这是 Tahoe 的新渲染行为,无公开 API 绕过.
 //
 // 对策: 系统按钮 isHidden = true 彻底隐藏,CustomTrafficLights.swift 里的
-// 纯 AppKit 视图自画红黄绿,避免 titlebar 再挂一个 NSHostingView。
+// 纯 AppKit 视图自画红黄绿,并挂到 window frame 而不是 titlebar。
 // 三颗圆点 + hover 淡入 + performClose/Miniaturize/ToggleFullScreen 走标准 NSWindow API.
 
 import AppKit
@@ -43,7 +43,7 @@ final class WindowChromeConfigurator {
         )
 
         // 彻底隐藏系统 traffic light — macOS 26 下这仨按钮无论怎样都是灰色,
-        // 我们把纯 AppKit 的 CustomTrafficLightsView 挂到 titlebar 上替代它们.
+        // 我们把纯 AppKit 的 CustomTrafficLightsView 挂到 window frame 上替代它们.
         hideSystemTrafficLights(on: window)
 
         // 观察窗口尺寸变化时系统有时会重新显示系统按钮,监听 resize 重新隐藏。
@@ -69,7 +69,7 @@ final class WindowChromeConfigurator {
             }
         }
 
-        // 关键: titlebar 只挂纯 AppKit view,不再引入额外的 NSHostingView,
+        // 关键: 只挂纯 AppKit view,不再引入额外的 NSHostingView,
         // 避免窗口切页时被拖进 SwiftUI 的 window size update cycle.
         installCustomTrafficLights(on: window)
         CrashDiagnostics.noteWindowChromeConfigured(
@@ -104,26 +104,28 @@ final class WindowChromeConfigurator {
         }
     }
 
-    private func installCustomTrafficLights(on window: NSWindow) {
-        // 关键: 挂在 titlebar view 而不是 contentView.
-        // macOS 的 titlebar view 盖在 contentView 顶部,所有顶部 ~28pt 的鼠标
-        // 事件都被它捕获,挂在 contentView 下面的子 view 收不到 hover.
-        // 通过系统按钮的 superview 拿到 titlebar(私有但标准做法).
-        guard let titlebarView = window.standardWindowButton(.closeButton)?.superview else {
-            return
+    @discardableResult
+    func installCustomTrafficLights(on window: NSWindow) -> CustomTrafficLightsView? {
+        // 挂在 content 与 titlebar 的共同父视图(window frame)最上层。
+        // 若挂进 titlebar,macOS 26 hover 时会把整条系统 titlebar 材质一起揭示；
+        // 若挂进 contentView,它会被 titlebar 抢走鼠标事件,也会在 root hosting
+        // controller 被替换时一起移除。frame view 同时避开这两个问题。
+        guard let frameView = window.contentView?.superview else {
+            return nil
         }
 
         let customTrafficLights = CustomTrafficLightsView()
-        // positioned: .above 确保盖在系统按钮(已 isHidden)之上
-        titlebarView.addSubview(customTrafficLights, positioned: .above, relativeTo: nil)
+        frameView.addSubview(customTrafficLights, positioned: .above, relativeTo: nil)
 
-        // 92×28 覆盖标准 macOS titlebar 左侧三颗按钮的完整区域,精准对位.
+        // 92×44 覆盖主侧栏左上角。热区从内容侧即可进入,
+        // 不必先碰到屏幕顶边而唤出系统 titlebar。
         NSLayoutConstraint.activate([
-            customTrafficLights.leadingAnchor.constraint(equalTo: titlebarView.leadingAnchor),
-            customTrafficLights.topAnchor.constraint(equalTo: titlebarView.topAnchor),
+            customTrafficLights.leadingAnchor.constraint(equalTo: frameView.leadingAnchor),
+            customTrafficLights.topAnchor.constraint(equalTo: frameView.topAnchor),
             customTrafficLights.widthAnchor.constraint(equalToConstant: 92),
-            customTrafficLights.heightAnchor.constraint(equalToConstant: 28),
+            customTrafficLights.heightAnchor.constraint(equalToConstant: 44),
         ])
+        return customTrafficLights
     }
 
     @discardableResult

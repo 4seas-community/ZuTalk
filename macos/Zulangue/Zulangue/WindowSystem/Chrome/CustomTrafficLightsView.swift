@@ -10,7 +10,7 @@ import AppKit
 //
 // 这里改成纯 AppKit:
 // - 三颗 12pt 圆点,红/黄/绿,水平间距 8pt
-// - hover 热区覆盖整个 92x28 titlebar 左上角区域
+// - hover 热区覆盖窗口内容左上角 92x44 区域,无需触碰屏幕顶边
 // - hover 时淡入并显示 x / - / 原生全屏符号
 // - 点击走标准 NSWindow API: performClose / performMiniaturize / toggleFullScreen
 
@@ -65,10 +65,10 @@ final class CustomTrafficLightsView: NSView {
     private let buttonStack = NSStackView()
     private let buttons: [TrafficLightButton]
     private var hoverTrackingArea: NSTrackingArea?
-    private var isHovering = false
+    private(set) var isHovering = false
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: 92, height: 28)
+        NSSize(width: 92, height: 44)
     }
 
     override init(frame frameRect: NSRect) {
@@ -128,7 +128,7 @@ final class CustomTrafficLightsView: NSView {
 
     private func setupView() {
         buttonStack.orientation = .horizontal
-        buttonStack.spacing = 8
+        buttonStack.spacing = 0
         buttonStack.alignment = .centerY
         buttonStack.distribution = .gravityAreas
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
@@ -139,16 +139,20 @@ final class CustomTrafficLightsView: NSView {
             button.isEnabled = false
             buttonStack.addArrangedSubview(button)
             NSLayoutConstraint.activate([
-                button.widthAnchor.constraint(equalToConstant: 12),
-                button.heightAnchor.constraint(equalToConstant: 12),
+                button.widthAnchor.constraint(equalToConstant: 20),
+                button.heightAnchor.constraint(equalToConstant: 32),
             ])
         }
 
         addSubview(buttonStack)
         NSLayoutConstraint.activate([
-            buttonStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
-            buttonStack.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            buttonStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            buttonStack.topAnchor.constraint(equalTo: topAnchor),
         ])
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
     }
 
     private func setHovering(_ hovering: Bool) {
@@ -177,14 +181,14 @@ private final class TrafficLightButton: NSControl {
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: 12, height: 12)
+        NSSize(width: 20, height: 32)
     }
 
     init(fillColor: NSColor, symbolText: String, action: TrafficLightAction) {
         self.fillColor = fillColor
         self.symbolText = symbolText
         self.actionKind = action
-        super.init(frame: NSRect(x: 0, y: 0, width: 12, height: 12))
+        super.init(frame: NSRect(x: 0, y: 0, width: 20, height: 32))
         focusRingType = .none
     }
 
@@ -205,7 +209,12 @@ private final class TrafficLightButton: NSControl {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        let circleRect = bounds.insetBy(dx: 0.25, dy: 0.25)
+        let circleRect = NSRect(
+            x: (bounds.width - 12) / 2,
+            y: bounds.height - 20,
+            width: 12,
+            height: 12
+        ).insetBy(dx: 0.25, dy: 0.25)
         let circlePath = NSBezierPath(ovalIn: circleRect)
         fillColor.setFill()
         circlePath.fill()
@@ -221,8 +230,8 @@ private final class TrafficLightButton: NSControl {
         ]
         let symbolSize = symbolText.size(withAttributes: attributes)
         let symbolRect = NSRect(
-            x: (bounds.width - symbolSize.width) / 2,
-            y: (bounds.height - symbolSize.height) / 2 - 0.5,
+            x: circleRect.midX - symbolSize.width / 2,
+            y: circleRect.midY - symbolSize.height / 2 - 0.5,
             width: symbolSize.width,
             height: symbolSize.height
         )

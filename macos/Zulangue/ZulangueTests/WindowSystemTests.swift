@@ -170,6 +170,56 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(window.invocations, [.toggleFullScreen])
     }
 
+    func testCustomTrafficLights_mountOnWindowFrameInsteadOfTitlebar() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        let originalContentView = try XCTUnwrap(window.contentView)
+        let windowFrameView = try XCTUnwrap(originalContentView.superview)
+        let titlebarView = try XCTUnwrap(window.standardWindowButton(.closeButton)?.superview)
+
+        let controls = try XCTUnwrap(
+            WindowChromeConfigurator.shared.installCustomTrafficLights(on: window)
+        )
+
+        XCTAssertTrue(controls.superview === windowFrameView)
+        XCTAssertFalse(controls.superview === titlebarView)
+        XCTAssertEqual(controls.intrinsicContentSize, NSSize(width: 92, height: 44))
+
+        window.contentViewController = NSViewController()
+
+        XCTAssertTrue(controls.superview === windowFrameView)
+        XCTAssertTrue(controls.window === window)
+    }
+
+    func testCustomTrafficLights_areHiddenUntilPointerEntersHotZone() throws {
+        let controls = CustomTrafficLightsView()
+        let mouseEvent = try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .mouseMoved,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 0,
+                pressure: 0
+            )
+        )
+
+        XCTAssertFalse(controls.isHovering)
+
+        controls.mouseEntered(with: mouseEvent)
+        XCTAssertTrue(controls.isHovering)
+
+        controls.mouseExited(with: mouseEvent)
+        XCTAssertFalse(controls.isHovering)
+    }
+
     func testApplicationQuitAction_requestsApplicationTermination() {
         let application = ApplicationQuitRequestingSpy()
 
