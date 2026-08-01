@@ -1,33 +1,28 @@
-# Zulangue 0.2.0
+# Zulangue 0.2.1
 
-This release turns Zulangue into a more focused multilingual live-captioning
-workspace, with independent translation lanes, selectable audio input, and a
-simpler path from setup to an audience-ready session.
+This release makes long-running Notebook work smoother, adds direct navigation
+across recordings, and rounds out knowledge and window controls.
 
-- **Three languages stay live without waiting for one another.** Each selected
-  translation language advances independently on the shared audio timeline, so
-  a slow provider response in one column no longer blocks the others. Tail
-  updates reconcile cleanly instead of repeating or erasing already visible
-  text.
-- **Fast speech remains time-aligned.** Source and translation ownership is
-  explicit across the canonical and auxiliary streams, preventing competing
-  lanes from rewriting the same subtitle while preserving provider timing.
-- **Choose the microphone or audio device for each session.** Notebook capture
-  can switch among available inputs, remembers a valid choice, and handles
-  device changes without silently recording from the wrong source.
-- **Knowledge profiles are easier to create and reuse.** A dedicated library
-  organizes transcription context, while notebook selection and run snapshots
-  keep each session's knowledge configuration predictable.
-- **Soniox setup is shorter and clearer.** Onboarding focuses on the credential
-  and connection states needed to start; low-level diagnostics no longer crowd
-  the everyday settings experience.
-- **Updates can arrive in the background.** Sparkle checks and prepares signed
-  updates without interrupting a live session, leaving installation and restart
-  under the user's control.
-- **Korean is now available throughout the application.** The interface and
-  release entry points now include Korean alongside the existing localizations.
-- **The menu bar window opens more reliably.** Opening it no longer depends on
-  an application activation sequence that could steal or lose focus.
+- **Long live transcripts stay responsive.** Historical summaries load away
+  from the main interface, only the selected recording is hydrated, and rapid
+  words, translation cues, and lane-health updates share a bounded rendering
+  budget while always delivering the newest frame.
+- **Every recording is easy to revisit.** A run navigator keeps completed,
+  interrupted, active, and even empty recordings addressable without mounting
+  every transcript at once.
+- **Knowledge libraries can be imported as JSON.** Portable library documents
+  preserve source order and identity checks, and imports remain revision-safe
+  when edited in Zulangue.
+- **Zulangue returns to the last Notebook.** A valid recent Notebook is restored
+  automatically, while missing or deleted entries fall back safely.
+- **Notebook navigation remains stable.** The built-in tab bar stays fixed above
+  changing content instead of moving with each page.
+- **Subtitle backgrounds are adjustable.** The audience window can be made more
+  transparent without fading its text, while Reduce Transparency remains
+  respected.
+- **Window controls no longer reveal a second title bar.** Hovering the custom
+  traffic lights keeps the native title bar hidden and preserves the intended
+  window layout.
 
 Zulangue requires macOS 15.5 or later.
 
