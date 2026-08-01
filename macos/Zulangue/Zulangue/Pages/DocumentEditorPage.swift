@@ -131,9 +131,22 @@ struct DocumentEditorPage: View {
                     onBack: { WindowCommandRouter.shared.requestNavigateHome() }
                 )
 
+                DocumentTabBar(
+                    tabs: notebookTabs,
+                    activeTabId: activeNotebookTabId,
+                    captureSettingsNotebookId: captureSettingsNotebookId,
+                    isCaptureSettingsSelected: isShowingCaptureSettings,
+                    isResourcesSelected: isShowingResources,
+                    sessionId: effectiveSessionId,
+                    onSelect: selectNotebookTab,
+                    onSelectResources: showResources,
+                    onSelectCaptureSettings: showCaptureSettings,
+                    onExport: { isShowingExportSheet = true }
+                )
+
                 if isShowingCaptureSettings {
                     NotebookSettingsNotebookHeader(title: editorNotebook?.title)
-                } else {
+                } else if isShowingResources == false {
                     NotebookBuiltinTabTitle(title: activeNotebookTab?.title)
                     if activeNotebookTab?.displayType == .manualNote,
                        let notebookId = route?.notebookID,
@@ -150,19 +163,6 @@ struct DocumentEditorPage: View {
                         NoteMetadataBar(sessionId: effectiveSessionId)
                     }
                 }
-
-                DocumentTabBar(
-                    tabs: notebookTabs,
-                    activeTabId: activeNotebookTabId,
-                    captureSettingsNotebookId: captureSettingsNotebookId,
-                    isCaptureSettingsSelected: isShowingCaptureSettings,
-                    isResourcesSelected: isShowingResources,
-                    sessionId: effectiveSessionId,
-                    onSelect: selectNotebookTab,
-                    onSelectResources: showResources,
-                    onSelectCaptureSettings: showCaptureSettings,
-                    onExport: { isShowingExportSheet = true }
-                )
             }
 
             // Transcript 和 Editor 在 ZStack 中共存，切换时保留编辑器的光标、

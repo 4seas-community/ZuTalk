@@ -25,6 +25,42 @@ final class DocumentEditorExportEntryTests: XCTestCase {
     }
 }
 
+final class DocumentEditorTabLayoutTests: XCTestCase {
+    func testNotebookTabBarStaysAboveVariableTabContent() throws {
+        let source = try Self.loadDocumentEditorPage()
+        let topChrome = try XCTUnwrap(source.range(of: "NoteTopChrome("))
+        let tabBar = try XCTUnwrap(source.range(of: "DocumentTabBar("))
+        let settingsHeader = try XCTUnwrap(
+            source.range(of: "NotebookSettingsNotebookHeader(title: editorNotebook?.title)")
+        )
+        let builtinTitle = try XCTUnwrap(
+            source.range(of: "NotebookBuiltinTabTitle(title: activeNotebookTab?.title)")
+        )
+        let manualNoteHeader = try XCTUnwrap(source.range(of: "ManualTimeNoteHeader("))
+        let metadataBar = try XCTUnwrap(
+            source.range(of: "NoteMetadataBar(sessionId: effectiveSessionId)")
+        )
+
+        XCTAssertLessThan(topChrome.lowerBound, tabBar.lowerBound)
+        XCTAssertLessThan(tabBar.lowerBound, settingsHeader.lowerBound)
+        XCTAssertLessThan(tabBar.lowerBound, builtinTitle.lowerBound)
+        XCTAssertLessThan(tabBar.lowerBound, manualNoteHeader.lowerBound)
+        XCTAssertLessThan(tabBar.lowerBound, metadataBar.lowerBound)
+        XCTAssertTrue(source.contains("} else if isShowingResources == false {"))
+    }
+
+    private static func loadDocumentEditorPage() throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue", isDirectory: true)
+        return try String(
+            contentsOf: root.appendingPathComponent("Pages/DocumentEditorPage.swift"),
+            encoding: .utf8
+        )
+    }
+}
+
 final class DocumentEditorTaskQueuePanelTests: XCTestCase {
     func testDocumentEditorMountsTaskQueuePanel() throws {
         let source = try Self.loadDocumentEditorPage()
