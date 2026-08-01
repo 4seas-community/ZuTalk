@@ -3654,7 +3654,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testHistoryStoreLoadsSummaryCatalogThenHydratesOnlySelectedTranscript() {
+    func testHistoryStoreLoadsSummaryCatalogThenHydratesOnlySelectedTranscript() async {
         var firstUtterance = NotebookCaptureUtteranceDTO.sample
         firstUtterance = NotebookCaptureUtteranceDTO(
             id: firstUtterance.id,
@@ -3673,6 +3673,20 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             sourceProjectionRevision: firstUtterance.sourceProjectionRevision,
             sourceEditRevision: firstUtterance.sourceEditRevision
         )
+        let secondUtterance = NotebookCaptureUtteranceDTO(
+            id: "utterance-b",
+            sessionId: "session-b",
+            sequence: 1,
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: "Second recording",
+            sourceStartMs: 0,
+            sourceEndMs: 500,
+            translatedLanguage: "zh",
+            translatedText: "第二次录音",
+            completion: "complete",
+            alignment: "response_order"
+        )
         let runs = [
             NotebookCaptureHistoryRunDTO.fixture(
                 sessionId: "session-a",
@@ -3682,7 +3696,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             NotebookCaptureHistoryRunDTO.fixture(
                 sessionId: "session-b",
                 createdAt: "2001-01-02T09:00:00Z",
-                utterances: [.sample]
+                utterances: [secondUtterance]
             ),
         ]
         let client = FakeNotebookCaptureClient(
@@ -3699,15 +3713,68 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(store.transcriptLoadState(sessionId: "session-a"), .unloaded)
         XCTAssertEqual(client.listUtterancesCount, 0)
 
-        store.loadTranscript(sessionId: "session-a")
+        await store.loadTranscript(sessionId: "session-a")
 
         XCTAssertEqual(store.runs[0].utterances, [firstUtterance])
         XCTAssertTrue(store.runs[1].utterances.isEmpty)
         XCTAssertEqual(store.transcriptLoadState(sessionId: "session-a"), .loaded)
         XCTAssertEqual(client.listUtterancesCount, 1)
 
-        store.loadTranscript(sessionId: "session-a")
+        await store.loadTranscript(sessionId: "session-a")
         XCTAssertEqual(client.listUtterancesCount, 1, "a hydrated run is not decoded twice")
+
+        client.listUtterancesOverride = [secondUtterance]
+        store.retainOnlyTranscript(sessionId: "session-b")
+        await store.loadTranscript(sessionId: "session-b")
+
+        XCTAssertTrue(store.runs[0].utterances.isEmpty, "the prior transcript is evicted")
+        XCTAssertEqual(store.runs[1].utterances, [secondUtterance])
+        XCTAssertEqual(store.transcriptLoadState(sessionId: "session-a"), .unloaded)
+        XCTAssertEqual(store.transcriptLoadState(sessionId: "session-b"), .loaded)
+
+        store.load(notebookId: "notebook-a")
+        XCTAssertTrue(
+            store.runs.allSatisfy(\.utterances.isEmpty),
+            "a catalog refresh invalidates cached transcript text"
+        )
+    }
+
+    @MainActor
+    func testHistoryStoreRejectsAStaleTranscriptAfterCatalogSwitch() async {
+        let utterance = NotebookCaptureUtteranceDTO.sample
+        let firstRun = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: utterance.sessionId,
+            createdAt: "2001-01-02T08:00:00Z",
+            utterances: [utterance]
+        )
+        let nextRun = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: "session-b",
+            createdAt: "2001-01-02T09:00:00Z"
+        )
+        let controller = BlockingNotebookUtteranceLoadController()
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a"),
+            startUtterances: [utterance],
+            historyRuns: [firstRun],
+            historySummariesOmitUtterances: true
+        )
+        client.utteranceLoadController = controller
+        let store = NotebookCaptureHistoryStore(client: client)
+        store.load(notebookId: "notebook-a")
+
+        let task = Task { await store.loadTranscript(sessionId: utterance.sessionId) }
+        XCTAssertTrue(await waitUntil { controller.isWaiting })
+        XCTAssertEqual(store.transcriptLoadState(sessionId: utterance.sessionId), .loading)
+
+        client.historyRuns = [nextRun]
+        store.load(notebookId: "notebook-b")
+        controller.release()
+        await task.value
+
+        XCTAssertEqual(store.loadedNotebookId, "notebook-b")
+        XCTAssertEqual(store.runs.map(\.sessionId), ["session-b"])
+        XCTAssertTrue(store.runs[0].utterances.isEmpty)
+        XCTAssertEqual(store.transcriptLoadState(sessionId: utterance.sessionId), .unloaded)
     }
 
     @MainActor
@@ -6774,6 +6841,32 @@ private final class BlockingNotebookReconcileController {
     }
 }
 
+@MainActor
+private final class BlockingNotebookUtteranceLoadController {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var isReleased = false
+    private(set) var isWaiting = false
+
+    func wait() async {
+        guard isReleased == false else { return }
+        isWaiting = true
+        await withCheckedContinuation { continuation in
+            if isReleased {
+                continuation.resume()
+            } else {
+                self.continuation = continuation
+            }
+        }
+        isWaiting = false
+    }
+
+    func release() {
+        isReleased = true
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
 private final class LockedStrings: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String] = []
@@ -7025,6 +7118,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     var libraryReplacementError: NotebookCaptureClientError?
     var profileUpdateError: NotebookCaptureClientError?
     var listUtterancesOverride: [NotebookCaptureUtteranceDTO]?
+    var utteranceLoadController: BlockingNotebookUtteranceLoadController?
     var historyRuns: [NotebookCaptureHistoryRunDTO]
     let historySummariesOmitUtterances: Bool
     var speakerParticipants: [SpeakerParticipantDTO]
@@ -7446,6 +7540,18 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     func listNotebookCaptureUtterances(sessionId: String) throws -> [NotebookCaptureUtteranceDTO] {
         listUtterancesCount += 1
         return listUtterancesOverride ?? startUtterances
+    }
+
+    func loadNotebookCaptureHistoryUtterances(
+        notebookId: String,
+        sessionId: String
+    ) async throws -> [NotebookCaptureUtteranceDTO] {
+        listUtterancesCount += 1
+        let captured = listUtterancesOverride ?? startUtterances
+        if let utteranceLoadController {
+            await utteranceLoadController.wait()
+        }
+        return captured
     }
 
     func listSpeakerParticipants() throws -> [SpeakerParticipantDTO] {
