@@ -882,6 +882,19 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      */
     func listNotebookCaptureHistory(notebookId: String) throws  -> [FfiNotebookCaptureHistoryRun]
 
+    /**
+     * Lists recording blocks without crossing every transcript row over FFI.
+     * A selected block is hydrated separately through
+     * `list_notebook_capture_history_utterances`.
+     */
+    func listNotebookCaptureHistorySummaries(notebookId: String) throws  -> [FfiNotebookCaptureHistoryRun]
+
+    /**
+     * Hydrates one selected history block while revalidating that the session
+     * still belongs to a visible, non-purging run in this Notebook.
+     */
+    func listNotebookCaptureHistoryUtterances(notebookId: String, sessionId: String) throws  -> [FfiNotebookCaptureUtterance]
+
     func listNotebookCaptureUtterances(sessionId: String) throws  -> [FfiNotebookCaptureUtterance]
 
     /**
@@ -1740,6 +1753,34 @@ open func listNotebookCaptureHistory(notebookId: String)throws  -> [FfiNotebookC
     uniffi_vt_ffi_fn_method_zulanguecore_list_notebook_capture_history(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(notebookId),$0
+    )
+})
+}
+
+    /**
+     * Lists recording blocks without crossing every transcript row over FFI.
+     * A selected block is hydrated separately through
+     * `list_notebook_capture_history_utterances`.
+     */
+open func listNotebookCaptureHistorySummaries(notebookId: String)throws  -> [FfiNotebookCaptureHistoryRun]  {
+    return try  FfiConverterSequenceTypeFfiNotebookCaptureHistoryRun.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_list_notebook_capture_history_summaries(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),$0
+    )
+})
+}
+
+    /**
+     * Hydrates one selected history block while revalidating that the session
+     * still belongs to a visible, non-purging run in this Notebook.
+     */
+open func listNotebookCaptureHistoryUtterances(notebookId: String, sessionId: String)throws  -> [FfiNotebookCaptureUtterance]  {
+    return try  FfiConverterSequenceTypeFfiNotebookCaptureUtterance.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_list_notebook_capture_history_utterances(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),
+        FfiConverterString.lower(sessionId),$0
     )
 })
 }
@@ -7978,6 +8019,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebook_capture_history() != 32566) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebook_capture_history_summaries() != 28041) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebook_capture_history_utterances() != 39901) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebook_capture_utterances() != 2242) {

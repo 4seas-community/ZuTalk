@@ -942,6 +942,11 @@
 "capture.transcript.swap" = "左右の言語列を入れ替える";
 "capture.transcript.swap_hint" = "左右の表示だけを一時的に入れ替えます。録音設定や文字起こしは変更しません。";
 "capture.transcript.realtime_accessibility_label" = "リアルタイム文字起こし";
+"capture.transcript.run_navigator" = "録音ナビゲーター";
+"capture.transcript.open_recording" = "この録音を開く";
+"capture.transcript.loading_recording" = "この録音の文字起こしを読み込み中…";
+"capture.transcript.load_recording_failed" = "この録音を読み込めませんでした";
+"capture.transcript.back_to_live" = "ライブに戻る";
 "capture.transcript.engine.realtime_format" = "リアルタイム · %@";
 "capture.transcript.engine.post_stop_format" = "停止後文字起こし · %@";
 "capture.transcript.transcription_heading" = "文字起こしタイムライン";

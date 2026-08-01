@@ -953,6 +953,11 @@
 "capture.transcript.swap" = "Intercambiar las columnas de idioma izquierda y derecha";
 "capture.transcript.swap_hint" = "Cambia solo la disposición izquierda-derecha en memoria; no reescribe la grabación ni la transcripción.";
 "capture.transcript.realtime_accessibility_label" = "Transcripción en tiempo real";
+"capture.transcript.run_navigator" = "Navegador de grabaciones";
+"capture.transcript.open_recording" = "Abrir esta grabación";
+"capture.transcript.loading_recording" = "Cargando la transcripción de esta grabación…";
+"capture.transcript.load_recording_failed" = "No se pudo cargar esta grabación";
+"capture.transcript.back_to_live" = "Volver al directo";
 "capture.transcript.engine.realtime_format" = "Tiempo real · %@";
 "capture.transcript.engine.post_stop_format" = "Transcripción tras la detención · %@";
 "capture.transcript.transcription_heading" = "Línea de tiempo de la transcripción";

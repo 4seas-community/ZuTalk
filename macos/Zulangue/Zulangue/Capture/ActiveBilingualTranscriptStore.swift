@@ -844,6 +844,13 @@ protocol NotebookCaptureClienting: AnyObject {
         sessionSpeakerId: String
     ) throws -> NotebookSessionSpeakerDTO
     func listNotebookCaptureHistory(notebookId: String) throws -> [NotebookCaptureHistoryRunDTO]
+    func listNotebookCaptureHistorySummaries(
+        notebookId: String
+    ) throws -> [NotebookCaptureHistoryRunDTO]
+    func loadNotebookCaptureHistoryUtterances(
+        notebookId: String,
+        sessionId: String
+    ) async throws -> [NotebookCaptureUtteranceDTO]
     func retryNotebookCaptureProjection(sessionId: String) throws -> NotebookCaptureEventDTO
     func retryNotebookAsyncProjection(sessionId: String) throws -> NotebookCaptureEventDTO
     func requestNotebookAsyncTranscription(sessionId: String) throws -> NotebookCaptureEventDTO
@@ -880,6 +887,21 @@ extension NotebookCaptureClienting {
         notebookId: String
     ) throws -> [NotebookCaptureHistoryRunDTO] {
         throw NotebookCaptureClientError.ffiUnavailable
+    }
+
+    /// Lightweight/platform clients may keep returning their in-memory full
+    /// fixtures. Production overrides this with the summary-only Rust query.
+    func listNotebookCaptureHistorySummaries(
+        notebookId: String
+    ) throws -> [NotebookCaptureHistoryRunDTO] {
+        try listNotebookCaptureHistory(notebookId: notebookId)
+    }
+
+    func loadNotebookCaptureHistoryUtterances(
+        notebookId: String,
+        sessionId: String
+    ) async throws -> [NotebookCaptureUtteranceDTO] {
+        try listNotebookCaptureUtterances(sessionId: sessionId)
     }
 
     func requestNotebookAsyncTranscription(
@@ -1356,6 +1378,28 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
         try requireCore()
             .listNotebookCaptureHistory(notebookId: notebookId)
             .map(Self.map)
+    }
+
+    func listNotebookCaptureHistorySummaries(
+        notebookId: String
+    ) throws -> [NotebookCaptureHistoryRunDTO] {
+        try requireCore()
+            .listNotebookCaptureHistorySummaries(notebookId: notebookId)
+            .map(Self.map)
+    }
+
+    func loadNotebookCaptureHistoryUtterances(
+        notebookId: String,
+        sessionId: String
+    ) async throws -> [NotebookCaptureUtteranceDTO] {
+        let core = try requireCore()
+        let values = try await Task.detached {
+            try core.listNotebookCaptureHistoryUtterances(
+                notebookId: notebookId,
+                sessionId: sessionId
+            )
+        }.value
+        return values.map(Self.map)
     }
 
     func listSpeakerParticipants() throws -> [SpeakerParticipantDTO] {
@@ -1935,7 +1979,6 @@ enum NotebookCaptureClientError: LocalizedError, Equatable {
     case remoteRequiredForTranslation
     case remoteRequiredForContext
     case languagePairMustDiffer
-    case contextConfirmationRequired
     case contextUnavailable
     case captureNotActive
     case projectionLocked
@@ -1952,8 +1995,6 @@ enum NotebookCaptureClientError: LocalizedError, Equatable {
             return String(localized: "capture.error.context_requires_remote")
         case .languagePairMustDiffer:
             return String(localized: "capture.error.languages_must_differ")
-        case .contextConfirmationRequired:
-            return String(localized: "capture.error.context_confirmation_required")
         case .contextUnavailable:
             return String(localized: "capture.settings.context.empty")
         case .captureNotActive:
@@ -1978,6 +2019,9 @@ final class UnavailableNotebookCaptureClient: NotebookCaptureClienting {
     }
 
     func listNotebookContextPacks(notebookId: String) throws -> [NotebookContextPackDTO] {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
     func listLibraryContextPacks() throws -> [NotebookContextPackDTO] {
         throw NotebookCaptureClientError.ffiUnavailable
     }
@@ -1991,9 +2035,6 @@ final class UnavailableNotebookCaptureClient: NotebookCaptureClienting {
         expectedRevision: UInt64,
         documentJson: String
     ) throws -> NotebookContextPackDTO {
-        throw NotebookCaptureClientError.ffiUnavailable
-    }
-
         throw NotebookCaptureClientError.ffiUnavailable
     }
 
@@ -2517,6 +2558,13 @@ enum NotebookCaptureHistoryPolicy {
 /// Notebook-scoped read model for every durable recording run. `focusSessionId`
 /// belongs to the view and is deliberately absent from this query API, so
 /// opening a historical session cannot hide its siblings.
+enum NotebookCaptureTranscriptLoadState: Equatable {
+    case unloaded
+    case loading
+    case loaded
+    case failed(String)
+}
+
 @MainActor
 final class NotebookCaptureHistoryStore: ObservableObject {
     @Published private(set) var runs: [NotebookCaptureHistoryRunDTO] = []
@@ -2526,9 +2574,13 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     @Published private(set) var presentationByNotebook: [String: NotebookTranscriptPresentationMode] = [:]
     @Published private(set) var speakerParticipants: [SpeakerParticipantDTO] = []
     @Published private(set) var sessionSpeakersBySession: [String: [NotebookSessionSpeakerDTO]] = [:]
+    @Published private(set) var transcriptLoadingSessionIds: Set<String> = []
+    @Published private(set) var transcriptLoadErrors: [String: String] = [:]
 
     private let client: NotebookCaptureClienting
     private var laneMutationsInFlight: Set<NotebookCaptureLaneMutationKey> = []
+    private var loadedTranscriptSessionIds: Set<String> = []
+    private var transcriptLoadRequestIds: [String: UUID] = [:]
 
     init(client: NotebookCaptureClienting? = nil) {
         self.client = client ?? RustNotebookCaptureClient()
@@ -2536,6 +2588,12 @@ final class NotebookCaptureHistoryStore: ObservableObject {
 
     func load(notebookId: String) {
         guard notebookId.isEmpty == false else { return }
+        // A catalog refresh is also a content invalidation boundary. Do not
+        // carry a selected transcript across it without re-reading SQLite.
+        transcriptLoadRequestIds = [:]
+        transcriptLoadingSessionIds = []
+        loadedTranscriptSessionIds = []
+        transcriptLoadErrors = [:]
         if loadedNotebookId != notebookId {
             runs = []
             sessionSpeakersBySession = [:]
@@ -2545,14 +2603,120 @@ final class NotebookCaptureHistoryStore: ObservableObject {
         defer { isLoading = false }
 
         do {
-            runs = NotebookCaptureHistoryPolicy.orderedRuns(
-                try client.listNotebookCaptureHistory(notebookId: notebookId)
+            let summaries = NotebookCaptureHistoryPolicy.orderedRuns(
+                try client.listNotebookCaptureHistorySummaries(notebookId: notebookId)
             )
+            var eagerLoadedSessionIds: Set<String> = []
+            runs = summaries.map { summary in
+                if summary.utterances.isEmpty == false {
+                    eagerLoadedSessionIds.insert(summary.sessionId)
+                }
+                return summary
+            }
+            loadedTranscriptSessionIds = eagerLoadedSessionIds
+            if presentationByNotebook[notebookId] == nil {
+                var nextPresentation = presentationByNotebook
+                nextPresentation[notebookId] = NotebookCaptureHistoryPolicy.defaultPresentation(
+                    for: runs
+                )
+                presentationByNotebook = nextPresentation
+            }
             lastError = nil
             refreshSpeakerDirectory(for: runs.map(\.sessionId))
         } catch {
             runs = []
+            loadedTranscriptSessionIds = []
+            transcriptLoadingSessionIds = []
+            transcriptLoadErrors = [:]
+            transcriptLoadRequestIds = [:]
             lastError = error.localizedDescription
+        }
+    }
+
+    func transcriptLoadState(sessionId: String) -> NotebookCaptureTranscriptLoadState {
+        if loadedTranscriptSessionIds.contains(sessionId) {
+            return .loaded
+        }
+        if transcriptLoadingSessionIds.contains(sessionId) {
+            return .loading
+        }
+        if let error = transcriptLoadErrors[sessionId] {
+            return .failed(error)
+        }
+        return .unloaded
+    }
+
+    /// Hydrates only the recording the user opened. The Notebook catalog stays
+    /// lightweight, so ten long recordings do not cross FFI or enter SwiftUI's
+    /// view tree together.
+    func loadTranscript(sessionId: String) async {
+        guard sessionId.isEmpty == false,
+              let notebookId = loadedNotebookId,
+              loadedTranscriptSessionIds.contains(sessionId) == false,
+              transcriptLoadingSessionIds.contains(sessionId) == false,
+              runs.contains(where: { $0.sessionId == sessionId })
+        else { return }
+
+        let requestId = UUID()
+        transcriptLoadRequestIds[sessionId] = requestId
+        var loading = transcriptLoadingSessionIds
+        loading.insert(sessionId)
+        transcriptLoadingSessionIds = loading
+        var errors = transcriptLoadErrors
+        errors.removeValue(forKey: sessionId)
+        transcriptLoadErrors = errors
+        defer {
+            if transcriptLoadRequestIds[sessionId] == requestId {
+                transcriptLoadRequestIds.removeValue(forKey: sessionId)
+                var nextLoading = transcriptLoadingSessionIds
+                nextLoading.remove(sessionId)
+                transcriptLoadingSessionIds = nextLoading
+            }
+        }
+
+        do {
+            let utterances = try await client.loadNotebookCaptureHistoryUtterances(
+                notebookId: notebookId,
+                sessionId: sessionId
+            )
+                .filter { $0.sessionId == sessionId }
+                .sorted { $0.sequence < $1.sequence }
+            guard Task.isCancelled == false,
+                  loadedNotebookId == notebookId,
+                  transcriptLoadRequestIds[sessionId] == requestId,
+                  let index = runs.firstIndex(where: { $0.sessionId == sessionId }) else {
+                return
+            }
+            var nextRuns = runs.map { run in
+                run.sessionId == sessionId ? run : run.replacingUtterances([])
+            }
+            nextRuns[index] = runs[index].replacingUtterances(utterances)
+            loadedTranscriptSessionIds = [sessionId]
+            runs = nextRuns
+            refreshSessionSpeakers(sessionId: sessionId)
+        } catch {
+            guard loadedNotebookId == notebookId,
+                  transcriptLoadRequestIds[sessionId] == requestId else { return }
+            var nextErrors = transcriptLoadErrors
+            nextErrors[sessionId] = error.localizedDescription
+            transcriptLoadErrors = nextErrors
+        }
+    }
+
+    /// Keeps the transcript cache bounded to the run currently selected in the
+    /// rail and invalidates any slower request for a run the user left behind.
+    func retainOnlyTranscript(sessionId: String?) {
+        let retainedIds = sessionId.map { Set([$0]) } ?? []
+        transcriptLoadRequestIds = transcriptLoadRequestIds.filter {
+            retainedIds.contains($0.key)
+        }
+        transcriptLoadingSessionIds.formIntersection(retainedIds)
+        loadedTranscriptSessionIds.formIntersection(retainedIds)
+        let nextRuns = runs.map { run in
+            retainedIds.contains(run.sessionId) ? run : run.replacingUtterances([])
+        }
+        if nextRuns != runs {
+            runs = nextRuns
         }
     }
 
@@ -2761,14 +2925,19 @@ final class NotebookCaptureHistoryStore: ObservableObject {
         load(notebookId: loadedNotebookId)
     }
 
-    private func refreshSpeakerDirectory(for sessionIds: [String]) {
+    private func refreshSpeakerDirectory(
+        for sessionIds: [String],
+        hydrateSessions: Bool = true
+    ) {
         refreshSpeakerParticipants()
         let wantedSessionIds = Set(sessionIds)
         sessionSpeakersBySession = sessionSpeakersBySession.filter {
             wantedSessionIds.contains($0.key)
         }
-        for sessionId in wantedSessionIds {
-            refreshSessionSpeakers(sessionId: sessionId)
+        if hydrateSessions {
+            for sessionId in wantedSessionIds {
+                refreshSessionSpeakers(sessionId: sessionId)
+            }
         }
     }
 
@@ -4686,6 +4855,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     private func merge(_ updates: [NotebookCaptureUtteranceDTO]) {
+        guard updates.isEmpty == false else { return }
         for unprotectedUpdate in updates {
             let update = protectingCommittedLaneOverrides(in: unprotectedUpdate)
             guard update.sessionId == sessionId else { continue }
@@ -4872,7 +5042,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     private func refreshRecentTranscriptPresentation() {
-        let recent = presentedUtterances.suffix(2).map { utterance in
+        let recent = presentedUtteranceTail(limit: 2).map { utterance in
             let laneProjection = projection(for: utterance)
             let displayedLane: (language: String, text: String)
             if let pendingLanguage = laneProjection.pendingLanguage {
@@ -4987,29 +5157,44 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// alignment evidence, not an ordering fallback: putting nil after every
     /// timestamp would let one old unanchored cue remain the track head
     /// forever.
-    func presentedTranslationCues(for language: String) -> [NotebookCaptureTranslationCueDTO] {
-        let normalized = normalizedLanguage(language)
+    var presentedTranslationCueSnapshot: [NotebookCaptureTranslationCueDTO] {
         let cues = captureState.isActive && hasLiveTranslationCueSnapshot
             ? liveTranslationCues
             : translationCues
-        return cues.values
+        return cues.values.sorted(by: Self.translationCueComesBefore)
+    }
+
+    func presentedTranslationCues(for language: String) -> [NotebookCaptureTranslationCueDTO] {
+        let normalized = normalizedLanguage(language)
+        return presentedTranslationCueSnapshot
             .filter { normalizedLanguage($0.targetLanguage) == normalized }
-            .sorted { left, right in
-                if left.groupEpoch != right.groupEpoch {
-                    return left.groupEpoch < right.groupEpoch
-                }
-                if left.providerSequence != right.providerSequence {
-                    return left.providerSequence < right.providerSequence
-                }
-                return (left.sourceStartMs ?? 0) < (right.sourceStartMs ?? 0)
-            }
+    }
+
+    private static func translationCueComesBefore(
+        _ left: NotebookCaptureTranslationCueDTO,
+        _ right: NotebookCaptureTranslationCueDTO
+    ) -> Bool {
+        if left.groupEpoch != right.groupEpoch {
+            return left.groupEpoch < right.groupEpoch
+        }
+        if left.providerSequence != right.providerSequence {
+            return left.providerSequence < right.providerSequence
+        }
+        return (left.sourceStartMs ?? 0) < (right.sourceStartMs ?? 0)
     }
 
     private func reconcileUtterances(for event: NotebookCaptureEventDTO) {
         if event.isFullSnapshot {
             cancelUtteranceGapRepair()
             utterances = []
-            merge(event.utterances)
+            if event.utterances.isEmpty {
+                // `merge([])` intentionally skips the O(n) sort used by
+                // progress-only deltas, but an authoritative empty snapshot
+                // must still clear the menu-bar's recent transcript lines.
+                refreshRecentTranscriptPresentation()
+            } else {
+                merge(event.utterances)
+            }
             lastAppliedEventRevision = event.eventRevision
             return
         }

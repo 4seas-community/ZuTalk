@@ -954,6 +954,11 @@
 "capture.transcript.swap" = "สลับคอลัมน์ภาษาซ้ายและขวา";
 "capture.transcript.swap_hint" = "เปลี่ยนเฉพาะการแสดงผลซ้ายขวาในหน่วยความจำเท่านั้น ไม่เขียนทับการบันทึกหรือบทถอดเสียง";
 "capture.transcript.realtime_accessibility_label" = "บทถอดเสียงเรียลไทม์";
+"capture.transcript.run_navigator" = "ตัวนำทางการบันทึก";
+"capture.transcript.open_recording" = "เปิดการบันทึกนี้";
+"capture.transcript.loading_recording" = "กำลังโหลดบทถอดเสียงของการบันทึกนี้…";
+"capture.transcript.load_recording_failed" = "ไม่สามารถโหลดการบันทึกนี้ได้";
+"capture.transcript.back_to_live" = "กลับไปยังถ่ายทอดสด";
 "capture.transcript.engine.realtime_format" = "เรียลไทม์ · %@";
 "capture.transcript.engine.post_stop_format" = "ถอดความหลังหยุด · %@";
 "capture.transcript.transcription_heading" = "ไทม์ไลน์การถอดเสียง";

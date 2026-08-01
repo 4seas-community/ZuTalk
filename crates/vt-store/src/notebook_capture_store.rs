@@ -4354,6 +4354,46 @@ impl NotebookCaptureStore {
         list_utterances_with_overrides_from_conn(&conn, session_id)
     }
 
+    /// Hydrates one history run only while it remains visible inside the
+    /// requested Notebook. The visibility check and row read share a single
+    /// transaction so a soft delete or purge cannot race the catalog click.
+    pub fn list_visible_notebook_utterances(
+        &self,
+        notebook_id: &str,
+        session_id: &str,
+    ) -> Result<Vec<RealtimeUtterance>, NotebookCaptureStoreError> {
+        require_nonempty("notebook_id", notebook_id)?;
+        require_nonempty("session_id", session_id)?;
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Deferred)?;
+        let visible = tx.query_row(
+            "SELECT EXISTS(
+                 SELECT 1
+                 FROM notebook_capture_runs r
+                 JOIN notebooks n ON n.id = r.notebook_id
+                 JOIN session_records s ON s.id = r.session_id
+                 WHERE r.notebook_id = ?1
+                   AND r.session_id = ?2
+                   AND n.deleted_at IS NULL
+                   AND s.deleted_at IS NULL
+                   AND NOT EXISTS (
+                       SELECT 1 FROM session_purge_jobs purge
+                       WHERE purge.session_id = r.session_id
+                   )
+             )",
+            params![notebook_id, session_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !visible {
+            return Err(NotebookCaptureStoreError::NotFound(format!(
+                "capture session {session_id} in notebook {notebook_id}"
+            )));
+        }
+        let utterances = list_utterances_with_overrides_from_conn(&tx, session_id)?;
+        tx.commit()?;
+        Ok(utterances)
+    }
+
     /// Loads the run and exactly the rows needed for one callback publication
     /// from a single SQLite read transaction.
     ///
@@ -4521,6 +4561,25 @@ impl NotebookCaptureStore {
         &self,
         notebook_id: &str,
     ) -> Result<Vec<NotebookCaptureHistoryRun>, NotebookCaptureStoreError> {
+        self.list_notebook_capture_history_inner(notebook_id, true)
+    }
+
+    /// Returns the same ordered capture catalog without materializing any
+    /// utterance rows. The presentation layer uses this lightweight snapshot
+    /// for navigation, then loads the one selected session through
+    /// [`Self::list_utterances`].
+    pub fn list_notebook_capture_history_summaries(
+        &self,
+        notebook_id: &str,
+    ) -> Result<Vec<NotebookCaptureHistoryRun>, NotebookCaptureStoreError> {
+        self.list_notebook_capture_history_inner(notebook_id, false)
+    }
+
+    fn list_notebook_capture_history_inner(
+        &self,
+        notebook_id: &str,
+        include_utterances: bool,
+    ) -> Result<Vec<NotebookCaptureHistoryRun>, NotebookCaptureStoreError> {
         require_nonempty("notebook_id", notebook_id)?;
 
         let mut conn = self.conn.lock().unwrap();
@@ -4579,7 +4638,11 @@ impl NotebookCaptureStore {
 
         let mut history = Vec::with_capacity(visible_runs.len());
         for (run, has_audio) in visible_runs {
-            let utterances = list_utterances_with_overrides_from_conn(&tx, &run.session_id)?;
+            let utterances = if include_utterances {
+                list_utterances_with_overrides_from_conn(&tx, &run.session_id)?
+            } else {
+                Vec::new()
+            };
             history.push(NotebookCaptureHistoryRun::from_run(
                 run, has_audio, utterances,
             ));
@@ -8313,6 +8376,56 @@ mod tests {
         );
         assert!(history[1].has_audio);
         assert!(history.iter().all(|run| run.notebook_id == notebook_id));
+
+        let summaries = store
+            .list_notebook_capture_history_summaries(&notebook_id)
+            .unwrap();
+        assert_eq!(
+            summaries
+                .iter()
+                .map(|run| run.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["run-a", "run-b"]
+        );
+        assert!(summaries.iter().all(|run| run.utterances.is_empty()));
+        assert_eq!(
+            summaries
+                .iter()
+                .map(|run| run.has_audio)
+                .collect::<Vec<_>>(),
+            vec![false, true]
+        );
+
+        let hydrated = store
+            .list_visible_notebook_utterances(&notebook_id, "session-b")
+            .unwrap();
+        assert_eq!(
+            hydrated
+                .iter()
+                .map(|utterance| utterance.sequence)
+                .collect::<Vec<_>>(),
+            vec![0, 2]
+        );
+        assert!(matches!(
+            store.list_visible_notebook_utterances(&notebook_id, "session-soft-deleted"),
+            Err(NotebookCaptureStoreError::NotFound(_))
+        ));
+        assert!(matches!(
+            store.list_visible_notebook_utterances(&notebook_id, "session-purging"),
+            Err(NotebookCaptureStoreError::NotFound(_))
+        ));
+        assert!(matches!(
+            store.list_visible_notebook_utterances(&notebook_id, "session-other"),
+            Err(NotebookCaptureStoreError::NotFound(_))
+        ));
+
+        // The session was visible in the summary catalog above. Beginning a
+        // purge before hydration must close the history read boundary.
+        store.begin_session_purge("session-b").unwrap();
+        assert!(matches!(
+            store.list_visible_notebook_utterances(&notebook_id, "session-b"),
+            Err(NotebookCaptureStoreError::NotFound(_))
+        ));
     }
 
     #[test]

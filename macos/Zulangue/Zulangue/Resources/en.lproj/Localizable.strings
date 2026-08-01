@@ -954,6 +954,11 @@
 "capture.transcript.swap" = "Swap left and right language columns";
 "capture.transcript.swap_hint" = "Changes only the in-memory left and right display; it does not rewrite the recording or transcript.";
 "capture.transcript.realtime_accessibility_label" = "Realtime transcript";
+"capture.transcript.run_navigator" = "Recording navigator";
+"capture.transcript.open_recording" = "Open this recording";
+"capture.transcript.loading_recording" = "Loading this recording’s transcript…";
+"capture.transcript.load_recording_failed" = "Could not load this recording";
+"capture.transcript.back_to_live" = "Back to live";
 "capture.transcript.engine.realtime_format" = "Realtime · %@";
 "capture.transcript.engine.post_stop_format" = "After-stop transcription · %@";
 "capture.transcript.transcription_heading" = "Transcription timeline";

@@ -953,6 +953,11 @@
 "capture.transcript.swap" = "Linke und rechte Sprachspalte tauschen";
 "capture.transcript.swap_hint" = "Ändert nur die linke und rechte Anzeige im Speicher; Aufnahme und Transkript werden nicht umgeschrieben.";
 "capture.transcript.realtime_accessibility_label" = "Echtzeittranskript";
+"capture.transcript.run_navigator" = "Aufnahmennavigation";
+"capture.transcript.open_recording" = "Diese Aufnahme öffnen";
+"capture.transcript.loading_recording" = "Transkript dieser Aufnahme wird geladen…";
+"capture.transcript.load_recording_failed" = "Diese Aufnahme konnte nicht geladen werden";
+"capture.transcript.back_to_live" = "Zur Live-Ansicht";
 "capture.transcript.engine.realtime_format" = "Echtzeit · %@";
 "capture.transcript.engine.post_stop_format" = "Transkription nach dem Stopp · %@";
 "capture.transcript.transcription_heading" = "Transkriptionszeitleiste";

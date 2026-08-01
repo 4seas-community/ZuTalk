@@ -335,91 +335,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testContextSettingsIntentQueueDefersAndPreservesRapidToggleOrder() async throws {
-        let queue = NotebookCaptureSettingsIntentQueue()
-        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
-        let store = ActiveBilingualTranscriptStore(
-            client: client,
-            audioSource: FakeNotebookCaptureAudioSource()
-        )
-        try store.loadContextPacks(notebookId: "notebook-a")
-        let bind = NotebookCaptureSettingsIntent.bindContextPack(
-            notebookId: "notebook-a",
-            packId: "library-pack",
-            isBound: true
-        )
-        let unbind = NotebookCaptureSettingsIntent.bindContextPack(
-            notebookId: "notebook-a",
-            packId: "library-pack",
-            isBound: false
-        )
-        let apply: @MainActor @Sendable (NotebookCaptureSettingsIntent) -> Void = { intent in
-            guard case .bindContextPack(let notebookId, let packId, let isBound) = intent else {
-                return XCTFail("unexpected Context intent")
-            }
-            do {
-                try store.setContextPackBound(
-                    notebookId: notebookId,
-                    packId: packId,
-                    isBound: isBound
-                )
-            } catch {
-                XCTFail("queued Context binding failed: \(error)")
-            }
-        }
-
-        let firstDrain = queue.schedule(bind, apply: apply)
-        let secondDrain = queue.schedule(unbind, apply: apply)
-
-        XCTAssertTrue(
-            client.contextBindingPositions.isEmpty,
-            "Context Binding setters must not publish or call FFI inline"
-        )
-
-        await firstDrain.value
-        await secondDrain.value
-
-        XCTAssertEqual(client.contextBindingPackIds, ["library-pack", "library-pack"])
-        XCTAssertEqual(client.contextBindingPositions, [0, nil])
-        XCTAssertNil(store.contextPacks.first(where: { $0.id == "library-pack" })?.boundPosition)
-    }
-
-    @MainActor
-    func testContextSettingsIntentSurvivesOriginatingViewTeardown() async throws {
-        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
-        let store = ActiveBilingualTranscriptStore(
-            client: client,
-            audioSource: FakeNotebookCaptureAudioSource()
-        )
-        try store.loadContextPacks(notebookId: "notebook-a")
-        var queue: NotebookCaptureSettingsIntentQueue? = NotebookCaptureSettingsIntentQueue()
-        let intent = NotebookCaptureSettingsIntent.bindContextPack(
-            notebookId: "notebook-a",
-            packId: "library-pack",
-            isBound: true
-        )
-        let drain = queue!.schedule(intent) { intent in
-            guard case .bindContextPack(let notebookId, let packId, let isBound) = intent else {
-                return XCTFail("unexpected Context intent")
-            }
-            do {
-                try store.setContextPackBound(
-                    notebookId: notebookId,
-                    packId: packId,
-                    isBound: isBound
-                )
-            } catch {
-                XCTFail("queued Context binding failed: \(error)")
-            }
-        }
-
-        queue = nil
-        await drain.value
-
-        XCTAssertEqual(client.contextBindingPositions, [0])
-    }
-
-    @MainActor
     func testProfileAutosaveSurvivesOriginatingViewTeardown() async {
         let persistence = FakeNotebookCaptureProfilePersistence(
             profile: .localDefault(notebookId: "notebook-a")
@@ -641,30 +556,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testCaptureSettingsEditorTreatsPostWriteFailureAsTechnicalSaveFailure() {
-        let persistence = FakeNotebookCaptureProfilePersistence(
-            profile: .twoWay(notebookId: "notebook-a")
-        )
-        persistence.persistBeforeThrow = TestCaptureSettingsError.contextReview
-        let editor = NotebookCaptureProfileEditorModel(
-            notebookId: "notebook-a",
-            persistence: persistence
-        )
-        editor.load()
-
-        editor.update { $0.sendContextToSoniox = true }
-
-        XCTAssertEqual(editor.draft, persistence.profile)
-        guard case .saveFailed = editor.persistenceState else {
-            return XCTFail("a post-write technical error must never become a review prompt")
-        }
-
-        editor.retry()
-        XCTAssertEqual(editor.persistenceState, .saved)
-        XCTAssertEqual(persistence.saveRequests.count, 2)
-    }
-
-    @MainActor
     func testPersistedContextProfileNeverRequiresPerLaunchReview() {
         var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
         profile.sendContextToSoniox = true
@@ -684,54 +575,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         }
         XCTAssertEqual(editor.persistenceState, .saved)
         XCTAssertNil(editor.captureStartDisabledReason)
-    }
-
-    @MainActor
-    func testContextInvalidationDoesNotPublishAReviewRequiredState() {
-        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
-        profile.sendContextToSoniox = true
-        let persistence = FakeNotebookCaptureProfilePersistence(profile: profile)
-        let editor = NotebookCaptureProfileEditorModel(
-            notebookId: "notebook-a",
-            persistence: persistence
-        )
-        editor.load()
-        XCTAssertEqual(editor.persistenceState, .saved)
-
-        var publicationCount = 0
-        let cancellable = editor.$persistenceState.dropFirst().sink { _ in
-            publicationCount += 1
-        }
-
-        editor.contextConsentDidChange()
-
-        XCTAssertEqual(publicationCount, 0)
-        withExtendedLifetime(cancellable) {}
-    }
-
-    @MainActor
-    func testOptionalContextPreviewDoesNotBlockCaptureSettings() throws {
-        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
-        profile.sendContextToSoniox = true
-        let store = ActiveBilingualTranscriptStore(
-            client: FakeNotebookCaptureClient(profile: profile),
-            audioSource: FakeNotebookCaptureAudioSource()
-        )
-        let preview = try store.previewContext(notebookId: "notebook-a")
-        store.confirmContextPreview(digest: preview.digest)
-        let editor = NotebookCaptureProfileEditorModel(
-            notebookId: "notebook-a",
-            persistence: store
-        )
-        editor.load()
-        XCTAssertEqual(editor.persistenceState, .saved)
-
-        _ = try store.previewContext(notebookId: "notebook-a")
-        editor.contextConsentDidChange()
-
-        XCTAssertFalse(store.hasConfirmedContext(notebookId: "notebook-a"))
-        XCTAssertNil(editor.captureStartDisabledReason)
-        XCTAssertEqual(editor.persistenceState, .saved)
     }
 
     @MainActor
@@ -3610,15 +3453,20 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
     }
 
-    func testRealtimeAutoscrollIgnoresInPlaceRevisionsAndAdvancesForNewUtterances() {
-        func utterance(id: String, sequence: UInt64, revision: UInt64) -> NotebookCaptureUtteranceDTO {
+    func testRealtimeAutoscrollTracksInPlaceGrowthWithoutChangingRowIdentity() {
+        func utterance(
+            id: String,
+            sequence: UInt64,
+            revision: UInt64,
+            text: String
+        ) -> NotebookCaptureUtteranceDTO {
             NotebookCaptureUtteranceDTO(
                 id: id,
                 sessionId: "session-a",
                 sequence: sequence,
                 revision: revision,
                 sourceLanguage: "en",
-                sourceText: "Hello",
+                sourceText: text,
                 sourceStartMs: 0,
                 sourceEndMs: 500,
                 translatedLanguage: "zh",
@@ -3628,17 +3476,124 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             )
         }
 
-        let firstRevision = utterance(id: "utt-1", sequence: 1, revision: 1)
-        let laterRevision = utterance(id: "utt-1", sequence: 1, revision: 639)
-        let nextUtterance = utterance(id: "utt-2", sequence: 2, revision: 1)
+        let firstRevision = utterance(id: "utt-1", sequence: 1, revision: 1, text: "Hello")
+        let laterRevision = utterance(
+            id: "utt-1",
+            sequence: 1,
+            revision: 639,
+            text: String(repeating: "A growing utterance. ", count: 40)
+        )
+        let nextUtterance = utterance(id: "utt-2", sequence: 2, revision: 1, text: "Next")
+        let firstSignal = NotebookRealtimeAutoscrollPolicy.signal(in: [firstRevision])
+        let laterSignal = NotebookRealtimeAutoscrollPolicy.signal(in: [laterRevision])
+
+        XCTAssertEqual(firstSignal?.utteranceID, laterSignal?.utteranceID)
+        XCTAssertNotEqual(firstSignal, laterSignal)
+        XCTAssertEqual(
+            NotebookRealtimeAutoscrollPolicy.signal(
+                in: [laterRevision, nextUtterance]
+            )?.utteranceID,
+            "utt-2"
+        )
+
+        let firstCue = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "th",
+            groupEpoch: 1,
+            providerSequence: 4,
+            sourceLanguage: "en",
+            sourceStartMs: 0,
+            sourceEndMs: 500,
+            text: "สวัสดี",
+            completion: "partial",
+            withdrawn: false,
+            revision: 1
+        )
+        let revisedCue = NotebookCaptureTranslationCueDTO(
+            targetLanguage: firstCue.targetLanguage,
+            groupEpoch: firstCue.groupEpoch,
+            providerSequence: firstCue.providerSequence,
+            sourceLanguage: firstCue.sourceLanguage,
+            sourceStartMs: firstCue.sourceStartMs,
+            sourceEndMs: firstCue.sourceEndMs,
+            text: "สวัสดีครับ",
+            completion: "partial",
+            withdrawn: false,
+            revision: 2
+        )
+        XCTAssertNotEqual(
+            NotebookRealtimeAutoscrollPolicy.signal(in: [], cues: [firstCue]),
+            NotebookRealtimeAutoscrollPolicy.signal(in: [], cues: [revisedCue]),
+            "a cue-only live frame must advance the tail signal"
+        )
+        XCTAssertNil(NotebookRealtimeAutoscrollPolicy.signal(in: [], cues: []))
+    }
+
+    func testRealtimeFollowPausesForManualScrollAndKeepsFollowingContentGrowth() {
+        let liveEdge = NotebookRealtimeScrollMetrics(offsetY: 900, distanceFromBottom: 20)
+        let contentGrowth = NotebookRealtimeScrollMetrics(offsetY: 900, distanceFromBottom: 180)
+        let manualScroll = NotebookRealtimeScrollMetrics(offsetY: 620, distanceFromBottom: 460)
+
+        XCTAssertTrue(NotebookRealtimeFollowPolicy.reconciledFollowing(
+            wasFollowing: true,
+            previous: liveEdge,
+            current: contentGrowth
+        ))
+        XCTAssertFalse(NotebookRealtimeFollowPolicy.reconciledFollowing(
+            wasFollowing: true,
+            previous: contentGrowth,
+            current: manualScroll
+        ))
+        XCTAssertTrue(NotebookRealtimeFollowPolicy.reconciledFollowing(
+            wasFollowing: false,
+            previous: manualScroll,
+            current: liveEdge
+        ))
+    }
+
+    func testRealtimeRunSelectionPrefersFocusThenActiveThenLatestAndPreservesClicks() {
+        let first = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: "session-a",
+            createdAt: "2001-01-02T08:00:00Z"
+        )
+        let latest = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: "session-b",
+            createdAt: "2001-01-02T09:00:00Z"
+        )
+        let runs = [first, latest]
 
         XCTAssertEqual(
-            NotebookRealtimeAutoscrollPolicy.targetID(in: [firstRevision]),
-            NotebookRealtimeAutoscrollPolicy.targetID(in: [laterRevision])
+            NotebookRealtimeRunSelectionPolicy.initialSessionID(
+                runs: runs,
+                requestedSessionID: "session-a",
+                activeSessionID: "session-b"
+            ),
+            "session-a"
         )
         XCTAssertEqual(
-            NotebookRealtimeAutoscrollPolicy.targetID(in: [laterRevision, nextUtterance]),
-            "utt-2"
+            NotebookRealtimeRunSelectionPolicy.initialSessionID(
+                runs: runs,
+                requestedSessionID: nil,
+                activeSessionID: "session-b"
+            ),
+            "session-b"
+        )
+        XCTAssertEqual(
+            NotebookRealtimeRunSelectionPolicy.initialSessionID(
+                runs: runs,
+                requestedSessionID: nil,
+                activeSessionID: nil
+            ),
+            "session-b"
+        )
+        XCTAssertEqual(
+            NotebookRealtimeRunSelectionPolicy.reconciledSessionID(
+                currentSessionID: "session-a",
+                runs: runs,
+                requestedSessionID: nil,
+                activeSessionID: "session-b"
+            ),
+            "session-a",
+            "a rail click remains selected while that run is still visible"
         )
     }
 
@@ -3696,6 +3651,63 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(store.presentationMode(for: "notebook-a"), .sourceTimeline)
         XCTAssertEqual(store.presentationMode(for: "notebook-b", runs: []), .sourceTimeline)
         XCTAssertEqual(client.profileUpdateCount, 0, "display changes must never write capture settings")
+    }
+
+    @MainActor
+    func testHistoryStoreLoadsSummaryCatalogThenHydratesOnlySelectedTranscript() {
+        var firstUtterance = NotebookCaptureUtteranceDTO.sample
+        firstUtterance = NotebookCaptureUtteranceDTO(
+            id: firstUtterance.id,
+            sessionId: "session-a",
+            sequence: firstUtterance.sequence,
+            revision: firstUtterance.revision,
+            sourceLanguage: firstUtterance.sourceLanguage,
+            sourceText: firstUtterance.sourceText,
+            sourceStartMs: firstUtterance.sourceStartMs,
+            sourceEndMs: firstUtterance.sourceEndMs,
+            translatedLanguage: firstUtterance.translatedLanguage,
+            translatedText: firstUtterance.translatedText,
+            completion: firstUtterance.completion,
+            alignment: firstUtterance.alignment,
+            languageVariants: firstUtterance.languageVariants,
+            sourceProjectionRevision: firstUtterance.sourceProjectionRevision,
+            sourceEditRevision: firstUtterance.sourceEditRevision
+        )
+        let runs = [
+            NotebookCaptureHistoryRunDTO.fixture(
+                sessionId: "session-a",
+                createdAt: "2001-01-02T08:00:00Z",
+                utterances: [firstUtterance]
+            ),
+            NotebookCaptureHistoryRunDTO.fixture(
+                sessionId: "session-b",
+                createdAt: "2001-01-02T09:00:00Z",
+                utterances: [.sample]
+            ),
+        ]
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a"),
+            startUtterances: [firstUtterance],
+            historyRuns: runs,
+            historySummariesOmitUtterances: true
+        )
+        let store = NotebookCaptureHistoryStore(client: client)
+
+        store.load(notebookId: "notebook-a")
+
+        XCTAssertTrue(store.runs.allSatisfy(\.utterances.isEmpty))
+        XCTAssertEqual(store.transcriptLoadState(sessionId: "session-a"), .unloaded)
+        XCTAssertEqual(client.listUtterancesCount, 0)
+
+        store.loadTranscript(sessionId: "session-a")
+
+        XCTAssertEqual(store.runs[0].utterances, [firstUtterance])
+        XCTAssertTrue(store.runs[1].utterances.isEmpty)
+        XCTAssertEqual(store.transcriptLoadState(sessionId: "session-a"), .loaded)
+        XCTAssertEqual(client.listUtterancesCount, 1)
+
+        store.loadTranscript(sessionId: "session-a")
+        XCTAssertEqual(client.listUtterancesCount, 1, "a hydrated run is not decoded twice")
     }
 
     @MainActor
@@ -5152,7 +5164,159 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(audio.prepareCount, 1)
         XCTAssertEqual(client.lastConfirmedContextDigest, "context-digest")
         XCTAssertTrue(store.hasConfirmedContext(notebookId: "notebook-a"))
-        XCTAssertNil(store.appliedContextReceipt, "automatic preparation is not an applied receipt")
+        XCTAssertNil(store.appliedContextReceipt, "automatic digest preparation is not an applied receipt")
+    }
+
+    @MainActor
+    func testProfileSaveDoesNotCreateASecondContextPreparationGate() async throws {
+        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
+        let client = FakeNotebookCaptureClient(profile: profile)
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        store.loadProfile(notebookId: "notebook-a")
+
+        profile.sendContextToSoniox = true
+        try store.saveProfile(profile)
+        XCTAssertEqual(client.previewCount, 0, "profile autosave must not compile or block on context")
+
+        try await store.start(notebookId: "notebook-a")
+
+        XCTAssertEqual(client.startCount, 1)
+        XCTAssertEqual(client.previewCount, 1, "Start compiles the current bound payload exactly once")
+        XCTAssertEqual(client.lastConfirmedContextDigest, "context-digest")
+    }
+
+    @MainActor
+    func testProfileSaveAndStartUseTheNewestBoundContextDigest() async throws {
+        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
+        let client = FakeNotebookCaptureClient(profile: profile)
+        client.previewDigestAfterProfileUpdate = "changed-during-save"
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        store.loadProfile(notebookId: "notebook-a")
+
+        profile.sendContextToSoniox = true
+        try store.saveProfile(profile)
+        try await store.start(notebookId: "notebook-a")
+
+        XCTAssertEqual(client.startCount, 1)
+        XCTAssertEqual(store.contextPreview?.digest, "changed-during-save")
+        XCTAssertEqual(client.lastConfirmedContextDigest, "changed-during-save")
+    }
+
+    @MainActor
+    func testEmptyBoundContextFailsBeforeAudioWithoutAskingForConfirmation() async {
+        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
+        profile.sendContextToSoniox = true
+        let client = FakeNotebookCaptureClient(profile: profile)
+        client.previewSerializedContext = "{}"
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+
+        do {
+            try await store.start(notebookId: "notebook-a")
+            XCTFail("empty bound context must fail before recording")
+        } catch {
+            XCTAssertEqual(error as? NotebookCaptureClientError, .contextUnavailable)
+        }
+
+        XCTAssertEqual(client.previewCount, 1)
+        XCTAssertEqual(client.startCount, 0)
+        XCTAssertEqual(audio.prepareCount, 0)
+        XCTAssertEqual(
+            store.lastError,
+            String(localized: "capture.settings.context.empty")
+        )
+    }
+
+    @MainActor
+    func testContextCompilationFailureStopsBeforeAudioPreparation() async {
+        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
+        profile.sendContextToSoniox = true
+        let client = FakeNotebookCaptureClient(profile: profile)
+        client.previewError = .ffiUnavailable
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+
+        do {
+            try await store.start(notebookId: "notebook-a")
+            XCTFail("context compilation failure must fail before recording")
+        } catch {
+            XCTAssertEqual(error as? NotebookCaptureClientError, .ffiUnavailable)
+        }
+
+        XCTAssertEqual(client.previewCount, 1)
+        XCTAssertEqual(client.startCount, 0)
+        XCTAssertEqual(audio.prepareCount, 0)
+    }
+
+    @MainActor
+    func testContextPackBindingAndImportsInvalidateExactPreview() throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+
+        try store.loadContextPacks(notebookId: "notebook-a")
+        XCTAssertEqual(store.contextPacks.first?.scope, "private")
+        XCTAssertEqual(store.selectedContextPackId, "private-pack")
+
+        _ = try store.previewContext(notebookId: "notebook-a")
+        XCTAssertNotNil(store.contextPreview)
+        try store.setContextPackBound(
+            notebookId: "notebook-a",
+            packId: "library-pack",
+            isBound: true
+        )
+        XCTAssertNil(store.contextPreview, "binding changes must invalidate the reviewed snapshot")
+        XCTAssertNotNil(store.contextPacks.first(where: { $0.id == "library-pack" })?.boundPosition)
+
+        try store.selectContextPack("private-pack", notebookId: "notebook-a")
+        try store.importContextText(
+            notebookId: "notebook-a",
+            packId: "private-pack",
+            title: "Product names",
+            text: "Zulangue\nSoniox",
+            contentKind: "terms"
+        )
+        XCTAssertEqual(store.contextSources.count, 1)
+        XCTAssertEqual(store.contextSources.first?.contentKind, "terms")
+        XCTAssertEqual(client.lastContextSourceNotebookId, "notebook-a")
+    }
+
+    @MainActor
+    func testSelectedLibraryIsPersistedAndRestoredForNotebookTranscription() throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+
+        try store.loadContextPacks(notebookId: "notebook-a")
+        try store.selectContextPackForTranscription(
+            "library-pack",
+            notebookId: "notebook-a"
+        )
+
+        XCTAssertEqual(store.selectedContextPackId, "library-pack")
+        XCTAssertEqual(client.contextBindingPositions, [0])
+        XCTAssertTrue(store.hasConfirmedContext(notebookId: "notebook-a"))
+
+        let reopenedStore = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try reopenedStore.loadContextPacks(notebookId: "notebook-a")
+        XCTAssertEqual(
+            reopenedStore.selectedContextPackId,
+            "library-pack",
+            "the durable Notebook binding must restore the prior knowledge-base selection"
+        )
     }
 
     @MainActor
@@ -5332,155 +5496,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertFalse(captureSettings.contains("NSSavePanel()"))
         XCTAssertTrue(captureSettings.contains("selectContextPackForTranscription"))
         XCTAssertTrue(captureSettings.contains("requestContextPreview"))
-    }
-
-    @MainActor
-    func testProfileSaveDoesNotCreateASecondContextPreparationGate() async throws {
-        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
-        let client = FakeNotebookCaptureClient(profile: profile)
-        let store = ActiveBilingualTranscriptStore(
-            client: client,
-            audioSource: FakeNotebookCaptureAudioSource()
-        )
-        store.loadProfile(notebookId: "notebook-a")
-
-        profile.sendContextToSoniox = true
-        try store.saveProfile(profile)
-        XCTAssertEqual(client.previewCount, 0, "profile autosave must not compile or block on context")
-
-        try await store.start(notebookId: "notebook-a")
-
-        XCTAssertEqual(client.startCount, 1)
-        XCTAssertEqual(client.previewCount, 1, "Start compiles the current bound payload exactly once")
-        XCTAssertEqual(client.lastConfirmedContextDigest, "context-digest")
-    }
-
-    @MainActor
-    func testCaptureStartUsesTheNewestBoundContextDigest() async throws {
-        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
-        let client = FakeNotebookCaptureClient(profile: profile)
-        client.previewDigestAfterProfileUpdate = "changed-during-save"
-        let store = ActiveBilingualTranscriptStore(
-            client: client,
-            audioSource: FakeNotebookCaptureAudioSource()
-        )
-        store.loadProfile(notebookId: "notebook-a")
-
-        profile.sendContextToSoniox = true
-        try store.saveProfile(profile)
-        try await store.start(notebookId: "notebook-a")
-
-        XCTAssertEqual(client.startCount, 1)
-        XCTAssertEqual(store.contextPreview?.digest, "changed-during-save")
-        XCTAssertEqual(client.lastConfirmedContextDigest, "changed-during-save")
-    }
-
-    @MainActor
-    func testEmptyBoundContextFailsBeforeAudioWithoutAskingForConfirmation() async {
-        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
-        profile.sendContextToSoniox = true
-        let client = FakeNotebookCaptureClient(profile: profile)
-        client.previewSerializedContext = "{}"
-        let audio = FakeNotebookCaptureAudioSource()
-        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
-
-        do {
-            try await store.start(notebookId: "notebook-a")
-            XCTFail("empty bound context must fail before recording")
-        } catch {
-            XCTAssertEqual(error as? NotebookCaptureClientError, .contextUnavailable)
-        }
-
-        XCTAssertEqual(client.previewCount, 1)
-        XCTAssertEqual(client.startCount, 0)
-        XCTAssertEqual(audio.prepareCount, 0)
-        XCTAssertEqual(store.lastError, String(localized: "capture.settings.context.empty"))
-    }
-
-    @MainActor
-    func testContextCompilationFailureStopsBeforeAudioPreparation() async {
-        var profile = NotebookCaptureProfileDTO.twoWay(notebookId: "notebook-a")
-        profile.sendContextToSoniox = true
-        let client = FakeNotebookCaptureClient(profile: profile)
-        client.previewError = .ffiUnavailable
-        let audio = FakeNotebookCaptureAudioSource()
-        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
-
-        do {
-            try await store.start(notebookId: "notebook-a")
-            XCTFail("context compilation failure must fail before recording")
-        } catch {
-            XCTAssertEqual(error as? NotebookCaptureClientError, .ffiUnavailable)
-        }
-
-        XCTAssertEqual(client.previewCount, 1)
-        XCTAssertEqual(client.startCount, 0)
-        XCTAssertEqual(audio.prepareCount, 0)
-    }
-
-    @MainActor
-    func testContextPackBindingAndImportsInvalidateExactPreview() throws {
-        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
-        let store = ActiveBilingualTranscriptStore(
-            client: client,
-            audioSource: FakeNotebookCaptureAudioSource()
-        )
-
-        try store.loadContextPacks(notebookId: "notebook-a")
-        XCTAssertEqual(store.contextPacks.first?.scope, "private")
-        XCTAssertEqual(store.selectedContextPackId, "private-pack")
-
-        _ = try store.previewContext(notebookId: "notebook-a")
-        XCTAssertNotNil(store.contextPreview)
-        try store.setContextPackBound(
-            notebookId: "notebook-a",
-            packId: "library-pack",
-            isBound: true
-        )
-        XCTAssertNil(store.contextPreview, "binding changes must invalidate the reviewed snapshot")
-        XCTAssertNotNil(store.contextPacks.first(where: { $0.id == "library-pack" })?.boundPosition)
-
-        try store.selectContextPack("private-pack", notebookId: "notebook-a")
-        try store.importContextText(
-            notebookId: "notebook-a",
-            packId: "private-pack",
-            title: "Product names",
-            text: "Zulangue\nSoniox",
-            contentKind: "terms"
-        )
-        XCTAssertEqual(store.contextSources.count, 1)
-        XCTAssertEqual(store.contextSources.first?.contentKind, "terms")
-        XCTAssertEqual(client.lastContextSourceNotebookId, "notebook-a")
-    }
-
-    @MainActor
-    func testSelectedLibraryIsPersistedAndRestoredForNotebookTranscription() throws {
-        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
-        let store = ActiveBilingualTranscriptStore(
-            client: client,
-            audioSource: FakeNotebookCaptureAudioSource()
-        )
-
-        try store.loadContextPacks(notebookId: "notebook-a")
-        try store.selectContextPackForTranscription(
-            "library-pack",
-            notebookId: "notebook-a"
-        )
-
-        XCTAssertEqual(store.selectedContextPackId, "library-pack")
-        XCTAssertEqual(client.contextBindingPositions, [0])
-        XCTAssertTrue(store.hasConfirmedContext(notebookId: "notebook-a"))
-
-        let reopenedStore = ActiveBilingualTranscriptStore(
-            client: client,
-            audioSource: FakeNotebookCaptureAudioSource()
-        )
-        try reopenedStore.loadContextPacks(notebookId: "notebook-a")
-        XCTAssertEqual(
-            reopenedStore.selectedContextPackId,
-            "library-pack",
-            "the durable Notebook binding must restore the prior knowledge-base selection"
-        )
     }
 
     @MainActor
@@ -6136,18 +6151,13 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         ))
         XCTAssertFalse(settingsView.contains("remoteSection"))
         XCTAssertFalse(settingsView.contains("translationSection"))
-        XCTAssertTrue(settingsView.contains("NotebookCaptureSettingsIntentQueue"))
+        XCTAssertFalse(settingsView.contains("NotebookCaptureSettingsIntentQueue"))
         XCTAssertTrue(settingsView.contains("selectContextPack(pack.id)"))
         XCTAssertTrue(settingsView.contains(
             "try capture.selectContextPackForTranscription(packId, notebookId: notebookId)"
         ))
-        XCTAssertFalse(settingsView.contains("scheduleContextIntent(.bindContextPack("))
-        XCTAssertTrue(settingsView.contains(
-            "scheduleContextIntent(.persistenceStateChanged(state))"
-        ))
-        XCTAssertTrue(settingsView.contains(
-            "scheduleContextIntent(.contextDigestChanged(digest))"
-        ))
+        XCTAssertFalse(settingsView.contains("scheduleContextIntent("))
+        XCTAssertFalse(settingsView.contains("contextReviewRequired"))
         XCTAssertFalse(
             settingsView.contains("privacyNotice"),
             "recording settings should not repeat a separate privacy banner"
@@ -6526,13 +6536,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
 private enum TestCaptureSettingsError: LocalizedError {
     case readFailed
     case writeFailed
-    case contextReview
 
     var errorDescription: String? {
         switch self {
         case .readFailed: return "profile read failed"
         case .writeFailed: return "profile write failed"
-        case .contextReview: return "context review required"
         }
     }
 }
@@ -6544,8 +6552,6 @@ private final class FakeNotebookCaptureProfilePersistence: NotebookCaptureProfil
     var lastError: String?
     var loadError: TestCaptureSettingsError?
     var saveError: TestCaptureSettingsError?
-    var persistBeforeThrow: TestCaptureSettingsError?
-    var contextConfirmed = false
     private(set) var saveRequests: [NotebookCaptureProfileDTO] = []
 
     init(profile: NotebookCaptureProfileDTO) {
@@ -6561,10 +6567,6 @@ private final class FakeNotebookCaptureProfilePersistence: NotebookCaptureProfil
         return profile
     }
 
-    func hasConfirmedContext(notebookId: String) -> Bool {
-        contextConfirmed && notebookId == profile.notebookId
-    }
-
     func saveProfile(
         _ candidate: NotebookCaptureProfileDTO
     ) throws -> NotebookCaptureProfileDTO {
@@ -6574,10 +6576,6 @@ private final class FakeNotebookCaptureProfilePersistence: NotebookCaptureProfil
         var saved = candidate
         saved.revision += 1
         profile = saved
-        if let persistBeforeThrow {
-            self.persistBeforeThrow = nil
-            throw persistBeforeThrow
-        }
         return saved
     }
 }
@@ -7028,6 +7026,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     var profileUpdateError: NotebookCaptureClientError?
     var listUtterancesOverride: [NotebookCaptureUtteranceDTO]?
     var historyRuns: [NotebookCaptureHistoryRunDTO]
+    let historySummariesOmitUtterances: Bool
     var speakerParticipants: [SpeakerParticipantDTO]
     var sessionSpeakersBySession: [String: [NotebookSessionSpeakerDTO]]
     var asyncProjectionRetryEventOverride: NotebookCaptureEventDTO?
@@ -7056,13 +7055,15 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         startUtterances: [NotebookCaptureUtteranceDTO] = [],
         historyRuns: [NotebookCaptureHistoryRunDTO] = [],
         speakerParticipants: [SpeakerParticipantDTO] = [],
-        sessionSpeakersBySession: [String: [NotebookSessionSpeakerDTO]] = [:]
+        sessionSpeakersBySession: [String: [NotebookSessionSpeakerDTO]] = [:],
+        historySummariesOmitUtterances: Bool = false
     ) {
         self.profile = profile
         self.startUtterances = startUtterances
         self.historyRuns = historyRuns
         self.speakerParticipants = speakerParticipants
         self.sessionSpeakersBySession = sessionSpeakersBySession
+        self.historySummariesOmitUtterances = historySummariesOmitUtterances
         self.contextPacks = [
             NotebookContextPackDTO(
                 id: "private-pack",
@@ -7508,6 +7509,14 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     ) throws -> [NotebookCaptureHistoryRunDTO] {
         historyNotebookIds.append(notebookId)
         return historyRuns
+    }
+
+    func listNotebookCaptureHistorySummaries(
+        notebookId: String
+    ) throws -> [NotebookCaptureHistoryRunDTO] {
+        historyNotebookIds.append(notebookId)
+        guard historySummariesOmitUtterances else { return historyRuns }
+        return historyRuns.map { $0.replacingUtterances([]) }
     }
 
     func retryNotebookCaptureProjection(sessionId: String) throws -> NotebookCaptureEventDTO {

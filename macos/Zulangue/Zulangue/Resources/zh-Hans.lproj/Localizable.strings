@@ -954,6 +954,11 @@
 "capture.transcript.swap" = "交换左右语言列";
 "capture.transcript.swap_hint" = "只临时交换左右显示，不会改写录音配置或转录内容。";
 "capture.transcript.realtime_accessibility_label" = "实时转录";
+"capture.transcript.run_navigator" = "录音导航";
+"capture.transcript.open_recording" = "打开这次录音";
+"capture.transcript.loading_recording" = "正在加载这次录音的转录…";
+"capture.transcript.load_recording_failed" = "无法加载这次录音";
+"capture.transcript.back_to_live" = "返回实时";
 "capture.transcript.engine.realtime_format" = "实时 · %@";
 "capture.transcript.engine.post_stop_format" = "停止后转录 · %@";
 "capture.transcript.transcription_heading" = "转录时间线";

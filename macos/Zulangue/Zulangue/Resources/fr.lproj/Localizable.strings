@@ -954,6 +954,11 @@
 "capture.transcript.swap" = "Inverser les colonnes de langues gauche et droite";
 "capture.transcript.swap_hint" = "Modifie uniquement l’affichage gauche-droite en mémoire ; ne réécrit ni l’enregistrement ni la transcription.";
 "capture.transcript.realtime_accessibility_label" = "Transcription en temps réel";
+"capture.transcript.run_navigator" = "Navigation des enregistrements";
+"capture.transcript.open_recording" = "Ouvrir cet enregistrement";
+"capture.transcript.loading_recording" = "Chargement de la transcription…";
+"capture.transcript.load_recording_failed" = "Impossible de charger cet enregistrement";
+"capture.transcript.back_to_live" = "Revenir au direct";
 "capture.transcript.engine.realtime_format" = "Temps réel · %@";
 "capture.transcript.engine.post_stop_format" = "Transcription post-arrêt · %@";
 "capture.transcript.transcription_heading" = "Chronologie de transcription";

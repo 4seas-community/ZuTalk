@@ -954,6 +954,11 @@
 "capture.transcript.swap" = "왼쪽 및 오른쪽 언어 열 바꾸기";
 "capture.transcript.swap_hint" = "메모리 내 왼쪽 및 오른쪽 표시만 변경합니다. 녹음이나 대본을 다시 작성하지 않습니다.";
 "capture.transcript.realtime_accessibility_label" = "실시간 기록";
+"capture.transcript.run_navigator" = "녹음 탐색기";
+"capture.transcript.open_recording" = "이 녹음 열기";
+"capture.transcript.loading_recording" = "이 녹음의 대화 기록을 불러오는 중…";
+"capture.transcript.load_recording_failed" = "이 녹음을 불러오지 못했습니다";
+"capture.transcript.back_to_live" = "실시간으로 돌아가기";
 "capture.transcript.engine.realtime_format" = "실시간 · %@";
 "capture.transcript.engine.post_stop_format" = "중지 후 전사 · %@";
 "capture.transcript.transcription_heading" = "전사 타임라인";

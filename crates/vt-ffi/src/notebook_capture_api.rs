@@ -6288,6 +6288,32 @@ impl ZulangueCore {
             .map_err(store_error)
     }
 
+    /// Lists recording blocks without crossing every transcript row over FFI.
+    /// A selected block is hydrated separately through
+    /// `list_notebook_capture_history_utterances`.
+    pub fn list_notebook_capture_history_summaries(
+        &self,
+        notebook_id: String,
+    ) -> Result<Vec<FfiNotebookCaptureHistoryRun>, CoreError> {
+        self.notebook_capture_store
+            .list_notebook_capture_history_summaries(&notebook_id)
+            .map(|runs| runs.into_iter().map(Into::into).collect())
+            .map_err(store_error)
+    }
+
+    /// Hydrates one selected history block while revalidating that the session
+    /// still belongs to a visible, non-purging run in this Notebook.
+    pub fn list_notebook_capture_history_utterances(
+        &self,
+        notebook_id: String,
+        session_id: String,
+    ) -> Result<Vec<FfiNotebookCaptureUtterance>, CoreError> {
+        self.notebook_capture_store
+            .list_visible_notebook_utterances(&notebook_id, &session_id)
+            .map(|values| values.into_iter().map(Into::into).collect())
+            .map_err(store_error)
+    }
+
     /// Explicitly authorizes one stopped/imported local recording for remote
     /// post-recording transcription. The first click freezes the authorization
     /// time and language hint; repeats are idempotent and a provider failure is
@@ -10059,6 +10085,18 @@ mod tests {
         assert_eq!(run.common_caption_language, None);
         assert!(run.has_audio);
         assert!(run.utterances.is_empty());
+
+        let summaries = core
+            .list_notebook_capture_history_summaries(notebook.id.clone())
+            .unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].session_id, session.id);
+        assert!(summaries[0].utterances.is_empty());
+
+        let selected = core
+            .list_notebook_capture_history_utterances(notebook.id.clone(), session.id.clone())
+            .unwrap();
+        assert!(selected.is_empty());
     }
 
     struct CaptureEventSender(std::sync::mpsc::Sender<FfiNotebookCaptureEvent>);
