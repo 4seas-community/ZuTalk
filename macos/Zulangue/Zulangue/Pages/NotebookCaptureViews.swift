@@ -621,23 +621,35 @@ struct NotebookRealtimeTranscriptPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bpBlue)
         .task(id: notebookId) {
-            history.load(notebookId: notebookId)
+            await reloadHistory()
         }
         .onChange(of: capture.sessionId) { _, _ in
             guard capture.notebookId == notebookId else { return }
-            history.load(notebookId: notebookId)
+            Task { await reloadHistory() }
         }
         .onChange(of: capture.captureState) { _, state in
             guard capture.notebookId == notebookId,
                   state.isActive == false else { return }
-            history.load(notebookId: notebookId)
+            Task { await reloadHistory() }
         }
         .onChange(of: activeSessionSpeakerIds) { _, speakerIds in
-            guard speakerIds.isEmpty == false,
-                  capture.notebookId == notebookId,
-                  let sessionId = capture.sessionId else { return }
-            history.refreshSessionSpeakers(sessionId: sessionId)
+            refreshActiveSessionSpeakers(speakerIds)
         }
+    }
+
+    private func reloadHistory() async {
+        await history.load(notebookId: notebookId)
+        // Read the current IDs after the catalog await. This closes the mount
+        // race where an initial speaker refresh could otherwise be cleared by
+        // the catalog's notebook-switch/reset prefix or summary filtering.
+        refreshActiveSessionSpeakers(activeSessionSpeakerIds)
+    }
+
+    private func refreshActiveSessionSpeakers(_ speakerIds: [String]) {
+        guard speakerIds.isEmpty == false,
+              capture.notebookId == notebookId,
+              let sessionId = capture.sessionId else { return }
+        history.refreshSessionSpeakers(sessionId: sessionId)
     }
 
     private var activeSessionSpeakerIds: [String] {
@@ -2360,6 +2372,8 @@ private struct NotebookRealtimeHistoryView: View {
     let focusSessionId: String?
     @ObservedObject var history: NotebookCaptureHistoryStore
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var livePresentation =
+        ActiveBilingualTranscriptStore.shared.livePresentation
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPresentationControlHovered = false
     @State private var selectedSessionID: String?
@@ -2401,7 +2415,7 @@ private struct NotebookRealtimeHistoryView: View {
     }
 
     private var presentationMode: NotebookTranscriptPresentationMode {
-        history.presentationMode(for: notebookId, runs: presentedRuns)
+        history.presentationMode(for: notebookId)
     }
 
     private var presentationBinding: Binding<NotebookTranscriptPresentationMode> {
@@ -2486,7 +2500,7 @@ private struct NotebookRealtimeHistoryView: View {
                 description: lastError,
                 action: (
                     label: String(localized: "capture.settings.autosave.retry"),
-                    handler: { history.load(notebookId: notebookId) }
+                    handler: { Task { await reloadHistory() } }
                 )
             )
         } else if presentedRuns.isEmpty {
@@ -2571,6 +2585,13 @@ private struct NotebookRealtimeHistoryView: View {
                 }
             }
         }
+    }
+
+    private func reloadHistory() async {
+        await history.load(notebookId: notebookId)
+        guard let sessionId = activeSessionID,
+              capture.utterances.contains(where: { $0.sessionSpeakerId != nil }) else { return }
+        history.refreshSessionSpeakers(sessionId: sessionId)
     }
 
     @ViewBuilder

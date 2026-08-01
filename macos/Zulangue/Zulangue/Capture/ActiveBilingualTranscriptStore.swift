@@ -727,7 +727,7 @@ enum NotebookCaptureLivePreviewCoalescing {
     /// removed entirely because it is the only ceiling on a provider that
     /// revises in bursts; without it a pathological run of revisions has
     /// nothing standing between it and the compositor.
-    static let interval: TimeInterval = 1.0 / 30.0
+    nonisolated static let interval: TimeInterval = 1.0 / 30.0
 
     enum Decision: Equatable {
         case publishNow
@@ -847,6 +847,9 @@ protocol NotebookCaptureClienting: AnyObject {
     func listNotebookCaptureHistorySummaries(
         notebookId: String
     ) throws -> [NotebookCaptureHistoryRunDTO]
+    func loadNotebookCaptureHistorySummaries(
+        notebookId: String
+    ) async throws -> [NotebookCaptureHistoryRunDTO]
     func loadNotebookCaptureHistoryUtterances(
         notebookId: String,
         sessionId: String
@@ -895,6 +898,12 @@ extension NotebookCaptureClienting {
         notebookId: String
     ) throws -> [NotebookCaptureHistoryRunDTO] {
         try listNotebookCaptureHistory(notebookId: notebookId)
+    }
+
+    func loadNotebookCaptureHistorySummaries(
+        notebookId: String
+    ) async throws -> [NotebookCaptureHistoryRunDTO] {
+        try listNotebookCaptureHistorySummaries(notebookId: notebookId)
     }
 
     func loadNotebookCaptureHistoryUtterances(
@@ -1386,6 +1395,16 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
         try requireCore()
             .listNotebookCaptureHistorySummaries(notebookId: notebookId)
             .map(Self.map)
+    }
+
+    func loadNotebookCaptureHistorySummaries(
+        notebookId: String
+    ) async throws -> [NotebookCaptureHistoryRunDTO] {
+        let core = try requireCore()
+        let values = try await Task.detached {
+            try core.listNotebookCaptureHistorySummaries(notebookId: notebookId)
+        }.value
+        return values.map(Self.map)
     }
 
     func loadNotebookCaptureHistoryUtterances(
@@ -2198,23 +2217,49 @@ enum NotebookCaptureHistoryPolicy {
     static func orderedRuns(
         _ runs: [NotebookCaptureHistoryRunDTO]
     ) -> [NotebookCaptureHistoryRunDTO] {
-        runs.sorted { lhs, rhs in
-            let lhsDate = parsedTimestamp(lhs.createdAt)
-            let rhsDate = parsedTimestamp(rhs.createdAt)
-            if let lhsDate, let rhsDate, lhsDate != rhsDate {
+        // Parsing inside the sort comparator used to construct two date
+        // formatters for every comparison. SwiftUI called this path repeatedly
+        // while live text arrived, turning a small catalog into a CPU and
+        // allocation storm. Decorate once, sort the cached keys, then unwrap.
+        let fractionalParser = ISO8601DateFormatter()
+        fractionalParser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let timestampParser = ISO8601DateFormatter()
+        timestampParser.formatOptions = [.withInternetDateTime]
+        let keyedRuns = runs.map { run in
+            (
+                run: run,
+                parsedDate: parsedTimestamp(
+                    run.createdAt,
+                    fractionalParser: fractionalParser,
+                    timestampParser: timestampParser
+                )
+            )
+        }
+
+        return keyedRuns.sorted { lhs, rhs in
+            if let lhsDate = lhs.parsedDate,
+               let rhsDate = rhs.parsedDate,
+               lhsDate != rhsDate {
                 return lhsDate < rhsDate
             }
-            if lhs.createdAt != rhs.createdAt, lhsDate == nil || rhsDate == nil {
-                return lhs.createdAt < rhs.createdAt
+            if lhs.run.createdAt != rhs.run.createdAt,
+               lhs.parsedDate == nil || rhs.parsedDate == nil {
+                return lhs.run.createdAt < rhs.run.createdAt
             }
-            return lhs.sessionId < rhs.sessionId
-        }
+            return lhs.run.sessionId < rhs.run.sessionId
+        }.map { $0.run }
     }
 
     static func defaultPresentation(
         for runs: [NotebookCaptureHistoryRunDTO]
     ) -> NotebookTranscriptPresentationMode {
-        guard let latest = orderedRuns(runs).last,
+        defaultPresentation(forOrderedRuns: orderedRuns(runs))
+    }
+
+    static func defaultPresentation(
+        forOrderedRuns runs: [NotebookCaptureHistoryRunDTO]
+    ) -> NotebookTranscriptPresentationMode {
+        guard let latest = runs.last,
               displayLanguages(for: latest)?.isEmpty == false
         else { return .sourceTimeline }
         return .bilingualColumns
@@ -2546,12 +2591,12 @@ enum NotebookCaptureHistoryPolicy {
             : .unavailable
     }
 
-    private static func parsedTimestamp(_ value: String) -> Date? {
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = parser.date(from: value) { return date }
-        parser.formatOptions = [.withInternetDateTime]
-        return parser.date(from: value)
+    private static func parsedTimestamp(
+        _ value: String,
+        fractionalParser: ISO8601DateFormatter,
+        timestampParser: ISO8601DateFormatter
+    ) -> Date? {
+        fractionalParser.date(from: value) ?? timestampParser.date(from: value)
     }
 }
 
@@ -2581,13 +2626,16 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     private var laneMutationsInFlight: Set<NotebookCaptureLaneMutationKey> = []
     private var loadedTranscriptSessionIds: Set<String> = []
     private var transcriptLoadRequestIds: [String: UUID] = [:]
+    private var catalogLoadRequestId: UUID?
 
     init(client: NotebookCaptureClienting? = nil) {
         self.client = client ?? RustNotebookCaptureClient()
     }
 
-    func load(notebookId: String) {
+    func load(notebookId: String) async {
         guard notebookId.isEmpty == false else { return }
+        let requestId = UUID()
+        catalogLoadRequestId = requestId
         // A catalog refresh is also a content invalidation boundary. Do not
         // carry a selected transcript across it without re-reading SQLite.
         transcriptLoadRequestIds = [:]
@@ -2600,12 +2648,20 @@ final class NotebookCaptureHistoryStore: ObservableObject {
             loadedNotebookId = notebookId
         }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if catalogLoadRequestId == requestId {
+                catalogLoadRequestId = nil
+                isLoading = false
+            }
+        }
 
         do {
             let summaries = NotebookCaptureHistoryPolicy.orderedRuns(
-                try client.listNotebookCaptureHistorySummaries(notebookId: notebookId)
+                try await client.loadNotebookCaptureHistorySummaries(notebookId: notebookId)
             )
+            guard Task.isCancelled == false,
+                  catalogLoadRequestId == requestId,
+                  loadedNotebookId == notebookId else { return }
             var eagerLoadedSessionIds: Set<String> = []
             runs = summaries.map { summary in
                 if summary.utterances.isEmpty == false {
@@ -2617,13 +2673,25 @@ final class NotebookCaptureHistoryStore: ObservableObject {
             if presentationByNotebook[notebookId] == nil {
                 var nextPresentation = presentationByNotebook
                 nextPresentation[notebookId] = NotebookCaptureHistoryPolicy.defaultPresentation(
-                    for: runs
+                    forOrderedRuns: runs
                 )
                 presentationByNotebook = nextPresentation
             }
             lastError = nil
-            refreshSpeakerDirectory(for: runs.map(\.sessionId))
+            // The rail only needs summary metadata. Session speaker labels are
+            // hydrated with the one transcript the user opens, avoiding an
+            // N+1 chain of synchronous FFI reads on the MainActor.
+            refreshSpeakerDirectory(for: runs.map(\.sessionId), hydrateSessions: false)
+            // Lightweight/platform clients may use the protocol fallback and
+            // return already-hydrated fixtures. Preserve their historical
+            // speaker behavior without penalizing the production summary path.
+            for sessionId in eagerLoadedSessionIds {
+                refreshSessionSpeakers(sessionId: sessionId)
+            }
         } catch {
+            guard Task.isCancelled == false,
+                  catalogLoadRequestId == requestId,
+                  loadedNotebookId == notebookId else { return }
             runs = []
             loadedTranscriptSessionIds = []
             transcriptLoadingSessionIds = []
@@ -2720,12 +2788,10 @@ final class NotebookCaptureHistoryStore: ObservableObject {
         }
     }
 
-    func presentationMode(
-        for notebookId: String,
-        runs: [NotebookCaptureHistoryRunDTO]? = nil
-    ) -> NotebookTranscriptPresentationMode {
-        presentationByNotebook[notebookId]
-            ?? NotebookCaptureHistoryPolicy.defaultPresentation(for: runs ?? self.runs)
+    func presentationMode(for notebookId: String) -> NotebookTranscriptPresentationMode {
+        // `load` computes the default once from the ordered summary catalog.
+        // Never derive it from a live overlay during SwiftUI body evaluation.
+        presentationByNotebook[notebookId] ?? .sourceTimeline
     }
 
     func setPresentationMode(
@@ -2922,7 +2988,7 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     func retryProjection(sessionId: String) throws {
         _ = try client.retryNotebookCaptureProjection(sessionId: sessionId)
         guard let loadedNotebookId else { return }
-        load(notebookId: loadedNotebookId)
+        Task { await load(notebookId: loadedNotebookId) }
     }
 
     private func refreshSpeakerDirectory(
@@ -3299,6 +3365,20 @@ final class LiveNotebookCaptureAudioSource: NotebookCaptureAudioSourcing {
 
 // MARK: - Active capture store
 
+/// High-frequency, process-local presentation state lives on its own publisher.
+/// Capture controls and settings observe `ActiveBilingualTranscriptStore`; they
+/// must not rebuild for every speculative word, cue, or telemetry tick.
+@MainActor
+final class NotebookCaptureLivePresentationStore: ObservableObject {
+    @Published fileprivate(set) var utterances: [NotebookCaptureUtteranceDTO] = []
+    @Published fileprivate(set) var translationCues:
+        [String: NotebookCaptureTranslationCueDTO] = [:]
+    @Published fileprivate(set) var laneHealth:
+        [String: NotebookCaptureLaneHealthDTO.State] = [:]
+    @Published fileprivate(set) var laneTelemetry:
+        [String: NotebookCaptureLaneHealthDTO] = [:]
+}
+
 @MainActor
 final class ActiveBilingualTranscriptStore: ObservableObject {
     static let shared = ActiveBilingualTranscriptStore()
@@ -3347,7 +3427,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     @Published private(set) var realtimeLoroAppliedRevision: UInt64 = 0
     /// Process-local Soniox speculative tail. Durable transcript consumers
     /// must continue to use `utterances`.
-    @Published private(set) var livePreviewUtterances: [NotebookCaptureUtteranceDTO] = []
+    let livePresentation = NotebookCaptureLivePresentationStore()
+    var livePreviewUtterances: [NotebookCaptureUtteranceDTO] {
+        livePresentation.utterances
+    }
     @Published private(set) var utterances: [NotebookCaptureUtteranceDTO] = []
     /// Time-anchored auxiliary translation cues, keyed by cue identity.
     /// The audience canvas reads translations from here in multilingual mode;
@@ -3356,17 +3439,22 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// Bounded replace-in-full cue tail delivered with the speculative source
     /// frame. While capture is active this is the live canvas authority; it is
     /// deliberately separate from the durable all-session cue dictionary.
-    @Published private(set) var liveTranslationCues:
-        [String: NotebookCaptureTranslationCueDTO] = [:]
+    var liveTranslationCues: [String: NotebookCaptureTranslationCueDTO] {
+        livePresentation.translationCues
+    }
     private var hasLiveTranslationCueSnapshot = false
     /// Per-lane health of the running stream group, keyed by target language;
     /// the canonical lane is keyed by `canonicalLaneHealthKey`. Process-local:
     /// it describes a live group, so it is empty outside one.
-    @Published private(set) var laneHealth: [String: NotebookCaptureLaneHealthDTO.State] = [:]
+    var laneHealth: [String: NotebookCaptureLaneHealthDTO.State] {
+        livePresentation.laneHealth
+    }
     /// Full per-lane progress state from the latest replace-in-full frame.
     /// This lets operator telemetry distinguish provider lag from UI paint or
     /// row-correlation delay without exposing diagnostics on the audience UI.
-    @Published private(set) var laneTelemetry: [String: NotebookCaptureLaneHealthDTO] = [:]
+    var laneTelemetry: [String: NotebookCaptureLaneHealthDTO] {
+        livePresentation.laneTelemetry
+    }
 
     /// The canonical transcription lane has no target language of its own.
     static let canonicalLaneHealthKey = "#canonical"
@@ -3422,7 +3510,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private var lastAppliedEventRevision: UInt64?
     private var lastAppliedLivePreviewRevision: UInt64?
     private var lastLivePreviewPublishedAt: TimeInterval?
-    private var heldLivePreview: [NotebookCaptureUtteranceDTO]?
+    private var heldLivePreview: NotebookCaptureLivePreviewDTO?
     private var livePreviewFlushTask: Task<Void, Never>?
     private var pendingCallbackEvent: NotebookCaptureEventDTO?
     private var pendingLivePreview: NotebookCaptureLivePreviewDTO?
@@ -3899,7 +3987,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         self.profile = startProfile
         self.utterances = []
         cancelLivePreviewCoalescing()
-        self.livePreviewUtterances = []
+        self.livePresentation.utterances = []
         self.lastAppliedEventRevision = nil
         self.lastAppliedLivePreviewRevision = nil
         self.appliedContextReceipt = nil
@@ -4577,13 +4665,13 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         projectionState = .ready
         utterances = []
         translationCues = [:]
-        liveTranslationCues = [:]
+        livePresentation.translationCues = [:]
         hasLiveTranslationCueSnapshot = false
-        laneHealth = [:]
-        laneTelemetry = [:]
+        livePresentation.laneHealth = [:]
+        livePresentation.laneTelemetry = [:]
         committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
         cancelLivePreviewCoalescing()
-        livePreviewUtterances = []
+        livePresentation.utterances = []
         lastAppliedEventRevision = nil
         lastAppliedLivePreviewRevision = nil
         contextPreview = nil
@@ -4825,7 +4913,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
         if event.captureState.isActive == false {
             cancelLivePreviewCoalescing()
-            livePreviewUtterances = []
+            livePresentation.utterances = []
             lastAppliedLivePreviewRevision = nil
             refreshRecentTranscriptPresentation()
             _ = enterLocalTerminal(
@@ -4936,6 +5024,35 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
            preview.previewRevision <= lastAppliedLivePreviewRevision {
             return
         }
+        lastAppliedLivePreviewRevision = preview.previewRevision
+
+        switch NotebookCaptureLivePreviewCoalescing.decide(
+            now: Self.livePreviewClock(),
+            lastPublishedAt: lastLivePreviewPublishedAt,
+            interval: livePreviewCoalescingInterval
+        ) {
+        case .publishNow:
+            publishLivePreview(preview)
+        case .hold(let delay):
+            // Hold the complete replace-in-full frame. Coalescing only the
+            // utterance array allowed cue and lane-health bursts to bypass the
+            // rendering budget and invalidate the whole transcript page.
+            heldLivePreview = preview
+            scheduleLivePreviewFlush(after: delay)
+        }
+    }
+
+    private static func livePreviewClock() -> TimeInterval {
+        ProcessInfo.processInfo.systemUptime
+    }
+
+    private func publishLivePreview(_ preview: NotebookCaptureLivePreviewDTO) {
+        guard preview.sessionId == sessionId, captureState.isActive else { return }
+        livePreviewFlushTask?.cancel()
+        livePreviewFlushTask = nil
+        heldLivePreview = nil
+        lastLivePreviewPublishedAt = Self.livePreviewClock()
+
         let nextTranslationCues = Dictionary(
             preview.translationCues
                 .filter { $0.withdrawn == false && $0.text.isEmpty == false }
@@ -4944,10 +5061,18 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                 right.revision >= left.revision ? right : left
             }
         )
-        hasLiveTranslationCueSnapshot = true
-        if nextTranslationCues != liveTranslationCues {
-            liveTranslationCues = nextTranslationCues
+        let establishesLiveCueSnapshot = hasLiveTranslationCueSnapshot == false
+        if establishesLiveCueSnapshot {
+            // The first empty live frame must still hide any durable cue tail.
+            // No @Published assignment below is guaranteed to change in that
+            // case, so emit the presentation boundary explicitly.
+            livePresentation.objectWillChange.send()
+            hasLiveTranslationCueSnapshot = true
         }
+        if nextTranslationCues != liveTranslationCues {
+            livePresentation.translationCues = nextTranslationCues
+        }
+
         let nextLaneHealth = Dictionary(
             preview.laneHealth.map { lane in
                 (
@@ -4959,7 +5084,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             uniquingKeysWith: { _, right in right }
         )
         if nextLaneHealth != laneHealth {
-            laneHealth = nextLaneHealth
+            livePresentation.laneHealth = nextLaneHealth
         }
         let nextLaneTelemetry = Dictionary(
             preview.laneHealth.map { lane in
@@ -4972,46 +5097,16 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             uniquingKeysWith: { _, right in right }
         )
         if nextLaneTelemetry != laneTelemetry {
-            laneTelemetry = nextLaneTelemetry
+            livePresentation.laneTelemetry = nextLaneTelemetry
         }
-        let next = preview.utterances.filter {
+
+        let nextUtterances = preview.utterances.filter {
             $0.sessionId == preview.sessionId
         }
-        lastAppliedLivePreviewRevision = preview.previewRevision
-        // Compare against whatever the canvas is next going to show, which is
-        // the held revision when one is waiting. Comparing against the
-        // published value instead would let a revision that reverts to the
-        // published text return early while a stale held revision stayed
-        // queued, and the flush would then publish that stale text.
-        guard next != (heldLivePreview ?? livePreviewUtterances) else { return }
-
-        switch NotebookCaptureLivePreviewCoalescing.decide(
-            now: Self.livePreviewClock(),
-            lastPublishedAt: lastLivePreviewPublishedAt,
-            interval: livePreviewCoalescingInterval
-        ) {
-        case .publishNow:
-            publishLivePreview(next)
-        case .hold(let delay):
-            // Newer revisions overwrite the held one, so a burst collapses to
-            // whatever was most recent when the window closes.
-            heldLivePreview = next
-            scheduleLivePreviewFlush(after: delay)
+        if nextUtterances != livePreviewUtterances {
+            livePresentation.utterances = nextUtterances
+            refreshRecentTranscriptPresentation()
         }
-    }
-
-    private static func livePreviewClock() -> TimeInterval {
-        ProcessInfo.processInfo.systemUptime
-    }
-
-    private func publishLivePreview(_ next: [NotebookCaptureUtteranceDTO]) {
-        livePreviewFlushTask?.cancel()
-        livePreviewFlushTask = nil
-        heldLivePreview = nil
-        lastLivePreviewPublishedAt = Self.livePreviewClock()
-        guard next != livePreviewUtterances else { return }
-        livePreviewUtterances = next
-        refreshRecentTranscriptPresentation()
     }
 
     private func scheduleLivePreviewFlush(after delay: TimeInterval) {
@@ -5027,8 +5122,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
     private func flushHeldLivePreview() {
         livePreviewFlushTask = nil
-        guard let next = heldLivePreview else { return }
-        publishLivePreview(next)
+        guard let preview = heldLivePreview else { return }
+        publishLivePreview(preview)
     }
 
     /// Drops any held revision without publishing it. Every path that clears
@@ -5105,12 +5200,12 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// and with it any claim about its lanes.
     private func reconcileLaneHealth(for event: NotebookCaptureEventDTO) {
         if event.captureState.isActive == false {
-            laneHealth = [:]
-            laneTelemetry = [:]
+            livePresentation.laneHealth = [:]
+            livePresentation.laneTelemetry = [:]
             return
         }
         guard event.laneHealth.isEmpty == false else { return }
-        laneHealth = Dictionary(
+        livePresentation.laneHealth = Dictionary(
             event.laneHealth.map { lane in
                 (
                     lane.targetLanguage.map(normalizedLanguage)
@@ -5120,7 +5215,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             },
             uniquingKeysWith: { _, right in right }
         )
-        laneTelemetry = Dictionary(
+        livePresentation.laneTelemetry = Dictionary(
             event.laneHealth.map { lane in
                 (
                     lane.targetLanguage.map(normalizedLanguage)
@@ -5180,7 +5275,12 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         if left.providerSequence != right.providerSequence {
             return left.providerSequence < right.providerSequence
         }
-        return (left.sourceStartMs ?? 0) < (right.sourceStartMs ?? 0)
+        let leftStart = left.sourceStartMs ?? 0
+        let rightStart = right.sourceStartMs ?? 0
+        if leftStart != rightStart {
+            return leftStart < rightStart
+        }
+        return left.id < right.id
     }
 
     private func reconcileUtterances(for event: NotebookCaptureEventDTO) {
@@ -5500,13 +5600,13 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         cancelUtteranceGapRepair()
         utterances = []
         translationCues = [:]
-        liveTranslationCues = [:]
+        livePresentation.translationCues = [:]
         hasLiveTranslationCueSnapshot = false
-        laneHealth = [:]
-        laneTelemetry = [:]
+        livePresentation.laneHealth = [:]
+        livePresentation.laneTelemetry = [:]
         committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
         cancelLivePreviewCoalescing()
-        livePreviewUtterances = []
+        livePresentation.utterances = []
         lastAppliedEventRevision = nil
         lastAppliedLivePreviewRevision = nil
         appliedContextReceipt = nil

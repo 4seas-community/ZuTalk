@@ -1444,9 +1444,15 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let store = ActiveBilingualTranscriptStore(
             client: client,
             audioSource: FakeNotebookCaptureAudioSource(),
+            elapsedTimerInterval: 10,
             livePreviewCoalescingInterval: 0.05
         )
         try await store.start(notebookId: "notebook-a")
+
+        var parentObjectChangeCount = 0
+        let parentObservation = store.objectWillChange.sink {
+            parentObjectChangeCount += 1
+        }
 
         var preview = NotebookCaptureUtteranceDTO.sample
         preview.revision = 0
@@ -1475,6 +1481,120 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         XCTAssertEqual(store.captureState, .recording)
         XCTAssertEqual(client.listUtterancesCount, 0)
+        XCTAssertEqual(
+            parentObjectChangeCount,
+            0,
+            "speculative words must not invalidate capture controls and settings"
+        )
+        withExtendedLifetime(parentObservation) {}
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testCueOnlyPreviewBurstSharesTheRenderingBudgetAndPublishesNewestFrame() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource(),
+            elapsedTimerInterval: 10,
+            livePreviewCoalescingInterval: 0.1
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var objectChangeCount = 0
+        let observation = store.livePresentation.objectWillChange.sink {
+            objectChangeCount += 1
+        }
+        var parentObjectChangeCount = 0
+        let parentObservation = store.objectWillChange.sink {
+            parentObjectChangeCount += 1
+        }
+        for revision in 1...200 {
+            client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+                sessionId: "session-a",
+                previewRevision: UInt64(revision),
+                utterances: [],
+                translationCues: [NotebookCaptureTranslationCueDTO(
+                    targetLanguage: "zh",
+                    groupEpoch: 1,
+                    providerSequence: 1,
+                    sourceLanguage: "en",
+                    sourceStartMs: 0,
+                    sourceEndMs: 500,
+                    text: "cue-\(revision)",
+                    completion: "partial",
+                    withdrawn: false,
+                    revision: UInt64(revision)
+                )],
+                laneHealth: [NotebookCaptureLaneHealthDTO(
+                    targetLanguage: "zh",
+                    state: .live,
+                    groupEpoch: 1,
+                    totalAudioProcMs: UInt64(revision),
+                    lagMs: UInt64(revision)
+                )]
+            ))
+        }
+
+        let didPublishTail = await waitUntil {
+            store.presentedTranslationCues(for: "zh").map(\.text) == ["cue-200"]
+                && store.laneTelemetry["zh"]?.lagMs == 200
+        }
+        XCTAssertTrue(didPublishTail, "cue and health coalescing must remain latest-wins")
+        XCTAssertLessThan(
+            objectChangeCount,
+            20,
+            "cue-only bursts must not invalidate observers once per provider revision"
+        )
+        XCTAssertEqual(
+            parentObjectChangeCount,
+            0,
+            "speculative frames must not invalidate capture controls and settings"
+        )
+        withExtendedLifetime((observation, parentObservation)) {}
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testHeldLivePreviewCannotReviveAfterTerminalCaptureEvent() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource(),
+            livePreviewCoalescingInterval: 0.2
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var preview = NotebookCaptureUtteranceDTO.sample
+        preview.sourceText = "leading"
+        preview.completion = "partial"
+        client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+            sessionId: "session-a",
+            previewRevision: 1,
+            utterances: [preview]
+        ))
+        preview.sourceText = "held"
+        client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+            sessionId: "session-a",
+            previewRevision: 2,
+            utterances: [preview]
+        ))
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .completed,
+            utterances: [],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertEqual(store.captureState, .completed)
+        XCTAssertTrue(store.livePreviewUtterances.isEmpty)
+        XCTAssertFalse(
+            store.livePreviewUtterances.contains(where: { $0.sourceText == "held" }),
+            "a canceled trailing frame must not repopulate terminal presentation"
+        )
         store.resetForTesting()
     }
 
@@ -1779,6 +1899,10 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                     == ["ภาษาไทยปัจจุบัน"]
         }
         XCTAssertTrue(didInstallFirstLiveFrame)
+        XCTAssertEqual(
+            Set(store.presentedTranslationCueSnapshot.map(\.text)),
+            Set(["当前中文", "ภาษาไทยปัจจุบัน"])
+        )
         XCTAssertEqual(store.laneTelemetry["zh"]?.groupEpoch, 2)
         XCTAssertEqual(store.laneTelemetry["zh"]?.lagMs, 400)
 
@@ -1808,6 +1932,10 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 && store.failedTranslationLanguages == ["zh"]
         }
         XCTAssertTrue(didReplaceLiveFrame)
+        XCTAssertEqual(
+            store.presentedTranslationCueSnapshot.map(\.text),
+            ["ภาษาไทยล่าสุด"]
+        )
         XCTAssertEqual(store.laneTelemetry["zh"]?.lagMs, 2_300)
         XCTAssertEqual(store.laneTelemetry["zh"]?.inputDiscontinuous, true)
         XCTAssertNotNil(
@@ -3550,6 +3678,41 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         ))
     }
 
+    @MainActor
+    func testEmptyFullSnapshotClearsRecentTranscriptPresentation() async throws {
+        MenuBarRuntimeStore.shared.resetForTesting()
+        defer { MenuBarRuntimeStore.shared.resetForTesting() }
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a"),
+            startUtterances: [.sample]
+        )
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        store.loadProfile(notebookId: "notebook-a")
+        try await store.start(notebookId: "notebook-a")
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [.sample],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        XCTAssertFalse(MenuBarRuntimeStore.shared.cachedRecentLines.isEmpty)
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 2,
+            isFullSnapshot: true
+        ))
+
+        XCTAssertTrue(MenuBarRuntimeStore.shared.cachedRecentLines.isEmpty)
+    }
+
     func testRealtimeRunSelectionPrefersFocusThenActiveThenLatestAndPreservesClicks() {
         let first = NotebookCaptureHistoryRunDTO.fixture(
             sessionId: "session-a",
@@ -3622,8 +3785,33 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(ordered[2].utterances.isEmpty)
     }
 
+    func testNotebookHistoryParsesEachMixedTimestampOnceBeforeSorting() {
+        let first = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: "session-a",
+            createdAt: "2001-01-02T08:00:00Z"
+        )
+        let fractional = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: "session-b",
+            createdAt: "2001-01-02T08:00:00.500Z"
+        )
+        let later = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: "session-c",
+            createdAt: "2001-01-02T09:00:00+00:00"
+        )
+        let malformed = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: "session-d",
+            createdAt: "malformed-timestamp"
+        )
+
+        XCTAssertEqual(
+            NotebookCaptureHistoryPolicy.orderedRuns([malformed, later, fractional, first])
+                .map(\.sessionId),
+            ["session-a", "session-b", "session-c", "session-d"]
+        )
+    }
+
     @MainActor
-    func testHistoryStoreQueriesNotebookRatherThanFocusedSessionAndKeepsDisplayTransient() {
+    func testHistoryStoreQueriesNotebookRatherThanFocusedSessionAndKeepsDisplayTransient() async {
         let runs = [
             NotebookCaptureHistoryRunDTO.fixture(
                 sessionId: "session-a",
@@ -3640,7 +3828,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         let store = NotebookCaptureHistoryStore(client: client)
 
-        store.load(notebookId: "notebook-a")
+        await store.load(notebookId: "notebook-a")
 
         XCTAssertEqual(client.historyNotebookIds, ["notebook-a"])
         XCTAssertEqual(store.runs.map(\.sessionId), ["session-a", "session-b"])
@@ -3649,7 +3837,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         store.setPresentationMode(.sourceTimeline, for: "notebook-a")
 
         XCTAssertEqual(store.presentationMode(for: "notebook-a"), .sourceTimeline)
-        XCTAssertEqual(store.presentationMode(for: "notebook-b", runs: []), .sourceTimeline)
+        XCTAssertEqual(store.presentationMode(for: "notebook-b"), .sourceTimeline)
         XCTAssertEqual(client.profileUpdateCount, 0, "display changes must never write capture settings")
     }
 
@@ -3707,11 +3895,16 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         let store = NotebookCaptureHistoryStore(client: client)
 
-        store.load(notebookId: "notebook-a")
+        await store.load(notebookId: "notebook-a")
 
         XCTAssertTrue(store.runs.allSatisfy(\.utterances.isEmpty))
         XCTAssertEqual(store.transcriptLoadState(sessionId: "session-a"), .unloaded)
         XCTAssertEqual(client.listUtterancesCount, 0)
+        XCTAssertEqual(
+            client.listSessionSpeakersCount,
+            0,
+            "the summary rail must not issue one speaker query per historical run"
+        )
 
         await store.loadTranscript(sessionId: "session-a")
 
@@ -3719,6 +3912,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(store.runs[1].utterances.isEmpty)
         XCTAssertEqual(store.transcriptLoadState(sessionId: "session-a"), .loaded)
         XCTAssertEqual(client.listUtterancesCount, 1)
+        XCTAssertEqual(client.listSessionSpeakersCount, 1)
 
         await store.loadTranscript(sessionId: "session-a")
         XCTAssertEqual(client.listUtterancesCount, 1, "a hydrated run is not decoded twice")
@@ -3731,12 +3925,52 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(store.runs[1].utterances, [secondUtterance])
         XCTAssertEqual(store.transcriptLoadState(sessionId: "session-a"), .unloaded)
         XCTAssertEqual(store.transcriptLoadState(sessionId: "session-b"), .loaded)
+        XCTAssertEqual(client.listSessionSpeakersCount, 2)
 
-        store.load(notebookId: "notebook-a")
+        await store.load(notebookId: "notebook-a")
         XCTAssertTrue(
             store.runs.allSatisfy(\.utterances.isEmpty),
             "a catalog refresh invalidates cached transcript text"
         )
+    }
+
+    @MainActor
+    func testHistoryCatalogLoadLeavesMainActorResponsiveAndKeepsSummariesLightweight() async {
+        let runs = (0..<100).map { index in
+            NotebookCaptureHistoryRunDTO.fixture(
+                sessionId: "session-\(index)",
+                createdAt: String(format: "2001-01-02T08:%02d:00Z", index % 60),
+                utterances: [.sample]
+            )
+        }
+        let controller = BlockingNotebookCatalogLoadController()
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a"),
+            historyRuns: runs,
+            historySummariesOmitUtterances: true
+        )
+        client.catalogLoadController = controller
+        let store = NotebookCaptureHistoryStore(client: client)
+
+        let loadTask = Task { await store.load(notebookId: "notebook-a") }
+        let didSuspend = await waitUntil { controller.isWaiting }
+        XCTAssertTrue(didSuspend)
+
+        var heartbeat = false
+        Task { @MainActor in heartbeat = true }
+        let didReceiveHeartbeat = await waitUntil { heartbeat }
+        XCTAssertTrue(
+            didReceiveHeartbeat,
+            "a catalog FFI read must suspend instead of blocking the MainActor"
+        )
+        XCTAssertEqual(client.listSessionSpeakersCount, 0)
+
+        controller.release()
+        await loadTask.value
+
+        XCTAssertEqual(store.runs.count, 100)
+        XCTAssertTrue(store.runs.allSatisfy(\.utterances.isEmpty))
+        XCTAssertEqual(client.listSessionSpeakersCount, 0)
     }
 
     @MainActor
@@ -3760,14 +3994,15 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         client.utteranceLoadController = controller
         let store = NotebookCaptureHistoryStore(client: client)
-        store.load(notebookId: "notebook-a")
+        await store.load(notebookId: "notebook-a")
 
         let task = Task { await store.loadTranscript(sessionId: utterance.sessionId) }
-        XCTAssertTrue(await waitUntil { controller.isWaiting })
+        let didStartLoading = await waitUntil { controller.isWaiting }
+        XCTAssertTrue(didStartLoading)
         XCTAssertEqual(store.transcriptLoadState(sessionId: utterance.sessionId), .loading)
 
         client.historyRuns = [nextRun]
-        store.load(notebookId: "notebook-b")
+        await store.load(notebookId: "notebook-b")
         controller.release()
         await task.value
 
@@ -3814,7 +4049,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             historyRuns: [run]
         )
         let store = NotebookCaptureHistoryStore(client: client)
-        store.load(notebookId: "notebook-a")
+        await store.load(notebookId: "notebook-a")
 
         do {
             try await store.replaceLane(
@@ -3871,7 +4106,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             historyRuns: [run]
         )
         let store = NotebookCaptureHistoryStore(client: client)
-        store.load(notebookId: "notebook-a")
+        await store.load(notebookId: "notebook-a")
 
         let laneProjection = NotebookCaptureHistoryPolicy.laneProjection(
             for: utterance,
@@ -3943,7 +4178,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testSpeakerNamesPreferSessionOverrideThenManualParticipantThenProviderLabel() throws {
+    func testSpeakerNamesPreferSessionOverrideThenManualParticipantThenProviderLabel() async throws {
         let utterance = NotebookCaptureUtteranceDTO(
             id: "utt-speaker",
             sessionId: "session-a",
@@ -3982,7 +4217,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         let store = NotebookCaptureHistoryStore(client: client)
 
-        store.load(notebookId: "notebook-a")
+        await store.load(notebookId: "notebook-a")
+        await store.loadTranscript(sessionId: "session-a")
         XCTAssertEqual(
             store.speakerDisplayName(
                 sessionSpeakerId: speaker.id,
@@ -6348,7 +6584,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             0,
             "session focus must never replace the Notebook-wide history query"
         )
-        XCTAssertTrue(captureViews.contains("history.load(notebookId: notebookId)"))
+        XCTAssertTrue(captureViews.contains("await history.load(notebookId: notebookId)"))
+        XCTAssertTrue(
+            captureViews.contains("refreshActiveSessionSpeakers(activeSessionSpeakerIds)"),
+            "catalog completion must rehydrate an already-active capture's speaker metadata"
+        )
         XCTAssertTrue(activeCapture.contains("listNotebookCaptureHistory(notebookId:"))
         XCTAssertTrue(realtimeTranscriptView.contains("NotebookCaptureHistoryPolicy.laneProjection("))
         XCTAssertTrue(realtimeTranscriptView.contains("languageCount: displayLanguages.count"))
@@ -6867,6 +7107,32 @@ private final class BlockingNotebookUtteranceLoadController {
     }
 }
 
+@MainActor
+private final class BlockingNotebookCatalogLoadController {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var isReleased = false
+    private(set) var isWaiting = false
+
+    func wait() async {
+        guard isReleased == false else { return }
+        isWaiting = true
+        await withCheckedContinuation { continuation in
+            if isReleased {
+                continuation.resume()
+            } else {
+                self.continuation = continuation
+            }
+        }
+        isWaiting = false
+    }
+
+    func release() {
+        isReleased = true
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
 private final class LockedStrings: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String] = []
@@ -7093,6 +7359,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     private(set) var pauseCount = 0
     private(set) var stopCount = 0
     private(set) var listUtterancesCount = 0
+    private(set) var listSessionSpeakersCount = 0
     private(set) var realtimeProjectionCount = 0
     private(set) var asyncProjectionRetryCount = 0
     private(set) var historyNotebookIds: [String] = []
@@ -7119,6 +7386,7 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     var profileUpdateError: NotebookCaptureClientError?
     var listUtterancesOverride: [NotebookCaptureUtteranceDTO]?
     var utteranceLoadController: BlockingNotebookUtteranceLoadController?
+    var catalogLoadController: BlockingNotebookCatalogLoadController?
     var historyRuns: [NotebookCaptureHistoryRunDTO]
     let historySummariesOmitUtterances: Bool
     var speakerParticipants: [SpeakerParticipantDTO]
@@ -7581,7 +7849,8 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     func listNotebookSessionSpeakers(
         sessionId: String
     ) throws -> [NotebookSessionSpeakerDTO] {
-        sessionSpeakersBySession[sessionId, default: []]
+        listSessionSpeakersCount += 1
+        return sessionSpeakersBySession[sessionId, default: []]
     }
 
     func renameNotebookSessionSpeaker(
@@ -7623,6 +7892,16 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         historyNotebookIds.append(notebookId)
         guard historySummariesOmitUtterances else { return historyRuns }
         return historyRuns.map { $0.replacingUtterances([]) }
+    }
+
+    func loadNotebookCaptureHistorySummaries(
+        notebookId: String
+    ) async throws -> [NotebookCaptureHistoryRunDTO] {
+        let captured = try listNotebookCaptureHistorySummaries(notebookId: notebookId)
+        if let catalogLoadController {
+            await catalogLoadController.wait()
+        }
+        return captured
     }
 
     func retryNotebookCaptureProjection(sessionId: String) throws -> NotebookCaptureEventDTO {

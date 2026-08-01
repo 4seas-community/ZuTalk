@@ -904,6 +904,7 @@ final class SubtitleOverlayPresentationSettings: ObservableObject {
 
 struct SubtitleOverlayView: View {
     @ObservedObject var store: ActiveBilingualTranscriptStore
+    @ObservedObject private var livePresentation: NotebookCaptureLivePresentationStore
     @ObservedObject private var coordinator = SubtitleOverlayCoordinator.shared
     @ObservedObject private var presentationSettings = SubtitleOverlayPresentationSettings.shared
     @Environment(\.accessibilityReduceTransparency)
@@ -926,6 +927,11 @@ struct SubtitleOverlayView: View {
     // @State; the class is deliberately not observable — each card's own
     // @State drives its rendering, this is only where progress survives.
     @State private var revealMemory = AudienceRevealMemory()
+
+    init(store: ActiveBilingualTranscriptStore) {
+        self.store = store
+        _livePresentation = ObservedObject(wrappedValue: store.livePresentation)
+    }
 
     var body: some View {
         subtitleBody

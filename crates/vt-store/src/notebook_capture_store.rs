@@ -4567,7 +4567,7 @@ impl NotebookCaptureStore {
     /// Returns the same ordered capture catalog without materializing any
     /// utterance rows. The presentation layer uses this lightweight snapshot
     /// for navigation, then loads the one selected session through
-    /// [`Self::list_utterances`].
+    /// [`Self::list_visible_notebook_utterances`].
     pub fn list_notebook_capture_history_summaries(
         &self,
         notebook_id: &str,
