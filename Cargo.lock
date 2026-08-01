@@ -3762,7 +3762,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vt-audio"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "fdk-aac",
  "hound",
@@ -3774,7 +3774,7 @@ dependencies = [
 
 [[package]]
 name = "vt-crypto"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "aes-gcm",
  "hex",
@@ -3791,7 +3791,7 @@ dependencies = [
 
 [[package]]
 name = "vt-export"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "thiserror 2.0.18",
  "zip",
@@ -3799,7 +3799,7 @@ dependencies = [
 
 [[package]]
 name = "vt-ffi"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "chrono",
  "criterion",
@@ -3833,14 +3833,14 @@ dependencies = [
 
 [[package]]
 name = "vt-i18n"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "rust-i18n",
 ]
 
 [[package]]
 name = "vt-model"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "serde",
  "serde_json",
@@ -3848,7 +3848,7 @@ dependencies = [
 
 [[package]]
 name = "vt-pipeline"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "rusqlite",
  "serde",
@@ -3864,7 +3864,7 @@ dependencies = [
 
 [[package]]
 name = "vt-store"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "chrono",
  "loro",
@@ -3884,7 +3884,7 @@ dependencies = [
 
 [[package]]
 name = "vt-stt"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "futures",
  "hound",

@@ -1039,7 +1039,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 12;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -1053,7 +1053,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Zulangue/Bridge/Generated",
 				);
-				MARKETING_VERSION = 0.1.10;
+				MARKETING_VERSION = 0.1.11;
 				OTHER_LDFLAGS = (
 					"-lc++",
 					"-framework",
@@ -1086,7 +1086,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 12;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -1100,7 +1100,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Zulangue/Bridge/Generated",
 				);
-				MARKETING_VERSION = 0.1.10;
+				MARKETING_VERSION = 0.1.11;
 				OTHER_LDFLAGS = (
 					"-lc++",
 					"-framework",
