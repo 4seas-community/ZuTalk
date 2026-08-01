@@ -560,6 +560,22 @@ struct NotebookCaptureLivePreviewDTO: Equatable {
     let sessionId: String
     let previewRevision: UInt64
     let utterances: [NotebookCaptureUtteranceDTO]
+    let translationCues: [NotebookCaptureTranslationCueDTO]
+    let laneHealth: [NotebookCaptureLaneHealthDTO]
+
+    init(
+        sessionId: String,
+        previewRevision: UInt64,
+        utterances: [NotebookCaptureUtteranceDTO],
+        translationCues: [NotebookCaptureTranslationCueDTO] = [],
+        laneHealth: [NotebookCaptureLaneHealthDTO] = []
+    ) {
+        self.sessionId = sessionId
+        self.previewRevision = previewRevision
+        self.utterances = utterances
+        self.translationCues = translationCues
+        self.laneHealth = laneHealth
+    }
 }
 
 /// One auxiliary translation segment anchored to the capture audio timeline.
@@ -600,6 +616,29 @@ struct NotebookCaptureLaneHealthDTO: Codable, Equatable {
     /// nil is the canonical transcription lane.
     let targetLanguage: String?
     let state: State
+    let groupEpoch: UInt64
+    let finalAudioProcMs: UInt64?
+    let totalAudioProcMs: UInt64?
+    let lagMs: UInt64?
+    let inputDiscontinuous: Bool
+
+    init(
+        targetLanguage: String?,
+        state: State,
+        groupEpoch: UInt64 = 0,
+        finalAudioProcMs: UInt64? = nil,
+        totalAudioProcMs: UInt64? = nil,
+        lagMs: UInt64? = nil,
+        inputDiscontinuous: Bool = false
+    ) {
+        self.targetLanguage = targetLanguage
+        self.state = state
+        self.groupEpoch = groupEpoch
+        self.finalAudioProcMs = finalAudioProcMs
+        self.totalAudioProcMs = totalAudioProcMs
+        self.lagMs = lagMs
+        self.inputDiscontinuous = inputDiscontinuous
+    }
 }
 
 enum NotebookCaptureLivePresentation {
@@ -615,6 +654,54 @@ enum NotebookCaptureLivePresentation {
             $0.sessionId == sessionId && durableSequences.contains($0.sequence) == false
         })
         return rows.sorted { $0.sequence < $1.sequence }
+    }
+
+    /// Canvas-sized live suffix without filtering or sorting the full durable
+    /// session on every SwiftUI refresh. Both inputs are maintained in source
+    /// sequence order by the store/provider. Walking backward stops as soon as
+    /// enough candidates exist, then only the at-most `2 * limit` candidate
+    /// set is deduplicated and sorted.
+    static func utteranceTail(
+        durable: [NotebookCaptureUtteranceDTO],
+        preview: [NotebookCaptureUtteranceDTO],
+        sessionId: String?,
+        limit: Int
+    ) -> [NotebookCaptureUtteranceDTO] {
+        let limit = max(limit, 0)
+        guard limit > 0 else { return [] }
+        guard let sessionId else { return Array(durable.suffix(limit)) }
+
+        func orderedTail(
+            of rows: [NotebookCaptureUtteranceDTO],
+            sessionId: String
+        ) -> [NotebookCaptureUtteranceDTO] {
+            var result: [NotebookCaptureUtteranceDTO] = []
+            result.reserveCapacity(min(limit, rows.count))
+            for row in rows.reversed() {
+                if row.sessionId != sessionId { continue }
+                result.append(row)
+                if result.count == limit { break }
+            }
+            return result.reversed()
+        }
+
+        let durableTail = orderedTail(of: durable, sessionId: sessionId)
+        let previewTail = orderedTail(of: preview, sessionId: sessionId)
+        let durableSequences = Set(durableTail.map(\.sequence))
+        // When the durable suffix is already full, an older preview cannot
+        // enter the final suffix. This also prevents an old preview duplicate
+        // whose durable row sits just outside the bounded candidate set from
+        // resurfacing as live text.
+        let durableCutoff = durableTail.count == limit
+            ? durableTail.first?.sequence
+            : nil
+        var rows = durableTail
+        rows.append(contentsOf: previewTail.filter { row in
+            guard durableSequences.contains(row.sequence) == false else { return false }
+            return durableCutoff.map { row.sequence > $0 } ?? true
+        })
+        rows.sort { $0.sequence < $1.sequence }
+        return Array(rows.suffix(limit))
     }
 }
 
@@ -1455,7 +1542,12 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
                 NotebookCaptureLaneHealthDTO.State(rawValue: lane.state).map { state in
                     NotebookCaptureLaneHealthDTO(
                         targetLanguage: lane.targetLanguage,
-                        state: state
+                        state: state,
+                        groupEpoch: lane.groupEpoch,
+                        finalAudioProcMs: lane.finalAudioProcMs,
+                        totalAudioProcMs: lane.totalAudioProcMs,
+                        lagMs: lane.lagMs,
+                        inputDiscontinuous: lane.inputDiscontinuous
                     )
                 }
             },
@@ -1492,7 +1584,34 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
         NotebookCaptureLivePreviewDTO(
             sessionId: value.sessionId,
             previewRevision: value.previewRevision,
-            utterances: value.utterances.map(Self.map)
+            utterances: value.utterances.map(Self.map),
+            translationCues: value.translationCues.map { cue in
+                NotebookCaptureTranslationCueDTO(
+                    targetLanguage: cue.targetLanguage,
+                    groupEpoch: cue.groupEpoch,
+                    providerSequence: cue.providerSequence,
+                    sourceLanguage: cue.sourceLanguage,
+                    sourceStartMs: cue.sourceStartMs,
+                    sourceEndMs: cue.sourceEndMs,
+                    text: cue.text,
+                    completion: cue.completion,
+                    withdrawn: cue.withdrawn,
+                    revision: cue.revision
+                )
+            },
+            laneHealth: value.laneHealth.compactMap { lane in
+                NotebookCaptureLaneHealthDTO.State(rawValue: lane.state).map { state in
+                    NotebookCaptureLaneHealthDTO(
+                        targetLanguage: lane.targetLanguage,
+                        state: state,
+                        groupEpoch: lane.groupEpoch,
+                        finalAudioProcMs: lane.finalAudioProcMs,
+                        totalAudioProcMs: lane.totalAudioProcMs,
+                        lagMs: lane.lagMs,
+                        inputDiscontinuous: lane.inputDiscontinuous
+                    )
+                }
+            }
         )
     }
 
@@ -2965,10 +3084,26 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     private struct UtteranceGapRepair {
+        private static let maximumBufferedDeltaCount = 256
+
         let id: UUID
         let sessionId: String
         let generation: UInt64?
         var targetEventRevision: UInt64
+        var bufferedDeltas: [UInt64: NotebookCaptureEventDTO]
+
+        mutating func observe(_ event: NotebookCaptureEventDTO) {
+            guard event.sessionId == sessionId,
+                  event.isFullSnapshot == false,
+                  event.eventRevision > 0
+            else { return }
+            targetEventRevision = max(targetEventRevision, event.eventRevision)
+            bufferedDeltas[event.eventRevision] = event
+            while bufferedDeltas.count > Self.maximumBufferedDeltaCount,
+                  let oldestRevision = bufferedDeltas.keys.min() {
+                bufferedDeltas.removeValue(forKey: oldestRevision)
+            }
+        }
     }
 
     @Published private(set) var sessionId: String?
@@ -2987,10 +3122,20 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// The audience canvas reads translations from here in multilingual mode;
     /// the durable transcript keeps reading bound utterance variants.
     @Published private(set) var translationCues: [String: NotebookCaptureTranslationCueDTO] = [:]
+    /// Bounded replace-in-full cue tail delivered with the speculative source
+    /// frame. While capture is active this is the live canvas authority; it is
+    /// deliberately separate from the durable all-session cue dictionary.
+    @Published private(set) var liveTranslationCues:
+        [String: NotebookCaptureTranslationCueDTO] = [:]
+    private var hasLiveTranslationCueSnapshot = false
     /// Per-lane health of the running stream group, keyed by target language;
     /// the canonical lane is keyed by `canonicalLaneHealthKey`. Process-local:
     /// it describes a live group, so it is empty outside one.
     @Published private(set) var laneHealth: [String: NotebookCaptureLaneHealthDTO.State] = [:]
+    /// Full per-lane progress state from the latest replace-in-full frame.
+    /// This lets operator telemetry distinguish provider lag from UI paint or
+    /// row-correlation delay without exposing diagnostics on the audience UI.
+    @Published private(set) var laneTelemetry: [String: NotebookCaptureLaneHealthDTO] = [:]
 
     /// The canonical transcription lane has no target language of its own.
     static let canonicalLaneHealthKey = "#canonical"
@@ -3095,6 +3240,15 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             durable: utterances,
             preview: livePreviewUtterances,
             sessionId: sessionId
+        )
+    }
+
+    func presentedUtteranceTail(limit: Int) -> [NotebookCaptureUtteranceDTO] {
+        NotebookCaptureLivePresentation.utteranceTail(
+            durable: utterances,
+            preview: livePreviewUtterances,
+            sessionId: sessionId,
+            limit: limit
         )
     }
     var requiresApplicationTerminationPreparation: Bool {
@@ -4184,8 +4338,14 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         profile = .localDefault(notebookId: "")
         captureState = .completed
         remoteHealth = .off
+        realtimeLagMs = nil
         projectionState = .ready
         utterances = []
+        translationCues = [:]
+        liveTranslationCues = [:]
+        hasLiveTranslationCueSnapshot = false
+        laneHealth = [:]
+        laneTelemetry = [:]
         committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
         cancelLivePreviewCoalescing()
         livePreviewUtterances = []
@@ -4535,10 +4695,48 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     private func applyLivePreview(_ preview: NotebookCaptureLivePreviewDTO) {
-        guard preview.sessionId == sessionId else { return }
+        guard preview.sessionId == sessionId, captureState.isActive else { return }
         if let lastAppliedLivePreviewRevision,
            preview.previewRevision <= lastAppliedLivePreviewRevision {
             return
+        }
+        let nextTranslationCues = Dictionary(
+            preview.translationCues
+                .filter { $0.withdrawn == false && $0.text.isEmpty == false }
+                .map { ($0.id, $0) },
+            uniquingKeysWith: { left, right in
+                right.revision >= left.revision ? right : left
+            }
+        )
+        hasLiveTranslationCueSnapshot = true
+        if nextTranslationCues != liveTranslationCues {
+            liveTranslationCues = nextTranslationCues
+        }
+        let nextLaneHealth = Dictionary(
+            preview.laneHealth.map { lane in
+                (
+                    lane.targetLanguage.map(normalizedLanguage)
+                        ?? Self.canonicalLaneHealthKey,
+                    lane.state
+                )
+            },
+            uniquingKeysWith: { _, right in right }
+        )
+        if nextLaneHealth != laneHealth {
+            laneHealth = nextLaneHealth
+        }
+        let nextLaneTelemetry = Dictionary(
+            preview.laneHealth.map { lane in
+                (
+                    lane.targetLanguage.map(normalizedLanguage)
+                        ?? Self.canonicalLaneHealthKey,
+                    lane
+                )
+            },
+            uniquingKeysWith: { _, right in right }
+        )
+        if nextLaneTelemetry != laneTelemetry {
+            laneTelemetry = nextLaneTelemetry
         }
         let next = preview.utterances.filter {
             $0.sessionId == preview.sessionId
@@ -4672,6 +4870,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private func reconcileLaneHealth(for event: NotebookCaptureEventDTO) {
         if event.captureState.isActive == false {
             laneHealth = [:]
+            laneTelemetry = [:]
             return
         }
         guard event.laneHealth.isEmpty == false else { return }
@@ -4681,6 +4880,16 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                     lane.targetLanguage.map(normalizedLanguage)
                         ?? Self.canonicalLaneHealthKey,
                     lane.state
+                )
+            },
+            uniquingKeysWith: { _, right in right }
+        )
+        laneTelemetry = Dictionary(
+            event.laneHealth.map { lane in
+                (
+                    lane.targetLanguage.map(normalizedLanguage)
+                        ?? Self.canonicalLaneHealthKey,
+                    lane
                 )
             },
             uniquingKeysWith: { _, right in right }
@@ -4707,28 +4916,26 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     /// The audience canvas's per-language cue view: present cues targeting
-    /// `language`, in spoken order. Epoch first — timestamps restart when a
-    /// whole stream group restarts, so they are only comparable within one
-    /// epoch. Cues without a time anchor sort after timed siblings of the
-    /// same epoch, by provider order.
+    /// `language`, in spoken order. Epoch and provider sequence are the
+    /// authoritative order within one target stream. Capture timestamps are
+    /// alignment evidence, not an ordering fallback: putting nil after every
+    /// timestamp would let one old unanchored cue remain the track head
+    /// forever.
     func presentedTranslationCues(for language: String) -> [NotebookCaptureTranslationCueDTO] {
         let normalized = normalizedLanguage(language)
-        return translationCues.values
+        let cues = captureState.isActive && hasLiveTranslationCueSnapshot
+            ? liveTranslationCues
+            : translationCues
+        return cues.values
             .filter { normalizedLanguage($0.targetLanguage) == normalized }
             .sorted { left, right in
                 if left.groupEpoch != right.groupEpoch {
                     return left.groupEpoch < right.groupEpoch
                 }
-                switch (left.sourceStartMs, right.sourceStartMs) {
-                case let (.some(leftStart), .some(rightStart)) where leftStart != rightStart:
-                    return leftStart < rightStart
-                case (.some, .none):
-                    return true
-                case (.none, .some):
-                    return false
-                default:
+                if left.providerSequence != right.providerSequence {
                     return left.providerSequence < right.providerSequence
                 }
+                return (left.sourceStartMs ?? 0) < (right.sourceStartMs ?? 0)
             }
     }
 
@@ -4759,36 +4966,28 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
         if var repair = utteranceGapRepair,
            repair.sessionId == event.sessionId {
-            // Any event that arrives while a snapshot is in flight can make
-            // that snapshot stale, even when the event itself is sequential.
-            // Advancing the target makes the repair discard that result and
-            // fetch again after the newest observed durable revision.
-            repair.targetEventRevision = max(
-                repair.targetEventRevision,
-                event.eventRevision
-            )
+            // The Rust snapshot carries the exact callback revision it covers.
+            // Keep later deltas so the snapshot can be installed and advanced
+            // to the live edge without requiring callbacks to go quiet.
+            repair.observe(event)
             utteranceGapRepair = repair
             return
         }
 
         guard hasGap else { return }
-        beginUtteranceGapRepair(
-            sessionId: event.sessionId,
-            targetEventRevision: event.eventRevision
-        )
+        beginUtteranceGapRepair(with: event)
     }
 
-    private func beginUtteranceGapRepair(
-        sessionId: String,
-        targetEventRevision: UInt64
-    ) {
+    private func beginUtteranceGapRepair(with event: NotebookCaptureEventDTO) {
         guard utteranceGapRepair == nil else { return }
-        let repair = UtteranceGapRepair(
+        var repair = UtteranceGapRepair(
             id: UUID(),
-            sessionId: sessionId,
+            sessionId: event.sessionId,
             generation: acceptedCallbackGeneration,
-            targetEventRevision: targetEventRevision
+            targetEventRevision: event.eventRevision,
+            bufferedDeltas: [:]
         )
+        repair.observe(event)
         utteranceGapRepair = repair
         utteranceGapRepairTask = Task { @MainActor [weak self] in
             await self?.runUtteranceGapRepair(id: repair.id)
@@ -4799,7 +4998,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         var retryDelayNanoseconds: UInt64 = 20_000_000
         let maximumRetryDelayNanoseconds: UInt64 = 1_000_000_000
         while let repair = currentUtteranceGapRepair(id: id) {
-            let targetEventRevision = repair.targetEventRevision
+            let requestedTargetEventRevision = repair.targetEventRevision
             let snapshot: NotebookCaptureEventDTO
             do {
                 // The live adapter performs the blocking UniFFI read on a
@@ -4836,29 +5035,63 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                 continue
             }
 
-            guard current.targetEventRevision == targetEventRevision else {
-                // The snapshot may have been read before a callback observed
-                // during this await. Discard it completely so deletions and
-                // variant removals cannot resurrect stale local data.
-                retryDelayNanoseconds = 20_000_000
-                continue
-            }
+            // Active Rust snapshots are stamped, under the callback mailbox
+            // lock, with the highest callback revision they cover. Revision
+            // zero is retained as a compatibility fallback for an older core:
+            // the snapshot read still happened after the repair request and
+            // therefore covers its request-time target.
+            let checkpointRevision = snapshot.eventRevision == 0
+                ? requestedTargetEventRevision
+                : snapshot.eventRevision
+            let replayDeltas = current.bufferedDeltas.values
+                .filter { $0.eventRevision > checkpointRevision }
+                .sorted { $0.eventRevision < $1.eventRevision }
 
-            // No higher event revision arrived during the read, so this full
-            // durable snapshot is authoritative for the stable target. Route
-            // every row through `merge` to preserve committed edit barriers.
+            // Install the checkpoint even if callbacks continued during the
+            // read. Later buffered deltas are replayed below, so a deletion in
+            // the snapshot cannot resurrect stale local data and the repair no
+            // longer depends on finding a quiet interval.
             utterances = []
             merge(snapshot.utterances)
-            // The gap this repair exists to close swallows whole events, not
-            // just their utterances. A dropped delta can carry a cue
-            // withdrawal — leaving retracted text on the audience canvas for
-            // the rest of the session — or the one lane transition a session
-            // ever produces. Both rebuild from the same snapshot.
             reconcileTranslationCues(for: snapshot)
             reconcileLaneHealth(for: snapshot)
-            utteranceGapRepair = nil
-            utteranceGapRepairTask = nil
-            return
+            for delta in replayDeltas {
+                merge(delta.utterances)
+                reconcileTranslationCues(for: delta)
+                reconcileLaneHealth(for: delta)
+            }
+
+            let replayedMaximumRevision = replayDeltas.last?.eventRevision
+                ?? checkpointRevision
+            lastAppliedEventRevision = max(
+                lastAppliedEventRevision ?? 0,
+                max(checkpointRevision, replayedMaximumRevision)
+            )
+
+            var continuousThroughRevision = checkpointRevision
+            for delta in replayDeltas {
+                guard continuousThroughRevision < UInt64.max else { break }
+                let expectedRevision = continuousThroughRevision + 1
+                guard delta.eventRevision == expectedRevision else { break }
+                continuousThroughRevision = delta.eventRevision
+            }
+
+            if continuousThroughRevision >= current.targetEventRevision {
+                utteranceGapRepair = nil
+                utteranceGapRepairTask = nil
+                return
+            }
+
+            // A second callback coalescing gap exists after this checkpoint.
+            // Keep only deltas the snapshot did not cover and fetch a newer
+            // checkpoint immediately. Each successful read advances coverage,
+            // even while the provider continues producing events.
+            var next = current
+            next.bufferedDeltas = current.bufferedDeltas.filter {
+                $0.key > checkpointRevision
+            }
+            utteranceGapRepair = next
+            retryDelayNanoseconds = 20_000_000
         }
     }
 
@@ -5016,7 +5249,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         cancelUtteranceGapRepair()
         utterances = []
         translationCues = [:]
+        liveTranslationCues = [:]
+        hasLiveTranslationCueSnapshot = false
         laneHealth = [:]
+        laneTelemetry = [:]
         committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
         cancelLivePreviewCoalescing()
         livePreviewUtterances = []

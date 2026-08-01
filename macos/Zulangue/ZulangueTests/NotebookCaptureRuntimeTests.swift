@@ -1892,6 +1892,108 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testLivePreviewFrameReplacesCueAndHealthTailWithoutDeletingDurableFacts() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        let cue = {
+            (target: String, sequence: UInt64, text: String) in
+            NotebookCaptureTranslationCueDTO(
+                targetLanguage: target,
+                groupEpoch: 0,
+                providerSequence: sequence,
+                sourceLanguage: "en",
+                sourceStartMs: sequence * 1_000,
+                sourceEndMs: sequence * 1_000 + 800,
+                text: text,
+                completion: "partial",
+                withdrawn: false,
+                revision: 1
+            )
+        }
+        let durableChinese = cue("zh", 0, "耐久旧事实")
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 1,
+            isFullSnapshot: false,
+            translationCues: [durableChinese]
+        ))
+        let didPersistDurableCue = await waitUntil {
+            store.translationCues[durableChinese.id] != nil
+        }
+        XCTAssertTrue(didPersistDurableCue)
+
+        let liveChinese = cue("zh", 1, "当前中文")
+        let liveThai = cue("th", 1, "ภาษาไทยปัจจุบัน")
+        client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+            sessionId: "session-a",
+            previewRevision: 1,
+            utterances: [],
+            translationCues: [liveChinese, liveThai],
+            laneHealth: [
+                NotebookCaptureLaneHealthDTO(targetLanguage: nil, state: .live),
+                NotebookCaptureLaneHealthDTO(
+                    targetLanguage: "zh",
+                    state: .live,
+                    groupEpoch: 2,
+                    finalAudioProcMs: 4_100,
+                    totalAudioProcMs: 4_500,
+                    lagMs: 400
+                ),
+                NotebookCaptureLaneHealthDTO(targetLanguage: "th", state: .live),
+            ]
+        ))
+        let didInstallFirstLiveFrame = await waitUntil {
+            store.presentedTranslationCues(for: "zh").map(\.text) == ["当前中文"]
+                && store.presentedTranslationCues(for: "th").map(\.text)
+                    == ["ภาษาไทยปัจจุบัน"]
+        }
+        XCTAssertTrue(didInstallFirstLiveFrame)
+        XCTAssertEqual(store.laneTelemetry["zh"]?.groupEpoch, 2)
+        XCTAssertEqual(store.laneTelemetry["zh"]?.lagMs, 400)
+
+        let newerThai = cue("th", 2, "ภาษาไทยล่าสุด")
+        client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+            sessionId: "session-a",
+            previewRevision: 2,
+            utterances: [],
+            translationCues: [newerThai],
+            laneHealth: [
+                NotebookCaptureLaneHealthDTO(targetLanguage: nil, state: .live),
+                NotebookCaptureLaneHealthDTO(
+                    targetLanguage: "zh",
+                    state: .failed,
+                    groupEpoch: 2,
+                    finalAudioProcMs: 4_100,
+                    totalAudioProcMs: 4_500,
+                    lagMs: 2_300,
+                    inputDiscontinuous: true
+                ),
+                NotebookCaptureLaneHealthDTO(targetLanguage: "th", state: .live),
+            ]
+        ))
+        let didReplaceLiveFrame = await waitUntil {
+            store.presentedTranslationCues(for: "zh").isEmpty
+                && store.presentedTranslationCues(for: "th").map(\.text) == ["ภาษาไทยล่าสุด"]
+                && store.failedTranslationLanguages == ["zh"]
+        }
+        XCTAssertTrue(didReplaceLiveFrame)
+        XCTAssertEqual(store.laneTelemetry["zh"]?.lagMs, 2_300)
+        XCTAssertEqual(store.laneTelemetry["zh"]?.inputDiscontinuous, true)
+        XCTAssertNotNil(
+            store.translationCues[durableChinese.id],
+            "bounded live-frame absence must withdraw presentation only, not durable history"
+        )
+        store.resetForTesting()
+    }
+
+    @MainActor
     func testCaptureGapRepairFromOldGenerationCannotOverwriteNewSession() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         let controller = BlockingNotebookReconcileController()
@@ -2012,6 +2114,136 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(didConverge)
         XCTAssertEqual(client.reconcileCallCount, 2)
         XCTAssertEqual(client.listUtterancesCount, 0)
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testCaptureGapRepairReplaysContinuousDeltasAfterSnapshotCheckpoint() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let controller = BlockingNotebookReconcileController()
+        client.reconcileController = controller
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        let cue = { (sequence: UInt64, text: String) in
+            NotebookCaptureTranslationCueDTO(
+                targetLanguage: "th",
+                groupEpoch: 0,
+                providerSequence: sequence,
+                sourceLanguage: "en",
+                sourceStartMs: sequence * 1_000,
+                sourceEndMs: sequence * 1_000 + 700,
+                text: text,
+                completion: "partial",
+                withdrawn: false,
+                revision: 1
+            )
+        }
+        let firstCue = cue(0, "หนึ่ง")
+        let withdrawnCue = cue(1, "สอง")
+        let withdrawal = NotebookCaptureTranslationCueDTO(
+            targetLanguage: withdrawnCue.targetLanguage,
+            groupEpoch: withdrawnCue.groupEpoch,
+            providerSequence: withdrawnCue.providerSequence,
+            sourceLanguage: withdrawnCue.sourceLanguage,
+            sourceStartMs: withdrawnCue.sourceStartMs,
+            sourceEndMs: withdrawnCue.sourceEndMs,
+            text: "",
+            completion: "partial",
+            withdrawn: true,
+            revision: 2
+        )
+
+        var first = NotebookCaptureUtteranceDTO.sample.replacingIdentity(sequence: 0)
+        first.revision = 1
+        first.sourceText = "initial"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first],
+            eventRevision: 1,
+            isFullSnapshot: false,
+            translationCues: [firstCue, withdrawnCue],
+            laneHealth: [
+                NotebookCaptureLaneHealthDTO(targetLanguage: nil, state: .live),
+                NotebookCaptureLaneHealthDTO(targetLanguage: "th", state: .live),
+            ]
+        ))
+
+        var checkpointFirst = first
+        checkpointFirst.revision = 2
+        checkpointFirst.sourceText = "checkpoint"
+        var recovered = first.replacingIdentity(id: "utt-recovered", sequence: 1)
+        recovered.sourceText = "recovered missing revision"
+        client.reconcileEvents = [captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [checkpointFirst, recovered],
+            eventRevision: 3,
+            isFullSnapshot: true,
+            translationCues: [firstCue, withdrawnCue],
+            laneHealth: [
+                NotebookCaptureLaneHealthDTO(targetLanguage: nil, state: .live),
+                NotebookCaptureLaneHealthDTO(targetLanguage: "th", state: .live),
+            ]
+        )]
+
+        // Revision 2 was coalesced. Revision 3 starts the repair and is covered
+        // by the mailbox-locked snapshot above.
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [checkpointFirst],
+            eventRevision: 3,
+            isFullSnapshot: false
+        ))
+        let didStartRepair = await waitUntil { controller.isWaiting(call: 0) }
+        XCTAssertTrue(didStartRepair)
+
+        // Continuous callbacks arrive while the snapshot is in flight. The
+        // withdrawal and failed lane are both state that must survive replay.
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 4,
+            isFullSnapshot: false,
+            translationCues: [withdrawal],
+            laneHealth: [
+                NotebookCaptureLaneHealthDTO(targetLanguage: nil, state: .live),
+                NotebookCaptureLaneHealthDTO(targetLanguage: "th", state: .failed),
+            ]
+        ))
+        var latest = checkpointFirst
+        latest.revision = 3
+        latest.sourceText = "latest continuous callback"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [latest],
+            eventRevision: 5,
+            isFullSnapshot: false
+        ))
+
+        controller.release(call: 0)
+        let didConverge = await waitUntil {
+            store.utterances.map(\.sourceText) == [
+                "latest continuous callback",
+                "recovered missing revision",
+            ]
+                && store.translationCues[firstCue.id] != nil
+                && store.translationCues[withdrawnCue.id] == nil
+                && store.failedTranslationLanguages == ["th"]
+        }
+        XCTAssertTrue(
+            didConverge,
+            "a checkpoint plus contiguous replay must converge without a quiet callback window"
+        )
+        XCTAssertEqual(client.reconcileCallCount, 1)
+        XCTAssertFalse(controller.isWaiting(call: 1))
         store.resetForTesting()
     }
 

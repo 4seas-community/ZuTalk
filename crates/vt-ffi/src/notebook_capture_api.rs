@@ -339,6 +339,17 @@ pub struct FfiNotebookCaptureLaneHealth {
     pub target_language: Option<String>,
     /// "live" | "connecting" | "failed"
     pub state: String,
+    /// Cross-stream correlation epoch currently owned by this lane.
+    pub group_epoch: u64,
+    /// Provider-confirmed capture-timeline progress for finalized audio.
+    pub final_audio_proc_ms: Option<u64>,
+    /// Provider-confirmed capture-timeline progress for all processed audio.
+    pub total_audio_proc_ms: Option<u64>,
+    /// Provider processing plus local queued-audio lag for this lane.
+    pub lag_ms: Option<u64>,
+    /// True when this lane was stopped because local PCM could no longer be
+    /// appended contiguously. It must not be resumed on the same timeline.
+    pub input_discontinuous: bool,
 }
 
 /// One auxiliary translation segment, anchored to the capture-wide audio
@@ -379,6 +390,13 @@ pub struct FfiNotebookCaptureLivePreview {
     /// is harmless because every callback carries the complete current tail.
     pub preview_revision: u64,
     pub utterances: Vec<FfiNotebookCaptureUtterance>,
+    /// Replace-in-full, bounded target-language tail. Unlike durable capture
+    /// event deltas, this state is safe to coalesce at both callback hops: the
+    /// newest preview always describes every language the live canvas needs.
+    pub translation_cues: Vec<FfiNotebookCaptureTranslationCue>,
+    /// Replace-in-full health for the same live frame. A skipped transition is
+    /// harmless because the next frame repeats the complete lane state.
+    pub lane_health: Vec<FfiNotebookCaptureLaneHealth>,
 }
 
 #[uniffi::export(callback_interface)]
@@ -1229,6 +1247,90 @@ struct TaggedStreamEvent {
     event: SttStreamEvent,
 }
 
+/// Bounded round-robin staging in front of the collector.
+///
+/// Stream forwarders still share one Tokio channel, but the collector drains
+/// that bounded FIFO into per-lane queues before choosing the next event. A
+/// noisy source can therefore occupy backpressure capacity without receiving
+/// a second turn while a sibling already has work ready.
+struct FairTaggedEventQueue {
+    pending: Vec<std::collections::VecDeque<TaggedStreamEvent>>,
+    pending_count: usize,
+    pending_limit: usize,
+    next_lane: usize,
+}
+
+impl FairTaggedEventQueue {
+    fn new(lane_count: usize, pending_limit: usize) -> Self {
+        Self {
+            pending: (0..lane_count)
+                .map(|_| std::collections::VecDeque::new())
+                .collect(),
+            pending_count: 0,
+            pending_limit: pending_limit.max(1),
+            next_lane: 0,
+        }
+    }
+
+    fn enqueue(&mut self, tagged: TaggedStreamEvent) -> Result<(), TaggedStreamEvent> {
+        let Some(queue) = self.pending.get_mut(tagged.lane_index) else {
+            return Err(tagged);
+        };
+        queue.push_back(tagged);
+        self.pending_count += 1;
+        Ok(())
+    }
+
+    fn pop_round_robin(&mut self) -> Option<TaggedStreamEvent> {
+        if self.pending_count == 0 || self.pending.is_empty() {
+            return None;
+        }
+        for offset in 0..self.pending.len() {
+            let lane_index = (self.next_lane + offset) % self.pending.len();
+            if let Some(tagged) = self.pending[lane_index].pop_front() {
+                self.pending_count -= 1;
+                self.next_lane = (lane_index + 1) % self.pending.len();
+                return Some(tagged);
+            }
+        }
+        debug_assert_eq!(self.pending_count, 0);
+        None
+    }
+
+    async fn recv(
+        &mut self,
+        receiver: &mut tokio::sync::mpsc::Receiver<TaggedStreamEvent>,
+        discontinuities: &mut tokio::sync::mpsc::UnboundedReceiver<TaggedStreamEvent>,
+    ) -> Option<TaggedStreamEvent> {
+        loop {
+            while self.pending_count < self.pending_limit {
+                let next = discontinuities
+                    .try_recv()
+                    .ok()
+                    .or_else(|| receiver.try_recv().ok());
+                let Some(tagged) = next else {
+                    break;
+                };
+                if let Err(invalid) = self.enqueue(tagged) {
+                    return Some(invalid);
+                }
+            }
+            if let Some(tagged) = self.pop_round_robin() {
+                return Some(tagged);
+            }
+            let tagged = tokio::select! {
+                biased;
+                tagged = discontinuities.recv(), if !discontinuities.is_closed() => tagged,
+                tagged = receiver.recv(), if !receiver.is_closed() => tagged,
+                else => None,
+            }?;
+            if let Err(invalid) = self.enqueue(tagged) {
+                return Some(invalid);
+            }
+        }
+    }
+}
+
 struct CancelRemoteGroupOnDrop(tokio_util::sync::CancellationToken);
 
 impl Drop for CancelRemoteGroupOnDrop {
@@ -1254,6 +1356,10 @@ struct StreamAggregationLane {
     /// exited. A failed auxiliary lane stays in the group as a tombstone —
     /// its column stops updating — while every sibling keeps running.
     failed: bool,
+    input_discontinuous: bool,
+    final_audio_proc_ms: Option<u64>,
+    total_audio_proc_ms: Option<u64>,
+    lag_ms: Option<u64>,
     provider_accepted_configuration: bool,
     disconnected_at_frame: Option<u64>,
 }
@@ -1374,6 +1480,7 @@ async fn collect_stream_events(
     lane_descriptors: Vec<RemoteStreamLane>,
     lane_controls: Vec<Option<tokio::sync::mpsc::Sender<SttStreamControl>>>,
     mut event_rx: tokio::sync::mpsc::Receiver<TaggedStreamEvent>,
+    mut discontinuity_rx: tokio::sync::mpsc::UnboundedReceiver<TaggedStreamEvent>,
     group_cancel: tokio_util::sync::CancellationToken,
     captured_frames: Arc<AtomicU64>,
     callback: CaptureCallbackSink,
@@ -1407,6 +1514,10 @@ async fn collect_stream_events(
                 connected: false,
                 ever_connected: false,
                 failed: false,
+                input_discontinuous: false,
+                final_audio_proc_ms: None,
+                total_audio_proc_ms: None,
+                lag_ms: None,
                 provider_accepted_configuration: false,
                 disconnected_at_frame: None,
             }
@@ -1443,9 +1554,15 @@ async fn collect_stream_events(
     let mut reverse_variant_bindings =
         std::collections::HashMap::<(u64, u64, String), (usize, u64, u64)>::new();
     let mut initialized_variants = std::collections::HashSet::<(u64, String)>::new();
+    let mut live_translation_cues =
+        std::collections::HashMap::<LiveTranslationCueKey, FfiNotebookCaptureTranslationCue>::new();
     for item in store.list_translation_inbox(&session_id).map_err(|error| {
         local_persistence_failure("rehydrate durable auxiliary translation inbox", error)
     })? {
+        reconcile_live_translation_cues(
+            &mut live_translation_cues,
+            std::slice::from_ref(&translation_cue_from_inbox_item(&item)),
+        );
         let stored_lane_index =
             usize::try_from(item.key.lane_index).map_err(|_| ProviderFailure {
                 error_type: "invalid_stream_lane".to_string(),
@@ -1502,7 +1619,9 @@ async fn collect_stream_events(
     }
 
     let mut last_boundary_broadcast: Option<tokio::time::Instant> = None;
-    while let Some(tagged) = event_rx.recv().await {
+    let fair_pending_limit = lanes.len().saturating_mul(64).clamp(64, 512);
+    let mut fair_events = FairTaggedEventQueue::new(lanes.len(), fair_pending_limit);
+    while let Some(tagged) = fair_events.recv(&mut event_rx, &mut discontinuity_rx).await {
         let Some(lane) = lanes.get_mut(tagged.lane_index) else {
             group_cancel.cancel();
             return Err(ProviderFailure {
@@ -1510,6 +1629,14 @@ async fn collect_stream_events(
                 request_id: None,
             });
         };
+        if lane.failed && !matches!(&tagged.event, SttStreamEvent::InputDiscontinuity) {
+            // A local PCM discontinuity is terminal for this generation. The
+            // provider task may still have responses buffered when its child
+            // cancellation is observed; those late events cannot resurrect
+            // or append to a lane whose timeline is already known to contain
+            // a hole.
+            continue;
+        }
         let provider_accepted_configuration = matches!(
             &tagged.event,
             SttStreamEvent::Tokens(_)
@@ -1570,6 +1697,14 @@ async fn collect_stream_events(
                     | SttStreamEvent::Reconnecting { .. }
                     | SttStreamEvent::Error(_)
             );
+        let publishes_lane_state = matches!(
+            &tagged.event,
+            SttStreamEvent::Connected
+                | SttStreamEvent::Reconnecting { .. }
+                | SttStreamEvent::InputDiscontinuity
+                | SttStreamEvent::Error(_)
+        );
+        let publishes_lane_progress = matches!(&tagged.event, SttStreamEvent::AudioProgress { .. });
         let persisted = match tagged.event {
             SttStreamEvent::Connected => {
                 {
@@ -1702,7 +1837,14 @@ async fn collect_stream_events(
                     &mut initialized_variants,
                 )?
             }
-            SttStreamEvent::AudioProgress { lag_ms, .. } => {
+            SttStreamEvent::AudioProgress {
+                final_audio_proc_ms,
+                total_audio_proc_ms,
+                lag_ms,
+            } => {
+                lanes[lane_index].final_audio_proc_ms = Some(final_audio_proc_ms);
+                lanes[lane_index].total_audio_proc_ms = Some(total_audio_proc_ms);
+                lanes[lane_index].lag_ms = Some(lag_ms);
                 if lane_index == canonical_lane_index {
                     if let Ok(Some(run)) = store.get_run(&run_id) {
                         emit_realtime_progress(run, lag_ms, &callback);
@@ -1727,6 +1869,54 @@ async fn collect_stream_events(
                 )?;
                 lanes[lane_index].assembler.advance();
                 persisted
+            }
+            SttStreamEvent::InputDiscontinuity => {
+                if lanes[lane_index].failed {
+                    PersistedCaptureChanges::default()
+                } else {
+                    // Audio accepted before the failed block is still a
+                    // contiguous prefix and may be finalized. This lane is
+                    // then a terminal tombstone; no future PCM is appended to
+                    // its old provider timeline.
+                    let finalized = lanes[lane_index].assembler.finalize();
+                    let persisted = persist_stream_lane_updates(
+                        &store,
+                        &mut lanes,
+                        canonical_lane_index,
+                        lane_index,
+                        finalized,
+                        &selected_languages,
+                        &mut canonical_matches,
+                        &mut pending_variants,
+                        &mut variant_bindings,
+                        &mut reverse_variant_bindings,
+                        &mut initialized_variants,
+                    )?;
+                    lanes[lane_index].assembler.advance();
+                    lanes[lane_index].connected = false;
+                    lanes[lane_index].failed = true;
+                    lanes[lane_index].input_discontinuous = true;
+                    let failure = ProviderFailure {
+                        error_type: "audio_backpressure".to_string(),
+                        request_id: None,
+                    };
+                    let canonical_failed = lane_index == canonical_lane_index;
+                    if canonical_failed {
+                        group_cancel.cancel();
+                    }
+                    let health = if canonical_failed {
+                        RemoteHealth::Unavailable
+                    } else {
+                        RemoteHealth::Degraded
+                    };
+                    let run = store
+                        .update_remote_health(&run_id, health, Some(&failure))
+                        .map_err(|error| {
+                            local_persistence_failure("persist Soniox input discontinuity", error)
+                        })?;
+                    emit_capture_lane_transition(run, &lanes, &callback);
+                    persisted
+                }
             }
             SttStreamEvent::Error(error) => {
                 // `Error` is terminal for this stream runtime. Preserve any
@@ -1778,15 +1968,30 @@ async fn collect_stream_events(
             }
         };
 
+        let publishes_translation_preview = !persisted.translation_cues.is_empty();
+        if publishes_translation_preview {
+            reconcile_live_translation_cues(
+                &mut live_translation_cues,
+                &persisted.translation_cues,
+            );
+        }
+        let publishes_live_preview = publishes_canonical_preview
+            || publishes_translation_preview
+            || publishes_lane_state
+            || publishes_lane_progress;
+        let live_preview_cues =
+            publishes_live_preview.then(|| live_translation_cue_snapshot(&live_translation_cues));
+
         if persisted.requires_full_snapshot {
             if let Ok(Some(run)) = store.get_run(&run_id) {
-                let utterances = store.list_utterances(&run.session_id).map_err(|error| {
+                let mut event = event_full_snapshot_from_run(&store, run).map_err(|error| {
                     local_persistence_failure(
                         "load full callback snapshot after partial removal",
                         error,
                     )
                 })?;
-                callback.send(event_from_run(run, utterances, true));
+                event.lane_health = lane_health_snapshot(&lanes);
+                callback.send(event);
             }
         } else if !persisted.is_empty() || !persisted.translation_cues.is_empty() {
             // A cue-only batch is a real delta: an auxiliary partial can grow
@@ -1800,10 +2005,12 @@ async fn collect_stream_events(
                 );
             }
         }
-        if publishes_canonical_preview {
+        if let Some(live_preview_cues) = live_preview_cues {
             emit_live_preview(
                 &session_id,
                 lanes[canonical_lane_index].assembler.live_previews(),
+                live_preview_cues,
+                lane_health_snapshot(&lanes),
                 &callback,
             );
         }
@@ -2503,7 +2710,6 @@ struct TimelineAlignmentScore {
     overlap_per_mille: u16,
     source_language_matches: bool,
     midpoint_distance_ms: u64,
-    sequence_distance: u64,
     sequence: u64,
 }
 
@@ -2545,11 +2751,6 @@ fn ranked_canonical_sequences<'a>(
                     .midpoint_distance_ms
                     .cmp(&right_score.midpoint_distance_ms)
             })
-            .then_with(|| {
-                left_score
-                    .sequence_distance
-                    .cmp(&right_score.sequence_distance)
-            })
             .then_with(|| left_score.sequence.cmp(&right_score.sequence))
     });
     let Some((best_score, _)) = ranked.first() else {
@@ -2582,7 +2783,6 @@ fn timeline_alignment_evidence_eq(
         && left.overlap_per_mille == right.overlap_per_mille
         && left.source_language_matches == right.source_language_matches
         && left.midpoint_distance_ms == right.midpoint_distance_ms
-        && left.sequence_distance == right.sequence_distance
 }
 
 fn timeline_alignment_score(
@@ -2600,10 +2800,6 @@ fn timeline_alignment_score(
     let has_text_evidence = exact_source_text || contained_source_text;
     let source_language_matches =
         normalize_language(&candidate.utterance.source_language) == pending.source_language;
-    let sequence_distance = candidate
-        .utterance
-        .sequence
-        .abs_diff(pending.source_sequence);
     let mut score = TimelineAlignmentScore {
         exact_source_text,
         contained_source_text,
@@ -2614,7 +2810,6 @@ fn timeline_alignment_score(
         overlap_per_mille: 0,
         source_language_matches,
         midpoint_distance_ms: u64::MAX,
-        sequence_distance,
         sequence: candidate.utterance.sequence,
     };
 
@@ -2635,18 +2830,15 @@ fn timeline_alignment_score(
                     score.overlap_per_mille = overlap_per_mille;
                     Some(score)
                 }
-                // Disjoint in time. Sibling connection clocks drift apart over
-                // a long run, so this rules the row out only when the words
-                // vouch for the row instead. A matching sequence number does
-                // not: two connections number their own segments, and the
-                // numbers mean nothing to each other.
-                None if has_text_evidence => Some(score),
+                // Both intervals describe the shared capture timeline. Exact
+                // or contained words rank overlapping candidates, but cannot
+                // resurrect even a nearby disjoint repeated filler. The live
+                // cue remains visible without a row while the matching
+                // canonical interval has not arrived yet.
                 None => None,
             }
         }
-        _ if has_text_evidence || candidate.utterance.sequence == pending.source_sequence => {
-            Some(score)
-        }
+        _ if has_text_evidence => Some(score),
         _ => None,
     }
 }
@@ -2755,7 +2947,10 @@ fn timestamp_overlap_per_mille(
     }
     let intersection_start = left_start.max(right_start);
     let intersection_end = left_end.min(right_end);
-    if intersection_end < intersection_start {
+    let both_have_duration = left_end > left_start && right_end > right_start;
+    if intersection_end < intersection_start
+        || (both_have_duration && intersection_end == intersection_start)
+    {
         return None;
     }
     let shorter_duration = left_end
@@ -2854,14 +3049,29 @@ fn persist_assembled_utterances(
                     )
                 })?;
             if let Some(surviving_shell) = surviving_shell {
-                assembler.record_translation_persisted(
-                    &surviving_shell.id,
-                    translation_update
-                        .as_ref()
-                        .filter(|update| update.state == UtteranceVariantState::Ready)
-                        .map(|update| update.language.as_str()),
-                );
-                assembler.record_persisted(&surviving_shell.id, surviving_shell.revision);
+                let has_final_translation_owner = surviving_shell.variants.iter().any(|variant| {
+                    variant.role == UtteranceVariantRole::Translation
+                        && variant.state == UtteranceVariantState::Ready
+                        && variant.completion == Some(UtteranceCompletion::Complete)
+                });
+                if has_final_translation_owner {
+                    // The translation-only shell is now an immutable historical
+                    // row. Retire its source segment from the assembler so a
+                    // later canonical response allocates a fresh sequence
+                    // instead of trying to revise the Final owner's row and
+                    // turning a normal provider tail replacement into a
+                    // capture-wide persistence failure.
+                    assembler.retire_source_segment(&surviving_shell.id);
+                } else {
+                    assembler.record_translation_persisted(
+                        &surviving_shell.id,
+                        translation_update
+                            .as_ref()
+                            .filter(|update| update.state == UtteranceVariantState::Ready)
+                            .map(|update| update.language.as_str()),
+                    );
+                    assembler.record_persisted(&surviving_shell.id, surviving_shell.revision);
+                }
                 persisted_updates.push(surviving_shell);
             } else {
                 assembler.record_partial_removed(&update.utterance.id);
@@ -3090,6 +3300,11 @@ fn lane_health_snapshot(lanes: &[StreamAggregationLane]) -> Vec<FfiNotebookCaptu
                 "connecting"
             }
             .to_string(),
+            group_epoch: lane.group_epoch,
+            final_audio_proc_ms: lane.final_audio_proc_ms,
+            total_audio_proc_ms: lane.total_audio_proc_ms,
+            lag_ms: lane.lag_ms,
+            input_discontinuous: lane.input_discontinuous,
         })
         .collect()
 }
@@ -3134,6 +3349,84 @@ fn list_present_translation_cues(
         .collect())
 }
 
+/// The audience canvas renders at most eight rows. Keeping the same bounded
+/// tail per language makes live callbacks level-triggered without letting a
+/// stalled UI turn the callback mailbox into a session-length queue.
+const LIVE_TRANSLATION_CUES_PER_LANGUAGE: usize = 8;
+
+type LiveTranslationCueKey = (u64, u64, String);
+
+fn live_translation_cue_key(cue: &FfiNotebookCaptureTranslationCue) -> LiveTranslationCueKey {
+    (
+        cue.group_epoch,
+        cue.provider_sequence,
+        cue.target_language.clone(),
+    )
+}
+
+fn reconcile_live_translation_cues(
+    current: &mut std::collections::HashMap<
+        LiveTranslationCueKey,
+        FfiNotebookCaptureTranslationCue,
+    >,
+    changes: &[FfiNotebookCaptureTranslationCue],
+) {
+    for cue in changes {
+        let key = live_translation_cue_key(cue);
+        if current
+            .get(&key)
+            .is_some_and(|existing| existing.revision > cue.revision)
+        {
+            continue;
+        }
+        if cue.withdrawn {
+            current.remove(&key);
+        } else if !cue.text.is_empty() {
+            current.insert(key, cue.clone());
+        }
+    }
+
+    let mut keys_by_language =
+        std::collections::HashMap::<String, Vec<LiveTranslationCueKey>>::new();
+    for key in current.keys() {
+        keys_by_language
+            .entry(key.2.clone())
+            .or_default()
+            .push(key.clone());
+    }
+    for keys in keys_by_language.values_mut() {
+        keys.sort_by(|left, right| {
+            let left_cue = &current[left];
+            let right_cue = &current[right];
+            left_cue
+                .group_epoch
+                .cmp(&right_cue.group_epoch)
+                .then_with(|| left_cue.provider_sequence.cmp(&right_cue.provider_sequence))
+                .then_with(|| left_cue.source_start_ms.cmp(&right_cue.source_start_ms))
+        });
+        let remove_count = keys
+            .len()
+            .saturating_sub(LIVE_TRANSLATION_CUES_PER_LANGUAGE);
+        for key in keys.iter().take(remove_count) {
+            current.remove(key);
+        }
+    }
+}
+
+fn live_translation_cue_snapshot(
+    current: &std::collections::HashMap<LiveTranslationCueKey, FfiNotebookCaptureTranslationCue>,
+) -> Vec<FfiNotebookCaptureTranslationCue> {
+    let mut cues = current.values().cloned().collect::<Vec<_>>();
+    cues.sort_by(|left, right| {
+        left.target_language
+            .cmp(&right.target_language)
+            .then_with(|| left.group_epoch.cmp(&right.group_epoch))
+            .then_with(|| left.provider_sequence.cmp(&right.provider_sequence))
+            .then_with(|| left.source_start_ms.cmp(&right.source_start_ms))
+    });
+    cues
+}
+
 fn emit_realtime_progress(run: NotebookCaptureRun, lag_ms: u64, callback: &CaptureCallbackSink) {
     let mut event = event_from_run(run, Vec::new(), false);
     event.realtime_lag_ms = Some(lag_ms);
@@ -3143,12 +3436,16 @@ fn emit_realtime_progress(run: NotebookCaptureRun, lag_ms: u64, callback: &Captu
 fn emit_live_preview(
     session_id: &str,
     previews: Vec<AssembledRealtimeUtterance>,
+    translation_cues: Vec<FfiNotebookCaptureTranslationCue>,
+    lane_health: Vec<FfiNotebookCaptureLaneHealth>,
     callback: &CaptureCallbackSink,
 ) {
     callback.send_preview(FfiNotebookCaptureLivePreview {
         session_id: session_id.to_string(),
         preview_revision: 0,
         utterances: previews.into_iter().map(ffi_live_preview).collect(),
+        translation_cues,
+        lane_health,
     });
 }
 
@@ -3481,6 +3778,19 @@ impl CaptureCallbackSink {
         // A snapshot is the client's rebuild path after a coalescing gap, so
         // it has to carry lane health too or a lost transition never heals.
         event.lane_health = pending.lane_health.clone();
+        // `send_with_refresh_hook` allocates callback revisions while holding
+        // this same mailbox lock. Stamping the read here therefore makes the
+        // full snapshot an exact coverage checkpoint: every callback revision
+        // at or below this value is represented by the authoritative store
+        // snapshot (or by the process-local state copied above), while a later
+        // callback is guaranteed to receive a larger revision. Swift can
+        // install this snapshot and replay later deltas without waiting for a
+        // quiet interval in a continuous stream.
+        event.event_revision = self
+            .mailbox
+            .next_revision
+            .load(Ordering::Acquire)
+            .saturating_sub(1);
         Ok(event)
     }
 
@@ -4007,6 +4317,28 @@ impl RealtimeUtteranceAssembler {
         }
     }
 
+    /// Stops a withdrawn canonical source from ever reusing a row now owned by
+    /// an immutable Final translation. The durable shell stays in SQLite; only
+    /// the process-local source identity is retired. `next_sequence` is already
+    /// past this segment, so the next provider response creates a distinct row.
+    fn retire_source_segment(&mut self, id: &str) {
+        let Some(index) = self.segments.iter().position(|segment| segment.id == id) else {
+            return;
+        };
+        let segment = &mut self.segments[index];
+        segment.revision = None;
+        segment.persisted_translation_language = None;
+        segment.complete = true;
+        segment.source_dirty = false;
+        segment.translation_dirty = false;
+        if self.latest_original_segment == Some(index) {
+            self.latest_original_segment = None;
+        }
+        if self.latest_translation_segment == Some(index) {
+            self.latest_translation_segment = None;
+        }
+    }
+
     fn take_dirty_updates(&mut self) -> Vec<AssembledRealtimeUtterance> {
         let session_id = self.session_id.clone();
         let selected_languages = self.selected_languages.clone();
@@ -4374,6 +4706,13 @@ pub(crate) struct ActiveRemoteStream {
     pub(crate) control_tx: tokio::sync::mpsc::Sender<vt_stt::SttStreamControl>,
     pub(crate) stream_task: tokio::task::JoinHandle<Result<(), vt_stt::SttError>>,
     pub(crate) forward_task: tokio::task::JoinHandle<()>,
+    lane_cancel: tokio_util::sync::CancellationToken,
+    input_discontinuity_reported: std::sync::atomic::AtomicBool,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct PcmFanoutReport {
+    auxiliary_discontinuities: Vec<String>,
 }
 
 #[allow(dead_code)]
@@ -4382,61 +4721,146 @@ pub(crate) struct ActiveRemoteCapture {
     pub(crate) streams: Vec<ActiveRemoteStream>,
     pub(crate) cancel: tokio_util::sync::CancellationToken,
     pub(crate) event_task: tokio::task::JoinHandle<Result<(), ProviderFailure>>,
+    discontinuity_tx: tokio::sync::mpsc::UnboundedSender<TaggedStreamEvent>,
 }
 
 impl ActiveRemoteCapture {
     /// Audio keeps flowing as long as the canonical lane can take it.
     ///
-    /// A dead auxiliary lane's channel is closed forever; treating that as
-    /// group-wide unavailability would turn one translation column's death
-    /// into a capture failure. A stalled-but-alive auxiliary lane (zero
-    /// capacity mid-backoff) loses the frames it cannot take — its column
-    /// degrades, its own replay may bridge part of the hole — which is the
-    /// isolation contract: one column's trouble never stops the room.
-    fn try_fanout_pcm(&self, audio_data: &[u8]) -> Result<(), String> {
+    /// A dead auxiliary lane is stopped and reported as discontinuous without
+    /// stopping the room. It is never allowed to resume on the same provider
+    /// timeline after missing a block, which would silently compress time.
+    fn try_fanout_pcm(&self, audio_data: &[u8]) -> Result<PcmFanoutReport, String> {
         if self.streams.is_empty() {
             return Err("Soniox stream group audio unavailable".to_string());
         }
-        for stream in &self.streams {
-            let unusable = stream.audio_tx.is_closed() || stream.audio_tx.capacity() == 0;
-            if unusable {
-                if stream.descriptor.canonical {
-                    return Err("Soniox stream group audio unavailable".to_string());
-                }
+        if self.cancel.is_cancelled() {
+            return Err("Soniox stream group audio unavailable".to_string());
+        }
+        let mut report = PcmFanoutReport::default();
+        let mut canonical_failure = None;
+        for (lane_index, stream) in self.streams.iter().enumerate() {
+            if stream.lane_cancel.is_cancelled() {
                 continue;
             }
-            self.stream_factory
-                .try_send_pcm(&stream.audio_tx, audio_data.to_vec())?;
+            let unusable = stream.audio_tx.is_closed() || stream.audio_tx.capacity() == 0;
+            let send_failure = if unusable {
+                Some("Soniox stream audio channel unavailable".to_string())
+            } else {
+                self.stream_factory
+                    .try_send_pcm(&stream.audio_tx, audio_data.to_vec())
+                    .err()
+            };
+            let Some(send_failure) = send_failure else {
+                continue;
+            };
+            if stream.descriptor.canonical {
+                canonical_failure.get_or_insert(send_failure);
+                // Keep iterating: every later healthy sibling must still get
+                // this exact block even though the group will then fail.
+                continue;
+            }
+            match self.isolate_auxiliary_discontinuity(lane_index, stream) {
+                Ok(Some(target_language)) => {
+                    report
+                        .auxiliary_discontinuities
+                        .push(target_language.clone());
+                    tracing::warn!(
+                        target_language,
+                        error = %send_failure,
+                        "auxiliary PCM lane became discontinuous and was stopped at the live edge"
+                    );
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    canonical_failure.get_or_insert(error);
+                }
+            }
         }
-        Ok(())
+        match canonical_failure {
+            Some(error) => Err(error),
+            None => Ok(report),
+        }
     }
 
     fn try_fanout_control(&self, control: SttStreamControl) -> Result<(), String> {
         if self.streams.is_empty() {
             return Err("Soniox stream group control unavailable".to_string());
         }
-        for stream in &self.streams {
-            let unusable = stream.control_tx.is_closed() || stream.control_tx.capacity() == 0;
-            if unusable {
-                if stream.descriptor.canonical {
-                    return Err("Soniox stream group control unavailable".to_string());
-                }
-                // Control ops are rare (pause/resume/finalize), so a skipped
-                // lane is worth a line: a lane that misses a Pause keeps its
-                // provider session ticking until the next control catches it.
-                tracing::warn!(
-                    target_language = stream.descriptor.target_language.as_deref(),
-                    control = ?control,
-                    "auxiliary lane control channel unusable; control skipped for this lane"
-                );
+        if self.cancel.is_cancelled() {
+            return Err("Soniox stream group control unavailable".to_string());
+        }
+        let mut canonical_failure = None;
+        for (lane_index, stream) in self.streams.iter().enumerate() {
+            if stream.lane_cancel.is_cancelled() {
                 continue;
             }
-            stream
-                .control_tx
-                .try_send(control)
-                .map_err(|error| error.to_string())?;
+            let unusable = stream.control_tx.is_closed() || stream.control_tx.capacity() == 0;
+            let send_failure = if unusable {
+                Some("Soniox stream control channel unavailable".to_string())
+            } else {
+                stream
+                    .control_tx
+                    .try_send(control)
+                    .err()
+                    .map(|error| error.to_string())
+            };
+            let Some(send_failure) = send_failure else {
+                continue;
+            };
+            if stream.descriptor.canonical {
+                canonical_failure.get_or_insert(send_failure);
+                continue;
+            }
+            match self.isolate_auxiliary_discontinuity(lane_index, stream) {
+                Ok(Some(target_language)) => tracing::warn!(
+                    target_language,
+                    control = ?control,
+                    error = %send_failure,
+                    "auxiliary control failure stopped the lane before its timeline could diverge"
+                ),
+                Ok(None) => {}
+                Err(error) => {
+                    canonical_failure.get_or_insert(error);
+                }
+            }
         }
-        Ok(())
+        match canonical_failure {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
+    fn isolate_auxiliary_discontinuity(
+        &self,
+        lane_index: usize,
+        stream: &ActiveRemoteStream,
+    ) -> Result<Option<String>, String> {
+        debug_assert!(!stream.descriptor.canonical);
+        let first_report = !stream
+            .input_discontinuity_reported
+            .swap(true, Ordering::AcqRel);
+        stream.lane_cancel.cancel();
+        if !first_report {
+            return Ok(None);
+        }
+        let target_language = stream
+            .descriptor
+            .target_language
+            .clone()
+            .unwrap_or_else(|| "und".to_string());
+        // An unbounded control channel is deliberate: this is one terminal
+        // fact per lane, not transcript data, and it must be deliverable
+        // precisely when the bounded data path is full.
+        self.discontinuity_tx
+            .send(TaggedStreamEvent {
+                lane_index,
+                event: SttStreamEvent::InputDiscontinuity,
+            })
+            .map_err(|_| {
+                "Soniox collector unavailable while reporting auxiliary discontinuity".to_string()
+            })?;
+        Ok(Some(target_language))
     }
 }
 
@@ -5197,7 +5621,8 @@ impl ZulangueCore {
             .remote
             .take();
         if let Some(remote) = remote {
-            if let Err(_error) = remote.try_fanout_pcm(&audio_data) {
+            let fanout_result = remote.try_fanout_pcm(&audio_data);
+            if fanout_result.is_err() {
                 let backpressure_failure = ProviderFailure {
                     error_type: "audio_backpressure".to_string(),
                     request_id: None,
@@ -5248,6 +5673,13 @@ impl ZulangueCore {
                     return Err(terminal_error);
                 }
             } else {
+                let report = fanout_result.expect("checked successful PCM fanout");
+                if !report.auxiliary_discontinuities.is_empty() {
+                    tracing::warn!(
+                        languages = ?report.auxiliary_discontinuities,
+                        "capture remains live after isolating discontinuous translation lanes"
+                    );
+                }
                 active_guard
                     .as_mut()
                     .expect("active capture was checked above")
@@ -6989,6 +7421,7 @@ impl ZulangueCore {
         let stream_factory = self.notebook_soniox_stream_factory.clone();
         let tagged_capacity = lane_translations.len().saturating_mul(64).clamp(64, 512);
         let (tagged_tx, tagged_rx) = tokio::sync::mpsc::channel(tagged_capacity);
+        let (discontinuity_tx, discontinuity_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut streams = Vec::with_capacity(lane_translations.len());
         {
             let _guard = self.runtime.enter();
@@ -7018,11 +7451,12 @@ impl ZulangueCore {
                     client_reference_id,
                     ..Default::default()
                 };
+                let lane_cancel = cancel.child_token();
                 let stream = stream_factory.start(
                     engine.realtime_endpoint,
                     api_key.clone(),
                     config,
-                    cancel.clone(),
+                    lane_cancel.clone(),
                 );
                 let vt_stt::SonioxStreamRuntime {
                     audio_tx,
@@ -7038,6 +7472,8 @@ impl ZulangueCore {
                     control_tx,
                     stream_task,
                     forward_task,
+                    lane_cancel,
+                    input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
                 });
             }
         }
@@ -7066,6 +7502,7 @@ impl ZulangueCore {
                 lane_descriptors,
                 lane_controls,
                 tagged_rx,
+                discontinuity_rx,
                 event_cancel,
                 captured_frames,
                 callback,
@@ -7077,6 +7514,7 @@ impl ZulangueCore {
             streams,
             cancel,
             event_task,
+            discontinuity_tx,
         })
     }
 
@@ -11113,6 +11551,10 @@ mod tests {
         sent: std::sync::Mutex<Vec<usize>>,
     }
 
+    struct FailSecondFanoutFactory {
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
     impl NotebookSonioxStreamFactory for RecordingFanoutFactory {
         fn start(
             &self,
@@ -11136,8 +11578,34 @@ mod tests {
         }
     }
 
+    impl NotebookSonioxStreamFactory for FailSecondFanoutFactory {
+        fn start(
+            &self,
+            _endpoint: &str,
+            _api_key: String,
+            _config: SttConfig,
+            _cancel: tokio_util::sync::CancellationToken,
+        ) -> SonioxStreamRuntime {
+            unreachable!("fan-out tests never construct a stream")
+        }
+
+        fn try_send_pcm(
+            &self,
+            audio_tx: &tokio::sync::mpsc::Sender<Vec<u8>>,
+            audio_data: Vec<u8>,
+        ) -> Result<(), String> {
+            let call = self.calls.fetch_add(1, Ordering::AcqRel);
+            if call == 1 {
+                return Err("injected auxiliary try_send race".to_string());
+            }
+            audio_tx
+                .try_send(audio_data)
+                .map_err(|error| error.to_string())
+        }
+    }
+
     #[tokio::test]
-    async fn fanout_skips_a_dead_auxiliary_lane_and_fails_only_on_canonical() {
+    async fn fanout_reports_and_stops_a_dead_auxiliary_without_starving_siblings() {
         let factory = Arc::new(RecordingFanoutFactory {
             sent: std::sync::Mutex::new(Vec::new()),
         });
@@ -11161,10 +11629,14 @@ mod tests {
                 control_tx,
                 stream_task: tokio::spawn(async { Ok(()) }),
                 forward_task: tokio::spawn(async {}),
+                lane_cancel: tokio_util::sync::CancellationToken::new(),
+                input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
             }
         };
 
-        // A dead auxiliary lane is skipped; the group keeps taking audio.
+        // A dead auxiliary lane becomes an explicit terminal discontinuity;
+        // the later healthy sibling still receives the same block.
+        let (discontinuity_tx, mut discontinuity_rx) = tokio::sync::mpsc::unbounded_channel();
         let capture = ActiveRemoteCapture {
             stream_factory: factory.clone(),
             streams: vec![
@@ -11174,16 +11646,30 @@ mod tests {
             ],
             cancel: tokio_util::sync::CancellationToken::new(),
             event_task: tokio::spawn(async { Ok(()) }),
+            discontinuity_tx,
         };
-        capture
+        let report = capture
             .try_fanout_pcm(&[7u8; 64])
             .expect("a dead auxiliary lane must not stop capture audio");
+        assert_eq!(report.auxiliary_discontinuities, ["en"]);
         assert_eq!(factory.sent.lock().unwrap().len(), 2);
+        let discontinuity = discontinuity_rx.try_recv().unwrap();
+        assert_eq!(discontinuity.lane_index, 1);
+        assert!(matches!(
+            discontinuity.event,
+            SttStreamEvent::InputDiscontinuity
+        ));
+        let second = capture.try_fanout_pcm(&[8u8; 64]).unwrap();
+        assert!(second.auxiliary_discontinuities.is_empty());
+        assert_eq!(factory.sent.lock().unwrap().len(), 4);
+        assert!(discontinuity_rx.try_recv().is_err());
         capture
             .try_fanout_control(SttStreamControl::Keepalive)
             .expect("a dead auxiliary lane must not stop group control");
 
         // A dead canonical lane is group-wide unavailability, exactly as before.
+        let (canonical_discontinuity_tx, _canonical_discontinuity_rx) =
+            tokio::sync::mpsc::unbounded_channel();
         let canonical_down = ActiveRemoteCapture {
             stream_factory: factory.clone(),
             streams: vec![
@@ -11192,11 +11678,119 @@ mod tests {
             ],
             cancel: tokio_util::sync::CancellationToken::new(),
             event_task: tokio::spawn(async { Ok(()) }),
+            discontinuity_tx: canonical_discontinuity_tx,
         };
         assert!(canonical_down.try_fanout_pcm(&[7u8; 64]).is_err());
         assert!(canonical_down
             .try_fanout_control(SttStreamControl::Keepalive)
             .is_err());
+
+        // The collector cancels the shared group before the owning capture is
+        // removed from process state. That interval must fail closed instead
+        // of treating every canceled child as a successful no-op fanout.
+        let canceled_group = tokio_util::sync::CancellationToken::new();
+        let (canceled_discontinuity_tx, _canceled_discontinuity_rx) =
+            tokio::sync::mpsc::unbounded_channel();
+        let canceled_capture = ActiveRemoteCapture {
+            stream_factory: factory,
+            streams: vec![
+                make_stream(true, None, false),
+                make_stream(false, Some("en"), false),
+            ],
+            cancel: canceled_group.clone(),
+            event_task: tokio::spawn(async { Ok(()) }),
+            discontinuity_tx: canceled_discontinuity_tx,
+        };
+        canceled_group.cancel();
+        assert!(canceled_capture.try_fanout_pcm(&[7u8; 64]).is_err());
+        assert!(canceled_capture
+            .try_fanout_control(SttStreamControl::Keepalive)
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn fanout_auxiliary_send_race_still_delivers_to_the_later_sibling() {
+        let factory = Arc::new(FailSecondFanoutFactory {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let make_stream = |canonical: bool, target: Option<&str>| {
+            let (audio_tx, audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+            let (control_tx, control_rx) = tokio::sync::mpsc::channel(4);
+            let stream = ActiveRemoteStream {
+                descriptor: RemoteStreamLane {
+                    target_language: target.map(str::to_string),
+                    canonical,
+                },
+                audio_tx,
+                control_tx,
+                stream_task: tokio::spawn(async { Ok(()) }),
+                forward_task: tokio::spawn(async {}),
+                lane_cancel: tokio_util::sync::CancellationToken::new(),
+                input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+            };
+            (stream, audio_rx, control_rx)
+        };
+        let (canonical, mut canonical_rx, canonical_control_rx) = make_stream(true, None);
+        let (failed_aux, mut failed_aux_rx, failed_control_rx) = make_stream(false, Some("zh"));
+        let (later_aux, mut later_aux_rx, later_control_rx) = make_stream(false, Some("th"));
+        let (discontinuity_tx, mut discontinuity_rx) = tokio::sync::mpsc::unbounded_channel();
+        let capture = ActiveRemoteCapture {
+            stream_factory: factory.clone(),
+            streams: vec![canonical, failed_aux, later_aux],
+            cancel: tokio_util::sync::CancellationToken::new(),
+            event_task: tokio::spawn(async { Ok(()) }),
+            discontinuity_tx,
+        };
+
+        let block = vec![9_u8; 64];
+        let report = capture.try_fanout_pcm(&block).unwrap();
+        assert_eq!(factory.calls.load(Ordering::Acquire), 3);
+        assert_eq!(report.auxiliary_discontinuities, ["zh"]);
+        assert_eq!(canonical_rx.try_recv().unwrap(), block);
+        assert!(failed_aux_rx.try_recv().is_err());
+        assert_eq!(later_aux_rx.try_recv().unwrap(), block);
+        assert_eq!(discontinuity_rx.try_recv().unwrap().lane_index, 1);
+        drop((canonical_control_rx, failed_control_rx, later_control_rx));
+    }
+
+    #[tokio::test]
+    async fn fair_event_queue_services_each_ready_lane_before_revisiting_noise() {
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(8);
+        let (discontinuity_tx, mut discontinuity_rx) = tokio::sync::mpsc::unbounded_channel();
+        for _ in 0..3 {
+            event_tx
+                .send(TaggedStreamEvent {
+                    lane_index: 0,
+                    event: SttStreamEvent::Connected,
+                })
+                .await
+                .unwrap();
+        }
+        event_tx
+            .send(TaggedStreamEvent {
+                lane_index: 1,
+                event: SttStreamEvent::Connected,
+            })
+            .await
+            .unwrap();
+
+        let mut fair = FairTaggedEventQueue::new(2, 8);
+        assert_eq!(
+            fair.recv(&mut event_rx, &mut discontinuity_rx)
+                .await
+                .unwrap()
+                .lane_index,
+            0
+        );
+        assert_eq!(
+            fair.recv(&mut event_rx, &mut discontinuity_rx)
+                .await
+                .unwrap()
+                .lane_index,
+            1,
+            "a ready sibling gets the next turn before noisy lane zero"
+        );
+        drop(discontinuity_tx);
     }
 
     #[test]
@@ -11234,6 +11828,10 @@ mod tests {
                 connected: true,
                 ever_connected: true,
                 failed: false,
+                input_discontinuous: false,
+                final_audio_proc_ms: None,
+                total_audio_proc_ms: None,
+                lag_ms: None,
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
             },
@@ -11252,6 +11850,10 @@ mod tests {
                 connected: false,
                 ever_connected: true,
                 failed: true,
+                input_discontinuous: false,
+                final_audio_proc_ms: None,
+                total_audio_proc_ms: None,
+                lag_ms: None,
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
             },
@@ -11289,6 +11891,42 @@ mod tests {
     }
 
     #[test]
+    fn full_snapshot_revision_is_the_exact_callback_mailbox_checkpoint() {
+        let (_temp, core, _profile) = assembler_store_fixture("snapshot-revision-checkpoint");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let callback = CaptureCallbackSink::new(
+            Arc::new(CaptureEventSender(tx)),
+            core.notebook_capture_store.clone(),
+        )
+        .unwrap();
+        let run = core
+            .notebook_capture_store
+            .get_run_for_session("snapshot-revision-checkpoint")
+            .unwrap()
+            .unwrap();
+
+        let before_callbacks = callback
+            .full_snapshot_with_remote_truth("snapshot-revision-checkpoint")
+            .unwrap();
+        assert_eq!(before_callbacks.event_revision, 0);
+
+        let first = callback.send(event_from_run(run.clone(), Vec::new(), false));
+        let second = callback.send(event_from_run(run, Vec::new(), false));
+        assert_eq!(first.event_revision, 1);
+        assert_eq!(second.event_revision, 2);
+
+        let checkpoint = callback
+            .full_snapshot_with_remote_truth("snapshot-revision-checkpoint")
+            .unwrap();
+        assert!(checkpoint.is_full_snapshot);
+        assert_eq!(
+            checkpoint.event_revision, second.event_revision,
+            "the mailbox-locked snapshot must cover every allocated callback revision"
+        );
+        drop(rx);
+    }
+
+    #[test]
     fn lane_health_snapshot_reports_failed_over_connecting_over_live() {
         let lane = |canonical: bool, target: Option<&str>, connected: bool, failed: bool| {
             StreamAggregationLane {
@@ -11303,21 +11941,95 @@ mod tests {
                 connected,
                 ever_connected: true,
                 failed,
+                input_discontinuous: false,
+                final_audio_proc_ms: None,
+                total_audio_proc_ms: None,
+                lag_ms: None,
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
             }
         };
+        let mut thai = lane(false, Some("th"), false, true);
+        thai.group_epoch = 3;
+        thai.final_audio_proc_ms = Some(4_100);
+        thai.total_audio_proc_ms = Some(4_500);
+        thai.lag_ms = Some(900);
+        thai.input_discontinuous = true;
         let snapshot = lane_health_snapshot(&[
             lane(true, None, true, false),
             lane(false, Some("en"), false, false),
-            lane(false, Some("th"), false, true),
+            thai,
         ]);
         assert_eq!(snapshot[0].target_language, None);
         assert_eq!(snapshot[0].state, "live");
         assert_eq!(snapshot[1].target_language.as_deref(), Some("en"));
+        assert_eq!(snapshot[2].group_epoch, 3);
+        assert_eq!(snapshot[2].final_audio_proc_ms, Some(4_100));
+        assert_eq!(snapshot[2].total_audio_proc_ms, Some(4_500));
+        assert_eq!(snapshot[2].lag_ms, Some(900));
+        assert!(snapshot[2].input_discontinuous);
         assert_eq!(snapshot[1].state, "connecting");
         assert_eq!(snapshot[2].target_language.as_deref(), Some("th"));
         assert_eq!(snapshot[2].state, "failed");
+    }
+
+    #[test]
+    fn live_translation_cue_snapshot_is_bounded_per_language_and_revision_safe() {
+        let cue = |target: &str, sequence: u64, revision: u64, withdrawn: bool| {
+            FfiNotebookCaptureTranslationCue {
+                target_language: target.to_string(),
+                group_epoch: 0,
+                provider_sequence: sequence,
+                source_language: "en".to_string(),
+                source_start_ms: Some(sequence * 100),
+                source_end_ms: Some(sequence * 100 + 80),
+                text: (!withdrawn)
+                    .then(|| format!("{target}-{sequence}-r{revision}"))
+                    .unwrap_or_default(),
+                completion: "partial".to_string(),
+                withdrawn,
+                revision,
+            }
+        };
+        let mut current = std::collections::HashMap::new();
+        let mut initial = (0..9)
+            .map(|sequence| cue("th", sequence, 1, false))
+            .collect::<Vec<_>>();
+        initial[0].source_start_ms = None;
+        initial[0].source_end_ms = None;
+        initial.extend((0..2).map(|sequence| cue("zh", sequence, 1, false)));
+        reconcile_live_translation_cues(&mut current, &initial);
+
+        let snapshot = live_translation_cue_snapshot(&current);
+        assert_eq!(
+            snapshot
+                .iter()
+                .filter(|cue| cue.target_language == "th")
+                .count(),
+            LIVE_TRANSLATION_CUES_PER_LANGUAGE
+        );
+        assert!(snapshot
+            .iter()
+            .all(|cue| { cue.target_language != "th" || cue.provider_sequence != 0 }));
+        assert_eq!(
+            snapshot
+                .iter()
+                .filter(|cue| cue.target_language == "zh")
+                .count(),
+            2
+        );
+
+        reconcile_live_translation_cues(&mut current, &[cue("th", 8, 2, false)]);
+        reconcile_live_translation_cues(&mut current, &[cue("th", 8, 1, true)]);
+        assert_eq!(
+            current
+                .get(&(0, 8, "th".to_string()))
+                .expect("stale withdrawal cannot remove the newer partial")
+                .revision,
+            2
+        );
+        reconcile_live_translation_cues(&mut current, &[cue("th", 8, 3, true)]);
+        assert!(!current.contains_key(&(0, 8, "th".to_string())));
     }
 
     #[test]
@@ -11489,6 +12201,212 @@ mod tests {
     }
 
     #[test]
+    fn final_auxiliary_shell_retires_canonical_identity_before_source_returns() {
+        for (suffix, source_language, target_language) in
+            [("different", "en", "zh"), ("same", "zh", "zh")]
+        {
+            let session_id = format!("lane-final-shell-source-return-{suffix}");
+            let (_temp, core, runtime_profile) = assembler_store_fixture(&session_id);
+            let mut assembler =
+                RealtimeUtteranceAssembler::new(session_id.clone(), &runtime_profile);
+
+            assert!(assembler
+                .apply_tokens(&[token(
+                    "mutable source",
+                    SttStreamTranslationStatus::Original,
+                    source_language,
+                    Some(100),
+                    Some(900),
+                    false,
+                )])
+                .is_empty());
+            let preview = assembler.live_previews().remove(0);
+            let source = persist_assembled_utterances(
+                &core.notebook_capture_store,
+                &mut assembler,
+                vec![AssembledRealtimeUtterance {
+                    utterance: NewRealtimeUtterance {
+                        source_language: source_language.into(),
+                        ..preview.utterance
+                    },
+                    provisional_source_language: None,
+                    source_dirty: true,
+                    translation_dirty: false,
+                    translation_completion: None,
+                    translation_clear_language: None,
+                    remove_partial: false,
+                    provider_speaker: None,
+                    expected_revision: None,
+                }],
+                0,
+            )
+            .unwrap()
+            .utterances
+            .remove(0);
+            assert_eq!(source.sequence, 0);
+
+            let accepted = core
+                .notebook_capture_store
+                .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                    key: RealtimeTranslationInboxKey {
+                        session_id: session_id.clone(),
+                        lane_index: 1,
+                        group_epoch: 0,
+                        provider_sequence: 0,
+                        target_language: target_language.into(),
+                    },
+                    source_language: source_language.into(),
+                    source_text: source.source_text.clone(),
+                    source_start_ms: source.source_start_ms,
+                    source_end_ms: source.source_end_ms,
+                    translated_text: Some(format!("{suffix} auxiliary Final")),
+                    completion: Some(UtteranceCompletion::Complete),
+                    withdrawn: false,
+                })
+                .unwrap();
+            assert_eq!(accepted.item.bound_sequence, Some(0));
+
+            let withdrawn = assembler.apply_tokens(&[]);
+            assert_eq!(withdrawn.len(), 1);
+            assert!(withdrawn[0].remove_partial);
+            let removal = persist_assembled_utterances(
+                &core.notebook_capture_store,
+                &mut assembler,
+                withdrawn,
+                0,
+            )
+            .unwrap();
+            let shell = removal.utterances.first().unwrap();
+            assert_eq!(shell.sequence, 0);
+            assert!(!shell.has_source_lane());
+            assert!(shell.variants.iter().any(|variant| {
+                variant.role == UtteranceVariantRole::Translation
+                    && variant.language == target_language
+                    && variant.completion == Some(UtteranceCompletion::Complete)
+            }));
+            assert!(assembler.segments[0].complete);
+            assert_eq!(assembler.latest_original_segment, None);
+
+            // Canonical speech can return immediately, but it is a new source
+            // identity. It must never revise or detach the immutable shell.
+            assert!(assembler
+                .apply_tokens(&[token(
+                    "returned source",
+                    SttStreamTranslationStatus::Original,
+                    source_language,
+                    Some(2_000),
+                    Some(2_800),
+                    false,
+                )])
+                .is_empty());
+            let returned_preview = assembler.live_previews().remove(0);
+            assert_eq!(returned_preview.utterance.sequence, 1);
+            assert_ne!(returned_preview.utterance.id, shell.id);
+            let returned = persist_assembled_utterances(
+                &core.notebook_capture_store,
+                &mut assembler,
+                vec![AssembledRealtimeUtterance {
+                    utterance: NewRealtimeUtterance {
+                        source_language: source_language.into(),
+                        ..returned_preview.utterance
+                    },
+                    provisional_source_language: None,
+                    source_dirty: true,
+                    translation_dirty: false,
+                    translation_completion: None,
+                    translation_clear_language: None,
+                    remove_partial: false,
+                    provider_speaker: None,
+                    expected_revision: None,
+                }],
+                0,
+            )
+            .unwrap()
+            .utterances
+            .remove(0);
+            assert_eq!(returned.sequence, 1);
+
+            let inline_target_language = if source_language == "en" { "zh" } else { "en" };
+            let routed_translation = format!("{suffix} routed inline translation");
+            let routed = assembler.apply_tokens(&[
+                token(
+                    "returned source",
+                    SttStreamTranslationStatus::Original,
+                    source_language,
+                    Some(2_000),
+                    Some(2_800),
+                    false,
+                ),
+                SttStreamToken {
+                    text: routed_translation.clone(),
+                    start_ms: None,
+                    end_ms: None,
+                    is_final: false,
+                    confidence: None,
+                    translation_status: SttStreamTranslationStatus::Translation,
+                    language: Some(inline_target_language.into()),
+                    source_language: Some(source_language.into()),
+                    speaker: None,
+                },
+            ]);
+            assert_eq!(assembler.latest_translation_segment, Some(1));
+            assert!(routed.iter().all(|update| update.utterance.sequence == 1));
+            assert!(assembler.segments[0].translated.is_empty());
+            assert_eq!(assembler.segments[1].translated.pending, routed_translation);
+            let routed = persist_assembled_utterances(
+                &core.notebook_capture_store,
+                &mut assembler,
+                routed,
+                0,
+            )
+            .unwrap()
+            .utterances
+            .remove(0);
+            assert_eq!(routed.sequence, 1);
+
+            let replacement = assembler.apply_tokens(&[token(
+                "replacement identity",
+                SttStreamTranslationStatus::Original,
+                source_language,
+                Some(4_000),
+                Some(4_900),
+                false,
+            )]);
+            let replaced = persist_assembled_utterances(
+                &core.notebook_capture_store,
+                &mut assembler,
+                replacement,
+                0,
+            )
+            .expect("a returned canonical Partial must revise its own row, not the Final shell")
+            .utterances
+            .remove(0);
+            assert_eq!(replaced.sequence, 1);
+            assert_eq!(replaced.source_text, "replacement identity");
+            assert_eq!(replaced.source_start_ms, Some(4_000));
+            assert_eq!(replaced.source_end_ms, Some(4_900));
+
+            let rows = core
+                .notebook_capture_store
+                .list_machine_utterances(&session_id)
+                .unwrap();
+            assert_eq!(rows.len(), 2);
+            let stable_shell = rows.iter().find(|row| row.sequence == 0).unwrap();
+            assert!(!stable_shell.has_source_lane());
+            assert!(stable_shell.variants.iter().any(|variant| {
+                variant.language == target_language
+                    && variant.completion == Some(UtteranceCompletion::Complete)
+            }));
+
+            let finalized = assembler.finalize();
+            assert!(!finalized.is_empty());
+            assert!(finalized
+                .iter()
+                .all(|update| update.utterance.sequence == 1));
+        }
+    }
+
+    #[test]
     fn hidden_same_language_aux_partial_survives_source_language_revision_and_withdrawal() {
         let session_id = "lane-hidden-aux-source-withdrawal";
         let (_temp, core, mut runtime_profile) = assembler_store_fixture(session_id);
@@ -11501,12 +12419,12 @@ mod tests {
             RealtimeUtteranceAssembler::new(session_id.to_string(), &runtime_profile);
 
         assert!(assembler
-            .apply_tokens(&[attributed_token(
+            .apply_tokens(&[token(
                 "暂定",
                 SttStreamTranslationStatus::Original,
-                Some("zh"),
-                None,
-                Some("speaker-a"),
+                "zh",
+                Some(100),
+                Some(300),
                 false,
             )])
             .is_empty());
@@ -11549,8 +12467,8 @@ mod tests {
                 },
                 source_language: "zh".into(),
                 source_text: "暂定".into(),
-                source_start_ms: None,
-                source_end_ms: None,
+                source_start_ms: Some(100),
+                source_end_ms: Some(300),
                 translated_text: Some("辅助 Partial".into()),
                 completion: Some(UtteranceCompletion::Partial),
                 withdrawn: false,
@@ -11562,12 +12480,12 @@ mod tests {
             "the provisional source retains same-language display priority"
         );
 
-        let mut revised = assembler.apply_tokens(&[attributed_token(
+        let mut revised = assembler.apply_tokens(&[token(
             "ภาษาไทยชั่วคราว",
             SttStreamTranslationStatus::Original,
-            Some("th"),
-            None,
-            Some("speaker-a"),
+            "th",
+            Some(100),
+            Some(300),
             false,
         )]);
         assert_eq!(
@@ -12796,14 +13714,60 @@ mod tests {
             "an equal sequence must not override contradictory timestamps"
         );
 
-        // The sibling connections' clocks drift apart over a long run — the
-        // same sentence has been observed reported four seconds apart. Words
-        // outlive timestamps, so identical text still identifies the row.
-        let drifted = [candidate(7, 0, Some(4_300), Some(4_400))];
+        // A repeated phrase much later in the capture must not bind back to an
+        // earlier row just because its normalized text is identical.
+        let disjoint_same_text = [candidate(7, 0, Some(4_300), Some(4_400))];
         assert_eq!(
-            match_canonical_sequence(&pending, drifted.iter()),
-            Some(7),
-            "identical source text identifies the row across a drifted clock"
+            match_canonical_sequence(&pending, disjoint_same_text.iter()),
+            None,
+            "identical source text cannot override disjoint capture time"
+        );
+
+        let mut repeated_filler = pending.clone();
+        repeated_filler.source_sequence = 8;
+        repeated_filler.source_text = "okay".into();
+        repeated_filler.source_start_ms = Some(4_300);
+        repeated_filler.source_end_ms = Some(4_400);
+        let mut stale_filler = candidate(7, 0, Some(4_100), Some(4_200));
+        stale_filler.utterance.source_text = "okay".into();
+        assert_eq!(
+            match_canonical_sequence(&repeated_filler, std::iter::once(&stale_filler)),
+            None,
+            "a nearby earlier filler stays unbound until a truly overlapping row exists"
+        );
+        stale_filler.utterance.source_end_ms = Some(4_300);
+        assert_eq!(
+            match_canonical_sequence(&repeated_filler, std::iter::once(&stale_filler)),
+            None,
+            "positive-duration intervals that only touch at an endpoint share no audio"
+        );
+        let mut current_window = candidate(8, 0, Some(4_250), Some(4_450));
+        current_window.utterance.source_text = "different partial words".into();
+        assert_eq!(
+            match_canonical_sequence(&repeated_filler, [stale_filler, current_window].iter()),
+            Some(8),
+            "an overlapping current row outranks an exact but stale repeated filler"
+        );
+
+        let mut missing_time = pending.clone();
+        missing_time.source_start_ms = None;
+        missing_time.source_end_ms = None;
+        missing_time.source_text = "okay".into();
+        let mut first_missing = candidate(98, 0, None, None);
+        first_missing.utterance.source_text = "okay".into();
+        let mut second_missing = candidate(100, 0, None, None);
+        second_missing.utterance.source_text = "okay".into();
+        assert_eq!(
+            match_canonical_sequence(&missing_time, [first_missing, second_missing].iter()),
+            None,
+            "cross-stream sequence distance cannot disambiguate repeated text without time"
+        );
+        let mut sequence_only = candidate(99, 0, None, None);
+        sequence_only.utterance.source_text = "different words".into();
+        assert_eq!(
+            match_canonical_sequence(&missing_time, std::iter::once(&sequence_only)),
+            None,
+            "an equal cross-stream sequence number is not alignment evidence"
         );
 
         let mut language_drift = candidate(4, 0, Some(110), Some(230));
@@ -12935,6 +13899,10 @@ mod tests {
                 connected,
                 ever_connected: connected,
                 failed: false,
+                input_discontinuous: false,
+                final_audio_proc_ms: None,
+                total_audio_proc_ms: None,
+                lag_ms: None,
                 provider_accepted_configuration: connected,
                 disconnected_at_frame: None,
             }
@@ -12982,7 +13950,7 @@ mod tests {
     }
 
     #[test]
-    fn cross_stream_pairing_uses_sequence_only_when_timestamps_are_unavailable() {
+    fn cross_stream_pairing_requires_unique_text_when_timestamps_are_unavailable() {
         let candidate = |sequence| {
             let mut utterance = projected_utterance();
             utterance.sequence = sequence;
@@ -13006,10 +13974,18 @@ mod tests {
             completion: UtteranceCompletion::Partial,
             reverse_conflict_warned: false,
         };
+        let unique = [candidate(6)];
+        assert_eq!(
+            match_canonical_sequence(&pending, unique.iter()),
+            Some(6),
+            "unique exact words remain a valid missing-time fallback"
+        );
+
         let candidates = [candidate(6), candidate(7)];
         assert_eq!(
             match_canonical_sequence(&pending, candidates.iter()),
-            Some(7)
+            None,
+            "cross-stream sequence distance cannot choose between equal word evidence"
         );
 
         let repeated = [candidate(7), candidate(7)];
@@ -13246,6 +14222,10 @@ mod tests {
                 connected: true,
                 ever_connected: true,
                 failed: false,
+                input_discontinuous: false,
+                final_audio_proc_ms: None,
+                total_audio_proc_ms: None,
+                lag_ms: None,
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
             }
@@ -14894,11 +15874,15 @@ mod tests {
             session_id: run.session_id.clone(),
             preview_revision: 0,
             utterances: Vec::new(),
+            translation_cues: Vec::new(),
+            lane_health: Vec::new(),
         });
         let second_preview = callback.send_preview(FfiNotebookCaptureLivePreview {
             session_id: run.session_id.clone(),
             preview_revision: 0,
             utterances: Vec::new(),
+            translation_cues: Vec::new(),
+            lane_health: Vec::new(),
         });
         let first = callback.send(event_from_run(
             run.clone(),

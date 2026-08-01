@@ -612,6 +612,56 @@ final class WindowSystemTests: XCTestCase {
             columns["en"]?.map(\.text),
             ["First and second sentence.", "Untimed tail"]
         )
+        let retiredUntimedHead = SubtitleAudienceTimeline.columns(
+            languages: ["en"],
+            utterances: [],
+            placement: { _ in nil },
+            cues: { _ in
+                [
+                    cue(0, "en", "Old untimed partial", nil),
+                    cue(1, "en", "New timed partial", 2_000),
+                ]
+            }
+        )
+        XCTAssertEqual(
+            retiredUntimedHead["en"]?.map(\.text),
+            ["New timed partial"],
+            "a later timed cue must retire an older nil-timestamp track head"
+        )
+        let oldEpochUntimed = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "en",
+            groupEpoch: 0,
+            providerSequence: 99,
+            sourceLanguage: "zh",
+            sourceStartMs: nil,
+            sourceEndMs: nil,
+            text: "Old epoch untimed partial",
+            completion: "partial",
+            withdrawn: false,
+            revision: 1
+        )
+        let newEpochTimed = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "en",
+            groupEpoch: 1,
+            providerSequence: 0,
+            sourceLanguage: "zh",
+            sourceStartMs: 3_000,
+            sourceEndMs: 3_500,
+            text: "New epoch timed partial",
+            completion: "partial",
+            withdrawn: false,
+            revision: 1
+        )
+        let retiredOldEpochHead = SubtitleAudienceTimeline.columns(
+            languages: ["en"],
+            utterances: [],
+            placement: { _ in nil },
+            cues: { _ in [oldEpochUntimed, newEpochTimed] }
+        )
+        XCTAssertEqual(
+            retiredOldEpochHead["en"]?.map(\.text),
+            ["New epoch timed partial"]
+        )
         // A source and its own-language cue never duplicate a column.
         let echoed = SubtitleAudienceTimeline.columns(
             languages: ["zh"],
@@ -730,6 +780,420 @@ final class WindowSystemTests: XCTestCase {
                 window: 1
             ),
             "nouveau"
+        )
+    }
+
+    func testConversationTimelineShowsUnboundTranslationCueAtLiveEdge() {
+        let source = NotebookCaptureUtteranceDTO(
+            id: "source-0",
+            sessionId: "session",
+            sequence: 0,
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: "Are you ready?",
+            sourceStartMs: 1_000,
+            sourceEndMs: 1_800,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "partial",
+            alignment: "source_only"
+        )
+        let unboundChinese = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "zh",
+            groupEpoch: 0,
+            providerSequence: 7,
+            sourceLanguage: "en",
+            sourceStartMs: 1_000,
+            sourceEndMs: 1_800,
+            text: "你准备好了吗？",
+            completion: "partial",
+            withdrawn: false,
+            revision: 1
+        )
+
+        let timeline = SubtitleConversationTimeline.projection(
+            // The fourth request proves that the live slice keeps the same
+            // maximum-three-language contract as the overlay.
+            languages: ["en", "zh", "th", "fr"],
+            utterances: [source],
+            placement: { $0.sourceLanguage },
+            cues: { language in language == "zh" ? [unboundChinese] : [] }
+        )
+
+        XCTAssertTrue(timeline.historicalUtterances.isEmpty)
+        XCTAssertEqual(timeline.liveLanes.map(\.language), ["en", "zh", "th"])
+        XCTAssertEqual(timeline.liveLanes[0].text, "Are you ready?")
+        XCTAssertEqual(
+            timeline.liveLanes[1].text,
+            "你准备好了吗？",
+            "an independent cue must not wait for a canonical language variant"
+        )
+        XCTAssertNil(source.translatedText, "the fixture deliberately has no row binding")
+    }
+
+    func testConversationTimelineMissingLanguageDoesNotBlockReadySiblings() {
+        let source = NotebookCaptureUtteranceDTO(
+            id: "source-1",
+            sessionId: "session",
+            sequence: 1,
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: "We can begin now.",
+            sourceStartMs: 5_000,
+            sourceEndMs: 5_900,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "partial",
+            alignment: "source_only"
+        )
+        let readyChinese = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "zh",
+            groupEpoch: 0,
+            providerSequence: 11,
+            sourceLanguage: "en",
+            sourceStartMs: 5_000,
+            sourceEndMs: 5_900,
+            text: "我们现在可以开始了。",
+            completion: "partial",
+            withdrawn: false,
+            revision: 1
+        )
+
+        let timeline = SubtitleConversationTimeline.projection(
+            languages: ["en", "zh", "th"],
+            utterances: [source],
+            placement: { $0.sourceLanguage },
+            cues: { language in language == "zh" ? [readyChinese] : [] }
+        )
+        let lanes = Dictionary(uniqueKeysWithValues: timeline.liveLanes.map {
+            ($0.language, $0)
+        })
+
+        XCTAssertEqual(lanes["en"]?.text, "We can begin now.")
+        XCTAssertEqual(lanes["zh"]?.text, "我们现在可以开始了。")
+        XCTAssertNil(lanes["th"]?.text)
+        XCTAssertEqual(lanes["th"]?.missingLaneState, .waiting)
+        XCTAssertTrue(
+            timeline.hasLiveWords,
+            "a missing Thai stream must not gate the English or Chinese track heads"
+        )
+    }
+
+    func testConversationTimelineShowsBehindPartialThatStillOverlapsLiveSource() {
+        let source = NotebookCaptureUtteranceDTO(
+            id: "source-long",
+            sessionId: "session",
+            sequence: 0,
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: "A long live source segment.",
+            sourceStartMs: 0,
+            sourceEndMs: 5_000,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "partial",
+            alignment: "source_only"
+        )
+        let partial = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "zh",
+            groupEpoch: 0,
+            providerSequence: 1,
+            sourceLanguage: "en",
+            sourceStartMs: 0,
+            sourceEndMs: 4_500,
+            text: "仍在继续的部分译文",
+            completion: "partial",
+            withdrawn: false,
+            revision: 1
+        )
+
+        let timeline = SubtitleConversationTimeline.projection(
+            languages: ["en", "zh"],
+            utterances: [source],
+            placement: { $0.sourceLanguage },
+            cues: { $0 == "zh" ? [partial] : [] }
+        )
+
+        XCTAssertEqual(timeline.liveLanes[1].text, partial.text)
+        XCTAssertEqual(
+            timeline.liveLanes[1].missingLaneState,
+            .waiting,
+            "behind is lane status only and must not gate text already delivered"
+        )
+    }
+
+    func testConversationTimelineShowsLatestCueWithoutProviderTimestamps() {
+        let source = NotebookCaptureUtteranceDTO(
+            id: "source-unanchored",
+            sessionId: "session",
+            sequence: 0,
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: "Show the newest provider head.",
+            sourceStartMs: 6_000,
+            sourceEndMs: 7_000,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "partial",
+            alignment: "source_only"
+        )
+        let olderTimed = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "zh",
+            groupEpoch: 0,
+            providerSequence: 4,
+            sourceLanguage: "en",
+            sourceStartMs: 5_000,
+            sourceEndMs: 5_500,
+            text: "旧的有时间译文",
+            completion: "complete",
+            withdrawn: false,
+            revision: 1
+        )
+        let latestUntimed = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "zh",
+            groupEpoch: 0,
+            providerSequence: 5,
+            sourceLanguage: "en",
+            sourceStartMs: nil,
+            sourceEndMs: nil,
+            text: "最新的无时间译文",
+            completion: "partial",
+            withdrawn: false,
+            revision: 1
+        )
+
+        let timeline = SubtitleConversationTimeline.projection(
+            languages: ["en", "zh"],
+            utterances: [source],
+            placement: { $0.sourceLanguage },
+            cues: { $0 == "zh" ? [olderTimed, latestUntimed] : [] }
+        )
+
+        XCTAssertEqual(
+            timeline.liveLanes[1].text,
+            latestUntimed.text,
+            "a newest unanchored provider head must be visible immediately"
+        )
+    }
+
+    func testConversationTimelineDoesNotRepeatAStaleTranslationAsCurrent() {
+        let oldSource = NotebookCaptureUtteranceDTO(
+            id: "source-old",
+            sessionId: "session",
+            sequence: 0,
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: "The previous sentence.",
+            sourceStartMs: 3_500,
+            sourceEndMs: 3_900,
+            translatedLanguage: "zh",
+            translatedText: "上一句话。",
+            completion: "complete",
+            alignment: "paired"
+        )
+        let liveSource = NotebookCaptureUtteranceDTO(
+            id: "source-live",
+            sessionId: "session",
+            sequence: 1,
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: "The new sentence is still being translated.",
+            sourceStartMs: 4_000,
+            sourceEndMs: 4_900,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "partial",
+            alignment: "source_only"
+        )
+        let oldChinese = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "zh",
+            groupEpoch: 0,
+            providerSequence: 0,
+            sourceLanguage: "en",
+            sourceStartMs: 3_500,
+            sourceEndMs: 3_900,
+            text: "上一句话。",
+            completion: "complete",
+            withdrawn: false,
+            revision: 1
+        )
+
+        let timeline = SubtitleConversationTimeline.projection(
+            languages: ["en", "zh"],
+            utterances: [oldSource, liveSource],
+            placement: { $0.sourceLanguage },
+            cues: { language in language == "zh" ? [oldChinese] : [] }
+        )
+
+        XCTAssertEqual(timeline.historicalUtterances.map(\.id), ["source-old"])
+        XCTAssertEqual(timeline.liveLanes[0].text, liveSource.sourceText)
+        XCTAssertNil(
+            timeline.liveLanes[1].text,
+            "an older Chinese cue already rendered in history must not masquerade as current"
+        )
+        XCTAssertEqual(timeline.liveLanes[1].missingLaneState, .waiting)
+
+        let failedTimeline = SubtitleConversationTimeline.projection(
+            languages: ["en", "zh"],
+            utterances: [oldSource, liveSource],
+            placement: { $0.sourceLanguage },
+            cues: { language in language == "zh" ? [oldChinese] : [] },
+            failedLanguages: ["zh"]
+        )
+        XCTAssertNil(failedTimeline.liveLanes[1].text)
+        XCTAssertEqual(failedTimeline.liveLanes[1].missingLaneState, .failed)
+    }
+
+    func testConversationTimelineDoesNotPromoteAnOlderDifferentLanguageSourceToLiveEdge() {
+        let oldChinese = NotebookCaptureUtteranceDTO(
+            id: "source-old-zh",
+            sessionId: "session",
+            sequence: 0,
+            revision: 1,
+            sourceLanguage: "zh",
+            sourceText: "旧中文",
+            sourceStartMs: 0,
+            sourceEndMs: 1_000,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "complete",
+            alignment: "source_only"
+        )
+        let liveEnglish = NotebookCaptureUtteranceDTO(
+            id: "source-live-en",
+            sessionId: "session",
+            sequence: 1,
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: "new English",
+            sourceStartMs: 2_000,
+            sourceEndMs: 2_500,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "partial",
+            alignment: "source_only"
+        )
+
+        let timeline = SubtitleConversationTimeline.projection(
+            languages: ["en", "zh"],
+            utterances: [oldChinese, liveEnglish],
+            placement: { $0.sourceLanguage },
+            cues: { _ in [] }
+        )
+
+        XCTAssertEqual(timeline.historicalUtterances.map(\.id), [oldChinese.id])
+        XCTAssertEqual(timeline.liveLanes[0].text, liveEnglish.sourceText)
+        XCTAssertNil(
+            timeline.liveLanes[1].text,
+            "an older Chinese source belongs to history, not the current Chinese lane"
+        )
+        XCTAssertEqual(timeline.liveLanes[1].missingLaneState, .waiting)
+    }
+
+    func testConversationTimelineClearsAnUntimedCueWhenItsLaneFails() {
+        let liveSource = NotebookCaptureUtteranceDTO(
+            id: "source-live-before-failure",
+            sessionId: "session",
+            sequence: 1,
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: "The target lane has stopped.",
+            sourceStartMs: 2_000,
+            sourceEndMs: 2_500,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "partial",
+            alignment: "source_only"
+        )
+        let staleUntimed = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "zh",
+            groupEpoch: 0,
+            providerSequence: 0,
+            sourceLanguage: "en",
+            sourceStartMs: nil,
+            sourceEndMs: nil,
+            text: "无法证明仍是当前句的旧译文",
+            completion: "partial",
+            withdrawn: false,
+            revision: 1
+        )
+
+        let timeline = SubtitleConversationTimeline.projection(
+            languages: ["en", "zh"],
+            utterances: [liveSource],
+            placement: { $0.sourceLanguage },
+            cues: { $0 == "zh" ? [staleUntimed] : [] },
+            failedLanguages: ["zh"]
+        )
+
+        XCTAssertNil(timeline.liveLanes[1].text)
+        XCTAssertEqual(timeline.liveLanes[1].missingLaneState, .failed)
+    }
+
+    func testConversationProjectionUsesBoundedTailForThousandRowSession() {
+        var durable: [NotebookCaptureUtteranceDTO] = []
+        durable.reserveCapacity(1_000)
+        for index in 0..<1_000 {
+            let sequence = UInt64(index)
+            let startMs = sequence * 1_000
+            durable.append(NotebookCaptureUtteranceDTO(
+                id: "source-\(index)",
+                sessionId: "session",
+                sequence: sequence,
+                revision: 1,
+                sourceLanguage: "en",
+                sourceText: "row \(index)",
+                sourceStartMs: startMs,
+                sourceEndMs: startMs + 500,
+                translatedLanguage: nil,
+                translatedText: nil,
+                completion: "complete",
+                alignment: "source_only"
+            ))
+        }
+        let preview = NotebookCaptureUtteranceDTO(
+            id: "source-1000",
+            sessionId: "session",
+            sequence: 1_000,
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: "live row",
+            sourceStartMs: 1_000_000,
+            sourceEndMs: 1_000_500,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "partial",
+            alignment: "source_only"
+        )
+        let rowBudget = 12
+        let limit = rowBudget + SubtitleConversationTimeline.utteranceLookbackAllowance
+        let tail = NotebookCaptureLivePresentation.utteranceTail(
+            durable: durable,
+            preview: [preview],
+            sessionId: "session",
+            limit: limit
+        )
+
+        XCTAssertEqual(tail.count, limit)
+        XCTAssertEqual(tail.first?.sequence, 987)
+        XCTAssertEqual(tail.last?.sequence, 1_000)
+
+        var placementCalls = 0
+        let timeline = SubtitleConversationTimeline.projection(
+            languages: ["en", "zh", "th"],
+            utterances: tail,
+            placement: {
+                placementCalls += 1
+                return $0.sourceLanguage
+            },
+            cues: { _ in [] }
+        )
+
+        XCTAssertEqual(timeline.historicalUtterances.count, limit - 1)
+        XCTAssertLessThanOrEqual(
+            placementCalls,
+            limit + 1,
+            "Conversation must project only the canvas-sized tail, not all 1000 rows"
         )
     }
 

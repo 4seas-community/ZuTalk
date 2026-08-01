@@ -3918,6 +3918,12 @@ impl NotebookCaptureStore {
                 }
             }
         }
+        revalidate_bound_translation_inbox_items_for_utterance_from_conn(
+            &tx,
+            &input.session_id,
+            &utterance_id,
+            input.sequence,
+        )?;
         if !apply_bound_translation_inbox_items_from_conn(
             &tx,
             &input.session_id,
@@ -4098,6 +4104,26 @@ impl NotebookCaptureStore {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_realtime_session_provenance(&tx, session_id)?;
+
+        // Active capture deliberately keeps an auxiliary Complete mutable
+        // while its canonical source identity is still Partial. Once startup
+        // recovery makes the run terminal that identity can no longer revise,
+        // so replay every already-bound row before looking for new bindings.
+        // Grouping by canonical row preserves the same surviving-facts-before-
+        // tombstones composition order as the live path and makes replays
+        // idempotent at the lane upsert boundary.
+        let bound_rows = list_translation_inbox_from_conn(&tx, session_id)?
+            .into_iter()
+            .filter_map(|item| item.bound_utterance_id.zip(item.bound_sequence))
+            .collect::<std::collections::HashSet<_>>();
+        for (utterance_id, sequence) in bound_rows {
+            let _ = apply_bound_translation_inbox_items_from_conn(
+                &tx,
+                session_id,
+                &utterance_id,
+                sequence,
+            )?;
+        }
         let reconciled = reconcile_translation_inbox_from_conn(&tx, session_id)?.len();
         tx.commit()?;
         Ok(reconciled)
@@ -5271,6 +5297,108 @@ fn apply_bound_translation_inbox_items_from_conn(
     Ok(true)
 }
 
+/// Treats a cross-stream row binding as a derived cache, never as permanent
+/// identity. Both sides can revise while Partial. If a canonical revision no
+/// longer overlaps a bound auxiliary fact, detach that fact before composing
+/// the row again. A completed projected lane remains immutable: rebuilding it
+/// will return Conflict and roll the whole canonical revision back rather than
+/// silently moving Final text to the wrong audio interval.
+fn revalidate_bound_translation_inbox_items_for_utterance_from_conn(
+    conn: &Connection,
+    session_id: &str,
+    utterance_id: &str,
+    canonical_sequence: u64,
+) -> Result<(), NotebookCaptureStoreError> {
+    let canonical = get_machine_utterance_by_id_from_conn(conn, utterance_id)?
+        .ok_or_else(|| NotebookCaptureStoreError::NotFound(format!("utterance {utterance_id}")))?;
+    let items = list_translation_inbox_from_conn(conn, session_id)?;
+    for item in items.into_iter().filter(|item| {
+        item.bound_utterance_id.as_deref() == Some(utterance_id)
+            && item.bound_sequence == Some(canonical_sequence)
+            && !translation_inbox_matches_utterance(item, &canonical)
+    }) {
+        detach_translation_inbox_item_from_bound_utterance(conn, &item)?;
+    }
+    Ok(())
+}
+
+/// Clears one stale derived binding and rebuilds only the lane it used to
+/// contribute to. This happens inside the caller's transaction, so a Final
+/// lane that cannot legally be rewritten aborts the revision atomically.
+fn detach_translation_inbox_item_from_bound_utterance(
+    conn: &Connection,
+    item: &RealtimeTranslationInboxItem,
+) -> Result<Option<RealtimeUtterance>, NotebookCaptureStoreError> {
+    let canonical_sequence = item.bound_sequence.ok_or_else(|| {
+        NotebookCaptureStoreError::CorruptData(
+            "cannot detach an unbound translation inbox item".into(),
+        )
+    })?;
+    let utterance_id = item.bound_utterance_id.as_deref().ok_or_else(|| {
+        NotebookCaptureStoreError::CorruptData(
+            "translation inbox has a partial canonical binding".into(),
+        )
+    })?;
+    let updated = conn.execute(
+        "UPDATE realtime_translation_inbox
+         SET bound_utterance_id = NULL, bound_sequence = NULL
+         WHERE session_id = ?1
+           AND group_epoch = ?2
+           AND provider_sequence = ?3
+           AND target_language = ?4
+           AND bound_utterance_id = ?5
+           AND bound_sequence = ?6",
+        params![
+            item.key.session_id,
+            u64_to_i64(item.key.group_epoch, "translation group epoch")?,
+            u64_to_i64(item.key.provider_sequence, "translation provider sequence")?,
+            canonical_language(&item.key.target_language),
+            utterance_id,
+            u64_to_i64(canonical_sequence, "canonical sequence")?,
+        ],
+    )?;
+    if updated != 1 {
+        return Err(NotebookCaptureStoreError::Conflict(
+            "translation inbox binding changed while revalidating identity".into(),
+        ));
+    }
+
+    let canonical = match get_machine_utterance_by_id_from_conn(conn, utterance_id)? {
+        Some(canonical) => canonical,
+        None => return Ok(None),
+    };
+    let target_language = canonical_language(&item.key.target_language);
+    let target_is_current_source = canonical.has_source_lane()
+        && canonical_language(&canonical.source_language) == target_language;
+    if target_is_current_source {
+        return Ok(Some(canonical));
+    }
+
+    let remaining = list_translation_inbox_from_conn(conn, &item.key.session_id)?
+        .into_iter()
+        .find(|candidate| {
+            !candidate.withdrawn
+                && candidate.bound_utterance_id.as_deref() == Some(utterance_id)
+                && candidate.bound_sequence == Some(canonical_sequence)
+                && canonical_language(&candidate.key.target_language) == target_language
+        });
+    if let Some(remaining) = remaining {
+        return apply_translation_inbox_to_bound_utterance(conn, &remaining, canonical_sequence);
+    }
+
+    let visible = upsert_translation_variant_from_conn(
+        conn,
+        &item.key.session_id,
+        canonical_sequence,
+        &target_language,
+        None,
+        UtteranceVariantState::Waiting,
+        None,
+        TranslationLaneWrite::DetachDerivedBinding,
+    )?;
+    collect_empty_translation_shell_after_withdrawal(conn, visible)
+}
+
 fn upsert_translation_inbox_item_from_conn(
     conn: &Connection,
     input: &NewRealtimeTranslationInboxItem,
@@ -5371,33 +5499,51 @@ fn upsert_translation_inbox_item_from_conn(
     let mut bound_utterance = if changed {
         match (item.bound_utterance_id.as_deref(), item.bound_sequence) {
             (Some(_), Some(sequence)) => {
-                if get_machine_utterance_by_session_sequence_from_conn(
+                if let Some(canonical) = get_machine_utterance_by_session_sequence_from_conn(
                     conn,
                     &key.session_id,
                     sequence,
-                )?
-                .is_some()
-                {
-                    let visible =
-                        apply_translation_inbox_to_bound_utterance(conn, &item, sequence)?;
-                    if visible.is_none()
-                        && get_machine_utterance_by_session_sequence_from_conn(
-                            conn,
-                            &key.session_id,
-                            sequence,
-                        )?
-                        .is_none()
-                    {
+                )? {
+                    if !translation_inbox_matches_utterance(&item, &canonical) {
                         removed_bound_sequence = Some(sequence);
-                        removed_bound_utterance_id = item.bound_utterance_id.clone();
+                        let old_utterance_id = item.bound_utterance_id.clone();
+                        let visible =
+                            detach_translation_inbox_item_from_bound_utterance(conn, &item)?;
+                        if visible.is_none() {
+                            removed_bound_utterance_id = old_utterance_id;
+                        }
                         item =
                             get_translation_inbox_item_from_conn(conn, &key)?.ok_or_else(|| {
                                 NotebookCaptureStoreError::NotFound(
-                                    "translation inbox disappeared after shell collection".into(),
+                                    "translation inbox disappeared after stale binding detach"
+                                        .into(),
                                 )
                             })?;
+                        None
+                    } else {
+                        let visible =
+                            apply_translation_inbox_to_bound_utterance(conn, &item, sequence)?;
+                        if visible.is_none()
+                            && get_machine_utterance_by_session_sequence_from_conn(
+                                conn,
+                                &key.session_id,
+                                sequence,
+                            )?
+                            .is_none()
+                        {
+                            removed_bound_sequence = Some(sequence);
+                            removed_bound_utterance_id = item.bound_utterance_id.clone();
+                            item = get_translation_inbox_item_from_conn(conn, &key)?.ok_or_else(
+                                || {
+                                    NotebookCaptureStoreError::NotFound(
+                                        "translation inbox disappeared after shell collection"
+                                            .into(),
+                                    )
+                                },
+                            )?;
+                        }
+                        visible
                     }
-                    visible
                 } else {
                     conn.execute(
                         "UPDATE realtime_translation_inbox
@@ -5586,10 +5732,25 @@ fn apply_translation_inbox_to_bound_utterance(
     let target_is_current_source = canonical.has_source_lane()
         && canonical_language(&canonical.source_language)
             == canonical_language(&item.key.target_language);
+    let auxiliary_is_final =
+        !item.withdrawn && item.completion == Some(UtteranceCompletion::Complete);
+    let source_identity_is_mutable = canonical.has_source_lane()
+        && !canonical.source_lane_is_complete()
+        && auxiliary_is_final
+        && capture_session_is_active_from_conn(conn, &item.key.session_id)?;
+    let composed = composed_translation_lane_from_conn(
+        conn,
+        &canonical.id,
+        &item.key.target_language,
+        item.key.group_epoch,
+    )?;
     let auxiliary_final_claims_owner = target_is_current_source
         && !canonical.source_lane_is_complete()
-        && !item.withdrawn
-        && item.completion == Some(UtteranceCompletion::Complete);
+        && auxiliary_is_final
+        && !source_identity_is_mutable
+        && composed
+            .as_ref()
+            .is_some_and(|lane| lane.completion == Some(UtteranceCompletion::Complete));
     if target_is_current_source && !auxiliary_final_claims_owner {
         // Same-language aux Partial/withdrawal is durable evidence while the
         // provisional source retains display priority. A source Final is an
@@ -5626,12 +5787,6 @@ fn apply_translation_inbox_to_bound_utterance(
         )?;
         return collect_empty_translation_shell_after_withdrawal(conn, visible);
     }
-    let composed = composed_translation_lane_from_conn(
-        conn,
-        &canonical.id,
-        &item.key.target_language,
-        item.key.group_epoch,
-    )?;
     if auxiliary_final_claims_owner {
         return claim_auxiliary_final_from_provisional_source(
             conn,
@@ -5641,10 +5796,18 @@ fn apply_translation_inbox_to_bound_utterance(
         )
         .map(Some);
     }
-    let (text, completion) = match composed {
+    let (text, mut completion) = match composed {
         Some(composed) => (Some(composed.text), composed.completion),
         None => (item.translated_text.clone(), item.completion),
     };
+    if source_identity_is_mutable && completion == Some(UtteranceCompletion::Complete) {
+        // An auxiliary stream may settle its segment before the canonical
+        // stream settles the row identity. Keep the words live, but keep the
+        // derived lane mutable until the source row is Final. Otherwise an
+        // early auxiliary Final would freeze a speculative canonical row and
+        // turn an ordinary Soniox tail replacement into a group-wide failure.
+        completion = Some(UtteranceCompletion::Partial);
+    }
     upsert_translation_variant_from_conn(
         conn,
         &item.key.session_id,
@@ -5666,13 +5829,12 @@ struct ComposedTranslationLane {
 /// Concatenates every auxiliary segment bound to one canonical row's language
 /// lane, in the order the words were spoken.
 ///
-/// Ordering is by provider sequence, not by timestamp: within one connection
-/// the sequence is the connection's own account of what came first, and it
-/// stays monotonic through exactly the timestamp drift that made this
-/// composition necessary. Because the order is append-only as later segments
-/// arrive, the resulting text only ever grows at the end — which is what lets
-/// an already-projected lane be extended without rewriting what a reader has
-/// already seen.
+/// Ordering is by provider sequence, not by timestamp: after the shared-time
+/// candidate gate places sibling segments on this row, the sequence is the
+/// connection's authoritative account of their order. Because the order is
+/// append-only as later segments arrive, the resulting text only ever grows at
+/// the end — which is what lets an already-projected lane be extended without
+/// rewriting what a reader has already seen.
 fn composed_translation_lane_from_conn(
     conn: &Connection,
     utterance_id: &str,
@@ -5879,7 +6041,6 @@ struct TranslationInboxAlignmentScore {
     overlap_per_mille: u16,
     source_language_matches: bool,
     midpoint_distance_ms: u64,
-    sequence_distance: u64,
     sequence: u64,
 }
 
@@ -5898,7 +6059,6 @@ fn translation_inbox_alignment_score(
     let has_text_evidence = exact_source_text || contained_source_text;
     let source_language_matches =
         canonical_language(&item.source_language) == canonical_language(&utterance.source_language);
-    let sequence_distance = item.key.provider_sequence.abs_diff(utterance.sequence);
     let mut score = TranslationInboxAlignmentScore {
         exact_source_text,
         contained_source_text,
@@ -5906,7 +6066,6 @@ fn translation_inbox_alignment_score(
         overlap_per_mille: 0,
         source_language_matches,
         midpoint_distance_ms: u64::MAX,
-        sequence_distance,
         sequence: utterance.sequence,
     };
     match (
@@ -5925,16 +6084,16 @@ fn translation_inbox_alignment_score(
                 / 2;
             let intersection_start = left_start.max(right_start);
             let intersection_end = left_end.min(right_end);
-            if intersection_end < intersection_start {
-                // Disjoint in time. Sibling connection clocks drift apart over
-                // a long run, so this rules the row out only when the words
-                // vouch for the row instead. A matching sequence number does
-                // not: two connections number their own segments, and the
-                // numbers mean nothing to each other.
-                if !has_text_evidence {
-                    return None;
-                }
-                return Some(score);
+            let both_have_duration = left_end > left_start && right_end > right_start;
+            if intersection_end < intersection_start
+                || (both_have_duration && intersection_end == intersection_start)
+            {
+                // Both intervals describe the shared capture timeline. Exact
+                // or contained words rank overlapping candidates, but cannot
+                // resurrect even a nearby disjoint repeated filler. The live
+                // cue remains visible without a row while the matching
+                // canonical interval has not arrived yet.
+                return None;
             }
             let shorter = left_end
                 .saturating_sub(left_start)
@@ -5948,7 +6107,7 @@ fn translation_inbox_alignment_score(
             };
             Some(score)
         }
-        _ if has_text_evidence || item.key.provider_sequence == utterance.sequence => Some(score),
+        _ if has_text_evidence => Some(score),
         _ => None,
     }
 }
@@ -5963,7 +6122,6 @@ fn translation_inbox_evidence_eq(
         && left.overlap_per_mille == right.overlap_per_mille
         && left.source_language_matches == right.source_language_matches
         && left.midpoint_distance_ms == right.midpoint_distance_ms
-        && left.sequence_distance == right.sequence_distance
 }
 
 fn unique_translation_inbox_candidate<'a>(
@@ -5988,7 +6146,6 @@ fn unique_translation_inbox_candidate<'a>(
                     .cmp(&left.source_language_matches)
             })
             .then_with(|| left.midpoint_distance_ms.cmp(&right.midpoint_distance_ms))
-            .then_with(|| left.sequence_distance.cmp(&right.sequence_distance))
             .then_with(|| left.sequence.cmp(&right.sequence))
     });
     let (best, candidate) = ranked.first()?;
@@ -6005,6 +6162,12 @@ fn unique_translation_inbox_candidate<'a>(
 enum TranslationLaneWrite {
     /// Final is immutable. Every caller outside auxiliary composition.
     FinalIsImmutable,
+    /// A stale auxiliary-to-canonical binding is being removed. Unlike an
+    /// ordinary speculative downgrade, silently absorbing this write would
+    /// leave completed text attached to a canonical row whose identity has
+    /// changed. Reject it so the surrounding transaction rolls the source
+    /// revision and inbox detach back together.
+    DetachDerivedBinding,
     /// The text is the concatenation of the auxiliary segments bound to this
     /// row, so a later segment extends the lane at the end. What a reader has
     /// already seen is still immutable — an extension that would rewrite any
@@ -6053,6 +6216,11 @@ fn upsert_translation_variant_from_conn(
             && existing.state == UtteranceVariantState::Ready
             && existing.completion == Some(UtteranceCompletion::Complete)
         {
+            if lane_write == TranslationLaneWrite::DetachDerivedBinding {
+                return Err(NotebookCaptureStoreError::Conflict(format!(
+                    "cannot detach completed derived translation variant {session_id}:{sequence}:{language}"
+                )));
+            }
             let incoming_is_final = state == UtteranceVariantState::Ready
                 && completion == Some(UtteranceCompletion::Complete);
             let extends_final_lane = lane_write == TranslationLaneWrite::ComposeAuxiliarySegments
@@ -6865,6 +7033,23 @@ fn ensure_active_realtime_session(
             "realtime utterance has partial provider provenance".into(),
         )),
     }
+}
+
+fn capture_session_is_active_from_conn(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<bool, NotebookCaptureStoreError> {
+    let state = conn
+        .query_row(
+            "SELECT capture_state FROM notebook_capture_runs WHERE session_id = ?1",
+            [session_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .ok_or_else(|| {
+            NotebookCaptureStoreError::NotFound(format!("capture session {session_id}"))
+        })?;
+    Ok(CaptureState::parse(&state)?.is_active())
 }
 
 fn ensure_realtime_session_provenance(
@@ -10603,7 +10788,7 @@ mod tests {
     }
 
     #[test]
-    fn auxiliary_final_binding_is_atomic_and_replay_does_not_bump_projection() {
+    fn auxiliary_final_waits_for_canonical_identity_before_projection_and_replay_is_a_noop() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
         create_catalogued_run(&store, &notebook_id, "aux-final-bind");
@@ -10654,14 +10839,18 @@ mod tests {
             .iter()
             .find(|variant| variant.language == "zh")
             .unwrap();
-        assert_eq!(zh.completion, Some(UtteranceCompletion::Complete));
-        assert_eq!(zh.projection_revision, 1);
+        assert_eq!(
+            zh.completion,
+            Some(UtteranceCompletion::Partial),
+            "auxiliary words are live but cannot freeze a speculative canonical identity"
+        );
+        assert_eq!(zh.projection_revision, 0);
         assert_eq!(
             store
                 .load_realtime_loro_projection("session-aux-final-bind")
                 .unwrap()
                 .desired_revision,
-            1
+            0
         );
 
         let duplicate = store.upsert_translation_inbox_item(&final_item).unwrap();
@@ -10672,8 +10861,51 @@ mod tests {
                 .load_realtime_loro_projection("session-aux-final-bind")
                 .unwrap()
                 .desired_revision,
-            1,
-            "an identical provider Final replay must not create another Loro revision"
+            0,
+            "an identical provider Final replay cannot finalize a speculative row"
+        );
+
+        let finalized = store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: bound.id.clone(),
+                    session_id: bound.session_id.clone(),
+                    sequence: bound.sequence,
+                    session_speaker_id: bound.session_speaker_id.clone(),
+                    source_language: bound.source_language.clone(),
+                    source_text: bound.source_text.clone(),
+                    source_start_ms: bound.source_start_ms,
+                    source_end_ms: bound.source_end_ms,
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Complete,
+                    alignment: UtteranceAlignment::TranslationPending,
+                },
+                Some(bound.revision),
+            )
+            .unwrap();
+        let finalized_zh = finalized
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert_eq!(finalized_zh.completion, Some(UtteranceCompletion::Complete));
+        assert!(finalized_zh.projection_revision > 0);
+        let projected_revision = store
+            .load_realtime_loro_projection("session-aux-final-bind")
+            .unwrap()
+            .desired_revision;
+        assert_eq!(finalized_zh.projection_revision, projected_revision);
+
+        let duplicate_after_final = store.upsert_translation_inbox_item(&final_item).unwrap();
+        assert!(!duplicate_after_final.changed);
+        assert_eq!(
+            store
+                .load_realtime_loro_projection("session-aux-final-bind")
+                .unwrap()
+                .desired_revision,
+            projected_revision,
+            "replaying the same auxiliary Final after canonical settlement is idempotent"
         );
         let durable = store
             .list_translation_inbox("session-aux-final-bind")
@@ -11008,29 +11240,28 @@ mod tests {
             .find(|variant| variant.language == "en")
             .expect("english lane");
         assert_eq!(lane.text.as_deref(), Some("Heavy rain Just the beginning"));
-        assert_eq!(lane.completion, Some(UtteranceCompletion::Complete));
+        assert_eq!(
+            lane.completion,
+            Some(UtteranceCompletion::Partial),
+            "the composed words are live, but the canonical row is still mutable"
+        );
     }
 
-    /// The two sibling connections' clocks have drifted, so every auxiliary
-    /// segment's time window sits over the *next* canonical row. Reproduced
-    /// from a real 2026-08-01 run in which this cost a third of the translated
-    /// text: the first segment bound to the following row and the second lost
-    /// that row's lane to it.
     #[test]
-    fn drifted_segment_timestamps_bind_by_words_rather_than_to_the_neighbouring_row() {
+    fn repeated_filler_with_disjoint_timestamps_waits_for_its_current_row() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
-        create_catalogued_run(&store, &notebook_id, "aux-drift");
-        claim_realtime(&store, "session-aux-drift");
+        create_catalogued_run(&store, &notebook_id, "aux-repeated-filler");
+        claim_realtime(&store, "session-aux-repeated-filler");
         let row = |id: &str, sequence: u64, text: &str, start: u64, end: u64| {
             store
                 .upsert_utterance(
                     &NewRealtimeUtterance {
                         id: id.into(),
-                        session_id: "session-aux-drift".into(),
+                        session_id: "session-aux-repeated-filler".into(),
                         sequence,
                         session_speaker_id: None,
-                        source_language: "zh".into(),
+                        source_language: "en".into(),
                         source_text: text.into(),
                         source_start_ms: Some(start),
                         source_end_ms: Some(end),
@@ -11043,55 +11274,49 @@ mod tests {
                 )
                 .unwrap();
         };
-        row("utt-drift-short", 0, "不重要。", 79_860, 80_280);
-        row(
-            "utt-drift-long",
-            1,
-            "不重要，因为他觉得重要的是要超越这个东西。",
-            80_460,
-            83_280,
-        );
+        row("utt-old-okay", 0, "Okay.", 4_100, 4_300);
 
-        let segment =
-            |provider_sequence: u64, source_text: &str, start: u64, end: u64, translated: &str| {
-                store
-                    .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
-                        key: RealtimeTranslationInboxKey {
-                            session_id: "session-aux-drift".into(),
-                            lane_index: 1,
-                            group_epoch: 0,
-                            provider_sequence,
-                            target_language: "en".into(),
-                        },
-                        source_language: "zh".into(),
-                        source_text: source_text.into(),
-                        source_start_ms: Some(start),
-                        source_end_ms: Some(end),
-                        translated_text: Some(translated.into()),
-                        completion: Some(UtteranceCompletion::Complete),
-                        withdrawn: false,
-                    })
-                    .unwrap()
-            };
+        // The next "okay" translation arrives before its canonical row. It
+        // must remain durable and unbound instead of attaching to the older
+        // identical filler whose interval only touches this cue at 4,300 ms.
+        // Two positive-duration intervals have no shared audio at a single
+        // endpoint, so the old row is not a candidate.
+        let accepted = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: "session-aux-repeated-filler".into(),
+                    lane_index: 1,
+                    group_epoch: 0,
+                    provider_sequence: 11,
+                    target_language: "zh".into(),
+                },
+                source_language: "en".into(),
+                source_text: "Okay.".into(),
+                source_start_ms: Some(4_300),
+                source_end_ms: Some(4_400),
+                translated_text: Some("好的。".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(
+            accepted.item.bound_sequence, None,
+            "exact repeated text cannot override disjoint capture time"
+        );
+        assert!(accepted.bound_utterance.is_none());
 
-        // Both windows overlap only the long row; only the words tell them apart.
-        let short = segment(11, "不重要。", 80_880, 81_480, "Not important.");
-        let long = segment(
-            12,
-            "因为他觉得重要的是要超越这个东西。",
-            81_660,
-            83_640,
-            "Because what he finds important is transcending it.",
-        );
+        row("utt-current-okay", 1, "Okay.", 4_250, 4_450);
+        let reconciled = store
+            .reconcile_active_translation_inbox("session-aux-repeated-filler")
+            .unwrap();
+        assert_eq!(reconciled.len(), 1);
+        assert_eq!(reconciled[0].canonical_sequence, 1);
         assert_eq!(
-            short.item.bound_sequence,
-            Some(0),
-            "exact words win over time"
-        );
-        assert_eq!(
-            long.item.bound_sequence,
-            Some(1),
-            "containment places the remainder on the row that holds its words"
+            store
+                .list_translation_inbox("session-aux-repeated-filler")
+                .unwrap()[0]
+                .bound_sequence,
+            Some(1)
         );
 
         let lane_text = |id: &str| {
@@ -11101,21 +11326,513 @@ mod tests {
                 .expect("canonical row")
                 .variants
                 .iter()
-                .find(|variant| variant.language == "en")
+                .find(|variant| variant.language == "zh")
                 .and_then(|variant| variant.text.clone())
         };
+        assert_eq!(lane_text("utt-old-okay"), None);
+        assert_eq!(lane_text("utt-current-okay").as_deref(), Some("好的。"));
+    }
+
+    #[test]
+    fn auxiliary_partial_revision_revalidates_and_moves_its_derived_binding() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "aux-revision-moves");
+        claim_realtime(&store, "session-aux-revision-moves");
+        let insert_row = |id: &str,
+                          sequence: u64,
+                          text: &str,
+                          start: u64,
+                          end: u64,
+                          completion: UtteranceCompletion| {
+            store
+                .upsert_utterance(
+                    &NewRealtimeUtterance {
+                        id: id.into(),
+                        session_id: "session-aux-revision-moves".into(),
+                        sequence,
+                        session_speaker_id: None,
+                        source_language: "en".into(),
+                        source_text: text.into(),
+                        source_start_ms: Some(start),
+                        source_end_ms: Some(end),
+                        translated_language: None,
+                        translated_text: None,
+                        completion,
+                        alignment: UtteranceAlignment::TranslationPending,
+                    },
+                    None,
+                )
+                .unwrap();
+        };
+        insert_row(
+            "utt-aux-revision-old",
+            0,
+            "first phrase",
+            0,
+            1_000,
+            UtteranceCompletion::Partial,
+        );
+        insert_row(
+            "utt-aux-revision-current",
+            1,
+            "second phrase",
+            2_000,
+            3_000,
+            UtteranceCompletion::Complete,
+        );
+        let key = RealtimeTranslationInboxKey {
+            session_id: "session-aux-revision-moves".into(),
+            lane_index: 1,
+            group_epoch: 0,
+            provider_sequence: 9,
+            target_language: "zh".into(),
+        };
+        let accepted = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: key.clone(),
+                source_language: "en".into(),
+                source_text: "first phrase".into(),
+                source_start_ms: Some(100),
+                source_end_ms: Some(900),
+                translated_text: Some("第一句（未完成）".into()),
+                completion: Some(UtteranceCompletion::Partial),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(accepted.item.bound_sequence, Some(0));
+
+        let moved = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key,
+                source_language: "en".into(),
+                source_text: "second phrase".into(),
+                source_start_ms: Some(2_100),
+                source_end_ms: Some(2_900),
+                translated_text: Some("第二句".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(moved.removed_bound_sequence, Some(0));
+        assert_eq!(moved.item.bound_sequence, Some(1));
         assert_eq!(
-            lane_text("utt-drift-short").as_deref(),
-            Some("Not important.")
+            moved
+                .bound_utterance
+                .as_ref()
+                .and_then(|row| row.variants.iter().find(|lane| lane.language == "zh"))
+                .and_then(|lane| lane.text.as_deref()),
+            Some("第二句")
+        );
+        let old = store
+            .get_machine_utterance_by_id("utt-aux-revision-old")
+            .unwrap()
+            .unwrap();
+        let old_lane = old
+            .variants
+            .iter()
+            .find(|lane| lane.language == "zh")
+            .expect("the cleared lane returns to Waiting");
+        assert_eq!(old_lane.state, UtteranceVariantState::Waiting);
+        assert_eq!(old_lane.text, None);
+    }
+
+    #[test]
+    fn canonical_partial_revision_detaches_a_now_disjoint_auxiliary_fact() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "canonical-revision-detaches");
+        claim_realtime(&store, "session-canonical-revision-detaches");
+        let mut canonical = NewRealtimeUtterance {
+            id: "utt-canonical-revision-old".into(),
+            session_id: "session-canonical-revision-detaches".into(),
+            sequence: 0,
+            session_speaker_id: None,
+            source_language: "en".into(),
+            source_text: "moving partial".into(),
+            source_start_ms: Some(100),
+            source_end_ms: Some(900),
+            translated_language: None,
+            translated_text: None,
+            completion: UtteranceCompletion::Partial,
+            alignment: UtteranceAlignment::TranslationPending,
+        };
+        let first = store.upsert_utterance(&canonical, None).unwrap();
+        let key = RealtimeTranslationInboxKey {
+            session_id: canonical.session_id.clone(),
+            lane_index: 1,
+            group_epoch: 0,
+            provider_sequence: 7,
+            target_language: "zh".into(),
+        };
+        assert_eq!(
+            store
+                .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                    key: key.clone(),
+                    source_language: "en".into(),
+                    source_text: "moving partial".into(),
+                    source_start_ms: Some(200),
+                    source_end_ms: Some(800),
+                    translated_text: Some("移动中的部分结果".into()),
+                    completion: Some(UtteranceCompletion::Partial),
+                    withdrawn: false,
+                })
+                .unwrap()
+                .item
+                .bound_sequence,
+            Some(0)
+        );
+
+        canonical.source_text = "different live row".into();
+        canonical.source_start_ms = Some(2_000);
+        canonical.source_end_ms = Some(3_000);
+        let revised = store
+            .upsert_utterance(&canonical, Some(first.revision))
+            .unwrap();
+        let cleared_lane = revised
+            .variants
+            .iter()
+            .find(|lane| lane.language == "zh")
+            .expect("stale derived lane is cleared with the source revision");
+        assert_eq!(cleared_lane.state, UtteranceVariantState::Waiting);
+        assert_eq!(cleared_lane.text, None);
+        assert_eq!(
+            store.list_translation_inbox(&canonical.session_id).unwrap()[0].bound_sequence,
+            None
+        );
+
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-canonical-revision-current".into(),
+                    session_id: canonical.session_id.clone(),
+                    sequence: 1,
+                    session_speaker_id: None,
+                    source_language: "en".into(),
+                    source_text: "moving partial".into(),
+                    source_start_ms: Some(100),
+                    source_end_ms: Some(900),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Complete,
+                    alignment: UtteranceAlignment::TranslationPending,
+                },
+                None,
+            )
+            .unwrap();
+        let rebound = store
+            .reconcile_active_translation_inbox(&canonical.session_id)
+            .unwrap();
+        assert_eq!(rebound.len(), 1);
+        assert_eq!(rebound[0].canonical_sequence, 1);
+    }
+
+    #[test]
+    fn auxiliary_final_stays_mutable_until_canonical_identity_settles() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "canonical-revision-final-conflict");
+        claim_realtime(&store, "session-canonical-revision-final-conflict");
+        let mut canonical = NewRealtimeUtterance {
+            id: "utt-canonical-revision-final".into(),
+            session_id: "session-canonical-revision-final-conflict".into(),
+            sequence: 0,
+            session_speaker_id: None,
+            source_language: "en".into(),
+            source_text: "settled identity".into(),
+            source_start_ms: Some(100),
+            source_end_ms: Some(900),
+            translated_language: None,
+            translated_text: None,
+            completion: UtteranceCompletion::Partial,
+            alignment: UtteranceAlignment::TranslationPending,
+        };
+        let first = store.upsert_utterance(&canonical, None).unwrap();
+        let accepted = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: canonical.session_id.clone(),
+                    lane_index: 1,
+                    group_epoch: 0,
+                    provider_sequence: 7,
+                    target_language: "zh".into(),
+                },
+                source_language: "en".into(),
+                source_text: "settled identity".into(),
+                source_start_ms: Some(200),
+                source_end_ms: Some(800),
+                translated_text: Some("已完成的译文".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        let provisional_lane = accepted
+            .bound_utterance
+            .as_ref()
+            .and_then(|row| row.variants.iter().find(|lane| lane.language == "zh"))
+            .unwrap();
+        assert_eq!(provisional_lane.text.as_deref(), Some("已完成的译文"));
+        assert_eq!(
+            provisional_lane.completion,
+            Some(UtteranceCompletion::Partial),
+            "provider finality must not freeze a speculative canonical identity"
+        );
+        assert_eq!(provisional_lane.projection_revision, 0);
+
+        canonical.source_text = "a different live row".into();
+        canonical.source_start_ms = Some(2_000);
+        canonical.source_end_ms = Some(3_000);
+        let revised = store
+            .upsert_utterance(&canonical, Some(first.revision))
+            .unwrap();
+
+        assert_eq!(revised.source_text, "a different live row");
+        assert_eq!(revised.source_start_ms, Some(2_000));
+        assert_eq!(revised.source_end_ms, Some(3_000));
+        assert_eq!(
+            revised
+                .variants
+                .iter()
+                .find(|lane| lane.language == "zh")
+                .map(|lane| (&lane.state, lane.text.as_deref(), lane.completion)),
+            Some((&UtteranceVariantState::Waiting, None, None))
         );
         assert_eq!(
-            lane_text("utt-drift-long").as_deref(),
-            Some("Because what he finds important is transcending it.")
+            store.list_translation_inbox(&canonical.session_id).unwrap()[0].bound_sequence,
+            None,
+            "the completed provider fact stays durable but is free to bind its real row"
+        );
+
+        let settled = store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-canonical-revision-settled".into(),
+                    session_id: canonical.session_id.clone(),
+                    sequence: 1,
+                    session_speaker_id: None,
+                    source_language: "en".into(),
+                    source_text: "settled identity".into(),
+                    source_start_ms: Some(100),
+                    source_end_ms: Some(900),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Complete,
+                    alignment: UtteranceAlignment::TranslationPending,
+                },
+                None,
+            )
+            .unwrap();
+        let rebound = store
+            .reconcile_active_translation_inbox(&canonical.session_id)
+            .unwrap();
+        assert_eq!(rebound.len(), 1);
+        assert_eq!(rebound[0].canonical_sequence, settled.sequence);
+        let final_lane = rebound[0]
+            .utterance
+            .as_ref()
+            .unwrap()
+            .variants
+            .iter()
+            .find(|lane| lane.language == "zh")
+            .unwrap();
+        assert_eq!(final_lane.text.as_deref(), Some("已完成的译文"));
+        assert_eq!(final_lane.completion, Some(UtteranceCompletion::Complete));
+    }
+
+    #[test]
+    fn legacy_completed_derived_binding_rolls_back_a_disjoint_source_revision() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "legacy-completed-binding");
+        claim_realtime(&store, "session-legacy-completed-binding");
+        let mut source = NewRealtimeUtterance {
+            id: "utt-legacy-completed-binding".into(),
+            session_id: "session-legacy-completed-binding".into(),
+            sequence: 0,
+            session_speaker_id: None,
+            source_language: "en".into(),
+            source_text: "old speculative identity".into(),
+            source_start_ms: Some(100),
+            source_end_ms: Some(900),
+            translated_language: None,
+            translated_text: None,
+            completion: UtteranceCompletion::Partial,
+            alignment: UtteranceAlignment::TranslationPending,
+        };
+        let first = store.upsert_utterance(&source, None).unwrap();
+        store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: source.session_id.clone(),
+                    lane_index: 1,
+                    group_epoch: 0,
+                    provider_sequence: 4,
+                    target_language: "zh".into(),
+                },
+                source_language: "en".into(),
+                source_text: source.source_text.clone(),
+                source_start_ms: Some(200),
+                source_end_ms: Some(800),
+                translated_text: Some("旧的部分译文".into()),
+                completion: Some(UtteranceCompletion::Partial),
+                withdrawn: false,
+            })
+            .unwrap();
+        store
+            .upsert_translation_variant(
+                &source.session_id,
+                source.sequence,
+                "zh",
+                Some("旧版本留下的完成译文"),
+                UtteranceVariantState::Ready,
+                Some(UtteranceCompletion::Complete),
+            )
+            .unwrap();
+
+        source.source_text = "new speculative identity".into();
+        source.source_start_ms = Some(2_000);
+        source.source_end_ms = Some(3_000);
+        assert!(matches!(
+            store.upsert_utterance(&source, Some(first.revision)),
+            Err(NotebookCaptureStoreError::Conflict(_))
+        ));
+        let preserved = store
+            .get_machine_utterance_by_id(&source.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(preserved.source_text, "old speculative identity");
+        assert_eq!(
+            store.list_translation_inbox(&source.session_id).unwrap()[0].bound_sequence,
+            Some(0),
+            "the rejected detach and source revision must roll back atomically"
         );
     }
 
     #[test]
-    fn auxiliary_final_claims_a_same_language_provisional_source_once() {
+    fn translation_inbox_without_timestamps_falls_back_to_exact_source_text() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "aux-missing-time");
+        claim_realtime(&store, "session-aux-missing-time");
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-missing-time".into(),
+                    session_id: "session-aux-missing-time".into(),
+                    sequence: 3,
+                    session_speaker_id: None,
+                    source_language: "en".into(),
+                    source_text: "No timestamp fallback.".into(),
+                    source_start_ms: Some(1_000),
+                    source_end_ms: Some(1_400),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Complete,
+                    alignment: UtteranceAlignment::TranslationPending,
+                },
+                None,
+            )
+            .unwrap();
+
+        let accepted = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: "session-aux-missing-time".into(),
+                    lane_index: 1,
+                    group_epoch: 0,
+                    provider_sequence: 99,
+                    target_language: "zh".into(),
+                },
+                source_language: "en".into(),
+                source_text: "No timestamp fallback.".into(),
+                source_start_ms: None,
+                source_end_ms: None,
+                translated_text: Some("没有时间戳的回退。".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(accepted.item.bound_sequence, Some(3));
+        assert_eq!(
+            accepted
+                .bound_utterance
+                .unwrap()
+                .variants
+                .iter()
+                .find(|variant| variant.language == "zh")
+                .and_then(|variant| variant.text.as_deref()),
+            Some("没有时间戳的回退。")
+        );
+
+        let add_repeated_row = |sequence: u64| {
+            store
+                .upsert_utterance(
+                    &NewRealtimeUtterance {
+                        id: format!("utt-missing-okay-{sequence}"),
+                        session_id: "session-aux-missing-time".into(),
+                        sequence,
+                        session_speaker_id: None,
+                        source_language: "en".into(),
+                        source_text: "Okay.".into(),
+                        source_start_ms: None,
+                        source_end_ms: None,
+                        translated_language: None,
+                        translated_text: None,
+                        completion: UtteranceCompletion::Complete,
+                        alignment: UtteranceAlignment::TranslationPending,
+                    },
+                    None,
+                )
+                .unwrap();
+        };
+        add_repeated_row(4);
+        add_repeated_row(5);
+        let ambiguous = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: "session-aux-missing-time".into(),
+                    lane_index: 1,
+                    group_epoch: 0,
+                    provider_sequence: 5,
+                    target_language: "th".into(),
+                },
+                source_language: "en".into(),
+                source_text: "Okay.".into(),
+                source_start_ms: None,
+                source_end_ms: None,
+                translated_text: Some("โอเค".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(
+            ambiguous.item.bound_sequence, None,
+            "provider sequence is local to its stream and cannot choose between repeated text"
+        );
+
+        let sequence_only = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: "session-aux-missing-time".into(),
+                    lane_index: 2,
+                    group_epoch: 0,
+                    provider_sequence: 4,
+                    target_language: "fr".into(),
+                },
+                source_language: "en".into(),
+                source_text: "Different words.".into(),
+                source_start_ms: None,
+                source_end_ms: None,
+                translated_text: Some("Des mots différents.".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(sequence_only.item.bound_sequence, None);
+    }
+
+    #[test]
+    fn auxiliary_final_waits_for_same_language_canonical_identity() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
         create_catalogued_run(&store, &notebook_id, "aux-owner-first");
@@ -11157,26 +11874,28 @@ mod tests {
                 withdrawn: false,
             })
             .unwrap();
-        let claimed = accepted
-            .bound_utterance
-            .expect("the first bound Final must claim the language owner");
-        assert!(claimed.has_source_fact());
-        assert!(!claimed.has_source_lane());
-        let owner = claimed
-            .variants
-            .iter()
-            .find(|variant| variant.language == "zh")
+        assert_eq!(accepted.item.bound_sequence, Some(0));
+        assert_eq!(
+            accepted.bound_utterance, None,
+            "same-language auxiliary Final is evidence while the canonical source is mutable"
+        );
+        let provisional = store
+            .get_machine_utterance_by_id(&source.id)
+            .unwrap()
             .unwrap();
-        assert_eq!(owner.role, UtteranceVariantRole::Translation);
-        assert_eq!(owner.completion, Some(UtteranceCompletion::Complete));
-        assert_eq!(owner.projection_revision, 1);
+        assert!(provisional.has_source_lane());
+        assert_eq!(provisional.variants[0].role, UtteranceVariantRole::Source);
+        assert_eq!(
+            provisional.variants[0].completion,
+            Some(UtteranceCompletion::Partial)
+        );
 
         let later_source_final = store
             .upsert_utterance(
                 &NewRealtimeUtterance {
-                    id: claimed.id.clone(),
-                    session_id: claimed.session_id.clone(),
-                    sequence: claimed.sequence,
+                    id: source.id.clone(),
+                    session_id: source.session_id.clone(),
+                    sequence: source.sequence,
                     session_speaker_id: None,
                     source_language: "zh".into(),
                     source_text: "规范源 Final".into(),
@@ -11187,18 +11906,18 @@ mod tests {
                     completion: UtteranceCompletion::Complete,
                     alignment: UtteranceAlignment::SourceOnly,
                 },
-                Some(claimed.revision),
+                Some(source.revision),
             )
             .unwrap();
         assert!(later_source_final.source_fact_is_complete());
-        assert!(!later_source_final.has_source_lane());
+        assert!(later_source_final.source_lane_is_complete());
         let stable_owner = later_source_final
             .variants
             .iter()
             .find(|variant| variant.language == "zh")
             .unwrap();
-        assert_eq!(stable_owner.role, UtteranceVariantRole::Translation);
-        assert_eq!(stable_owner.text.as_deref(), Some("辅助 Final"));
+        assert_eq!(stable_owner.role, UtteranceVariantRole::Source);
+        assert_eq!(stable_owner.text.as_deref(), Some("规范源 Final"));
         assert_eq!(stable_owner.projection_revision, 1);
         assert_eq!(
             store
@@ -11206,7 +11925,7 @@ mod tests {
                 .unwrap()
                 .desired_revision,
             1,
-            "the evidence-only source Final cannot bump or replace the owner"
+            "only the settled canonical source is projected"
         );
     }
 
@@ -11273,7 +11992,7 @@ mod tests {
     }
 
     #[test]
-    fn staged_aux_owner_edit_survives_later_same_language_source_final_evidence() {
+    fn same_language_auxiliary_final_is_not_editable_before_canonical_settlement() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
         create_catalogued_run(&store, &notebook_id, "aux-owner-edit-interleave");
@@ -11297,7 +12016,7 @@ mod tests {
                 None,
             )
             .unwrap();
-        let owner = store
+        let accepted = store
             .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
                 key: RealtimeTranslationInboxKey {
                     session_id: source.session_id.clone(),
@@ -11314,31 +12033,23 @@ mod tests {
                 completion: Some(UtteranceCompletion::Complete),
                 withdrawn: false,
             })
-            .unwrap()
-            .bound_utterance
             .unwrap();
-        let machine_owner = owner
-            .variants
-            .iter()
-            .find(|variant| variant.language == "zh")
-            .unwrap()
-            .clone();
-        ack_all_realtime_projection(&store, &source.session_id);
-        let staged = store
+        assert_eq!(accepted.bound_utterance, None);
+        assert!(store
             .stage_utterance_lane_replacement(
                 &source.id,
                 UtteranceLane::Translated,
-                "用户编辑后的辅助 owner",
+                "不能编辑尚未稳定的辅助译文",
                 0,
             )
-            .unwrap();
+            .is_err());
 
-        let evidence = store
+        let settled = store
             .upsert_utterance(
                 &NewRealtimeUtterance {
-                    id: owner.id.clone(),
-                    session_id: owner.session_id.clone(),
-                    sequence: owner.sequence,
+                    id: source.id.clone(),
+                    session_id: source.session_id.clone(),
+                    sequence: source.sequence,
                     session_speaker_id: None,
                     source_language: "zh".into(),
                     source_text: "后来到达的规范源 Final".into(),
@@ -11349,47 +12060,24 @@ mod tests {
                     completion: UtteranceCompletion::Complete,
                     alignment: UtteranceAlignment::SourceOnly,
                 },
-                Some(owner.revision),
+                Some(source.revision),
             )
             .unwrap();
-        let stable_owner = evidence
+        let stable_owner = settled
             .variants
             .iter()
             .find(|variant| variant.language == "zh")
             .unwrap();
-        assert_eq!(stable_owner.role, UtteranceVariantRole::Translation);
-        assert_eq!(stable_owner.revision, machine_owner.revision);
-        assert_eq!(
-            stable_owner.projection_revision,
-            machine_owner.projection_revision
-        );
+        assert_eq!(stable_owner.role, UtteranceVariantRole::Source);
+        assert_eq!(stable_owner.text.as_deref(), Some("后来到达的规范源 Final"));
+        assert_eq!(stable_owner.projection_revision, 1);
         assert_eq!(
             store
                 .load_realtime_loro_projection(&source.session_id)
                 .unwrap()
                 .desired_revision,
-            machine_owner.projection_revision
+            1
         );
-
-        let committed = store.commit_projection_mutation(&staged.id).unwrap();
-        let visible = committed
-            .variants
-            .iter()
-            .find(|variant| variant.language == "zh")
-            .unwrap();
-        assert_eq!(visible.text.as_deref(), Some("用户编辑后的辅助 owner"));
-        assert_eq!(visible.edit_revision, 1);
-        let machine = store
-            .get_machine_utterance_by_id(&source.id)
-            .unwrap()
-            .unwrap();
-        let machine = machine
-            .variants
-            .iter()
-            .find(|variant| variant.language == "zh")
-            .unwrap();
-        assert_eq!(machine.text.as_deref(), Some("辅助 Final"));
-        assert_eq!(machine.revision, machine_owner.revision);
     }
 
     #[test]
@@ -11502,7 +12190,7 @@ mod tests {
                 None,
             )
             .unwrap();
-        let aux_owner = store
+        let accepted = store
             .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
                 key: RealtimeTranslationInboxKey {
                     session_id: source.session_id.clone(),
@@ -11519,15 +12207,14 @@ mod tests {
                 completion: Some(UtteranceCompletion::Complete),
                 withdrawn: false,
             })
-            .unwrap()
-            .bound_utterance
             .unwrap();
+        assert_eq!(accepted.bound_utterance, None);
         let source_owner = store
             .upsert_utterance(
                 &NewRealtimeUtterance {
-                    id: aux_owner.id.clone(),
-                    session_id: aux_owner.session_id.clone(),
-                    sequence: aux_owner.sequence,
+                    id: source.id.clone(),
+                    session_id: source.session_id.clone(),
+                    sequence: source.sequence,
                     session_speaker_id: None,
                     source_language: "th".into(),
                     source_text: "ภาษาไทย Final".into(),
@@ -11538,7 +12225,7 @@ mod tests {
                     completion: UtteranceCompletion::Complete,
                     alignment: UtteranceAlignment::SourceOnly,
                 },
-                Some(aux_owner.revision),
+                Some(source.revision),
             )
             .unwrap();
         assert!(source_owner.source_lane_is_complete());
@@ -11553,9 +12240,9 @@ mod tests {
             .find(|variant| variant.language == "th")
             .unwrap();
         assert_eq!(zh.role, UtteranceVariantRole::Translation);
-        assert_eq!(zh.projection_revision, 1);
+        assert_eq!(zh.projection_revision, 2);
         assert_eq!(th.role, UtteranceVariantRole::Source);
-        assert_eq!(th.projection_revision, 2);
+        assert_eq!(th.projection_revision, 1);
         assert_eq!(
             store
                 .load_realtime_loro_projection("session-independent-final-owners")
@@ -11566,7 +12253,7 @@ mod tests {
     }
 
     #[test]
-    fn source_language_revision_preserves_an_existing_translation_final_owner() {
+    fn source_language_final_owns_a_lane_that_was_only_provisionally_translated() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
         create_catalogued_run(&store, &notebook_id, "source-revises-to-owner");
@@ -11630,10 +12317,11 @@ mod tests {
             )
             .unwrap();
         assert!(revised.source_fact_is_complete());
-        assert!(!revised.has_source_lane());
+        assert!(revised.source_lane_is_complete());
         assert_eq!(revised.variants.len(), 1);
-        assert_eq!(revised.variants[0].role, UtteranceVariantRole::Translation);
-        assert_eq!(revised.variants[0].text.as_deref(), Some("既有 Final"));
+        assert_eq!(revised.variants[0].role, UtteranceVariantRole::Source);
+        assert_eq!(revised.variants[0].language, "zh");
+        assert_eq!(revised.variants[0].text.as_deref(), Some("后来识别的源"));
         assert_eq!(revised.variants[0].projection_revision, 1);
         assert_eq!(
             store
@@ -11992,6 +12680,271 @@ mod tests {
                 .unwrap()
                 .desired_revision,
             1
+        );
+    }
+
+    #[test]
+    fn recovery_settles_a_prebound_different_language_auxiliary_final_once() {
+        let (temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "prebound-aux-recovery");
+        claim_realtime(&store, "session-prebound-aux-recovery");
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-prebound-aux-recovery".into(),
+                    session_id: "session-prebound-aux-recovery".into(),
+                    sequence: 0,
+                    session_speaker_id: None,
+                    source_language: "en".into(),
+                    source_text: "mutable source".into(),
+                    source_start_ms: Some(100),
+                    source_end_ms: Some(900),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Partial,
+                    alignment: UtteranceAlignment::TranslationPending,
+                },
+                None,
+            )
+            .unwrap();
+        let accepted = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: "session-prebound-aux-recovery".into(),
+                    lane_index: 1,
+                    group_epoch: 0,
+                    provider_sequence: 0,
+                    target_language: "zh".into(),
+                },
+                source_language: "en".into(),
+                source_text: "mutable source".into(),
+                source_start_ms: Some(100),
+                source_end_ms: Some(900),
+                translated_text: Some("崩溃前已完成".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(accepted.item.bound_sequence, Some(0));
+        assert_eq!(
+            accepted
+                .bound_utterance
+                .as_ref()
+                .and_then(|row| row.variants.iter().find(|lane| lane.language == "zh"))
+                .and_then(|lane| lane.completion),
+            Some(UtteranceCompletion::Partial)
+        );
+        drop(store);
+
+        let reopened = NotebookCaptureStore::new(&temp.path().join("capture.db")).unwrap();
+        assert_eq!(reopened.recover_unfinished_runs().unwrap(), 1);
+        assert_eq!(
+            reopened
+                .reconcile_translation_inbox_after_recovery("session-prebound-aux-recovery")
+                .unwrap(),
+            0,
+            "the fact was already bound; recovery only settles its lane"
+        );
+        let recovered = reopened
+            .list_utterances("session-prebound-aux-recovery")
+            .unwrap()
+            .remove(0);
+        let target = recovered
+            .variants
+            .iter()
+            .find(|lane| lane.language == "zh")
+            .unwrap();
+        assert_eq!(target.completion, Some(UtteranceCompletion::Complete));
+        assert_eq!(target.projection_revision, 1);
+        assert_eq!(
+            reopened
+                .reconcile_translation_inbox_after_recovery("session-prebound-aux-recovery")
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            reopened
+                .load_realtime_loro_projection("session-prebound-aux-recovery")
+                .unwrap()
+                .desired_revision,
+            1
+        );
+    }
+
+    #[test]
+    fn recovery_settles_a_prebound_same_language_auxiliary_final_once() {
+        let (temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "prebound-same-language-recovery");
+        claim_realtime(&store, "session-prebound-same-language-recovery");
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-prebound-same-language-recovery".into(),
+                    session_id: "session-prebound-same-language-recovery".into(),
+                    sequence: 0,
+                    session_speaker_id: None,
+                    source_language: "zh".into(),
+                    source_text: "暂定源".into(),
+                    source_start_ms: Some(100),
+                    source_end_ms: Some(900),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Partial,
+                    alignment: UtteranceAlignment::SourceOnly,
+                },
+                None,
+            )
+            .unwrap();
+        let accepted = store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: RealtimeTranslationInboxKey {
+                    session_id: "session-prebound-same-language-recovery".into(),
+                    lane_index: 1,
+                    group_epoch: 0,
+                    provider_sequence: 0,
+                    target_language: "zh".into(),
+                },
+                source_language: "zh".into(),
+                source_text: "暂定源".into(),
+                source_start_ms: Some(100),
+                source_end_ms: Some(900),
+                translated_text: Some("恢复后的稳定事实".into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        assert_eq!(accepted.item.bound_sequence, Some(0));
+        assert_eq!(accepted.bound_utterance, None);
+        drop(store);
+
+        let reopened = NotebookCaptureStore::new(&temp.path().join("capture.db")).unwrap();
+        assert_eq!(reopened.recover_unfinished_runs().unwrap(), 1);
+        assert_eq!(
+            reopened
+                .reconcile_translation_inbox_after_recovery(
+                    "session-prebound-same-language-recovery"
+                )
+                .unwrap(),
+            0
+        );
+        let recovered = reopened
+            .list_utterances("session-prebound-same-language-recovery")
+            .unwrap()
+            .remove(0);
+        assert!(recovered.has_source_fact());
+        assert!(!recovered.has_source_lane());
+        let owner = recovered
+            .variants
+            .iter()
+            .find(|lane| lane.language == "zh")
+            .unwrap();
+        assert_eq!(owner.role, UtteranceVariantRole::Translation);
+        assert_eq!(owner.text.as_deref(), Some("恢复后的稳定事实"));
+        assert_eq!(owner.completion, Some(UtteranceCompletion::Complete));
+        assert_eq!(owner.projection_revision, 1);
+        assert_eq!(
+            reopened
+                .reconcile_translation_inbox_after_recovery(
+                    "session-prebound-same-language-recovery"
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            reopened
+                .load_realtime_loro_projection("session-prebound-same-language-recovery")
+                .unwrap()
+                .desired_revision,
+            1
+        );
+    }
+
+    #[test]
+    fn recovery_does_not_promote_one_complete_segment_over_a_partial_tail() {
+        let (temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "prebound-segmented-recovery");
+        claim_realtime(&store, "session-prebound-segmented-recovery");
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-prebound-segmented-recovery".into(),
+                    session_id: "session-prebound-segmented-recovery".into(),
+                    sequence: 0,
+                    session_speaker_id: None,
+                    source_language: "zh".into(),
+                    source_text: "仍在增长的源句".into(),
+                    source_start_ms: Some(100),
+                    source_end_ms: Some(900),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Partial,
+                    alignment: UtteranceAlignment::SourceOnly,
+                },
+                None,
+            )
+            .unwrap();
+
+        for (provider_sequence, source_start_ms, source_end_ms, text, completion) in [
+            (0, 100, 450, "已经完成的前段", UtteranceCompletion::Complete),
+            (1, 451, 900, "仍在增长的尾段", UtteranceCompletion::Partial),
+        ] {
+            let accepted = store
+                .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                    key: RealtimeTranslationInboxKey {
+                        session_id: "session-prebound-segmented-recovery".into(),
+                        lane_index: 1,
+                        group_epoch: 0,
+                        provider_sequence,
+                        target_language: "zh".into(),
+                    },
+                    source_language: "zh".into(),
+                    source_text: text.into(),
+                    source_start_ms: Some(source_start_ms),
+                    source_end_ms: Some(source_end_ms),
+                    translated_text: Some(text.into()),
+                    completion: Some(completion),
+                    withdrawn: false,
+                })
+                .unwrap();
+            assert_eq!(accepted.item.bound_sequence, Some(0));
+            assert_eq!(accepted.bound_utterance, None);
+        }
+        drop(store);
+
+        let reopened = NotebookCaptureStore::new(&temp.path().join("capture.db")).unwrap();
+        assert_eq!(reopened.recover_unfinished_runs().unwrap(), 1);
+        assert_eq!(
+            reopened
+                .reconcile_translation_inbox_after_recovery("session-prebound-segmented-recovery")
+                .unwrap(),
+            0
+        );
+        let recovered = reopened
+            .list_utterances("session-prebound-segmented-recovery")
+            .unwrap()
+            .remove(0);
+        assert!(recovered.has_source_lane());
+        assert_eq!(
+            recovered
+                .variants
+                .iter()
+                .find(|lane| lane.role == UtteranceVariantRole::Source)
+                .and_then(|lane| lane.completion),
+            Some(UtteranceCompletion::Partial)
+        );
+        assert!(!recovered.variants.iter().any(|lane| {
+            lane.role == UtteranceVariantRole::Translation
+                && lane.completion == Some(UtteranceCompletion::Complete)
+        }));
+        assert_eq!(
+            reopened
+                .load_realtime_loro_projection("session-prebound-segmented-recovery")
+                .unwrap()
+                .desired_revision,
+            0
         );
     }
 

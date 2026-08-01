@@ -177,6 +177,11 @@ async fn soniox_v5_two_way_real_smoke_redacts_content() {
                     );
                 }
                 SttStreamEvent::Endpoint | SttStreamEvent::Finalized => {}
+                SttStreamEvent::InputDiscontinuity => {
+                    unreachable!(
+                        "input discontinuity is injected by the capture fanout, not Soniox runtime"
+                    )
+                }
             }
         }
         evidence

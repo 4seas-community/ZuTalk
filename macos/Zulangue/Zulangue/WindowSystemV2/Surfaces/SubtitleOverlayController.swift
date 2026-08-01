@@ -253,11 +253,31 @@ enum SubtitleAudienceTimeline {
             ))
         }
         for language in languages {
-            for cue in cues(language) where cue.text.isEmpty == false {
+            let languageCues = cues(language)
+            let latestTimedCue = languageCues
+                .filter { $0.sourceStartMs != nil }
+                .max { left, right in
+                    if left.groupEpoch != right.groupEpoch {
+                        return left.groupEpoch < right.groupEpoch
+                    }
+                    return left.providerSequence < right.providerSequence
+                }
+            for cue in languageCues where cue.text.isEmpty == false {
                 // A cue that "translates" its own language would double the
                 // source line; providers do not emit these, and one arriving
                 // anyway must not duplicate the column.
                 guard cue.sourceLanguage != cue.targetLanguage else { continue }
+                // Missing provider timestamps must not make an early cue sort
+                // after every later timed cue forever. Provider sequence is
+                // authoritative inside this target stream, so a later timed
+                // sibling retires an older unanchored presentation item.
+                if cue.sourceStartMs == nil,
+                   let latestTimedCue,
+                   cue.groupEpoch < latestTimedCue.groupEpoch
+                    || (cue.groupEpoch == latestTimedCue.groupEpoch
+                        && cue.providerSequence < latestTimedCue.providerSequence) {
+                    continue
+                }
                 columns[language]?.append(Item(
                     id: "cue:\(cue.id)",
                     kind: .translation,
@@ -306,18 +326,18 @@ enum SubtitleAudienceTimeline {
         columns: [String: [Item]],
         failedLanguages: Set<String> = []
     ) -> Set<String> {
-        let newestSpoken = columns.values
+        let newestSpokenEnd = columns.values
             .joined()
             .filter { $0.kind == .source }
-            .compactMap(\.anchorMs)
+            .compactMap { $0.endMs ?? $0.anchorMs }
             .max()
-        guard let newestSpoken else { return [] }
+        guard let newestSpokenEnd else { return [] }
         var waiting: Set<String> = []
         for (language, items) in columns where !failedLanguages.contains(language) {
             let covered = items
                 .compactMap { $0.endMs ?? $0.anchorMs }
                 .max() ?? 0
-            if covered < newestSpoken {
+            if covered < newestSpokenEnd {
                 waiting.insert(language)
             }
         }
@@ -344,6 +364,120 @@ enum SubtitleAudienceTimeline {
             return utterance.sourceText
         }
         return nil
+    }
+}
+
+/// Conversation keeps its durable row history, but its live edge follows the
+/// same independent language tracks as audience mode. The newest source row is
+/// removed from row history and represented here together with the newest cue
+/// from every target stream. A cue therefore becomes visible without first
+/// acquiring a canonical-row binding, and one late stream cannot hold back a
+/// sibling that has already produced words.
+enum SubtitleConversationTimeline {
+    /// One row becomes the independent live edge and one more row leaves room
+    /// for an unrouted source line. Conversation never needs the full session
+    /// to render a canvas-sized suffix.
+    static let utteranceLookbackAllowance = 2
+
+    struct Projection: Equatable {
+        let historicalUtterances: [NotebookCaptureUtteranceDTO]
+        let unroutedLiveUtterance: NotebookCaptureUtteranceDTO?
+        let liveLanes: [NotebookCaptureLanguageLane]
+
+        var hasLiveWords: Bool {
+            liveLanes.contains { $0.text?.isEmpty == false }
+        }
+
+        var hasContent: Bool {
+            historicalUtterances.isEmpty == false
+                || unroutedLiveUtterance != nil
+                || hasLiveWords
+        }
+    }
+
+    static func projection(
+        languages: [String],
+        utterances: [NotebookCaptureUtteranceDTO],
+        placement: (NotebookCaptureUtteranceDTO) -> String?,
+        cues: (String) -> [NotebookCaptureTranslationCueDTO],
+        failedLanguages: Set<String> = []
+    ) -> Projection {
+        let languages = Array(
+            languages.prefix(SubtitleOverlayLayoutPolicy.maximumLanguageCount)
+        )
+        let columns = SubtitleAudienceTimeline.columns(
+            languages: languages,
+            utterances: utterances,
+            placement: placement,
+            cues: cues
+        )
+        let waitingLanguages = SubtitleAudienceTimeline.waitingLanguages(
+            columns: columns,
+            failedLanguages: failedLanguages
+        )
+
+        // `presentedUtterances` is already in source order. Only its newest
+        // source-bearing row belongs to the replaceable live edge; all older
+        // rows retain their established row/variant presentation.
+        let liveUtterance = utterances.last(where: {
+            $0.hasSourceLane && $0.sourceText.isEmpty == false
+        })
+        let historicalUtterances: [NotebookCaptureUtteranceDTO]
+        if let liveUtterance {
+            historicalUtterances = utterances.filter { $0.id != liveUtterance.id }
+        } else {
+            historicalUtterances = utterances
+        }
+        let unroutedLiveUtterance = liveUtterance.flatMap { utterance in
+            placement(utterance) == nil ? utterance : nil
+        }
+
+        let liveLanes = languages.map { language in
+            let liveSourceItemID = liveUtterance.map { "source:\($0.id)" }
+            let liveSourceText = columns[language]?.last(where: { item in
+                item.kind == .source && item.id == liveSourceItemID
+            })?.text
+            // `waiting` describes how far a lane has processed; it must never
+            // hide words already delivered. Only a translation whose explicit
+            // coverage ends before the live source even starts is historical.
+            // A partial covering [0, 4500] while source is [0, 5000] is useful
+            // live text, and an unanchored provider head is displayed at once.
+            let liveSourceStart = liveUtterance?.sourceStartMs
+            let translationText = failedLanguages.contains(language)
+                ? nil
+                : columns[language]?.last(where: { item in
+                    guard item.kind == .translation else { return false }
+                    guard let liveSourceStart,
+                          let coveredThrough = item.endMs ?? item.anchorMs
+                    else { return true }
+                    return coveredThrough >= liveSourceStart
+                })?.text
+            // A source item is live only when it belongs to the newest
+            // source-bearing utterance. Older source rows remain exclusively
+            // in history and can never masquerade as another language's
+            // current translation. Actual spoken words still win if that
+            // language's auxiliary stream happens to be failed.
+            let text = liveSourceText ?? translationText
+            let missingState: NotebookCaptureMissingLaneState
+            if failedLanguages.contains(language) {
+                missingState = .failed
+            } else if waitingLanguages.contains(language) {
+                missingState = .waiting
+            } else {
+                missingState = .unavailable
+            }
+            return NotebookCaptureLanguageLane(
+                language: language,
+                text: text,
+                missingLaneState: missingState
+            )
+        }
+
+        return Projection(
+            historicalUtterances: historicalUtterances,
+            unroutedLiveUtterance: unroutedLiveUtterance,
+            liveLanes: liveLanes
+        )
     }
 }
 
@@ -1092,13 +1226,20 @@ struct SubtitleOverlayView: View {
             fontSize: fontSize,
             lanesPerRow: layout == .columns ? 1 : displayLanguages.count
         )
+        let utteranceTail = store.presentedUtteranceTail(
+            limit: rowBudget + SubtitleConversationTimeline.utteranceLookbackAllowance
+        )
 
         return VStack(spacing: 0) {
             if layout == .columns {
                 languageHeader
                 Divider().overlay(SubtitleOverlayPalette.hairline)
             }
-            conversationTranscript(layout: layout, rowBudget: rowBudget)
+            conversationTranscript(
+                layout: layout,
+                rowBudget: rowBudget,
+                utterances: utteranceTail
+            )
         }
         .frame(width: geometry.size.width, height: geometry.size.height)
     }
@@ -1144,14 +1285,21 @@ struct SubtitleOverlayView: View {
     @ViewBuilder
     private func conversationTranscript(
         layout: SubtitleOverlayConversationLayout,
-        rowBudget: Int
+        rowBudget: Int,
+        utterances: [NotebookCaptureUtteranceDTO]
     ) -> some View {
-        if store.isCaptureActive == false {
+        if store.profile.mode == .multilingualOneWay {
+            conversationTimelineTranscript(
+                layout: layout,
+                rowBudget: rowBudget,
+                utterances: utterances
+            )
+        } else if store.isCaptureActive == false {
             emptyState(
                 String(localized: "subtitle.overlay.recording_ended"),
                 systemImage: "checkmark.circle"
             )
-        } else if store.presentedUtterances.isEmpty {
+        } else if utterances.isEmpty {
             emptyState(
                 String(localized: "subtitle.overlay.waiting"),
                 systemImage: "waveform"
@@ -1159,8 +1307,55 @@ struct SubtitleOverlayView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 10) {
-                    ForEach(store.presentedUtterances.suffix(rowBudget)) { utterance in
+                    ForEach(utterances.suffix(rowBudget)) { utterance in
                         conversationRow(utterance, layout: layout)
+                    }
+                }
+                .padding(12)
+            }
+            .defaultScrollAnchor(.bottom)
+            .scrollIndicators(.visible)
+        }
+    }
+
+    @ViewBuilder
+    private func conversationTimelineTranscript(
+        layout: SubtitleOverlayConversationLayout,
+        rowBudget: Int,
+        utterances: [NotebookCaptureUtteranceDTO]
+    ) -> some View {
+        let timeline = SubtitleConversationTimeline.projection(
+            languages: displayLanguages,
+            utterances: utterances,
+            placement: { store.audienceSourcePlacement(for: $0) },
+            cues: { store.presentedTranslationCues(for: $0) },
+            failedLanguages: store.failedTranslationLanguages
+        )
+        let liveRowCount = timeline.hasLiveWords ? 1 : 0
+        let unroutedRowCount = timeline.unroutedLiveUtterance == nil ? 0 : 1
+        let historyBudget = max(rowBudget - liveRowCount - unroutedRowCount, 0)
+
+        if store.isCaptureActive == false {
+            emptyState(
+                String(localized: "subtitle.overlay.recording_ended"),
+                systemImage: "checkmark.circle"
+            )
+        } else if timeline.hasContent == false {
+            emptyState(
+                String(localized: "subtitle.overlay.waiting"),
+                systemImage: "waveform"
+            )
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    ForEach(timeline.historicalUtterances.suffix(historyBudget)) { utterance in
+                        conversationRow(utterance, layout: layout)
+                    }
+                    if let unrouted = timeline.unroutedLiveUtterance {
+                        conversationRow(unrouted, layout: layout)
+                    }
+                    if timeline.hasLiveWords {
+                        conversationLiveRow(timeline.liveLanes, layout: layout)
                     }
                 }
                 .padding(12)
@@ -1456,6 +1651,37 @@ struct SubtitleOverlayView: View {
                 }
                 .background(subtitleCardBackground)
             }
+        }
+    }
+
+    /// The live conversation edge has the same visual geometry as a durable
+    /// row, but its lanes are independent track heads rather than variants
+    /// bound to one canonical utterance.
+    @ViewBuilder
+    private func conversationLiveRow(
+        _ lanes: [NotebookCaptureLanguageLane],
+        layout: SubtitleOverlayConversationLayout
+    ) -> some View {
+        if layout == .columns {
+            HStack(alignment: .bottom, spacing: 0) {
+                ForEach(Array(lanes.enumerated()), id: \.offset) { index, lane in
+                    conversationLane(lane, showsLanguageHeader: false)
+                    if index < lanes.count - 1 {
+                        Divider().overlay(SubtitleOverlayPalette.hairline)
+                    }
+                }
+            }
+            .background(subtitleCardBackground)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(Array(lanes.enumerated()), id: \.offset) { index, lane in
+                    conversationLane(lane, showsLanguageHeader: true)
+                    if index < lanes.count - 1 {
+                        Divider().overlay(SubtitleOverlayPalette.hairline)
+                    }
+                }
+            }
+            .background(subtitleCardBackground)
         }
     }
 

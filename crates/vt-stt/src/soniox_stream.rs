@@ -130,6 +130,10 @@ pub enum SttStreamEvent {
     Finalized,
     /// Soniox emitted `finished: true` after the final tail tokens.
     Finished,
+    /// The local capture fanout could no longer append PCM contiguously to
+    /// this lane. The caller must end or restart the lane before sending more
+    /// audio; continuing on the old provider timeline would compress time.
+    InputDiscontinuity,
     Error(SttStreamError),
 }
 

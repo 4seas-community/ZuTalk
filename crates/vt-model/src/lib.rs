@@ -53,12 +53,13 @@ pub enum AudioChannel {
 ///
 /// A multilingual capture runs one canonical transcription connection plus one
 /// translating connection per selected language, all fed the identical PCM.
-/// The connections agree on the words and on nothing else: they punctuate
-/// differently, they place their segment boundaries differently, and their
-/// token timestamps drift apart over a long session (measured: same sentence
-/// reported 1.7s apart four minutes in, 4.0s apart a minute later). The words
-/// are therefore the only evidence that stays true for a whole run, and this
-/// is the ordering key that says so.
+/// The connections may punctuate differently, place their segment boundaries
+/// differently, and exhibit provider-clock drift. Even so, an uncalibrated
+/// disjoint interval cannot safely identify a durable row: repeated filler can
+/// have identical words. When both sides have timestamps, callers therefore
+/// require overlap before source text may rank a row, keeping the fact unbound
+/// rather than guessing. Text is the fallback only when a timestamp is
+/// unavailable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceTextAlignment {
     /// The auxiliary segment transcribes exactly this row's words.
@@ -116,7 +117,8 @@ fn is_alignment_noise(character: char) -> bool {
 /// Deliberately one-directional. The reverse relation — a canonical row
 /// contained in a coarser auxiliary segment — is not evidence for *this* row
 /// over the next one, because the same segment contains both; that case stays
-/// with the timestamp fallback.
+/// with the timestamp evidence. Callers must apply the timestamp candidate gate
+/// before using this ordering evidence when both intervals are available.
 pub fn align_source_text(auxiliary: &str, canonical: &str) -> SourceTextAlignment {
     let auxiliary = normalized_alignment_text(auxiliary);
     if auxiliary.is_empty() {

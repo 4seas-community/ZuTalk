@@ -3664,6 +3664,27 @@ public struct FfiNotebookCaptureLaneHealth: Equatable, Hashable {
      * "live" | "connecting" | "failed"
      */
     public var state: String
+    /**
+     * Cross-stream correlation epoch currently owned by this lane.
+     */
+    public var groupEpoch: UInt64
+    /**
+     * Provider-confirmed capture-timeline progress for finalized audio.
+     */
+    public var finalAudioProcMs: UInt64?
+    /**
+     * Provider-confirmed capture-timeline progress for all processed audio.
+     */
+    public var totalAudioProcMs: UInt64?
+    /**
+     * Provider processing plus local queued-audio lag for this lane.
+     */
+    public var lagMs: UInt64?
+    /**
+     * True when this lane was stopped because local PCM could no longer be
+     * appended contiguously. It must not be resumed on the same timeline.
+     */
+    public var inputDiscontinuous: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -3673,9 +3694,30 @@ public struct FfiNotebookCaptureLaneHealth: Equatable, Hashable {
          */targetLanguage: String?,
         /**
          * "live" | "connecting" | "failed"
-         */state: String) {
+         */state: String,
+        /**
+         * Cross-stream correlation epoch currently owned by this lane.
+         */groupEpoch: UInt64,
+        /**
+         * Provider-confirmed capture-timeline progress for finalized audio.
+         */finalAudioProcMs: UInt64?,
+        /**
+         * Provider-confirmed capture-timeline progress for all processed audio.
+         */totalAudioProcMs: UInt64?,
+        /**
+         * Provider processing plus local queued-audio lag for this lane.
+         */lagMs: UInt64?,
+        /**
+         * True when this lane was stopped because local PCM could no longer be
+         * appended contiguously. It must not be resumed on the same timeline.
+         */inputDiscontinuous: Bool) {
         self.targetLanguage = targetLanguage
         self.state = state
+        self.groupEpoch = groupEpoch
+        self.finalAudioProcMs = finalAudioProcMs
+        self.totalAudioProcMs = totalAudioProcMs
+        self.lagMs = lagMs
+        self.inputDiscontinuous = inputDiscontinuous
     }
 
 
@@ -3695,13 +3737,23 @@ public struct FfiConverterTypeFfiNotebookCaptureLaneHealth: FfiConverterRustBuff
         return
             try FfiNotebookCaptureLaneHealth(
                 targetLanguage: FfiConverterOptionString.read(from: &buf),
-                state: FfiConverterString.read(from: &buf)
+                state: FfiConverterString.read(from: &buf),
+                groupEpoch: FfiConverterUInt64.read(from: &buf),
+                finalAudioProcMs: FfiConverterOptionUInt64.read(from: &buf),
+                totalAudioProcMs: FfiConverterOptionUInt64.read(from: &buf),
+                lagMs: FfiConverterOptionUInt64.read(from: &buf),
+                inputDiscontinuous: FfiConverterBool.read(from: &buf)
         )
     }
 
     public static func write(_ value: FfiNotebookCaptureLaneHealth, into buf: inout [UInt8]) {
         FfiConverterOptionString.write(value.targetLanguage, into: &buf)
         FfiConverterString.write(value.state, into: &buf)
+        FfiConverterUInt64.write(value.groupEpoch, into: &buf)
+        FfiConverterOptionUInt64.write(value.finalAudioProcMs, into: &buf)
+        FfiConverterOptionUInt64.write(value.totalAudioProcMs, into: &buf)
+        FfiConverterOptionUInt64.write(value.lagMs, into: &buf)
+        FfiConverterBool.write(value.inputDiscontinuous, into: &buf)
     }
 }
 
@@ -3822,6 +3874,17 @@ public struct FfiNotebookCaptureLivePreview: Equatable, Hashable {
      */
     public var previewRevision: UInt64
     public var utterances: [FfiNotebookCaptureUtterance]
+    /**
+     * Replace-in-full, bounded target-language tail. Unlike durable capture
+     * event deltas, this state is safe to coalesce at both callback hops: the
+     * newest preview always describes every language the live canvas needs.
+     */
+    public var translationCues: [FfiNotebookCaptureTranslationCue]
+    /**
+     * Replace-in-full health for the same live frame. A skipped transition is
+     * harmless because the next frame repeats the complete lane state.
+     */
+    public var laneHealth: [FfiNotebookCaptureLaneHealth]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -3829,10 +3892,21 @@ public struct FfiNotebookCaptureLivePreview: Equatable, Hashable {
         /**
          * Monotonic only within the transient preview channel. A skipped revision
          * is harmless because every callback carries the complete current tail.
-         */previewRevision: UInt64, utterances: [FfiNotebookCaptureUtterance]) {
+         */previewRevision: UInt64, utterances: [FfiNotebookCaptureUtterance],
+        /**
+         * Replace-in-full, bounded target-language tail. Unlike durable capture
+         * event deltas, this state is safe to coalesce at both callback hops: the
+         * newest preview always describes every language the live canvas needs.
+         */translationCues: [FfiNotebookCaptureTranslationCue],
+        /**
+         * Replace-in-full health for the same live frame. A skipped transition is
+         * harmless because the next frame repeats the complete lane state.
+         */laneHealth: [FfiNotebookCaptureLaneHealth]) {
         self.sessionId = sessionId
         self.previewRevision = previewRevision
         self.utterances = utterances
+        self.translationCues = translationCues
+        self.laneHealth = laneHealth
     }
 
 
@@ -3853,7 +3927,9 @@ public struct FfiConverterTypeFfiNotebookCaptureLivePreview: FfiConverterRustBuf
             try FfiNotebookCaptureLivePreview(
                 sessionId: FfiConverterString.read(from: &buf),
                 previewRevision: FfiConverterUInt64.read(from: &buf),
-                utterances: FfiConverterSequenceTypeFfiNotebookCaptureUtterance.read(from: &buf)
+                utterances: FfiConverterSequenceTypeFfiNotebookCaptureUtterance.read(from: &buf),
+                translationCues: FfiConverterSequenceTypeFfiNotebookCaptureTranslationCue.read(from: &buf),
+                laneHealth: FfiConverterSequenceTypeFfiNotebookCaptureLaneHealth.read(from: &buf)
         )
     }
 
@@ -3861,6 +3937,8 @@ public struct FfiConverterTypeFfiNotebookCaptureLivePreview: FfiConverterRustBuf
         FfiConverterString.write(value.sessionId, into: &buf)
         FfiConverterUInt64.write(value.previewRevision, into: &buf)
         FfiConverterSequenceTypeFfiNotebookCaptureUtterance.write(value.utterances, into: &buf)
+        FfiConverterSequenceTypeFfiNotebookCaptureTranslationCue.write(value.translationCues, into: &buf)
+        FfiConverterSequenceTypeFfiNotebookCaptureLaneHealth.write(value.laneHealth, into: &buf)
     }
 }
 
