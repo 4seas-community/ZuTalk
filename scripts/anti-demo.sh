@@ -62,8 +62,31 @@ run_check() {
         find_args+=( -not -path "$exclude_pattern" )
     fi
 
-    local results
-    results=$(find "$ROOT" "${find_args[@]}" 2>/dev/null | xargs grep -nH -E "$pattern" 2>/dev/null || true)
+    local candidates
+    candidates=$(find "$ROOT" "${find_args[@]}" 2>/dev/null || true)
+
+    # These checks ask what the published source exposes. A file git is
+    # ignoring never reaches the repository, so a machine-local path in a
+    # developer's own tooling config is not a public exposure — and scanning
+    # it means routine local state can fail a gate that has nothing to say
+    # about it. Tracked and untracked-but-publishable files are still scanned.
+    if [ -n "$candidates" ] && git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+        local ignored
+        ignored=$(printf '%s\n' "$candidates" \
+            | git -C "$ROOT" check-ignore --stdin 2>/dev/null || true)
+        if [ -n "$ignored" ]; then
+            local ignored_list
+            ignored_list=$(mktemp)
+            printf '%s\n' "$ignored" > "$ignored_list"
+            candidates=$(printf '%s\n' "$candidates" | grep -vxF -f "$ignored_list" || true)
+            rm -f "$ignored_list"
+        fi
+    fi
+
+    local results=""
+    if [ -n "$candidates" ]; then
+        results=$(printf '%s\n' "$candidates" | xargs grep -nH -E "$pattern" 2>/dev/null || true)
+    fi
 
     if [ -n "$results" ]; then
         echo -e "${RED}✗${NC} $name"
