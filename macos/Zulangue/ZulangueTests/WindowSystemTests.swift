@@ -660,11 +660,71 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertTrue(panel === WindowCoordinator.shared.subtitleOverlayForTesting)
         XCTAssertTrue(WindowCoordinator.shared.window(for: .subtitleOverlay) === panel)
         XCTAssertTrue(panel.isVisible)
+        XCTAssertTrue(WindowCoordinator.shared.isPreventingSubtitleDisplaySleepForTesting)
 
         WindowCoordinator.shared.dismissSubtitleOverlay()
 
         XCTAssertFalse(WindowCoordinator.shared.isRegistered(.subtitleOverlay))
         XCTAssertFalse(panel.isVisible)
+        XCTAssertFalse(WindowCoordinator.shared.isPreventingSubtitleDisplaySleepForTesting)
+    }
+
+    func testSubtitleDisplaySleepActivity_isScopedAndIdempotent() {
+        var starts: [(ProcessInfo.ActivityOptions, String)] = []
+        var endedTokens: [ObjectIdentifier] = []
+        let firstToken = NSObject()
+        let secondToken = NSObject()
+        let tokens = [firstToken, secondToken]
+
+        let activity = SubtitleDisplaySleepActivity(
+            beginActivity: { options, reason in
+                starts.append((options, reason))
+                return tokens[starts.count - 1]
+            },
+            endActivity: { token in
+                endedTokens.append(ObjectIdentifier(token as AnyObject))
+            }
+        )
+
+        XCTAssertFalse(activity.isActive)
+        activity.setActive(true)
+        activity.setActive(true)
+
+        XCTAssertTrue(activity.isActive)
+        XCTAssertEqual(starts.count, 1)
+        XCTAssertEqual(starts.first?.0, [.userInitiated, .idleDisplaySleepDisabled])
+        XCTAssertEqual(starts.first?.1, SubtitleDisplaySleepActivity.reason)
+
+        activity.setActive(false)
+        activity.setActive(false)
+
+        XCTAssertFalse(activity.isActive)
+        XCTAssertEqual(endedTokens, [ObjectIdentifier(firstToken)])
+
+        activity.setActive(true)
+
+        XCTAssertTrue(activity.isActive)
+        XCTAssertEqual(starts.count, 2)
+
+        activity.setActive(false)
+
+        XCTAssertEqual(
+            endedTokens,
+            [ObjectIdentifier(firstToken), ObjectIdentifier(secondToken)]
+        )
+    }
+
+    func testSubtitleOverlayControllerClose_releasesDisplaySleepActivity() throws {
+        let store = ActiveBilingualTranscriptStore()
+        let panel = WindowCoordinator.shared.presentSubtitleOverlay(store: store)
+        let controller = try XCTUnwrap(panel.windowController)
+
+        XCTAssertTrue(WindowCoordinator.shared.isPreventingSubtitleDisplaySleepForTesting)
+
+        controller.close()
+
+        XCTAssertFalse(WindowCoordinator.shared.isRegistered(.subtitleOverlay))
+        XCTAssertFalse(WindowCoordinator.shared.isPreventingSubtitleDisplaySleepForTesting)
     }
 
     func testSubtitleOverlayController_isMovableResizablePersistentAcrossApps() throws {

@@ -32,6 +32,7 @@ final class WindowCoordinator {
     private var registeredWindows: [WindowSurfaceID: WeakWindowBox] = [:]
     private var mainSurfaceController: MainWindowControllerV2?
     private var subtitleOverlayController: SubtitleOverlayController?
+    private let subtitleDisplaySleepActivity = SubtitleDisplaySleepActivity()
     private var pendingLayoutUpdates: [WindowSurfaceID: PendingLayoutUpdate] = [:]
     private var scheduledLayoutUpdates: Set<WindowSurfaceID> = []
     private var diagnosticAttachments: [WindowSurfaceID: DiagnosticAttachment] = [:]
@@ -142,7 +143,8 @@ final class WindowCoordinator {
         if let controller = subtitleOverlayController,
            controller.storeForTesting === store,
            let panel = controller.managedWindow as? NSPanel {
-            _ = presentRegisteredWindow(.subtitleOverlay)
+            let didPresent = presentRegisteredWindow(.subtitleOverlay)
+            subtitleDisplaySleepActivity.setActive(didPresent)
             return panel
         }
 
@@ -151,7 +153,8 @@ final class WindowCoordinator {
         subtitleOverlayController = controller
         registerWindow(controller.managedWindow, id: .subtitleOverlay)
         applyInitialSubtitleOverlayLayout(using: controller)
-        _ = presentRegisteredWindow(.subtitleOverlay)
+        let didPresent = presentRegisteredWindow(.subtitleOverlay)
+        subtitleDisplaySleepActivity.setActive(didPresent)
         guard let panel = controller.managedWindow as? NSPanel else {
             preconditionFailure("SubtitleOverlayController should own an NSPanel")
         }
@@ -159,6 +162,7 @@ final class WindowCoordinator {
     }
 
     func dismissSubtitleOverlay() {
+        subtitleDisplaySleepActivity.setActive(false)
         guard subtitleOverlayController != nil else { return }
         _ = dismissRegisteredWindow(.subtitleOverlay)
         unregisterWindow(.subtitleOverlay)
@@ -170,6 +174,7 @@ final class WindowCoordinator {
         case .main:
             mainSurfaceController = nil
         case .subtitleOverlay:
+            subtitleDisplaySleepActivity.setActive(false)
             subtitleOverlayController = nil
         }
         unregisterWindow(id)
@@ -342,6 +347,10 @@ final class WindowCoordinator {
 
     var subtitleOverlayForTesting: NSPanel? {
         subtitleOverlayController?.managedWindow as? NSPanel
+    }
+
+    var isPreventingSubtitleDisplaySleepForTesting: Bool {
+        subtitleDisplaySleepActivity.isActive
     }
 
     private func flushLayoutUpdate(for id: WindowSurfaceID) {
