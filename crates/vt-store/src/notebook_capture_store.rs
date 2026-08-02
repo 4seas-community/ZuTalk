@@ -860,6 +860,17 @@ pub struct RealtimeLoroProjectionSnapshot {
     pub machine_utterances: Vec<RealtimeUtterance>,
 }
 
+/// Transactionally selected input for one realtime Loro projector wake.
+///
+/// An up-to-date wake intentionally carries only the lightweight watermark.
+/// Machine facts are hydrated only when the same SQLite read snapshot proves
+/// that a newer Final revision is pending.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RealtimeLoroProjectionLoad {
+    UpToDate(RealtimeLoroProjection),
+    Pending(RealtimeLoroProjectionSnapshot),
+}
+
 /// Notebook-scoped capture history safe for presentation-layer consumers.
 ///
 /// Audio paths, journal paths, key references, and async task receipts remain
@@ -4457,11 +4468,43 @@ impl NotebookCaptureStore {
         list_machine_utterances_from_conn(&self.conn.lock().unwrap(), session_id)
     }
 
-    /// Loads watermarks and machine facts from one SQLite read transaction.
+    /// Selects projector work from one SQLite read transaction.
     ///
-    /// This is the projector entry point. Combining a standalone watermark
-    /// read with [`Self::list_machine_utterances`] would permit revision R to
-    /// be paired with R+1 facts.
+    /// The common up-to-date path returns after reading only the watermarks.
+    /// When work is pending, the watermarks and machine utterances come from
+    /// the same read snapshot, so revision R cannot be paired with R+1 facts.
+    pub fn load_realtime_loro_projection_if_pending(
+        &self,
+        session_id: &str,
+    ) -> Result<RealtimeLoroProjectionLoad, NotebookCaptureStoreError> {
+        require_nonempty("session_id", session_id)?;
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Deferred)?;
+        let watermark =
+            get_realtime_loro_projection_from_conn(&tx, session_id)?.ok_or_else(|| {
+                NotebookCaptureStoreError::NotFound(format!("capture session {session_id}"))
+            })?;
+        let load = if watermark.is_pending() {
+            let machine_utterances = list_machine_utterances_from_conn(&tx, session_id)?;
+            RealtimeLoroProjectionLoad::Pending(RealtimeLoroProjectionSnapshot {
+                session_id: watermark.session_id,
+                desired_revision: watermark.desired_revision,
+                applied_revision: watermark.applied_revision,
+                machine_utterances,
+            })
+        } else {
+            RealtimeLoroProjectionLoad::UpToDate(watermark)
+        };
+        tx.commit()?;
+        Ok(load)
+    }
+
+    /// Loads watermarks and machine facts from one SQLite read transaction,
+    /// including when no projection work is pending.
+    ///
+    /// Projector wakes should use
+    /// [`Self::load_realtime_loro_projection_if_pending`] so an up-to-date wake
+    /// does not hydrate the full session.
     pub fn load_realtime_loro_projection(
         &self,
         session_id: &str,
@@ -9876,6 +9919,109 @@ mod tests {
         let machine = store.get_machine_utterance_by_id("utt-1").unwrap().unwrap();
         assert_eq!(machine.translated_text.as_deref(), Some("你好"));
         assert_eq!(machine.revision, 0);
+    }
+
+    #[test]
+    fn realtime_loro_projector_load_hydrates_facts_only_while_pending() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_run(&store, &new_run(&notebook_id, "projector-fast-path")).unwrap();
+        claim_realtime(&store, "session-projector-fast-path");
+
+        let final_utterance = store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-projector-final".into(),
+                    session_id: "session-projector-fast-path".into(),
+                    sequence: 0,
+                    session_speaker_id: None,
+                    source_language: "en".into(),
+                    source_text: "durable final".into(),
+                    source_start_ms: Some(0),
+                    source_end_ms: Some(100),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Complete,
+                    alignment: UtteranceAlignment::SourceOnly,
+                },
+                None,
+            )
+            .unwrap();
+
+        let pending = store
+            .load_realtime_loro_projection_if_pending("session-projector-fast-path")
+            .unwrap();
+        let pending = match pending {
+            RealtimeLoroProjectionLoad::Pending(snapshot) => snapshot,
+            RealtimeLoroProjectionLoad::UpToDate(_) => {
+                panic!("a newly committed Final must hydrate a pending projector snapshot")
+            }
+        };
+        assert_eq!(
+            pending.desired_revision,
+            final_utterance.source_projection_revision
+        );
+        assert_eq!(pending.applied_revision, 0);
+        assert_eq!(pending.machine_utterances.len(), 1);
+        store
+            .ack_realtime_loro_projection("session-projector-fast-path", pending.desired_revision)
+            .unwrap();
+
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-projector-partial".into(),
+                    session_id: "session-projector-fast-path".into(),
+                    sequence: 1,
+                    session_speaker_id: None,
+                    source_language: "en".into(),
+                    source_text: "speculative tail".into(),
+                    source_start_ms: Some(100),
+                    source_end_ms: Some(200),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Partial,
+                    alignment: UtteranceAlignment::SourceOnly,
+                },
+                None,
+            )
+            .unwrap();
+
+        // Make any accidental fact hydration fail deterministically. The
+        // projector's up-to-date path must read only the session watermark.
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.pragma_update(None, "ignore_check_constraints", "ON")
+                .unwrap();
+            conn.execute(
+                "UPDATE realtime_utterances
+                 SET completion = 'invalid-test-value'
+                 WHERE id = 'utt-projector-partial'",
+                [],
+            )
+            .unwrap();
+            conn.pragma_update(None, "ignore_check_constraints", "OFF")
+                .unwrap();
+        }
+
+        let up_to_date = store
+            .load_realtime_loro_projection_if_pending("session-projector-fast-path")
+            .unwrap();
+        match up_to_date {
+            RealtimeLoroProjectionLoad::UpToDate(watermark) => assert_eq!(
+                (watermark.desired_revision, watermark.applied_revision),
+                (pending.desired_revision, pending.desired_revision)
+            ),
+            RealtimeLoroProjectionLoad::Pending(_) => {
+                panic!("an acknowledged projector watermark must be up to date")
+            }
+        }
+        assert!(
+            store
+                .load_realtime_loro_projection("session-projector-fast-path")
+                .is_err(),
+            "the full loader must prove that the malformed fact would fail hydration"
+        );
     }
 
     #[test]

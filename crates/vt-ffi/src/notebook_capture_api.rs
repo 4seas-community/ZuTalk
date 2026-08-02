@@ -22,10 +22,10 @@ use vt_store::notebook_capture_store::{
     NewRealtimeTranslationInboxItem, NewRealtimeUtterance, NotebookCaptureHistoryRun,
     NotebookCaptureProfile, NotebookCaptureProfileUpdate, NotebookCaptureRun, NotebookCaptureStore,
     NotebookProjectionMutation, ProjectionState, ProviderFailure, RealtimeLoroProjectionAck,
-    RealtimeLoroProjectionSnapshot, RealtimeTranslationInboxItem, RealtimeTranslationInboxKey,
-    RealtimeTranslationLaneUpdate, RealtimeUtterance, RealtimeUtteranceVariant, RemoteHealth,
-    SessionPurgeJob, SessionPurgePlan, UtteranceAlignment, UtteranceCompletion, UtteranceLane,
-    UtteranceVariantRole, UtteranceVariantState,
+    RealtimeLoroProjectionLoad, RealtimeLoroProjectionSnapshot, RealtimeTranslationInboxItem,
+    RealtimeTranslationInboxKey, RealtimeTranslationLaneUpdate, RealtimeUtterance,
+    RealtimeUtteranceVariant, RemoteHealth, SessionPurgeJob, SessionPurgePlan, UtteranceAlignment,
+    UtteranceCompletion, UtteranceLane, UtteranceVariantRole, UtteranceVariantState,
 };
 #[cfg(test)]
 use vt_store::ContextPackDocumentSource;
@@ -7221,11 +7221,12 @@ impl ZulangueCore {
                 .editor_bridge
                 .get_delta(&target.doc_id)
                 .map_err(store_error)?;
+            let delta_index = CaptureDeltaIndex::parse(&delta, &plan.session_id)?;
             let range = resolve_capture_section_range(
                 &self.editor_bridge,
                 &target.doc_id,
                 &plan.session_id,
-                &delta,
+                &delta_index,
             )?;
             let range = match range {
                 Some(range) => range,
@@ -8575,59 +8576,63 @@ impl ZulangueCore {
         // allow stale R to overwrite its document bytes despite monotonic ACK.
         let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
         self.ensure_capture_projection_not_purging(&run.session_id)?;
-        let projection = self
+        let projection = match self
             .notebook_capture_store
-            .load_realtime_loro_projection(&run.session_id)
-            .map_err(store_error)?;
-        let utterances = projection.machine_utterances.as_slice();
-        if projection.applied_revision >= projection.desired_revision {
-            let callback = self
-                .active_notebook_capture
-                .lock()
-                .unwrap()
-                .as_ref()
-                .filter(|active| active.session_id == run.session_id)
-                .map(|active| active.callback.clone());
-            if let Some(callback) = callback.filter(|callback| {
-                !callback.is_closed()
-                    && callback.last_enqueued_applied_revision() < projection.applied_revision
-            }) {
-                callback.send(event_from_run(run.clone(), Vec::new(), false));
-                if callback.last_enqueued_applied_revision() < projection.applied_revision {
-                    return Err(CoreError::InternalError {
-                        message: format!(
-                            "durable realtime projection {} callback notification remains retryable",
-                            projection.applied_revision
-                        ),
-                    });
+            .load_realtime_loro_projection_if_pending(&run.session_id)
+            .map_err(store_error)?
+        {
+            RealtimeLoroProjectionLoad::Pending(projection) => projection,
+            RealtimeLoroProjectionLoad::UpToDate(projection) => {
+                let callback = self
+                    .active_notebook_capture
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .filter(|active| active.session_id == run.session_id)
+                    .map(|active| active.callback.clone());
+                if let Some(callback) = callback.filter(|callback| {
+                    !callback.is_closed()
+                        && callback.last_enqueued_applied_revision() < projection.applied_revision
+                }) {
+                    callback.send(event_from_run(run.clone(), Vec::new(), false));
+                    if callback.last_enqueued_applied_revision() < projection.applied_revision {
+                        return Err(CoreError::InternalError {
+                            message: format!(
+                                "durable realtime projection {} callback notification remains retryable",
+                                projection.applied_revision
+                            ),
+                        });
+                    }
                 }
-            }
-            if complete_projection {
-                let search_result = (|| -> Result<(), CoreError> {
-                    let visible = self
-                        .notebook_capture_store
-                        .list_utterances(&run.session_id)
+                if complete_projection {
+                    let search_result = (|| -> Result<(), CoreError> {
+                        let visible = self
+                            .notebook_capture_store
+                            .list_utterances(&run.session_id)
+                            .map_err(store_error)?;
+                        self.rebuild_finalized_capture_search_index_through(
+                            &run.session_id,
+                            &visible,
+                            projection.applied_revision,
+                        )
+                    })();
+                    if let Err(error) = search_result {
+                        tracing::warn!(
+                            session_id = %run.session_id,
+                            applied_revision = projection.applied_revision,
+                            error = %error,
+                            "durable realtime projection is editable; disposable search repair remains retryable"
+                        );
+                    }
+                    self.notebook_capture_store
+                        .complete_projection_unless_purging(&run.id)
                         .map_err(store_error)?;
-                    self.rebuild_finalized_capture_search_index_through(
-                        &run.session_id,
-                        &visible,
-                        projection.applied_revision,
-                    )
-                })();
-                if let Err(error) = search_result {
-                    tracing::warn!(
-                        session_id = %run.session_id,
-                        applied_revision = projection.applied_revision,
-                        error = %error,
-                        "durable realtime projection is editable; disposable search repair remains retryable"
-                    );
                 }
-                self.notebook_capture_store
-                    .complete_projection_unless_purging(&run.id)
-                    .map_err(store_error)?;
+                return Ok(());
             }
-            return Ok(());
-        }
+        };
+        debug_assert!(projection.desired_revision > projection.applied_revision);
+        let utterances = projection.machine_utterances.as_slice();
         use vt_store::BuiltinNotebookTab;
         let tab = self
             .notebook_store
@@ -8682,11 +8687,12 @@ impl ZulangueCore {
                 .editor_bridge
                 .get_delta(&tab.doc_id)
                 .map_err(store_error)?;
+            let delta_index = CaptureDeltaIndex::parse(&delta, &run.session_id)?;
             let existing_range = resolve_capture_section_range(
                 &self.editor_bridge,
                 &tab.doc_id,
                 &run.session_id,
-                &delta,
+                &delta_index,
             )?;
             let (plan, should_refresh_anchor) = if let Some(range) = existing_range {
                 (
@@ -8695,17 +8701,13 @@ impl ZulangueCore {
                         &tab.doc_id,
                         &run.session_id,
                         range,
+                        &delta_index,
                         utterances,
                     )?,
                     true,
                 )
             } else {
-                let current_len = self
-                    .editor_bridge
-                    .get_content(&tab.doc_id)
-                    .map_err(store_error)?
-                    .chars()
-                    .count();
+                let current_len = delta_index.document_len;
                 let rendered =
                     render_bilingual_capture_section(&run.session_id, utterances, current_len > 0);
                 if rendered.text.is_empty() {
@@ -8927,6 +8929,273 @@ fn capture_section_owner_key(session_id: &str) -> String {
     format!("section-{}", hex::encode(hasher.finalize()))
 }
 
+enum CaptureDeltaAttribute {
+    Missing,
+    String(String),
+    Invalid,
+}
+
+impl CaptureDeltaAttribute {
+    fn from_attributes(
+        attributes: Option<&serde_json::Map<String, serde_json::Value>>,
+        key: &str,
+    ) -> Self {
+        match attributes.and_then(|attributes| attributes.get(key)) {
+            None => Self::Missing,
+            Some(serde_json::Value::String(value)) => Self::String(value.clone()),
+            Some(_) => Self::Invalid,
+        }
+    }
+
+    fn as_str(&self, key: &str) -> Result<Option<&str>, CoreError> {
+        match self {
+            Self::Missing => Ok(None),
+            Self::String(value) => Ok(Some(value)),
+            Self::Invalid => Err(CoreError::ValidationFailed {
+                message: format!("editor ownership attribute {key} must be a string"),
+            }),
+        }
+    }
+}
+
+struct CaptureDeltaSegment {
+    pos: usize,
+    len: usize,
+    text: String,
+    utterance_id: CaptureDeltaAttribute,
+    lane_language: CaptureDeltaAttribute,
+    content_owner: CaptureDeltaAttribute,
+}
+
+struct IndexedCaptureLaneRange {
+    range: crate::editor_api::TextRange,
+    text: String,
+}
+
+struct CaptureLaneRangeIndex {
+    ranges: std::collections::BTreeMap<(String, String), Vec<IndexedCaptureLaneRange>>,
+    #[cfg(test)]
+    examined_segments: usize,
+}
+
+impl CaptureLaneRangeIndex {
+    fn unique(
+        &self,
+        utterance_id: &str,
+        lane_language: &str,
+    ) -> Result<Option<&IndexedCaptureLaneRange>, CoreError> {
+        let expected_lane_id = capture_lane_id(lane_language);
+        let ranges = self
+            .ranges
+            .get(&(utterance_id.to_string(), expected_lane_id.clone()));
+        match ranges.map_or(0, Vec::len) {
+            0 => Ok(None),
+            1 => Ok(ranges.and_then(|ranges| ranges.first())),
+            count => Err(CoreError::ValidationFailed {
+                message: format!(
+                    "canonical capture lane {utterance_id}/{expected_lane_id} is split across {count} disjoint ranges"
+                ),
+            }),
+        }
+    }
+}
+
+/// One structural parse of the editor Delta for a target capture session.
+///
+/// Attribute type errors are retained and surfaced by the same operation that
+/// used to encounter them. This avoids making malformed marks from an
+/// unrelated utterance newly fatal while still preserving every fail-closed
+/// ownership check on the target session.
+struct CaptureDeltaIndex {
+    segments: Vec<CaptureDeltaSegment>,
+    session_ranges: Vec<crate::editor_api::TextRange>,
+    document_len: usize,
+}
+
+impl CaptureDeltaIndex {
+    fn parse(delta_json: &str, session_id: &str) -> Result<Self, CoreError> {
+        let value: serde_json::Value =
+            serde_json::from_str(delta_json).map_err(|error| CoreError::ValidationFailed {
+                message: format!("invalid editor Delta JSON: {error}"),
+            })?;
+        let delta_segments = value
+            .as_array()
+            .ok_or_else(|| CoreError::ValidationFailed {
+                message: "editor Delta must be an array".to_string(),
+            })?;
+        let mut cursor = 0_usize;
+        let mut segments = Vec::new();
+        let mut session_ranges = Vec::new();
+        for segment in delta_segments {
+            let text = segment
+                .get("insert")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| CoreError::ValidationFailed {
+                    message: "editor Delta text insert must be a string".to_string(),
+                })?;
+            let len = text.chars().count();
+            let attributes = match segment.get("attributes") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(value) => {
+                    Some(
+                        value
+                            .as_object()
+                            .ok_or_else(|| CoreError::ValidationFailed {
+                                message: "editor Delta attributes must be an object".to_string(),
+                            })?,
+                    )
+                }
+            };
+            let actual_session_id = attributes
+                .and_then(|attributes| attributes.get("session_id"))
+                .map(|value| {
+                    value.as_str().ok_or_else(|| CoreError::ValidationFailed {
+                        message: "editor ownership attribute session_id must be a string"
+                            .to_string(),
+                    })
+                })
+                .transpose()?;
+            if actual_session_id == Some(session_id) {
+                if len > 0 {
+                    push_capture_text_range(&mut session_ranges, cursor, len);
+                }
+                segments.push(CaptureDeltaSegment {
+                    pos: cursor,
+                    len,
+                    text: text.to_string(),
+                    utterance_id: CaptureDeltaAttribute::from_attributes(
+                        attributes,
+                        "utterance_id",
+                    ),
+                    lane_language: CaptureDeltaAttribute::from_attributes(
+                        attributes,
+                        "lane_language",
+                    ),
+                    content_owner: CaptureDeltaAttribute::from_attributes(
+                        attributes,
+                        "content_owner",
+                    ),
+                });
+            }
+            cursor = cursor.saturating_add(len);
+        }
+        Ok(Self {
+            segments,
+            session_ranges,
+            document_len: cursor,
+        })
+    }
+
+    fn unique_session_range(&self) -> Result<Option<crate::editor_api::TextRange>, CoreError> {
+        match self.session_ranges.len() {
+            0 => Ok(None),
+            1 => Ok(self.session_ranges.first().copied()),
+            count => Err(CoreError::ValidationFailed {
+                message: format!("ownership marks are split across {count} disjoint ranges"),
+            }),
+        }
+    }
+
+    /// Builds every requested canonical lane range in one pass over the parsed
+    /// target-session segments. Lane order still comes from the caller's
+    /// finalized-fact order; the map is lookup-only.
+    fn lane_ranges(
+        &self,
+        requested_keys: &std::collections::BTreeSet<(String, String)>,
+    ) -> Result<CaptureLaneRangeIndex, CoreError> {
+        let requested_utterances = requested_keys
+            .iter()
+            .map(|(utterance_id, _)| utterance_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut ranges =
+            std::collections::BTreeMap::<(String, String), Vec<IndexedCaptureLaneRange>>::new();
+        #[cfg(test)]
+        let mut examined_segments = 0;
+        for segment in &self.segments {
+            if requested_keys.is_empty() {
+                break;
+            }
+            #[cfg(test)]
+            {
+                examined_segments += 1;
+            }
+            let Some(utterance_id) = segment.utterance_id.as_str("utterance_id")? else {
+                continue;
+            };
+            if !requested_utterances.contains(utterance_id) {
+                continue;
+            }
+            let Some(language) = segment.lane_language.as_str("lane_language")? else {
+                continue;
+            };
+            let key = (utterance_id.to_string(), capture_lane_id(language));
+            if segment.len == 0 || !requested_keys.contains(&key) {
+                continue;
+            }
+            let lane_ranges = ranges.entry(key).or_default();
+            if let Some(previous) = lane_ranges
+                .last_mut()
+                .filter(|range| range.range.pos + range.range.len == segment.pos)
+            {
+                previous.range.len += segment.len;
+                previous.text.push_str(&segment.text);
+            } else {
+                lane_ranges.push(IndexedCaptureLaneRange {
+                    range: crate::editor_api::TextRange {
+                        pos: segment.pos,
+                        len: segment.len,
+                    },
+                    text: segment.text.clone(),
+                });
+            }
+        }
+        Ok(CaptureLaneRangeIndex {
+            ranges,
+            #[cfg(test)]
+            examined_segments,
+        })
+    }
+
+    fn legacy_machine_lane_ranges_outside_finalized(
+        &self,
+        finalized_keys: &std::collections::BTreeSet<(String, String)>,
+    ) -> Result<Vec<crate::editor_api::TextRange>, CoreError> {
+        let mut ranges = Vec::new();
+        for segment in &self.segments {
+            // The old cleanup path deliberately ignored all non-session
+            // ownership attributes on zero-length inserts.
+            if segment.len == 0 {
+                continue;
+            }
+            let stale_machine_lane = match (
+                segment.utterance_id.as_str("utterance_id")?,
+                segment.lane_language.as_str("lane_language")?,
+                segment.content_owner.as_str("content_owner")?,
+            ) {
+                (Some(utterance_id), Some(language), Some("machine")) => {
+                    !finalized_keys.contains(&(utterance_id.to_string(), capture_lane_id(language)))
+                }
+                _ => false,
+            };
+            if stale_machine_lane {
+                push_capture_text_range(&mut ranges, segment.pos, segment.len);
+            }
+        }
+        Ok(ranges)
+    }
+}
+
+fn push_capture_text_range(ranges: &mut Vec<crate::editor_api::TextRange>, pos: usize, len: usize) {
+    if let Some(previous) = ranges
+        .last_mut()
+        .filter(|range| range.pos + range.len == pos)
+    {
+        previous.len += len;
+    } else {
+        ranges.push(crate::editor_api::TextRange { pos, len });
+    }
+}
+
 /// Finds one capture lane using the same canonical-primary identity written by
 /// new projections. Older snapshots may carry marks such as `EN-US` or
 /// `zh-Hans`; treating those as distinct would duplicate the lane on replay or
@@ -8937,71 +9206,14 @@ fn find_unique_capture_lane_range(
     utterance_id: &str,
     lane_language: &str,
 ) -> Result<Option<crate::editor_api::TextRange>, CoreError> {
-    let expected_lane_id = capture_lane_id(lane_language);
-    let value: serde_json::Value =
-        serde_json::from_str(delta_json).map_err(|error| CoreError::ValidationFailed {
-            message: format!("invalid editor Delta JSON: {error}"),
-        })?;
-    let segments = value
-        .as_array()
-        .ok_or_else(|| CoreError::ValidationFailed {
-            message: "editor Delta must be an array".to_string(),
-        })?;
-    let mut cursor = 0_usize;
-    let mut ranges: Vec<crate::editor_api::TextRange> = Vec::new();
-    for segment in segments {
-        let text = segment
-            .get("insert")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| CoreError::ValidationFailed {
-                message: "editor Delta text insert must be a string".to_string(),
-            })?;
-        let len = text.chars().count();
-        let attributes = match segment.get("attributes") {
-            None | Some(serde_json::Value::Null) => None,
-            Some(value) => Some(
-                value
-                    .as_object()
-                    .ok_or_else(|| CoreError::ValidationFailed {
-                        message: "editor Delta attributes must be an object".to_string(),
-                    })?,
-            ),
-        };
-        let string_attribute = |key: &str| -> Result<Option<&str>, CoreError> {
-            attributes
-                .and_then(|attrs| attrs.get(key))
-                .map(|value| {
-                    value.as_str().ok_or_else(|| CoreError::ValidationFailed {
-                        message: format!("editor ownership attribute {key} must be a string"),
-                    })
-                })
-                .transpose()
-        };
-        let matches = string_attribute("session_id")? == Some(session_id)
-            && string_attribute("utterance_id")? == Some(utterance_id)
-            && string_attribute("lane_language")?
-                .is_some_and(|actual| capture_lane_id(actual) == expected_lane_id);
-        if matches && len > 0 {
-            if let Some(previous) = ranges
-                .last_mut()
-                .filter(|range| range.pos + range.len == cursor)
-            {
-                previous.len += len;
-            } else {
-                ranges.push(crate::editor_api::TextRange { pos: cursor, len });
-            }
-        }
-        cursor = cursor.saturating_add(len);
-    }
-    match ranges.len() {
-        0 => Ok(None),
-        1 => Ok(ranges.pop()),
-        count => Err(CoreError::ValidationFailed {
-            message: format!(
-                "canonical capture lane {utterance_id}/{expected_lane_id} is split across {count} disjoint ranges"
-            ),
-        }),
-    }
+    let index = CaptureDeltaIndex::parse(delta_json, session_id)?;
+    let requested_keys = [(utterance_id.to_string(), capture_lane_id(lane_language))]
+        .into_iter()
+        .collect();
+    index
+        .lane_ranges(&requested_keys)?
+        .unique(utterance_id, lane_language)
+        .map(|range| range.map(|range| range.range))
 }
 
 /// Finds legacy machine-owned lane fragments that are not backed by a v27
@@ -9009,79 +9221,14 @@ fn find_unique_capture_lane_range(
 /// row was Complete, even when the translation variant itself was Partial.
 /// Those bytes are safe to remove only before this session has any v27
 /// projection receipt; user-owned or unowned text is always preserved.
+#[cfg(test)]
 fn legacy_machine_lane_ranges_outside_finalized(
     delta_json: &str,
     session_id: &str,
     finalized_keys: &std::collections::BTreeSet<(String, String)>,
 ) -> Result<Vec<crate::editor_api::TextRange>, CoreError> {
-    let value: serde_json::Value =
-        serde_json::from_str(delta_json).map_err(|error| CoreError::ValidationFailed {
-            message: format!("invalid editor Delta JSON: {error}"),
-        })?;
-    let segments = value
-        .as_array()
-        .ok_or_else(|| CoreError::ValidationFailed {
-            message: "editor Delta must be an array".to_string(),
-        })?;
-    let mut cursor = 0_usize;
-    let mut ranges: Vec<crate::editor_api::TextRange> = Vec::new();
-    for segment in segments {
-        let text = segment
-            .get("insert")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| CoreError::ValidationFailed {
-                message: "editor Delta text insert must be a string".to_string(),
-            })?;
-        let len = text.chars().count();
-        let attributes = match segment.get("attributes") {
-            None | Some(serde_json::Value::Null) => None,
-            Some(value) => Some(
-                value
-                    .as_object()
-                    .ok_or_else(|| CoreError::ValidationFailed {
-                        message: "editor Delta attributes must be an object".to_string(),
-                    })?,
-            ),
-        };
-        let string_attribute = |key: &str| -> Result<Option<&str>, CoreError> {
-            attributes
-                .and_then(|attrs| attrs.get(key))
-                .map(|value| {
-                    value.as_str().ok_or_else(|| CoreError::ValidationFailed {
-                        message: format!("editor ownership attribute {key} must be a string"),
-                    })
-                })
-                .transpose()
-        };
-        let owned_by_target_session =
-            string_attribute("session_id")? == Some(session_id) && len > 0;
-        let stale_machine_lane = if owned_by_target_session {
-            match (
-                string_attribute("utterance_id")?,
-                string_attribute("lane_language")?,
-                string_attribute("content_owner")?,
-            ) {
-                (Some(utterance_id), Some(language), Some("machine")) => {
-                    !finalized_keys.contains(&(utterance_id.to_string(), capture_lane_id(language)))
-                }
-                _ => false,
-            }
-        } else {
-            false
-        };
-        if stale_machine_lane {
-            if let Some(previous) = ranges
-                .last_mut()
-                .filter(|range| range.pos + range.len == cursor)
-            {
-                previous.len += len;
-            } else {
-                ranges.push(crate::editor_api::TextRange { pos: cursor, len });
-            }
-        }
-        cursor = cursor.saturating_add(len);
-    }
-    Ok(ranges)
+    CaptureDeltaIndex::parse(delta_json, session_id)?
+        .legacy_machine_lane_ranges_outside_finalized(finalized_keys)
 }
 
 /// Prefers the durable CRDT-relative section boundary and validates that all
@@ -9091,14 +9238,8 @@ fn resolve_capture_section_range(
     bridge: &vt_store::EditorBridge,
     document_id: &str,
     session_id: &str,
-    delta_json: &str,
+    delta_index: &CaptureDeltaIndex,
 ) -> Result<Option<crate::editor_api::TextRange>, CoreError> {
-    let selector = crate::editor_api::DeltaMarkSelector {
-        session_id: Some(session_id),
-        utterance_id: None,
-        lane_language: None,
-    };
-    let marked_ranges = crate::editor_api::find_marked_ranges(delta_json, selector)?;
     let anchored = bridge
         .resolve_capture_owned_range(
             document_id,
@@ -9107,14 +9248,14 @@ fn resolve_capture_section_range(
         )
         .map_err(store_error)?;
     let Some((pos, len)) = anchored else {
-        return crate::editor_api::find_unique_marked_range(delta_json, selector);
+        return delta_index.unique_session_range();
     };
     let end = pos
         .checked_add(len)
         .ok_or_else(|| CoreError::ValidationFailed {
             message: format!("capture section anchor overflow for session {session_id}"),
         })?;
-    if marked_ranges.iter().any(|range| {
+    if delta_index.session_ranges.iter().any(|range| {
         range.pos < pos
             || range
                 .pos
@@ -9529,9 +9670,9 @@ fn plan_capture_section_incrementally(
     document_id: &str,
     session_id: &str,
     section: crate::editor_api::TextRange,
+    delta_index: &CaptureDeltaIndex,
     utterances: &[RealtimeUtterance],
 ) -> Result<CaptureProjectionPlan, CoreError> {
-    let delta = bridge.get_delta(document_id).map_err(store_error)?;
     let lanes = finalized_capture_lanes(utterances);
     let finalized_keys = lanes
         .iter()
@@ -9542,16 +9683,19 @@ fn plan_capture_section_incrementally(
         .map_err(store_error)?
         .is_none()
     {
-        legacy_machine_lane_ranges_outside_finalized(&delta, session_id, &finalized_keys)?
+        delta_index.legacy_machine_lane_ranges_outside_finalized(&finalized_keys)?
     } else {
         Vec::new()
     };
-    let mut lane_ranges = Vec::with_capacity(lanes.len());
+    let indexed_lane_ranges = delta_index.lane_ranges(&finalized_keys)?;
+    let mut indexed_lanes = Vec::with_capacity(lanes.len());
     for lane in &lanes {
-        let range =
-            find_unique_capture_lane_range(&delta, session_id, &lane.utterance.id, &lane.language)?;
-        lane_ranges.push(range);
+        indexed_lanes.push(indexed_lane_ranges.unique(&lane.utterance.id, &lane.language)?);
     }
+    let lane_ranges = indexed_lanes
+        .iter()
+        .map(|range| range.map(|range| range.range))
+        .collect::<Vec<_>>();
 
     // A lane the reader has already seen is never rewritten, but it can grow.
     // A later auxiliary segment can bind to a row whose lane is already Final,
@@ -9562,18 +9706,14 @@ fn plan_capture_section_incrementally(
     // and nothing a reader has already read is about to change. Any other
     // difference — a lane edit, a manual edit in the document — fails that test
     // and is left exactly as it is.
-    let document = bridge.get_content(document_id).map_err(store_error)?;
     let mut lane_extensions = Vec::new();
-    for (lane, range) in lanes.iter().zip(lane_ranges.iter()) {
-        let Some(range) = range else { continue };
-        let Some(projected) = document_char_slice(&document, *range) else {
-            continue;
-        };
+    for (lane, indexed) in lanes.iter().zip(indexed_lanes.iter()) {
+        let Some(indexed) = indexed else { continue };
         let rendered = render_finalized_capture_lane(lane);
-        if !rendered_lane_appends_to(&projected, &rendered.text) {
+        if !rendered_lane_appends_to(&indexed.text, &rendered.text) {
             continue;
         }
-        lane_extensions.push((*range, rendered));
+        lane_extensions.push((indexed.range, rendered));
     }
 
     let section_end =
@@ -9775,20 +9915,6 @@ fn plan_capture_section_incrementally(
     })
 }
 
-/// Char-indexed slice of the document, or `None` when the range does not sit
-/// inside it — a stale range is a reason to leave the lane alone, never to
-/// panic on a byte boundary.
-fn document_char_slice(document: &str, range: crate::editor_api::TextRange) -> Option<String> {
-    let end = range.pos.checked_add(range.len)?;
-    let mut characters = document.chars();
-    let slice = characters
-        .by_ref()
-        .skip(range.pos)
-        .take(range.len)
-        .collect::<String>();
-    (slice.chars().count() == range.len && end <= document.chars().count()).then_some(slice)
-}
-
 /// Whether the freshly rendered lane is the projected one plus more text at the
 /// end. Both carry the lane's trailing newline, so the comparison is between
 /// the bodies.
@@ -9852,10 +9978,17 @@ fn sync_capture_section_incrementally(
     utterances: &[RealtimeUtterance],
 ) -> Result<(), CoreError> {
     let delta = bridge.get_delta(document_id).map_err(store_error)?;
-    let section =
-        resolve_capture_section_range(bridge, document_id, session_id, &delta)?.unwrap_or(section);
-    let plan =
-        plan_capture_section_incrementally(bridge, document_id, session_id, section, utterances)?;
+    let delta_index = CaptureDeltaIndex::parse(&delta, session_id)?;
+    let section = resolve_capture_section_range(bridge, document_id, session_id, &delta_index)?
+        .unwrap_or(section);
+    let plan = plan_capture_section_incrementally(
+        bridge,
+        document_id,
+        session_id,
+        section,
+        &delta_index,
+        utterances,
+    )?;
     if plan.operations.is_empty() {
         return Ok(());
     }
@@ -14978,6 +15111,74 @@ mod tests {
     }
 
     #[test]
+    fn capture_delta_index_scans_a_long_session_once_for_all_lane_lookups() {
+        const LANE_COUNT: usize = 10_000;
+        let mut segments = Vec::with_capacity(LANE_COUNT + 1);
+        segments.push(serde_json::json!({
+            "insert": "other session\n",
+            "attributes": {
+                "session_id": "session-b",
+                "utterance_id": 17,
+                "lane_language": false,
+            }
+        }));
+        let mut requested_keys = std::collections::BTreeSet::new();
+        for index in 0..LANE_COUNT {
+            let utterance_id = format!("utterance-{index:05}");
+            requested_keys.insert((utterance_id.clone(), "en".to_string()));
+            segments.push(serde_json::json!({
+                "insert": format!("第 {index} 行 🌏\n"),
+                "attributes": {
+                    "session_id": "session-a",
+                    "utterance_id": utterance_id,
+                    "lane_language": if index % 2 == 0 { "EN-US" } else { "en" },
+                    "content_owner": "machine",
+                }
+            }));
+        }
+        let delta = serde_json::Value::Array(segments).to_string();
+        let index = CaptureDeltaIndex::parse(&delta, "session-a").unwrap();
+        let lanes = index.lane_ranges(&requested_keys).unwrap();
+
+        assert_eq!(lanes.examined_segments, LANE_COUNT);
+        assert_eq!(lanes.ranges.len(), LANE_COUNT);
+        for lane_index in [0, 1, LANE_COUNT / 2, LANE_COUNT - 1] {
+            let utterance_id = format!("utterance-{lane_index:05}");
+            let indexed = lanes.unique(&utterance_id, "en").unwrap().unwrap();
+            assert_eq!(indexed.text, format!("第 {lane_index} 行 🌏\n"));
+        }
+    }
+
+    #[test]
+    fn capture_delta_index_preserves_disjoint_canonical_lane_rejection() {
+        let delta = serde_json::json!([
+            {
+                "insert": "en: first\n",
+                "attributes": {
+                    "session_id": "session-a",
+                    "utterance_id": "utterance-a",
+                    "lane_language": "EN-US"
+                }
+            },
+            { "insert": "user text\n" },
+            {
+                "insert": "en: second\n",
+                "attributes": {
+                    "session_id": "session-a",
+                    "utterance_id": "utterance-a",
+                    "lane_language": "en"
+                }
+            }
+        ])
+        .to_string();
+        let error =
+            find_unique_capture_lane_range(&delta, "session-a", "utterance-a", "en").unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("canonical capture lane utterance-a/en is split across 2 disjoint ranges"));
+    }
+
+    #[test]
     fn canonical_lane_identity_finds_legacy_full_tags_without_duplicate_insert() {
         let bridge = vt_store::EditorBridge::new();
         let doc = loro::LoroDoc::new();
@@ -15027,6 +15228,8 @@ mod tests {
         machine.source_text = "legacy source".into();
         machine.variants[0].language = "ZH-HANS".into();
         machine.variants[0].text = Some("旧译文".into());
+        let delta = bridge.get_delta("realtime-doc").unwrap();
+        let delta_index = CaptureDeltaIndex::parse(&delta, "session-a").unwrap();
         let plan = plan_capture_section_incrementally(
             &bridge,
             "realtime-doc",
@@ -15035,13 +15238,13 @@ mod tests {
                 pos: 0,
                 len: content.chars().count(),
             },
+            &delta_index,
             std::slice::from_ref(&machine),
         )
         .unwrap();
         assert!(plan.operations.is_empty());
         assert_eq!(bridge.get_content("realtime-doc").unwrap(), content);
 
-        let delta = bridge.get_delta("realtime-doc").unwrap();
         assert_eq!(
             find_unique_capture_lane_range(&delta, "session-a", "utterance-a", "en")
                 .unwrap()
@@ -15891,9 +16094,11 @@ mod tests {
             },
         )
         .is_err());
-        let range = resolve_capture_section_range(&bridge, "realtime-doc", "session-a", &delta)
-            .unwrap()
-            .unwrap();
+        let delta_index = CaptureDeltaIndex::parse(&delta, "session-a").unwrap();
+        let range =
+            resolve_capture_section_range(&bridge, "realtime-doc", "session-a", &delta_index)
+                .unwrap()
+                .unwrap();
         bridge
             .apply(
                 "realtime-doc",
@@ -16530,6 +16735,63 @@ mod tests {
 
     fn projected_core_fixture() -> (tempfile::TempDir, ZulangueCore, String, String, String) {
         projected_core_fixture_with_projection(true)
+    }
+
+    #[test]
+    fn up_to_date_incremental_projection_skips_machine_fact_hydration() {
+        let (temp, core, _notebook_id, _run_id, _doc_id) = projected_core_fixture();
+        core.project_notebook_realtime_incremental("session-a".into())
+            .unwrap();
+        let projected = core
+            .notebook_capture_store
+            .load_realtime_loro_projection("session-a")
+            .unwrap();
+        assert_eq!(projected.applied_revision, projected.desired_revision);
+
+        let conn = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        conn.pragma_update(None, "ignore_check_constraints", "ON")
+            .unwrap();
+        conn.execute(
+            "UPDATE realtime_utterances
+             SET completion = 'invalid-test-value'
+             WHERE id = 'utterance-a'",
+            [],
+        )
+        .unwrap();
+        conn.pragma_update(None, "ignore_check_constraints", "OFF")
+            .unwrap();
+        assert!(core
+            .notebook_capture_store
+            .load_realtime_loro_projection("session-a")
+            .is_err());
+
+        core.project_notebook_realtime_incremental("session-a".into())
+            .expect("an up-to-date wake must not hydrate the full machine-fact ledger");
+    }
+
+    #[test]
+    fn terminal_projection_keeps_search_and_ready_semantics_after_incremental_ack() {
+        let (_temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
+        core.project_notebook_realtime_incremental("session-a".into())
+            .unwrap();
+        core.search_store
+            .index_session("session-a", "stale disposable index")
+            .unwrap();
+        assert!(core.search_sessions("hello".into(), 10).unwrap().is_empty());
+
+        core.project_notebook_capture(&run_id).unwrap();
+
+        let run = core
+            .notebook_capture_store
+            .get_run(&run_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.projection_state, ProjectionState::Ready);
+        assert!(core
+            .search_sessions("hello".into(), 10)
+            .unwrap()
+            .iter()
+            .any(|result| result.session_id == "session-a"));
     }
 
     #[test]

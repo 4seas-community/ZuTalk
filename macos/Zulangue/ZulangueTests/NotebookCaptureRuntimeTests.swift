@@ -906,6 +906,158 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testOutOfOrderCaptureDeltaKeepsSequenceOrderAndRevisionWinnerSemantics() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var zero = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+            id: "utt-0",
+            sequence: 0
+        )
+        zero.revision = 2
+        zero.sourceText = "zero-original"
+        var two = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+            id: "utt-2",
+            sequence: 2
+        )
+        two.revision = 3
+        two.sourceText = "two-newest"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [two, zero],
+            eventRevision: 1,
+            isFullSnapshot: true
+        ))
+
+        var three = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+            id: "utt-3",
+            sequence: 3
+        )
+        three.revision = 1
+        three.sourceText = "three"
+        var one = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+            id: "utt-1",
+            sequence: 1
+        )
+        one.revision = 1
+        one.sourceText = "one"
+        var staleTwo = two
+        staleTwo.revision = 2
+        staleTwo.sourceText = "two-stale"
+        var equalZero = zero.replacingIdentity(id: "utt-0-equal")
+        equalZero.sourceText = "zero-equal-later"
+        var foreign = three.replacingIdentity(
+            id: "utt-foreign",
+            sessionId: "session-b",
+            sequence: 4
+        )
+        foreign.sourceText = "must stay hidden"
+
+        var publishedSnapshots: [[UInt64]] = []
+        let observation = store.$utterances.dropFirst().sink { utterances in
+            publishedSnapshots.append(utterances.map(\.sequence))
+        }
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [three, one, staleTwo, equalZero, foreign],
+            eventRevision: 2,
+            isFullSnapshot: false
+        ))
+
+        XCTAssertEqual(store.utterances.map(\.sequence), [0, 1, 2, 3])
+        XCTAssertEqual(
+            store.utterances.map(\.sourceText),
+            ["zero-equal-later", "one", "two-newest", "three"]
+        )
+        XCTAssertEqual(store.utterances.first?.id, "utt-0-equal")
+        XCTAssertEqual(
+            publishedSnapshots,
+            [[0, 1, 2, 3]],
+            "one durable delta must publish only its fully merged ordered value"
+        )
+        withExtendedLifetime(observation) {}
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testFullSnapshotIsSortedDeduplicatedAndPublishedAtomically() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var deleted = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+            id: "utt-deleted",
+            sequence: 9
+        )
+        deleted.sourceText = "must disappear"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [deleted],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+
+        var zero = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+            id: "utt-0",
+            sequence: 0
+        )
+        zero.revision = 1
+        zero.sourceText = "zero"
+        var oneFirst = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+            id: "utt-1-first",
+            sequence: 1
+        )
+        oneFirst.revision = 2
+        oneFirst.sourceText = "one-first"
+        var oneEqualLater = oneFirst.replacingIdentity(id: "utt-1-later")
+        oneEqualLater.sourceText = "one-equal-later"
+        var twoNewest = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+            id: "utt-2-newest",
+            sequence: 2
+        )
+        twoNewest.revision = 3
+        twoNewest.sourceText = "two-newest"
+        var twoStale = twoNewest.replacingIdentity(id: "utt-2-stale")
+        twoStale.revision = 2
+        twoStale.sourceText = "two-stale-later"
+
+        var publishedSnapshots: [[UInt64]] = []
+        let observation = store.$utterances.dropFirst().sink { utterances in
+            publishedSnapshots.append(utterances.map(\.sequence))
+        }
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [twoNewest, oneFirst, zero, twoStale, oneEqualLater],
+            eventRevision: 2,
+            isFullSnapshot: true
+        ))
+
+        XCTAssertEqual(store.utterances.map(\.sequence), [0, 1, 2])
+        XCTAssertEqual(
+            store.utterances.map(\.sourceText),
+            ["zero", "one-equal-later", "two-newest"]
+        )
+        XCTAssertEqual(
+            publishedSnapshots,
+            [[0, 1, 2]],
+            "an authoritative replacement must not expose an empty or partially rebuilt transcript"
+        )
+        withExtendedLifetime(observation) {}
+        store.resetForTesting()
+    }
+
+    @MainActor
     func testEmptyDeltaStillWakesPendingFinalProjectionFromDurableLocalRows() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         let store = ActiveBilingualTranscriptStore(
@@ -935,6 +1087,75 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             client.realtimeProjectionCount,
             2,
             "a coalesced empty callback must still retry the durable Final watermark"
+        )
+        store.resetForTesting()
+    }
+
+    @MainActor
+    func testAppliedProjectionWatermarkStopsProgressCallbacksFromRewakingFinal() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [.sample],
+            eventRevision: 1,
+            isFullSnapshot: false,
+            realtimeLoroAppliedRevision: 0
+        ))
+        XCTAssertEqual(client.realtimeProjectionCount, 1)
+
+        // The first empty callback carries Rust's durable ACK. Every later
+        // progress/health-only callback must remain a projector no-op even
+        // though the same historical Final stays in the local transcript.
+        for eventRevision in 2...101 {
+            client.emitCaptureEvent(captureEvent(
+                sessionId: "session-a",
+                state: .recording,
+                utterances: [],
+                eventRevision: UInt64(eventRevision),
+                isFullSnapshot: false,
+                realtimeLoroAppliedRevision: 1
+            ))
+        }
+        XCTAssertEqual(
+            client.realtimeProjectionCount,
+            1,
+            "an acknowledged Final must not wake projection on every progress callback"
+        )
+
+        var laterTranslationFinal = NotebookCaptureUtteranceDTO.sample
+            .replacingIdentity(id: "utt-2", sequence: 2)
+        laterTranslationFinal.revision = 8
+        laterTranslationFinal.completion = "partial"
+        laterTranslationFinal.sourceProjectionRevision = 0
+        laterTranslationFinal.languageVariants = [
+            NotebookCaptureLanguageVariantDTO(
+                language: "th",
+                role: "translation",
+                text: "สวัสดี",
+                state: "ready",
+                completion: "complete",
+                projectionRevision: 2
+            ),
+        ]
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [laterTranslationFinal],
+            eventRevision: 102,
+            isFullSnapshot: false,
+            realtimeLoroAppliedRevision: 1
+        ))
+        XCTAssertEqual(
+            client.realtimeProjectionCount,
+            2,
+            "a newer independent Final lane must still wake projection exactly once"
         )
         store.resetForTesting()
     }
@@ -1491,6 +1712,129 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testLivePreviewPublishesCoherentFramesOnceIncludingEmptyCueAuthority() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource(),
+            livePreviewCoalescingInterval: 0
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        let durableCue = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "zh",
+            groupEpoch: 0,
+            providerSequence: 1,
+            sourceLanguage: "en",
+            sourceStartMs: 0,
+            sourceEndMs: 500,
+            text: "durable cue",
+            completion: "partial",
+            withdrawn: false,
+            revision: 1
+        )
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 1,
+            isFullSnapshot: false,
+            translationCues: [durableCue]
+        ))
+        XCTAssertEqual(store.presentedTranslationCues(for: "zh").map(\.text), ["durable cue"])
+
+        var objectChangeCount = 0
+        let observation = store.livePresentation.objectWillChange.sink {
+            objectChangeCount += 1
+        }
+        var frames: [NotebookCaptureLivePresentationStore.Frame] = []
+        let frameObservation = store.livePresentation.$frame.dropFirst().sink { frame in
+            frames.append(frame)
+        }
+        var parentObjectChangeCount = 0
+        let parentObservation = store.objectWillChange.sink {
+            parentObjectChangeCount += 1
+        }
+
+        client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+            sessionId: "session-a",
+            previewRevision: 1,
+            utterances: []
+        ))
+
+        XCTAssertEqual(objectChangeCount, 1)
+        XCTAssertEqual(frames.count, 1)
+        let emptyAuthorityFrame = try XCTUnwrap(frames.first)
+        XCTAssertTrue(emptyAuthorityFrame.hasTranslationCueAuthority)
+        XCTAssertTrue(emptyAuthorityFrame.utterances.isEmpty)
+        XCTAssertTrue(emptyAuthorityFrame.translationCues.isEmpty)
+        XCTAssertTrue(
+            store.presentedTranslationCues(for: "zh").isEmpty,
+            "the first empty live cue snapshot must hide the older durable cue tail"
+        )
+
+        var previewUtterance = NotebookCaptureUtteranceDTO.sample
+        previewUtterance.revision = 0
+        previewUtterance.sourceText = "coherent partial"
+        previewUtterance.completion = "partial"
+        let liveCue = NotebookCaptureTranslationCueDTO(
+            targetLanguage: "zh",
+            groupEpoch: 1,
+            providerSequence: 2,
+            sourceLanguage: "en",
+            sourceStartMs: 500,
+            sourceEndMs: 900,
+            text: "live cue",
+            completion: "partial",
+            withdrawn: false,
+            revision: 2
+        )
+        let liveHealth = NotebookCaptureLaneHealthDTO(
+            targetLanguage: "zh",
+            state: .live,
+            groupEpoch: 1,
+            finalAudioProcMs: 700,
+            totalAudioProcMs: 900,
+            lagMs: 200
+        )
+        let coherentPreview = NotebookCaptureLivePreviewDTO(
+            sessionId: "session-a",
+            previewRevision: 2,
+            utterances: [previewUtterance],
+            translationCues: [liveCue],
+            laneHealth: [liveHealth]
+        )
+        client.emitLivePreview(coherentPreview)
+
+        XCTAssertEqual(objectChangeCount, 2)
+        XCTAssertEqual(frames.count, 2)
+        let populatedFrame = try XCTUnwrap(frames.last)
+        XCTAssertEqual(populatedFrame.utterances.map(\.sourceText), ["coherent partial"])
+        XCTAssertEqual(populatedFrame.translationCues[liveCue.id]?.text, "live cue")
+        XCTAssertEqual(populatedFrame.laneHealth["zh"], .live)
+        XCTAssertEqual(populatedFrame.laneTelemetry["zh"]?.lagMs, 200)
+        XCTAssertTrue(populatedFrame.hasTranslationCueAuthority)
+
+        // A newer provider revision with the same presentation value advances
+        // latest-wins bookkeeping without manufacturing another UI invalidation.
+        client.emitLivePreview(NotebookCaptureLivePreviewDTO(
+            sessionId: coherentPreview.sessionId,
+            previewRevision: 3,
+            utterances: coherentPreview.utterances,
+            translationCues: coherentPreview.translationCues,
+            laneHealth: coherentPreview.laneHealth
+        ))
+        XCTAssertEqual(objectChangeCount, 2)
+        XCTAssertEqual(frames.count, 2)
+        XCTAssertEqual(parentObjectChangeCount, 0)
+
+        observation.cancel()
+        frameObservation.cancel()
+        parentObservation.cancel()
+        store.resetForTesting()
+    }
+
+    @MainActor
     func testCueOnlyPreviewBurstSharesTheRenderingBudgetAndPublishesNewestFrame() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         let store = ActiveBilingualTranscriptStore(
@@ -1541,10 +1885,10 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 && store.laneTelemetry["zh"]?.lagMs == 200
         }
         XCTAssertTrue(didPublishTail, "cue and health coalescing must remain latest-wins")
-        XCTAssertLessThan(
+        XCTAssertEqual(
             objectChangeCount,
-            20,
-            "cue-only bursts must not invalidate observers once per provider revision"
+            2,
+            "the leading and newest trailing frame must each invalidate observers exactly once"
         )
         XCTAssertEqual(
             parentObjectChangeCount,
@@ -6817,7 +7161,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(overlayViews.contains(
             "SubtitleOverlayLayoutPolicy.audienceRowCount("
         ))
-        XCTAssertTrue(audienceTimelineView.contains("store.presentedUtteranceTail("))
+        XCTAssertTrue(audienceTimelineView.contains("store.presentedAudienceUtterances("))
+        XCTAssertFalse(
+            audienceTimelineView.contains("store.presentedUtteranceTail("),
+            "a global tail would evict a sparse language whose own visible suffix is still current"
+        )
         XCTAssertTrue(audienceTimelineView.contains("store.makeAudienceSourcePlacement()"))
         XCTAssertFalse(
             audienceTimelineView.contains("store.presentedUtterances"),
@@ -8132,10 +8480,14 @@ private extension NotebookCaptureProfileDTO {
 }
 
 private extension NotebookCaptureUtteranceDTO {
-    func replacingIdentity(id: String? = nil, sequence: UInt64? = nil) -> Self {
+    func replacingIdentity(
+        id: String? = nil,
+        sessionId: String? = nil,
+        sequence: UInt64? = nil
+    ) -> Self {
         Self(
             id: id ?? self.id,
-            sessionId: sessionId,
+            sessionId: sessionId ?? self.sessionId,
             sequence: sequence ?? self.sequence,
             sessionSpeakerId: sessionSpeakerId,
             revision: revision,
