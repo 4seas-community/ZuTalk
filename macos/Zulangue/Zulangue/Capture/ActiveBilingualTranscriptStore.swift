@@ -3496,6 +3496,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private var laneMutationsInFlight: Set<NotebookCaptureLaneMutationKey> = []
     private var committedLaneOverrideBarriers:
         [NotebookCaptureLaneMutationKey: NotebookCaptureCommittedLaneOverrideBarrier] = [:]
+    private var cachedLastIdentifiedSourceLanguage: String?
     private var audioToken: NotebookCaptureAudioToken?
     private var audioPushGate: NotebookCaptureAudioPushGate?
     private var elapsedTimer: AnyCancellable?
@@ -3986,6 +3987,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         self.notebookId = notebookId
         self.profile = startProfile
         self.utterances = []
+        self.cachedLastIdentifiedSourceLanguage = nil
         cancelLivePreviewCoalescing()
         self.livePresentation.utterances = []
         self.lastAppliedEventRevision = nil
@@ -4664,6 +4666,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         realtimeLagMs = nil
         projectionState = .ready
         utterances = []
+        cachedLastIdentifiedSourceLanguage = nil
         translationCues = [:]
         livePresentation.translationCues = [:]
         hasLiveTranslationCueSnapshot = false
@@ -4740,31 +4743,44 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     func audienceSourcePlacement(
         for utterance: NotebookCaptureUtteranceDTO
     ) -> String? {
-        NotebookCaptureHistoryPolicy.audienceSourcePlacement(
-            for: utterance,
-            selectedLanguages: selectedLanguages,
-            lastIdentifiedSourceLanguage: lastIdentifiedSourceLanguage
-                ?? selectedLanguages.first
-        )
+        makeAudienceSourcePlacement()(utterance)
+    }
+
+    /// Freezes the language-placement context for one presentation pass.
+    /// Audience projection calls this once, then places every row through the
+    /// returned pure closure. Recomputing `lastIdentifiedSourceLanguage` for
+    /// every row made a long `und` tail repeatedly scan the entire durable
+    /// session and could turn one live frame into quadratic work.
+    func makeAudienceSourcePlacement() -> (NotebookCaptureUtteranceDTO) -> String? {
+        let languages = selectedLanguages
+        let fallbackLanguage = lastIdentifiedSourceLanguage ?? languages.first
+        return { utterance in
+            NotebookCaptureHistoryPolicy.audienceSourcePlacement(
+                for: utterance,
+                selectedLanguages: languages,
+                lastIdentifiedSourceLanguage: fallbackLanguage
+            )
+        }
     }
 
     /// The most recent language the provider actually identified in this
     /// session. Used only as the last resort for placing an `und` line, after
-    /// the provider's own per-utterance hint.
-    ///
-    /// This reads the durable rows rather than the live preview: a committed
-    /// language is a settled fact, while a preview row can still be the very
-    /// `und` line being placed. The scan runs backwards and almost always
-    /// stops on the first row, because the immediately preceding sentence is
-    /// normally tagged.
+    /// the provider's own per-utterance hint. Durable merge/snapshot boundaries
+    /// refresh the cache once; a live SwiftUI frame must never rescan the whole
+    /// session just to place each visible row.
     private var lastIdentifiedSourceLanguage: String? {
+        cachedLastIdentifiedSourceLanguage
+    }
+
+    private func refreshLastIdentifiedSourceLanguage() {
+        cachedLastIdentifiedSourceLanguage = nil
         for utterance in utterances.reversed() where utterance.hasSourceLane {
             let language = utterance.sourceLanguage.lowercased()
             if language.isEmpty == false, language != "und" {
-                return language
+                cachedLastIdentifiedSourceLanguage = language
+                return
             }
         }
-        return nil
     }
 
     private var captureLanguageSummary: String {
@@ -4958,6 +4974,32 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             }
         }
         utterances.sort { $0.sequence < $1.sequence }
+        refreshLastIdentifiedSourceLanguage()
+        refreshRecentTranscriptPresentation()
+    }
+
+    /// Installs an authoritative snapshot with one published assignment.
+    /// Clearing `utterances` first exposed a legitimate empty frame to the
+    /// overlay, then `merge` searched the growing replacement array once per
+    /// row. A long-session repair could therefore show a blank canvas while
+    /// doing quadratic MainActor work. Build the replacement off to the side,
+    /// deduplicate by provider sequence, sort once, and publish atomically.
+    private func replaceUtterances(
+        with snapshot: [NotebookCaptureUtteranceDTO]
+    ) {
+        var bySequence: [UInt64: NotebookCaptureUtteranceDTO] = [:]
+        bySequence.reserveCapacity(snapshot.count)
+        for unprotectedUpdate in snapshot {
+            let update = protectingCommittedLaneOverrides(in: unprotectedUpdate)
+            guard update.sessionId == sessionId else { continue }
+            if let existing = bySequence[update.sequence],
+               existing.revision > update.revision {
+                continue
+            }
+            bySequence[update.sequence] = update
+        }
+        utterances = bySequence.values.sorted { $0.sequence < $1.sequence }
+        refreshLastIdentifiedSourceLanguage()
         refreshRecentTranscriptPresentation()
     }
 
@@ -5286,15 +5328,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private func reconcileUtterances(for event: NotebookCaptureEventDTO) {
         if event.isFullSnapshot {
             cancelUtteranceGapRepair()
-            utterances = []
-            if event.utterances.isEmpty {
-                // `merge([])` intentionally skips the O(n) sort used by
-                // progress-only deltas, but an authoritative empty snapshot
-                // must still clear the menu-bar's recent transcript lines.
-                refreshRecentTranscriptPresentation()
-            } else {
-                merge(event.utterances)
-            }
+            replaceUtterances(with: event.utterances)
             lastAppliedEventRevision = event.eventRevision
             return
         }
@@ -5402,8 +5436,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             // read. Later buffered deltas are replayed below, so a deletion in
             // the snapshot cannot resurrect stale local data and the repair no
             // longer depends on finding a quiet interval.
-            utterances = []
-            merge(snapshot.utterances)
+            replaceUtterances(with: snapshot.utterances)
             reconcileTranslationCues(for: snapshot)
             reconcileLaneHealth(for: snapshot)
             for delta in replayDeltas {
@@ -5599,6 +5632,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
         cancelUtteranceGapRepair()
         utterances = []
+        cachedLastIdentifiedSourceLanguage = nil
         translationCues = [:]
         livePresentation.translationCues = [:]
         hasLiveTranslationCueSnapshot = false

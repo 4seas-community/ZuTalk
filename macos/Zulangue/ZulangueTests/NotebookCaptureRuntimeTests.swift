@@ -3713,6 +3713,67 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(MenuBarRuntimeStore.shared.cachedRecentLines.isEmpty)
     }
 
+    @MainActor
+    func testFiveThousandRowFullSnapshotPublishesOneAtomicReplacement() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var rows = (0..<5_000).map { index in
+            var row = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+                id: "snapshot-\(index)",
+                sequence: UInt64(index)
+            )
+            // Force the cached fallback to scan a long unidentified tail once
+            // at snapshot install time; rendering must reuse that result.
+            row.sourceLanguage = index == 0 ? "zh" : "und"
+            row.sourceText = "row \(index)"
+            return row
+        }
+        var newerDuplicate = rows[2_500]
+        newerDuplicate.revision += 1
+        newerDuplicate.sourceText = "newer duplicate"
+        var equalRevisionDuplicate = newerDuplicate
+        equalRevisionDuplicate.sourceText = "equal revision wins last"
+        var staleDuplicate = rows[2_500]
+        staleDuplicate.sourceText = "stale duplicate"
+        rows.append(contentsOf: [newerDuplicate, equalRevisionDuplicate, staleDuplicate])
+        var publishedCounts: [Int] = []
+        let observation = store.$utterances.dropFirst().sink { rows in
+            publishedCounts.append(rows.count)
+        }
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: rows,
+            eventRevision: 1,
+            isFullSnapshot: true
+        ))
+
+        XCTAssertEqual(store.utterances.count, 5_000)
+        XCTAssertEqual(store.utterances.first?.sourceText, "row 0")
+        XCTAssertEqual(store.utterances[2_500].sourceText, "equal revision wins last")
+        XCTAssertEqual(store.utterances.last?.sourceText, "row 4999")
+        var pending = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+            id: "pending",
+            sequence: 5_000
+        )
+        pending.sourceLanguage = "und"
+        pending.provisionalSourceLanguage = nil
+        XCTAssertEqual(store.makeAudienceSourcePlacement()(pending), "zh")
+        XCTAssertEqual(
+            publishedCounts,
+            [5_000],
+            "an authoritative repair must never publish a transient empty canvas"
+        )
+        withExtendedLifetime(observation) {}
+        store.resetForTesting()
+    }
+
     func testRealtimeRunSelectionPrefersFocusThenActiveThenLatestAndPreservesClicks() {
         let first = NotebookCaptureHistoryRunDTO.fixture(
             sessionId: "session-a",
@@ -6380,6 +6441,16 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let conversationLaneView = String(
             overlayViews[conversationLaneStart.lowerBound..<conversationLaneEnd.lowerBound]
         )
+        let audienceTimelineStart = try XCTUnwrap(
+            overlayViews.range(of: "private func audienceTimelineBody(")
+        )
+        let audienceTimelineEnd = try XCTUnwrap(
+            overlayViews[audienceTimelineStart.upperBound...]
+                .range(of: "/// One language's track")
+        )
+        let audienceTimelineView = String(
+            overlayViews[audienceTimelineStart.lowerBound..<audienceTimelineEnd.lowerBound]
+        )
         XCTAssertTrue(captureViews.contains("try await capture.start(notebookId: notebookId)"))
         XCTAssertTrue(captureViews.contains("try await capture.setPaused"))
         XCTAssertTrue(captureViews.contains("try await capture.stop()"))
@@ -6733,6 +6804,12 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(overlayViews.contains(
             "SubtitleOverlayLayoutPolicy.audienceRowCount("
         ))
+        XCTAssertTrue(audienceTimelineView.contains("store.presentedUtteranceTail("))
+        XCTAssertTrue(audienceTimelineView.contains("store.makeAudienceSourcePlacement()"))
+        XCTAssertFalse(
+            audienceTimelineView.contains("store.presentedUtterances"),
+            "Audience must never rebuild the complete session during a live frame"
+        )
         XCTAssertFalse(
             overlayViews.contains("presentedUtterances.suffix(2)"),
             "audience retention is height-driven; a fixed pair evicts a translation before it can be read"

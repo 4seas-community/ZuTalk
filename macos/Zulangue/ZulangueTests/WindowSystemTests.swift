@@ -1415,6 +1415,82 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    func testAudienceProjectionUsesBoundedWindowForTenThousandRowSession() {
+        var durable: [NotebookCaptureUtteranceDTO] = []
+        durable.reserveCapacity(10_000)
+        for index in 0..<10_000 {
+            let sequence = UInt64(index)
+            let startMs = sequence * 1_000
+            durable.append(NotebookCaptureUtteranceDTO(
+                id: "source-\(index)",
+                sessionId: "session",
+                sequence: sequence,
+                revision: 1,
+                // A long unknown-language tail used to make every placement
+                // walk the complete durable session again.
+                sourceLanguage: index < 9_000 ? "en" : "und",
+                sourceText: "row \(index)",
+                sourceStartMs: startMs,
+                sourceEndMs: startMs + 500,
+                translatedLanguage: nil,
+                translatedText: nil,
+                completion: "complete",
+                alignment: "source_only"
+            ))
+        }
+        let preview = NotebookCaptureUtteranceDTO(
+            id: "source-10000",
+            sessionId: "session",
+            sequence: 10_000,
+            revision: 1,
+            sourceLanguage: "und",
+            sourceText: "live row",
+            sourceStartMs: 10_000_000,
+            sourceEndMs: 10_000_500,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "partial",
+            alignment: "source_only"
+        )
+        let limit = SubtitleAudienceTimeline.utteranceLookbackLimit(
+            rowCount: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount,
+            languageCount: 3
+        )
+        let tail = NotebookCaptureLivePresentation.utteranceTail(
+            durable: durable,
+            preview: [preview],
+            sessionId: "session",
+            limit: limit
+        )
+
+        XCTAssertEqual(limit, 34)
+        XCTAssertEqual(tail.count, limit)
+        XCTAssertEqual(tail.first?.sequence, 9_967)
+        XCTAssertEqual(tail.last?.sequence, 10_000)
+
+        var placementCalls = 0
+        let columns = SubtitleAudienceTimeline.columns(
+            languages: ["en", "zh", "th"],
+            utterances: tail,
+            placement: { utterance in
+                placementCalls += 1
+                return NotebookCaptureHistoryPolicy.audienceSourcePlacement(
+                    for: utterance,
+                    selectedLanguages: ["en", "zh", "th"],
+                    lastIdentifiedSourceLanguage: "en"
+                )
+            },
+            cues: { _ in [] }
+        )
+
+        XCTAssertEqual(columns["en"]?.last?.text, "live row")
+        XCTAssertLessThanOrEqual(
+            placementCalls,
+            limit,
+            "Audience projection work must stay constant as the session grows"
+        )
+    }
+
     func testSubtitleOverlayDisplayModeDefaultsToAudienceAndOrdersItFirst() {
         XCTAssertEqual(SubtitleOverlayDisplayMode.allCases, [.audience, .conversation])
         XCTAssertEqual(SubtitleOverlayDisplayMode.resolved(storedRawValue: nil), .audience)

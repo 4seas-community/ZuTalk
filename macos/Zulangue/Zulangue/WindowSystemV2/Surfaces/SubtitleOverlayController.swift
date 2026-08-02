@@ -88,6 +88,7 @@ enum SubtitleOverlayConversationLayout: Equatable {
 
 enum SubtitleOverlayLayoutPolicy {
     static let maximumLanguageCount = 3
+    static let maximumAudienceRowCount = 8
 
     static func conversationLayout(
         width: CGFloat,
@@ -130,7 +131,7 @@ enum SubtitleOverlayLayoutPolicy {
     /// above only so an ultra-tall canvas never turns into a scrollback log.
     static func audienceRowCount(height: CGFloat, fontSize: Double) -> Int {
         let estimatedRowHeight = max(CGFloat(fontSize) * 3.2, 1)
-        return min(8, max(1, Int(height / estimatedRowHeight)))
+        return min(maximumAudienceRowCount, max(1, Int(height / estimatedRowHeight)))
     }
 
     /// Conversation retention is canvas-driven for the same reason audience
@@ -198,6 +199,23 @@ enum SubtitleOverlayLayoutPolicy {
 /// audience is reading. History above may drift out of row alignment; the
 /// standing invariant already prefers the present over the past.
 enum SubtitleAudienceTimeline {
+    /// Audience mode is a live wall, not a per-language archive. Keep one
+    /// recent global bucket per selected language, one for unrouted speech,
+    /// and two live-edge slots. This bounds every render independently of the
+    /// meeting length while leaving enough room for the canvas-sized suffix.
+    /// A language that has been silent beyond this global window deliberately
+    /// ages out: present speech wins over old per-language history.
+    static let utteranceLookbackAllowance = 2
+
+    static func utteranceLookbackLimit(rowCount: Int, languageCount: Int) -> Int {
+        let rows = max(rowCount, 1)
+        let languages = min(
+            max(languageCount, 1),
+            SubtitleOverlayLayoutPolicy.maximumLanguageCount
+        )
+        return rows * (languages + 1) + utteranceLookbackAllowance
+    }
+
     struct Item: Identifiable, Equatable {
         enum Kind: Equatable {
             case source
@@ -1478,28 +1496,31 @@ struct SubtitleOverlayView: View {
     @ViewBuilder
     private func audienceTimelineBody(geometry: GeometryProxy) -> some View {
         let languages = store.selectedLanguages
-        let columns = SubtitleAudienceTimeline.columns(
-            languages: languages,
-            utterances: store.presentedUtterances,
-            placement: { store.audienceSourcePlacement(for: $0) },
-            cues: { store.presentedTranslationCues(for: $0) }
-        )
-        let waiting = SubtitleAudienceTimeline.waitingLanguages(
-            columns: columns,
-            failedLanguages: store.failedTranslationLanguages
-        )
+        let placement = store.makeAudienceSourcePlacement()
         let bandSize = SubtitleOverlayLayoutPolicy.audienceColumnCount(
             width: geometry.size.width - 24,
             languageCount: languages.count,
             fontSize: fontSize
         )
         let bandStarts = Array(stride(from: 0, to: max(languages.count, 1), by: bandSize))
+        // Pull one maximum-sized presentation window once. The former path
+        // rebuilt and sorted the complete session three times per live frame,
+        // then walked it again to build columns before keeping at most eight
+        // visible items. At provider cadence that made render cost grow for
+        // the entire meeting and could stall the hosting view after a long
+        // session even while capture continued normally.
+        let maximumUtteranceWindow = store.presentedUtteranceTail(
+            limit: SubtitleAudienceTimeline.utteranceLookbackLimit(
+                rowCount: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount,
+                languageCount: languages.count
+            )
+        )
         // The strip probe uses a window-of-one on purpose: it only decides
         // whether space must be reserved, and the real lookup below reuses
         // the budget derived from the resulting band height.
         let reservesStrip = SubtitleAudienceTimeline.unroutedText(
-            utterances: store.presentedUtterances,
-            placement: { store.audienceSourcePlacement(for: $0) }
+            utterances: maximumUtteranceWindow,
+            placement: placement
         ) != nil
         let bandHeight = SubtitleOverlayLayoutPolicy.audienceBandHeight(
             canvasHeight: geometry.size.height,
@@ -1511,9 +1532,36 @@ struct SubtitleOverlayView: View {
             height: bandHeight,
             fontSize: fontSize
         )
+        let utteranceWindow = Array(maximumUtteranceWindow.suffix(
+            SubtitleAudienceTimeline.utteranceLookbackLimit(
+                rowCount: itemBudget,
+                languageCount: languages.count
+            )
+        ))
+        // Rust already caps the live cue snapshot at eight items per target
+        // language. Group the snapshot once here instead of sorting the same
+        // dictionary again for every column.
+        let cuesByLanguage = Dictionary(
+            grouping: store.presentedTranslationCueSnapshot,
+            by: { normalizedLanguageCode($0.targetLanguage) }
+        )
+        let columns = SubtitleAudienceTimeline.columns(
+            languages: languages,
+            utterances: utteranceWindow,
+            placement: placement,
+            cues: { language in
+                Array((cuesByLanguage[normalizedLanguageCode(language)] ?? []).suffix(
+                    itemBudget + 1
+                ))
+            }
+        )
+        let waiting = SubtitleAudienceTimeline.waitingLanguages(
+            columns: columns,
+            failedLanguages: store.failedTranslationLanguages
+        )
         let unrouted = SubtitleAudienceTimeline.unroutedText(
-            utterances: store.presentedUtterances,
-            placement: { store.audienceSourcePlacement(for: $0) },
+            utterances: utteranceWindow,
+            placement: placement,
             window: itemBudget
         )
         let trimmed = columns.mapValues { items in Array(items.suffix(itemBudget)) }
