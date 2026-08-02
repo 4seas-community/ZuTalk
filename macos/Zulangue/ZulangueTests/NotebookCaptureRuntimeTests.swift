@@ -6757,7 +6757,20 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(overlayViews.contains("store.selectedLanguages"))
         XCTAssertTrue(overlayViews.contains("store.projection(for: utterance)"))
         XCTAssertFalse(overlays.contains("commonCaptionLanguage"))
-        XCTAssertTrue(overlayViews.contains("ForEach(Array(displayLanguages.enumerated())"))
+        XCTAssertFalse(
+            overlayViews.contains("private var languageHeader"),
+            "floating Compare columns should begin with subtitle text, without a redundant language header"
+        )
+        XCTAssertFalse(
+            overlayViews.contains("showsLanguageHeader"),
+            "stacked Compare lanes should not reintroduce visible language labels"
+        )
+        XCTAssertTrue(conversationLaneView.contains(
+            ".accessibilityLabel(Text(languageName(lane.language)))"
+        ))
+        XCTAssertTrue(conversationLaneView.contains(
+            ".accessibilityValue(Text(conversationLaneAccessibilityValue(lane)))"
+        ))
         XCTAssertTrue(overlayViews.contains("ForEach(Array(displayLanes(projection).enumerated())"))
         XCTAssertTrue(overlayViews.contains("SubtitleOverlayDisplayMode"))
         XCTAssertTrue(overlayViews.contains("SubtitleOverlayLayoutPolicy"))

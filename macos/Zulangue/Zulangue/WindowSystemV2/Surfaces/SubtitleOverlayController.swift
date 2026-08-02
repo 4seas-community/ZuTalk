@@ -1335,56 +1335,12 @@ struct SubtitleOverlayView: View {
             limit: rowBudget + SubtitleConversationTimeline.utteranceLookbackAllowance
         )
 
-        return VStack(spacing: 0) {
-            if layout == .columns {
-                languageHeader
-                Divider().overlay(SubtitleOverlayPalette.hairline)
-            }
-            conversationTranscript(
-                layout: layout,
-                rowBudget: rowBudget,
-                utterances: utteranceTail
-            )
-        }
-        .frame(width: geometry.size.width, height: geometry.size.height)
-    }
-
-    /// In the columns layout the header is audience-facing — it is what names
-    /// each column from across a room — so it scales with the caption font
-    /// instead of staying at operator-chrome size, capped so a maxed slider
-    /// never spends a whole band of canvas on labels.
-    private var languageHeader: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(displayLanguages.enumerated()), id: \.offset) { index, language in
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(languageName(language))
-                        .font(.system(
-                            size: min(max(11, CGFloat(fontSize) * 0.45), 40),
-                            weight: .semibold
-                        ))
-                        .lineLimit(1)
-                    Text(displayLanguageCode(language))
-                        .font(.system(
-                            size: min(max(9, CGFloat(fontSize) * 0.3), 24),
-                            weight: .medium,
-                            design: .monospaced
-                        ))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isHeader)
-
-                if index < displayLanguages.count - 1 {
-                    Divider().overlay(SubtitleOverlayPalette.hairline)
-                }
-            }
-        }
-        .frame(minHeight: 48)
-        .fixedSize(horizontal: false, vertical: true)
-        .layoutPriority(1)
+        return conversationTranscript(
+            layout: layout,
+            rowBudget: rowBudget,
+            utterances: utteranceTail
+        )
+            .frame(width: geometry.size.width, height: geometry.size.height)
     }
 
     @ViewBuilder
@@ -1766,7 +1722,7 @@ struct SubtitleOverlayView: View {
                     ForEach(Array(displayLanes(projection).enumerated()), id: \.offset) {
                         index,
                         lane in
-                        conversationLane(lane, showsLanguageHeader: false)
+                        conversationLane(lane)
                         if index < displayLanes(projection).count - 1 {
                             Divider().overlay(SubtitleOverlayPalette.hairline)
                         }
@@ -1778,7 +1734,7 @@ struct SubtitleOverlayView: View {
                     ForEach(Array(displayLanes(projection).enumerated()), id: \.offset) {
                         index,
                         lane in
-                        conversationLane(lane, showsLanguageHeader: true)
+                        conversationLane(lane)
                         if index < displayLanes(projection).count - 1 {
                             Divider().overlay(SubtitleOverlayPalette.hairline)
                         }
@@ -1800,7 +1756,7 @@ struct SubtitleOverlayView: View {
         if layout == .columns {
             HStack(alignment: .bottom, spacing: 0) {
                 ForEach(Array(lanes.enumerated()), id: \.offset) { index, lane in
-                    conversationLane(lane, showsLanguageHeader: false)
+                    conversationLane(lane)
                     if index < lanes.count - 1 {
                         Divider().overlay(SubtitleOverlayPalette.hairline)
                     }
@@ -1810,7 +1766,7 @@ struct SubtitleOverlayView: View {
         } else {
             VStack(spacing: 0) {
                 ForEach(Array(lanes.enumerated()), id: \.offset) { index, lane in
-                    conversationLane(lane, showsLanguageHeader: true)
+                    conversationLane(lane)
                     if index < lanes.count - 1 {
                         Divider().overlay(SubtitleOverlayPalette.hairline)
                     }
@@ -1889,14 +1845,8 @@ struct SubtitleOverlayView: View {
             .background(subtitleCardBackground)
     }
 
-    private func conversationLane(
-        _ lane: NotebookCaptureLanguageLane,
-        showsLanguageHeader: Bool
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if showsLanguageHeader {
-                languageLabel(lane.language)
-            }
+    private func conversationLane(_ lane: NotebookCaptureLanguageLane) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             laneContent(lane)
                 .font(.system(size: CGFloat(fontSize), weight: .medium))
                 .textSelection(.enabled)
@@ -1906,6 +1856,9 @@ struct SubtitleOverlayView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, minHeight: CGFloat(fontSize * 2.35), alignment: .bottomLeading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(languageName(lane.language)))
+        .accessibilityValue(Text(conversationLaneAccessibilityValue(lane)))
     }
 
     /// One lane, words only: no per-row language caption, no line cap, no
@@ -1993,12 +1946,27 @@ struct SubtitleOverlayView: View {
         }
     }
 
-    private func languageLabel(_ language: String) -> some View {
-        Text(languageName(language))
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundColor(.secondary)
-            .lineLimit(1)
-            .accessibilityAddTraits(.isHeader)
+    private func conversationLaneAccessibilityValue(
+        _ lane: NotebookCaptureLanguageLane
+    ) -> String {
+        if let text = lane.text, text.isEmpty == false {
+            return text
+        }
+
+        switch lane.missingLaneState {
+        case .waiting:
+            return String(
+                format: String(localized: "capture.transcript.waiting_lane"),
+                displayLanguageCode(lane.language)
+            )
+        case .failed:
+            return String(
+                format: String(localized: "capture.transcript.failed_lane"),
+                displayLanguageCode(lane.language)
+            )
+        case .unavailable:
+            return ""
+        }
     }
 
     private func statusRow(
