@@ -119,7 +119,7 @@ impl ProviderCredentialBootstrapGate {
 /// race where a task was claimed before the durable purge but was not scheduled
 /// until after the purge job itself had completed.
 #[derive(Default)]
-pub struct SessionTaskRegistry {
+pub(crate) struct SessionTaskRegistry {
     state: Mutex<SessionTaskRegistryState>,
     changed: Condvar,
 }
@@ -139,7 +139,7 @@ pub(crate) struct SessionTaskRegistration {
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum SessionTaskWaitError {
+pub(crate) enum SessionTaskWaitError {
     #[error("timed out waiting for session task handlers to stop: {session_id}")]
     Timeout { session_id: String },
 }
@@ -175,7 +175,7 @@ impl SessionTaskRegistry {
     ///
     /// The id stays blocked for the lifetime of this registry. Callers use only
     /// immutable session ids or unique task ids, never shared document ids.
-    pub fn cancel_and_wait(
+    pub(crate) fn cancel_and_wait(
         &self,
         session_id: &str,
         timeout: Duration,
@@ -1362,7 +1362,7 @@ async fn load_remote_artifact_inventory(
 
 /// 启动 worker(runtime spawn + cancel 控制)
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_worker(
+pub(crate) fn spawn_worker(
     runtime: &Runtime,
     task_queue: Arc<TaskQueue>,
     callbacks: Arc<Mutex<HashMap<String, Arc<dyn FfiTaskCallback>>>>,

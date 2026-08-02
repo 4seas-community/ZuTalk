@@ -152,7 +152,7 @@ fn safe_soniox_task_error(error: &SttError) -> String {
 }
 
 /// Internal provider result consumed by the durable task worker.
-pub struct TranscribeSessionResult {
+pub(crate) struct TranscribeSessionResult {
     pub session_id: String,
     pub token_count: u32,
     pub full_text: String,
@@ -161,7 +161,7 @@ pub struct TranscribeSessionResult {
 
 /// Internal task progress sink. The Notebook UI reads durable task/run state;
 /// this trait is deliberately not part of the UniFFI ABI.
-pub trait FfiTaskCallback: Send + Sync {
+pub(crate) trait FfiTaskCallback: Send + Sync {
     /// 进度通知
     /// - stage: "decrypting" | "uploading" | "transcribing" | "indexing" | ...
     /// - percent: 0.0 ~ 100.0
