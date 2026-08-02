@@ -223,16 +223,6 @@ impl SearchStore {
             Ok(results)
         }
     }
-
-    /// 删除索引
-    pub fn remove_session(&self, session_id: &str) -> Result<(), SearchStoreError> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "DELETE FROM search_index WHERE session_id = ?1",
-            [session_id],
-        )?;
-        Ok(())
-    }
 }
 
 #[derive(Debug, thiserror::Error)]

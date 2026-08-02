@@ -2,22 +2,8 @@
 
 /* General */
 "app.name" = "Zulangue";
-"app.tagline" = "开源 · 本地优先 · 你的密钥，你的数据";
 "common.cancel" = "取消";
-"common.save" = "保存";
 "common.delete" = "删除";
-"common.export" = "导出";
-"common.search" = "搜索";
-"common.settings" = "设置";
-"common.test" = "测试";
-"common.back" = "返回";
-"common.finish" = "完成";
-"common.required" = "必填";
-"common.optional" = "可选";
-"common.connected" = "已连接";
-"common.testing" = "测试中…";
-"common.not_configured" = "未配置";
-"common.failed" = "失败";
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "继续 →";
@@ -42,17 +28,11 @@
 "onboarding.permissions.mic.usage" = "用于录制现场声音和生成实时转录。";
 "onboarding.permissions.action.grant" = "授予权限";
 "onboarding.permissions.action.open_settings" = "打开系统设置";
-"onboarding.permissions.action.restart" = "重启应用";
-"onboarding.permissions.status.granted" = "已授权";
-"onboarding.permissions.status.denied" = "已拒绝";
-"onboarding.permissions.status.not_granted" = "未授权";
 "onboarding.permissions.continue" = "进入 Zulangue →";
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "开启实时字幕";
 "onboarding.keys.subtitle" = "输入你自己的 Soniox API 密钥，开启实时字幕。";
-"onboarding.keys.own_key.option" = "自己的 Key";
-"community_invite.option" = "社区邀请码";
 "community_invite.placeholder" = "输入邀请码";
 "community_invite.action" = "启用邀请";
 "community_invite.active" = "社区邀请已生效";
@@ -100,86 +80,32 @@
 "onboarding.common.back" = "← 返回";
 
 "sidebar.help" = "使用帮助";
-"sidebar.help.hint" = "重新打开新手引导";
 "updates.install_and_relaunch" = "更新并重启";
 "updates.install_and_relaunch.hint" = "安装已下载的更新并重新启动 Zulangue";
 
 /* Library */
-"library.title" = "会话";
-"library.empty.title" = "暂无会话";
-"library.empty.live_hint" = "开始实时转录";
-"library.empty.drop_hint" = "或拖拽音频文件到这里导入";
-"library.empty.drop_label" = "拖拽音频文件";
-"library.empty.drop_formats" = "m4a · mp3 · wav · aac · ogg · flac";
-"library.empty.configure_hint" = "需要先配置服务密钥？";
-"library.empty.configure_link" = "打开设置";
-"library.no_selection.title" = "未选择会话";
-"library.no_selection.detail" = "从左侧列表选一个会话";
-"library.search_placeholder" = "搜索会话…";
-"library.filter.all" = "全部";
-"library.filter.overlay" = "浮窗";
-"library.filter.recording" = "录音";
-"library.filter.import" = "导入";
 
 /* Recording */
-"recording.start" = "开始录音";
-"recording.stop" = "停止录音";
-"recording.status.idle" = "空闲";
-"recording.status.recording" = "录音中";
-"recording.status.listening" = "聆听中";
-"recording.status.error" = "错误";
 
 /* Session Detail */
-"session.tab.transcript" = "转录稿";
 "session.tab.audio" = "音频";
-"session.metadata.language" = "语言";
-"session.metadata.crdt" = "CRDT";
 
 /* Settings */
-"settings.section.recording" = "录音设置";
-"settings.section.privacy" = "隐私与安全";
-"settings.section.shortcuts" = "快捷键";
-"settings.privacy.standard" = "标准";
-"settings.privacy.standard.description" = "永久保留录音和转录稿";
-"settings.privacy.high" = "高";
-"settings.privacy.high.description" = "转录完成后自动删除录音";
-"settings.privacy.maximum" = "最高";
-"settings.privacy.maximum.description" = "转录完成后销毁密钥（录音不可恢复）";
 
 /* Export */
-"export.title" = "导出选项";
-"export.markdown" = "Markdown (.md)";
-"export.srt" = "SRT 字幕 (.srt)";
-"export.vtt" = "WebVTT (.vtt)";
-"export.txt" = "纯文本 (.txt)";
-"export.audio" = "包含音频 (.wav)";
 
 /* Trust Bar */
 
 /* Toast labels */
-"toast.label.info" = "提示";
-"toast.label.success" = "成功";
-"toast.label.warning" = "警告";
-"toast.label.error" = "错误";
 
 /* Common language labels */
-"lang.auto_detect" = "自动检测";
-"lang.zh" = "中文";
-"lang.zh_full" = "中文 (Chinese Simplified)";
-"lang.zh_tw" = "繁體中文";
 "lang.en" = "English";
 "lang.ja" = "日本語";
-"lang.ja_full" = "日本語 (Japanese)";
 "lang.ko" = "한국어";
-"lang.ko_full" = "한국어 (Korean)";
 "lang.fr" = "Français";
-"lang.fr_full" = "Français (French)";
 "lang.de" = "Deutsch";
-"lang.de_full" = "Deutsch (German)";
 "lang.es" = "Español";
-"lang.es_full" = "Español (Spanish)";
 "lang.th" = "ไทย";
-"lang.th_full" = "ไทย (Thai)";
 "lang.zh_hans" = "简体中文";
 
 /* Appearance */
@@ -211,7 +137,6 @@
 "settings.audio_input.error.switch_unavailable" = "当前正在进行其他录音状态切换，请稍后再切换音频输入。";
 "capture.toast.audio_input_switch_failed" = "切换音频输入失败";
 "settings.language.title" = "APP 语言";
-"settings.language.system" = "跟随系统";
 "settings.language.hint" = "影响 Swift UI、菜单栏、Rust 端错误消息的显示语言。";
 "settings.language.restart_hint" = "重启 Zulangue 后 UI 完全切换到新语言。Rust 错误消息已即时生效。";
 "settings.appearance.title" = "外观";
@@ -244,13 +169,10 @@
 /* Recording settings */
 
 
-"doc.delete_current.hint" = "删除当前文档";
 "editor.export.title" = "导出会话";
 "editor.export.hint" = "将这个会话导出为 ZIP";
 "editor.export.no_session" = "没有可导出的录音会话";
 "doc.scratchpad" = "个人笔记";
-"doc.enhanced" = "精修稿";
-"doc.untitled" = "未命名";
 
 
 /* Onboarding brand line */
@@ -259,26 +181,19 @@
 /* Settings sidebar section rawValues */
 "settings.section.general_name" = "常规";
 "settings.section.services_name" = "服务与 API";
-"settings.section.privacy_name" = "隐私";
 "settings.section.shortcuts_name" = "快捷键";
-"settings.sidebar.configuration" = "配置";
 
 /* Settings sidebar groups */
 "settings.group.services" = "服务连接";
-"settings.group.privacy" = "隐私与数据";
 "settings.group.general" = "常规";
 
 /* Settings — API panels */
-"settings.api.test_button" = "测试";
 "settings.credentials.enter_key" = "输入 API 密钥";
 "settings.credentials.local_storage_hint" = "以未加密文件保存在当前 macOS 登录账户的应用私有目录中，并在启动时自动加载。";
 "settings.credentials.trust_boundary_notice" = "在此保存的凭据不会加密。Zulangue 信任当前 macOS 登录环境，将凭据保存在应用私有本地文件中，并在启动时自动加载。";
-"settings.credentials.apply" = "保存";
 "settings.credentials.verify" = "验证";
 "settings.credentials.verify_and_save" = "验证并保存";
 "settings.credentials.verifying" = "正在验证…";
-"settings.credentials.verified" = "已验证";
-"settings.credentials.verification_failed" = "验证失败";
 "settings.credentials.verifying_hint" = "正在连接 Soniox 验证此密钥。";
 "settings.credentials.verified_hint" = "Soniox 已接受此密钥，可以用于远程转录。";
 "settings.credentials.verify_before_save_hint" = "新密钥只有在 Soniox 验证通过后才会保存。";
@@ -297,15 +212,12 @@
 "settings.credentials.runtime_only" = "本次运行已加载 · 未保存";
 "settings.credentials.missing" = "未保存";
 "settings.credentials.clear" = "删除已保存的密钥";
-"settings.credentials.apply_failed" = "无法保存并启用此密钥。";
 "settings.credentials.accessibility_applied_format" = "%@ 密钥已保存在本机并在 Zulangue 中生效，尚未验证服务连接。";
 "settings.credentials.accessibility_saved_inactive_format" = "%@ 密钥已保存在本机，但尚未在 Zulangue 中生效。请查看恢复提示。";
 "settings.credentials.accessibility_runtime_only_format" = "%@ 密钥已为本次运行加载，但尚未保存，也未验证服务连接。";
 "settings.credentials.accessibility_missing_format" = "%@ 密钥尚未保存，请输入并保存密钥。";
 "settings.credentials.field_accessibility_format" = "%@ API 密钥";
-"settings.credentials.apply_accessibility_format" = "保存 %@ 密钥";
 "settings.credentials.clear_accessibility_format" = "删除已保存的 %@ 密钥";
-"settings.credentials.operation_failed" = "服务密钥操作失败";
 "settings.credentials.recovery_title" = "已保存的服务密钥需要处理";
 "settings.credentials.recovery_hint" = "保存新密钥可替换无法读取的文件；也可以删除该文件，清除本机保存的全部服务密钥。";
 "settings.credentials.reset_file" = "删除已保存的密钥文件";
@@ -323,7 +235,6 @@
 "settings.credentials.replace" = "替换已保存的密钥";
 "settings.credentials.replace_accessibility_format" = "替换已保存的 %@ 密钥";
 "settings.credentials.field_replacement_hint" = "输入新密钥，验证通过后才会保存。";
-"settings.credentials.autosave_commit_hint" = "点击“保存”、按 Return 或将焦点移开后，密钥才会保存并生效。";
 "settings.credentials.error.unsupported_version_format" = "不支持的服务凭据文件版本：%d。";
 "settings.credentials.error.malformed_document" = "服务凭据文件格式损坏。";
 "settings.credentials.error.unknown_accounts" = "服务凭据文件包含不受支持的账户条目。";
@@ -363,16 +274,6 @@
 "settings.services.engine.post_stop_unavailable_accessibility_format" = "停止后引擎：%@。执行方式描述不可用。";
 
 /* Settings — Privacy section */
-"settings.privacy.title" = "隐私与安全";
-"settings.privacy.subtitle" = "数据保存与留存设置。";
-"settings.privacy.level_label" = "隐私等级";
-"settings.privacy.standard_name" = "标准";
-"settings.privacy.standard_desc" = "永久保留录音和转录稿";
-"settings.privacy.high_name" = "高";
-"settings.privacy.high_desc" = "转录完成后自动删除录音";
-"settings.privacy.maximum_name" = "最高";
-"settings.privacy.maximum_desc" = "转录完成后销毁密钥(录音不可恢复)";
-"settings.privacy.save_failed" = "隐私等级未保存";
 
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "键盘快捷键";
@@ -385,72 +286,27 @@
 
 
 /* Diagnostics */
-"diagnostics.title" = "诊断";
-"diagnostics.subtitle" = "开启详细 toast + 日志文件用于调试。";
-"diagnostics.debug_mode" = "调试模式";
-"diagnostics.debug_mode_desc" = "每次 Loro 编辑/标记/刷新都会弹 info toast 并写一行 debug.log。默认关闭。";
-"diagnostics.log_file" = "日志文件";
-"diagnostics.crash_file" = "崩溃诊断";
-"diagnostics.reveal_finder" = "在 Finder 中显示";
-"diagnostics.open_console" = "用 Console 打开";
-"diagnostics.clear_log" = "清空日志";
-"diagnostics.no_log_file" = "— 无文件";
-"diagnostics.no_crash_file" = "— 无崩溃报告";
-"diagnostics.operational.title" = "系统健康";
-"diagnostics.operational.subtitle" = "运行时、服务凭据与隐私状态。";
-"diagnostics.operational.refresh" = "刷新";
-"diagnostics.operational.not_loaded" = "系统健康状态尚未加载。";
 "diagnostics.operational.provider_keys" = "服务凭据";
-"diagnostics.operational.privacy" = "隐私";
-"diagnostics.operational.provider_key_missing" = "需要配置服务凭据";
-"diagnostics.operational.provider_optional_off" = "未保存服务凭据；本地录音仍可使用。";
-"diagnostics.operational.provider_configured_format" = "%d 个已保存的服务凭据已加载";
-"diagnostics.operational.provider_inactive_format" = "%d 个已保存的服务凭据需要处理";
-"diagnostics.operational.detail.state" = "状态";
-"diagnostics.operational.detail.actionable" = "可操作";
-"diagnostics.operational.severity.info" = "正常";
-"diagnostics.operational.severity.warning" = "注意";
-"diagnostics.operational.severity.blocked" = "阻塞";
 
 /* Toast — Floating panel */
 
 /* Toast — Microphone */
-"toast.mic.denied.title" = "麦克风权限被拒绝";
-"toast.mic.denied.detail" = "打开 系统设置 → 隐私与安全 → 麦克风 并启用 Zulangue。";
 
 /* Toast — Recording */
-"toast.recording.started.title" = "录音已开始";
-"toast.recording.start_failed.title" = "录音启动失败";
-"toast.recording.session_format" = "会话 %@";
-"toast.recording.saved.detail.transcribing_format" = "%lld 秒 · 正在后台转录…";
-"toast.recording.saved.detail.no_transcription_format" = "%lld 秒 · 已保存，未启动转录";
-"toast.recording.saved.detail.auto_transcribe_off_format" = "%lld 秒 · 自动转录已关闭";
 
 /* Toast — Generic */
-"toast.export.succeeded" = "已导出";
-"toast.export.failed" = "导出失败";
-"toast.core.not_initialized" = "Core 未初始化";
 
 /* Toast — Enhance / Editor */
-"toast.enhance.started" = "精修已启动";
-"toast.enhance.failed" = "精修失败";
 
 /* Sidebar (main window) */
-"sidebar.search_placeholder" = "搜索";
 "sidebar.home" = "主页";
-"sidebar.tags" = "标签";
-"sidebar.tag.general" = "常规";
-"sidebar.new_tag" = "新建标签";
 "sidebar.trash" = "回收站";
-"sidebar.tab.editor_dev" = "编辑器(开发)";
 "sidebar.tab.editor" = "编辑器";
 "sidebar.tab.settings" = "设置";
 "sidebar.local_first" = "本地优先";
 "sidebar.notebook" = "Notebook";
-"sidebar.tab.github" = "GitHub";
 "sidebar.collapse" = "收起侧栏";
 "sidebar.expand" = "展开侧栏";
-"sidebar.new_session" = "新建会话";
 "sidebar.back_to_home" = "返回主页";
 "menubar.action.quit" = "退出 Zulangue";
 "menubar.action.quit_hint" = "退出整个应用；若正在录音，会先确认，并在退出前保存本场录音。";
@@ -465,10 +321,6 @@
 
 /* Document editor residuals */
 "editor.tab.transcript" = "实时转录";
-"editor.transcript.realtime.local_recording_title" = "正在本地录音";
-"editor.transcript.realtime.local_recording_desc" = "远端实时处理未开启，音频保留在本地。";
-"editor.transcript.realtime.remote_waiting_title" = "正在连接 Soniox";
-"editor.transcript.realtime.remote_waiting_desc" = "本地录音会继续，实时转录连接后将在此显示。";
 "editor.transcript.realtime.empty_title" = "没有实时转录";
 "editor.transcript.realtime.empty_desc" = "这个录音 session 没有实时结果。";
 "editor.transcript.async.pending_title" = "后台转录处理中";
@@ -497,12 +349,6 @@
 "menubar.recording.mode.remote" = "SONIOX RT5";
 "editor.title.untitled" = "未命名笔记";
 "editor.footer.local_encrypted" = "已保存到本机";
-"editor.ai.simulate" = "模拟 AI";
-"editor.ai.stop" = "停止 AI";
-"editor.relative.just_now" = "刚刚";
-"editor.relative.min_ago" = "%lld 分钟前";
-"editor.relative.hour_ago" = "%lld 小时前";
-"editor.relative.day_ago" = "%lld 天前";
 
 /* Home page */
 "home.workspace.load_failed" = "无法载入 Notebook 数据。";
@@ -539,8 +385,6 @@
 "home.first_use.action" = "创建我的第一个 Notebook";
 "home.import.action" = "导入音频";
 "home.import.in_progress" = "正在导入…";
-"home.import.panel.title" = "导入音频到 Notebook";
-"home.import.panel.action" = "导入";
 "home.import.completed" = "音频已导入";
 "home.import.failed" = "无法导入音频";
 "home.import.failed.detail" = "所选文件没有被更改，请检查格式后重试。";
@@ -558,7 +402,6 @@
 "home.recent.no_match.description" = "换一个标题或转录片段试试。";
 "home.recent.row.open_hint" = "在所属 Notebook 中打开这条录音";
 "home.recent.row.actions_format" = "%@ 的操作";
-"home.recent.row.imported" = "已导入";
 "home.recent.row.untitled" = "未命名录音";
 "home.recordings.load_failed" = "无法载入录音列表。";
 "home.recording.delete_failed" = "无法将这条录音移到回收站。";
@@ -619,22 +462,6 @@
 "manual_note.timeline.empty" = "录音后，对应的个人笔记会出现在这里";
 "manual_note.timeline.open" = "打开笔记";
 "home.create.title_too_long.detail_format" = "请使用不超过 %lld 个字符。";
-"home.search_placeholder" = "搜索会话…";
-"home.empty.no_match_title" = "无匹配项";
-"home.empty.no_match_desc" = "换个关键词试试。";
-"home.empty.no_recording_title" = "尚无录音";
-"home.empty.no_recording_desc" = "按 ⌃⌥R 或点击「新建会话」开始。你的可编辑笔记和转录稿会在这里出现。";
-"home.empty.start_button" = "开始录音";
-"home.notebook.workspace.board.title" = "工作区";
-"home.notebook.workspace.board.record" = "录音";
-"home.notebook.workspace.board.tabs" = "标签页";
-"home.notebook.workspace.board.tabs.empty" = "尚无标签页";
-"home.notebook.workspace.board.recent" = "最近";
-"home.notebook.workspace.board.recent.empty" = "尚无会话";
-"home.notebook.workspace.board.manual" = "手写笔记";
-"home.action.select" = "选择";
-"home.selection.count_format" = "已选 %lld 个";
-"home.selection.delete_format" = "删除 %lld 个";
 "home.row.preview.pending"   = "转录中…";
 "home.row.preview.recording" = "录音中…";
 "home.row.preview.no_speech" = "无识别到语音";
@@ -647,31 +474,21 @@
 "doc.transcript_hd" = "异步转录";
 "editor.tab.transcript.live.hint" = "实时转录进行中";
 "editor.tab.transcript.hint" = "音频转录";
-"editor.transcript.listening" = "等待说话…";
-"toast.soniox.missing" = "未配置 Soniox API key";
-"toast.soniox.missing.detail" = "实时转录不可用，请到设置 → 连接中配置 Soniox key。";
 
 
 
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "尚无转录稿";
 "editor.empty.no_transcript_desc" = "录音结束后转录稿才可用。";
-"editor.empty.no_transcript_desc_live" = "自动转录完成后,转录稿会出现在这里;或开始新录音实时查看。";
-"editor.empty.transcript_unavailable" = "转录稿不可用";
 "editor.empty.unavailable_title" = "编辑器不可用";
 "editor.empty.no_doc_title" = "无活动文档";
 "editor.empty.no_doc_desc" = "开始录音会创建一个新文档,可在录制同时实时编辑。";
 
 /* Async transcription in-progress & failed states */
 "editor.pending.transcribing" = "正在转录中…";
-"editor.pending.generic"      = "正在处理中…";
 "editor.pending.subtitle"     = "请稍候,任务在后台运行,完成后内容会自动出现。";
 "editor.failed.transcribing"  = "转录失败";
-"editor.failed.generic"       = "任务失败";
 "editor.failed.subtitle"      = "可能是网络抖动或 API 限流。点下方重试一次。";
-"editor.failed.retry"         = "重新转录";
-"toast.retry.data_invalid.title"  = "无法重新转录";
-"toast.retry.data_invalid.detail" = "此录音数据已失效(可能是上次应用退出不完整)。请从主页选中并删除这条会话。";
 
 /* Trash page */
 "trash.empty.title" = "回收站为空";
@@ -692,12 +509,8 @@
 
 /* Trust bar */
 "trust.version_format" = "Zulangue · v%@";
-"trust.label.aes" = "AES-256";
-"trust.label.local_secrets" = "本机密钥";
-"trust.label.remote_opt_in" = "远端需显式开启";
 
 /* Menu Bar status item — popover content */
-"menubar.action.recording" = "开始录音";
 "menubar.action.settings" = "设置";
 "updates.check" = "检查更新…";
 "updates.unavailable.title" = "尚未配置更新";
@@ -707,9 +520,6 @@
 "settings.updates.subtitle" = "通过 Sparkle 安全接收签名更新。";
 "settings.updates.automatic" = "自动检查更新";
 "settings.updates.automatic_hint" = "Zulangue 会定期检查经过签名的更新源，并在新版本可用时提醒你。";
-"menubar.recording.pause" = "暂停";
-"menubar.recording.resume" = "继续";
-"menubar.recording.stop" = "停止";
 "menubar.recording.live_transcript" = "实时转录";
 "menubar.recording.open_subtitles" = "打开实时字幕";
 "menubar.recording.close_subtitles" = "关闭实时字幕";
@@ -730,28 +540,11 @@
 "hud.a11y.recording_paused_format" = "录音已暂停 %@";
 
 /* DesignSystem previews */
-"preview.empty.session_title" = "尚无会话";
-"preview.empty.session_desc" = "拖入音频文件,或点击录制开始首次会话。";
 "preview.crosshair.blueprint" = "蓝图内容";
 "preview.crosshair.hardware" = "硬件内容";
-"preview.loading.rec" = "REC";
 
 
 /* Document editor */
-"editor.status.saved" = "保存";
-"editor.status.saved.local" = "本地";
-"editor.status.saved.loading" = "加载中";
-"editor.status.saved.pending" = "处理中";
-"editor.status.saved.failed" = "失败";
-"editor.status.saved.needs_attention" = "需处理";
-"editor.status.transcript" = "转录";
-"editor.status.transcript.live_view" = "实时视图";
-"editor.status.transcript.available" = "可用";
-"editor.status.transcript.none" = "无";
-"editor.status.quality" = "质量";
-"editor.status.quality.good" = "良好";
-"editor.status.quality.check" = "检查";
-"editor.status.quality.blocked" = "受阻";
 "editor.toolbar.show_sources" = "显示来源";
 "editor.toolbar.show_tasks" = "显示任务";
 "editor.tasks.title" = "任务";
@@ -759,14 +552,8 @@
 "editor.tasks.refresh" = "刷新任务";
 "editor.tasks.empty" = "暂无任务";
 "editor.tasks.empty.detail" = "后台异步转录任务会显示在这里。";
-"editor.tasks.owner_format" = "正在 %@ 上运行";
 "editor.tasks.retry_format" = "重试 %lld 次";
 /* Accessibility labels */
-"a11y.record.stop" = "停止录音";
-"a11y.record.start" = "开始录音";
-"a11y.record.hint_stop" = "双击停止当前录音";
-"a11y.record.hint_start" = "双击开始新录音";
-"a11y.session_card" = "%@, %@, 时长 %@";
 
 /* Notebook 多语言录音 */
 "common.close" = "关闭";
@@ -775,7 +562,6 @@
 "capture.error.remote_required" = "语言字幕需要开启“远端实时处理”。";
 "capture.error.context_requires_remote" = "请先开启实时转录，再使用参考资料。";
 "capture.error.languages_must_differ" = "请选择互不重复的语言。";
-"capture.error.context_confirmation_required" = "请先查看并确认本场要使用的参考资料。";
 "capture.error.not_active" = "当前没有活跃的 Notebook 录音。";
 "capture.error.projection_locked" = "投影完成前，转录内容为只读。";
 "capture.error.profile_snapshot_unavailable" = "无法读取这次录音保存的录音配置。";
@@ -838,7 +624,6 @@
 "capture.toast.context_preview_failed" = "无法查看参考资料";
 "capture.toast.context_load_failed" = "无法载入参考资料";
 "capture.toast.context_update_failed" = "无法更新参考资料";
-"capture.toast.settings_failed" = "无法保存录音设置";
 "capture.toast.edit_failed" = "无法更新转录语言列";
 "capture.toast.projection_retry_failed" = "无法重试转录投影";
 "capture.settings.title" = "设置";
@@ -852,21 +637,11 @@
 "capture.settings.autosave.saved" = "已自动保存";
 "capture.settings.autosave.load_failed" = "无法加载设置";
 "capture.settings.autosave.save_failed" = "更改尚未保存";
-"capture.settings.autosave.context_review" = "设置已保存，请重新确认参考资料";
 "capture.settings.autosave.retry" = "重试";
 "capture.settings.realtime.start_disclosure" = "点击「开始录音」后，将按所选语言实时转录；服务暂时不可用时，录音仍会继续。";
 "capture.settings.remote.credential.saved_inactive" = "Soniox 密钥 · 已保存 · 需要处理";
 "capture.settings.remote.credential.missing" = "Soniox 密钥 · 未保存";
 "capture.settings.remote.credential.hint" = "此状态只表示密钥在本机的保存和加载情况；只有点击「开始录音」才会授权本场音频外发。";
-"capture.settings.mode.title" = "实时模式";
-"capture.settings.mode.transcription_only" = "仅转录";
-"capture.settings.mode.two_way" = "双向翻译";
-"capture.settings.mode.transcription_detail" = "以单列时间线显示说话原文。";
-"capture.settings.mode.two_way_detail" = "以固定的左右语言列显示实时翻译。";
-"capture.settings.languages.title" = "翻译列";
-"capture.settings.languages.detail" = "无论哪一方说话，每种语言始终显示在指定列。";
-"capture.settings.languages.left" = "左列";
-"capture.settings.languages.right" = "右列";
 "capture.settings.languages.question" = "本场会使用哪些语言？";
 "capture.settings.languages.ordered_detail" = "请按显示顺序添加。每种所选语言都会显示为一栏；说话原文先出现，其余栏目通常稍后补齐。";
 "capture.settings.languages.search" = "搜索并添加语言";
@@ -877,64 +652,23 @@
 "capture.settings.languages.move_earlier" = "将语言向前移动";
 "capture.settings.languages.move_later" = "将语言向后移动";
 "capture.settings.languages.remove" = "移除语言";
-"capture.settings.two_way.detail" = "Soniox stt-rt-v5 会把两个说话方向固定显示在对应语言列。";
 "capture.realtime.controls.current_title" = "本次录音配置";
 "capture.realtime.controls.profile_group" = "实时录音配置";
-"capture.realtime.controls.swap_pair" = "交换下一次录音语言对";
-"capture.realtime.controls.swap_pair_hint" = "交换语言 A 与语言 B；不会改写已有转录。";
 "capture.realtime.controls.review_context" = "查看参考资料";
 "capture.settings.context.title" = "识别参考资料";
-"capture.settings.context.send" = "用于实时转录";
-"capture.settings.context.send_detail" = "开启后，本场转录会参考这里的内容。";
 "capture.settings.context.preview" = "查看将使用的内容";
 "capture.settings.context.preview_count" = "共 %lld 个字符";
 "capture.settings.context.empty" = "还没有可用的参考资料。";
-"capture.settings.context.confirm_exact" = "确认用于实时转录";
-"capture.settings.context.applied" = "本场已使用";
-"capture.settings.context.not_applied" = "本场未使用";
 "capture.settings.context.pack_detail" = "选择后会自动记住，并用于实时转录和异步转录。添加术语、人物、机构和会议背景，可提高转录准确度。";
-"capture.settings.context.packs" = "资料范围";
-"capture.settings.context.no_packs" = "暂无参考资料。";
 "capture.settings.context.private_pack" = "当前 Notebook";
 "capture.settings.context.current_notebook_detail" = "用于这个 Notebook";
-"capture.settings.context.library_pack" = "资料库";
 "capture.settings.context.selected" = "正在编辑";
 "capture.settings.context.not_selected" = "未选中";
-"capture.settings.context.always_bound" = "默认使用";
-"capture.settings.context.select_pack_hint" = "选择并用于实时转录和异步转录。";
-"capture.settings.context.bind_pack" = "在当前 Notebook 使用 %@";
-"capture.settings.context.delete_pack" = "删除 %@";
-"capture.settings.context.delete_pack_confirm" = "要删除这个资料库吗？所有使用它的 Notebook 都会受到影响。";
-"capture.settings.context.library_title" = "资料库名称";
-"capture.settings.context.new_library" = "新建资料库";
 "capture.settings.context.create_library" = "创建";
-"capture.settings.context.copy_private" = "保存当前资料到资料库";
-"capture.settings.context.editing_pack" = "%@ 的参考资料";
-"capture.settings.context.import_pack" = "导入资料库";
-"capture.settings.context.export_pack" = "导出";
-"capture.settings.context.no_sources" = "还没有添加参考资料。";
-"capture.settings.context.paste_title" = "资料标题";
-"capture.settings.context.content_kind" = "资料类型";
-"capture.settings.context.kind_general" = "背景";
-"capture.settings.context.kind_terms" = "术语";
-"capture.settings.context.kind_text" = "参考文本";
-"capture.settings.context.paste_content" = "粘贴参考内容";
-"capture.settings.context.import_limits" = "支持 UTF-8 文本或 Markdown（最大 256 KiB）。";
-"capture.settings.context.add_paste" = "添加内容";
-"capture.settings.context.untrusted" = "来源待确认";
-"capture.settings.context.delete_source" = "删除来源 %@";
-"capture.settings.context.delete_source_confirm" = "要删除这份参考资料吗？";
-"capture.settings.context.export_pack_message" = "把这个资料库存成一个可分享的文件。文件是明文，不再受资料库密钥保护。";
-"capture.settings.context.export_pack_done" = "已导出 %ld 项内容。";
-"capture.settings.context.import_pack_message" = "选择一个 Zulangue 资料库文件（.zulangue-pack.json）。";
-"capture.settings.context.import_pack_done" = "已导入资料库「%@」。";
-"capture.settings.context.local_only" = "开始录音后，可将这些资料用于实时转录。";
 "capture.settings.after_stop.title" = "录音后处理";
 "capture.settings.after_stop.engine" = "处理方式";
-"capture.settings.after_stop.toggle" = "停止后转录";
 "capture.settings.after_stop.detail" = "停止录音后，可使用当前转录引擎补做转录。";
 "capture.settings.after_stop.unavailable_detail" = "当前版本没有可用的录音后处理方式。";
-"capture.settings.after_stop.two_way_disabled" = "双向翻译模式不可用。";
 "capture.state.recording" = "录音中";
 "capture.state.paused" = "已暂停";
 "capture.state.draining" = "收尾中";
@@ -952,17 +686,13 @@
 "capture.projection.projecting" = "投影中";
 "capture.projection.ready" = "可编辑";
 "capture.projection.failed" = "投影失败";
-"capture.transcript.accessibility_label" = "按顺序排列的语言栏目转录";
 "capture.transcript.swap" = "交换左右语言列";
-"capture.transcript.swap_hint" = "只临时交换左右显示，不会改写录音配置或转录内容。";
 "capture.transcript.realtime_accessibility_label" = "实时转录";
 "capture.transcript.run_navigator" = "录音导航";
 "capture.transcript.open_recording" = "打开这次录音";
 "capture.transcript.loading_recording" = "正在加载这次录音的转录…";
 "capture.transcript.load_recording_failed" = "无法加载这次录音";
 "capture.transcript.back_to_live" = "返回实时";
-"capture.transcript.engine.realtime_format" = "实时 · %@";
-"capture.transcript.engine.post_stop_format" = "停止后转录 · %@";
 "capture.transcript.transcription_heading" = "转录时间线";
 "capture.transcript.transcription_empty_title" = "暂无实时话语";
 "capture.transcript.transcription_empty_detail" = "开启远端实时处理并开始录音后，这里会显示本场转录。";
@@ -979,11 +709,6 @@
 "capture.transcript.copy_clipboard_failed" = "无法写入系统剪贴板。";
 "capture.transcript.waiting_title" = "正在等待第一条话语";
 "capture.transcript.waiting_detail" = "即使远端关闭或不可用，本地录音仍会继续。";
-"capture.transcript.empty_title" = "暂无双语话语";
-"capture.transcript.empty_detail" = "在当前 Notebook 开始双向录音后，两列会显示对应语言。";
-"capture.transcript.active_other_session.title" = "另一个 session 正在录音";
-"capture.transcript.active_other_session.detail" = "当前转录与活跃录音隔离。请返回录音所属 Notebook 暂停或停止。";
-"capture.transcript.outside_pair" = "超出当前语言对";
 "capture.transcript.language_pending" = "语言待确认…";
 "capture.transcript.unselected_language" = "检测到 %@，但本场未选择该语言";
 "capture.transcript.presentation.timeline" = "时间线";
@@ -992,7 +717,6 @@
 "capture.transcript.presentation.language_columns_detail" = "每种已选择的语言固定显示在自己的有序栏目中。";
 "capture.transcript.waiting_lane" = "等待 %@";
 "capture.transcript.failed_lane" = "未能生成 %@ 栏内容";
-"capture.transcript.row_accessibility" = "第 %lld 条话语";
 "capture.transcript.source_timestamp" = "原始音频时间 %@";
 "capture.speaker.fallback" = "说话人";
 "capture.speaker.fallback_format" = "说话人 %@";
@@ -1043,8 +767,6 @@
 "knowledge.saved_revision" = "已自动保存 · 版本 %lld";
 "knowledge.ai.improve" = "让 AI 完善";
 "knowledge.ai.coming_soon" = "AI 完善将在下一步接入；现在可以手动编辑完整档案。";
-"knowledge.delete" = "移到废纸篓";
-"knowledge.delete.confirm" = "要移除这个知识库吗？";
 "knowledge.context.title" = "用于转录的上下文（约）";
 "knowledge.general.title" = "概况";
 "knowledge.general.subtitle" = "帮助模型理解这是什么场景，以及可能谈到谁。";

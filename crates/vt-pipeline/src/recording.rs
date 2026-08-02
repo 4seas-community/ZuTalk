@@ -515,17 +515,6 @@ pub fn bytes_to_f32_samples(bytes: &[u8]) -> Vec<f32> {
         .collect()
 }
 
-/// 生成测试用 PCM 数据（正弦波）
-pub fn generate_test_pcm(sample_rate: u32, duration_secs: f64) -> Vec<f32> {
-    let num_samples = (sample_rate as f64 * duration_secs) as usize;
-    (0..num_samples)
-        .map(|i| {
-            let t = i as f64 / sample_rate as f64;
-            (2.0 * std::f64::consts::PI * 440.0 * t).sin() as f32
-        })
-        .collect()
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum RecordingError {
     #[error("write failed: {message}")]

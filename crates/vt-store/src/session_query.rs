@@ -245,19 +245,6 @@ impl SessionQueryStore {
         Ok(ids)
     }
 
-    /// 更新 session 的 title。不存在的 id 返回 NotFound。
-    pub fn update_title(&self, id: &str, title: &str) -> Result<(), SessionQueryError> {
-        let conn = self.conn.lock().unwrap();
-        let affected = conn.execute(
-            "UPDATE session_records SET title = ?2 WHERE id = ?1",
-            rusqlite::params![id, title],
-        )?;
-        if affected == 0 {
-            return Err(SessionQueryError::NotFound(id.to_string()));
-        }
-        Ok(())
-    }
-
     /// 删除 session catalogue 行。完整 Delete Forever 由 Notebook Capture
     /// purge 协调器负责，必须先清音频、key、run、utterance、投影和任务。
     pub fn purge(&self, id: &str) -> Result<(), SessionQueryError> {

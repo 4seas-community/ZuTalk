@@ -624,19 +624,6 @@ impl ContextPackStore {
         Ok(true)
     }
 
-    /// Decrypts one source for egress outside the Pack's encryption boundary.
-    /// Callers own what happens next: the returned plaintext is no longer
-    /// protected by the Pack key, so this is only for explicit user-initiated
-    /// export.
-    pub fn export_source_plaintext(
-        &self,
-        source_id: &str,
-    ) -> Result<Vec<u8>, ContextPackStoreError> {
-        let source = self.require_active_source(source_id)?;
-        let pack = self.require_active_pack(&source.pack_id)?;
-        self.read_source_plaintext(&pack, &source)
-    }
-
     /// Serializes a whole Pack into one shareable document. Every source is
     /// decrypted, so the result is plaintext and no longer protected by the
     /// Pack key — only call this for an export the user explicitly asked for.

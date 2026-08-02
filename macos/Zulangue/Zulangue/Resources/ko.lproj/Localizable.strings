@@ -2,22 +2,8 @@
 
 /* General */
 "app.name" = "Zulangue";
-"app.tagline" = "오픈 소스 · 로컬 우선 · 귀하의 키, 귀하의 데이터";
 "common.cancel" = "취소";
-"common.save" = "저장";
 "common.delete" = "삭제";
-"common.export" = "내보내기";
-"common.search" = "검색";
-"common.settings" = "설정";
-"common.test" = "테스트";
-"common.back" = "뒤로";
-"common.finish" = "마침";
-"common.required" = "필수";
-"common.optional" = "선택사항";
-"common.connected" = "연결됨";
-"common.testing" = "테스트 중…";
-"common.not_configured" = "구성되지 않음";
-"common.failed" = "실패";
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "계속 →";
@@ -42,17 +28,11 @@
 "onboarding.permissions.mic.usage" = "대화를 캡처하고 실시간 기록을 강화합니다.";
 "onboarding.permissions.action.grant" = "액세스 권한 부여";
 "onboarding.permissions.action.open_settings" = "설정 열기";
-"onboarding.permissions.action.restart" = "앱 다시 시작";
-"onboarding.permissions.status.granted" = "승인됨";
-"onboarding.permissions.status.denied" = "거부됨";
-"onboarding.permissions.status.not_granted" = "부여되지 않음";
 "onboarding.permissions.continue" = "줄랑어 입력 →";
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "실시간 자막 켜기";
 "onboarding.keys.subtitle" = "자신의 Soniox API 키를 입력해 실시간 자막을 켜세요.";
-"onboarding.keys.own_key.option" = "나만의 열쇠";
-"community_invite.option" = "커뮤니티 초대";
 "community_invite.placeholder" = "초대코드를 입력하세요";
 "community_invite.action" = "초대 활성화";
 "community_invite.active" = "커뮤니티 초대 활성";
@@ -100,86 +80,32 @@
 "onboarding.common.back" = "← 뒤로";
 
 "sidebar.help" = "줄랑어 사용 방법";
-"sidebar.help.hint" = "시작 가이드 다시 열기";
 "updates.install_and_relaunch" = "업데이트 및 다시 시작";
 "updates.install_and_relaunch.hint" = "다운로드한 업데이트를 설치하고 Zulangue를 다시 시작하세요.";
 
 /* Library */
-"library.title" = "세션";
-"library.empty.title" = "아직 세션이 없습니다.";
-"library.empty.live_hint" = "실시간 전사를 시작하려면";
-"library.empty.drop_hint" = "또는 여기로 오디오 파일을 드래그하여 가져오세요.";
-"library.empty.drop_label" = "오디오 파일 삭제";
-"library.empty.drop_formats" = "m4a · mp3 · wav · aac · ogg · flac";
-"library.empty.configure_hint" = "공급자를 구성해야 합니까?";
-"library.empty.configure_link" = "설정 열기";
-"library.no_selection.title" = "선택된 세션이 없습니다.";
-"library.no_selection.detail" = "목록에서 세션을 선택합니다.";
-"library.search_placeholder" = "세션 검색…";
-"library.filter.all" = "모두";
-"library.filter.overlay" = "오버레이";
-"library.filter.recording" = "녹음";
-"library.filter.import" = "가져오기";
 
 /* Recording */
-"recording.start" = "녹음 시작";
-"recording.stop" = "녹음 중지";
-"recording.status.idle" = "유휴";
-"recording.status.recording" = "녹음";
-"recording.status.listening" = "듣기";
-"recording.status.error" = "오류";
 
 /* Session Detail */
-"session.tab.transcript" = "성적 증명서";
 "session.tab.audio" = "오디오";
-"session.metadata.language" = "언어";
-"session.metadata.crdt" = "CRDT";
 
 /* Settings */
-"settings.section.recording" = "녹음";
-"settings.section.privacy" = "개인정보 보호 및 보안";
-"settings.section.shortcuts" = "단축키";
-"settings.privacy.standard" = "표준";
-"settings.privacy.standard.description" = "녹음 및 대본을 무기한으로 유지";
-"settings.privacy.high" = "높음";
-"settings.privacy.high.description" = "전사 후 녹음 자동 삭제";
-"settings.privacy.maximum" = "최대";
-"settings.privacy.maximum.description" = "전사 후 키 자동 삭제(기록을 복구할 수 없게 됨)";
 
 /* Export */
-"export.title" = "내보내기 옵션";
-"export.markdown" = "마크다운(.md)";
-"export.srt" = "SRT 자막(.srt)";
-"export.vtt" = "WebVTT(.vtt)";
-"export.txt" = "일반 텍스트(.txt)";
-"export.audio" = "오디오(.wav) 포함";
 
 /* Trust Bar */
 
 /* Toast labels */
-"toast.label.info" = "정보";
-"toast.label.success" = "알았어";
-"toast.label.warning" = "경고";
-"toast.label.error" = "오류";
 
 /* Common language labels (self-describing; same string in each locale uses native script) */
-"lang.auto_detect" = "자동 감지";
-"lang.zh" = "중국어";
-"lang.zh_full" = "中文(중국어 간체)";
-"lang.zh_tw" = "繁체중국어";
 "lang.en" = "English";
 "lang.ja" = "日本語";
-"lang.ja_full" = "日本語 (일본어)";
 "lang.ko" = "한국어";
-"lang.ko_full" = "한국어 (Korean)";
 "lang.fr" = "Français";
-"lang.fr_full" = "Français (프랑스어)";
 "lang.de" = "Deutsch";
-"lang.de_full" = "Deutsch (독일어)";
 "lang.es" = "Español";
-"lang.es_full" = "Español (스페인어)";
 "lang.th" = "ไทย";
-"lang.th_full" = "ไทย (태국어)";
 "lang.zh_hans" = "简体中文";
 
 /* Appearance */
@@ -211,7 +137,6 @@
 "settings.audio_input.error.switch_unavailable" = "다른 녹음 상태를 전환하는 동안에는 오디오 입력을 변경할 수 없습니다. 잠시 후 다시 시도하세요.";
 "capture.toast.audio_input_switch_failed" = "오디오 입력을 전환할 수 없습니다";
 "settings.language.title" = "앱 언어";
-"settings.language.system" = "팔로우 시스템";
 "settings.language.hint" = "Swift 및 Rust 레이어 전체에서 UI, 메뉴, 오류 메시지를 제어합니다.";
 "settings.language.restart_hint" = "Zulangue를 다시 시작하면 언어 전환이 완전히 적용됩니다. Rust 오류 메시지가 이미 업데이트되었습니다.";
 "settings.appearance.title" = "외관";
@@ -244,13 +169,10 @@
 /* Recording settings */
 
 
-"doc.delete_current.hint" = "현재 문서 삭제";
 "editor.export.title" = "세션 내보내기";
 "editor.export.hint" = "이 세션을 ZIP으로 내보내기";
 "editor.export.no_session" = "내보낼 녹음 세션이 없습니다.";
 "doc.scratchpad" = "개인 메모";
-"doc.enhanced" = "향상된";
-"doc.untitled" = "제목 없음";
 
 
 /* Onboarding brand line */
@@ -259,26 +181,19 @@
 /* Settings sidebar section rawValues (localized names) */
 "settings.section.general_name" = "일반";
 "settings.section.services_name" = "서비스 및 API";
-"settings.section.privacy_name" = "개인 정보 보호";
 "settings.section.shortcuts_name" = "단축키";
-"settings.sidebar.configuration" = "구성";
 
 /* Settings sidebar groups */
 "settings.group.services" = "연결";
-"settings.group.privacy" = "개인정보 보호 및 데이터";
 "settings.group.general" = "일반";
 
 /* Settings — API panels (Voice / AI) */
-"settings.api.test_button" = "테스트";
 "settings.credentials.enter_key" = "API 키를 입력하세요";
 "settings.credentials.local_storage_hint" = "이 macOS 로그인으로 읽을 수 있는 앱 전용 파일에 암호화되지 않은 상태로 저장되고 실행 시 자동으로 로드됩니다.";
 "settings.credentials.trust_boundary_notice" = "여기에 저장된 자격 증명은 암호화되지 않습니다. Zulangue는 신뢰할 수 있는 macOS 로그인과 앱 전용 로컬 파일을 사용하여 실행 시 자동으로 로드합니다.";
-"settings.credentials.apply" = "저장";
 "settings.credentials.verify" = "확인";
 "settings.credentials.verify_and_save" = "확인 및 저장";
 "settings.credentials.verifying" = "확인 중…";
-"settings.credentials.verified" = "확인됨";
-"settings.credentials.verification_failed" = "확인 실패";
 "settings.credentials.verifying_hint" = "이 키를 확인하기 위해 Soniox에 연결하는 중입니다.";
 "settings.credentials.verified_hint" = "Soniox는 이 키를 수락했습니다. 원격 전사가 가능합니다.";
 "settings.credentials.verify_before_save_hint" = "Zulangue는 Soniox가 확인한 후에만 새 키를 저장합니다.";
@@ -297,15 +212,12 @@
 "settings.credentials.runtime_only" = "이번 실행을 위해 로드됨 · 저장되지 않음";
 "settings.credentials.missing" = "저장되지 않음";
 "settings.credentials.clear" = "저장된 키 삭제";
-"settings.credentials.apply_failed" = "이 키를 저장하고 활성화할 수 없습니다.";
 "settings.credentials.accessibility_applied_format" = "%@ 키는 이 Mac에 저장되고 Zulangue에서 활성화됩니다. 공급자 연결은 테스트되지 않았습니다.";
 "settings.credentials.accessibility_saved_inactive_format" = "%@ 키는 이 Mac에 저장되었지만 Zulangue에서는 활성화되지 않습니다. 복구 메시지를 검토하세요.";
 "settings.credentials.accessibility_runtime_only_format" = "이 실행을 위해 %@ 키가 로드되었지만 저장되지 않았습니다. 공급자 연결은 테스트되지 않았습니다.";
 "settings.credentials.accessibility_missing_format" = "%@ 키가 저장되지 않았습니다. 키를 입력하고 저장합니다.";
 "settings.credentials.field_accessibility_format" = "%@ API 키";
-"settings.credentials.apply_accessibility_format" = "%@ 키 저장";
 "settings.credentials.clear_accessibility_format" = "저장된 %@ 키 삭제";
-"settings.credentials.operation_failed" = "공급자 키 작업이 실패했습니다.";
 "settings.credentials.recovery_title" = "저장된 제공업체 키에 주의가 필요함";
 "settings.credentials.recovery_hint" = "읽을 수 없는 파일을 대체하려면 새 키를 저장하고, 저장된 모든 공급자 키를 제거하려면 파일을 삭제하세요.";
 "settings.credentials.reset_file" = "저장된 키 파일 삭제";
@@ -323,7 +235,6 @@
 "settings.credentials.replace" = "저장된 키 교체";
 "settings.credentials.replace_accessibility_format" = "저장된 %@ 키 교체";
 "settings.credentials.field_replacement_hint" = "대체 키를 입력한 후 저장하기 전에 확인하세요.";
-"settings.credentials.autosave_commit_hint" = "이 값을 적용하려면 저장을 클릭하거나 Return 키를 누르거나 포커스를 다른 곳으로 이동하세요.";
 "settings.credentials.error.unsupported_version_format" = "지원되지 않는 공급자 자격 증명 파일 버전: %d.";
 "settings.credentials.error.malformed_document" = "공급자 자격 증명 파일의 형식이 잘못되었습니다.";
 "settings.credentials.error.unknown_accounts" = "공급자 자격 증명 파일에 지원되지 않는 계정 항목이 포함되어 있습니다.";
@@ -363,16 +274,6 @@
 "settings.services.engine.post_stop_unavailable_accessibility_format" = "애프터스톱 엔진: %@. 실행 설명자를 사용할 수 없습니다.";
 
 /* Settings — Privacy section */
-"settings.privacy.title" = "개인정보 보호 및 보안";
-"settings.privacy.subtitle" = "로컬 데이터 및 보존 설정.";
-"settings.privacy.level_label" = "개인정보 보호 수준";
-"settings.privacy.standard_name" = "표준";
-"settings.privacy.standard_desc" = "녹음 및 대본을 무기한으로 유지";
-"settings.privacy.high_name" = "높음";
-"settings.privacy.high_desc" = "전사 후 녹음 자동 삭제";
-"settings.privacy.maximum_name" = "최대";
-"settings.privacy.maximum_desc" = "전사 후 키 자동 삭제(기록을 복구할 수 없게 됨)";
-"settings.privacy.save_failed" = "개인정보 수준이 저장되지 않았습니다.";
 
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "키보드 단축키";
@@ -385,72 +286,27 @@
 
 
 /* Diagnostics section */
-"diagnostics.title" = "진단";
-"diagnostics.subtitle" = "디버깅을 위해 자세한 알림 + 로그 파일을 켭니다.";
-"diagnostics.debug_mode" = "디버그 모드";
-"diagnostics.debug_mode_desc" = "모든 Loro 편집/표시/새로 고침은 정보 토스트를 내보내고 debug.log에 한 줄을 씁니다. 기본적으로 꺼져 있습니다.";
-"diagnostics.log_file" = "로그 파일";
-"diagnostics.crash_file" = "충돌 진단";
-"diagnostics.reveal_finder" = "Finder에 공개";
-"diagnostics.open_console" = "콘솔에서 열기";
-"diagnostics.clear_log" = "로그 지우기";
-"diagnostics.no_log_file" = "— 파일 없음";
-"diagnostics.no_crash_file" = "— 충돌 보고서 없음";
-"diagnostics.operational.title" = "시스템 상태";
-"diagnostics.operational.subtitle" = "런타임, 서비스 자격 증명 및 개인 정보 보호 상태.";
-"diagnostics.operational.refresh" = "새로고침";
-"diagnostics.operational.not_loaded" = "시스템 상태가 로드되지 않았습니다.";
 "diagnostics.operational.provider_keys" = "서비스 자격 증명";
-"diagnostics.operational.privacy" = "개인 정보 보호";
-"diagnostics.operational.provider_key_missing" = "서비스 자격 증명이 필요함";
-"diagnostics.operational.provider_optional_off" = "서비스 자격 증명은 저장되지 않습니다. 로컬 녹음은 계속 가능합니다.";
-"diagnostics.operational.provider_configured_format" = "%d개의 저장된 서비스 자격 증명이 로드되었습니다.";
-"diagnostics.operational.provider_inactive_format" = "%d개의 저장된 서비스 자격 증명에 주의가 필요합니다.";
-"diagnostics.operational.detail.state" = "상태";
-"diagnostics.operational.detail.actionable" = "실행 가능";
-"diagnostics.operational.severity.info" = "알았어";
-"diagnostics.operational.severity.warning" = "경고";
-"diagnostics.operational.severity.blocked" = "차단됨";
 
 /* Toast center — Floating panel */
 
 /* Toast center — Microphone permission (shared) */
-"toast.mic.denied.title" = "마이크 권한이 거부되었습니다.";
-"toast.mic.denied.detail" = "시스템 설정 → 개인 정보 보호 및 보안 → 마이크를 열고 Zulangue를 활성화합니다.";
 
 /* Toast center — Recording */
-"toast.recording.started.title" = "녹음이 시작되었습니다";
-"toast.recording.start_failed.title" = "녹화를 시작하지 못했습니다.";
-"toast.recording.session_format" = "%@ 세션";
-"toast.recording.saved.detail.transcribing_format" = "%llds · 백그라운드에서 스크립트 작성 중…";
-"toast.recording.saved.detail.no_transcription_format" = "%llds · 전사 없이 저장됨";
-"toast.recording.saved.detail.auto_transcribe_off_format" = "%llds · 자동 스크립트 끄기";
 
 /* Toast center — Generic */
-"toast.export.succeeded" = "수출됨";
-"toast.export.failed" = "내보내기 실패";
-"toast.core.not_initialized" = "코어가 초기화되지 않았습니다.";
 
 /* Toast — Document editor */
-"toast.enhance.started" = "강화 시작됨";
-"toast.enhance.failed" = "강화 실패";
 
 /* Sidebar (main window) */
-"sidebar.search_placeholder" = "검색";
 "sidebar.home" = "홈";
-"sidebar.tags" = "태그";
-"sidebar.tag.general" = "일반";
-"sidebar.new_tag" = "새 태그";
 "sidebar.trash" = "휴지통";
-"sidebar.tab.editor_dev" = "편집자(개발자)";
 "sidebar.tab.editor" = "편집자";
 "sidebar.tab.settings" = "설정";
 "sidebar.local_first" = "지역 우선";
 "sidebar.notebook" = "노트북";
-"sidebar.tab.github" = "GitHub";
 "sidebar.collapse" = "사이드바 접기";
 "sidebar.expand" = "사이드바 확장";
-"sidebar.new_session" = "새 세션";
 "sidebar.back_to_home" = "홈으로 돌아가기";
 "menubar.action.quit" = "줄랑그 종료";
 "menubar.action.quit_hint" = "응용 프로그램을 종료합니다. 활성 녹음은 확인이 필요하며 앱이 종료되기 전에 저장됩니다.";
@@ -465,10 +321,6 @@
 
 /* Document editor residuals */
 "editor.tab.transcript" = "실시간 대본";
-"editor.transcript.realtime.local_recording_title" = "로컬로 녹음";
-"editor.transcript.realtime.local_recording_desc" = "원격 실시간 처리가 꺼져 있습니다. 오디오는 로컬로 유지됩니다.";
-"editor.transcript.realtime.remote_waiting_title" = "Soniox에 연결하기";
-"editor.transcript.realtime.remote_waiting_desc" = "원격 실시간 기록을 사용할 수 있게 되는 동안 로컬 녹음은 계속됩니다.";
 "editor.transcript.realtime.empty_title" = "실시간 스크립트 없음";
 "editor.transcript.realtime.empty_desc" = "이 세션에는 실시간 결과가 없습니다.";
 "editor.transcript.async.pending_title" = "백그라운드 텍스트 변환 진행 중";
@@ -497,12 +349,6 @@
 "menubar.recording.mode.remote" = "소니옥스 RT5";
 "editor.title.untitled" = "제목 없는 메모";
 "editor.footer.local_encrypted" = "이 Mac에 저장됨";
-"editor.ai.simulate" = "AI 시뮬레이션";
-"editor.ai.stop" = "AI 중지";
-"editor.relative.just_now" = "지금 막";
-"editor.relative.min_ago" = "%lld분 전";
-"editor.relative.hour_ago" = "%lld시간 전";
-"editor.relative.day_ago" = "%lld일 전";
 
 /* Home page */
 "home.workspace.load_failed" = "노트북 데이터를 로드할 수 없습니다.";
@@ -539,8 +385,6 @@
 "home.first_use.action" = "나의 첫 번째 노트북 만들기";
 "home.import.action" = "오디오 가져오기";
 "home.import.in_progress" = "가져오는 중…";
-"home.import.panel.title" = "노트북으로 오디오 가져오기";
-"home.import.panel.action" = "가져오기";
 "home.import.completed" = "가져온 오디오";
 "home.import.failed" = "오디오를 가져올 수 없습니다.";
 "home.import.failed.detail" = "선택한 파일이 변경되지 않았습니다. 형식을 확인하고 다시 시도하세요.";
@@ -558,7 +402,6 @@
 "home.recent.no_match.description" = "다른 제목이나 스크립트 문구를 사용해 보세요.";
 "home.recent.row.open_hint" = "이 녹음을 노트북에서 엽니다.";
 "home.recent.row.actions_format" = "%@에 대한 작업";
-"home.recent.row.imported" = "수입됨";
 "home.recent.row.untitled" = "제목 없는 녹음";
 "home.recordings.load_failed" = "녹음을 로드할 수 없습니다.";
 "home.recording.delete_failed" = "녹음을 휴지통으로 이동할 수 없습니다.";
@@ -619,22 +462,6 @@
 "manual_note.timeline.empty" = "녹음 후 해당 개인 메모가 여기에 표시됩니다.";
 "manual_note.timeline.open" = "노트 열기";
 "home.create.title_too_long.detail_format" = "%lld자 이하를 사용하세요.";
-"home.search_placeholder" = "세션 검색…";
-"home.empty.no_match_title" = "일치하는 항목 없음";
-"home.empty.no_match_desc" = "다른 검색어를 사용해 보세요.";
-"home.empty.no_recording_title" = "아직 녹음된 내용이 없습니다.";
-"home.empty.no_recording_desc" = "⌃⌥R을 누르거나 새 세션을 클릭하여 시작하세요. 편집 가능한 메모와 성적표가 여기에 표시됩니다.";
-"home.empty.start_button" = "녹음 시작";
-"home.notebook.workspace.board.title" = "작업공간";
-"home.notebook.workspace.board.record" = "기록";
-"home.notebook.workspace.board.tabs" = "탭";
-"home.notebook.workspace.board.tabs.empty" = "아직 탭이 없습니다.";
-"home.notebook.workspace.board.recent" = "최근";
-"home.notebook.workspace.board.recent.empty" = "아직 세션이 없습니다.";
-"home.notebook.workspace.board.manual" = "수동 메모";
-"home.action.select" = "선택";
-"home.selection.count_format" = "%lld 선택됨";
-"home.selection.delete_format" = "%lld 삭제";
 "home.row.preview.pending"   = "스크립트 작성 중…";
 "home.row.preview.recording" = "녹음 중…";
 "home.row.preview.no_speech" = "음성이 감지되지 않았습니다.";
@@ -647,31 +474,21 @@
 "doc.transcript_hd" = "비동기 기록";
 "editor.tab.transcript.live.hint" = "실시간 대본 — 녹음 진행 중";
 "editor.tab.transcript.hint" = "오디오 대본";
-"editor.transcript.listening" = "연설을 듣는 중…";
-"toast.soniox.missing" = "Soniox 키가 구성되지 않았습니다.";
-"toast.soniox.missing.detail" = "실시간 스크립트가 비활성화되었습니다. 설정 → 연결에서 Soniox 키를 추가하세요.";
 
 
 
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "아직 성적표가 없습니다.";
 "editor.empty.no_transcript_desc" = "녹음이 완료된 후 스크립트를 사용할 수 있습니다.";
-"editor.empty.no_transcript_desc_live" = "자동 스크립트 작성이 완료되면 스크립트가 여기에 표시됩니다. 또는 새 녹음을 시작하여 실시간으로 볼 수 있습니다.";
-"editor.empty.transcript_unavailable" = "성적 증명서를 사용할 수 없습니다.";
 "editor.empty.unavailable_title" = "편집자를 사용할 수 없음";
 "editor.empty.no_doc_title" = "활성 문서가 없습니다.";
 "editor.empty.no_doc_desc" = "오디오가 캡처되는 동안 실시간으로 편집할 수 있는 새 문서를 생성하려면 녹음을 시작하세요.";
 
 /* Async transcription in-progress & failed states */
 "editor.pending.transcribing" = "스크립트 작성 중…";
-"editor.pending.generic"      = "처리 중…";
 "editor.pending.subtitle"     = "백그라운드에서 실행 중입니다. 준비되면 콘텐츠가 표시됩니다.";
 "editor.failed.transcribing"  = "전사 실패";
-"editor.failed.generic"       = "작업 실패";
 "editor.failed.subtitle"      = "네트워크 문제 또는 API 속도 제한일 가능성이 높습니다. 재시도를 탭하세요.";
-"editor.failed.retry"         = "전사 재시도";
-"toast.retry.data_invalid.title"  = "텍스트 변환을 다시 시도할 수 없습니다.";
-"toast.retry.data_invalid.detail" = "이 녹음은 불완전합니다(이전 충돌로 인한 것일 수 있음). 홈 목록에서 삭제해 주세요.";
 
 /* Trash page */
 "trash.empty.title" = "휴지통이 비어 있습니다.";
@@ -692,12 +509,8 @@
 
 /* Trust bar */
 "trust.version_format" = "줄랑어 · v%@";
-"trust.label.aes" = "AES-256";
-"trust.label.local_secrets" = "지역 비밀";
-"trust.label.remote_opt_in" = "원격 옵트인";
 
 /* Menu Bar status item — popover content */
-"menubar.action.recording" = "녹음 시작";
 "menubar.action.settings" = "설정";
 "updates.check" = "업데이트 확인…";
 "updates.unavailable.title" = "업데이트가 구성되지 않았습니다.";
@@ -707,9 +520,6 @@
 "settings.updates.subtitle" = "서명된 업데이트는 Sparkle을 통해 안전하게 전달됩니다.";
 "settings.updates.automatic" = "자동으로 업데이트 확인";
 "settings.updates.automatic_hint" = "Zulangue는 서명된 업데이트 피드를 주기적으로 확인하고 새 버전이 출시되면 알려줍니다.";
-"menubar.recording.pause" = "일시중지";
-"menubar.recording.resume" = "이력서";
-"menubar.recording.stop" = "중지";
 "menubar.recording.live_transcript" = "실시간 성적표";
 "menubar.recording.open_subtitles" = "실시간 자막 열기";
 "menubar.recording.close_subtitles" = "실시간 자막 닫기";
@@ -730,28 +540,11 @@
 "hud.a11y.recording_paused_format" = "녹음이 일시중지되었습니다 %@";
 
 /* DesignSystem previews (P2) */
-"preview.empty.session_title" = "아직 세션이 없습니다.";
-"preview.empty.session_desc" = "여기로 오디오 파일을 드래그하거나 녹음을 클릭하여 첫 번째 세션을 시작하세요.";
 "preview.crosshair.blueprint" = "청사진 콘텐츠";
 "preview.crosshair.hardware" = "하드웨어 콘텐츠";
-"preview.loading.rec" = "녹화";
 
 
 /* Document editor */
-"editor.status.saved" = "저장됨";
-"editor.status.saved.local" = "지역";
-"editor.status.saved.loading" = "로드 중";
-"editor.status.saved.pending" = "보류 중";
-"editor.status.saved.failed" = "실패";
-"editor.status.saved.needs_attention" = "주의가 필요함";
-"editor.status.transcript" = "성적 증명서";
-"editor.status.transcript.live_view" = "라이브 뷰";
-"editor.status.transcript.available" = "가능";
-"editor.status.transcript.none" = "없음";
-"editor.status.quality" = "품질";
-"editor.status.quality.good" = "좋음";
-"editor.status.quality.check" = "확인";
-"editor.status.quality.blocked" = "차단됨";
 "editor.toolbar.show_sources" = "소스 표시";
 "editor.toolbar.show_tasks" = "작업 표시";
 "editor.tasks.title" = "작업";
@@ -759,14 +552,8 @@
 "editor.tasks.refresh" = "작업 새로 고침";
 "editor.tasks.empty" = "아직 할 일이 없습니다.";
 "editor.tasks.empty.detail" = "백그라운드 전사 작업이 여기에 표시됩니다.";
-"editor.tasks.owner_format" = "%@에서 실행 중";
 "editor.tasks.retry_format" = "%lld번 재시도";
 /* Accessibility labels */
-"a11y.record.stop" = "녹음 중지";
-"a11y.record.start" = "녹음 시작";
-"a11y.record.hint_stop" = "현재 녹음을 중지하려면 두 번 클릭하세요.";
-"a11y.record.hint_start" = "새 녹음을 시작하려면 두 번 클릭하세요.";
-"a11y.session_card" = "%@, %@, 기간 %@";
 
 /* Notebook multilingual capture */
 "common.close" = "닫기";
@@ -775,7 +562,6 @@
 "capture.error.remote_required" = "언어 캡션에는 원격 실시간 처리가 필요합니다.";
 "capture.error.context_requires_remote" = "참조 자료를 사용하기 전에 실시간 전사를 켜세요.";
 "capture.error.languages_must_differ" = "중복되지 않는 언어를 선택하세요.";
-"capture.error.context_confirmation_required" = "먼저 이 녹음에 대한 참조 자료를 검토하고 확인하세요.";
 "capture.error.not_active" = "활성 노트북 캡처가 없습니다.";
 "capture.error.projection_locked" = "스크립트는 프로젝션이 준비될 때까지 읽기 전용입니다.";
 "capture.error.profile_snapshot_unavailable" = "이 녹화에 대해 저장된 캡처 프로필을 사용할 수 없습니다.";
@@ -838,7 +624,6 @@
 "capture.toast.context_preview_failed" = "참조 자료를 검토할 수 없습니다.";
 "capture.toast.context_load_failed" = "참조 자료를 로드할 수 없습니다.";
 "capture.toast.context_update_failed" = "참조 자료를 업데이트할 수 없습니다.";
-"capture.toast.settings_failed" = "캡처 설정을 저장할 수 없습니다.";
 "capture.toast.edit_failed" = "스크립트 레인을 업데이트할 수 없습니다.";
 "capture.toast.projection_retry_failed" = "스크립트 프로젝션을 다시 시도할 수 없습니다.";
 "capture.settings.title" = "설정";
@@ -852,21 +637,11 @@
 "capture.settings.autosave.saved" = "자동으로 저장됨";
 "capture.settings.autosave.load_failed" = "설정을 로드할 수 없습니다.";
 "capture.settings.autosave.save_failed" = "변경사항이 저장되지 않았습니다.";
-"capture.settings.autosave.context_review" = "설정이 저장되었습니다. 참고 자료를 다시 검토해 보세요";
 "capture.settings.autosave.retry" = "재시도";
 "capture.settings.realtime.start_disclosure" = "녹음 시작은 선택한 언어로 실시간 전사를 시작합니다. 서비스를 일시적으로 사용할 수 없는 경우 녹화는 계속됩니다.";
 "capture.settings.remote.credential.saved_inactive" = "Soniox 키 · 저장됨 · 주의 필요";
 "capture.settings.remote.credential.missing" = "Soniox 키 · 저장되지 않음";
 "capture.settings.remote.credential.hint" = "이는 로컬 키 준비 상태만 보고합니다. 녹음에 대한 오디오 공유는 녹음 시작을 클릭한 경우에만 승인됩니다.";
-"capture.settings.mode.title" = "라이브 모드";
-"capture.settings.mode.transcription_only" = "전사 전용";
-"capture.settings.mode.two_way" = "양방향 번역";
-"capture.settings.mode.transcription_detail" = "하나의 원어 스크립트 타임라인을 표시합니다.";
-"capture.settings.mode.two_way_detail" = "실시간 번역으로 고정된 왼쪽 및 오른쪽 언어 열을 표시합니다.";
-"capture.settings.languages.title" = "번역 열";
-"capture.settings.languages.detail" = "각 언어는 누가 말하는지 관계없이 선택한 열에 유지됩니다.";
-"capture.settings.languages.left" = "왼쪽 열";
-"capture.settings.languages.right" = "오른쪽 열";
 "capture.settings.languages.question" = "이번 세션에서는 어떤 언어가 사용되나요?";
 "capture.settings.languages.ordered_detail" = "표시 순서대로 언어를 추가합니다. 선택한 각 언어에는 자체 열이 있습니다. 음성 텍스트가 먼저 나타난 다음 곧이어 다른 열이 채워집니다.";
 "capture.settings.languages.search" = "추가할 언어 검색";
@@ -877,64 +652,23 @@
 "capture.settings.languages.move_earlier" = "언어를 더 일찍 옮기세요";
 "capture.settings.languages.move_later" = "나중에 언어를 이동하세요";
 "capture.settings.languages.remove" = "언어 삭제";
-"capture.settings.two_way.detail" = "Soniox stt-rt-v5는 두 언어 방향을 모두 고정된 열로 유지합니다.";
 "capture.realtime.controls.current_title" = "현재 녹화 구성";
 "capture.realtime.controls.profile_group" = "실시간 녹화 구성";
-"capture.realtime.controls.swap_pair" = "다음 녹음 언어 쌍 바꾸기";
-"capture.realtime.controls.swap_pair_hint" = "기존 성적표를 다시 작성하지 않고 다음 녹음을 위해 언어 A와 언어 B를 바꿉니다.";
 "capture.realtime.controls.review_context" = "참고자료 검토";
 "capture.settings.context.title" = "전사 참조";
-"capture.settings.context.send" = "실시간 전사에 사용";
-"capture.settings.context.send_detail" = "활성화되면 이 녹음은 여기에 표시된 참조 자료를 사용합니다.";
 "capture.settings.context.preview" = "무엇이 사용될지 검토하세요";
 "capture.settings.context.preview_count" = "%lld자";
 "capture.settings.context.empty" = "아직 사용할 수 있는 참고 자료가 없습니다.";
-"capture.settings.context.confirm_exact" = "이 참고 자료를 사용하세요";
-"capture.settings.context.applied" = "이 녹음에 사용됨";
-"capture.settings.context.not_applied" = "이 녹음에 사용되지 않음";
 "capture.settings.context.pack_detail" = "선택 사항은 기억되어 실시간 및 비동기 전사에 사용됩니다. 정확성을 높이려면 용어, 사람, 조직, 세션 배경을 추가하세요.";
-"capture.settings.context.packs" = "참고 범위";
-"capture.settings.context.no_packs" = "아직 참고자료가 없습니다.";
 "capture.settings.context.private_pack" = "현재 노트북";
 "capture.settings.context.current_notebook_detail" = "이 노트북에 사용됨";
-"capture.settings.context.library_pack" = "도서관";
 "capture.settings.context.selected" = "편집";
 "capture.settings.context.not_selected" = "선택되지 않음";
-"capture.settings.context.always_bound" = "기본적으로 사용됨";
-"capture.settings.context.select_pack_hint" = "실시간 및 비동기 전사를 위해 이 기술 자료를 선택하세요.";
-"capture.settings.context.bind_pack" = "이 노트북에서 %@ 사용";
-"capture.settings.context.delete_pack" = "%@ 삭제";
-"capture.settings.context.delete_pack_confirm" = "이 라이브러리를 삭제하시겠습니까? 이를 사용하는 모든 노트북이 영향을 받습니다.";
-"capture.settings.context.library_title" = "도서관 이름";
-"capture.settings.context.new_library" = "라이브러리 생성";
 "capture.settings.context.create_library" = "만들기";
-"capture.settings.context.copy_private" = "현재 참조 자료를 라이브러리에 저장";
-"capture.settings.context.editing_pack" = "%@의 참조";
-"capture.settings.context.import_pack" = "라이브러리 가져오기";
-"capture.settings.context.export_pack" = "수출";
-"capture.settings.context.no_sources" = "아직 참고자료가 추가되지 않았습니다.";
-"capture.settings.context.paste_title" = "참조 제목";
-"capture.settings.context.content_kind" = "참조 유형";
-"capture.settings.context.kind_general" = "배경";
-"capture.settings.context.kind_terms" = "용어";
-"capture.settings.context.kind_text" = "참조 텍스트";
-"capture.settings.context.paste_content" = "참조 텍스트 붙여넣기";
-"capture.settings.context.import_limits" = "UTF-8 텍스트 또는 Markdown을 최대 256KiB까지 지원합니다.";
-"capture.settings.context.add_paste" = "콘텐츠 추가";
-"capture.settings.context.untrusted" = "소스 검토 필요";
-"capture.settings.context.delete_source" = "소스 %@ 삭제";
-"capture.settings.context.delete_source_confirm" = "이 참조를 삭제하시겠습니까?";
-"capture.settings.context.export_pack_message" = "이 라이브러리를 하나의 공유 가능한 파일로 저장하십시오. 파일은 일반 텍스트이며 더 이상 라이브러리 키로 보호되지 않습니다.";
-"capture.settings.context.export_pack_done" = "%ld개 항목을 내보냈습니다.";
-"capture.settings.context.import_pack_message" = "Zulangue 라이브러리 파일(.zulangue-pack.json)을 선택합니다.";
-"capture.settings.context.import_pack_done" = "가져온 라이브러리 \"%@\".";
-"capture.settings.context.local_only" = "녹음이 시작된 후 이러한 참조는 실시간 전사에 사용될 수 있습니다.";
 "capture.settings.after_stop.title" = "녹음 후 처리";
 "capture.settings.after_stop.engine" = "가공방법";
-"capture.settings.after_stop.toggle" = "중지 후 스크립트 작성";
 "capture.settings.after_stop.detail" = "녹음이 중지된 후 현재 녹음 엔진은 나머지 녹음을 완료할 수 있습니다.";
 "capture.settings.after_stop.unavailable_detail" = "이 버전에서는 녹음 후 처리를 사용할 수 없습니다.";
-"capture.settings.after_stop.two_way_disabled" = "양방향 번역 모드에서는 사용할 수 없습니다.";
 "capture.state.recording" = "녹음";
 "capture.state.paused" = "일시중지됨";
 "capture.state.draining" = "마무리";
@@ -952,17 +686,13 @@
 "capture.projection.projecting" = "투사 중";
 "capture.projection.ready" = "편집 가능";
 "capture.projection.failed" = "프로젝션 실패";
-"capture.transcript.accessibility_label" = "주문된 언어-열 성적표";
 "capture.transcript.swap" = "왼쪽 및 오른쪽 언어 열 바꾸기";
-"capture.transcript.swap_hint" = "메모리 내 왼쪽 및 오른쪽 표시만 변경합니다. 녹음이나 대본을 다시 작성하지 않습니다.";
 "capture.transcript.realtime_accessibility_label" = "실시간 기록";
 "capture.transcript.run_navigator" = "녹음 탐색기";
 "capture.transcript.open_recording" = "이 녹음 열기";
 "capture.transcript.loading_recording" = "이 녹음의 대화 기록을 불러오는 중…";
 "capture.transcript.load_recording_failed" = "이 녹음을 불러오지 못했습니다";
 "capture.transcript.back_to_live" = "실시간으로 돌아가기";
-"capture.transcript.engine.realtime_format" = "실시간 · %@";
-"capture.transcript.engine.post_stop_format" = "중지 후 전사 · %@";
 "capture.transcript.transcription_heading" = "전사 타임라인";
 "capture.transcript.transcription_empty_title" = "실시간 발언 없음";
 "capture.transcript.transcription_empty_detail" = "원격 실시간 처리를 활성화하고 녹음을 시작하여 세션 기록을 작성합니다.";
@@ -979,11 +709,6 @@
 "capture.transcript.copy_clipboard_failed" = "시스템 클립보드를 업데이트할 수 없습니다.";
 "capture.transcript.waiting_title" = "첫 번째 발언 듣기";
 "capture.transcript.waiting_detail" = "원격 처리가 꺼져 있거나 사용할 수 없는 경우에도 로컬 녹음은 계속됩니다.";
-"capture.transcript.empty_title" = "이중 언어 발언 없음";
-"capture.transcript.empty_detail" = "고정 언어 열을 채우려면 이 노트북에서 양방향 캡처를 시작하세요.";
-"capture.transcript.active_other_session.title" = "다른 세션이 녹화 중입니다.";
-"capture.transcript.active_other_session.detail" = "이 기록은 활성 녹음에서 격리됩니다. 일시 중지하거나 중지하려면 노트북으로 돌아가세요.";
-"capture.transcript.outside_pair" = "현재 언어 쌍 외부";
 "capture.transcript.language_pending" = "언어 확인이 필요합니다…";
 "capture.transcript.unselected_language" = "%@이(가) 감지되었지만 이 세션에서는 선택되지 않았습니다.";
 "capture.transcript.presentation.timeline" = "타임라인";
@@ -992,7 +717,6 @@
 "capture.transcript.presentation.language_columns_detail" = "선택한 모든 언어를 자체 정렬된 열에 유지합니다.";
 "capture.transcript.waiting_lane" = "%@을(를) 기다리는 중";
 "capture.transcript.failed_lane" = "%@ 열을 채울 수 없습니다";
-"capture.transcript.row_accessibility" = "발언 %lld";
 "capture.transcript.source_timestamp" = "소스 오디오 타임스탬프 %@";
 "capture.speaker.fallback" = "스피커";
 "capture.speaker.fallback_format" = "발표자 %@";
