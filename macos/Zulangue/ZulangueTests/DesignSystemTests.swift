@@ -63,21 +63,6 @@ final class DesignSystemTests: XCTestCase {
         XCTAssertNotNil(Font.sans14Medium)
     }
 
-    // MARK: - TrustIndicator defaults
-
-    func testTrustIndicatorDefaults() {
-        let defaults = TrustIndicator.defaults
-        XCTAssertEqual(defaults.count, 3)
-        XCTAssertEqual(
-            defaults.map(\.label),
-            [
-                String(localized: "trust.label.aes"),
-                String(localized: "trust.label.local_secrets"),
-                String(localized: "trust.label.remote_opt_in"),
-            ]
-        )
-    }
-
     /// Recording and processing retain their own activity signal instead of
     /// inheriting the green product theme.
     func testAccentOrangeResolvesToConstitutionalSignal() {

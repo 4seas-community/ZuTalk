@@ -23,18 +23,14 @@ extension Font {
     static let heroSerif      = Font.brandDisplayXL
 
     /// Legacy name used by onboarding step titles.
-    static let heroSerifSM    = Font.brandDisplayLG
 
     // ════════════════════════════════════════════════════════
     // §06.2 DISPLAY · 大号数字(elapsed / cover title)
     // ════════════════════════════════════════════════════════
 
-    static let displayXL      = Font.brandDisplayXL
     static let displayLG      = Font.brandDisplayLG
 
     /// data-xl: elapsed "00:03:12"
-    static let dataXL         = Font.system(size: 48, weight: .medium, design: .monospaced).monospacedDigit()
-    static let dataLG         = Font.system(size: 24, weight: .medium, design: .monospaced).monospacedDigit()
 
     // ════════════════════════════════════════════════════════
     // §06.2 TITLE
@@ -44,7 +40,6 @@ extension Font {
     /// card title
     static let titleMD        = Font.system(size: 16, weight: .medium)
     /// list item title
-    static let titleSM        = Font.system(size: 13, weight: .medium)
 
     // ════════════════════════════════════════════════════════
     // §06.2 BODY
@@ -69,7 +64,6 @@ extension Font {
 
     static let data           = Font.system(size: 13, weight: .regular, design: .monospaced).monospacedDigit()
     static let dataMedium     = Font.system(size: 13, weight: .medium,  design: .monospaced).monospacedDigit()
-    static let dataSM         = Font.system(size: 11, weight: .regular, design: .monospaced).monospacedDigit()
 
     // ════════════════════════════════════════════════════════
     // LEGACY ALIAS · v1.0 mono/sans 命名保留,值不变
@@ -85,34 +79,22 @@ extension Font {
     static let mono10Medium = Font.system(size: 10, weight: .medium, design: .monospaced)
     static let mono11Medium = Font.system(size: 11, weight: .medium, design: .monospaced)
 
-    static let monoNum10 = Font.system(size: 10, weight: .regular).monospacedDigit()
     static let monoNum11 = Font.system(size: 11, weight: .regular).monospacedDigit()
     static let monoNum12 = Font.system(size: 12, weight: .medium).monospacedDigit()
 
-    static let sans9         = Font.system(size: 9,  weight: .regular)
-    static let sans9Medium   = Font.system(size: 9,  weight: .medium)
-    static let sans10        = Font.system(size: 10, weight: .regular)
     static let sans11        = Font.system(size: 11, weight: .regular)
     static let sans12        = Font.system(size: 12, weight: .regular)
     static let sans13        = Font.system(size: 13, weight: .regular)
     static let sans14        = Font.system(size: 14, weight: .regular)
-    static let sans16        = Font.system(size: 16, weight: .regular)
-    static let sans18        = Font.system(size: 18, weight: .regular)
 
-    static let sans10Medium  = Font.system(size: 10, weight: .medium)
     static let sans11Medium  = Font.system(size: 11, weight: .medium)
-    static let sans12Medium  = Font.system(size: 12, weight: .medium)
     static let sans13Medium  = Font.system(size: 13, weight: .medium)
     static let sans14Medium  = Font.system(size: 14, weight: .medium)
-    static let sans16Medium  = Font.system(size: 16, weight: .medium)
 
     static let sans11Semibold = Font.system(size: 11, weight: .semibold)
     static let sans12Semibold = Font.system(size: 12, weight: .semibold)
     static let sans13Semibold = Font.system(size: 13, weight: .semibold)
-    static let sans14Semibold = Font.system(size: 14, weight: .semibold)
 
-    static let sans18Bold    = Font.system(size: 18, weight: .bold)
-    static let sans24Bold    = Font.system(size: 24, weight: .bold)
 }
 
 // MARK: - Text Style Modifiers

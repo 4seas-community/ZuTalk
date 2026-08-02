@@ -72,16 +72,6 @@ extension Color {
     // ════════════════════════════════════════════════════════
     // Zulangue core palette
     // ════════════════════════════════════════════════════════
-    static let zulangueForest900: Color = Color(hex: 0x004A33)
-    static let zulangueForest800: Color = Color(hex: 0x005E3F)
-    static let zulangueForest700: Color = Color(hex: 0x006A47)
-    static let zulangueForest600: Color = Color(hex: 0x007A52)
-    static let zulangueMint500:   Color = Color(hex: 0x8EF2C4)
-    static let zulangueMint300:   Color = Color(hex: 0xBFF8DD)
-    static let zulangueMint100:   Color = Color(hex: 0xECFDF4)
-    static let zulangueSun400:    Color = Color(hex: 0xF3E079)
-    static let zulangueSky500:    Color = Color(hex: 0x7EE3D0)
-    static let zulanguePlum700:   Color = Color(hex: 0x5B2E8E)
 
     // ════════════════════════════════════════════════════════
     // SURFACE · solid forest in dark mode, paper/mint in light mode
@@ -153,10 +143,6 @@ extension Color {
     // §03.2 SEMANTIC · 极稀少(destructive 浅底降饱和避免刺眼)
     // ════════════════════════════════════════════════════════
     static let destructive: Color = .dynamic(darkHex: 0xE30613, lightHex: 0xC00511)
-    static let destructiveSoft: Color = .dynamic(
-        dark:  NSColor(hex: 0xE30613, opacity: 0.12),
-        light: NSColor(hex: 0xC00511, opacity: 0.10)
-    )
     static let successInk: Color = .dynamic(darkHex: 0x8EF2C4, lightHex: 0x006A47)
 
     // ════════════════════════════════════════════════════════
@@ -277,7 +263,6 @@ extension Color {
     )
 
     // ─── LED ─────────────────────────────────────────────────
-    static let ledOn:        Color = .dynamic(darkHex: 0x8EF2C4, lightHex: 0x006A47)
     static var ledOffOnBp:   Color { line15 }
     static var ledOffOnHw:   Color { line15 }
 
@@ -321,9 +306,7 @@ enum Spacing {
     static let xxl: CGFloat = 48
 
     @available(*, deprecated, message: "v2.0 §02 第二定律:间距阶梯 {4,8,12,16,24,32,48}. 改用 .xxl.")
-    static let x3l: CGFloat = 64
     @available(*, deprecated, message: "v2.0 §02 第二定律:间距阶梯 {4,8,12,16,24,32,48}. 改用 .xxl.")
-    static let x4l: CGFloat = 96
 
     static let grid: CGFloat = 24
 }
@@ -338,7 +321,5 @@ enum Stroke {
     /// signal active 下划线 / focus ring
     static let medium:   CGFloat = 2
     /// §08 插画主线 / 重点数据下划线
-    static let thick:    CGFloat = 3
     /// hero 分区线(极稀少)
-    static let heavy:    CGFloat = 6
 }
