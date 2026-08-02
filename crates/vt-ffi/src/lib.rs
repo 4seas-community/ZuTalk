@@ -1087,112 +1087,112 @@ fn recover_interrupted_capture_audio(
         return;
     };
     for run in runs {
-        let Some(journal_path) = run.audio_journal_path.as_deref().map(PathBuf::from) else {
-            tracing::warn!(run_id = run.id, "interrupted capture has no journal path");
-            continue;
-        };
-        let (Some(key_ref), Some(sample_rate), Some(channels)) =
-            (run.audio_key_ref.as_deref(), run.sample_rate, run.channels)
-        else {
-            tracing::warn!(
-                run_id = run.id,
-                "interrupted capture metadata is incomplete"
-            );
-            continue;
-        };
-        let finalized = if journal_path.exists() {
-            let key = match key_store.load_key(key_ref) {
-                Ok(key) => key,
-                Err(error) => {
-                    tracing::warn!(run_id = run.id, %error, "interrupted capture key unavailable");
-                    continue;
-                }
-            };
-            match vt_pipeline::recover_capture_audio_journal(
-                &journal_path,
-                data_dir,
-                &run.session_id,
-                &key,
-                sample_rate,
-                channels,
-            ) {
-                Ok(recovered) => {
-                    let audio_path = recovered.encrypted_path.to_string_lossy().into_owned();
-                    if let Err(error) = capture_store.finalize_interrupted_audio(
-                        &run.id,
-                        &audio_path,
-                        recovered.captured_frames,
-                    ) {
-                        tracing::warn!(run_id = run.id, %error, "persist recovered capture audio");
-                        continue;
-                    }
-                    Some((
-                        audio_path,
-                        recovered.audio_chunks,
-                        recovered.captured_frames,
-                    ))
-                }
-                Err(error) => {
-                    tracing::warn!(run_id = run.id, %error, "recover interrupted capture journal failed");
-                    continue;
-                }
-            }
-        } else if let Some(audio_path) = run
-            .audio_path
-            .as_deref()
-            .filter(|path| Path::new(path).exists())
-        {
-            match indexed_capture_chunks(
-                data_dir,
-                &run.session_id,
-                run.captured_frames,
-                sample_rate,
-            ) {
-                Ok(chunks) => Some((audio_path.to_string(), chunks, run.captured_frames)),
-                Err(error) => {
-                    tracing::warn!(run_id = run.id, %error, "rebuild recovered capture chunk index");
-                    continue;
-                }
-            }
-        } else {
-            tracing::warn!(
-                run_id = run.id,
-                "interrupted capture has no recoverable audio"
-            );
-            continue;
-        };
+        if let Err(error) = recover_interrupted_capture_audio_run(
+            data_dir,
+            capture_store,
+            key_store,
+            session_meta,
+            session_store,
+            &run.id,
+        ) {
+            tracing::warn!(run_id = run.id, %error, "recover interrupted capture audio");
+        }
+    }
+}
 
-        let Some((audio_path, chunks, captured_frames)) = finalized else {
-            continue;
-        };
-        let recovered_index = RecoveredCaptureIndex {
-            session_id: &run.session_id,
-            audio_path: &audio_path,
-            key_ref,
+/// Recovers and indexes one interrupted capture. The journal is removed only
+/// after every durable audio index commits, so callers can retain an in-memory
+/// retry marker whenever this function returns an error.
+pub(crate) fn recover_interrupted_capture_audio_run(
+    data_dir: &Path,
+    capture_store: &NotebookCaptureStore,
+    key_store: &dyn KeyProvider,
+    session_meta: &SessionMetaStore,
+    session_store: &SessionQueryStore,
+    run_id: &str,
+) -> Result<(), String> {
+    let run = capture_store
+        .get_run(run_id)
+        .map_err(|error| format!("load interrupted capture run: {error}"))?
+        .ok_or_else(|| format!("interrupted capture run {run_id} was not found"))?;
+    if run.capture_state != vt_store::notebook_capture_store::CaptureState::Interrupted {
+        return Err(format!(
+            "capture run {run_id} is not interrupted: {:?}",
+            run.capture_state
+        ));
+    }
+    let journal_path = run
+        .audio_journal_path
+        .as_deref()
+        .map(PathBuf::from)
+        .ok_or_else(|| "interrupted capture has no journal path".to_string())?;
+    let key_ref = run
+        .audio_key_ref
+        .as_deref()
+        .ok_or_else(|| "interrupted capture key reference is missing".to_string())?;
+    let sample_rate = run
+        .sample_rate
+        .ok_or_else(|| "interrupted capture sample rate is missing".to_string())?;
+    let channels = run
+        .channels
+        .ok_or_else(|| "interrupted capture channel count is missing".to_string())?;
+
+    let (audio_path, chunks, captured_frames) = if journal_path.exists() {
+        let key = key_store
+            .load_key(key_ref)
+            .map_err(|error| format!("interrupted capture key unavailable: {error}"))?;
+        let recovered = vt_pipeline::recover_capture_audio_journal(
+            &journal_path,
+            data_dir,
+            &run.session_id,
+            &key,
             sample_rate,
             channels,
-            captured_frames,
-            chunks: &chunks,
-        };
-        if let Err(error) =
-            persist_recovered_capture_indexes(session_meta, session_store, &recovered_index)
-        {
-            // Journal or final paths remain discoverable; retry at next startup.
-            tracing::warn!(run_id = run.id, %error, "persist recovered capture indexes");
-            continue;
-        }
-        if journal_path.exists() {
-            if let Err(error) = std::fs::remove_file(&journal_path) {
-                tracing::warn!(run_id = run.id, %error, "remove committed capture journal");
-                continue;
-            }
-        }
-        tracing::info!(
-            run_id = run.id,
-            session_id = run.session_id,
-            "recovered interrupted encrypted capture audio"
-        );
+        )
+        .map_err(|error| format!("recover interrupted capture journal: {error}"))?;
+        let audio_path = recovered.encrypted_path.to_string_lossy().into_owned();
+        capture_store
+            .finalize_interrupted_audio(&run.id, &audio_path, recovered.captured_frames)
+            .map_err(|error| format!("persist recovered capture audio: {error}"))?;
+        (
+            audio_path,
+            recovered.audio_chunks,
+            recovered.captured_frames,
+        )
+    } else if let Some(audio_path) = run
+        .audio_path
+        .as_deref()
+        .filter(|path| Path::new(path).exists())
+    {
+        let chunks =
+            indexed_capture_chunks(data_dir, &run.session_id, run.captured_frames, sample_rate)
+                .map_err(|error| format!("rebuild recovered capture chunk index: {error}"))?;
+        (audio_path.to_string(), chunks, run.captured_frames)
+    } else {
+        return Err("interrupted capture has no recoverable audio".to_string());
+    };
+
+    let recovered_index = RecoveredCaptureIndex {
+        session_id: &run.session_id,
+        audio_path: &audio_path,
+        key_ref,
+        sample_rate,
+        channels,
+        captured_frames,
+        chunks: &chunks,
+    };
+    persist_recovered_capture_indexes(session_meta, session_store, &recovered_index)
+        .map_err(|error| format!("persist recovered capture indexes: {error}"))?;
+    if journal_path.exists() {
+        std::fs::remove_file(&journal_path)
+            .map_err(|error| format!("remove committed capture journal: {error}"))?;
     }
+    tracing::info!(
+        run_id = run.id,
+        session_id = run.session_id,
+        "recovered interrupted encrypted capture audio"
+    );
+    Ok(())
 }
 
 fn indexed_capture_chunks(

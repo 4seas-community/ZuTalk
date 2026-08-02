@@ -3477,6 +3477,11 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     @Published private(set) var elapsedRecordingTime: TimeInterval = 0
     @Published private(set) var lastError: String?
     @Published private(set) var isLoading = false
+    /// Process-local presentation for a terminal command whose durable owner
+    /// could not yet be converged. `captureState` remains Rust-authoritative;
+    /// the UI uses this flag to show an actionable retry instead of an
+    /// indefinite draining spinner.
+    @Published private(set) var stopRecoveryRequired = false
     /// Derived, process-local presentation state. Rust remains authoritative
     /// for the durable capture state; this flag only tells the UI that closing
     /// the admitted local-audio backlog has exceeded the watchdog interval.
@@ -3523,6 +3528,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private var audioDrainWatchdogTask: Task<Void, Never>?
     private var lifecycleOperationCount = 0
     private var lifecycleOperationWaiters: [CheckedContinuation<Void, Never>] = []
+
+    var presentationCaptureState: NotebookCaptureState {
+        stopRecoveryRequired ? .failed : captureState
+    }
 
     /// A corrupt run still counts as loaded so the UI can show an explicit
     /// snapshot error instead of guessing a presentation mode.
@@ -4001,6 +4010,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         self.postStopProviderId = nil
         self.postStopModelId = nil
         self.lastError = nil
+        self.stopRecoveryRequired = false
         self.terminalSessionId = nil
         self.appliedRunProfileSessionId = nil
         apply(initial)
@@ -4418,12 +4428,34 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             do {
                 authoritative = try client.getNotebookCaptureSessionEvent(sessionId: sessionId)
             } catch {
-                if isCurrentTerminalTransition(lease) {
-                    enterStopFailureFallback(
-                        lease: lease,
-                        stopError: stopError.localizedDescription,
-                        followupError: error.localizedDescription
+                let readError = error
+                // The read and the failed Stop can contend on the same SQLite
+                // writer. Retry through Rust's ownership-gated interruption:
+                // it tears down a live owner or neutrally recovers a Stop run
+                // that already handed off to detached recovery.
+                do {
+                    let interrupted = try await client.interruptNotebookCaptureSession(
+                        sessionId: sessionId,
+                        reason: .localAudioUnavailable
                     )
+                    guard isCurrentTerminalTransition(lease) else { throw stopError }
+                    if applyAuthoritativeTerminal(interrupted, for: lease) == false {
+                        enterStopFailureFallback(
+                            lease: lease,
+                            stopError: stopError.localizedDescription,
+                            followupError: "durable recovery returned an active capture"
+                        )
+                    } else {
+                        lastError = stopError.localizedDescription
+                    }
+                } catch {
+                    if isCurrentTerminalTransition(lease) {
+                        enterStopFailureFallback(
+                            lease: lease,
+                            stopError: stopError.localizedDescription,
+                            followupError: "\(readError.localizedDescription) · \(error.localizedDescription)"
+                        )
+                    }
                 }
                 throw stopError
             }
@@ -4472,6 +4504,54 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                 }
             }
             throw stopError
+        }
+    }
+
+    /// Retries only the durable terminal convergence after a failed Stop.
+    /// The microphone and local push gate are already closed; Rust either
+    /// interrupts a remaining owner or neutrally recovers the detached run.
+    func retryStopRecovery() async throws {
+        beginLifecycleOperation()
+        defer { endLifecycleOperation() }
+        guard stopRecoveryRequired,
+              let sessionId,
+              let lease = terminalTransitionLease,
+              isCurrentTerminalTransition(lease)
+        else {
+            throw NotebookCaptureClientError.captureNotActive
+        }
+        let previousStopError = lastError
+
+        let event: NotebookCaptureEventDTO
+        do {
+            event = try await client.interruptNotebookCaptureSession(
+                sessionId: sessionId,
+                reason: .localAudioUnavailable
+            )
+        } catch {
+            enterStopFailureFallback(
+                lease: lease,
+                stopError: lastError ?? error.localizedDescription,
+                followupError: error.localizedDescription
+            )
+            throw error
+        }
+        guard isCurrentTerminalTransition(lease) else {
+            if captureState.isActive == false, lastError == previousStopError {
+                lastError = nil
+            }
+            return
+        }
+        guard applyAuthoritativeTerminal(event, for: lease) else {
+            enterStopFailureFallback(
+                lease: lease,
+                stopError: lastError ?? "durable Stop recovery",
+                followupError: "durable recovery returned an active capture"
+            )
+            throw NotebookCaptureClientError.captureNotActive
+        }
+        if lastError == previousStopError {
+            lastError = nil
         }
     }
 
@@ -4652,6 +4732,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         terminalTransitionDrainPending = false
         pendingTerminalTransitionEvent = nil
         isAudioDrainDelayed = false
+        stopRecoveryRequired = false
         isAudioInputSwitching = false
         activeAudioInputDevice = nil
         audioPushGate?.abort()
@@ -5563,7 +5644,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         followupError: String
     ) {
         guard isCurrentTerminalTransition(lease) else { return }
-        projectionState = .failed
+        stopRecoveryRequired = true
         lastError = "\(stopError) · \(followupError)"
         captureState = .draining
         stopElapsedTimer()
@@ -5751,6 +5832,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         terminalTransitionDrainPending = true
         pendingTerminalTransitionEvent = nil
         isAudioDrainDelayed = false
+        stopRecoveryRequired = false
         return lease
     }
 
@@ -5872,6 +5954,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
         stopElapsedTimer()
         captureState = state
+        stopRecoveryRequired = false
         MenuBarRuntimeStore.shared.returnToIdle()
         return gate
     }

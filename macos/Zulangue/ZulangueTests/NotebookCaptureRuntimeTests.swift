@@ -2707,6 +2707,38 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testStopFailureWithAuthoritativeDrainingSnapshotRecoversDetachedRun() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        client.shouldFailStop = true
+        client.sessionEventOverride = captureEvent(
+            sessionId: "session-a",
+            state: .draining,
+            utterances: []
+        )
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        do {
+            try await store.stop()
+            XCTFail("stop should surface the persistence failure")
+        } catch {
+            XCTAssertEqual(error as? NotebookCaptureClientError, .ffiUnavailable)
+        }
+
+        XCTAssertEqual(client.sessionEventCount, 1)
+        XCTAssertEqual(client.interruptCount, 1)
+        XCTAssertEqual(client.lastInterruptReason, .localAudioUnavailable)
+        XCTAssertEqual(store.captureState, .interrupted)
+        XCTAssertFalse(store.isCaptureActive)
+        XCTAssertFalse(store.hasAudioSubscription)
+        XCTAssertFalse(store.hasAudioPushGateForTesting)
+        XCTAssertNotNil(store.lastError)
+    }
+
+    @MainActor
     func testStopFailureWithActiveSnapshotFallsBackLocallyOnlyAfterInterruptFails() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         client.shouldFailStop = true
@@ -2732,7 +2764,9 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(client.sessionEventCount, 1)
         XCTAssertEqual(client.interruptCount, 1)
         XCTAssertEqual(store.captureState, .draining)
-        XCTAssertEqual(store.projectionState, .failed)
+        XCTAssertEqual(store.projectionState, .pending)
+        XCTAssertTrue(store.stopRecoveryRequired)
+        XCTAssertEqual(store.presentationCaptureState, .failed)
         XCTAssertTrue(store.isCaptureActive, "an unresolved durable owner must retain the lease")
         XCTAssertFalse(store.isEditable)
         XCTAssertFalse(store.hasAudioSubscription)
@@ -2741,7 +2775,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testStopFailureFallsBackLocallyOnlyWhenAuthoritativeReadAlsoFails() async throws {
+    func testStopFailureRecoversDurablyWhenAuthoritativeReadAlsoFails() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
         client.shouldFailStop = true
         client.sessionEventError = .ffiUnavailable
@@ -2757,12 +2791,52 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         }
 
         XCTAssertEqual(client.sessionEventCount, 1)
+        XCTAssertEqual(client.interruptCount, 1)
+        XCTAssertEqual(store.captureState, .interrupted)
+        XCTAssertFalse(store.isCaptureActive)
+        XCTAssertTrue(store.isEditable)
+        XCTAssertFalse(store.hasAudioSubscription)
+        XCTAssertNotNil(store.lastError)
+    }
+
+    @MainActor
+    func testStopFailureBecomesExplicitlyRetryableWhenReadAndRecoveryBothFail() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        client.shouldFailStop = true
+        client.sessionEventError = .ffiUnavailable
+        client.interruptError = .ffiUnavailable
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        try await store.start(notebookId: "notebook-a")
+
+        do {
+            try await store.stop()
+            XCTFail("stop should surface the terminal finalization error")
+        } catch {
+            XCTAssertEqual(error as? NotebookCaptureClientError, .ffiUnavailable)
+        }
+
+        XCTAssertEqual(client.sessionEventCount, 1)
+        XCTAssertEqual(client.interruptCount, 1)
         XCTAssertEqual(store.captureState, .draining)
-        XCTAssertEqual(store.projectionState, .failed)
-        XCTAssertTrue(store.isCaptureActive, "a failed authoritative read must remain fail-closed")
+        XCTAssertEqual(store.projectionState, .pending)
+        XCTAssertTrue(store.stopRecoveryRequired)
+        XCTAssertEqual(store.presentationCaptureState, .failed)
+        XCTAssertTrue(store.isCaptureActive, "a failed durable recovery must retain the lease")
         XCTAssertFalse(store.isEditable)
         XCTAssertFalse(store.hasAudioSubscription)
         XCTAssertNotNil(store.lastError)
+
+        client.interruptError = nil
+        try await store.retryStopRecovery()
+
+        XCTAssertEqual(client.interruptCount, 2)
+        XCTAssertEqual(store.captureState, .interrupted)
+        XCTAssertEqual(store.presentationCaptureState, .interrupted)
+        XCTAssertFalse(store.stopRecoveryRequired)
+        XCTAssertFalse(store.isCaptureActive)
+        XCTAssertTrue(store.isEditable)
+        XCTAssertNil(store.lastError)
     }
 
     @MainActor

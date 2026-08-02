@@ -5990,10 +5990,16 @@ impl ZulangueCore {
                 .transition_capture(&active.run_id, active.state, CaptureState::Draining)
                 .map_err(store_error)?;
             active.state = CaptureState::Draining;
-            (
-                guard.take().expect("active capture checked above"),
-                draining,
-            )
+            let active = guard.take().expect("active capture checked above");
+            // Atomically hand the process-local owner to the detached-recovery
+            // registry before releasing the active-capture mutex. A second
+            // Core may read the same database, so durable `draining` alone is
+            // not sufficient proof that this process owns recovery.
+            self.detached_notebook_capture_runs
+                .lock()
+                .unwrap()
+                .insert(active.run_id.clone());
+            (active, draining)
         };
         active
             .callback
@@ -6092,6 +6098,10 @@ impl ZulangueCore {
                 error,
             ));
         }
+        self.detached_notebook_capture_runs
+            .lock()
+            .unwrap()
+            .remove(&active.run_id);
 
         let completed_run = self
             .notebook_capture_store
@@ -6172,14 +6182,20 @@ impl ZulangueCore {
         reason: FfiNotebookCaptureInterruptReason,
     ) -> Result<FfiNotebookCaptureEvent, CoreError> {
         let _ownership_guard = self.capture_ownership_gate.lock().unwrap();
-        let (mut active, mut failure) = {
+        let active = {
             let mut guard = self.active_notebook_capture.lock().unwrap();
-            let active = guard
-                .as_ref()
-                .filter(|active| active.session_id == session_id)
-                .ok_or_else(|| CoreError::ValidationFailed {
+            let Some(active) = guard.as_ref() else {
+                drop(guard);
+                // A failed Stop can remove its process owner after committing
+                // `draining`. The internal helper requires this Core's atomic
+                // handoff marker and never attributes the caller's reason.
+                return self.recover_ownerless_notebook_capture_after_stop_failure(&session_id);
+            };
+            if active.session_id != session_id {
+                return Err(CoreError::ValidationFailed {
                     message: format!("capture_not_active: {session_id}"),
-                })?;
+                });
+            }
             if !matches!(active.state, CaptureState::Recording | CaptureState::Paused) {
                 return Err(CoreError::ValidationFailed {
                     message: format!(
@@ -6188,18 +6204,18 @@ impl ZulangueCore {
                     ),
                 });
             }
-
-            let failure = match reason {
-                FfiNotebookCaptureInterruptReason::LocalAudioOverflow => ProviderFailure {
-                    error_type: "local_audio_overflow".to_string(),
-                    request_id: None,
-                },
-                FfiNotebookCaptureInterruptReason::LocalAudioUnavailable => ProviderFailure {
-                    error_type: "local_audio_unavailable".to_string(),
-                    request_id: None,
-                },
-            };
-            (guard.take().expect("active capture checked above"), failure)
+            guard.take().expect("active capture checked above")
+        };
+        let mut active = active;
+        let mut failure = match reason {
+            FfiNotebookCaptureInterruptReason::LocalAudioOverflow => ProviderFailure {
+                error_type: "local_audio_overflow".to_string(),
+                request_id: None,
+            },
+            FfiNotebookCaptureInterruptReason::LocalAudioUnavailable => ProviderFailure {
+                error_type: "local_audio_unavailable".to_string(),
+                request_id: None,
+            },
         };
 
         // Ownership is removed before any fallible teardown. From this point
@@ -6554,6 +6570,37 @@ impl ZulangueCore {
 }
 
 impl ZulangueCore {
+    /// Converges a run whose Stop command has already removed every
+    /// process-local owner but failed before its terminal state was durable.
+    /// Holding `capture_ownership_gate` and requiring the atomic detached
+    /// marker prevents an in-flight Stop or another Core from being mistaken
+    /// for an ownerless run.
+    fn recover_ownerless_notebook_capture_after_stop_failure(
+        &self,
+        session_id: &str,
+    ) -> Result<FfiNotebookCaptureEvent, CoreError> {
+        let run = self
+            .notebook_capture_store
+            .get_run_for_session(session_id)
+            .map_err(store_error)?
+            .ok_or_else(|| CoreError::ValidationFailed {
+                message: format!("capture_not_active: {session_id}"),
+            })?;
+        let was_registered = self
+            .detached_notebook_capture_runs
+            .lock()
+            .unwrap()
+            .contains(&run.id);
+        if !was_registered {
+            return Err(CoreError::ValidationFailed {
+                message: format!("capture_not_active: {session_id}"),
+            });
+        }
+
+        self.recover_registered_detached_notebook_capture(&run.id)?;
+        self.capture_event_for_run(&run.id)
+    }
+
     fn persist_remote_shutdown_failure(
         &self,
         run_id: &str,
@@ -6732,40 +6779,58 @@ impl ZulangueCore {
             .cloned()
             .collect::<Vec<_>>();
         for run_id in run_ids {
-            let should_recover_audio = match self
-                .notebook_capture_store
-                .recover_detached_unfinished_run(&run_id)
-            {
-                Ok(_) => true,
-                Err(vt_store::notebook_capture_store::NotebookCaptureStoreError::NotFound(_)) => {
-                    false
-                }
-                Err(error) => {
-                    return Err(CoreError::InternalError {
-                        message: format!(
-                            "detached_capture_recovery_pending: run {run_id} remains unavailable: {error}"
-                        ),
-                    });
-                }
-            };
-            self.detached_notebook_capture_runs
-                .lock()
-                .unwrap()
-                .remove(&run_id);
-            // A previous teardown may have synced the encrypted journal but
-            // failed before indexing it. Reuse the startup recovery path now
-            // that the neutral durable state is committed; failures retain the
-            // journal and are retried on the next launch.
-            if should_recover_audio {
-                crate::recover_interrupted_capture_audio(
-                    &self.data_dir,
-                    &self.notebook_capture_store,
-                    self.key_store.as_ref(),
-                    &self.session_meta,
-                    &self.session_store,
+            self.recover_registered_detached_notebook_capture(&run_id)?;
+        }
+        Ok(())
+    }
+
+    fn recover_registered_detached_notebook_capture(&self, run_id: &str) -> Result<(), CoreError> {
+        let recovered = match self
+            .notebook_capture_store
+            .recover_detached_unfinished_run(run_id)
+        {
+            Ok(run) => run,
+            Err(vt_store::notebook_capture_store::NotebookCaptureStoreError::NotFound(_)) => {
+                self.detached_notebook_capture_runs
+                    .lock()
+                    .unwrap()
+                    .remove(run_id);
+                return Ok(());
+            }
+            Err(error) => {
+                return Err(CoreError::InternalError {
+                    message: format!(
+                        "detached_capture_recovery_pending: run {run_id} remains unavailable: {error}"
+                    ),
+                });
+            }
+        };
+
+        // A previous teardown may have synced the encrypted journal but
+        // failed before indexing it. Once Interrupted is durable, an audio
+        // recovery failure must not keep the capture slot wedged: retain the
+        // marker, return the terminal event, and retry later.
+        if recovered.capture_state == CaptureState::Interrupted {
+            if let Err(error) = crate::recover_interrupted_capture_audio_run(
+                &self.data_dir,
+                &self.notebook_capture_store,
+                self.key_store.as_ref(),
+                &self.session_meta,
+                &self.session_store,
+                run_id,
+            ) {
+                tracing::warn!(
+                    run_id,
+                    %error,
+                    "detached capture is terminal; audio recovery remains retryable"
                 );
+                return Ok(());
             }
         }
+        self.detached_notebook_capture_runs
+            .lock()
+            .unwrap()
+            .remove(run_id);
         Ok(())
     }
 
@@ -6936,6 +7001,13 @@ impl ZulangueCore {
                 callback.send(event_from_run(run, Vec::new(), false));
             }
             Err(state_error) => {
+                // Stop has already removed the journal/provider owner. Keep a
+                // process-local recovery marker so either the Swift fallback
+                // or the next Start can neutrally converge the durable row.
+                self.detached_notebook_capture_runs
+                    .lock()
+                    .unwrap()
+                    .insert(run_id.to_string());
                 return CoreError::InternalError {
                     message: format!(
                         "{detail}; persist local_persistence interruption state: {state_error}"
@@ -6962,6 +7034,15 @@ impl ZulangueCore {
         {
             Ok(run) => {
                 callback.send(event_from_run(run, Vec::new(), false));
+                if let Err(recovery_error) =
+                    self.recover_registered_detached_notebook_capture(run_id)
+                {
+                    return CoreError::InternalError {
+                        message: format!(
+                            "{detail}; recover detached interrupted capture: {recovery_error}"
+                        ),
+                    };
+                }
             }
             Err(state_error) => {
                 return CoreError::InternalError {
@@ -16748,10 +16829,53 @@ mod tests {
             assert_eq!(interrupted.async_task_state, AsyncTaskState::None);
             assert!(interrupted.async_task_id.is_none());
             assert!(interrupted.async_task_payload_sha256.is_none());
-            assert!(
-                std::path::Path::new(interrupted.audio_journal_path.as_deref().unwrap()).exists()
-            );
-            assert_journal_contains_recoverable_audio(&core, temp.path(), &interrupted);
+            let journal_path =
+                std::path::Path::new(interrupted.audio_journal_path.as_deref().unwrap());
+            match fault {
+                StopDurabilityFault::SessionRecord => {
+                    assert!(
+                        !journal_path.exists(),
+                        "interrupted session recovery removes the journal only after every audio index commits"
+                    );
+                    let audio_path = interrupted
+                        .audio_path
+                        .as_deref()
+                        .expect("neutral recovery persists the finalized encrypted audio path");
+                    assert!(std::path::Path::new(audio_path).exists());
+                    let audio_meta = core.session_meta.get_meta(&started.session_id).unwrap();
+                    assert_eq!(audio_meta.encrypted_path.as_deref(), Some(audio_path));
+                    assert_eq!(audio_meta.sample_rate, interrupted.sample_rate);
+                    assert_eq!(audio_meta.channels, interrupted.channels);
+                    assert!(!core
+                        .session_meta
+                        .list_audio_retention_chunks(&started.session_id)
+                        .unwrap()
+                        .is_empty());
+                    assert_eq!(
+                        core.session_store
+                            .get_session(&started.session_id)
+                            .unwrap()
+                            .status,
+                        "interrupted"
+                    );
+                    assert!(!core
+                        .detached_notebook_capture_runs
+                        .lock()
+                        .unwrap()
+                        .contains(&interrupted.id));
+                }
+                StopDurabilityFault::FinalizeRun
+                | StopDurabilityFault::SessionMeta
+                | StopDurabilityFault::RetentionChunk => {
+                    assert!(journal_path.exists());
+                    assert_journal_contains_recoverable_audio(&core, temp.path(), &interrupted);
+                    assert!(core
+                        .detached_notebook_capture_runs
+                        .lock()
+                        .unwrap()
+                        .contains(&interrupted.id));
+                }
+            }
 
             let preserved = core.session_store.get_session(&started.session_id).unwrap();
             assert_eq!(preserved.title, original_session.title);
@@ -16852,6 +16976,160 @@ mod tests {
     }
 
     #[test]
+    fn ownerless_draining_stop_failure_recovers_without_restart_or_fabricated_reason() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Ownerless stop recovery".into()))
+            .unwrap();
+        let (profile, started) = start_async_local_capture(&core, &notebook.id);
+        core.push_notebook_capture_session(started.session_id.clone(), vec![0_u8; 3_200])
+            .unwrap();
+        let active_run = core
+            .notebook_capture_store
+            .get_run_for_session(&started.session_id)
+            .unwrap()
+            .unwrap();
+        let journal_path = std::path::PathBuf::from(
+            active_run
+                .audio_journal_path
+                .as_deref()
+                .expect("active capture has a recovery journal"),
+        );
+        let chunk_path = temp
+            .path()
+            .join(format!("{}.chunk.00000.enc", started.session_id));
+        std::fs::create_dir(&chunk_path).unwrap();
+
+        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        db.execute_batch(
+            "CREATE TRIGGER fail_stop_interruption_state
+             BEFORE UPDATE OF capture_state ON notebook_capture_runs
+             WHEN NEW.capture_state = 'interrupted'
+             BEGIN
+                 SELECT RAISE(FAIL, 'injected stop interruption persistence failure');
+             END;",
+        )
+        .unwrap();
+
+        let error = core
+            .stop_notebook_capture_session(started.session_id.clone())
+            .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("finalize encrypted capture audio"));
+        assert!(error
+            .to_string()
+            .contains("injected stop interruption persistence failure"));
+        assert!(
+            core.active_notebook_capture.lock().unwrap().is_none(),
+            "Stop returned after releasing the process-local owner"
+        );
+        let draining = core
+            .notebook_capture_store
+            .get_run(&active_run.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(draining.capture_state, CaptureState::Draining);
+        assert!(journal_path.exists());
+        assert!(core
+            .detached_notebook_capture_runs
+            .lock()
+            .unwrap()
+            .contains(&active_run.id));
+
+        // Durable `draining` without this process's atomic handoff marker is
+        // not sufficient authority to recover a run owned by another Core.
+        core.detached_notebook_capture_runs
+            .lock()
+            .unwrap()
+            .remove(&active_run.id);
+        let unowned_error = core
+            .interrupt_notebook_capture_session(
+                started.session_id.clone(),
+                FfiNotebookCaptureInterruptReason::LocalAudioUnavailable,
+            )
+            .unwrap_err();
+        assert!(unowned_error.to_string().contains("capture_not_active"));
+        assert_eq!(
+            core.notebook_capture_store
+                .get_run(&active_run.id)
+                .unwrap()
+                .unwrap()
+                .capture_state,
+            CaptureState::Draining
+        );
+        core.detached_notebook_capture_runs
+            .lock()
+            .unwrap()
+            .insert(active_run.id.clone());
+
+        db.execute_batch("DROP TRIGGER fail_stop_interruption_state;")
+            .unwrap();
+        std::fs::remove_dir(&chunk_path).unwrap();
+        let recovered_event = core
+            .interrupt_notebook_capture_session(
+                started.session_id.clone(),
+                FfiNotebookCaptureInterruptReason::LocalAudioUnavailable,
+            )
+            .unwrap();
+        assert_eq!(
+            recovered_event.capture_state,
+            FfiNotebookCaptureState::Interrupted
+        );
+        assert_ne!(
+            recovered_event.provider_error_type.as_deref(),
+            Some("local_audio_unavailable"),
+            "ownerless Stop recovery must not persist the fallback caller's reason"
+        );
+
+        let recovered = core
+            .notebook_capture_store
+            .get_run(&active_run.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(recovered.capture_state, CaptureState::Interrupted);
+        assert_eq!(recovered.remote_health, RemoteHealth::Off);
+        assert_eq!(recovered.async_task_state, AsyncTaskState::None);
+        assert!(recovered
+            .audio_path
+            .as_deref()
+            .is_some_and(|path| std::path::Path::new(path).exists()));
+        assert!(!journal_path.exists());
+        assert!(core
+            .detached_notebook_capture_runs
+            .lock()
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            core.session_store
+                .get_session(&started.session_id)
+                .unwrap()
+                .status,
+            "interrupted"
+        );
+        assert!(!core
+            .session_meta
+            .list_audio_retention_chunks(&started.session_id)
+            .unwrap()
+            .is_empty());
+
+        let next = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .expect("ownerless recovery must release the global capture slot");
+        core.interrupt_notebook_capture_session(
+            next.session_id,
+            FfiNotebookCaptureInterruptReason::LocalAudioUnavailable,
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn successful_stop_preserves_session_identity_fields_and_updates_only_completion_fields() {
         let temp = tempfile::tempdir().unwrap();
         let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
@@ -16886,6 +17164,11 @@ mod tests {
         assert_eq!(completed.deleted_at, original.deleted_at);
         assert_eq!(completed.status, "completed");
         assert_eq!(completed.duration_ms, 100);
+        assert!(core
+            .detached_notebook_capture_runs
+            .lock()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

@@ -1059,7 +1059,7 @@ struct SubtitleOverlayView: View {
     private var captureStatus: some View {
         HStack(spacing: 8) {
             CaptureStateLabel(
-                captureState: store.captureState,
+                captureState: store.presentationCaptureState,
                 remoteHealth: store.remoteHealth,
                 projectionState: store.projectionState
             )

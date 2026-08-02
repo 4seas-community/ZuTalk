@@ -521,13 +521,22 @@ struct NotebookCaptureToolbar: View {
             isStopping = true
             Task { @MainActor in
                 defer { isStopping = false }
+                let usedSeconds = Int(capture.elapsedRecordingTime.rounded(.up))
                 do {
-                    let usedSeconds = Int(capture.elapsedRecordingTime.rounded(.up))
-                    try await capture.stop()
+                    if capture.stopRecoveryRequired {
+                        try await capture.retryStopRecovery()
+                    } else {
+                        try await capture.stop()
+                    }
                     await CommunityInviteSession.shared.settleRealtimeSession(
                         usedSeconds: usedSeconds
                     )
                 } catch {
+                    if capture.isCaptureActive == false {
+                        await CommunityInviteSession.shared.settleRealtimeSession(
+                            usedSeconds: usedSeconds
+                        )
+                    }
                     ToastCenter.shared.error(
                         String(localized: "capture.toast.stop_failed"),
                         detail: error.localizedDescription
@@ -538,8 +547,12 @@ struct NotebookCaptureToolbar: View {
             Label(
                 isStopping
                     ? String(localized: "capture.state.draining")
-                    : String(localized: "capture.toolbar.stop"),
-                systemImage: isStopping ? "hourglass" : "stop.fill"
+                    : capture.stopRecoveryRequired
+                        ? String(localized: "home.workspace.retry")
+                        : String(localized: "capture.toolbar.stop"),
+                systemImage: isStopping
+                    ? "hourglass"
+                    : capture.stopRecoveryRequired ? "arrow.clockwise" : "stop.fill"
             )
                 .font(.captionMedium)
                 .frame(minWidth: 64, minHeight: 28)
@@ -548,15 +561,20 @@ struct NotebookCaptureToolbar: View {
         .foregroundColor(.signalRed)
         .background(Color.signalRed.opacity(0.12))
         .clipShape(Capsule())
-        .disabled(capture.captureState == .draining || isStopping)
+        .disabled(
+            (capture.captureState == .draining && capture.stopRecoveryRequired == false)
+                || isStopping
+        )
         .keyboardShortcut("r", modifiers: [.control, .option])
-        .accessibilityLabel(Text(String(localized: "capture.toolbar.stop")))
+        .accessibilityLabel(Text(capture.stopRecoveryRequired
+            ? String(localized: "home.workspace.retry")
+            : String(localized: "capture.toolbar.stop")))
         .accessibilityHint(Text(String(localized: "capture.toolbar.stop_hint")))
     }
 
     private var captureStatus: some View {
         CaptureStateLabel(
-            captureState: capture.captureState,
+            captureState: capture.presentationCaptureState,
             remoteHealth: capture.remoteHealth,
             projectionState: capture.projectionState
         )
@@ -954,7 +972,11 @@ private struct NotebookRealtimeCaptureConsole: View {
             Spacer(minLength: Spacing.sm)
             if presentation == .drainingSummary {
                 HStack(spacing: Spacing.xs) {
-                    if capture.isAudioDrainDelayed {
+                    if capture.stopRecoveryRequired {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .accessibilityHidden(true)
+                        Text(String(localized: "capture.toast.stop_failed"))
+                    } else if capture.isAudioDrainDelayed {
                         Image(systemName: "externaldrive.badge.timemachine")
                             .accessibilityHidden(true)
                         Text(String(localized: "capture.state.audio_drain_delayed"))

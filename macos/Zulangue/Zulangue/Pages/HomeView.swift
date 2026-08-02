@@ -384,7 +384,7 @@ private struct HomeNotebookHero: View {
     }
 
     private var captureStateText: String {
-        switch capture.captureState {
+        switch capture.presentationCaptureState {
         case .recording: String(localized: "capture.state.recording")
         case .paused: String(localized: "capture.state.paused")
         case .draining: String(localized: "capture.state.draining")
@@ -395,7 +395,7 @@ private struct HomeNotebookHero: View {
     }
 
     private var captureStateIcon: String {
-        switch capture.captureState {
+        switch capture.presentationCaptureState {
         case .recording: "record.circle.fill"
         case .paused: "pause.circle.fill"
         case .draining: "hourglass.circle.fill"
