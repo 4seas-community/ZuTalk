@@ -611,6 +611,46 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertFalse(source.contains("knowledge-profiles.json"))
     }
 
+    func testNotebookRealtimeHistoryScopesLivePreviewObservationToActiveRun() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue", isDirectory: true)
+        let source = root.appendingPathComponent("Pages/NotebookCaptureViews.swift")
+        let contents = try String(contentsOf: source, encoding: .utf8)
+
+        let historyStart = try XCTUnwrap(
+            contents.range(of: "private struct NotebookRealtimeHistoryView: View")
+        )
+        let activeRunStart = try XCTUnwrap(
+            contents[historyStart.upperBound...]
+                .range(of: "private struct NotebookRealtimeActiveRunView: View")
+        )
+        let navigatorStart = try XCTUnwrap(
+            contents[activeRunStart.upperBound...]
+                .range(of: "private struct NotebookRealtimeRunNavigator: View")
+        )
+        let historyView = String(
+            contents[historyStart.lowerBound..<activeRunStart.lowerBound]
+        )
+        let activeRunView = String(
+            contents[activeRunStart.lowerBound..<navigatorStart.lowerBound]
+        )
+
+        XCTAssertFalse(historyView.contains("@ObservedObject private var livePresentation"))
+        XCTAssertFalse(historyView.contains("capture.livePreviewUtterances"))
+        XCTAssertFalse(historyView.contains("capture.presentedTranslationCueSnapshot"))
+        XCTAssertTrue(historyView.contains("NotebookRealtimeActiveRunView("))
+        XCTAssertTrue(
+            activeRunView.contains(
+                "@ObservedObject private var livePresentation: "
+                    + "NotebookCaptureLivePresentationStore"
+            )
+        )
+        XCTAssertTrue(activeRunView.contains("NotebookRealtimeAutoscrollPolicy.signal("))
+        XCTAssertTrue(activeRunView.contains("onLiveAutoscrollSignal()"))
+    }
+
     func testMainShellViewV2_placesTheSidebarCollapseControlInTheHeader() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -1061,6 +1101,160 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    func testBoundedAudienceColumnsPreserveFullProjectionForLongSparseSession() {
+        let languages = ["en", "zh", "th"]
+        var utterances: [NotebookCaptureUtteranceDTO] = [
+            NotebookCaptureUtteranceDTO(
+                id: "long-coverage",
+                sessionId: "session",
+                sequence: 0,
+                revision: 1,
+                sourceLanguage: "en",
+                sourceText: "Long coverage",
+                sourceStartMs: 0,
+                sourceEndMs: 20_000_000,
+                translatedLanguage: nil,
+                translatedText: nil,
+                completion: "complete",
+                alignment: "source_only"
+            ),
+            NotebookCaptureUtteranceDTO(
+                id: "sparse-th",
+                sessionId: "session",
+                sequence: 1,
+                revision: 1,
+                sourceLanguage: "th",
+                sourceText: "ภาษาไทยเก่า",
+                sourceStartMs: 500,
+                sourceEndMs: 900,
+                translatedLanguage: nil,
+                translatedText: nil,
+                completion: "complete",
+                alignment: "source_only"
+            ),
+        ]
+        utterances.reserveCapacity(10_002)
+        for index in 2..<10_002 {
+            let sequence = UInt64(index)
+            let language = index.isMultiple(of: 7) ? "zh" : "en"
+            let sourceLanguage = index == 9_999
+                ? "fr"
+                : (index.isMultiple(of: 211) ? "und" : language)
+            // The final 500 rows emulate a provider epoch restart. Sequence
+            // order and timestamp order intentionally differ.
+            let timestampIndex = index >= 9_502 ? index - 9_502 : index
+            let startMs = UInt64(timestampIndex) * 1_000
+            utterances.append(NotebookCaptureUtteranceDTO(
+                id: "source-\(index)",
+                sessionId: "session",
+                sequence: sequence,
+                revision: 1,
+                sourceLanguage: sourceLanguage,
+                provisionalSourceLanguage: sourceLanguage == "und" ? language : nil,
+                sourceText: "row \(index)",
+                sourceStartMs: index.isMultiple(of: 173) ? nil : startMs,
+                sourceEndMs: index.isMultiple(of: 173) ? nil : startMs + 500,
+                translatedLanguage: nil,
+                translatedText: nil,
+                completion: index == 10_001 ? "partial" : "complete",
+                alignment: "source_only"
+            ))
+        }
+        let cues = [
+            NotebookCaptureTranslationCueDTO(
+                targetLanguage: "zh",
+                groupEpoch: 0,
+                providerSequence: 1,
+                sourceLanguage: "en",
+                sourceStartMs: nil,
+                sourceEndMs: nil,
+                text: "旧的无时间译文",
+                completion: "partial",
+                withdrawn: false,
+                revision: 1
+            ),
+            NotebookCaptureTranslationCueDTO(
+                targetLanguage: "zh",
+                groupEpoch: 1,
+                providerSequence: 0,
+                sourceLanguage: "en",
+                sourceStartMs: 10,
+                sourceEndMs: 20,
+                text: "新时间段译文",
+                completion: "partial",
+                withdrawn: false,
+                revision: 2
+            ),
+        ]
+        let placement: (NotebookCaptureUtteranceDTO) -> String? = { utterance in
+            NotebookCaptureHistoryPolicy.audienceSourcePlacement(
+                for: utterance,
+                selectedLanguages: languages,
+                lastIdentifiedSourceLanguage: "en"
+            )
+        }
+        let full = SubtitleAudienceTimeline.columns(
+            languages: languages,
+            utterances: utterances,
+            placement: placement,
+            cues: { $0 == "zh" ? cues : [] }
+        )
+        let candidates = NotebookCaptureLivePresentation.audienceDurableCandidates(
+            durable: utterances,
+            sessionId: "session",
+            selectedLanguages: languages,
+            lastIdentifiedSourceLanguage: "en",
+            maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount
+        )
+        XCTAssertLessThanOrEqual(
+            candidates.count,
+            languages.count * (SubtitleOverlayLayoutPolicy.maximumAudienceRowCount + 1)
+                + SubtitleOverlayLayoutPolicy.maximumAudienceRowCount,
+            "a preview frame must consume a canvas-bounded durable candidate set"
+        )
+
+        for limit in 1...8 {
+            let bounded = SubtitleAudienceTimeline.columns(
+                languages: languages,
+                utterances: candidates,
+                placement: placement,
+                cues: { $0 == "zh" ? cues : [] },
+                visibleLimit: limit
+            )
+            for language in languages {
+                XCTAssertEqual(
+                    Array((bounded[language] ?? []).suffix(limit)),
+                    Array((full[language] ?? []).suffix(limit)),
+                    "bounded \(language) column must preserve the full projection at k=\(limit)"
+                )
+            }
+            XCTAssertEqual(
+                SubtitleAudienceTimeline.waitingLanguages(columns: bounded),
+                SubtitleAudienceTimeline.waitingLanguages(columns: full),
+                "coverage/waiting semantics must survive bounded retention at k=\(limit)"
+            )
+            XCTAssertEqual(
+                SubtitleAudienceTimeline.unroutedText(
+                    utterances: candidates,
+                    placement: placement,
+                    window: limit
+                ),
+                SubtitleAudienceTimeline.unroutedText(
+                    utterances: utterances,
+                    placement: placement,
+                    window: limit
+                ),
+                "the global unrouted strip must remain exact at k=\(limit)"
+            )
+        }
+
+        XCTAssertEqual(
+            Array((full["th"] ?? []).suffix(1)).map(\.text),
+            ["ภาษาไทยเก่า"],
+            "a sparse language keeps its own visible suffix even after a long English run"
+        )
+    }
+
     func testConversationTimelineShowsUnboundTranslationCueAtLiveEdge() {
         let source = NotebookCaptureUtteranceDTO(
             id: "source-0",
@@ -1472,82 +1666,6 @@ final class WindowSystemTests: XCTestCase {
             placementCalls,
             limit + 1,
             "Conversation must project only the canvas-sized tail, not all 1000 rows"
-        )
-    }
-
-    func testAudienceProjectionUsesBoundedWindowForTenThousandRowSession() {
-        var durable: [NotebookCaptureUtteranceDTO] = []
-        durable.reserveCapacity(10_000)
-        for index in 0..<10_000 {
-            let sequence = UInt64(index)
-            let startMs = sequence * 1_000
-            durable.append(NotebookCaptureUtteranceDTO(
-                id: "source-\(index)",
-                sessionId: "session",
-                sequence: sequence,
-                revision: 1,
-                // A long unknown-language tail used to make every placement
-                // walk the complete durable session again.
-                sourceLanguage: index < 9_000 ? "en" : "und",
-                sourceText: "row \(index)",
-                sourceStartMs: startMs,
-                sourceEndMs: startMs + 500,
-                translatedLanguage: nil,
-                translatedText: nil,
-                completion: "complete",
-                alignment: "source_only"
-            ))
-        }
-        let preview = NotebookCaptureUtteranceDTO(
-            id: "source-10000",
-            sessionId: "session",
-            sequence: 10_000,
-            revision: 1,
-            sourceLanguage: "und",
-            sourceText: "live row",
-            sourceStartMs: 10_000_000,
-            sourceEndMs: 10_000_500,
-            translatedLanguage: nil,
-            translatedText: nil,
-            completion: "partial",
-            alignment: "source_only"
-        )
-        let limit = SubtitleAudienceTimeline.utteranceLookbackLimit(
-            rowCount: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount,
-            languageCount: 3
-        )
-        let tail = NotebookCaptureLivePresentation.utteranceTail(
-            durable: durable,
-            preview: [preview],
-            sessionId: "session",
-            limit: limit
-        )
-
-        XCTAssertEqual(limit, 34)
-        XCTAssertEqual(tail.count, limit)
-        XCTAssertEqual(tail.first?.sequence, 9_967)
-        XCTAssertEqual(tail.last?.sequence, 10_000)
-
-        var placementCalls = 0
-        let columns = SubtitleAudienceTimeline.columns(
-            languages: ["en", "zh", "th"],
-            utterances: tail,
-            placement: { utterance in
-                placementCalls += 1
-                return NotebookCaptureHistoryPolicy.audienceSourcePlacement(
-                    for: utterance,
-                    selectedLanguages: ["en", "zh", "th"],
-                    lastIdentifiedSourceLanguage: "en"
-                )
-            },
-            cues: { _ in [] }
-        )
-
-        XCTAssertEqual(columns["en"]?.last?.text, "live row")
-        XCTAssertLessThanOrEqual(
-            placementCalls,
-            limit,
-            "Audience projection work must stay constant as the session grows"
         )
     }
 

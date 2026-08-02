@@ -199,23 +199,6 @@ enum SubtitleOverlayLayoutPolicy {
 /// audience is reading. History above may drift out of row alignment; the
 /// standing invariant already prefers the present over the past.
 enum SubtitleAudienceTimeline {
-    /// Audience mode is a live wall, not a per-language archive. Keep one
-    /// recent global bucket per selected language, one for unrouted speech,
-    /// and two live-edge slots. This bounds every render independently of the
-    /// meeting length while leaving enough room for the canvas-sized suffix.
-    /// A language that has been silent beyond this global window deliberately
-    /// ages out: present speech wins over old per-language history.
-    static let utteranceLookbackAllowance = 2
-
-    static func utteranceLookbackLimit(rowCount: Int, languageCount: Int) -> Int {
-        let rows = max(rowCount, 1)
-        let languages = min(
-            max(languageCount, 1),
-            SubtitleOverlayLayoutPolicy.maximumLanguageCount
-        )
-        return rows * (languages + 1) + utteranceLookbackAllowance
-    }
-
     struct Item: Identifiable, Equatable {
         enum Kind: Equatable {
             case source
@@ -250,17 +233,38 @@ enum SubtitleAudienceTimeline {
         languages: [String],
         utterances: [NotebookCaptureUtteranceDTO],
         placement: (NotebookCaptureUtteranceDTO) -> String?,
-        cues: (String) -> [NotebookCaptureTranslationCueDTO]
+        cues: (String) -> [NotebookCaptureTranslationCueDTO],
+        visibleLimit: Int? = nil
     ) -> [String: [Item]] {
         var columns: [String: [Item]] = [:]
+        var coverageLeaders: [String: Item] = [:]
         for language in languages {
             columns[language] = []
         }
+
+        func retain(_ item: Item, in language: String) {
+            guard columns[language] != nil else { return }
+            if let coverage = item.endMs ?? item.anchorMs {
+                let existingCoverage = coverageLeaders[language]
+                    .flatMap { $0.endMs ?? $0.anchorMs }
+                if existingCoverage.map({ coverage > $0 }) ?? true {
+                    coverageLeaders[language] = item
+                }
+            }
+            columns[language]?.append(item)
+            guard let visibleLimit else { return }
+            let limit = max(visibleLimit, 0)
+            columns[language]?.sort(by: itemComesBefore)
+            if let count = columns[language]?.count, count > limit {
+                columns[language]?.removeFirst(count - limit)
+            }
+        }
+
         for utterance in utterances {
             guard let language = placement(utterance),
                   columns[language] != nil
             else { continue }
-            columns[language]?.append(Item(
+            retain(Item(
                 id: "source:\(utterance.id)",
                 kind: .source,
                 text: utterance.sourceText,
@@ -268,7 +272,7 @@ enum SubtitleAudienceTimeline {
                 endMs: utterance.sourceEndMs,
                 order: utterance.sequence,
                 isComplete: utterance.completion == "complete"
-            ))
+            ), in: language)
         }
         for language in languages {
             let languageCues = cues(language)
@@ -296,7 +300,7 @@ enum SubtitleAudienceTimeline {
                         && cue.providerSequence < latestTimedCue.providerSequence) {
                     continue
                 }
-                columns[language]?.append(Item(
+                retain(Item(
                     id: "cue:\(cue.id)",
                     kind: .translation,
                     text: cue.text,
@@ -304,27 +308,45 @@ enum SubtitleAudienceTimeline {
                     endMs: cue.sourceEndMs,
                     order: cue.providerSequence,
                     isComplete: cue.completion == "complete"
-                ))
+                ), in: language)
             }
         }
         for language in languages {
-            columns[language]?.sort { left, right in
-                switch (left.anchorMs, right.anchorMs) {
-                case let (.some(leftAnchor), .some(rightAnchor)) where leftAnchor != rightAnchor:
-                    return leftAnchor < rightAnchor
-                case (.some, .none):
-                    return true
-                case (.none, .some):
-                    return false
-                default:
-                    if left.kind != right.kind {
-                        return left.kind == .source
-                    }
-                    return left.order < right.order
-                }
+            // A bounded visible suffix is enough to paint the column, but the
+            // waiting calculation below also needs the greatest coverage ever
+            // seen in that lane. Retain that one extra item when it fell
+            // outside the suffix; the caller trims it after asking whether the
+            // lane is behind. This keeps the bounded and full projections
+            // presentation-equivalent even across timestamp restarts.
+            if let visibleLimit,
+               visibleLimit > 0,
+               let coverageLeader = coverageLeaders[language],
+               columns[language]?.contains(where: { $0.id == coverageLeader.id }) == false {
+                columns[language]?.append(coverageLeader)
             }
+            columns[language]?.sort(by: itemComesBefore)
         }
         return columns
+    }
+
+    nonisolated private static func itemComesBefore(_ left: Item, _ right: Item) -> Bool {
+        switch (left.anchorMs, right.anchorMs) {
+        case let (.some(leftAnchor), .some(rightAnchor)) where leftAnchor != rightAnchor:
+            return leftAnchor < rightAnchor
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        default:
+            switch (left.kind, right.kind) {
+            case (.source, .translation):
+                return true
+            case (.translation, .source):
+                return false
+            default:
+                return left.order < right.order
+            }
+        }
     }
 
     /// Columns whose coverage trails the newest spoken words. The waiting
@@ -1452,30 +1474,30 @@ struct SubtitleOverlayView: View {
     @ViewBuilder
     private func audienceTimelineBody(geometry: GeometryProxy) -> some View {
         let languages = store.selectedLanguages
+        // Freeze one coherent presentation frame. The previous body rebuilt
+        // and sorted the complete session three times, and recomputed the
+        // durable language fallback once for every source row. Provider-rate
+        // preview updates therefore became progressively more expensive as a
+        // meeting grew even though the canvas shows at most eight cards.
+        let utterances = store.presentedAudienceUtterances(
+            maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount
+        )
         let placement = store.makeAudienceSourcePlacement()
+        let cuesByLanguage = Dictionary(
+            grouping: store.presentedTranslationCueSnapshot,
+            by: { normalizedLanguageCode($0.targetLanguage) }
+        )
         let bandSize = SubtitleOverlayLayoutPolicy.audienceColumnCount(
             width: geometry.size.width - 24,
             languageCount: languages.count,
             fontSize: fontSize
         )
         let bandStarts = Array(stride(from: 0, to: max(languages.count, 1), by: bandSize))
-        // Pull one maximum-sized presentation window once. The former path
-        // rebuilt and sorted the complete session three times per live frame,
-        // then walked it again to build columns before keeping at most eight
-        // visible items. At provider cadence that made render cost grow for
-        // the entire meeting and could stall the hosting view after a long
-        // session even while capture continued normally.
-        let maximumUtteranceWindow = store.presentedUtteranceTail(
-            limit: SubtitleAudienceTimeline.utteranceLookbackLimit(
-                rowCount: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount,
-                languageCount: languages.count
-            )
-        )
         // The strip probe uses a window-of-one on purpose: it only decides
         // whether space must be reserved, and the real lookup below reuses
         // the budget derived from the resulting band height.
         let reservesStrip = SubtitleAudienceTimeline.unroutedText(
-            utterances: maximumUtteranceWindow,
+            utterances: utterances,
             placement: placement
         ) != nil
         let bandHeight = SubtitleOverlayLayoutPolicy.audienceBandHeight(
@@ -1488,35 +1510,21 @@ struct SubtitleOverlayView: View {
             height: bandHeight,
             fontSize: fontSize
         )
-        let utteranceWindow = Array(maximumUtteranceWindow.suffix(
-            SubtitleAudienceTimeline.utteranceLookbackLimit(
-                rowCount: itemBudget,
-                languageCount: languages.count
-            )
-        ))
-        // Rust already caps the live cue snapshot at eight items per target
-        // language. Group the snapshot once here instead of sorting the same
-        // dictionary again for every column.
-        let cuesByLanguage = Dictionary(
-            grouping: store.presentedTranslationCueSnapshot,
-            by: { normalizedLanguageCode($0.targetLanguage) }
-        )
         let columns = SubtitleAudienceTimeline.columns(
             languages: languages,
-            utterances: utteranceWindow,
+            utterances: utterances,
             placement: placement,
             cues: { language in
-                Array((cuesByLanguage[normalizedLanguageCode(language)] ?? []).suffix(
-                    itemBudget + 1
-                ))
-            }
+                cuesByLanguage[normalizedLanguageCode(language)] ?? []
+            },
+            visibleLimit: itemBudget
         )
         let waiting = SubtitleAudienceTimeline.waitingLanguages(
             columns: columns,
             failedLanguages: store.failedTranslationLanguages
         )
         let unrouted = SubtitleAudienceTimeline.unroutedText(
-            utterances: utteranceWindow,
+            utterances: utterances,
             placement: placement,
             window: itemBudget
         )
@@ -1650,12 +1658,10 @@ struct SubtitleOverlayView: View {
 
     @ViewBuilder
     private func audienceRowsBody(geometry: GeometryProxy) -> some View {
-        let utterances = Array(
-            store.presentedUtterances.suffix(
-                SubtitleOverlayLayoutPolicy.audienceRowCount(
-                    height: geometry.size.height,
-                    fontSize: fontSize
-                )
+        let utterances = store.presentedUtteranceTail(
+            limit: SubtitleOverlayLayoutPolicy.audienceRowCount(
+                height: geometry.size.height,
+                fontSize: fontSize
             )
         )
 

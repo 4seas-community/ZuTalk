@@ -2395,8 +2395,6 @@ private struct NotebookRealtimeHistoryView: View {
     let focusSessionId: String?
     @ObservedObject var history: NotebookCaptureHistoryStore
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
-    @ObservedObject private var livePresentation =
-        ActiveBilingualTranscriptStore.shared.livePresentation
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPresentationControlHovered = false
     @State private var selectedSessionID: String?
@@ -2602,10 +2600,6 @@ private struct NotebookRealtimeHistoryView: View {
                     guard let sessionID else { return }
                     selectRun(sessionID, using: proxy, animated: true)
                 }
-                .onChange(of: liveAutoscrollSignal) { _, signal in
-                    guard signal != nil else { return }
-                    scheduleLiveFollow(using: proxy)
-                }
             }
         }
     }
@@ -2628,23 +2622,27 @@ private struct NotebookRealtimeHistoryView: View {
             }
         } else if activeSessionID == run.sessionId
                     || history.transcriptLoadState(sessionId: run.sessionId) == .loaded {
-            VStack(spacing: 0) {
-                NotebookRealtimeUtteranceView(
+            if run.sessionId == activeSessionID {
+                NotebookRealtimeActiveRunView(
                     run: run,
-                    livePreviewUtterances: run.sessionId == activeSessionID
-                        ? capture.livePreviewUtterances
-                        : [],
-                    liveTranslationCues: run.sessionId == activeSessionID
-                        ? capture.presentedTranslationCueSnapshot
-                        : [],
                     presentationMode: presentationMode,
-                    isFocused: true,
-                    history: history
+                    history: history,
+                    capture: capture,
+                    liveTailAnchorID: liveTailAnchor(run.sessionId),
+                    onLiveAutoscrollSignal: {
+                        scheduleLiveFollow(using: proxy)
+                    }
                 )
-                if run.sessionId == activeSessionID {
-                    Color.clear
-                        .frame(height: 1)
-                        .id(liveTailAnchor(run.sessionId))
+            } else {
+                VStack(spacing: 0) {
+                    NotebookRealtimeUtteranceView(
+                        run: run,
+                        presentedUtterances: run.utterances,
+                        liveTranslationCues: [],
+                        presentationMode: presentationMode,
+                        isFocused: true,
+                        history: history
+                    )
                 }
             }
         } else {
@@ -2659,15 +2657,6 @@ private struct NotebookRealtimeHistoryView: View {
                 await history.loadTranscript(sessionId: run.sessionId)
             }
         }
-    }
-
-    private var liveAutoscrollSignal: NotebookRealtimeAutoscrollSignal? {
-        guard selectedSessionID == activeSessionID,
-              capture.notebookId == notebookId else { return nil }
-        return NotebookRealtimeAutoscrollPolicy.signal(
-            in: capture.presentedUtteranceTail(limit: 1),
-            cues: capture.presentedTranslationCueSnapshot
-        )
     }
 
     private func runAnchor(_ sessionId: String) -> String {
@@ -2787,6 +2776,74 @@ private struct NotebookRealtimeHistoryView: View {
         liveFollowGeneration &+= 1
         liveFollowTask?.cancel()
         liveFollowTask = nil
+    }
+}
+
+/// Owns the provider-rate observation for the one mounted live run. Keeping
+/// this boundary below the history timeline means a speculative preview frame
+/// updates live text and follow-at-edge behavior without rebuilding the
+/// durable run projection or its navigator.
+private struct NotebookRealtimeActiveRunView: View {
+    let run: NotebookCaptureHistoryRunDTO
+    let presentationMode: NotebookTranscriptPresentationMode
+    let history: NotebookCaptureHistoryStore
+    private let capture: ActiveBilingualTranscriptStore
+    private let liveTailAnchorID: String
+    private let onLiveAutoscrollSignal: () -> Void
+    @ObservedObject private var livePresentation: NotebookCaptureLivePresentationStore
+
+    init(
+        run: NotebookCaptureHistoryRunDTO,
+        presentationMode: NotebookTranscriptPresentationMode,
+        history: NotebookCaptureHistoryStore,
+        capture: ActiveBilingualTranscriptStore,
+        liveTailAnchorID: String,
+        onLiveAutoscrollSignal: @escaping () -> Void
+    ) {
+        self.run = run
+        self.presentationMode = presentationMode
+        self.history = history
+        self.capture = capture
+        self.liveTailAnchorID = liveTailAnchorID
+        self.onLiveAutoscrollSignal = onLiveAutoscrollSignal
+        _livePresentation = ObservedObject(wrappedValue: capture.livePresentation)
+    }
+
+    var body: some View {
+        let presentedUtterances = NotebookCaptureLivePresentation.utterances(
+            durable: run.utterances,
+            preview: livePresentation.utterances,
+            sessionId: run.sessionId
+        )
+        VStack(spacing: 0) {
+            NotebookRealtimeUtteranceView(
+                run: run,
+                presentedUtterances: presentedUtterances,
+                liveTranslationCues: capture.presentedTranslationCueSnapshot,
+                presentationMode: presentationMode,
+                isFocused: true,
+                history: history
+            )
+            Color.clear
+                .frame(height: 1)
+                .id(liveTailAnchorID)
+        }
+        .onChange(of: liveAutoscrollSignal) { _, signal in
+            guard signal != nil else { return }
+            onLiveAutoscrollSignal()
+        }
+    }
+
+    private var liveAutoscrollSignal: NotebookRealtimeAutoscrollSignal? {
+        NotebookRealtimeAutoscrollPolicy.signal(
+            in: NotebookCaptureLivePresentation.utteranceTail(
+                durable: run.utterances,
+                preview: livePresentation.utterances,
+                sessionId: run.sessionId,
+                limit: 1
+            ),
+            cues: capture.presentedTranslationCueSnapshot
+        )
     }
 }
 
@@ -2941,7 +2998,10 @@ private struct NotebookRealtimeTranscriptLoadView: View {
 /// session id and never changes the run's frozen processing configuration.
 struct NotebookRealtimeUtteranceView: View {
     let run: NotebookCaptureHistoryRunDTO
-    let livePreviewUtterances: [NotebookCaptureUtteranceDTO]
+    /// Already merged once by the active-run boundary. Keeping the complete
+    /// array as an input prevents this view's header, empty state, cue overlay,
+    /// and row bodies from each rebuilding the full durable+preview session.
+    let presentedUtterances: [NotebookCaptureUtteranceDTO]
     let liveTranslationCues: [NotebookCaptureTranslationCueDTO]
     let presentationMode: NotebookTranscriptPresentationMode
     let isFocused: Bool
@@ -3024,29 +3084,17 @@ struct NotebookRealtimeUtteranceView: View {
         NotebookCaptureHistoryPolicy.displayLanguages(for: run) ?? []
     }
 
-    private var displayUtterances: [NotebookCaptureUtteranceDTO] {
-        NotebookCaptureLivePresentation.utterances(
-            durable: run.utterances,
-            preview: livePreviewUtterances,
-            sessionId: run.sessionId
-        )
-    }
-
-    private var sourceTimelineUtterances: [NotebookCaptureUtteranceDTO] {
-        displayUtterances.filter(\.hasSourceLane)
-    }
-
     private var supplementalCues: [String: NotebookCaptureTranslationCueDTO] {
         guard run.captureState.isActive else { return [:] }
         return NotebookLanguageColumnCueOverlay.latestSupplementalCues(
             languages: displayLanguages,
-            utterances: displayUtterances,
+            utterances: presentedUtterances,
             cues: liveTranslationCues
         )
     }
 
     private var hasAnyEditableLane: Bool {
-        displayUtterances.contains { utterance in
+        presentedUtterances.contains { utterance in
             utterance.isLoroEditableLane(
                 language: utterance.sourceLanguage,
                 appliedRevision: run.realtimeLoroAppliedRevision
@@ -3231,7 +3279,8 @@ struct NotebookRealtimeUtteranceView: View {
 
     @ViewBuilder
     private var bilingualBody: some View {
-        if displayUtterances.isEmpty, supplementalCues.isEmpty {
+        let supplementalCues = supplementalCues
+        if presentedUtterances.isEmpty, supplementalCues.isEmpty {
             compactEmptyRun(
                 title: run.captureState.isActive
                     ? String(localized: "capture.transcript.waiting_title")
@@ -3242,7 +3291,7 @@ struct NotebookRealtimeUtteranceView: View {
             )
         } else {
             LazyVStack(spacing: 0) {
-                ForEach(displayUtterances) { utterance in
+                ForEach(presentedUtterances) { utterance in
                     MultilingualUtteranceRow(
                         utterance: utterance,
                         projection: NotebookCaptureHistoryPolicy.laneProjection(
@@ -3282,6 +3331,7 @@ struct NotebookRealtimeUtteranceView: View {
 
     @ViewBuilder
     private var transcriptionBody: some View {
+        let sourceTimelineUtterances = presentedUtterances.filter(\.hasSourceLane)
         if sourceTimelineUtterances.isEmpty {
             compactEmptyRun(
                 title: run.captureState.isActive
