@@ -5,7 +5,6 @@
 //! 权威 API 定义：docs/architecture/TYPE_SYSTEM.md §7
 
 pub(crate) mod capture_erasure;
-pub mod diagnostics_api;
 pub mod editor_api;
 pub mod notebook_api;
 pub mod notebook_capture_api;
@@ -14,7 +13,6 @@ pub mod settings_api;
 pub mod speaker_directory_api;
 pub(crate) mod task_worker;
 pub mod transcribe_api;
-pub mod trust_warning_api;
 
 uniffi::setup_scaffolding!();
 

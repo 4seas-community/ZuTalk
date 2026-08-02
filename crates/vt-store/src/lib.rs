@@ -4,7 +4,6 @@
 //! 设计文档：docs/design/D4-loro-document.md
 
 pub mod context_pack_store;
-pub mod diagnostics_projection;
 pub mod editor_bridge;
 pub mod migration;
 pub mod notebook_capture_store;
@@ -21,11 +20,6 @@ pub use context_pack_store::{
     SonioxGeneralContext, SonioxTranslationTerm, CONTEXT_CSV_MAX_CELL_SCALARS,
     CONTEXT_CSV_MAX_ROWS, CONTEXT_PACK_DOCUMENT_MAX_BYTES, CONTEXT_PACK_DOCUMENT_SCHEMA,
     CONTEXT_TEXT_MAX_BYTES, SONIOX_CONTEXT_MAX_SCALARS,
-};
-pub use diagnostics_projection::{
-    project_diagnostics_projection, DiagnosticArea, DiagnosticAreaInput, DiagnosticDetailGroup,
-    DiagnosticDetailInput, DiagnosticDetailItem, DiagnosticSeverity, DiagnosticSummaryItem,
-    DiagnosticsProjection, DiagnosticsProjectionError, DiagnosticsProjectionInput,
 };
 pub use editor_bridge::{EditOp, EditorBridge, EditorBridgeError, EditorEvent, EditorHandle};
 pub use notebook_capture_store::{

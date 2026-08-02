@@ -8,13 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		045287E89ED87EE0FC55FAE9 /* ProviderCredentialSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31D0C9AE8D24DEF64046E239 /* ProviderCredentialSessionTests.swift */; };
-		09642A0C201E7541FF49F844 /* TrustWarningViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E74376D0524DBD11622CE17 /* TrustWarningViewModelTests.swift */; };
 		09FBE393472AEA170B5F6401 /* WindowArchitectureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCFDA163E28AEBAE7F806B2C /* WindowArchitectureTests.swift */; };
 		24837CE6787271CBF1A1E5E0 /* WindowSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 162823BFBEBB61C186527799 /* WindowSystemTests.swift */; };
 		263F77C7195DA6D8330D4BBF /* OnboardingControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF4098FE0DDC1AC0C338F00 /* OnboardingControllerTests.swift */; };
 		2AE05082BD7A66E351054CEA /* SoftwareUpdateRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D14E3453B94D1356D0CC22 /* SoftwareUpdateRetryTests.swift */; };
 		311D6659C7CEBB1B7D9F3A6F /* IntegrityChecksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EB8781E8D2523CE9443D0EE /* IntegrityChecksTests.swift */; };
-		31640285D389BBA008E4E291 /* DiagnosticsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348F795AC233AE8DDE436431 /* DiagnosticsViewModelTests.swift */; };
 		345A25274BE8DF990C5D88E5 /* EditorAPITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C6921155A5E8B401C25A14 /* EditorAPITests.swift */; };
 		3F6E3928687B8CEF7FB73122 /* DesignSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4628A3113DB3E747E57DD458 /* DesignSystemTests.swift */; };
 		412F1ABAAFFFFF9B67358D7C /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 31D5B9CCF8C2146CB1F1E386 /* CoreFoundation.framework */; };
@@ -80,10 +78,8 @@
 		3194C8794F66E7CF4E013AEF /* CoreIntegrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CoreIntegrationTests.swift; sourceTree = "<group>"; };
 		31D0C9AE8D24DEF64046E239 /* ProviderCredentialSessionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProviderCredentialSessionTests.swift; sourceTree = "<group>"; };
 		31D5B9CCF8C2146CB1F1E386 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
-		348F795AC233AE8DDE436431 /* DiagnosticsViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DiagnosticsViewModelTests.swift; sourceTree = "<group>"; };
 		36BB1BD8CA9C83509BD30008 /* AccessibilityID.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AccessibilityID.swift; path = ../Zulangue/App/AccessibilityID.swift; sourceTree = "<group>"; };
 		3E4553AB6D32D9116E7F352B /* MenuBarRoutingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MenuBarRoutingTests.swift; sourceTree = "<group>"; };
-		3E74376D0524DBD11622CE17 /* TrustWarningViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TrustWarningViewModelTests.swift; sourceTree = "<group>"; };
 		3FB7195A216E20593FDE129B /* FocusRing.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FocusRing.swift; sourceTree = "<group>"; };
 		458C9048F690A3F07D4D9964 /* SpecSheetRow.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpecSheetRow.swift; sourceTree = "<group>"; };
 		4628A3113DB3E747E57DD458 /* DesignSystemTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DesignSystemTests.swift; sourceTree = "<group>"; };
@@ -573,8 +569,6 @@
 				8EE7634869688B0059AE8276 /* CrashDiagnosticsTests.swift */,
 				162823BFBEBB61C186527799 /* WindowSystemTests.swift */,
 				BCFDA163E28AEBAE7F806B2C /* WindowArchitectureTests.swift */,
-				348F795AC233AE8DDE436431 /* DiagnosticsViewModelTests.swift */,
-				3E74376D0524DBD11622CE17 /* TrustWarningViewModelTests.swift */,
 				F2D14E3453B94D1356D0CC22 /* SoftwareUpdateRetryTests.swift */,
 			);
 			path = ZulangueTests;
@@ -788,8 +782,6 @@
 				4B6DD921F963C7F376D98772 /* CrashDiagnosticsTests.swift in Sources */,
 				24837CE6787271CBF1A1E5E0 /* WindowSystemTests.swift in Sources */,
 				09FBE393472AEA170B5F6401 /* WindowArchitectureTests.swift in Sources */,
-				31640285D389BBA008E4E291 /* DiagnosticsViewModelTests.swift in Sources */,
-				09642A0C201E7541FF49F844 /* TrustWarningViewModelTests.swift in Sources */,
 				2AE05082BD7A66E351054CEA /* SoftwareUpdateRetryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

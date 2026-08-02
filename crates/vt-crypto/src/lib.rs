@@ -12,7 +12,6 @@ pub mod key_provider;
 pub mod memory_store;
 mod private_file_store;
 pub mod session_key;
-pub mod trust_warning;
 
 pub use api_key_store::{ApiKeyProvider, MemoryApiKeyStore};
 pub use decrypt::{decrypt_range, encrypt_to_file, DecryptRange, DecryptReader};
@@ -22,7 +21,3 @@ pub use file_key_store::FileKeyStore;
 pub use key_provider::KeyProvider;
 pub use memory_store::MemoryKeyStore;
 pub use session_key::{SessionKey, KEY_SIZE};
-pub use trust_warning::{
-    project_trust_warning, TrustKeyState, TrustSurface, TrustUserAction, TrustWarning,
-    TrustWarningError, TrustWarningInput,
-};
