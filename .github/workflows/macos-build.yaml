@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -19,8 +20,11 @@ concurrency:
 jobs:
   build:
     name: Build, test, and package
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-15
     timeout-minutes: 90
+    env:
+      SCCACHE_GHA_RW_MODE: ${{ github.ref == 'refs/heads/main' && 'READ_WRITE' || 'READ_ONLY' }}
 
     steps:
       - name: Check out source
@@ -31,7 +35,44 @@ jobs:
       - name: Install build tools
         run: |
           brew install just xcbeautify gitleaks
-          cargo install cargo-nextest --version 0.9.100 --locked
+
+      - name: Install cargo-nextest
+        env:
+          NEXTEST_VERSION: "0.9.100"
+          NEXTEST_SHA256: 0d8c1fc024a6a72ebe8a76f3db9220f8c01c7247dc3e68747838393bb7adc957
+        run: |
+          set -euo pipefail
+          tool_tmp="$(mktemp -d)"
+          trap 'find "$tool_tmp" -depth -delete 2>/dev/null || true' EXIT
+          archive="$tool_tmp/cargo-nextest.tar.gz"
+          curl --fail --location --silent --show-error \
+            --proto '=https' --tlsv1.2 \
+            "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-${NEXTEST_VERSION}/cargo-nextest-${NEXTEST_VERSION}-universal-apple-darwin.tar.gz" \
+            -o "$archive"
+          actual_sha="$(shasum -a 256 "$archive" | awk '{print $1}')"
+          [[ "$actual_sha" == "$NEXTEST_SHA256" ]] \
+            || { echo "FAIL: cargo-nextest archive checksum mismatch"; exit 1; }
+          tar -xzf "$archive" -C "$tool_tmp"
+          cargo_bin_dir="${CARGO_HOME:-$HOME/.cargo}/bin"
+          mkdir -p "$cargo_bin_dir"
+          install -m 0755 "$tool_tmp/cargo-nextest" "$cargo_bin_dir/cargo-nextest"
+          echo "$cargo_bin_dir" >> "$GITHUB_PATH"
+          installed_version="$("$cargo_bin_dir/cargo-nextest" --version | awk 'NR == 1 { print $1 " " $2 }')"
+          [[ "$installed_version" == "cargo-nextest ${NEXTEST_VERSION}" ]] \
+            || { echo "FAIL: installed cargo-nextest version is $installed_version"; exit 1; }
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.17.0
+
+      - name: Enable sccache for Rust builds
+        run: |
+          {
+            echo "RUSTC_WRAPPER=sccache"
+            echo "SCCACHE_GHA_ENABLED=true"
+            echo "SCCACHE_GHA_VERSION=zulangue-rust-v1"
+          } >> "$GITHUB_ENV"
 
       - name: Check source for secrets
         run: gitleaks dir . --config .gitleaks.toml --redact --no-banner
@@ -47,14 +88,83 @@ jobs:
       - name: Run Swift tests
         run: just swift-test
 
+  release:
+    name: Build tagged release package
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      SCCACHE_GHA_RW_MODE: READ_ONLY
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Require successful main verification for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            verification_state="$(
+              gh api --method GET \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/macos-build.yaml/runs" \
+                -f branch=main \
+                -f event=push \
+                -f head_sha="$GITHUB_SHA" \
+                -F per_page=20 \
+                --jq '
+                  if any(.workflow_runs[]; .conclusion == "success") then "success"
+                  elif any(.workflow_runs[]; .status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending") then "pending"
+                  elif (.workflow_runs | length) > 0 then "failed"
+                  else "missing"
+                  end
+                '
+            )"
+            if [[ "$verification_state" == "success" ]]; then
+              echo "Main verification succeeded for $GITHUB_SHA"
+              break
+            fi
+            if [[ "$verification_state" == "failed" ]]; then
+              echo "FAIL: main verification failed for $GITHUB_SHA"
+              exit 1
+            fi
+            if [[ "$attempt" -eq 60 ]]; then
+              echo "FAIL: main verification did not succeed within 15 minutes for $GITHUB_SHA"
+              exit 1
+            fi
+            echo "Waiting for main verification ($verification_state, attempt $attempt/60)..."
+            sleep 15
+          done
+
+      - name: Install release build tools
+        run: brew install just
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.17.0
+
+      - name: Enable sccache for Rust builds
+        run: |
+          {
+            echo "RUSTC_WRAPPER=sccache"
+            echo "SCCACHE_GHA_ENABLED=true"
+            echo "SCCACHE_GHA_VERSION=zulangue-rust-v1"
+          } >> "$GITHUB_ENV"
+
+      - name: Check tagged version
+        run: just version-check
+
       - name: Build Ad Hoc Universal DMG
-        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           just release-adhoc
+          bash scripts/check_release_version.sh build/app/Zulangue.app
           shasum -a 256 build/dmg/Zulangue-*.dmg > build/dmg/Zulangue-macOS.sha256
 
       - name: Upload CI verification artifact
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Zulangue-macOS-universal-adhoc

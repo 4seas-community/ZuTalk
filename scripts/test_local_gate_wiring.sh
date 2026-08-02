@@ -62,6 +62,7 @@ for script in \
   scripts/test_gatekeeper_status.sh \
   scripts/test_swift_test_gate.sh \
   scripts/test_pr_macos_swift_gate.sh \
+  scripts/test_macos_workflow_policy.sh \
   scripts/test_macos_rust_test_gate.sh \
   scripts/test_release_distribution_gate.sh \
   scripts/test_release_universal_app_gate.sh \

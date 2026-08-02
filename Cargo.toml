@@ -11,6 +11,7 @@ members = [
     "crates/vt-export",
     "crates/vt-ffi",
     "crates/vt-i18n",
+    "tools/uniffi-bindgen",
 ]
 
 [workspace.package]

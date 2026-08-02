@@ -5,7 +5,7 @@
 //! - SessionMetaStore tokens_json < 50MB（5h 转录约 3-5 万 token）
 //!
 //! 运行：
-//!   cargo bench -p vt-ffi --bench long_session -- --sample-size 10
+//!   cargo bench -p vt-ffi --features bench --bench long_session -- --sample-size 10
 //!
 //! 默认 #[ignore]，不在常规 CI 跑（5h 真实模拟太慢）。
 //! criterion 用 sample-size 10 ~ 30s 跑完一个 mock 5h（采样模式）。

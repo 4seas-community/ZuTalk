@@ -11,7 +11,7 @@ fail() {
 }
 
 CARGO_VERSION="$(
-  cargo metadata --no-deps --format-version 1 |
+  cargo metadata --locked --no-deps --format-version 1 |
     python3 -c 'import json,sys; packages=json.load(sys.stdin)["packages"]; print(next(p["version"] for p in packages if p["name"] == "vt-ffi"))'
 )"
 

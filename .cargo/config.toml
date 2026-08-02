@@ -1,0 +1,7 @@
+# Normalize workspace paths so sccache entries can be reused across worktrees.
+# Keep this project below a bounded local cache budget; the global cache remains
+# shared, so the effective limit is applied when the sccache server starts here.
+[env]
+MACOSX_DEPLOYMENT_TARGET = "15.5"
+SCCACHE_BASEDIRS = { value = ".", relative = true, force = true }
+SCCACHE_CACHE_SIZE = "5G"

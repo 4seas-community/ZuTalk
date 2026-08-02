@@ -1,0 +1,17 @@
+[package]
+name = "zulangue-uniffi-bindgen"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+uniffi = { version = "=0.31.0", features = ["cli"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/main.rs"
+test = false
+bench = false
+doc = false

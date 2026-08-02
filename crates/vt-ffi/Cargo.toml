@@ -22,7 +22,7 @@ sha2 = "0.10"
 hex = "0.4"
 hound = "3"
 loro = "1"
-uniffi = { version = "0.31", features = ["cli"] }
+uniffi = { version = "=0.31.0", default-features = false }
 chrono.workspace = true
 uuid.workspace = true
 tokio.workspace = true
@@ -30,11 +30,14 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 thiserror.workspace = true
 libc = "0.2"
+criterion = { version = "0.5", features = ["html_reports"], optional = true }
+
+[features]
+bench = ["dep:criterion"]
 
 [dev-dependencies]
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
-criterion = { version = "0.5", features = ["html_reports"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 hound = "3"
 rusqlite = { version = "0.39", features = ["bundled"] }
@@ -42,13 +45,7 @@ rusqlite = { version = "0.39", features = ["bundled"] }
 [[bench]]
 name = "long_session"
 harness = false
-
-[build-dependencies]
-uniffi = { version = "0.31", features = ["build"] }
+required-features = ["bench"]
 
 [lib]
-crate-type = ["lib", "staticlib", "cdylib"]
-
-[[bin]]
-name = "uniffi-bindgen"
-path = "uniffi-bindgen.rs"
+crate-type = ["lib", "staticlib"]

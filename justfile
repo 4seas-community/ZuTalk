@@ -10,9 +10,15 @@ app_bundle_id   := "xyz.voice.zulangue"
 build_dir       := project_dir / "build"
 app_build_dir   := build_dir / "app"
 dmg_dir         := build_dir / "dmg"
+xcode_cache_dir := build_dir / "xcode-cache"
+swift_derived_data := xcode_cache_dir / "DerivedData"
+xcode_cloned_source_packages := xcode_cache_dir / "SourcePackages"
 target_arm64    := "aarch64-apple-darwin"
 target_x86_64   := "x86_64-apple-darwin"
+host_debug_ffi  := project_dir / "target" / "debug" / "libvt_ffi.a"
+release_arm64_ffi := project_dir / "target" / target_arm64 / "release" / "libvt_ffi.a"
 macos_deployment_target := "15.5"
+export SCCACHE_CACHE_SIZE := "5G"
 
 # 默认：列出所有命令
 default:
@@ -32,12 +38,12 @@ setup:
     cargo fetch
     echo "=== 初始化完成。运行 'just dev' 开始构建 ==="
 
-# Debug 构建（仅 ARM64）— 日常开发用
-dev: _rust-build-debug _uniffi-generate _copy-artifacts _sync-xcode
+# Debug 构建（当前 host 架构）— 日常开发用
+dev: _rust-build-debug (_uniffi-generate host_debug_ffi) _copy-artifacts _sync-xcode
     @echo "✓ Debug 构建完成"
 
 # Release 构建（universal binary）— 发布用
-release: _rust-build-release-arm64 _rust-build-release-x86_64 _lipo _uniffi-generate _copy-artifacts-release
+release: _rust-build-release-arm64 _rust-build-release-x86_64 _lipo (_uniffi-generate release_arm64_ffi) _copy-artifacts-release
     @echo "✓ Release 构建完成（universal binary）"
 
 # 清理所有构建产物
@@ -72,6 +78,57 @@ sweep days="30":
     cargo sweep --time {{ days }} {{ project_dir }}/fuzz 2>/dev/null || true
     @echo "✓ 已修剪 {{ days }} 天以上未使用的 fingerprint"
 
+# 只读查看项目构建目录、Zulangue DerivedData 与共享 sccache 状态。
+build-cache-status:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Workspace build storage ==="
+    for directory in "{{ project_dir }}/target" "{{ build_dir }}"; do
+        if [[ -e "$directory" ]]; then
+            du -sh "$directory"
+        else
+            echo "0B  $directory (missing)"
+        fi
+    done
+
+    echo ""
+    echo "=== Zulangue Xcode DerivedData ==="
+    DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData"
+    if [[ -d "$DERIVED_DATA" ]]; then
+        find "$DERIVED_DATA" -mindepth 1 -maxdepth 1 -type d -name 'Zulangue-*' \
+            -exec du -sh {} + | sort -h
+    else
+        echo "0B  $DERIVED_DATA (missing)"
+    fi
+
+    echo ""
+    echo "=== sccache ==="
+    if command -v sccache >/dev/null 2>&1; then
+        sccache --show-stats
+    else
+        echo "sccache is not installed"
+    fi
+
+# 有界修剪 Cargo target；默认只预览，必须显式传 false 才会删除旧缓存。
+sweep-size limit="8GB" dry_run="true":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    LIMIT="{{ limit }}"
+    DRY_RUN="{{ dry_run }}"
+    command -v cargo-sweep >/dev/null 2>&1 \
+        || { echo "需要先 cargo install cargo-sweep"; exit 1; }
+    [[ "$LIMIT" =~ ^[1-9][0-9]*(KB|MB|GB|TB)$ ]] \
+        || { echo "FAIL: limit must look like 8GB or 512MB"; exit 1; }
+    [[ "$DRY_RUN" == "true" || "$DRY_RUN" == "false" ]] \
+        || { echo "FAIL: dry_run must be true or false"; exit 1; }
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "DRY RUN: previewing a $LIMIT cap; no files will be removed"
+        cargo sweep --dry-run --maxsize "$LIMIT" "{{ project_dir }}"
+    else
+        echo "Applying $LIMIT cap to Cargo build cache under {{ project_dir }}"
+        cargo sweep --maxsize "$LIMIT" "{{ project_dir }}"
+    fi
+
 # 版本号同步（Cargo.toml → Info.plist）
 sync-version:
     @echo "Info.plist uses Xcode build variables; update Cargo.toml and MARKETING_VERSION together."
@@ -89,6 +146,7 @@ ci-check:
     bash scripts/test_gatekeeper_status.sh
     bash scripts/test_swift_test_gate.sh
     bash scripts/test_pr_macos_swift_gate.sh
+    bash scripts/test_macos_workflow_policy.sh
     bash scripts/test_macos_rust_test_gate.sh
     bash scripts/test_release_distribution_gate.sh
     bash scripts/test_release_universal_app_gate.sh
@@ -108,6 +166,7 @@ local-gate-static:
     bash scripts/test_gatekeeper_status.sh
     bash scripts/test_swift_test_gate.sh
     bash scripts/test_pr_macos_swift_gate.sh
+    bash scripts/test_macos_workflow_policy.sh
     bash scripts/test_macos_rust_test_gate.sh
     bash scripts/test_release_distribution_gate.sh
     bash scripts/test_release_universal_app_gate.sh
@@ -154,6 +213,10 @@ ci-security:
 # 运行 Rust 测试
 test:
     cargo nextest run --workspace
+
+# 运行长会话 Criterion benchmark（普通测试不会启用 benchmark 依赖）。
+bench:
+    cargo bench -p vt-ffi --features bench --bench long_session
 
 # 可选的 Soniox 真实线路冒烟。构建完成后才从交互终端读取凭据；
 # 凭据只存在于当前 recipe/测试子进程内，不进入命令行、仓库或测试输出。
@@ -205,10 +268,14 @@ soniox-smoke:
 swift-test: dev clean-test-residue
     #!/usr/bin/env bash
     set -euo pipefail
+    mkdir -p {{ swift_derived_data }} {{ xcode_cloned_source_packages }}
+    HOST_ARCH=$(uname -m)
     xcodebuild test \
         -project {{ macos_dir }}/Zulangue.xcodeproj \
         -scheme ZulangueTests \
-        -destination "platform=macOS,arch=arm64" \
+        -destination "platform=macOS,arch=$HOST_ARCH" \
+        -derivedDataPath {{ swift_derived_data }} \
+        -clonedSourcePackagesDirPath {{ xcode_cloned_source_packages }} \
         CODE_SIGNING_ALLOWED=NO \
         CODE_SIGNING_REQUIRED=NO \
         -quiet \
@@ -218,11 +285,14 @@ swift-test: dev clean-test-residue
 swift-coverage: dev clean-test-residue
     #!/usr/bin/env bash
     set -euo pipefail
-    mkdir -p build
+    mkdir -p build {{ swift_derived_data }} {{ xcode_cloned_source_packages }}
+    HOST_ARCH=$(uname -m)
     xcodebuild test \
         -project {{ macos_dir }}/Zulangue.xcodeproj \
         -scheme ZulangueTests \
-        -destination "platform=macOS,arch=arm64" \
+        -destination "platform=macOS,arch=$HOST_ARCH" \
+        -derivedDataPath {{ swift_derived_data }} \
+        -clonedSourcePackagesDirPath {{ xcode_cloned_source_packages }} \
         CODE_SIGNING_ALLOWED=NO \
         CODE_SIGNING_REQUIRED=NO \
         -enableCodeCoverage YES \
@@ -263,7 +333,7 @@ xcode-build:
     #!/usr/bin/env bash
     set -euo pipefail
     OUT="{{ app_build_dir }}"
-    mkdir -p "$OUT"
+    mkdir -p "$OUT" "{{ xcode_cloned_source_packages }}"
     if [ -e "$OUT/Zulangue.app" ]; then
         find "$OUT/Zulangue.app" -depth -delete
     fi
@@ -275,6 +345,7 @@ xcode-build:
         -scheme Zulangue \
         -configuration Release \
         -derivedDataPath "$OUT/.derived" \
+        -clonedSourcePackagesDirPath "{{ xcode_cloned_source_packages }}" \
         -destination "platform=macOS,arch=$HOST_ARCH" \
         ONLY_ACTIVE_ARCH=YES \
         ARCHS="$HOST_ARCH" \
@@ -304,7 +375,7 @@ xcode-build-universal:
     #!/usr/bin/env bash
     set -euo pipefail
     OUT="{{ app_build_dir }}"
-    mkdir -p "$OUT"
+    mkdir -p "$OUT" "{{ xcode_cloned_source_packages }}"
     if [ -e "$OUT/Zulangue.app" ]; then
         find "$OUT/Zulangue.app" -depth -delete
     fi
@@ -315,6 +386,7 @@ xcode-build-universal:
         -scheme Zulangue \
         -configuration Release \
         -derivedDataPath "$OUT/.derived-universal" \
+        -clonedSourcePackagesDirPath "{{ xcode_cloned_source_packages }}" \
         -destination "generic/platform=macOS" \
         ONLY_ACTIVE_ARCH=NO \
         ARCHS="arm64 x86_64" \
@@ -331,6 +403,7 @@ xcode-build-universal:
     grep -E "error:|warning:|BUILD|ARCHS|ONLY_ACTIVE_ARCH|libvt_ffi" "$LOG" | tail -40 || true
     test -d "$OUT/Zulangue.app" || { echo "FAIL: Zulangue.app 未生成"; exit 1; }
     just assert-universal-app
+    bash "{{ project_dir }}/scripts/check_release_version.sh" "$OUT/Zulangue.app"
     echo "✓ Universal Xcode build → $OUT/Zulangue.app"
 
 # Developer ID distribution build. Xcode signs Sparkle.framework and its
@@ -343,7 +416,7 @@ xcode-build-universal-signed:
     OUT="{{ app_build_dir }}"
     ARCHIVE="{{ build_dir }}/archive/Zulangue.xcarchive"
     LOG="$OUT/xcodebuild-distribution.log"
-    mkdir -p "$OUT" "$(dirname "$ARCHIVE")"
+    mkdir -p "$OUT" "$(dirname "$ARCHIVE")" "{{ xcode_cloned_source_packages }}"
     if [ -e "$ARCHIVE" ]; then
         find "$ARCHIVE" -depth -delete
     fi
@@ -353,6 +426,7 @@ xcode-build-universal-signed:
         -scheme Zulangue \
         -configuration Release \
         -archivePath "$ARCHIVE" \
+        -clonedSourcePackagesDirPath "{{ xcode_cloned_source_packages }}" \
         -destination "generic/platform=macOS" \
         ONLY_ACTIVE_ARCH=NO \
         ARCHS="arm64 x86_64" \
@@ -725,78 +799,163 @@ release-full: release xcode-build-universal-signed assert-universal-app assert-r
 # --- 内部 recipes ---
 
 _rust-build-debug:
-    RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix={{ project_dir }}=. --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=.cargo" \
-        MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }} \
-        cargo build -p vt-ffi --target {{ target_arm64 }}
+    MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }} \
+        cargo build -p vt-ffi --lib
 
 _rust-build-release-arm64:
     RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix={{ project_dir }}=. --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=.cargo" \
         MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }} \
-        cargo build -p vt-ffi --release --target {{ target_arm64 }}
+        cargo build -p vt-ffi --lib --release --target {{ target_arm64 }}
 
 _rust-build-release-x86_64:
     RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix={{ project_dir }}=. --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=.cargo" \
         MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }} \
-        cargo build -p vt-ffi --release --target {{ target_x86_64 }}
+        cargo build -p vt-ffi --lib --release --target {{ target_x86_64 }}
 
 _lipo:
-    mkdir -p target/universal/release
+    #!/usr/bin/env bash
+    set -euo pipefail
+    OUT="target/universal/release/libvt_ffi.a"
+    TMP="${OUT}.tmp.$$"
+    mkdir -p "$(dirname "$OUT")"
+    trap 'rm -f "$TMP"' EXIT
     lipo -create \
         target/{{ target_arm64 }}/release/libvt_ffi.a \
         target/{{ target_x86_64 }}/release/libvt_ffi.a \
-        -output target/universal/release/libvt_ffi.a
+        -output "$TMP"
+    lipo "$TMP" -verify_arch arm64 x86_64
+    if [[ -f "$OUT" ]] && cmp -s "$TMP" "$OUT"; then
+        echo "  = $OUT unchanged"
+    else
+        mv -f "$TMP" "$OUT"
+        echo "  → $OUT updated"
+    fi
 
-_uniffi-generate:
+_uniffi-generate library:
     #!/usr/bin/env bash
     set -euo pipefail
+    LIBRARY="{{ library }}"
+    test -f "$LIBRARY" || { echo "FAIL: UniFFI metadata library missing: $LIBRARY"; exit 1; }
     mkdir -p {{ uniffi_out }}
-    # 先确保 debug 版本已编译（uniffi 从 debug 提取接口）
-    RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix={{ project_dir }}=. --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=.cargo" \
-        MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }} \
-        cargo build -p vt-ffi --target {{ target_arm64 }}
-    cargo run -p vt-ffi --bin uniffi-bindgen generate \
-        --library target/{{ target_arm64 }}/debug/libvt_ffi.dylib \
+    TMP_DIR=$(mktemp -d "{{ uniffi_out }}.tmp.XXXXXX")
+    trap 'find "$TMP_DIR" -depth -delete 2>/dev/null || true' EXIT
+
+    cargo run -p zulangue-uniffi-bindgen -- generate \
+        --library "$LIBRARY" \
         --language swift \
-        --out-dir {{ uniffi_out }}
+        --out-dir "$TMP_DIR"
+
+    for generated in vt_ffi.swift vt_ffiFFI.h vt_ffiFFI.modulemap; do
+        test -f "$TMP_DIR/$generated" \
+            || { echo "FAIL: UniFFI did not generate $generated"; exit 1; }
+    done
+    ruby {{ project_dir }}/scripts/patch_uniffi_swift_init_guard.rb "$TMP_DIR/vt_ffi.swift"
+    ruby {{ project_dir }}/scripts/patch_uniffi_header_guard.rb "$TMP_DIR/vt_ffiFFI.h"
+    perl -pi -e 's/[ \t]+$//' "$TMP_DIR"/*.swift "$TMP_DIR"/*.h
+    perl -0pi -e 's/\n+\z/\n/' "$TMP_DIR"/*.swift "$TMP_DIR"/*.h
+
+    for generated in vt_ffi.swift vt_ffiFFI.h vt_ffiFFI.modulemap; do
+        destination="{{ uniffi_out }}/$generated"
+        if [[ -f "$destination" ]] && cmp -s "$TMP_DIR/$generated" "$destination"; then
+            echo "  = $generated unchanged"
+        else
+            mv -f "$TMP_DIR/$generated" "$destination"
+            echo "  → $generated updated"
+        fi
+    done
 
 _copy-artifacts:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{ bridge_dir }}
-    cp target/{{ target_arm64 }}/debug/libvt_ffi.a {{ bridge_dir }}/
-    cp {{ uniffi_out }}/*.swift {{ bridge_dir }}/ 2>/dev/null || true
-    cp {{ uniffi_out }}/*.h {{ bridge_dir }}/ 2>/dev/null || true
-    cp {{ uniffi_out }}/*.modulemap {{ bridge_dir }}/ 2>/dev/null || true
-    ruby {{ project_dir }}/scripts/patch_uniffi_swift_init_guard.rb {{ bridge_dir }}/vt_ffi.swift
-    ruby {{ project_dir }}/scripts/patch_uniffi_header_guard.rb {{ bridge_dir }}/vt_ffiFFI.h
-    perl -pi -e 's/[ \t]+$//' {{ bridge_dir }}/*.swift {{ bridge_dir }}/*.h 2>/dev/null || true
-    perl -0pi -e 's/\n+\z/\n/' {{ bridge_dir }}/*.swift {{ bridge_dir }}/*.h 2>/dev/null || true
+    TEMP_PATHS=()
+    cleanup() {
+        local temporary
+        for temporary in "${TEMP_PATHS[@]}"; do
+            rm -f "$temporary"
+        done
+    }
+    trap cleanup EXIT
+    replace_if_changed() {
+        local source="$1"
+        local destination="$2"
+        local replacement="${destination}.tmp.$$"
+        TEMP_PATHS+=("$replacement")
+        test -f "$source" || { echo "FAIL: artifact missing: $source"; exit 1; }
+        if [[ -f "$destination" ]] && cmp -s "$source" "$destination"; then
+            echo "  = $(basename "$destination") unchanged"
+            return
+        fi
+        cp "$source" "$replacement"
+        chmod 0644 "$replacement"
+        mv -f "$replacement" "$destination"
+        echo "  → $(basename "$destination") updated"
+    }
+
+    replace_if_changed target/debug/libvt_ffi.a {{ bridge_dir }}/libvt_ffi.a
+    replace_if_changed {{ uniffi_out }}/vt_ffi.swift {{ bridge_dir }}/vt_ffi.swift
+    replace_if_changed {{ uniffi_out }}/vt_ffiFFI.h {{ bridge_dir }}/vt_ffiFFI.h
+    replace_if_changed {{ uniffi_out }}/vt_ffiFFI.modulemap {{ bridge_dir }}/vt_ffiFFI.modulemap
     # Native C libs 必须跟 libvt_ffi.a 一起给 Xcode link(否则 Undefined symbols)。
     # fdk-aac-sys 的 build.rs 在 target/.../build/fdk-aac-sys-*/out 下出 libfdk-aac.a。
-    FDK=$(ls -t target/{{ target_arm64 }}/debug/build/fdk-aac-sys-*/out/libfdk-aac.a 2>/dev/null | head -1)
-    if [ -n "$FDK" ]; then cp "$FDK" {{ bridge_dir }}/; fi
+    shopt -s nullglob
+    FDK_CANDIDATES=(target/debug/build/fdk-aac-sys-*/out/libfdk-aac.a)
+    ((${#FDK_CANDIDATES[@]} > 0)) \
+        || { echo "FAIL: host debug libfdk-aac.a missing"; exit 1; }
+    FDK=$(ls -t -- "${FDK_CANDIDATES[@]}" | head -1)
+    HOST_ARCH=$(uname -m)
+    lipo "$FDK" -verify_arch "$HOST_ARCH"
+    replace_if_changed "$FDK" {{ bridge_dir }}/libfdk-aac.a
+    lipo {{ bridge_dir }}/libfdk-aac.a -verify_arch "$HOST_ARCH"
 
 _copy-artifacts-release:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{ bridge_dir }}
-    cp target/universal/release/libvt_ffi.a {{ bridge_dir }}/
+    TEMP_PATHS=()
+    FDK_TMP_DIR=""
+    cleanup() {
+        local temporary
+        for temporary in "${TEMP_PATHS[@]}"; do
+            rm -f "$temporary"
+        done
+        if [[ -n "$FDK_TMP_DIR" && -d "$FDK_TMP_DIR" ]]; then
+            find "$FDK_TMP_DIR" -depth -delete 2>/dev/null || true
+        fi
+    }
+    trap cleanup EXIT
+    replace_if_changed() {
+        local source="$1"
+        local destination="$2"
+        local replacement="${destination}.tmp.$$"
+        TEMP_PATHS+=("$replacement")
+        test -f "$source" || { echo "FAIL: artifact missing: $source"; exit 1; }
+        if [[ -f "$destination" ]] && cmp -s "$source" "$destination"; then
+            echo "  = $(basename "$destination") unchanged"
+            return
+        fi
+        cp "$source" "$replacement"
+        chmod 0644 "$replacement"
+        mv -f "$replacement" "$destination"
+        echo "  → $(basename "$destination") updated"
+    }
+
+    replace_if_changed target/universal/release/libvt_ffi.a {{ bridge_dir }}/libvt_ffi.a
     FDK_ARM64=$(ls -t target/{{ target_arm64 }}/release/build/fdk-aac-sys-*/out/libfdk-aac.a 2>/dev/null | head -1)
     FDK_X86_64=$(ls -t target/{{ target_x86_64 }}/release/build/fdk-aac-sys-*/out/libfdk-aac.a 2>/dev/null | head -1)
     if [ -z "$FDK_ARM64" ] || [ -z "$FDK_X86_64" ]; then
         echo "FAIL: release libfdk-aac.a missing for arm64 or x86_64"
         exit 1
     fi
-    rm -f {{ bridge_dir }}/libfdk-aac.a
-    lipo -create "$FDK_ARM64" "$FDK_X86_64" -output {{ bridge_dir }}/libfdk-aac.a
+    FDK_TMP_DIR=$(mktemp -d "{{ bridge_dir }}/fdk-universal.tmp.XXXXXX")
+    FDK_UNIVERSAL="$FDK_TMP_DIR/libfdk-aac.a"
+    lipo -create "$FDK_ARM64" "$FDK_X86_64" -output "$FDK_UNIVERSAL"
+    lipo "$FDK_UNIVERSAL" -verify_arch arm64 x86_64
+    replace_if_changed "$FDK_UNIVERSAL" {{ bridge_dir }}/libfdk-aac.a
     lipo {{ bridge_dir }}/libfdk-aac.a -verify_arch arm64 x86_64
-    cp {{ uniffi_out }}/*.swift {{ bridge_dir }}/ 2>/dev/null || true
-    cp {{ uniffi_out }}/*.h {{ bridge_dir }}/ 2>/dev/null || true
-    cp {{ uniffi_out }}/*.modulemap {{ bridge_dir }}/ 2>/dev/null || true
-    ruby {{ project_dir }}/scripts/patch_uniffi_swift_init_guard.rb {{ bridge_dir }}/vt_ffi.swift
-    ruby {{ project_dir }}/scripts/patch_uniffi_header_guard.rb {{ bridge_dir }}/vt_ffiFFI.h
-    perl -pi -e 's/[ \t]+$//' {{ bridge_dir }}/*.swift {{ bridge_dir }}/*.h 2>/dev/null || true
-    perl -0pi -e 's/\n+\z/\n/' {{ bridge_dir }}/*.swift {{ bridge_dir }}/*.h 2>/dev/null || true
+    replace_if_changed {{ uniffi_out }}/vt_ffi.swift {{ bridge_dir }}/vt_ffi.swift
+    replace_if_changed {{ uniffi_out }}/vt_ffiFFI.h {{ bridge_dir }}/vt_ffiFFI.h
+    replace_if_changed {{ uniffi_out }}/vt_ffiFFI.modulemap {{ bridge_dir }}/vt_ffiFFI.modulemap
 
 # 同步 Swift 文件到 Xcode project（防止新文件遗漏）
 _sync-xcode:

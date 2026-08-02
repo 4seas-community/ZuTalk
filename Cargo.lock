@@ -3568,7 +3568,6 @@ dependencies = [
  "cargo_metadata",
  "clap",
  "uniffi_bindgen",
- "uniffi_build",
  "uniffi_core",
  "uniffi_macros",
  "uniffi_pipeline",
@@ -3598,17 +3597,6 @@ dependencies = [
  "uniffi_meta",
  "uniffi_pipeline",
  "uniffi_udl",
-]
-
-[[package]]
-name = "uniffi_build"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b78fd9271a4c2e85bd2c266c5a9ede1fac676eb39fd77f636c27eaf67426fd5f"
-dependencies = [
- "anyhow",
- "camino",
- "uniffi_bindgen",
 ]
 
 [[package]]
@@ -3762,7 +3750,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vt-audio"
-version = "0.2.1"
+version = "0.0.0"
 dependencies = [
  "fdk-aac",
  "hound",
@@ -3774,7 +3762,7 @@ dependencies = [
 
 [[package]]
 name = "vt-crypto"
-version = "0.2.1"
+version = "0.0.0"
 dependencies = [
  "aes-gcm",
  "hex",
@@ -3791,7 +3779,7 @@ dependencies = [
 
 [[package]]
 name = "vt-export"
-version = "0.2.1"
+version = "0.0.0"
 dependencies = [
  "thiserror 2.0.18",
  "zip",
@@ -3833,14 +3821,14 @@ dependencies = [
 
 [[package]]
 name = "vt-i18n"
-version = "0.2.1"
+version = "0.0.0"
 dependencies = [
  "rust-i18n",
 ]
 
 [[package]]
 name = "vt-model"
-version = "0.2.1"
+version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3848,7 +3836,7 @@ dependencies = [
 
 [[package]]
 name = "vt-pipeline"
-version = "0.2.1"
+version = "0.0.0"
 dependencies = [
  "rusqlite",
  "serde",
@@ -3864,7 +3852,7 @@ dependencies = [
 
 [[package]]
 name = "vt-store"
-version = "0.2.1"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "loro",
@@ -3884,7 +3872,7 @@ dependencies = [
 
 [[package]]
 name = "vt-stt"
-version = "0.2.1"
+version = "0.0.0"
 dependencies = [
  "futures",
  "hound",
@@ -4407,4 +4395,11 @@ dependencies = [
  "crc32fast",
  "log",
  "simd-adler32",
+]
+
+[[package]]
+name = "zulangue-uniffi-bindgen"
+version = "0.0.0"
+dependencies = [
+ "uniffi",
 ]
