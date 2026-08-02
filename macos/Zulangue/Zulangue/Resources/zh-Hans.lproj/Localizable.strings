@@ -803,6 +803,8 @@
 "subtitle.overlay.font_auto.on" = "字号跟随窗口大小";
 "subtitle.overlay.font_auto.off" = "字号为手动设定";
 "subtitle.overlay.move_resize_hint" = "拖动窗口可移动；拖动任意边缘或四角可调整大小。";
+"subtitle.overlay.maximize" = "铺满当前屏幕";
+"subtitle.overlay.restore" = "恢复字幕窗口";
 "subtitle.overlay.pin" = "将字幕固定在最前";
 "subtitle.overlay.unpin" = "取消字幕置顶";
 "subtitle.overlay.pinned" = "已置顶，并显示在所有桌面";

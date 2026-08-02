@@ -801,6 +801,167 @@ final class WindowSystemTests: XCTestCase {
             SubtitleOverlayWindowPolicy.collectionBehavior(isPinned: false),
             [.moveToActiveSpace, .fullScreenAuxiliary]
         )
+        XCTAssertEqual(
+            SubtitleOverlayWindowPolicy.maximizedCollectionBehavior,
+            [.moveToActiveSpace, .fullScreenAuxiliary]
+        )
+    }
+
+    func testSubtitleOverlayMaximizeFillsTargetDisplayAndRestoresWindow() throws {
+        let store = ActiveBilingualTranscriptStore()
+        let panel = WindowCoordinator.shared.presentSubtitleOverlay(store: store)
+        let controller = try XCTUnwrap(panel.windowController as? SubtitleOverlayController)
+        let normalFrame = panel.frame
+        let targetFrame = try XCTUnwrap(panel.screen?.visibleFrame).integral
+
+        XCTAssertTrue(
+            WindowCoordinator.shared.setSubtitleOverlayMaximized(
+                true,
+                targetFrame: targetFrame
+            )
+        )
+
+        XCTAssertTrue(controller.isMaximized)
+        XCTAssertEqual(panel.frame, targetFrame.integral)
+        XCTAssertFalse(panel.styleMask.contains(.resizable))
+        XCTAssertFalse(panel.isMovable)
+        XCTAssertFalse(panel.isMovableByWindowBackground)
+        XCTAssertFalse(panel.hasShadow)
+        XCTAssertEqual(
+            panel.collectionBehavior,
+            SubtitleOverlayWindowPolicy.maximizedCollectionBehavior
+        )
+        XCTAssertGreaterThan(panel.contentMaxSize.width, targetFrame.width)
+        XCTAssertGreaterThan(panel.contentMaxSize.height, targetFrame.height)
+
+        XCTAssertFalse(WindowCoordinator.shared.setSubtitleOverlayMaximized(false))
+
+        XCTAssertFalse(controller.isMaximized)
+        XCTAssertEqual(panel.frame, normalFrame)
+        XCTAssertTrue(panel.styleMask.contains(.resizable))
+        XCTAssertTrue(panel.isMovable)
+        XCTAssertTrue(panel.isMovableByWindowBackground)
+        XCTAssertTrue(panel.hasShadow)
+        let normalMaximumContentSize = try XCTUnwrap(
+            WindowSpecV2.required(.subtitleOverlay).chrome.maximumContentSize
+        )
+        XCTAssertEqual(
+            panel.contentMaxSize,
+            normalMaximumContentSize
+        )
+        XCTAssertEqual(
+            panel.collectionBehavior,
+            SubtitleOverlayWindowPolicy.collectionBehavior(
+                isPinned: SubtitleOverlayPresentationSettings.shared.isPinned
+            )
+        )
+    }
+
+    func testSubtitleOverlayMaximizeAcceptsA4KDisplayFrameBeyondNormalWindowCap() {
+        let store = ActiveBilingualTranscriptStore()
+        let controller = SubtitleOverlayController(store: store)
+        defer { controller.close() }
+        let targetFrame = NSRect(x: 1920, y: 0, width: 3840, height: 2160)
+        var appliedFrames: [NSRect] = []
+
+        let isMaximized = controller.setMaximized(true, targetFrame: targetFrame) { frame in
+            appliedFrames.append(frame)
+            return true
+        }
+
+        XCTAssertTrue(isMaximized)
+        XCTAssertEqual(appliedFrames, [targetFrame])
+        XCTAssertGreaterThan(controller.managedWindow.contentMaxSize.width, targetFrame.width)
+        XCTAssertGreaterThan(controller.managedWindow.contentMaxSize.height, targetFrame.height)
+    }
+
+    func testSubtitleOverlayMaximizeDoesNotPersistExpandedFrame() throws {
+        let defaults = UserDefaults.standard
+        let previousValue = defaults.object(forKey: SubtitleOverlayController.savedFrameKey)
+        defer {
+            if let previousValue {
+                defaults.set(previousValue, forKey: SubtitleOverlayController.savedFrameKey)
+            } else {
+                defaults.removeObject(forKey: SubtitleOverlayController.savedFrameKey)
+            }
+        }
+
+        let store = ActiveBilingualTranscriptStore()
+        let panel = WindowCoordinator.shared.presentSubtitleOverlay(store: store)
+        let controller = try XCTUnwrap(panel.windowController as? SubtitleOverlayController)
+        let normalFrame = NSRect(x: 80, y: 120, width: 1100, height: 420)
+        let targetFrame = try XCTUnwrap(panel.screen?.visibleFrame).integral
+
+        XCTAssertTrue(
+            WindowCoordinator.shared.applyFrame(
+                normalFrame,
+                to: .subtitleOverlay,
+                animated: false,
+                reason: "unit-test.normal-frame"
+            )
+        )
+        controller.windowDidResize(Notification(name: NSWindow.didResizeNotification))
+        XCTAssertEqual(SubtitleOverlayController.loadSavedFrame(), normalFrame)
+
+        XCTAssertTrue(
+            WindowCoordinator.shared.setSubtitleOverlayMaximized(
+                true,
+                targetFrame: targetFrame
+            )
+        )
+        controller.windowDidMove(Notification(name: NSWindow.didMoveNotification))
+        controller.windowDidResize(Notification(name: NSWindow.didResizeNotification))
+
+        XCTAssertEqual(panel.frame, targetFrame)
+        XCTAssertEqual(SubtitleOverlayController.loadSavedFrame(), normalFrame)
+
+        WindowCoordinator.shared.dismissSubtitleOverlay()
+
+        XCTAssertEqual(SubtitleOverlayController.loadSavedFrame(), normalFrame)
+    }
+
+    func testSubtitleOverlayMaximizeAffordanceIsAlwaysTopLeadingAndAccessible() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue", isDirectory: true)
+        let source = try String(
+            contentsOf: root.appendingPathComponent(
+                "WindowSystemV2/Surfaces/SubtitleOverlayController.swift"
+            ),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains(".overlay(alignment: .topLeading)"))
+        XCTAssertTrue(source.contains("AccessibilityID.floatingSubtitleMaximize"))
+        XCTAssertTrue(source.contains("coordinator.isMaximized"))
+        XCTAssertTrue(source.contains("coordinator.restoreWindow()"))
+        XCTAssertEqual(
+            AccessibilityID.floatingSubtitleMaximize,
+            "capture.floatingSubtitles.maximize"
+        )
+    }
+
+    func testSubtitleOverlayMaximizeCopyIsLocalizedInEverySupportedAppLanguage() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue/Resources", isDirectory: true)
+
+        for language in AppLanguage.allCases {
+            let strings = try String(
+                contentsOf: root
+                    .appendingPathComponent("\(language.rawValue).lproj", isDirectory: true)
+                    .appendingPathComponent("Localizable.strings"),
+                encoding: .utf8
+            )
+            for key in ["subtitle.overlay.maximize", "subtitle.overlay.restore"] {
+                XCTAssertTrue(
+                    strings.contains("\"\(key)\" ="),
+                    "\(language.rawValue) is missing \(key)"
+                )
+            }
+        }
     }
 
     func testSubtitleOverlayBackdropIsTranslucentWithoutBackdropBlur() throws {

@@ -62,6 +62,7 @@ final class SubtitleOverlayCoordinator: ObservableObject {
     static let shared = SubtitleOverlayCoordinator()
 
     @Published private(set) var isPresented = false
+    @Published private(set) var isMaximized = false
 
     private let capture = ActiveBilingualTranscriptStore.shared
 
@@ -87,10 +88,21 @@ final class SubtitleOverlayCoordinator: ObservableObject {
     func dismiss() {
         WindowCoordinator.shared.dismissSubtitleOverlay()
         isPresented = false
+        isMaximized = false
+    }
+
+    func toggleMaximized() {
+        isMaximized = WindowCoordinator.shared.setSubtitleOverlayMaximized(!isMaximized)
+    }
+
+    func restoreWindow() {
+        guard isMaximized else { return }
+        isMaximized = WindowCoordinator.shared.setSubtitleOverlayMaximized(false)
     }
 
     func surfaceDidClose() {
         isPresented = false
+        isMaximized = false
     }
 
     func resetForTesting() {

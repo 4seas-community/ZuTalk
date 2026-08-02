@@ -169,6 +169,24 @@ final class WindowCoordinator {
         subtitleOverlayController = nil
     }
 
+    @discardableResult
+    func setSubtitleOverlayMaximized(
+        _ isMaximized: Bool,
+        targetFrame: NSRect? = nil
+    ) -> Bool {
+        guard let controller = subtitleOverlayController else { return false }
+        return controller.setMaximized(isMaximized, targetFrame: targetFrame) { [weak self] frame in
+            self?.applyFrame(
+                frame,
+                to: .subtitleOverlay,
+                animated: false,
+                reason: isMaximized
+                    ? "window.subtitle-overlay.maximize"
+                    : "window.subtitle-overlay.restore"
+            ) ?? false
+        }
+    }
+
     func didCloseManagedSurface(_ id: WindowSurfaceID) {
         switch id {
         case .main:

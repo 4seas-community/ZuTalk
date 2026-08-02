@@ -894,6 +894,14 @@ enum SubtitleOverlayWindowPolicy {
             ? [.canJoinAllSpaces, .fullScreenAuxiliary]
             : [.moveToActiveSpace, .fullScreenAuxiliary]
     }
+
+    /// A screen-filling canvas must stay on the Space where the operator
+    /// expanded it. Reusing the pinned all-Spaces behavior here would cover
+    /// every desktop on that display with a full-size panel.
+    static let maximizedCollectionBehavior: NSWindow.CollectionBehavior = [
+        .moveToActiveSpace,
+        .fullScreenAuxiliary,
+    ]
 }
 
 @MainActor
@@ -977,19 +985,38 @@ struct SubtitleOverlayView: View {
         subtitleBody
             .frame(minWidth: 560, minHeight: 180)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: canvasCornerRadius, style: .continuous)
                     .fill(SubtitleOverlayPalette.surface.opacity(canvasOpacity))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(SubtitleOverlayPalette.hairline, lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: canvasCornerRadius, style: .continuous)
+                            .strokeBorder(
+                                SubtitleOverlayPalette.hairline,
+                                lineWidth: coordinator.isMaximized ? 0 : 0.5
+                            )
                     )
             )
             .overlay(alignment: .top) { hoverControlBar }
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .onHover { hovering in
-                withAnimation(.easeOut(duration: 0.15)) {
-                    isHoveringOverlay = hovering
+            .overlay(alignment: .topLeading) {
+                maximizeButton
+                    .padding(8)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: canvasCornerRadius, style: .continuous))
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    // Once the panel fills a display, the pointer is almost
+                    // always inside it. Limit chrome activation to the top
+                    // control strip so subtitles return to a clean canvas as
+                    // soon as the pointer moves back into the content.
+                    updateControlBarVisibility(
+                        coordinator.isMaximized ? location.y <= 52 : true
+                    )
+                case .ended:
+                    updateControlBarVisibility(false)
                 }
+            }
+            .onExitCommand {
+                coordinator.restoreWindow()
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(Text(String(localized: "subtitle.overlay.accessibility_label")))
@@ -998,6 +1025,17 @@ struct SubtitleOverlayView: View {
                 store.selectedLanguages.count
             )))
             .environment(\.colorScheme, presentationSettings.theme.colorScheme)
+    }
+
+    private var canvasCornerRadius: CGFloat {
+        coordinator.isMaximized ? 0 : 14
+    }
+
+    private func updateControlBarVisibility(_ isVisible: Bool) {
+        guard isHoveringOverlay != isVisible else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            isHoveringOverlay = isVisible
+        }
     }
 
     /// The overlay is a projection canvas in every mode: while it is being
@@ -1071,11 +1109,45 @@ struct SubtitleOverlayView: View {
                 }
             }
         }
-        .padding(.leading, 14)
+        // The maximize affordance is always visible at top-left, including
+        // when the rest of the operator chrome has faded out. Reserve its
+        // footprint so the hover controls never slide underneath it.
+        .padding(.leading, 50)
         .padding(.trailing, 10)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
         .help(String(localized: "subtitle.overlay.move_resize_hint"))
+    }
+
+    private var maximizeButton: some View {
+        Button {
+            coordinator.toggleMaximized()
+        } label: {
+            Image(systemName: coordinator.isMaximized
+                ? "arrow.down.right.and.arrow.up.left"
+                : "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.secondary)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(SubtitleOverlayPalette.surface.opacity(controlsOpacity))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(SubtitleOverlayPalette.hairline, lineWidth: 0.5)
+                )
+        )
+        .help(String(localized: coordinator.isMaximized
+            ? "subtitle.overlay.restore"
+            : "subtitle.overlay.maximize"))
+        .accessibilityLabel(Text(String(localized: coordinator.isMaximized
+            ? "subtitle.overlay.restore"
+            : "subtitle.overlay.maximize")))
+        .accessibilityIdentifier(AccessibilityID.floatingSubtitleMaximize)
+        .keyboardShortcut("f", modifiers: [.control, .command])
     }
 
     private var captureStatus: some View {
@@ -2059,12 +2131,15 @@ struct SubtitleOverlayView: View {
 
 @MainActor
 final class SubtitleOverlayController: NSWindowController, ManagedWindowControllerV2, NSWindowDelegate {
-    private static let savedFrameKey = "zulangue.subtitleOverlay.frame"
+    static let savedFrameKey = "zulangue.subtitleOverlay.frame"
 
     private let store: ActiveBilingualTranscriptStore
     private var hostingView: NSHostingView<SubtitleOverlayView>?
     private var presentationSettingsCancellable: AnyCancellable?
     private var themeCancellable: AnyCancellable?
+    private var restoredWindowFrame: NSRect?
+    private var isApplyingMaximizedTransition = false
+    private(set) var isMaximized = false
 
     var windowSurfaceID: WindowSurfaceID { .subtitleOverlay }
     var managedWindow: NSWindow {
@@ -2109,6 +2184,19 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
         persistFrame()
     }
 
+    func windowDidChangeScreen(_ notification: Notification) {
+        guard isMaximized,
+              isApplyingMaximizedTransition == false,
+              let visibleFrame = managedWindow.screen?.visibleFrame
+        else { return }
+        _ = WindowCoordinator.shared.applyFrame(
+            visibleFrame.integral,
+            to: .subtitleOverlay,
+            animated: false,
+            reason: "window.subtitle-overlay.display-change"
+        )
+    }
+
     var storeForTesting: ActiveBilingualTranscriptStore {
         store
     }
@@ -2117,6 +2205,63 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
         guard let encoded = defaults.string(forKey: savedFrameKey) else { return nil }
         let rect = NSRectFromString(encoded)
         return rect.width > 0 && rect.height > 0 ? rect : nil
+    }
+
+    /// Expands the subtitle canvas over the usable frame of its current
+    /// display without creating a separate macOS Space. The menu bar and Dock
+    /// remain reachable, while the live overlay stays above presentation
+    /// software and restores the exact operator-sized window on exit.
+    @discardableResult
+    func setMaximized(
+        _ shouldMaximize: Bool,
+        targetFrame: NSRect? = nil,
+        applyFrame: (NSRect) -> Bool
+    ) -> Bool {
+        guard shouldMaximize != isMaximized else {
+            return isMaximized
+        }
+
+        if shouldMaximize {
+            guard let frame = targetFrame
+                ?? managedWindow.screen?.visibleFrame
+                ?? NSScreen.main?.visibleFrame
+                ?? NSScreen.screens.first?.visibleFrame
+            else { return false }
+
+            restoredWindowFrame = managedWindow.frame
+            isApplyingMaximizedTransition = true
+            isMaximized = true
+            managedWindow.contentMaxSize = NSSize(
+                width: CGFloat.greatestFiniteMagnitude,
+                height: CGFloat.greatestFiniteMagnitude
+            )
+            managedWindow.styleMask = managedWindow.styleMask.subtracting(.resizable)
+            managedWindow.isMovable = false
+            managedWindow.isMovableByWindowBackground = false
+            managedWindow.hasShadow = false
+            managedWindow.collectionBehavior =
+                SubtitleOverlayWindowPolicy.maximizedCollectionBehavior
+            let didApplyFrame = applyFrame(frame.integral)
+            isApplyingMaximizedTransition = false
+            if didApplyFrame == false {
+                isMaximized = false
+                restoredWindowFrame = nil
+                restoreWindowChrome()
+            }
+            guard didApplyFrame else { return false }
+            return true
+        }
+
+        let frame = restoredWindowFrame ?? managedWindowSpec.initialContentRect
+        isApplyingMaximizedTransition = true
+        isMaximized = false
+        restoreWindowChrome()
+        let didApplyFrame = applyFrame(frame)
+        restoredWindowFrame = nil
+        isApplyingMaximizedTransition = false
+        guard didApplyFrame else { return false }
+        persistFrame()
+        return false
     }
 
     private func configurePanel() {
@@ -2151,8 +2296,9 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
 
     private func applyPinnedState(_ isPinned: Bool) {
         managedWindow.level = SubtitleOverlayWindowPolicy.level(isPinned: isPinned)
-        managedWindow.collectionBehavior =
-            SubtitleOverlayWindowPolicy.collectionBehavior(isPinned: isPinned)
+        managedWindow.collectionBehavior = isMaximized
+            ? SubtitleOverlayWindowPolicy.maximizedCollectionBehavior
+            : SubtitleOverlayWindowPolicy.collectionBehavior(isPinned: isPinned)
         if isPinned, managedWindow.isVisible {
             managedWindow.orderFrontRegardless()
         }
@@ -2169,7 +2315,23 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
         managedWindow.contentViewController = nil
     }
 
+    private func restoreWindowChrome() {
+        managedWindow.styleMask = managedWindow.styleMask.union(.resizable)
+        managedWindow.hasShadow = managedWindowSpec.chrome.hasShadow
+        if let isMovable = managedWindowSpec.chrome.isMovable {
+            managedWindow.isMovable = isMovable
+        }
+        if let isMovableByWindowBackground = managedWindowSpec.chrome.isMovableByWindowBackground {
+            managedWindow.isMovableByWindowBackground = isMovableByWindowBackground
+        }
+        if let maximumContentSize = managedWindowSpec.chrome.maximumContentSize {
+            managedWindow.contentMaxSize = maximumContentSize
+        }
+        applyPinnedState(SubtitleOverlayPresentationSettings.shared.isPinned)
+    }
+
     private func persistFrame(defaults: UserDefaults = .standard) {
+        guard isMaximized == false, isApplyingMaximizedTransition == false else { return }
         defaults.set(NSStringFromRect(managedWindow.frame), forKey: Self.savedFrameKey)
     }
 }

@@ -7322,6 +7322,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 "subtitle.overlay.font_smaller",
                 "subtitle.overlay.font_larger",
                 "subtitle.overlay.move_resize_hint",
+                "subtitle.overlay.maximize",
+                "subtitle.overlay.restore",
                 "subtitle.overlay.pin",
                 "subtitle.overlay.unpin",
                 "subtitle.overlay.pinned",

@@ -35,6 +35,9 @@ enum AccessibilityID {
     /// 菜单栏和实时转录页：打开多语言字幕浮窗
     static let floatingSubtitleButton = "capture.button.floatingSubtitles"
 
+    /// 字幕浮窗左上角：铺满当前显示器或恢复窗口
+    static let floatingSubtitleMaximize = "capture.floatingSubtitles.maximize"
+
     /// 字幕浮窗右上角：减小或放大字号
     static let floatingSubtitleFontSmaller = "capture.floatingSubtitles.fontSmaller"
     static let floatingSubtitleFontLarger = "capture.floatingSubtitles.fontLarger"

@@ -803,6 +803,8 @@
 "subtitle.overlay.font_auto.on" = "캡션 크기는 창을 따릅니다.";
 "subtitle.overlay.font_auto.off" = "수동으로 설정한 캡션 크기";
 "subtitle.overlay.move_resize_hint" = "창을 드래그하여 이동하세요. 크기를 조정하려면 가장자리나 모서리를 드래그하세요.";
+"subtitle.overlay.maximize" = "현재 화면 채우기";
+"subtitle.overlay.restore" = "자막 창 복원";
 "subtitle.overlay.pin" = "자막을 상단에 유지";
 "subtitle.overlay.unpin" = "자막을 상단에 유지하지 마세요.";
 "subtitle.overlay.pinned" = "모든 데스크탑의 다른 창 위에 고정됨";
