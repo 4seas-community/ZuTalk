@@ -170,14 +170,10 @@ struct DocumentEditorPage: View {
             ZStack {
                 // Editor 层
                 editorLayer
-                    .opacity(showTranscript || isShowingCaptureSettings || isShowingResources ? 0 : 1)
-                    .allowsHitTesting(
-                        showTranscript == false
-                            && isShowingCaptureSettings == false
-                            && isShowingResources == false
-                    )
-                    .disabled(isShowingCaptureSettings || isShowingResources)
-                    .accessibilityHidden(showTranscript || isShowingCaptureSettings || isShowingResources)
+                    .opacity(editorLayerIsVisible ? 1 : 0)
+                    .allowsHitTesting(editorLayerIsVisible)
+                    .disabled(surface.showsNotebookOverlay)
+                    .accessibilityHidden(editorLayerIsVisible == false)
 
                 // Realtime is constructed even without a session: it is the
                 // Notebook's capture command center. Async remains
@@ -192,17 +188,9 @@ struct DocumentEditorPage: View {
                     )
                         .id("realtime:\(transcriptTab.notebookId)")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .opacity(showTranscript && isShowingCaptureSettings == false ? 1 : 0)
-                        .allowsHitTesting(
-                            showTranscript
-                                && isShowingCaptureSettings == false
-                                && isShowingResources == false
-                        )
-                        .accessibilityHidden(
-                            showTranscript == false
-                                || isShowingCaptureSettings
-                                || isShowingResources
-                        )
+                        .opacity(surface.showsTranscriptLayer ? 1 : 0)
+                        .allowsHitTesting(surface.showsTranscriptLayer)
+                        .accessibilityHidden(surface.showsTranscriptLayer == false)
                 } else if let sid = effectiveSessionId,
                           let transcriptTab = activeNotebookTab,
                           transcriptTab.displayType == .asyncTranscript {
@@ -214,17 +202,9 @@ struct DocumentEditorPage: View {
                         status: transcriptTab.status
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .opacity(showTranscript && isShowingCaptureSettings == false ? 1 : 0)
-                    .allowsHitTesting(
-                        showTranscript
-                            && isShowingCaptureSettings == false
-                            && isShowingResources == false
-                    )
-                    .accessibilityHidden(
-                        showTranscript == false
-                            || isShowingCaptureSettings
-                            || isShowingResources
-                    )
+                    .opacity(surface.showsTranscriptLayer ? 1 : 0)
+                    .allowsHitTesting(surface.showsTranscriptLayer)
+                    .accessibilityHidden(surface.showsTranscriptLayer == false)
                 } else if showTranscript && isShowingCaptureSettings == false {
                     // 用户点了 Transcript tab 但 doc 没 session(纯 scratchpad)
                     EmptyState(
@@ -384,31 +364,33 @@ struct DocumentEditorPage: View {
         }
     }
 
+    /// Exhaustive over `EditorSurface`. A new surface stops compiling here
+    /// until it is given something to render, which is precisely what the old
+    /// `if / else if` chain could not enforce — its fall-through returned
+    /// `Color.clear` and shipped a blank page twice.
     @ViewBuilder
     private func documentEditorContent(notebookId: String, tabId: String) -> some View {
-        if let error = bridgeError {
+        switch surface {
+        case .documentUnavailable(let message):
             EmptyState(
                 icon: "exclamationmark.triangle",
                 title: String(localized: "editor.empty.unavailable_title"),
-                description: error
+                description: message
             )
-        } else if activeNotebookTab?.status == .pending {
-            // 转录处理中，editor 暂不可用。
+
+        case .asyncPending:
             PendingDocumentState()
-        } else if activeNotebookTab?.status == .failed {
+
+        case .asyncFailed:
             FailedDocumentState(errorMessage: selectedTranscriptionTask?.errorMessage)
-        } else if NotebookDocumentSurfacePolicy.mountsLoroTextEditor(
-            for: activeNotebookTab?.displayType
-        ) {
+
+        case .manualNote:
             // 文档切换时通过 updateNSView 更换 bridge，并复用 NSTextView。
             ZStack(alignment: .topLeading) {
                 DocumentTextView(
                     notebookId: notebookId,
                     tabId: tabId,
-                    isEditable: NotebookCaptureSettingsRoutePolicy.isDocumentEditorInteractive(
-                        showTranscript: showTranscript,
-                        presentedSettingsNotebookId: presentedCaptureSettingsNotebookId
-                    ),
+                    isEditable: surface.allowsTextEditing,
                     bridge: $bridge,
                     textView: $hostedTextView,
                     selection: $currentSelection,
@@ -419,16 +401,34 @@ struct DocumentEditorPage: View {
                 )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if activeNotebookTab?.displayType == .asyncTranscript {
-            // Async tab reached without a selected session: the transcript
-            // layer is session-scoped, so the editor layer must own this state
-            // instead of falling through to a blank surface.
+
+        case .asyncNeedsSession:
+            // The transcript layer is session-scoped, so the editor layer owns
+            // this state rather than falling through to a blank surface.
             EmptyState(
                 illustration: { Arcanum003WaveformRuler() },
                 title: String(localized: "editor.transcript.async.no_session_title"),
                 description: String(localized: "editor.transcript.async.no_session_desc")
             )
-        } else {
+
+        case .tabsLoading:
+            // Tabs resolve a frame or two after the route does. Previously this
+            // also fell through to Color.clear — a blank page for as long as
+            // the load took.
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .missingDocument:
+            EmptyState(
+                illustration: { Arcanum003WaveformRuler() },
+                title: String(localized: "editor.empty.no_doc_title"),
+                description: String(localized: "editor.empty.no_doc_desc")
+            )
+
+        // Drawn by their own layers in the ZStack; the editor layer is behind
+        // them at opacity 0 and must not paint over them.
+        case .realtime, .asyncTranscript, .captureSettings, .resources, .manualTimeline:
             Color.clear
         }
     }
@@ -440,6 +440,26 @@ struct DocumentEditorPage: View {
     private var activeNotebookTab: NotebookTabViewModel? {
         guard let activeNotebookTabId else { return nil }
         return notebookTabs.first { $0.id == activeNotebookTabId }
+    }
+
+    /// Single source of truth for what the content area is showing. Every
+    /// opacity, hit-testing and accessibility condition below derives from
+    /// this rather than from the booleans it replaced.
+    private var surface: EditorSurface {
+        EditorSurfacePolicy.resolve(
+            route: route,
+            activeTab: activeNotebookTab,
+            presentedCaptureSettingsNotebookId: presentedCaptureSettingsNotebookId,
+            isShowingResources: isShowingResources,
+            bridgeError: bridgeError
+        )
+    }
+
+    /// The editor layer stays mounted for every surface so the cursor, scroll
+    /// offset and IME state survive tab switches; this only decides whether it
+    /// is the one the user can see and reach.
+    private var editorLayerIsVisible: Bool {
+        surface.showsTranscriptLayer == false && surface.showsNotebookOverlay == false
     }
 
     private var isShowingCaptureSettings: Bool {

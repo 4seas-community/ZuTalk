@@ -28,6 +28,7 @@
 		8C650758EB5B16D2F6B349E3 /* DocumentEditorFormattingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA270ED67B65CD6B619E724A /* DocumentEditorFormattingTests.swift */; };
 		99970ED7A6224EAFE901D712 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = ED747CFF1AF51B7426CAA001 /* libresolv.tbd */; };
 		A1B2C3D40000000000000001 /* DesignTokenGoldenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000002 /* DesignTokenGoldenTests.swift */; };
+		A1B2C3D40000000000000003 /* EditorSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000004 /* EditorSurfaceTests.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* RecordingHudControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F3 /* RecordingHudControllerTests.swift */; };
 		C0D3F0010000000000000003 /* vt_ffi.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D3F0010000000000000001 /* vt_ffi.swift */; };
 		C0D3F0010000000000000004 /* libZulangueFFI.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C0D3F0010000000000000002 /* libZulangueFFI.a */; };
@@ -106,6 +107,7 @@
 		9598FFAD28CA31BFBCA90191 /* DebugLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DebugLog.swift; sourceTree = "<group>"; };
 		99148459BF5023CF09B22E99 /* MetadataLabel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MetadataLabel.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000002 /* DesignTokenGoldenTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DesignTokenGoldenTests.swift; sourceTree = "<group>"; };
+		A1B2C3D40000000000000004 /* EditorSurfaceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EditorSurfaceTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E1F3 /* RecordingHudControllerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecordingHudControllerTests.swift; sourceTree = "<group>"; };
 		A557C9581DBAF0092D964EA3 /* IconButton.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IconButton.swift; sourceTree = "<group>"; };
 		A8D7293DBB546554791FCA02 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
@@ -414,6 +416,7 @@
 			children = (
 				CC01AB12CD34EF56AB78CD01 /* CommunityInviteLaneCountTests.swift */,
 				4628A3113DB3E747E57DD458 /* DesignSystemTests.swift */,
+				A1B2C3D40000000000000004 /* EditorSurfaceTests.swift */,
 				A1B2C3D40000000000000002 /* DesignTokenGoldenTests.swift */,
 				FDD2897B6DA01351336E1417 /* NotebookCaptureRuntimeTests.swift */,
 				6CE5515BC1A19E49ACF4695D /* ToastCenterTests.swift */,
@@ -769,6 +772,7 @@
 				41FCC028AA59D24DAA9381AB /* SessionAudioAPITests.swift in Sources */,
 				CC01AB12CD34EF56AB78CD02 /* CommunityInviteLaneCountTests.swift in Sources */,
 				3F6E3928687B8CEF7FB73122 /* DesignSystemTests.swift in Sources */,
+				A1B2C3D40000000000000003 /* EditorSurfaceTests.swift in Sources */,
 				A1B2C3D40000000000000001 /* DesignTokenGoldenTests.swift in Sources */,
 				67AF36C08A6FEA3CF5F1535E /* NotebookCaptureRuntimeTests.swift in Sources */,
 				F0A443E42466075E4CA84FFB /* ToastCenterTests.swift in Sources */,
