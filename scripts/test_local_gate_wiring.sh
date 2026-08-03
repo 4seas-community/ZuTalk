@@ -69,6 +69,7 @@ for script in \
   scripts/test_bundle_id_recovery_gate.sh \
   scripts/test_secret_material_storage_gate.sh \
   scripts/test_minimal_mvp_architecture_gate.sh \
+  scripts/check_locale_parity.sh \
   scripts/anti-demo.sh
 do
   contains_command "$static_body" "bash $script" \

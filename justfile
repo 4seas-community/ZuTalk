@@ -153,6 +153,7 @@ ci-check:
     bash scripts/test_bundle_id_recovery_gate.sh
     bash scripts/test_secret_material_storage_gate.sh
     bash scripts/test_minimal_mvp_architecture_gate.sh
+    bash scripts/check_locale_parity.sh
     bash scripts/anti-demo.sh
     @echo "✓ CI check 通过"
 
@@ -173,6 +174,7 @@ local-gate-static:
     bash scripts/test_bundle_id_recovery_gate.sh
     bash scripts/test_secret_material_storage_gate.sh
     bash scripts/test_minimal_mvp_architecture_gate.sh
+    bash scripts/check_locale_parity.sh
     bash scripts/anti-demo.sh
 
 local-gate-rust-core:
