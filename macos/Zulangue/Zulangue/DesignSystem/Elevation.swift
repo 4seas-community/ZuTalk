@@ -16,7 +16,7 @@
 //   - 一个 shadow 强度(色 + 半径 + Y 偏移)
 //   - 一个 border 提亮量
 //
-// hover 时自动 elevation +1(InsetCard 等组件已内置)。
+// hover 时自动 elevation +1(需要的组件自行内置)。
 // 禁止散落的 .shadow(color:radius:y:) 调用,统一用 .elevation(_:) modifier。
 
 import SwiftUI

@@ -36,7 +36,7 @@ struct FocusRingModifier: ViewModifier {
 enum FocusIntensity {
     case subtle    // 1px,适合小元素(IconButton)
     case standard  // 2px,适合中等元素(LabeledButton, TextField)
-    case strong    // 3px,适合大元素(InsetCard, EmptyState 主按钮)
+    case strong    // 3px,适合大元素(EmptyState 主按钮)
 
     var lineWidth: CGFloat {
         switch self {
