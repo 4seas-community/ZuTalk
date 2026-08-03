@@ -101,26 +101,6 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(window.frame, target)
     }
 
-    @available(macOS 13.0, *)
-    func testWindowHosting_makeView_fixedWindowOwnedDisablesHostingSizing() {
-        let hosting = WindowHosting.makeView(rootView: Color.clear.frame(width: 300, height: 200))
-
-        XCTAssertEqual(hosting.sizingOptions, [])
-        if #available(macOS 15.0, *) {
-            XCTAssertEqual(hosting.sceneBridgingOptions, [])
-        }
-    }
-
-    @available(macOS 13.0, *)
-    func testWindowHosting_makeController_fixedWindowOwnedDisablesHostingSizing() {
-        let hosting = WindowHosting.makeController(rootView: Color.clear.frame(width: 300, height: 200))
-
-        XCTAssertEqual(hosting.sizingOptions, [])
-        if #available(macOS 15.0, *) {
-            XCTAssertEqual(hosting.sceneBridgingOptions, [])
-        }
-    }
-
     func testWindowSpecV2_baselineCatalog_containsAllKnownWindowSurfaces() {
         let snapshot = WindowSpecV2.baselineCatalog()
         let ids = Set(snapshot.keys)
@@ -129,7 +109,6 @@ final class WindowSystemTests: XCTestCase {
     }
 
     func testMainWindowSpecV2_supportsNativeFullScreenSpace() {
-        let legacySpec = WindowSpec.required(.main)
         let spec = WindowSpecV2.required(.main)
         let window = NSWindow(
             contentRect: spec.initialContentRect,
@@ -141,7 +120,7 @@ final class WindowSystemTests: XCTestCase {
         ManagedWindowRuntimeV2.apply(spec: spec, to: window)
 
         XCTAssertTrue(spec.styleMask.contains(.resizable))
-        XCTAssertTrue(legacySpec.chrome.collectionBehavior.contains(.fullScreenPrimary))
+        XCTAssertTrue(spec.chrome.collectionBehavior.contains(.fullScreenPrimary))
         XCTAssertTrue(
             window.collectionBehavior.contains(.fullScreenPrimary),
             "The green traffic-light button should enter a native macOS full-screen Space"

@@ -10,52 +10,37 @@ final class WindowArchitectureTests: XCTestCase {
         WindowCommandRouter.shared.resetForTesting()
     }
 
-    // MARK: - WindowLayoutEngine (subtitle overlay + main)
+    // MARK: - WindowLayoutEngineV2 (subtitle overlay + main)
 
-    func testWindowLayoutEngine_subtitleOverlayPrefersValidSavedFrame() {
+    func testWindowLayoutEngineV2_subtitleOverlayPrefersValidSavedFrame() {
         let visible = NSRect(x: 0, y: 0, width: 1440, height: 900)
         let saved = NSRect(x: 120, y: 180, width: 960, height: 220)
-        let input = WindowLayoutInput(
-            screenFrame: visible,
-            visibleFrame: visible,
+        let request = WindowLayoutRequestV2(
+            surfaceID: .subtitleOverlay,
+            display: DisplayProfileV2(frame: visible, visibleFrame: visible),
             savedFrame: saved
         )
 
-        let layout = WindowLayoutEngine.layout(for: .subtitleOverlay, input: input)
+        let snapshot = WindowLayoutEngineV2.snapshot(for: request)
 
-        XCTAssertEqual(layout?.frame, saved.integral)
+        XCTAssertEqual(snapshot?.outerFrame, saved.integral)
     }
 
-    func testWindowLayoutEngine_subtitleOverlayFallsBackToTopCenteredDefaultFrame() {
+    func testWindowLayoutEngineV2_subtitleOverlayFallsBackToTopCenteredDefaultFrame() {
         let visible = NSRect(x: 0, y: 0, width: 1200, height: 900)
         let invalidSaved = NSRect(x: -2000, y: -2000, width: 100, height: 40)
-        let input = WindowLayoutInput(
-            screenFrame: visible,
-            visibleFrame: visible,
+        let request = WindowLayoutRequestV2(
+            surfaceID: .subtitleOverlay,
+            display: DisplayProfileV2(frame: visible, visibleFrame: visible),
             savedFrame: invalidSaved
         )
 
-        let layout = WindowLayoutEngine.layout(for: .subtitleOverlay, input: input)
+        let snapshot = WindowLayoutEngineV2.snapshot(for: request)
 
-        XCTAssertEqual(layout?.frame.width, 1100)
-        XCTAssertEqual(layout?.frame.height, 280)
-        XCTAssertEqual(layout?.frame.origin.x, 50)
-        XCTAssertEqual(layout?.frame.origin.y, 584)
-    }
-
-    func testWindowLayoutEngine_subtitleOverlayClampsOversizedSavedFrameIntoVisibleBounds() {
-        let visible = NSRect(x: 0, y: 24, width: 1512, height: 956)
-        let oversizedSaved = NSRect(x: 86, y: -820, width: 1556, height: 1844)
-        let input = WindowLayoutInput(
-            screenFrame: visible,
-            visibleFrame: visible,
-            savedFrame: oversizedSaved
-        )
-
-        let layout = WindowLayoutEngine.layout(for: .subtitleOverlay, input: input)
-        let frame = layout?.frame ?? .zero
-
-        XCTAssertTrue(visible.contains(frame))
+        XCTAssertEqual(snapshot?.outerFrame.width, 1100)
+        XCTAssertEqual(snapshot?.outerFrame.height, 280)
+        XCTAssertEqual(snapshot?.outerFrame.origin.x, 50)
+        XCTAssertEqual(snapshot?.outerFrame.origin.y, 584)
     }
 
     func testWindowLayoutEngineV2_subtitleOverlayClampsOversizedSavedFrameIntoVisibleBounds() {
@@ -89,16 +74,16 @@ final class WindowArchitectureTests: XCTestCase {
         XCTAssertEqual(frame.origin.y, 154)
     }
 
-    func testWindowLayoutEngine_mainWindowUsesLaunchFrameHelper() {
+    func testWindowLayoutEngineV2_mainWindowUsesLaunchFrameHelper() {
         let visible = NSRect(x: 0, y: 24, width: 1728, height: 1060)
-        let input = WindowLayoutInput(
-            screenFrame: visible,
-            visibleFrame: visible
+        let request = WindowLayoutRequestV2(
+            surfaceID: .main,
+            display: DisplayProfileV2(frame: visible, visibleFrame: visible)
         )
 
-        let layout = WindowLayoutEngine.layout(for: .main, input: input)
+        let snapshot = WindowLayoutEngineV2.snapshot(for: request)
 
-        XCTAssertEqual(layout?.frame, MainWindowMetrics.launchFrame(in: visible))
+        XCTAssertEqual(snapshot?.outerFrame, MainWindowMetrics.launchFrame(in: visible))
     }
 
     func testMainWindowMetrics_rejectsCorruptedAutosavedFrameDescriptor() {

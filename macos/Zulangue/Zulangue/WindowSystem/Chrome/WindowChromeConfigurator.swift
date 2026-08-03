@@ -129,7 +129,7 @@ final class WindowChromeConfigurator {
     }
 
     @discardableResult
-    func stabilizeSwiftUIHostingTree(on window: NSWindow) -> HostingSizingStabilizationResult {
-        WindowHosting.stabilizeWindowTree(on: window)
+    func stabilizeSwiftUIHostingTree(on window: NSWindow) -> HostingSizingStabilizationResultV2 {
+        WindowHostingV2.stabilizeWindowTree(on: window)
     }
 }

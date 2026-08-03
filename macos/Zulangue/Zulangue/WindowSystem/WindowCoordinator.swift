@@ -12,12 +12,6 @@ final class WindowCoordinator {
         }
     }
 
-    private struct PendingLayoutUpdate {
-        let input: WindowLayoutInput
-        let animated: Bool
-        let reason: String
-    }
-
     private struct DiagnosticObserverSpec {
         let name: Notification.Name
         let label: String
@@ -28,20 +22,18 @@ final class WindowCoordinator {
         let tokens: [NSObjectProtocol]
     }
 
-    private var catalog: [WindowSurfaceID: WindowSpec] = [:]
+    private var catalog: [WindowSurfaceID: WindowSpecV2] = [:]
     private var registeredWindows: [WindowSurfaceID: WeakWindowBox] = [:]
     private var mainSurfaceController: MainWindowControllerV2?
     private var subtitleOverlayController: SubtitleOverlayController?
     private let subtitleDisplaySleepActivity = SubtitleDisplaySleepActivity()
-    private var pendingLayoutUpdates: [WindowSurfaceID: PendingLayoutUpdate] = [:]
-    private var scheduledLayoutUpdates: Set<WindowSurfaceID> = []
     private var diagnosticAttachments: [WindowSurfaceID: DiagnosticAttachment] = [:]
 
     private init() {}
 
     func installBaselineCatalog() {
         guard catalog.isEmpty else { return }
-        catalog = WindowSpec.baselineCatalog()
+        catalog = WindowSpecV2.baselineCatalog()
         CrashDiagnostics.record(
             "window-system.bootstrap",
             "baseline catalog ready",
@@ -49,14 +41,14 @@ final class WindowCoordinator {
         )
     }
 
-    func spec(for id: WindowSurfaceID) -> WindowSpec? {
+    func spec(for id: WindowSurfaceID) -> WindowSpecV2? {
         if catalog.isEmpty {
             installBaselineCatalog()
         }
         return catalog[id]
     }
 
-    func catalogSnapshot() -> [WindowSpec] {
+    func catalogSnapshot() -> [WindowSpecV2] {
         if catalog.isEmpty {
             installBaselineCatalog()
         }
@@ -89,11 +81,11 @@ final class WindowCoordinator {
             )
             return false
         }
-        return ManagedWindowRuntime.present(window: window, using: spec)
+        return ManagedWindowRuntimeV2.present(window: window, using: spec)
     }
 
     @discardableResult
-    func dismissRegisteredWindow(_ id: WindowSurfaceID) -> ManagedWindowDismissAction? {
+    func dismissRegisteredWindow(_ id: WindowSurfaceID) -> WindowSpecV2.DismissAction? {
         guard let window = window(for: id), let spec = spec(for: id) else {
             CrashDiagnostics.record(
                 "window-system.dismiss-missing",
@@ -102,7 +94,7 @@ final class WindowCoordinator {
             )
             return nil
         }
-        return ManagedWindowRuntime.dismiss(window: window, using: spec)
+        return ManagedWindowRuntimeV2.dismiss(window: window, using: spec)
     }
 
     func unregisterWindow(_ id: WindowSurfaceID) {
@@ -242,56 +234,6 @@ final class WindowCoordinator {
         return true
     }
 
-    @discardableResult
-    func applyLayout(
-        for id: WindowSurfaceID,
-        input: WindowLayoutInput,
-        animated: Bool = false,
-        reason: String
-    ) -> Bool {
-        guard let layout = WindowLayoutEngine.layout(for: id, input: input) else {
-            CrashDiagnostics.record(
-                "window-system.layout-miss",
-                id.rawValue,
-                detail: "reason=\(reason)"
-            )
-            return false
-        }
-        return applyFrame(
-            layout.frame,
-            to: id,
-            animated: animated,
-            reason: reason
-        )
-    }
-
-    func requestLayoutUpdate(
-        for id: WindowSurfaceID,
-        input: WindowLayoutInput,
-        animated: Bool = false,
-        reason: String
-    ) {
-        if let existing = pendingLayoutUpdates[id] {
-            pendingLayoutUpdates[id] = PendingLayoutUpdate(
-                input: input,
-                animated: existing.animated || animated,
-                reason: reason
-            )
-        } else {
-            pendingLayoutUpdates[id] = PendingLayoutUpdate(
-                input: input,
-                animated: animated,
-                reason: reason
-            )
-        }
-
-        guard scheduledLayoutUpdates.insert(id).inserted else { return }
-
-        DispatchQueue.main.async { [weak self] in
-            self?.flushLayoutUpdate(for: id)
-        }
-    }
-
     func registrySnapshot() -> [String] {
         if catalog.isEmpty {
             installBaselineCatalog()
@@ -354,8 +296,6 @@ final class WindowCoordinator {
         catalog.removeAll()
         detachAllDiagnostics()
         registeredWindows.removeAll()
-        pendingLayoutUpdates.removeAll()
-        scheduledLayoutUpdates.removeAll()
         refreshDiagnosticsSnapshot()
     }
 
@@ -369,17 +309,6 @@ final class WindowCoordinator {
 
     var isPreventingSubtitleDisplaySleepForTesting: Bool {
         subtitleDisplaySleepActivity.isActive
-    }
-
-    private func flushLayoutUpdate(for id: WindowSurfaceID) {
-        scheduledLayoutUpdates.remove(id)
-        guard let pending = pendingLayoutUpdates.removeValue(forKey: id) else { return }
-        _ = applyLayout(
-            for: id,
-            input: pending.input,
-            animated: pending.animated,
-            reason: pending.reason
-        )
     }
 
     @discardableResult
