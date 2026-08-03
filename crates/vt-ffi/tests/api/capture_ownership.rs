@@ -86,7 +86,8 @@ fn invalid_local_audio_interrupts_durably_and_releases_capture_ownership() {
     assert_eq!(session.duration_ms, 100);
     assert!(session.has_encrypted_audio);
     let chunks = core
-        .list_audio_retention_chunks(first.session_id.clone())
+        .session_meta_for_test()
+        .list_audio_retention_chunks(&first.session_id)
         .unwrap();
     assert!(!chunks.is_empty());
     assert!(chunks.iter().all(|chunk| chunk.encrypted));

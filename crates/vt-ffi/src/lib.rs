@@ -1300,28 +1300,6 @@ impl ZulangueCore {
         self.key_store.key_exists(key_ref)
     }
 
-    /// 转录完成后根据 session 隐私等级执行自动销毁。
-    ///
-    /// - standard: noop
-    /// - high: 安全删除 capture/import chunks，清空 session_meta.encrypted_path
-    /// - maximum: high 的所有动作 + 删除 KeyStore 里的密钥
-    ///
-    /// `pub` 方便集成测试调用，但不导出 FFI（无 #[uniffi::export]）。
-    #[doc(hidden)]
-    pub fn apply_privacy_after_transcription(&self, session_id: &str) -> Result<(), CoreError> {
-        let level = self
-            .session_meta
-            .get_meta(session_id)
-            .ok()
-            .and_then(|m| m.privacy_level)
-            .unwrap_or_else(|| "standard".to_string());
-        match level.as_str() {
-            "high" => self.enforce_destroy(session_id, false),
-            "maximum" => self.enforce_destroy(session_id, true),
-            _ => Ok(()),
-        }
-    }
-
     /// 实际执行销毁
     fn enforce_destroy(&self, session_id: &str, force_max: bool) -> Result<(), CoreError> {
         let meta = self

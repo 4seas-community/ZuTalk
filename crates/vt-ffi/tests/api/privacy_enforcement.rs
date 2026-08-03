@@ -3,9 +3,12 @@
 //! 验证：
 //! - set_privacy_default / get_privacy_default round-trip
 //! - import 时把当前默认等级写到 session
-//! - apply_privacy_after_transcription 在 high/maximum 下真的删物理音频 chunk
 //! - destroy_session_audio 手动触发销毁
 //! - destroy_session_audio_and_key 同时销毁 key
+//!
+//! 自动保留策略（high/maximum 转录后销毁）由 `enforce_privacy_after_task`
+//! 执行，它是 `pub(crate)`，跨 crate 的集成测试够不到；那条路径的覆盖在
+//! `transcribe_api.rs` 的行内 `test_enforce_privacy_*` 里。
 
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -45,10 +48,18 @@ fn import_fixture_with_privacy(
         .unwrap()
 }
 
+/// 观测账本走 store 的测试钩子，而不是为测试单独保留一个生产 API。
+fn retention_chunks(
+    core: &ZulangueCore,
+    session_id: &str,
+) -> Vec<vt_store::AudioChunkRetentionRecord> {
+    core.session_meta_for_test()
+        .list_audio_retention_chunks(session_id)
+        .expect("audio retention ledger")
+}
+
 fn retained_chunk_paths(core: &ZulangueCore, session_id: &str) -> Vec<PathBuf> {
-    let chunks = core
-        .list_audio_retention_chunks(session_id.to_string())
-        .unwrap();
+    let chunks = retention_chunks(core, session_id);
     assert!(
         !chunks.is_empty(),
         "session should have physical audio chunks"
@@ -89,9 +100,7 @@ fn assert_current_audio_ownership(core: &ZulangueCore, session_id: &str) -> Stri
         .get_notebook_capture_session_event(session_id.to_string())
         .expect("Notebook import must have a current capture run");
     assert_eq!(run.session_id, session_id);
-    let ledger = core
-        .list_audio_retention_chunks(session_id.to_string())
-        .expect("current audio ledger");
+    let ledger = retention_chunks(core, session_id);
     assert!(ledger.iter().any(|chunk| chunk.encrypted && !chunk.deleted));
     let key_ref = core
         .session_meta_for_test()
@@ -165,9 +174,7 @@ fn test_destroy_session_audio_removes_chunk_files() {
     core.destroy_session_audio(r.session_id.clone()).unwrap();
 
     assert_chunk_files_deleted(&chunk_paths);
-    let chunks = core
-        .list_audio_retention_chunks(r.session_id.clone())
-        .unwrap();
+    let chunks = retention_chunks(&core, &r.session_id);
     assert!(chunks.iter().all(|chunk| chunk.deleted));
 
     let info = core.get_session(r.session_id).unwrap();
@@ -209,9 +216,7 @@ fn test_destroy_session_audio_and_key_removes_both() {
 
     assert_chunk_files_deleted(&chunk_paths);
     assert!(!core.key_exists_for_test(&key_ref));
-    let ledger = core
-        .list_audio_retention_chunks(r.session_id.clone())
-        .unwrap();
+    let ledger = retention_chunks(&core, &r.session_id);
     assert!(ledger.iter().all(|chunk| chunk.deleted));
     let meta = core
         .session_meta_for_test()
@@ -224,100 +229,6 @@ fn test_destroy_session_audio_and_key_removes_both() {
         error.to_string().contains("session audio not found"),
         "destroyed audio must be explicitly unavailable, got: {error}"
     );
-}
-
-#[test]
-fn test_audio_retention_worker_deletes_due_chunk_and_preserves_transcript() {
-    use vt_model::{Token, TranslationStatus};
-
-    let (tmp, core) = make_core();
-    let sid = "s-retention-worker";
-    let audio_path = tmp.path().join("chunk-0.enc");
-    std::fs::write(&audio_path, vec![7_u8; 64]).unwrap();
-    core.session_meta_for_test()
-        .set_encrypted_path(sid, audio_path.to_str().unwrap(), "key-retention")
-        .unwrap();
-    core.session_meta_for_test()
-        .set_tokens(
-            sid,
-            &[Token {
-                text: "transcript survives".to_string(),
-                start_ms: 0,
-                end_ms: 1_000,
-                is_final: true,
-                language: "en".to_string(),
-                speaker: None,
-                confidence: 1.0,
-                translation_status: TranslationStatus::None,
-            }],
-        )
-        .unwrap();
-    core.record_audio_retention_chunk(
-        sid.to_string(),
-        "s-retention-worker:audio:00000".to_string(),
-        0,
-        60_000,
-        audio_path.to_str().unwrap().to_string(),
-        true,
-        10,
-    )
-    .unwrap();
-
-    let result = core.run_audio_retention_once(11).unwrap();
-
-    assert_eq!(result.scanned_count, 1);
-    assert_eq!(result.deleted_count, 1);
-    assert_eq!(result.failed_count, 0);
-    assert!(!audio_path.exists());
-    let chunks = core.list_audio_retention_chunks(sid.to_string()).unwrap();
-    assert_eq!(chunks.len(), 1);
-    assert!(chunks[0].deleted);
-    assert!(chunks[0].delete_error.is_none());
-    let tokens = core.session_meta_for_test().get_tokens(sid).unwrap();
-    assert_eq!(tokens[0].text, "transcript survives");
-    let status = core
-        .get_transcription_source_status(sid.to_string())
-        .unwrap();
-    assert_eq!(status.state, "audio_deleted_after_transcript");
-}
-
-#[test]
-fn test_audio_retention_delete_failure_is_observable() {
-    let (tmp, core) = make_core();
-    let sid = "s-retention-failure";
-    let chunk_dir = tmp.path().join("chunk-dir.enc");
-    std::fs::create_dir(&chunk_dir).unwrap();
-    core.session_meta_for_test()
-        .set_encrypted_path(sid, chunk_dir.to_str().unwrap(), "key-retention")
-        .unwrap();
-    core.record_audio_retention_chunk(
-        sid.to_string(),
-        "s-retention-failure:audio:00000".to_string(),
-        0,
-        60_000,
-        chunk_dir.to_str().unwrap().to_string(),
-        true,
-        10,
-    )
-    .unwrap();
-
-    let result = core.run_audio_retention_once(11).unwrap();
-
-    assert_eq!(result.scanned_count, 1);
-    assert_eq!(result.deleted_count, 0);
-    assert_eq!(result.failed_count, 1);
-    assert_eq!(result.failure_messages.len(), 1);
-    let chunks = core.list_audio_retention_chunks(sid.to_string()).unwrap();
-    assert!(!chunks[0].deleted);
-    assert!(chunks[0]
-        .delete_error
-        .as_deref()
-        .unwrap_or("")
-        .contains("file destroy failed"));
-    let status = core
-        .get_transcription_source_status(sid.to_string())
-        .unwrap();
-    assert_eq!(status.state, "delete_failed");
 }
 
 /// 直接测试 enforcement helper（绕过真实 transcribe）
@@ -333,65 +244,6 @@ fn test_high_privacy_destroys_audio_after_transcribe_simulation() {
     // 手动触发销毁（模拟 transcribe 完成）
     core.destroy_session_audio(r.session_id.clone()).unwrap();
     assert_chunk_files_deleted(&chunk_paths);
-}
-
-#[test]
-fn test_apply_privacy_high_after_transcription_removes_chunks() {
-    let (_tmp, core) = make_core();
-    let r = import_fixture_with_privacy(&core, "high");
-    let chunk_paths = retained_chunk_paths(&core, &r.session_id);
-    assert_chunk_files_exist(&chunk_paths);
-
-    // 模拟转录完成
-    core.apply_privacy_after_transcription(&r.session_id)
-        .unwrap();
-
-    assert_chunk_files_deleted(&chunk_paths);
-
-    let info = core.get_session(r.session_id).unwrap();
-    assert!(!info.has_encrypted_audio);
-}
-
-#[test]
-fn test_apply_privacy_standard_keeps_everything() {
-    let (tmp, core) = make_core();
-    core.set_privacy_default("standard".to_string()).unwrap();
-
-    let r = import_fixture(&core);
-    let chunk_paths = retained_chunk_paths(&core, &r.session_id);
-
-    core.apply_privacy_after_transcription(&r.session_id)
-        .unwrap();
-
-    assert_chunk_files_exist(&chunk_paths);
-    let legacy_enc = tmp.path().join(format!("{}.enc", r.session_id));
-    assert!(
-        !legacy_enc.exists(),
-        "standard should not create legacy .enc"
-    );
-    let info = core.get_session(r.session_id).unwrap();
-    assert!(info.has_encrypted_audio);
-}
-
-#[test]
-fn test_apply_privacy_maximum_removes_chunks_and_key() {
-    let (_tmp, core) = make_core();
-    let r = import_fixture_with_privacy(&core, "maximum");
-    let chunk_paths = retained_chunk_paths(&core, &r.session_id);
-    assert_chunk_files_exist(&chunk_paths);
-    let key_ref = assert_current_audio_ownership(&core, &r.session_id);
-
-    core.apply_privacy_after_transcription(&r.session_id)
-        .unwrap();
-
-    assert_chunk_files_deleted(&chunk_paths);
-    assert!(!core.key_exists_for_test(&key_ref));
-    let ledger = core
-        .list_audio_retention_chunks(r.session_id.clone())
-        .unwrap();
-    assert!(ledger.iter().all(|chunk| chunk.deleted));
-    let error = core.get_audio_segment(r.session_id, 0, 1000).unwrap_err();
-    assert!(error.to_string().contains("session audio not found"));
 }
 
 #[test]

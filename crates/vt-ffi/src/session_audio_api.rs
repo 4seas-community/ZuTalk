@@ -7,7 +7,6 @@ use vt_crypto::decrypt::{decrypt_range, DecryptRange};
 use vt_pipeline::recording::{
     f32_samples_to_bytes, write_encrypted_audio_chunks, RecordingAudioChunk,
 };
-use vt_pipeline::{AudioRetentionMode, AudioRetentionPolicy};
 use vt_store::{AudioChunkRetentionRecord, SessionRecord};
 
 use crate::{CoreError, ZulangueCore};
@@ -49,29 +48,6 @@ pub struct TaskInfoDto {
     pub last_heartbeat_at_ms: Option<i64>,
 }
 
-#[derive(Debug, Clone)]
-pub struct AudioRetentionStatusInfo {
-    pub delete_after_transcription: bool,
-    pub audio_deleted: bool,
-    pub chunk_ms: u64,
-    pub expected_chunks: u32,
-    pub max_retained_chunks: u32,
-}
-
-#[derive(Debug, Clone)]
-pub struct AudioRetentionChunkInfo {
-    pub session_id: String,
-    pub chunk_id: String,
-    pub start_ms: u64,
-    pub end_ms: u64,
-    pub local_path: String,
-    pub encrypted: bool,
-    pub deleted: bool,
-    pub retention_deadline_ms: i64,
-    pub delete_error: Option<String>,
-    pub deleted_at_ms: Option<i64>,
-}
-
 /// Destruction receipt for one session's audio (FFI DTO).
 ///
 /// Every field is recomputed from the ledger, the filesystem, and the key
@@ -95,57 +71,6 @@ pub struct AudioDestructionReportInfo {
     pub destroyed_at_ms: Option<i64>,
     /// Ledger-recorded deletion failures, newest state per chunk.
     pub delete_errors: Vec<String>,
-}
-
-impl AudioDestructionReportInfo {
-    /// The audio existed and every trace verifiably converged to zero.
-    pub fn is_verified_destroyed(&self) -> bool {
-        self.chunk_total > 0
-            && self.chunks_deleted == self.chunk_total
-            && self.files_remaining == 0
-            && self.key_deleted
-            && self.encrypted_path_cleared
-            && self.delete_errors.is_empty()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct AudioRetentionRunInfo {
-    pub scanned_count: u32,
-    pub deleted_count: u32,
-    pub failed_count: u32,
-    pub failure_messages: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct AudioRetentionWorkerStatusInfo {
-    pub mode: String,
-    pub due_count: u64,
-    pub failed_count: u64,
-    pub deleted_count: u64,
-}
-
-#[derive(Debug, Clone)]
-pub struct TranscriptionSourceStatusInfo {
-    pub state: String,
-    pub message: Option<String>,
-}
-
-impl From<AudioChunkRetentionRecord> for AudioRetentionChunkInfo {
-    fn from(record: AudioChunkRetentionRecord) -> Self {
-        Self {
-            session_id: record.session_id,
-            chunk_id: record.chunk_id,
-            start_ms: record.start_ms,
-            end_ms: record.end_ms,
-            local_path: record.local_path,
-            encrypted: record.encrypted,
-            deleted: record.deleted,
-            retention_deadline_ms: record.retention_deadline_ms,
-            delete_error: record.delete_error,
-            deleted_at_ms: record.deleted_at_ms,
-        }
-    }
 }
 
 impl ZulangueCore {
@@ -177,29 +102,6 @@ impl ZulangueCore {
                 })?;
         }
         Ok(())
-    }
-
-    fn mark_missing_audio_retention_chunks_deleted(&self, session_id: &str) {
-        let now_ms = chrono::Utc::now().timestamp_millis();
-        let Ok(chunks) = self.session_meta.list_audio_retention_chunks(session_id) else {
-            return;
-        };
-        for chunk in chunks {
-            if !chunk.deleted && !std::path::Path::new(&chunk.local_path).exists() {
-                if let Err(e) = self.session_meta.mark_audio_retention_chunk_deleted(
-                    &chunk.session_id,
-                    &chunk.chunk_id,
-                    now_ms,
-                ) {
-                    tracing::warn!(
-                        session_id,
-                        chunk_id = %chunk.chunk_id,
-                        error = %e,
-                        "mark missing audio retention chunk deleted failed"
-                    );
-                }
-            }
-        }
     }
 }
 
@@ -614,254 +516,6 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
-    pub fn apply_audio_retention_policy(
-        &self,
-        session_id: String,
-        policy: String,
-        duration_ms: u64,
-    ) -> Result<AudioRetentionStatusInfo, CoreError> {
-        let retention = match policy.as_str() {
-            "keep_encrypted" => AudioRetentionPolicy {
-                mode: AudioRetentionMode::KeepEncrypted,
-                chunk_ms: 60_000,
-                max_retained_chunks: u32::MAX,
-            },
-            "delete_after_transcript" | "rolling_chunks" => {
-                AudioRetentionPolicy::default_ephemeral_chunks()
-            }
-            _ => {
-                return Err(CoreError::ValidationFailed {
-                    message: format!("invalid audio retention policy: {policy}"),
-                });
-            }
-        };
-        let plan = retention.plan_for_session(duration_ms);
-        let should_delete_audio = matches!(
-            retention.mode,
-            AudioRetentionMode::DeleteAfterTranscription | AudioRetentionMode::RollingChunks
-        );
-        if should_delete_audio {
-            self.enforce_destroy(&session_id, false)?;
-            self.mark_missing_audio_retention_chunks_deleted(&session_id);
-        } else {
-            self.session_meta
-                .get_meta(&session_id)
-                .map_err(|_| CoreError::NotFound {
-                    message: format!("session not found: {session_id}"),
-                })?;
-        }
-        Ok(AudioRetentionStatusInfo {
-            delete_after_transcription: plan.delete_after_transcription,
-            audio_deleted: should_delete_audio,
-            chunk_ms: plan.chunk_ms,
-            expected_chunks: plan.expected_chunks,
-            max_retained_chunks: plan.max_retained_chunks,
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn record_audio_retention_chunk(
-        &self,
-        session_id: String,
-        chunk_id: String,
-        start_ms: u64,
-        end_ms: u64,
-        local_path: String,
-        encrypted: bool,
-        retention_deadline_ms: i64,
-    ) -> Result<(), CoreError> {
-        if chunk_id.trim().is_empty() {
-            return Err(CoreError::ValidationFailed {
-                message: "chunk_id must not be empty".to_string(),
-            });
-        }
-        if local_path.trim().is_empty() {
-            return Err(CoreError::ValidationFailed {
-                message: "local_path must not be empty".to_string(),
-            });
-        }
-        if end_ms <= start_ms {
-            return Err(CoreError::ValidationFailed {
-                message: "end_ms must be greater than start_ms".to_string(),
-            });
-        }
-        self.session_meta
-            .upsert_audio_retention_chunk(&AudioChunkRetentionRecord {
-                session_id,
-                chunk_id,
-                start_ms,
-                end_ms,
-                local_path,
-                encrypted,
-                deleted: false,
-                retention_deadline_ms,
-                delete_error: None,
-                deleted_at_ms: None,
-            })
-            .map_err(|e| CoreError::InternalError {
-                message: format!("record audio retention chunk: {e}"),
-            })
-    }
-
-    pub fn list_audio_retention_chunks(
-        &self,
-        session_id: String,
-    ) -> Result<Vec<AudioRetentionChunkInfo>, CoreError> {
-        self.session_meta
-            .list_audio_retention_chunks(&session_id)
-            .map(|chunks| chunks.into_iter().map(Into::into).collect())
-            .map_err(|e| CoreError::InternalError {
-                message: format!("list audio retention chunks: {e}"),
-            })
-    }
-
-    pub fn run_audio_retention_once(
-        &self,
-        now_ms: i64,
-    ) -> Result<AudioRetentionRunInfo, CoreError> {
-        let due = self
-            .session_meta
-            .list_due_audio_retention_chunks(now_ms)
-            .map_err(|e| CoreError::InternalError {
-                message: format!("list due audio retention chunks: {e}"),
-            })?;
-        let mut deleted_count = 0_u32;
-        let mut failed_count = 0_u32;
-        let mut failure_messages = Vec::new();
-        let mut changed_sessions = std::collections::HashSet::new();
-
-        for chunk in &due {
-            let path = std::path::PathBuf::from(&chunk.local_path);
-            match vt_pipeline::privacy::PrivacyDestroyer::destroy_file(&path) {
-                Ok(()) => {
-                    self.session_meta
-                        .mark_audio_retention_chunk_deleted(
-                            &chunk.session_id,
-                            &chunk.chunk_id,
-                            now_ms,
-                        )
-                        .map_err(|e| CoreError::InternalError {
-                            message: format!("mark audio retention chunk deleted: {e}"),
-                        })?;
-                    changed_sessions.insert(chunk.session_id.clone());
-                    deleted_count += 1;
-                }
-                Err(e) => {
-                    let message = e.to_string();
-                    self.session_meta
-                        .mark_audio_retention_chunk_delete_failed(
-                            &chunk.session_id,
-                            &chunk.chunk_id,
-                            &message,
-                        )
-                        .map_err(|e| CoreError::InternalError {
-                            message: format!("mark audio retention chunk failed: {e}"),
-                        })?;
-                    failed_count += 1;
-                    failure_messages.push(format!("{}: {message}", chunk.chunk_id));
-                }
-            }
-        }
-
-        for session_id in changed_sessions {
-            let chunks = self
-                .session_meta
-                .list_audio_retention_chunks(&session_id)
-                .map_err(|e| CoreError::InternalError {
-                    message: format!("reload audio retention chunks: {e}"),
-                })?;
-            if !chunks.is_empty()
-                && chunks.iter().all(|chunk| chunk.deleted)
-                && chunks.iter().all(|chunk| chunk.delete_error.is_none())
-            {
-                let _ = self.session_meta.clear_encrypted_path(&session_id);
-            }
-        }
-
-        Ok(AudioRetentionRunInfo {
-            scanned_count: due.len() as u32,
-            deleted_count,
-            failed_count,
-            failure_messages,
-        })
-    }
-
-    pub fn get_audio_retention_worker_status(
-        &self,
-        now_ms: i64,
-    ) -> Result<AudioRetentionWorkerStatusInfo, CoreError> {
-        let counts = self
-            .session_meta
-            .get_audio_retention_counts(now_ms)
-            .map_err(|e| CoreError::InternalError {
-                message: format!("get audio retention counts: {e}"),
-            })?;
-        Ok(AudioRetentionWorkerStatusInfo {
-            mode: "embedded".to_string(),
-            due_count: counts.due_count,
-            failed_count: counts.failed_count,
-            deleted_count: counts.deleted_count,
-        })
-    }
-
-    pub fn get_transcription_source_status(
-        &self,
-        session_id: String,
-    ) -> Result<TranscriptionSourceStatusInfo, CoreError> {
-        let chunks = self
-            .session_meta
-            .list_audio_retention_chunks(&session_id)
-            .unwrap_or_default();
-        if let Some(failed) = chunks.iter().find(|chunk| chunk.delete_error.is_some()) {
-            return Ok(TranscriptionSourceStatusInfo {
-                state: "delete_failed".to_string(),
-                message: failed.delete_error.clone(),
-            });
-        }
-
-        let meta = self
-            .session_meta
-            .get_meta(&session_id)
-            .map_err(|_| CoreError::NotFound {
-                message: format!("session not found: {session_id}"),
-            })?;
-        let tokens_present = self
-            .session_meta
-            .get_tokens(&session_id)
-            .map(|tokens| !tokens.is_empty())
-            .unwrap_or(false);
-
-        if !chunks.is_empty() && chunks.iter().all(|chunk| chunk.deleted) {
-            return Ok(TranscriptionSourceStatusInfo {
-                state: if tokens_present {
-                    "audio_deleted_after_transcript".to_string()
-                } else {
-                    "audio_deleted".to_string()
-                },
-                message: Some("all retained audio chunks have been deleted".to_string()),
-            });
-        }
-
-        match meta.encrypted_path.as_deref() {
-            Some(path) if !path.is_empty() && std::path::Path::new(path).exists() => {
-                Ok(TranscriptionSourceStatusInfo {
-                    state: "audio_retained".to_string(),
-                    message: None,
-                })
-            }
-            _ => Ok(TranscriptionSourceStatusInfo {
-                state: if tokens_present {
-                    "audio_deleted_after_transcript".to_string()
-                } else {
-                    "audio_deleted".to_string()
-                },
-                message: Some("session has no retained source audio".to_string()),
-            }),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1089,26 +743,34 @@ mod tests {
         let second_second = f32_samples_to_bytes(&vec![2.0_f32; 1000]);
         vt_crypto::encrypt_to_file(&chunk0, &key, &first_second).unwrap();
         vt_crypto::encrypt_to_file(&chunk1, &key, &second_second).unwrap();
-        core.record_audio_retention_chunk(
-            "chunked-session".into(),
-            "chunked-session:audio:00000".into(),
-            0,
-            1000,
-            chunk0.to_string_lossy().to_string(),
-            true,
-            i64::MAX,
-        )
-        .unwrap();
-        core.record_audio_retention_chunk(
-            "chunked-session".into(),
-            "chunked-session:audio:00001".into(),
-            1000,
-            2000,
-            chunk1.to_string_lossy().to_string(),
-            true,
-            i64::MAX,
-        )
-        .unwrap();
+        core.session_meta
+            .upsert_audio_retention_chunk(&AudioChunkRetentionRecord {
+                session_id: "chunked-session".to_string(),
+                chunk_id: "chunked-session:audio:00000".to_string(),
+                start_ms: 0,
+                end_ms: 1000,
+                local_path: chunk0.to_string_lossy().to_string(),
+                encrypted: true,
+                deleted: false,
+                retention_deadline_ms: i64::MAX,
+                delete_error: None,
+                deleted_at_ms: None,
+            })
+            .unwrap();
+        core.session_meta
+            .upsert_audio_retention_chunk(&AudioChunkRetentionRecord {
+                session_id: "chunked-session".to_string(),
+                chunk_id: "chunked-session:audio:00001".to_string(),
+                start_ms: 1000,
+                end_ms: 2000,
+                local_path: chunk1.to_string_lossy().to_string(),
+                encrypted: true,
+                deleted: false,
+                retention_deadline_ms: i64::MAX,
+                delete_error: None,
+                deleted_at_ms: None,
+            })
+            .unwrap();
 
         let segment = core
             .get_audio_segment("chunked-session".into(), 500, 1500)
@@ -1121,64 +783,15 @@ mod tests {
         assert_eq!(samples[999], 2.0);
     }
 
-    #[test]
-    fn test_audio_retention_policy_deletes_audio_but_keeps_transcript() {
-        use vt_model::{Token, TranslationStatus};
-        let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
-        let audio_path = tmp.path().join("session.enc");
-        std::fs::write(&audio_path, vec![1_u8; 64]).unwrap();
-        core.session_meta
-            .set_encrypted_path("s-retain", audio_path.to_str().unwrap(), "key-retain")
-            .unwrap();
-        core.record_audio_retention_chunk(
-            "s-retain".to_string(),
-            "s-retain:audio:00000".to_string(),
-            0,
-            125_000,
-            audio_path.to_string_lossy().to_string(),
-            true,
-            i64::MAX,
-        )
-        .unwrap();
-        core.session_meta
-            .set_tokens(
-                "s-retain",
-                &[Token {
-                    text: "keep transcript".to_string(),
-                    start_ms: 0,
-                    end_ms: 1000,
-                    is_final: true,
-                    language: "en".to_string(),
-                    speaker: None,
-                    confidence: 1.0,
-                    translation_status: TranslationStatus::None,
-                }],
-            )
-            .unwrap();
-
-        let status = core
-            .apply_audio_retention_policy(
-                "s-retain".to_string(),
-                "delete_after_transcript".to_string(),
-                125_000,
-            )
-            .unwrap();
-
-        assert!(status.audio_deleted);
-        assert!(status.delete_after_transcription);
-        assert_eq!(status.chunk_ms, 60_000);
-        assert_eq!(status.expected_chunks, 3);
-        assert!(!audio_path.exists());
-        assert!(core
-            .session_meta
-            .get_meta("s-retain")
-            .unwrap()
-            .encrypted_path
-            .is_none());
-        let tokens = core.session_meta.get_tokens("s-retain").unwrap();
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].text, "keep transcript");
+    /// 销毁回执的「彻底销毁」判据。只有测试需要把这几项合成一个断言，
+    /// 生产侧读的是回执上的各个字段，所以谓词留在测试模块里。
+    fn is_verified_destroyed(report: &AudioDestructionReportInfo) -> bool {
+        report.chunk_total > 0
+            && report.chunks_deleted == report.chunk_total
+            && report.files_remaining == 0
+            && report.key_deleted
+            && report.encrypted_path_cleared
+            && report.delete_errors.is_empty()
     }
 
     #[test]
@@ -1207,7 +820,7 @@ mod tests {
         assert!(before.files_remaining > 0);
         assert!(!before.key_deleted);
         assert!(!before.encrypted_path_cleared);
-        assert!(!before.is_verified_destroyed());
+        assert!(!is_verified_destroyed(&before));
 
         core.destroy_session_audio_and_key(session_id.clone())
             .unwrap();
@@ -1222,7 +835,7 @@ mod tests {
         assert!(after.encrypted_path_cleared);
         assert!(after.destroyed_at_ms.is_some());
         assert!(after.delete_errors.is_empty());
-        assert!(after.is_verified_destroyed());
+        assert!(is_verified_destroyed(&after));
 
         // 防御性扫描:ledger 之外的同名残留文件必须被算进 files_remaining。
         let stray = tmp.path().join(format!("{session_id}.stray.enc"));
@@ -1231,14 +844,14 @@ mod tests {
             .get_audio_destruction_report(session_id.clone())
             .unwrap();
         assert_eq!(with_stray.files_remaining, 1);
-        assert!(!with_stray.is_verified_destroyed());
+        assert!(!is_verified_destroyed(&with_stray));
 
         // 从未保存音频的 session:chunk_total 为 0,报告为"从未生成"而非"已删除"。
         let never = core
             .get_audio_destruction_report("never-recorded-session".into())
             .unwrap();
         assert_eq!(never.chunk_total, 0);
-        assert!(!never.is_verified_destroyed());
+        assert!(!is_verified_destroyed(&never));
     }
 
     #[test]
@@ -1268,7 +881,8 @@ mod tests {
         assert!(!segment.is_empty());
 
         let chunks = core
-            .list_audio_retention_chunks(import_result.session_id.clone())
+            .session_meta
+            .list_audio_retention_chunks(&import_result.session_id)
             .unwrap();
         assert_eq!(chunks.len(), 1);
         assert!(PathBuf::from(&chunks[0].local_path).exists());

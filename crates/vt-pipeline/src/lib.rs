@@ -9,10 +9,7 @@ pub mod recording;
 pub mod task_queue;
 
 pub use import::{import_audio_file, ImportError, ImportResult};
-pub use privacy::{
-    AudioRetentionChunkPlan, AudioRetentionMode, AudioRetentionPlan, AudioRetentionPolicy,
-    DestroyError, DestroyResult, KeyDestroyer, PrivacyDestroyer,
-};
+pub use privacy::{DestroyError, PrivacyDestroyer};
 pub use recording::{
     recover_capture_audio_journal, write_encrypted_audio_chunks, CaptureAudioJournal,
     RecordingAudioChunk, RecordingConfig, RecordingError, RecordingResult, RecoveredCaptureAudio,
