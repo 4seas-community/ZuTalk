@@ -23,7 +23,7 @@ struct WindowCommandRouterTestOverrides {
     var toggleSubtitleOverlay: (() -> Void)?
     var openSession: ((String) -> Void)?
     var openSettings: (() -> Void)?
-    var openNotebookTab: ((EditorRouteV2) -> Void)?
+    var openNotebookTab: ((EditorRoute) -> Void)?
     var navigateHome: (() -> Void)?
 }
 
@@ -70,7 +70,7 @@ final class WindowCommandRouter {
                     handler(sessionId)
                     return
                 }
-                MainNavigationStoreV2.shared.openSession(sessionId)
+                MainNavigationStore.shared.openSession(sessionId)
             }
             self.routeMainWindow(
                 revealMainWindow: revealMainWindow,
@@ -88,7 +88,7 @@ final class WindowCommandRouter {
                 return
             }
             MainWindowOpener.shared.open {
-                MainNavigationStoreV2.shared.openSettings()
+                MainNavigationStore.shared.openSettings()
             }
         }
     }
@@ -100,7 +100,7 @@ final class WindowCommandRouter {
         selectedSessionID: String? = nil,
         revealMainWindow: Bool = false
     ) {
-        let route = EditorRouteV2(
+        let route = EditorRoute(
             notebookID: notebookID,
             tabID: tabID,
             documentID: documentID,
@@ -116,7 +116,7 @@ final class WindowCommandRouter {
                     handler(route)
                     return
                 }
-                MainNavigationStoreV2.shared.openNotebookTab(
+                MainNavigationStore.shared.openNotebookTab(
                     notebookID: notebookID,
                     tabID: tabID,
                     documentID: documentID,
@@ -138,7 +138,7 @@ final class WindowCommandRouter {
                 handler()
                 return
             }
-            MainNavigationStoreV2.shared.navigateHome()
+            MainNavigationStore.shared.navigateHome()
         }
     }
 
@@ -162,7 +162,7 @@ final class WindowCommandRouter {
         history.removeAll()
         lock.unlock()
         testOverrides = nil
-        MainNavigationStoreV2.shared.resetForTesting()
+        MainNavigationStore.shared.resetForTesting()
     }
 
     @MainActor

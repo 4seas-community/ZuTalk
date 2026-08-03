@@ -84,7 +84,7 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertTrue(contents.contains("HomeNotebookCard"))
         XCTAssertTrue(contents.contains("HomeCreateNotebookSheet"))
         XCTAssertTrue(contents.contains("viewModel.notebooks"))
-        XCTAssertTrue(contents.contains("MainNavigationStoreV2.shared.openActiveNotebookForCapture()"))
+        XCTAssertTrue(contents.contains("MainNavigationStore.shared.openActiveNotebookForCapture()"))
         XCTAssertTrue(contents.contains("HomeWorkspaceFailureView"))
         XCTAssertTrue(contents.contains("HomeWorkspaceRefreshWarning"))
         XCTAssertFalse(contents.contains("HomeNotebookLibrary(\n                        viewModel: viewModel,\n                        capture:"))

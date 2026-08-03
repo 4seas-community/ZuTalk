@@ -76,7 +76,7 @@ final class SubtitleOverlayCoordinator: ObservableObject {
 
         guard capture.isCaptureActive else {
             WindowCommandRouter.shared.openMainWindow(detail: "subtitle-overlay.idle") {
-                MainNavigationStoreV2.shared.openActiveNotebookForCapture()
+                MainNavigationStore.shared.openActiveNotebookForCapture()
             }
             return
         }

@@ -1,14 +1,14 @@
 import AppKit
 
-struct WindowLayoutRequestV2: Equatable {
+struct WindowLayoutRequest: Equatable {
     let surfaceID: WindowSurfaceID
-    let display: DisplayProfileV2
+    let display: DisplayProfile
     let currentFrame: NSRect?
     let savedFrame: NSRect?
 
     init(
         surfaceID: WindowSurfaceID,
-        display: DisplayProfileV2,
+        display: DisplayProfile,
         currentFrame: NSRect? = nil,
         savedFrame: NSRect? = nil
     ) {
@@ -19,19 +19,19 @@ struct WindowLayoutRequestV2: Equatable {
     }
 }
 
-struct WindowLayoutSnapshotV2: Equatable {
+struct WindowLayoutSnapshot: Equatable {
     let surfaceID: WindowSurfaceID
     let outerFrame: NSRect
 }
 
-enum WindowLayoutEngineV2 {
+enum WindowLayoutEngine {
     static let subtitleOverlayMinimumSize = NSSize(width: 560, height: 180)
     static let subtitleOverlayDefaultSize = NSSize(width: 1100, height: 280)
     static let subtitleOverlayMaximumWidth: CGFloat = 2600
     static let subtitleOverlayMaximumHeight: CGFloat = 1000
     static let subtitleOverlayTopInset: CGFloat = 36
 
-    static func snapshot(for request: WindowLayoutRequestV2) -> WindowLayoutSnapshotV2? {
+    static func snapshot(for request: WindowLayoutRequest) -> WindowLayoutSnapshot? {
         switch request.surfaceID {
         case .main:
             return mainWindowSnapshot(for: request)
@@ -40,17 +40,17 @@ enum WindowLayoutEngineV2 {
         }
     }
 
-    static func mainWindowSnapshot(for request: WindowLayoutRequestV2) -> WindowLayoutSnapshotV2 {
-        WindowLayoutSnapshotV2(
+    static func mainWindowSnapshot(for request: WindowLayoutRequest) -> WindowLayoutSnapshot {
+        WindowLayoutSnapshot(
             surfaceID: .main,
             outerFrame: MainWindowMetrics.launchFrame(in: request.display.visibleFrame)
         )
     }
 
     static func subtitleOverlaySnapshot(
-        for request: WindowLayoutRequestV2
-    ) -> WindowLayoutSnapshotV2 {
-        WindowLayoutSnapshotV2(
+        for request: WindowLayoutRequest
+    ) -> WindowLayoutSnapshot {
+        WindowLayoutSnapshot(
             surfaceID: .subtitleOverlay,
             outerFrame: subtitleOverlayFrame(for: request)
         )
@@ -59,7 +59,7 @@ enum WindowLayoutEngineV2 {
     /// A saved frame wins when it can still be made to fit the current screen;
     /// otherwise the overlay returns to a top-centered default. Both results
     /// are integral so AppKit does not resolve them onto half points.
-    private static func subtitleOverlayFrame(for request: WindowLayoutRequestV2) -> NSRect {
+    private static func subtitleOverlayFrame(for request: WindowLayoutRequest) -> NSRect {
         let visibleFrame = request.display.visibleFrame
         if let saved = request.savedFrame,
            let normalized = normalizedSubtitleOverlayFrame(saved, visibleFrame: visibleFrame) {

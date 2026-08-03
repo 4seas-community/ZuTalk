@@ -1,6 +1,6 @@
 import AppKit
 
-struct WindowSpecV2 {
+struct WindowSpec {
     enum Ownership: String {
         case coordinatorOwned
         case legacySceneManaged
@@ -84,17 +84,17 @@ struct WindowSpecV2 {
     let notes: String
 }
 
-extension WindowSpecV2 {
-    static func required(_ id: WindowSurfaceID) -> WindowSpecV2 {
+extension WindowSpec {
+    static func required(_ id: WindowSurfaceID) -> WindowSpec {
         guard let spec = baselineCatalog()[id] else {
-            preconditionFailure("Missing V2 WindowSpec for \(id.rawValue)")
+            preconditionFailure("Missing WindowSpec for \(id.rawValue)")
         }
         return spec
     }
 
-    static func baselineCatalog() -> [WindowSurfaceID: WindowSpecV2] {
+    static func baselineCatalog() -> [WindowSurfaceID: WindowSpec] {
         [
-            .main: WindowSpecV2(
+            .main: WindowSpec(
                 id: .main,
                 role: WindowSurfaceID.main.role,
                 ownership: .coordinatorOwned,
@@ -137,7 +137,7 @@ extension WindowSpecV2 {
                 ),
                 notes: "AppKit-owned main window with a stable hosting root."
             ),
-            .subtitleOverlay: WindowSpecV2(
+            .subtitleOverlay: WindowSpec(
                 id: .subtitleOverlay,
                 role: WindowSurfaceID.subtitleOverlay.role,
                 ownership: .coordinatorOwned,

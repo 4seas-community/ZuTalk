@@ -22,9 +22,9 @@ final class WindowCoordinator {
         let tokens: [NSObjectProtocol]
     }
 
-    private var catalog: [WindowSurfaceID: WindowSpecV2] = [:]
+    private var catalog: [WindowSurfaceID: WindowSpec] = [:]
     private var registeredWindows: [WindowSurfaceID: WeakWindowBox] = [:]
-    private var mainSurfaceController: MainWindowControllerV2?
+    private var mainSurfaceController: MainWindowController?
     private var subtitleOverlayController: SubtitleOverlayController?
     private let subtitleDisplaySleepActivity = SubtitleDisplaySleepActivity()
     private var diagnosticAttachments: [WindowSurfaceID: DiagnosticAttachment] = [:]
@@ -33,7 +33,7 @@ final class WindowCoordinator {
 
     func installBaselineCatalog() {
         guard catalog.isEmpty else { return }
-        catalog = WindowSpecV2.baselineCatalog()
+        catalog = WindowSpec.baselineCatalog()
         CrashDiagnostics.record(
             "window-system.bootstrap",
             "baseline catalog ready",
@@ -41,14 +41,14 @@ final class WindowCoordinator {
         )
     }
 
-    func spec(for id: WindowSurfaceID) -> WindowSpecV2? {
+    func spec(for id: WindowSurfaceID) -> WindowSpec? {
         if catalog.isEmpty {
             installBaselineCatalog()
         }
         return catalog[id]
     }
 
-    func catalogSnapshot() -> [WindowSpecV2] {
+    func catalogSnapshot() -> [WindowSpec] {
         if catalog.isEmpty {
             installBaselineCatalog()
         }
@@ -81,11 +81,11 @@ final class WindowCoordinator {
             )
             return false
         }
-        return ManagedWindowRuntimeV2.present(window: window, using: spec)
+        return ManagedWindowRuntime.present(window: window, using: spec)
     }
 
     @discardableResult
-    func dismissRegisteredWindow(_ id: WindowSurfaceID) -> WindowSpecV2.DismissAction? {
+    func dismissRegisteredWindow(_ id: WindowSurfaceID) -> WindowSpec.DismissAction? {
         guard let window = window(for: id), let spec = spec(for: id) else {
             CrashDiagnostics.record(
                 "window-system.dismiss-missing",
@@ -94,7 +94,7 @@ final class WindowCoordinator {
             )
             return nil
         }
-        return ManagedWindowRuntimeV2.dismiss(window: window, using: spec)
+        return ManagedWindowRuntime.dismiss(window: window, using: spec)
     }
 
     func unregisterWindow(_ id: WindowSurfaceID) {
@@ -299,7 +299,7 @@ final class WindowCoordinator {
         refreshDiagnosticsSnapshot()
     }
 
-    var mainWindowControllerForTesting: MainWindowControllerV2? {
+    var mainWindowControllerForTesting: MainWindowController? {
         mainSurfaceController
     }
 
@@ -312,44 +312,44 @@ final class WindowCoordinator {
     }
 
     @discardableResult
-    private func ensureMainWindowSurfaceController() -> MainWindowControllerV2 {
+    private func ensureMainWindowSurfaceController() -> MainWindowController {
         if let mainSurfaceController {
             return mainSurfaceController
         }
-        let controller = MainWindowControllerV2()
+        let controller = MainWindowController()
         mainSurfaceController = controller
         registerWindow(controller.managedWindow, id: .main)
         guard !TestEnvironment.isUnitTestMode else {
             return controller
         }
-        let profile = DisplayProfileResolverV2.resolveProfile(from: controller.window?.screen)
-        let snapshot = WindowLayoutEngineV2.mainWindowSnapshot(
-            for: WindowLayoutRequestV2(
+        let profile = DisplayProfileResolver.resolveProfile(from: controller.window?.screen)
+        let snapshot = WindowLayoutEngine.mainWindowSnapshot(
+            for: WindowLayoutRequest(
                 surfaceID: .main,
                 display: profile,
                 currentFrame: controller.managedWindow.frame
             )
         )
-        applyV2LayoutSnapshot(snapshot, reason: "window.main.initial")
+        applyLayoutSnapshot(snapshot, reason: "window.main.initial")
         return controller
     }
 
     private func applyInitialSubtitleOverlayLayout(using controller: SubtitleOverlayController) {
-        let profile = DisplayProfileResolverV2.resolveProfile(from: controller.managedWindow.screen)
-        let snapshot = WindowLayoutEngineV2.subtitleOverlaySnapshot(
-            for: WindowLayoutRequestV2(
+        let profile = DisplayProfileResolver.resolveProfile(from: controller.managedWindow.screen)
+        let snapshot = WindowLayoutEngine.subtitleOverlaySnapshot(
+            for: WindowLayoutRequest(
                 surfaceID: .subtitleOverlay,
                 display: profile,
                 currentFrame: controller.managedWindow.frame,
                 savedFrame: SubtitleOverlayController.loadSavedFrame()
             )
         )
-        applyV2LayoutSnapshot(snapshot, reason: "window.subtitle-overlay.initial")
+        applyLayoutSnapshot(snapshot, reason: "window.subtitle-overlay.initial")
     }
 
     @discardableResult
-    private func applyV2LayoutSnapshot(
-        _ snapshot: WindowLayoutSnapshotV2,
+    private func applyLayoutSnapshot(
+        _ snapshot: WindowLayoutSnapshot,
         reason: String
     ) -> Bool {
         applyFrame(snapshot.outerFrame, to: snapshot.surfaceID, animated: false, reason: reason)

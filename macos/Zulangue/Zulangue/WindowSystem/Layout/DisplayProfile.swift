@@ -6,25 +6,25 @@ import AppKit
 /// `hasPhysicalNotch`, the auxiliary top-area widths) existed to place the
 /// Dynamic Island under the notch. That surface was replaced by the menu bar
 /// and nothing read them afterwards, so they are gone along with it.
-struct DisplayProfileV2: Equatable {
+struct DisplayProfile: Equatable {
     let frame: NSRect
     let visibleFrame: NSRect
 }
 
-enum DisplayProfileResolverV2 {
+enum DisplayProfileResolver {
     private static let fallbackScreenFrame = NSRect(x: 0, y: 0, width: 1512, height: 982)
 
     static func resolvePreferredScreen(from preferred: NSScreen?) -> NSScreen? {
         preferred ?? NSScreen.main ?? NSScreen.screens.first
     }
 
-    static func resolveProfile(from preferred: NSScreen?) -> DisplayProfileV2 {
+    static func resolveProfile(from preferred: NSScreen?) -> DisplayProfile {
         guard let screen = resolvePreferredScreen(from: preferred) else {
-            return DisplayProfileV2(
+            return DisplayProfile(
                 frame: fallbackScreenFrame,
                 visibleFrame: fallbackScreenFrame
             )
         }
-        return DisplayProfileV2(frame: screen.frame, visibleFrame: screen.visibleFrame)
+        return DisplayProfile(frame: screen.frame, visibleFrame: screen.visibleFrame)
     }
 }

@@ -2,26 +2,26 @@ import AppKit
 import SwiftUI
 
 @available(macOS 13.0, *)
-protocol HostingSizingConfigurableV2: AnyObject {
+protocol HostingSizingConfigurable: AnyObject {
     var sizingOptions: NSHostingSizingOptions { get set }
 }
 
 @available(macOS 13.0, *)
-extension NSHostingView: HostingSizingConfigurableV2 {}
+extension NSHostingView: HostingSizingConfigurable {}
 
 @available(macOS 13.0, *)
-extension NSHostingController: HostingSizingConfigurableV2 {}
+extension NSHostingController: HostingSizingConfigurable {}
 
-private final class FirstMouseHostingViewV2<Content: View>: NSHostingView<Content> {
+private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
     }
 }
 
-private final class FirstMouseHostingControllerV2<Content: View>: NSHostingController<Content> {
+private final class FirstMouseHostingController<Content: View>: NSHostingController<Content> {
     override init(rootView: Content) {
         super.init(rootView: rootView)
-        view = FirstMouseHostingViewV2(rootView: rootView)
+        view = FirstMouseHostingView(rootView: rootView)
     }
 
     required init?(coder: NSCoder) {
@@ -29,7 +29,7 @@ private final class FirstMouseHostingControllerV2<Content: View>: NSHostingContr
     }
 }
 
-struct HostingSizingStabilizationResultV2 {
+struct HostingSizingStabilizationResult {
     let controllersDisabled: Int
     let viewsDisabled: Int
 
@@ -38,12 +38,12 @@ struct HostingSizingStabilizationResultV2 {
     }
 }
 
-enum WindowHostingV2 {
+enum WindowHosting {
     @discardableResult
     static func installPinnedContentView<Content: View>(
         rootView: Content,
         into window: NSWindow,
-        policy: WindowSpecV2.HostingPolicy = .fixedWindowOwned
+        policy: WindowSpec.HostingPolicy = .fixedWindowOwned
     ) -> NSHostingView<Content> {
         let hosting = makeView(rootView: rootView, policy: policy)
         installPinnedView(hosting, into: window)
@@ -52,28 +52,28 @@ enum WindowHostingV2 {
 
     static func makeView<Content: View>(
         rootView: Content,
-        policy: WindowSpecV2.HostingPolicy = .fixedWindowOwned
+        policy: WindowSpec.HostingPolicy = .fixedWindowOwned
     ) -> NSHostingView<Content> {
-        let hosting = FirstMouseHostingViewV2(rootView: rootView)
+        let hosting = FirstMouseHostingView(rootView: rootView)
         apply(policy: policy, to: hosting)
         return hosting
     }
 
     static func makeController<Content: View>(
         rootView: Content,
-        policy: WindowSpecV2.HostingPolicy = .fixedWindowOwned
+        policy: WindowSpec.HostingPolicy = .fixedWindowOwned
     ) -> NSHostingController<Content> {
-        let hosting = FirstMouseHostingControllerV2(rootView: rootView)
+        let hosting = FirstMouseHostingController(rootView: rootView)
         apply(policy: policy, to: hosting)
         guard let hostingView = hosting.view as? NSHostingView<Content> else {
-            preconditionFailure("FirstMouseHostingControllerV2 must own an NSHostingView")
+            preconditionFailure("FirstMouseHostingController must own an NSHostingView")
         }
         apply(policy: policy, to: hostingView)
         return hosting
     }
 
     private static func apply<Content: View>(
-        policy: WindowSpecV2.HostingPolicy,
+        policy: WindowSpec.HostingPolicy,
         to hosting: NSHostingView<Content>
     ) {
         guard policy == .fixedWindowOwned else { return }
@@ -89,7 +89,7 @@ enum WindowHostingV2 {
     }
 
     private static func apply<Content: View>(
-        policy: WindowSpecV2.HostingPolicy,
+        policy: WindowSpec.HostingPolicy,
         to hosting: NSHostingController<Content>
     ) {
         guard policy == .fixedWindowOwned else { return }
@@ -126,21 +126,21 @@ enum WindowHostingV2 {
     }
 
     @discardableResult
-    static func stabilizeWindowTree(on window: NSWindow) -> HostingSizingStabilizationResultV2 {
+    static func stabilizeWindowTree(on window: NSWindow) -> HostingSizingStabilizationResult {
         if #available(macOS 13.0, *) {
             let controllersDisabled = disableHostingSizing(on: window.contentViewController) ? 1 : 0
             let viewsDisabled = disableHostingSizingRecursively(from: window.contentView)
-            return HostingSizingStabilizationResultV2(
+            return HostingSizingStabilizationResult(
                 controllersDisabled: controllersDisabled,
                 viewsDisabled: viewsDisabled
             )
         }
-        return HostingSizingStabilizationResultV2(controllersDisabled: 0, viewsDisabled: 0)
+        return HostingSizingStabilizationResult(controllersDisabled: 0, viewsDisabled: 0)
     }
 
     @available(macOS 13.0, *)
     private static func disableHostingSizing(on object: AnyObject?) -> Bool {
-        guard let object = object as? any HostingSizingConfigurableV2 else { return false }
+        guard let object = object as? any HostingSizingConfigurable else { return false }
         guard !object.sizingOptions.isEmpty else { return false }
         object.sizingOptions = []
         return true

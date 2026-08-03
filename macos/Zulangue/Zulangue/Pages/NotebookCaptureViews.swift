@@ -7,7 +7,7 @@ import SwiftUI
 @MainActor
 struct NotebookCaptureStartCoordinator {
     let capture: ActiveBilingualTranscriptStore
-    let navigation: MainNavigationStoreV2
+    let navigation: MainNavigationStore
 
     func start(notebookId: String) async throws {
         try await capture.start(notebookId: notebookId)
@@ -370,7 +370,7 @@ struct NotebookCaptureToolbar: View {
                         stopButton
                     } else {
                         Button {
-                            MainNavigationStoreV2.shared.openActiveNotebookForCapture()
+                            MainNavigationStore.shared.openActiveNotebookForCapture()
                         } label: {
                             Label(
                                 String(localized: "capture.toolbar.active_other_notebook"),
@@ -437,7 +437,7 @@ struct NotebookCaptureToolbar: View {
                     try await profileEditor.prepareForCaptureStart()
                     try await NotebookCaptureStartCoordinator(
                         capture: capture,
-                        navigation: MainNavigationStoreV2.shared
+                        navigation: MainNavigationStore.shared
                     ).start(notebookId: notebookId)
                 } catch {
                     // Return any invite reservation made above; a no-op when

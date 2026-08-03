@@ -2130,7 +2130,7 @@ struct SubtitleOverlayView: View {
 }
 
 @MainActor
-final class SubtitleOverlayController: NSWindowController, ManagedWindowControllerV2, NSWindowDelegate {
+final class SubtitleOverlayController: NSWindowController, ManagedWindowController, NSWindowDelegate {
     static let savedFrameKey = "zulangue.subtitleOverlay.frame"
 
     private let store: ActiveBilingualTranscriptStore
@@ -2149,7 +2149,7 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
 
     init(store: ActiveBilingualTranscriptStore) {
         self.store = store
-        let spec = WindowSpecV2.required(.subtitleOverlay)
+        let spec = WindowSpec.required(.subtitleOverlay)
         let panel = NSPanel(
             contentRect: spec.initialContentRect,
             styleMask: spec.styleMask,
@@ -2305,12 +2305,12 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
     }
 
     private func installRootView() {
-        let hostingView = WindowHostingV2.makeView(
+        let hostingView = WindowHosting.makeView(
             rootView: SubtitleOverlayView(store: store),
             policy: managedWindowSpec.hostingPolicy
         )
-        WindowHostingV2.installPinnedView(hostingView, into: managedWindow)
-        _ = WindowHostingV2.stabilizeWindowTree(on: managedWindow)
+        WindowHosting.installPinnedView(hostingView, into: managedWindow)
+        _ = WindowHosting.stabilizeWindowTree(on: managedWindow)
         self.hostingView = hostingView
         managedWindow.contentViewController = nil
     }

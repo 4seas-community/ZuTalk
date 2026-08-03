@@ -136,7 +136,7 @@ final class DesignSystemTests: XCTestCase {
             .appendingPathComponent("Zulangue", isDirectory: true)
         let shell = try String(
             contentsOf: sourceRoot
-                .appendingPathComponent("UIScenesV2/Main/MainShellViewV2.swift"),
+                .appendingPathComponent("UIScenes/Main/MainShellView.swift"),
             encoding: .utf8
         )
         let brandStart = try XCTUnwrap(shell.range(of: "private var sidebarBrand: some View"))
@@ -157,7 +157,7 @@ final class DesignSystemTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("Zulangue", isDirectory: true)
         for relativePath in [
-            "UIScenesV2/Main/MainShellViewV2.swift",
+            "UIScenes/Main/MainShellView.swift",
             "App/OnboardingView.swift",
             "Pages/DocumentEditorPage.swift",
             "Pages/NotebookCaptureViews.swift",

@@ -1,17 +1,17 @@
 import Foundation
 
-struct EditorRouteV2: Equatable {
+struct EditorRoute: Equatable {
     let notebookID: String
     let tabID: String
     let documentID: String
     let selectedSessionID: String?
 }
 
-enum MainRouteV2: Equatable {
+enum MainRoute: Equatable {
     case home
     case knowledge
     case trash
-    case editor(route: EditorRouteV2, initialView: EditorInitialView)
+    case editor(route: EditorRoute, initialView: EditorInitialView)
     case settings
 
     var tab: MainTab {

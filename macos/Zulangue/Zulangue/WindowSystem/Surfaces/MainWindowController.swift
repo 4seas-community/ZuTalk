@@ -2,17 +2,17 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class MainWindowControllerV2: NSWindowController, ManagedWindowControllerV2 {
+final class MainWindowController: NSWindowController, ManagedWindowController {
     private var hostingController: NSHostingController<AnyView>?
 
     var windowSurfaceID: WindowSurfaceID { .main }
     var managedWindow: NSWindow {
-        guard let window else { preconditionFailure("MainWindowControllerV2.window missing") }
+        guard let window else { preconditionFailure("MainWindowController.window missing") }
         return window
     }
 
     init() {
-        let spec = WindowSpecV2.required(.main)
+        let spec = WindowSpec.required(.main)
         let window = NSWindow(
             contentRect: spec.initialContentRect,
             styleMask: spec.styleMask,
@@ -40,12 +40,12 @@ final class MainWindowControllerV2: NSWindowController, ManagedWindowControllerV
             hostingController = nil
             return
         }
-        let controller = WindowHostingV2.makeController(
+        let controller = WindowHosting.makeController(
             rootView: AnyView(rootView),
             policy: managedWindowSpec.hostingPolicy
         )
         managedWindow.contentViewController = controller
-        _ = WindowHostingV2.stabilizeWindowTree(on: managedWindow)
+        _ = WindowHosting.stabilizeWindowTree(on: managedWindow)
         hostingController = controller
     }
 
@@ -70,7 +70,7 @@ final class MainWindowControllerV2: NSWindowController, ManagedWindowControllerV
             )
         }
         return AnyView(
-            MainShellViewV2(store: MainNavigationStoreV2.shared)
+            MainShellView(store: MainNavigationStore.shared)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.bgRoot)
         )

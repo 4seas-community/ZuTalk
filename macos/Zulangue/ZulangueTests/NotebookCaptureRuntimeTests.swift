@@ -2809,7 +2809,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let tabs = try core.listNotebookTabs(notebookId: notebook.id)
         let realtime = try XCTUnwrap(tabs.first { $0.builtinKind == "realtime_transcript" })
         let manual = try XCTUnwrap(tabs.first { $0.builtinKind == "manual_note" })
-        let navigation = MainNavigationStoreV2(
+        let navigation = MainNavigationStore(
             activeNotebookIDProvider: { notebook.id },
             captureRouteContextProvider: { (nil, nil, false) },
             coreProvider: { core }
@@ -2857,7 +2857,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             try core.listNotebookTabs(notebookId: notebook.id)
                 .first { $0.builtinKind == "manual_note" }
         )
-        let navigation = MainNavigationStoreV2(
+        let navigation = MainNavigationStore(
             activeNotebookIDProvider: { notebook.id },
             captureRouteContextProvider: { (nil, nil, false) },
             coreProvider: { core }
@@ -2943,7 +2943,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let tabs = try core.listNotebookTabs(notebookId: notebook.id)
         let realtime = try XCTUnwrap(tabs.first { $0.builtinKind == "realtime_transcript" })
         let manual = try XCTUnwrap(tabs.first { $0.builtinKind == "manual_note" })
-        let navigation = MainNavigationStoreV2(
+        let navigation = MainNavigationStore(
             activeNotebookIDProvider: { notebook.id },
             captureRouteContextProvider: { (nil, nil, false) },
             coreProvider: { core }
@@ -6752,7 +6752,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             encoding: .utf8
         )
         let overlays = try String(
-            contentsOf: root.appendingPathComponent("AppV2/SubtitleOverlayCoordinator.swift"),
+            contentsOf: root.appendingPathComponent("App/SubtitleOverlayCoordinator.swift"),
             encoding: .utf8
         )
         let activeCapture = try String(
@@ -6760,7 +6760,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             encoding: .utf8
         )
         let overlayViews = try String(
-            contentsOf: root.appendingPathComponent("WindowSystemV2/Surfaces/SubtitleOverlayController.swift"),
+            contentsOf: root.appendingPathComponent("WindowSystem/Surfaces/SubtitleOverlayController.swift"),
             encoding: .utf8
         )
         let documentEditor = try String(
@@ -6768,7 +6768,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             encoding: .utf8
         )
         let mainShell = try String(
-            contentsOf: root.appendingPathComponent("UIScenesV2/Main/MainShellViewV2.swift"),
+            contentsOf: root.appendingPathComponent("UIScenes/Main/MainShellView.swift"),
             encoding: .utf8
         )
         let realtimeConsoleStart = try XCTUnwrap(

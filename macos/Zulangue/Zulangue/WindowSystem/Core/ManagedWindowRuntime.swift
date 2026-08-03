@@ -1,14 +1,14 @@
 import AppKit
 
 @MainActor
-protocol ManagedWindowControllerV2: AnyObject {
+protocol ManagedWindowController: AnyObject {
     var windowSurfaceID: WindowSurfaceID { get }
     var managedWindow: NSWindow { get }
-    var managedWindowSpec: WindowSpecV2 { get }
+    var managedWindowSpec: WindowSpec { get }
 }
 
-enum ManagedWindowRuntimeV2 {
-    static func apply(spec: WindowSpecV2, to window: NSWindow) {
+enum ManagedWindowRuntime {
+    static func apply(spec: WindowSpec, to window: NSWindow) {
         window.collectionBehavior = spec.chrome.collectionBehavior
         window.hasShadow = spec.chrome.hasShadow
         window.isOpaque = spec.chrome.isOpaque
@@ -56,7 +56,7 @@ enum ManagedWindowRuntimeV2 {
     }
 
     @discardableResult
-    static func present(window: NSWindow, using spec: WindowSpecV2) -> Bool {
+    static func present(window: NSWindow, using spec: WindowSpec) -> Bool {
         switch spec.presentation.presentAction {
         case .showAndFocus:
             if window.isMiniaturized {
@@ -86,7 +86,7 @@ enum ManagedWindowRuntimeV2 {
         return true
     }
 
-    static func dismiss(window: NSWindow, using spec: WindowSpecV2) -> WindowSpecV2.DismissAction {
+    static func dismiss(window: NSWindow, using spec: WindowSpec) -> WindowSpec.DismissAction {
         switch spec.presentation.dismissAction {
         case .orderOut:
             window.orderOut(nil)
@@ -102,12 +102,12 @@ enum ManagedWindowRuntimeV2 {
     }
 }
 
-extension ManagedWindowControllerV2 {
-    var managedWindowSpec: WindowSpecV2 {
-        WindowSpecV2.required(windowSurfaceID)
+extension ManagedWindowController {
+    var managedWindowSpec: WindowSpec {
+        WindowSpec.required(windowSurfaceID)
     }
 
     func configureManagedWindow() {
-        ManagedWindowRuntimeV2.apply(spec: managedWindowSpec, to: managedWindow)
+        ManagedWindowRuntime.apply(spec: managedWindowSpec, to: managedWindow)
     }
 }

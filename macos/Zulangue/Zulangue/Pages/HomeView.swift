@@ -62,7 +62,7 @@ struct HomeView: View {
 
     private func openNotebook(_ notebookId: String) {
         viewModel.selectNotebook(notebookId)
-        MainNavigationStoreV2.shared.openActiveNotebookForCapture()
+        MainNavigationStore.shared.openActiveNotebookForCapture()
     }
 
     private func reloadWorkspace() {

@@ -30,7 +30,7 @@ final class WindowChromeConfigurator {
         if configured.contains(id) { return }
         configured.insert(id)
 
-        // 主窗口本身由 V2 MainWindowController 作为 AppKit owner 创建，内容区
+        // 主窗口本身由 MainWindowController 作为 AppKit owner 创建，内容区
         // 下方只有我们挂进去的 NSHostingView/Controller。它们默认会把内容
         // intrinsic / min / max size 反推回 window,在 Home ↔ Editor ↔ Onboarding
         // 切换时触发 updateAnimatedWindowSize 递归。
@@ -129,7 +129,7 @@ final class WindowChromeConfigurator {
     }
 
     @discardableResult
-    func stabilizeSwiftUIHostingTree(on window: NSWindow) -> HostingSizingStabilizationResultV2 {
-        WindowHostingV2.stabilizeWindowTree(on: window)
+    func stabilizeSwiftUIHostingTree(on window: NSWindow) -> HostingSizingStabilizationResult {
+        WindowHosting.stabilizeWindowTree(on: window)
     }
 }

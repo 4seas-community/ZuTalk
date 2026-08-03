@@ -101,15 +101,15 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(window.frame, target)
     }
 
-    func testWindowSpecV2_baselineCatalog_containsAllKnownWindowSurfaces() {
-        let snapshot = WindowSpecV2.baselineCatalog()
+    func testWindowSpec_baselineCatalog_containsAllKnownWindowSurfaces() {
+        let snapshot = WindowSpec.baselineCatalog()
         let ids = Set(snapshot.keys)
 
         XCTAssertEqual(ids, Set(WindowSurfaceID.allCases))
     }
 
-    func testMainWindowSpecV2_supportsNativeFullScreenSpace() {
-        let spec = WindowSpecV2.required(.main)
+    func testMainWindowSpec_supportsNativeFullScreenSpace() {
+        let spec = WindowSpec.required(.main)
         let window = NSWindow(
             contentRect: spec.initialContentRect,
             styleMask: spec.styleMask,
@@ -117,7 +117,7 @@ final class WindowSystemTests: XCTestCase {
             defer: false
         )
 
-        ManagedWindowRuntimeV2.apply(spec: spec, to: window)
+        ManagedWindowRuntime.apply(spec: spec, to: window)
 
         XCTAssertTrue(spec.styleMask.contains(.resizable))
         XCTAssertTrue(spec.chrome.collectionBehavior.contains(.fullScreenPrimary))
@@ -261,8 +261,8 @@ final class WindowSystemTests: XCTestCase {
     }
 
     @available(macOS 13.0, *)
-    func testWindowHostingV2_makeView_disablesHostingSizingForFixedWindowOwnedViews() {
-        let hosting = WindowHostingV2.makeView(rootView: Color.clear.frame(width: 200, height: 100))
+    func testWindowHosting_makeView_disablesHostingSizingForFixedWindowOwnedViews() {
+        let hosting = WindowHosting.makeView(rootView: Color.clear.frame(width: 200, height: 100))
 
         XCTAssertEqual(hosting.sizingOptions, [])
         if #available(macOS 15.0, *) {
@@ -270,26 +270,26 @@ final class WindowSystemTests: XCTestCase {
         }
     }
 
-    func testWindowHostingV2_makeView_acceptsFirstMouseForControlSurfaces() {
-        let hosting = WindowHostingV2.makeView(rootView: Color.clear.frame(width: 200, height: 100))
+    func testWindowHosting_makeView_acceptsFirstMouseForControlSurfaces() {
+        let hosting = WindowHosting.makeView(rootView: Color.clear.frame(width: 200, height: 100))
 
         XCTAssertTrue(hosting.acceptsFirstMouse(for: nil))
     }
 
-    func testWindowHostingV2_makeControllerView_acceptsFirstMouseForControlSurfaces() {
-        let controller = WindowHostingV2.makeController(rootView: Color.clear.frame(width: 200, height: 100))
+    func testWindowHosting_makeControllerView_acceptsFirstMouseForControlSurfaces() {
+        let controller = WindowHosting.makeController(rootView: Color.clear.frame(width: 200, height: 100))
 
         XCTAssertTrue(controller.view.acceptsFirstMouse(for: nil))
     }
 
     @available(macOS 13.0, *)
-    func testWindowHostingV2_makeController_configuresReplacementHostingViewBeforeInstallation() throws {
-        let controller = WindowHostingV2.makeController(
+    func testWindowHosting_makeController_configuresReplacementHostingViewBeforeInstallation() throws {
+        let controller = WindowHosting.makeController(
             rootView: Color.clear.frame(width: 200, height: 100)
         )
         let replacementView = controller.view
         let replacementHosting = try XCTUnwrap(
-            replacementView as? any HostingSizingConfigurableV2
+            replacementView as? any HostingSizingConfigurable
         )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
@@ -303,9 +303,9 @@ final class WindowSystemTests: XCTestCase {
         let installedContentMinSize = window.contentMinSize
         let installedContentMaxSize = window.contentMaxSize
 
-        let stabilization = WindowHostingV2.stabilizeWindowTree(on: window)
+        let stabilization = WindowHosting.stabilizeWindowTree(on: window)
         window.contentView?.layoutSubtreeIfNeeded()
-        let repeatedStabilization = WindowHostingV2.stabilizeWindowTree(on: window)
+        let repeatedStabilization = WindowHosting.stabilizeWindowTree(on: window)
 
         XCTAssertTrue(window.contentView === replacementView)
         XCTAssertEqual(window.frame, installedFrame)
@@ -319,8 +319,8 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(repeatedStabilization.totalDisabled, 0)
     }
 
-    func testManagedWindowRuntimeV2_applyUsesCatalogChromeForSubtitleOverlay() {
-        let spec = WindowSpecV2.required(.subtitleOverlay)
+    func testManagedWindowRuntime_applyUsesCatalogChromeForSubtitleOverlay() {
+        let spec = WindowSpec.required(.subtitleOverlay)
         let panel = NSPanel(
             contentRect: spec.initialContentRect,
             styleMask: spec.styleMask,
@@ -328,7 +328,7 @@ final class WindowSystemTests: XCTestCase {
             defer: false
         )
 
-        ManagedWindowRuntimeV2.apply(spec: spec, to: panel)
+        ManagedWindowRuntime.apply(spec: spec, to: panel)
 
         XCTAssertEqual(panel.level, .floating)
         XCTAssertEqual(panel.collectionBehavior, [.canJoinAllSpaces, .fullScreenAuxiliary])
@@ -338,8 +338,8 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertFalse(panel.hidesOnDeactivate)
     }
 
-    func testMainNavigationStoreV2_openNotebookTabKeepsSessionAsContext() {
-        let store = MainNavigationStoreV2()
+    func testMainNavigationStore_openNotebookTabKeepsSessionAsContext() {
+        let store = MainNavigationStore()
 
         store.openNotebookTab(
             notebookID: "nb-1",
@@ -355,7 +355,7 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(store.pendingEditorView, .notes)
     }
 
-    func testMainNavigationStoreV2_restoresLastNotebookOnceOnLaunch() throws {
+    func testMainNavigationStore_restoresLastNotebookOnceOnLaunch() throws {
         let tempDir = NSTemporaryDirectory()
             .appending("zulangue-launch-notebook-\(UUID().uuidString)")
         let core = try ZulangueCore.newDeferred(dataDir: tempDir)
@@ -369,7 +369,7 @@ final class WindowSystemTests: XCTestCase {
             activeNotebookId: notebookB.id,
             activeNotebookTitle: nil
         )
-        let store = MainNavigationStoreV2(
+        let store = MainNavigationStore(
             activeNotebookIDProvider: { notebookContext.activeNotebookId },
             captureRouteContextProvider: { (nil, nil, false) },
             coreProvider: { core },
@@ -393,7 +393,7 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(store.activeTab, .home, "launch restoration must not trap later Home navigation")
     }
 
-    func testMainNavigationStoreV2_retriesLaunchRestoreAfterCoreBecomesAvailable() throws {
+    func testMainNavigationStore_retriesLaunchRestoreAfterCoreBecomesAvailable() throws {
         let tempDir = NSTemporaryDirectory()
             .appending("zulangue-retry-launch-notebook-\(UUID().uuidString)")
         let core = try ZulangueCore.newDeferred(dataDir: tempDir)
@@ -407,7 +407,7 @@ final class WindowSystemTests: XCTestCase {
             activeNotebookTitle: nil
         )
         let availability = NotebookCoreAvailability()
-        let store = MainNavigationStoreV2(
+        let store = MainNavigationStore(
             activeNotebookIDProvider: { notebookContext.activeNotebookId },
             captureRouteContextProvider: { (nil, nil, false) },
             coreProvider: { availability.core },
@@ -424,7 +424,7 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(store.activeNotebookID, notebook.id)
     }
 
-    func testMainNavigationStoreV2_staleNotebookFallsBackToAnAvailableNotebook() throws {
+    func testMainNavigationStore_staleNotebookFallsBackToAnAvailableNotebook() throws {
         let tempDir = NSTemporaryDirectory()
             .appending("zulangue-stale-notebook-\(UUID().uuidString)")
         let core = try ZulangueCore.newDeferred(dataDir: tempDir)
@@ -437,7 +437,7 @@ final class WindowSystemTests: XCTestCase {
             activeNotebookId: "deleted-notebook",
             activeNotebookTitle: nil
         )
-        let store = MainNavigationStoreV2(
+        let store = MainNavigationStore(
             activeNotebookIDProvider: { notebookContext.activeNotebookId },
             captureRouteContextProvider: { (nil, nil, false) },
             coreProvider: { core },
@@ -464,7 +464,7 @@ final class WindowSystemTests: XCTestCase {
             activeNotebookId: notebookB.id,
             activeNotebookTitle: notebookB.title
         )
-        let store = MainNavigationStoreV2(
+        let store = MainNavigationStore(
             activeNotebookIDProvider: { notebookB.id },
             captureRouteContextProvider: { (notebookA.id, "session-a", true) },
             coreProvider: { core },
@@ -489,12 +489,12 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
-    func testMainShellViewV2_exposesOnlyMinimalMVPNavigation() throws {
+    func testMainShellView_exposesOnlyMinimalMVPNavigation() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Zulangue", isDirectory: true)
-        let source = root.appendingPathComponent("UIScenesV2/Main/MainShellViewV2.swift")
+        let source = root.appendingPathComponent("UIScenes/Main/MainShellView.swift")
         let contents = try String(contentsOf: source, encoding: .utf8)
 
         XCTAssertTrue(contents.contains("@State private var isSidebarHidden"))
@@ -529,7 +529,7 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertTrue(contents.contains(".accessibilityAddTraits(activeTab == .config ? .isSelected : [])"))
 
         let navigationSource = root
-            .appendingPathComponent("UIScenesV2/Main/MainNavigationStoreV2.swift")
+            .appendingPathComponent("UIScenes/Main/MainNavigationStore.swift")
         let navigationContents = try String(contentsOf: navigationSource, encoding: .utf8)
         XCTAssertFalse(navigationContents.contains("detail: error.localizedDescription"))
         XCTAssertFalse(navigationContents.contains("detail: \"\\(error)\""))
@@ -611,12 +611,12 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertTrue(activeRunView.contains("onLiveAutoscrollSignal()"))
     }
 
-    func testMainShellViewV2_placesTheSidebarCollapseControlInTheHeader() throws {
+    func testMainShellView_placesTheSidebarCollapseControlInTheHeader() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Zulangue", isDirectory: true)
-        let source = root.appendingPathComponent("UIScenesV2/Main/MainShellViewV2.swift")
+        let source = root.appendingPathComponent("UIScenes/Main/MainShellView.swift")
         let contents = try String(contentsOf: source, encoding: .utf8)
 
         let expandedStart = try XCTUnwrap(contents.range(of: "private var expandedSidebar: some View"))
@@ -636,7 +636,7 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertTrue(sidebarHeader.contains("sidebarCollapseButton"))
     }
 
-    func testWindowCoordinator_showMainWindow_registersCoordinatorOwnedV2MainWindow() {
+    func testWindowCoordinator_showMainWindow_registersCoordinatorOwnedMainWindow() {
         WindowCoordinator.shared.showMainWindow()
 
         XCTAssertTrue(WindowCoordinator.shared.isMainWindowReadyForOpen())
@@ -803,7 +803,7 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertTrue(panel.isMovableByWindowBackground)
         XCTAssertTrue(panel.hasShadow)
         let normalMaximumContentSize = try XCTUnwrap(
-            WindowSpecV2.required(.subtitleOverlay).chrome.maximumContentSize
+            WindowSpec.required(.subtitleOverlay).chrome.maximumContentSize
         )
         XCTAssertEqual(
             panel.contentMaxSize,
@@ -887,7 +887,7 @@ final class WindowSystemTests: XCTestCase {
             .appendingPathComponent("Zulangue", isDirectory: true)
         let source = try String(
             contentsOf: root.appendingPathComponent(
-                "WindowSystemV2/Surfaces/SubtitleOverlayController.swift"
+                "WindowSystem/Surfaces/SubtitleOverlayController.swift"
             ),
             encoding: .utf8
         )
@@ -925,7 +925,7 @@ final class WindowSystemTests: XCTestCase {
     }
 
     func testSubtitleOverlayBackdropIsTranslucentWithoutBackdropBlur() throws {
-        let spec = WindowSpecV2.required(.subtitleOverlay)
+        let spec = WindowSpec.required(.subtitleOverlay)
         let panel = NSPanel(
             contentRect: spec.initialContentRect,
             styleMask: spec.styleMask,
@@ -933,7 +933,7 @@ final class WindowSystemTests: XCTestCase {
             defer: false
         )
 
-        ManagedWindowRuntimeV2.apply(spec: spec, to: panel)
+        ManagedWindowRuntime.apply(spec: spec, to: panel)
 
         XCTAssertFalse(panel.isOpaque)
         XCTAssertEqual(panel.backgroundColor, .clear)
@@ -988,7 +988,7 @@ final class WindowSystemTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent(
-                "Zulangue/WindowSystemV2/Surfaces/SubtitleOverlayController.swift"
+                "Zulangue/WindowSystem/Surfaces/SubtitleOverlayController.swift"
             )
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
         XCTAssertFalse(source.contains(".regularMaterial"))

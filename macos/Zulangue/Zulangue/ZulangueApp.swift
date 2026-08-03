@@ -266,7 +266,7 @@ final class ZulangueAppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     private func openCaptureNotebook() {
         WindowCommandRouter.shared.openMainWindow(detail: "capture-route") {
-            MainNavigationStoreV2.shared.openActiveNotebookForCapture()
+            MainNavigationStore.shared.openActiveNotebookForCapture()
         }
     }
 

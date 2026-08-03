@@ -64,7 +64,7 @@ final class OnboardingControllerTests: XCTestCase {
     }
 
     func testHelpCanPresentOnboardingAgain() {
-        let store = MainNavigationStoreV2()
+        let store = MainNavigationStore()
         store.completeOnboarding()
 
         store.presentOnboarding()

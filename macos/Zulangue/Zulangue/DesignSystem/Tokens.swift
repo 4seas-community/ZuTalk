@@ -1,7 +1,7 @@
 // Tokens.swift
 // Zulangue brand tokens.
 //
-// The current product shell stays V2/notebook-first. The visual language is
+// The current product shell is notebook-first. The visual language is
 // mapped from the current product design system:
 //   · FOREST       · #006A47 primary, solid/inverse surfaces
 //   · MINT         · #8EF2C4 accent and inverse text

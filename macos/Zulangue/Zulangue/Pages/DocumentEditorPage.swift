@@ -26,11 +26,11 @@ private enum DocumentEditorSidePanel: Equatable {
 }
 
 enum NotebookCaptureSettingsRoutePolicy {
-    static func notebookId(for route: EditorRouteV2?) -> String? {
+    static func notebookId(for route: EditorRoute?) -> String? {
         route?.notebookID
     }
 
-    static func shouldDismiss(previous: EditorRouteV2?, current: EditorRouteV2?) -> Bool {
+    static func shouldDismiss(previous: EditorRoute?, current: EditorRoute?) -> Bool {
         previous != current
     }
 
@@ -76,7 +76,7 @@ enum NotebookDocumentSurfacePolicy {
 struct DocumentEditorPage: View {
     /// Notebook builtin document + optional session filter. The document is
     /// authoritative; selectedSessionID only scopes contextual UI/export.
-    let route: EditorRouteV2?
+    let route: EditorRoute?
     let initialView: EditorInitialView
 
     private var docId: String? {
@@ -109,7 +109,7 @@ struct DocumentEditorPage: View {
     /// 当前是否展示 Transcript 视图(Plaud 式)。true 时隐藏 DocumentTextView。
     @State private var showTranscript: Bool
 
-    init(route: EditorRouteV2? = nil, initialView: EditorInitialView = .notes) {
+    init(route: EditorRoute? = nil, initialView: EditorInitialView = .notes) {
         self.route = route
         self.initialView = initialView
         _captureProfileEditor = StateObject(

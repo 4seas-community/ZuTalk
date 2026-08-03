@@ -12,7 +12,7 @@ extension NSApplication {
             WindowCommandRouter.shared.requestToggleSubtitleOverlay()
         case "recording":
             WindowCommandRouter.shared.openMainWindow(detail: "menu-bar.popover.open-capture-notebook") {
-                MainNavigationStoreV2.shared.openActiveNotebookForCapture()
+                MainNavigationStore.shared.openActiveNotebookForCapture()
             }
         case "settings":
             WindowCommandRouter.shared.requestOpenSettings()

@@ -163,7 +163,7 @@ struct MenuBarRecordingView: View {
 
     private func openNotebook() {
         WindowCommandRouter.shared.openMainWindow(detail: "menu-bar.popover.open-notebook") {
-            MainNavigationStoreV2.shared.openActiveNotebookForCapture()
+            MainNavigationStore.shared.openActiveNotebookForCapture()
         }
         MenuBarCoordinator.shared.closePopover()
     }

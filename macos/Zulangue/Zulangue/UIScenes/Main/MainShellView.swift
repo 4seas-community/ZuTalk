@@ -1,19 +1,19 @@
 import AppKit
 import SwiftUI
 
-struct MainShellViewV2: View {
+struct MainShellView: View {
     @ObservedObject private var softwareUpdate = SoftwareUpdateController.shared
-    @ObservedObject private var store: MainNavigationStoreV2
+    @ObservedObject private var store: MainNavigationStore
     @ObservedObject private var communityInvite = CommunityInviteSession.shared
     @State private var isSidebarHidden = false
 
-    init(store: MainNavigationStoreV2) {
+    init(store: MainNavigationStore) {
         self._store = ObservedObject(wrappedValue: store)
     }
 
     private var activeTab: MainTab { store.activeTab }
     private var needsOnboarding: Bool { store.needsOnboarding }
-    private var activeEditorRoute: EditorRouteV2? { store.activeEditorRoute }
+    private var activeEditorRoute: EditorRoute? { store.activeEditorRoute }
     private var pendingEditorView: EditorInitialView { store.pendingEditorView }
 
     var body: some View {

@@ -10,32 +10,32 @@ final class WindowArchitectureTests: XCTestCase {
         WindowCommandRouter.shared.resetForTesting()
     }
 
-    // MARK: - WindowLayoutEngineV2 (subtitle overlay + main)
+    // MARK: - WindowLayoutEngine (subtitle overlay + main)
 
-    func testWindowLayoutEngineV2_subtitleOverlayPrefersValidSavedFrame() {
+    func testWindowLayoutEngine_subtitleOverlayPrefersValidSavedFrame() {
         let visible = NSRect(x: 0, y: 0, width: 1440, height: 900)
         let saved = NSRect(x: 120, y: 180, width: 960, height: 220)
-        let request = WindowLayoutRequestV2(
+        let request = WindowLayoutRequest(
             surfaceID: .subtitleOverlay,
-            display: DisplayProfileV2(frame: visible, visibleFrame: visible),
+            display: DisplayProfile(frame: visible, visibleFrame: visible),
             savedFrame: saved
         )
 
-        let snapshot = WindowLayoutEngineV2.snapshot(for: request)
+        let snapshot = WindowLayoutEngine.snapshot(for: request)
 
         XCTAssertEqual(snapshot?.outerFrame, saved.integral)
     }
 
-    func testWindowLayoutEngineV2_subtitleOverlayFallsBackToTopCenteredDefaultFrame() {
+    func testWindowLayoutEngine_subtitleOverlayFallsBackToTopCenteredDefaultFrame() {
         let visible = NSRect(x: 0, y: 0, width: 1200, height: 900)
         let invalidSaved = NSRect(x: -2000, y: -2000, width: 100, height: 40)
-        let request = WindowLayoutRequestV2(
+        let request = WindowLayoutRequest(
             surfaceID: .subtitleOverlay,
-            display: DisplayProfileV2(frame: visible, visibleFrame: visible),
+            display: DisplayProfile(frame: visible, visibleFrame: visible),
             savedFrame: invalidSaved
         )
 
-        let snapshot = WindowLayoutEngineV2.snapshot(for: request)
+        let snapshot = WindowLayoutEngine.snapshot(for: request)
 
         XCTAssertEqual(snapshot?.outerFrame.width, 1100)
         XCTAssertEqual(snapshot?.outerFrame.height, 280)
@@ -43,19 +43,19 @@ final class WindowArchitectureTests: XCTestCase {
         XCTAssertEqual(snapshot?.outerFrame.origin.y, 584)
     }
 
-    func testWindowLayoutEngineV2_subtitleOverlayClampsOversizedSavedFrameIntoVisibleBounds() {
-        let profile = DisplayProfileV2(
+    func testWindowLayoutEngine_subtitleOverlayClampsOversizedSavedFrameIntoVisibleBounds() {
+        let profile = DisplayProfile(
             frame: NSRect(x: 0, y: 24, width: 1512, height: 956),
             visibleFrame: NSRect(x: 0, y: 24, width: 1512, height: 956)
         )
         let oversizedSaved = NSRect(x: 86, y: -820, width: 1556, height: 1844)
-        let request = WindowLayoutRequestV2(
+        let request = WindowLayoutRequest(
             surfaceID: .subtitleOverlay,
             display: profile,
             savedFrame: oversizedSaved
         )
 
-        let snapshot = WindowLayoutEngineV2.snapshot(for: request)
+        let snapshot = WindowLayoutEngine.snapshot(for: request)
         let frame = snapshot?.outerFrame ?? .zero
 
         XCTAssertTrue(profile.visibleFrame.contains(frame))
@@ -74,14 +74,14 @@ final class WindowArchitectureTests: XCTestCase {
         XCTAssertEqual(frame.origin.y, 154)
     }
 
-    func testWindowLayoutEngineV2_mainWindowUsesLaunchFrameHelper() {
+    func testWindowLayoutEngine_mainWindowUsesLaunchFrameHelper() {
         let visible = NSRect(x: 0, y: 24, width: 1728, height: 1060)
-        let request = WindowLayoutRequestV2(
+        let request = WindowLayoutRequest(
             surfaceID: .main,
-            display: DisplayProfileV2(frame: visible, visibleFrame: visible)
+            display: DisplayProfile(frame: visible, visibleFrame: visible)
         )
 
-        let snapshot = WindowLayoutEngineV2.snapshot(for: request)
+        let snapshot = WindowLayoutEngine.snapshot(for: request)
 
         XCTAssertEqual(snapshot?.outerFrame, MainWindowMetrics.launchFrame(in: visible))
     }
@@ -189,7 +189,6 @@ final class WindowArchitectureTests: XCTestCase {
             let relativePath = fileURL.path.replacingOccurrences(of: sourceRoot.path + "/", with: "")
             let allowedPrefixes = [
                 "WindowSystem/",
-                "WindowSystemV2/",
                 "MenuBar/",
             ]
             if allowedPrefixes.contains(where: { relativePath.hasPrefix($0) }) {
@@ -224,15 +223,15 @@ final class WindowArchitectureTests: XCTestCase {
 
         let mustNotExist = [
             "DynamicIsland",
-            "UIScenesV2/Island",
-            "WindowSystemV2/Surfaces/DynamicIslandControllerV2.swift",
-            "WindowSystemV2/Surfaces/DynamicIslandPanelV2.swift",
+            "UIScenes/Island",
+            "WindowSystem/Surfaces/DynamicIslandController.swift",
+            "WindowSystem/Surfaces/DynamicIslandPanel.swift",
             "WindowSystem/DynamicIslandScreenResolver.swift",
             "WindowSystem/NotchSpaceManager.swift",
-            "AppV2/FrontendSceneOrchestratorV2.swift",
-            "ProjectionsV2/ProjectionAssemblerV2.swift",
-            "AppV2/OverlaySessionCoordinatorV2.swift",
-            "WindowSystemV2/Surfaces/OverlayControllersV2.swift",
+            "App/FrontendSceneOrchestrator.swift",
+            "Projections/ProjectionAssembler.swift",
+            "App/OverlaySessionCoordinator.swift",
+            "WindowSystem/Surfaces/OverlayControllers.swift",
         ]
 
         for path in mustNotExist {
@@ -313,24 +312,24 @@ final class WindowArchitectureTests: XCTestCase {
 
     // MARK: - Main window + navigation model
 
-    func testMainWindowControllerV2_hostsMainShellViewV2() throws {
+    func testMainWindowController_hostsMainShellView() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Zulangue", isDirectory: true)
-        let source = root.appendingPathComponent("WindowSystemV2/Surfaces/MainWindowControllerV2.swift")
+        let source = root.appendingPathComponent("WindowSystem/Surfaces/MainWindowController.swift")
         let contents = try String(contentsOf: source, encoding: .utf8)
 
-        XCTAssertTrue(contents.contains("MainShellViewV2("))
+        XCTAssertTrue(contents.contains("MainShellView("))
         XCTAssertFalse(contents.contains("MainWindowView()"))
     }
 
-    func testMainShellViewV2_ownsRealMainWindowContentInsteadOfPlaceholderBanner() throws {
+    func testMainShellView_ownsRealMainWindowContentInsteadOfPlaceholderBanner() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Zulangue", isDirectory: true)
-        let source = root.appendingPathComponent("UIScenesV2/Main/MainShellViewV2.swift")
+        let source = root.appendingPathComponent("UIScenes/Main/MainShellView.swift")
         let contents = try String(contentsOf: source, encoding: .utf8)
 
         XCTAssertFalse(contents.contains("Text(\"Zulangue V2\")"))
@@ -344,7 +343,7 @@ final class WindowArchitectureTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Zulangue", isDirectory: true)
-        let source = root.appendingPathComponent("UIScenesV2/Main/MainShellViewV2.swift")
+        let source = root.appendingPathComponent("UIScenes/Main/MainShellView.swift")
         let contents = try String(contentsOf: source, encoding: .utf8)
 
         XCTAssertTrue(contents.contains("store.activeNotebookTitle"))
@@ -358,7 +357,7 @@ final class WindowArchitectureTests: XCTestCase {
         XCTAssertFalse(contents.contains("openGitHub"))
     }
 
-    func testWindowCommandRouter_usesMainNavigationStoreV2() throws {
+    func testWindowCommandRouter_usesMainNavigationStore() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -366,7 +365,7 @@ final class WindowArchitectureTests: XCTestCase {
         let source = root.appendingPathComponent("WindowSystem/WindowCommandRouter.swift")
         let contents = try String(contentsOf: source, encoding: .utf8)
 
-        XCTAssertTrue(contents.contains("MainNavigationStoreV2.shared"))
+        XCTAssertTrue(contents.contains("MainNavigationStore.shared"))
         XCTAssertFalse(contents.contains("MainWindowNavigationModel"))
     }
 

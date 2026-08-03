@@ -23,8 +23,8 @@ enum NotebookCaptureRouteSessionPolicy {
 }
 
 @MainActor
-final class MainNavigationStoreV2: ObservableObject {
-    static let shared = MainNavigationStoreV2()
+final class MainNavigationStore: ObservableObject {
+    static let shared = MainNavigationStore()
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "xyz.voice.zulangue",
         category: "MainNavigation"
@@ -37,9 +37,9 @@ final class MainNavigationStoreV2: ObservableObject {
     )
 
     @Published private(set) var activeTab: MainTab = .home
-    @Published private(set) var activeRoute: MainRouteV2 = .home
+    @Published private(set) var activeRoute: MainRoute = .home
     @Published private(set) var needsOnboarding: Bool = OnboardingController.shouldShowOnboarding
-    @Published private(set) var activeEditorRoute: EditorRouteV2?
+    @Published private(set) var activeEditorRoute: EditorRoute?
     @Published private(set) var activeNotebookTitle: String?
     @Published private(set) var pendingEditorView: EditorInitialView = .notes
 
@@ -189,7 +189,7 @@ final class MainNavigationStoreV2: ObservableObject {
             isCaptureActive: captureContext.isActive
         )
         let notebookTitle = resolveNotebookTitle(notebookID: notebookID)
-        activeEditorRoute = EditorRouteV2(
+        activeEditorRoute = EditorRoute(
             notebookID: notebookID,
             tabID: tabID,
             documentID: documentID,
@@ -401,7 +401,7 @@ final class MainNavigationStoreV2: ObservableObject {
         return notebookContext.activeNotebookTitle
     }
 
-    private func route(for tab: MainTab) -> MainRouteV2 {
+    private func route(for tab: MainTab) -> MainRoute {
         switch tab {
         case .home:
             return .home
@@ -423,7 +423,7 @@ final class MainNavigationStoreV2: ObservableObject {
     private func notebookRoute(
         for sessionID: String,
         core: any ZulangueCoreProtocol
-    ) throws -> EditorRouteV2? {
+    ) throws -> EditorRoute? {
         for notebook in try core.listNotebooks() {
             let tabs = try core.listNotebookTabs(notebookId: notebook.id)
                 .filter { $0.deletedAt == nil }
@@ -447,7 +447,7 @@ final class MainNavigationStoreV2: ObservableObject {
             } ?? tabs.first
 
             guard let preferred else { return nil }
-            return EditorRouteV2(
+            return EditorRoute(
                 notebookID: notebook.id,
                 tabID: preferred.id,
                 documentID: preferred.docId,
