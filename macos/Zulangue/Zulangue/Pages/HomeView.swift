@@ -166,7 +166,7 @@ private struct HomeNotebookCard: View {
             .padding(Spacing.lg)
             .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
             .surfaceCard(
-                fill: isHovering ? Color.bgElevated.opacity(0.58) : Color.bgElevated.opacity(0.28),
+                fill: isHovering ? Color.bgElevated.opacity(0.58) : Color.bgElevated.opacity(0.3),
                 cornerRadius: Radius.md,
                 border: isHovering ? Color.brandAccent.opacity(0.45) : Color.borderGhost.opacity(0.55),
                 borderWidth: Stroke.thin

@@ -16,6 +16,29 @@ Zulangue 的界面应当克制、清晰，并让录音、转录和保存状态�
 颜色必须通过 `DesignSystem/Tokens.swift` 的语义 token 使用。视图不应直接
 复制品牌色值，也不应根据具体页面创建新的同义 token。
 
+### 只有一套命名
+
+`Tokens.swift` 是两层：少量原语，加上转发到原语的语义名。语义名描述**角色**
+（`bgElevated`、`borderSubtle`、`textSecondary`），不描述外观。
+
+这条规则曾经被绕过：token 文件里同时存在 blueprint（`bpBlue`、`bpLine`）和
+hardware（`hwSilver`、`hwBlack`）两套方言，全部转发到同一批原语——`surfaceRaised`
+一个颜色有六个名字。页面因此分裂成两半，各说一种方言，互不知道对方在用同一个
+颜色。两套方言已删除。
+
+新增 token 前先确认它对应一个**新的角色**，而不是给已有颜色再起一个名字。
+`DesignTokenGoldenTests` 锁定每个 token 在深浅两态下的解析值，改名不应改变任何一行。
+
+### 刻意保留的重叠
+
+`bgPanel`、`bgSurface`、`bgElevated` 今天同值，**不要合并**。它们描述三种不同角色，
+同值是当前的取值巧合，不是同义。合并会让将来想区分面板与抬升面时无从下手。
+
+`error` / `info` / `success` / `warning` 与 `destructive` / `signalRed` 等重叠同理保留，
+另有一层原因：这些名字和大量局部变量、其它类型的 enum case 重名（`error` 全仓
+301 处里 182 处不是 token，`.destructive` 同时是两个 Style 枚举的 case），
+自动改名不安全，收益也不足以支撑逐处人工确认。
+
 ## 排版
 
 标题使用圆润的几何风格，正文使用系统字体。正文、说明、标签和数值应使用
@@ -28,6 +51,16 @@ Zulangue 的界面应当克制、清晰，并让录音、转录和保存状态�
 - Tab、焦点环和选中项使用品牌强调色。
 - 录音指示器使用活动状态色。
 - 错误和删除动作使用破坏性色。
+
+### 卡片
+
+卡片外观走 `surfaceCard` 修饰符，不要重新手写「填充 + 描边圆角 + 裁切」三件套。
+它是修饰符而不是容器，调用方保留自己的 `.padding` 和 `.frame` —— 容器化会让
+填充按内边距后的内容取尺寸而不是按 `.frame` 的框，那是真实的视觉差异。
+
+内容卡片（Home、手写笔记、录音设置）用 `bgElevated.opacity(0.3)` + `Radius.md`。
+设置页的 `SettingsCard` 是另一类容器：更紧凑的扁平列表，用 `Radius.sm` 且底色更实，
+不属于同一族，不要为了「统一」把它拉平。
 
 ## 可访问性
 
