@@ -146,7 +146,7 @@ extension Color {
     static let successInk: Color = .dynamic(darkHex: 0x8EF2C4, lightHex: 0x006A47)
 
     // ════════════════════════════════════════════════════════
-    // §03.2 GOLD · 仅 ReferenceNumber / §08 / Export(浅底降饱和保仪表金感)
+    // §03.2 GOLD · §08 / Export(浅底降饱和保仪表金感)
     // ════════════════════════════════════════════════════════
     static let gold:     Color = .dynamic(darkHex: 0xF3E079, lightHex: 0xB58900)
     static let goldDim:  Color = .dynamic(darkHex: 0xD8C760, lightHex: 0x7E6100)

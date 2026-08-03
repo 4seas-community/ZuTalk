@@ -164,7 +164,6 @@ final class DesignSystemTests: XCTestCase {
             "Pages/TrashPage.swift",
             "MenuBar/MenuBarIdleView.swift",
             "DesignSystem/FocusRing.swift",
-            "DesignSystem/Primitives/OutlineButton.swift",
         ] {
             let source = try String(
                 contentsOf: sourceRoot.appendingPathComponent(relativePath),

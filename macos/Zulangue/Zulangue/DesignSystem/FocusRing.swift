@@ -34,8 +34,8 @@ struct FocusRingModifier: ViewModifier {
 
 /// Focus ring 的强度,决定线宽和阴影
 enum FocusIntensity {
-    case subtle    // 1px,适合小元素(IconButton)
-    case standard  // 2px,适合中等元素(LabeledButton, TextField)
+    case subtle    // 1px,适合小元素
+    case standard  // 2px,适合中等元素(LabeledButton)
     case strong    // 3px,适合大元素(EmptyState 主按钮)
 
     var lineWidth: CGFloat {
