@@ -3,8 +3,6 @@ import SwiftUI
 
 @MainActor
 final class MainWindowController: NSWindowController, ManagedWindowController {
-    private var hostingController: NSHostingController<AnyView>?
-
     var windowSurfaceID: WindowSurfaceID { .main }
     var managedWindow: NSWindow {
         guard let window else { preconditionFailure("MainWindowController.window missing") }
@@ -34,19 +32,25 @@ final class MainWindowController: NSWindowController, ManagedWindowController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// Installs the shell as the window's content view rather than as a content
+    /// view controller.
+    ///
+    /// `NSWindow.contentViewController` hands window sizing to AppKit, which
+    /// resizes the window to fit the controller on assignment and again when the
+    /// window is first shown — the spec's frame is applied in between and then
+    /// overwritten. The subtitle overlay never had this problem because it pins
+    /// a content view instead, so the main window now does the same.
     func installRootView() {
         if TestEnvironment.isUnitTestMode {
             managedWindow.contentViewController = NSViewController()
-            hostingController = nil
             return
         }
-        let controller = WindowHosting.makeController(
+        let hostingView = WindowHosting.makeView(
             rootView: AnyView(rootView),
             policy: managedWindowSpec.hostingPolicy
         )
-        managedWindow.contentViewController = controller
+        WindowHosting.installPinnedView(hostingView, into: managedWindow)
         _ = WindowHosting.stabilizeWindowTree(on: managedWindow)
-        hostingController = controller
     }
 
     func showAndFocus() {
