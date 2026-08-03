@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class MainWindowController: NSWindowController, ManagedWindowController {
+final class MainWindowController: NSWindowController, ManagedWindowController, NSWindowDelegate {
     var windowSurfaceID: WindowSurfaceID { .main }
     var managedWindow: NSWindow {
         guard let window else { preconditionFailure("MainWindowController.window missing") }
@@ -21,6 +21,7 @@ final class MainWindowController: NSWindowController, ManagedWindowController {
         window.title = "Zulangue"
         window.isReleasedWhenClosed = false
         super.init(window: window)
+        window.delegate = self
         configureManagedWindow()
         if !TestEnvironment.isUnitTestMode {
             WindowChromeConfigurator.shared.configure(managedWindow)
@@ -30,6 +31,29 @@ final class MainWindowController: NSWindowController, ManagedWindowController {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    // MARK: - Frame persistence
+
+    // Written on every move and resize rather than at quit: the app lives in
+    // the menu bar and can be terminated without this window ever closing.
+    // MainWindowMetrics discards a frame that no longer fits its screen, so a
+    // window dragged onto a display that is later disconnected does not strand
+    // the next launch off-screen.
+
+    func windowDidMove(_ notification: Notification) {
+        persistFrame()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        persistFrame()
+    }
+
+    private func persistFrame() {
+        guard !TestEnvironment.isUnitTestMode,
+              let visibleFrame = managedWindow.screen?.visibleFrame
+        else { return }
+        MainWindowMetrics.persistFrame(managedWindow.frame, in: visibleFrame)
     }
 
     /// Installs the shell as the window's content view rather than as a content

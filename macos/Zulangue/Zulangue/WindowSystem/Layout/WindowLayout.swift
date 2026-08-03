@@ -40,10 +40,19 @@ enum WindowLayoutEngine {
         }
     }
 
+    /// A frame the user left behind wins over the launch default, on the same
+    /// terms the subtitle overlay already uses: it has to still fit the screen
+    /// it is being restored onto, or it is discarded rather than clamped.
     static func mainWindowSnapshot(for request: WindowLayoutRequest) -> WindowLayoutSnapshot {
-        WindowLayoutSnapshot(
+        let visibleFrame = request.display.visibleFrame
+        let restored = request.savedFrame.flatMap { saved in
+            MainWindowMetrics.isUsableAutosavedFrame(saved, visibleFrame: visibleFrame)
+                ? saved.integral
+                : nil
+        }
+        return WindowLayoutSnapshot(
             surfaceID: .main,
-            outerFrame: MainWindowMetrics.launchFrame(in: request.display.visibleFrame)
+            outerFrame: restored ?? MainWindowMetrics.launchFrame(in: visibleFrame)
         )
     }
 

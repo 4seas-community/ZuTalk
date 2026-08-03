@@ -33,6 +33,10 @@ final class WindowCoordinator {
 
     func installBaselineCatalog() {
         guard catalog.isEmpty else { return }
+        // A pre-0.1 build let AppKit autosave the main window frame. That key
+        // outlives the feature, so clear it once rather than let it shadow the
+        // frame this coordinator now owns.
+        MainWindowMetrics.sanitizeLegacyAutosavedFrame()
         catalog = WindowSpec.baselineCatalog()
         CrashDiagnostics.record(
             "window-system.bootstrap",
@@ -327,7 +331,8 @@ final class WindowCoordinator {
             for: WindowLayoutRequest(
                 surfaceID: .main,
                 display: profile,
-                currentFrame: controller.managedWindow.frame
+                currentFrame: controller.managedWindow.frame,
+                savedFrame: MainWindowMetrics.restoredFrame(in: profile.visibleFrame)
             )
         )
         applyLayoutSnapshot(snapshot, reason: "window.main.initial")
