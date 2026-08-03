@@ -237,12 +237,12 @@ private struct ManualTimeNoteCard: View {
             }
         }
         .padding(Spacing.lg)
-        .background(Color.bgElevated.opacity(0.3))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.borderGhost.opacity(0.55), lineWidth: Stroke.thin)
+        .surfaceCard(
+            fill: Color.bgElevated.opacity(0.3),
+            cornerRadius: Radius.md,
+            border: Color.borderGhost.opacity(0.55),
+            borderWidth: Stroke.thin
         )
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
         .onChange(of: note.title) { _, newValue in
             title = newValue
             savedTitle = newValue

@@ -1090,8 +1090,7 @@ struct PermissionsScreen: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
-        .background(Color.bgElevated)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        .surfaceCard(fill: Color.bgElevated, cornerRadius: Radius.sm)
         .animation(.easeInOut(duration: 0.3), value: status)
         .opacity(appeared ? 1 : 0)
         .offset(y: appeared ? 0 : 14)

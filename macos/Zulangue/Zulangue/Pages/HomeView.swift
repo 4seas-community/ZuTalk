@@ -165,15 +165,12 @@ private struct HomeNotebookCard: View {
             }
             .padding(Spacing.lg)
             .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
-            .background(isHovering ? Color.bgElevated.opacity(0.58) : Color.bgElevated.opacity(0.28))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.md)
-                    .strokeBorder(
-                        isHovering ? Color.brandAccent.opacity(0.45) : Color.borderGhost.opacity(0.55),
-                        lineWidth: Stroke.thin
-                    )
+            .surfaceCard(
+                fill: isHovering ? Color.bgElevated.opacity(0.58) : Color.bgElevated.opacity(0.28),
+                cornerRadius: Radius.md,
+                border: isHovering ? Color.brandAccent.opacity(0.45) : Color.borderGhost.opacity(0.55),
+                borderWidth: Stroke.thin
             )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
             .contentShape(RoundedRectangle(cornerRadius: Radius.md))
         }
         .buttonStyle(.plain)

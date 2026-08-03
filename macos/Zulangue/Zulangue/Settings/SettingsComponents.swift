@@ -50,12 +50,12 @@ struct SettingsCard<Content: View>: View {
             VStack(spacing: 0) {
                 content()
             }
-            .background(Color.bgElevated.opacity(0.4))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.sm)
-                    .strokeBorder(Color.borderSubtle, lineWidth: 0.5)
+            .surfaceCard(
+                fill: Color.bgElevated.opacity(0.4),
+                cornerRadius: Radius.sm,
+                border: Color.borderSubtle,
+                borderWidth: 0.5
             )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
     }
 }

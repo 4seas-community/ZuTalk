@@ -2038,12 +2038,12 @@ struct NotebookCaptureSettingsView: View {
         }
         .padding(Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.bgElevated.opacity(0.3))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
+        .surfaceCard(
+            fill: Color.bgElevated.opacity(0.3),
+            cornerRadius: Radius.md,
+            border: Color.borderGhost.opacity(0.3),
+            borderWidth: 0.5
         )
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
 
     private func requestContextPreview() {
