@@ -59,19 +59,14 @@ final class WindowArchitectureTests: XCTestCase {
     }
 
     func testWindowLayoutEngineV2_subtitleOverlayClampsOversizedSavedFrameIntoVisibleBounds() {
-        let profile = DisplayProfileResolverV2.resolveProfile(
-            screenFrame: NSRect(x: 0, y: 24, width: 1512, height: 956),
-            visibleFrame: NSRect(x: 0, y: 24, width: 1512, height: 956),
-            safeAreaTopInset: 0,
-            topLeftAuxiliaryWidth: nil,
-            topRightAuxiliaryWidth: nil,
-            localizedName: "Built-in"
+        let profile = DisplayProfileV2(
+            frame: NSRect(x: 0, y: 24, width: 1512, height: 956),
+            visibleFrame: NSRect(x: 0, y: 24, width: 1512, height: 956)
         )
         let oversizedSaved = NSRect(x: 86, y: -820, width: 1556, height: 1844)
         let request = WindowLayoutRequestV2(
             surfaceID: .subtitleOverlay,
             display: profile,
-            systemState: .default,
             savedFrame: oversizedSaved
         )
 

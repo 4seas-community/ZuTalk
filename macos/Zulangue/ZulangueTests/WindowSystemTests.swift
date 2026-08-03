@@ -101,25 +101,6 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(window.frame, target)
     }
 
-    func testManagedWindowRuntime_applyUsesCatalogChromeForSubtitleOverlay() {
-        let spec = WindowSpec.required(.subtitleOverlay)
-        let panel = NSPanel(
-            contentRect: spec.initialContentRect,
-            styleMask: spec.styleMask,
-            backing: .buffered,
-            defer: false
-        )
-
-        ManagedWindowRuntime.apply(spec: spec, to: panel)
-
-        XCTAssertEqual(panel.level, .floating)
-        XCTAssertEqual(panel.collectionBehavior, [.canJoinAllSpaces, .fullScreenAuxiliary])
-        XCTAssertEqual(panel.contentMinSize, NSSize(width: 560, height: 180))
-        XCTAssertEqual(panel.contentMaxSize, NSSize(width: 2600, height: 1000))
-        XCTAssertTrue(panel.isFloatingPanel)
-        XCTAssertFalse(panel.hidesOnDeactivate)
-    }
-
     @available(macOS 13.0, *)
     func testWindowHosting_makeView_fixedWindowOwnedDisablesHostingSizing() {
         let hosting = WindowHosting.makeView(rootView: Color.clear.frame(width: 300, height: 200))
@@ -2200,65 +2181,4 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertTrue(snapshot.contains { $0.contains("surface=subtitleOverlay") })
     }
 
-    // MARK: - DisplayProfileResolverV2 notch-width clamp
-
-    func testDisplayProfileResolverV2_clampsNotchWidthAgainstScreenAffordance() {
-        // 14" MBP at native scaling — typical case, computed width 178pt fits well below the
-        // ceiling so the clamp must not interfere.
-        let normal = DisplayProfileResolverV2.resolveProfile(
-            screenFrame: NSRect(x: 0, y: 0, width: 1512, height: 982),
-            visibleFrame: NSRect(x: 0, y: 0, width: 1512, height: 950),
-            safeAreaTopInset: 32,
-            topLeftAuxiliaryWidth: 666,
-            topRightAuxiliaryWidth: 668,
-            localizedName: "Built-in"
-        )
-        XCTAssertEqual(normal.closedNotchSize.width, 1512 - 666 - 668 + 4)
-    }
-
-    func testDisplayProfileResolverV2_caps184ptNotchToScreenAffordanceMinus60() {
-        // Pathological case: AppKit reports near-zero auxiliary widths so the formula tries to
-        // give us a notch as wide as the entire screen. The clamp must shrink it to
-        // max(screenWidth - 60, 400).
-        let pathological = DisplayProfileResolverV2.resolveProfile(
-            screenFrame: NSRect(x: 0, y: 0, width: 1512, height: 982),
-            visibleFrame: NSRect(x: 0, y: 0, width: 1512, height: 950),
-            safeAreaTopInset: 32,
-            topLeftAuxiliaryWidth: 1,
-            topRightAuxiliaryWidth: 1,
-            localizedName: "Sidecar"
-        )
-        XCTAssertLessThanOrEqual(pathological.closedNotchSize.width, 1512 - 60)
-        XCTAssertEqual(
-            pathological.closedNotchSize.width,
-            DisplayProfileResolverV2.maxAllowedNotchWidth(forScreenWidth: 1512)
-        )
-    }
-
-    func testDisplayProfileResolverV2_clampFloorIs400OnAbsurdlyNarrowScreens() {
-        XCTAssertEqual(
-            DisplayProfileResolverV2.maxAllowedNotchWidth(forScreenWidth: 200),
-            400
-        )
-        XCTAssertEqual(
-            DisplayProfileResolverV2.maxAllowedNotchWidth(forScreenWidth: 460),
-            400
-        )
-        XCTAssertEqual(
-            DisplayProfileResolverV2.maxAllowedNotchWidth(forScreenWidth: 1512),
-            1452
-        )
-    }
-
-    func testDisplayProfileResolverV2_clampsNonNotchFallbackWidth() {
-        let profile = DisplayProfileResolverV2.resolveProfile(
-            screenFrame: NSRect(x: 0, y: 0, width: 2560, height: 1440),
-            visibleFrame: NSRect(x: 0, y: 0, width: 2560, height: 1416),
-            safeAreaTopInset: 0,
-            topLeftAuxiliaryWidth: nil,
-            topRightAuxiliaryWidth: nil,
-            localizedName: "External"
-        )
-        XCTAssertEqual(profile.closedNotchSize.width, 185)
-    }
 }

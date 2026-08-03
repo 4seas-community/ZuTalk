@@ -398,7 +398,6 @@ final class WindowCoordinator {
             for: WindowLayoutRequestV2(
                 surfaceID: .main,
                 display: profile,
-                systemState: .default,
                 currentFrame: controller.managedWindow.frame
             )
         )
@@ -412,7 +411,6 @@ final class WindowCoordinator {
             for: WindowLayoutRequestV2(
                 surfaceID: .subtitleOverlay,
                 display: profile,
-                systemState: .default,
                 currentFrame: controller.managedWindow.frame,
                 savedFrame: SubtitleOverlayController.loadSavedFrame()
             )
