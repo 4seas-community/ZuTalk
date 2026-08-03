@@ -57,7 +57,7 @@ struct LiveIndicator: View {
                 .foregroundColor(.destructive)
         case .idle:
             Circle()
-                .fill(Color.textOnBpFaint)
+                .fill(Color.textTertiary)
                 .frame(width: size - 2, height: size - 2)
         }
     }
@@ -68,7 +68,7 @@ struct LiveIndicator: View {
         case .processing: return .accentOrange
         case .completed:  return .accentGold
         case .error:      return .destructive
-        case .idle:       return .textOnBpFaint
+        case .idle:       return .textTertiary
         }
     }
 }
@@ -138,6 +138,6 @@ struct SpinningArc: View {
         LiveIndicator(state: .recording, customLabel: "LIVE · 02:14")
     }
     .padding(32)
-    .background(Color.bpBlue)
+    .background(Color.bgRoot)
 }
 #endif

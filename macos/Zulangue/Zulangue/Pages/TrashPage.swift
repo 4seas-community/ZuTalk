@@ -38,7 +38,7 @@ struct TrashPage: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .onAppear { viewModel.reload() }
         .onReceive(NotificationCenter.default.publisher(for: .zulangueSessionUpdated)) { _ in
             viewModel.reload()
@@ -98,13 +98,13 @@ private struct TrashRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(titleForDisplay)
                     .font(.bodyMedium)
-                    .foregroundColor(.bpLine.opacity(0.85))
+                    .foregroundColor(.textPrimary.opacity(0.85))
                     .lineLimit(1)
 
                 if !session.preview.isEmpty {
                     Text(session.preview)
                         .font(.caption)
-                        .foregroundColor(.textOnBpDim.opacity(0.6))
+                        .foregroundColor(.textSecondary.opacity(0.6))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -112,14 +112,14 @@ private struct TrashRow: View {
                 HStack(spacing: 8) {
                     Text(session.timeString)
                         .font(.captionMedium)
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                     if session.durationString != "00:00" {
                         Text("·")
                             .font(.captionMedium)
-                            .foregroundColor(.textOnBpFaint)
+                            .foregroundColor(.textTertiary)
                         Text(session.durationString)
                             .font(.captionMedium)
-                            .foregroundColor(.textOnBpFaint)
+                            .foregroundColor(.textTertiary)
                     }
                 }
             }
@@ -137,7 +137,7 @@ private struct TrashRow: View {
                     .frame(width: 28, height: 28)
                     .overlay(
                         RoundedRectangle(cornerRadius: Radius.sm)
-                            .strokeBorder(Color.bpLineGhost.opacity(0.3), lineWidth: 0.5)
+                            .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
                     )
                 }
                 .buttonStyle(.plain)
@@ -173,10 +173,10 @@ private struct TrashRow: View {
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm + 2)
-        .background(isHovering ? Color.bpBlueLight.opacity(0.25) : Color.clear)
+        .background(isHovering ? Color.bgElevated.opacity(0.25) : Color.clear)
         .overlay(
             Rectangle()
-                .fill(Color.bpLineGhost.opacity(0.12))
+                .fill(Color.borderGhost.opacity(0.12))
                 .frame(height: 0.5),
             alignment: .bottom
         )

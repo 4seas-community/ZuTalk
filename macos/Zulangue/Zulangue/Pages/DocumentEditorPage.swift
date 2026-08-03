@@ -258,7 +258,7 @@ struct DocumentEditorPage: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .sheet(isPresented: $isShowingExportSheet) {
             if let sessionId = effectiveSessionId {
                 ExportSheet(sessionId: sessionId)
@@ -266,14 +266,14 @@ struct DocumentEditorPage: View {
                 VStack(spacing: Spacing.md) {
                     Image(systemName: "tray")
                         .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                     Text(String(localized: "editor.export.no_session"))
                         .font(.bodyMedium)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                 }
                 .padding(Spacing.xl)
                 .frame(width: 360)
-                .background(Color.bpBlue)
+                .background(Color.bgRoot)
             }
         }
         .task(id: routeTaskId) {
@@ -353,7 +353,7 @@ struct DocumentEditorPage: View {
                 )
 
                 Divider()
-                    .background(Color.bpLineGhost.opacity(0.4))
+                    .background(Color.borderGhost.opacity(0.4))
             }
 
             if docId != nil,
@@ -368,7 +368,7 @@ struct DocumentEditorPage: View {
 
                     if activeSidePanel != nil {
                         Divider()
-                            .background(Color.bpLineGhost.opacity(0.45))
+                            .background(Color.borderGhost.opacity(0.45))
                         NotebookTasksPanel(viewModel: notebookTasks)
                             .frame(width: 380)
                     }
@@ -597,10 +597,10 @@ private struct PendingDocumentState: View {
                 .controlSize(.small)
             Text(title)
                 .font(.bodyMedium)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
             Text(subtitle)
                 .font(.caption)
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -625,10 +625,10 @@ private struct FailedDocumentState: View {
                 .foregroundColor(.signalAmber)
             Text(title)
                 .font(.bodyMedium)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
             Text(String(localized: "editor.failed.subtitle"))
                 .font(.caption)
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .multilineTextAlignment(.center)
             if let errorMessage, !errorMessage.isEmpty {
                 Text(errorMessage)
@@ -660,7 +660,7 @@ private struct NoteTopChrome: View {
                     Text("sidebar.home")
                         .font(.captionMedium)
                 }
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
             }
             .buttonStyle(.plain)
             .help(String(localized: "sidebar.back_to_home"))
@@ -706,10 +706,10 @@ private struct NotebookTasksPanel: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "editor.tasks.title"))
                         .font(.headline)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                     Text(String(format: String(localized: "editor.tasks.count_format"), Int64(viewModel.tasks.count)))
                         .font(.caption)
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                 }
 
                 Spacer()
@@ -735,13 +735,13 @@ private struct NotebookTasksPanel: View {
                 VStack(alignment: .center, spacing: Spacing.sm) {
                     Image(systemName: "checklist")
                         .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                     Text(String(localized: "editor.tasks.empty"))
                         .font(.bodyMedium)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                     Text(String(localized: "editor.tasks.empty.detail"))
                         .font(.caption)
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -758,7 +758,7 @@ private struct NotebookTasksPanel: View {
         }
         .padding(Spacing.lg)
         .frame(maxHeight: .infinity)
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .task {
             viewModel.refresh()
         }
@@ -779,17 +779,17 @@ private struct NotebookTaskRow: View {
                 HStack(spacing: Spacing.xs) {
                     Text(task.status.capitalized)
                         .font(.captionMedium)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                     Text(shortId)
                         .font(.caption.monospacedDigit())
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
 
                 Text(detailLine)
                     .font(.caption)
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
                     .lineLimit(2)
             }
 
@@ -797,7 +797,7 @@ private struct NotebookTaskRow: View {
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
-        .background(Color.bpBlueChip.opacity(0.48))
+        .background(Color.bgElevated.opacity(0.48))
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
     }
 
@@ -833,7 +833,7 @@ private struct NotebookTaskRow: View {
         case "done", "completed", "succeeded":
             return .signalGreen
         default:
-            return .textOnBpFaint
+            return .textTertiary
         }
     }
 
@@ -897,7 +897,7 @@ private struct DocumentTabBar: View {
                 Button(action: onExport) {
                     Image(systemName: "tray.and.arrow.up")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(sessionId == nil ? .textOnBpFaint.opacity(0.5) : .textOnBpFaint)
+                        .foregroundColor(sessionId == nil ? .textTertiary.opacity(0.5) : .textTertiary)
                         .padding(.horizontal, Spacing.sm)
                         .padding(.vertical, 5)
                 }
@@ -908,10 +908,10 @@ private struct DocumentTabBar: View {
             }
         }
         .padding(.horizontal, Spacing.lg)
-        .background(Color.bpBlueDeep.opacity(0.4))
+        .background(Color.bgSunken.opacity(0.4))
         .overlay(
             Rectangle()
-                .fill(Color.bpLineGhost.opacity(0.3))
+                .fill(Color.borderGhost.opacity(0.3))
                 .frame(height: 0.5),
             alignment: .bottom
         )
@@ -955,7 +955,7 @@ private struct ResourcesTabButton: View {
                 )
                 .font(.bodyMedium)
                 .lineLimit(1)
-                .foregroundColor(isActive || isHovering ? .bpLine : .textOnBpDim)
+                .foregroundColor(isActive || isHovering ? .textPrimary : .textSecondary)
                 .padding(.horizontal, Spacing.md)
                 .padding(.vertical, 8)
 
@@ -986,7 +986,7 @@ private struct CaptureSettingsTabButton: View {
                 )
                 .font(.bodyMedium)
                 .lineLimit(1)
-                .foregroundColor(isActive || isHovering ? .bpLine : .textOnBpDim)
+                .foregroundColor(isActive || isHovering ? .textPrimary : .textSecondary)
                 .padding(.horizontal, Spacing.md)
                 .padding(.vertical, 8)
 
@@ -1088,9 +1088,9 @@ private struct NotebookTabButton: View {
         case .failed:
             return .signalAmber
         case .pending:
-            return isActive ? .bpLine : .textOnBpDim
+            return isActive ? .textPrimary : .textSecondary
         default:
-            return isActive ? .bpLine : (isHovering ? .textOnBpDim : .textOnBpFaint)
+            return isActive ? .textPrimary : (isHovering ? .textSecondary : .textTertiary)
         }
     }
 
@@ -1149,7 +1149,7 @@ private struct AsyncTranscriptView: View {
     var body: some View {
         VStack(spacing: 0) {
             asyncStatusBar
-            Divider().background(Color.bpLineGhost.opacity(0.25))
+            Divider().background(Color.borderGhost.opacity(0.25))
             Group {
                 if lines.isEmpty {
                     EmptyState(
@@ -1191,7 +1191,7 @@ private struct AsyncTranscriptView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .task(id: "\(sessionId):\(tabId)") {
             if let projectionAttachment {
                 projectionStore.detach(projectionAttachment)
@@ -1235,7 +1235,7 @@ private struct AsyncTranscriptView: View {
             }
             Text(asyncStatusText)
                 .font(.captionMedium)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
             Spacer(minLength: Spacing.md)
             if canRequestAsyncTranscription {
                 Button {
@@ -1272,7 +1272,7 @@ private struct AsyncTranscriptView: View {
         }
         .padding(.horizontal, Spacing.xl + Spacing.lg)
         .frame(minHeight: 52)
-        .background(Color.bpBlueDeep.opacity(0.2))
+        .background(Color.bgSunken.opacity(0.2))
         .accessibilityElement(children: .contain)
     }
 
@@ -1344,7 +1344,7 @@ private struct AsyncTranscriptView: View {
         switch asyncProjectionState {
         case .some(.ready): return .signalGreen
         case .some(.failed): return .signalAmber
-        default: return .textOnBpFaint
+        default: return .textTertiary
         }
     }
 
@@ -1413,12 +1413,12 @@ private struct TranscriptSegmentView: View {
             HStack(spacing: Spacing.md) {
                 Text(formatTs(line.startMs))
                     .font(.captionMedium.monospacedDigit())
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
                 Spacer()
                 if isHovering && !isEditing && isEditable {
                     Text("Edit")
                         .font(.captionMedium)
-                        .foregroundColor(.textOnBpFaint.opacity(0.8))
+                        .foregroundColor(.textTertiary.opacity(0.8))
                 }
             }
 
@@ -1426,9 +1426,9 @@ private struct TranscriptSegmentView: View {
                 VStack(alignment: .leading, spacing: Spacing.sm) {
                     TextEditor(text: $draft)
                         .font(.system(size: 15))
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                         .scrollContentBackground(.hidden)
-                        .background(Color.bpBlueDeep)
+                        .background(Color.bgSunken)
                         .overlay(
                             RoundedRectangle(cornerRadius: Radius.sm)
                                 .strokeBorder(Color.brandAccent.opacity(0.6), lineWidth: 1)
@@ -1444,14 +1444,14 @@ private struct TranscriptSegmentView: View {
                         Spacer()
                         Text("⌘↵ save · esc cancel")
                             .font(.captionMedium)
-                            .foregroundColor(.textOnBpFaint)
+                            .foregroundColor(.textTertiary)
                     }
                 }
             } else {
                 Button(action: onStartEdit) {
                     Text(line.text)
                         .font(.system(size: 15))
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                         .lineSpacing(4)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, Spacing.sm)
@@ -1461,7 +1461,7 @@ private struct TranscriptSegmentView: View {
                             RoundedRectangle(cornerRadius: Radius.sm)
                                 .fill(
                                     (isHovering && isEditable)
-                                        ? Color.bpBlueLight.opacity(0.35)
+                                        ? Color.bgElevated.opacity(0.35)
                                         : Color.clear
                                 )
                         )
@@ -1494,7 +1494,7 @@ private struct NotebookSettingsNotebookHeader: View {
     var body: some View {
         Text(title?.isEmpty == false ? title! : String(localized: "home.notebook.new"))
             .font(.system(size: 22, weight: .semibold))
-            .foregroundColor(.bpLine)
+            .foregroundColor(.textPrimary)
             .lineLimit(1)
             .padding(.horizontal, Spacing.lg)
             .padding(.top, Spacing.sm)
@@ -1510,7 +1510,7 @@ private struct NotebookBuiltinTabTitle: View {
     var body: some View {
         Text(title ?? String(localized: "editor.title.untitled"))
             .font(.system(size: 22, weight: .semibold))
-            .foregroundColor(.bpLine)
+            .foregroundColor(.textPrimary)
             .padding(.horizontal, Spacing.lg)
             .padding(.top, Spacing.sm)
             .padding(.bottom, Spacing.xs)
@@ -1566,7 +1566,7 @@ private struct NoteMetadataBar: View {
                 Text(text)
                     .font(.captionMedium)
             }
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
         }
     }
 
@@ -1600,7 +1600,7 @@ private struct ManualTimeNoteHeader: View {
                 )
                 .textFieldStyle(.plain)
                 .font(.titleMD)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
                 .onSubmit(save)
                 .accessibilityIdentifier("manual_note.title")
 
@@ -1629,7 +1629,7 @@ private struct ManualTimeNoteHeader: View {
                         systemImage: "clock"
                     )
                     .font(.bodySM)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                     .accessibilityLabel(
                         String(
                             format: String(localized: "manual_note.created_at_format"),
@@ -1640,16 +1640,16 @@ private struct ManualTimeNoteHeader: View {
 
                 Text(String(sessionId.prefix(8)))
                     .font(.caption.monospaced())
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
 
                 Spacer()
             }
         }
         .padding(Spacing.md)
-        .background(Color.bpBlueLight.opacity(0.28))
+        .background(Color.bgElevated.opacity(0.28))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.sm)
-                .strokeBorder(Color.bpLineGhost.opacity(0.5), lineWidth: Stroke.thin)
+                .strokeBorder(Color.borderGhost.opacity(0.5), lineWidth: Stroke.thin)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .padding(.horizontal, Spacing.lg)
@@ -1704,13 +1704,13 @@ private struct NoteBottomSignature: View {
             Spacer()
         }
         .font(.captionMedium)
-        .foregroundColor(.textOnBpFaint)
+        .foregroundColor(.textTertiary)
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, 6)
-        .background(Color.bpBlueDeep.opacity(0.6))
+        .background(Color.bgSunken.opacity(0.6))
         .overlay(
             Rectangle()
-                .fill(Color.bpLineGhost.opacity(0.3))
+                .fill(Color.borderGhost.opacity(0.3))
                 .frame(height: 0.5),
             alignment: .top
         )
@@ -1833,12 +1833,12 @@ private struct EditorToolbar: View {
 
             Text(hasSelection ? "\(selection.length) sel · \(formattingState.statusLabel)" : formattingState.statusLabel)
                 .font(.captionMedium)
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
         }
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.sm)
         .frame(height: 44)
-        .background(Color.bpBlueDeep)
+        .background(Color.bgSunken)
         .disabled(editorTextView?.loroBridge == nil)
     }
 }
@@ -1867,12 +1867,12 @@ private struct ToolButton: View {
                         .strikethrough(isStrike)
                 }
             }
-            .foregroundColor(isActive ? .brandAccent : (isHovering ? .brandAccent : .textOnBpDim))
+            .foregroundColor(isActive ? .brandAccent : (isHovering ? .brandAccent : .textSecondary))
             .frame(width: 32, height: 32)
             .background(
                 isActive
                     ? Color.brandAccent.opacity(0.14)
-                    : (isHovering ? Color.bpBlueLight.opacity(0.5) : Color.clear)
+                    : (isHovering ? Color.bgElevated.opacity(0.5) : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Radius.sm)
@@ -1901,7 +1901,7 @@ private struct ToolButton: View {
 private struct ToolDivider: View {
     var body: some View {
         Rectangle()
-            .fill(Color.bpLineGhost.opacity(0.3))
+            .fill(Color.borderGhost.opacity(0.3))
             .frame(width: 1, height: 20)
             .padding(.horizontal, 4)
     }

@@ -13,7 +13,7 @@ import SwiftUI
 ///     .cornerCrosshairs(onHardware: true) // 硬件面板(黑色 dim)
 /// ```
 struct CornerCrosshair: View {
-    var color: Color = .bpLineDim
+    var color: Color = .textTertiary
     var size: CGFloat = 8
     var stroke: CGFloat = 0.5
 
@@ -32,7 +32,7 @@ struct CornerCrosshair: View {
 
 /// 在容器四角放置 `+` 标记(默认内嵌 8pt)
 struct CornerCrosshairsOverlay: View {
-    var color: Color = .bpLineDim
+    var color: Color = .textTertiary
     var inset: CGFloat = 8
     var size: CGFloat = 8
 
@@ -61,7 +61,7 @@ struct CornerCrosshairsOverlay: View {
 
 extension View {
     /// 加 `+` 四角标 · 蓝图配色(默认)
-    func cornerCrosshairs(color: Color = .bpLineDim, inset: CGFloat = 8, size: CGFloat = 8) -> some View {
+    func cornerCrosshairs(color: Color = .textTertiary, inset: CGFloat = 8, size: CGFloat = 8) -> some View {
         self.overlay(
             CornerCrosshairsOverlay(color: color, inset: inset, size: size)
         )
@@ -69,7 +69,7 @@ extension View {
 
     /// 加 `+` 四角标 · 硬件配色
     func cornerCrosshairsOnHardware(inset: CGFloat = 8) -> some View {
-        self.cornerCrosshairs(color: .hwBlackDim, inset: inset)
+        self.cornerCrosshairs(color: .textSecondary, inset: inset)
     }
 }
 
@@ -77,20 +77,20 @@ extension View {
 #Preview("On blueprint") {
     Text("preview.crosshair.blueprint")
         .font(.body)
-        .foregroundColor(.bpLine)
+        .foregroundColor(.textPrimary)
         .padding(32)
         .frame(width: 280, height: 160)
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .cornerCrosshairs()
 }
 
 #Preview("On hardware") {
     Text("preview.crosshair.hardware")
         .font(.body)
-        .foregroundColor(.hwBlack)
+        .foregroundColor(.textPrimary)
         .padding(32)
         .frame(width: 280, height: 160)
-        .background(Color.hwSilver)
+        .background(Color.bgRoot)
         .cornerCrosshairsOnHardware()
 }
 #endif

@@ -79,10 +79,10 @@ struct ReferenceNumber: View {
     private var color: Color {
         switch emphasis {
         case .gold:   return .accentGold
-        case .muted:  return .textOnBpFaint
+        case .muted:  return .textTertiary
         case .orange: return .accentOrange
-        case .onHw:   return .hwBlack
-        case .onBp:   return .bpLine
+        case .onHw:   return .textPrimary
+        case .onBp:   return .textPrimary
         }
     }
 }
@@ -97,6 +97,6 @@ struct ReferenceNumber: View {
         ReferenceNumber(scope: .app("001"), size: .body, emphasis: .orange)
     }
     .padding(32)
-    .background(Color.bpBlue)
+    .background(Color.bgRoot)
 }
 #endif

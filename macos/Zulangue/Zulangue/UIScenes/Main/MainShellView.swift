@@ -31,7 +31,7 @@ struct MainShellView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.bpBlue.ignoresSafeArea())
+        .background(Color.bgRoot.ignoresSafeArea())
         .toastOverlay()
         .onAppear { store.recordSnapshot() }
         .task(id: needsOnboarding) {
@@ -55,10 +55,10 @@ struct MainShellView: View {
             if isSidebarHidden == false {
                 expandedSidebar
                     .frame(width: 248)
-                    .background(Color.bpBlueDeep)
+                    .background(Color.bgSunken)
                     .overlay(
                         Rectangle()
-                            .fill(Color.bpLineGhost.opacity(0.3))
+                            .fill(Color.borderGhost.opacity(0.3))
                             .frame(width: 0.5),
                         alignment: .trailing
                     )
@@ -67,7 +67,7 @@ struct MainShellView: View {
             contentArea
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
     }
 
     private var expandedSidebar: some View {
@@ -147,7 +147,7 @@ struct MainShellView: View {
             Text("Zulangue")
                 .font(.brandCaption)
                 .tracking(1.4)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Zulangue")
@@ -161,9 +161,9 @@ struct MainShellView: View {
         } label: {
             Image(systemName: "sidebar.left")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .frame(width: 28, height: 28)
-                .background(Color.bpBlueChip)
+                .background(Color.bgElevated)
                 .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
         .buttonStyle(.plain)
@@ -184,16 +184,16 @@ struct MainShellView: View {
             HStack(spacing: Spacing.sm + 2) {
                 Image(systemName: icon)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(active ? .brandAccent : .textOnBpDim)
+                    .foregroundColor(active ? .brandAccent : .textSecondary)
                     .frame(width: 18)
                 Text(label)
                     .font(.body)
-                    .foregroundColor(active ? .bpLine : .textOnBpDim)
+                    .foregroundColor(active ? .textPrimary : .textSecondary)
                 Spacer()
             }
             .padding(.horizontal, Spacing.sm + 2)
             .frame(minHeight: 44)
-            .background(active ? Color.bpBlueLight.opacity(0.5) : Color.clear)
+            .background(active ? Color.bgElevated.opacity(0.5) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
         .buttonStyle(.plain)
@@ -205,7 +205,7 @@ struct MainShellView: View {
     private var sidebarFooter: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             Rectangle()
-                .fill(Color.bpLineGhost.opacity(0.4))
+                .fill(Color.borderGhost.opacity(0.4))
                 .frame(height: 0.5)
 
             if softwareUpdate.isUpdateReadyToInstall {
@@ -231,7 +231,7 @@ struct MainShellView: View {
                     systemImage: "gift.fill"
                 )
                 .font(.bodySM)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .accessibilityIdentifier("sidebar.community-invite.remaining")
                 .task { await communityInvite.refreshQuota() }
             }
@@ -242,14 +242,14 @@ struct MainShellView: View {
                     systemImage: "lock.shield.fill"
                 )
                 .font(.bodySM)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
 
                 Spacer()
 
                 Button(action: { store.openSettings() }) {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(activeTab == .config ? .brandAccent : .textOnBpDim)
+                        .foregroundColor(activeTab == .config ? .brandAccent : .textSecondary)
                         .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.plain)
@@ -280,13 +280,13 @@ struct MainShellView: View {
                 .frame(height: 56)
                 .overlay(
                     Rectangle()
-                        .fill(Color.bpLineGhost.opacity(0.3))
+                        .fill(Color.borderGhost.opacity(0.3))
                         .frame(height: 0.5),
                     alignment: .bottom
                 )
 
             ZStack {
-                Color.bpBlue
+                Color.bgRoot
 
                 Group {
                     switch activeTab {
@@ -320,10 +320,10 @@ struct MainShellView: View {
             HStack(spacing: Spacing.sm) {
                 Image(systemName: tabIcon(for: activeTab))
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                 Text(tabTitle(for: activeTab))
                     .font(.bodyMedium)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
             }
 
             Spacer()
@@ -339,9 +339,9 @@ struct MainShellView: View {
         } label: {
             Image(systemName: "sidebar.right")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .frame(width: 28, height: 28)
-                .background(Color.bpBlueChip)
+                .background(Color.bgElevated)
                 .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
         .buttonStyle(.plain)

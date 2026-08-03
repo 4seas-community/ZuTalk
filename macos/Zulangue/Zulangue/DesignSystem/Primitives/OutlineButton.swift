@@ -68,17 +68,17 @@ struct OutlineButton: View {
 
     private var foregroundColor: Color {
         if disabled {
-            return mode == .blueprint ? .textOnBpFaint : .hwBlackGhost
+            return mode == .blueprint ? .textTertiary : .borderGhost
         }
         switch style {
         case .primary:
             return .brandAccentForeground
         case .ghost:
             if hovering { return .brandAccent }
-            return mode == .blueprint ? .bpLine : .hwBlack
+            return mode == .blueprint ? .textPrimary : .textPrimary
         case .destructive: return .white
         case .subtle:
-            return mode == .blueprint ? .textOnBpDim : .hwBlackFaint
+            return mode == .blueprint ? .textSecondary : .textTertiary
         }
     }
 
@@ -105,9 +105,9 @@ struct OutlineButton: View {
         case .primary, .destructive: return .clear
         case .ghost:
             if hovering { return .brandAccent }
-            return mode == .blueprint ? .bpLineDim : .hwBlackDim
+            return mode == .blueprint ? .textTertiary : .textSecondary
         case .subtle:
-            return mode == .blueprint ? .bpLineGhost : .hwBlackGhost
+            return mode == .blueprint ? .borderGhost : .borderGhost
         }
     }
 
@@ -141,7 +141,7 @@ struct OutlineButton: View {
     }
     .padding(32)
     .frame(width: 320)
-    .background(Color.bpBlue)
+    .background(Color.bgRoot)
 }
 
 #Preview("Hardware") {
@@ -152,6 +152,6 @@ struct OutlineButton: View {
     }
     .padding(32)
     .frame(width: 320)
-    .background(Color.hwSilver)
+    .background(Color.bgRoot)
 }
 #endif

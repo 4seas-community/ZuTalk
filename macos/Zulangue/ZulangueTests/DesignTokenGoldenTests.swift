@@ -11,7 +11,10 @@ import AppKit
 /// rather than merely asserted — the refactor is allowed to remove lines from
 /// the golden, never to change the value on a line that survives.
 ///
-/// Regenerate deliberately: ZULANGUE_REGENERATE_TOKEN_GOLDEN=1 just swift-test
+/// Regenerate deliberately — xcodebuild only forwards variables that carry the
+/// TEST_RUNNER_ prefix, so a bare shell export silently does nothing:
+///   TEST_RUNNER_ZULANGUE_REGENERATE_TOKEN_GOLDEN=1 xcodebuild test ...
+/// Deleting Golden/design-tokens.txt regenerates it too.
 final class DesignTokenGoldenTests: XCTestCase {
 
     private static let tokens: [(String, Color)] = [
@@ -43,23 +46,7 @@ final class DesignTokenGoldenTests: XCTestCase {
         ("gold", .gold),
         ("goldDim", .goldDim),
         ("goldSoft", .goldSoft),
-        ("hwSilver", .hwSilver),
-        ("hwSilverDeep", .hwSilverDeep),
-        ("hwSilverEdge", .hwSilverEdge),
-        ("hwSilverInk", .hwSilverInk),
-        ("hwBlack", .hwBlack),
-        ("hwBlackDim", .hwBlackDim),
-        ("hwBlackFaint", .hwBlackFaint),
-        ("hwBlackGhost", .hwBlackGhost),
-        ("bpBlue", .bpBlue),
-        ("bpBlueDeep", .bpBlueDeep),
-        ("bpBlueLight", .bpBlueLight),
-        ("bpBlueOverlay", .bpBlueOverlay),
-        ("bpBlueChip", .bpBlueChip),
-        ("bpLine", .bpLine),
-        ("bpLineDim", .bpLineDim),
-        ("bpLineFaint", .bpLineFaint),
-        ("bpLineGhost", .bpLineGhost),
+        ("bgOverlay", .bgOverlay),
         ("accentOrange", .accentOrange),
         ("accentOrangeHover", .accentOrangeHover),
         ("accentOrangeSoft", .accentOrangeSoft),
@@ -71,21 +58,18 @@ final class DesignTokenGoldenTests: XCTestCase {
         ("bgPanel", .bgPanel),
         ("bgSurface", .bgSurface),
         ("bgElevated", .bgElevated),
+        ("bgSunken", .bgSunken),
         ("bgGlass", .bgGlass),
         ("borderSubtle", .borderSubtle),
         ("borderPanel", .borderPanel),
         ("borderActive", .borderActive),
+        ("borderGhost", .borderGhost),
+        ("borderFaint", .borderFaint),
         ("textPrimary", .textPrimary),
         ("textSecondary", .textSecondary),
         ("textTertiary", .textTertiary),
         ("textMuted", .textMuted),
         ("textDim", .textDim),
-        ("textOnHw", .textOnHw),
-        ("textOnHwDim", .textOnHwDim),
-        ("textOnHwFaint", .textOnHwFaint),
-        ("textOnBp", .textOnBp),
-        ("textOnBpDim", .textOnBpDim),
-        ("textOnBpFaint", .textOnBpFaint),
         ("signalGreen", .signalGreen),
         ("signalGreenText", .signalGreenText),
         ("signalRed", .signalRed),
@@ -100,9 +84,6 @@ final class DesignTokenGoldenTests: XCTestCase {
         ("shadowMedium", .shadowMedium),
         ("shadowStrong", .shadowStrong),
         ("shadowFocus", .shadowFocus),
-        ("ledOffOnBp", .ledOffOnBp),
-        ("ledOffOnHw", .ledOffOnHw),
-        ("gridLine", .gridLine),
     ]
 
     private var goldenURL: URL {

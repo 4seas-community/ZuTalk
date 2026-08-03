@@ -179,7 +179,7 @@ struct LoroRenderStyle {
 
     static let `default` = LoroRenderStyle(
         baseFontSize: 14,
-        // 使用动态颜色，并与 design-system `bpLine` 保持一致。
+        // 使用动态颜色，并与 design-system `textPrimary` 保持一致。
         textColor: NSColor(name: nil, dynamicProvider: { appearance in
             switch appearance.bestMatch(from: [.darkAqua, .aqua]) {
             case .darkAqua?: return NSColor.white.withAlphaComponent(0.92)

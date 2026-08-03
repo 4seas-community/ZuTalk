@@ -35,7 +35,7 @@ struct HomeView: View {
             .padding(.vertical, Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .sheet(isPresented: $isCreatingNotebook) {
             HomeCreateNotebookSheet { title in
                 let created = viewModel.createNotebook(title: title)
@@ -88,11 +88,11 @@ private struct HomeNotebookLibrary: View {
                 VStack(alignment: .leading, spacing: Spacing.xs) {
                     Text(String(localized: "home.library.title"))
                         .font(.titleLG)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
 
                     Text(String(localized: "home.library.subtitle"))
                         .font(.bodySM)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                 }
 
                 Spacer()
@@ -103,7 +103,7 @@ private struct HomeNotebookLibrary: View {
                         .frame(minHeight: 44)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
                 .accessibilityIdentifier("home.notebook.new")
             }
 
@@ -134,26 +134,26 @@ private struct HomeNotebookCard: View {
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundColor(.brandAccent)
                         .frame(width: 36, height: 36)
-                        .background(Color.bpBlueChip)
+                        .background(Color.bgElevated)
                         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
 
                     Spacer()
 
                     Image(systemName: "arrow.up.right")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(isHovering ? .bpLine : .textOnBpFaint)
+                        .foregroundColor(isHovering ? .textPrimary : .textTertiary)
                 }
 
                 VStack(alignment: .leading, spacing: Spacing.xs) {
                     Text(notebook.title)
                         .font(.titleMD)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
 
                     Text(metadata)
                         .font(.bodySM)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                 }
 
                 Label(
@@ -161,15 +161,15 @@ private struct HomeNotebookCard: View {
                     systemImage: "lock.fill"
                 )
                 .font(.caption)
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
             }
             .padding(Spacing.lg)
             .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
-            .background(isHovering ? Color.bpBlueLight.opacity(0.58) : Color.bpBlueLight.opacity(0.28))
+            .background(isHovering ? Color.bgElevated.opacity(0.58) : Color.bgElevated.opacity(0.28))
             .overlay(
                 RoundedRectangle(cornerRadius: Radius.md)
                     .strokeBorder(
-                        isHovering ? Color.brandAccent.opacity(0.45) : Color.bpLineGhost.opacity(0.55),
+                        isHovering ? Color.brandAccent.opacity(0.45) : Color.borderGhost.opacity(0.55),
                         lineWidth: Stroke.thin
                     )
             )
@@ -209,7 +209,7 @@ private struct HomeNotebookHero: View {
                     Text(String(localized: "home.notebook.current"))
                         .font(.captionMedium)
                         .tracking(0.8)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
 
                     notebookPicker
                 }
@@ -227,7 +227,7 @@ private struct HomeNotebookHero: View {
                     .frame(minHeight: 44)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .padding(.horizontal, Spacing.sm)
                 .contentShape(Rectangle())
                 .fixedSize()
@@ -236,7 +236,7 @@ private struct HomeNotebookHero: View {
             }
 
             Rectangle()
-                .fill(Color.bpLineGhost.opacity(0.55))
+                .fill(Color.borderGhost.opacity(0.55))
                 .frame(height: Stroke.thin)
 
             ViewThatFits(in: .horizontal) {
@@ -261,14 +261,14 @@ private struct HomeNotebookHero: View {
                 systemImage: "lock.shield.fill"
             )
             .font(.bodySM)
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
             .accessibilityElement(children: .combine)
         }
         .padding(Spacing.lg)
-        .background(Color.bpBlueLight.opacity(0.38))
+        .background(Color.bgElevated.opacity(0.38))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.bpLineGhost.opacity(0.65), lineWidth: Stroke.thin)
+                .strokeBorder(Color.borderGhost.opacity(0.65), lineWidth: Stroke.thin)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
@@ -300,12 +300,12 @@ private struct HomeNotebookHero: View {
 
                 Text(activeNotebook?.title ?? String(localized: "home.notebook.none"))
                     .font(.titleLG)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                     .lineLimit(1)
 
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
             }
             .padding(.vertical, Spacing.xs)
             .frame(minHeight: 44)
@@ -322,12 +322,12 @@ private struct HomeNotebookHero: View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             Text(String(localized: "home.notebook.description"))
                 .font(.bodyLG)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(String(localized: "home.notebook.description.detail"))
                 .font(.bodySM)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: 520, alignment: .leading)
@@ -367,14 +367,14 @@ private struct HomeNotebookHero: View {
         let belongsToSelectedNotebook = capture.notebookId == viewModel.activeNotebookId
         return VStack(alignment: .leading, spacing: Spacing.sm) {
             Label(captureStateText, systemImage: captureStateIcon)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
 
             Text(
                 belongsToSelectedNotebook
                     ? String(localized: "home.capture.owner_here")
                     : String(localized: "home.capture.owner_elsewhere")
             )
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
 
             Label(remoteHealthText, systemImage: remoteHealthIcon)
                 .foregroundColor(remoteHealthColor)
@@ -434,7 +434,7 @@ private struct HomeNotebookHero: View {
     private var remoteHealthColor: Color {
         switch capture.remoteHealth {
         case .degraded, .unavailable: .signalAmber
-        case .off, .connecting, .live: .textOnBpDim
+        case .off, .connecting, .live: .textSecondary
         }
     }
 }
@@ -446,17 +446,17 @@ private struct HomeNoNotebookView: View {
         VStack(spacing: Spacing.lg) {
             Image(systemName: "book.closed")
                 .font(.system(size: 38, weight: .light))
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .accessibilityHidden(true)
 
             VStack(spacing: Spacing.sm) {
                 Text(String(localized: "home.no_notebook.title"))
                     .font(.titleLG)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
 
                 Text(String(localized: "home.no_notebook.description"))
                     .font(.body)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 460)
             }
@@ -493,7 +493,7 @@ private struct HomeNoNotebookView: View {
                 systemImage: "lock.shield.fill"
             )
             .font(.bodySM)
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
         }
         .frame(maxWidth: .infinity, minHeight: 420)
         .padding(Spacing.xl)
@@ -510,19 +510,19 @@ private struct HomeNoNotebookView: View {
 
             Text(title)
                 .font(.bodyMedium)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
 
             Text(detail)
                 .font(.bodySM)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
-        .background(Color.bpBlueLight.opacity(0.3))
+        .background(Color.bgElevated.opacity(0.3))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.sm)
-                .strokeBorder(Color.bpLineGhost.opacity(0.55), lineWidth: Stroke.thin)
+                .strokeBorder(Color.borderGhost.opacity(0.55), lineWidth: Stroke.thin)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
     }
@@ -541,10 +541,10 @@ private struct HomeWorkspaceFailureView: View {
             VStack(spacing: Spacing.sm) {
                 Text(String(localized: "home.workspace.load_failed.title"))
                     .font(.titleLG)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                 Text(String(localized: "home.workspace.load_failed.description"))
                     .font(.body)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 460)
             }
@@ -579,12 +579,12 @@ private struct HomeWorkspaceRefreshWarning: View {
             Button(String(localized: "home.workspace.retry"), action: onRetry)
                 .buttonStyle(.plain)
                 .font(.bodyMedium)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("home.workspace.retry")
         }
         .padding(.horizontal, Spacing.md)
-        .background(Color.bpBlueLight.opacity(0.25))
+        .background(Color.bgElevated.opacity(0.25))
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
     }
 }
@@ -605,7 +605,7 @@ private struct HomeRecentRecordingsSection: View {
                 VStack(alignment: .leading, spacing: Spacing.xs) {
                     Text(String(localized: "home.recent.title"))
                         .font(.titleMD)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
 
                     Text(
                         String(
@@ -614,7 +614,7 @@ private struct HomeRecentRecordingsSection: View {
                         )
                     )
                     .font(.bodySM)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                 }
 
                 Spacer(minLength: Spacing.md)
@@ -651,7 +651,7 @@ private struct HomeRecentRecordingsSection: View {
         HStack(spacing: Spacing.sm) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
 
             TextField(
                 String(localized: "home.recent.search_placeholder"),
@@ -659,7 +659,7 @@ private struct HomeRecentRecordingsSection: View {
             )
             .textFieldStyle(.plain)
             .font(.body)
-            .foregroundColor(.bpLine)
+            .foregroundColor(.textPrimary)
             .focused($isSearchFocused)
             .accessibilityIdentifier("home.recent.search")
 
@@ -668,7 +668,7 @@ private struct HomeRecentRecordingsSection: View {
                     viewModel.searchText = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "home.recent.search.clear"))
@@ -677,10 +677,10 @@ private struct HomeRecentRecordingsSection: View {
         .padding(.horizontal, Spacing.md)
         .frame(width: 260)
         .frame(minHeight: 36)
-        .background(Color.bpBlueLight.opacity(0.42))
+        .background(Color.bgElevated.opacity(0.42))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.sm)
-                .strokeBorder(Color.bpLineGhost.opacity(0.6), lineWidth: Stroke.thin)
+                .strokeBorder(Color.borderGhost.opacity(0.6), lineWidth: Stroke.thin)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .focusRing(isSearchFocused, cornerRadius: Radius.sm)
@@ -692,29 +692,29 @@ private struct HomeRecentEmptyState: View {
         HStack(spacing: Spacing.md) {
             Image(systemName: "waveform")
                 .font(.system(size: 22, weight: .regular))
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .frame(width: 40, height: 40)
-                .background(Color.bpBlueLight.opacity(0.35))
+                .background(Color.bgElevated.opacity(0.35))
                 .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 Text(String(localized: "home.recent.empty.title"))
                     .font(.bodyMedium)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
 
                 Text(String(localized: "home.recent.empty.description"))
                     .font(.bodySM)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
             }
 
             Spacer(minLength: 0)
         }
         .padding(Spacing.lg)
-        .background(Color.bpBlueLight.opacity(0.2))
+        .background(Color.bgElevated.opacity(0.2))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.bpLineGhost.opacity(0.45), lineWidth: Stroke.thin)
+                .strokeBorder(Color.borderGhost.opacity(0.45), lineWidth: Stroke.thin)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
@@ -728,10 +728,10 @@ private struct HomeNoSearchResults: View {
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 Text(String(localized: "home.recent.no_match.title"))
                     .font(.bodyMedium)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                 Text(String(localized: "home.recent.no_match.description"))
                     .font(.bodySM)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
             }
 
             Spacer()
@@ -744,7 +744,7 @@ private struct HomeNoSearchResults: View {
             )
         }
         .padding(Spacing.lg)
-        .background(Color.bpBlueLight.opacity(0.2))
+        .background(Color.bgElevated.opacity(0.2))
         .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
 }
@@ -759,7 +759,7 @@ private struct HomeGroupSection: View {
             Text(group.label.uppercased())
                 .font(.captionMedium)
                 .tracking(0.8)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
 
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 ForEach(group.sessions) { session in
@@ -795,7 +795,7 @@ private struct HomeSessionRow: View {
                         HStack(spacing: Spacing.sm) {
                             Text(titleForDisplay)
                                 .font(.bodyMedium)
-                                .foregroundColor(.bpLine)
+                                .foregroundColor(.textPrimary)
                                 .lineLimit(1)
 
                             if let status = statusLabel {
@@ -808,7 +808,7 @@ private struct HomeSessionRow: View {
                         if session.preview.isEmpty == false {
                             Text(session.preview)
                                 .font(.bodySM)
-                                .foregroundColor(.textOnBpDim)
+                                .foregroundColor(.textSecondary)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         } else if let placeholder = previewPlaceholder {
@@ -825,7 +825,7 @@ private struct HomeSessionRow: View {
 
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                         .padding(.top, Spacing.xs)
                         .accessibilityHidden(true)
                 }
@@ -849,7 +849,7 @@ private struct HomeSessionRow: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                     .frame(width: 36, height: 44)
                     .contentShape(Rectangle())
             }
@@ -862,12 +862,12 @@ private struct HomeSessionRow: View {
         .padding(.trailing, Spacing.sm)
         .background(
             isHovering || isFocused
-                ? Color.bpBlueLight.opacity(0.34)
-                : Color.bpBlueLight.opacity(0.18)
+                ? Color.bgElevated.opacity(0.34)
+                : Color.bgElevated.opacity(0.18)
         )
         .overlay(
             RoundedRectangle(cornerRadius: Radius.sm)
-                .strokeBorder(Color.bpLineGhost.opacity(0.45), lineWidth: Stroke.thin)
+                .strokeBorder(Color.borderGhost.opacity(0.45), lineWidth: Stroke.thin)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .onHover { isHovering = $0 }
@@ -893,7 +893,7 @@ private struct HomeSessionRow: View {
 
         }
         .font(.captionMedium)
-        .foregroundColor(.textOnBpDim)
+        .foregroundColor(.textSecondary)
     }
 
     private var titleForDisplay: String {
@@ -912,7 +912,7 @@ private struct HomeSessionRow: View {
     private var rowIconColor: Color {
         session.homeStatusState == .recording
             ? .accentOrange
-            : .textOnBpDim
+            : .textSecondary
     }
 
     private var statusLabel: (text: String, color: Color, icon: String)? {
@@ -920,7 +920,7 @@ private struct HomeSessionRow: View {
         case .recording:
             return (
                 String(localized: "home.row.preview.recording"),
-                .bpLine,
+                .textPrimary,
                 "record.circle.fill"
             )
         case .transcribing:
@@ -938,13 +938,13 @@ private struct HomeSessionRow: View {
         case .completed:
             return (
                 String(localized: "home.row.status.completed"),
-                .bpLine,
+                .textPrimary,
                 "checkmark.circle.fill"
             )
         case .imported:
             return (
                 String(localized: "home.row.status.imported"),
-                .bpLine,
+                .textPrimary,
                 "square.and.arrow.down"
             )
         case .none:
@@ -961,9 +961,9 @@ private struct HomeSessionRow: View {
         case .failed:
             return nil
         case .noSpeech:
-            return (String(localized: "home.row.preview.no_speech"), .textOnBpDim)
+            return (String(localized: "home.row.preview.no_speech"), .textSecondary)
         case .notTranscribed:
-            return (String(localized: "home.row.preview.not_transcribed"), .textOnBpDim)
+            return (String(localized: "home.row.preview.not_transcribed"), .textSecondary)
         case .none:
             return nil
         }
@@ -1003,17 +1003,17 @@ private struct HomeCreateNotebookSheet: View {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 Text(String(localized: "home.create.title"))
                     .font(.titleLG)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
 
                 Text(String(localized: "home.create.description"))
                     .font(.bodySM)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
             }
 
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 Text(String(localized: "home.create.name_label"))
                     .font(.bodyMedium)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
 
                 TextField(
                     String(localized: "home.create.name_placeholder"),
@@ -1021,13 +1021,13 @@ private struct HomeCreateNotebookSheet: View {
                 )
                 .textFieldStyle(.plain)
                 .font(.bodyLG)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
                 .padding(.horizontal, Spacing.md)
                 .frame(minHeight: 44)
-                .background(Color.bpBlueDeep.opacity(0.45))
+                .background(Color.bgSunken.opacity(0.45))
                 .overlay(
                     RoundedRectangle(cornerRadius: Radius.sm)
-                        .strokeBorder(Color.bpLineGhost.opacity(0.7), lineWidth: Stroke.thin)
+                        .strokeBorder(Color.borderGhost.opacity(0.7), lineWidth: Stroke.thin)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
                 .focused($isTitleFocused)
@@ -1052,7 +1052,7 @@ private struct HomeCreateNotebookSheet: View {
                 systemImage: "lock.shield.fill"
             )
             .font(.bodySM)
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
 
             HStack(spacing: Spacing.sm) {
                 Spacer()
@@ -1075,7 +1075,7 @@ private struct HomeCreateNotebookSheet: View {
         }
         .padding(Spacing.xl)
         .frame(width: 440)
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .onAppear { isTitleFocused = true }
     }
 }
@@ -1135,7 +1135,7 @@ private struct HomeActionButton: View {
         case .primary:
             return .brandAccentForeground.opacity(isEnabled ? 1 : 0.45)
         case .secondary:
-            return .textOnBp
+            return .textPrimary
         }
     }
 
@@ -1145,8 +1145,8 @@ private struct HomeActionButton: View {
             return isHovering ? .brandAccentHover : .brandAccent
         case .secondary:
             return isHovering
-                ? Color.bpBlueLight.opacity(0.75)
-                : Color.bpBlueLight.opacity(0.45)
+                ? Color.bgElevated.opacity(0.75)
+                : Color.bgElevated.opacity(0.45)
         }
     }
 
@@ -1155,7 +1155,7 @@ private struct HomeActionButton: View {
         case .primary:
             return .clear
         case .secondary:
-            return Color.bpLineGhost.opacity(0.65)
+            return Color.borderGhost.opacity(0.65)
         }
     }
 }

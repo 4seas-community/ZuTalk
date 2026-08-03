@@ -96,10 +96,10 @@ struct ManualNotesTimelineView: View {
                 VStack(alignment: .leading, spacing: Spacing.xs) {
                     Text(String(localized: "manual_note.timeline.title"))
                         .font(.titleMD)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                     Text(String(localized: "manual_note.timeline.subtitle"))
                         .font(.bodySM)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                 }
 
                 if viewModel.isLoading {
@@ -137,7 +137,7 @@ struct ManualNotesTimelineView: View {
             .padding(Spacing.xl)
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .task(id: "\(notebookId):\(tabId)") {
             viewModel.load(notebookId: notebookId, tabId: tabId)
         }
@@ -150,10 +150,10 @@ struct ManualNotesTimelineView: View {
         VStack(spacing: Spacing.md) {
             Image(systemName: icon)
                 .font(.system(size: 28, weight: .light))
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
             Text(text)
                 .font(.body)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
         }
         .frame(maxWidth: .infinity, minHeight: 280)
     }
@@ -189,7 +189,7 @@ private struct ManualTimeNoteCard: View {
                 )
                 .textFieldStyle(.plain)
                 .font(.titleMD)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
                 .onSubmit(save)
                 .accessibilityIdentifier("manual_note.timeline.title.\(note.id)")
 
@@ -216,11 +216,11 @@ private struct ManualTimeNoteCard: View {
                     systemImage: "clock"
                 )
                 .font(.bodySM)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
 
                 Text(shortId)
                     .font(.caption.monospaced())
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
 
                 Spacer()
 
@@ -237,10 +237,10 @@ private struct ManualTimeNoteCard: View {
             }
         }
         .padding(Spacing.lg)
-        .background(Color.bpBlueLight.opacity(0.3))
+        .background(Color.bgElevated.opacity(0.3))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.bpLineGhost.opacity(0.55), lineWidth: Stroke.thin)
+                .strokeBorder(Color.borderGhost.opacity(0.55), lineWidth: Stroke.thin)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.md))
         .onChange(of: note.title) { _, newValue in

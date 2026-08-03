@@ -169,10 +169,10 @@ struct NotebookResourcesView: View {
                 VStack(alignment: .leading, spacing: Spacing.xs) {
                     Text(String(localized: "resources.title"))
                         .font(.titleLG)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                     Text(String(localized: "resources.subtitle"))
                         .font(.bodySM)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                 }
 
                 if viewModel.isLoading {
@@ -220,7 +220,7 @@ struct NotebookResourcesView: View {
             .padding(Spacing.xl)
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .task(id: notebookId) {
             viewModel.load(notebookId: notebookId)
         }
@@ -267,10 +267,10 @@ struct NotebookResourcesView: View {
         VStack(spacing: Spacing.md) {
             Image(systemName: icon)
                 .font(.system(size: 28, weight: .light))
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
             Text(title)
                 .font(.body)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
         }
         .frame(maxWidth: .infinity, minHeight: 260)
     }
@@ -293,10 +293,10 @@ private struct NotebookResourceBlock: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(displayTitle)
                             .font(.bodyMedium)
-                            .foregroundColor(.bpLine)
+                            .foregroundColor(.textPrimary)
                         Text(timestamp)
                             .font(.caption)
-                            .foregroundColor(.textOnBpFaint)
+                            .foregroundColor(.textTertiary)
                     }
                 }
                 .buttonStyle(.plain)
@@ -306,7 +306,7 @@ private struct NotebookResourceBlock: View {
 
                 Text(duration)
                     .font(.captionMedium)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
 
                 Menu {
                     Button(role: .destructive) {
@@ -320,7 +320,7 @@ private struct NotebookResourceBlock: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
@@ -351,7 +351,7 @@ private struct NotebookResourceBlock: View {
                         Button(action: onVerifyAudioDestruction) {
                             Image(systemName: "checkmark.shield")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.textOnBpDim)
+                                .foregroundColor(.textSecondary)
                         }
                         .buttonStyle(.plain)
                         .help(String(localized: "resources.audio.verify"))
@@ -376,10 +376,10 @@ private struct NotebookResourceBlock: View {
             }
         }
         .padding(Spacing.md)
-        .background(Color.bpBlueLight.opacity(0.3))
+        .background(Color.bgElevated.opacity(0.3))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.sm)
-                .strokeBorder(Color.bpLineGhost.opacity(0.5), lineWidth: Stroke.thin)
+                .strokeBorder(Color.borderGhost.opacity(0.5), lineWidth: Stroke.thin)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .confirmationDialog(
@@ -426,17 +426,17 @@ private struct NotebookResourceBlock: View {
                 HStack(spacing: Spacing.sm) {
                     Image(systemName: icon)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                         .frame(width: 18)
 
                     Text(title)
                         .font(.bodySM)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
 
                     if let detail {
                         Text(detail)
                             .font(.caption)
-                            .foregroundColor(.textOnBpFaint)
+                            .foregroundColor(.textTertiary)
                     }
 
                     Spacer()
@@ -457,7 +457,7 @@ private struct NotebookResourceBlock: View {
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm)
-        .background(Color.bpBlue.opacity(0.45))
+        .background(Color.bgRoot.opacity(0.45))
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
     }
 
@@ -503,11 +503,11 @@ private struct NotebookResourceBlock: View {
 
     private func statusColor(_ status: NotebookResourceStatus) -> Color {
         switch status {
-        case .missing: .textOnBpFaint
+        case .missing: .textTertiary
         case .pending: .signalAmber
         case .ready: .signalGreen
         case .failed: .signalRed
-        case .destroyed: .textOnBpDim
+        case .destroyed: .textSecondary
         }
     }
 }

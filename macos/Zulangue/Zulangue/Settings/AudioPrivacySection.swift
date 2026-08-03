@@ -65,10 +65,10 @@ struct AudioPrivacySection: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(option.title)
                                     .font(.captionMedium)
-                                    .foregroundColor(.bpLine)
+                                    .foregroundColor(.textPrimary)
                                 Text(option.storageText)
                                     .font(.caption)
-                                    .foregroundColor(.textOnBpDim)
+                                    .foregroundColor(.textSecondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer(minLength: Spacing.sm)

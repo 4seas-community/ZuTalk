@@ -214,7 +214,7 @@ struct ProviderSettingsView: View {
                 systemImage: "externaldrive.fill.badge.checkmark"
             )
             .font(.caption)
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
 
             engineCard
@@ -224,7 +224,7 @@ struct ProviderSettingsView: View {
                 systemImage: "lock.shield.fill"
             )
             .font(.caption)
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
 
             if let operationError = viewModel.operationError {

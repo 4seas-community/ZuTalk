@@ -98,7 +98,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            Color.bpBlue.ignoresSafeArea()
+            Color.bgRoot.ignoresSafeArea()
 
             HStack(spacing: 0) {
                 // Left: 60% 主内容区
@@ -149,7 +149,7 @@ struct OnboardingView: View {
                     .frame(maxHeight: .infinity)
             }
         }
-        .cornerCrosshairs(color: .bpLineDim.opacity(0.5), inset: 16, size: 10)
+        .cornerCrosshairs(color: .textTertiary.opacity(0.5), inset: 16, size: 10)
     }
 
     private func withPhaseAnim(_ action: () -> Void) {
@@ -176,7 +176,7 @@ private struct StepIndicator: View {
                 if i < steps.count - 1 {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .regular))
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                 }
             }
             Spacer()
@@ -187,7 +187,7 @@ private struct StepIndicator: View {
     private func stepLabel(index: Int) -> some View {
         let isActive = index == currentStep
         let isDone = index < currentStep
-        let color: Color = isActive ? .bpLine : (isDone ? .textOnBpDim : .textOnBpFaint)
+        let color: Color = isActive ? .textPrimary : (isDone ? .textSecondary : .textTertiary)
 
         VStack(spacing: 6) {
             Text(steps[index])
@@ -211,17 +211,17 @@ private struct OnboardingVisual: View {
     var body: some View {
         ZStack {
             // bp-blue-deep 深蓝底 · 比左主区深一档,视觉上"深入机器内部"
-            Color.bpBlueDeep
+            Color.bgSunken
                 .overlay(
                     Rectangle()
-                        .fill(Color.bpLineGhost.opacity(0.4))
+                        .fill(Color.borderGhost.opacity(0.4))
                         .frame(width: 0.5),
                     alignment: .leading
                 )
 
             // 蓝图视觉使用的背景网格。
             BlueprintGrid()
-                .stroke(Color.bpLineFaint.opacity(0.15), lineWidth: 0.5)
+                .stroke(Color.borderFaint.opacity(0.15), lineWidth: 0.5)
                 .allowsHitTesting(false)
 
             // 中央产品预览 (白线 on 深蓝)
@@ -231,15 +231,15 @@ private struct OnboardingVisual: View {
             // 四角 registration marks。
             VStack {
                 HStack {
-                    CornerCrosshair(color: .bpLineDim, size: 10)
+                    CornerCrosshair(color: .textTertiary, size: 10)
                     Spacer()
-                    CornerCrosshair(color: .bpLineDim, size: 10)
+                    CornerCrosshair(color: .textTertiary, size: 10)
                 }
                 Spacer()
                 HStack {
-                    CornerCrosshair(color: .bpLineDim, size: 10)
+                    CornerCrosshair(color: .textTertiary, size: 10)
                     Spacer()
-                    CornerCrosshair(color: .bpLineDim, size: 10)
+                    CornerCrosshair(color: .textTertiary, size: 10)
                 }
             }
             .padding(18)
@@ -276,7 +276,7 @@ private struct OnboardingVisual: View {
             Text("FIG")
                 .font(.captionXs)
                 .tracking(0.8)
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
             Text(figNumber)
                 .font(.captionMedium)
                 .tracking(0.6)
@@ -286,7 +286,7 @@ private struct OnboardingVisual: View {
         .padding(.vertical, 8)
         .overlay(
             Rectangle()
-                .strokeBorder(Color.bpLineGhost.opacity(0.6), lineWidth: 0.5)
+                .strokeBorder(Color.borderGhost.opacity(0.6), lineWidth: 0.5)
         )
     }
 
@@ -333,16 +333,16 @@ private struct TranscriptBlueprintVisual: View {
                 Text("onboarding.visual.live")
                     .font(.captionMedium)
                     .tracking(1.0)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                 Spacer()
                 Text("00:12:48")
                     .font(.captionXs)
                     .monospacedDigit()
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
             }
 
             Rectangle()
-                .fill(Color.bpLineGhost)
+                .fill(Color.borderGhost)
                 .frame(height: 0.5)
 
             transcriptLine(
@@ -371,7 +371,7 @@ private struct TranscriptBlueprintVisual: View {
         .frame(width: 310)
         .overlay(
             Rectangle()
-                .strokeBorder(Color.bpLineGhost.opacity(0.8), lineWidth: 0.75)
+                .strokeBorder(Color.borderGhost.opacity(0.8), lineWidth: 0.75)
         )
     }
 
@@ -382,19 +382,19 @@ private struct TranscriptBlueprintVisual: View {
     ) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Circle()
-                .strokeBorder(Color.bpLineDim, lineWidth: 1)
+                .strokeBorder(Color.textTertiary, lineWidth: 1)
                 .frame(width: 24, height: 24)
                 .overlay(
                     Image(systemName: "person.fill")
                         .font(.system(size: 9))
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                 )
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Text(speaker)
                         .font(.captionXs)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                     Text(language)
                         .font(.captionXs)
                         .foregroundColor(.accentGold)
@@ -402,7 +402,7 @@ private struct TranscriptBlueprintVisual: View {
                 ForEach(Array(widths.enumerated()), id: \.offset) { _, width in
                     GeometryReader { proxy in
                         Capsule()
-                            .fill(Color.bpLineDim)
+                            .fill(Color.textTertiary)
                             .frame(width: proxy.size.width * width, height: 4)
                     }
                     .frame(height: 4)
@@ -414,12 +414,12 @@ private struct TranscriptBlueprintVisual: View {
     private func languageChip(_ key: LocalizedStringKey) -> some View {
         Text(key)
             .font(.captionXs)
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
             .overlay(
                 Capsule()
-                    .strokeBorder(Color.bpLineGhost, lineWidth: 0.75)
+                    .strokeBorder(Color.borderGhost, lineWidth: 0.75)
             )
     }
 }
@@ -429,11 +429,11 @@ private struct CredentialBlueprintVisual: View {
         VStack(spacing: 22) {
             ZStack {
                 RoundedRectangle(cornerRadius: 24)
-                    .strokeBorder(Color.bpLineGhost, lineWidth: 0.75)
+                    .strokeBorder(Color.borderGhost, lineWidth: 0.75)
                     .frame(width: 116, height: 116)
                 Image(systemName: "key.horizontal.fill")
                     .font(.system(size: 38, weight: .light))
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
             }
 
             HStack(spacing: 9) {
@@ -442,7 +442,7 @@ private struct CredentialBlueprintVisual: View {
                     .frame(width: 7, height: 7)
                 Text("Soniox")
                     .font(.captionMedium)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                 Text("STT-RT-V5")
                     .font(.captionXs)
                     .foregroundColor(.accentGold)
@@ -453,7 +453,7 @@ private struct CredentialBlueprintVisual: View {
                 Text("onboarding.keys.private_status")
             }
             .font(.captionXs)
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
         }
         .frame(width: 280)
     }
@@ -466,20 +466,20 @@ private struct MicrophoneBlueprintVisual: View {
         VStack(spacing: 24) {
             ZStack {
                 Circle()
-                    .strokeBorder(Color.bpLineGhost, lineWidth: 0.75)
+                    .strokeBorder(Color.borderGhost, lineWidth: 0.75)
                     .frame(width: 112, height: 112)
                 Circle()
-                    .strokeBorder(Color.bpLineDim, lineWidth: 1)
+                    .strokeBorder(Color.textTertiary, lineWidth: 1)
                     .frame(width: 80, height: 80)
                 Image(systemName: "mic.fill")
                     .font(.system(size: 30, weight: .light))
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
             }
 
             HStack(alignment: .center, spacing: 7) {
                 ForEach(Array(barHeights.enumerated()), id: \.offset) { index, height in
                     Capsule()
-                        .fill(index == 4 ? Color.brandAccent : Color.bpLineDim)
+                        .fill(index == 4 ? Color.brandAccent : Color.textTertiary)
                         .frame(width: 3, height: height)
                 }
             }
@@ -488,10 +488,10 @@ private struct MicrophoneBlueprintVisual: View {
             VStack(spacing: 6) {
                 Text("onboarding.visual.microphone.title")
                     .font(.captionMedium)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                 Text("onboarding.visual.microphone.detail")
                     .font(.captionXs)
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
             }
             .multilineTextAlignment(.center)
         }
@@ -546,21 +546,21 @@ struct OnbPillButton: View {
     private var fg: Color {
         switch style {
         case .primary:   return .brandAccentForeground
-        case .secondary: return Color.bpLine
-        case .ghost:     return Color.bpLine
+        case .secondary: return Color.textPrimary
+        case .ghost:     return Color.textPrimary
         }
     }
     private var bg: Color {
         switch style {
         case .primary:   return hovering ? Color.brandAccentHover : Color.brandAccent
-        case .secondary: return hovering ? Color.bpBlueLight : Color.bpBlueChip
-        case .ghost:     return hovering ? Color.bpBlueChip : Color.clear
+        case .secondary: return hovering ? Color.bgElevated : Color.bgElevated
+        case .ghost:     return hovering ? Color.bgElevated : Color.clear
         }
     }
     private var border: Color {
         switch style {
         case .primary, .secondary: return .clear
-        case .ghost: return Color.bpLineGhost
+        case .ghost: return Color.borderGhost
         }
     }
     private var borderWidth: CGFloat {
@@ -587,13 +587,13 @@ private struct OnbSmallPill: View {
                 Text(title)
                     .font(.system(size: 12, weight: .medium))
             }
-            .foregroundColor(style == .primary ? .brandAccentForeground : Color.bpLine)
+            .foregroundColor(style == .primary ? .brandAccentForeground : Color.textPrimary)
             .padding(.horizontal, 16)
             .padding(.vertical, 7)
             .background(
                 style == .primary
                     ? (hovering ? Color.brandAccentHover : Color.brandAccent)
-                    : (hovering ? Color.bpBlueLight : Color.bpBlueChip)
+                    : (hovering ? Color.bgElevated : Color.bgElevated)
             )
             .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
@@ -632,7 +632,7 @@ struct WelcomeScreen: View {
 
             Text("onboarding.brand.tagline")
                 .font(.system(size: 18, weight: .regular))
-                .foregroundColor(Color.bpLine)
+                .foregroundColor(Color.textPrimary)
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared ? 0 : 10)
                 .animation(.easeOut(duration: 0.5).delay(0.15), value: appeared)
@@ -664,11 +664,11 @@ struct WelcomeScreen: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "lock.shield")
                     .font(.system(size: 11))
-                    .foregroundColor(Color.textOnBpFaint)
+                    .foregroundColor(Color.textTertiary)
                     .frame(width: 18)
                 Text("onboarding.welcome.privacy")
                     .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Color.textOnBpFaint)
+                    .foregroundColor(Color.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 22)
@@ -711,11 +711,11 @@ struct WelcomeScreen: View {
                 .clipShape(Circle())
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .regular))
-                .foregroundColor(Color.textOnBpFaint)
+                .foregroundColor(Color.textTertiary)
                 .frame(width: 18)
             Text(key)
                 .font(.system(size: 14, weight: .regular))
-                .foregroundColor(Color.bpLine)
+                .foregroundColor(Color.textPrimary)
             Spacer()
         }
         .opacity(appeared ? 1 : 0)
@@ -755,12 +755,12 @@ struct SonioxCredentialScreen: View {
 
             Text("onboarding.keys.title")
                 .font(.system(size: 34, weight: .bold))
-                .foregroundColor(Color.bpLine)
+                .foregroundColor(Color.textPrimary)
                 .tracking(-0.5)
 
             Text("onboarding.keys.subtitle")
                 .font(.system(size: 14, weight: .regular))
-                .foregroundColor(Color.textOnBpDim)
+                .foregroundColor(Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 10)
 
@@ -771,10 +771,10 @@ struct SonioxCredentialScreen: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Soniox")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.bpLine)
+                            .foregroundColor(.textPrimary)
                         Text("onboarding.keys.voice_label")
                             .font(.captionXs)
-                            .foregroundColor(.textOnBpFaint)
+                            .foregroundColor(.textTertiary)
                     }
                     Spacer()
                     verificationBadge
@@ -804,7 +804,7 @@ struct SonioxCredentialScreen: View {
                         Text("onboarding.keys.guide.paste")
                     }
                     .font(.caption)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                     Link(destination: URL(string: "https://console.soniox.com")!) {
@@ -843,7 +843,7 @@ struct SonioxCredentialScreen: View {
 
                 Text("onboarding.keys.soniox.help")
                     .font(.caption)
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let errorMessage {
@@ -854,10 +854,10 @@ struct SonioxCredentialScreen: View {
                 }
             }
             .padding(20)
-            .background(Color.bpBlueDeep.opacity(0.38))
+            .background(Color.bgSunken.opacity(0.38))
             .overlay(
                 RoundedRectangle(cornerRadius: Radius.md)
-                    .strokeBorder(Color.bpLineGhost.opacity(0.7), lineWidth: 0.75)
+                    .strokeBorder(Color.borderGhost.opacity(0.7), lineWidth: 0.75)
             )
 
             Spacer()
@@ -962,7 +962,7 @@ struct PermissionsScreen: View {
 
             Text("onboarding.permissions.title")
                 .font(.system(size: 34, weight: .bold))
-                .foregroundColor(Color.bpLine)
+                .foregroundColor(Color.textPrimary)
                 .tracking(-0.5)
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared ? 0 : 10)
@@ -970,7 +970,7 @@ struct PermissionsScreen: View {
 
             Text("onboarding.permissions.subtitle")
                 .font(.system(size: 14, weight: .regular))
-                .foregroundColor(Color.textOnBpDim)
+                .foregroundColor(Color.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 10)
                 .opacity(appeared ? 1 : 0)
@@ -987,10 +987,10 @@ struct PermissionsScreen: View {
                 HStack(spacing: 8) {
                     Image(systemName: "info.circle")
                         .font(.system(size: 12))
-                        .foregroundColor(Color.textOnBpFaint)
+                        .foregroundColor(Color.textTertiary)
                     Text("onboarding.permissions.hint")
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Color.textOnBpFaint)
+                        .foregroundColor(Color.textTertiary)
                 }
                 .padding(.top, 16)
                 .transition(.opacity)
@@ -1051,16 +1051,16 @@ struct PermissionsScreen: View {
         HStack(alignment: .center, spacing: 16) {
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .regular))
-                .foregroundColor(Color.textOnBpDim)
+                .foregroundColor(Color.textSecondary)
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(nameKey(for: perm))
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.bpLine)
+                    .foregroundColor(Color.textPrimary)
                 Text(usageKey(for: perm))
                     .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Color.textOnBpDim)
+                    .foregroundColor(Color.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -1090,7 +1090,7 @@ struct PermissionsScreen: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
-        .background(Color.bpBlueChip)
+        .background(Color.bgElevated)
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .animation(.easeInOut(duration: 0.3), value: status)
         .opacity(appeared ? 1 : 0)

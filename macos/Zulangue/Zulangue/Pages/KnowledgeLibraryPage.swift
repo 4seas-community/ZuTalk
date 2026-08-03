@@ -700,7 +700,7 @@ struct KnowledgeLibraryPage: View {
                 overview
             }
         }
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .sheet(isPresented: $isCreating) { createSheet }
     }
 
@@ -711,10 +711,10 @@ struct KnowledgeLibraryPage: View {
                     VStack(alignment: .leading, spacing: Spacing.xs) {
                         Text(String(localized: "knowledge.title"))
                             .font(.titleLG)
-                            .foregroundColor(.bpLine)
+                            .foregroundColor(.textPrimary)
                         Text(String(localized: "knowledge.subtitle"))
                             .font(.bodySM)
-                            .foregroundColor(.textOnBpDim)
+                            .foregroundColor(.textSecondary)
                     }
                     Spacer()
                     Button(action: chooseJSONToImport) {
@@ -752,10 +752,10 @@ struct KnowledgeLibraryPage: View {
                             .foregroundColor(.brandAccent)
                         Text(String(localized: "knowledge.empty.title"))
                             .font(.titleMD)
-                            .foregroundColor(.bpLine)
+                            .foregroundColor(.textPrimary)
                         Text(String(localized: "knowledge.empty.description"))
                             .font(.bodySM)
-                            .foregroundColor(.textOnBpDim)
+                            .foregroundColor(.textSecondary)
                             .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity, minHeight: 360)
@@ -771,12 +771,12 @@ struct KnowledgeLibraryPage: View {
                                         .foregroundColor(.brandAccent)
                                     Text(profile.name)
                                         .font(.titleMD)
-                                        .foregroundColor(.bpLine)
+                                        .foregroundColor(.textPrimary)
                                     Text(profile.summary.isEmpty
                                          ? String(localized: "knowledge.card.no_summary")
                                          : profile.summary)
                                         .font(.bodySM)
-                                        .foregroundColor(.textOnBpDim)
+                                        .foregroundColor(.textSecondary)
                                         .lineLimit(3)
                                     Text(String(
                                         format: String(localized: "knowledge.card.counts"),
@@ -784,13 +784,13 @@ struct KnowledgeLibraryPage: View {
                                         profile.translationTerms.filter(\.isEnabled).count
                                     ))
                                     .font(.caption)
-                                    .foregroundColor(.textOnBpFaint)
+                                    .foregroundColor(.textTertiary)
                                 }
                                 .padding(Spacing.lg)
                                 .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
-                                .background(Color.bpBlueLight.opacity(0.36))
+                                .background(Color.bgElevated.opacity(0.36))
                                 .overlay(RoundedRectangle(cornerRadius: Radius.md)
-                                    .stroke(Color.bpLineGhost, lineWidth: Stroke.thin))
+                                    .stroke(Color.borderGhost, lineWidth: Stroke.thin))
                                 .clipShape(RoundedRectangle(cornerRadius: Radius.md))
                             }
                             .buttonStyle(.plain)
@@ -908,11 +908,11 @@ private struct KnowledgeProfilePage: View {
             TextField(String(localized: "knowledge.name"), text: $draft.name)
                 .textFieldStyle(.plain)
                 .font(.titleLG)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
             TextField(String(localized: "knowledge.summary.placeholder"), text: $draft.summary)
                 .textFieldStyle(.plain)
                 .font(.body)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
             if let persistenceError {
                 Label(
                     String(localized: "capture.settings.autosave.save_failed"),
@@ -930,7 +930,7 @@ private struct KnowledgeProfilePage: View {
                     Int64(savedRevision)
                 ))
                 .font(.caption)
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
             }
         }
     }
@@ -944,13 +944,13 @@ private struct KnowledgeProfilePage: View {
                 Spacer()
                 Text("\(estimate.formatted()) / 8,000 tokens")
                     .font(.bodySM)
-                    .foregroundColor(estimate > 8_000 ? .destructive : .textOnBpDim)
+                    .foregroundColor(estimate > 8_000 ? .destructive : .textSecondary)
             }
             ProgressView(value: min(Double(estimate) / 8_000, 1))
                 .tint(estimate > 8_000 ? .destructive : .brandAccent)
         }
         .padding(Spacing.md)
-        .background(Color.bpBlueLight.opacity(0.34))
+        .background(Color.bgElevated.opacity(0.34))
         .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
 
@@ -974,7 +974,7 @@ private struct KnowledgeProfilePage: View {
                 .scrollContentBackground(.hidden)
                 .padding(Spacing.sm)
                 .frame(minHeight: 180)
-                .background(Color.bpBlueLight.opacity(0.28))
+                .background(Color.bgElevated.opacity(0.28))
                 .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
     }
@@ -1007,7 +1007,7 @@ private struct KnowledgeProfilePage: View {
                 ForEach($draft.translationTerms) { $term in
                     HStack {
                         TextField(String(localized: "knowledge.translation.source"), text: $term.sourceText)
-                        Image(systemName: "arrow.right").foregroundColor(.textOnBpFaint)
+                        Image(systemName: "arrow.right").foregroundColor(.textTertiary)
                         TextField(String(localized: "knowledge.translation.target"), text: $term.targetText)
                         Button(role: .destructive) {
                             draft.translationTerms.removeAll { $0.id == term.id }
@@ -1033,15 +1033,15 @@ private struct KnowledgeProfilePage: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
             VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(title).font(.titleMD).foregroundColor(.bpLine)
-                Text(subtitle).font(.bodySM).foregroundColor(.textOnBpDim)
+                Text(title).font(.titleMD).foregroundColor(.textPrimary)
+                Text(subtitle).font(.bodySM).foregroundColor(.textSecondary)
             }
             content()
         }
         .padding(Spacing.lg)
-        .background(Color.bpBlueLight.opacity(0.22))
+        .background(Color.bgElevated.opacity(0.22))
         .overlay(RoundedRectangle(cornerRadius: Radius.md)
-            .stroke(Color.bpLineGhost, lineWidth: Stroke.thin))
+            .stroke(Color.borderGhost, lineWidth: Stroke.thin))
         .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
 
@@ -1049,7 +1049,7 @@ private struct KnowledgeProfilePage: View {
         HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
             Text(label)
                 .font(.bodySM)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .frame(width: 110, alignment: .leading)
             TextField(label, text: text)
                 .textFieldStyle(.roundedBorder)

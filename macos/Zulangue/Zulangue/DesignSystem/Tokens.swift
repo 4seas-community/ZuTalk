@@ -160,32 +160,16 @@ extension Color {
     // ════════════════════════════════════════════════════════
 
     // ─── Hardware Surface 名字族 ─────────────────────────────
-    static var hwSilver:     Color { surface }
-    static var hwSilverDeep: Color { surfaceSunk }
-    static var hwSilverEdge: Color { line10 }
-    static var hwSilverInk:  Color { surfaceRaised }
 
-    static var hwBlack:      Color { line100 }
-    static var hwBlackDim:   Color { line70 }
-    static var hwBlackFaint: Color { line50 }
-    static var hwBlackGhost: Color { line15 }
 
     // ─── Blueprint Internal 名字族 ───────────────────────────
-    static var bpBlue:        Color { surface }
-    static var bpBlueDeep:    Color { surfaceSunk }
-    static var bpBlueLight:   Color { surfaceRaised }
-    static var bpBlueOverlay: Color {
+    static var bgOverlay: Color {
         .dynamic(
             dark:  NSColor(hex: 0x002A1D, opacity: 0.72),
             light: NSColor(hex: 0x004A33, opacity: 0.20)
         )
     }
-    static var bpBlueChip: Color { surfaceRaised }
 
-    static var bpLine:      Color { line100 }
-    static var bpLineDim:   Color { line50 }
-    static var bpLineFaint: Color { line05 }
-    static var bpLineGhost: Color { line15 }
 
     // ─── Activity status · recording / processing only ──────────────
     static var accentOrange:      Color { accentOrangeInk }
@@ -202,6 +186,7 @@ extension Color {
     static var bgPanel:    Color { surfaceRaised }
     static var bgSurface:  Color { surfaceRaised }
     static var bgElevated: Color { surfaceRaised }
+    static var bgSunken:   Color { surfaceSunk }
     static var bgGlass: Color {
         .dynamic(
             dark:  NSColor(hex: 0x141414, opacity: 0.85),
@@ -213,6 +198,8 @@ extension Color {
     static var borderSubtle: Color { line10 }
     static var borderPanel:  Color { line10 }
     static var borderActive: Color { line30 }
+    static var borderGhost:  Color { line15 }
+    static var borderFaint:  Color { line05 }
 
     // ─── Text alias ──────────────────────────────────────────
     static var textPrimary:   Color { line100 }
@@ -222,13 +209,7 @@ extension Color {
     static var textDim:       Color { line30 }
 
     // ─── 跨模式文字色 (v1.0 API,v2.1 全部 dual-mode 统一) ────
-    static var textOnHw:      Color { line100 }
-    static var textOnHwDim:   Color { line70 }
-    static var textOnHwFaint: Color { line50 }
 
-    static var textOnBp:      Color { line100 }
-    static var textOnBpDim:   Color { line70 }
-    static var textOnBpFaint: Color { line50 }
 
     // ─── Signal alias · 按宪法语义收拢 ───────────────────────
     static var signalGreen:     Color { successInk }
@@ -263,11 +244,8 @@ extension Color {
     )
 
     // ─── LED ─────────────────────────────────────────────────
-    static var ledOffOnBp:   Color { line15 }
-    static var ledOffOnHw:   Color { line15 }
 
     // ─── Grid ────────────────────────────────────────────────
-    static var gridLine: Color { line05 }
 
 }
 

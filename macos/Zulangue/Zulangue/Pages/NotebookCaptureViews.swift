@@ -379,7 +379,7 @@ struct NotebookCaptureToolbar: View {
                             .font(.captionMedium)
                         }
                         .buttonStyle(.plain)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                         .help(String(localized: "capture.open_notebook_hint"))
                         .accessibilityLabel(Text(String(localized: "capture.open_notebook")))
                     }
@@ -505,8 +505,8 @@ struct NotebookCaptureToolbar: View {
             .frame(minWidth: 72, minHeight: 28)
         }
         .buttonStyle(.plain)
-        .foregroundColor(.bpLine)
-        .background(Color.bpBlueLight.opacity(0.65))
+        .foregroundColor(.textPrimary)
+        .background(Color.bgElevated.opacity(0.65))
         .clipShape(Capsule())
         .disabled(capture.captureState == .draining || isPausing)
         .keyboardShortcut("p", modifiers: [.control, .option])
@@ -610,7 +610,7 @@ struct NotebookRealtimeTranscriptPage: View {
                     systemImage: "waveform.and.mic"
                 )
                     .font(.captionMedium)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                 Spacer(minLength: Spacing.md)
                 NotebookCaptureToolbar(
                     notebookId: notebookId,
@@ -620,7 +620,7 @@ struct NotebookRealtimeTranscriptPage: View {
             }
             .padding(.horizontal, Spacing.xl)
             .padding(.vertical, Spacing.sm)
-            .background(Color.bpBlueDeep.opacity(0.42))
+            .background(Color.bgSunken.opacity(0.42))
 
             NotebookRealtimeCaptureConsole(
                 notebookId: notebookId,
@@ -628,7 +628,7 @@ struct NotebookRealtimeTranscriptPage: View {
                 onOpenAdvancedSettings: onOpenAdvancedSettings
             )
 
-            Divider().background(Color.bpLineGhost.opacity(0.3))
+            Divider().background(Color.borderGhost.opacity(0.3))
 
             NotebookRealtimeHistoryView(
                 notebookId: notebookId,
@@ -637,7 +637,7 @@ struct NotebookRealtimeTranscriptPage: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .task(id: notebookId) {
             await reloadHistory()
         }
@@ -691,15 +691,15 @@ struct NotebookRealtimeTranscriptPage: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundColor(isPresented ? .brandAccent : .bpLine)
+        .foregroundColor(isPresented ? .brandAccent : .textPrimary)
         .background(
             RoundedRectangle(cornerRadius: Radius.xs)
-                .fill(isPresented ? Color.brandAccent.opacity(0.14) : Color.bpBlueLight.opacity(0.65))
+                .fill(isPresented ? Color.brandAccent.opacity(0.14) : Color.bgElevated.opacity(0.65))
         )
         .overlay(
             RoundedRectangle(cornerRadius: Radius.xs)
                 .strokeBorder(
-                    isPresented ? Color.brandAccent.opacity(0.5) : Color.bpLineGhost.opacity(0.25),
+                    isPresented ? Color.brandAccent.opacity(0.5) : Color.borderGhost.opacity(0.25),
                     lineWidth: 0.5
                 )
         )
@@ -945,7 +945,7 @@ private struct NotebookRealtimeCaptureConsole: View {
         .padding(.horizontal, Spacing.xl)
         .padding(.vertical, Spacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.bpBlueLight.opacity(0.2))
+        .background(Color.bgElevated.opacity(0.2))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "capture.realtime.controls.profile_group")))
     }
@@ -962,7 +962,7 @@ private struct NotebookRealtimeCaptureConsole: View {
                     systemImage: "lock.fill"
                 )
                 .font(.captionMedium)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
             } else {
                 summaryChip(
                     activeRemoteStatus(for: profile),
@@ -987,7 +987,7 @@ private struct NotebookRealtimeCaptureConsole: View {
                     }
                 }
                 .font(.captionMedium)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .accessibilityElement(children: .combine)
             }
         }
@@ -1003,10 +1003,10 @@ private struct NotebookRealtimeCaptureConsole: View {
         VStack(alignment: .leading, spacing: 2) {
             Label(scopeTitle, systemImage: capture.isCaptureActive ? "lock.fill" : "record.circle")
                 .font(.captionMedium)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
             Text(scopeDetail)
                 .font(.system(size: 10))
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1031,10 +1031,10 @@ private struct NotebookRealtimeCaptureConsole: View {
             automaticRealtimeDisclosure
         }
         .padding(.horizontal, Spacing.md)
-        .background(Color.bpBlueDeep.opacity(0.34))
+        .background(Color.bgSunken.opacity(0.34))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.sm)
-                .strokeBorder(Color.bpLineGhost.opacity(0.25), lineWidth: 0.5)
+                .strokeBorder(Color.borderGhost.opacity(0.25), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .disabled(editor.canEdit == false)
@@ -1049,13 +1049,13 @@ private struct NotebookRealtimeCaptureConsole: View {
                     systemImage: "character.bubble"
                 )
                     .font(.captionMedium)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                 Spacer(minLength: Spacing.sm)
                 persistenceStatus
             }
             Text(String(localized: "capture.settings.languages.ordered_detail"))
                 .font(.system(size: 10))
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
 
             ScrollView(.horizontal) {
@@ -1071,7 +1071,7 @@ private struct NotebookRealtimeCaptureConsole: View {
 
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
                     .accessibilityHidden(true)
                 TextField(
                     String(localized: "capture.settings.languages.search"),
@@ -1082,10 +1082,10 @@ private struct NotebookRealtimeCaptureConsole: View {
             }
             .padding(.horizontal, Spacing.sm)
             .frame(minHeight: NotebookRealtimeControlLayoutPolicy.minimumInteractiveTarget)
-            .background(Color.bpBlueDeep.opacity(0.5))
+            .background(Color.bgSunken.opacity(0.5))
             .overlay(
                 RoundedRectangle(cornerRadius: Radius.xs)
-                    .strokeBorder(Color.bpLineGhost.opacity(0.3), lineWidth: 0.5)
+                    .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
             )
             .clipShape(RoundedRectangle(cornerRadius: Radius.xs))
 
@@ -1105,7 +1105,7 @@ private struct NotebookRealtimeCaptureConsole: View {
                 systemImage: "network"
             )
                 .font(.system(size: 10))
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let credentialAttentionTitle {
@@ -1131,12 +1131,12 @@ private struct NotebookRealtimeCaptureConsole: View {
             if draft.selectedLanguages.count >= NotebookCaptureSupportedLanguages.maximumSelectedCount {
                 Text(String(localized: "capture.settings.languages.maximum_reached"))
                     .font(.caption)
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
                     .padding(.vertical, Spacing.xs)
             } else if matches.isEmpty {
                 Text(String(localized: "capture.settings.languages.no_results"))
                     .font(.caption)
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
                     .padding(.vertical, Spacing.xs)
             } else {
                 addLanguageChipRow(matches)
@@ -1156,7 +1156,7 @@ private struct NotebookRealtimeCaptureConsole: View {
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 Text(String(localized: "capture.settings.languages.suggested"))
                     .font(.system(size: 10))
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
                 addLanguageChipRow(suggestions)
             }
         }
@@ -1177,8 +1177,8 @@ private struct NotebookRealtimeCaptureConsole: View {
                             .frame(minHeight: 32)
                     }
                     .buttonStyle(.plain)
-                    .foregroundColor(.bpLine)
-                    .background(Color.bpBlueLight.opacity(0.42))
+                    .foregroundColor(.textPrimary)
+                    .background(Color.bgElevated.opacity(0.42))
                     .clipShape(Capsule())
                     .accessibilityLabel(Text(String(
                         format: String(localized: "capture.settings.languages.add_format"),
@@ -1194,7 +1194,7 @@ private struct NotebookRealtimeCaptureConsole: View {
         HStack(spacing: 2) {
             Text(languageLabel(language))
                 .font(.captionMedium)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
                 .padding(.leading, Spacing.sm)
                 .padding(.trailing, Spacing.xs)
 
@@ -1218,10 +1218,10 @@ private struct NotebookRealtimeCaptureConsole: View {
             )
         }
         .frame(minHeight: 36)
-        .background(Color.bpBlueLight.opacity(0.42))
+        .background(Color.bgElevated.opacity(0.42))
         .overlay(
             Capsule()
-                .strokeBorder(Color.bpLineGhost.opacity(0.3), lineWidth: 0.5)
+                .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
         )
         .clipShape(Capsule())
         .accessibilityElement(children: .contain)
@@ -1239,7 +1239,7 @@ private struct NotebookRealtimeCaptureConsole: View {
                 .frame(width: 28, height: 32)
         }
         .buttonStyle(.plain)
-        .foregroundColor(.textOnBpDim)
+        .foregroundColor(.textSecondary)
         .contentShape(Rectangle())
         .disabled(disabled)
         .accessibilityLabel(Text(label))
@@ -1313,23 +1313,23 @@ private struct NotebookRealtimeCaptureConsole: View {
 
     private var credentialStatusColor: Color {
         switch credentialPresentationState {
-        case .savedLoadedUnverified, .runtimeOnlyUnverified: .textOnBpDim
+        case .savedLoadedUnverified, .runtimeOnlyUnverified: .textSecondary
         case .savedInactive: .signalAmber
-        case .missing: .textOnBpFaint
+        case .missing: .textTertiary
         }
     }
 
     private var controlDivider: some View {
-        Divider().background(Color.bpLineGhost.opacity(0.24))
+        Divider().background(Color.borderGhost.opacity(0.24))
     }
 
     private func summaryChip(_ title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
             .font(.captionMedium)
-            .foregroundColor(.bpLine)
+            .foregroundColor(.textPrimary)
             .padding(.horizontal, Spacing.sm)
             .frame(minHeight: 28)
-            .background(Color.bpBlueDeep.opacity(0.42))
+            .background(Color.bgSunken.opacity(0.42))
             .clipShape(Capsule())
     }
 
@@ -1371,13 +1371,13 @@ private struct NotebookRealtimeCaptureConsole: View {
             statusLabel(
                 String(localized: "capture.settings.autosave.loading"),
                 systemImage: "arrow.clockwise",
-                color: .textOnBpDim
+                color: .textSecondary
             )
         case .saving:
             statusLabel(
                 String(localized: "capture.settings.autosave.saving"),
                 systemImage: "arrow.triangle.2.circlepath",
-                color: .textOnBpDim
+                color: .textSecondary
             )
         case .saved:
             statusLabel(
@@ -1428,7 +1428,7 @@ private struct NotebookRealtimeCaptureConsole: View {
             }
             Text(message)
                 .font(.system(size: 10))
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .lineLimit(2)
                 .multilineTextAlignment(.trailing)
         }
@@ -1496,7 +1496,7 @@ struct NotebookCaptureSettingsView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .task(id: notebookId) {
             inputDevices.refresh()
             engineStore.refresh()
@@ -1533,10 +1533,10 @@ struct NotebookCaptureSettingsView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(String(localized: "capture.settings.title"))
                 .font(.headline)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
             Text(String(localized: "capture.settings.subtitle"))
                 .font(.caption)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -1548,17 +1548,17 @@ struct NotebookCaptureSettingsView: View {
         ) {
             Text(String(localized: "settings.audio_input.subtitle"))
                 .font(.caption)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: Spacing.sm) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(localized: "settings.audio_input.device"))
                         .font(.captionMedium)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                     Text(String(localized: "settings.audio_input.local_scope"))
                         .font(.system(size: 10))
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -1587,18 +1587,18 @@ struct NotebookCaptureSettingsView: View {
                         .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .disabled(capture.isAudioInputSwitching)
                 .help(String(localized: "settings.audio_input.refresh"))
                 .accessibilityLabel(Text(String(localized: "settings.audio_input.refresh")))
             }
             .padding(Spacing.md)
-            .background(Color.bpBlueDeep.opacity(0.35))
+            .background(Color.bgSunken.opacity(0.35))
             .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
 
             Text(String(localized: "settings.audio_input.channel_one_hint"))
                 .font(.caption)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let status = audioInputStatus {
@@ -1708,7 +1708,7 @@ struct NotebookCaptureSettingsView: View {
             return (
                 String(localized: "settings.audio_input.active_switch_hint"),
                 "arrow.left.arrow.right",
-                .textOnBpDim
+                .textSecondary
             )
         }
         return nil
@@ -1725,7 +1725,7 @@ struct NotebookCaptureSettingsView: View {
                     .font(.system(size: 9, weight: .semibold))
             }
             .font(.caption)
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1739,13 +1739,13 @@ struct NotebookCaptureSettingsView: View {
             settingsStatusLabel(
                 String(localized: "capture.settings.autosave.loading"),
                 systemImage: "arrow.clockwise",
-                color: .textOnBpDim
+                color: .textSecondary
             )
         case .saving:
             settingsStatusLabel(
                 String(localized: "capture.settings.autosave.saving"),
                 systemImage: "arrow.triangle.2.circlepath",
-                color: .textOnBpDim
+                color: .textSecondary
             )
         case .saved:
             settingsStatusLabel(
@@ -1793,7 +1793,7 @@ struct NotebookCaptureSettingsView: View {
                 .foregroundColor(.signalAmber)
             Text(message)
                 .font(.caption2)
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .lineLimit(2)
                 .multilineTextAlignment(.trailing)
                 .textSelection(.enabled)
@@ -1813,18 +1813,18 @@ struct NotebookCaptureSettingsView: View {
         ) {
             Text(String(localized: "capture.settings.context.pack_detail"))
                 .font(.caption)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: Spacing.sm) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(localized: "capture.settings.context.current"))
                         .font(.system(size: 10))
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                     Text(selectedContextPack.map(contextPackDisplayTitle)
                          ?? String(localized: "capture.settings.context.no_selection"))
                         .font(.captionMedium)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                         .lineLimit(1)
                 }
 
@@ -1851,7 +1851,7 @@ struct NotebookCaptureSettingsView: View {
                 .accessibilityLabel(Text(String(localized: "capture.settings.context.choose")))
             }
             .padding(Spacing.md)
-            .background(Color.bpBlueDeep.opacity(0.35))
+            .background(Color.bgSunken.opacity(0.35))
             .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
 
             Button(String(localized: "capture.settings.context.preview")) {
@@ -1905,7 +1905,7 @@ struct NotebookCaptureSettingsView: View {
         ) {
             Text(String(localized: "capture.settings.retention.subtitle"))
                 .font(.caption)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(NotebookAudioRetentionLevel.allCases) { level in
@@ -1922,14 +1922,14 @@ struct NotebookCaptureSettingsView: View {
             HStack(alignment: .top, spacing: Spacing.sm) {
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
                     .font(.system(size: 12))
-                    .foregroundColor(isSelected ? .brandAccent : .textOnBpFaint)
+                    .foregroundColor(isSelected ? .brandAccent : .textTertiary)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(option.title)
                         .font(.captionMedium)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                     Text(option.storageText)
                         .font(.caption)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: Spacing.sm)
@@ -1954,12 +1954,12 @@ struct NotebookCaptureSettingsView: View {
                 ? "capture.settings.after_stop.detail"
                 : "capture.settings.after_stop.unavailable_detail"))
                 .font(.caption)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text("\(String(localized: "capture.settings.after_stop.engine")) · \(engineStore.engine.postStopSummary) · \(engineStore.engine.postStopExecutionSummary)")
                 .font(.system(size: 10))
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -1982,20 +1982,20 @@ struct NotebookCaptureSettingsView: View {
                     systemImage: "eye.fill"
                 )
                 .font(.captionMedium)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
 
                 ScrollView {
                     Text(preview.containsSendableContext == false
                          ? String(localized: "capture.settings.context.empty")
                          : preview.serializedContext)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(Spacing.sm)
                 }
                 .frame(minHeight: 96, maxHeight: 180)
-                .background(Color.bpBlueDeep.opacity(0.7))
+                .background(Color.bgSunken.opacity(0.7))
                 .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
 
                 ForEach(preview.sources) { source in
@@ -2005,7 +2005,7 @@ struct NotebookCaptureSettingsView: View {
                     } icon: {
                         Image(systemName: source.included ? "checkmark.circle" : "minus.circle")
                     }
-                    .foregroundColor(source.included ? .textOnBpDim : .signalAmber)
+                    .foregroundColor(source.included ? .textSecondary : .signalAmber)
                 }
 
                 ForEach(Array(preview.omittedReasons.enumerated()), id: \.offset) { _, reason in
@@ -2020,7 +2020,7 @@ struct NotebookCaptureSettingsView: View {
                 .buttonStyle(.bordered)
             }
             .padding(Spacing.md)
-            .background(Color.bpBlueLight.opacity(0.32))
+            .background(Color.bgElevated.opacity(0.32))
             .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
     }
@@ -2033,15 +2033,15 @@ struct NotebookCaptureSettingsView: View {
         VStack(alignment: .leading, spacing: Spacing.md) {
             Label(title, systemImage: icon)
                 .font(.captionMedium)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
             content()
         }
         .padding(Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.bpBlueLight.opacity(0.3))
+        .background(Color.bgElevated.opacity(0.3))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.bpLineGhost.opacity(0.3), lineWidth: 0.5)
+                .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
@@ -2405,10 +2405,10 @@ private struct NotebookRealtimeHistoryView: View {
     var body: some View {
         VStack(spacing: 0) {
             presentationControl
-            Divider().background(Color.bpLineGhost.opacity(0.28))
+            Divider().background(Color.borderGhost.opacity(0.28))
             historyBody
         }
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "capture.transcript.realtime_accessibility_label")))
         .onDisappear(perform: cancelLiveFollow)
@@ -2479,16 +2479,16 @@ private struct NotebookRealtimeHistoryView: View {
                          ? String(localized: "capture.transcript.presentation.language_columns")
                          : String(localized: "capture.transcript.presentation.timeline"))
                         .font(.captionMedium)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                         .opacity(isPresentationControlHovered ? 1 : 0)
                 }
                 .padding(.horizontal, Spacing.sm)
                 .frame(minHeight: 32)
                 .background(
-                    Color.bpBlueLight.opacity(isPresentationControlHovered ? 0.42 : 0)
+                    Color.bgElevated.opacity(isPresentationControlHovered ? 0.42 : 0)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: Radius.xs))
             }
@@ -2541,7 +2541,7 @@ private struct NotebookRealtimeHistoryView: View {
                             selectRun(sessionID, using: proxy, animated: true)
                         }
                     )
-                    Divider().background(Color.bpLineGhost.opacity(0.24))
+                    Divider().background(Color.borderGhost.opacity(0.24))
                     ScrollView {
                         LazyVStack(spacing: Spacing.lg) {
                             ForEach(presentedRuns) { run in
@@ -2574,10 +2574,10 @@ private struct NotebookRealtimeHistoryView: View {
                                     systemImage: "arrow.down.to.line"
                                 )
                                 .font(.captionMedium)
-                                .foregroundColor(.bpBlueDeep)
+                                .foregroundColor(.bgSunken)
                                 .padding(.horizontal, Spacing.md)
                                 .frame(minHeight: 30)
-                                .background(Color.bpLine)
+                                .background(Color.textPrimary)
                                 .clipShape(Capsule())
                                 .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
                             }
@@ -2881,15 +2881,15 @@ private struct NotebookRealtimeRunNavigator: View {
         }
         .scrollIndicators(.never)
         .frame(width: 52)
-        .background(Color.bpBlueDeep.opacity(0.18))
+        .background(Color.bgSunken.opacity(0.18))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "capture.transcript.run_navigator")))
     }
 
     private func barColor(isSelected: Bool, isActive: Bool) -> Color {
-        if isSelected { return .bpLine }
+        if isSelected { return .textPrimary }
         if isActive { return .signalGreen }
-        return .textOnBpFaint.opacity(0.58)
+        return .textTertiary.opacity(0.58)
     }
 
     private func helpText(for run: NotebookCaptureHistoryRunDTO) -> String {
@@ -2911,10 +2911,10 @@ private struct NotebookRealtimeRunSummaryView: View {
                         systemImage: "clock"
                     )
                         .font(.captionMedium)
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                     Text(String(run.sessionId.prefix(12)))
                         .font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(.textOnBpFaint)
+                        .foregroundColor(.textTertiary)
                 }
                 Spacer(minLength: Spacing.md)
                 Label(
@@ -2922,7 +2922,7 @@ private struct NotebookRealtimeRunSummaryView: View {
                     systemImage: run.hasAudio ? "waveform" : "waveform.slash"
                 )
                     .font(.caption)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                 CaptureStateLabel(
                     captureState: run.captureState,
                     remoteHealth: run.remoteHealth,
@@ -2931,14 +2931,14 @@ private struct NotebookRealtimeRunSummaryView: View {
                 )
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
             }
             .padding(.horizontal, Spacing.lg)
             .frame(minHeight: 58)
-            .background(Color.bpBlueDeep.opacity(0.2))
+            .background(Color.bgSunken.opacity(0.2))
             .overlay(
                 RoundedRectangle(cornerRadius: Radius.sm)
-                    .strokeBorder(Color.bpLineGhost.opacity(0.24), lineWidth: 0.5)
+                    .strokeBorder(Color.borderGhost.opacity(0.24), lineWidth: 0.5)
             )
             .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
             .contentShape(RoundedRectangle(cornerRadius: Radius.sm))
@@ -2966,7 +2966,7 @@ private struct NotebookRealtimeTranscriptLoadView: View {
                     .foregroundColor(.signalAmber)
                 Text(message)
                     .font(.caption)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button(String(localized: "capture.settings.autosave.retry"), action: retry)
                     .buttonStyle(.borderless)
@@ -2975,16 +2975,16 @@ private struct NotebookRealtimeTranscriptLoadView: View {
                     ProgressView().controlSize(.small)
                     Text(String(localized: "capture.transcript.loading_recording"))
                         .font(.caption)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                 }
             }
         }
         .padding(Spacing.lg)
         .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
-        .background(Color.bpBlueDeep.opacity(0.2))
+        .background(Color.bgSunken.opacity(0.2))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.sm)
-                .strokeBorder(Color.bpLineGhost.opacity(0.24), lineWidth: 0.5)
+                .strokeBorder(Color.borderGhost.opacity(0.24), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .accessibilityLabel(Text(
@@ -3012,7 +3012,7 @@ struct NotebookRealtimeUtteranceView: View {
     var body: some View {
         VStack(spacing: 0) {
             runHeader
-            Divider().background(Color.bpLineGhost.opacity(0.3))
+            Divider().background(Color.borderGhost.opacity(0.3))
             switch projectionLayout {
             case .bilingualColumns:
                 bilingualLayout
@@ -3022,11 +3022,11 @@ struct NotebookRealtimeUtteranceView: View {
                 snapshotUnavailablePlaceholder
             }
         }
-        .background(Color.bpBlueDeep.opacity(0.28))
+        .background(Color.bgSunken.opacity(0.28))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.sm)
                 .strokeBorder(
-                    isFocused ? Color.brandAccent.opacity(0.72) : Color.bpLineGhost.opacity(0.28),
+                    isFocused ? Color.brandAccent.opacity(0.72) : Color.borderGhost.opacity(0.28),
                     lineWidth: isFocused ? 1 : 0.5
                 )
         )
@@ -3075,7 +3075,7 @@ struct NotebookRealtimeUtteranceView: View {
     private var transcriptionOnlyLayout: some View {
         VStack(spacing: 0) {
             transcriptionHeader
-            Divider().background(Color.bpLineGhost.opacity(0.35))
+            Divider().background(Color.borderGhost.opacity(0.35))
             transcriptionBody
         }
     }
@@ -3136,10 +3136,10 @@ struct NotebookRealtimeUtteranceView: View {
         VStack(alignment: .leading, spacing: 2) {
             Label(createdAtText, systemImage: "clock")
                 .font(.captionMedium)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
             Text(String(run.sessionId.prefix(12)))
                 .font(.system(size: 9, design: .monospaced))
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .textSelection(.enabled)
         }
     }
@@ -3147,7 +3147,7 @@ struct NotebookRealtimeUtteranceView: View {
     private var runMetadata: some View {
         Label(durationText, systemImage: run.hasAudio ? "waveform" : "waveform.slash")
             .font(.caption)
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
             .accessibilityLabel(Text(
                 "\(String(localized: "session.tab.audio")), \(durationText)"
             ))
@@ -3163,7 +3163,7 @@ struct NotebookRealtimeUtteranceView: View {
             .foregroundColor(.signalAmber)
             Text(String(localized: "capture.transcript.snapshot_unavailable_detail"))
                 .font(.caption)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
         }
         .padding(Spacing.lg)
         .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
@@ -3176,7 +3176,7 @@ struct NotebookRealtimeUtteranceView: View {
             systemImage: "text.alignleft"
         )
         .font(.captionMedium)
-        .foregroundColor(.bpLine)
+        .foregroundColor(.textPrimary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset + Spacing.md)
         .frame(height: NotebookRealtimeTranscriptLayout.headerHeight)
@@ -3210,7 +3210,7 @@ struct NotebookRealtimeUtteranceView: View {
         if hasAnyEditableLane == false {
             Label(String(localized: "capture.transcript.read_only"), systemImage: "lock.fill")
                 .font(.caption)
-                .foregroundColor(.textOnBpDim)
+                .foregroundColor(.textSecondary)
         }
         if run.projectionState == .failed, run.captureState.isActive == false {
             Button(String(localized: "capture.transcript.retry_projection")) {
@@ -3314,7 +3314,7 @@ struct NotebookRealtimeUtteranceView: View {
                         }
                     )
                     .id(utterance.id)
-                    Divider().background(Color.bpLineGhost.opacity(0.22))
+                    Divider().background(Color.borderGhost.opacity(0.22))
                 }
                 if supplementalCues.isEmpty == false {
                     NotebookSupplementalCueRow(
@@ -3322,7 +3322,7 @@ struct NotebookRealtimeUtteranceView: View {
                         cues: supplementalCues
                     )
                     .transition(.opacity)
-                    Divider().background(Color.bpLineGhost.opacity(0.22))
+                    Divider().background(Color.borderGhost.opacity(0.22))
                 }
             }
             .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset)
@@ -3364,7 +3364,7 @@ struct NotebookRealtimeUtteranceView: View {
                         }
                     )
                     .id(utterance.id)
-                    Divider().background(Color.bpLineGhost.opacity(0.22))
+                    Divider().background(Color.borderGhost.opacity(0.22))
                 }
             }
             .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset)
@@ -3375,15 +3375,15 @@ struct NotebookRealtimeUtteranceView: View {
         HStack(alignment: .top, spacing: Spacing.md) {
             Image(systemName: "waveform.slash")
                 .font(.system(size: 18, weight: .medium))
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 Text(title)
                     .font(.captionMedium)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                 Text(description)
                     .font(.caption)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -3436,14 +3436,14 @@ private struct NotebookSpeakerChip: View {
         Button(action: action) {
             Label(displayName, systemImage: "person.crop.circle")
                 .font(.captionMedium)
-                .foregroundColor(.bpLine)
+                .foregroundColor(.textPrimary)
                 .padding(.horizontal, Spacing.sm)
                 .frame(minHeight: 28)
-                .background(Color.bpBlueLight.opacity(0.48))
+                .background(Color.bgElevated.opacity(0.48))
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
-                        .strokeBorder(Color.bpLineGhost.opacity(0.35), lineWidth: 0.5)
+                        .strokeBorder(Color.borderGhost.opacity(0.35), lineWidth: 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -3485,10 +3485,10 @@ private struct NotebookSpeakerEditorSheet: View {
                 VStack(alignment: .leading, spacing: Spacing.xs) {
                     Text(String(localized: "capture.speaker.editor.title"))
                         .font(.title3.weight(.semibold))
-                        .foregroundColor(.bpLine)
+                        .foregroundColor(.textPrimary)
                     Text(speakerIdentity)
                         .font(.caption.monospaced())
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                         .textSelection(.enabled)
                 }
                 Spacer(minLength: Spacing.lg)
@@ -3503,7 +3503,7 @@ private struct NotebookSpeakerEditorSheet: View {
                 systemImage: "lock.shield"
             )
             .font(.caption)
-            .foregroundColor(.textOnBpDim)
+            .foregroundColor(.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
 
             Divider()
@@ -3511,10 +3511,10 @@ private struct NotebookSpeakerEditorSheet: View {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 Text(String(localized: "capture.speaker.session_name"))
                     .font(.captionMedium)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                 Text(String(localized: "capture.speaker.session_name_detail"))
                     .font(.caption)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                 HStack(spacing: Spacing.sm) {
                     TextField(
                         String(localized: "capture.speaker.session_name_placeholder"),
@@ -3537,10 +3537,10 @@ private struct NotebookSpeakerEditorSheet: View {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 Text(String(localized: "capture.speaker.participant"))
                     .font(.captionMedium)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                 Text(String(localized: "capture.speaker.participant_detail"))
                     .font(.caption)
-                    .foregroundColor(.textOnBpDim)
+                    .foregroundColor(.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: Spacing.sm) {
@@ -3592,7 +3592,7 @@ private struct NotebookSpeakerEditorSheet: View {
         }
         .padding(Spacing.xl)
         .frame(width: 480)
-        .background(Color.bpBlue)
+        .background(Color.bgRoot)
         .onAppear {
             history.refreshSpeakerParticipants()
             history.refreshSessionSpeakers(sessionId: sessionId)
@@ -3692,7 +3692,7 @@ private struct NotebookSupplementalCueRow: View {
                     if let cue = cue(for: language) {
                         Text(cue.text)
                             .font(.bodyMedium)
-                            .foregroundColor(.textOnBp)
+                            .foregroundColor(.textPrimary)
                             .textSelection(.enabled)
                             .multilineTextAlignment(.leading)
                             .accessibilityLabel(Text(language.uppercased()))
@@ -3706,7 +3706,7 @@ private struct NotebookSupplementalCueRow: View {
                 .padding(.vertical, Spacing.md)
 
                 if index < languages.count - 1 {
-                    Divider().background(Color.bpLineGhost.opacity(0.35))
+                    Divider().background(Color.borderGhost.opacity(0.35))
                 }
             }
         }
@@ -3752,7 +3752,7 @@ private struct TranscriptionUtteranceRow: View {
                 Text(sourceLanguageLabel)
             }
             .font(.system(size: 10, weight: .medium, design: .monospaced))
-            .foregroundColor(.textOnBpFaint)
+            .foregroundColor(.textTertiary)
 
             BilingualLaneText(
                 target: BilingualLaneEditTarget(
@@ -3847,7 +3847,7 @@ private struct MultilingualUtteranceRow: View {
                         if let timestamp = timestampText {
                             Label(timestamp, systemImage: "waveform")
                                 .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.textOnBpFaint)
+                                .foregroundColor(.textTertiary)
                                 .accessibilityLabel(Text(String(
                                     format: String(localized: "capture.transcript.source_timestamp"),
                                     timestamp
@@ -3858,11 +3858,11 @@ private struct MultilingualUtteranceRow: View {
                             systemImage: "ellipsis"
                         )
                         .font(.captionMedium)
-                        .foregroundColor(.textOnBpDim)
+                        .foregroundColor(.textSecondary)
                         if pendingLanguage.isEmpty == false {
                             Text(pendingLanguage)
                                 .font(.body)
-                                .foregroundColor(.bpLine)
+                                .foregroundColor(.textPrimary)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .textSelection(.enabled)
                         }
@@ -3876,7 +3876,7 @@ private struct MultilingualUtteranceRow: View {
                         if let timestamp = timestampText {
                             Label(timestamp, systemImage: "waveform")
                                 .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.textOnBpFaint)
+                                .foregroundColor(.textTertiary)
                                 .accessibilityLabel(Text(String(
                                     format: String(localized: "capture.transcript.source_timestamp"),
                                     timestamp
@@ -3926,7 +3926,7 @@ private struct MultilingualUtteranceRow: View {
                                     )
                             )
                             if index < projection.lanes.count - 1 {
-                                Divider().background(Color.bpLineGhost.opacity(0.3))
+                                Divider().background(Color.borderGhost.opacity(0.3))
                             }
                         }
                     }
@@ -3945,7 +3945,7 @@ private struct MultilingualUtteranceRow: View {
             if showsSourceTimestamp, let timestamp = timestampText {
                 Label(timestamp, systemImage: "waveform")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
                     .accessibilityLabel(Text(String(
                         format: String(localized: "capture.transcript.source_timestamp"),
                         timestamp
@@ -4118,7 +4118,7 @@ private struct BilingualLaneText: View {
                 TextField("", text: $buffer.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.body)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                     // The page owns vertical scrolling. Let a continuous
                     // utterance grow the row instead of hiding its tail in a
                     // ten-line nested editor.
@@ -4147,7 +4147,7 @@ private struct BilingualLaneText: View {
             } else if let text, text.isEmpty == false {
                 Text(text)
                     .font(.body)
-                    .foregroundColor(.bpLine)
+                    .foregroundColor(.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             } else if missingLaneState == .waiting {
@@ -4159,7 +4159,7 @@ private struct BilingualLaneText: View {
                     systemImage: "ellipsis"
                 )
                 .font(.caption)
-                .foregroundColor(.textOnBpFaint)
+                .foregroundColor(.textTertiary)
                 .frame(minHeight: 28, alignment: .leading)
                 .accessibilityLabel(Text(String(
                     format: String(localized: "capture.transcript.waiting_lane"),
@@ -4183,7 +4183,7 @@ private struct BilingualLaneText: View {
             } else {
                 Text("—")
                     .font(.body)
-                    .foregroundColor(.textOnBpFaint)
+                    .foregroundColor(.textTertiary)
                     .accessibilityHidden(true)
             }
         }
@@ -4276,7 +4276,7 @@ struct CaptureStateLabel: View {
             }
         }
         .font(.captionMedium)
-        .foregroundColor(.textOnBpDim)
+        .foregroundColor(.textSecondary)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityStatus))
     }
