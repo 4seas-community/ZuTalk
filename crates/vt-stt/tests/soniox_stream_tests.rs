@@ -358,3 +358,115 @@ async fn pause_and_finish_fence_audio_accepted_before_control() {
     );
     assert!(runtime.task.await.unwrap().is_ok());
 }
+
+/// A community invitation answers with a fresh single-use key per connection.
+/// The stream must ask once per connection attempt — never reuse the previous
+/// answer — because a spent single-use key cannot open a second socket.
+struct CountingCredential {
+    keys: std::sync::Mutex<Vec<String>>,
+    asked: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl vt_stt::LaneCredentialSource for CountingCredential {
+    fn credential_for_connection(&self) -> vt_stt::BoxedCredentialFuture<'_> {
+        self.asked
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let next = self.keys.lock().unwrap().pop();
+        Box::pin(async move {
+            next.ok_or_else(|| vt_stt::SttError::AuthFailed {
+                message: "invitation key budget exhausted".to_string(),
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn each_connection_attempt_resolves_its_own_credential() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+    let (frame_tx, mut frame_rx) = mpsc::channel(16);
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let ws = accept_async(stream).await.unwrap();
+        let (mut write, mut read) = ws.split();
+        while let Some(Ok(message)) = read.next().await {
+            match message {
+                Message::Text(text) if text.is_empty() => {
+                    frame_tx.send(ClientFrame::Finish).await.unwrap();
+                    write
+                        .send(Message::Text(json!({"finished": true}).to_string().into()))
+                        .await
+                        .unwrap();
+                    break;
+                }
+                Message::Text(text) => {
+                    let value: Value = serde_json::from_str(&text).unwrap();
+                    frame_tx.send(ClientFrame::Text(value)).await.unwrap();
+                }
+                _ => {}
+            }
+        }
+    });
+
+    let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let credential = std::sync::Arc::new(CountingCredential {
+        keys: std::sync::Mutex::new(vec!["lane-key-1".to_string()]),
+        asked: asked.clone(),
+    });
+
+    let mut runtime = SonioxStreamClient::start_with_credential(
+        endpoint,
+        credential,
+        SttConfig::default(),
+        CancellationToken::new(),
+    );
+
+    assert_eq!(
+        runtime.event_rx.recv().await,
+        Some(SttStreamEvent::Connected)
+    );
+    let Some(ClientFrame::Text(config_json)) = frame_rx.recv().await else {
+        panic!("first client frame must be JSON configuration");
+    };
+    // The key the source handed out is the one that reaches Soniox.
+    assert_eq!(config_json["api_key"], "lane-key-1");
+    assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    runtime
+        .control_tx
+        .try_send(SttStreamControl::Finish)
+        .unwrap();
+    assert_eq!(frame_rx.recv().await, Some(ClientFrame::Finish));
+    assert_eq!(
+        runtime.event_rx.recv().await,
+        Some(SttStreamEvent::Finished)
+    );
+}
+
+#[tokio::test]
+async fn a_refused_credential_fails_the_stream_without_dialing() {
+    // Nothing is listening on this port: reaching the dial at all would be a
+    // timeout, so a prompt auth failure proves the credential is resolved
+    // first and a spent invitation never opens a socket.
+    let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let credential = std::sync::Arc::new(CountingCredential {
+        keys: std::sync::Mutex::new(Vec::new()),
+        asked: asked.clone(),
+    });
+
+    let mut runtime = SonioxStreamClient::start_with_credential(
+        "ws://127.0.0.1:1",
+        credential,
+        SttConfig::default(),
+        CancellationToken::new(),
+    );
+
+    let event = runtime.event_rx.recv().await;
+    assert!(
+        matches!(&event, Some(SttStreamEvent::Error(error)) if format!("{error:?}").contains("unauthenticated")),
+        "expected a terminal credential error, got {event:?}"
+    );
+    // Refusal is final: the reconnect loop must not retry it.
+    assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(runtime.task.await.unwrap().is_err());
+}

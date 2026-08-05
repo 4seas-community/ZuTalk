@@ -7,6 +7,7 @@
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -271,6 +272,32 @@ impl StreamFailure {
         }
     }
 
+    /// A connection could not be given a credential. A refused credential
+    /// (invitation spent, budget gone, token revoked) is final; anything else
+    /// is treated as transport so the normal reconnect backoff can ride out a
+    /// brief outage of whatever issues the key.
+    fn credential(error: SttError) -> Self {
+        let message = format!("Soniox lane credential: {error}");
+        if error.is_auth_error() {
+            return Self {
+                task_error: error,
+                event_error: SttStreamError::Provider(SttStreamProviderError {
+                    error_code: 401,
+                    error_type: "unauthenticated".to_string(),
+                    error_message: message,
+                    request_id: None,
+                }),
+            };
+        }
+        Self {
+            task_error: error,
+            event_error: SttStreamError::Transport {
+                operation: "Soniox lane credential".to_string(),
+                message,
+            },
+        }
+    }
+
     fn is_retryable(&self) -> bool {
         match &self.event_error {
             SttStreamError::Transport { .. } => true,
@@ -503,6 +530,39 @@ struct ControlMessage {
     control_type: &'static str,
 }
 
+/// Supplies the credential for one WebSocket connection.
+///
+/// The stream asks once per connection attempt, including every reconnect.
+/// A saved personal key answers from memory and never fails; a community
+/// invitation answers with a single-use key fetched for that one connection,
+/// so the reconnect loop stays a single code path either way.
+pub trait LaneCredentialSource: Send + Sync {
+    fn credential_for_connection(&self) -> BoxedCredentialFuture<'_>;
+}
+
+pub type BoxedCredentialFuture<'a> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, SttError>> + Send + 'a>>;
+
+/// The user's own saved key: one value, reused by every lane and reconnect.
+pub struct StaticLaneCredential {
+    api_key: String,
+}
+
+impl StaticLaneCredential {
+    pub fn new(api_key: impl Into<String>) -> Arc<Self> {
+        Arc::new(Self {
+            api_key: api_key.into(),
+        })
+    }
+}
+
+impl LaneCredentialSource for StaticLaneCredential {
+    fn credential_for_connection(&self) -> BoxedCredentialFuture<'_> {
+        let api_key = self.api_key.clone();
+        Box::pin(async move { Ok(api_key) })
+    }
+}
+
 /// v5 Notebook capture stream. Starting is non-blocking; `Connected` is emitted only after the
 /// configuration frame has been sent successfully.
 pub struct SonioxStreamClient;
@@ -514,12 +574,32 @@ impl SonioxStreamClient {
         config: SttConfig,
         cancel: CancellationToken,
     ) -> SonioxStreamRuntime {
-        Self::start_with_timeouts(endpoint, api_key, config, cancel, StreamTimeouts::default())
+        Self::start_with_credential(
+            endpoint,
+            StaticLaneCredential::new(api_key),
+            config,
+            cancel,
+        )
+    }
+
+    pub fn start_with_credential(
+        endpoint: impl Into<String>,
+        credential: Arc<dyn LaneCredentialSource>,
+        config: SttConfig,
+        cancel: CancellationToken,
+    ) -> SonioxStreamRuntime {
+        Self::start_with_timeouts(
+            endpoint,
+            credential,
+            config,
+            cancel,
+            StreamTimeouts::default(),
+        )
     }
 
     fn start_with_timeouts(
         endpoint: impl Into<String>,
-        api_key: impl Into<String>,
+        credential: Arc<dyn LaneCredentialSource>,
         config: SttConfig,
         cancel: CancellationToken,
         timeouts: StreamTimeouts,
@@ -528,10 +608,16 @@ impl SonioxStreamClient {
         let (control_tx, control_rx) = mpsc::channel(CONTROL_CHANNEL_CAPACITY);
         let (event_tx, event_rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
         let endpoint = endpoint.into();
-        let api_key = api_key.into();
         let task = tokio::spawn(async move {
             match run_stream(
-                &endpoint, &api_key, &config, audio_rx, control_rx, &event_tx, cancel, timeouts,
+                &endpoint,
+                credential.as_ref(),
+                &config,
+                audio_rx,
+                control_rx,
+                &event_tx,
+                cancel,
+                timeouts,
             )
             .await
             {
@@ -556,7 +642,7 @@ impl SonioxStreamClient {
 #[allow(clippy::too_many_arguments)]
 async fn run_stream(
     endpoint: &str,
-    api_key: &str,
+    credential: &dyn LaneCredentialSource,
     config: &SttConfig,
     mut audio_rx: mpsc::Receiver<Vec<u8>>,
     mut control_rx: mpsc::Receiver<SttStreamControl>,
@@ -573,7 +659,7 @@ async fn run_stream(
         let reconnect_outage = disconnected_at.map(|started| started.elapsed());
         match run_stream_session(
             endpoint,
-            api_key,
+            credential,
             config,
             &mut audio_rx,
             &mut control_rx,
@@ -623,7 +709,7 @@ async fn run_stream(
 #[allow(clippy::too_many_arguments)]
 async fn run_stream_session(
     endpoint: &str,
-    api_key: &str,
+    credential: &dyn LaneCredentialSource,
     config: &SttConfig,
     audio_rx: &mut mpsc::Receiver<Vec<u8>>,
     control_rx: &mut mpsc::Receiver<SttStreamControl>,
@@ -635,6 +721,14 @@ async fn run_stream_session(
     recovery: &mut StreamRecoveryState,
     reconnect_outage: Option<Duration>,
 ) -> Result<(), StreamFailure> {
+    // Resolved before dialing: a single-use credential is spent the moment a
+    // connection presents it, so a socket opened without one in hand would
+    // burn a key on a connection that may never be configured.
+    let api_key = credential
+        .credential_for_connection()
+        .await
+        .map_err(StreamFailure::credential)?;
+
     let connect = time::timeout(timeouts.connect, connect_async(endpoint))
         .await
         .map_err(|_| StreamFailure::timeout("Soniox stream connect", timeouts.connect))?
@@ -642,7 +736,7 @@ async fn run_stream_session(
     let (ws_stream, _) = connect;
     let (mut write, mut read) = ws_stream.split();
 
-    let wire_config = build_stream_config(api_key, config);
+    let wire_config = build_stream_config(&api_key, config);
     let config_json = serde_json::to_string(&wire_config)
         .map_err(|error| StreamFailure::protocol(error.to_string()))?;
     send_message(
@@ -1216,7 +1310,7 @@ mod tests {
 
         let mut runtime = SonioxStreamClient::start_with_timeouts(
             endpoint,
-            "key",
+            StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
             short_timeouts(),
@@ -1287,7 +1381,7 @@ mod tests {
         };
         let mut runtime = SonioxStreamClient::start_with_timeouts(
             endpoint,
-            "key",
+            StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
             timeouts,
@@ -1331,7 +1425,7 @@ mod tests {
 
         let mut runtime = SonioxStreamClient::start_with_timeouts(
             endpoint,
-            "key",
+            StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
             short_timeouts(),
@@ -1412,7 +1506,7 @@ mod tests {
 
         let mut runtime = SonioxStreamClient::start_with_timeouts(
             endpoint,
-            "key",
+            StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
             short_timeouts(),
@@ -1557,7 +1651,7 @@ mod tests {
 
         let mut runtime = SonioxStreamClient::start_with_timeouts(
             endpoint,
-            "key",
+            StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
             short_timeouts(),
@@ -1611,7 +1705,7 @@ mod tests {
 
         let mut runtime = SonioxStreamClient::start_with_timeouts(
             endpoint,
-            "key",
+            StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
             short_timeouts(),
