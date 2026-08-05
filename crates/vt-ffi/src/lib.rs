@@ -6,6 +6,7 @@
 
 pub(crate) mod capture_erasure;
 pub mod editor_api;
+pub mod lane_credential_api;
 pub mod notebook_api;
 pub mod notebook_capture_api;
 pub mod session_audio_api;
@@ -325,6 +326,11 @@ pub struct ZulangueCore {
     /// 全量 setAttributedString + 光标抖动 + 主线程卡顿）。
     pub(crate) editor_callbacks:
         Arc<Mutex<HashMap<String, Arc<dyn crate::editor_api::FfiEditorCallback>>>>,
+    /// Installed while a community invitation is the credential source. When
+    /// present, capture lanes ask the app for a single-use key per
+    /// connection instead of reading one saved key from the store.
+    pub(crate) lane_credential_broker:
+        Arc<Mutex<Option<Arc<crate::lane_credential_api::LaneCredentialBroker>>>>,
     /// 待写盘的 editor session 集合。apply_edit 只 enqueue，后台 flusher
     /// 每 ~500ms drain 一次。这样单字符输入不再每次都阻塞主线程做 fs::write,
     /// 同一 session 连敲也只合并成一次 snapshot 写入。
@@ -672,6 +678,7 @@ impl ZulangueCore {
             notebook_capture_store,
             context_pack_store,
             editor_callbacks,
+            lane_credential_broker: Arc::new(Mutex::new(None)),
             pending_snapshot_saves,
             task_queue,
             session_task_registry,

@@ -36,13 +36,10 @@ final class CommunityInviteSession: ObservableObject {
     /// Realtime capture streams the same audio once per Soniox lane, so invite
     /// time must be charged per lane, not per wall-clock second.
     private var activeRealtimeLaneCount = 1
-    /// Soniox temporary keys can open new streams for at most one hour, which
-    /// is shorter than a long recording. A fresh key must replace the old one
-    /// before expiry so mid-session reconnects and late-added lanes never
-    /// present a dead credential.
-    private static let keyRenewalInterval: Duration = .seconds(45 * 60)
-    private static let keyRenewalRetryInterval: Duration = .seconds(5 * 60)
-    private var keyRenewalTask: Task<Void, Never>?
+    /// Installed for the duration of an invite capture. While it is present
+    /// the core asks it for a single-use key per connection, so no invite key
+    /// is ever written into the shared credential runtime.
+    private var laneCredentialProvider: CommunityInviteLaneCredentialProvider?
 
     var isActive: Bool { accessToken != nil }
 
@@ -101,7 +98,8 @@ final class CommunityInviteSession: ObservableObject {
                 laneCount: lanes
             )
             activeRealtimeLaneCount = lanes
-            startKeyRenewal()
+            // No renewal loop: every connection fetches its own key, so there
+            // is no long-lived credential left to expire mid-recording.
             return .invite
         } catch {
             guard restorePersonalKeyIfSaved() else { throw error }
@@ -162,59 +160,91 @@ final class CommunityInviteSession: ObservableObject {
             ],
             token: token
         )
-        try ProviderCredentialSession.shared.activateProcessOnlyCredential(
-            response.apiKey,
-            for: .soniox
+        // Invite keys are single-use and short-lived, so they are served per
+        // connection through the core instead of being written into the
+        // shared credential runtime, where they would outlive their use and
+        // shadow the user's own saved key.
+        let provider = makeLaneCredentialProvider(
+            sessionID: response.sessionID,
+            token: token
         )
+        laneCredentialProvider = provider
+        CoreClient.shared.core?.setLaneCredentialRequester(requester: provider)
+        await provider.prime(laneCount: laneCount)
         remainingSeconds = max(0, (remainingSeconds ?? 0) - response.reservedSeconds)
         return response.sessionID
     }
 
-    private func startKeyRenewal() {
-        keyRenewalTask?.cancel()
-        keyRenewalTask = Task { [weak self] in
-            var delay = Self.keyRenewalInterval
-            while Task.isCancelled == false {
-                try? await Task.sleep(for: delay)
-                guard Task.isCancelled == false,
-                      let self,
-                      let sessionID = self.activeRealtimeSessionID
-                else { return }
-                delay = await self.renewRealtimeKey(sessionID: sessionID)
-                    ? Self.keyRenewalInterval
-                    : Self.keyRenewalRetryInterval
+    private func makeLaneCredentialProvider(
+        sessionID: String,
+        token: String
+    ) -> CommunityInviteLaneCredentialProvider {
+        let baseURL = self.baseURL
+        return CommunityInviteLaneCredentialProvider(
+            sessionID: sessionID,
+            accessToken: token,
+            fetch: { sessionID, token, count in
+                try await CommunityInviteSession.fetchLaneKeys(
+                    baseURL: baseURL,
+                    sessionID: sessionID,
+                    token: token,
+                    count: count
+                )
+            },
+            deliver: { requestID, result in
+                Task { @MainActor in
+                    guard let core = CoreClient.shared.core else { return }
+                    switch result {
+                    case .success(let key):
+                        core.fulfillLaneCredential(requestId: requestID, apiKey: key)
+                    case .failure(let failure):
+                        core.failLaneCredential(
+                            requestId: requestID,
+                            message: failure.message,
+                            terminal: failure.terminal
+                        )
+                    }
+                }
             }
-        }
+        )
     }
 
-    /// Fetches a fresh temporary key for the open reservation and swaps it
-    /// into the runtime. The renewed key spends no extra invite time; failure
-    /// is quiet because the current key stays valid until its own expiry.
-    private func renewRealtimeKey(sessionID: String) async -> Bool {
-        guard let token = accessToken else { return true }
-        do {
-            let response: RealtimeSessionResponse = try await request(
-                path: "/v1/realtime-session/renew-key",
-                method: "POST",
-                body: ["session_id": sessionID],
-                token: token
-            )
-            // The recording may have stopped while the request was in
-            // flight; a settle already restored the user's own key.
-            guard activeRealtimeSessionID == sessionID else { return true }
-            try ProviderCredentialSession.shared.activateProcessOnlyCredential(
-                response.apiKey,
-                for: .soniox
-            )
-            return true
-        } catch {
-            return false
+    /// One request covers a whole multi-language start; reconnects ask for a
+    /// single key. Status codes the invite service uses for refusals become
+    /// terminal failures so a lane stops instead of retrying a spent budget.
+    nonisolated static func fetchLaneKeys(
+        baseURL: URL,
+        sessionID: String,
+        token: String,
+        count: Int
+    ) async throws -> [String] {
+        var request = URLRequest(url: baseURL.appending(path: "/v1/realtime-session/key"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 12
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: ["session_id": sessionID, "count": count]
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw LaneCredentialFailure(message: "no HTTP response", terminal: false)
         }
+        guard (200..<300).contains(http.statusCode) else {
+            throw LaneCredentialFailure.fromStatusCode(http.statusCode)
+        }
+        let decoded = try JSONDecoder().decode(LaneKeyResponse.self, from: data)
+        return decoded.keys.map { $0.apiKey }
     }
 
     func settleRealtimeSession(usedSeconds: Int) async {
-        keyRenewalTask?.cancel()
-        keyRenewalTask = nil
+        // Unused single-use keys are dropped rather than kept: they are only
+        // redeemable for minutes, and holding them widens the window in which
+        // a leaked one still opens a stream.
+        laneCredentialProvider?.discardPooledKeys()
+        laneCredentialProvider = nil
+        CoreClient.shared.core?.setLaneCredentialRequester(requester: nil)
         let sessionID = activeRealtimeSessionID
         activeRealtimeSessionID = nil
         let lanes = activeRealtimeLaneCount
@@ -234,8 +264,9 @@ final class CommunityInviteSession: ObservableObject {
             kSecAttrAccount as String: keychainAccount,
         ]
         SecItemDelete(query as CFDictionary)
-        keyRenewalTask?.cancel()
-        keyRenewalTask = nil
+        laneCredentialProvider?.discardPooledKeys()
+        laneCredentialProvider = nil
+        CoreClient.shared.core?.setLaneCredentialRequester(requester: nil)
         remainingSeconds = nil
         errorMessage = nil
         activeRealtimeSessionID = nil
@@ -367,6 +398,20 @@ private struct RealtimeSessionResponse: Decodable {
         case reservedSeconds = "reserved_seconds"
         case apiKey = "api_key"
     }
+}
+
+/// One batch of single-use lane keys. The service also mirrors a single key
+/// into flat fields for the legacy path; only the array is read here.
+private struct LaneKeyResponse: Decodable {
+    struct Key: Decodable {
+        let apiKey: String
+
+        enum CodingKeys: String, CodingKey {
+            case apiKey = "api_key"
+        }
+    }
+
+    let keys: [Key]
 }
 
 private enum CommunityInviteError: Error, LocalizedError {

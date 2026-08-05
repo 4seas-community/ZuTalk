@@ -838,6 +838,18 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      */
     func exportContextPack(notebookId: String, packId: String, destinationPath: String) throws  -> UInt32
 
+    /**
+     * Reports that a credential request cannot be answered. `terminal` marks
+     * a refusal the lane must not retry (invitation spent, budget exhausted)
+     * as opposed to a transient failure worth a reconnect.
+     */
+    func failLaneCredential(requestId: String, message: String, terminal: Bool)
+
+    /**
+     * Answers a pending credential request with a freshly fetched key.
+     */
+    func fulfillLaneCredential(requestId: String, apiKey: String)
+
     func getNotebookCaptureEngineDescriptor()  -> FfiNotebookCaptureEngineDescriptor
 
     func getNotebookCaptureProfile(notebookId: String) throws  -> FfiNotebookCaptureProfile
@@ -943,6 +955,13 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func retryNotebookAsyncProjection(sessionId: String) throws  -> FfiNotebookCaptureEvent
 
     func retryNotebookCaptureProjection(sessionId: String) throws  -> FfiNotebookCaptureEvent
+
+    /**
+     * Routes capture lanes through the app for a single-use credential per
+     * connection. Install this while a community invitation is the credential
+     * source; clear it to go back to the saved personal key.
+     */
+    func setLaneCredentialRequester(requester: FfiLaneCredentialRequester?)
 
     func setNotebookContextPackBinding(notebookId: String, packId: String, position: UInt64?) throws
 
@@ -1634,6 +1653,33 @@ open func exportContextPack(notebookId: String, packId: String, destinationPath:
 })
 }
 
+    /**
+     * Reports that a credential request cannot be answered. `terminal` marks
+     * a refusal the lane must not retry (invitation spent, budget exhausted)
+     * as opposed to a transient failure worth a reconnect.
+     */
+open func failLaneCredential(requestId: String, message: String, terminal: Bool)  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_fail_lane_credential(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(requestId),
+        FfiConverterString.lower(message),
+        FfiConverterBool.lower(terminal),$0
+    )
+}
+}
+
+    /**
+     * Answers a pending credential request with a freshly fetched key.
+     */
+open func fulfillLaneCredential(requestId: String, apiKey: String)  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_fulfill_lane_credential(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(requestId),
+        FfiConverterString.lower(apiKey),$0
+    )
+}
+}
+
 open func getNotebookCaptureEngineDescriptor() -> FfiNotebookCaptureEngineDescriptor  {
     return try!  FfiConverterTypeFfiNotebookCaptureEngineDescriptor_lift(try! rustCall() {
     uniffi_vt_ffi_fn_method_zulanguecore_get_notebook_capture_engine_descriptor(
@@ -1910,6 +1956,19 @@ open func retryNotebookCaptureProjection(sessionId: String)throws  -> FfiNoteboo
         FfiConverterString.lower(sessionId),$0
     )
 })
+}
+
+    /**
+     * Routes capture lanes through the app for a single-use credential per
+     * connection. Install this while a community invitation is the credential
+     * source; clear it to go back to the saved personal key.
+     */
+open func setLaneCredentialRequester(requester: FfiLaneCredentialRequester?)  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_set_lane_credential_requester(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionCallbackInterfaceFfiLaneCredentialRequester.lower(requester),$0
+    )
+}
 }
 
 open func setNotebookContextPackBinding(notebookId: String, packId: String, position: UInt64?)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
@@ -5889,6 +5948,138 @@ public func FfiConverterCallbackInterfaceFfiEditorCallback_lower(_ v: FfiEditorC
 
 
 
+/**
+ * Implemented by the app. Called when a lane is about to open a connection
+ * and needs a credential for it.
+ */
+public protocol FfiLaneCredentialRequester: AnyObject, Sendable {
+
+    /**
+     * Must return immediately. Start the fetch and answer by calling
+     * `fulfill_lane_credential` or `fail_lane_credential` with this id.
+     */
+    func onLaneCredentialRequested(requestId: String)
+
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceFfiLaneCredentialRequester {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // This creates 1-element array, since this seems to be the only way to construct a const
+    // pointer that we can pass to the Rust code.
+    static let vtable: [UniffiVTableCallbackInterfaceFfiLaneCredentialRequester] = [UniffiVTableCallbackInterfaceFfiLaneCredentialRequester(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterCallbackInterfaceFfiLaneCredentialRequester.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface FfiLaneCredentialRequester: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterCallbackInterfaceFfiLaneCredentialRequester.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface FfiLaneCredentialRequester: handle missing in uniffiClone")
+            }
+        },
+        onLaneCredentialRequested: { (
+            uniffiHandle: UInt64,
+            requestId: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceFfiLaneCredentialRequester.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onLaneCredentialRequested(
+                     requestId: try FfiConverterString.lift(requestId)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )]
+}
+
+private func uniffiCallbackInitFfiLaneCredentialRequester() {
+    uniffi_vt_ffi_fn_init_callback_vtable_ffilanecredentialrequester(UniffiCallbackInterfaceFfiLaneCredentialRequester.vtable)
+}
+
+// FfiConverter protocol for callback interfaces
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterCallbackInterfaceFfiLaneCredentialRequester {
+    fileprivate static let handleMap = UniffiHandleMap<FfiLaneCredentialRequester>()
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+extension FfiConverterCallbackInterfaceFfiLaneCredentialRequester : FfiConverter {
+    typealias SwiftType = FfiLaneCredentialRequester
+    typealias FfiType = UInt64
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lift(_ handle: UInt64) throws -> SwiftType {
+        try handleMap.get(handle: handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lower(_ v: SwiftType) -> UInt64 {
+        return handleMap.insert(obj: v)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(v))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceFfiLaneCredentialRequester_lift(_ handle: UInt64) throws -> FfiLaneCredentialRequester {
+    return try FfiConverterCallbackInterfaceFfiLaneCredentialRequester.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceFfiLaneCredentialRequester_lower(_ v: FfiLaneCredentialRequester) -> UInt64 {
+    return FfiConverterCallbackInterfaceFfiLaneCredentialRequester.lower(v)
+}
+
+
+
+
 public protocol FfiNotebookCaptureCallback: AnyObject, Sendable {
 
     func onCaptureEvent(event: FfiNotebookCaptureEvent)
@@ -6199,6 +6390,30 @@ fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureMode: FfiConverterRus
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeFfiNotebookCaptureMode.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionCallbackInterfaceFfiLaneCredentialRequester: FfiConverterRustBuffer {
+    typealias SwiftType = FfiLaneCredentialRequester?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterCallbackInterfaceFfiLaneCredentialRequester.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterCallbackInterfaceFfiLaneCredentialRequester.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -6846,6 +7061,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_export_context_pack() != 22871) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_fail_lane_credential() != 27839) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_fulfill_lane_credential() != 62879) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_get_notebook_capture_engine_descriptor() != 63537) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6915,6 +7136,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_retry_notebook_capture_projection() != 57990) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_set_lane_credential_requester() != 41436) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_set_notebook_context_pack_binding() != 49499) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6972,6 +7196,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_ffieditorcallback_on_doc_changed() != 57770) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_ffilanecredentialrequester_on_lane_credential_requested() != 22018) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_ffinotebookcapturecallback_on_capture_event() != 11919) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6980,6 +7207,7 @@ private let initializationResult: InitializationResult = {
     }
 
     uniffiCallbackInitFfiEditorCallback()
+    uniffiCallbackInitFfiLaneCredentialRequester()
     uniffiCallbackInitFfiNotebookCaptureCallback()
     return InitializationResult.ok
 }()

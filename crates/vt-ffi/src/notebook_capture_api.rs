@@ -4662,10 +4662,13 @@ pub(crate) struct ActiveNotebookCapture {
 /// tests can replace it without changing the public UniFFI surface or making a
 /// network connection.
 pub(crate) trait NotebookSonioxStreamFactory: Send + Sync {
+    /// Lanes receive a credential source rather than a key so the stream can
+    /// resolve one per connection. A saved personal key answers from memory;
+    /// a community invitation answers with a single-use key per connection.
     fn start(
         &self,
         endpoint: &str,
-        api_key: String,
+        credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
         config: SttConfig,
         cancel: tokio_util::sync::CancellationToken,
     ) -> SonioxStreamRuntime;
@@ -4683,11 +4686,11 @@ impl NotebookSonioxStreamFactory for RealNotebookSonioxStreamFactory {
     fn start(
         &self,
         endpoint: &str,
-        api_key: String,
+        credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
         config: SttConfig,
         cancel: tokio_util::sync::CancellationToken,
     ) -> SonioxStreamRuntime {
-        SonioxStreamClient::start(endpoint, api_key, config, cancel)
+        SonioxStreamClient::start_with_credential(endpoint, credential, config, cancel)
     }
 
     fn try_send_pcm(
@@ -4947,6 +4950,37 @@ async fn join_cancelled_remote_group(
 impl ZulangueCore {
     pub fn get_notebook_capture_engine_descriptor(&self) -> FfiNotebookCaptureEngineDescriptor {
         CURRENT_NOTEBOOK_CAPTURE_ENGINE.into()
+    }
+
+    /// Routes capture lanes through the app for a single-use credential per
+    /// connection. Install this while a community invitation is the credential
+    /// source; clear it to go back to the saved personal key.
+    pub fn set_lane_credential_requester(
+        &self,
+        requester: Option<Box<dyn crate::lane_credential_api::FfiLaneCredentialRequester>>,
+    ) {
+        let broker = requester.map(|requester| {
+            crate::lane_credential_api::LaneCredentialBroker::new(Arc::from(requester))
+        });
+        *self.lane_credential_broker.lock().unwrap() = broker;
+    }
+
+    /// Answers a pending credential request with a freshly fetched key.
+    pub fn fulfill_lane_credential(&self, request_id: String, api_key: String) {
+        let broker = self.lane_credential_broker.lock().unwrap().clone();
+        if let Some(broker) = broker {
+            broker.fulfill(&request_id, api_key);
+        }
+    }
+
+    /// Reports that a credential request cannot be answered. `terminal` marks
+    /// a refusal the lane must not retry (invitation spent, budget exhausted)
+    /// as opposed to a transient failure worth a reconnect.
+    pub fn fail_lane_credential(&self, request_id: String, message: String, terminal: bool) {
+        let broker = self.lane_credential_broker.lock().unwrap().clone();
+        if let Some(broker) = broker {
+            broker.fail(&request_id, message, terminal);
+        }
     }
 
     pub fn get_notebook_capture_profile(
@@ -7541,12 +7575,25 @@ impl ZulangueCore {
     ) -> Result<ActiveRemoteCapture, CoreError> {
         let engine = CURRENT_NOTEBOOK_CAPTURE_ENGINE;
         self.ensure_remote_provider_allowed_for_session(session_id, engine.provider_id)?;
-        let api_key = self
-            .api_key_store
-            .get(engine.credential_scope)
-            .map_err(|error| CoreError::ValidationFailed {
-                message: format!("soniox_key_unavailable: {error}"),
-            })?;
+        // A community invitation supplies a single-use key per connection
+        // through the app, so there is no saved key to read. Everyone else
+        // reads the one they configured, and its absence still fails the
+        // start rather than opening keyless lanes.
+        let lane_credential: Arc<dyn vt_stt::LaneCredentialSource> = match self
+            .lane_credential_broker
+            .lock()
+            .unwrap()
+            .clone()
+        {
+            Some(broker) => broker,
+            None => vt_stt::StaticLaneCredential::new(
+                self.api_key_store
+                    .get(engine.credential_scope)
+                    .map_err(|error| CoreError::ValidationFailed {
+                        message: format!("soniox_key_unavailable: {error}"),
+                    })?,
+            ),
+        };
         let context_config = context.map(context_config_for_soniox);
         if let (Some(compilation), Some(config)) = (context, context_config.as_ref()) {
             let wire_context =
@@ -7617,7 +7664,7 @@ impl ZulangueCore {
                 let lane_cancel = cancel.child_token();
                 let stream = stream_factory.start(
                     engine.realtime_endpoint,
-                    api_key.clone(),
+                    lane_credential.clone(),
                     config,
                     lane_cancel.clone(),
                 );
@@ -10333,7 +10380,7 @@ mod tests {
         fn start(
             &self,
             _endpoint: &str,
-            _api_key: String,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
             _config: SttConfig,
             _cancel: tokio_util::sync::CancellationToken,
         ) -> SonioxStreamRuntime {
@@ -10376,7 +10423,7 @@ mod tests {
         fn start(
             &self,
             _endpoint: &str,
-            _api_key: String,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
             config: SttConfig,
             cancel: tokio_util::sync::CancellationToken,
         ) -> SonioxStreamRuntime {
@@ -11946,7 +11993,7 @@ mod tests {
         fn start(
             &self,
             _endpoint: &str,
-            _api_key: String,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
             _config: SttConfig,
             _cancel: tokio_util::sync::CancellationToken,
         ) -> SonioxStreamRuntime {
@@ -11969,7 +12016,7 @@ mod tests {
         fn start(
             &self,
             _endpoint: &str,
-            _api_key: String,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
             _config: SttConfig,
             _cancel: tokio_util::sync::CancellationToken,
         ) -> SonioxStreamRuntime {
