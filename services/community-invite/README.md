@@ -33,9 +33,20 @@ The server divides the reservation by the lane count to derive that bound.
 Passing the raw reservation would let every lane run the full reservation on
 its own, overshooting the quota by the lane count.
 
-Set `ZULANGUE_ADMIN_TOKEN` in `service.env` to enable `GET /admin` (Bearer
-token or `?token=`): per-invite used/reserved lane-hours, open sessions,
-keys issued, and an estimated cost at the Soniox realtime list price.
+Set `ZULANGUE_ADMIN_TOKEN` in `service.env` to enable the admin panel at
+`/admin`. Signing in exchanges the token for an HttpOnly, SameSite=Strict
+session cookie (8 hours, memory-only — a restart signs you out); every
+mutation carries a CSRF token bound to that session, so the token never rides
+in a URL. The panel generates invitation codes, and its table follows each
+invitation's quota, usage, sessions, keys, billed cost and last activity while
+letting you rename it, grant or withdraw hours, and pause or resume access.
+
+A generated code is shown once. Only its SHA-256 is stored, so a leaked
+database does not leak usable invitations — and the panel cannot show a code
+again. Quota grants and access changes are recorded in `invite_audit` for
+accountability; the panel does not display that table. Withdrawing quota
+settles at used plus reserved, so an invitation can never owe back time it has
+already spent or is currently streaming on.
 Settled seconds are client-reported. Pull what Soniox actually billed and
 attribute it back to reservations:
 

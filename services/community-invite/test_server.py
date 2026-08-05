@@ -362,5 +362,79 @@ class UsageReconciliationTests(unittest.TestCase):
         self.assertEqual(billed["audio_ms"], 3_600_000)
 
 
+class AdminPanelStoreTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "invites.db")
+        self.code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
+        self.invite = self.store.invite_by_code(self.code)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_quota_can_be_granted_and_withdrawn(self):
+        self.assertEqual(
+            self.store.adjust_invite_quota(self.invite["id"], 6 * 3600),
+            DEFAULT_QUOTA_SECONDS + 6 * 3600,
+        )
+        self.assertEqual(
+            self.store.adjust_invite_quota(self.invite["id"], -6 * 3600),
+            DEFAULT_QUOTA_SECONDS,
+        )
+        self.assertIsNone(self.store.adjust_invite_quota(9999, 3600))
+
+    def test_quota_never_falls_below_what_is_already_spent_or_held(self):
+        token = self.store.redeem(self.code)["access_token"]
+        invite = self.store.invite_for_token(token)
+        session = self.store.reserve_session(invite["id"], 3600)
+        self.store.settle_session(invite["id"], session["session_id"], 1800)
+        held = self.store.reserve_session(invite["id"], 3600)
+
+        # Withdrawing everything settles at used + reserved, so an invitation
+        # can never owe back time it has already spent or is streaming on.
+        floor = 1800 + held["reserved_seconds"]
+        self.assertEqual(
+            self.store.adjust_invite_quota(invite["id"], -DEFAULT_QUOTA_SECONDS * 2),
+            floor,
+        )
+
+    def test_pausing_an_invitation_stops_redemption_and_token_lookups(self):
+        token = self.store.redeem(self.code)["access_token"]
+        self.assertIsNotNone(self.store.invite_for_token(token))
+
+        self.assertTrue(self.store.set_invite_enabled(self.invite["id"], False))
+        # Both doors close: an unused code cannot be redeemed, and a token
+        # already handed out stops resolving, so no new session or key.
+        self.assertIsNone(self.store.redeem(self.code))
+        self.assertIsNone(self.store.invite_for_token(token))
+
+        self.store.set_invite_enabled(self.invite["id"], True)
+        self.assertIsNotNone(self.store.invite_for_token(token))
+
+    def test_notes_are_stored_and_surfaced_in_the_overview(self):
+        self.assertTrue(self.store.set_invite_note(self.invite["id"], "Alice at ACME"))
+        self.assertEqual(self.store.admin_overview()[0]["note"], "Alice at ACME")
+        self.assertFalse(self.store.set_invite_note(9999, "nobody"))
+
+    def test_quota_and_access_changes_leave_an_audit_trail(self):
+        self.store.adjust_invite_quota(self.invite["id"], 3600)
+        self.store.set_invite_enabled(self.invite["id"], False)
+        with self.store.connect() as db:
+            actions = [
+                row["action"]
+                for row in db.execute(
+                    "SELECT action FROM invite_audit WHERE invite_id = ? ORDER BY id",
+                    (self.invite["id"],),
+                )
+            ]
+        self.assertEqual(actions, ["quota", "enabled"])
+        # Renaming leaves no audit row: it changes nothing an invitation can spend.
+        self.store.set_invite_note(self.invite["id"], "renamed")
+        with self.store.connect() as db:
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) AS n FROM invite_audit").fetchone()["n"], 2
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -61,6 +61,10 @@ USAGE_REFERENCE_PREFIX = "zulangue-community:"
 # Soniox keeps usage logs for 91 days and serves at most a 31-day window.
 USAGE_MAX_WINDOW_DAYS = 31
 USAGE_PAGE_LIMIT = 1000
+# Admin panel session: long enough for a working session, short enough that a
+# forgotten browser tab stops being a live door into quota and invitations.
+ADMIN_COOKIE_NAME = "zulangue_admin"
+ADMIN_SESSION_TTL_SECONDS = 8 * 60 * 60
 
 
 def now_iso() -> str:
@@ -144,6 +148,26 @@ class Store:
                 db.execute(
                     "ALTER TABLE sessions ADD COLUMN lane_count INTEGER NOT NULL DEFAULT 1"
                 )
+            # Who an invitation was handed to. The label names the batch it
+            # was created in; this is the operator's own note about the person.
+            invite_columns = {row["name"] for row in db.execute("PRAGMA table_info(invites)")}
+            if "note" not in invite_columns:
+                db.execute("ALTER TABLE invites ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+            db.executescript(
+                """
+                -- Quota grants and suspensions are the two ways an operator
+                -- can change what an invitation is worth after the fact, so
+                -- each one leaves a record. Backend accountability only; the
+                -- admin panel does not surface it.
+                CREATE TABLE IF NOT EXISTS invite_audit (
+                    id INTEGER PRIMARY KEY,
+                    invite_id INTEGER NOT NULL REFERENCES invites(id),
+                    action TEXT NOT NULL,
+                    detail TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                """
+            )
 
     def create_invite(self, label: str, quota_seconds: int) -> str:
         code = "ZL-" + secrets.token_hex(8).upper()
@@ -157,6 +181,13 @@ class Store:
                 (digest(code), label, quota_seconds, now_iso()),
             )
         return code
+
+    def invite_by_code(self, code: str) -> sqlite3.Row | None:
+        with self.connect() as db:
+            return db.execute(
+                "SELECT * FROM invites WHERE code_hash = ?",
+                (digest(code.strip().upper()),),
+            ).fetchone()
 
     def redeem(self, code: str) -> dict | None:
         with self.connect() as db:
@@ -426,6 +457,64 @@ class Store:
                 "unattributed": dict(unattributed),
             }
 
+    def _audit(self, db, invite_id: int, action: str, detail: str) -> None:
+        db.execute(
+            "INSERT INTO invite_audit (invite_id, action, detail, created_at)"
+            " VALUES (?, ?, ?, ?)",
+            (invite_id, action, detail, now_iso()),
+        )
+
+    def set_invite_note(self, invite_id: int, note: str) -> bool:
+        with self.connect() as db:
+            cursor = db.execute(
+                "UPDATE invites SET note = ? WHERE id = ?", (note[:200], invite_id)
+            )
+            return cursor.rowcount > 0
+
+    def adjust_invite_quota(self, invite_id: int, delta_seconds: int) -> int | None:
+        """Grants or withdraws time. Quota can never fall below what has
+        already been spent or is currently held, so withdrawing more than the
+        unspent remainder settles at that floor instead of creating an
+        invitation that owes time it cannot give back."""
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            invite = db.execute(
+                "SELECT * FROM invites WHERE id = ?", (invite_id,)
+            ).fetchone()
+            if invite is None:
+                return None
+            floor = invite["used_seconds"] + invite["reserved_seconds"]
+            updated = max(floor, invite["quota_seconds"] + delta_seconds)
+            db.execute(
+                "UPDATE invites SET quota_seconds = ? WHERE id = ?",
+                (updated, invite_id),
+            )
+            self._audit(
+                db,
+                invite_id,
+                "quota",
+                f"{invite['quota_seconds']}->{updated} (requested {delta_seconds:+d})",
+            )
+            return updated
+
+    def set_invite_enabled(self, invite_id: int, enabled: bool) -> bool:
+        """Pausing takes effect on the next authorized request: the token
+        lookup already filters on enabled, so no new session or key can be
+        obtained. A capture already streaming keeps its issued keys until it
+        reconnects."""
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            cursor = db.execute(
+                "UPDATE invites SET enabled = ? WHERE id = ?",
+                (1 if enabled else 0, invite_id),
+            )
+            if cursor.rowcount == 0:
+                return False
+            self._audit(
+                db, invite_id, "enabled", "resumed" if enabled else "paused"
+            )
+            return True
+
     def admin_overview(self) -> list[dict]:
         with self.connect() as db:
             rows = db.execute(
@@ -438,7 +527,9 @@ class Store:
                      WHERE sessions.invite_id = invites.id) AS total_sessions,
                     (SELECT COUNT(*) FROM session_keys
                      JOIN sessions ON sessions.id = session_keys.session_id
-                     WHERE sessions.invite_id = invites.id) AS keys_issued
+                     WHERE sessions.invite_id = invites.id) AS keys_issued,
+                    (SELECT MAX(created_at) FROM sessions
+                     WHERE sessions.invite_id = invites.id) AS last_session_at
                 FROM invites
                 ORDER BY invites.id
                 """
@@ -541,6 +632,43 @@ def create_soniox_temporary_key(
         return json.load(response)
 
 
+ADMIN_STYLE = """
+body{font:14px/1.5 system-ui;margin:2rem;color:#222}
+h1{font-size:1.4rem} h2{font-size:1rem;margin:0 0 .6rem}
+table{border-collapse:collapse;width:100%;margin-top:1.2rem}
+td,th{border:1px solid #d8d8d8;padding:.35rem .5rem;text-align:right;
+white-space:nowrap}
+td:first-child,th:first-child,td:nth-child(2),th:nth-child(2){text-align:left}
+thead th{background:#f4f4f4} tfoot th{background:#fafafa}
+tr.paused td{opacity:.5;background:#fbfbfb}
+form.inline{display:inline-flex;gap:.3rem;align-items:center;margin:0}
+form.inline input[type=number]{width:5rem} input{padding:.2rem .3rem;
+border:1px solid #ccc;border-radius:3px;font:inherit}
+button{padding:.2rem .55rem;border:1px solid #bbb;border-radius:3px;
+background:#fff;font:inherit;cursor:pointer}
+button.danger{border-color:#c0392b;color:#c0392b}
+button.go{border-color:#1e8449;color:#1e8449}
+section.create{margin-top:1.4rem;padding:1rem;border:1px solid #ddd;
+border-radius:6px;background:#fafafa}
+section.create label{margin-right:.8rem}
+.issued{margin:1rem 0;padding:1rem;border:2px solid #1e8449;border-radius:6px}
+.issued code{display:block;font-size:1.3rem;margin:.5rem 0;
+letter-spacing:.05em;user-select:all}
+.notice{padding:.5rem .8rem;background:#eef6ff;border-radius:4px}
+.warn{color:#c0392b} .dim{color:#777} .strong{font-weight:600}
+"""
+
+
+def admin_document(body: str) -> str:
+    return (
+        "<!doctype html><html lang='en'><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='robots' content='noindex,nofollow'>"
+        "<title>Zulangue invites</title>"
+        f"<style>{ADMIN_STYLE}</style><body>{body}</body></html>"
+    )
+
+
 def fetch_usage_logs(
     master_key: str, start_time: str, end_time: str
 ) -> list[dict]:
@@ -611,35 +739,79 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_json(404, {"error": "not_found"})
 
+    # --- admin panel -----------------------------------------------------
+    #
+    # Reading the panel was safe with a token in the query string. Granting
+    # quota, pausing an invitation, and minting codes are not: a URL carrying
+    # the admin token ends up in browser history, bookmarks, and referrers.
+    # The token is therefore exchanged once for a session cookie, and every
+    # mutation carries a CSRF token bound to that session.
+
+    def admin_token(self) -> str:
+        return os.environ.get("ZULANGUE_ADMIN_TOKEN", "")
+
+    def admin_session(self) -> str | None:
+        """Returns the caller's live admin session id, or None."""
+        cookie = self.headers.get("Cookie", "")
+        for part in cookie.split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == ADMIN_COOKIE_NAME and value:
+                sessions = self.server.admin_sessions  # type: ignore[attr-defined]
+                expires = sessions.get(value)
+                if expires is None:
+                    return None
+                if expires < datetime.now(timezone.utc):
+                    sessions.pop(value, None)
+                    return None
+                return value
+        return None
+
+    def csrf_token(self, session: str) -> str:
+        return hmac.new(session.encode(), b"csrf", hashlib.sha256).hexdigest()
+
     def render_admin(self, parsed: urllib.parse.SplitResult) -> None:
-        configured = os.environ.get("ZULANGUE_ADMIN_TOKEN", "")
-        if not configured:
+        if not self.admin_token():
             # Without a configured token the page does not exist at all.
             self.send_json(404, {"error": "not_found"})
             return
-        supplied = ""
-        query = urllib.parse.parse_qs(parsed.query)
-        if query.get("token"):
-            supplied = query["token"][0]
-        header = self.headers.get("Authorization", "")
-        if header.startswith("Bearer "):
-            supplied = header.removeprefix("Bearer ").strip()
-        if not hmac.compare_digest(supplied, configured):
-            self.send_json(401, {"error": "unauthorized"})
+        session = self.admin_session()
+        if session is None:
+            self.send_admin_login()
             return
+        query = urllib.parse.parse_qs(parsed.query)
+        self.send_admin_page(
+            session,
+            issued_code=(query.get("code") or [""])[0],
+            notice=(query.get("notice") or [""])[0],
+        )
+
+    def send_admin_login(self, message: str = "") -> None:
+        body = (
+            "<h1>Zulangue invites</h1>"
+            + (f"<p class='warn'>{html.escape(message)}</p>" if message else "")
+            + "<form method='post' action='/admin/login'>"
+            "<label>Admin token<br><input type='password' name='token' "
+            "autofocus autocomplete='current-password'></label> "
+            "<button type='submit'>Sign in</button></form>"
+        )
+        self.send_html(200, admin_document(body))
+
+    def send_admin_page(
+        self, session: str, issued_code: str = "", notice: str = ""
+    ) -> None:
         self.store.expire_stale_reservations()
         usage = self.store.usage_totals()
+        csrf = self.csrf_token(session)
         rows = []
-        totals = {"used": 0, "reserved": 0, "cost": 0.0, "billed": 0.0}
+        totals = {"used": 0, "reserved": 0, "billed": 0.0}
+
         for invite in self.store.admin_overview():
+            invite_id = invite["id"]
             used_hours = invite["used_seconds"] / 3600
-            cost = used_hours * REALTIME_USD_PER_LANE_HOUR
-            billed = usage["per_invite"].get(invite["id"], {})
+            billed = usage["per_invite"].get(invite_id, {})
             billed_cost = float(billed.get("cost_usd") or 0.0)
-            billed_hours = float(billed.get("audio_ms") or 0) / 3_600_000
             totals["used"] += invite["used_seconds"]
             totals["reserved"] += invite["reserved_seconds"]
-            totals["cost"] += cost
             totals["billed"] += billed_cost
             remaining = max(
                 0,
@@ -647,63 +819,203 @@ class Handler(BaseHTTPRequestHandler):
                 - invite["used_seconds"]
                 - invite["reserved_seconds"],
             )
+            enabled = bool(invite["enabled"])
+            last_seen = (invite["last_session_at"] or "")[:16].replace("T", " ")
+            hidden = (
+                f"<input type='hidden' name='csrf' value='{csrf}'>"
+                f"<input type='hidden' name='invite_id' value='{invite_id}'>"
+            )
             rows.append(
-                "<tr>"
+                "<tr class='" + ("" if enabled else "paused") + "'>"
                 f"<td>{html.escape(invite['label'])}</td>"
-                f"<td>{'yes' if invite['enabled'] else 'no'}</td>"
+                "<td><form method='post' action='/admin/note' class='inline'>"
+                f"{hidden}"
+                f"<input name='note' value='{html.escape(invite['note'] or '')}' "
+                "placeholder='who is this for'>"
+                "<button type='submit'>Save</button></form></td>"
                 f"<td>{invite['quota_seconds'] / 3600:.1f}</td>"
                 f"<td>{used_hours:.2f}</td>"
                 f"<td>{invite['reserved_seconds'] / 3600:.2f}</td>"
-                f"<td>{remaining / 3600:.2f}</td>"
+                f"<td class='strong'>{remaining / 3600:.2f}</td>"
                 f"<td>{invite['open_sessions']}/{invite['total_sessions']}</td>"
                 f"<td>{invite['keys_issued']}</td>"
-                f"<td>${cost:.2f}</td>"
-                f"<td>{billed_hours:.2f}</td>"
                 f"<td>${billed_cost:.2f}</td>"
+                f"<td class='dim'>{html.escape(last_seen) or '—'}</td>"
+                "<td><form method='post' action='/admin/quota' class='inline'>"
+                f"{hidden}"
+                "<input name='hours' type='number' step='0.5' value='6' "
+                "aria-label='hours'>"
+                "<button type='submit' name='direction' value='add'>+</button>"
+                "<button type='submit' name='direction' value='remove'>−</button>"
+                "</form></td>"
+                "<td><form method='post' action='/admin/enabled' class='inline'>"
+                f"{hidden}"
+                f"<input type='hidden' name='enabled' value='{0 if enabled else 1}'>"
+                f"<button type='submit' class='{'danger' if enabled else 'go'}'>"
+                f"{'Pause' if enabled else 'Resume'}</button>"
+                "</form></td>"
                 "</tr>"
             )
+
+        banner = ""
+        if issued_code:
+            banner = (
+                "<div class='issued'><strong>New invitation code</strong>"
+                f"<code>{html.escape(issued_code)}</code>"
+                "<p>Copy it now. Only its hash is stored, so this code cannot "
+                "be shown again.</p></div>"
+            )
+        elif notice:
+            banner = f"<p class='notice'>{html.escape(notice)}</p>"
+
         unattributed = usage["unattributed"]
-        page = (
-            "<!doctype html><meta charset='utf-8'>"
-            "<title>Zulangue community invites</title>"
-            "<style>body{font:14px system-ui;margin:2rem}"
-            "table{border-collapse:collapse}"
-            "td,th{border:1px solid #ccc;padding:.4rem .6rem;text-align:right}"
-            "td:first-child,th:first-child{text-align:left}</style>"
-            "<h1>Community invites</h1>"
-            "<table><tr><th>Label</th><th>Enabled</th><th>Quota h</th>"
-            "<th>Used lane-h</th><th>Reserved lane-h</th><th>Remaining h</th>"
-            "<th>Sessions open/total</th><th>Keys issued</th>"
-            "<th>Est. cost</th><th>Billed h</th><th>Billed cost</th></tr>"
-            + "".join(rows)
-            + "<tr><th>Total</th><th></th><th></th>"
+        body = (
+            "<h1>Zulangue invites</h1>"
+            + banner
+            + "<section class='create'><h2>Generate an invitation</h2>"
+            "<form method='post' action='/admin/create' class='inline'>"
+            f"<input type='hidden' name='csrf' value='{csrf}'>"
+            "<label>Label <input name='label' required placeholder='partner-name'>"
+            "</label>"
+            "<label>Note <input name='note' placeholder='who is this for'></label>"
+            f"<label>Gives <input name='gives' type='number' min='1' value='{DEFAULT_GIVES}'>"
+            "</label>"
+            "<button type='submit'>Generate</button></form>"
+            f"<p class='dim'>One Give is {SECONDS_PER_GIVE // 3600} hours of "
+            "lane time.</p></section>"
+            "<table><thead><tr>"
+            "<th>Label</th><th>Note</th><th>Quota h</th><th>Used lane-h</th>"
+            "<th>Reserved</th><th>Remaining h</th><th>Sessions</th>"
+            "<th>Keys</th><th>Billed</th><th>Last used</th>"
+            "<th>Adjust hours</th><th>Access</th>"
+            "</tr></thead><tbody>"
+            + ("".join(rows) or "<tr><td colspan='12'>No invitations yet.</td></tr>")
+            + "</tbody><tfoot><tr>"
+            "<th>Total</th><th></th><th></th>"
             f"<th>{totals['used'] / 3600:.2f}</th>"
-            f"<th>{totals['reserved'] / 3600:.2f}</th><th></th><th></th><th></th>"
-            f"<th>${totals['cost']:.2f}</th><th></th>"
-            f"<th>${totals['billed']:.2f}</th></tr>"
-            "</table>"
-            "<p>Used lane-hours and the estimate beside them are what clients "
-            "reported at settle time. Billed columns are what Soniox actually "
-            "charged, pulled by <code>server.py reconcile</code> from "
-            "<code>GET /v1/usage-logs</code> and attributed by the "
-            f"<code>{USAGE_REFERENCE_PREFIX}</code> reference prefix. A large "
-            "gap between the two means a client under-reported.</p>"
-            f"<p>Billed usage this account cannot attribute to any invite: "
-            f"{int(unattributed['entries'])} entries, "
-            f"{float(unattributed['audio_ms']) / 3_600_000:.2f} h, "
-            f"${float(unattributed['cost_usd']):.2f}. Your own key's traffic "
-            "lands here — so does invite traffic if the reference prefix ever "
-            "stops arriving in the logs.</p>"
+            f"<th>{totals['reserved'] / 3600:.2f}</th>"
+            "<th></th><th></th><th></th>"
+            f"<th>${totals['billed']:.2f}</th><th></th><th></th><th></th>"
+            "</tr></tfoot></table>"
+            "<p class='dim'>Used lane-hours are what clients reported at settle "
+            "time; Billed is what Soniox charged, recorded by "
+            "<code>server.py reconcile</code>. Usage this account cannot "
+            f"attribute to any invitation: {int(unattributed['entries'])} entries, "
+            f"${float(unattributed['cost_usd']):.2f}.</p>"
         )
+        self.send_html(200, admin_document(body))
+
+    def handle_admin_post(self, path: str) -> None:
+        if not self.admin_token():
+            self.send_json(404, {"error": "not_found"})
+            return
+        form = self.read_form()
+
+        if path == "/admin/login":
+            if not hmac.compare_digest(form.get("token", ""), self.admin_token()):
+                self.send_admin_login("That token was not accepted.")
+                return
+            session = secrets.token_urlsafe(32)
+            sessions = self.server.admin_sessions  # type: ignore[attr-defined]
+            sessions[session] = datetime.now(timezone.utc) + timedelta(
+                seconds=ADMIN_SESSION_TTL_SECONDS
+            )
+            self.send_response(303)
+            self.send_header("Location", "/admin")
+            # SameSite=Strict keeps another site from driving these forms, and
+            # HttpOnly keeps the session out of page scripts.
+            self.send_header(
+                "Set-Cookie",
+                f"{ADMIN_COOKIE_NAME}={session}; HttpOnly; SameSite=Strict; "
+                f"Path=/admin; Max-Age={ADMIN_SESSION_TTL_SECONDS}",
+            )
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        session = self.admin_session()
+        if session is None:
+            self.send_admin_login("Your session expired.")
+            return
+        if not hmac.compare_digest(form.get("csrf", ""), self.csrf_token(session)):
+            self.send_admin_login("That form was stale. Sign in and try again.")
+            return
+
+        if path == "/admin/create":
+            gives = max(1, int(form.get("gives") or DEFAULT_GIVES))
+            code = self.store.create_invite(
+                form.get("label", "").strip() or "partner", gives * SECONDS_PER_GIVE
+            )
+            invite = self.store.invite_by_code(code)
+            note = form.get("note", "").strip()
+            if invite is not None and note:
+                self.store.set_invite_note(invite["id"], note)
+            self.redirect_admin(code=code)
+            return
+
+        invite_id = int(form.get("invite_id") or 0)
+        if path == "/admin/note":
+            self.store.set_invite_note(invite_id, form.get("note", "").strip())
+            self.redirect_admin(notice="Note saved.")
+            return
+        if path == "/admin/quota":
+            hours = float(form.get("hours") or 0)
+            sign = -1 if form.get("direction") == "remove" else 1
+            updated = self.store.adjust_invite_quota(
+                invite_id, sign * int(hours * 3600)
+            )
+            if updated is None:
+                self.redirect_admin(notice="That invitation no longer exists.")
+            else:
+                self.redirect_admin(notice=f"Quota is now {updated / 3600:.1f} h.")
+            return
+        if path == "/admin/enabled":
+            enabled = form.get("enabled") == "1"
+            self.store.set_invite_enabled(invite_id, enabled)
+            self.redirect_admin(
+                notice="Access resumed." if enabled else "Access paused."
+            )
+            return
+
+        self.send_json(404, {"error": "not_found"})
+
+    def redirect_admin(self, code: str = "", notice: str = "") -> None:
+        query = {}
+        if code:
+            query["code"] = code
+        if notice:
+            query["notice"] = notice
+        target = "/admin"
+        if query:
+            target += "?" + urllib.parse.urlencode(query)
+        self.send_response(303)
+        self.send_header("Location", target)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def read_form(self) -> dict:
+        length = min(int(self.headers.get("Content-Length", "0")), 16_384)
+        raw = self.rfile.read(length).decode("utf-8", "replace")
+        return {
+            key: values[0]
+            for key, values in urllib.parse.parse_qs(raw, keep_blank_values=True).items()
+        }
+
+    def send_html(self, status: int, page: str) -> None:
         body = page.encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def do_POST(self) -> None:
+        if self.path.startswith("/admin"):
+            self.handle_admin_post(urllib.parse.urlsplit(self.path).path)
+            return
         if self.path == "/v1/redeem":
             body = self.read_json()
             result = self.store.redeem(str(body.get("code", "")))
@@ -899,6 +1211,9 @@ def main() -> None:
         return
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.store = store  # type: ignore[attr-defined]
+    # Admin sessions live in memory only: a restart signs the operator out,
+    # which is the right default for a panel that can grant quota.
+    server.admin_sessions = {}  # type: ignore[attr-defined]
     server.serve_forever()
 
 
