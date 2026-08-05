@@ -54,6 +54,13 @@ SINGLE_USE_KEY_EXPIRES_SECONDS = 300
 # Soniox realtime list price per lane-hour; used only for the admin page's
 # local cost estimate. Ground truth is GET /v1/usage-logs.
 REALTIME_USD_PER_LANE_HOUR = 0.12
+# Every temporary key this service mints carries this prefix in its
+# client_reference_id, which is how billed usage is attributed back to a
+# reservation. Usage that lands outside it is this account's other traffic.
+USAGE_REFERENCE_PREFIX = "zulangue-community:"
+# Soniox keeps usage logs for 91 days and serves at most a 31-day window.
+USAGE_MAX_WINDOW_DAYS = 31
+USAGE_PAGE_LIMIT = 1000
 
 
 def now_iso() -> str:
@@ -108,6 +115,25 @@ class Store:
                     session_id TEXT NOT NULL REFERENCES sessions(id),
                     issued_at TEXT NOT NULL
                 );
+                -- Billed usage as Soniox reports it. Settled seconds are
+                -- client-reported and therefore a claim; these rows are the
+                -- account's actual charges, keyed by Soniox's own uuid so
+                -- re-running a reconcile can never double-count.
+                CREATE TABLE IF NOT EXISTS usage_entries (
+                    uuid TEXT PRIMARY KEY,
+                    client_reference_id TEXT,
+                    session_id TEXT,
+                    model TEXT,
+                    start_time TEXT,
+                    end_time TEXT,
+                    audio_ms INTEGER NOT NULL DEFAULT 0,
+                    cost_usd REAL NOT NULL DEFAULT 0,
+                    recorded_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS usage_entries_session
+                    ON usage_entries(session_id);
+                CREATE INDEX IF NOT EXISTS usage_entries_end_time
+                    ON usage_entries(end_time);
                 """
             )
             # Reservations are counted in lane-seconds, so the wall-clock
@@ -318,6 +344,88 @@ class Store:
                 (session_id, count),
             )
 
+    def record_usage_entries(self, entries: list[dict]) -> dict:
+        """Stores billed usage keyed by Soniox's uuid and attributes each
+        entry to the reservation whose key carried the reference id. Entries
+        outside this service's prefix are kept unattributed so the admin page
+        can show what the account spent beyond invites."""
+        stored = 0
+        attributed = 0
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for entry in entries:
+                uuid = str(entry.get("uuid", "")).strip()
+                if not uuid:
+                    continue
+                reference = entry.get("client_reference_id") or ""
+                session_id = None
+                if reference.startswith(USAGE_REFERENCE_PREFIX):
+                    candidate = reference[len(USAGE_REFERENCE_PREFIX):]
+                    known = db.execute(
+                        "SELECT id FROM sessions WHERE id = ?", (candidate,)
+                    ).fetchone()
+                    if known is not None:
+                        session_id = candidate
+                cursor = db.execute(
+                    """
+                    INSERT OR IGNORE INTO usage_entries
+                        (uuid, client_reference_id, session_id, model,
+                         start_time, end_time, audio_ms, cost_usd, recorded_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        uuid,
+                        reference or None,
+                        session_id,
+                        entry.get("model"),
+                        entry.get("start_time"),
+                        entry.get("end_time"),
+                        int(entry.get("input_audio_duration_ms") or 0),
+                        float(entry.get("cost_usd") or 0.0),
+                        now_iso(),
+                    ),
+                )
+                if cursor.rowcount:
+                    stored += 1
+                    if session_id is not None:
+                        attributed += 1
+        return {
+            "seen": len(entries),
+            "stored": stored,
+            "attributed": attributed,
+        }
+
+    def usage_totals(self) -> dict:
+        """Billed totals per invite, plus whatever this account spent that no
+        invite reservation can account for."""
+        with self.connect() as db:
+            per_invite = {
+                row["invite_id"]: dict(row)
+                for row in db.execute(
+                    """
+                    SELECT sessions.invite_id AS invite_id,
+                        SUM(usage_entries.audio_ms) AS audio_ms,
+                        SUM(usage_entries.cost_usd) AS cost_usd,
+                        COUNT(*) AS entries
+                    FROM usage_entries
+                    JOIN sessions ON sessions.id = usage_entries.session_id
+                    GROUP BY sessions.invite_id
+                    """
+                )
+            }
+            unattributed = db.execute(
+                """
+                SELECT COUNT(*) AS entries,
+                    COALESCE(SUM(cost_usd), 0) AS cost_usd,
+                    COALESCE(SUM(audio_ms), 0) AS audio_ms
+                FROM usage_entries WHERE session_id IS NULL
+                """
+            ).fetchone()
+            return {
+                "per_invite": per_invite,
+                "unattributed": dict(unattributed),
+            }
+
     def admin_overview(self) -> list[dict]:
         with self.connect() as db:
             rows = db.execute(
@@ -433,6 +541,54 @@ def create_soniox_temporary_key(
         return json.load(response)
 
 
+def fetch_usage_logs(
+    master_key: str, start_time: str, end_time: str
+) -> list[dict]:
+    """Pages through Soniox usage logs for a window. Raises on transport or
+    HTTP failure so a reconcile run fails loudly instead of silently
+    recording a partial window as if it were complete."""
+    entries: list[dict] = []
+    cursor: str | None = None
+    while True:
+        params = {
+            "start_time": start_time,
+            "end_time": end_time,
+            "limit": str(USAGE_PAGE_LIMIT),
+            "sort": "end_time_asc",
+        }
+        if cursor:
+            params["cursor"] = cursor
+        request = urllib.request.Request(
+            "https://api.soniox.com/v1/usage-logs?" + urllib.parse.urlencode(params),
+            method="GET",
+            headers={"Authorization": f"Bearer {master_key}"},
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.load(response)
+        page = payload.get("entries") or payload.get("usage_logs") or []
+        entries.extend(page)
+        cursor = payload.get("next_page_cursor") or payload.get("cursor")
+        if not cursor or not page:
+            return entries
+
+
+def reconcile_usage(store: Store, master_key: str, hours: int) -> dict:
+    """Pulls the trailing window of billed usage and records it. Idempotent:
+    entries already stored under their Soniox uuid are ignored, so overlapping
+    windows are safe and a cron can simply re-run it."""
+    window = min(max(1, hours), USAGE_MAX_WINDOW_DAYS * 24)
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(hours=window)
+    entries = fetch_usage_logs(
+        master_key,
+        start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    result = store.record_usage_entries(entries)
+    result["window_hours"] = window
+    return result
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "ZulangueCommunityInvite/1"
 
@@ -472,14 +628,19 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(401, {"error": "unauthorized"})
             return
         self.store.expire_stale_reservations()
+        usage = self.store.usage_totals()
         rows = []
-        totals = {"used": 0, "reserved": 0, "cost": 0.0}
+        totals = {"used": 0, "reserved": 0, "cost": 0.0, "billed": 0.0}
         for invite in self.store.admin_overview():
             used_hours = invite["used_seconds"] / 3600
             cost = used_hours * REALTIME_USD_PER_LANE_HOUR
+            billed = usage["per_invite"].get(invite["id"], {})
+            billed_cost = float(billed.get("cost_usd") or 0.0)
+            billed_hours = float(billed.get("audio_ms") or 0) / 3_600_000
             totals["used"] += invite["used_seconds"]
             totals["reserved"] += invite["reserved_seconds"]
             totals["cost"] += cost
+            totals["billed"] += billed_cost
             remaining = max(
                 0,
                 invite["quota_seconds"]
@@ -497,8 +658,11 @@ class Handler(BaseHTTPRequestHandler):
                 f"<td>{invite['open_sessions']}/{invite['total_sessions']}</td>"
                 f"<td>{invite['keys_issued']}</td>"
                 f"<td>${cost:.2f}</td>"
+                f"<td>{billed_hours:.2f}</td>"
+                f"<td>${billed_cost:.2f}</td>"
                 "</tr>"
             )
+        unattributed = usage["unattributed"]
         page = (
             "<!doctype html><meta charset='utf-8'>"
             "<title>Zulangue community invites</title>"
@@ -510,18 +674,26 @@ class Handler(BaseHTTPRequestHandler):
             "<table><tr><th>Label</th><th>Enabled</th><th>Quota h</th>"
             "<th>Used lane-h</th><th>Reserved lane-h</th><th>Remaining h</th>"
             "<th>Sessions open/total</th><th>Keys issued</th>"
-            "<th>Est. cost</th></tr>"
+            "<th>Est. cost</th><th>Billed h</th><th>Billed cost</th></tr>"
             + "".join(rows)
             + "<tr><th>Total</th><th></th><th></th>"
             f"<th>{totals['used'] / 3600:.2f}</th>"
             f"<th>{totals['reserved'] / 3600:.2f}</th><th></th><th></th><th></th>"
-            f"<th>${totals['cost']:.2f}</th></tr>"
+            f"<th>${totals['cost']:.2f}</th><th></th>"
+            f"<th>${totals['billed']:.2f}</th></tr>"
             "</table>"
-            "<p>Used seconds are settled lane-seconds as reported by clients; "
-            "the estimate multiplies them by the Soniox realtime list price. "
-            "Ground truth per session: <code>GET /v1/usage-logs</code> on "
-            "Soniox filtered by <code>client_reference_id</code> prefix "
-            "<code>zulangue-community:</code>.</p>"
+            "<p>Used lane-hours and the estimate beside them are what clients "
+            "reported at settle time. Billed columns are what Soniox actually "
+            "charged, pulled by <code>server.py reconcile</code> from "
+            "<code>GET /v1/usage-logs</code> and attributed by the "
+            f"<code>{USAGE_REFERENCE_PREFIX}</code> reference prefix. A large "
+            "gap between the two means a client under-reported.</p>"
+            f"<p>Billed usage this account cannot attribute to any invite: "
+            f"{int(unattributed['entries'])} entries, "
+            f"{float(unattributed['audio_ms']) / 3_600_000:.2f} h, "
+            f"${float(unattributed['cost_usd']):.2f}. Your own key's traffic "
+            "lands here — so does invite traffic if the reference prefix ever "
+            "stops arriving in the logs.</p>"
         )
         body = page.encode("utf-8")
         self.send_response(200)
@@ -710,11 +882,20 @@ def main() -> None:
     create = sub.add_parser("create-invite")
     create.add_argument("--label", required=True)
     create.add_argument("--gives", type=int, default=DEFAULT_GIVES)
+    reconcile = sub.add_parser("reconcile")
+    reconcile.add_argument("--hours", type=int, default=24)
     args = parser.parse_args()
 
     store = Store(Path(args.db))
     if args.command == "create-invite":
         print(store.create_invite(args.label, args.gives * SECONDS_PER_GIVE))
+        return
+    if args.command == "reconcile":
+        master_key = os.environ.get("SONIOX_API_KEY", "")
+        if not master_key:
+            print("SONIOX_API_KEY is not set", file=sys.stderr)
+            raise SystemExit(1)
+        print(json.dumps(reconcile_usage(store, master_key, args.hours)))
         return
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.store = store  # type: ignore[attr-defined]

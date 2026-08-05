@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from server import (
+    USAGE_REFERENCE_PREFIX,
     DEFAULT_GIVES,
     DEFAULT_QUOTA_SECONDS,
     MAX_LANES_PER_SESSION,
@@ -289,6 +290,76 @@ class StoreTests(unittest.TestCase):
         reopened = self.store.open_session(invite["id"], session["session_id"])
         self.assertEqual(reopened["lane_count"], 4)
         self.assertEqual(stream_duration_seconds(reopened), 4_500)
+
+
+class UsageReconciliationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "invites.db")
+        code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
+        token = self.store.redeem(code)["access_token"]
+        self.invite = self.store.invite_for_token(token)
+        self.session = self.store.reserve_session(self.invite["id"], 3600)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def entry(self, uuid: str, reference: str | None, ms: int, cost: float) -> dict:
+        return {
+            "uuid": uuid,
+            "client_reference_id": reference,
+            "model": "stt-rt-v5",
+            "start_time": "2026-08-05T10:00:00Z",
+            "end_time": "2026-08-05T10:30:00Z",
+            "input_audio_duration_ms": ms,
+            "cost_usd": cost,
+        }
+
+    def test_usage_attributes_by_reference_prefix_and_ignores_foreign_traffic(self):
+        session_id = self.session["session_id"]
+        result = self.store.record_usage_entries(
+            [
+                self.entry("u1", f"{USAGE_REFERENCE_PREFIX}{session_id}", 1_800_000, 0.06),
+                self.entry("u2", f"{USAGE_REFERENCE_PREFIX}{session_id}", 1_800_000, 0.06),
+                # The account's own key, and a stale reference for a session
+                # this database never issued: both stay unattributed.
+                self.entry("u3", None, 3_600_000, 0.12),
+                self.entry("u4", f"{USAGE_REFERENCE_PREFIX}gone", 600_000, 0.02),
+            ]
+        )
+        self.assertEqual(result, {"seen": 4, "stored": 4, "attributed": 2})
+
+        totals = self.store.usage_totals()
+        billed = totals["per_invite"][self.invite["id"]]
+        self.assertEqual(billed["audio_ms"], 3_600_000)
+        self.assertAlmostEqual(billed["cost_usd"], 0.12)
+        self.assertEqual(totals["unattributed"]["entries"], 2)
+        self.assertAlmostEqual(totals["unattributed"]["cost_usd"], 0.14)
+
+    def test_reconciling_an_overlapping_window_never_double_counts(self):
+        session_id = self.session["session_id"]
+        rows = [self.entry("u1", f"{USAGE_REFERENCE_PREFIX}{session_id}", 1_800_000, 0.06)]
+        self.assertEqual(self.store.record_usage_entries(rows)["stored"], 1)
+        # A second run over a window that overlaps the first sees the same
+        # Soniox uuid and must record nothing new.
+        again = self.store.record_usage_entries(
+            rows + [self.entry("u2", f"{USAGE_REFERENCE_PREFIX}{session_id}", 600_000, 0.02)]
+        )
+        self.assertEqual(again, {"seen": 2, "stored": 1, "attributed": 1})
+        billed = self.store.usage_totals()["per_invite"][self.invite["id"]]
+        self.assertEqual(billed["audio_ms"], 2_400_000)
+
+    def test_billed_usage_survives_settlement_and_exposes_under_reporting(self):
+        session_id = self.session["session_id"]
+        # The client claims one minute; Soniox billed a full hour.
+        self.store.settle_session(self.invite["id"], session_id, 60)
+        self.store.record_usage_entries(
+            [self.entry("u1", f"{USAGE_REFERENCE_PREFIX}{session_id}", 3_600_000, 0.12)]
+        )
+        invite = self.store.admin_overview()[0]
+        billed = self.store.usage_totals()["per_invite"][invite["id"]]
+        self.assertEqual(invite["used_seconds"], 60)
+        self.assertEqual(billed["audio_ms"], 3_600_000)
 
 
 if __name__ == "__main__":
