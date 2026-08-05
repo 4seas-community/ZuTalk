@@ -87,6 +87,9 @@
 "sidebar.help" = "줄랑어 사용 방법";
 "updates.install_and_relaunch" = "업데이트 및 다시 시작";
 "updates.install_and_relaunch.hint" = "다운로드한 업데이트를 설치하고 Zulangue를 다시 시작하세요.";
+"updates.downloading" = "새 버전 다운로드 중";
+"updates.downloading.hint" = "새 버전을 백그라운드에서 다운로드하고 있습니다. 준비되면 Zulangue가 다시 시작을 안내합니다.";
+"updates.preparing" = "업데이트 준비 중";
 
 /* Library */
 

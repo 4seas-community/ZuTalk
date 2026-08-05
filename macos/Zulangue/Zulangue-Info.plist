@@ -28,10 +28,15 @@
 	<string>Zulangue needs microphone access to record and transcribe your voice. Recordings are encrypted with AES-256-GCM and stored only on this device.</string>
 	<key>SUAllowsAutomaticUpdates</key>
 	<true/>
+	<!-- Updates still download unattended, but through SoftwareUpdateUserDriver
+	     rather than Sparkle's silent driver, which reports no download progress
+	     and so cannot feed the sidebar's progress row. -->
 	<key>SUAutomaticallyUpdate</key>
-	<true/>
+	<false/>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>21600</integer>
 	<key>SUEnableSystemProfiling</key>
 	<false/>
 	<key>SUFeedURL</key>

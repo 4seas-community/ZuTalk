@@ -208,22 +208,7 @@ struct MainShellView: View {
                 .fill(Color.borderGhost.opacity(0.4))
                 .frame(height: 0.5)
 
-            if softwareUpdate.isUpdateReadyToInstall {
-                Button {
-                    softwareUpdate.installUpdateAndRelaunch()
-                } label: {
-                    Label(
-                        String(localized: "updates.install_and_relaunch"),
-                        systemImage: "arrow.down.circle.fill"
-                    )
-                    .font(.bodySM)
-                    .foregroundColor(.brandAccent)
-                    .frame(minHeight: 36)
-                }
-                .buttonStyle(.plain)
-                .help(String(localized: "updates.install_and_relaunch.hint"))
-                .accessibilityIdentifier("sidebar.update-and-relaunch")
-            }
+            softwareUpdateRow
 
             if communityInvite.isEnabled, communityInvite.isActive {
                 Label(
@@ -260,6 +245,86 @@ struct MainShellView: View {
                 .accessibilityIdentifier(AccessibilityID.mainTabConfig)
             }
         }
+        // The update row appears and swaps states on its own schedule; without
+        // this the footer would jump under the user's cursor.
+        .animation(Motion.panelTransition, value: softwareUpdate.activity)
+    }
+
+    /// The only place a background update ever surfaces: a progress row while
+    /// the new version downloads, then a relaunch action once it is staged.
+    /// Nothing appears while the app is merely checking, and nothing appears
+    /// when a check finds nothing or fails.
+    @ViewBuilder
+    private var softwareUpdateRow: some View {
+        switch softwareUpdate.activity {
+        case .idle:
+            EmptyView()
+
+        case .downloading(let fraction):
+            updateProgressRow(
+                label: String(localized: "updates.downloading"),
+                fraction: fraction
+            )
+            .accessibilityIdentifier("sidebar.update-progress")
+
+        case .preparing:
+            updateProgressRow(
+                label: String(localized: "updates.preparing"),
+                fraction: nil
+            )
+            .accessibilityIdentifier("sidebar.update-progress")
+
+        case .readyToRelaunch:
+            Button {
+                softwareUpdate.installUpdateAndRelaunch()
+            } label: {
+                Label(
+                    String(localized: "updates.install_and_relaunch"),
+                    systemImage: "arrow.down.circle.fill"
+                )
+                .font(.bodySM)
+                .foregroundColor(.brandAccent)
+                .frame(minHeight: 36)
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "updates.install_and_relaunch.hint"))
+            .accessibilityIdentifier("sidebar.update-and-relaunch")
+            .transition(.opacity)
+        }
+    }
+
+    /// A determinate bar once the server reports a size, an indeterminate one
+    /// until then — a bar pinned at zero reads as a stall.
+    private func updateProgressRow(label: String, fraction: Double?) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            HStack(spacing: Spacing.xs) {
+                Text(label)
+                    .font(.bodySM)
+                    .foregroundColor(.textSecondary)
+                Spacer()
+                if let fraction {
+                    Text(fraction, format: .percent.precision(.fractionLength(0)))
+                        .font(.bodySM)
+                        .monospacedDigit()
+                        .foregroundColor(.textSecondary)
+                }
+            }
+
+            Group {
+                if let fraction {
+                    ProgressView(value: fraction)
+                } else {
+                    ProgressView()
+                }
+            }
+            .progressViewStyle(.linear)
+            .tint(.brandAccent)
+            .controlSize(.small)
+        }
+        .frame(minHeight: 36)
+        .help(String(localized: "updates.downloading.hint"))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
     }
 
     private var communityTimeLabel: String {

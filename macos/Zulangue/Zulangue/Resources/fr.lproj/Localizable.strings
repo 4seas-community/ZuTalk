@@ -87,6 +87,9 @@
 "sidebar.help" = "Comment utiliser Zulangue";
 "updates.install_and_relaunch" = "Mettre à jour et relancer";
 "updates.install_and_relaunch.hint" = "Installer la mise à jour téléchargée et relancer Zulangue";
+"updates.downloading" = "Téléchargement de la mise à jour";
+"updates.downloading.hint" = "Une nouvelle version se télécharge en arrière-plan. Zulangue proposera de relancer une fois prête.";
+"updates.preparing" = "Préparation de la mise à jour";
 
 /* Library */
 
