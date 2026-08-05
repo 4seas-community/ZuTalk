@@ -1,23 +1,32 @@
-# Zulangue 0.2.2
+# Zulangue 0.2.3
 
-This release hardens long-running live transcription, makes stopping a capture
-recoverable, and reduces the storage and time required for local and CI builds.
+This release makes the main window remember where you left it, gives the
+audience subtitle window a proper maximize, finishes localizing the knowledge
+base, and rebuilds how a community invitation authorizes live transcription.
 
-- **Long sessions remain responsive.** Transcript delivery, rendering, and the
-  audience subtitle window now use bounded, revision-safe projections instead
-  of repeatedly rebuilding unbounded history as a recording grows.
-- **Stopping no longer gets stuck indefinitely.** If local persistence fails
-  while a capture is draining, Zulangue preserves recoverable audio, releases
-  capture ownership safely, and exposes a clear retryable failure state.
-- **Live subtitles keep the display awake.** The Mac no longer dims or sleeps
-  while the audience subtitle window is actively presenting a capture.
-- **Compare mode is cleaner.** Repeated language labels are hidden so the
-  transcript columns can focus on the spoken content.
-- **The application uses the new ZuLangue identity.** The refreshed app icon
-  and size-optimized logo assets are included throughout the release.
-- **Builds use substantially less disk space.** Rust integration tests share
-  fewer binaries, development artifacts are size-limited, and GitHub Actions
-  reuses a controlled compiler cache without changing product behavior.
+- **The main window opens where you left it.** Size and position are restored
+  across launches, and every window in the app now follows one shared window
+  specification instead of each surface deciding for itself.
+- **The audience subtitle window can be maximized and restored.** Presenting to
+  a room no longer means living with whatever size the window opened at.
+- **The knowledge base is localized in every shipped language.** Localization
+  parity is now enforced by a build gate, so a string can no longer ship in
+  some languages and not others.
+- **Software updates show their download.** The sidebar reports progress while
+  an update is being fetched, instead of only announcing the result once it is
+  ready to install.
+- **Community invitations authorize each connection separately.** An invited
+  partner's live transcription now takes a single-use key per connection
+  rather than one shared key for the whole recording. Recordings longer than
+  an hour no longer depend on refreshing a credential before it expires, and a
+  key that escapes is worth at most one stream for a few minutes.
+- **After-stop transcription always runs on your own key.** Invitation time
+  covers live transcription and translation. Transcribing a recorded file
+  uploads that recording to the speech provider, so Zulangue asks for your own
+  API key instead of doing it under someone else's account.
+- **Remaining invitation time is honest about translation.** Shared time is
+  spent once per translation lane, so the sidebar now reports how long you can
+  actually record with the languages you have selected.
 
 Zulangue requires macOS 15.5 or later.
 
