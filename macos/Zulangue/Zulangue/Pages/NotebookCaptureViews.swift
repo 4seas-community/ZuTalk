@@ -401,6 +401,22 @@ struct NotebookCaptureToolbar: View {
                 .accessibilityHint(Text(String(localized: "capture.toolbar.pause_billing_detail")))
             }
         }
+        .onAppear { publishPlannedLaneCount() }
+        .onChange(of: profileEditor.draft.selectedLanguages) { publishPlannedLaneCount() }
+        .onChange(of: profileEditor.draft.remoteRealtimeEnabled) { publishPlannedLaneCount() }
+    }
+
+    /// Keeps the sidebar's invite-time display honest: it divides shared
+    /// invite seconds by this lane count. Local-only recordings open no
+    /// remote lanes, so they report a single lane.
+    private func publishPlannedLaneCount() {
+        CommunityInviteSession.shared.updatePlannedLaneCount(
+            profileEditor.draft.remoteRealtimeEnabled
+                ? Self.remoteLaneCount(
+                    selectedLanguages: profileEditor.draft.selectedLanguages
+                )
+                : 1
+        )
     }
 
     /// Mirrors the Rust core's `remote_stream_plan`: one or two languages run

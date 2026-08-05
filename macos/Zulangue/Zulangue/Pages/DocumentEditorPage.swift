@@ -1158,6 +1158,10 @@ private struct AsyncTranscriptView: View {
     let status: NotebookTabStatus
 
     @ObservedObject private var projectionStore = NotebookTranscriptProjectionStore.shared
+    @ObservedObject private var communityInvite = CommunityInviteSession.shared
+    // Observed for statusRevision so the key-required gate below reacts when
+    // the user saves or removes their own key in Settings.
+    @ObservedObject private var providerCredentials = ProviderCredentialSession.shared
     @State private var editingIndex: Int?
     @State private var editingDraft = ""
     @State private var projectionAttachment: NotebookTranscriptProjectionStore.Attachment?
@@ -1258,18 +1262,39 @@ private struct AsyncTranscriptView: View {
                 .foregroundColor(.textSecondary)
             Spacer(minLength: Spacing.md)
             if canRequestAsyncTranscription {
-                Button {
-                    requestAsyncTranscription()
-                } label: {
-                    Label(
-                        String(localized: "editor.transcript.async.start"),
-                        systemImage: "waveform.badge.plus"
-                    )
+                if communityInvite.asyncTranscriptionNeedsPersonalKey {
+                    // Invite time covers realtime only; the upload-based
+                    // after-stop pass stays off until the user brings their
+                    // own key, so recordings never leave the Mac unrequested.
+                    Button {
+                        MainNavigationStore.shared.openSettings()
+                    } label: {
+                        Label(
+                            String(localized: "editor.transcript.async.invite_add_key"),
+                            systemImage: "key"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .frame(minHeight: 44)
+                    .help(String(localized: "editor.transcript.async.invite_add_key_hint"))
+                    .accessibilityHint(Text(String(
+                        localized: "editor.transcript.async.invite_add_key_hint"
+                    )))
+                } else {
+                    Button {
+                        requestAsyncTranscription()
+                    } label: {
+                        Label(
+                            String(localized: "editor.transcript.async.start"),
+                            systemImage: "waveform.badge.plus"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .frame(minHeight: 44)
+                    .disabled(isRequestingAsyncTranscription)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .frame(minHeight: 44)
-                .disabled(isRequestingAsyncTranscription)
             }
             if asyncProjectionState == .failed {
                 Button {
@@ -1309,8 +1334,7 @@ private struct AsyncTranscriptView: View {
         Task { @MainActor in
             do {
                 try await projectionStore.requestAsyncTranscription(
-                    sessionId: sessionId,
-                    notebookId: notebookId
+                    sessionId: sessionId
                 )
             } catch {
                 ToastCenter.shared.error(

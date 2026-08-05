@@ -37,10 +37,11 @@
 "community_invite.action" = "招待を有効にする";
 "community_invite.active" = "コミュニティ招待が有効です";
 "community_invite.thirty_hours" = "5 Give · 約 30 時間";
-"community_invite.shared_detail" = "リアルタイム文字起こし、翻訳、音声ファイルの文字起こしで共用します。";
+"community_invite.shared_detail" = "リアルタイム文字起こしと翻訳で共用します。音声ファイルの文字起こしは自分のキーを使用します。";
 "community_invite.invalid" = "招待コードが無効です。招待者に確認してください。";
 "community_invite.unavailable" = "コミュニティサービスを一時的に利用できません。後でもう一度お試しください。";
-"community_invite.remaining_hours_format" = "残り約 %lld 時間";
+"community_invite.remaining_recordable_format" = "あと約 %1$lld 時間 %2$lld 分録音できます";
+"community_invite.remaining_recordable_hint" = "招待時間は文字起こしレーンごとに消費されます。対象言語を増やすほど、録音 1 分あたりの消費時間が増えます。";
 "community_invite.settings.title" = "コミュニティ招待";
 "community_invite.settings.subtitle" = "利用できる残り時間を確認するか、招待コードを入力します。";
 "community_invite.resources.remaining" = "残り時間";
@@ -56,8 +57,12 @@
 "community_invite.remove_confirm_message" = "残りの共有時間は招待コード側に保持されます。コードは後で再入力できます。";
 "community_invite.remove_confirm_action" = "招待を削除";
 "community_invite.fallback_personal_key" = "招待時間が現在利用できないため、この録音は自分のキーを使用します。";
+"community_invite.async.needs_personal_key" = "音声ファイルの文字起こしには自分の API キーが必要です。設定で入力してください。";
+"community_invite.async.wait_for_recording" = "招待時間を使う録音が進行中です。先に録音を停止してから、この音声を文字起こししてください。";
 "editor.transcript.async.start" = "この音声を文字起こし";
 "editor.transcript.async.start_failed" = "音声の文字起こしを開始できませんでした";
+"editor.transcript.async.invite_add_key" = "自分の API キーを使う…";
+"editor.transcript.async.invite_add_key_hint" = "招待時間はリアルタイム文字起こしのみに使えます。音声ファイルの文字起こしは自分のキーでこの録音を音声エンジンにアップロードします。設定でキーを入力すると有効になります。";
 "onboarding.keys.voice_label" = "ライブ字幕サービス";
 "onboarding.keys.guide.create" = "登録";
 "onboarding.keys.guide.copy" = "キーをコピー";

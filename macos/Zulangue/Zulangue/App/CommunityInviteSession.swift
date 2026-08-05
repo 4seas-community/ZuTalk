@@ -24,6 +24,10 @@ final class CommunityInviteSession: ObservableObject {
     @Published private(set) var isEnabled = UserDefaults.standard.bool(
         forKey: "zulangue.community-invite.enabled"
     )
+    /// Lane count of the capture selection currently on screen. The sidebar
+    /// divides shared invite seconds by this to show wall-clock recordable
+    /// time instead of raw lane-seconds.
+    @Published private(set) var plannedLaneCount = 1
 
     private let baseURL = URL(string: "https://zulangue-invite.exe.xyz")!
     private let keychainService = "xyz.voice.zulangue.community-invite"
@@ -32,6 +36,13 @@ final class CommunityInviteSession: ObservableObject {
     /// Realtime capture streams the same audio once per Soniox lane, so invite
     /// time must be charged per lane, not per wall-clock second.
     private var activeRealtimeLaneCount = 1
+    /// Soniox temporary keys can open new streams for at most one hour, which
+    /// is shorter than a long recording. A fresh key must replace the old one
+    /// before expiry so mid-session reconnects and late-added lanes never
+    /// present a dead credential.
+    private static let keyRenewalInterval: Duration = .seconds(45 * 60)
+    private static let keyRenewalRetryInterval: Duration = .seconds(5 * 60)
+    private var keyRenewalTask: Task<Void, Never>?
 
     var isActive: Bool { accessToken != nil }
 
@@ -82,12 +93,15 @@ final class CommunityInviteSession: ObservableObject {
     /// failing the recording.
     func prepareRealtimeCredential(laneCount: Int) async throws -> CommunityInvitePreparation {
         let lanes = max(1, laneCount)
+        updatePlannedLaneCount(lanes)
         guard isEnabled, accessToken != nil else { return .notUsed }
         do {
             activeRealtimeSessionID = try await prepareCredential(
-                requestedSeconds: 3 * 60 * 60 * lanes
+                requestedSeconds: 3 * 60 * 60 * lanes,
+                laneCount: lanes
             )
             activeRealtimeLaneCount = lanes
+            startKeyRenewal()
             return .invite
         } catch {
             guard restorePersonalKeyIfSaved() else { throw error }
@@ -96,27 +110,56 @@ final class CommunityInviteSession: ObservableObject {
         }
     }
 
-    /// Returns the reservation session ID, or nil when the request runs on
-    /// the user's own key (invite disabled, or unavailable with a saved key).
-    func prepareAsyncCredential(requestedSeconds: Int) async throws -> String? {
-        guard isEnabled, accessToken != nil else { return nil }
-        do {
-            return try await prepareCredential(
-                requestedSeconds: min(max(1, requestedSeconds), 5 * 60 * 60)
-            )
-        } catch {
-            guard restorePersonalKeyIfSaved() else { throw error }
-            errorMessage = String(localized: "community_invite.unavailable")
-            return nil
+    func updatePlannedLaneCount(_ laneCount: Int) {
+        let lanes = max(1, laneCount)
+        guard plannedLaneCount != lanes else { return }
+        plannedLaneCount = lanes
+    }
+
+    /// Shared invite seconds burn once per lane, so the wall-clock time the
+    /// user can actually record is the remainder divided by the lane count.
+    static func wallClockRecordableSeconds(remainingSeconds: Int, laneCount: Int) -> Int {
+        max(0, remainingSeconds) / max(1, laneCount)
+    }
+
+    /// After-stop transcription never runs on invite time: Soniox temporary
+    /// keys are WebSocket-scoped and the async file REST API rejects them.
+    /// Uploading the recording also happens under whichever account owns the
+    /// key, so it stays off until the user saves their own.
+    var asyncTranscriptionNeedsPersonalKey: Bool {
+        guard isEnabled, isActive else { return false }
+        return hasSavedPersonalKey == false
+    }
+
+    /// Puts the user's own saved key into the runtime before an after-stop
+    /// transcription while invite mode is on. Refuses while an invite
+    /// realtime capture is running so its temporary key is not replaced
+    /// mid-recording.
+    func preparePersonalKeyForAsyncTranscription() throws {
+        guard isEnabled, accessToken != nil else { return }
+        guard activeRealtimeSessionID == nil else {
+            throw CommunityInviteError.realtimeCaptureActive
+        }
+        guard restorePersonalKeyIfSaved() else {
+            throw CommunityInviteError.personalKeyRequired
         }
     }
 
-    private func prepareCredential(requestedSeconds: Int) async throws -> String? {
+    private func prepareCredential(
+        requestedSeconds: Int,
+        laneCount: Int
+    ) async throws -> String? {
         guard isEnabled, let token = accessToken else { return nil }
+        // The reservation is counted in lane-seconds. The server needs the
+        // lane count to divide it back into the wall-clock ceiling it hands
+        // Soniox, otherwise every lane may run the full reservation alone.
         let response: RealtimeSessionResponse = try await request(
             path: "/v1/realtime-session",
             method: "POST",
-            body: ["requested_seconds": requestedSeconds],
+            body: [
+                "requested_seconds": requestedSeconds,
+                "lane_count": laneCount,
+            ],
             token: token
         )
         try ProviderCredentialSession.shared.activateProcessOnlyCredential(
@@ -127,7 +170,51 @@ final class CommunityInviteSession: ObservableObject {
         return response.sessionID
     }
 
+    private func startKeyRenewal() {
+        keyRenewalTask?.cancel()
+        keyRenewalTask = Task { [weak self] in
+            var delay = Self.keyRenewalInterval
+            while Task.isCancelled == false {
+                try? await Task.sleep(for: delay)
+                guard Task.isCancelled == false,
+                      let self,
+                      let sessionID = self.activeRealtimeSessionID
+                else { return }
+                delay = await self.renewRealtimeKey(sessionID: sessionID)
+                    ? Self.keyRenewalInterval
+                    : Self.keyRenewalRetryInterval
+            }
+        }
+    }
+
+    /// Fetches a fresh temporary key for the open reservation and swaps it
+    /// into the runtime. The renewed key spends no extra invite time; failure
+    /// is quiet because the current key stays valid until its own expiry.
+    private func renewRealtimeKey(sessionID: String) async -> Bool {
+        guard let token = accessToken else { return true }
+        do {
+            let response: RealtimeSessionResponse = try await request(
+                path: "/v1/realtime-session/renew-key",
+                method: "POST",
+                body: ["session_id": sessionID],
+                token: token
+            )
+            // The recording may have stopped while the request was in
+            // flight; a settle already restored the user's own key.
+            guard activeRealtimeSessionID == sessionID else { return true }
+            try ProviderCredentialSession.shared.activateProcessOnlyCredential(
+                response.apiKey,
+                for: .soniox
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func settleRealtimeSession(usedSeconds: Int) async {
+        keyRenewalTask?.cancel()
+        keyRenewalTask = nil
         let sessionID = activeRealtimeSessionID
         activeRealtimeSessionID = nil
         let lanes = activeRealtimeLaneCount
@@ -136,15 +223,6 @@ final class CommunityInviteSession: ObservableObject {
         // The session's temporary key is spent; put the user's own saved key
         // back so post-recording features never run on a dead credential.
         restorePersonalKeyIfSaved()
-    }
-
-    func settleAsyncSession(sessionID: String?, usedSeconds: Int) async {
-        await settle(sessionID: sessionID, usedSeconds: usedSeconds)
-        // Async settles can fire minutes later; never stomp the temporary key
-        // of a realtime capture that is still running.
-        if activeRealtimeSessionID == nil {
-            restorePersonalKeyIfSaved()
-        }
     }
 
     /// Deletes the redeemed invitation from this Mac and returns the app to
@@ -156,6 +234,8 @@ final class CommunityInviteSession: ObservableObject {
             kSecAttrAccount as String: keychainAccount,
         ]
         SecItemDelete(query as CFDictionary)
+        keyRenewalTask?.cancel()
+        keyRenewalTask = nil
         remainingSeconds = nil
         errorMessage = nil
         activeRealtimeSessionID = nil
@@ -166,11 +246,14 @@ final class CommunityInviteSession: ObservableObject {
         try? ProviderCredentialSession.shared.activateSavedCredentials()
     }
 
+    private var hasSavedPersonalKey: Bool {
+        ProviderCredentialSession.shared.snapshot()
+            .contains { $0.account == .soniox && $0.isSaved }
+    }
+
     @discardableResult
     private func restorePersonalKeyIfSaved() -> Bool {
-        let hasSavedKey = ProviderCredentialSession.shared.snapshot()
-            .contains { $0.account == .soniox && $0.isSaved }
-        guard hasSavedKey else { return false }
+        guard hasSavedPersonalKey else { return false }
         do {
             try ProviderCredentialSession.shared.activateSavedCredentials()
             return true
@@ -286,7 +369,20 @@ private struct RealtimeSessionResponse: Decodable {
     }
 }
 
-private enum CommunityInviteError: Error {
+private enum CommunityInviteError: Error, LocalizedError {
     case requestFailed
     case secureStorageFailed
+    case personalKeyRequired
+    case realtimeCaptureActive
+
+    var errorDescription: String? {
+        switch self {
+        case .requestFailed, .secureStorageFailed:
+            return nil
+        case .personalKeyRequired:
+            return String(localized: "community_invite.async.needs_personal_key")
+        case .realtimeCaptureActive:
+            return String(localized: "community_invite.async.wait_for_recording")
+        }
+    }
 }

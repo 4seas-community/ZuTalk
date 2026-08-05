@@ -243,71 +243,36 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
         }
     }
 
-    func requestAsyncTranscription(sessionId: String, notebookId: String) async throws {
+    func requestAsyncTranscription(sessionId: String) async throws {
         guard requestingAsyncTranscriptionSessions.contains(sessionId) == false else { return }
         requestingAsyncTranscriptionSessions.insert(sessionId)
         defer { requestingAsyncTranscriptionSessions.remove(sessionId) }
 
-        let run = try captureClient
-            .listNotebookCaptureHistory(notebookId: notebookId)
-            .first(where: { $0.sessionId == sessionId })
-        let durationSeconds = Int(
-            ((run?.durationMs ?? 0) + 999) / 1_000
+        // After-stop transcription always runs on the user's own key. Invite
+        // temporary keys are WebSocket-scoped, so the async file API would
+        // reject them, and the upload must happen under the account that
+        // consented to it.
+        try CommunityInviteSession.shared.preparePersonalKeyForAsyncTranscription()
+        let event = try captureClient.requestNotebookAsyncTranscription(
+            sessionId: sessionId
         )
-        let reservationSessionID = try await CommunityInviteSession.shared.prepareAsyncCredential(
-            requestedSeconds: max(1, durationSeconds)
-        )
-        do {
-            let event = try captureClient.requestNotebookAsyncTranscription(
-                sessionId: sessionId
-            )
-            applyAsyncState(event)
-            Task { @MainActor [weak self] in
-                await self?.settleAsyncWhenTerminal(
-                    sessionId: sessionId,
-                    durationSeconds: durationSeconds,
-                    reservationSessionID: reservationSessionID
-                )
-            }
-        } catch {
-            await CommunityInviteSession.shared.settleAsyncSession(
-                sessionID: reservationSessionID,
-                usedSeconds: 0
-            )
-            throw error
+        applyAsyncState(event)
+        Task { @MainActor [weak self] in
+            await self?.pollAsyncStateUntilTerminal(sessionId: sessionId)
         }
     }
 
-    private func settleAsyncWhenTerminal(
-        sessionId: String,
-        durationSeconds: Int,
-        reservationSessionID: String?
-    ) async {
+    private func pollAsyncStateUntilTerminal(sessionId: String) async {
         for _ in 0..<360 {
             try? await Task.sleep(for: .seconds(5))
             guard let event = try? captureClient.getNotebookCaptureSessionEvent(
                 sessionId: sessionId
             ) else { continue }
             applyAsyncState(event)
-            if event.postStopAsyncState == "completed" {
-                await CommunityInviteSession.shared.settleAsyncSession(
-                    sessionID: reservationSessionID,
-                    usedSeconds: durationSeconds
-                )
-                return
-            }
-            if event.postStopAsyncState == "failed" {
-                await CommunityInviteSession.shared.settleAsyncSession(
-                    sessionID: reservationSessionID,
-                    usedSeconds: 0
-                )
+            if event.postStopAsyncState == "completed" || event.postStopAsyncState == "failed" {
                 return
             }
         }
-        await CommunityInviteSession.shared.settleAsyncSession(
-            sessionID: reservationSessionID,
-            usedSeconds: 0
-        )
     }
 
     func replaceSegment(sessionId: String, segmentIndex: Int, text: String) {

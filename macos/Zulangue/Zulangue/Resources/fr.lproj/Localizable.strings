@@ -37,10 +37,11 @@
 "community_invite.action" = "Activer l’invitation";
 "community_invite.active" = "Invitation communautaire active";
 "community_invite.thirty_hours" = "5 Give · environ 30 heures";
-"community_invite.shared_detail" = "La transcription en direct, la traduction et la transcription de fichiers audio partagent ce temps.";
+"community_invite.shared_detail" = "La transcription en direct et la traduction partagent ce temps. La transcription de fichiers audio utilise votre propre clé.";
 "community_invite.invalid" = "Ce code d’invitation n’est pas valide. Vérifiez auprès de la personne qui vous a invité.";
 "community_invite.unavailable" = "Le service communautaire est temporairement indisponible. Réessayez plus tard.";
-"community_invite.remaining_hours_format" = "Environ %lld heures restantes";
+"community_invite.remaining_recordable_format" = "Environ %1$lld h %2$lld min d’enregistrement restantes";
+"community_invite.remaining_recordable_hint" = "Le temps d’invitation est décompté par voie de transcription : plus vous sélectionnez de langues cibles, plus chaque minute enregistrée en consomme.";
 "community_invite.settings.title" = "Invitation communautaire";
 "community_invite.settings.subtitle" = "Consultez le temps d’utilisation dont vous disposez ou saisissez un code d’invitation.";
 "community_invite.resources.remaining" = "Temps restant";
@@ -56,8 +57,12 @@
 "community_invite.remove_confirm_message" = "Le temps partagé restant reste associé au code d’invitation. Vous pourrez saisir le code à nouveau plus tard.";
 "community_invite.remove_confirm_action" = "Supprimer l’invitation";
 "community_invite.fallback_personal_key" = "Le temps d’invitation est indisponible pour le moment — cet enregistrement utilise votre propre clé.";
+"community_invite.async.needs_personal_key" = "La transcription de fichiers audio nécessite votre propre clé API. Ajoutez-la dans les réglages.";
+"community_invite.async.wait_for_recording" = "Un enregistrement utilise actuellement le temps de l’invitation. Arrêtez-le d’abord, puis transcrivez cet audio.";
 "editor.transcript.async.start" = "Transcrire cet audio";
 "editor.transcript.async.start_failed" = "Impossible de démarrer la transcription audio";
+"editor.transcript.async.invite_add_key" = "Utiliser ma propre clé API…";
+"editor.transcript.async.invite_add_key_hint" = "Le temps de l’invitation ne couvre que la transcription en direct. La transcription de fichiers audio envoie cet enregistrement au moteur vocal avec votre propre clé — ajoutez-en une dans les réglages pour l’activer.";
 "onboarding.keys.voice_label" = "SERVICE DE SOUS-TITRES EN DIRECT";
 "onboarding.keys.guide.create" = "S’inscrire";
 "onboarding.keys.guide.copy" = "Copier la clé";

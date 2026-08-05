@@ -37,10 +37,11 @@
 "community_invite.action" = "启用邀请";
 "community_invite.active" = "社区邀请已生效";
 "community_invite.thirty_hours" = "5 Give · 约 30 小时";
-"community_invite.shared_detail" = "实时转录、翻译和音频文件转录共用这段时间。";
+"community_invite.shared_detail" = "实时转录和翻译共用这段时间；音频文件转录使用自己的密钥。";
 "community_invite.invalid" = "邀请码无效，请向邀请人确认。";
 "community_invite.unavailable" = "社区服务暂时不可用，请稍后再试。";
-"community_invite.remaining_hours_format" = "剩余约 %lld 小时";
+"community_invite.remaining_recordable_format" = "约可再录 %1$lld 小时 %2$lld 分钟";
+"community_invite.remaining_recordable_hint" = "邀请时长按转录车道扣减：选择的目标语言越多，每分钟录音消耗的时长越多。";
 "community_invite.settings.title" = "社区邀请";
 "community_invite.settings.subtitle" = "查看你拥有的使用时长，或输入邀请码启用。";
 "community_invite.resources.remaining" = "剩余时间";
@@ -56,8 +57,12 @@
 "community_invite.remove_confirm_message" = "剩余的共享时长仍保留在邀请码上，之后可以重新输入邀请码。";
 "community_invite.remove_confirm_action" = "删除邀请";
 "community_invite.fallback_personal_key" = "邀请时长暂时不可用——本次录音将使用你自己的密钥。";
+"community_invite.async.needs_personal_key" = "音频文件转录需要自己的 API 密钥。请在设置中录入。";
+"community_invite.async.wait_for_recording" = "当前有录音正在使用邀请时长。请先停止录音，再转录这段音频。";
 "editor.transcript.async.start" = "转录这段音频";
 "editor.transcript.async.start_failed" = "无法开始音频转录";
+"editor.transcript.async.invite_add_key" = "使用自己的 API 密钥…";
+"editor.transcript.async.invite_add_key_hint" = "邀请时长仅覆盖实时转录。音频文件转录会以你自己的密钥把这段录音上传给语音引擎——在设置中录入密钥后开启。";
 "onboarding.keys.voice_label" = "实时字幕服务";
 "onboarding.keys.guide.create" = "注册";
 "onboarding.keys.guide.copy" = "复制密钥";

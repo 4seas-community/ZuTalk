@@ -232,6 +232,7 @@ struct MainShellView: View {
                 )
                 .font(.bodySM)
                 .foregroundColor(.textSecondary)
+                .help(String(localized: "community_invite.remaining_recordable_hint"))
                 .accessibilityIdentifier("sidebar.community-invite.remaining")
                 .task { await communityInvite.refreshQuota() }
             }
@@ -265,10 +266,14 @@ struct MainShellView: View {
         guard let seconds = communityInvite.remainingSeconds else {
             return String(localized: "community_invite.active")
         }
-        let hours = max(0, seconds / 3_600)
+        let recordable = CommunityInviteSession.wallClockRecordableSeconds(
+            remainingSeconds: seconds,
+            laneCount: communityInvite.plannedLaneCount
+        )
         return String(
-            format: String(localized: "community_invite.remaining_hours_format"),
-            Int64(hours)
+            format: String(localized: "community_invite.remaining_recordable_format"),
+            Int64(recordable / 3_600),
+            Int64((recordable % 3_600) / 60)
         )
     }
 

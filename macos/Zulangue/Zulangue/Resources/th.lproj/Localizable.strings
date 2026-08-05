@@ -37,10 +37,11 @@
 "community_invite.action" = "เปิดใช้งานคำเชิญ";
 "community_invite.active" = "คำเชิญชุมชนใช้งานอยู่";
 "community_invite.thirty_hours" = "5 Give · ประมาณ 30 ชั่วโมง";
-"community_invite.shared_detail" = "การถอดเสียงสด การแปล และการถอดเสียงจากไฟล์เสียงใช้เวลานี้ร่วมกัน";
+"community_invite.shared_detail" = "การถอดเสียงสดและการแปลใช้เวลานี้ร่วมกัน ส่วนการถอดเสียงจากไฟล์เสียงใช้คีย์ของคุณเอง";
 "community_invite.invalid" = "รหัสคำเชิญนี้ไม่ถูกต้อง โปรดตรวจสอบกับผู้ที่เชิญคุณ";
 "community_invite.unavailable" = "บริการชุมชนไม่พร้อมใช้งานชั่วคราว โปรดลองใหม่ภายหลัง";
-"community_invite.remaining_hours_format" = "เหลือประมาณ %lld ชั่วโมง";
+"community_invite.remaining_recordable_format" = "บันทึกได้อีกประมาณ %1$lld ชม. %2$lld นาที";
+"community_invite.remaining_recordable_hint" = "เวลาจากคำเชิญถูกหักตามจำนวนเลนการถอดเสียง ยิ่งเลือกภาษาเป้าหมายมาก ยิ่งใช้เวลาต่อนาทีการบันทึกมากขึ้น";
 "community_invite.settings.title" = "คำเชิญชุมชน";
 "community_invite.settings.subtitle" = "ดูเวลาการใช้งานที่คุณมี หรือป้อนรหัสคำเชิญ";
 "community_invite.resources.remaining" = "เวลาที่เหลือ";
@@ -56,8 +57,12 @@
 "community_invite.remove_confirm_message" = "เวลาที่แชร์ที่เหลือยังคงอยู่กับโค้ดคำเชิญ คุณสามารถกรอกโค้ดอีกครั้งได้ภายหลัง";
 "community_invite.remove_confirm_action" = "ลบคำเชิญ";
 "community_invite.fallback_personal_key" = "เวลาจากคำเชิญไม่พร้อมใช้งานในขณะนี้ — การบันทึกนี้จะใช้คีย์ของคุณเองแทน";
+"community_invite.async.needs_personal_key" = "การถอดเสียงจากไฟล์เสียงต้องใช้คีย์ API ของคุณเอง กรุณาเพิ่มในการตั้งค่า";
+"community_invite.async.wait_for_recording" = "มีการบันทึกที่กำลังใช้เวลาจากคำเชิญอยู่ กรุณาหยุดการบันทึกก่อน แล้วจึงถอดเสียงไฟล์นี้";
 "editor.transcript.async.start" = "ถอดเสียงไฟล์เสียงนี้";
 "editor.transcript.async.start_failed" = "ไม่สามารถเริ่มการถอดเสียงจากไฟล์เสียงได้";
+"editor.transcript.async.invite_add_key" = "ใช้คีย์ API ของฉันเอง…";
+"editor.transcript.async.invite_add_key_hint" = "เวลาจากคำเชิญครอบคลุมเฉพาะการถอดเสียงสด การถอดเสียงจากไฟล์เสียงจะอัปโหลดการบันทึกนี้ไปยังผู้ให้บริการเสียงด้วยคีย์ของคุณเอง เพิ่มคีย์ในการตั้งค่าเพื่อเปิดใช้งาน";
 "onboarding.keys.voice_label" = "บริการคำบรรยายสด";
 "onboarding.keys.guide.create" = "สมัครใช้งาน";
 "onboarding.keys.guide.copy" = "คัดลอกคีย์";

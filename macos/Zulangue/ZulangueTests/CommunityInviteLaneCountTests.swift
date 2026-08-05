@@ -25,4 +25,30 @@ final class CommunityInviteLaneCountTests: XCTestCase {
             5
         )
     }
+
+    /// The sidebar shows wall-clock recordable time: shared invite seconds
+    /// divided by the lane count of the current selection.
+    func testWallClockRecordableSecondsDividesByLaneCount() {
+        XCTAssertEqual(
+            CommunityInviteSession.wallClockRecordableSeconds(
+                remainingSeconds: 5_400,
+                laneCount: 1
+            ),
+            5_400
+        )
+        XCTAssertEqual(
+            CommunityInviteSession.wallClockRecordableSeconds(
+                remainingSeconds: 5_400,
+                laneCount: 4
+            ),
+            1_350
+        )
+        XCTAssertEqual(
+            CommunityInviteSession.wallClockRecordableSeconds(
+                remainingSeconds: -60,
+                laneCount: 0
+            ),
+            0
+        )
+    }
 }

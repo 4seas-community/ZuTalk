@@ -37,10 +37,11 @@
 "community_invite.action" = "Einladung aktivieren";
 "community_invite.active" = "Community-Einladung aktiv";
 "community_invite.thirty_hours" = "5 Give · etwa 30 Stunden";
-"community_invite.shared_detail" = "Live-Transkription, Übersetzung und die Transkription von Audiodateien teilen sich diese Zeit.";
+"community_invite.shared_detail" = "Live-Transkription und Übersetzung teilen sich diese Zeit. Die Transkription von Audiodateien nutzt deinen eigenen Schlüssel.";
 "community_invite.invalid" = "Dieser Einladungscode ist ungültig. Wende dich an die Person, die dich eingeladen hat.";
 "community_invite.unavailable" = "Der Community-Dienst ist vorübergehend nicht verfügbar. Versuche es später erneut.";
-"community_invite.remaining_hours_format" = "Noch etwa %lld Stunden";
+"community_invite.remaining_recordable_format" = "Noch etwa %1$lld Std. %2$lld Min. Aufnahmezeit";
+"community_invite.remaining_recordable_hint" = "Einladungszeit wird pro Transkriptionsspur abgebucht: Je mehr Zielsprachen ausgewählt sind, desto mehr Zeit kostet jede aufgenommene Minute.";
 "community_invite.settings.title" = "Community-Einladung";
 "community_invite.settings.subtitle" = "Sieh dir deine verfügbare Nutzungszeit an oder gib einen Einladungscode ein.";
 "community_invite.resources.remaining" = "Verbleibende Zeit";
@@ -56,8 +57,12 @@
 "community_invite.remove_confirm_message" = "Die verbleibende gemeinsame Zeit bleibt beim Einladungscode. Du kannst den Code später erneut eingeben.";
 "community_invite.remove_confirm_action" = "Einladung entfernen";
 "community_invite.fallback_personal_key" = "Einladungszeit ist derzeit nicht verfügbar — diese Aufnahme verwendet stattdessen deinen eigenen Schlüssel.";
+"community_invite.async.needs_personal_key" = "Die Transkription von Audiodateien benötigt deinen eigenen API-Schlüssel. Trage ihn in den Einstellungen ein.";
+"community_invite.async.wait_for_recording" = "Eine Aufnahme nutzt gerade die Einladungszeit. Stoppe sie zuerst und transkribiere dieses Audio danach.";
 "editor.transcript.async.start" = "Dieses Audio transkribieren";
 "editor.transcript.async.start_failed" = "Audiotranskription konnte nicht gestartet werden";
+"editor.transcript.async.invite_add_key" = "Eigenen API-Schlüssel verwenden …";
+"editor.transcript.async.invite_add_key_hint" = "Die Einladungszeit gilt nur für die Live-Transkription. Die Transkription von Audiodateien lädt diese Aufnahme mit deinem eigenen Schlüssel zur Sprach-Engine hoch – trage in den Einstellungen einen Schlüssel ein, um sie zu aktivieren.";
 "onboarding.keys.voice_label" = "LIVE-UNTERTITEL-DIENST";
 "onboarding.keys.guide.create" = "Registrieren";
 "onboarding.keys.guide.copy" = "Schlüssel kopieren";
