@@ -574,12 +574,7 @@ impl SonioxStreamClient {
         config: SttConfig,
         cancel: CancellationToken,
     ) -> SonioxStreamRuntime {
-        Self::start_with_credential(
-            endpoint,
-            StaticLaneCredential::new(api_key),
-            config,
-            cancel,
-        )
+        Self::start_with_credential(endpoint, StaticLaneCredential::new(api_key), config, cancel)
     }
 
     pub fn start_with_credential(

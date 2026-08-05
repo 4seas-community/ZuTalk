@@ -7579,21 +7579,17 @@ impl ZulangueCore {
         // through the app, so there is no saved key to read. Everyone else
         // reads the one they configured, and its absence still fails the
         // start rather than opening keyless lanes.
-        let lane_credential: Arc<dyn vt_stt::LaneCredentialSource> = match self
-            .lane_credential_broker
-            .lock()
-            .unwrap()
-            .clone()
-        {
-            Some(broker) => broker,
-            None => vt_stt::StaticLaneCredential::new(
-                self.api_key_store
-                    .get(engine.credential_scope)
-                    .map_err(|error| CoreError::ValidationFailed {
-                        message: format!("soniox_key_unavailable: {error}"),
-                    })?,
-            ),
-        };
+        let lane_credential: Arc<dyn vt_stt::LaneCredentialSource> =
+            match self.lane_credential_broker.lock().unwrap().clone() {
+                Some(broker) => broker,
+                None => vt_stt::StaticLaneCredential::new(
+                    self.api_key_store
+                        .get(engine.credential_scope)
+                        .map_err(|error| CoreError::ValidationFailed {
+                            message: format!("soniox_key_unavailable: {error}"),
+                        })?,
+                ),
+            };
         let context_config = context.map(context_config_for_soniox);
         if let (Some(compilation), Some(config)) = (context, context_config.as_ref()) {
             let wire_context =

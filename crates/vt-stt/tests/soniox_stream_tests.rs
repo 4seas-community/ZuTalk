@@ -369,8 +369,7 @@ struct CountingCredential {
 
 impl vt_stt::LaneCredentialSource for CountingCredential {
     fn credential_for_connection(&self) -> vt_stt::BoxedCredentialFuture<'_> {
-        self.asked
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let next = self.keys.lock().unwrap().pop();
         Box::pin(async move {
             next.ok_or_else(|| vt_stt::SttError::AuthFailed {

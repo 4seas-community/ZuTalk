@@ -94,10 +94,7 @@ impl LaneCredentialBroker {
             format!("lane-credential-{next}")
         };
         let (tx, rx) = oneshot::channel();
-        self.pending
-            .lock()
-            .unwrap()
-            .insert(request_id.clone(), tx);
+        self.pending.lock().unwrap().insert(request_id.clone(), tx);
         (request_id, rx)
     }
 }
@@ -105,7 +102,8 @@ impl LaneCredentialBroker {
 impl LaneCredentialSource for LaneCredentialBroker {
     fn credential_for_connection(&self) -> BoxedCredentialFuture<'_> {
         let (request_id, receiver) = self.register();
-        self.requester.on_lane_credential_requested(request_id.clone());
+        self.requester
+            .on_lane_credential_requested(request_id.clone());
         Box::pin(async move {
             match tokio::time::timeout(self.timeout, receiver).await {
                 Ok(Ok(result)) => result,
