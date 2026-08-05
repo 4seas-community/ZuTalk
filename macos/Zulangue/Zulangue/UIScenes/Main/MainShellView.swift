@@ -106,6 +106,15 @@ struct MainShellView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 sidebarItem(
+                    icon: "person.2.fill",
+                    label: String(localized: "sidebar.share"),
+                    active: activeTab == .share,
+                    accId: AccessibilityID.mainTabShare
+                ) {
+                    store.select(tab: .share)
+                }
+
+                sidebarItem(
                     icon: "trash",
                     label: String(localized: "sidebar.trash"),
                     active: activeTab == .trash,
@@ -366,6 +375,8 @@ struct MainShellView: View {
                         KnowledgeLibraryPage()
                     case .trash:
                         TrashPage()
+                    case .share:
+                        SharePage()
                     case .editor:
                         DocumentEditorPage(
                             route: activeEditorRoute,
@@ -428,6 +439,8 @@ struct MainShellView: View {
             return "books.vertical.fill"
         case .trash:
             return "trash"
+        case .share:
+            return "person.2.fill"
         case .editor:
             return activeEditorRoute?.notebookID == nil
                 ? "square.and.pencil"
@@ -445,6 +458,8 @@ struct MainShellView: View {
             return String(localized: "sidebar.knowledge")
         case .trash:
             return String(localized: "sidebar.trash")
+        case .share:
+            return String(localized: "sidebar.share")
         case .editor:
             if activeEditorRoute?.notebookID != nil {
                 return store.activeNotebookTitle

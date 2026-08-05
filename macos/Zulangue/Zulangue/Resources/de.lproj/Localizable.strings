@@ -801,3 +801,18 @@
 "knowledge.import_json.message" = "Wähle eine Zulangue-Wissensdatenbank als JSON-Datei (.zulangue-pack.json).";
 "knowledge.import_json.done" = "Wissensdatenbank importiert";
 "knowledge.import_json.failed" = "Wissensdatenbank konnte nicht importiert werden";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "Teilen";
+"share.title" = "Teilen";
+"share.identity" = "Dein Teilen-Schlüssel";
+"share.copy_code" = "Teilen-Code kopieren";
+"share.join" = "Mit Code beitreten";
+"share.stop" = "Teilen beenden";
+"share.stop_note" = "Stoppt weitere Übertragungen. Bereits Empfangenes lässt sich nicht löschen.";
+"share.audio_never" = "Audio wird niemals geteilt.";
+"share.empty" = "Noch nichts geteilt.";
+"share.role.host" = "Host kann bearbeiten, andere nur lesen";
+"share.role.everyone" = "Alle können bearbeiten";
+"share.direct" = "Direktverbindung";
+"share.relayed" = "Verbindung über Relay";

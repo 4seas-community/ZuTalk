@@ -450,3 +450,63 @@ class AdminSecretComparisonTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RelayAccessTest(unittest.TestCase):
+    """分享功能的 relay 门禁。
+
+    这道门禁挡的是陌生人白嫖自建中继的带宽,不改变隐私 —— 中继流量始终端到端
+    加密。见 docs/architecture/share-p2p.md 第 6 节。
+    """
+
+    ENDPOINT = "a" * 64
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "invites.db")
+        code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
+        self.invite_id = self.store.invite_by_code(code)["id"]
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_unenrolled_endpoint_is_denied(self):
+        self.assertFalse(self.store.relay_access_allowed(self.ENDPOINT))
+
+    def test_enrolled_endpoint_is_allowed(self):
+        self.assertTrue(self.store.enroll_endpoint(self.invite_id, self.ENDPOINT))
+        self.assertTrue(self.store.relay_access_allowed(self.ENDPOINT))
+
+    def test_enrollment_is_idempotent(self):
+        self.assertTrue(self.store.enroll_endpoint(self.invite_id, self.ENDPOINT))
+        self.assertTrue(self.store.enroll_endpoint(self.invite_id, self.ENDPOINT))
+        self.assertTrue(self.store.relay_access_allowed(self.ENDPOINT))
+
+    def test_case_and_whitespace_are_normalized(self):
+        self.store.enroll_endpoint(self.invite_id, "  " + self.ENDPOINT.upper() + "\n")
+        self.assertTrue(self.store.relay_access_allowed(self.ENDPOINT))
+
+    def test_malformed_endpoint_ids_are_refused_before_storage(self):
+        for bad in ["", "short", "z" * 64, "a" * 63, "a" * 65, "../../etc/passwd"]:
+            with self.subTest(bad=bad):
+                self.assertFalse(self.store.enroll_endpoint(self.invite_id, bad))
+                self.assertFalse(self.store.relay_access_allowed(bad))
+
+    def test_pausing_an_invitation_revokes_relay_access(self):
+        """暂停邀请码就该同时断掉中继,不需要第二个开关。"""
+        self.store.enroll_endpoint(self.invite_id, self.ENDPOINT)
+        self.assertTrue(self.store.relay_access_allowed(self.ENDPOINT))
+        self.store.set_invite_enabled(self.invite_id, False)
+        self.assertFalse(self.store.relay_access_allowed(self.ENDPOINT))
+        self.store.set_invite_enabled(self.invite_id, True)
+        self.assertTrue(self.store.relay_access_allowed(self.ENDPOINT))
+
+    def test_last_seen_is_recorded_for_allowed_endpoints(self):
+        self.store.enroll_endpoint(self.invite_id, self.ENDPOINT)
+        self.store.relay_access_allowed(self.ENDPOINT)
+        with self.store.connect() as db:
+            row = db.execute(
+                "SELECT last_seen_at FROM endpoint_enrollment WHERE endpoint_id = ?",
+                (self.ENDPOINT,),
+            ).fetchone()
+        self.assertIsNotNone(row["last_seen_at"])

@@ -409,6 +409,8 @@ final class MainNavigationStore: ObservableObject {
             return .knowledge
         case .trash:
             return .trash
+        case .share:
+            return .share
         case .editor:
             guard let activeEditorRoute else { return .home }
             return .editor(

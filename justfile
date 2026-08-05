@@ -153,6 +153,7 @@ ci-check:
     bash scripts/test_bundle_id_recovery_gate.sh
     bash scripts/test_secret_material_storage_gate.sh
     bash scripts/test_minimal_mvp_architecture_gate.sh
+    bash scripts/test_share_no_audio_gate.sh
     bash scripts/check_locale_parity.sh
     bash scripts/anti-demo.sh
     @echo "✓ CI check 通过"
@@ -174,6 +175,7 @@ local-gate-static:
     bash scripts/test_bundle_id_recovery_gate.sh
     bash scripts/test_secret_material_storage_gate.sh
     bash scripts/test_minimal_mvp_architecture_gate.sh
+    bash scripts/test_share_no_audio_gate.sh
     bash scripts/check_locale_parity.sh
     bash scripts/anti-demo.sh
 
@@ -184,6 +186,7 @@ local-gate-rust-core:
         -p vt-stt \
         -p vt-audio \
         -p vt-export \
+        -p vt-share \
         -p vt-store \
         -p vt-i18n
 
@@ -975,10 +978,3 @@ _sync-xcode:
         -I"$GEM_DIR/gems/claide-1.1.0/lib" \
         -I"$GEM_DIR/gems/atomos-0.1.3/lib" \
         {{ project_dir }}/scripts/sync_xcode_project.rb 2>/dev/null
-    ruby \
-        -I"$GEM_DIR/gems/xcodeproj-1.27.0/lib" \
-        -I"$GEM_DIR/gems/nanaimo-0.4.0/lib" \
-        -I"$GEM_DIR/gems/colored2-4.0.0/lib" \
-        -I"$GEM_DIR/gems/claide-1.1.0/lib" \
-        -I"$GEM_DIR/gems/atomos-0.1.3/lib" \
-        {{ project_dir }}/scripts/dedup_build_phase.rb 2>/dev/null || true

@@ -802,3 +802,18 @@
 "knowledge.import_json.message" = "选择一个 Zulangue 知识库 JSON 文件（.zulangue-pack.json）。";
 "knowledge.import_json.done" = "知识库已导入";
 "knowledge.import_json.failed" = "无法导入知识库";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "分享";
+"share.title" = "分享";
+"share.identity" = "你的分享密钥";
+"share.copy_code" = "复制分享码";
+"share.join" = "用分享码加入";
+"share.stop" = "停止共享";
+"share.stop_note" = "只停止继续发送，无法删除对方已经收到的内容。";
+"share.audio_never" = "音频永远不会被共享。";
+"share.empty" = "还没有共享任何内容。";
+"share.role.host" = "主持人可写，其他人只读";
+"share.role.everyone" = "所有人可编辑";
+"share.direct" = "直连";
+"share.relayed" = "经中继";

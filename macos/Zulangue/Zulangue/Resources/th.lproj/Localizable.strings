@@ -802,3 +802,18 @@
 "knowledge.import_json.message" = "เลือกไฟล์ JSON ฐานความรู้ Zulangue (.zulangue-pack.json)";
 "knowledge.import_json.done" = "นำเข้าฐานความรู้แล้ว";
 "knowledge.import_json.failed" = "นำเข้าฐานความรู้ไม่ได้";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "แชร์";
+"share.title" = "แชร์";
+"share.identity" = "คีย์แชร์ของคุณ";
+"share.copy_code" = "คัดลอกรหัสแชร์";
+"share.join" = "เข้าร่วมด้วยรหัส";
+"share.stop" = "หยุดแชร์";
+"share.stop_note" = "หยุดการส่งต่อจากนี้ไป ไม่สามารถลบสิ่งที่อีกฝ่ายได้รับไปแล้ว";
+"share.audio_never" = "เสียงจะไม่ถูกแชร์ไม่ว่ากรณีใด";
+"share.empty" = "ยังไม่ได้แชร์อะไร";
+"share.role.host" = "ผู้ดำเนินรายการแก้ไขได้ คนอื่นอ่านอย่างเดียว";
+"share.role.everyone" = "ทุกคนแก้ไขได้";
+"share.direct" = "เชื่อมต่อโดยตรง";
+"share.relayed" = "เชื่อมต่อผ่านรีเลย์";

@@ -801,3 +801,18 @@
 "knowledge.import_json.message" = "Elige un archivo JSON de base de conocimiento de Zulangue (.zulangue-pack.json).";
 "knowledge.import_json.done" = "Base de conocimiento importada";
 "knowledge.import_json.failed" = "No se pudo importar la base de conocimiento";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "Compartir";
+"share.title" = "Compartir";
+"share.identity" = "Tu clave para compartir";
+"share.copy_code" = "Copiar código";
+"share.join" = "Unirse con un código";
+"share.stop" = "Dejar de compartir";
+"share.stop_note" = "Detiene los envíos siguientes. No puede borrar lo que otros ya recibieron.";
+"share.audio_never" = "El audio nunca se comparte.";
+"share.empty" = "Aún no compartes nada.";
+"share.role.host" = "El anfitrión edita, los demás solo leen";
+"share.role.everyone" = "Todos pueden editar";
+"share.direct" = "Conexión directa";
+"share.relayed" = "Conexión por retransmisión";

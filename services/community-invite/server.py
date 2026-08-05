@@ -181,6 +181,14 @@ class Store:
                 -- can change what an invitation is worth after the fact, so
                 -- each one leaves a record. Backend accountability only; the
                 -- admin panel does not surface it.
+                -- 分享功能的 relay 门禁:登记过的 endpoint 才能用自建中继。
+                -- 挡的是陌生人白嫖带宽,不改变隐私(中继流量始终端到端加密)。
+                CREATE TABLE IF NOT EXISTS endpoint_enrollment (
+                    endpoint_id TEXT PRIMARY KEY,
+                    invite_id INTEGER NOT NULL REFERENCES invites(id),
+                    created_at TEXT NOT NULL,
+                    last_seen_at TEXT
+                );
                 CREATE TABLE IF NOT EXISTS invite_audit (
                     id INTEGER PRIMARY KEY,
                     invite_id INTEGER NOT NULL REFERENCES invites(id),
@@ -210,6 +218,72 @@ class Store:
                 "SELECT * FROM invites WHERE code_hash = ?",
                 (digest(code.strip().upper()),),
             ).fetchone()
+
+    # ── 分享:relay 门禁 ────────────────────────────────────────────────
+    #
+    # relay 对 /v1/relay-auth 发 POST,请求头带 X-Iroh-Endpoint-Id。返回 200 且
+    # 正文为 "true" 才放行。见 docs/architecture/share-p2p.md 第 6 节。
+
+    ENDPOINT_ID_LENGTH = 64
+
+    @staticmethod
+    def normalize_endpoint_id(value: str) -> str | None:
+        """Return the canonical hex form, or None when it is not an endpoint id.
+
+        iroh endpoint ids are 32-byte ed25519 public keys rendered as 64 hex
+        characters. Anything else is refused before it can reach the database,
+        so a malformed header cannot become a stored row.
+        """
+        candidate = (value or "").strip().lower()
+        if len(candidate) != Store.ENDPOINT_ID_LENGTH:
+            return None
+        if any(c not in "0123456789abcdef" for c in candidate):
+            return None
+        return candidate
+
+    def enroll_endpoint(self, invite_id: int, endpoint_id: str) -> bool:
+        """Bind an endpoint id to an invitation. Idempotent."""
+        canonical = self.normalize_endpoint_id(endpoint_id)
+        if canonical is None:
+            return False
+        with self.connect() as db:
+            db.execute(
+                """
+                INSERT INTO endpoint_enrollment (endpoint_id, invite_id, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(endpoint_id) DO UPDATE SET invite_id = excluded.invite_id
+                """,
+                (canonical, invite_id, now_iso()),
+            )
+        return True
+
+    def relay_access_allowed(self, endpoint_id: str) -> bool:
+        """Whether this endpoint may use the self-hosted relay.
+
+        A paused or withdrawn invitation loses relay access with it, so the
+        existing enable/disable control keeps working for the share feature
+        without a second switch.
+        """
+        canonical = self.normalize_endpoint_id(endpoint_id)
+        if canonical is None:
+            return False
+        with self.connect() as db:
+            row = db.execute(
+                """
+                SELECT invites.enabled AS enabled
+                FROM endpoint_enrollment
+                JOIN invites ON invites.id = endpoint_enrollment.invite_id
+                WHERE endpoint_enrollment.endpoint_id = ?
+                """,
+                (canonical,),
+            ).fetchone()
+            if row is None or not row["enabled"]:
+                return False
+            db.execute(
+                "UPDATE endpoint_enrollment SET last_seen_at = ? WHERE endpoint_id = ?",
+                (now_iso(), canonical),
+            )
+        return True
 
     def redeem(self, code: str) -> dict | None:
         with self.connect() as db:
@@ -1088,6 +1162,38 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/admin"):
             self.handle_admin_post(urllib.parse.urlsplit(self.path).path)
             return
+        if self.path == "/v1/relay-auth":
+            # relay 自己调用这个端点,它不带邀请码,只带 endpoint id。
+            # 服务间凭据走 IROH_RELAY_HTTP_BEARER_TOKEN,不落配置文件。
+            expected = os.environ.get("ZULANGUE_RELAY_AUTH_TOKEN", "")
+            presented = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+            if not expected or not hmac.compare_digest(presented, expected):
+                self.send_json(401, {"error": "unauthorized"})
+                return
+            endpoint_id = self.headers.get("X-Iroh-Endpoint-Id", "")
+            allowed = self.store.relay_access_allowed(endpoint_id)
+            # relay 只认「200 且正文为 true」,其余一律视为拒绝。
+            body = b"true" if allowed else b"false"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if self.path == "/v1/share-endpoint":
+            # App 用邀请码把自己的 endpoint id 登记上来。
+            invite = self.authorized_invite()
+            if invite is None:
+                return
+            body = self.read_json()
+            if not self.store.enroll_endpoint(invite["id"], str(body.get("endpoint_id", ""))):
+                self.send_json(400, {"error": "invalid_endpoint_id"})
+                return
+            self.send_json(200, {"status": "enrolled"})
+            return
+
         if self.path == "/v1/redeem":
             body = self.read_json()
             result = self.store.redeem(str(body.get("code", "")))

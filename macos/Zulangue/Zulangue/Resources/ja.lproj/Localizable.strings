@@ -802,3 +802,18 @@
 "knowledge.import_json.message" = "Zulangue知識ベースのJSONファイル（.zulangue-pack.json）を選択してください。";
 "knowledge.import_json.done" = "知識ベースを読み込みました";
 "knowledge.import_json.failed" = "知識ベースを読み込めませんでした";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "共有";
+"share.title" = "共有";
+"share.identity" = "共有キー";
+"share.copy_code" = "共有コードをコピー";
+"share.join" = "コードで参加";
+"share.stop" = "共有を停止";
+"share.stop_note" = "以降の送信を停止します。相手が既に受け取った内容は削除できません。";
+"share.audio_never" = "音声が共有されることはありません。";
+"share.empty" = "まだ何も共有していません。";
+"share.role.host" = "ホストのみ編集可、他は閲覧のみ";
+"share.role.everyone" = "全員が編集可";
+"share.direct" = "直接接続";
+"share.relayed" = "リレー経由";

@@ -1,0 +1,40 @@
+[package]
+name = "vt-share"
+# 库 crate 一律 0.0.0;产品版本号只由 vt-ffi 承载(见 scripts/check_release_version.sh)。
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# 依赖清单本身就是一道安全边界。
+#
+# vt-crypto 与 vt-audio 被**故意**排除在外:音频以每 Session 一把 SessionKey
+# 加密落盘,分享层拿不到 vt-crypto 就解不开密文,拿不到 vt-audio 就碰不到 PCM。
+# 这不是「约定不发音频」,是这个 crate 物理上发不出明文音频。
+# scripts/test_share_no_audio_gate.sh 对直接依赖与传递依赖都做断言。
+# 设计见 docs/architecture/share-p2p.md 第 5 节。
+#
+# 签名用 iroh 自带的 ed25519(SecretKey::sign / PublicKey::verify),不引第二套。
+#
+# 不用 iroh-blobs:可分享内容全是文本(转录稿、笔记、文本导出包),几十 KB 量级。
+# blobs 是为「KB 到 TB + 断点续传」设计的,会带进 redb 与 bao-tree 一整套机制,
+# 换来的只是我们用不上的能力。普通 QUIC 流加 SHA-256 校验即可。
+[dependencies]
+vt-model = { path = "../vt-model" }
+vt-export = { path = "../vt-export" }
+serde = { workspace = true }
+serde_json.workspace = true
+thiserror.workspace = true
+sha2 = "0.10"
+hex = "0.4"
+tokio.workspace = true
+tracing.workspace = true
+iroh = "1.0.3"
+iroh-gossip = { version = "0.101.0", default-features = false, features = ["net"] }
+iroh-tickets = "1.0.0"
+postcard = { version = "1", features = ["alloc"] }
+iroh-mdns-address-lookup = "0.4.0"
+
+[dev-dependencies]
+serde_json.workspace = true
+tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }

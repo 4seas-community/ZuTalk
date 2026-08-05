@@ -11,6 +11,7 @@ pub mod notebook_api;
 pub mod notebook_capture_api;
 pub mod session_audio_api;
 pub mod settings_api;
+pub(crate) mod share_api;
 pub mod speaker_directory_api;
 pub(crate) mod task_worker;
 pub mod transcribe_api;
@@ -345,6 +346,9 @@ pub struct ZulangueCore {
     provider_credential_bootstrap: Arc<task_worker::ProviderCredentialBootstrapGate>,
     /// task_id → FfiTaskCallback (worker 按 task 进度触发回调)
     pub(crate) task_callbacks: Arc<TaskCallbackMap>,
+    /// 分享端点。首次用到分享功能时才绑定 —— 不用这个功能的用户不该付出
+    /// 一个常驻 QUIC 端点的代价。
+    pub(crate) share_runtime: crate::share_api::ShareRuntimeSlot,
     /// Durable local encryption keys for capture audio and Context Packs.
     pub(crate) key_store: Arc<dyn KeyProvider>,
     /// Soniox API Key 的进程内运行时；生产固定使用
@@ -685,6 +689,7 @@ impl ZulangueCore {
             worker_cancel,
             provider_credential_bootstrap,
             task_callbacks,
+            share_runtime: Default::default(),
             key_store,
             api_key_store,
             active_notebook_capture: Mutex::new(None),

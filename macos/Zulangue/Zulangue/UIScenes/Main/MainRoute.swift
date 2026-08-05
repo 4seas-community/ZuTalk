@@ -11,6 +11,7 @@ enum MainRoute: Equatable {
     case home
     case knowledge
     case trash
+    case share
     case editor(route: EditorRoute, initialView: EditorInitialView)
     case settings
 
@@ -22,6 +23,8 @@ enum MainRoute: Equatable {
             return .knowledge
         case .trash:
             return .trash
+        case .share:
+            return .share
         case .editor:
             return .editor
         case .settings:

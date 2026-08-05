@@ -802,3 +802,18 @@
 "knowledge.import_json.message" = "Choose a Zulangue knowledge-base JSON file (.zulangue-pack.json).";
 "knowledge.import_json.done" = "Knowledge base imported";
 "knowledge.import_json.failed" = "Couldn’t import knowledge base";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "Share";
+"share.title" = "Share";
+"share.identity" = "Your share key";
+"share.copy_code" = "Copy share code";
+"share.join" = "Join with a code";
+"share.stop" = "Stop sharing";
+"share.stop_note" = "Stops sending further updates. It cannot delete what others already received.";
+"share.audio_never" = "Audio is never shared.";
+"share.empty" = "Not sharing anything yet.";
+"share.role.host" = "Host can edit, others read only";
+"share.role.everyone" = "Everyone can edit";
+"share.direct" = "Direct connection";
+"share.relayed" = "Relayed connection";

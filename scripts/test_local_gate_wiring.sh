@@ -69,6 +69,7 @@ for script in \
   scripts/test_bundle_id_recovery_gate.sh \
   scripts/test_secret_material_storage_gate.sh \
   scripts/test_minimal_mvp_architecture_gate.sh \
+  scripts/test_share_no_audio_gate.sh \
   scripts/check_locale_parity.sh \
   scripts/anti-demo.sh
 do
@@ -80,7 +81,7 @@ rust_core_body="$(recipe_body local-gate-rust-core)"
 [[ -n "$rust_core_body" ]] || fail "justfile must define local-gate-rust-core"
 grep -Eq 'cargo[[:space:]]+nextest[[:space:]]+run[[:space:]]+--no-fail-fast' <<<"$rust_core_body" \
   || fail "local-gate-rust-core must run cargo nextest without fail-fast"
-for crate in vt-model vt-crypto vt-stt vt-audio vt-export vt-store vt-i18n; do
+for crate in vt-model vt-crypto vt-stt vt-audio vt-export vt-share vt-store vt-i18n; do
   grep -Eq -- "-p[[:space:]]+$crate" <<<"$rust_core_body" \
     || fail "local-gate-rust-core must cover $crate"
 done

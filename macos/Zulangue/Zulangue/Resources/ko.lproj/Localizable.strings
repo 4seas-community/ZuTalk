@@ -802,3 +802,18 @@
 "knowledge.import_json.message" = "Zulangue 지식 베이스 JSON 파일(.zulangue-pack.json)을 선택하세요.";
 "knowledge.import_json.done" = "지식 베이스를 가져왔습니다";
 "knowledge.import_json.failed" = "지식 베이스를 가져올 수 없습니다";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "공유";
+"share.title" = "공유";
+"share.identity" = "내 공유 키";
+"share.copy_code" = "공유 코드 복사";
+"share.join" = "코드로 참여";
+"share.stop" = "공유 중지";
+"share.stop_note" = "이후 전송만 중지합니다. 상대가 이미 받은 내용은 삭제할 수 없습니다.";
+"share.audio_never" = "오디오는 절대 공유되지 않습니다.";
+"share.empty" = "아직 공유 중인 항목이 없습니다.";
+"share.role.host" = "호스트만 편집 가능, 나머지는 읽기 전용";
+"share.role.everyone" = "모두 편집 가능";
+"share.direct" = "직접 연결";
+"share.relayed" = "릴레이 연결";

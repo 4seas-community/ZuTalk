@@ -9,6 +9,7 @@ members = [
     "crates/vt-audio",
     "crates/vt-pipeline",
     "crates/vt-export",
+    "crates/vt-share",
     "crates/vt-ffi",
     "crates/vt-i18n",
     "tools/uniffi-bindgen",

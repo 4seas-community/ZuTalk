@@ -1,0 +1,25 @@
+[Unit]
+Description=Zulangue share relay (iroh)
+After=network-online.target
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/zulangue-share-relay
+# IROH_RELAY_HTTP_BEARER_TOKEN 只存在于这个文件里,不进仓库、不进 relay.toml。
+# 它优先于配置文件中的 bearer_token。
+EnvironmentFile=/home/exedev/zulangue-share-relay/service.env
+ExecStart=/home/exedev/zulangue-share-relay/bin/iroh-relay --config-path /home/exedev/zulangue-share-relay/relay.toml
+Restart=on-failure
+RestartSec=2
+UMask=0077
+# 中继只需要绑端口和读自己的目录,不需要其他能力。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/exedev/zulangue-share-relay/data
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

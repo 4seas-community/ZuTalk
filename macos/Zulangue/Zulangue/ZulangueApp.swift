@@ -291,6 +291,7 @@ enum MainTab: String, CaseIterable {
     case home
     case knowledge
     case trash
+    case share
     case editor
     case config
 
@@ -299,6 +300,7 @@ enum MainTab: String, CaseIterable {
         case .home:       return "HOME"
         case .knowledge:  return "KNOWLEDGE"
         case .trash:      return "TRASH"
+        case .share:      return "SHARE"
         case .editor:     return "EDITOR"
         case .config:     return "CONFIG"
         }
