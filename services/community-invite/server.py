@@ -65,10 +65,32 @@ USAGE_PAGE_LIMIT = 1000
 # forgotten browser tab stops being a live door into quota and invitations.
 ADMIN_COOKIE_NAME = "zulangue_admin"
 ADMIN_SESSION_TTL_SECONDS = 8 * 60 * 60
+# The panel is reachable from the public internet and its only door is a
+# shared token, so guessing must be made slow. These bound an attacker to a
+# few tries per quarter hour while leaving an operator who fat-fingers the
+# token a couple of immediate retries.
+ADMIN_LOGIN_MAX_FAILURES = 5
+# The global bucket exists only to catch an attacker spreading attempts across
+# forged forwarded addresses. It sits far above the per-address limit on
+# purpose: at the same threshold, a handful of failures from anywhere would
+# lock the operator out of their own panel.
+ADMIN_LOGIN_MAX_FAILURES_GLOBAL = 40
+ADMIN_LOGIN_WINDOW_SECONDS = 15 * 60
+ADMIN_LOGIN_LOCKOUT_SECONDS = 15 * 60
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def secret_equals(supplied: str, expected: str) -> bool:
+    """Constant-time comparison that accepts anything a browser can post.
+    hmac.compare_digest rejects non-ASCII str outright, which would turn a
+    mistyped token into a crashed request instead of a failed login."""
+    return hmac.compare_digest(
+        supplied.encode("utf-8", "surrogatepass"),
+        expected.encode("utf-8", "surrogatepass"),
+    )
 
 
 def digest(value: str) -> str:
@@ -766,6 +788,47 @@ class Handler(BaseHTTPRequestHandler):
                 return value
         return None
 
+    def login_client_key(self) -> str:
+        """Identifies the caller for rate limiting. Behind the TLS terminator
+        every peer is loopback, so the forwarded address is used when present.
+        A client can forge that header, which is why the counter below also
+        keeps a global bucket that no amount of forging can sidestep."""
+        forwarded = self.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()[:64]
+        return self.client_address[0]
+
+    def login_lockout_seconds(self) -> int:
+        failures = self.server.admin_login_failures  # type: ignore[attr-defined]
+        now = datetime.now(timezone.utc)
+        longest = 0
+        limits = (
+            (self.login_client_key(), ADMIN_LOGIN_MAX_FAILURES),
+            ("*", ADMIN_LOGIN_MAX_FAILURES_GLOBAL),
+        )
+        for key, limit in limits:
+            attempts = [
+                at
+                for at in failures.get(key, [])
+                if (now - at).total_seconds() < ADMIN_LOGIN_WINDOW_SECONDS
+            ]
+            failures[key] = attempts
+            if len(attempts) >= limit:
+                elapsed = (now - attempts[-1]).total_seconds()
+                longest = max(longest, int(ADMIN_LOGIN_LOCKOUT_SECONDS - elapsed))
+        return max(0, longest)
+
+    def record_login_failure(self) -> None:
+        failures = self.server.admin_login_failures  # type: ignore[attr-defined]
+        now = datetime.now(timezone.utc)
+        for key in (self.login_client_key(), "*"):
+            failures.setdefault(key, []).append(now)
+
+    def clear_login_failures(self) -> None:
+        failures = self.server.admin_login_failures  # type: ignore[attr-defined]
+        failures.pop(self.login_client_key(), None)
+        failures.pop("*", None)
+
     def csrf_token(self, session: str) -> str:
         return hmac.new(session.encode(), b"csrf", hashlib.sha256).hexdigest()
 
@@ -912,9 +975,18 @@ class Handler(BaseHTTPRequestHandler):
         form = self.read_form()
 
         if path == "/admin/login":
-            if not hmac.compare_digest(form.get("token", ""), self.admin_token()):
+            blocked_for = self.login_lockout_seconds()
+            if blocked_for > 0:
+                self.send_admin_login(
+                    f"Too many failed attempts. Try again in "
+                    f"{blocked_for // 60 + 1} minutes."
+                )
+                return
+            if not secret_equals(form.get("token", ""), self.admin_token()):
+                self.record_login_failure()
                 self.send_admin_login("That token was not accepted.")
                 return
+            self.clear_login_failures()
             session = secrets.token_urlsafe(32)
             sessions = self.server.admin_sessions  # type: ignore[attr-defined]
             sessions[session] = datetime.now(timezone.utc) + timedelta(
@@ -937,7 +1009,7 @@ class Handler(BaseHTTPRequestHandler):
         if session is None:
             self.send_admin_login("Your session expired.")
             return
-        if not hmac.compare_digest(form.get("csrf", ""), self.csrf_token(session)):
+        if not secret_equals(form.get("csrf", ""), self.csrf_token(session)):
             self.send_admin_login("That form was stale. Sign in and try again.")
             return
 
@@ -1214,6 +1286,7 @@ def main() -> None:
     # Admin sessions live in memory only: a restart signs the operator out,
     # which is the right default for a panel that can grant quota.
     server.admin_sessions = {}  # type: ignore[attr-defined]
+    server.admin_login_failures = {}  # type: ignore[attr-defined]
     server.serve_forever()
 
 

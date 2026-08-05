@@ -12,6 +12,7 @@ from server import (
     RESERVATION_TTL_SECONDS,
     SESSION_KEY_BUDGET,
     Store,
+    secret_equals,
     stream_duration_seconds,
 )
 
@@ -434,6 +435,17 @@ class AdminPanelStoreTests(unittest.TestCase):
             self.assertEqual(
                 db.execute("SELECT COUNT(*) AS n FROM invite_audit").fetchone()["n"], 2
             )
+
+
+class AdminSecretComparisonTests(unittest.TestCase):
+    def test_non_ascii_input_fails_the_comparison_instead_of_raising(self):
+        # A mistyped token used to crash the request handler outright, which
+        # the edge reported to the operator as a 503 outage.
+        self.assertFalse(secret_equals("中文密码", "expected-token"))
+        self.assertFalse(secret_equals("🔑", "expected-token"))
+        self.assertFalse(secret_equals("", "expected-token"))
+        self.assertTrue(secret_equals("expected-token", "expected-token"))
+        self.assertTrue(secret_equals("中文密码", "中文密码"))
 
 
 if __name__ == "__main__":
