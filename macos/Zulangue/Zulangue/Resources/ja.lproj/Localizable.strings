@@ -885,3 +885,12 @@
 "share.requests.approve" = "許可";
 "share.requests.decline" = "断る";
 "share.requests.note" = "名前は相手が入力したものです。その下の鍵だけが偽装できません。";
+
+/* 分享:昵称与成员 */
+"share.nickname" = "ルームでの名前";
+"share.nickname.prompt" = "例：Alex の Mac";
+"share.nickname.note" = "共有相手に表示されます。空欄にすると鍵だけが見えます。";
+"share.members" = "このルーム";
+"share.members.unnamed" = "名前なし";
+"share.members.you" = "あなた";
+"share.members.host" = "ホスト";

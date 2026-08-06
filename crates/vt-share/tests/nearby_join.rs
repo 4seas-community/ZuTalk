@@ -151,10 +151,7 @@ async fn discovery_alone_grants_nothing() {
         desk.decline(&request.request_id).await
     };
     let (answer, _) = tokio::join!(asking, observing);
-    assert!(
-        answer.unwrap().is_err(),
-        "没有明确批准就不该拿到钥匙"
-    );
+    assert!(answer.unwrap().is_err(), "没有明确批准就不该拿到钥匙");
 
     host.shutdown().await;
 }

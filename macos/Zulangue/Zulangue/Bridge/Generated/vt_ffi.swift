@@ -1070,8 +1070,10 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func requestToJoinNearby(endpointId: String) throws  -> FfiJoinOutcome
 
     /**
-     * 本机在「附近的人」里显示成什么名字。
+     * 房间里都有谁。没在房间里时为空。
      */
+    func roomMembers()  -> [FfiRoomMember]
+
     func setShareDisplayName(name: String) throws
 
     /**
@@ -1081,6 +1083,13 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      * 连接,新配置在下一次开始共享时生效 —— 中途换中继会把房间里的人踢掉。
      */
     func setShareTransport(transport: FfiShareTransport) throws
+
+    /**
+     * 本机的昵称。房间里的人和「附近的人」列表都靠它认出你。
+     *
+     * 存在本机;每次绑定端点时重新交给传输层。空的话别人只看得到公钥。
+     */
+    func shareDisplayName()  -> String
 
     /**
      * 本机分享身份。首次调用会生成并持久化。
@@ -2319,8 +2328,16 @@ open func requestToJoinNearby(endpointId: String)throws  -> FfiJoinOutcome  {
 }
 
     /**
-     * 本机在「附近的人」里显示成什么名字。
+     * 房间里都有谁。没在房间里时为空。
      */
+open func roomMembers() -> [FfiRoomMember]  {
+    return try!  FfiConverterSequenceTypeFfiRoomMember.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_room_members(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
 open func setShareDisplayName(name: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_set_share_display_name(
             self.uniffiCloneHandle(),
@@ -2341,6 +2358,19 @@ open func setShareTransport(transport: FfiShareTransport)throws   {try rustCallW
         FfiConverterTypeFfiShareTransport_lower(transport),$0
     )
 }
+}
+
+    /**
+     * 本机的昵称。房间里的人和「附近的人」列表都靠它认出你。
+     *
+     * 存在本机;每次绑定端点时重新交给传输层。空的话别人只看得到公钥。
+     */
+open func shareDisplayName() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_share_display_name(
+            self.uniffiCloneHandle(),$0
+    )
+})
 }
 
     /**
@@ -4808,6 +4838,87 @@ public func FfiConverterTypeFfiProviderConnectionCheck_lift(_ buf: RustBuffer) t
 #endif
 public func FfiConverterTypeFfiProviderConnectionCheck_lower(_ value: FfiProviderConnectionCheck) -> RustBuffer {
     return FfiConverterTypeFfiProviderConnectionCheck.lower(value)
+}
+
+
+/**
+ * 房间里的一个人。
+ */
+public struct FfiRoomMember: Equatable, Hashable {
+    public var endpointId: String
+    public var shortLabel: String
+    /**
+     * 对方自报的昵称,可能为空或与别人重名 —— **公钥才是身份**。
+     */
+    public var displayName: String
+    /**
+     * 是不是你自己。
+     */
+    public var isMe: Bool
+    public var isHost: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(endpointId: String, shortLabel: String,
+        /**
+         * 对方自报的昵称,可能为空或与别人重名 —— **公钥才是身份**。
+         */displayName: String,
+        /**
+         * 是不是你自己。
+         */isMe: Bool, isHost: Bool) {
+        self.endpointId = endpointId
+        self.shortLabel = shortLabel
+        self.displayName = displayName
+        self.isMe = isMe
+        self.isHost = isHost
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiRoomMember: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiRoomMember: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiRoomMember {
+        return
+            try FfiRoomMember(
+                endpointId: FfiConverterString.read(from: &buf),
+                shortLabel: FfiConverterString.read(from: &buf),
+                displayName: FfiConverterString.read(from: &buf),
+                isMe: FfiConverterBool.read(from: &buf),
+                isHost: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiRoomMember, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.endpointId, into: &buf)
+        FfiConverterString.write(value.shortLabel, into: &buf)
+        FfiConverterString.write(value.displayName, into: &buf)
+        FfiConverterBool.write(value.isMe, into: &buf)
+        FfiConverterBool.write(value.isHost, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiRoomMember_lift(_ buf: RustBuffer) throws -> FfiRoomMember {
+    return try FfiConverterTypeFfiRoomMember.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiRoomMember_lower(_ value: FfiRoomMember) -> RustBuffer {
+    return FfiConverterTypeFfiRoomMember.lower(value)
 }
 
 
@@ -7677,6 +7788,31 @@ fileprivate struct FfiConverterSequenceTypeFfiNotebookTab: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiRoomMember: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiRoomMember]
+
+    public static func write(_ value: [FfiRoomMember], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiRoomMember.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiRoomMember] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiRoomMember]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiRoomMember.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiSessionSpeaker: FfiConverterRustBuffer {
     typealias SwiftType = [FfiSessionSpeaker]
 
@@ -8151,10 +8287,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_request_to_join_nearby() != 45293) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_set_share_display_name() != 38459) {
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_room_members() != 55319) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_set_share_display_name() != 63085) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_set_share_transport() != 48786) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_share_display_name() != 6589) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_share_identity() != 22943) {

@@ -885,3 +885,12 @@
 "share.requests.approve" = "Let in";
 "share.requests.decline" = "Decline";
 "share.requests.note" = "The name is what they typed. The key underneath is the only part that cannot be faked.";
+
+/* 分享:昵称与成员 */
+"share.nickname" = "Your name in a room";
+"share.nickname.prompt" = "e.g. Alex's Mac";
+"share.nickname.note" = "Shown to people you share with. Leave it blank and they will only see your key.";
+"share.members" = "In this room";
+"share.members.unnamed" = "Unnamed";
+"share.members.you" = "you";
+"share.members.host" = "host";

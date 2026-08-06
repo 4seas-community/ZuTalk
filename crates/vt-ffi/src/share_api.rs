@@ -195,6 +195,18 @@ pub struct FfiNearbyPeer {
     pub short_label: String,
 }
 
+/// 房间里的一个人。
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiRoomMember {
+    pub endpoint_id: String,
+    pub short_label: String,
+    /// 对方自报的昵称,可能为空或与别人重名 —— **公钥才是身份**。
+    pub display_name: String,
+    /// 是不是你自己。
+    pub is_me: bool,
+    pub is_host: bool,
+}
+
 /// 一条等着你回答的加入请求。
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiJoinRequest {
@@ -251,6 +263,8 @@ pub(crate) struct ShareRuntime {
     transport: FfiShareTransport,
     /// 本机播出的最后一帧。用来区分「还没开始录音」和「播了但对方没收到」。
     last_broadcast_revision: Option<u64>,
+    /// 已加入的 gossip 房间。在场与名册靠它 —— 没有它,房间里看不见彼此。
+    room: Option<Arc<vt_share::net::RoomHandle>>,
 }
 
 struct HostedRoom {
@@ -321,6 +335,12 @@ impl ZulangueCore {
                 message: format!("启动分享端点失败: {error}"),
             })?;
         let endpoint = Arc::new(endpoint);
+        {
+            let endpoint = endpoint.clone();
+            let name = self.share_display_name.lock().unwrap().clone();
+            self.runtime
+                .block_on(async move { endpoint.set_display_name(&name).await });
+        }
         *guard = Some(ShareRuntime {
             endpoint: endpoint.clone(),
             hosting: None,
@@ -328,6 +348,7 @@ impl ZulangueCore {
             roster: None,
             transport: wanted,
             last_broadcast_revision: None,
+            room: None,
         });
         Ok(endpoint)
     }
@@ -485,12 +506,54 @@ impl ZulangueCore {
             .block_on(async move { desk.decline(&request_id).await })
     }
 
-    /// 本机在「附近的人」里显示成什么名字。
+    /// 本机的昵称。房间里的人和「附近的人」列表都靠它认出你。
+    ///
+    /// 存在本机;每次绑定端点时重新交给传输层。空的话别人只看得到公钥。
+    pub fn share_display_name(&self) -> String {
+        self.share_display_name.lock().unwrap().clone()
+    }
+
     pub fn set_share_display_name(&self, name: String) -> Result<(), CoreError> {
-        let endpoint = self.ensure_share_endpoint()?;
-        self.runtime
-            .block_on(async move { endpoint.set_display_name(&name).await });
+        let cleaned = vt_share::sanitize_display_name(&name);
+        *self.share_display_name.lock().unwrap() = cleaned.clone();
+        // 端点还没建时不必现在推 —— 建的时候会读这个值。
+        if let Ok(guard) = self.share_runtime.lock() {
+            if let Some(runtime) = guard.as_ref() {
+                let endpoint = runtime.endpoint.clone();
+                drop(guard);
+                self.runtime
+                    .block_on(async move { endpoint.set_display_name(&cleaned).await });
+            }
+        }
         Ok(())
+    }
+
+    /// 房间里都有谁。没在房间里时为空。
+    pub fn room_members(&self) -> Vec<FfiRoomMember> {
+        let (room, me) = {
+            let guard = self.share_runtime.lock().unwrap();
+            let Some(runtime) = guard.as_ref() else {
+                return Vec::new();
+            };
+            let Some(room) = runtime.room.clone() else {
+                return Vec::new();
+            };
+            (room, runtime.endpoint.endpoint_id())
+        };
+        let host = room.host();
+        self.runtime.block_on(async move {
+            room.members_with_names()
+                .await
+                .into_iter()
+                .map(|(id, display_name)| FfiRoomMember {
+                    endpoint_id: id.to_string(),
+                    short_label: id.fmt_short().to_string(),
+                    display_name,
+                    is_me: id == me,
+                    is_host: id == host,
+                })
+                .collect()
+        })
     }
 
     /// 本机分享身份。首次调用会生成并持久化。
@@ -536,6 +599,17 @@ impl ZulangueCore {
             },
         );
 
+        // 真的进 gossip 房间 —— 在场与名册都靠它,不进就永远看不见彼此。
+        let joined = {
+            let endpoint = endpoint.clone();
+            let code = code.clone();
+            self.runtime
+                .block_on(async move { endpoint.join_room(&code, vec![]).await })
+                .map_err(|error| CoreError::InternalError {
+                    message: format!("进入房间失败: {error}"),
+                })?
+        };
+
         let mut guard = self.share_runtime.lock().unwrap();
         let runtime = guard.as_mut().expect("端点刚刚建立");
         runtime.roster = Some(vt_share::RoomRoster::new(
@@ -543,6 +617,7 @@ impl ZulangueCore {
             identity_id,
             code.policy,
         ));
+        runtime.room = Some(Arc::new(joined));
         runtime.hosting = Some(HostedRoom { code: code.clone() });
         let endpoint = runtime.endpoint.clone();
         let text = code.to_string();
@@ -565,6 +640,7 @@ impl ZulangueCore {
             // ViewedRoom 的 Drop 会中止接收任务。
             runtime.viewing = None;
             runtime.roster = None;
+            runtime.room = None;
             let endpoint = runtime.endpoint.clone();
             self.runtime
                 .block_on(async move { endpoint.set_hosted_share_code(None).await });
@@ -594,8 +670,19 @@ impl ZulangueCore {
             })
         };
 
+        let joined = {
+            let endpoint = endpoint.clone();
+            let parsed = parsed.clone();
+            self.runtime
+                .block_on(async move { endpoint.join_room(&parsed, vec![]).await })
+                .map_err(|error| CoreError::InternalError {
+                    message: format!("进入房间失败: {error}"),
+                })?
+        };
+
         let mut guard = self.share_runtime.lock().unwrap();
         let runtime = guard.as_mut().expect("端点刚刚建立");
+        runtime.room = Some(Arc::new(joined));
         runtime.roster = Some(vt_share::RoomRoster::new(
             parsed.scope.clone(),
             parsed.host.id,

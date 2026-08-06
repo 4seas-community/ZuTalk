@@ -884,3 +884,12 @@
 "share.requests.approve" = "Dejar entrar";
 "share.requests.decline" = "Rechazar";
 "share.requests.note" = "El nombre es el que escribieron. La clave de abajo es lo único que no se puede falsificar.";
+
+/* 分享:昵称与成员 */
+"share.nickname" = "Tu nombre en una sala";
+"share.nickname.prompt" = "p. ej. el Mac de Alex";
+"share.nickname.note" = "Lo verán las personas con las que compartes. Si lo dejas vacío, solo verán tu clave.";
+"share.members" = "En esta sala";
+"share.members.unnamed" = "Sin nombre";
+"share.members.you" = "tú";
+"share.members.host" = "anfitrión";

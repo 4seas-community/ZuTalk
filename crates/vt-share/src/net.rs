@@ -459,10 +459,14 @@ impl ShareEndpoint {
             .map_err(|e| NetError::Connect(e.to_string()))?;
         let (sender, mut receiver) = topic.split();
 
+        // 昵称要在建 presence 之前读出来:它既随 Hello 广播出去,也要在本地
+        // 记下,否则自己在房间里永远显示成一串公钥。
+        let my_name = self.display_name.lock().await.clone();
         let presence = Arc::new(Mutex::new(RoomPresence::new(
             scope.clone(),
             host,
             me,
+            &my_name,
             code.policy,
         )));
 
@@ -471,8 +475,13 @@ impl ShareEndpoint {
         // `subscribe` 立即返回,此刻通常还没有任何邻居,那一发就石沉大海 —— 而
         // 没有人会替你重发。所以真正的announce时机是「有邻居上线了」,首次加入与
         // 断线重连因此走同一条路径。
-        let hello = seal_control(&RoomControl::Hello, &scope, self.identity.secret())
-            .map_err(|e| NetError::Stream(e.to_string()))?;
+        // Hello 带上自己的名字,房间里的人才看得出彼此是谁。
+        let hello = seal_control(
+            &RoomControl::hello(&my_name),
+            &scope,
+            self.identity.secret(),
+        )
+        .map_err(|e| NetError::Stream(e.to_string()))?;
         // 已经有邻居时也发一次,省掉一个来回。
         let _ = sender.broadcast(hello.clone().into()).await;
 
@@ -522,7 +531,11 @@ impl ShareEndpoint {
             })
         };
 
-        Ok(RoomHandle { presence, task })
+        Ok(RoomHandle {
+            presence,
+            host,
+            task,
+        })
     }
 
     pub async fn shutdown(self) {
@@ -785,6 +798,7 @@ impl JoinRequestDesk {
 #[derive(Debug)]
 pub struct RoomHandle {
     presence: Arc<Mutex<RoomPresence>>,
+    host: iroh::EndpointId,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -792,6 +806,18 @@ impl RoomHandle {
     /// 当前名册的快照。
     pub async fn roster(&self) -> RoomRoster {
         self.presence.lock().await.roster().clone()
+    }
+
+    /// 房间的主持人。
+    pub fn host(&self) -> iroh::EndpointId {
+        self.host
+    }
+
+    /// 房间里都有谁,以及他们自报的名字。
+    ///
+    /// 名字可能为空或重复 —— 它是对方自己填的。公钥才是身份,所以两个都给。
+    pub async fn members_with_names(&self) -> Vec<(iroh::EndpointId, String)> {
+        self.presence.lock().await.members_with_names()
     }
 
     /// 当前在场人数。

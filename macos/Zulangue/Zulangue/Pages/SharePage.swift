@@ -41,6 +41,7 @@ struct SharePage: View {
                 }
 
                 if viewModel.isSharing {
+                    membersSection
                     activeSection
 
                     if !viewModel.lines.isEmpty {
@@ -98,6 +99,45 @@ struct SharePage: View {
         .background(Color.signalRed.opacity(0.1))
         .cornerRadius(6)
         .accessibilityIdentifier("share.error")
+    }
+
+    /// 房间里都有谁。
+    ///
+    /// 昵称是各人自己填的,可能重名也可能为空 —— 所以公钥一起显示。
+    private var membersSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(String(localized: "share.members"))
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+
+            ForEach(viewModel.members, id: \.endpointId) { member in
+                HStack(spacing: Spacing.sm) {
+                    Circle()
+                        .fill(member.isHost ? Color.signalGreen : Color.textTertiary)
+                        .frame(width: 6, height: 6)
+                    Text(member.displayName.isEmpty
+                         ? String(localized: "share.members.unnamed")
+                         : member.displayName)
+                        .font(.bodySM)
+                        .foregroundColor(.textPrimary)
+                    if member.isMe {
+                        Text(String(localized: "share.members.you"))
+                            .font(.bodySM)
+                            .foregroundColor(.textTertiary)
+                    }
+                    if member.isHost {
+                        Text(String(localized: "share.members.host"))
+                            .font(.bodySM)
+                            .foregroundColor(.textTertiary)
+                    }
+                    Spacer()
+                    Text(member.shortLabel)
+                        .font(.caption)
+                        .foregroundColor(.textTertiary)
+                }
+            }
+        }
+        .accessibilityIdentifier("share.members")
     }
 
     /// 有人想加入。
@@ -257,6 +297,18 @@ struct SharePage: View {
 
     private var identitySection: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
+            // 昵称:房间里和「附近的人」列表都靠它认出你。
+            Text(String(localized: "share.nickname"))
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+            TextField("", text: $viewModel.nickname, prompt: Text(String(localized: "share.nickname.prompt")))
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { viewModel.saveNickname() }
+                .accessibilityIdentifier("share.nickname")
+            Text(String(localized: "share.nickname.note"))
+                .font(.bodySM)
+                .foregroundColor(.textTertiary)
+
             Text(String(localized: "share.identity"))
                 .font(.bodyMedium)
                 .foregroundColor(.textPrimary)
@@ -419,6 +471,11 @@ final class ShareViewModel: ObservableObject {
     @Published private(set) var nearby: [FfiNearbyPeer] = []
     @Published private(set) var joinRequests: [FfiJoinRequest] = []
     @Published private(set) var scanning: Bool = false
+    @Published private(set) var members: [FfiRoomMember] = []
+    @Published var nickname: String = "" {
+        didSet { saveNicknameDebounced() }
+    }
+    private var nicknameSaveTask: Task<Void, Never>?
 
     /// 观看端的字幕投影靠轮询刷新。帧是 replace-in-full 的,跳帧无害,所以
     /// 「取最新状态」与「每帧回调」在观感上等价 —— 见 vt-ffi/src/share_api.rs。
@@ -433,6 +490,7 @@ final class ShareViewModel: ObservableObject {
             return
         }
         shortIdentity = (try? core.shareIdentity().shortLabel) ?? "—"
+        if nickname.isEmpty { nickname = core.shareDisplayName() }
         notebooks = (try? core.listNotebooks()) ?? []
         if selectedNotebookID.isEmpty {
             selectedNotebookID = NotebookSessionContextStore.shared.activeNotebookId
@@ -469,6 +527,21 @@ final class ShareViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// 改昵称边打边存太吵,停手一会儿再存。
+    private func saveNicknameDebounced() {
+        nicknameSaveTask?.cancel()
+        nicknameSaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            saveNickname()
+        }
+    }
+
+    func saveNickname() {
+        guard let core else { return }
+        try? core.setShareDisplayName(name: nickname)
     }
 
     func copyShareCode() {
@@ -586,6 +659,7 @@ final class ShareViewModel: ObservableObject {
         lines = state.lines
         if shareCode == nil { shareCode = core.currentShareCode() }
         joinRequests = core.pendingJoinRequests()
+        members = core.roomMembers()
 
         status = {
             if !state.isSharing { return .idle }

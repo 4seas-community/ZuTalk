@@ -885,3 +885,12 @@
 "share.requests.approve" = "ให้เข้า";
 "share.requests.decline" = "ปฏิเสธ";
 "share.requests.note" = "ชื่อเป็นสิ่งที่อีกฝ่ายพิมพ์เอง คีย์ด้านล่างเท่านั้นที่ปลอมไม่ได้";
+
+/* 分享:昵称与成员 */
+"share.nickname" = "ชื่อของคุณในห้อง";
+"share.nickname.prompt" = "เช่น Mac ของ Alex";
+"share.nickname.note" = "คนที่คุณแชร์ด้วยจะเห็นชื่อนี้ หากเว้นว่างไว้ พวกเขาจะเห็นเพียงคีย์ของคุณ";
+"share.members" = "ในห้องนี้";
+"share.members.unnamed" = "ไม่มีชื่อ";
+"share.members.you" = "คุณ";
+"share.members.host" = "ผู้ดำเนินรายการ";

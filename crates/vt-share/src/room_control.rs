@@ -30,8 +30,12 @@ pub const MAX_ROSTER_MEMBERS: usize = 64;
 /// 控制面消息。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RoomControl {
-    /// 「我在这个房间里」。新加入者与断线重连者都发它。
-    Hello,
+    /// 「我在这个房间里,我叫这个名字」。新加入者与断线重连者都发它。
+    ///
+    /// **名字跟着 Hello 走,不进 Roster。** Roster 要装下 64 个成员,每人再加
+    /// 一个名字就会撑破 gossip 的 4096 字节上限;而 Hello 是一人一条,加个
+    /// 有界的名字绰绰有余。各人从收到的 Hello 里自己攒出名字表。
+    Hello { display_name: String },
     /// 主持人广播的权威名册。其他人发的一律忽略。
     Roster {
         members: Vec<[u8; 32]>,
@@ -39,6 +43,15 @@ pub enum RoomControl {
     },
     /// 主动离开。收不到也没关系 —— gossip 的 `NeighborDown` 是兜底。
     Goodbye,
+}
+
+impl RoomControl {
+    /// 本机该广播的 Hello,带上自己的名字(先收拾干净)。
+    pub fn hello(display_name: &str) -> Self {
+        Self::Hello {
+            display_name: crate::nearby::sanitize_display_name(display_name),
+        }
+    }
 }
 
 /// 控制面消息处理失败的原因。
@@ -56,6 +69,8 @@ pub enum ControlError {
     RosterTooLarge { actual: usize },
     #[error("消息 {actual} 字节,超过 gossip 单条上限")]
     TooLargeForGossip { actual: usize },
+    #[error("自报的名字过长")]
+    DisplayNameTooLong,
 }
 
 /// 把一条控制面消息签名并编码成可以交给 gossip 的字节。
@@ -112,7 +127,14 @@ pub fn open(
                 });
             }
         }
-        RoomControl::Hello | RoomControl::Goodbye => {}
+        RoomControl::Hello { display_name } => {
+            // 名字由对方自己填,当作不可信输入。超长的直接拒 —— 它会被广播给
+            // 房间里每个人,不该由一个人决定别人屏幕上显示多少字。
+            if display_name.len() > crate::nearby::MAX_DISPLAY_NAME_BYTES {
+                return Err(ControlError::DisplayNameTooLong);
+            }
+        }
+        RoomControl::Goodbye => {}
     }
     Ok((envelope.author, control))
 }
@@ -128,22 +150,53 @@ pub struct RoomPresence {
     is_host: bool,
     seen: BTreeSet<EndpointId>,
     roster: RoomRoster,
+    /// 谁叫什么。从各自的 Hello 里攒出来 —— 名册广播装不下这些。
+    names: std::collections::BTreeMap<EndpointId, String>,
 }
 
 impl RoomPresence {
-    pub fn new(scope: ScopeId, host: EndpointId, me: EndpointId, policy: WritePolicy) -> Self {
+    /// `my_name` 是本机的昵称。**要在这里记下来** —— 它随 Hello 广播出去,
+    /// 但 gossip 不会把自己的消息回送给自己,不记就永远看不到自己的名字。
+    pub fn new(
+        scope: ScopeId,
+        host: EndpointId,
+        me: EndpointId,
+        my_name: &str,
+        policy: WritePolicy,
+    ) -> Self {
         let mut seen = BTreeSet::new();
         seen.insert(host);
         seen.insert(me);
         let mut roster = RoomRoster::new(scope.clone(), host, policy);
         roster.admit(me);
+        let mut names = std::collections::BTreeMap::new();
+        let cleaned = crate::nearby::sanitize_display_name(my_name);
+        if !cleaned.is_empty() {
+            names.insert(me, cleaned);
+        }
         Self {
             scope,
             host,
             is_host: me == host,
             seen,
             roster,
+            names,
         }
+    }
+
+    /// 房间里某人的名字。没自报过就没有。
+    pub fn name_of(&self, who: EndpointId) -> Option<&str> {
+        self.names.get(&who).map(String::as_str)
+    }
+
+    /// 房间成员与他们的名字,按公钥排序。
+    ///
+    /// 名字可能为空或重复 —— 它是对方自己填的。**公钥才是身份**,所以两个都给。
+    pub fn members_with_names(&self) -> Vec<(EndpointId, String)> {
+        self.roster
+            .members()
+            .map(|id| (*id, self.names.get(id).cloned().unwrap_or_default()))
+            .collect()
     }
 
     pub fn roster(&self) -> &RoomRoster {
@@ -159,9 +212,19 @@ impl RoomPresence {
     /// 返回 `true` 表示名册发生了变化 —— 主持人据此决定要不要重新广播。
     pub fn apply(&mut self, author: EndpointId, control: RoomControl) -> bool {
         match control {
-            RoomControl::Hello => {
+            RoomControl::Hello { display_name } => {
+                // 名字每次都更新:有人改了昵称再打招呼,房间里应当跟着变。
+                // 没自报名字不算「名字变了」—— 否则每一次重复的 Hello 都会
+                // 被当成变化,把房间刷个不停。
+                let cleaned = crate::nearby::sanitize_display_name(&display_name);
+                let name_changed = !cleaned.is_empty()
+                    && self.names.get(&author).map(String::as_str) != Some(cleaned.as_str());
+                if name_changed {
+                    self.names.insert(author, cleaned);
+                }
                 if !self.seen.insert(author) {
-                    return false;
+                    // 人没变但名字变了,界面也要跟着刷新。
+                    return name_changed;
                 }
                 if self.is_host {
                     // 只有主持人能把「打过招呼」变成「在名册里」。
@@ -172,6 +235,7 @@ impl RoomPresence {
             }
             RoomControl::Goodbye => {
                 self.seen.remove(&author);
+                self.names.remove(&author);
                 if self.is_host {
                     return self.roster.remove(author);
                 }
@@ -197,6 +261,8 @@ impl RoomPresence {
                     }
                 }
                 self.roster = next;
+                // 名字表不动:名册是主持人给的成员清单,名字是各人自己报的,
+                // 重建名册不该把已经认识的人变回一串公钥。
                 true
             }
         }
@@ -237,10 +303,10 @@ mod tests {
     #[test]
     fn hello_round_trips_and_verifies() {
         let host = SecretKey::generate();
-        let bytes = seal(&RoomControl::Hello, &scope(), &host).unwrap();
+        let bytes = seal(&RoomControl::hello(""), &scope(), &host).unwrap();
         let (author, control) = open(&bytes, &scope(), host.public()).unwrap();
         assert_eq!(author, host.public());
-        assert_eq!(control, RoomControl::Hello);
+        assert_eq!(control, RoomControl::hello(""));
     }
 
     /// 控制面消息必须真的装得进一条 gossip 消息 —— 满员名册是最坏情况。
@@ -336,7 +402,7 @@ mod tests {
     #[test]
     fn tampered_control_message_is_refused() {
         let host = SecretKey::generate();
-        let mut bytes = seal(&RoomControl::Hello, &scope(), &host).unwrap();
+        let mut bytes = seal(&RoomControl::hello(""), &scope(), &host).unwrap();
         let last = bytes.len() - 1;
         bytes[last] ^= 0xFF;
         assert!(open(&bytes, &scope(), host.public()).is_err());
@@ -345,7 +411,7 @@ mod tests {
     #[test]
     fn control_message_from_another_scope_is_refused() {
         let host = SecretKey::generate();
-        let bytes = seal(&RoomControl::Hello, &scope(), &host).unwrap();
+        let bytes = seal(&RoomControl::hello(""), &scope(), &host).unwrap();
         let other = ScopeId::Notebook {
             notebook_id: "somebody-else".into(),
         };
@@ -360,10 +426,15 @@ mod tests {
     fn host_admits_on_hello_and_publishes_it() {
         let host = SecretKey::generate();
         let guest = SecretKey::generate();
-        let mut presence =
-            RoomPresence::new(scope(), host.public(), host.public(), WritePolicy::Everyone);
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            host.public(),
+            "",
+            WritePolicy::Everyone,
+        );
 
-        assert!(presence.apply(guest.public(), RoomControl::Hello));
+        assert!(presence.apply(guest.public(), RoomControl::hello("")));
         assert!(presence.roster().is_member(guest.public()));
 
         let Some(RoomControl::Roster { members, .. }) = presence.roster_broadcast() else {
@@ -377,10 +448,15 @@ mod tests {
     fn repeated_hello_does_not_churn_the_roster() {
         let host = SecretKey::generate();
         let guest = SecretKey::generate();
-        let mut presence =
-            RoomPresence::new(scope(), host.public(), host.public(), WritePolicy::Everyone);
-        assert!(presence.apply(guest.public(), RoomControl::Hello));
-        assert!(!presence.apply(guest.public(), RoomControl::Hello));
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            host.public(),
+            "",
+            WritePolicy::Everyone,
+        );
+        assert!(presence.apply(guest.public(), RoomControl::hello("")));
+        assert!(!presence.apply(guest.public(), RoomControl::hello("")));
     }
 
     /// 观看者跟随主持人的名册,而不是自己拼。
@@ -389,11 +465,16 @@ mod tests {
         let host = SecretKey::generate();
         let me = SecretKey::generate();
         let other = SecretKey::generate();
-        let mut presence =
-            RoomPresence::new(scope(), host.public(), me.public(), WritePolicy::Everyone);
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            me.public(),
+            "",
+            WritePolicy::Everyone,
+        );
 
         // 观看者收到别人的 Hello 时不该自作主张纳入。
-        assert!(!presence.apply(other.public(), RoomControl::Hello));
+        assert!(!presence.apply(other.public(), RoomControl::hello("")));
         assert!(!presence.roster().is_member(other.public()));
 
         // 主持人的名册到达后才生效,并且能改写策略。
@@ -414,9 +495,104 @@ mod tests {
     fn viewer_never_broadcasts_a_roster() {
         let host = SecretKey::generate();
         let me = SecretKey::generate();
-        let presence =
-            RoomPresence::new(scope(), host.public(), me.public(), WritePolicy::Everyone);
+        let presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            me.public(),
+            "",
+            WritePolicy::Everyone,
+        );
         assert!(presence.roster_broadcast().is_none());
+    }
+
+    /// 名字跟着 Hello 走,房间里的人据此认出彼此。
+    #[test]
+    fn a_hello_carries_the_name_into_the_room() {
+        let host = SecretKey::generate();
+        let guest = SecretKey::generate();
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            host.public(),
+            "",
+            WritePolicy::Everyone,
+        );
+
+        presence.apply(guest.public(), RoomControl::hello("朋友的 Mac"));
+        assert_eq!(presence.name_of(guest.public()), Some("朋友的 Mac"));
+
+        let listed = presence.members_with_names();
+        assert!(listed
+            .iter()
+            .any(|(id, name)| *id == guest.public() && name == "朋友的 Mac"));
+    }
+
+    /// 改了昵称再打招呼,房间里要跟着变。
+    #[test]
+    fn renaming_updates_the_room() {
+        let host = SecretKey::generate();
+        let guest = SecretKey::generate();
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            host.public(),
+            "",
+            WritePolicy::Everyone,
+        );
+        presence.apply(guest.public(), RoomControl::hello("旧名字"));
+        assert!(presence.apply(guest.public(), RoomControl::hello("新名字")));
+        assert_eq!(presence.name_of(guest.public()), Some("新名字"));
+    }
+
+    /// 名字是对方自己填的,不可信 —— 控制字符不能进到别人屏幕上。
+    #[test]
+    fn a_hostile_name_is_cleaned_before_it_reaches_a_screen() {
+        let host = SecretKey::generate();
+        let guest = SecretKey::generate();
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            host.public(),
+            "",
+            WritePolicy::Everyone,
+        );
+        presence.apply(guest.public(), RoomControl::hello("坏人\n主持人\t批准了"));
+        assert_eq!(presence.name_of(guest.public()), Some("坏人主持人批准了"));
+    }
+
+    /// 超长的名字会被广播给房间里每个人,不该由一个人决定别人屏幕上显示多少字。
+    #[test]
+    fn an_overlong_name_is_refused_on_the_wire() {
+        let host = SecretKey::generate();
+        let bytes = seal(
+            &RoomControl::Hello {
+                display_name: "x".repeat(500),
+            },
+            &scope(),
+            &host,
+        )
+        .unwrap();
+        assert_eq!(
+            open(&bytes, &scope(), host.public()),
+            Err(ControlError::DisplayNameTooLong)
+        );
+    }
+
+    /// 离开时把名字一起带走,不留残影。
+    #[test]
+    fn leaving_takes_the_name_with_it() {
+        let host = SecretKey::generate();
+        let guest = SecretKey::generate();
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            host.public(),
+            "",
+            WritePolicy::Everyone,
+        );
+        presence.apply(guest.public(), RoomControl::hello("朋友"));
+        presence.apply(guest.public(), RoomControl::Goodbye);
+        assert_eq!(presence.name_of(guest.public()), None);
     }
 
     /// 掉线的邻居等同于 Goodbye,主持人据此把人移出名册。
@@ -424,9 +600,14 @@ mod tests {
     fn neighbor_down_removes_the_member() {
         let host = SecretKey::generate();
         let guest = SecretKey::generate();
-        let mut presence =
-            RoomPresence::new(scope(), host.public(), host.public(), WritePolicy::Everyone);
-        presence.apply(guest.public(), RoomControl::Hello);
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            host.public(),
+            "",
+            WritePolicy::Everyone,
+        );
+        presence.apply(guest.public(), RoomControl::hello(""));
         assert!(presence.neighbor_down(guest.public()));
         assert!(!presence.roster().is_member(guest.public()));
     }
@@ -435,8 +616,13 @@ mod tests {
     #[test]
     fn host_cannot_leave_its_own_room() {
         let host = SecretKey::generate();
-        let mut presence =
-            RoomPresence::new(scope(), host.public(), host.public(), WritePolicy::Everyone);
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            host.public(),
+            "",
+            WritePolicy::Everyone,
+        );
         assert!(!presence.neighbor_down(host.public()));
         assert!(presence.roster().is_member(host.public()));
     }

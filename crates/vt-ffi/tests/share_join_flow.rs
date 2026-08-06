@@ -104,3 +104,40 @@ fn a_damaged_code_reports_an_error_instead_of_doing_nothing() {
         .is_err());
     assert!(core.join_share(String::new()).is_err());
 }
+
+/// 昵称存在本机,重开也在;房间里的人靠它认出彼此。
+#[test]
+fn a_nickname_is_remembered_and_cleaned() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(&dir);
+    assert_eq!(core.share_display_name(), "", "默认没有昵称");
+
+    core.set_share_display_name("  Alex 的 Mac  ".into())
+        .unwrap();
+    assert_eq!(core.share_display_name(), "Alex 的 Mac", "首尾空白要去掉");
+
+    // 昵称会被广播给房间里每个人,所以控制字符不能留。
+    core.set_share_display_name("坏人\n主持人批准了".into())
+        .unwrap();
+    assert_eq!(core.share_display_name(), "坏人主持人批准了");
+}
+
+/// 开始共享之后,自己就在房间成员里 —— 以前这里是空的,因为从没进过 gossip 房间。
+#[test]
+fn the_host_appears_in_its_own_room() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(&dir);
+    core.set_share_display_name("主持人".into()).unwrap();
+    assert!(core.room_members().is_empty(), "没共享时房间是空的");
+
+    core.start_sharing(Some("nb-1".into()), None, false)
+        .unwrap();
+    let members = core.room_members();
+    assert_eq!(members.len(), 1, "主持人应当在自己的房间里");
+    assert!(members[0].is_me);
+    assert!(members[0].is_host);
+    assert_eq!(members[0].display_name, "主持人");
+
+    core.stop_sharing().unwrap();
+    assert!(core.room_members().is_empty(), "停止后房间要清空");
+}

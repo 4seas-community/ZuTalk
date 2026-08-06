@@ -353,6 +353,8 @@ pub struct ZulangueCore {
     pub(crate) share_runtime: Arc<crate::share_api::ShareRuntimeSlot>,
     /// 分享的传输配置(中继、局域网发现)。由设置页写入。
     pub(crate) share_transport: Mutex<crate::share_api::FfiShareTransport>,
+    /// 本机昵称。房间里和「附近的人」列表都用它。
+    pub(crate) share_display_name: Mutex<String>,
     /// Durable local encryption keys for capture audio and Context Packs.
     pub(crate) key_store: Arc<dyn KeyProvider>,
     /// Soniox API Key 的进程内运行时；生产固定使用
@@ -696,6 +698,7 @@ impl ZulangueCore {
             task_callbacks,
             share_runtime: Default::default(),
             share_transport: Default::default(),
+            share_display_name: Default::default(),
             key_store,
             api_key_store,
             active_notebook_capture: Mutex::new(None),

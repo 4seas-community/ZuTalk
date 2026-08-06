@@ -885,3 +885,12 @@
 "share.requests.approve" = "Laisser entrer";
 "share.requests.decline" = "Refuser";
 "share.requests.note" = "Le nom est celui qu'ils ont saisi. Seule la clé en dessous ne peut pas être falsifiée.";
+
+/* 分享:昵称与成员 */
+"share.nickname" = "Votre nom dans un salon";
+"share.nickname.prompt" = "ex. le Mac de Alex";
+"share.nickname.note" = "Visible par les personnes avec qui vous partagez. Laissé vide, elles ne verront que votre clé.";
+"share.members" = "Dans ce salon";
+"share.members.unnamed" = "Sans nom";
+"share.members.you" = "vous";
+"share.members.host" = "hôte";
