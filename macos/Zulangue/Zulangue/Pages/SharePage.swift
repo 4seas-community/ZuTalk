@@ -26,7 +26,13 @@ struct SharePage: View {
                 // 而不是藏在设置或帮助里。
                 audioNotice
 
-                joinSection
+                if viewModel.isSharing {
+                    // 已在共享中就不再显示开始入口 —— 一次只主持一个房间。
+                    EmptyView()
+                } else {
+                    startSection
+                    joinSection
+                }
 
                 if viewModel.isSharing {
                     activeSection
@@ -34,13 +40,6 @@ struct SharePage: View {
                     if !viewModel.lines.isEmpty {
                         captionSection
                     }
-                } else {
-                    EmptyState(
-                        icon: "person.2",
-                        title: String(localized: "share.empty"),
-                        description: String(localized: "share.role.everyone")
-                    )
-                    .frame(maxWidth: .infinity)
                 }
             }
             .padding(.horizontal, Spacing.xl)
@@ -49,6 +48,47 @@ struct SharePage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
         .onAppear { viewModel.reload() }
+    }
+
+    /// 开始共享。
+    ///
+    /// 首次为一个 Notebook 开启必须显式确认一次 —— 记住之后,在其中开始的录音会
+    /// 默认参与共享,这一步不该是无声的。见 share-p2p.md 第 4.1 节。
+    private var startSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            if let notebook = viewModel.activeNotebookTitle {
+                Text(notebook)
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+
+                Picker("", selection: $viewModel.hostOnlySelection) {
+                    Text(String(localized: "share.role.everyone")).tag(false)
+                    Text(String(localized: "share.role.host")).tag(true)
+                }
+                .pickerStyle(.radioGroup)
+                .accessibilityIdentifier("share.policy")
+
+                Button(String(localized: "share.start")) {
+                    viewModel.confirmingStart = true
+                }
+                .accessibilityIdentifier("share.start")
+            } else {
+                Text(String(localized: "share.needs_notebook"))
+                    .font(.bodySM)
+                    .foregroundColor(.textSecondary)
+            }
+        }
+        .confirmationDialog(
+            String(localized: "share.start.confirm.title"),
+            isPresented: $viewModel.confirmingStart
+        ) {
+            Button(String(localized: "share.start"), role: .destructive) {
+                viewModel.start()
+            }
+            Button(String(localized: "share.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "share.start.confirm.body"))
+        }
     }
 
     /// 对方的实时字幕。只读投影,不落库 —— 看到的是别人的内容,不是本机 Notebook。
@@ -167,6 +207,12 @@ final class ShareViewModel: ObservableObject {
     @Published private(set) var hostOnly: Bool = false
     @Published private(set) var lines: [FfiSharedCaptionLine] = []
     @Published private(set) var errorMessage: String?
+    @Published var hostOnlySelection: Bool = false
+    @Published var confirmingStart: Bool = false
+
+    var activeNotebookTitle: String? {
+        NotebookSessionContextStore.shared.activeNotebookTitle
+    }
 
     /// 观看端的字幕投影靠轮询刷新。帧是 replace-in-full 的,跳帧无害,所以
     /// 「取最新状态」与「每帧回调」在观感上等价 —— 见 vt-ffi/src/share_api.rs。
@@ -180,6 +226,28 @@ final class ShareViewModel: ObservableObject {
         shortIdentity = (try? core.shareIdentity().shortLabel) ?? "—"
         refreshState()
         startPollingIfNeeded()
+    }
+
+    func start() {
+        guard let core else { return }
+        guard let notebookID = NotebookSessionContextStore.shared.activeNotebookId else {
+            errorMessage = String(localized: "share.needs_notebook")
+            return
+        }
+        do {
+            shareCode = try core.startSharing(
+                notebookId: notebookID,
+                sessionId: nil,
+                hostOnly: hostOnlySelection
+            )
+            // 文档协同要在共享开始之后才接得上 —— 它靠当前房间的名册判定谁能写。
+            try core.enableDocumentSync()
+            errorMessage = nil
+            refreshState()
+            startPollingIfNeeded()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func copyShareCode() {

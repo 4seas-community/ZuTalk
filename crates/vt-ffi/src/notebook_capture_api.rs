@@ -4638,7 +4638,6 @@ fn purge_phase_rank(phase: &str) -> Result<u8, CoreError> {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) struct ActiveNotebookCapture {
     pub(crate) notebook_id: String,
     pub(crate) session_id: String,
@@ -4704,7 +4703,6 @@ impl NotebookSonioxStreamFactory for RealNotebookSonioxStreamFactory {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) struct ActiveRemoteStream {
     descriptor: RemoteStreamLane,
     pub(crate) audio_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
@@ -4720,7 +4718,6 @@ struct PcmFanoutReport {
     auxiliary_discontinuities: Vec<String>,
 }
 
-#[allow(dead_code)]
 pub(crate) struct ActiveRemoteCapture {
     pub(crate) stream_factory: Arc<dyn NotebookSonioxStreamFactory>,
     pub(crate) streams: Vec<ActiveRemoteStream>,
@@ -5397,7 +5394,7 @@ impl ZulangueCore {
         // Spawn the bounded callback dispatcher before creating any durable
         // session state, eliminating a rollback-only failure point after attach.
         let callback: Arc<dyn FfiNotebookCaptureCallback> = Arc::from(callback);
-        let callback = CaptureCallbackSink::new(callback, self.notebook_capture_store.clone())?;
+        let callback = CaptureCallbackSink::new(callback, (*self.notebook_capture_store).clone())?;
 
         let session_id = uuid::Uuid::new_v4().to_string();
         let session_record = vt_store::SessionRecord {
@@ -7692,7 +7689,7 @@ impl ZulangueCore {
             .iter()
             .map(|stream| (!stream.descriptor.canonical).then(|| stream.control_tx.clone()))
             .collect::<Vec<_>>();
-        let store = self.notebook_capture_store.clone();
+        let store = (*self.notebook_capture_store).clone();
         let context_store = self.context_pack_store.clone();
         let profile = profile.clone();
         let context_digest = context.map(|value| value.receipt.context_sha256.clone());
@@ -12233,7 +12230,7 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(tx)),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
         )
         .unwrap();
         let run = core
@@ -12326,7 +12323,7 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(tx)),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
         )
         .unwrap();
         let run = core
@@ -16370,7 +16367,7 @@ mod tests {
         let (callback_tx, callback_rx) = std::sync::mpsc::channel();
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
         )
         .unwrap();
 
@@ -16463,7 +16460,7 @@ mod tests {
         let (callback_tx, callback_rx) = std::sync::mpsc::channel();
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
         )
         .unwrap();
 
@@ -16512,7 +16509,7 @@ mod tests {
         let (callback_tx, callback_rx) = std::sync::mpsc::channel();
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
         )
         .unwrap();
         callback.set_remote_truth_overlay(
@@ -16583,7 +16580,7 @@ mod tests {
         let (callback_tx, _callback_rx) = std::sync::mpsc::channel();
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
         )
         .unwrap();
         let (read_tx, read_rx) = std::sync::mpsc::channel();
@@ -16655,7 +16652,7 @@ mod tests {
         let (callback_tx, callback_rx) = std::sync::mpsc::channel();
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
         )
         .unwrap();
         rusqlite::Connection::open(temp.path().join("zulangue.db"))
@@ -16708,7 +16705,7 @@ mod tests {
         let (callback_tx, callback_rx) = std::sync::mpsc::channel();
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
         )
         .unwrap();
         {
@@ -16771,7 +16768,7 @@ mod tests {
         let (callback_tx, callback_rx) = std::sync::mpsc::channel();
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
         )
         .unwrap();
         let published = callback.send(event_from_run(stale_run, vec![stale_utterance], false));

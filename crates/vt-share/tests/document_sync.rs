@@ -32,13 +32,27 @@ impl FakeDoc {
     }
 }
 
+/// 这个假文档层只认一篇文档,与 scope 的 session_id 同名。
+const DOC: &str = "sync";
+
 impl DocumentSync for FakeDoc {
-    fn version(&self, _scope: &ScopeId) -> Vec<u8> {
+    fn documents(&self, _scope: &ScopeId) -> Vec<String> {
+        vec![DOC.to_string()]
+    }
+    fn document_in_scope(&self, _scope: &ScopeId, document_id: &str) -> bool {
+        document_id == DOC
+    }
+    fn version(&self, _scope: &ScopeId, _document_id: &str) -> Vec<u8> {
         (self.applied.lock().unwrap().len() as u64)
             .to_le_bytes()
             .to_vec()
     }
-    fn updates_since(&self, _scope: &ScopeId, _version: &[u8]) -> Option<Vec<u8>> {
+    fn updates_since(
+        &self,
+        _scope: &ScopeId,
+        _document_id: &str,
+        _version: &[u8],
+    ) -> Option<Vec<u8>> {
         let history = self.history.lock().unwrap();
         if history.is_empty() {
             None
@@ -46,7 +60,7 @@ impl DocumentSync for FakeDoc {
             Some(history.clone())
         }
     }
-    fn apply(&self, _scope: &ScopeId, update: &[u8]) -> bool {
+    fn apply(&self, _scope: &ScopeId, _document_id: &str, update: &[u8]) -> bool {
         self.applied.lock().unwrap().push(update.to_vec());
         true
     }
@@ -149,8 +163,8 @@ async fn live_updates_reach_a_connected_peer() {
     let syncing = tokio::spawn(async move { peer.sync_document_with(host_addr).await });
 
     tokio::time::sleep(Duration::from_millis(300)).await;
-    host.publish_document_update(b"live-edit-1".to_vec());
-    host.publish_document_update(b"live-edit-2".to_vec());
+    host.publish_document_update(DOC.into(), b"live-edit-1".to_vec());
+    host.publish_document_update(DOC.into(), b"live-edit-2".to_vec());
 
     let applied = wait_for_applied(&peer_doc, 2).await;
     assert!(
@@ -186,7 +200,7 @@ async fn read_only_room_drops_updates_from_a_viewer() {
 
     tokio::time::sleep(Duration::from_millis(400)).await;
     // 观看者试图推一笔更新给主持人。
-    viewer.publish_document_update(b"viewer-edit".to_vec());
+    viewer.publish_document_update(DOC.into(), b"viewer-edit".to_vec());
     tokio::time::sleep(Duration::from_millis(400)).await;
     syncing.abort();
 

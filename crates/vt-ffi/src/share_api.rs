@@ -34,9 +34,7 @@ use crate::{CoreError, ZulangueCore};
 /// `vt-share` 定义了这个端口却不实现它:判定必须真的把更新应用一次才知道它动了
 /// 哪里,而那需要持有文档。实现落在这里,探测跑在 `EditorBridge` fork 出的副本上。
 ///
-/// 共享范围到文档 id 的映射是刻意保守的:只有按单次录音共享时才存在可判定的文档。
-/// 按 Notebook 共享时一次更新可能落在任意一篇上,在把范围收窄到具体文档之前,
-/// 这里一律拒收 —— 判不出来时放行等于这道门不存在。
+/// 文档 id 由载荷带来,归属判定见 [`LoroDocumentSync::document_in_scope`]。
 pub(crate) struct LoroCaptureBoundaryGuard {
     editor: vt_store::EditorBridge,
 }
@@ -48,13 +46,14 @@ impl LoroCaptureBoundaryGuard {
 }
 
 impl vt_share::CaptureBoundaryGuard for LoroCaptureBoundaryGuard {
-    fn touches_capture_owned_range(&self, scope: &ScopeId, update: &[u8]) -> bool {
-        match scope {
-            ScopeId::Session { session_id } => self
-                .editor
-                .remote_update_touches_capture_owned_range(session_id, update),
-            ScopeId::Notebook { .. } => true,
-        }
+    fn touches_capture_owned_range(
+        &self,
+        _scope: &ScopeId,
+        document_id: &str,
+        update: &[u8],
+    ) -> bool {
+        self.editor
+            .remote_update_touches_capture_owned_range(document_id, update)
     }
 }
 
@@ -63,41 +62,66 @@ impl vt_share::CaptureBoundaryGuard for LoroCaptureBoundaryGuard {
 /// 与 [`LoroCaptureBoundaryGuard`] 同理:`vt-share` 定义端口但不认识 Loro,
 /// 实现落在持有文档的这一侧。
 ///
-/// 只有按单次录音共享时才存在可判定的文档;按 Notebook 共享时一次更新可能落在
-/// 任意一篇上,在把范围收窄到具体文档之前,这里不提供也不合入任何东西。
+/// 共享范围里有哪些文档,由这一层回答。
+///
+/// 按单次录音共享时只有一篇,id 就是 session_id;按 Notebook 共享时是该 Notebook
+/// 下的全部录音,来自 `list_notebook_capture_history_summaries`。
+///
+/// **归属判定是这里最要紧的一件事。** 文档 id 随载荷从对端来,不验就等于允许一个
+/// 房间去写它管不着的文档。任何查不出来的情况都判为不属于 —— 放行等于没有这道检查。
 pub(crate) struct LoroDocumentSync {
     editor: vt_store::EditorBridge,
+    capture_store: Arc<vt_store::NotebookCaptureStore>,
 }
 
 impl LoroDocumentSync {
-    pub(crate) fn new(editor: vt_store::EditorBridge) -> Self {
-        Self { editor }
-    }
-
-    fn document_id(scope: &ScopeId) -> Option<&str> {
-        match scope {
-            ScopeId::Session { session_id } => Some(session_id),
-            ScopeId::Notebook { .. } => None,
+    pub(crate) fn new(
+        editor: vt_store::EditorBridge,
+        capture_store: Arc<vt_store::NotebookCaptureStore>,
+    ) -> Self {
+        Self {
+            editor,
+            capture_store,
         }
     }
 }
 
 impl vt_share::DocumentSync for LoroDocumentSync {
-    fn version(&self, scope: &ScopeId) -> Vec<u8> {
-        Self::document_id(scope)
-            .and_then(|id| self.editor.document_version(id))
+    fn documents(&self, scope: &ScopeId) -> Vec<String> {
+        match scope {
+            ScopeId::Session { session_id } => vec![session_id.clone()],
+            ScopeId::Notebook { notebook_id } => self
+                .capture_store
+                .list_notebook_capture_history_summaries(notebook_id)
+                .map(|runs| runs.into_iter().map(|run| run.session_id).collect())
+                .unwrap_or_default(),
+        }
+    }
+
+    fn document_in_scope(&self, scope: &ScopeId, document_id: &str) -> bool {
+        match scope {
+            ScopeId::Session { session_id } => session_id == document_id,
+            ScopeId::Notebook { .. } => self.documents(scope).iter().any(|id| id == document_id),
+        }
+    }
+
+    fn version(&self, _scope: &ScopeId, document_id: &str) -> Vec<u8> {
+        self.editor
+            .document_version(document_id)
             .unwrap_or_default()
     }
 
-    fn updates_since(&self, scope: &ScopeId, version: &[u8]) -> Option<Vec<u8>> {
-        self.editor
-            .updates_since(Self::document_id(scope)?, version)
+    fn updates_since(
+        &self,
+        _scope: &ScopeId,
+        document_id: &str,
+        version: &[u8],
+    ) -> Option<Vec<u8>> {
+        self.editor.updates_since(document_id, version)
     }
 
-    fn apply(&self, scope: &ScopeId, update: &[u8]) -> bool {
-        Self::document_id(scope)
-            .map(|id| self.editor.import_remote_update(id, update))
-            .unwrap_or(false)
+    fn apply(&self, _scope: &ScopeId, document_id: &str, update: &[u8]) -> bool {
+        self.editor.import_remote_update(document_id, update)
     }
 }
 
@@ -355,34 +379,15 @@ impl ZulangueCore {
             scope: roster.scope().clone(),
             roster: Arc::new(tokio::sync::Mutex::new(roster)),
             guard: Arc::new(LoroCaptureBoundaryGuard::new(self.editor_bridge.clone())),
-            sink: Arc::new(LoroDocumentSync::new(self.editor_bridge.clone())),
+            sink: Arc::new(LoroDocumentSync::new(
+                self.editor_bridge.clone(),
+                self.notebook_capture_store.clone(),
+            )),
         };
         let endpoint = runtime.endpoint.clone();
         self.runtime
             .block_on(async move { endpoint.enable_document_sync(context).await });
         Ok(())
-    }
-
-    /// 一份收到的文档更新是否可以合入。
-    ///
-    /// 走完整条准入链:验签 → 成员资格 → 写入策略 → 编辑边界。最后一步用 Loro 在
-    /// 副本上试应用,回答「它碰了采集投影拥有的区间吗」。
-    ///
-    /// **返回 false 就必须丢弃。** 任何判不出来的情况都返回 false —— 判不出来时
-    /// 放行,等于这道门不存在。
-    pub fn share_admits_document_update(&self, envelope: Vec<u8>) -> bool {
-        let guard = self.share_runtime.lock().unwrap();
-        let Some(runtime) = guard.as_ref() else {
-            return false;
-        };
-        let Some(roster) = runtime.roster.as_ref() else {
-            return false;
-        };
-        let Ok(envelope) = vt_share::ShareEnvelope::decode_compact(&envelope) else {
-            return false;
-        };
-        let boundary = LoroCaptureBoundaryGuard::new(self.editor_bridge.clone());
-        vt_share::admit_document_update(&envelope, roster, &boundary).is_ok()
     }
 
     /// 取当前分享状态与字幕投影。
@@ -465,91 +470,94 @@ mod tests {
         assert_eq!(first.endpoint_id(), second.endpoint_id());
     }
 
-    /// 整条准入链跑一遍:签名 → 成员 → 策略 → 编辑边界,最后一步用真实的 Loro 探测。
+    /// 整条准入链跑一遍,走的是真实入口 `handle_incoming_update`。
     ///
     /// 这条测试的意义在于串起三个 crate:`vt-share` 出规则、`vt-store` 出 Loro
     /// 判定、`vt-ffi` 把两者接上。任何一处接错,这里就会放行一份该拒的更新。
-    #[test]
-    fn admission_chain_refuses_a_remote_edit_inside_the_capture_range() {
+    fn remote_edit(session_id: &str, at: usize) -> (vt_store::EditorBridge, Vec<u8>) {
         use loro::LoroDoc;
-        use vt_share::{
-            admit_document_update, AdmissionDenial, PayloadKind, RoomRoster, UnsignedEnvelope,
-            WritePolicy,
-        };
         use vt_store::EditorBridge;
 
         let doc = LoroDoc::new();
         doc.get_text("content").insert(0, "0123456789").unwrap();
         doc.commit();
         let editor = EditorBridge::new();
-        editor.open("session-1", doc).unwrap();
+        editor.open(session_id, doc).unwrap();
         editor
-            .set_capture_owned_range("session-1", "owner", "cap-1", 2, 6)
+            .set_capture_owned_range(session_id, "owner", "cap-1", 2, 6)
             .unwrap();
 
         // 远端从同一份快照分叉,产生一份真实可合入的更新。
         let remote = LoroDoc::new();
         remote
-            .import(&editor.export_snapshot("session-1").unwrap())
+            .import(&editor.export_snapshot(session_id).unwrap())
             .unwrap();
         let before = remote.oplog_vv();
-        remote.get_text("content").insert(4, "插进来").unwrap();
+        remote.get_text("content").insert(at, "插进来").unwrap();
         remote.commit();
         let update = remote.export(loro::ExportMode::updates(&before)).unwrap();
+        (editor, update)
+    }
+
+    fn run_chain(
+        session_id: &str,
+        document_id: &str,
+        update: Vec<u8>,
+        editor: vt_store::EditorBridge,
+    ) -> vt_share::IncomingOutcome {
+        use vt_share::{handle_incoming_update, seal_update, RoomRoster, WritePolicy};
 
         let scope = ScopeId::Session {
-            session_id: "session-1".into(),
+            session_id: session_id.into(),
         };
         let host = iroh::SecretKey::generate();
         let roster = RoomRoster::new(scope.clone(), host.public(), WritePolicy::Everyone);
-        let envelope =
-            UnsignedEnvelope::new(scope, PayloadKind::DocumentUpdate, update).sign(&host);
-        let guard = LoroCaptureBoundaryGuard::new(editor.clone());
+        let envelope = seal_update(&scope, document_id, update, &host).unwrap();
 
-        // 签名合法、是主持人、房间全员可写 —— 依然要被最后一步拦下。
+        // NotebookCaptureStore 只在 Notebook 范围下才被问到,Session 范围用不着它。
+        let store = Arc::new(
+            vt_store::notebook_capture_store::NotebookCaptureStore::new(&std::path::PathBuf::from(
+                ":memory:",
+            ))
+            .unwrap(),
+        );
+        handle_incoming_update(
+            &envelope,
+            &roster,
+            &LoroCaptureBoundaryGuard::new(editor.clone()),
+            &LoroDocumentSync::new(editor, store),
+        )
+    }
+
+    #[test]
+    fn admission_chain_refuses_a_remote_edit_inside_the_capture_range() {
+        let (editor, update) = remote_edit("session-1", 4);
         assert_eq!(
-            admit_document_update(&envelope, &roster, &guard),
-            Err(AdmissionDenial::TouchesCaptureOwnedRange)
+            run_chain("session-1", "session-1", update, editor),
+            vt_share::IncomingOutcome::Denied(vt_share::AdmissionDenial::TouchesCaptureOwnedRange)
         );
     }
 
     /// 落在采集区间之外的同一条链路必须放行,否则这道门就是「拒绝一切」。
     #[test]
     fn admission_chain_accepts_a_remote_edit_outside_the_capture_range() {
-        use loro::LoroDoc;
-        use vt_share::{
-            admit_document_update, PayloadKind, RoomRoster, UnsignedEnvelope, WritePolicy,
-        };
-        use vt_store::EditorBridge;
+        let (editor, update) = remote_edit("session-2", 9);
+        assert_eq!(
+            run_chain("session-2", "session-2", update, editor),
+            vt_share::IncomingOutcome::Applied
+        );
+    }
 
-        let doc = LoroDoc::new();
-        doc.get_text("content").insert(0, "0123456789").unwrap();
-        doc.commit();
-        let editor = EditorBridge::new();
-        editor.open("session-2", doc).unwrap();
-        editor
-            .set_capture_owned_range("session-2", "owner", "cap-1", 2, 6)
-            .unwrap();
-
-        let remote = LoroDoc::new();
-        remote
-            .import(&editor.export_snapshot("session-2").unwrap())
-            .unwrap();
-        let before = remote.oplog_vv();
-        remote.get_text("content").insert(9, "尾巴").unwrap();
-        remote.commit();
-        let update = remote.export(loro::ExportMode::updates(&before)).unwrap();
-
-        let scope = ScopeId::Session {
-            session_id: "session-2".into(),
-        };
-        let host = iroh::SecretKey::generate();
-        let roster = RoomRoster::new(scope.clone(), host.public(), WritePolicy::Everyone);
-        let envelope =
-            UnsignedEnvelope::new(scope, PayloadKind::DocumentUpdate, update).sign(&host);
-        let guard = LoroCaptureBoundaryGuard::new(editor.clone());
-
-        assert!(admit_document_update(&envelope, &roster, &guard).is_ok());
+    /// 按录音共享的房间,不能被用来写进另一篇文档。
+    ///
+    /// 文档 id 由对端声称,这是唯一挡住它的检查。
+    #[test]
+    fn a_session_room_cannot_write_into_another_document() {
+        let (editor, update) = remote_edit("session-3", 9);
+        assert_eq!(
+            run_chain("session-3", "somebody-elses-doc", update, editor),
+            vt_share::IncomingOutcome::Denied(vt_share::AdmissionDenial::DocumentNotInScope)
+        );
     }
 
     /// ed25519 私钥恰好是密钥库的槽位宽度,所以可以直接复用受保护的存储。

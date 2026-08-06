@@ -817,3 +817,8 @@
 "share.role.everyone" = "Tout le monde peut modifier";
 "share.direct" = "Connexion directe";
 "share.relayed" = "Connexion relayée";
+"share.start" = "Commencer le partage";
+"share.cancel" = "Annuler";
+"share.needs_notebook" = "Ouvrez d'abord un notebook — le partage porte sur un notebook.";
+"share.start.confirm.title" = "Commencer à partager ce notebook ?";
+"share.start.confirm.body" = "Les enregistrements lancés dans ce notebook partageront leurs sous-titres par défaut. L'audio n'est jamais partagé. Arrêter plus tard stoppe les envois suivants sans supprimer ce que les autres ont déjà reçu.";

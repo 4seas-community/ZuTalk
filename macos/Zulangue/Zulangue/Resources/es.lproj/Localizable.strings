@@ -816,3 +816,8 @@
 "share.role.everyone" = "Todos pueden editar";
 "share.direct" = "Conexión directa";
 "share.relayed" = "Conexión por retransmisión";
+"share.start" = "Empezar a compartir";
+"share.cancel" = "Cancelar";
+"share.needs_notebook" = "Abre primero un notebook: se comparte un notebook a la vez.";
+"share.start.confirm.title" = "¿Empezar a compartir este notebook?";
+"share.start.confirm.body" = "Las grabaciones iniciadas en este notebook compartirán sus subtítulos de forma predeterminada. El audio nunca se comparte. Detenerlo después frena los envíos siguientes, pero no borra lo que otros ya recibieron.";

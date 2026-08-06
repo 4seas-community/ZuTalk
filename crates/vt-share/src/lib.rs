@@ -31,7 +31,8 @@ mod wire;
 
 pub use caption::{CaptionFrame, CaptionLine, CaptionReceiver, FrameOutcome};
 pub use docsync::{
-    handle_incoming_update, respond_to_have, DocSyncMessage, DocumentSync, IncomingOutcome,
+    declare_versions, handle_incoming_update, respond_to_have, seal_update, DocSyncMessage,
+    DocumentSync, DocumentUpdatePayload, DocumentVersion, IncomingOutcome,
 };
 pub use envelope::{EnvelopeError, PayloadKind, ShareEnvelope, UnsignedEnvelope};
 pub use identity::ShareIdentity;

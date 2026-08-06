@@ -817,3 +817,8 @@
 "share.role.everyone" = "모두 편집 가능";
 "share.direct" = "직접 연결";
 "share.relayed" = "릴레이 연결";
+"share.start" = "공유 시작";
+"share.cancel" = "취소";
+"share.needs_notebook" = "먼저 노트북을 여세요. 공유 범위는 노트북 단위입니다.";
+"share.start.confirm.title" = "이 노트북 공유를 시작할까요?";
+"share.start.confirm.body" = "이후 이 노트북에서 시작한 녹음은 자막이 기본으로 공유됩니다. 오디오는 절대 공유되지 않습니다. 나중에 중지해도 이후 전송만 멈추며, 상대가 이미 받은 내용은 삭제할 수 없습니다.";

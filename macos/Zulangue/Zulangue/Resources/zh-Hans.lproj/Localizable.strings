@@ -817,3 +817,8 @@
 "share.role.everyone" = "所有人可编辑";
 "share.direct" = "直连";
 "share.relayed" = "经中继";
+"share.start" = "开始共享";
+"share.cancel" = "取消";
+"share.needs_notebook" = "请先打开一个 Notebook——共享的范围是某一个 Notebook。";
+"share.start.confirm.title" = "开始共享这个 Notebook？";
+"share.start.confirm.body" = "之后在这个 Notebook 里开始的录音，字幕会默认参与共享。音频永远不会被共享。之后停止只停后续，无法删除对方已经收到的内容。";

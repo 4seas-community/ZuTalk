@@ -817,3 +817,8 @@
 "share.role.everyone" = "Everyone can edit";
 "share.direct" = "Direct connection";
 "share.relayed" = "Relayed connection";
+"share.start" = "Start sharing";
+"share.cancel" = "Cancel";
+"share.needs_notebook" = "Open a notebook first — sharing is scoped to one.";
+"share.start.confirm.title" = "Start sharing this notebook?";
+"share.start.confirm.body" = "Recordings started in this notebook will share their captions by default. Audio is never shared. Stopping later halts further updates but cannot delete what others already received.";

@@ -11,9 +11,9 @@ use tokio::sync::{broadcast, Mutex};
 
 use crate::caption::CaptionFrame;
 use crate::docsync::{
-    handle_incoming_update, respond_to_have, DocSyncMessage, DocumentSync, IncomingOutcome,
+    declare_versions, handle_incoming_update, respond_to_have, seal_update, DocSyncMessage,
+    DocumentSync, IncomingOutcome,
 };
-use crate::envelope::{PayloadKind, UnsignedEnvelope};
 use crate::identity::ShareIdentity;
 use crate::permission::CaptureBoundaryGuard;
 use crate::permission::RoomRoster;
@@ -99,7 +99,7 @@ pub struct ShareEndpoint {
     identity: ShareIdentity,
     captions: broadcast::Sender<Arc<CaptionFrame>>,
     /// 本机产生的文档更新,广播给所有已连接的对端。
-    doc_updates: broadcast::Sender<Arc<Vec<u8>>>,
+    doc_updates: broadcast::Sender<Arc<(String, Vec<u8>)>>,
     doc_context: Arc<Mutex<Option<DocSyncContext>>>,
 }
 
@@ -112,7 +112,7 @@ impl ShareEndpoint {
         let (captions, _) = broadcast::channel(CAPTION_FANOUT_DEPTH);
         // 文档更新不能丢,所以队列开得比字幕深得多:字幕丢旧帧无害,少一份 CRDT
         // 更新却会让两端永远不收敛。
-        let (doc_updates, _) = broadcast::channel(256);
+        let (doc_updates, _) = broadcast::channel::<Arc<(String, Vec<u8>)>>(256);
         let doc_context: Arc<Mutex<Option<DocSyncContext>>> = Arc::new(Mutex::new(None));
 
         // Minimal 而非 N0:只设定必需的 crypto provider,不挂任何公共发现服务。
@@ -208,8 +208,10 @@ impl ShareEndpoint {
     /// 把本机产生的一份文档更新推给所有对端。
     ///
     /// 由 Loro 的 `subscribe_local_update` 驱动。立即返回,不阻塞编辑。
-    pub fn publish_document_update(&self, update: Vec<u8>) {
-        let _ = self.doc_updates.send(Arc::new(update));
+    /// `document_id` 必须是这份更新真正所属的那一篇 —— 按 Notebook 共享时,
+    /// 对端要靠它把更新落到正确的文档上。
+    pub fn publish_document_update(&self, document_id: String, update: Vec<u8>) {
+        let _ = self.doc_updates.send(Arc::new((document_id, update)));
     }
 
     /// 主动连上一个对端做文档同步:先补齐历史,再持续互推。
@@ -232,18 +234,18 @@ impl ShareEndpoint {
             .open_bi()
             .await
             .map_err(|e| NetError::Stream(e.to_string()))?;
-        let have = DocSyncMessage::Have {
-            version: context.sink.version(&context.scope),
-        };
+        let have = declare_versions(&context.scope, context.sink.as_ref());
         write_message(&mut send, &have)
             .await
             .map_err(|e| NetError::Stream(e.to_string()))?;
         let _ = send.finish();
 
-        if let Ok(DocSyncMessage::Update { envelope }) =
+        if let Ok(DocSyncMessage::Updates { envelopes }) =
             read_message::<_, DocSyncMessage>(&mut recv).await
         {
-            apply_incoming(&context, &envelope).await;
+            for envelope in envelopes {
+                apply_incoming(&context, &envelope).await;
+            }
         }
 
         // 之后双向互推:各自开 uni-stream 发自己的更新。
@@ -376,7 +378,7 @@ async fn apply_incoming(context: &DocSyncContext, envelope: &[u8]) {
 /// 持续把本机更新推给一个对端。
 fn spawn_update_pusher(
     conn: Connection,
-    mut updates: broadcast::Receiver<Arc<Vec<u8>>>,
+    mut updates: broadcast::Receiver<Arc<(String, Vec<u8>)>>,
     context: DocSyncContext,
     identity: ShareIdentity,
 ) -> tokio::task::JoinHandle<()> {
@@ -389,21 +391,26 @@ fn spawn_update_pusher(
                 Err(broadcast::error::RecvError::Lagged(_)) => break,
                 Err(broadcast::error::RecvError::Closed) => break,
             };
-            let envelope = UnsignedEnvelope::new(
-                context.scope.clone(),
-                PayloadKind::DocumentUpdate,
-                update.as_ref().clone(),
-            )
-            .sign(identity.secret());
-            let Ok(bytes) = envelope.encode_compact() else {
+            let (document_id, bytes) = update.as_ref();
+            let Some(envelope) = seal_update(
+                &context.scope,
+                document_id,
+                bytes.clone(),
+                identity.secret(),
+            ) else {
                 continue;
             };
             let Ok(mut stream) = conn.open_uni().await else {
                 break;
             };
-            if write_message(&mut stream, &DocSyncMessage::Update { envelope: bytes })
-                .await
-                .is_err()
+            if write_message(
+                &mut stream,
+                &DocSyncMessage::Updates {
+                    envelopes: vec![envelope],
+                },
+            )
+            .await
+            .is_err()
             {
                 break;
             }
@@ -417,8 +424,10 @@ fn spawn_update_reader(conn: Connection, context: DocSyncContext) -> tokio::task
     tokio::spawn(async move {
         while let Ok(mut stream) = conn.accept_uni().await {
             match read_message::<_, DocSyncMessage>(&mut stream).await {
-                Ok(DocSyncMessage::Update { envelope }) => {
-                    apply_incoming(&context, &envelope).await
+                Ok(DocSyncMessage::Updates { envelopes }) => {
+                    for envelope in envelopes {
+                        apply_incoming(&context, &envelope).await;
+                    }
                 }
                 Ok(_) => {}
                 Err(error) => tracing::debug!(%error, "丢弃一条无法解码的文档消息"),
@@ -431,7 +440,7 @@ fn spawn_update_reader(conn: Connection, context: DocSyncContext) -> tokio::task
 #[derive(Debug, Clone)]
 struct DocSyncAcceptor {
     context: Arc<Mutex<Option<DocSyncContext>>>,
-    updates: broadcast::Sender<Arc<Vec<u8>>>,
+    updates: broadcast::Sender<Arc<(String, Vec<u8>)>>,
     identity: ShareIdentity,
 }
 
@@ -445,11 +454,11 @@ impl ProtocolHandler for DocSyncAcceptor {
 
         // 先应答补齐历史的请求。
         if let Ok((mut send, mut recv)) = connection.accept_bi().await {
-            if let Ok(DocSyncMessage::Have { version }) =
+            if let Ok(DocSyncMessage::Have { versions }) =
                 read_message::<_, DocSyncMessage>(&mut recv).await
             {
                 let reply = respond_to_have(
-                    &version,
+                    &versions,
                     &context.scope,
                     context.sink.as_ref(),
                     self.identity.secret(),

@@ -817,3 +817,8 @@
 "share.role.everyone" = "全員が編集可";
 "share.direct" = "直接接続";
 "share.relayed" = "リレー経由";
+"share.start" = "共有を開始";
+"share.cancel" = "キャンセル";
+"share.needs_notebook" = "先にノートブックを開いてください。共有の範囲はノートブック単位です。";
+"share.start.confirm.title" = "このノートブックの共有を開始しますか？";
+"share.start.confirm.body" = "以降このノートブックで開始した録音は、字幕が既定で共有されます。音声が共有されることはありません。停止しても以降の送信が止まるだけで、相手が既に受け取った内容は削除できません。";

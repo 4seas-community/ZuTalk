@@ -816,3 +816,8 @@
 "share.role.everyone" = "Alle können bearbeiten";
 "share.direct" = "Direktverbindung";
 "share.relayed" = "Verbindung über Relay";
+"share.start" = "Teilen starten";
+"share.cancel" = "Abbrechen";
+"share.needs_notebook" = "Öffne zuerst ein Notebook — geteilt wird immer ein Notebook.";
+"share.start.confirm.title" = "Dieses Notebook teilen?";
+"share.start.confirm.body" = "Aufnahmen, die in diesem Notebook starten, teilen ihre Untertitel standardmäßig. Audio wird niemals geteilt. Ein späteres Beenden stoppt weitere Übertragungen, löscht aber nichts, was andere bereits erhalten haben.";

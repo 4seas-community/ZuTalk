@@ -112,6 +112,8 @@ pub enum AdmissionDenial {
     WrongPayloadKind,
     #[error("改动落在采集投影拥有的区间上")]
     TouchesCaptureOwnedRange,
+    #[error("这篇文档不属于本共享范围")]
+    DocumentNotInScope,
 }
 
 /// 文档更新的编辑边界裁决。
@@ -125,7 +127,12 @@ pub trait CaptureBoundaryGuard {
     /// 这份更新是否触碰了采集投影拥有的区间。
     ///
     /// 实现方应当在一份**副本**上试应用后再回答,不要污染真实文档。
-    fn touches_capture_owned_range(&self, scope: &ScopeId, update: &[u8]) -> bool;
+    fn touches_capture_owned_range(
+        &self,
+        scope: &ScopeId,
+        document_id: &str,
+        update: &[u8],
+    ) -> bool;
 }
 
 /// 谁都拦不住的守卫:用于全员平权且没有采集投影的房间,以及测试。
@@ -133,7 +140,12 @@ pub trait CaptureBoundaryGuard {
 pub struct AllowAllBoundaries;
 
 impl CaptureBoundaryGuard for AllowAllBoundaries {
-    fn touches_capture_owned_range(&self, _scope: &ScopeId, _update: &[u8]) -> bool {
+    fn touches_capture_owned_range(
+        &self,
+        _scope: &ScopeId,
+        _document_id: &str,
+        _update: &[u8],
+    ) -> bool {
         false
     }
 }
@@ -146,8 +158,15 @@ impl CaptureBoundaryGuard for AllowAllBoundaries {
 /// 2. 成员资格 —— 房间外的人不该被继续处理;
 /// 3. 写入策略 —— 只读房间里非主持人到此为止;
 /// 4. 编辑边界 —— 最贵的一步放在最后,前面任何一步失败都不必付这个代价。
+///
+/// 信封是凭证(验签与作者判定用它),`update` 是解包后的内容(边界判定用它)。
+///
+/// 两者必须分开传:签名覆盖的是信封里那份**包装过**的载荷,拿解包后的字节去验签
+/// 一定失败。
 pub fn admit_document_update(
     envelope: &ShareEnvelope,
+    document_id: &str,
+    update: &[u8],
     roster: &RoomRoster,
     guard: &dyn CaptureBoundaryGuard,
 ) -> Result<(), AdmissionDenial> {
@@ -162,7 +181,7 @@ pub fn admit_document_update(
     if !roster.may_write(envelope.author) {
         return Err(AdmissionDenial::ReadOnlyForThisAuthor);
     }
-    if guard.touches_capture_owned_range(roster.scope(), &envelope.payload) {
+    if guard.touches_capture_owned_range(roster.scope(), document_id, update) {
         return Err(AdmissionDenial::TouchesCaptureOwnedRange);
     }
     Ok(())
@@ -176,10 +195,18 @@ mod tests {
 
     struct RejectAll;
     impl CaptureBoundaryGuard for RejectAll {
-        fn touches_capture_owned_range(&self, _scope: &ScopeId, _update: &[u8]) -> bool {
+        fn touches_capture_owned_range(
+            &self,
+            _scope: &ScopeId,
+            _document_id: &str,
+            _update: &[u8],
+        ) -> bool {
             true
         }
     }
+
+    /// 测试里统一用的文档 id。
+    const DOC: &str = "doc-1";
 
     fn scope() -> ScopeId {
         ScopeId::Notebook {
@@ -201,7 +228,10 @@ mod tests {
         let host = SecretKey::generate();
         for policy in [WritePolicy::Everyone, WritePolicy::HostOnly] {
             let r = roster(&host, policy);
-            assert!(admit_document_update(&update_from(&host), &r, &AllowAllBoundaries).is_ok());
+            assert!(
+                admit_document_update(&update_from(&host), DOC, b"", &r, &AllowAllBoundaries)
+                    .is_ok()
+            );
         }
     }
 
@@ -211,7 +241,9 @@ mod tests {
         let guest = SecretKey::generate();
         let mut r = roster(&host, WritePolicy::Everyone);
         r.admit(guest.public());
-        assert!(admit_document_update(&update_from(&guest), &r, &AllowAllBoundaries).is_ok());
+        assert!(
+            admit_document_update(&update_from(&guest), DOC, b"", &r, &AllowAllBoundaries).is_ok()
+        );
     }
 
     /// 只读房间的核心断言:成员身份合法、签名合法,但依然写不进去。
@@ -222,7 +254,7 @@ mod tests {
         let mut r = roster(&host, WritePolicy::HostOnly);
         r.admit(guest.public());
         assert_eq!(
-            admit_document_update(&update_from(&guest), &r, &AllowAllBoundaries),
+            admit_document_update(&update_from(&guest), DOC, b"", &r, &AllowAllBoundaries),
             Err(AdmissionDenial::ReadOnlyForThisAuthor)
         );
     }
@@ -233,7 +265,7 @@ mod tests {
         let stranger = SecretKey::generate();
         let r = roster(&host, WritePolicy::Everyone);
         assert_eq!(
-            admit_document_update(&update_from(&stranger), &r, &AllowAllBoundaries),
+            admit_document_update(&update_from(&stranger), DOC, b"", &r, &AllowAllBoundaries),
             Err(AdmissionDenial::NotAMember)
         );
     }
@@ -247,7 +279,7 @@ mod tests {
         r.admit(guest.public());
         assert!(r.remove(guest.public()));
         assert_eq!(
-            admit_document_update(&update_from(&guest), &r, &AllowAllBoundaries),
+            admit_document_update(&update_from(&guest), DOC, b"", &r, &AllowAllBoundaries),
             Err(AdmissionDenial::NotAMember)
         );
     }
@@ -266,7 +298,7 @@ mod tests {
         let host = SecretKey::generate();
         let r = roster(&host, WritePolicy::HostOnly);
         assert_eq!(
-            admit_document_update(&update_from(&host), &r, &RejectAll),
+            admit_document_update(&update_from(&host), DOC, b"", &r, &RejectAll),
             Err(AdmissionDenial::TouchesCaptureOwnedRange)
         );
     }
@@ -279,7 +311,7 @@ mod tests {
         let mut env = update_from(&host);
         env.payload = b"tampered".to_vec();
         assert_eq!(
-            admit_document_update(&env, &r, &AllowAllBoundaries),
+            admit_document_update(&env, DOC, b"", &r, &AllowAllBoundaries),
             Err(AdmissionDenial::Envelope(EnvelopeError::BadSignature))
         );
     }
@@ -292,7 +324,7 @@ mod tests {
         let env =
             UnsignedEnvelope::new(scope(), PayloadKind::RoomControl, b"hello".to_vec()).sign(&host);
         assert_eq!(
-            admit_document_update(&env, &r, &AllowAllBoundaries),
+            admit_document_update(&env, DOC, b"", &r, &AllowAllBoundaries),
             Err(AdmissionDenial::WrongPayloadKind)
         );
     }

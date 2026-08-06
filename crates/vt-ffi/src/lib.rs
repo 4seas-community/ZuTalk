@@ -320,7 +320,9 @@ pub struct ZulangueCore {
     search_store: SearchStore,
     pub(crate) session_meta: SessionMetaStore,
     pub(crate) notebook_store: NotebookStore,
-    pub(crate) notebook_capture_store: NotebookCaptureStore,
+    /// Arc 是为了让分享层能持有它去解析「这个 Notebook 下有哪些文档」。
+    /// Deref 让既有的调用点原样可用。
+    pub(crate) notebook_capture_store: Arc<NotebookCaptureStore>,
     pub(crate) context_pack_store: ContextPackStore,
     /// doc_id → FfiEditorCallback。replace_document 等外部更新成功后
     /// 查表通知 Swift（用户路径不通知——Swift 自己是事件源，再回灌会造成
@@ -582,10 +584,11 @@ impl ZulangueCore {
             message: format!("session meta: {e}"),
         })?;
 
-        let notebook_capture_store =
-            NotebookCaptureStore::new(&db_path).map_err(|e| CoreError::InitFailed {
+        let notebook_capture_store = Arc::new(NotebookCaptureStore::new(&db_path).map_err(
+            |e| CoreError::InitFailed {
                 message: format!("notebook capture store: {e}"),
-            })?;
+            },
+        )?);
         notebook_capture_store
             .recover_unfinished_runs()
             .map_err(|e| CoreError::InitFailed {
@@ -724,7 +727,7 @@ impl ZulangueCore {
                 core.editor_bridge.clone(),
                 core.editor_callbacks.clone(),
             )),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
             core.session_task_registry.clone(),
             core.provider_credential_bootstrap.clone(),
             core.worker_cancel.clone(),
