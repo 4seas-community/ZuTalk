@@ -1050,7 +1050,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Zulangue/Bridge/Generated",
 				);
-				MARKETING_VERSION = 0.2.3;
+				MARKETING_VERSION = 0.3.0;
 				OTHER_LDFLAGS = (
 					"-lc++",
 					"-framework",
@@ -1097,7 +1097,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Zulangue/Bridge/Generated",
 				);
-				MARKETING_VERSION = 0.2.3;
+				MARKETING_VERSION = 0.3.0;
 				OTHER_LDFLAGS = (
 					"-lc++",
 					"-framework",
