@@ -837,3 +837,22 @@
 "settings.p2p.save" = "Sichern";
 "settings.p2p.restore_default" = "Standard wiederherstellen";
 "settings.p2p.saved" = "Gesichert";
+
+/* 分享:状态与提示 */
+"share.pick_notebook" = "Notebook zum Teilen";
+"share.your_code" = "Teilen-Code";
+"share.code_note" = "Schick ihn den Teilnehmenden. Zeilenumbrüche und Groß-/Kleinschreibung unterwegs machen nichts.";
+"share.copied" = "Kopiert";
+"share.no_code_yet" = "Noch kein Code — starte zuerst das Teilen.";
+"share.core_unavailable" = "Teilen startet noch. Versuch es gleich noch einmal.";
+"share.join_failed" = "Dieser Teilen-Code ließ sich nicht lesen. Lass ihn dir neu schicken — beim Kopieren aus einer Nachricht gehen Zeichen verloren.";
+"share.status.idle" = "Nicht geteilt";
+"share.status.idle_hint" = "Teile ein Notebook, um deine Untertitel zu senden, oder tritt mit einem Code bei.";
+"share.status.hosting_waiting" = "Geteilt — noch nichts gesendet";
+"share.status.hosting_waiting_hint" = "Andere können mit deinem Code beitreten. Untertitel laufen erst, wenn du aufnimmst.";
+"share.status.hosting_live" = "Deine Untertitel werden gesendet";
+"share.status.hosting_live_hint" = "Alle Beigetretenen sehen, was du transkribierst.";
+"share.status.joined_waiting" = "Beigetreten — warte auf den Host";
+"share.status.joined_waiting_hint" = "Du bist verbunden. Untertitel erscheinen, sobald der Host aufnimmt.";
+"share.status.receiving" = "Untertitel werden empfangen";
+"share.status.receiving_hint" = "Das sind die Untertitel des Hosts. Sie werden auf diesem Mac nicht gespeichert.";

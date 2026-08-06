@@ -69,6 +69,27 @@ final class CommunityInviteSession: ObservableObject {
         }
     }
 
+    /// 把本机的分享身份登记到邀请码服务。
+    ///
+    /// 中继只放行登记过的 endpoint。**不做这一步，中继会拒绝每一个真实用户** ——
+    /// 而且拒绝是安静的：局域网直连照常可用，只有跨网络需要中继时才连不上。
+    ///
+    /// 幂等，失败不打扰用户：登记只影响中继回落，直连和分享码都不依赖它。
+    func enrollShareEndpoint(_ endpointID: String) async {
+        guard isEnabled, let token = accessToken else { return }
+        guard endpointID.isEmpty == false else { return }
+        do {
+            let _: EnrollResponse = try await request(
+                path: "/v1/share-endpoint",
+                method: "POST",
+                body: ["endpoint_id": endpointID],
+                token: token
+            )
+        } catch {
+            // 登记不上只是失去中继回落，不该挡住分享本身。
+        }
+    }
+
     func refreshQuota() async {
         guard isEnabled, let token = accessToken else { return }
         do {
@@ -368,6 +389,10 @@ final class CommunityInviteSession: ObservableObject {
         else { throw CommunityInviteError.requestFailed }
         return try JSONDecoder().decode(Response.self, from: data)
     }
+}
+
+private struct EnrollResponse: Decodable {
+    let status: String
 }
 
 private struct RedeemResponse: Decodable {

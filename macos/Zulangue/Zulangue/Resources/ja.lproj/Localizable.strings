@@ -838,3 +838,22 @@
 "settings.p2p.save" = "保存";
 "settings.p2p.restore_default" = "デフォルトに戻す";
 "settings.p2p.saved" = "保存しました";
+
+/* 分享:状态与提示 */
+"share.pick_notebook" = "共有するノートブック";
+"share.your_code" = "共有コード";
+"share.code_note" = "参加する人に送ってください。途中で改行や大文字小文字が変わっても問題ありません。";
+"share.copied" = "コピーしました";
+"share.no_code_yet" = "まだコードがありません。先に共有を開始してください。";
+"share.core_unavailable" = "共有を起動中です。少し待ってからもう一度お試しください。";
+"share.join_failed" = "この共有コードを読み取れません。もう一度送ってもらってください——メッセージからのコピーは文字が欠けることがあります。";
+"share.status.idle" = "未共有";
+"share.status.idle_hint" = "ノートブックを共有して字幕を送るか、もらったコードで参加します。";
+"share.status.hosting_waiting" = "共有中 — まだ何も送っていません";
+"share.status.hosting_waiting_hint" = "コードで参加できます。字幕は録音を開始してから流れます。";
+"share.status.hosting_live" = "字幕を送信中";
+"share.status.hosting_live_hint" = "参加者はあなたの文字起こしを見ています。";
+"share.status.joined_waiting" = "参加済み — ホスト待ち";
+"share.status.joined_waiting_hint" = "接続できています。ホストが録音を始めると字幕が表示されます。";
+"share.status.receiving" = "字幕を受信中";
+"share.status.receiving_hint" = "ホストの字幕です。この Mac には保存されません。";

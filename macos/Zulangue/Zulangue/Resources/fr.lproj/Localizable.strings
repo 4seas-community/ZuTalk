@@ -838,3 +838,22 @@
 "settings.p2p.save" = "Enregistrer";
 "settings.p2p.restore_default" = "Rétablir par défaut";
 "settings.p2p.saved" = "Enregistré";
+
+/* 分享:状态与提示 */
+"share.pick_notebook" = "Notebook à partager";
+"share.your_code" = "Code de partage";
+"share.code_note" = "Envoyez-le aux personnes qui rejoignent. Les retours à la ligne et les majuscules ajoutés en route sont tolérés.";
+"share.copied" = "Copié";
+"share.no_code_yet" = "Pas encore de code — commencez par partager.";
+"share.core_unavailable" = "Le partage démarre encore. Réessayez dans un instant.";
+"share.join_failed" = "Ce code de partage est illisible. Demandez-le à nouveau — le copier depuis un message peut perdre des caractères.";
+"share.status.idle" = "Pas de partage";
+"share.status.idle_hint" = "Partagez un notebook pour envoyer vos sous-titres, ou rejoignez avec un code reçu.";
+"share.status.hosting_waiting" = "Partage — rien d'envoyé";
+"share.status.hosting_waiting_hint" = "On peut rejoindre avec votre code. Les sous-titres commencent quand vous lancez l'enregistrement.";
+"share.status.hosting_live" = "Envoi de vos sous-titres";
+"share.status.hosting_live_hint" = "Les personnes présentes voient ce que vous transcrivez.";
+"share.status.joined_waiting" = "Rejoint — en attente de l'hôte";
+"share.status.joined_waiting_hint" = "Vous êtes connecté. Les sous-titres arrivent quand l'hôte lance l'enregistrement.";
+"share.status.receiving" = "Réception des sous-titres";
+"share.status.receiving_hint" = "Ce sont les sous-titres de l'hôte. Ils ne sont pas enregistrés sur ce Mac.";

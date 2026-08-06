@@ -1016,6 +1016,15 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func getSessionTranscriptClipboardText(sessionId: String) throws  -> String
 
     /**
+     * 当前正在主持的分享码。没有在主持时为 `None`。
+     *
+     * 分享码必须能从这里取回,不能只活在界面的内存里 —— 切走标签页再回来、
+     * 或者重开窗口,界面就再也拿不到它,而「正在共享」的状态还亮着,
+     * 复制按钮于是静默失效。
+     */
+    func currentShareCode()  -> String?
+
+    /**
      * 出厂默认的传输配置。设置页用它做「恢复默认」。
      */
     func defaultShareTransport()  -> FfiShareTransport
@@ -1058,6 +1067,11 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      * 当前生效的传输配置。
      */
     func shareTransport()  -> FfiShareTransport
+
+    /**
+     * 收到的共享内容该落进哪个 Notebook,没有就建一个。
+     */
+    func sharedInboxNotebook() throws  -> FfiNotebook
 
     /**
      * 开始共享,返回交给对方的分享码。
@@ -2162,6 +2176,21 @@ open func getSessionTranscriptClipboardText(sessionId: String)throws  -> String 
 }
 
     /**
+     * 当前正在主持的分享码。没有在主持时为 `None`。
+     *
+     * 分享码必须能从这里取回,不能只活在界面的内存里 —— 切走标签页再回来、
+     * 或者重开窗口,界面就再也拿不到它,而「正在共享」的状态还亮着,
+     * 复制按钮于是静默失效。
+     */
+open func currentShareCode() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_current_share_code(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
      * 出厂默认的传输配置。设置页用它做「恢复默认」。
      */
 open func defaultShareTransport() -> FfiShareTransport  {
@@ -2241,6 +2270,17 @@ open func shareState() -> FfiShareState  {
 open func shareTransport() -> FfiShareTransport  {
     return try!  FfiConverterTypeFfiShareTransport_lift(try! rustCall() {
     uniffi_vt_ffi_fn_method_zulanguecore_share_transport(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 收到的共享内容该落进哪个 Notebook,没有就建一个。
+     */
+open func sharedInboxNotebook()throws  -> FfiNotebook  {
+    return try  FfiConverterTypeFfiNotebook_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_shared_inbox_notebook(
             self.uniffiCloneHandle(),$0
     )
 })
@@ -4694,6 +4734,12 @@ public struct FfiShareState: Equatable, Hashable {
      * 已应用的字幕帧号;还没收到任何帧时为 `None`。
      */
     public var appliedRevision: UInt64?
+    /**
+     * 本机作为主持人已经播出的最后一帧。`None` 表示**一帧都还没播** ——
+     * 通常是主持人还没开始录音,而不是网络有问题。这两种情况在界面上必须
+     * 说成不同的话,否则用户只会看到「什么都没有」。
+     */
+    public var broadcastRevision: UInt64?
     public var lines: [FfiSharedCaptionLine]
 
     // Default memberwise initializers are never public by default, so we
@@ -4710,12 +4756,18 @@ public struct FfiShareState: Equatable, Hashable {
          */isHost: Bool,
         /**
          * 已应用的字幕帧号;还没收到任何帧时为 `None`。
-         */appliedRevision: UInt64?, lines: [FfiSharedCaptionLine]) {
+         */appliedRevision: UInt64?,
+        /**
+         * 本机作为主持人已经播出的最后一帧。`None` 表示**一帧都还没播** ——
+         * 通常是主持人还没开始录音,而不是网络有问题。这两种情况在界面上必须
+         * 说成不同的话,否则用户只会看到「什么都没有」。
+         */broadcastRevision: UInt64?, lines: [FfiSharedCaptionLine]) {
         self.isSharing = isSharing
         self.isViewing = isViewing
         self.hostOnly = hostOnly
         self.isHost = isHost
         self.appliedRevision = appliedRevision
+        self.broadcastRevision = broadcastRevision
         self.lines = lines
     }
 
@@ -4740,6 +4792,7 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
                 hostOnly: FfiConverterBool.read(from: &buf),
                 isHost: FfiConverterBool.read(from: &buf),
                 appliedRevision: FfiConverterOptionUInt64.read(from: &buf),
+                broadcastRevision: FfiConverterOptionUInt64.read(from: &buf),
                 lines: FfiConverterSequenceTypeFfiSharedCaptionLine.read(from: &buf)
         )
     }
@@ -4750,6 +4803,7 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
         FfiConverterBool.write(value.hostOnly, into: &buf)
         FfiConverterBool.write(value.isHost, into: &buf)
         FfiConverterOptionUInt64.write(value.appliedRevision, into: &buf)
+        FfiConverterOptionUInt64.write(value.broadcastRevision, into: &buf)
         FfiConverterSequenceTypeFfiSharedCaptionLine.write(value.lines, into: &buf)
     }
 }
@@ -7683,6 +7737,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_get_session_transcript_clipboard_text() != 26246) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_current_share_code() != 40858) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_default_share_transport() != 56789) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7702,6 +7759,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_share_transport() != 18208) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_shared_inbox_notebook() != 37292) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_start_sharing() != 27002) {

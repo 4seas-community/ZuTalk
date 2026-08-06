@@ -838,3 +838,22 @@
 "settings.p2p.save" = "保存";
 "settings.p2p.restore_default" = "恢复默认";
 "settings.p2p.saved" = "已保存";
+
+/* 分享:状态与提示 */
+"share.pick_notebook" = "共享哪个 Notebook";
+"share.your_code" = "分享码";
+"share.code_note" = "把它发给要加入的人。传递过程中被折行或改了大小写都不影响。";
+"share.copied" = "已复制";
+"share.no_code_yet" = "还没有分享码，先开始共享。";
+"share.core_unavailable" = "分享还在启动，请稍后再试。";
+"share.join_failed" = "这个分享码读不出来。让对方重发一次——从消息里复制容易丢字符。";
+"share.status.idle" = "未共享";
+"share.status.idle_hint" = "共享一个 Notebook 把字幕发给别人，或用别人给的分享码加入。";
+"share.status.hosting_waiting" = "共享中 — 还没发出内容";
+"share.status.hosting_waiting_hint" = "别人可以用你的分享码加入了。**开始录音后**才会有字幕发出去。";
+"share.status.hosting_live" = "正在发送你的字幕";
+"share.status.hosting_live_hint" = "加入的人都在看你正在转录的内容。";
+"share.status.joined_waiting" = "已加入 — 等待主持人";
+"share.status.joined_waiting_hint" = "你已经连上了。等主持人开始录音，字幕就会出现。";
+"share.status.receiving" = "正在接收字幕";
+"share.status.receiving_hint" = "这是主持人的字幕，不会保存到这台 Mac。";

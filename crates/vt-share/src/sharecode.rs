@@ -100,8 +100,21 @@ impl std::fmt::Display for ShareCode {
 impl std::str::FromStr for ShareCode {
     type Err = ParseError;
 
+    /// 宽容地解析用户粘贴进来的东西。
+    ///
+    /// 分享码有 129 个字符,从一台机器到另一台的路上会被弄坏:聊天软件和邮件给长
+    /// 字符串折行、输入法自动把首字母大写、有人手动加空格断行。只 `trim()` 首尾
+    /// 挡不住这些,而失败的表现是「粘贴了没反应」——用户没有任何线索。
+    ///
+    /// base32 本身大小写无关,空白也从不属于码的内容,所以去掉全部空白再统一小写
+    /// 不会接受任何本该被拒的输入,只会救回本该成功的那些。
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::decode_string(s.trim())
+        let normalized: String = s
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .flat_map(char::to_lowercase)
+            .collect();
+        Self::decode_string(&normalized)
     }
 }
 
@@ -134,12 +147,40 @@ mod tests {
         }
     }
 
-    /// 用户粘贴时常带首尾空白,不该因此失败。
+    /// 用户粘贴进来的东西会被各种东西弄坏,这些都必须救得回来。
+    ///
+    /// 每一条都对应一次真实的「粘贴了没反应」:折行来自聊天软件和邮件,
+    /// 大写来自输入法的自动首字母大写。
     #[test]
-    fn surrounding_whitespace_is_tolerated() {
+    fn realistic_paste_damage_is_tolerated() {
         let original = code(WritePolicy::Everyone);
-        let padded = format!("  \n{original}\t ");
-        assert_eq!(ShareCode::from_str(&padded).unwrap(), original);
+        let text = original.to_string();
+        let mid = text.len() / 2;
+
+        let damaged = [
+            format!("  \n{text}\t "),
+            format!("{}\n{}", &text[..mid], &text[mid..]),
+            format!("{} {}", &text[..mid], &text[mid..]),
+            format!("{}{}", text[..1].to_uppercase(), &text[1..]),
+            text.to_uppercase(),
+            format!("{}\r\n  {}", &text[..mid], &text[mid..]),
+        ];
+        for candidate in damaged {
+            assert_eq!(
+                ShareCode::from_str(&candidate).unwrap(),
+                original,
+                "这份粘贴应当救得回来: {}…",
+                &candidate[..24]
+            );
+        }
+    }
+
+    /// 但真的不是分享码的东西仍然要拒 —— 宽容不等于什么都收。
+    #[test]
+    fn tolerance_does_not_accept_nonsense() {
+        assert!(ShareCode::from_str("hello world").is_err());
+        assert!(ShareCode::from_str("zulangueshare").is_err());
+        assert!(ShareCode::from_str("").is_err());
     }
 
     /// 前缀是身份的一部分:别的 iroh ticket 不能被当成分享码吃进来。

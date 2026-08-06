@@ -837,3 +837,22 @@
 "settings.p2p.save" = "Guardar";
 "settings.p2p.restore_default" = "Restaurar valores predeterminados";
 "settings.p2p.saved" = "Guardado";
+
+/* 分享:状态与提示 */
+"share.pick_notebook" = "Notebook a compartir";
+"share.your_code" = "Código para compartir";
+"share.code_note" = "Envíaselo a quienes se unan. Los saltos de línea y las mayúsculas añadidos por el camino no importan.";
+"share.copied" = "Copiado";
+"share.no_code_yet" = "Aún no hay código: empieza a compartir primero.";
+"share.core_unavailable" = "Compartir todavía se está iniciando. Inténtalo en un momento.";
+"share.join_failed" = "No se pudo leer ese código. Pídelo de nuevo: copiarlo desde un mensaje puede perder caracteres.";
+"share.status.idle" = "Sin compartir";
+"share.status.idle_hint" = "Comparte un notebook para enviar tus subtítulos, o únete con un código que te hayan dado.";
+"share.status.hosting_waiting" = "Compartiendo: aún no se envía nada";
+"share.status.hosting_waiting_hint" = "Ya pueden unirse con tu código. Los subtítulos empiezan cuando comiences a grabar.";
+"share.status.hosting_live" = "Enviando tus subtítulos";
+"share.status.hosting_live_hint" = "Quienes se unieron están viendo lo que transcribes.";
+"share.status.joined_waiting" = "Unido: esperando al anfitrión";
+"share.status.joined_waiting_hint" = "Estás conectado. Los subtítulos aparecen cuando el anfitrión empiece a grabar.";
+"share.status.receiving" = "Recibiendo subtítulos";
+"share.status.receiving_hint" = "Son los subtítulos del anfitrión. No se guardan en este Mac.";

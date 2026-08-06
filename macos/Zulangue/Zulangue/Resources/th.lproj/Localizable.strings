@@ -838,3 +838,22 @@
 "settings.p2p.save" = "บันทึก";
 "settings.p2p.restore_default" = "คืนค่าเริ่มต้น";
 "settings.p2p.saved" = "บันทึกแล้ว";
+
+/* 分享:状态与提示 */
+"share.pick_notebook" = "สมุดบันทึกที่จะแชร์";
+"share.your_code" = "รหัสแชร์";
+"share.code_note" = "ส่งให้คนที่จะเข้าร่วม การขึ้นบรรทัดใหม่หรือตัวพิมพ์ที่เปลี่ยนระหว่างทางไม่มีผล";
+"share.copied" = "คัดลอกแล้ว";
+"share.no_code_yet" = "ยังไม่มีรหัส เริ่มแชร์ก่อน";
+"share.core_unavailable" = "การแชร์กำลังเริ่มทำงาน ลองอีกครั้งในอีกสักครู่";
+"share.join_failed" = "อ่านรหัสแชร์นี้ไม่ได้ ขอใหม่อีกครั้ง — การคัดลอกจากข้อความอาจทำให้ตัวอักษรหาย";
+"share.status.idle" = "ยังไม่ได้แชร์";
+"share.status.idle_hint" = "แชร์สมุดบันทึกเพื่อส่งคำบรรยาย หรือเข้าร่วมด้วยรหัสที่ได้รับ";
+"share.status.hosting_waiting" = "กำลังแชร์ — ยังไม่ได้ส่งอะไร";
+"share.status.hosting_waiting_hint" = "คนอื่นเข้าร่วมด้วยรหัสของคุณได้แล้ว คำบรรยายจะเริ่มเมื่อคุณเริ่มบันทึก";
+"share.status.hosting_live" = "กำลังส่งคำบรรยายของคุณ";
+"share.status.hosting_live_hint" = "ทุกคนที่เข้าร่วมกำลังเห็นสิ่งที่คุณถอดความ";
+"share.status.joined_waiting" = "เข้าร่วมแล้ว — รอผู้ดำเนินรายการ";
+"share.status.joined_waiting_hint" = "คุณเชื่อมต่อแล้ว คำบรรยายจะปรากฏเมื่อผู้ดำเนินรายการเริ่มบันทึก";
+"share.status.receiving" = "กำลังรับคำบรรยาย";
+"share.status.receiving_hint" = "นี่คือคำบรรยายของผู้ดำเนินรายการ จะไม่ถูกบันทึกลง Mac เครื่องนี้";

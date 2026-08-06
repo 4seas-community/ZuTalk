@@ -838,3 +838,22 @@
 "settings.p2p.save" = "Save";
 "settings.p2p.restore_default" = "Restore default";
 "settings.p2p.saved" = "Saved";
+
+/* 分享:状态与提示 */
+"share.pick_notebook" = "Notebook to share";
+"share.your_code" = "Share code";
+"share.code_note" = "Send this to the people joining. Line breaks and capitalisation added along the way are tolerated.";
+"share.copied" = "Copied";
+"share.no_code_yet" = "Start sharing first — there is no code yet.";
+"share.core_unavailable" = "Sharing is still starting up. Try again in a moment.";
+"share.join_failed" = "That share code could not be read. Ask for it again — copying it from a message can lose characters.";
+"share.status.idle" = "Not sharing";
+"share.status.idle_hint" = "Share a notebook to send your captions to others, or join with a code someone gave you.";
+"share.status.hosting_waiting" = "Sharing — nothing sent yet";
+"share.status.hosting_waiting_hint" = "People can join with your code. Captions only start once you begin recording.";
+"share.status.hosting_live" = "Sharing your captions";
+"share.status.hosting_live_hint" = "Everyone who joined is seeing what you transcribe.";
+"share.status.joined_waiting" = "Joined — waiting for the host";
+"share.status.joined_waiting_hint" = "You are connected. Captions appear once the host starts recording.";
+"share.status.receiving" = "Receiving captions";
+"share.status.receiving_hint" = "These are the host's captions. They are not saved to this Mac.";

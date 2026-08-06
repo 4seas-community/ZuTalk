@@ -126,6 +126,12 @@ impl vt_share::DocumentSync for LoroDocumentSync {
     }
 }
 
+/// 收到的共享内容落在这个 Notebook 里。
+///
+/// 别人的内容不该混进你自己的 Notebook —— 收进来的东西和你自己录的东西,
+/// 保留策略、编辑权、归属都不一样。给它一个固定的家,用户一眼能分清。
+pub const SHARED_INBOX_NOTEBOOK_TITLE: &str = "分享";
+
 /// 官方中继。用户可以在设置里改掉或清空。
 ///
 /// 清空**不是故障状态**:局域网内直连本来就不需要中继,分享码里带着直连地址,
@@ -189,6 +195,10 @@ pub struct FfiShareState {
     pub is_host: bool,
     /// 已应用的字幕帧号;还没收到任何帧时为 `None`。
     pub applied_revision: Option<u64>,
+    /// 本机作为主持人已经播出的最后一帧。`None` 表示**一帧都还没播** ——
+    /// 通常是主持人还没开始录音,而不是网络有问题。这两种情况在界面上必须
+    /// 说成不同的话,否则用户只会看到「什么都没有」。
+    pub broadcast_revision: Option<u64>,
     pub lines: Vec<FfiSharedCaptionLine>,
 }
 
@@ -203,6 +213,8 @@ pub(crate) struct ShareRuntime {
     roster: Option<vt_share::RoomRoster>,
     /// 绑定这个端点时用的传输配置,用于判断设置变了要不要重建。
     transport: FfiShareTransport,
+    /// 本机播出的最后一帧。用来区分「还没开始录音」和「播了但对方没收到」。
+    last_broadcast_revision: Option<u64>,
 }
 
 struct HostedRoom {
@@ -279,6 +291,7 @@ impl ZulangueCore {
             viewing: None,
             roster: None,
             transport: wanted,
+            last_broadcast_revision: None,
         });
         Ok(endpoint)
     }
@@ -306,6 +319,45 @@ impl ZulangueCore {
             .map_err(|message| CoreError::ValidationFailed { message })?;
         *self.share_transport.lock().unwrap() = transport;
         Ok(())
+    }
+
+    /// 当前正在主持的分享码。没有在主持时为 `None`。
+    ///
+    /// 分享码必须能从这里取回,不能只活在界面的内存里 —— 切走标签页再回来、
+    /// 或者重开窗口,界面就再也拿不到它,而「正在共享」的状态还亮着,
+    /// 复制按钮于是静默失效。
+    pub fn current_share_code(&self) -> Option<String> {
+        let guard = self.share_runtime.lock().unwrap();
+        let runtime = guard.as_ref()?;
+        Some(runtime.hosting.as_ref()?.code.to_string())
+    }
+
+    /// 收到的共享内容该落进哪个 Notebook,没有就建一个。
+    pub fn shared_inbox_notebook(&self) -> Result<crate::notebook_api::FfiNotebook, CoreError> {
+        let existing = self
+            .notebook_store
+            .list_notebooks()
+            .map_err(|error| CoreError::InternalError {
+                message: format!("列出 Notebook 失败: {error}"),
+            })?
+            .into_iter()
+            .find(|n| n.title == SHARED_INBOX_NOTEBOOK_TITLE);
+        let record = match existing {
+            Some(record) => record,
+            None => self
+                .notebook_store
+                .create_notebook(Some(SHARED_INBOX_NOTEBOOK_TITLE))
+                .map_err(|error| CoreError::InternalError {
+                    message: format!("创建分享 Notebook 失败: {error}"),
+                })?,
+        };
+        Ok(crate::notebook_api::FfiNotebook {
+            id: record.id,
+            title: record.title,
+            created_at: record.created_at,
+            updated_at: record.updated_at,
+            deleted_at: record.deleted_at,
+        })
     }
 
     /// 本机分享身份。首次调用会生成并持久化。
@@ -460,6 +512,7 @@ impl ZulangueCore {
                 host_only: false,
                 is_host: false,
                 applied_revision: None,
+                broadcast_revision: None,
                 lines: Vec::new(),
             };
         };
@@ -500,6 +553,7 @@ impl ZulangueCore {
             host_only,
             is_host,
             applied_revision,
+            broadcast_revision: runtime.last_broadcast_revision,
             lines,
         }
     }
@@ -545,6 +599,12 @@ impl ShareCaptionTap {
         runtime
             .endpoint
             .broadcast_caption(caption_frame_from(scope.clone(), preview));
+        drop(guard);
+        if let Ok(mut guard) = self.runtime.lock() {
+            if let Some(runtime) = guard.as_mut() {
+                runtime.last_broadcast_revision = Some(preview.preview_revision);
+            }
+        }
     }
 }
 
