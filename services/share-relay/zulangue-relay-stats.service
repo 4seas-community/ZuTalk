@@ -1,0 +1,20 @@
+[Unit]
+Description=Report Zulangue relay operational counters
+After=network-online.target zulangue-share-relay.service
+
+[Service]
+Type=oneshot
+User=exedev
+WorkingDirectory=/home/exedev/zulangue-share-relay
+EnvironmentFile=/home/exedev/zulangue-share-relay/service.env
+# 直接执行,不套 shell。上报器自己认 service.env 里的
+# IROH_RELAY_HTTP_BEARER_TOKEN —— 套一层 sh 改名的写法在 systemd 的变量展开
+# 下拿不到值,表现为上报一直 401。
+Environment=RELAY_METRICS_URL=http://127.0.0.1:9090/metrics
+ExecStart=/home/exedev/zulangue-share-relay/report-stats.py
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/exedev/zulangue-share-relay/data

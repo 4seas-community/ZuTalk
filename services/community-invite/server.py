@@ -189,6 +189,22 @@ class Store:
                     created_at TEXT NOT NULL,
                     last_seen_at TEXT
                 );
+                -- 中继的运营统计,按天一行。
+                --
+                -- 这张表的**形状本身**就是隐私保证:它只有聚合量,没有 endpoint 列,
+                -- 也没有配对列。就算有人想从这里还原「谁在几点连了谁」,数据也不在。
+                -- 来源是中继的 Prometheus 全局计数器,那些计数器本身就不含配对信息。
+                CREATE TABLE IF NOT EXISTS relay_daily (
+                    day TEXT PRIMARY KEY,
+                    bytes_sent INTEGER NOT NULL DEFAULT 0,
+                    bytes_recv INTEGER NOT NULL DEFAULT 0,
+                    connections INTEGER NOT NULL DEFAULT 0,
+                    disconnects INTEGER NOT NULL DEFAULT 0,
+                    packets_dropped INTEGER NOT NULL DEFAULT 0,
+                    ratelimited INTEGER NOT NULL DEFAULT 0,
+                    unique_clients_peak INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS invite_audit (
                     id INTEGER PRIMARY KEY,
                     invite_id INTEGER NOT NULL REFERENCES invites(id),
@@ -218,6 +234,70 @@ class Store:
                 "SELECT * FROM invites WHERE code_hash = ?",
                 (digest(code.strip().upper()),),
             ).fetchone()
+
+    # ── 分享:运营统计 ──────────────────────────────────────────────────
+    #
+    # 中继按天上报增量。累加而不是覆盖:一天内会上报多次,每次带的是自上次以来
+    # 的增量。计数器在中继重启后会归零,增量由上报侧负责算好。
+
+    RELAY_STAT_FIELDS = (
+        "bytes_sent",
+        "bytes_recv",
+        "connections",
+        "disconnects",
+        "packets_dropped",
+        "ratelimited",
+    )
+
+    def record_relay_stats(self, day: str, deltas: dict, unique_clients: int = 0) -> bool:
+        """Accumulate one relay report into the day's row.
+
+        Only the fields in RELAY_STAT_FIELDS are read. Anything else in the
+        payload is ignored rather than stored, so a future reporter cannot
+        quietly start sending per-endpoint data and have it land in the table.
+        """
+        if not day or len(day) != 10:
+            return False
+        clean = {}
+        for field in self.RELAY_STAT_FIELDS:
+            try:
+                value = int(deltas.get(field, 0))
+            except (TypeError, ValueError):
+                return False
+            if value < 0:
+                return False
+            clean[field] = value
+        try:
+            peak = max(0, int(unique_clients))
+        except (TypeError, ValueError):
+            return False
+
+        assignments = ", ".join(f"{f} = {f} + excluded.{f}" for f in self.RELAY_STAT_FIELDS)
+        columns = ", ".join(self.RELAY_STAT_FIELDS)
+        placeholders = ", ".join("?" for _ in self.RELAY_STAT_FIELDS)
+        with self.connect() as db:
+            db.execute(
+                f"""
+                INSERT INTO relay_daily (day, {columns}, unique_clients_peak, updated_at)
+                VALUES (?, {placeholders}, ?, ?)
+                ON CONFLICT(day) DO UPDATE SET
+                    {assignments},
+                    unique_clients_peak = MAX(unique_clients_peak, excluded.unique_clients_peak),
+                    updated_at = excluded.updated_at
+                """,
+                (day, *[clean[f] for f in self.RELAY_STAT_FIELDS], peak, now_iso()),
+            )
+        return True
+
+    def relay_stats(self, limit: int = 30) -> list:
+        """Recent daily rows, newest first."""
+        with self.connect() as db:
+            return [
+                dict(row)
+                for row in db.execute(
+                    "SELECT * FROM relay_daily ORDER BY day DESC LIMIT ?", (limit,)
+                )
+            ]
 
     # ── 分享:relay 门禁 ────────────────────────────────────────────────
     #
@@ -1189,6 +1269,22 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+
+        if self.path == "/v1/relay-stats":
+            # 中继上报,凭据与门禁同一把。
+            expected = os.environ.get("ZULANGUE_RELAY_AUTH_TOKEN", "")
+            presented = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+            if not expected or not hmac.compare_digest(presented, expected):
+                self.send_json(401, {"error": "unauthorized"})
+                return
+            body = self.read_json()
+            ok = self.store.record_relay_stats(
+                str(body.get("day", "")),
+                body.get("deltas") or {},
+                body.get("unique_clients", 0),
+            )
+            self.send_json(200 if ok else 400, {"status": "recorded"} if ok else {"error": "invalid_report"})
             return
 
         if self.path == "/v1/share-endpoint":

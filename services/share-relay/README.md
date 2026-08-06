@@ -71,6 +71,29 @@ printf 'IROH_RELAY_HTTP_BEARER_TOKEN=%s\n' "$(openssl rand -hex 32)" > "$RELAY_H
 sudo systemctl enable --now zulangue-share-relay
 ```
 
+## 运营统计
+
+中继每 15 分钟把自己的 Prometheus 计数器按天报给邀请码服务
+(`zulangue-relay-stats.timer` → `report-stats.py` → `POST /v1/relay-stats`)。
+
+**这条路径在结构上产不出社交图谱。** 中继的计数器是全局量 —— 累计字节、连接数、
+掉包数 —— 它们**不带标签**,没有「谁连了谁」这种维度可读。服务端那张 `relay_daily`
+表也只有聚合列,没有 endpoint 列。所以不是「我们选择不记配对」,是这条链路上记不出来。
+`test_endpoint_data_in_a_report_is_never_stored` 对此有断言:上报里夹带 endpoint
+信息,一个字节都不落库。
+
+指标端口只绑 `127.0.0.1`,不经代理对外。
+
+两个实现细节值得知道:
+
+- **计数器重启会归零。** 上报的是增量,所以本地存一份上次读数做差;读数变小时把
+  当前值整个当作增量 —— 报负数会被服务端拒掉,那一整段区间就丢了。
+- **上报失败不写状态文件**,下次跑会把这段区间补上。
+
+一个踩过的坑:别在 systemd 单元里套一层 `sh -c` 去给环境变量改名。那层 shell 里的
+变量展开拿不到 `EnvironmentFile` 的值,表现为上报一直 401 而 token 明明是对的。
+让脚本自己认两个名字更省事。
+
 ## 端口
 
 | 端口 | 协议 | 用途 |

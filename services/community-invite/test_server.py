@@ -537,3 +537,83 @@ class RelayHeaderNameTest(unittest.TestCase):
         route = source.split('if self.path == "/v1/relay-auth":', 1)[1].split("if self.path ==", 1)[0]
         self.assertNotIn("read_json", route, "relay-auth 不该尝试读请求体")
         self.assertIn("relay_access_allowed", route)
+
+
+class RelayStatsTest(unittest.TestCase):
+    """中继运营统计:只存聚合量。
+
+    这组测试真正守的不是「数字对不对」,而是**这张表存不下配对数据**——
+    上报里夹带 endpoint 信息也不会落库。见 docs/architecture/share-p2p.md。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "invites.db")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    DAY = "2026-08-06"
+
+    def test_a_report_lands_as_one_daily_row(self):
+        self.assertTrue(
+            self.store.record_relay_stats(self.DAY, {"bytes_sent": 100, "connections": 2}, 3)
+        )
+        rows = self.store.relay_stats()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["day"], self.DAY)
+        self.assertEqual(rows[0]["bytes_sent"], 100)
+        self.assertEqual(rows[0]["unique_clients_peak"], 3)
+
+    def test_reports_accumulate_within_a_day(self):
+        """一天内多次上报,带的是增量,应当累加而不是覆盖。"""
+        self.store.record_relay_stats(self.DAY, {"bytes_sent": 100, "connections": 1})
+        self.store.record_relay_stats(self.DAY, {"bytes_sent": 250, "connections": 4})
+        row = self.store.relay_stats()[0]
+        self.assertEqual(row["bytes_sent"], 350)
+        self.assertEqual(row["connections"], 5)
+
+    def test_unique_clients_keeps_the_peak_not_the_sum(self):
+        """去重数不是增量,累加它会得出荒谬的数字。"""
+        self.store.record_relay_stats(self.DAY, {}, 7)
+        self.store.record_relay_stats(self.DAY, {}, 3)
+        self.assertEqual(self.store.relay_stats()[0]["unique_clients_peak"], 7)
+
+    def test_days_stay_separate(self):
+        self.store.record_relay_stats("2026-08-06", {"bytes_sent": 10})
+        self.store.record_relay_stats("2026-08-07", {"bytes_sent": 20})
+        rows = self.store.relay_stats()
+        self.assertEqual([r["day"] for r in rows], ["2026-08-07", "2026-08-06"])
+
+    def test_endpoint_data_in_a_report_is_never_stored(self):
+        """**核心断言。** 上报里夹带配对信息,一个字节都不该落库。"""
+        self.store.record_relay_stats(
+            self.DAY,
+            {
+                "bytes_sent": 5,
+                "endpoint_id": "a" * 64,
+                "peer_pairs": [["a" * 64, "b" * 64]],
+                "connected_at": "2026-08-06T10:00:00Z",
+            },
+            1,
+        )
+        with self.store.connect() as db:
+            columns = {r[1] for r in db.execute("PRAGMA table_info(relay_daily)")}
+            dumped = str(list(db.execute("SELECT * FROM relay_daily")))
+        self.assertNotIn("endpoint_id", columns, "表里不该有 endpoint 列")
+        self.assertNotIn("peer_pairs", columns, "表里不该有配对列")
+        self.assertNotIn("a" * 64, dumped, "endpoint id 不该出现在任何一行里")
+
+    def test_malformed_reports_are_refused(self):
+        for day, deltas in [
+            ("", {}),
+            ("not-a-day", {}),
+            (self.DAY, {"bytes_sent": -1}),
+            (self.DAY, {"bytes_sent": "lots"}),
+        ]:
+            with self.subTest(day=day, deltas=deltas):
+                self.assertFalse(self.store.record_relay_stats(day, deltas))
+
+    def test_nothing_is_stored_when_a_report_is_refused(self):
+        self.store.record_relay_stats(self.DAY, {"bytes_sent": -5})
+        self.assertEqual(self.store.relay_stats(), [])

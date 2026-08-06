@@ -1,0 +1,12 @@
+[Unit]
+Description=Report Zulangue relay counters every 15 minutes
+
+[Timer]
+# 十五分钟一次。更密没有意义 —— 存的是按天聚合;更疏则中继重启会多丢一段,
+# 因为重启后计数器归零,未上报的那部分再也算不回来。
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
