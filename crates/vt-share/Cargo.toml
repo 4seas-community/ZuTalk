@@ -37,5 +37,6 @@ postcard = { version = "1", features = ["alloc"] }
 iroh-mdns-address-lookup = "0.4.0"
 
 [dev-dependencies]
+hex = "0.4"
 serde_json.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }

@@ -53,17 +53,34 @@ sudo systemctl enable --now zulangue-share-relay
 | 443 | TCP | 中继协议（走 HTTP upgrade）与 Let's Encrypt 签发 |
 | 7824 | UDP | QUIC 地址发现 |
 
+## 一个会让所有人都连不上的坑
+
+iroh-relay 1.0.3 的文档说鉴权请求带 `X-Iroh-Endpoint-Id` 头，**但源码里发出去的
+实际是 `X-Iroh-NodeId`**——1.0 把 NodeId 改名成 EndpointId 时这个头名字没跟着改。
+
+只认文档里那个名字的话，线上表现是「所有人都连不上中继」，而两边日志都显示一切
+正常：邀请码服务返回 200，中继只说「正文不是 true」。邀请码服务因此两个名字都收。
+
+这个坑是本机把中继真跑起来才发现的，curl 测不出来——curl 是你自己写的头名。
+
 ## 验证门禁真的在拦
 
 ```bash
-# 未登记的 endpoint —— 应当返回 false
-curl -s -X POST https://invite.exe.dev/v1/relay-auth \
-  -H "Authorization: Bearer $ZULANGUE_RELAY_AUTH_TOKEN" \
-  -H "X-Iroh-Endpoint-Id: $(printf 'a%.0s' {1..64})"
+ZULANGUE_RELAY_AUTH_TOKEN=... INVITE_URL=https://invite.exe.dev ./smoke-test.sh
 ```
 
-返回 `false` 表示门禁生效。返回 `true` 说明这个 endpoint 被登记过；返回 401
-说明两边的 token 不一致。
+它验四件事:服务可达、未登记被拒、token 不符 401、登记后放行。**但 curl 类测试
+证明不了中继端到端能用**——头名字这个坑就是它测不出来的,因为头名是你自己写的。
+真正的验证是把中继跑起来看它的日志:
+
+```bash
+RUST_LOG=iroh_relay=debug iroh-relay --dev --config-path relay-dev.toml
+# 已登记: "HTTP access check OK: Allow access"
+# 未登记: "HTTP access check failed: Deny access"
+```
+
+注意「正文不是 true」这条消息对**拒绝**和**故障**是同一句 —— 正文 `false` 也算
+"invalid response text"。分辨二者要看已登记的那个 endpoint 有没有出现 OK。
 
 暂停一个邀请码会同时断掉它名下所有 endpoint 的中继权限，不需要第二个开关。
 

@@ -1,9 +1,11 @@
+import pathlib
 import tempfile
 import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import server
 from server import (
     USAGE_REFERENCE_PREFIX,
     DEFAULT_GIVES,
@@ -510,3 +512,28 @@ class RelayAccessTest(unittest.TestCase):
                 (self.ENDPOINT,),
             ).fetchone()
         self.assertIsNotNone(row["last_seen_at"])
+
+
+class RelayHeaderNameTest(unittest.TestCase):
+    """中继送的头名字是 `X-Iroh-NodeId`,不是文档写的 `X-Iroh-Endpoint-Id`。
+
+    iroh-relay 1.0.3 的源码里那个常量叫 X_IROH_ENDPOINT_ID,值却仍是
+    X-Iroh-NodeId —— 1.0 把 NodeId 改名时头名字没跟着改。只认文档里那个名字,
+    线上会把所有人都拒掉,而两边日志都显示正常:服务返回 200,中继只说正文不是
+    "true"。这条测试把两个名字都钉住。
+    """
+
+    def _handler_source(self):
+        return pathlib.Path(server.__file__).read_text(encoding="utf-8")
+
+    def test_both_header_spellings_are_accepted(self):
+        source = self._handler_source()
+        self.assertIn('"X-Iroh-NodeId"', source, "必须接受中继实际发送的头名")
+        self.assertIn('"X-Iroh-Endpoint-Id"', source, "也要接受文档里的头名,便于上游修复后继续可用")
+
+    def test_relay_auth_route_reads_the_header_not_the_body(self):
+        """endpoint id 只能来自请求头 —— 中继不发请求体。"""
+        source = self._handler_source()
+        route = source.split('if self.path == "/v1/relay-auth":', 1)[1].split("if self.path ==", 1)[0]
+        self.assertNotIn("read_json", route, "relay-auth 不该尝试读请求体")
+        self.assertIn("relay_access_allowed", route)

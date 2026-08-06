@@ -1170,7 +1170,16 @@ class Handler(BaseHTTPRequestHandler):
             if not expected or not hmac.compare_digest(presented, expected):
                 self.send_json(401, {"error": "unauthorized"})
                 return
-            endpoint_id = self.headers.get("X-Iroh-Endpoint-Id", "")
+            # 两个名字都收。
+            #
+            # iroh-relay 1.0.3 的文档说这个头是 `X-Iroh-Endpoint-Id`,但源码里
+            # 那个常量的**值**是 `X-Iroh-NodeId` —— 1.0 把 NodeId 改名成
+            # EndpointId 时头名字没跟着改。只认文档里那个名字,线上会把所有人
+            # 都拒掉,而两边日志都显示一切正常(服务返回 200,中继只说正文不是
+            # "true")。上游哪天修了,这里也不用再动。
+            endpoint_id = self.headers.get("X-Iroh-NodeId") or self.headers.get(
+                "X-Iroh-Endpoint-Id", ""
+            )
             allowed = self.store.relay_access_allowed(endpoint_id)
             # relay 只认「200 且正文为 true」,其余一律视为拒绝。
             body = b"true" if allowed else b"false"
