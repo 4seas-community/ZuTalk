@@ -208,9 +208,12 @@ struct SharePage: View {
                             .font(.caption)
                             .foregroundColor(.textSecondary)
                         Spacer()
-                        Button(String(localized: "share.nearby.ask")) {
+                        Button(viewModel.asking
+                               ? String(localized: "share.nearby.asking")
+                               : String(localized: "share.nearby.ask")) {
                             viewModel.askToJoin(peer.endpointId)
                         }
+                        .disabled(viewModel.asking)
                     }
                 }
             }
@@ -471,6 +474,8 @@ final class ShareViewModel: ObservableObject {
     @Published private(set) var nearby: [FfiNearbyPeer] = []
     @Published private(set) var joinRequests: [FfiJoinRequest] = []
     @Published private(set) var scanning: Bool = false
+    /// 正在等对方回答。这一等最长一分钟,界面必须说出来,否则看起来像卡死。
+    @Published private(set) var asking: Bool = false
     @Published private(set) var members: [FfiRoomMember] = []
     @Published var nickname: String = "" {
         didSet { saveNicknameDebounced() }
@@ -587,12 +592,16 @@ final class ShareViewModel: ObservableObject {
         }
         scanning = true
         errorMessage = nil
-        Task { @MainActor in
-            defer { scanning = false }
-            do {
-                nearby = try core.nearbyPeers(seconds: 3)
-            } catch {
-                errorMessage = error.localizedDescription
+        // **不能在主线程上调它。** nearbyPeers 是同步的,要阻塞三秒收集 mDNS 宣告;
+        // 在 @MainActor 上调用会把界面冻住三秒。
+        Task.detached {
+            let result = Result { try core.nearbyPeers(seconds: 3) }
+            await MainActor.run {
+                self.scanning = false
+                switch result {
+                case .success(let peers): self.nearby = peers
+                case .failure(let error): self.errorMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -601,22 +610,27 @@ final class ShareViewModel: ObservableObject {
     func askToJoin(_ endpointID: String) {
         guard let core else { return }
         errorMessage = nil
-        Task { @MainActor in
-            do {
-                switch try core.requestToJoinNearby(endpointId: endpointID) {
-                case .joined:
+        asking = true
+        // **绝不能在主线程上调它。** 它会一直等到对方点批准或超时 —— 最长一分钟。
+        // 在 @MainActor 上调用会让整个 App 冻住那么久。
+        Task.detached {
+            let result = Result { try core.requestToJoinNearby(endpointId: endpointID) }
+            await MainActor.run {
+                self.asking = false
+                switch result {
+                case .success(.joined):
                     // 对方批准了,钥匙已经经局域网直连交过来,房间也进了。
-                    enrollForRelayFallback()
-                    reload()
-                case .notSharing:
-                    errorMessage = String(localized: "share.nearby.not_sharing")
-                case .declined:
-                    errorMessage = String(localized: "share.nearby.declined")
-                case .timedOut:
-                    errorMessage = String(localized: "share.nearby.timed_out")
+                    self.enrollForRelayFallback()
+                    self.reload()
+                case .success(.notSharing):
+                    self.errorMessage = String(localized: "share.nearby.not_sharing")
+                case .success(.declined):
+                    self.errorMessage = String(localized: "share.nearby.declined")
+                case .success(.timedOut):
+                    self.errorMessage = String(localized: "share.nearby.timed_out")
+                case .failure(let error):
+                    self.errorMessage = error.localizedDescription
                 }
-            } catch {
-                errorMessage = error.localizedDescription
             }
         }
     }

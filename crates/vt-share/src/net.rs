@@ -485,6 +485,9 @@ impl ShareEndpoint {
         // 已经有邻居时也发一次,省掉一个来回。
         let _ = sender.broadcast(hello.clone().into()).await;
 
+        let shared_sender = Arc::new(Mutex::new(Some(sender.clone())));
+        // 事件循环会把 scope move 进去,离开时发 Goodbye 还要用,先留一份。
+        let scope_for_handle = scope.clone();
         let task = {
             let presence = presence.clone();
             let secret = self.identity.secret().clone();
@@ -534,6 +537,9 @@ impl ShareEndpoint {
         Ok(RoomHandle {
             presence,
             host,
+            scope: scope_for_handle,
+            secret: self.identity.secret().clone(),
+            sender: shared_sender,
             task,
         })
     }
@@ -799,10 +805,27 @@ impl JoinRequestDesk {
 pub struct RoomHandle {
     presence: Arc<Mutex<RoomPresence>>,
     host: iroh::EndpointId,
+    scope: ScopeId,
+    secret: iroh::SecretKey,
+    /// 用来发 Goodbye。事件循环也持有一份。
+    sender: Arc<Mutex<Option<iroh_gossip::api::GossipSender>>>,
     task: tokio::task::JoinHandle<()>,
 }
 
 impl RoomHandle {
+    /// 离开房间前跟大家说一声。
+    ///
+    /// 不说也不会错 —— gossip 的 `NeighborDown` 是兜底 —— 但那要等超时,
+    /// 期间房间里所有人都还以为你在。说一声是即时的。
+    pub async fn announce_departure(&self) {
+        let Some(sender) = self.sender.lock().await.as_ref().cloned() else {
+            return;
+        };
+        if let Ok(bytes) = seal_control(&RoomControl::Goodbye, &self.scope, &self.secret) {
+            let _ = sender.broadcast(bytes.into()).await;
+        }
+    }
+
     /// 当前名册的快照。
     pub async fn roster(&self) -> RoomRoster {
         self.presence.lock().await.roster().clone()
@@ -885,7 +908,30 @@ impl ProtocolHandler for CaptionAcceptor {
 }
 
 /// 接收端:连上广播者并把帧投进 inbox。
+/// 断线后隔多久重试。
+///
+/// 连接会因为很多寻常原因断掉:换了 Wi-Fi、机器睡了一下、路由器抖了一下。
+/// 一断就永久放弃,表现是「字幕忽然停了,而且再也不回来」——而界面上看不出
+/// 任何异常,因为它并不知道自己已经聋了。
+const RECONNECT_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+
 pub async fn receive_captions(
+    endpoint: &ShareEndpoint,
+    host: EndpointAddr,
+    scope: ScopeId,
+    inbox: CaptionInbox,
+) -> Result<(), NetError> {
+    // 一直重连,直到调用方把这个任务取消(停止共享或退出房间时会取消)。
+    loop {
+        match receive_captions_once(endpoint, host.clone(), scope.clone(), inbox.clone()).await {
+            Ok(()) => {}
+            Err(error) => tracing::debug!(%error, "字幕连接中断,准备重连"),
+        }
+        tokio::time::sleep(RECONNECT_DELAY).await;
+    }
+}
+
+async fn receive_captions_once(
     endpoint: &ShareEndpoint,
     host: EndpointAddr,
     scope: ScopeId,

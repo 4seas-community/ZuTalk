@@ -640,7 +640,12 @@ impl ZulangueCore {
             // ViewedRoom 的 Drop 会中止接收任务。
             runtime.viewing = None;
             runtime.roster = None;
-            runtime.room = None;
+            // 先道别再拆房间 —— 丢掉 RoomHandle 会中止事件循环,
+            // 那之后就没人替你说这句话了,别人要等超时才知道你走了。
+            if let Some(room) = runtime.room.take() {
+                self.runtime
+                    .block_on(async move { room.announce_departure().await });
+            }
             let endpoint = runtime.endpoint.clone();
             self.runtime
                 .block_on(async move { endpoint.set_hosted_share_code(None).await });
