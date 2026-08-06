@@ -1,8 +1,8 @@
 //! Zulangue FFI 层
 //!
 //! UniFFI 绑定（Rust ↔ Swift 唯一通道）。proc-macro 模式。
-//! 设计文档：docs/design/D5-uniffi-api.md
-//! 权威 API 定义：docs/architecture/TYPE_SYSTEM.md §7
+//! 分层职责与「改完跨语言接口要重新生成绑定」见
+//! docs/architecture/ARCHITECTURE.md「代码边界」。
 
 pub(crate) mod capture_erasure;
 pub mod editor_api;
@@ -847,19 +847,17 @@ impl ZulangueCore {
         self.default_privacy_level.lock().unwrap().clone()
     }
 
-    /// 销毁某个 session 的加密音频。
+    /// 销毁某个 session 的音频：删掉加密块，再删掉解得开它们的密钥。
+    ///
+    /// 销毁不看 `privacy_level`。等级决定音频**留多久**,不决定用户按下销毁时
+    /// 留下什么——留着密钥的"销毁"只是把明文推迟到下一次拿到密文的人手里。
     ///
     /// 流程：
-    /// 1. 安全覆写 + 删除 .enc 文件
-    /// 2. 清除 session_meta.encrypted_path
-    /// 3. 如果 session 隐私等级是 maximum，同时删除密钥
-    pub fn destroy_session_audio(&self, session_id: String) -> Result<(), CoreError> {
-        self.enforce_destroy(&session_id, /*force_max=*/ false)
-    }
-
-    /// 完全销毁，不论 privacy_level：删除音频和密钥。
+    /// 1. 安全覆写 + 删除每个加密音频块
+    /// 2. 删除 session 的密钥
+    /// 3. 清除 session_meta.encrypted_path
     pub fn destroy_session_audio_and_key(&self, session_id: String) -> Result<(), CoreError> {
-        self.enforce_destroy(&session_id, /*force_max=*/ true)
+        self.enforce_destroy(&session_id)
     }
 
     // ─────────────────────────────────────────────────
@@ -871,8 +869,10 @@ impl ZulangueCore {
     //   - soft_delete_session 把 deleted_at 设成 now;记录还在表里
     //   - list_trashed_sessions 给 TrashPage 列已软删的
     //   - restore_session 把 deleted_at 清掉 → 恢复到 Home
-    //   - purge_session 硬删:先 destroy_session_audio(清加密音频 + 密钥),
-    //     再从 session_records 表删行。不可撤销。
+    //   - purge_session 硬删:转发给 purge_session_forever,它先挡住仍在采集的
+    //     session,再落一条 session_purge_jobs 墓碑并分阶段执行。墓碑刻意活过
+    //     session 自己的行,好让文件、密钥、任务和 Loro 的清理在崩溃后能续上。
+    //     不可撤销。
 
     /// 软删单个 session。幂等:已软删再调是 no-op。
     pub fn soft_delete_session(&self, session_id: String) -> Result<(), CoreError> {
@@ -1322,7 +1322,7 @@ impl ZulangueCore {
     }
 
     /// 实际执行销毁
-    fn enforce_destroy(&self, session_id: &str, force_max: bool) -> Result<(), CoreError> {
+    fn enforce_destroy(&self, session_id: &str) -> Result<(), CoreError> {
         let meta = self
             .session_meta
             .get_meta(session_id)
@@ -1361,18 +1361,11 @@ impl ZulangueCore {
                 })?;
         }
 
-        // 2. 决定是否删 key（force_max 或 session 等级是 maximum）
-        let should_delete_key = force_max
-            || meta
-                .privacy_level
-                .as_deref()
-                .map(|l| l == "maximum")
-                .unwrap_or(false);
-        if should_delete_key {
-            if let Some(key_id) = meta.key_id.as_deref() {
-                if !key_id.is_empty() {
-                    let _ = self.key_store.delete_key(key_id);
-                }
+        // 2. 删 key。没有条件分支:密文已经在上一步销毁,留下密钥只会让它比
+        //    它保护的数据活得更久。
+        if let Some(key_id) = meta.key_id.as_deref() {
+            if !key_id.is_empty() {
+                let _ = self.key_store.delete_key(key_id);
             }
         }
 

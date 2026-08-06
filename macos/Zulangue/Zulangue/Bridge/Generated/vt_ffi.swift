@@ -621,17 +621,15 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func currentLocale()  -> String
 
     /**
-     * 销毁某个 session 的加密音频。
+     * 销毁某个 session 的音频：删掉加密块，再删掉解得开它们的密钥。
+     *
+     * 销毁不看 `privacy_level`。等级决定音频**留多久**,不决定用户按下销毁时
+     * 留下什么——留着密钥的"销毁"只是把明文推迟到下一次拿到密文的人手里。
      *
      * 流程：
-     * 1. 安全覆写 + 删除 .enc 文件
-     * 2. 清除 session_meta.encrypted_path
-     * 3. 如果 session 隐私等级是 maximum，同时删除密钥
-     */
-    func destroySessionAudio(sessionId: String) throws
-
-    /**
-     * 完全销毁，不论 privacy_level：删除音频和密钥。
+     * 1. 安全覆写 + 删除每个加密音频块
+     * 2. 删除 session 的密钥
+     * 3. 清除 session_meta.encrypted_path
      */
     func destroySessionAudioAndKey(sessionId: String) throws
 
@@ -1274,23 +1272,15 @@ open func currentLocale() -> String  {
 }
 
     /**
-     * 销毁某个 session 的加密音频。
+     * 销毁某个 session 的音频：删掉加密块，再删掉解得开它们的密钥。
+     *
+     * 销毁不看 `privacy_level`。等级决定音频**留多久**,不决定用户按下销毁时
+     * 留下什么——留着密钥的"销毁"只是把明文推迟到下一次拿到密文的人手里。
      *
      * 流程：
-     * 1. 安全覆写 + 删除 .enc 文件
-     * 2. 清除 session_meta.encrypted_path
-     * 3. 如果 session 隐私等级是 maximum，同时删除密钥
-     */
-open func destroySessionAudio(sessionId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zulanguecore_destroy_session_audio(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),$0
-    )
-}
-}
-
-    /**
-     * 完全销毁，不论 privacy_level：删除音频和密钥。
+     * 1. 安全覆写 + 删除每个加密音频块
+     * 2. 删除 session 的密钥
+     * 3. 清除 session_meta.encrypted_path
      */
 open func destroySessionAudioAndKey(sessionId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_destroy_session_audio_and_key(
@@ -8038,10 +8028,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_current_locale() != 55619) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_destroy_session_audio() != 42748) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_destroy_session_audio_and_key() != 785) {
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_destroy_session_audio_and_key() != 15212) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_get_privacy_default() != 39340) {

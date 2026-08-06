@@ -3,8 +3,7 @@
 //! 验证：
 //! - set_privacy_default / get_privacy_default round-trip
 //! - import 时把当前默认等级写到 session
-//! - destroy_session_audio 手动触发销毁
-//! - destroy_session_audio_and_key 同时销毁 key
+//! - destroy_session_audio_and_key 手动触发销毁:音频与密钥一起走
 //!
 //! 自动保留策略（high/maximum 转录后销毁）由 `enforce_privacy_after_task`
 //! 执行，它是 `pub(crate)`，跨 crate 的集成测试够不到；那条路径的覆盖在
@@ -171,7 +170,8 @@ fn test_destroy_session_audio_removes_chunk_files() {
     let chunk_paths = retained_chunk_paths(&core, &r.session_id);
     assert_chunk_files_exist(&chunk_paths);
 
-    core.destroy_session_audio(r.session_id.clone()).unwrap();
+    core.destroy_session_audio_and_key(r.session_id.clone())
+        .unwrap();
 
     assert_chunk_files_deleted(&chunk_paths);
     let chunks = retention_chunks(&core, &r.session_id);
@@ -189,15 +189,16 @@ fn test_destroy_session_audio_idempotent() {
     let (_tmp, core) = make_core();
     let r = import_fixture(&core);
 
-    core.destroy_session_audio(r.session_id.clone()).unwrap();
+    core.destroy_session_audio_and_key(r.session_id.clone())
+        .unwrap();
     // 第二次调用不应失败
-    core.destroy_session_audio(r.session_id).unwrap();
+    core.destroy_session_audio_and_key(r.session_id).unwrap();
 }
 
 #[test]
 fn test_destroy_unknown_session_returns_not_found() {
     let (_tmp, core) = make_core();
-    let result = core.destroy_session_audio("never-existed".to_string());
+    let result = core.destroy_session_audio_and_key("never-existed".to_string());
     assert!(result.is_err());
 }
 
@@ -242,13 +243,14 @@ fn test_high_privacy_destroys_audio_after_transcribe_simulation() {
     assert_chunk_files_exist(&chunk_paths);
 
     // 手动触发销毁（模拟 transcribe 完成）
-    core.destroy_session_audio(r.session_id.clone()).unwrap();
+    core.destroy_session_audio_and_key(r.session_id.clone())
+        .unwrap();
     assert_chunk_files_deleted(&chunk_paths);
 }
 
 #[test]
 fn test_standard_privacy_allows_manual_chunk_destroy() {
-    // standard 等级下，destroy_session_audio 仍然会删（因为是用户手动触发）
+    // 销毁不看等级:standard 下手动触发同样删干净。
     let (_tmp, core) = make_core();
     core.set_privacy_default("standard".to_string()).unwrap();
 
@@ -257,6 +259,6 @@ fn test_standard_privacy_allows_manual_chunk_destroy() {
     assert_chunk_files_exist(&chunk_paths);
 
     // 手动 destroy 仍然有效
-    core.destroy_session_audio(r.session_id).unwrap();
+    core.destroy_session_audio_and_key(r.session_id).unwrap();
     assert_chunk_files_deleted(&chunk_paths);
 }
