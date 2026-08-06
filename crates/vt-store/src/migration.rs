@@ -490,7 +490,7 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v30_to_v31(conn)?;
             validate_v31_baseline(conn)
         }
-        CURRENT_VERSION => validate_v30_baseline(conn),
+        CURRENT_VERSION => validate_v31_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
     }?;
 
@@ -3035,7 +3035,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_rejects_incomplete_database_claiming_v30() {
+    fn migration_rejects_incomplete_database_claiming_the_current_schema() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute("CREATE TABLE notebooks (id TEXT PRIMARY KEY)", [])
             .unwrap();
@@ -3043,9 +3043,39 @@ mod tests {
             .unwrap();
 
         let error = run_migrations(&conn).unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("unsupported schema 30; reset required"));
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("unsupported schema {CURRENT_VERSION}; reset required")),
+            "a database stamped v{CURRENT_VERSION} must be reported as v{CURRENT_VERSION}, got: {error}"
+        );
+    }
+
+    /// v31 的实质变化只在一条索引的唯一性上,所以对象名清单认不出它。一个盖着
+    /// v31 戳、索引却还是 UNIQUE 的库(v30 迁移中途断电就会留下这个形状)必须被
+    /// 拒绝,而不是当成合法的当前库放行。
+    #[test]
+    fn migration_rejects_current_schema_whose_inbox_index_is_still_unique() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        conn.execute_batch(
+            r#"
+            DROP INDEX idx_realtime_translation_inbox_bound_lane;
+            CREATE UNIQUE INDEX idx_realtime_translation_inbox_bound_lane
+                ON realtime_translation_inbox(bound_utterance_id, target_language)
+                WHERE bound_utterance_id IS NOT NULL;
+            "#,
+        )
+        .unwrap();
+
+        let error = run_migrations(&conn).unwrap_err();
+        assert!(
+            error.to_string().contains(&format!(
+                "unsupported schema {CURRENT_VERSION}; reset required"
+            )),
+            "a v{CURRENT_VERSION} database must not keep the v30 UNIQUE inbox index, got: {error}"
+        );
     }
 
     #[test]
