@@ -9,7 +9,6 @@ publish = false
 [dependencies]
 symphonia = { version = "0.5", features = ["mp3", "aac", "flac", "ogg", "wav", "pcm", "isomp4"] }
 hound = "3"
-fdk-aac = "0.6"
 thiserror.workspace = true
 
 [dev-dependencies]

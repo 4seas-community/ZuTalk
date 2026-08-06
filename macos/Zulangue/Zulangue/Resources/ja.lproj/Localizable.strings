@@ -802,3 +802,23 @@
 "knowledge.import_json.message" = "Zulangue知識ベースのJSONファイル（.zulangue-pack.json）を選択してください。";
 "knowledge.import_json.done" = "知識ベースを読み込みました";
 "knowledge.import_json.failed" = "知識ベースを読み込めませんでした";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "共有";
+"share.title" = "共有";
+"share.identity" = "共有キー";
+"share.copy_code" = "共有コードをコピー";
+"share.join" = "コードで参加";
+"share.stop" = "共有を停止";
+"share.stop_note" = "以降の送信を停止します。相手が既に受け取った内容は削除できません。";
+"share.audio_never" = "音声が共有されることはありません。";
+"share.empty" = "まだ何も共有していません。";
+"share.role.host" = "ホストのみ編集可、他は閲覧のみ";
+"share.role.everyone" = "全員が編集可";
+"share.direct" = "直接接続";
+"share.relayed" = "リレー経由";
+"share.start" = "共有を開始";
+"share.cancel" = "キャンセル";
+"share.needs_notebook" = "先にノートブックを開いてください。共有の範囲はノートブック単位です。";
+"share.start.confirm.title" = "このノートブックの共有を開始しますか？";
+"share.start.confirm.body" = "以降このノートブックで開始した録音は、字幕が既定で共有されます。音声が共有されることはありません。停止しても以降の送信が止まるだけで、相手が既に受け取った内容は削除できません。";

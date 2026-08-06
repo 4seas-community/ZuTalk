@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use loro::{
     cursor::{Cursor, Side},
-    ContainerTrait, LoroDoc, LoroValue, StyleConfigMap,
+    event::Diff,
+    ContainerID, ContainerTrait, ContainerType, LoroDoc, LoroValue, StyleConfigMap, TextDelta,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -2096,5 +2097,391 @@ mod tests {
         // 用一个旧 generation 调用 apply_from_ui 应该忽略；新的会执行
         // 这里只验证两次 replace 都成功并且最终内容是 "b"
         assert_eq!(bridge.get_content("s1").unwrap(), "b");
+    }
+}
+
+/// 采集拥有区间的探测:一份远端更新是否碰了不属于它的东西。
+///
+/// CRDT 的前提是所有副本平权、最终收敛,它不认「这段归采集投影所有」。所以在
+/// 合入之前必须先问一遍。判定需要真的把更新应用一次才知道它动了哪里,因此这一步
+/// 跑在 fork 出来的副本上,真实文档不受影响。
+///
+/// 设计见 `docs/architecture/share-p2p.md` 第 4.2 节。
+impl EditorBridge {
+    /// 列出文档里所有采集拥有的区间,按当前文本下标返回 `[start, end)`。
+    ///
+    /// 与 `resolve_capture_owned_range` 不同,这里不校验 owner 的 session 归属 ——
+    /// 准入判定关心的是「这段有没有主」,不是「归哪一次采集」。
+    fn capture_owned_spans(doc: &LoroDoc) -> Vec<(usize, usize)> {
+        let starts = doc.get_map(CAPTURE_ANCHOR_STARTS);
+        let ends = doc.get_map(CAPTURE_ANCHOR_ENDS);
+        let document_len = doc.get_text("content").len_unicode();
+
+        let resolve = |value: Option<loro::ValueOrContainer>, is_start: bool| -> Option<usize> {
+            let bytes = value.and_then(|value| match value.get_deep_value() {
+                LoroValue::Binary(value) => Some(value),
+                _ => None,
+            })?;
+            let cursor = Cursor::decode(&bytes).ok()?;
+            let pos = doc.get_cursor_pos(&cursor).ok()?.current.pos;
+            Some(if is_start {
+                pos.saturating_add(usize::from(
+                    cursor.id.is_some() && cursor.side == Side::Right,
+                ))
+            } else {
+                pos
+            })
+        };
+
+        let mut spans = Vec::new();
+        for owner_key in starts.keys() {
+            let Some(start) = resolve(starts.get(&owner_key), true) else {
+                continue;
+            };
+            let Some(end) = resolve(ends.get(&owner_key), false) else {
+                // 半个锚点是坏数据。失败关闭:当作整篇都被保护,而不是当作没保护。
+                return vec![(0, document_len)];
+            };
+            if end >= start {
+                spans.push((start, end));
+            }
+        }
+        spans
+    }
+
+    /// 一份远端 Loro 更新是否触碰了采集投影拥有的区间。
+    ///
+    /// 返回 `true` 表示必须拒收。任何无法判定的情况也返回 `true` —— 判不出来时
+    /// 放行,等于这道门不存在。
+    pub fn remote_update_touches_capture_owned_range(
+        &self,
+        document_id: &str,
+        update: &[u8],
+    ) -> bool {
+        let sessions = self.sessions.lock().unwrap();
+        let Some(session) = sessions.get(document_id) else {
+            // 文档没开就没有可保护的投影,也没有可合入的目标。
+            return false;
+        };
+
+        // 在副本上试应用。真实文档不受这次探测影响。
+        let probe = session.doc.fork();
+        let owned = Self::capture_owned_spans(&probe);
+        let before = probe.state_frontiers();
+        if probe.import(update).is_err() {
+            // 连导入都失败的更新不该进入真实文档。
+            return true;
+        }
+        let after = probe.state_frontiers();
+        let Ok(batch) = probe.diff(&before, &after) else {
+            return true;
+        };
+
+        for (container, diff) in batch.iter() {
+            let ContainerID::Root {
+                name,
+                container_type,
+            } = container
+            else {
+                continue;
+            };
+
+            // 远端不得改写锚点本身。允许它就等于允许对方先挪开边界再改内容。
+            if matches!(
+                name.as_str(),
+                CAPTURE_ANCHOR_STARTS
+                    | CAPTURE_ANCHOR_ENDS
+                    | CAPTURE_ANCHOR_SESSIONS
+                    | PROJECTION_RECEIPTS
+                    | USER_MUTATION_RECEIPTS
+            ) {
+                return true;
+            }
+
+            if name.as_str() != "content" || *container_type != ContainerType::Text {
+                continue;
+            }
+            let Diff::Text(deltas) = diff else { continue };
+
+            // Quill 语义:Retain / Delete 在**旧文档**上前进,Insert 不前进。
+            // 采集区间也是旧文档的下标,两者同一坐标系。
+            let mut cursor = 0usize;
+            for delta in deltas {
+                match delta {
+                    TextDelta::Retain { retain, .. } => cursor += retain,
+                    TextDelta::Delete { delete } => {
+                        let touched = (cursor, cursor + delete);
+                        if owned.iter().any(|span| spans_overlap(*span, touched)) {
+                            return true;
+                        }
+                        cursor += delete;
+                    }
+                    TextDelta::Insert { .. } => {
+                        // 严格落在区间内部才算触碰。恰好在 start 或 end 上是紧邻,
+                        // 不是修改被保护的内容 —— 否则用户永远无法在转录稿后面接着写。
+                        if owned.iter().any(|(s, e)| *s < cursor && cursor < *e) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
+/// 两个半开区间是否相交。空区间不与任何东西相交。
+fn spans_overlap(a: (usize, usize), b: (usize, usize)) -> bool {
+    a.0 < b.1 && b.0 < a.1
+}
+
+#[cfg(test)]
+mod capture_boundary_probe_tests {
+    use super::*;
+
+    /// 建一份带采集拥有区间的文档,返回 bridge 与一个可以独立编辑的远端副本。
+    ///
+    /// 远端副本从同一份快照 fork 而来,所以它产生的更新是真正可合入的 —— 这些
+    /// 测试走的是真实的 Loro 更新字节,不是构造出来的假数据。
+    fn bridge_with_owned_range(text: &str, start: usize, end: usize) -> (EditorBridge, LoroDoc) {
+        let doc = LoroDoc::new();
+        doc.get_text("content").insert(0, text).unwrap();
+        doc.commit();
+
+        let bridge = EditorBridge::new();
+        bridge.open("doc", doc).unwrap();
+        bridge
+            .set_capture_owned_range("doc", "owner", "session-a", start, end)
+            .unwrap();
+
+        // 远端从当前状态分叉,之后各自编辑。
+        let snapshot = bridge.export_snapshot("doc").unwrap();
+        let remote = LoroDoc::new();
+        remote.import(&snapshot).unwrap();
+        (bridge, remote)
+    }
+
+    /// 远端产生一份只含自己改动的更新。
+    fn update_from(remote: &LoroDoc, edit: impl FnOnce(&LoroDoc)) -> Vec<u8> {
+        let before = remote.oplog_vv();
+        edit(remote);
+        remote.commit();
+        remote.export(loro::ExportMode::updates(&before)).unwrap()
+    }
+
+    #[test]
+    fn edit_outside_the_owned_range_is_allowed() {
+        // "0123456789",采集拥有 [2, 6)。改动落在尾部。
+        let (bridge, remote) = bridge_with_owned_range("0123456789", 2, 6);
+        let update = update_from(&remote, |doc| {
+            doc.get_text("content").insert(9, "尾巴").unwrap();
+        });
+        assert!(!bridge.remote_update_touches_capture_owned_range("doc", &update));
+    }
+
+    #[test]
+    fn insert_strictly_inside_the_owned_range_is_refused() {
+        let (bridge, remote) = bridge_with_owned_range("0123456789", 2, 6);
+        let update = update_from(&remote, |doc| {
+            doc.get_text("content").insert(4, "插进来").unwrap();
+        });
+        assert!(bridge.remote_update_touches_capture_owned_range("doc", &update));
+    }
+
+    /// 恰好贴在区间末尾之后接着写,是允许的 —— 否则用户永远无法在转录稿后面续写。
+    #[test]
+    fn insert_at_the_boundary_is_allowed() {
+        let (bridge, remote) = bridge_with_owned_range("0123456789", 2, 6);
+        let update = update_from(&remote, |doc| {
+            doc.get_text("content").insert(6, "紧接着").unwrap();
+        });
+        assert!(!bridge.remote_update_touches_capture_owned_range("doc", &update));
+    }
+
+    #[test]
+    fn delete_overlapping_the_owned_range_is_refused() {
+        let (bridge, remote) = bridge_with_owned_range("0123456789", 2, 6);
+        let update = update_from(&remote, |doc| {
+            // 删 [5, 8) —— 只有前一半压在采集区间上,依然要拒。
+            doc.get_text("content").delete(5, 3).unwrap();
+        });
+        assert!(bridge.remote_update_touches_capture_owned_range("doc", &update));
+    }
+
+    #[test]
+    fn delete_entirely_outside_is_allowed() {
+        let (bridge, remote) = bridge_with_owned_range("0123456789", 2, 6);
+        let update = update_from(&remote, |doc| {
+            doc.get_text("content").delete(7, 2).unwrap();
+        });
+        assert!(!bridge.remote_update_touches_capture_owned_range("doc", &update));
+    }
+
+    /// 远端不得改写锚点本身 —— 允许它就等于允许对方先挪开边界再改内容。
+    #[test]
+    fn rewriting_the_anchors_themselves_is_refused() {
+        let (bridge, remote) = bridge_with_owned_range("0123456789", 2, 6);
+        let update = update_from(&remote, |doc| {
+            doc.get_map(CAPTURE_ANCHOR_STARTS)
+                .insert("owner", LoroValue::Binary(vec![0u8; 4].into()))
+                .unwrap();
+        });
+        assert!(bridge.remote_update_touches_capture_owned_range("doc", &update));
+    }
+
+    /// 判不出来时必须拒收。放行等于这道门不存在。
+    #[test]
+    fn undecodable_update_is_refused() {
+        let (bridge, _remote) = bridge_with_owned_range("0123456789", 2, 6);
+        assert!(bridge.remote_update_touches_capture_owned_range("doc", b"not-a-loro-update"));
+    }
+
+    /// 探测跑在副本上,真实文档不能被它改变。
+    #[test]
+    fn probing_never_mutates_the_live_document() {
+        let (bridge, remote) = bridge_with_owned_range("0123456789", 2, 6);
+        let before = bridge.get_content("doc").unwrap();
+        let update = update_from(&remote, |doc| {
+            doc.get_text("content").insert(4, "偷偷改").unwrap();
+        });
+        assert!(bridge.remote_update_touches_capture_owned_range("doc", &update));
+        assert_eq!(bridge.get_content("doc").unwrap(), before);
+
+        // 被允许的更新同样不该在探测阶段就生效。
+        let allowed = update_from(&remote, |doc| {
+            doc.get_text("content").insert(0, "").unwrap();
+        });
+        bridge.remote_update_touches_capture_owned_range("doc", &allowed);
+        assert_eq!(bridge.get_content("doc").unwrap(), before);
+    }
+
+    /// 没有采集区间的文档,任何改动都不该被这道门拦下。
+    #[test]
+    fn document_without_capture_anchors_allows_everything() {
+        let doc = LoroDoc::new();
+        doc.get_text("content").insert(0, "自由编辑").unwrap();
+        doc.commit();
+        let bridge = EditorBridge::new();
+        bridge.open("free", doc).unwrap();
+
+        let snapshot = bridge.export_snapshot("free").unwrap();
+        let remote = LoroDoc::new();
+        remote.import(&snapshot).unwrap();
+        let update = update_from(&remote, |doc| {
+            doc.get_text("content").insert(2, "随便插").unwrap();
+        });
+        assert!(!bridge.remote_update_touches_capture_owned_range("free", &update));
+    }
+
+    /// 文档没打开时没有可保护的东西,也没有可合入的目标。
+    #[test]
+    fn unopened_document_is_not_guarded() {
+        let bridge = EditorBridge::new();
+        assert!(!bridge.remote_update_touches_capture_owned_range("missing", b"anything"));
+    }
+}
+
+/// 文档同步要用到的三件事:我是什么版本、对方缺什么、把这份更新合进来。
+///
+/// 这些方法故意不做准入判定 —— 那是分享层的事,顺序也必须是「先判后合」。
+/// 见 `docs/architecture/share-p2p.md` 第 4.2 节。
+impl EditorBridge {
+    /// 本机版本,编码成不透明字节交给对端。
+    pub fn document_version(&self, document_id: &str) -> Option<Vec<u8>> {
+        let sessions = self.sessions.lock().unwrap();
+        Some(sessions.get(document_id)?.doc.oplog_vv().encode())
+    }
+
+    /// 对方停在 `version` 时缺的那些更新。
+    ///
+    /// 版本解不开时返回**全部历史**而不是空 —— 宁可多发一次,不能让对方以为自己
+    /// 已经追平。
+    pub fn updates_since(&self, document_id: &str, version: &[u8]) -> Option<Vec<u8>> {
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions.get(document_id)?;
+        let from = loro::VersionVector::decode(version).unwrap_or_default();
+
+        // 「有没有要发的」必须按版本判,不能按导出字节是否为空判 ——
+        // Loro 的 export 即使无内容也会写出一个头部,那串字节永远不是空的。
+        if from.includes_vv(&session.doc.oplog_vv()) {
+            return None;
+        }
+        session.doc.export(loro::ExportMode::updates(&from)).ok()
+    }
+
+    /// 合入一份**已经通过准入**的远端更新。
+    pub fn import_remote_update(&self, document_id: &str, update: &[u8]) -> bool {
+        let mut sessions = self.sessions.lock().unwrap();
+        let Some(session) = sessions.get_mut(document_id) else {
+            return false;
+        };
+        session.doc.import(update).is_ok()
+    }
+}
+
+#[cfg(test)]
+mod document_sync_tests {
+    use super::*;
+
+    fn opened(text: &str) -> EditorBridge {
+        let doc = LoroDoc::new();
+        doc.get_text("content").insert(0, text).unwrap();
+        doc.commit();
+        let bridge = EditorBridge::new();
+        bridge.open("doc", doc).unwrap();
+        bridge
+    }
+
+    #[test]
+    fn a_peer_at_our_version_needs_nothing() {
+        let bridge = opened("已有内容");
+        let version = bridge.document_version("doc").unwrap();
+        assert!(bridge.updates_since("doc", &version).is_none());
+    }
+
+    #[test]
+    fn a_peer_at_zero_receives_the_whole_history() {
+        let bridge = opened("已有内容");
+        let empty = loro::VersionVector::default().encode();
+        assert!(bridge.updates_since("doc", &empty).is_some());
+    }
+
+    /// 版本解不开时宁可多发,不能让对方以为自己已经追平。
+    #[test]
+    fn an_undecodable_version_falls_back_to_everything() {
+        let bridge = opened("已有内容");
+        assert!(bridge.updates_since("doc", b"garbage").is_some());
+    }
+
+    /// 补齐历史真的能把两端拉齐。
+    #[test]
+    fn catch_up_makes_a_fresh_peer_converge() {
+        let bridge = opened("主持人写的内容");
+        let empty = loro::VersionVector::default().encode();
+        let catch_up = bridge.updates_since("doc", &empty).unwrap();
+
+        let peer = EditorBridge::new();
+        peer.open("doc", LoroDoc::new()).unwrap();
+        assert!(peer.import_remote_update("doc", &catch_up));
+        assert_eq!(peer.get_content("doc").unwrap(), "主持人写的内容");
+
+        // 追平之后就没有新东西可要了。
+        let peer_version = peer.document_version("doc").unwrap();
+        assert!(bridge.updates_since("doc", &peer_version).is_none());
+    }
+
+    #[test]
+    fn a_corrupt_update_is_refused_without_touching_the_document() {
+        let bridge = opened("原文");
+        assert!(!bridge.import_remote_update("doc", b"not-a-loro-update"));
+        assert_eq!(bridge.get_content("doc").unwrap(), "原文");
+    }
+
+    #[test]
+    fn an_unopened_document_has_no_version_and_takes_no_update() {
+        let bridge = EditorBridge::new();
+        assert!(bridge.document_version("missing").is_none());
+        assert!(bridge.updates_since("missing", b"").is_none());
+        assert!(!bridge.import_remote_update("missing", b"anything"));
     }
 }

@@ -139,7 +139,6 @@
 		EBC05DD69499D870B35A210B /* LiveIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveIndicator.swift; sourceTree = "<group>"; };
 		EBE3303AA3EA9C305C14677D /* Iconography.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Iconography.swift; sourceTree = "<group>"; };
 		ED747CFF1AF51B7426CAA001 /* libresolv.tbd */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
-		F0089869ED67753830755EAF /* SessionAudioPlayer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SessionAudioPlayer.swift; sourceTree = "<group>"; };
 		F2D14E3453B94D1356D0CC22 /* SoftwareUpdateRetryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SoftwareUpdateRetryTests.swift; sourceTree = "<group>"; };
 		F318AD986686556465BB36C4 /* LabeledButton.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LabeledButton.swift; sourceTree = "<group>"; };
 		F3D6CA8EC35C1656F448F4E3 /* SectionHeader.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SectionHeader.swift; sourceTree = "<group>"; };
@@ -215,7 +214,6 @@
 			children = (
 				C488C1B466B285FC5A1B8B0E /* LoroTextBridge.swift */,
 				DD2CC0D60F15A8E87C68488F /* ExportSheet.swift */,
-				F0089869ED67753830755EAF /* SessionAudioPlayer.swift */,
 				63875C353B1F1F2D5A74AA72 /* LoroDeltaMapping.swift */,
 			);
 			path = Library;

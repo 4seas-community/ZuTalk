@@ -11,6 +11,7 @@ pub mod notebook_api;
 pub mod notebook_capture_api;
 pub mod session_audio_api;
 pub mod settings_api;
+pub(crate) mod share_api;
 pub mod speaker_directory_api;
 pub(crate) mod task_worker;
 pub mod transcribe_api;
@@ -319,7 +320,9 @@ pub struct ZulangueCore {
     search_store: SearchStore,
     pub(crate) session_meta: SessionMetaStore,
     pub(crate) notebook_store: NotebookStore,
-    pub(crate) notebook_capture_store: NotebookCaptureStore,
+    /// Arc 是为了让分享层能持有它去解析「这个 Notebook 下有哪些文档」。
+    /// Deref 让既有的调用点原样可用。
+    pub(crate) notebook_capture_store: Arc<NotebookCaptureStore>,
     pub(crate) context_pack_store: ContextPackStore,
     /// doc_id → FfiEditorCallback。replace_document 等外部更新成功后
     /// 查表通知 Swift（用户路径不通知——Swift 自己是事件源，再回灌会造成
@@ -345,6 +348,9 @@ pub struct ZulangueCore {
     provider_credential_bootstrap: Arc<task_worker::ProviderCredentialBootstrapGate>,
     /// task_id → FfiTaskCallback (worker 按 task 进度触发回调)
     pub(crate) task_callbacks: Arc<TaskCallbackMap>,
+    /// 分享端点。首次用到分享功能时才绑定 —— 不用这个功能的用户不该付出
+    /// 一个常驻 QUIC 端点的代价。
+    pub(crate) share_runtime: Arc<crate::share_api::ShareRuntimeSlot>,
     /// Durable local encryption keys for capture audio and Context Packs.
     pub(crate) key_store: Arc<dyn KeyProvider>,
     /// Soniox API Key 的进程内运行时；生产固定使用
@@ -578,10 +584,11 @@ impl ZulangueCore {
             message: format!("session meta: {e}"),
         })?;
 
-        let notebook_capture_store =
-            NotebookCaptureStore::new(&db_path).map_err(|e| CoreError::InitFailed {
+        let notebook_capture_store = Arc::new(NotebookCaptureStore::new(&db_path).map_err(
+            |e| CoreError::InitFailed {
                 message: format!("notebook capture store: {e}"),
-            })?;
+            },
+        )?);
         notebook_capture_store
             .recover_unfinished_runs()
             .map_err(|e| CoreError::InitFailed {
@@ -685,6 +692,7 @@ impl ZulangueCore {
             worker_cancel,
             provider_credential_bootstrap,
             task_callbacks,
+            share_runtime: Default::default(),
             key_store,
             api_key_store,
             active_notebook_capture: Mutex::new(None),
@@ -719,7 +727,7 @@ impl ZulangueCore {
                 core.editor_bridge.clone(),
                 core.editor_callbacks.clone(),
             )),
-            core.notebook_capture_store.clone(),
+            (*core.notebook_capture_store).clone(),
             core.session_task_registry.clone(),
             core.provider_credential_bootstrap.clone(),
             core.worker_cancel.clone(),

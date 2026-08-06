@@ -13,6 +13,7 @@ vt-store = { path = "../vt-store" }
 vt-crypto = { path = "../vt-crypto" }
 vt-stt = { path = "../vt-stt" }
 vt-export = { path = "../vt-export" }
+vt-share = { path = "../vt-share" }
 vt-i18n = { path = "../vt-i18n" }
 tokio-util = { version = "0.7", features = ["rt"] }
 futures = "0.3"
@@ -36,6 +37,8 @@ criterion = { version = "0.5", features = ["html_reports"], optional = true }
 bench = ["dep:criterion"]
 
 [dev-dependencies]
+serde_json = "1"
+iroh = "1.0.3"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }

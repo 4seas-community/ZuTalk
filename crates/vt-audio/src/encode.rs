@@ -1,5 +1,5 @@
 //! 音频编码器
-//! WAV (hound) + AAC (fdk-aac)
+//! WAV (hound)
 
 use std::path::Path;
 
@@ -65,84 +65,6 @@ pub fn encode_wav_bytes(
     Ok(cursor.into_inner())
 }
 
-/// 编码 PCM f32 为 AAC 文件 (ADTS format)
-pub fn encode_aac(
-    path: impl AsRef<Path>,
-    samples: &[f32],
-    sample_rate: u32,
-    channels: u16,
-    _bitrate: u32,
-) -> Result<(), AudioError> {
-    use fdk_aac::enc::{ChannelMode, Encoder, EncoderParams};
-
-    let channel_mode = match channels {
-        1 => ChannelMode::Mono,
-        2 => ChannelMode::Stereo,
-        _ => {
-            return Err(AudioError::EncodeFailed(format!(
-                "unsupported channel count: {channels}"
-            )))
-        }
-    };
-
-    let params = EncoderParams {
-        bit_rate: fdk_aac::enc::BitRate::VbrVeryHigh,
-        sample_rate,
-        transport: fdk_aac::enc::Transport::Adts,
-        channels: channel_mode,
-    };
-
-    let encoder = Encoder::new(params).map_err(|e| AudioError::EncodeFailed(format!("{e:?}")))?;
-
-    let info = encoder
-        .info()
-        .map_err(|e| AudioError::EncodeFailed(format!("{e:?}")))?;
-    let frame_size = info.frameLength as usize * channels as usize;
-
-    // Convert f32 [-1.0, 1.0] to i16
-    let pcm_i16: Vec<i16> = samples
-        .iter()
-        .map(|&s| (s * 32767.0).clamp(-32768.0, 32767.0) as i16)
-        .collect();
-
-    // Output buffer - max AAC frame is ~768 bytes per channel per frame
-    let max_output_size = 768 * channels as usize * 2;
-    let mut out_buf = vec![0u8; max_output_size];
-    let mut output = Vec::new();
-    let mut offset = 0;
-
-    while offset < pcm_i16.len() {
-        let end = (offset + frame_size).min(pcm_i16.len());
-        let mut frame = pcm_i16[offset..end].to_vec();
-
-        // Pad last frame with silence if needed
-        if frame.len() < frame_size {
-            frame.resize(frame_size, 0);
-        }
-
-        let encode_info = encoder
-            .encode(&frame, &mut out_buf)
-            .map_err(|e| AudioError::EncodeFailed(format!("{e:?}")))?;
-        if encode_info.output_size > 0 {
-            output.extend_from_slice(&out_buf[..encode_info.output_size]);
-        }
-
-        offset += frame_size;
-    }
-
-    // Flush encoder
-    let flush_info = encoder
-        .encode(&[], &mut out_buf)
-        .map_err(|e| AudioError::EncodeFailed(format!("{e:?}")))?;
-    if flush_info.output_size > 0 {
-        output.extend_from_slice(&out_buf[..flush_info.output_size]);
-    }
-
-    std::fs::write(path, &output).map_err(|e| AudioError::IoError(e.to_string()))?;
-
-    Ok(())
-}
-
 /// 生成正弦波 PCM f32 采样（测试用）
 pub fn generate_sine_wave(sample_rate: u32, duration_secs: f64, frequency: f64) -> Vec<f32> {
     let num_samples = (sample_rate as f64 * duration_secs) as usize;
@@ -200,34 +122,6 @@ mod tests {
         assert_eq!(decoded.sample_rate, 16000);
         assert_eq!(decoded.channels, 1);
         assert_eq!(decoded.samples.len(), samples.len());
-    }
-
-    #[test]
-    fn test_encode_aac_roundtrip() {
-        let samples = generate_sine_wave(48000, 2.0, 440.0);
-        let tmp = NamedTempFile::with_suffix(".aac").unwrap();
-
-        encode_aac(tmp.path(), &samples, 48000, 1, 64_000).unwrap();
-
-        let decoded = decode_file(tmp.path()).unwrap();
-        assert_eq!(decoded.sample_rate, 48000);
-        let orig_duration = samples.len() as f64 / 48000.0;
-        let decoded_duration = decoded.samples.len() as f64 / 48000.0;
-        assert!(
-            (orig_duration - decoded_duration).abs() < 0.2,
-            "duration diff too large: orig={orig_duration}s decoded={decoded_duration}s"
-        );
-    }
-
-    #[test]
-    fn test_encode_aac_stereo() {
-        let samples = generate_sine_wave(44100, 2.0, 440.0);
-        let stereo: Vec<f32> = samples.iter().flat_map(|&s| [s, s]).collect();
-        let tmp = NamedTempFile::with_suffix(".aac").unwrap();
-
-        encode_aac(tmp.path(), &stereo, 44100, 2, 64_000).unwrap();
-        let decoded = decode_file(tmp.path()).unwrap();
-        assert_eq!(decoded.channels, 2);
     }
 
     #[test]

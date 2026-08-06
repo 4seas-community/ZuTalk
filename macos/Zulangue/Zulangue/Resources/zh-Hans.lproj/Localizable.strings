@@ -802,3 +802,23 @@
 "knowledge.import_json.message" = "选择一个 Zulangue 知识库 JSON 文件（.zulangue-pack.json）。";
 "knowledge.import_json.done" = "知识库已导入";
 "knowledge.import_json.failed" = "无法导入知识库";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "分享";
+"share.title" = "分享";
+"share.identity" = "你的分享密钥";
+"share.copy_code" = "复制分享码";
+"share.join" = "用分享码加入";
+"share.stop" = "停止共享";
+"share.stop_note" = "只停止继续发送，无法删除对方已经收到的内容。";
+"share.audio_never" = "音频永远不会被共享。";
+"share.empty" = "还没有共享任何内容。";
+"share.role.host" = "主持人可写，其他人只读";
+"share.role.everyone" = "所有人可编辑";
+"share.direct" = "直连";
+"share.relayed" = "经中继";
+"share.start" = "开始共享";
+"share.cancel" = "取消";
+"share.needs_notebook" = "请先打开一个 Notebook——共享的范围是某一个 Notebook。";
+"share.start.confirm.title" = "开始共享这个 Notebook？";
+"share.start.confirm.body" = "之后在这个 Notebook 里开始的录音，字幕会默认参与共享。音频永远不会被共享。之后停止只停后续，无法删除对方已经收到的内容。";

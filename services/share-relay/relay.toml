@@ -1,0 +1,27 @@
+# Zulangue 自建 iroh 中继。
+#
+# 这个中继「不公共」:只有向邀请码服务登记过 endpoint id 的客户端能用它。
+# 但要说清楚两件事 ——
+#   1. 它挡的是陌生人白嫖带宽,不是「未授权用户用不了分享功能」:拿到客户端的人
+#      都能走邀请码登记;
+#   2. 它**不改变隐私**。中继看不到明文,流量始终端到端加密,开不开门禁都一样。
+#
+# 取值按 iroh-relay 1.0.3 源码核对:
+#   - AccessConfig 带 #[serde(rename_all = "lowercase")],所以键是 [access.http];
+#   - CertMode 没有 rename,取值就是字面的 "Manual" / "LetsEncrypt" / "Reloading"。
+#
+# 部署见 README.md,设计见 docs/architecture/share-p2p.md 第 6 节。
+
+# QUIC 地址发现(UDP 7824)。关掉会让打洞成功率下降。
+enable_quic_addr_discovery = true
+
+[access.http]
+# relay 对这个 URL 发 POST,请求头带 X-Iroh-Endpoint-Id(hex 公钥)。
+# 只有返回 200 且正文为 "true" 才放行,其余一律拒绝。
+url = "https://invite.exe.dev/v1/relay-auth"
+# 服务间凭据**不写在这里**。用环境变量 IROH_RELAY_HTTP_BEARER_TOKEN,
+# 它优先于配置文件值 —— 见 share-relay.service 的 EnvironmentFile。
+# bearer_token = "绝对不要提交到仓库"
+
+[tls]
+cert_mode = "LetsEncrypt"

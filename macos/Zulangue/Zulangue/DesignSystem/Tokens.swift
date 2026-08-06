@@ -283,9 +283,6 @@ enum Spacing {
     static let xl:  CGFloat = 32
     static let xxl: CGFloat = 48
 
-    @available(*, deprecated, message: "v2.0 §02 第二定律:间距阶梯 {4,8,12,16,24,32,48}. 改用 .xxl.")
-    @available(*, deprecated, message: "v2.0 §02 第二定律:间距阶梯 {4,8,12,16,24,32,48}. 改用 .xxl.")
-
     static let grid: CGFloat = 24
 }
 

@@ -802,3 +802,23 @@
 "knowledge.import_json.message" = "Choisissez un fichier JSON de base de connaissances Zulangue (.zulangue-pack.json).";
 "knowledge.import_json.done" = "Base de connaissances importée";
 "knowledge.import_json.failed" = "Impossible d’importer la base de connaissances";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "Partage";
+"share.title" = "Partage";
+"share.identity" = "Votre clé de partage";
+"share.copy_code" = "Copier le code de partage";
+"share.join" = "Rejoindre avec un code";
+"share.stop" = "Arrêter le partage";
+"share.stop_note" = "Arrête les envois suivants. Impossible de supprimer ce que les autres ont déjà reçu.";
+"share.audio_never" = "L'audio n'est jamais partagé.";
+"share.empty" = "Rien n'est encore partagé.";
+"share.role.host" = "L'hôte peut modifier, les autres en lecture seule";
+"share.role.everyone" = "Tout le monde peut modifier";
+"share.direct" = "Connexion directe";
+"share.relayed" = "Connexion relayée";
+"share.start" = "Commencer le partage";
+"share.cancel" = "Annuler";
+"share.needs_notebook" = "Ouvrez d'abord un notebook — le partage porte sur un notebook.";
+"share.start.confirm.title" = "Commencer à partager ce notebook ?";
+"share.start.confirm.body" = "Les enregistrements lancés dans ce notebook partageront leurs sous-titres par défaut. L'audio n'est jamais partagé. Arrêter plus tard stoppe les envois suivants sans supprimer ce que les autres ont déjà reçu.";

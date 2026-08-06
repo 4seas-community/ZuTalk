@@ -24,6 +24,21 @@ impl Default for ExportOptions {
     }
 }
 
+impl ExportOptions {
+    /// 点对点分享路径唯一允许的构造器。
+    ///
+    /// `Default` 的 `include_audio` 是 `true`,分享路径若顺手复用它,默认行为就是
+    /// 把 `audio.wav` 发出去。音频不可共享是不可配置的约束(见
+    /// `docs/architecture/share-p2p.md` 第 5 节),所以这里把音频硬编码为关闭,
+    /// 而不是留给调用方去记得关。
+    pub fn shareable() -> Self {
+        Self {
+            include_audio: false,
+            ..Self::default()
+        }
+    }
+}
+
 /// 导出为 ZIP（返回 ZIP 字节）
 pub fn export_zip(
     data: &ExportData,
@@ -133,6 +148,21 @@ mod tests {
         };
         let zip_bytes = export_zip(&data, &opts, None).unwrap();
 
+        let reader = std::io::Cursor::new(&zip_bytes);
+        let archive = zip::ZipArchive::new(reader).unwrap();
+        let names: Vec<_> = archive.file_names().collect();
+        assert!(!names.contains(&"audio.wav"));
+        assert!(names.contains(&"transcript.md"));
+    }
+
+    #[test]
+    fn shareable_options_never_pack_audio() {
+        let opts = ExportOptions::shareable();
+        assert!(!opts.include_audio);
+
+        // 即便调用方递了一段完整音频进来,分享选项也不该把它写进包里。
+        let audio = vec![0u8; 1000];
+        let zip_bytes = export_zip(&test_data(), &opts, Some(&audio)).unwrap();
         let reader = std::io::Cursor::new(&zip_bytes);
         let archive = zip::ZipArchive::new(reader).unwrap();
         let names: Vec<_> = archive.file_names().collect();

@@ -1015,6 +1015,48 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      */
     func getSessionTranscriptClipboardText(sessionId: String) throws  -> String
 
+    /**
+     * 打开文档协同。
+     *
+     * 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
+     * 每一笔编辑都会推给对端,对端推来的每一笔都要过完整条准入链才会合入。
+     */
+    func enableDocumentSync() throws
+
+    /**
+     * 用分享码加入别人的房间。
+     */
+    func joinShare(code: String) throws
+
+    /**
+     * 本机分享身份。首次调用会生成并持久化。
+     */
+    func shareIdentity() throws  -> FfiShareIdentity
+
+    /**
+     * 取当前分享状态与字幕投影。
+     *
+     * 每次调用会吸收自上次以来收到的所有帧;因为帧是 replace-in-full 的,只有最新
+     * 的那一帧会留下痕迹,中间被跳过的帧不需要补。
+     */
+    func shareState()  -> FfiShareState
+
+    /**
+     * 开始共享,返回交给对方的分享码。
+     *
+     * `notebook_id` 与 `session_id` 二选一:前者按 Notebook 共享(其中开始的录音
+     * 默认参与),后者只共享指定的一次录音。
+     */
+    func startSharing(notebookId: String?, sessionId: String?, hostOnly: Bool) throws  -> String
+
+    /**
+     * 停止共享。
+     *
+     * **只停止继续发送。** 已经合并进对方文档的内容无法收回 —— 房间密钥轮换让老成员
+     * 拿不到后续、也进不来新房间,仅此而已。界面必须如实说明这一点。
+     */
+    func stopSharing() throws
+
     func createSpeakerParticipant(displayName: String) throws  -> FfiSpeakerParticipant
 
     func linkNotebookSessionSpeaker(sessionSpeakerId: String, participantId: String) throws  -> FfiSessionSpeaker
@@ -2099,6 +2141,85 @@ open func getSessionTranscriptClipboardText(sessionId: String)throws  -> String 
         FfiConverterString.lower(sessionId),$0
     )
 })
+}
+
+    /**
+     * 打开文档协同。
+     *
+     * 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
+     * 每一笔编辑都会推给对端,对端推来的每一笔都要过完整条准入链才会合入。
+     */
+open func enableDocumentSync()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_enable_document_sync(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+    /**
+     * 用分享码加入别人的房间。
+     */
+open func joinShare(code: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_join_share(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(code),$0
+    )
+}
+}
+
+    /**
+     * 本机分享身份。首次调用会生成并持久化。
+     */
+open func shareIdentity()throws  -> FfiShareIdentity  {
+    return try  FfiConverterTypeFfiShareIdentity_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_share_identity(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 取当前分享状态与字幕投影。
+     *
+     * 每次调用会吸收自上次以来收到的所有帧;因为帧是 replace-in-full 的,只有最新
+     * 的那一帧会留下痕迹,中间被跳过的帧不需要补。
+     */
+open func shareState() -> FfiShareState  {
+    return try!  FfiConverterTypeFfiShareState_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_share_state(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 开始共享,返回交给对方的分享码。
+     *
+     * `notebook_id` 与 `session_id` 二选一:前者按 Notebook 共享(其中开始的录音
+     * 默认参与),后者只共享指定的一次录音。
+     */
+open func startSharing(notebookId: String?, sessionId: String?, hostOnly: Bool)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_start_sharing(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionString.lower(notebookId),
+        FfiConverterOptionString.lower(sessionId),
+        FfiConverterBool.lower(hostOnly),$0
+    )
+})
+}
+
+    /**
+     * 停止共享。
+     *
+     * **只停止继续发送。** 已经合并进对方文档的内容无法收回 —— 房间密钥轮换让老成员
+     * 拿不到后续、也进不来新房间,仅此而已。界面必须如实说明这一点。
+     */
+open func stopSharing()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_stop_sharing(
+            self.uniffiCloneHandle(),$0
+    )
+}
 }
 
 open func createSpeakerParticipant(displayName: String)throws  -> FfiSpeakerParticipant  {
@@ -4426,6 +4547,251 @@ public func FfiConverterTypeFfiSessionSpeaker_lift(_ buf: RustBuffer) throws -> 
 #endif
 public func FfiConverterTypeFfiSessionSpeaker_lower(_ value: FfiSessionSpeaker) -> RustBuffer {
     return FfiConverterTypeFfiSessionSpeaker.lower(value)
+}
+
+
+/**
+ * 本机的分享身份。
+ */
+public struct FfiShareIdentity: Equatable, Hashable {
+    /**
+     * 完整公钥的十六进制形式。对方要的就是它。
+     */
+    public var endpointId: String
+    /**
+     * 给人看的短形式,用于界面与日志。
+     */
+    public var shortLabel: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 完整公钥的十六进制形式。对方要的就是它。
+         */endpointId: String,
+        /**
+         * 给人看的短形式,用于界面与日志。
+         */shortLabel: String) {
+        self.endpointId = endpointId
+        self.shortLabel = shortLabel
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiShareIdentity: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiShareIdentity: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiShareIdentity {
+        return
+            try FfiShareIdentity(
+                endpointId: FfiConverterString.read(from: &buf),
+                shortLabel: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiShareIdentity, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.endpointId, into: &buf)
+        FfiConverterString.write(value.shortLabel, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiShareIdentity_lift(_ buf: RustBuffer) throws -> FfiShareIdentity {
+    return try FfiConverterTypeFfiShareIdentity.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiShareIdentity_lower(_ value: FfiShareIdentity) -> RustBuffer {
+    return FfiConverterTypeFfiShareIdentity.lower(value)
+}
+
+
+/**
+ * 当前共享状态的一帧快照。
+ */
+public struct FfiShareState: Equatable, Hashable {
+    public var isSharing: Bool
+    /**
+     * 作为观看者加入了别人的房间。
+     */
+    public var isViewing: Bool
+    /**
+     * 只读房间(主持人可写,其他人只读)。
+     */
+    public var hostOnly: Bool
+    /**
+     * 本机是这个房间的主持人。
+     */
+    public var isHost: Bool
+    /**
+     * 已应用的字幕帧号;还没收到任何帧时为 `None`。
+     */
+    public var appliedRevision: UInt64?
+    public var lines: [FfiSharedCaptionLine]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(isSharing: Bool,
+        /**
+         * 作为观看者加入了别人的房间。
+         */isViewing: Bool,
+        /**
+         * 只读房间(主持人可写,其他人只读)。
+         */hostOnly: Bool,
+        /**
+         * 本机是这个房间的主持人。
+         */isHost: Bool,
+        /**
+         * 已应用的字幕帧号;还没收到任何帧时为 `None`。
+         */appliedRevision: UInt64?, lines: [FfiSharedCaptionLine]) {
+        self.isSharing = isSharing
+        self.isViewing = isViewing
+        self.hostOnly = hostOnly
+        self.isHost = isHost
+        self.appliedRevision = appliedRevision
+        self.lines = lines
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiShareState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiShareState {
+        return
+            try FfiShareState(
+                isSharing: FfiConverterBool.read(from: &buf),
+                isViewing: FfiConverterBool.read(from: &buf),
+                hostOnly: FfiConverterBool.read(from: &buf),
+                isHost: FfiConverterBool.read(from: &buf),
+                appliedRevision: FfiConverterOptionUInt64.read(from: &buf),
+                lines: FfiConverterSequenceTypeFfiSharedCaptionLine.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiShareState, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.isSharing, into: &buf)
+        FfiConverterBool.write(value.isViewing, into: &buf)
+        FfiConverterBool.write(value.hostOnly, into: &buf)
+        FfiConverterBool.write(value.isHost, into: &buf)
+        FfiConverterOptionUInt64.write(value.appliedRevision, into: &buf)
+        FfiConverterSequenceTypeFfiSharedCaptionLine.write(value.lines, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiShareState_lift(_ buf: RustBuffer) throws -> FfiShareState {
+    return try FfiConverterTypeFfiShareState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiShareState_lower(_ value: FfiShareState) -> RustBuffer {
+    return FfiConverterTypeFfiShareState.lower(value)
+}
+
+
+/**
+ * 一行收到的字幕。**纯文本,没有任何音频字段。**
+ */
+public struct FfiSharedCaptionLine: Equatable, Hashable {
+    public var speaker: String?
+    public var sourceLanguage: String
+    public var sourceText: String
+    public var targetLanguage: String?
+    public var targetText: String?
+    /**
+     * "partial" 或 "complete"。
+     */
+    public var completion: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(speaker: String?, sourceLanguage: String, sourceText: String, targetLanguage: String?, targetText: String?,
+        /**
+         * "partial" 或 "complete"。
+         */completion: String) {
+        self.speaker = speaker
+        self.sourceLanguage = sourceLanguage
+        self.sourceText = sourceText
+        self.targetLanguage = targetLanguage
+        self.targetText = targetText
+        self.completion = completion
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSharedCaptionLine: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSharedCaptionLine: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSharedCaptionLine {
+        return
+            try FfiSharedCaptionLine(
+                speaker: FfiConverterOptionString.read(from: &buf),
+                sourceLanguage: FfiConverterString.read(from: &buf),
+                sourceText: FfiConverterString.read(from: &buf),
+                targetLanguage: FfiConverterOptionString.read(from: &buf),
+                targetText: FfiConverterOptionString.read(from: &buf),
+                completion: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiSharedCaptionLine, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.speaker, into: &buf)
+        FfiConverterString.write(value.sourceLanguage, into: &buf)
+        FfiConverterString.write(value.sourceText, into: &buf)
+        FfiConverterOptionString.write(value.targetLanguage, into: &buf)
+        FfiConverterOptionString.write(value.targetText, into: &buf)
+        FfiConverterString.write(value.completion, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSharedCaptionLine_lift(_ buf: RustBuffer) throws -> FfiSharedCaptionLine {
+    return try FfiConverterTypeFfiSharedCaptionLine.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSharedCaptionLine_lower(_ value: FfiSharedCaptionLine) -> RustBuffer {
+    return FfiConverterTypeFfiSharedCaptionLine.lower(value)
 }
 
 
@@ -6772,6 +7138,31 @@ fileprivate struct FfiConverterSequenceTypeFfiSessionSpeaker: FfiConverterRustBu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiSharedCaptionLine: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiSharedCaptionLine]
+
+    public static func write(_ value: [FfiSharedCaptionLine], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiSharedCaptionLine.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiSharedCaptionLine] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiSharedCaptionLine]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiSharedCaptionLine.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiSpeakerParticipant: FfiConverterRustBuffer {
     typealias SwiftType = [FfiSpeakerParticipant]
 
@@ -7167,6 +7558,24 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_get_session_transcript_clipboard_text() != 26246) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_enable_document_sync() != 18832) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_join_share() != 54554) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_share_identity() != 22943) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_share_state() != 33930) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_start_sharing() != 27002) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_stop_sharing() != 45792) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_create_speaker_participant() != 26189) {
