@@ -821,3 +821,19 @@
 "share.needs_notebook" = "Öffne zuerst ein Notebook — geteilt wird immer ein Notebook.";
 "share.start.confirm.title" = "Dieses Notebook teilen?";
 "share.start.confirm.body" = "Aufnahmen, die in diesem Notebook starten, teilen ihre Untertitel standardmäßig. Audio wird niemals geteilt. Ein späteres Beenden stoppt weitere Übertragungen, löscht aber nichts, was andere bereits erhalten haben.";
+
+/* 设置:分享(点对点)传输 */
+"settings.section.p2p_name" = "Teilen";
+"settings.p2p.title" = "Teilen";
+"settings.p2p.subtitle" = "Wie dieser Mac die Personen erreicht, mit denen du teilst.";
+"settings.p2p.identity" = "Teilen-Schlüssel dieses Macs";
+"settings.p2p.copy_identity" = "Kopieren";
+"settings.p2p.identity_note" = "Andere erkennen diesen Mac an diesem Schlüssel. Ihn zu ändern macht jede von deinen Kontakten gespeicherte Kopie ungültig.";
+"settings.p2p.relay" = "Relay-Server";
+"settings.p2p.relay_note" = "Eine Adresse pro Zeile. Leer lassen heißt nur Direktverbindungen — im selben WLAN reicht das und es funktioniert ganz ohne Internet.";
+"settings.p2p.relay_privacy" = "Ein Relay leitet nur weiter. Der Verkehr bleibt Ende-zu-Ende verschlüsselt, es kann nicht mitlesen.";
+"settings.p2p.local_discovery" = "Personen in diesem Netzwerk finden";
+"settings.p2p.local_discovery_note" = "Nutzt mDNS. macOS fragt beim ersten Mal nach der Berechtigung für das lokale Netzwerk. Bei Ablehnung funktionieren Teilen-Codes weiterhin.";
+"settings.p2p.save" = "Sichern";
+"settings.p2p.restore_default" = "Standard wiederherstellen";
+"settings.p2p.saved" = "Gesichert";

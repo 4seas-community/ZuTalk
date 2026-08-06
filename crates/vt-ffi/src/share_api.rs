@@ -126,6 +126,12 @@ impl vt_share::DocumentSync for LoroDocumentSync {
     }
 }
 
+/// 官方中继。用户可以在设置里改掉或清空。
+///
+/// 清空**不是故障状态**:局域网内直连本来就不需要中继,分享码里带着直连地址,
+/// 断网也能配对。中继只在跨网络打洞失败时才介入。
+pub const DEFAULT_RELAY_URL: &str = "https://zulangue-relay.exe.xyz";
+
 /// 身份密钥在本机密钥库里的固定名字。
 ///
 /// 身份稳定是前提:换一次,联系人保存下来的公钥就全部失效。所以它不随 session
@@ -153,6 +159,24 @@ pub struct FfiSharedCaptionLine {
     pub completion: String,
 }
 
+/// 分享的传输配置。由设置页决定,不参与共享协议本身。
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FfiShareTransport {
+    /// 中继地址。为空表示只走直连 —— 局域网可用,跨网络打洞失败时没有兜底。
+    pub relay_urls: Vec<String>,
+    /// 局域网 mDNS 发现。macOS 15+ 首次会弹系统授权;拒绝后仍可用分享码配对。
+    pub enable_local_discovery: bool,
+}
+
+impl Default for FfiShareTransport {
+    fn default() -> Self {
+        Self {
+            relay_urls: vec![DEFAULT_RELAY_URL.to_string()],
+            enable_local_discovery: true,
+        }
+    }
+}
+
 /// 当前共享状态的一帧快照。
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiShareState {
@@ -177,6 +201,8 @@ pub(crate) struct ShareRuntime {
     viewing: Option<ViewedRoom>,
     /// 当前房间名册。主持与加入时都会建立,决定谁能写文档。
     roster: Option<vt_share::RoomRoster>,
+    /// 绑定这个端点时用的传输配置,用于判断设置变了要不要重建。
+    transport: FfiShareTransport,
 }
 
 struct HostedRoom {
@@ -222,16 +248,23 @@ impl ZulangueCore {
 
     /// 确保端点已绑定,返回它。
     fn ensure_share_endpoint(&self) -> Result<Arc<ShareEndpoint>, CoreError> {
+        let wanted = self.share_transport.lock().unwrap().clone();
         let mut guard = self.share_runtime.lock().unwrap();
         if let Some(runtime) = guard.as_ref() {
-            return Ok(runtime.endpoint.clone());
+            // 设置没变就复用。变了且当前没在共享,就丢掉重建;正在共享时不动,
+            // 中途换中继会把房间里的人踢掉,不值得。
+            let idle = runtime.hosting.is_none() && runtime.viewing.is_none();
+            if runtime.transport == wanted || !idle {
+                return Ok(runtime.endpoint.clone());
+            }
         }
 
         let identity = self.load_or_create_share_identity()?;
-        // 中继与局域网发现由设置决定;两者都关掉时仍可用分享码点对点配对。
+        let relay_urls = vt_share::parse_relay_urls(&wanted.relay_urls)
+            .map_err(|message| CoreError::ValidationFailed { message })?;
         let config = ShareEndpointConfig {
-            relay_urls: Vec::new(),
-            enable_local_discovery: true,
+            relay_urls,
+            enable_local_discovery: wanted.enable_local_discovery,
         };
         let endpoint = self
             .runtime
@@ -245,6 +278,7 @@ impl ZulangueCore {
             hosting: None,
             viewing: None,
             roster: None,
+            transport: wanted,
         });
         Ok(endpoint)
     }
@@ -252,6 +286,28 @@ impl ZulangueCore {
 
 #[uniffi::export]
 impl ZulangueCore {
+    /// 出厂默认的传输配置。设置页用它做「恢复默认」。
+    pub fn default_share_transport(&self) -> FfiShareTransport {
+        FfiShareTransport::default()
+    }
+
+    /// 当前生效的传输配置。
+    pub fn share_transport(&self) -> FfiShareTransport {
+        self.share_transport.lock().unwrap().clone()
+    }
+
+    /// 设定传输配置。
+    ///
+    /// 当前没在共享时立即生效(下次用到端点会按新配置重建);正在共享时保留现有
+    /// 连接,新配置在下一次开始共享时生效 —— 中途换中继会把房间里的人踢掉。
+    pub fn set_share_transport(&self, transport: FfiShareTransport) -> Result<(), CoreError> {
+        // 先校验再落库,免得存进一个连不上的地址。
+        vt_share::parse_relay_urls(&transport.relay_urls)
+            .map_err(|message| CoreError::ValidationFailed { message })?;
+        *self.share_transport.lock().unwrap() = transport;
+        Ok(())
+    }
+
     /// 本机分享身份。首次调用会生成并持久化。
     pub fn share_identity(&self) -> Result<FfiShareIdentity, CoreError> {
         let identity = self.load_or_create_share_identity()?;
@@ -754,6 +810,24 @@ mod tests {
                 "线上字幕帧不得出现 {banned}"
             );
         }
+    }
+
+    /// 出厂默认必须真的带上官方中继 —— 忘了接线的话,机器部署了也没人用。
+    #[test]
+    fn default_transport_points_at_the_deployed_relay() {
+        let t = FfiShareTransport::default();
+        assert_eq!(t.relay_urls, vec![DEFAULT_RELAY_URL.to_string()]);
+        assert!(t.enable_local_discovery);
+        assert!(
+            vt_share::parse_relay_urls(&t.relay_urls).is_ok(),
+            "默认地址必须解析得动"
+        );
+    }
+
+    /// 清空中继是合法选择 —— 局域网直连不需要它。
+    #[test]
+    fn an_empty_relay_list_is_accepted() {
+        assert!(vt_share::parse_relay_urls(&[]).unwrap().is_empty());
     }
 
     /// ed25519 私钥恰好是密钥库的槽位宽度,所以可以直接复用受保护的存储。

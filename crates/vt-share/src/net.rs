@@ -73,6 +73,26 @@ pub enum NetError {
     Stream(String),
 }
 
+/// 把设置里那几行字符串解析成中继地址。
+///
+/// 放在这一层是为了让上层不必直接依赖 iroh —— 上层只管字符串,解析规则归传输层。
+/// 空行会被忽略:用户在设置里删到只剩一个空行,意思是「不要中继」,不是错误。
+pub fn parse_relay_urls(raw: &[String]) -> Result<Vec<RelayUrl>, String> {
+    let mut parsed = Vec::new();
+    for line in raw {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        parsed.push(
+            trimmed
+                .parse()
+                .map_err(|_| format!("中继地址无法解析: {trimmed}"))?,
+        );
+    }
+    Ok(parsed)
+}
+
 /// 端点配置。
 #[derive(Debug, Clone, Default)]
 pub struct ShareEndpointConfig {
@@ -590,6 +610,33 @@ mod tests {
         assert_eq!(LIVE_CAPTION_ALPN, b"zulangue/live-caption/1");
         assert_eq!(DOC_SYNC_ALPN, b"zulangue/doc-sync/1");
         assert_ne!(LIVE_CAPTION_ALPN, DOC_SYNC_ALPN);
+    }
+
+    #[test]
+    fn relay_urls_parse_and_skip_blanks() {
+        let parsed = parse_relay_urls(&[
+            "https://relay.example".into(),
+            "  ".into(),
+            String::new(),
+            "  https://other.example  ".into(),
+        ])
+        .unwrap();
+        assert_eq!(parsed.len(), 2, "空行是「不要中继」,不是错误");
+    }
+
+    /// 全空等于「只走直连」—— 这是一个合法选择,不该报错。
+    #[test]
+    fn all_blank_means_no_relay() {
+        assert!(parse_relay_urls(&["".into(), "   ".into()])
+            .unwrap()
+            .is_empty());
+    }
+
+    /// 但真写错了要当场报出来,不能等到连不上才发现。
+    #[test]
+    fn a_malformed_relay_url_is_refused() {
+        let error = parse_relay_urls(&["not a url".into()]).unwrap_err();
+        assert!(error.contains("not a url"));
     }
 
     #[tokio::test]

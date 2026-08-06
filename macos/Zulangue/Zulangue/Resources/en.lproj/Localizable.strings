@@ -822,3 +822,19 @@
 "share.needs_notebook" = "Open a notebook first — sharing is scoped to one.";
 "share.start.confirm.title" = "Start sharing this notebook?";
 "share.start.confirm.body" = "Recordings started in this notebook will share their captions by default. Audio is never shared. Stopping later halts further updates but cannot delete what others already received.";
+
+/* 设置:分享(点对点)传输 */
+"settings.section.p2p_name" = "Sharing";
+"settings.p2p.title" = "Sharing";
+"settings.p2p.subtitle" = "How this Mac reaches the people you share with.";
+"settings.p2p.identity" = "This Mac's share key";
+"settings.p2p.copy_identity" = "Copy";
+"settings.p2p.identity_note" = "Others recognise this Mac by this key. Changing it invalidates every copy your contacts have saved.";
+"settings.p2p.relay" = "Relay servers";
+"settings.p2p.relay_note" = "One address per line. Leave empty to use direct connections only — that is enough on a shared Wi-Fi and works with no internet at all.";
+"settings.p2p.relay_privacy" = "A relay only forwards. Traffic stays end-to-end encrypted, so it cannot read what passes through.";
+"settings.p2p.local_discovery" = "Find people on this network";
+"settings.p2p.local_discovery_note" = "Uses mDNS. macOS will ask for local network permission the first time. Declining still leaves share codes working.";
+"settings.p2p.save" = "Save";
+"settings.p2p.restore_default" = "Restore default";
+"settings.p2p.saved" = "Saved";

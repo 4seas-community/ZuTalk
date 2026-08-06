@@ -821,3 +821,19 @@
 "share.needs_notebook" = "Abre primero un notebook: se comparte un notebook a la vez.";
 "share.start.confirm.title" = "¿Empezar a compartir este notebook?";
 "share.start.confirm.body" = "Las grabaciones iniciadas en este notebook compartirán sus subtítulos de forma predeterminada. El audio nunca se comparte. Detenerlo después frena los envíos siguientes, pero no borra lo que otros ya recibieron.";
+
+/* 设置:分享(点对点)传输 */
+"settings.section.p2p_name" = "Compartir";
+"settings.p2p.title" = "Compartir";
+"settings.p2p.subtitle" = "Cómo este Mac llega a las personas con las que compartes.";
+"settings.p2p.identity" = "Clave de compartir de este Mac";
+"settings.p2p.copy_identity" = "Copiar";
+"settings.p2p.identity_note" = "Los demás reconocen este Mac por esta clave. Cambiarla invalida todas las copias que tus contactos hayan guardado.";
+"settings.p2p.relay" = "Servidores de retransmisión";
+"settings.p2p.relay_note" = "Una dirección por línea. Déjalo vacío para usar solo conexiones directas: basta en una misma red Wi-Fi y funciona sin internet.";
+"settings.p2p.relay_privacy" = "Una retransmisión solo reenvía. El tráfico sigue cifrado de extremo a extremo, así que no puede leer lo que pasa por ella.";
+"settings.p2p.local_discovery" = "Encontrar personas en esta red";
+"settings.p2p.local_discovery_note" = "Usa mDNS. macOS pedirá permiso de red local la primera vez. Si lo rechazas, los códigos de compartir siguen funcionando.";
+"settings.p2p.save" = "Guardar";
+"settings.p2p.restore_default" = "Restaurar valores predeterminados";
+"settings.p2p.saved" = "Guardado";

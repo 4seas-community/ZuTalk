@@ -36,7 +36,7 @@ pub use docsync::{
 };
 pub use envelope::{EnvelopeError, PayloadKind, ShareEnvelope, UnsignedEnvelope};
 pub use identity::ShareIdentity;
-pub use net::{DocSyncContext, ShareEndpoint, ShareEndpointConfig};
+pub use net::{parse_relay_urls, DocSyncContext, ShareEndpoint, ShareEndpointConfig};
 pub use permission::{
     admit_document_update, AdmissionDenial, AllowAllBoundaries, CaptureBoundaryGuard, RoomRoster,
     WritePolicy,

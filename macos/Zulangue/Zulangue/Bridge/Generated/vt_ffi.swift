@@ -1016,6 +1016,11 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func getSessionTranscriptClipboardText(sessionId: String) throws  -> String
 
     /**
+     * 出厂默认的传输配置。设置页用它做「恢复默认」。
+     */
+    func defaultShareTransport()  -> FfiShareTransport
+
+    /**
      * 打开文档协同。
      *
      * 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
@@ -1029,6 +1034,14 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func joinShare(code: String) throws
 
     /**
+     * 设定传输配置。
+     *
+     * 当前没在共享时立即生效(下次用到端点会按新配置重建);正在共享时保留现有
+     * 连接,新配置在下一次开始共享时生效 —— 中途换中继会把房间里的人踢掉。
+     */
+    func setShareTransport(transport: FfiShareTransport) throws
+
+    /**
      * 本机分享身份。首次调用会生成并持久化。
      */
     func shareIdentity() throws  -> FfiShareIdentity
@@ -1040,6 +1053,11 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      * 的那一帧会留下痕迹,中间被跳过的帧不需要补。
      */
     func shareState()  -> FfiShareState
+
+    /**
+     * 当前生效的传输配置。
+     */
+    func shareTransport()  -> FfiShareTransport
 
     /**
      * 开始共享,返回交给对方的分享码。
@@ -2144,6 +2162,17 @@ open func getSessionTranscriptClipboardText(sessionId: String)throws  -> String 
 }
 
     /**
+     * 出厂默认的传输配置。设置页用它做「恢复默认」。
+     */
+open func defaultShareTransport() -> FfiShareTransport  {
+    return try!  FfiConverterTypeFfiShareTransport_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_default_share_transport(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
      * 打开文档协同。
      *
      * 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
@@ -2168,6 +2197,20 @@ open func joinShare(code: String)throws   {try rustCallWithError(FfiConverterTyp
 }
 
     /**
+     * 设定传输配置。
+     *
+     * 当前没在共享时立即生效(下次用到端点会按新配置重建);正在共享时保留现有
+     * 连接,新配置在下一次开始共享时生效 —— 中途换中继会把房间里的人踢掉。
+     */
+open func setShareTransport(transport: FfiShareTransport)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_set_share_transport(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeFfiShareTransport_lower(transport),$0
+    )
+}
+}
+
+    /**
      * 本机分享身份。首次调用会生成并持久化。
      */
 open func shareIdentity()throws  -> FfiShareIdentity  {
@@ -2187,6 +2230,17 @@ open func shareIdentity()throws  -> FfiShareIdentity  {
 open func shareState() -> FfiShareState  {
     return try!  FfiConverterTypeFfiShareState_lift(try! rustCall() {
     uniffi_vt_ffi_fn_method_zulanguecore_share_state(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 当前生效的传输配置。
+     */
+open func shareTransport() -> FfiShareTransport  {
+    return try!  FfiConverterTypeFfiShareTransport_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_share_transport(
             self.uniffiCloneHandle(),$0
     )
 })
@@ -4713,6 +4767,75 @@ public func FfiConverterTypeFfiShareState_lift(_ buf: RustBuffer) throws -> FfiS
 #endif
 public func FfiConverterTypeFfiShareState_lower(_ value: FfiShareState) -> RustBuffer {
     return FfiConverterTypeFfiShareState.lower(value)
+}
+
+
+/**
+ * 分享的传输配置。由设置页决定,不参与共享协议本身。
+ */
+public struct FfiShareTransport: Equatable, Hashable {
+    /**
+     * 中继地址。为空表示只走直连 —— 局域网可用,跨网络打洞失败时没有兜底。
+     */
+    public var relayUrls: [String]
+    /**
+     * 局域网 mDNS 发现。macOS 15+ 首次会弹系统授权;拒绝后仍可用分享码配对。
+     */
+    public var enableLocalDiscovery: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 中继地址。为空表示只走直连 —— 局域网可用,跨网络打洞失败时没有兜底。
+         */relayUrls: [String],
+        /**
+         * 局域网 mDNS 发现。macOS 15+ 首次会弹系统授权;拒绝后仍可用分享码配对。
+         */enableLocalDiscovery: Bool) {
+        self.relayUrls = relayUrls
+        self.enableLocalDiscovery = enableLocalDiscovery
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiShareTransport: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiShareTransport: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiShareTransport {
+        return
+            try FfiShareTransport(
+                relayUrls: FfiConverterSequenceString.read(from: &buf),
+                enableLocalDiscovery: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiShareTransport, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.relayUrls, into: &buf)
+        FfiConverterBool.write(value.enableLocalDiscovery, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiShareTransport_lift(_ buf: RustBuffer) throws -> FfiShareTransport {
+    return try FfiConverterTypeFfiShareTransport.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiShareTransport_lower(_ value: FfiShareTransport) -> RustBuffer {
+    return FfiConverterTypeFfiShareTransport.lower(value)
 }
 
 
@@ -7560,16 +7683,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_get_session_transcript_clipboard_text() != 26246) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_default_share_transport() != 56789) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_enable_document_sync() != 18832) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_join_share() != 54554) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_set_share_transport() != 48786) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_share_identity() != 22943) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_share_state() != 33930) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_share_transport() != 18208) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_start_sharing() != 27002) {

@@ -822,3 +822,19 @@
 "share.needs_notebook" = "先にノートブックを開いてください。共有の範囲はノートブック単位です。";
 "share.start.confirm.title" = "このノートブックの共有を開始しますか？";
 "share.start.confirm.body" = "以降このノートブックで開始した録音は、字幕が既定で共有されます。音声が共有されることはありません。停止しても以降の送信が止まるだけで、相手が既に受け取った内容は削除できません。";
+
+/* 设置:分享(点对点)传输 */
+"settings.section.p2p_name" = "共有";
+"settings.p2p.title" = "共有";
+"settings.p2p.subtitle" = "この Mac が共有相手に到達する方法。";
+"settings.p2p.identity" = "この Mac の共有キー";
+"settings.p2p.copy_identity" = "コピー";
+"settings.p2p.identity_note" = "相手はこのキーでこの Mac を識別します。変更すると連絡先が保存した控えはすべて無効になります。";
+"settings.p2p.relay" = "リレーサーバー";
+"settings.p2p.relay_note" = "1 行に 1 つ。空欄なら直接接続のみ——同じ Wi-Fi 上ではそれで十分で、インターネットがなくても動きます。";
+"settings.p2p.relay_privacy" = "リレーは転送するだけです。通信は端から端まで暗号化されており、中身は読めません。";
+"settings.p2p.local_discovery" = "同じネットワーク上の相手を見つける";
+"settings.p2p.local_discovery_note" = "mDNS を使います。macOS が初回にローカルネットワークの許可を求めます。拒否しても共有コードは使えます。";
+"settings.p2p.save" = "保存";
+"settings.p2p.restore_default" = "デフォルトに戻す";
+"settings.p2p.saved" = "保存しました";

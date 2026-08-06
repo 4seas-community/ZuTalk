@@ -351,6 +351,8 @@ pub struct ZulangueCore {
     /// 分享端点。首次用到分享功能时才绑定 —— 不用这个功能的用户不该付出
     /// 一个常驻 QUIC 端点的代价。
     pub(crate) share_runtime: Arc<crate::share_api::ShareRuntimeSlot>,
+    /// 分享的传输配置(中继、局域网发现)。由设置页写入。
+    pub(crate) share_transport: Mutex<crate::share_api::FfiShareTransport>,
     /// Durable local encryption keys for capture audio and Context Packs.
     pub(crate) key_store: Arc<dyn KeyProvider>,
     /// Soniox API Key 的进程内运行时；生产固定使用
@@ -693,6 +695,7 @@ impl ZulangueCore {
             provider_credential_bootstrap,
             task_callbacks,
             share_runtime: Default::default(),
+            share_transport: Default::default(),
             key_store,
             api_key_store,
             active_notebook_capture: Mutex::new(None),
