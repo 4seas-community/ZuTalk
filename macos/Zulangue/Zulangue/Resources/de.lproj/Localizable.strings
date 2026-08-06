@@ -856,3 +856,15 @@
 "share.status.joined_waiting_hint" = "Du bist verbunden. Untertitel erscheinen, sobald der Host aufnimmt.";
 "share.status.receiving" = "Untertitel werden empfangen";
 "share.status.receiving_hint" = "Das sind die Untertitel des Hosts. Sie werden auf diesem Mac nicht gespeichert.";
+
+/* 设置:中继准入 */
+"settings.p2p.relay_ready" = "Relay verfügbar";
+"settings.p2p.relay_ready_hint" = "Dieser Mac ist registriert — das Relay übernimmt, wenn zwei Macs sich nicht direkt erreichen.";
+"settings.p2p.relay_not_registered" = "Relay nicht verfügbar";
+"settings.p2p.relay_not_registered_hint" = "Die Registrierung ist nicht durchgegangen. Im selben Netzwerk funktioniert Teilen weiterhin; es fehlt nur der Ausweg zwischen Netzwerken.";
+"settings.p2p.relay_needs_invite" = "Relay braucht eine Einladung";
+"settings.p2p.relay_needs_invite_hint" = "Das Relay lässt eingeladene Macs zu. Ohne Einladung funktioniert Teilen im selben Netzwerk, aber ohne Ausweg über Netzwerke hinweg.";
+"settings.p2p.relay_registering" = "Registrierung…";
+"settings.p2p.relay_unknown" = "Noch nicht geprüft";
+"settings.p2p.relay_unknown_hint" = "Die Registrierung wird beim Start und beim Teilen geprüft.";
+"settings.p2p.relay_retry" = "Erneut versuchen";

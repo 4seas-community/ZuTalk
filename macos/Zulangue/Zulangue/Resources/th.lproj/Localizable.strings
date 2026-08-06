@@ -857,3 +857,15 @@
 "share.status.joined_waiting_hint" = "คุณเชื่อมต่อแล้ว คำบรรยายจะปรากฏเมื่อผู้ดำเนินรายการเริ่มบันทึก";
 "share.status.receiving" = "กำลังรับคำบรรยาย";
 "share.status.receiving_hint" = "นี่คือคำบรรยายของผู้ดำเนินรายการ จะไม่ถูกบันทึกลง Mac เครื่องนี้";
+
+/* 设置:中继准入 */
+"settings.p2p.relay_ready" = "รีเลย์พร้อมใช้";
+"settings.p2p.relay_ready_hint" = "Mac เครื่องนี้ลงทะเบียนแล้ว รีเลย์จะรับช่วงเมื่อสองเครื่องติดต่อกันโดยตรงไม่ได้";
+"settings.p2p.relay_not_registered" = "ใช้รีเลย์ไม่ได้";
+"settings.p2p.relay_not_registered_hint" = "การลงทะเบียนไม่สำเร็จ การแชร์ในเครือข่ายเดียวกันยังใช้ได้ ขาดเพียงทางสำรองเมื่อข้ามเครือข่าย";
+"settings.p2p.relay_needs_invite" = "รีเลย์ต้องมีรหัสเชิญ";
+"settings.p2p.relay_needs_invite_hint" = "รีเลย์เปิดให้เฉพาะเครื่องที่ได้รับเชิญ หากไม่มี การแชร์ในเครือข่ายเดียวกันยังใช้ได้แต่ไม่มีทางสำรองข้ามเครือข่าย";
+"settings.p2p.relay_registering" = "กำลังลงทะเบียน…";
+"settings.p2p.relay_unknown" = "ยังไม่ได้ตรวจสอบ";
+"settings.p2p.relay_unknown_hint" = "ระบบตรวจสอบการลงทะเบียนเมื่อเปิดแอปและเมื่อเริ่มแชร์";
+"settings.p2p.relay_retry" = "ลองใหม่";

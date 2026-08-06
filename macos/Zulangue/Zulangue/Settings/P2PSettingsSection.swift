@@ -26,6 +26,7 @@ struct P2PSettingsSection: View {
                 )
 
                 identityCard
+                relayAccessCard
                 relayCard
                 discoveryCard
             }
@@ -62,6 +63,34 @@ struct P2PSettingsSection: View {
                 .font(.bodySM)
                 .foregroundColor(.textTertiary)
         }
+    }
+
+    // MARK: 中继准入
+
+    /// 中继只放行登记过的 endpoint。这个状态必须看得见——登记失败时局域网直连
+    /// 照常可用，只有跨网络才连不上，用户根本无从判断问题在哪。
+    private var relayAccessCard: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: viewModel.enrollmentIcon)
+                    .foregroundColor(viewModel.enrollmentTint)
+                Text(viewModel.enrollmentTitle)
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+                Spacer()
+                if viewModel.canRetryEnrollment {
+                    Button(String(localized: "settings.p2p.relay_retry")) {
+                        viewModel.retryEnrollment()
+                    }
+                    .accessibilityIdentifier("settings.p2p.relay_retry")
+                }
+            }
+            Text(viewModel.enrollmentHint)
+                .font(.bodySM)
+                .foregroundColor(.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityIdentifier("settings.p2p.relay_access")
     }
 
     // MARK: 中继
@@ -131,6 +160,8 @@ struct P2PSettingsSection: View {
 
 @MainActor
 final class P2PSettingsViewModel: ObservableObject {
+    /// 订阅邀请码会话，登记状态一变界面就跟着变。
+    @ObservedObject private var invite = CommunityInviteSession.shared
     /// 一行一个中继地址。多行文本而不是单个输入框，因为可以配多个。
     @Published var relayText: String = ""
     @Published var localDiscovery: Bool = true
@@ -139,6 +170,54 @@ final class P2PSettingsViewModel: ObservableObject {
     @Published private(set) var messageIsError: Bool = false
 
     private var core: (any ZulangueCoreProtocol)? { CoreClient.shared.core }
+
+    private var enrollment: CommunityInviteSession.RelayEnrollment {
+        CommunityInviteSession.shared.relayEnrollment
+    }
+
+    var enrollmentIcon: String {
+        switch enrollment {
+        case .enrolled: return "checkmark.circle.fill"
+        case .failed: return "exclamationmark.triangle.fill"
+        case .noInvitation: return "info.circle"
+        case .working, .unknown: return "clock"
+        }
+    }
+
+    var enrollmentTint: Color {
+        switch enrollment {
+        case .enrolled: return .signalGreen
+        case .failed: return .signalRed
+        case .noInvitation, .working, .unknown: return .textSecondary
+        }
+    }
+
+    var enrollmentTitle: String {
+        switch enrollment {
+        case .enrolled: return String(localized: "settings.p2p.relay_ready")
+        case .failed: return String(localized: "settings.p2p.relay_not_registered")
+        case .noInvitation: return String(localized: "settings.p2p.relay_needs_invite")
+        case .working: return String(localized: "settings.p2p.relay_registering")
+        case .unknown: return String(localized: "settings.p2p.relay_unknown")
+        }
+    }
+
+    var enrollmentHint: String {
+        switch enrollment {
+        case .enrolled: return String(localized: "settings.p2p.relay_ready_hint")
+        case .failed: return String(localized: "settings.p2p.relay_not_registered_hint")
+        case .noInvitation: return String(localized: "settings.p2p.relay_needs_invite_hint")
+        case .working, .unknown: return String(localized: "settings.p2p.relay_unknown_hint")
+        }
+    }
+
+    var canRetryEnrollment: Bool {
+        enrollment == .failed || enrollment == .unknown
+    }
+
+    func retryEnrollment() {
+        Task { await CommunityInviteSession.shared.enrollCurrentShareEndpoint(force: true) }
+    }
 
     func load() {
         guard let core else { return }

@@ -857,3 +857,15 @@
 "share.status.joined_waiting_hint" = "接続できています。ホストが録音を始めると字幕が表示されます。";
 "share.status.receiving" = "字幕を受信中";
 "share.status.receiving_hint" = "ホストの字幕です。この Mac には保存されません。";
+
+/* 设置:中继准入 */
+"settings.p2p.relay_ready" = "リレー利用可能";
+"settings.p2p.relay_ready_hint" = "この Mac は登録済みです。直接つながらないときはリレーが中継します。";
+"settings.p2p.relay_not_registered" = "リレー利用不可";
+"settings.p2p.relay_not_registered_hint" = "登録できませんでした。同じネットワーク内の共有は使えます。足りないのはネットワークをまたぐときの代替経路だけです。";
+"settings.p2p.relay_needs_invite" = "リレーには招待が必要";
+"settings.p2p.relay_needs_invite_hint" = "リレーは招待された Mac のみ利用できます。招待がなくても同じネットワーク内では共有できますが、ネットワークをまたぐ代替経路はありません。";
+"settings.p2p.relay_registering" = "登録中…";
+"settings.p2p.relay_unknown" = "未確認";
+"settings.p2p.relay_unknown_hint" = "起動時と共有開始時に登録を確認します。";
+"settings.p2p.relay_retry" = "再試行";

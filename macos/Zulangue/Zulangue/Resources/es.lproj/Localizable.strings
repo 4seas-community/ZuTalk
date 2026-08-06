@@ -856,3 +856,15 @@
 "share.status.joined_waiting_hint" = "Estás conectado. Los subtítulos aparecen cuando el anfitrión empiece a grabar.";
 "share.status.receiving" = "Recibiendo subtítulos";
 "share.status.receiving_hint" = "Son los subtítulos del anfitrión. No se guardan en este Mac.";
+
+/* 设置:中继准入 */
+"settings.p2p.relay_ready" = "Retransmisión disponible";
+"settings.p2p.relay_ready_hint" = "Este Mac está registrado, así que la retransmisión se hará cargo cuando dos Mac no se alcancen directamente.";
+"settings.p2p.relay_not_registered" = "Retransmisión no disponible";
+"settings.p2p.relay_not_registered_hint" = "El registro no se completó. Compartir sigue funcionando en la misma red; solo falta el respaldo entre redes distintas.";
+"settings.p2p.relay_needs_invite" = "La retransmisión necesita invitación";
+"settings.p2p.relay_needs_invite_hint" = "La retransmisión admite Mac invitados. Sin invitación, compartir funciona en la misma red pero sin respaldo entre redes.";
+"settings.p2p.relay_registering" = "Registrando…";
+"settings.p2p.relay_unknown" = "Sin comprobar";
+"settings.p2p.relay_unknown_hint" = "El registro se comprueba al iniciar y al empezar a compartir.";
+"settings.p2p.relay_retry" = "Reintentar";

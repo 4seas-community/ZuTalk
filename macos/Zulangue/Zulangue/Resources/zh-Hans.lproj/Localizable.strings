@@ -857,3 +857,15 @@
 "share.status.joined_waiting_hint" = "你已经连上了。等主持人开始录音，字幕就会出现。";
 "share.status.receiving" = "正在接收字幕";
 "share.status.receiving_hint" = "这是主持人的字幕，不会保存到这台 Mac。";
+
+/* 设置:中继准入 */
+"settings.p2p.relay_ready" = "中继可用";
+"settings.p2p.relay_ready_hint" = "这台 Mac 已登记，两台机器直连不通时中继会接手。";
+"settings.p2p.relay_not_registered" = "中继不可用";
+"settings.p2p.relay_not_registered_hint" = "登记没成功。同一网络下分享照常可用，缺的只是跨网络时的兜底。";
+"settings.p2p.relay_needs_invite" = "中继需要邀请码";
+"settings.p2p.relay_needs_invite_hint" = "中继只对受邀的 Mac 开放。没有邀请码时，同一网络下仍可分享，但跨网络没有兜底。";
+"settings.p2p.relay_registering" = "正在登记…";
+"settings.p2p.relay_unknown" = "尚未检查";
+"settings.p2p.relay_unknown_hint" = "启动时和开始共享时都会检查登记。";
+"settings.p2p.relay_retry" = "重试";

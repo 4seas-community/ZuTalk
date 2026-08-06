@@ -857,3 +857,15 @@
 "share.status.joined_waiting_hint" = "You are connected. Captions appear once the host starts recording.";
 "share.status.receiving" = "Receiving captions";
 "share.status.receiving_hint" = "These are the host's captions. They are not saved to this Mac.";
+
+/* 设置:中继准入 */
+"settings.p2p.relay_ready" = "Relay ready";
+"settings.p2p.relay_ready_hint" = "This Mac is registered, so the relay will carry a connection when two Macs cannot reach each other directly.";
+"settings.p2p.relay_not_registered" = "Relay unavailable";
+"settings.p2p.relay_not_registered_hint" = "Registration did not go through. Sharing still works on a shared network; only the fallback for different networks is missing.";
+"settings.p2p.relay_needs_invite" = "Relay needs an invitation";
+"settings.p2p.relay_needs_invite_hint" = "The relay admits invited Macs. Without one, sharing works on a shared network but has no fallback across networks.";
+"settings.p2p.relay_registering" = "Registering…";
+"settings.p2p.relay_unknown" = "Relay not checked yet";
+"settings.p2p.relay_unknown_hint" = "Registration is checked when the app starts and when you share.";
+"settings.p2p.relay_retry" = "Retry";

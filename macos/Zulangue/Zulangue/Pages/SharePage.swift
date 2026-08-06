@@ -429,8 +429,7 @@ final class ShareViewModel: ObservableObject {
     /// 不做这一步中继会拒绝每一个真实用户,而且拒绝是安静的:局域网直连照常可用,
     /// 只有跨网络时才连不上。失败不打扰用户 —— 它只影响回落,不影响直连。
     private func enrollForRelayFallback() {
-        guard let core, let identity = try? core.shareIdentity() else { return }
-        Task { await CommunityInviteSession.shared.enrollShareEndpoint(identity.endpointId) }
+        Task { await CommunityInviteSession.shared.enrollCurrentShareEndpoint() }
     }
 
     private func refreshState() {

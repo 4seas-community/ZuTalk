@@ -111,6 +111,14 @@ final class ZulangueAppDelegate: NSObject, NSApplicationDelegate {
         // 用户可在 Settings → General → Appearance 切换 system/light/dark。
         ThemeManager().apply()
 
+        // 补登记中继身份。
+        //
+        // 中继只放行登记过的 endpoint。在旧版本里兑换过邀请码的 Mac 从没登记过，
+        // 靠这一步补上；已经登记过的直接命中本地标记，不打扰服务器。
+        Task { @MainActor in
+            await CommunityInviteSession.shared.enrollCurrentShareEndpoint()
+        }
+
         // Provider credentials now use the app-private local file. Test hosts
         // must never inspect the signed-in user's real credential profile.
         if TestEnvironment.shouldLoadSavedProviderCredentials {

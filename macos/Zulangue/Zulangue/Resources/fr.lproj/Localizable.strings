@@ -857,3 +857,15 @@
 "share.status.joined_waiting_hint" = "Vous êtes connecté. Les sous-titres arrivent quand l'hôte lance l'enregistrement.";
 "share.status.receiving" = "Réception des sous-titres";
 "share.status.receiving_hint" = "Ce sont les sous-titres de l'hôte. Ils ne sont pas enregistrés sur ce Mac.";
+
+/* 设置:中继准入 */
+"settings.p2p.relay_ready" = "Relais disponible";
+"settings.p2p.relay_ready_hint" = "Ce Mac est enregistré : le relais prendra le relais quand deux Mac ne se joignent pas directement.";
+"settings.p2p.relay_not_registered" = "Relais indisponible";
+"settings.p2p.relay_not_registered_hint" = "L'enregistrement n'a pas abouti. Le partage fonctionne toujours sur un même réseau ; seul le recours entre réseaux manque.";
+"settings.p2p.relay_needs_invite" = "Le relais demande une invitation";
+"settings.p2p.relay_needs_invite_hint" = "Le relais admet les Mac invités. Sans invitation, le partage fonctionne sur un même réseau mais sans recours entre réseaux.";
+"settings.p2p.relay_registering" = "Enregistrement…";
+"settings.p2p.relay_unknown" = "Pas encore vérifié";
+"settings.p2p.relay_unknown_hint" = "L'enregistrement est vérifié au démarrage et au moment de partager.";
+"settings.p2p.relay_retry" = "Réessayer";
