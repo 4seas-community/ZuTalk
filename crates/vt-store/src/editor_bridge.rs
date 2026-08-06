@@ -2380,3 +2380,108 @@ mod capture_boundary_probe_tests {
         assert!(!bridge.remote_update_touches_capture_owned_range("missing", b"anything"));
     }
 }
+
+/// 文档同步要用到的三件事:我是什么版本、对方缺什么、把这份更新合进来。
+///
+/// 这些方法故意不做准入判定 —— 那是分享层的事,顺序也必须是「先判后合」。
+/// 见 `docs/architecture/share-p2p.md` 第 4.2 节。
+impl EditorBridge {
+    /// 本机版本,编码成不透明字节交给对端。
+    pub fn document_version(&self, document_id: &str) -> Option<Vec<u8>> {
+        let sessions = self.sessions.lock().unwrap();
+        Some(sessions.get(document_id)?.doc.oplog_vv().encode())
+    }
+
+    /// 对方停在 `version` 时缺的那些更新。
+    ///
+    /// 版本解不开时返回**全部历史**而不是空 —— 宁可多发一次,不能让对方以为自己
+    /// 已经追平。
+    pub fn updates_since(&self, document_id: &str, version: &[u8]) -> Option<Vec<u8>> {
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions.get(document_id)?;
+        let from = loro::VersionVector::decode(version).unwrap_or_default();
+
+        // 「有没有要发的」必须按版本判,不能按导出字节是否为空判 ——
+        // Loro 的 export 即使无内容也会写出一个头部,那串字节永远不是空的。
+        if from.includes_vv(&session.doc.oplog_vv()) {
+            return None;
+        }
+        session.doc.export(loro::ExportMode::updates(&from)).ok()
+    }
+
+    /// 合入一份**已经通过准入**的远端更新。
+    pub fn import_remote_update(&self, document_id: &str, update: &[u8]) -> bool {
+        let mut sessions = self.sessions.lock().unwrap();
+        let Some(session) = sessions.get_mut(document_id) else {
+            return false;
+        };
+        session.doc.import(update).is_ok()
+    }
+}
+
+#[cfg(test)]
+mod document_sync_tests {
+    use super::*;
+
+    fn opened(text: &str) -> EditorBridge {
+        let doc = LoroDoc::new();
+        doc.get_text("content").insert(0, text).unwrap();
+        doc.commit();
+        let bridge = EditorBridge::new();
+        bridge.open("doc", doc).unwrap();
+        bridge
+    }
+
+    #[test]
+    fn a_peer_at_our_version_needs_nothing() {
+        let bridge = opened("已有内容");
+        let version = bridge.document_version("doc").unwrap();
+        assert!(bridge.updates_since("doc", &version).is_none());
+    }
+
+    #[test]
+    fn a_peer_at_zero_receives_the_whole_history() {
+        let bridge = opened("已有内容");
+        let empty = loro::VersionVector::default().encode();
+        assert!(bridge.updates_since("doc", &empty).is_some());
+    }
+
+    /// 版本解不开时宁可多发,不能让对方以为自己已经追平。
+    #[test]
+    fn an_undecodable_version_falls_back_to_everything() {
+        let bridge = opened("已有内容");
+        assert!(bridge.updates_since("doc", b"garbage").is_some());
+    }
+
+    /// 补齐历史真的能把两端拉齐。
+    #[test]
+    fn catch_up_makes_a_fresh_peer_converge() {
+        let bridge = opened("主持人写的内容");
+        let empty = loro::VersionVector::default().encode();
+        let catch_up = bridge.updates_since("doc", &empty).unwrap();
+
+        let peer = EditorBridge::new();
+        peer.open("doc", LoroDoc::new()).unwrap();
+        assert!(peer.import_remote_update("doc", &catch_up));
+        assert_eq!(peer.get_content("doc").unwrap(), "主持人写的内容");
+
+        // 追平之后就没有新东西可要了。
+        let peer_version = peer.document_version("doc").unwrap();
+        assert!(bridge.updates_since("doc", &peer_version).is_none());
+    }
+
+    #[test]
+    fn a_corrupt_update_is_refused_without_touching_the_document() {
+        let bridge = opened("原文");
+        assert!(!bridge.import_remote_update("doc", b"not-a-loro-update"));
+        assert_eq!(bridge.get_content("doc").unwrap(), "原文");
+    }
+
+    #[test]
+    fn an_unopened_document_has_no_version_and_takes_no_update() {
+        let bridge = EditorBridge::new();
+        assert!(bridge.document_version("missing").is_none());
+        assert!(bridge.updates_since("missing", b"").is_none());
+        assert!(!bridge.import_remote_update("missing", b"anything"));
+    }
+}

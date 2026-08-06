@@ -10,7 +10,12 @@ use iroh::{Endpoint, EndpointAddr, RelayMode, RelayUrl};
 use tokio::sync::{broadcast, Mutex};
 
 use crate::caption::CaptionFrame;
+use crate::docsync::{
+    handle_incoming_update, respond_to_have, DocSyncMessage, DocumentSync, IncomingOutcome,
+};
+use crate::envelope::{PayloadKind, UnsignedEnvelope};
 use crate::identity::ShareIdentity;
+use crate::permission::CaptureBoundaryGuard;
 use crate::permission::RoomRoster;
 use crate::room::ScopeId;
 use crate::room_control::{open as open_control, seal as seal_control, RoomControl, RoomPresence};
@@ -21,6 +26,36 @@ use crate::wire::{read_message, write_message};
 pub const LIVE_CAPTION_ALPN: &[u8] = b"zulangue/live-caption/1";
 /// 文档协同通道。成对直连,承载签名信封。
 pub const DOC_SYNC_ALPN: &[u8] = b"zulangue/doc-sync/1";
+
+/// 文档同步的接线:一次把三个端口交齐。
+///
+/// 三者缺一不可 —— 没有 roster 判不了权限,没有 guard 判不了编辑边界,没有 sink
+/// 合入不了。合成一个类型是为了让「少接一个就能跑」变成不可能。
+pub struct DocSyncContext {
+    pub scope: ScopeId,
+    pub roster: Arc<Mutex<crate::permission::RoomRoster>>,
+    pub guard: Arc<dyn CaptureBoundaryGuard + Send + Sync>,
+    pub sink: Arc<dyn DocumentSync>,
+}
+
+impl std::fmt::Debug for DocSyncContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DocSyncContext")
+            .field("scope", &self.scope)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Clone for DocSyncContext {
+    fn clone(&self) -> Self {
+        Self {
+            scope: self.scope.clone(),
+            roster: self.roster.clone(),
+            guard: self.guard.clone(),
+            sink: self.sink.clone(),
+        }
+    }
+}
 
 /// 广播端为每个接收者保留的待发帧数。
 ///
@@ -63,6 +98,9 @@ pub struct ShareEndpoint {
     gossip: iroh_gossip::net::Gossip,
     identity: ShareIdentity,
     captions: broadcast::Sender<Arc<CaptionFrame>>,
+    /// 本机产生的文档更新,广播给所有已连接的对端。
+    doc_updates: broadcast::Sender<Arc<Vec<u8>>>,
+    doc_context: Arc<Mutex<Option<DocSyncContext>>>,
 }
 
 impl ShareEndpoint {
@@ -72,6 +110,10 @@ impl ShareEndpoint {
         config: ShareEndpointConfig,
     ) -> Result<Self, NetError> {
         let (captions, _) = broadcast::channel(CAPTION_FANOUT_DEPTH);
+        // 文档更新不能丢,所以队列开得比字幕深得多:字幕丢旧帧无害,少一份 CRDT
+        // 更新却会让两端永远不收敛。
+        let (doc_updates, _) = broadcast::channel(256);
+        let doc_context: Arc<Mutex<Option<DocSyncContext>>> = Arc::new(Mutex::new(None));
 
         // Minimal 而非 N0:只设定必需的 crypto provider,不挂任何公共发现服务。
         let mut builder = Endpoint::builder(presets::Minimal)
@@ -117,6 +159,14 @@ impl ShareEndpoint {
                     captions: captions.clone(),
                 },
             )
+            .accept(
+                DOC_SYNC_ALPN,
+                DocSyncAcceptor {
+                    context: doc_context.clone(),
+                    updates: doc_updates.clone(),
+                    identity: identity.clone(),
+                },
+            )
             .spawn();
 
         Ok(Self {
@@ -126,6 +176,8 @@ impl ShareEndpoint {
             gossip,
             identity: identity.clone(),
             captions,
+            doc_updates,
+            doc_context,
         })
     }
 
@@ -146,6 +198,64 @@ impl ShareEndpoint {
     pub fn broadcast_caption(&self, frame: CaptionFrame) {
         // send 只在没有订阅者时报错,那是正常状态,不是故障。
         let _ = self.captions.send(Arc::new(frame));
+    }
+
+    /// 接上文档同步。在此之前 `DOC_SYNC_ALPN` 上的连接一律被拒。
+    pub async fn enable_document_sync(&self, context: DocSyncContext) {
+        *self.doc_context.lock().await = Some(context);
+    }
+
+    /// 把本机产生的一份文档更新推给所有对端。
+    ///
+    /// 由 Loro 的 `subscribe_local_update` 驱动。立即返回,不阻塞编辑。
+    pub fn publish_document_update(&self, update: Vec<u8>) {
+        let _ = self.doc_updates.send(Arc::new(update));
+    }
+
+    /// 主动连上一个对端做文档同步:先补齐历史,再持续互推。
+    pub async fn sync_document_with(&self, peer: EndpointAddr) -> Result<(), NetError> {
+        let context = {
+            let guard = self.doc_context.lock().await;
+            guard
+                .clone()
+                .ok_or_else(|| NetError::Connect("文档同步尚未启用".into()))?
+        };
+
+        let conn = self
+            .endpoint
+            .connect(peer, DOC_SYNC_ALPN)
+            .await
+            .map_err(|e| NetError::Connect(e.to_string()))?;
+
+        // 补齐历史:告诉对方我停在哪，收下它认为我缺的那部分。
+        let (mut send, mut recv) = conn
+            .open_bi()
+            .await
+            .map_err(|e| NetError::Stream(e.to_string()))?;
+        let have = DocSyncMessage::Have {
+            version: context.sink.version(&context.scope),
+        };
+        write_message(&mut send, &have)
+            .await
+            .map_err(|e| NetError::Stream(e.to_string()))?;
+        let _ = send.finish();
+
+        if let Ok(DocSyncMessage::Update { envelope }) =
+            read_message::<_, DocSyncMessage>(&mut recv).await
+        {
+            apply_incoming(&context, &envelope).await;
+        }
+
+        // 之后双向互推:各自开 uni-stream 发自己的更新。
+        let outbound = spawn_update_pusher(
+            conn.clone(),
+            self.doc_updates.subscribe(),
+            context.clone(),
+            self.identity.clone(),
+        );
+        let inbound = spawn_update_reader(conn, context);
+        let _ = tokio::join!(outbound, inbound);
+        Ok(())
     }
 
     /// 加入分享码所描述的房间。
@@ -246,6 +356,118 @@ impl ShareEndpoint {
 
     pub async fn shutdown(self) {
         let _ = self.router.shutdown().await;
+    }
+}
+
+/// 把一份收到的更新过门再合入。
+async fn apply_incoming(context: &DocSyncContext, envelope: &[u8]) {
+    let roster = context.roster.lock().await.clone();
+    match handle_incoming_update(
+        envelope,
+        &roster,
+        context.guard.as_ref(),
+        context.sink.as_ref(),
+    ) {
+        IncomingOutcome::Applied => {}
+        outcome => tracing::debug!(?outcome, "丢弃一份未通过准入的文档更新"),
+    }
+}
+
+/// 持续把本机更新推给一个对端。
+fn spawn_update_pusher(
+    conn: Connection,
+    mut updates: broadcast::Receiver<Arc<Vec<u8>>>,
+    context: DocSyncContext,
+    identity: ShareIdentity,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            let update = match updates.recv().await {
+                Ok(update) => update,
+                // 文档更新落后就没法只补最新的 —— CRDT 需要每一笔。断开让对方
+                // 重连后走补齐历史那条路,比装作没事继续发要诚实。
+                Err(broadcast::error::RecvError::Lagged(_)) => break,
+                Err(broadcast::error::RecvError::Closed) => break,
+            };
+            let envelope = UnsignedEnvelope::new(
+                context.scope.clone(),
+                PayloadKind::DocumentUpdate,
+                update.as_ref().clone(),
+            )
+            .sign(identity.secret());
+            let Ok(bytes) = envelope.encode_compact() else {
+                continue;
+            };
+            let Ok(mut stream) = conn.open_uni().await else {
+                break;
+            };
+            if write_message(&mut stream, &DocSyncMessage::Update { envelope: bytes })
+                .await
+                .is_err()
+            {
+                break;
+            }
+            let _ = stream.finish();
+        }
+    })
+}
+
+/// 持续接收对端推来的更新。
+fn spawn_update_reader(conn: Connection, context: DocSyncContext) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        while let Ok(mut stream) = conn.accept_uni().await {
+            match read_message::<_, DocSyncMessage>(&mut stream).await {
+                Ok(DocSyncMessage::Update { envelope }) => {
+                    apply_incoming(&context, &envelope).await
+                }
+                Ok(_) => {}
+                Err(error) => tracing::debug!(%error, "丢弃一条无法解码的文档消息"),
+            }
+        }
+    })
+}
+
+/// 文档同步的服务端。
+#[derive(Debug, Clone)]
+struct DocSyncAcceptor {
+    context: Arc<Mutex<Option<DocSyncContext>>>,
+    updates: broadcast::Sender<Arc<Vec<u8>>>,
+    identity: ShareIdentity,
+}
+
+impl ProtocolHandler for DocSyncAcceptor {
+    async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+        // 没接上文档同步就没有可同步的东西。静默接受再什么都不做会让对方空等。
+        let Some(context) = self.context.lock().await.clone() else {
+            connection.close(1u32.into(), b"document sync not enabled");
+            return Ok(());
+        };
+
+        // 先应答补齐历史的请求。
+        if let Ok((mut send, mut recv)) = connection.accept_bi().await {
+            if let Ok(DocSyncMessage::Have { version }) =
+                read_message::<_, DocSyncMessage>(&mut recv).await
+            {
+                let reply = respond_to_have(
+                    &version,
+                    &context.scope,
+                    context.sink.as_ref(),
+                    self.identity.secret(),
+                );
+                let _ = write_message(&mut send, &reply).await;
+                let _ = send.finish();
+            }
+        }
+
+        let outbound = spawn_update_pusher(
+            connection.clone(),
+            self.updates.subscribe(),
+            context.clone(),
+            self.identity.clone(),
+        );
+        let inbound = spawn_update_reader(connection, context);
+        let _ = tokio::join!(outbound, inbound);
+        Ok(())
     }
 }
 

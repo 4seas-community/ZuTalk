@@ -58,6 +58,49 @@ impl vt_share::CaptureBoundaryGuard for LoroCaptureBoundaryGuard {
     }
 }
 
+/// 用 `EditorBridge` 回答文档同步的三个问题。
+///
+/// 与 [`LoroCaptureBoundaryGuard`] 同理:`vt-share` 定义端口但不认识 Loro,
+/// 实现落在持有文档的这一侧。
+///
+/// 只有按单次录音共享时才存在可判定的文档;按 Notebook 共享时一次更新可能落在
+/// 任意一篇上,在把范围收窄到具体文档之前,这里不提供也不合入任何东西。
+pub(crate) struct LoroDocumentSync {
+    editor: vt_store::EditorBridge,
+}
+
+impl LoroDocumentSync {
+    pub(crate) fn new(editor: vt_store::EditorBridge) -> Self {
+        Self { editor }
+    }
+
+    fn document_id(scope: &ScopeId) -> Option<&str> {
+        match scope {
+            ScopeId::Session { session_id } => Some(session_id),
+            ScopeId::Notebook { .. } => None,
+        }
+    }
+}
+
+impl vt_share::DocumentSync for LoroDocumentSync {
+    fn version(&self, scope: &ScopeId) -> Vec<u8> {
+        Self::document_id(scope)
+            .and_then(|id| self.editor.document_version(id))
+            .unwrap_or_default()
+    }
+
+    fn updates_since(&self, scope: &ScopeId, version: &[u8]) -> Option<Vec<u8>> {
+        self.editor
+            .updates_since(Self::document_id(scope)?, version)
+    }
+
+    fn apply(&self, scope: &ScopeId, update: &[u8]) -> bool {
+        Self::document_id(scope)
+            .map(|id| self.editor.import_remote_update(id, update))
+            .unwrap_or(false)
+    }
+}
+
 /// 身份密钥在本机密钥库里的固定名字。
 ///
 /// 身份稳定是前提:换一次,联系人保存下来的公钥就全部失效。所以它不随 session
@@ -289,6 +332,34 @@ impl ZulangueCore {
             projection: CaptionReceiver::new(),
             task,
         });
+        Ok(())
+    }
+
+    /// 打开文档协同。
+    ///
+    /// 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
+    /// 每一笔编辑都会推给对端,对端推来的每一笔都要过完整条准入链才会合入。
+    pub fn enable_document_sync(&self) -> Result<(), CoreError> {
+        let guard = self.share_runtime.lock().unwrap();
+        let Some(runtime) = guard.as_ref() else {
+            return Err(CoreError::ValidationFailed {
+                message: "尚未开始共享".into(),
+            });
+        };
+        let Some(roster) = runtime.roster.clone() else {
+            return Err(CoreError::ValidationFailed {
+                message: "尚未开始共享".into(),
+            });
+        };
+        let context = vt_share::DocSyncContext {
+            scope: roster.scope().clone(),
+            roster: Arc::new(tokio::sync::Mutex::new(roster)),
+            guard: Arc::new(LoroCaptureBoundaryGuard::new(self.editor_bridge.clone())),
+            sink: Arc::new(LoroDocumentSync::new(self.editor_bridge.clone())),
+        };
+        let endpoint = runtime.endpoint.clone();
+        self.runtime
+            .block_on(async move { endpoint.enable_document_sync(context).await });
         Ok(())
     }
 

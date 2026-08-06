@@ -1016,6 +1016,14 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func getSessionTranscriptClipboardText(sessionId: String) throws  -> String
 
     /**
+     * 打开文档协同。
+     *
+     * 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
+     * 每一笔编辑都会推给对端,对端推来的每一笔都要过完整条准入链才会合入。
+     */
+    func enableDocumentSync() throws
+
+    /**
      * 用分享码加入别人的房间。
      */
     func joinShare(code: String) throws
@@ -2144,6 +2152,19 @@ open func getSessionTranscriptClipboardText(sessionId: String)throws  -> String 
         FfiConverterString.lower(sessionId),$0
     )
 })
+}
+
+    /**
+     * 打开文档协同。
+     *
+     * 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
+     * 每一笔编辑都会推给对端,对端推来的每一笔都要过完整条准入链才会合入。
+     */
+open func enableDocumentSync()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_enable_document_sync(
+            self.uniffiCloneHandle(),$0
+    )
+}
 }
 
     /**
@@ -7566,6 +7587,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_get_session_transcript_clipboard_text() != 26246) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_enable_document_sync() != 18832) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_join_share() != 54554) {

@@ -17,6 +17,7 @@
 //! | 文档协同 | [`net::DOC_SYNC_ALPN`],成对直连 | 必达,可乱序 |
 
 mod caption;
+mod docsync;
 mod envelope;
 mod identity;
 pub mod net;
@@ -29,9 +30,12 @@ mod sharecode;
 mod wire;
 
 pub use caption::{CaptionFrame, CaptionLine, CaptionReceiver, FrameOutcome};
+pub use docsync::{
+    handle_incoming_update, respond_to_have, DocSyncMessage, DocumentSync, IncomingOutcome,
+};
 pub use envelope::{EnvelopeError, PayloadKind, ShareEnvelope, UnsignedEnvelope};
 pub use identity::ShareIdentity;
-pub use net::{ShareEndpoint, ShareEndpointConfig};
+pub use net::{DocSyncContext, ShareEndpoint, ShareEndpointConfig};
 pub use permission::{
     admit_document_update, AdmissionDenial, AllowAllBoundaries, CaptureBoundaryGuard, RoomRoster,
     WritePolicy,
