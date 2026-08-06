@@ -833,7 +833,7 @@
 "settings.p2p.relay_note" = "Una dirección por línea. Déjalo vacío para usar solo conexiones directas: basta en una misma red Wi-Fi y funciona sin internet.";
 "settings.p2p.relay_privacy" = "Una retransmisión solo reenvía. El tráfico sigue cifrado de extremo a extremo, así que no puede leer lo que pasa por ella.";
 "settings.p2p.local_discovery" = "Encontrar personas en esta red";
-"settings.p2p.local_discovery_note" = "Usa mDNS. macOS pedirá permiso de red local la primera vez. Si lo rechazas, los códigos de compartir siguen funcionando.";
+"settings.p2p.local_discovery_note" = "Te permite encontrar otros Mac aquí y pedir unirte, sin pasar un código. En la red solo se ve una clave. macOS pide permiso de red local la primera vez; si lo rechazas, los códigos de compartir siguen funcionando.";
 "settings.p2p.save" = "Guardar";
 "settings.p2p.restore_default" = "Restaurar valores predeterminados";
 "settings.p2p.saved" = "Guardado";
@@ -868,3 +868,19 @@
 "settings.p2p.relay_unknown" = "Sin comprobar";
 "settings.p2p.relay_unknown_hint" = "El registro se comprueba al iniciar y al empezar a compartir.";
 "settings.p2p.relay_retry" = "Reintentar";
+
+/* 分享:同一网络里的人 */
+"share.nearby" = "Personas en esta red";
+"share.nearby.scan" = "Buscar";
+"share.nearby.scanning" = "Buscando…";
+"share.nearby.empty" = "Aún no hay nadie. Ambos Mac necesitan Zulangue abierto en la misma red.";
+"share.nearby.ask" = "Pedir unirse";
+"share.nearby.note" = "En la red solo se ve una clave: ni nombres ni títulos de reunión. Pedir unirse envía tu nombre; la otra persona decide.";
+"share.nearby.not_sharing" = "Ese Mac no está compartiendo nada ahora.";
+"share.nearby.declined" = "Han rechazado.";
+"share.nearby.timed_out" = "Sin respuesta. Puede que se hayan ausentado.";
+"share.requests" = "Quiere unirse";
+"share.requests.unnamed" = "Mac sin nombre";
+"share.requests.approve" = "Dejar entrar";
+"share.requests.decline" = "Rechazar";
+"share.requests.note" = "El nombre es el que escribieron. La clave de abajo es lo único que no se puede falsificar.";

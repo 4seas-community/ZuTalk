@@ -834,7 +834,7 @@
 "settings.p2p.relay_note" = "1 行に 1 つ。空欄なら直接接続のみ——同じ Wi-Fi 上ではそれで十分で、インターネットがなくても動きます。";
 "settings.p2p.relay_privacy" = "リレーは転送するだけです。通信は端から端まで暗号化されており、中身は読めません。";
 "settings.p2p.local_discovery" = "同じネットワーク上の相手を見つける";
-"settings.p2p.local_discovery_note" = "mDNS を使います。macOS が初回にローカルネットワークの許可を求めます。拒否しても共有コードは使えます。";
+"settings.p2p.local_discovery_note" = "コードをやり取りせずに、ここにいる他の Mac を見つけて参加を依頼できます。ネットワーク上で見えるのは鍵だけです。macOS が初回にローカルネットワークの許可を求めます。拒否しても共有コードは使えます。";
 "settings.p2p.save" = "保存";
 "settings.p2p.restore_default" = "デフォルトに戻す";
 "settings.p2p.saved" = "保存しました";
@@ -869,3 +869,19 @@
 "settings.p2p.relay_unknown" = "未確認";
 "settings.p2p.relay_unknown_hint" = "起動時と共有開始時に登録を確認します。";
 "settings.p2p.relay_retry" = "再試行";
+
+/* 分享:同一网络里的人 */
+"share.nearby" = "同じネットワークの人";
+"share.nearby.scan" = "探す";
+"share.nearby.scanning" = "探しています…";
+"share.nearby.empty" = "まだ見つかりません。両方の Mac で同じネットワーク上に Zulangue を開いてください。";
+"share.nearby.ask" = "参加を依頼";
+"share.nearby.note" = "ネットワーク上で見えるのは鍵の文字列だけです——名前も会議名もありません。依頼するとあなたの名前が相手に送られ、相手が判断します。";
+"share.nearby.not_sharing" = "その Mac は今、何も共有していません。";
+"share.nearby.declined" = "断られました。";
+"share.nearby.timed_out" = "応答がありません。席を外しているかもしれません。";
+"share.requests" = "参加の依頼";
+"share.requests.unnamed" = "名前のない Mac";
+"share.requests.approve" = "許可";
+"share.requests.decline" = "断る";
+"share.requests.note" = "名前は相手が入力したものです。その下の鍵だけが偽装できません。";

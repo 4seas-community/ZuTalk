@@ -35,6 +35,11 @@ struct SharePage: View {
                     errorBanner(error)
                 }
 
+                // 主持人要先看到有人在敲门,这比其他任何东西都急。
+                if !viewModel.joinRequests.isEmpty {
+                    joinRequestsSection
+                }
+
                 if viewModel.isSharing {
                     activeSection
 
@@ -43,6 +48,7 @@ struct SharePage: View {
                     }
                 } else {
                     startSection
+                    nearbySection
                     joinSection
                 }
             }
@@ -92,6 +98,89 @@ struct SharePage: View {
         .background(Color.signalRed.opacity(0.1))
         .cornerRadius(6)
         .accessibilityIdentifier("share.error")
+    }
+
+    /// 有人想加入。
+    ///
+    /// 显示的名字是**对方自己写的**,唯一可信的身份是下面那串公钥 —— 所以两个
+    /// 都摆出来,不能只显示名字。
+    private var joinRequestsSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text(String(localized: "share.requests"))
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+
+            ForEach(viewModel.joinRequests, id: \.requestId) { request in
+                HStack(spacing: Spacing.sm) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(request.displayName.isEmpty
+                             ? String(localized: "share.requests.unnamed")
+                             : request.displayName)
+                            .font(.bodyMedium)
+                            .foregroundColor(.textPrimary)
+                        Text(request.shortLabel)
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                    }
+                    Spacer()
+                    Button(String(localized: "share.requests.decline")) {
+                        viewModel.decline(request.requestId)
+                    }
+                    Button(String(localized: "share.requests.approve")) {
+                        viewModel.approve(request.requestId)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+
+            Text(String(localized: "share.requests.note"))
+                .font(.bodySM)
+                .foregroundColor(.textTertiary)
+        }
+        .accessibilityIdentifier("share.requests")
+    }
+
+    /// 同一网络里的人。
+    private var nearbySection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack(spacing: Spacing.sm) {
+                Text(String(localized: "share.nearby"))
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+                Spacer()
+                Button(viewModel.scanning
+                       ? String(localized: "share.nearby.scanning")
+                       : String(localized: "share.nearby.scan")) {
+                    viewModel.scanNearby()
+                }
+                .disabled(viewModel.scanning)
+                .accessibilityIdentifier("share.nearby.scan")
+            }
+
+            if viewModel.nearby.isEmpty {
+                Text(String(localized: "share.nearby.empty"))
+                    .font(.bodySM)
+                    .foregroundColor(.textTertiary)
+            } else {
+                ForEach(viewModel.nearby, id: \.endpointId) { peer in
+                    HStack(spacing: Spacing.sm) {
+                        Text(peer.shortLabel)
+                            .font(.caption)
+                            .foregroundColor(.textSecondary)
+                        Spacer()
+                        Button(String(localized: "share.nearby.ask")) {
+                            viewModel.askToJoin(peer.endpointId)
+                        }
+                    }
+                }
+            }
+
+            Text(String(localized: "share.nearby.note"))
+                .font(.bodySM)
+                .foregroundColor(.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityIdentifier("share.nearby")
     }
 
     /// 开始共享。
@@ -327,6 +416,9 @@ final class ShareViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var status: ShareStatus = .idle
     @Published private(set) var copied: Bool = false
+    @Published private(set) var nearby: [FfiNearbyPeer] = []
+    @Published private(set) var joinRequests: [FfiJoinRequest] = []
+    @Published private(set) var scanning: Bool = false
 
     /// 观看端的字幕投影靠轮询刷新。帧是 replace-in-full 的,跳帧无害,所以
     /// 「取最新状态」与「每帧回调」在观感上等价 —— 见 vt-ffi/src/share_api.rs。
@@ -414,6 +506,60 @@ final class ShareViewModel: ObservableObject {
         }
     }
 
+    /// 扫一遍同一网络里的 Zulangue。
+    func scanNearby() {
+        guard let core else {
+            errorMessage = String(localized: "share.core_unavailable")
+            return
+        }
+        scanning = true
+        errorMessage = nil
+        Task { @MainActor in
+            defer { scanning = false }
+            do {
+                nearby = try core.nearbyPeers(seconds: 3)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// 向同一网络里的某台机器请求加入。批准后自动进房。
+    func askToJoin(_ endpointID: String) {
+        guard let core else { return }
+        errorMessage = nil
+        Task { @MainActor in
+            do {
+                switch try core.requestToJoinNearby(endpointId: endpointID) {
+                case .joined:
+                    // 对方批准了,钥匙已经经局域网直连交过来,房间也进了。
+                    enrollForRelayFallback()
+                    reload()
+                case .notSharing:
+                    errorMessage = String(localized: "share.nearby.not_sharing")
+                case .declined:
+                    errorMessage = String(localized: "share.nearby.declined")
+                case .timedOut:
+                    errorMessage = String(localized: "share.nearby.timed_out")
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func approve(_ requestID: String) {
+        guard let core else { return }
+        _ = try? core.approveJoinRequest(requestId: requestID)
+        refreshState()
+    }
+
+    func decline(_ requestID: String) {
+        guard let core else { return }
+        _ = core.declineJoinRequest(requestId: requestID)
+        refreshState()
+    }
+
     func stop() {
         guard let core else { return }
         try? core.stopSharing()
@@ -439,6 +585,7 @@ final class ShareViewModel: ObservableObject {
         hostOnly = state.hostOnly
         lines = state.lines
         if shareCode == nil { shareCode = core.currentShareCode() }
+        joinRequests = core.pendingJoinRequests()
 
         status = {
             if !state.isSharing { return .idle }

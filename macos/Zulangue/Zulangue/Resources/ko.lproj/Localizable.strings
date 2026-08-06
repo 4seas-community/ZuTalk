@@ -834,7 +834,7 @@
 "settings.p2p.relay_note" = "한 줄에 하나씩. 비워 두면 직접 연결만 사용합니다 — 같은 Wi-Fi에서는 그것으로 충분하며 인터넷이 없어도 작동합니다.";
 "settings.p2p.relay_privacy" = "릴레이는 전달만 합니다. 트래픽은 종단 간 암호화되어 있어 내용을 읽을 수 없습니다.";
 "settings.p2p.local_discovery" = "같은 네트워크의 상대 찾기";
-"settings.p2p.local_discovery_note" = "mDNS를 사용합니다. macOS가 처음에 로컬 네트워크 권한을 묻습니다. 거부해도 공유 코드는 사용할 수 있습니다.";
+"settings.p2p.local_discovery_note" = "코드를 주고받지 않고도 여기 있는 다른 Mac을 찾아 참여를 요청할 수 있습니다. 네트워크에서는 키만 보입니다. macOS가 처음에 로컬 네트워크 권한을 묻습니다. 거부해도 공유 코드는 사용할 수 있습니다.";
 "settings.p2p.save" = "저장";
 "settings.p2p.restore_default" = "기본값 복원";
 "settings.p2p.saved" = "저장됨";
@@ -869,3 +869,19 @@
 "settings.p2p.relay_unknown" = "아직 확인 안 함";
 "settings.p2p.relay_unknown_hint" = "앱 시작 시와 공유 시작 시에 등록을 확인합니다.";
 "settings.p2p.relay_retry" = "다시 시도";
+
+/* 分享:同一网络里的人 */
+"share.nearby" = "같은 네트워크의 사람";
+"share.nearby.scan" = "찾기";
+"share.nearby.scanning" = "찾는 중…";
+"share.nearby.empty" = "아직 찾지 못했습니다. 두 Mac 모두 같은 네트워크에서 Zulangue를 열어야 합니다.";
+"share.nearby.ask" = "참여 요청";
+"share.nearby.note" = "네트워크에서는 키 문자열만 보입니다 — 이름도 회의 제목도 없습니다. 요청하면 이름이 전달되고 상대가 결정합니다.";
+"share.nearby.not_sharing" = "그 Mac은 지금 아무것도 공유하고 있지 않습니다.";
+"share.nearby.declined" = "거절했습니다.";
+"share.nearby.timed_out" = "응답이 없습니다. 자리를 비웠을 수 있습니다.";
+"share.requests" = "참여 요청";
+"share.requests.unnamed" = "이름 없는 Mac";
+"share.requests.approve" = "허용";
+"share.requests.decline" = "거절";
+"share.requests.note" = "이름은 상대가 입력한 것입니다. 아래 키만이 위조할 수 없는 부분입니다.";

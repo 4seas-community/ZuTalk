@@ -834,7 +834,7 @@
 "settings.p2p.relay_note" = "一行一个地址。留空表示只走直连——在同一个 Wi-Fi 下这样就够，完全断网也能用。";
 "settings.p2p.relay_privacy" = "中继只负责转发。流量端到端加密，它读不到经过的内容。";
 "settings.p2p.local_discovery" = "发现同一网络里的人";
-"settings.p2p.local_discovery_note" = "使用 mDNS。macOS 首次会询问本地网络权限。拒绝后仍可用分享码。";
+"settings.p2p.local_discovery_note" = "让你在这里找到别的 Mac 并请求加入，不必来回传分享码。网络上只看得到一串密钥。macOS 首次会询问本地网络权限，拒绝后分享码仍然可用。";
 "settings.p2p.save" = "保存";
 "settings.p2p.restore_default" = "恢复默认";
 "settings.p2p.saved" = "已保存";
@@ -869,3 +869,19 @@
 "settings.p2p.relay_unknown" = "尚未检查";
 "settings.p2p.relay_unknown_hint" = "启动时和开始共享时都会检查登记。";
 "settings.p2p.relay_retry" = "重试";
+
+/* 分享:同一网络里的人 */
+"share.nearby" = "同一网络里的人";
+"share.nearby.scan" = "查找";
+"share.nearby.scanning" = "查找中…";
+"share.nearby.empty" = "还没找到人。两台 Mac 都要在同一网络下打开 Zulangue。";
+"share.nearby.ask" = "请求加入";
+"share.nearby.note" = "网络上只看得到一串密钥——没有名字，也没有会议标题。请求加入会把你的名字发过去，由对方决定。";
+"share.nearby.not_sharing" = "那台 Mac 现在没有在共享。";
+"share.nearby.declined" = "对方拒绝了。";
+"share.nearby.timed_out" = "没有回应，对方可能离开了。";
+"share.requests" = "有人想加入";
+"share.requests.unnamed" = "未命名的 Mac";
+"share.requests.approve" = "放行";
+"share.requests.decline" = "拒绝";
+"share.requests.note" = "名字是对方自己填的。下面那串密钥才是伪造不了的部分。";

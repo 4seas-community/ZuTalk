@@ -1016,6 +1016,11 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func getSessionTranscriptClipboardText(sessionId: String) throws  -> String
 
     /**
+     * 批准一条加入请求,把分享码交给对方。
+     */
+    func approveJoinRequest(requestId: String) throws  -> Bool
+
+    /**
      * 当前正在主持的分享码。没有在主持时为 `None`。
      *
      * 分享码必须能从这里取回,不能只活在界面的内存里 —— 切走标签页再回来、
@@ -1023,6 +1028,11 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      * 复制按钮于是静默失效。
      */
     func currentShareCode()  -> String?
+
+    /**
+     * 拒绝一条加入请求。
+     */
+    func declineJoinRequest(requestId: String)  -> Bool
 
     /**
      * 出厂默认的传输配置。设置页用它做「恢复默认」。
@@ -1041,6 +1051,28 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      * 用分享码加入别人的房间。
      */
     func joinShare(code: String) throws
+
+    /**
+     * 同一网络里有哪些 Zulangue。
+     *
+     * 会阻塞 `seconds` 秒来收集 —— mDNS 是异步宣告的,立刻返回只会得到空列表。
+     */
+    func nearbyPeers(seconds: UInt32) throws  -> [FfiNearbyPeer]
+
+    /**
+     * 等着你回答的加入请求。
+     */
+    func pendingJoinRequests()  -> [FfiJoinRequest]
+
+    /**
+     * 向同一网络里的某台机器请求加入。批准后自动进房。
+     */
+    func requestToJoinNearby(endpointId: String) throws  -> FfiJoinOutcome
+
+    /**
+     * 本机在「附近的人」里显示成什么名字。
+     */
+    func setShareDisplayName(name: String) throws
 
     /**
      * 设定传输配置。
@@ -2176,6 +2208,18 @@ open func getSessionTranscriptClipboardText(sessionId: String)throws  -> String 
 }
 
     /**
+     * 批准一条加入请求,把分享码交给对方。
+     */
+open func approveJoinRequest(requestId: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_approve_join_request(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(requestId),$0
+    )
+})
+}
+
+    /**
      * 当前正在主持的分享码。没有在主持时为 `None`。
      *
      * 分享码必须能从这里取回,不能只活在界面的内存里 —— 切走标签页再回来、
@@ -2186,6 +2230,18 @@ open func currentShareCode() -> String?  {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
     uniffi_vt_ffi_fn_method_zulanguecore_current_share_code(
             self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 拒绝一条加入请求。
+     */
+open func declineJoinRequest(requestId: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_decline_join_request(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(requestId),$0
     )
 })
 }
@@ -2221,6 +2277,54 @@ open func joinShare(code: String)throws   {try rustCallWithError(FfiConverterTyp
     uniffi_vt_ffi_fn_method_zulanguecore_join_share(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(code),$0
+    )
+}
+}
+
+    /**
+     * 同一网络里有哪些 Zulangue。
+     *
+     * 会阻塞 `seconds` 秒来收集 —— mDNS 是异步宣告的,立刻返回只会得到空列表。
+     */
+open func nearbyPeers(seconds: UInt32)throws  -> [FfiNearbyPeer]  {
+    return try  FfiConverterSequenceTypeFfiNearbyPeer.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_nearby_peers(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(seconds),$0
+    )
+})
+}
+
+    /**
+     * 等着你回答的加入请求。
+     */
+open func pendingJoinRequests() -> [FfiJoinRequest]  {
+    return try!  FfiConverterSequenceTypeFfiJoinRequest.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_pending_join_requests(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 向同一网络里的某台机器请求加入。批准后自动进房。
+     */
+open func requestToJoinNearby(endpointId: String)throws  -> FfiJoinOutcome  {
+    return try  FfiConverterTypeFfiJoinOutcome_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_request_to_join_nearby(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(endpointId),$0
+    )
+})
+}
+
+    /**
+     * 本机在「附近的人」里显示成什么名字。
+     */
+open func setShareDisplayName(name: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_set_share_display_name(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),$0
     )
 }
 }
@@ -2777,6 +2881,143 @@ public func FfiConverterTypeFfiContextPackSourceInfo_lift(_ buf: RustBuffer) thr
 #endif
 public func FfiConverterTypeFfiContextPackSourceInfo_lower(_ value: FfiContextPackSourceInfo) -> RustBuffer {
     return FfiConverterTypeFfiContextPackSourceInfo.lower(value)
+}
+
+
+/**
+ * 一条等着你回答的加入请求。
+ */
+public struct FfiJoinRequest: Equatable, Hashable {
+    public var requestId: String
+    /**
+     * 请求方的公钥。**这是唯一可信的身份** —— 名字是对方自己写的。
+     */
+    public var endpointId: String
+    public var shortLabel: String
+    /**
+     * 对方自报的名字,已经过滤。可能为空。
+     */
+    public var displayName: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(requestId: String,
+        /**
+         * 请求方的公钥。**这是唯一可信的身份** —— 名字是对方自己写的。
+         */endpointId: String, shortLabel: String,
+        /**
+         * 对方自报的名字,已经过滤。可能为空。
+         */displayName: String) {
+        self.requestId = requestId
+        self.endpointId = endpointId
+        self.shortLabel = shortLabel
+        self.displayName = displayName
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiJoinRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiJoinRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiJoinRequest {
+        return
+            try FfiJoinRequest(
+                requestId: FfiConverterString.read(from: &buf),
+                endpointId: FfiConverterString.read(from: &buf),
+                shortLabel: FfiConverterString.read(from: &buf),
+                displayName: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiJoinRequest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.requestId, into: &buf)
+        FfiConverterString.write(value.endpointId, into: &buf)
+        FfiConverterString.write(value.shortLabel, into: &buf)
+        FfiConverterString.write(value.displayName, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiJoinRequest_lift(_ buf: RustBuffer) throws -> FfiJoinRequest {
+    return try FfiConverterTypeFfiJoinRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiJoinRequest_lower(_ value: FfiJoinRequest) -> RustBuffer {
+    return FfiConverterTypeFfiJoinRequest.lower(value)
+}
+
+
+/**
+ * 同一网络里看到的一台 Zulangue。
+ *
+ * 局域网上只看得到不透明公钥 —— 对方是谁、在共享什么,都要连上去问,
+ * 而且要经过对方同意。
+ */
+public struct FfiNearbyPeer: Equatable, Hashable {
+    public var endpointId: String
+    public var shortLabel: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(endpointId: String, shortLabel: String) {
+        self.endpointId = endpointId
+        self.shortLabel = shortLabel
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNearbyPeer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNearbyPeer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNearbyPeer {
+        return
+            try FfiNearbyPeer(
+                endpointId: FfiConverterString.read(from: &buf),
+                shortLabel: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNearbyPeer, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.endpointId, into: &buf)
+        FfiConverterString.write(value.shortLabel, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyPeer_lift(_ buf: RustBuffer) throws -> FfiNearbyPeer {
+    return try FfiConverterTypeFfiNearbyPeer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyPeer_lower(_ value: FfiNearbyPeer) -> RustBuffer {
+    return FfiConverterTypeFfiNearbyPeer.lower(value)
 }
 
 
@@ -5666,6 +5907,102 @@ public func FfiConverterTypeFfiEditOp_lower(_ value: FfiEditOp) -> RustBuffer {
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * 请求加入的结果。
+ */
+
+public enum FfiJoinOutcome: Equatable, Hashable {
+
+    /**
+     * 对方批准了,已经自动加入。
+     */
+    case joined
+    /**
+     * 对方此刻没在共享。等一等再试。
+     */
+    case notSharing
+    /**
+     * 对方拒绝了。再敲也没用。
+     */
+    case declined
+    /**
+     * 对方一直没回应。
+     */
+    case timedOut
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiJoinOutcome: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiJoinOutcome: FfiConverterRustBuffer {
+    typealias SwiftType = FfiJoinOutcome
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiJoinOutcome {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .joined
+
+        case 2: return .notSharing
+
+        case 3: return .declined
+
+        case 4: return .timedOut
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiJoinOutcome, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .joined:
+            writeInt(&buf, Int32(1))
+
+
+        case .notSharing:
+            writeInt(&buf, Int32(2))
+
+
+        case .declined:
+            writeInt(&buf, Int32(3))
+
+
+        case .timedOut:
+            writeInt(&buf, Int32(4))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiJoinOutcome_lift(_ buf: RustBuffer) throws -> FfiJoinOutcome {
+    return try FfiConverterTypeFfiJoinOutcome.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiJoinOutcome_lower(_ value: FfiJoinOutcome) -> RustBuffer {
+    return FfiConverterTypeFfiJoinOutcome.lower(value)
+}
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
 public enum FfiNotebookAsyncProjectionState: Equatable, Hashable {
 
@@ -7040,6 +7377,56 @@ fileprivate struct FfiConverterSequenceTypeFfiContextPackSourceInfo: FfiConverte
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiJoinRequest: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiJoinRequest]
+
+    public static func write(_ value: [FfiJoinRequest], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiJoinRequest.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiJoinRequest] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiJoinRequest]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiJoinRequest.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiNearbyPeer: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiNearbyPeer]
+
+    public static func write(_ value: [FfiNearbyPeer], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiNearbyPeer.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiNearbyPeer] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiNearbyPeer]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiNearbyPeer.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiNotebook: FfiConverterRustBuffer {
     typealias SwiftType = [FfiNotebook]
 
@@ -7737,7 +8124,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_get_session_transcript_clipboard_text() != 26246) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_approve_join_request() != 15902) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_current_share_code() != 40858) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_decline_join_request() != 45683) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_default_share_transport() != 56789) {
@@ -7747,6 +8140,18 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_join_share() != 54554) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_nearby_peers() != 3442) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_pending_join_requests() != 56159) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_request_to_join_nearby() != 45293) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_set_share_display_name() != 38459) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_set_share_transport() != 48786) {

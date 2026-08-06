@@ -833,7 +833,7 @@
 "settings.p2p.relay_note" = "Eine Adresse pro Zeile. Leer lassen heißt nur Direktverbindungen — im selben WLAN reicht das und es funktioniert ganz ohne Internet.";
 "settings.p2p.relay_privacy" = "Ein Relay leitet nur weiter. Der Verkehr bleibt Ende-zu-Ende verschlüsselt, es kann nicht mitlesen.";
 "settings.p2p.local_discovery" = "Personen in diesem Netzwerk finden";
-"settings.p2p.local_discovery_note" = "Nutzt mDNS. macOS fragt beim ersten Mal nach der Berechtigung für das lokale Netzwerk. Bei Ablehnung funktionieren Teilen-Codes weiterhin.";
+"settings.p2p.local_discovery_note" = "Findet andere Macs hier und fragt nach Beitritt, statt einen Code herumzureichen. Im Netzwerk ist nur ein Schlüssel sichtbar. macOS fragt beim ersten Mal nach der Berechtigung fürs lokale Netzwerk; bei Ablehnung funktionieren Teilen-Codes weiterhin.";
 "settings.p2p.save" = "Sichern";
 "settings.p2p.restore_default" = "Standard wiederherstellen";
 "settings.p2p.saved" = "Gesichert";
@@ -868,3 +868,19 @@
 "settings.p2p.relay_unknown" = "Noch nicht geprüft";
 "settings.p2p.relay_unknown_hint" = "Die Registrierung wird beim Start und beim Teilen geprüft.";
 "settings.p2p.relay_retry" = "Erneut versuchen";
+
+/* 分享:同一网络里的人 */
+"share.nearby" = "Personen in diesem Netzwerk";
+"share.nearby.scan" = "Suchen";
+"share.nearby.scanning" = "Suche…";
+"share.nearby.empty" = "Noch niemand gefunden. Auf beiden Macs muss Zulangue im selben Netzwerk offen sein.";
+"share.nearby.ask" = "Beitritt anfragen";
+"share.nearby.note" = "Im Netzwerk ist nur ein Schlüssel sichtbar — keine Namen, keine Besprechungstitel. Eine Anfrage sendet deinen Namen; die andere Person entscheidet.";
+"share.nearby.not_sharing" = "Dieser Mac teilt gerade nichts.";
+"share.nearby.declined" = "Abgelehnt.";
+"share.nearby.timed_out" = "Keine Antwort. Vielleicht gerade nicht am Platz.";
+"share.requests" = "Möchte beitreten";
+"share.requests.unnamed" = "Mac ohne Namen";
+"share.requests.approve" = "Hereinlassen";
+"share.requests.decline" = "Ablehnen";
+"share.requests.note" = "Der Name ist selbst eingegeben. Nur der Schlüssel darunter lässt sich nicht fälschen.";

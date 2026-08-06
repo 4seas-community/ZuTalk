@@ -834,7 +834,7 @@
 "settings.p2p.relay_note" = "Une adresse par ligne. Laissez vide pour n'utiliser que les connexions directes — cela suffit sur un même Wi-Fi et fonctionne sans internet.";
 "settings.p2p.relay_privacy" = "Un relais ne fait que transmettre. Le trafic reste chiffré de bout en bout : il ne peut pas lire ce qui passe.";
 "settings.p2p.local_discovery" = "Trouver les personnes sur ce réseau";
-"settings.p2p.local_discovery_note" = "Utilise mDNS. macOS demandera l'autorisation réseau local la première fois. Un refus laisse les codes de partage fonctionnels.";
+"settings.p2p.local_discovery_note" = "Permet de trouver les autres Mac ici et de demander à les rejoindre, sans faire circuler un code. Seule une clé est visible sur le réseau. macOS demande l'autorisation réseau local la première fois ; un refus laisse les codes de partage fonctionnels.";
 "settings.p2p.save" = "Enregistrer";
 "settings.p2p.restore_default" = "Rétablir par défaut";
 "settings.p2p.saved" = "Enregistré";
@@ -869,3 +869,19 @@
 "settings.p2p.relay_unknown" = "Pas encore vérifié";
 "settings.p2p.relay_unknown_hint" = "L'enregistrement est vérifié au démarrage et au moment de partager.";
 "settings.p2p.relay_retry" = "Réessayer";
+
+/* 分享:同一网络里的人 */
+"share.nearby" = "Personnes sur ce réseau";
+"share.nearby.scan" = "Chercher";
+"share.nearby.scanning" = "Recherche…";
+"share.nearby.empty" = "Personne pour l'instant. Les deux Mac doivent avoir Zulangue ouvert sur le même réseau.";
+"share.nearby.ask" = "Demander à rejoindre";
+"share.nearby.note" = "Seule une clé est visible sur le réseau — aucun nom, aucun titre de réunion. Demander envoie votre nom ; l'autre personne décide.";
+"share.nearby.not_sharing" = "Ce Mac ne partage rien pour le moment.";
+"share.nearby.declined" = "Refusé.";
+"share.nearby.timed_out" = "Pas de réponse. La personne s'est peut-être absentée.";
+"share.requests" = "Demande à rejoindre";
+"share.requests.unnamed" = "Mac sans nom";
+"share.requests.approve" = "Laisser entrer";
+"share.requests.decline" = "Refuser";
+"share.requests.note" = "Le nom est celui qu'ils ont saisi. Seule la clé en dessous ne peut pas être falsifiée.";

@@ -35,6 +35,8 @@ iroh-tickets = "1.0.0"
 futures-lite = "2"
 postcard = { version = "1", features = ["alloc"] }
 iroh-mdns-address-lookup = "0.4.0"
+n0-future = "0.3"
+uuid = { workspace = true }
 
 [dev-dependencies]
 hex = "0.4"

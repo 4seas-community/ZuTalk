@@ -834,7 +834,7 @@
 "settings.p2p.relay_note" = "One address per line. Leave empty to use direct connections only — that is enough on a shared Wi-Fi and works with no internet at all.";
 "settings.p2p.relay_privacy" = "A relay only forwards. Traffic stays end-to-end encrypted, so it cannot read what passes through.";
 "settings.p2p.local_discovery" = "Find people on this network";
-"settings.p2p.local_discovery_note" = "Uses mDNS. macOS will ask for local network permission the first time. Declining still leaves share codes working.";
+"settings.p2p.local_discovery_note" = "Lets you find other Macs here and ask to join, instead of passing a code around. Only a key is visible on the network. macOS asks for local network permission the first time; declining leaves share codes working.";
 "settings.p2p.save" = "Save";
 "settings.p2p.restore_default" = "Restore default";
 "settings.p2p.saved" = "Saved";
@@ -869,3 +869,19 @@
 "settings.p2p.relay_unknown" = "Relay not checked yet";
 "settings.p2p.relay_unknown_hint" = "Registration is checked when the app starts and when you share.";
 "settings.p2p.relay_retry" = "Retry";
+
+/* 分享:同一网络里的人 */
+"share.nearby" = "People on this network";
+"share.nearby.scan" = "Look";
+"share.nearby.scanning" = "Looking…";
+"share.nearby.empty" = "Nobody found yet. Both Macs need Zulangue open on the same network.";
+"share.nearby.ask" = "Ask to join";
+"share.nearby.note" = "Only a key is visible on the network — no names, no meeting titles. Asking to join sends your name; the other person decides.";
+"share.nearby.not_sharing" = "That Mac is not sharing anything right now.";
+"share.nearby.declined" = "They declined.";
+"share.nearby.timed_out" = "No answer. They may have stepped away.";
+"share.requests" = "Wants to join";
+"share.requests.unnamed" = "Unnamed Mac";
+"share.requests.approve" = "Let in";
+"share.requests.decline" = "Decline";
+"share.requests.note" = "The name is what they typed. The key underneath is the only part that cannot be faked.";

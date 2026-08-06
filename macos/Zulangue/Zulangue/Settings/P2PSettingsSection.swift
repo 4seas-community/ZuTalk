@@ -65,6 +65,25 @@ struct P2PSettingsSection: View {
         }
     }
 
+    // MARK: 局域网发现
+
+    private var discoveryCard: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Toggle(isOn: $viewModel.localDiscovery) {
+                Text(String(localized: "settings.p2p.local_discovery"))
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+            }
+            .onChange(of: viewModel.localDiscovery) { _, _ in viewModel.save() }
+            .accessibilityIdentifier("settings.p2p.local_discovery")
+
+            Text(String(localized: "settings.p2p.local_discovery_note"))
+                .font(.bodySM)
+                .foregroundColor(.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     // MARK: 中继准入
 
     /// 中继只放行登记过的 endpoint。这个状态必须看得见——登记失败时局域网直连
@@ -139,23 +158,6 @@ struct P2PSettingsSection: View {
         }
     }
 
-    // MARK: 局域网发现
-
-    private var discoveryCard: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            Toggle(isOn: $viewModel.localDiscovery) {
-                Text(String(localized: "settings.p2p.local_discovery"))
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
-            }
-            .onChange(of: viewModel.localDiscovery) { _, _ in viewModel.save() }
-            .accessibilityIdentifier("settings.p2p.local_discovery")
-
-            Text(String(localized: "settings.p2p.local_discovery_note"))
-                .font(.bodySM)
-                .foregroundColor(.textTertiary)
-        }
-    }
 }
 
 @MainActor

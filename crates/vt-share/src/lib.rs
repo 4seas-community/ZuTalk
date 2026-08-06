@@ -20,6 +20,7 @@ mod caption;
 mod docsync;
 mod envelope;
 mod identity;
+mod nearby;
 pub mod net;
 mod permission;
 mod resource;
@@ -36,7 +37,13 @@ pub use docsync::{
 };
 pub use envelope::{EnvelopeError, PayloadKind, ShareEnvelope, UnsignedEnvelope};
 pub use identity::ShareIdentity;
-pub use net::{parse_relay_urls, DocSyncContext, ShareEndpoint, ShareEndpointConfig};
+pub use nearby::{
+    sanitize_display_name, DenyReason, NearbyMessage, NearbyPeer, PendingJoinRequest,
+    MAX_DISPLAY_NAME_BYTES, NEARBY_ALPN,
+};
+pub use net::{
+    parse_relay_urls, DocSyncContext, JoinRequestDesk, ShareEndpoint, ShareEndpointConfig,
+};
 pub use permission::{
     admit_document_update, AdmissionDenial, AllowAllBoundaries, CaptureBoundaryGuard, RoomRoster,
     WritePolicy,

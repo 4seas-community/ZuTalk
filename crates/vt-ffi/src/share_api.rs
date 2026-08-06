@@ -178,9 +178,45 @@ impl Default for FfiShareTransport {
     fn default() -> Self {
         Self {
             relay_urls: vec![DEFAULT_RELAY_URL.to_string()],
+            // 默认打开:它驱动「同一网络里的人」—— 发现 → 请求 → 批准。
+            // macOS 会因此弹一次本地网络权限框,拒绝后分享码那条路仍然可用。
             enable_local_discovery: true,
         }
     }
+}
+
+/// 同一网络里看到的一台 Zulangue。
+///
+/// 局域网上只看得到不透明公钥 —— 对方是谁、在共享什么,都要连上去问,
+/// 而且要经过对方同意。
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiNearbyPeer {
+    pub endpoint_id: String,
+    pub short_label: String,
+}
+
+/// 一条等着你回答的加入请求。
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiJoinRequest {
+    pub request_id: String,
+    /// 请求方的公钥。**这是唯一可信的身份** —— 名字是对方自己写的。
+    pub endpoint_id: String,
+    pub short_label: String,
+    /// 对方自报的名字,已经过滤。可能为空。
+    pub display_name: String,
+}
+
+/// 请求加入的结果。
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum FfiJoinOutcome {
+    /// 对方批准了,已经自动加入。
+    Joined,
+    /// 对方此刻没在共享。等一等再试。
+    NotSharing,
+    /// 对方拒绝了。再敲也没用。
+    Declined,
+    /// 对方一直没回应。
+    TimedOut,
 }
 
 /// 当前共享状态的一帧快照。
@@ -360,6 +396,103 @@ impl ZulangueCore {
         })
     }
 
+    /// 同一网络里有哪些 Zulangue。
+    ///
+    /// 会阻塞 `seconds` 秒来收集 —— mDNS 是异步宣告的,立刻返回只会得到空列表。
+    pub fn nearby_peers(&self, seconds: u32) -> Result<Vec<FfiNearbyPeer>, CoreError> {
+        let endpoint = self.ensure_share_endpoint()?;
+        let window = std::time::Duration::from_secs(seconds.clamp(1, 10) as u64);
+        let peers = self
+            .runtime
+            .block_on(async move { endpoint.nearby_peers(window).await });
+        Ok(peers
+            .into_iter()
+            .map(|p| FfiNearbyPeer {
+                endpoint_id: p.endpoint_id.to_string(),
+                short_label: p.short_label,
+            })
+            .collect())
+    }
+
+    /// 向同一网络里的某台机器请求加入。批准后自动进房。
+    pub fn request_to_join_nearby(&self, endpoint_id: String) -> Result<FfiJoinOutcome, CoreError> {
+        let endpoint = self.ensure_share_endpoint()?;
+        let answer = self
+            .runtime
+            .block_on(async move { endpoint.request_to_join(&endpoint_id).await })
+            .map_err(|error| CoreError::InternalError {
+                message: format!("请求加入失败: {error}"),
+            })?;
+        match answer {
+            Ok(code) => {
+                self.join_share(code)?;
+                Ok(FfiJoinOutcome::Joined)
+            }
+            Err(vt_share::DenyReason::NotSharing) => Ok(FfiJoinOutcome::NotSharing),
+            Err(vt_share::DenyReason::Declined) => Ok(FfiJoinOutcome::Declined),
+            Err(vt_share::DenyReason::TimedOut) => Ok(FfiJoinOutcome::TimedOut),
+        }
+    }
+
+    /// 等着你回答的加入请求。
+    pub fn pending_join_requests(&self) -> Vec<FfiJoinRequest> {
+        let guard = self.share_runtime.lock().unwrap();
+        let Some(runtime) = guard.as_ref() else {
+            return Vec::new();
+        };
+        let desk = runtime.endpoint.join_desk();
+        drop(guard);
+        self.runtime.block_on(async move {
+            desk.pending()
+                .await
+                .into_iter()
+                .map(|r| FfiJoinRequest {
+                    request_id: r.request_id,
+                    endpoint_id: r.endpoint_id.to_string(),
+                    short_label: r.endpoint_id.fmt_short().to_string(),
+                    display_name: r.display_name,
+                })
+                .collect()
+        })
+    }
+
+    /// 批准一条加入请求,把分享码交给对方。
+    pub fn approve_join_request(&self, request_id: String) -> Result<bool, CoreError> {
+        let (desk, code) = {
+            let guard = self.share_runtime.lock().unwrap();
+            let Some(runtime) = guard.as_ref() else {
+                return Ok(false);
+            };
+            let Some(hosting) = runtime.hosting.as_ref() else {
+                return Ok(false);
+            };
+            (runtime.endpoint.join_desk(), hosting.code.to_string())
+        };
+        Ok(self
+            .runtime
+            .block_on(async move { desk.approve(&request_id, code).await }))
+    }
+
+    /// 拒绝一条加入请求。
+    pub fn decline_join_request(&self, request_id: String) -> bool {
+        let guard = self.share_runtime.lock().unwrap();
+        let Some(runtime) = guard.as_ref() else {
+            return false;
+        };
+        let desk = runtime.endpoint.join_desk();
+        drop(guard);
+        self.runtime
+            .block_on(async move { desk.decline(&request_id).await })
+    }
+
+    /// 本机在「附近的人」里显示成什么名字。
+    pub fn set_share_display_name(&self, name: String) -> Result<(), CoreError> {
+        let endpoint = self.ensure_share_endpoint()?;
+        self.runtime
+            .block_on(async move { endpoint.set_display_name(&name).await });
+        Ok(())
+    }
+
     /// 本机分享身份。首次调用会生成并持久化。
     pub fn share_identity(&self) -> Result<FfiShareIdentity, CoreError> {
         let identity = self.load_or_create_share_identity()?;
@@ -411,6 +544,13 @@ impl ZulangueCore {
             code.policy,
         ));
         runtime.hosting = Some(HostedRoom { code: code.clone() });
+        let endpoint = runtime.endpoint.clone();
+        let text = code.to_string();
+        drop(guard);
+        // 请求台要知道现在主持的是哪个码,才能在批准时交出去;
+        // 没有它就只能回「没在共享」。
+        self.runtime
+            .block_on(async move { endpoint.set_hosted_share_code(Some(text)).await });
         Ok(code.to_string())
     }
 
@@ -425,6 +565,9 @@ impl ZulangueCore {
             // ViewedRoom 的 Drop 会中止接收任务。
             runtime.viewing = None;
             runtime.roster = None;
+            let endpoint = runtime.endpoint.clone();
+            self.runtime
+                .block_on(async move { endpoint.set_hosted_share_code(None).await });
         }
         Ok(())
     }
@@ -877,7 +1020,10 @@ mod tests {
     fn default_transport_points_at_the_deployed_relay() {
         let t = FfiShareTransport::default();
         assert_eq!(t.relay_urls, vec![DEFAULT_RELAY_URL.to_string()]);
-        assert!(t.enable_local_discovery);
+        assert!(
+            t.enable_local_discovery,
+            "局域网发现默认打开:它驱动「同一网络里的人」"
+        );
         assert!(
             vt_share::parse_relay_urls(&t.relay_urls).is_ok(),
             "默认地址必须解析得动"
