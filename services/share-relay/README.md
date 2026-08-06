@@ -12,6 +12,31 @@
 - **同一 Wi-Fi 的会议室场景根本用不到它。** 局域网直连成功率接近 100%，分享码里
   内嵌了直连地址，断网也能配对。中继只在跨网络且打洞失败时才介入。
 
+## 当前部署（exe.dev）
+
+| | |
+| --- | --- |
+| 中继 | `zulangue-relay.exe.xyz`（1 vCPU / 2 GB），systemd 单元 `zulangue-share-relay` |
+| 邀请码服务 | `zulangue-invite.exe.xyz`，门禁端点 `/v1/relay-auth` |
+| 客户端用的 relay URL | `https://zulangue-relay.exe.xyz` |
+
+exe.dev 的网络模型和一般 VM 不同，本目录里的 `relay.toml` 是**通用形态**，实际
+部署用的是下面这几条差异：
+
+- **TLS 由 exe.dev 边缘终结**，VM 只讲 HTTP，所以没有 `[tls]` 段，也不需要
+  Let's Encrypt。
+- **边缘代理固定转发到 `:8000`**，所以 `http_bind_addr = "0.0.0.0:8000"`。
+  VM 在 NAT 后面，只有 22 直接暴露。
+- **代理只转 HTTP，UDP 到不了 VM**，所以 `enable_quic_addr_discovery = false`。
+  代价是打洞成功率略降，不影响可用性。
+- 代理默认要求 exe.dev 登录，须 `share set-public zulangue-relay` 放开。
+- **每台 VM 只有一个代理端口**（`share port` 是单数），这就是中继没有和邀请码
+  服务合并到一台的原因——合并要在关键路径的机器前面再架一层 nginx 分流。
+
+一个踩过的坑：用 curl 测 `Upgrade` 头会得到误导结论。curl 走 HTTP/2 时**自己**
+就不发这个头（HTTP/2 禁止逐跳头），看起来像代理剥掉了。必须加 `--http1.1` 才测得准。
+实测 exe.dev 的代理是**透传** `Upgrade` 的，中继协议因此可用。
+
 ## 部署
 
 中继二进制来自 iroh 仓库，不在本仓库构建：
