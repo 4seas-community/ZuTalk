@@ -10,5 +10,5 @@ pub mod error;
 
 pub use canonical::{canonicalize_for_soniox, SONIOX_CANONICAL_SAMPLE_RATE};
 pub use decode::{decode_file, DecodedAudio};
-pub use encode::{encode_aac, encode_wav, generate_sine_wave};
+pub use encode::{encode_wav, generate_sine_wave};
 pub use error::AudioError;

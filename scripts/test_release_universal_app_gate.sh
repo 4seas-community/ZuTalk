@@ -74,14 +74,8 @@ grep -Eq 'exit[[:space:]]+1' <<<"$assert_body" \
   || fail "assert-universal-app must fail when an architecture is missing"
 
 copy_release_body="$(recipe_body _copy-artifacts-release)"
-grep -Fq 'target/{{ target_arm64 }}/release/build/fdk-aac-sys-' <<<"$copy_release_body" \
-  || fail "release artifact copy must collect arm64 libfdk-aac.a"
-grep -Fq 'target/{{ target_x86_64 }}/release/build/fdk-aac-sys-' <<<"$copy_release_body" \
-  || fail "release artifact copy must collect x86_64 libfdk-aac.a"
-grep -Eq 'lipo[[:space:]]+-create.*FDK_ARM64.*FDK_X86_64|lipo[[:space:]]+-create.*FDK_X86_64.*FDK_ARM64' <<<"$copy_release_body" \
-  || fail "release artifact copy must lipo libfdk-aac.a into a universal archive"
-grep -Eq 'libfdk-aac\.a[[:space:]]+-verify_arch[[:space:]]+arm64[[:space:]]+x86_64' <<<"$copy_release_body" \
-  || fail "release artifact copy must verify universal libfdk-aac.a"
+grep -Fq 'target/universal/release/libvt_ffi.a' <<<"$copy_release_body" \
+  || fail "release artifact copy must stage the universal libvt_ffi.a"
 
 grep -Eq '^release-adhoc:.*release.*xcode-build-universal.*assert-universal-app.*assert-adhoc-app.*assert-sparkle-configured-app.*assert-public-app-privacy.*dmg' "$JUSTFILE" \
   || fail "release-adhoc must verify the Universal app, Ad Hoc signature, Sparkle, and privacy before packaging"

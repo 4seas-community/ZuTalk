@@ -901,32 +901,17 @@ _copy-artifacts:
     replace_if_changed {{ uniffi_out }}/vt_ffi.swift {{ bridge_dir }}/vt_ffi.swift
     replace_if_changed {{ uniffi_out }}/vt_ffiFFI.h {{ bridge_dir }}/vt_ffiFFI.h
     replace_if_changed {{ uniffi_out }}/vt_ffiFFI.modulemap {{ bridge_dir }}/vt_ffiFFI.modulemap
-    # Native C libs 必须跟 libvt_ffi.a 一起给 Xcode link(否则 Undefined symbols)。
-    # fdk-aac-sys 的 build.rs 在 target/.../build/fdk-aac-sys-*/out 下出 libfdk-aac.a。
-    shopt -s nullglob
-    FDK_CANDIDATES=(target/debug/build/fdk-aac-sys-*/out/libfdk-aac.a)
-    ((${#FDK_CANDIDATES[@]} > 0)) \
-        || { echo "FAIL: host debug libfdk-aac.a missing"; exit 1; }
-    FDK=$(ls -t -- "${FDK_CANDIDATES[@]}" | head -1)
-    HOST_ARCH=$(uname -m)
-    lipo "$FDK" -verify_arch "$HOST_ARCH"
-    replace_if_changed "$FDK" {{ bridge_dir }}/libfdk-aac.a
-    lipo {{ bridge_dir }}/libfdk-aac.a -verify_arch "$HOST_ARCH"
 
 _copy-artifacts-release:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{ bridge_dir }}
     TEMP_PATHS=()
-    FDK_TMP_DIR=""
     cleanup() {
         local temporary
         for temporary in "${TEMP_PATHS[@]}"; do
             rm -f "$temporary"
         done
-        if [[ -n "$FDK_TMP_DIR" && -d "$FDK_TMP_DIR" ]]; then
-            find "$FDK_TMP_DIR" -depth -delete 2>/dev/null || true
-        fi
     }
     trap cleanup EXIT
     replace_if_changed() {
@@ -946,18 +931,6 @@ _copy-artifacts-release:
     }
 
     replace_if_changed target/universal/release/libvt_ffi.a {{ bridge_dir }}/libvt_ffi.a
-    FDK_ARM64=$(ls -t target/{{ target_arm64 }}/release/build/fdk-aac-sys-*/out/libfdk-aac.a 2>/dev/null | head -1)
-    FDK_X86_64=$(ls -t target/{{ target_x86_64 }}/release/build/fdk-aac-sys-*/out/libfdk-aac.a 2>/dev/null | head -1)
-    if [ -z "$FDK_ARM64" ] || [ -z "$FDK_X86_64" ]; then
-        echo "FAIL: release libfdk-aac.a missing for arm64 or x86_64"
-        exit 1
-    fi
-    FDK_TMP_DIR=$(mktemp -d "{{ bridge_dir }}/fdk-universal.tmp.XXXXXX")
-    FDK_UNIVERSAL="$FDK_TMP_DIR/libfdk-aac.a"
-    lipo -create "$FDK_ARM64" "$FDK_X86_64" -output "$FDK_UNIVERSAL"
-    lipo "$FDK_UNIVERSAL" -verify_arch arm64 x86_64
-    replace_if_changed "$FDK_UNIVERSAL" {{ bridge_dir }}/libfdk-aac.a
-    lipo {{ bridge_dir }}/libfdk-aac.a -verify_arch arm64 x86_64
     replace_if_changed {{ uniffi_out }}/vt_ffi.swift {{ bridge_dir }}/vt_ffi.swift
     replace_if_changed {{ uniffi_out }}/vt_ffiFFI.h {{ bridge_dir }}/vt_ffiFFI.h
     replace_if_changed {{ uniffi_out }}/vt_ffiFFI.modulemap {{ bridge_dir }}/vt_ffiFFI.modulemap
