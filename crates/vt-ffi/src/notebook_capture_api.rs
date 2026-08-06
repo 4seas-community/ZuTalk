@@ -3524,6 +3524,7 @@ impl CaptureCallbackSink {
     fn new(
         callback: Arc<dyn FfiNotebookCaptureCallback>,
         store: NotebookCaptureStore,
+        share_tap: Option<crate::share_api::ShareCaptionTap>,
     ) -> Result<Self, CoreError> {
         let mailbox = Arc::new(CaptureCallbackMailbox {
             pending: StdMutex::new(PendingCaptureCallbacks::default()),
@@ -3574,6 +3575,11 @@ impl CaptureCallbackSink {
                     }
                     if let Some(preview) = &preview {
                         erasure.absorb_preview(preview);
+                        // 广播与本机呈现同一帧。放在 catch_unwind 之外是刻意的:
+                        // Swift 回调 panic 不该顺带让房间里的人失去字幕,反过来也一样。
+                        if let Some(tap) = &share_tap {
+                            tap.broadcast(preview);
+                        }
                     }
                     if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         if let Some(event) = event {
@@ -5394,7 +5400,13 @@ impl ZulangueCore {
         // Spawn the bounded callback dispatcher before creating any durable
         // session state, eliminating a rollback-only failure point after attach.
         let callback: Arc<dyn FfiNotebookCaptureCallback> = Arc::from(callback);
-        let callback = CaptureCallbackSink::new(callback, (*self.notebook_capture_store).clone())?;
+        let callback = CaptureCallbackSink::new(
+            callback,
+            (*self.notebook_capture_store).clone(),
+            Some(crate::share_api::ShareCaptionTap::new(
+                self.share_runtime.clone(),
+            )),
+        )?;
 
         let session_id = uuid::Uuid::new_v4().to_string();
         let session_record = vt_store::SessionRecord {
@@ -12231,6 +12243,7 @@ mod tests {
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(tx)),
             (*core.notebook_capture_store).clone(),
+            None,
         )
         .unwrap();
         let run = core
@@ -12324,6 +12337,7 @@ mod tests {
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(tx)),
             (*core.notebook_capture_store).clone(),
+            None,
         )
         .unwrap();
         let run = core
@@ -16368,6 +16382,7 @@ mod tests {
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
             (*core.notebook_capture_store).clone(),
+            None,
         )
         .unwrap();
 
@@ -16461,6 +16476,7 @@ mod tests {
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
             (*core.notebook_capture_store).clone(),
+            None,
         )
         .unwrap();
 
@@ -16510,6 +16526,7 @@ mod tests {
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
             (*core.notebook_capture_store).clone(),
+            None,
         )
         .unwrap();
         callback.set_remote_truth_overlay(
@@ -16581,6 +16598,7 @@ mod tests {
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
             (*core.notebook_capture_store).clone(),
+            None,
         )
         .unwrap();
         let (read_tx, read_rx) = std::sync::mpsc::channel();
@@ -16653,6 +16671,7 @@ mod tests {
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
             (*core.notebook_capture_store).clone(),
+            None,
         )
         .unwrap();
         rusqlite::Connection::open(temp.path().join("zulangue.db"))
@@ -16706,6 +16725,7 @@ mod tests {
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
             (*core.notebook_capture_store).clone(),
+            None,
         )
         .unwrap();
         {
@@ -16769,6 +16789,7 @@ mod tests {
         let callback = CaptureCallbackSink::new(
             Arc::new(CaptureEventSender(callback_tx)),
             (*core.notebook_capture_store).clone(),
+            None,
         )
         .unwrap();
         let published = callback.send(event_from_run(stale_run, vec![stale_utterance], false));

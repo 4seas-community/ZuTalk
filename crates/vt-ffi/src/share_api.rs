@@ -27,6 +27,7 @@ use vt_share::{
     WritePolicy,
 };
 
+use crate::notebook_capture_api::FfiNotebookCaptureLivePreview;
 use crate::{CoreError, ZulangueCore};
 
 /// 用 Loro 回答「这份远端更新碰了采集投影拥有的区间吗」。
@@ -448,6 +449,98 @@ impl ZulangueCore {
     }
 }
 
+/// 采集侧到分享通道的接线。
+///
+/// 挂在**回调派发线程**上,不在采集热路径上:那里已经做过合并,是「Swift 将要看到
+/// 什么」唯一确定的地方,广播出去的内容因此与本机屏幕上的完全一致。
+///
+/// `broadcast_caption` 立即返回、对慢接收者丢帧,所以这一步不会拖慢派发。
+#[derive(Clone)]
+pub(crate) struct ShareCaptionTap {
+    runtime: Arc<ShareRuntimeSlot>,
+}
+
+impl ShareCaptionTap {
+    pub(crate) fn new(runtime: Arc<ShareRuntimeSlot>) -> Self {
+        Self { runtime }
+    }
+
+    /// 把一帧本机预览广播给房间。非主持人、未共享、范围不符时都是 no-op。
+    pub(crate) fn broadcast(&self, preview: &FfiNotebookCaptureLivePreview) {
+        let Ok(guard) = self.runtime.lock() else {
+            return;
+        };
+        let Some(runtime) = guard.as_ref() else {
+            return;
+        };
+        // 只有主持人广播自己的字幕。观看者手里的是别人的内容,不该再转发出去。
+        let Some(hosting) = runtime.hosting.as_ref() else {
+            return;
+        };
+        let scope = &hosting.code.scope;
+
+        // 按单次录音共享时,只广播那一场的字幕。
+        if let ScopeId::Session { session_id } = scope {
+            if session_id != &preview.session_id {
+                return;
+            }
+        }
+
+        runtime
+            .endpoint
+            .broadcast_caption(caption_frame_from(scope.clone(), preview));
+    }
+}
+
+/// 把一帧本机预览翻成线上帧。
+///
+/// **两条车道原样过去,不在这里重做对应关系。** utterance 与 translation cue 的
+/// 对应是按时间区间在读取时回答的(见 timeline-projection.md),让接收端重算一遍会
+/// 让两端得出不同的结果。所以这里只做搬运。
+fn caption_frame_from(
+    scope: ScopeId,
+    preview: &FfiNotebookCaptureLivePreview,
+) -> vt_share::CaptionFrame {
+    let mut lines: Vec<vt_share::CaptionLine> = preview
+        .utterances
+        .iter()
+        .map(|u| vt_share::CaptionLine {
+            speaker: u.session_speaker_id.clone(),
+            // 推测性尾部的 durable 语言可能还是 und,此时用临时标签,
+            // 让对端能立刻把它放进正确的车道。
+            source_language: u
+                .provisional_source_language
+                .clone()
+                .unwrap_or_else(|| u.source_language.clone()),
+            source_text: u.source_text.clone(),
+            target_language: u.translated_language.clone(),
+            target_text: u.translated_text.clone(),
+            completion: u.completion.clone(),
+        })
+        .collect();
+
+    lines.extend(
+        preview
+            .translation_cues
+            .iter()
+            .filter(|c| !c.withdrawn)
+            .map(|c| vt_share::CaptionLine {
+                speaker: None,
+                source_language: c.source_language.clone(),
+                source_text: String::new(),
+                target_language: Some(c.target_language.clone()),
+                target_text: Some(c.text.clone()),
+                completion: c.completion.clone(),
+            }),
+    );
+
+    vt_share::CaptionFrame {
+        scope,
+        preview_revision: preview.preview_revision,
+        lines,
+    }
+}
+
 /// 供 `ZulangueCore` 持有的运行时槽位。
 pub(crate) type ShareRuntimeSlot = Mutex<Option<ShareRuntime>>;
 
@@ -558,6 +651,109 @@ mod tests {
             run_chain("session-3", "somebody-elses-doc", update, editor),
             vt_share::IncomingOutcome::Denied(vt_share::AdmissionDenial::DocumentNotInScope)
         );
+    }
+
+    fn preview(session_id: &str, revision: u64) -> FfiNotebookCaptureLivePreview {
+        use crate::notebook_capture_api::{
+            FfiNotebookCaptureTranslationCue, FfiNotebookCaptureUtterance,
+        };
+        FfiNotebookCaptureLivePreview {
+            session_id: session_id.into(),
+            preview_revision: revision,
+            utterances: vec![FfiNotebookCaptureUtterance {
+                id: "u1".into(),
+                session_id: session_id.into(),
+                sequence: 1,
+                revision: 1,
+                session_speaker_id: Some("spk".into()),
+                source_language: "und".into(),
+                provisional_source_language: Some("ja".into()),
+                source_text: "こんにちは".into(),
+                source_start_ms: Some(0),
+                source_end_ms: Some(500),
+                translated_language: Some("zh-Hans".into()),
+                translated_text: Some("你好".into()),
+                completion: "partial".into(),
+                alignment: "aligned".into(),
+                source_projection_revision: 0,
+                source_edit_revision: 0,
+                language_variants: vec![],
+            }],
+            translation_cues: vec![
+                FfiNotebookCaptureTranslationCue {
+                    target_language: "ko".into(),
+                    group_epoch: 1,
+                    provider_sequence: 1,
+                    source_language: "ja".into(),
+                    source_start_ms: Some(0),
+                    source_end_ms: Some(500),
+                    text: "안녕하세요".into(),
+                    completion: "partial".into(),
+                    withdrawn: false,
+                    revision: 1,
+                },
+                // 已撤回的 cue 不该被广播出去。
+                FfiNotebookCaptureTranslationCue {
+                    target_language: "fr".into(),
+                    group_epoch: 1,
+                    provider_sequence: 2,
+                    source_language: "ja".into(),
+                    source_start_ms: Some(0),
+                    source_end_ms: Some(500),
+                    text: "retiré".into(),
+                    completion: "partial".into(),
+                    withdrawn: true,
+                    revision: 1,
+                },
+            ],
+            lane_health: vec![],
+        }
+    }
+
+    /// 两条车道原样过去,撤回的 cue 不发。
+    #[test]
+    fn frame_carries_both_lanes_and_drops_withdrawn_cues() {
+        let scope = ScopeId::Session {
+            session_id: "s".into(),
+        };
+        let frame = caption_frame_from(scope.clone(), &preview("s", 9));
+
+        assert_eq!(frame.preview_revision, 9);
+        assert_eq!(frame.scope, scope);
+        assert_eq!(frame.lines.len(), 2, "一条 utterance + 一条未撤回的 cue");
+
+        // 推测性尾部的 durable 语言还是 und,应当用临时标签,否则对端放不进车道。
+        assert_eq!(frame.lines[0].source_language, "ja");
+        assert_eq!(frame.lines[0].source_text, "こんにちは");
+        assert_eq!(frame.lines[0].target_text.as_deref(), Some("你好"));
+        assert_eq!(frame.lines[0].speaker.as_deref(), Some("spk"));
+
+        assert_eq!(frame.lines[1].target_language.as_deref(), Some("ko"));
+        assert!(
+            frame
+                .lines
+                .iter()
+                .all(|l| l.target_text.as_deref() != Some("retiré")),
+            "撤回的 cue 不该出现在线上帧里"
+        );
+    }
+
+    /// **音频门禁在这一层的具体形态:线上帧里没有任何可以承载 PCM 的字段。**
+    #[test]
+    fn frame_is_text_only() {
+        let frame = caption_frame_from(
+            ScopeId::Session {
+                session_id: "s".into(),
+            },
+            &preview("s", 1),
+        );
+        let json = serde_json::to_string(&frame).unwrap();
+        for banned in ["pcm", "audio", "wav", "sample_rate", "channels"] {
+            assert!(
+                !json.to_ascii_lowercase().contains(banned),
+                "线上字幕帧不得出现 {banned}"
+            );
+        }
     }
 
     /// ed25519 私钥恰好是密钥库的槽位宽度,所以可以直接复用受保护的存储。

@@ -350,7 +350,7 @@ pub struct ZulangueCore {
     pub(crate) task_callbacks: Arc<TaskCallbackMap>,
     /// 分享端点。首次用到分享功能时才绑定 —— 不用这个功能的用户不该付出
     /// 一个常驻 QUIC 端点的代价。
-    pub(crate) share_runtime: crate::share_api::ShareRuntimeSlot,
+    pub(crate) share_runtime: Arc<crate::share_api::ShareRuntimeSlot>,
     /// Durable local encryption keys for capture audio and Context Packs.
     pub(crate) key_store: Arc<dyn KeyProvider>,
     /// Soniox API Key 的进程内运行时；生产固定使用
