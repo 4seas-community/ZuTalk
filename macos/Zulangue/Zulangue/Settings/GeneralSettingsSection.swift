@@ -1,6 +1,6 @@
 // GeneralSettingsSection.swift
 // 常规设置:应用语言 + 外观
-// 权威:docs/i18n.md (待建)
+// 语言集合的一致性由 scripts/check_locale_parity.sh 强制。
 //
 // 语言策略:
 //   - 支持 th / en / fr / es / de / ko / ja / zh-Hans

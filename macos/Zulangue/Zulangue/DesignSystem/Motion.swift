@@ -1,6 +1,5 @@
 // Motion.swift
 // Zulangue 全局动画与 spring 配置
-// 权威：docs/redesign/redesign-plan.md §4.A.3
 //
 // 设计原则:
 // - 整个项目里 withAnimation 调用必须用 Motion 的 4 个 spring 之一

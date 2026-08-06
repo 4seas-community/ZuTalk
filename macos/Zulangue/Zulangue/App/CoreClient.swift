@@ -1,6 +1,6 @@
 // CoreClient.swift
 // ZulangueCore 全局持有 + 错误处理
-// 权威：docs/design/D5-uniffi-api.md
+// 分层职责见 docs/architecture/ARCHITECTURE.md「代码边界」。
 
 import Foundation
 

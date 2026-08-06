@@ -1,8 +1,7 @@
 // FocusRing.swift
 // Zulangue 键盘 focus 统一规范
-// 权威:docs/redesign/redesign-plan.md §4.A.5
 //
-// 设计原则 5(原则 #5 from redesign-plan §2):
+// 设计原则 5:
 // Focus ring 是底线,不是装饰。所有 input/button/list item/tab
 // 必须有键盘 focus 可见态。
 //

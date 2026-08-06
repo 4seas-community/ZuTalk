@@ -1,7 +1,8 @@
 //! Zulangue 存储层
 //!
 //! SQLite (rusqlite) + Loro CRDT 文档存储 + 文件系统管理。
-//! 设计文档：docs/design/D4-loro-document.md
+//! SQLite 事实与 Loro 可编辑投影的所有权划分见
+//! docs/architecture/ARCHITECTURE.md「转录编辑所有权」。
 
 pub mod context_pack_store;
 pub mod editor_bridge;

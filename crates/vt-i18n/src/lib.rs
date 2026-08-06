@@ -12,7 +12,8 @@
 //! 支持的 locale：`en` / `th` / `ja` / `ko` / `fr` / `es` / `de` / `zh-Hans`，
 //! fallback = `en`。
 //!
-//! 权威：docs/i18n.md（待建）
+//! 语言集合由 `locales/*.yml`、`macos/.../Resources/*.lproj` 与根目录
+//! `README.*.md` 三处共同定义,一致性由 scripts/check_locale_parity.sh 强制。
 
 rust_i18n::i18n!("locales", fallback = "en");
 

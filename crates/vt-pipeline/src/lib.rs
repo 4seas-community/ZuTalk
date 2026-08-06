@@ -1,7 +1,7 @@
 //! Zulangue 管道编排层
 //!
 //! Notebook capture support, explicit async tasks, and session state.
-//! 设计文档：docs/design/D3-pipeline-state.md
+//! 录音与转录的职责划分见 docs/architecture/ARCHITECTURE.md「录音与转录」。
 
 pub mod import;
 pub mod privacy;

@@ -1,8 +1,7 @@
 //! Zulangue STT 层
 //!
 //! Fixed Notebook capture engine contract + Soniox v5 WebSocket clients.
-//! 设计文档：docs/design/D1-soniox-protocol.md
-//! 权威 trait 签名：docs/architecture/TYPE_SYSTEM.md §2
+//! 分层职责见 docs/architecture/ARCHITECTURE.md「代码边界」。
 
 pub mod capture_engine;
 pub mod config;

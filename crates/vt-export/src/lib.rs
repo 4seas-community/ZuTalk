@@ -1,7 +1,6 @@
 //! Zulangue 导出层
 //!
 //! md/txt/srt/vtt/zip 格式导出。
-//! 设计文档：docs/design/D5-uniffi-api.md §13
 
 pub mod formats;
 pub mod zip;

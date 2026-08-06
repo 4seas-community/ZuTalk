@@ -1,6 +1,5 @@
 // Iconography.swift
 // Zulangue 图标系统命名常量
-// 权威:docs/redesign/redesign-plan.md §4.A.6
 //
 // 设计原则:
 // - SF Symbols 用法集中管理,不要在 view 里写 magic string

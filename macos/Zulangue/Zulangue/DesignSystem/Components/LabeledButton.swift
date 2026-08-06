@@ -1,6 +1,5 @@
 // LabeledButton.swift
 // Zulangue 微交互组件库 — 文字按钮
-// 权威:docs/redesign/redesign-plan.md §4.B.2.2
 //
 // 设计原则覆盖:
 //   #1 4 状态视觉反馈 ✓

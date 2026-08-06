@@ -1,14 +1,20 @@
-//! Zulangue SQLite v29 schema.
+//! Zulangue SQLite v31 schema.
 //!
-//! Fresh databases are installed directly at v29. The six immediately
-//! preceding Notebook schemas are migrated in place so existing capture data
-//! remains available; older retired product schemas are still rejected.
+//! Fresh databases are installed directly at v31. The eight immediately
+//! preceding Notebook schemas (v23 through v30) are migrated in place so
+//! existing capture data remains available; older retired product schemas are
+//! still rejected.
+//!
+//! Every constant below is named for what its version introduced, not for
+//! where it sits in the chain — positional names go stale on the next bump.
+//! `OLDEST_SUPPORTED_VERSION` is the floor rather than a feature, and
+//! `CURRENT_VERSION` is correct by definition.
 
 use rusqlite::{Connection, OptionalExtension, Result as SqlResult};
 
-const LEGACY_VERSION: i32 = 23;
+const OLDEST_SUPPORTED_VERSION: i32 = 23;
 const SPEAKER_VERSION: i32 = 24;
-const PREVIOUS_VERSION: i32 = 25;
+const SELECTED_LANGUAGES_VERSION: i32 = 25;
 const MULTILINGUAL_VERSION: i32 = 26;
 const REALTIME_LORO_VERSION: i32 = 27;
 const TRANSLATION_INBOX_VERSION: i32 = 28;
@@ -399,7 +405,7 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
     match current {
         0 if database_has_user_objects(conn)? => Err(schema_reset_required(0)),
         0 => install_current_baseline(conn),
-        LEGACY_VERSION => {
+        OLDEST_SUPPORTED_VERSION => {
             validate_v23_baseline(conn)?;
             migrate_v23_to_v24(conn)?;
             validate_v24_baseline(conn)?;
@@ -435,7 +441,7 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v30_to_v31(conn)?;
             validate_v31_baseline(conn)
         }
-        PREVIOUS_VERSION => {
+        SELECTED_LANGUAGES_VERSION => {
             validate_v25_baseline(conn)?;
             migrate_v25_to_v26(conn)?;
             validate_v26_baseline(conn)?;
@@ -524,7 +530,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {LEGACY_VERSION}, schema {SPEAKER_VERSION}, schema {PREVIOUS_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -544,9 +550,9 @@ fn database_has_user_objects(conn: &Connection) -> SqlResult<bool> {
 }
 
 fn validate_v23_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_exact_object_names(conn, LEGACY_VERSION, "table", V23_TABLES)?;
-    validate_exact_object_names(conn, LEGACY_VERSION, "index", V23_INDEXES)?;
-    validate_exact_object_names(conn, LEGACY_VERSION, "trigger", V23_TRIGGERS)?;
+    validate_exact_object_names(conn, OLDEST_SUPPORTED_VERSION, "table", V23_TABLES)?;
+    validate_exact_object_names(conn, OLDEST_SUPPORTED_VERSION, "index", V23_INDEXES)?;
+    validate_exact_object_names(conn, OLDEST_SUPPORTED_VERSION, "trigger", V23_TRIGGERS)?;
 
     const PROBES: &[&str] = &[
         "SELECT id, title, session_type, status, duration_ms, created_at, deleted_at
@@ -591,7 +597,7 @@ fn validate_v23_baseline(conn: &Connection) -> SqlResult<()> {
 
     for probe in PROBES {
         if conn.prepare(probe).is_err() {
-            return Err(schema_reset_required(LEGACY_VERSION));
+            return Err(schema_reset_required(OLDEST_SUPPORTED_VERSION));
         }
     }
     let active_index_sql =
@@ -600,12 +606,12 @@ fn validate_v23_baseline(conn: &Connection) -> SqlResult<()> {
     if !active_index_sql.contains("create unique index")
         || !active_index_sql.contains("capture_state in ('recording', 'paused', 'draining')")
     {
-        return Err(schema_reset_required(LEGACY_VERSION));
+        return Err(schema_reset_required(OLDEST_SUPPORTED_VERSION));
     }
     for trigger in V23_TRIGGERS {
         let sql = schema_object_sql(conn, "trigger", trigger)?;
         if !sql.to_ascii_lowercase().contains("raise(abort") {
-            return Err(schema_reset_required(LEGACY_VERSION));
+            return Err(schema_reset_required(OLDEST_SUPPORTED_VERSION));
         }
     }
     Ok(())
@@ -616,7 +622,7 @@ fn validate_v24_baseline(conn: &Connection) -> SqlResult<()> {
 }
 
 fn validate_v25_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v24_or_later_baseline(conn, PREVIOUS_VERSION)
+    validate_v24_or_later_baseline(conn, SELECTED_LANGUAGES_VERSION)
 }
 
 fn validate_v26_baseline(conn: &Connection) -> SqlResult<()> {
@@ -663,7 +669,7 @@ fn validate_v30_baseline_objects(conn: &Connection, claimed_version: i32) -> Sql
 /// v24 及之后每一版的对象集合都是严格累加的，所以版本号本身就足以选出
 /// 该版应有的表/索引/触发器；不要再退回按特性标志逐个传参。
 fn validate_v24_or_later_baseline(conn: &Connection, claimed_version: i32) -> SqlResult<()> {
-    let has_multilingual_profile = claimed_version >= PREVIOUS_VERSION;
+    let has_multilingual_profile = claimed_version >= SELECTED_LANGUAGES_VERSION;
     let has_utterance_variants = claimed_version >= MULTILINGUAL_VERSION;
     let has_realtime_loro_projection = claimed_version >= REALTIME_LORO_VERSION;
     let has_translation_inbox = claimed_version >= TRANSLATION_INBOX_VERSION;
@@ -676,7 +682,7 @@ fn validate_v24_or_later_baseline(conn: &Connection, claimed_version: i32) -> Sq
         TRANSLATION_INBOX_VERSION => (V28_TABLES, V28_INDEXES, V28_TRIGGERS),
         REALTIME_LORO_VERSION => (V27_TABLES, V27_INDEXES, V27_TRIGGERS),
         MULTILINGUAL_VERSION => (V26_TABLES, V26_INDEXES, V26_TRIGGERS),
-        PREVIOUS_VERSION => (V25_TABLES, V25_INDEXES, V25_TRIGGERS),
+        SELECTED_LANGUAGES_VERSION => (V25_TABLES, V25_INDEXES, V25_TRIGGERS),
         _ => (V24_TABLES, V24_INDEXES, V24_TRIGGERS),
     };
     validate_exact_object_names(conn, claimed_version, "table", tables)?;
@@ -931,7 +937,7 @@ fn migrate_v23_to_v24(conn: &Connection) -> SqlResult<()> {
     )?;
     tx.pragma_update(None, "user_version", SPEAKER_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{LEGACY_VERSION} to v{SPEAKER_VERSION}");
+    tracing::info!("migrated Zulangue schema v{OLDEST_SUPPORTED_VERSION} to v{SPEAKER_VERSION}");
     Ok(())
 }
 
@@ -994,9 +1000,9 @@ fn migrate_v24_to_v25(conn: &Connection) -> SqlResult<()> {
         DROP TABLE notebook_capture_profiles_v24;
         "#,
     )?;
-    tx.pragma_update(None, "user_version", PREVIOUS_VERSION)?;
+    tx.pragma_update(None, "user_version", SELECTED_LANGUAGES_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{SPEAKER_VERSION} to v{PREVIOUS_VERSION}");
+    tracing::info!("migrated Zulangue schema v{SPEAKER_VERSION} to v{SELECTED_LANGUAGES_VERSION}");
     Ok(())
 }
 
@@ -1085,7 +1091,9 @@ fn migrate_v25_to_v26(conn: &Connection) -> SqlResult<()> {
     )?;
     tx.pragma_update(None, "user_version", MULTILINGUAL_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{PREVIOUS_VERSION} to v{MULTILINGUAL_VERSION}");
+    tracing::info!(
+        "migrated Zulangue schema v{SELECTED_LANGUAGES_VERSION} to v{MULTILINGUAL_VERSION}"
+    );
     Ok(())
 }
 
@@ -3743,7 +3751,7 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .unwrap(),
-            PREVIOUS_VERSION
+            SELECTED_LANGUAGES_VERSION
         );
         assert_eq!(
             conn.query_row(

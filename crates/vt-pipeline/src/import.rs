@@ -151,8 +151,7 @@ mod tests {
         assert_eq!(decrypted.len() % 4, 0);
     }
 
-    // 审计结论（docs/audit/tests/01-vt-pipeline.md #25, #26）：
-    // 删除 test_import_nonexistent_file 和 test_import_unsupported_format。两条都是
+    // 这里刻意不测 test_import_nonexistent_file 和 test_import_unsupported_format。两条都是
     // 在验证 symphonia::decode_file 的兜底错误路径，不在 import 模块自己的逻辑里。
     // 真正的 import 正路径覆盖由 test_import_mp3 / test_import_wav /
     // test_import_decrypt_roundtrip 三条承担。
