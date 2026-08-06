@@ -1021,6 +1021,17 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func joinShare(code: String) throws
 
     /**
+     * 一份收到的文档更新是否可以合入。
+     *
+     * 走完整条准入链:验签 → 成员资格 → 写入策略 → 编辑边界。最后一步用 Loro 在
+     * 副本上试应用,回答「它碰了采集投影拥有的区间吗」。
+     *
+     * **返回 false 就必须丢弃。** 任何判不出来的情况都返回 false —— 判不出来时
+     * 放行,等于这道门不存在。
+     */
+    func shareAdmitsDocumentUpdate(envelope: Data)  -> Bool
+
+    /**
      * 本机分享身份。首次调用会生成并持久化。
      */
     func shareIdentity() throws  -> FfiShareIdentity
@@ -2144,6 +2155,24 @@ open func joinShare(code: String)throws   {try rustCallWithError(FfiConverterTyp
         FfiConverterString.lower(code),$0
     )
 }
+}
+
+    /**
+     * 一份收到的文档更新是否可以合入。
+     *
+     * 走完整条准入链:验签 → 成员资格 → 写入策略 → 编辑边界。最后一步用 Loro 在
+     * 副本上试应用,回答「它碰了采集投影拥有的区间吗」。
+     *
+     * **返回 false 就必须丢弃。** 任何判不出来的情况都返回 false —— 判不出来时
+     * 放行,等于这道门不存在。
+     */
+open func shareAdmitsDocumentUpdate(envelope: Data) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_share_admits_document_update(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(envelope),$0
+    )
+})
 }
 
     /**
@@ -7540,6 +7569,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_join_share() != 54554) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_share_admits_document_update() != 14066) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_share_identity() != 22943) {
