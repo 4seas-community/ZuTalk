@@ -85,6 +85,21 @@ pub enum EnvelopeError {
 }
 
 impl ShareEnvelope {
+    /// 紧凑编码,用于 gossip 控制面。
+    ///
+    /// **不能用 JSON。** serde_json 把 `Vec<u8>` 渲染成数字数组,一个字节要占三到
+    /// 四个字符;而 gossip 单条消息默认只有 4096 字节
+    /// (`iroh_gossip::proto::DEFAULT_MAX_MESSAGE_SIZE`)。postcard 把 32 字节的
+    /// 公钥就编成 32 字节。
+    pub fn encode_compact(&self) -> Result<Vec<u8>, EnvelopeError> {
+        postcard::to_stdvec(self).map_err(|_| EnvelopeError::BadSignature)
+    }
+
+    /// 从紧凑编码还原。**不验签** —— 调用方拿到后必须自己调 [`Self::verify`]。
+    pub fn decode_compact(bytes: &[u8]) -> Result<Self, EnvelopeError> {
+        postcard::from_bytes(bytes).map_err(|_| EnvelopeError::BadSignature)
+    }
+
     /// 验签,并确认它确实属于本房间。
     ///
     /// 只回答「这确实是 author 为这个 scope 写的」。**它不回答 author 有没有权限** ——

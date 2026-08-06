@@ -11,7 +11,10 @@ use tokio::sync::{broadcast, Mutex};
 
 use crate::caption::CaptionFrame;
 use crate::identity::ShareIdentity;
+use crate::permission::RoomRoster;
 use crate::room::ScopeId;
+use crate::room_control::{open as open_control, seal as seal_control, RoomControl, RoomPresence};
+use crate::sharecode::ShareCode;
 use crate::wire::{read_message, write_message};
 
 /// 实时字幕通道。每帧一条 uni-stream。
@@ -51,6 +54,14 @@ pub struct ShareEndpointConfig {
 pub struct ShareEndpoint {
     router: Router,
     endpoint: Endpoint,
+    /// 分享码里带来的地址存在这里。
+    ///
+    /// 没有它,`gossip.subscribe(topic, vec![host_id])` 只拿到一个公钥却无处可拨 ——
+    /// 本机既不查公共发现服务,离线时也没有中继可问。分享码内嵌直连地址正是为了
+    /// 补上这一步,所以加入房间前必须先把它喂进地址簿。
+    known_addrs: iroh::address_lookup::MemoryLookup,
+    gossip: iroh_gossip::net::Gossip,
+    identity: ShareIdentity,
     captions: broadcast::Sender<Arc<CaptionFrame>>,
 }
 
@@ -84,6 +95,9 @@ impl ShareEndpoint {
             builder.relay_mode(RelayMode::Custom(iroh::RelayMap::from_iter(configs)))
         };
 
+        let known_addrs = iroh::address_lookup::MemoryLookup::new();
+        builder = builder.address_lookup(known_addrs.clone());
+
         if config.enable_local_discovery {
             builder =
                 builder.address_lookup(iroh_mdns_address_lookup::MdnsAddressLookup::builder());
@@ -96,7 +110,7 @@ impl ShareEndpoint {
 
         let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
         let router = Router::builder(endpoint.clone())
-            .accept(iroh_gossip::ALPN, gossip)
+            .accept(iroh_gossip::ALPN, gossip.clone())
             .accept(
                 LIVE_CAPTION_ALPN,
                 CaptionAcceptor {
@@ -108,6 +122,9 @@ impl ShareEndpoint {
         Ok(Self {
             router,
             endpoint,
+            known_addrs,
+            gossip,
+            identity: identity.clone(),
             captions,
         })
     }
@@ -131,8 +148,129 @@ impl ShareEndpoint {
         let _ = self.captions.send(Arc::new(frame));
     }
 
+    /// 加入分享码所描述的房间。
+    ///
+    /// 房间是一个 gossip topic,由 `room_secret` 与共享范围共同派生 —— 所以它不可
+    /// 从 Notebook id 猜出来,轮换 secret 就等于换一个房间。
+    ///
+    /// `bootstrap` 是已知的成员;主持人自己开房时传空。
+    pub async fn join_room(
+        &self,
+        code: &ShareCode,
+        bootstrap: Vec<iroh::EndpointId>,
+    ) -> Result<RoomHandle, NetError> {
+        let me = self.identity.endpoint_id();
+        let host = code.host.id;
+        let scope = code.scope.clone();
+
+        // 先把主持人的直连地址喂进地址簿,再让 gossip 按 id 去拨。
+        self.known_addrs.add_endpoint_info(code.host.clone());
+
+        let mut bootstrap = bootstrap;
+        if host != me && !bootstrap.contains(&host) {
+            bootstrap.push(host);
+        }
+
+        let topic = self
+            .gossip
+            .subscribe(code.topic_id(), bootstrap)
+            .await
+            .map_err(|e| NetError::Connect(e.to_string()))?;
+        let (sender, mut receiver) = topic.split();
+
+        let presence = Arc::new(Mutex::new(RoomPresence::new(
+            scope.clone(),
+            host,
+            me,
+            code.policy,
+        )));
+
+        // Hello 不能只在加入时发一次。
+        //
+        // `subscribe` 立即返回,此刻通常还没有任何邻居,那一发就石沉大海 —— 而
+        // 没有人会替你重发。所以真正的announce时机是「有邻居上线了」,首次加入与
+        // 断线重连因此走同一条路径。
+        let hello = seal_control(&RoomControl::Hello, &scope, self.identity.secret())
+            .map_err(|e| NetError::Stream(e.to_string()))?;
+        // 已经有邻居时也发一次,省掉一个来回。
+        let _ = sender.broadcast(hello.clone().into()).await;
+
+        let task = {
+            let presence = presence.clone();
+            let secret = self.identity.secret().clone();
+            tokio::spawn(async move {
+                use futures_lite::StreamExt;
+                while let Some(event) = receiver.next().await {
+                    let Ok(event) = event else { break };
+                    let changed = match event {
+                        iroh_gossip::api::Event::Received(message) => {
+                            match open_control(&message.content, &scope, host) {
+                                Ok((author, control)) => {
+                                    presence.lock().await.apply(author, control)
+                                }
+                                Err(error) => {
+                                    // 坏消息丢掉即可,不该拖垮整个房间。
+                                    tracing::debug!(%error, "丢弃一条控制面消息");
+                                    false
+                                }
+                            }
+                        }
+                        iroh_gossip::api::Event::NeighborDown(who) => {
+                            presence.lock().await.neighbor_down(who)
+                        }
+                        iroh_gossip::api::Event::NeighborUp(_) => {
+                            // 新邻居出现:向它announce自己。对方可能是刚加入的人,
+                            // 也可能是本机重连后重新看见的老成员。
+                            let _ = sender.broadcast(hello.clone().into()).await;
+                            false
+                        }
+                        iroh_gossip::api::Event::Lagged => false,
+                    };
+
+                    // 名册变了就由主持人重新广播。非主持人的 roster_broadcast 是 None,
+                    // 所以这一段对观看者天然是空转。
+                    if changed {
+                        let broadcast = presence.lock().await.roster_broadcast();
+                        if let Some(roster) = broadcast {
+                            if let Ok(bytes) = seal_control(&roster, &scope, &secret) {
+                                let _ = sender.broadcast(bytes.into()).await;
+                            }
+                        }
+                    }
+                }
+            })
+        };
+
+        Ok(RoomHandle { presence, task })
+    }
+
     pub async fn shutdown(self) {
         let _ = self.router.shutdown().await;
+    }
+}
+
+/// 一个已加入的房间。丢弃它就退出该房间的控制面。
+#[derive(Debug)]
+pub struct RoomHandle {
+    presence: Arc<Mutex<RoomPresence>>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl RoomHandle {
+    /// 当前名册的快照。
+    pub async fn roster(&self) -> RoomRoster {
+        self.presence.lock().await.roster().clone()
+    }
+
+    /// 当前在场人数。
+    pub async fn member_count(&self) -> usize {
+        self.presence.lock().await.roster().members().count()
+    }
+}
+
+impl Drop for RoomHandle {
+    fn drop(&mut self) {
+        self.task.abort();
     }
 }
 

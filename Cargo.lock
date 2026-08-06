@@ -5804,6 +5804,7 @@ dependencies = [
  "futures",
  "hex",
  "hound",
+ "iroh",
  "libc",
  "loro",
  "rusqlite",
@@ -5865,6 +5866,7 @@ dependencies = [
 name = "vt-share"
 version = "0.0.0"
 dependencies = [
+ "futures-lite",
  "hex",
  "iroh",
  "iroh-gossip",

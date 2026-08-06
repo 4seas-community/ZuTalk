@@ -37,6 +37,7 @@ criterion = { version = "0.5", features = ["html_reports"], optional = true }
 bench = ["dep:criterion"]
 
 [dev-dependencies]
+iroh = "1.0.3"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }

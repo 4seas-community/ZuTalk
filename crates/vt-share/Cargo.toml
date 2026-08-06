@@ -32,6 +32,7 @@ tracing.workspace = true
 iroh = "1.0.3"
 iroh-gossip = { version = "0.101.0", default-features = false, features = ["net"] }
 iroh-tickets = "1.0.0"
+futures-lite = "2"
 postcard = { version = "1", features = ["alloc"] }
 iroh-mdns-address-lookup = "0.4.0"
 

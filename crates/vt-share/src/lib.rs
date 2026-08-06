@@ -23,6 +23,7 @@ pub mod net;
 mod permission;
 mod resource;
 mod room;
+mod room_control;
 mod shareable;
 mod sharecode;
 mod wire;
@@ -40,6 +41,10 @@ pub use resource::{
     ResourceResponse, MAX_RESOURCE_BYTES,
 };
 pub use room::{RoomSecret, ScopeId};
+pub use room_control::{
+    open as open_room_control, seal as seal_room_control, ControlError, RoomControl, RoomPresence,
+    MAX_ROSTER_MEMBERS,
+};
 pub use shareable::ShareableKind;
 pub use sharecode::ShareCode;
 pub use wire::{content_digest, WireError, MAX_MESSAGE_BYTES};

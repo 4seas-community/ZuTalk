@@ -29,6 +29,35 @@ use vt_share::{
 
 use crate::{CoreError, ZulangueCore};
 
+/// 用 Loro 回答「这份远端更新碰了采集投影拥有的区间吗」。
+///
+/// `vt-share` 定义了这个端口却不实现它:判定必须真的把更新应用一次才知道它动了
+/// 哪里,而那需要持有文档。实现落在这里,探测跑在 `EditorBridge` fork 出的副本上。
+///
+/// 共享范围到文档 id 的映射是刻意保守的:只有按单次录音共享时才存在可判定的文档。
+/// 按 Notebook 共享时一次更新可能落在任意一篇上,在把范围收窄到具体文档之前,
+/// 这里一律拒收 —— 判不出来时放行等于这道门不存在。
+pub(crate) struct LoroCaptureBoundaryGuard {
+    editor: vt_store::EditorBridge,
+}
+
+impl LoroCaptureBoundaryGuard {
+    pub(crate) fn new(editor: vt_store::EditorBridge) -> Self {
+        Self { editor }
+    }
+}
+
+impl vt_share::CaptureBoundaryGuard for LoroCaptureBoundaryGuard {
+    fn touches_capture_owned_range(&self, scope: &ScopeId, update: &[u8]) -> bool {
+        match scope {
+            ScopeId::Session { session_id } => self
+                .editor
+                .remote_update_touches_capture_owned_range(session_id, update),
+            ScopeId::Notebook { .. } => true,
+        }
+    }
+}
+
 /// 身份密钥在本机密钥库里的固定名字。
 ///
 /// 身份稳定是前提:换一次,联系人保存下来的公钥就全部失效。所以它不随 session
@@ -78,6 +107,8 @@ pub(crate) struct ShareRuntime {
     hosting: Option<HostedRoom>,
     /// 观看别人时的接收侧。
     viewing: Option<ViewedRoom>,
+    /// 当前房间名册。主持与加入时都会建立,决定谁能写文档。
+    roster: Option<vt_share::RoomRoster>,
 }
 
 struct HostedRoom {
@@ -145,6 +176,7 @@ impl ZulangueCore {
             endpoint: endpoint.clone(),
             hosting: None,
             viewing: None,
+            roster: None,
         });
         Ok(endpoint)
     }
@@ -182,6 +214,7 @@ impl ZulangueCore {
         };
 
         let endpoint = self.ensure_share_endpoint()?;
+        let identity_id = endpoint.endpoint_id();
         let host = self.runtime.block_on(endpoint.endpoint_addr());
         let code = ShareCode::new(
             host,
@@ -196,6 +229,11 @@ impl ZulangueCore {
 
         let mut guard = self.share_runtime.lock().unwrap();
         let runtime = guard.as_mut().expect("端点刚刚建立");
+        runtime.roster = Some(vt_share::RoomRoster::new(
+            code.scope.clone(),
+            identity_id,
+            code.policy,
+        ));
         runtime.hosting = Some(HostedRoom { code: code.clone() });
         Ok(code.to_string())
     }
@@ -210,6 +248,7 @@ impl ZulangueCore {
             runtime.hosting = None;
             // ViewedRoom 的 Drop 会中止接收任务。
             runtime.viewing = None;
+            runtime.roster = None;
         }
         Ok(())
     }
@@ -238,6 +277,11 @@ impl ZulangueCore {
 
         let mut guard = self.share_runtime.lock().unwrap();
         let runtime = guard.as_mut().expect("端点刚刚建立");
+        runtime.roster = Some(vt_share::RoomRoster::new(
+            parsed.scope.clone(),
+            parsed.host.id,
+            parsed.policy,
+        ));
         runtime.viewing = Some(ViewedRoom {
             scope,
             host_only: matches!(parsed.policy, WritePolicy::HostOnly),
@@ -246,6 +290,28 @@ impl ZulangueCore {
             task,
         });
         Ok(())
+    }
+
+    /// 一份收到的文档更新是否可以合入。
+    ///
+    /// 走完整条准入链:验签 → 成员资格 → 写入策略 → 编辑边界。最后一步用 Loro 在
+    /// 副本上试应用,回答「它碰了采集投影拥有的区间吗」。
+    ///
+    /// **返回 false 就必须丢弃。** 任何判不出来的情况都返回 false —— 判不出来时
+    /// 放行,等于这道门不存在。
+    pub fn share_admits_document_update(&self, envelope: Vec<u8>) -> bool {
+        let guard = self.share_runtime.lock().unwrap();
+        let Some(runtime) = guard.as_ref() else {
+            return false;
+        };
+        let Some(roster) = runtime.roster.as_ref() else {
+            return false;
+        };
+        let Ok(envelope) = vt_share::ShareEnvelope::decode_compact(&envelope) else {
+            return false;
+        };
+        let boundary = LoroCaptureBoundaryGuard::new(self.editor_bridge.clone());
+        vt_share::admit_document_update(&envelope, roster, &boundary).is_ok()
     }
 
     /// 取当前分享状态与字幕投影。
@@ -326,6 +392,93 @@ mod tests {
         let loaded = store.load_key(SHARE_IDENTITY_KEY_REF).unwrap();
         let second = ShareIdentity::from_secret_bytes(loaded.as_bytes());
         assert_eq!(first.endpoint_id(), second.endpoint_id());
+    }
+
+    /// 整条准入链跑一遍:签名 → 成员 → 策略 → 编辑边界,最后一步用真实的 Loro 探测。
+    ///
+    /// 这条测试的意义在于串起三个 crate:`vt-share` 出规则、`vt-store` 出 Loro
+    /// 判定、`vt-ffi` 把两者接上。任何一处接错,这里就会放行一份该拒的更新。
+    #[test]
+    fn admission_chain_refuses_a_remote_edit_inside_the_capture_range() {
+        use loro::LoroDoc;
+        use vt_share::{
+            admit_document_update, AdmissionDenial, PayloadKind, RoomRoster, UnsignedEnvelope,
+            WritePolicy,
+        };
+        use vt_store::EditorBridge;
+
+        let doc = LoroDoc::new();
+        doc.get_text("content").insert(0, "0123456789").unwrap();
+        doc.commit();
+        let editor = EditorBridge::new();
+        editor.open("session-1", doc).unwrap();
+        editor
+            .set_capture_owned_range("session-1", "owner", "cap-1", 2, 6)
+            .unwrap();
+
+        // 远端从同一份快照分叉,产生一份真实可合入的更新。
+        let remote = LoroDoc::new();
+        remote
+            .import(&editor.export_snapshot("session-1").unwrap())
+            .unwrap();
+        let before = remote.oplog_vv();
+        remote.get_text("content").insert(4, "插进来").unwrap();
+        remote.commit();
+        let update = remote.export(loro::ExportMode::updates(&before)).unwrap();
+
+        let scope = ScopeId::Session {
+            session_id: "session-1".into(),
+        };
+        let host = iroh::SecretKey::generate();
+        let roster = RoomRoster::new(scope.clone(), host.public(), WritePolicy::Everyone);
+        let envelope =
+            UnsignedEnvelope::new(scope, PayloadKind::DocumentUpdate, update).sign(&host);
+        let guard = LoroCaptureBoundaryGuard::new(editor.clone());
+
+        // 签名合法、是主持人、房间全员可写 —— 依然要被最后一步拦下。
+        assert_eq!(
+            admit_document_update(&envelope, &roster, &guard),
+            Err(AdmissionDenial::TouchesCaptureOwnedRange)
+        );
+    }
+
+    /// 落在采集区间之外的同一条链路必须放行,否则这道门就是「拒绝一切」。
+    #[test]
+    fn admission_chain_accepts_a_remote_edit_outside_the_capture_range() {
+        use loro::LoroDoc;
+        use vt_share::{
+            admit_document_update, PayloadKind, RoomRoster, UnsignedEnvelope, WritePolicy,
+        };
+        use vt_store::EditorBridge;
+
+        let doc = LoroDoc::new();
+        doc.get_text("content").insert(0, "0123456789").unwrap();
+        doc.commit();
+        let editor = EditorBridge::new();
+        editor.open("session-2", doc).unwrap();
+        editor
+            .set_capture_owned_range("session-2", "owner", "cap-1", 2, 6)
+            .unwrap();
+
+        let remote = LoroDoc::new();
+        remote
+            .import(&editor.export_snapshot("session-2").unwrap())
+            .unwrap();
+        let before = remote.oplog_vv();
+        remote.get_text("content").insert(9, "尾巴").unwrap();
+        remote.commit();
+        let update = remote.export(loro::ExportMode::updates(&before)).unwrap();
+
+        let scope = ScopeId::Session {
+            session_id: "session-2".into(),
+        };
+        let host = iroh::SecretKey::generate();
+        let roster = RoomRoster::new(scope.clone(), host.public(), WritePolicy::Everyone);
+        let envelope =
+            UnsignedEnvelope::new(scope, PayloadKind::DocumentUpdate, update).sign(&host);
+        let guard = LoroCaptureBoundaryGuard::new(editor.clone());
+
+        assert!(admit_document_update(&envelope, &roster, &guard).is_ok());
     }
 
     /// ed25519 私钥恰好是密钥库的槽位宽度,所以可以直接复用受保护的存储。
