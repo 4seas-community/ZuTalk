@@ -1,32 +1,30 @@
-# Zulangue 0.2.3
+# Zulangue 0.3.0
 
-This release makes the main window remember where you left it, gives the
-audience subtitle window a proper maximize, finishes localizing the knowledge
-base, and rebuilds how a community invitation authorizes live transcription.
+This release adds sharing. A new Share tab lets one Mac carry its live captions
+to the others in the room, and lets everyone work on the same notes at once.
 
-- **The main window opens where you left it.** Size and position are restored
-  across launches, and every window in the app now follows one shared window
-  specification instead of each surface deciding for itself.
-- **The audience subtitle window can be maximized and restored.** Presenting to
-  a room no longer means living with whatever size the window opened at.
-- **The knowledge base is localized in every shipped language.** Localization
-  parity is now enforced by a build gate, so a string can no longer ship in
-  some languages and not others.
-- **Software updates show their download.** The sidebar reports progress while
-  an update is being fetched, instead of only announcing the result once it is
-  ready to install.
-- **Community invitations authorize each connection separately.** An invited
-  partner's live transcription now takes a single-use key per connection
-  rather than one shared key for the whole recording. Recordings longer than
-  an hour no longer depend on refreshing a credential before it expires, and a
-  key that escapes is worth at most one stream for a few minutes.
-- **After-stop transcription always runs on your own key.** Invitation time
-  covers live transcription and translation. Transcribing a recorded file
-  uploads that recording to the speech provider, so Zulangue asks for your own
-  API key instead of doing it under someone else's account.
-- **Remaining invitation time is honest about translation.** Shared time is
-  spent once per translation lane, so the sidebar now reports how long you can
-  actually record with the languages you have selected.
+- **Share captions with the room.** Start sharing a notebook, hand out the
+  share code, and whatever this Mac is transcribing appears live on every Mac
+  that joins. On a shared Wi-Fi this needs no internet at all — the code
+  carries the addresses, so a meeting keeps working when the network does not.
+- **Work on the same notes together.** Documents in a shared notebook stay in
+  sync as people type. Choose whether everyone can edit or only you can; each
+  Mac enforces that choice before merging a change, and the part of a
+  transcript the recording owns stays off limits to everyone.
+- **Audio is never shared.** Not by default — at all. The sharing code cannot
+  decrypt a recording or reach live audio, so no setting and no mistake can
+  send one. Transcripts and notes travel; recordings stay on the Mac that made
+  them.
+- **Stopping stops what comes next.** Ending a share halts further updates. It
+  cannot delete what someone already received, and the app says so rather than
+  letting you assume otherwise.
+- **Find people on the same network.** Macs on one Wi-Fi discover each other
+  directly. macOS asks for local network permission the first time; declining
+  leaves share codes working.
+- **Sharing settings.** Settings › Sharing shows this Mac's share key and
+  configures the relay used when two Macs cannot reach each other directly.
+  The relay can be replaced or removed entirely. A relay only forwards —
+  traffic stays end-to-end encrypted, so it cannot read what passes through.
 
 Zulangue requires macOS 15.5 or later.
 
