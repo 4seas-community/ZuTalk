@@ -44,19 +44,37 @@
 
 ## 分片序列(每片一个 PR 粒度,gate 全绿才进下一片)
 
-1. ✅ 守卫按纪元分发(本 commit)。
-2. **T2 产线并行实现**:notebook_capture_api 内新增 T2 写路径(投影
-   upsert + 订正动词 + 水位 ack),以既有单测的镜像用例覆盖;不接管
-   打开路径,无人调用即无行为变化。
+1. ✅ 守卫按纪元分发(2026-08-07)。
+2. ✅ **T2 产线并行实现**(2026-08-08):notebook_capture_api 内新增
+   T2 写路径(投影 upsert + 订正动词 + 水位 ack),12 个镜像单测覆盖;
+   不接管打开路径,无人调用即无行为变化。实现期两项设计定案的修正:
+   - **乱序 Final 的块序**:旧产线靠整段重渲染保证「产物=按 sequence
+     排序」(乱序收敛测试钉死),追加式 upsert 做不到。门面新增
+     `insert_before` 锚点参数(写入时按 id 解析),产线按 sequence 算
+     锚点:区域内插在首个更大序号块前;区域尾跳过尾随批注、停在下一个
+     session 区域之前;无区域则追加(与旧渲染的新 section 落点一致)。
+   - **frozen_lanes 必须来自可见覆盖层**:投影快照的
+     `machine_utterances` 是裸机器事实(edit_revision 恒 0,收据摘要
+     依赖这一点,不能动)。新增
+     `load_realtime_loro_projection_if_pending_visible`(同一事务、
+     合并用户覆盖),T2 投影改用它——冻结车道带真实 edit revision,
+     被覆盖的源车道重放写的是覆盖本身的字节。
 3. **读端切换准备**(Swift):NotebookTranscriptProjectionStore 增加
    块文档读路径(transcript_blocks / 事件),按 feature 判断走哪边;
    Delta 解析路径保留至切换完成。
 4. **拨闸**:转录稿 tab 打开路径换 `open-or-migrate`(块文档优先,
    旧快照就地严格迁移),产线写路径同 commit 切到 T2;双机清单跑一遍
-   (阶段 5 的验收项)。
+   (阶段 5 的验收项)。**前置补课(分片 2 侦察发现)**:T2 的销毁链
+   动词还不存在——schema 已带 `zulangue_session_purge_receipts`,但
+   「删除 session 所属全部句块 + 落收据」尚无实现(门面刻意没有删块
+   函数,purge 需要一个绕过门面动词集的专用入口),必须在拨闸 commit
+   之前落地。
 5. **退役**:第三层旧代码负行数下线——resolve_capture_owned_range、
    remote_update_touches_capture_owned_range、render/plan/CaptureDeltaIndex、
    三张锚点 map、投影/用户收据族、LoroDeltaParser(Swift 读端跟着换后)。
+   同时删 `TranscriptWritePath::Epoch1Flat` 分发与
+   `load_realtime_loro_projection_if_pending`(裸机器版,收据族的唯一
+   消费者)。
 
 ## 不变量(每片都要守)
 

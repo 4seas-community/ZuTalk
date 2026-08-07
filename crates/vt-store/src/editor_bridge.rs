@@ -2666,6 +2666,7 @@ mod epoch2_admission_tests {
                     lanes: Default::default(),
                 },
                 &Default::default(),
+                None,
             )
             .unwrap();
         projection.insert_annotation(1, "n1", "批注").unwrap();

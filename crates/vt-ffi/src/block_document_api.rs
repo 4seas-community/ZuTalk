@@ -209,6 +209,7 @@ impl ZulangueCore {
                         lanes: write.lanes.clone().into_iter().collect::<BTreeMap<_, _>>(),
                     },
                     &frozen,
+                    None,
                 )
                 .map_err(internal)
         })?;
@@ -413,7 +414,8 @@ impl ZulangueCore {
         Ok(())
     }
 
-    fn with_transcript<T>(
+    /// T2 产线(notebook_capture_api)与本模块共用的句柄访问器。
+    pub(crate) fn with_transcript<T>(
         &self,
         doc_id: &str,
         run: impl FnOnce(&TranscriptProjection) -> Result<T, CoreError>,
@@ -443,7 +445,7 @@ impl ZulangueCore {
         }
     }
 
-    fn persist_block_document(&self, doc_id: &str) -> Result<(), CoreError> {
+    pub(crate) fn persist_block_document(&self, doc_id: &str) -> Result<(), CoreError> {
         let registry = self.block_documents.lock().unwrap();
         let Some(handle) = registry.get(doc_id) else {
             return Err(internal(format!("块文档 {doc_id} 未打开")));

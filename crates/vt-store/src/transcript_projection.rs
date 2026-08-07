@@ -124,14 +124,20 @@ impl TranscriptProjection {
 
     /// 机器投影:按 id 追加或更新一个采集句块。
     ///
-    /// - 块不存在:按写入原样追加到文档尾(时间序=追加序);
-    /// - 块已存在:更新 `text` 与未冻结的车道。`frozen_lanes` 里的车道
-    ///   **原样保留**——那是用户接管的内容,机器从此不碰;
+    /// - 块不存在:插到 `insert_before` 指向的块之前;`None` 则追加到
+    ///   文档尾。锚点在**写入时**按 id 解析,对并发到达的远端块免疫;
+    ///   锚点块不存在按 [`TranscriptProjectionError::BlockNotFound`] 大声
+    ///   拒绝。排序**策略**(按 sequence 找锚点)是调用方的事,本层只
+    ///   执行——与 frozen_lanes 同一分工;
+    /// - 块已存在:更新 `text` 与未冻结的车道,位置不动(重排在这层
+    ///   没有函数)。`frozen_lanes` 里的车道**原样保留**——那是用户接管
+    ///   的内容,机器从此不碰;
     /// - 机器写入永远不减少车道:写入里缺席的既有车道保留。
     pub fn machine_upsert_block(
         &self,
         write: MachineBlockWrite,
         frozen_lanes: &BTreeSet<String>,
+        insert_before: Option<&str>,
     ) -> Result<(), TranscriptProjectionError> {
         if write.id.is_empty() {
             return Err(TranscriptProjectionError::EmptyBlockId);
@@ -158,12 +164,25 @@ impl TranscriptProjection {
                 }
             }
             None => {
-                items.push(json!({
+                let block = json!({
                     "id": write.id,
                     "owner": write.owner,
                     "text": write.text,
                     "lanes": write.lanes,
-                }));
+                });
+                match insert_before {
+                    None => items.push(block),
+                    Some(anchor) => {
+                        let Some(index) = items.iter().position(|item| {
+                            item.get("id").and_then(Value::as_str) == Some(anchor)
+                        }) else {
+                            return Err(TranscriptProjectionError::BlockNotFound(
+                                anchor.to_string(),
+                            ));
+                        };
+                        items.insert(index, block);
+                    }
+                }
             }
         }
 
@@ -298,10 +317,10 @@ mod tests {
     fn machine_appends_in_arrival_order() {
         let projection = projection();
         projection
-            .machine_upsert_block(machine("u1", "一", &[]), &BTreeSet::new())
+            .machine_upsert_block(machine("u1", "一", &[]), &BTreeSet::new(), None)
             .unwrap();
         projection
-            .machine_upsert_block(machine("u2", "二", &[]), &BTreeSet::new())
+            .machine_upsert_block(machine("u2", "二", &[]), &BTreeSet::new(), None)
             .unwrap();
         let ids: Vec<_> = projection.blocks().into_iter().map(|b| b.id).collect();
         assert_eq!(ids, vec!["u1", "u2"]);
@@ -311,7 +330,7 @@ mod tests {
     fn machine_update_respects_frozen_lanes() {
         let projection = projection();
         projection
-            .machine_upsert_block(machine("u1", "一", &[("zh", "壹")]), &BTreeSet::new())
+            .machine_upsert_block(machine("u1", "一", &[("zh", "壹")]), &BTreeSet::new(), None)
             .unwrap();
         projection
             .user_replace_lane("u1", "zh", "壹(人工)")
@@ -323,6 +342,7 @@ mod tests {
             .machine_upsert_block(
                 machine("u1", "一(修订)", &[("zh", "壹(机器v2)"), ("ja", "壱")]),
                 &frozen,
+                None,
             )
             .unwrap();
 
@@ -339,11 +359,16 @@ mod tests {
             .machine_upsert_block(
                 machine("u1", "一", &[("zh", "壹"), ("ja", "壱")]),
                 &BTreeSet::new(),
+                None,
             )
             .unwrap();
         // 第二次写入只带 zh:ja 必须保留。
         projection
-            .machine_upsert_block(machine("u1", "一", &[("zh", "壹v2")]), &BTreeSet::new())
+            .machine_upsert_block(
+                machine("u1", "一", &[("zh", "壹v2")]),
+                &BTreeSet::new(),
+                None,
+            )
             .unwrap();
         let block = &projection.blocks()[0];
         assert_eq!(block.lanes["ja"], "壱");
@@ -354,10 +379,10 @@ mod tests {
     fn annotations_insert_between_blocks_with_user_owner() {
         let projection = projection();
         projection
-            .machine_upsert_block(machine("u1", "一", &[]), &BTreeSet::new())
+            .machine_upsert_block(machine("u1", "一", &[]), &BTreeSet::new(), None)
             .unwrap();
         projection
-            .machine_upsert_block(machine("u2", "二", &[]), &BTreeSet::new())
+            .machine_upsert_block(machine("u2", "二", &[]), &BTreeSet::new(), None)
             .unwrap();
         projection.insert_annotation(1, "n1", "这里说错了").unwrap();
 
@@ -370,18 +395,60 @@ mod tests {
     }
 
     #[test]
+    fn machine_insert_before_places_a_late_block_at_its_anchor() {
+        let projection = projection();
+        projection
+            .machine_upsert_block(machine("u0", "零", &[]), &BTreeSet::new(), None)
+            .unwrap();
+        projection
+            .machine_upsert_block(machine("u2", "二", &[]), &BTreeSet::new(), None)
+            .unwrap();
+        // 迟到的 u1 按锚点插到 u2 之前,而不是尾部。
+        projection
+            .machine_upsert_block(machine("u1", "一", &[]), &BTreeSet::new(), Some("u2"))
+            .unwrap();
+        let ids: Vec<_> = projection.blocks().into_iter().map(|b| b.id).collect();
+        assert_eq!(ids, vec!["u0", "u1", "u2"]);
+
+        // 已存在的块再带锚点只更新,位置不动。
+        projection
+            .machine_upsert_block(machine("u0", "零(修订)", &[]), &BTreeSet::new(), Some("u2"))
+            .unwrap();
+        let blocks = projection.blocks();
+        assert_eq!(blocks[0].id, "u0");
+        assert_eq!(blocks[0].text, "零(修订)");
+    }
+
+    #[test]
+    fn machine_insert_before_missing_anchor_is_a_named_error() {
+        let projection = projection();
+        assert_eq!(
+            projection.machine_upsert_block(
+                machine("u1", "一", &[]),
+                &BTreeSet::new(),
+                Some("ghost")
+            ),
+            Err(TranscriptProjectionError::BlockNotFound("ghost".into()))
+        );
+        assert!(projection.blocks().is_empty(), "拒绝的写入不落任何状态");
+    }
+
+    #[test]
     fn out_of_scope_lanes_are_refused_at_the_api() {
         let projection = projection();
         projection
-            .machine_upsert_block(machine("u1", "一", &[]), &BTreeSet::new())
+            .machine_upsert_block(machine("u1", "一", &[]), &BTreeSet::new(), None)
             .unwrap();
         assert_eq!(
             projection.user_replace_lane("u1", "my", "缅甸语"),
             Err(TranscriptProjectionError::LaneOutOfScope("my".into()))
         );
         assert_eq!(
-            projection
-                .machine_upsert_block(machine("u2", "二", &[("yue", "粤")]), &BTreeSet::new()),
+            projection.machine_upsert_block(
+                machine("u2", "二", &[("yue", "粤")]),
+                &BTreeSet::new(),
+                None
+            ),
             Err(TranscriptProjectionError::LaneOutOfScope("yue".into()))
         );
     }
@@ -399,7 +466,7 @@ mod tests {
     #[test]
     fn two_projections_converge() {
         let a = projection();
-        a.machine_upsert_block(machine("u1", "一", &[("zh", "壹")]), &BTreeSet::new())
+        a.machine_upsert_block(machine("u1", "一", &[("zh", "壹")]), &BTreeSet::new(), None)
             .unwrap();
 
         let doc_b = new_block_document(DocumentKind::Transcript);
@@ -408,7 +475,7 @@ mod tests {
             .unwrap();
         let b = TranscriptProjection::open(doc_b).unwrap();
 
-        a.machine_upsert_block(machine("u2", "二", &[]), &BTreeSet::new())
+        a.machine_upsert_block(machine("u2", "二", &[]), &BTreeSet::new(), None)
             .unwrap();
         b.user_replace_lane("u1", "zh", "壹(人工)").unwrap();
 
@@ -535,7 +602,7 @@ mod tests {
                             text: text.clone(),
                             lanes: [("zh".to_string(), lane_text.clone())].into(),
                         };
-                        projection.machine_upsert_block(write.clone(), &frozen).unwrap();
+                        projection.machine_upsert_block(write.clone(), &frozen, None).unwrap();
                         model.machine_upsert(&write, &frozen);
                     }
                     Op::UserLane { id, text } => {

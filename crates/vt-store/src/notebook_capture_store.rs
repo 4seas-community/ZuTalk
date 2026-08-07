@@ -4499,6 +4499,40 @@ impl NotebookCaptureStore {
         Ok(load)
     }
 
+    /// T2 projector twin of [`Self::load_realtime_loro_projection_if_pending`]:
+    /// the identical one-transaction pending selection, but machine facts
+    /// arrive with user overrides merged (visible lane text plus lane edit
+    /// revisions). The epoch-2 projector derives its frozen lanes from these
+    /// edit revisions, and an overridden source lane's text is the override
+    /// itself, so re-upserting it writes byte-identical content. The epoch-1
+    /// projector must keep the raw variant: its receipt digests bind the
+    /// unmerged machine facts.
+    pub fn load_realtime_loro_projection_if_pending_visible(
+        &self,
+        session_id: &str,
+    ) -> Result<RealtimeLoroProjectionLoad, NotebookCaptureStoreError> {
+        require_nonempty("session_id", session_id)?;
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Deferred)?;
+        let watermark =
+            get_realtime_loro_projection_from_conn(&tx, session_id)?.ok_or_else(|| {
+                NotebookCaptureStoreError::NotFound(format!("capture session {session_id}"))
+            })?;
+        let load = if watermark.is_pending() {
+            let machine_utterances = list_utterances_with_overrides_from_conn(&tx, session_id)?;
+            RealtimeLoroProjectionLoad::Pending(RealtimeLoroProjectionSnapshot {
+                session_id: watermark.session_id,
+                desired_revision: watermark.desired_revision,
+                applied_revision: watermark.applied_revision,
+                machine_utterances,
+            })
+        } else {
+            RealtimeLoroProjectionLoad::UpToDate(watermark)
+        };
+        tx.commit()?;
+        Ok(load)
+    }
+
     /// Loads watermarks and machine facts from one SQLite read transaction,
     /// including when no projection work is pending.
     ///

@@ -4,6 +4,7 @@
 //! aggregation, and the final Loro projection. Swift supplies one microphone
 //! stream and renders callbacks; it never owns a second capture state machine.
 
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex as StdMutex};
@@ -21,12 +22,14 @@ use vt_store::notebook_capture_store::{
     AsyncProjectionState, AsyncTaskState, CaptureMode, CaptureProviderRole, CaptureState,
     NewRealtimeTranslationInboxItem, NewRealtimeUtterance, NotebookCaptureHistoryRun,
     NotebookCaptureProfile, NotebookCaptureProfileUpdate, NotebookCaptureRun, NotebookCaptureStore,
-    NotebookProjectionMutation, ProjectionState, ProviderFailure, RealtimeLoroProjectionAck,
-    RealtimeLoroProjectionLoad, RealtimeLoroProjectionSnapshot, RealtimeTranslationInboxItem,
-    RealtimeTranslationInboxKey, RealtimeTranslationLaneUpdate, RealtimeUtterance,
-    RealtimeUtteranceVariant, RemoteHealth, SessionPurgeJob, SessionPurgePlan, UtteranceAlignment,
-    UtteranceCompletion, UtteranceLane, UtteranceVariantRole, UtteranceVariantState,
+    NotebookProjectionMutation, ProjectionState, ProviderFailure, RealtimeLoroProjection,
+    RealtimeLoroProjectionAck, RealtimeLoroProjectionLoad, RealtimeLoroProjectionSnapshot,
+    RealtimeTranslationInboxItem, RealtimeTranslationInboxKey, RealtimeTranslationLaneUpdate,
+    RealtimeUtterance, RealtimeUtteranceVariant, RemoteHealth, SessionPurgeJob, SessionPurgePlan,
+    UtteranceAlignment, UtteranceCompletion, UtteranceLane, UtteranceVariantRole,
+    UtteranceVariantState,
 };
+use vt_store::transcript_projection::{MachineBlockWrite, TranscriptProjection, UtteranceBlock};
 #[cfg(test)]
 use vt_store::ContextPackDocumentSource;
 use vt_store::{
@@ -39,6 +42,8 @@ use vt_stt::{
     SttStreamControl, SttStreamError, SttStreamEvent, SttStreamToken, SttStreamTranslationStatus,
     TranslationConfig, CURRENT_NOTEBOOK_CAPTURE_ENGINE,
 };
+
+use crate::block_document_api::FfiDocumentKind;
 
 use crate::task_worker::{
     reconcile_capture_async_task_receipt_on_startup, StartupCaptureAsyncReceiptOutcome,
@@ -6541,57 +6546,7 @@ impl ZulangueCore {
         text: String,
         expected_revision: u64,
     ) -> Result<FfiNotebookCaptureUtterance, CoreError> {
-        let current = self
-            .notebook_capture_store
-            .get_machine_utterance_by_id(&utterance_id)
-            .map_err(store_error)?;
-        let current = current.ok_or_else(|| CoreError::NotFound {
-            message: format!("utterance {utterance_id}"),
-        })?;
-        let normalized_lane_language = normalize_language(&lane_language);
-        let source_variant = current.variants.iter().find(|variant| {
-            variant.role == UtteranceVariantRole::Source
-                && normalize_language(&variant.language) == normalized_lane_language
-        });
-        let _lane = if let Some(source_variant) = source_variant {
-            if source_variant.state != UtteranceVariantState::Ready
-                || source_variant.completion != Some(UtteranceCompletion::Complete)
-                || source_variant.text.is_none()
-            {
-                return Err(CoreError::ValidationFailed {
-                    message: format!(
-                        "source lane {lane_language} on {utterance_id} is partial and cannot be edited"
-                    ),
-                });
-            }
-            UtteranceLane::Source
-        } else if let Some(variant) = current.variants.iter().find(|variant| {
-            variant.role == UtteranceVariantRole::Translation
-                && normalize_language(&variant.language) == normalized_lane_language
-        }) {
-            if variant.state != UtteranceVariantState::Ready
-                || variant.completion != Some(UtteranceCompletion::Complete)
-                || variant.text.is_none()
-            {
-                return Err(CoreError::ValidationFailed {
-                    message: format!(
-                        "translation lane {lane_language} on {utterance_id} is not complete and cannot be edited"
-                    ),
-                });
-            }
-            UtteranceLane::Translated
-        } else {
-            return Err(CoreError::ValidationFailed {
-                message: format!("lane language {lane_language} is not present on {utterance_id}"),
-            });
-        };
-        let _run = self
-            .notebook_capture_store
-            .get_run_for_session(&current.session_id)
-            .map_err(store_error)?
-            .ok_or_else(|| CoreError::NotFound {
-                message: format!("capture session {}", current.session_id),
-            })?;
+        self.validated_utterance_for_lane_replacement(&utterance_id, &lane_language)?;
         // Do not synchronously chase unrelated pending Finals here. The store
         // authorizes this exact target lane only when its projection revision
         // is already <= the durable applied watermark. A newer language lane
@@ -6609,6 +6564,68 @@ impl ZulangueCore {
             .map_err(store_error)?;
         self.apply_notebook_projection_mutation(&mutation)
             .map(Into::into)
+    }
+}
+
+impl ZulangueCore {
+    /// Shared pre-staging validation for a user lane replacement: the
+    /// utterance and its run must exist and the target lane must be a
+    /// complete, Ready variant. Both document epochs use this unchanged —
+    /// editability is a SQLite fact, not a document-shape fact.
+    fn validated_utterance_for_lane_replacement(
+        &self,
+        utterance_id: &str,
+        lane_language: &str,
+    ) -> Result<RealtimeUtterance, CoreError> {
+        let current = self
+            .notebook_capture_store
+            .get_machine_utterance_by_id(utterance_id)
+            .map_err(store_error)?;
+        let current = current.ok_or_else(|| CoreError::NotFound {
+            message: format!("utterance {utterance_id}"),
+        })?;
+        let normalized_lane_language = normalize_language(lane_language);
+        let source_variant = current.variants.iter().find(|variant| {
+            variant.role == UtteranceVariantRole::Source
+                && normalize_language(&variant.language) == normalized_lane_language
+        });
+        if let Some(source_variant) = source_variant {
+            if source_variant.state != UtteranceVariantState::Ready
+                || source_variant.completion != Some(UtteranceCompletion::Complete)
+                || source_variant.text.is_none()
+            {
+                return Err(CoreError::ValidationFailed {
+                    message: format!(
+                        "source lane {lane_language} on {utterance_id} is partial and cannot be edited"
+                    ),
+                });
+            }
+        } else if let Some(variant) = current.variants.iter().find(|variant| {
+            variant.role == UtteranceVariantRole::Translation
+                && normalize_language(&variant.language) == normalized_lane_language
+        }) {
+            if variant.state != UtteranceVariantState::Ready
+                || variant.completion != Some(UtteranceCompletion::Complete)
+                || variant.text.is_none()
+            {
+                return Err(CoreError::ValidationFailed {
+                    message: format!(
+                        "translation lane {lane_language} on {utterance_id} is not complete and cannot be edited"
+                    ),
+                });
+            }
+        } else {
+            return Err(CoreError::ValidationFailed {
+                message: format!("lane language {lane_language} is not present on {utterance_id}"),
+            });
+        }
+        self.notebook_capture_store
+            .get_run_for_session(&current.session_id)
+            .map_err(store_error)?
+            .ok_or_else(|| CoreError::NotFound {
+                message: format!("capture session {}", current.session_id),
+            })?;
+        Ok(current)
     }
 }
 
@@ -8356,7 +8373,7 @@ impl ZulangueCore {
         &self,
         mutation: &NotebookProjectionMutation,
     ) -> Result<RealtimeUtterance, CoreError> {
-        use vt_store::{BuiltinNotebookTab, EditOp};
+        use vt_store::EditOp;
 
         let current = self
             .notebook_capture_store
@@ -8378,16 +8395,7 @@ impl ZulangueCore {
             .ok_or_else(|| CoreError::NotFound {
                 message: format!("capture session {}", mutation.session_id),
             })?;
-        let tab = self
-            .notebook_store
-            .list_tabs(&run.notebook_id)
-            .map_err(store_error)?
-            .into_iter()
-            .find(|tab| tab.builtin_kind == BuiltinNotebookTab::RealtimeTranscript)
-            .ok_or_else(|| CoreError::NotFound {
-                message: format!("Realtime Transcript tab for notebook {}", run.notebook_id),
-            });
-        let tab = match tab {
+        let tab = match self.realtime_transcript_tab(&run.notebook_id) {
             Ok(tab) => tab,
             Err(error) => {
                 self.cancel_projection_mutation_after_error(mutation, &error)?;
@@ -8596,10 +8604,28 @@ impl ZulangueCore {
         self.project_notebook_capture_with_ownership(run_id)
     }
 
+    /// T2 twin of [`Self::project_notebook_capture`]: the identical
+    /// projection-state machine completing into the epoch-2 block document.
+    #[cfg(test)]
+    fn project_notebook_capture_t2(&self, run_id: &str) -> Result<(), CoreError> {
+        let _ownership_guard = self.capture_ownership_gate.lock().unwrap();
+        self.project_notebook_capture_with_ownership_via(run_id, TranscriptWritePath::Epoch2Blocks)
+    }
+
     /// Projects while the caller holds `capture_ownership_gate`. Stop already
     /// owns the gate across audio finalization; retry and direct recovery enter
     /// through gate-taking wrappers.
     fn project_notebook_capture_with_ownership(&self, run_id: &str) -> Result<(), CoreError> {
+        self.project_notebook_capture_with_ownership_via(run_id, TranscriptWritePath::Epoch1Flat)
+    }
+
+    /// The projection-state machine (Pending → Projecting → Ready/Failed) is
+    /// shared by both document epochs; only the one sync call dispatches.
+    fn project_notebook_capture_with_ownership_via(
+        &self,
+        run_id: &str,
+        write_path: TranscriptWritePath,
+    ) -> Result<(), CoreError> {
         let run = self
             .notebook_capture_store
             .get_run(run_id)
@@ -8641,7 +8667,14 @@ impl ZulangueCore {
             )
             .map_err(store_error)?;
         let projection_result = (|| -> Result<(), CoreError> {
-            self.sync_bilingual_capture_into_realtime_tab(&run, true)?;
+            match write_path {
+                TranscriptWritePath::Epoch1Flat => {
+                    self.sync_bilingual_capture_into_realtime_tab(&run, true)?
+                }
+                TranscriptWritePath::Epoch2Blocks => {
+                    self.sync_capture_into_t2_transcript(&run, true)?
+                }
+            }
             Ok(())
         })();
         match projection_result {
@@ -8698,6 +8731,111 @@ impl ZulangueCore {
             })
     }
 
+    /// The projector wake found the durable watermark already applied.
+    /// Notify a live callback that may have missed the ACK, repair the
+    /// disposable search index, and (for a terminal projection) land Ready.
+    /// Shared verbatim by both document epochs: nothing here touches
+    /// document bytes.
+    fn finish_up_to_date_realtime_projection(
+        &self,
+        run: &NotebookCaptureRun,
+        projection: &RealtimeLoroProjection,
+        complete_projection: bool,
+    ) -> Result<(), CoreError> {
+        let callback = self
+            .active_notebook_capture
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|active| active.session_id == run.session_id)
+            .map(|active| active.callback.clone());
+        if let Some(callback) = callback.filter(|callback| {
+            !callback.is_closed()
+                && callback.last_enqueued_applied_revision() < projection.applied_revision
+        }) {
+            callback.send(event_from_run(run.clone(), Vec::new(), false));
+            if callback.last_enqueued_applied_revision() < projection.applied_revision {
+                return Err(CoreError::InternalError {
+                    message: format!(
+                        "durable realtime projection {} callback notification remains retryable",
+                        projection.applied_revision
+                    ),
+                });
+            }
+        }
+        if complete_projection {
+            let search_result = (|| -> Result<(), CoreError> {
+                let visible = self
+                    .notebook_capture_store
+                    .list_utterances(&run.session_id)
+                    .map_err(store_error)?;
+                self.rebuild_finalized_capture_search_index_through(
+                    &run.session_id,
+                    &visible,
+                    projection.applied_revision,
+                )
+            })();
+            if let Err(error) = search_result {
+                tracing::warn!(
+                    session_id = %run.session_id,
+                    applied_revision = projection.applied_revision,
+                    error = %error,
+                    "durable realtime projection is editable; disposable search repair remains retryable"
+                );
+            }
+            self.notebook_capture_store
+                .complete_projection_unless_purging(&run.id)
+                .map_err(store_error)?;
+        }
+        Ok(())
+    }
+
+    fn realtime_transcript_tab(
+        &self,
+        notebook_id: &str,
+    ) -> Result<vt_store::notebook_store::NotebookTabRecord, CoreError> {
+        use vt_store::BuiltinNotebookTab;
+        self.notebook_store
+            .list_tabs(notebook_id)
+            .map_err(store_error)?
+            .into_iter()
+            .find(|tab| tab.builtin_kind == BuiltinNotebookTab::RealtimeTranscript)
+            .ok_or_else(|| CoreError::NotFound {
+                message: format!("Realtime Transcript tab for notebook {notebook_id}"),
+            })
+    }
+
+    fn require_single_realtime_transcript_projection(
+        &self,
+        tab_id: &str,
+        run: &NotebookCaptureRun,
+    ) -> Result<(), CoreError> {
+        let projection_count = self
+            .notebook_store
+            .list_session_projections(tab_id)
+            .map_err(store_error)?
+            .into_iter()
+            .filter(|projection| {
+                projection.notebook_id == run.notebook_id && projection.session_id == run.session_id
+            })
+            .count();
+        match projection_count {
+            1 => Ok(()),
+            0 => Err(CoreError::NotFound {
+                message: format!(
+                    "Realtime Transcript projection for capture session {} in notebook {}",
+                    run.session_id, run.notebook_id
+                ),
+            }),
+            count => Err(CoreError::ValidationFailed {
+                message: format!(
+                    "capture session {} has {count} active Realtime Transcript projections",
+                    run.session_id
+                ),
+            }),
+        }
+    }
+
     fn sync_bilingual_capture_into_realtime_tab(
         &self,
         run: &NotebookCaptureRun,
@@ -8716,94 +8854,17 @@ impl ZulangueCore {
         {
             RealtimeLoroProjectionLoad::Pending(projection) => projection,
             RealtimeLoroProjectionLoad::UpToDate(projection) => {
-                let callback = self
-                    .active_notebook_capture
-                    .lock()
-                    .unwrap()
-                    .as_ref()
-                    .filter(|active| active.session_id == run.session_id)
-                    .map(|active| active.callback.clone());
-                if let Some(callback) = callback.filter(|callback| {
-                    !callback.is_closed()
-                        && callback.last_enqueued_applied_revision() < projection.applied_revision
-                }) {
-                    callback.send(event_from_run(run.clone(), Vec::new(), false));
-                    if callback.last_enqueued_applied_revision() < projection.applied_revision {
-                        return Err(CoreError::InternalError {
-                            message: format!(
-                                "durable realtime projection {} callback notification remains retryable",
-                                projection.applied_revision
-                            ),
-                        });
-                    }
-                }
-                if complete_projection {
-                    let search_result = (|| -> Result<(), CoreError> {
-                        let visible = self
-                            .notebook_capture_store
-                            .list_utterances(&run.session_id)
-                            .map_err(store_error)?;
-                        self.rebuild_finalized_capture_search_index_through(
-                            &run.session_id,
-                            &visible,
-                            projection.applied_revision,
-                        )
-                    })();
-                    if let Err(error) = search_result {
-                        tracing::warn!(
-                            session_id = %run.session_id,
-                            applied_revision = projection.applied_revision,
-                            error = %error,
-                            "durable realtime projection is editable; disposable search repair remains retryable"
-                        );
-                    }
-                    self.notebook_capture_store
-                        .complete_projection_unless_purging(&run.id)
-                        .map_err(store_error)?;
-                }
-                return Ok(());
+                return self.finish_up_to_date_realtime_projection(
+                    run,
+                    &projection,
+                    complete_projection,
+                );
             }
         };
         debug_assert!(projection.desired_revision > projection.applied_revision);
         let utterances = projection.machine_utterances.as_slice();
-        use vt_store::BuiltinNotebookTab;
-        let tab = self
-            .notebook_store
-            .list_tabs(&run.notebook_id)
-            .map_err(store_error)?
-            .into_iter()
-            .find(|tab| tab.builtin_kind == BuiltinNotebookTab::RealtimeTranscript)
-            .ok_or_else(|| CoreError::NotFound {
-                message: format!("Realtime Transcript tab for notebook {}", run.notebook_id),
-            })?;
-        let projection_count = self
-            .notebook_store
-            .list_session_projections(&tab.id)
-            .map_err(store_error)?
-            .into_iter()
-            .filter(|projection| {
-                projection.notebook_id == run.notebook_id && projection.session_id == run.session_id
-            })
-            .count();
-        match projection_count {
-            1 => {}
-            0 => {
-                return Err(CoreError::NotFound {
-                    message: format!(
-                        "Realtime Transcript projection for capture session {} in notebook {}",
-                        run.session_id, run.notebook_id
-                    ),
-                });
-            }
-            count => {
-                return Err(CoreError::ValidationFailed {
-                    message: format!(
-                        "capture session {} has {count} active Realtime Transcript projections",
-                        run.session_id
-                    ),
-                });
-            }
-        }
+        let tab = self.realtime_transcript_tab(&run.notebook_id)?;
+        self.require_single_realtime_transcript_projection(&tab.id, run)?;
 
         crate::editor_api::open_editor_session_strict(
             &self.data_dir,
@@ -8993,6 +9054,446 @@ impl ZulangueCore {
         }
         crate::editor_api::notify_editor_callback(&self.editor_callbacks, &tab.doc_id);
         Ok(())
+    }
+}
+
+// =========================================================================
+// T2 capture pipeline (switchover charter shard 2, see
+// docs/architecture/t2-capture-switchover.md).
+//
+// Parallel implementation of the three transcript write protocols against
+// the epoch-2 block document. Nothing in production calls these until the
+// shard-4 cutover flips the open path and the write path in one commit, so
+// landing this shard changes no behavior. The SQLite side — pending-snapshot
+// selection, watermark ACK, optimistic-lock staging, search rebuild, purge
+// refusal — is reused verbatim; only the document verbs differ:
+//
+// - Machine projection: `machine_upsert_block` per Final utterance. Upsert
+//   by id is naturally idempotent, so the whole in-document projection
+//   receipt family retires — crash replay is "run the upserts again",
+//   terminating in the identical state before the watermark ACK.
+// - User correction: `user_replace_lane`/`user_replace_text` by block id.
+//   No delta parsing, no range resolution, no user-mutation receipt; the
+//   pending SQLite mutation row alone drives startup replay.
+// - No rollback snapshots: a partially applied batch is not corruption,
+//   because the next wake replays it and lane editability is gated by the
+//   SQLite applied watermark, never by document bytes.
+// =========================================================================
+
+/// Which transcript document family the capture pipeline writes. Epoch1Flat
+/// and this enum retire together in shard 5 of the switchover charter.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TranscriptWritePath {
+    Epoch1Flat,
+    #[allow(dead_code)] // constructed by tests until the shard-4 cutover
+    Epoch2Blocks,
+}
+
+fn t2_capture_owner(session_id: &str) -> String {
+    format!("capture:{session_id}")
+}
+
+/// The T2 write for one utterance, derived purely from SQLite machine facts:
+/// `text` carries the complete source lane (user overrides are already merged
+/// into the read by the store, so re-upserting an edited source writes the
+/// identical user-visible bytes), `lanes` carry every complete translation
+/// variant. Returns `None` while the utterance has no Final lane at all — a
+/// block appears only once it has projectable content, mirroring the old
+/// Final-only render.
+fn t2_machine_block_write(utterance: &RealtimeUtterance) -> Option<MachineBlockWrite> {
+    let source_final = utterance.source_lane_is_complete();
+    let mut lanes = BTreeMap::new();
+    for variant in finalized_translation_variants(utterance) {
+        lanes.insert(
+            capture_lane_id(&variant.language),
+            variant.text.clone().unwrap_or_default(),
+        );
+    }
+    if !source_final && lanes.is_empty() {
+        return None;
+    }
+    Some(MachineBlockWrite {
+        id: utterance.id.clone(),
+        owner: t2_capture_owner(&utterance.session_id),
+        text: if source_final {
+            utterance.source_text.clone()
+        } else {
+            String::new()
+        },
+        lanes,
+    })
+}
+
+/// Lanes the user has taken over: SQLite lane edit revision > 0. The machine
+/// never writes these again, even with identical bytes.
+fn t2_frozen_lanes(utterance: &RealtimeUtterance) -> BTreeSet<String> {
+    utterance
+        .variants
+        .iter()
+        .filter(|variant| {
+            variant.role == UtteranceVariantRole::Translation && variant.edit_revision > 0
+        })
+        .map(|variant| capture_lane_id(&variant.language))
+        .collect()
+}
+
+/// Where a NEW block for this utterance must be inserted so the session's
+/// blocks stay in utterance-sequence order regardless of Final arrival order
+/// (the T2 analog of the old sequence-sorted section render, which the
+/// out-of-order-finals convergence test pins down):
+///
+/// - inside the session's region: before the first same-session machine
+///   block with a greater sequence;
+/// - past the region's end: annotations stay anchored where the user put
+///   them, so skip trailing user blocks and insert before the next
+///   session's first machine block — a late line lands at its own
+///   section's end, never inside a later session;
+/// - no region yet: append at the document end, exactly where the old
+///   renderer placed a brand-new session section.
+fn t2_insert_anchor(
+    blocks: &[UtteranceBlock],
+    session_id: &str,
+    sequence_by_id: &HashMap<&str, u64>,
+    sequence: u64,
+) -> Option<String> {
+    let owner = t2_capture_owner(session_id);
+    let mut last_region_index = None;
+    for (index, block) in blocks.iter().enumerate() {
+        if block.owner != owner {
+            continue;
+        }
+        if sequence_by_id
+            .get(block.id.as_str())
+            .is_some_and(|existing| *existing > sequence)
+        {
+            return Some(block.id.clone());
+        }
+        last_region_index = Some(index);
+    }
+    blocks[last_region_index? + 1..]
+        .iter()
+        .find(|block| block.owner != vt_store::transcript_projection::USER_OWNER)
+        .map(|block| block.id.clone())
+}
+
+/// Replays every Final fact of the snapshot into the block document. Pure
+/// function of (document state, machine facts): running it twice, or across
+/// a crash, terminates in the identical block list — this replaces the
+/// epoch-1 projection receipt as the idempotence proof.
+fn t2_upsert_finalized_utterances(
+    projection: &TranscriptProjection,
+    session_id: &str,
+    utterances: &[RealtimeUtterance],
+) -> Result<(), CoreError> {
+    let sequence_by_id: HashMap<&str, u64> = utterances
+        .iter()
+        .map(|utterance| (utterance.id.as_str(), utterance.sequence))
+        .collect();
+    // Converge remote imports once so anchors resolve against the full list.
+    projection.refresh();
+    for utterance in utterances {
+        let Some(write) = t2_machine_block_write(utterance) else {
+            continue;
+        };
+        let frozen = t2_frozen_lanes(utterance);
+        // Re-read per utterance: each anchor decision must see the block
+        // inserted for the previous one.
+        let blocks = projection.blocks();
+        let anchor = t2_insert_anchor(&blocks, session_id, &sequence_by_id, utterance.sequence);
+        projection
+            .machine_upsert_block(write, &frozen, anchor.as_deref())
+            .map_err(store_error)?;
+    }
+    Ok(())
+}
+
+impl ZulangueCore {
+    /// T2 twin of [`Self::project_notebook_realtime_incremental`].
+    #[allow(dead_code)] // wired to the FFI entry by the shard-4 cutover
+    pub(crate) fn project_notebook_realtime_incremental_t2(
+        &self,
+        session_id: &str,
+    ) -> Result<(), CoreError> {
+        let run = self
+            .notebook_capture_store
+            .get_run_for_session(session_id)
+            .map_err(store_error)?
+            .ok_or_else(|| CoreError::NotFound {
+                message: format!("capture session {session_id}"),
+            })?;
+        self.ensure_capture_projection_not_purging(&run.session_id)?;
+        self.sync_capture_into_t2_transcript(&run, false)
+    }
+
+    /// T2 twin of [`Self::sync_bilingual_capture_into_realtime_tab`]: the
+    /// same critical section, pending-snapshot selection, watermark ACK,
+    /// search rebuild, and Ready completion, with the document side swapped
+    /// from delta-planned flat text to idempotent block upserts. Until the
+    /// shard-4 cutover the block document lives in `block-documents/` next
+    /// to the epoch-1 snapshot, keyed by the doc_id the tab will adopt.
+    fn sync_capture_into_t2_transcript(
+        &self,
+        run: &NotebookCaptureRun,
+        complete_projection: bool,
+    ) -> Result<(), CoreError> {
+        // Snapshot selection, document mutation, fsync, and SQLite ACK
+        // serialize as one projection critical section, exactly like the
+        // epoch-1 projector: a stale R loaded outside the guard could
+        // otherwise overwrite a concurrent R+1's durable bytes.
+        let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
+        self.ensure_capture_projection_not_purging(&run.session_id)?;
+        // The visible variant of the pending load: user overrides are merged
+        // in, so frozen lanes carry their real edit revisions and an
+        // overridden source lane re-upserts its own bytes.
+        let projection = match self
+            .notebook_capture_store
+            .load_realtime_loro_projection_if_pending_visible(&run.session_id)
+            .map_err(store_error)?
+        {
+            RealtimeLoroProjectionLoad::Pending(projection) => projection,
+            RealtimeLoroProjectionLoad::UpToDate(watermark) => {
+                return self.finish_up_to_date_realtime_projection(
+                    run,
+                    &watermark,
+                    complete_projection,
+                );
+            }
+        };
+        debug_assert!(projection.desired_revision > projection.applied_revision);
+        let tab = self.realtime_transcript_tab(&run.notebook_id)?;
+        self.require_single_realtime_transcript_projection(&tab.id, run)?;
+
+        self.block_document_open(tab.doc_id.clone(), FfiDocumentKind::Transcript)?;
+        self.with_transcript(&tab.doc_id, |handle| {
+            t2_upsert_finalized_utterances(handle, &run.session_id, &projection.machine_utterances)
+        })?;
+        self.persist_block_document(&tab.doc_id)?;
+
+        // The upserted snapshot is durable. Advance the SQLite watermark so
+        // each Final lane becomes editable — this ACK protocol is shared
+        // byte-for-byte with the epoch-1 projector. On failure past this
+        // point (or anywhere above) there is nothing to roll back: replaying
+        // the upserts is the recovery path.
+        let callback = self
+            .active_notebook_capture
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|active| active.session_id == run.session_id)
+            .map(|active| active.callback.clone());
+        if let Some(callback) = callback {
+            callback.commit_projection_ack(&run.session_id, || {
+                self.notebook_capture_store
+                    .ack_realtime_loro_projection(&run.session_id, projection.desired_revision)
+                    .map_err(store_error)
+            })?;
+        } else {
+            self.notebook_capture_store
+                .ack_realtime_loro_projection(&run.session_id, projection.desired_revision)
+                .map_err(store_error)?;
+        }
+
+        let search_result = (|| -> Result<(), CoreError> {
+            let visible = self
+                .notebook_capture_store
+                .list_utterances(&run.session_id)
+                .map_err(store_error)?;
+            self.rebuild_finalized_capture_search_index_through(
+                &run.session_id,
+                &visible,
+                projection.desired_revision,
+            )
+        })();
+        if let Err(error) = search_result {
+            tracing::warn!(
+                session_id = %run.session_id,
+                applied_revision = projection.desired_revision,
+                error = %error,
+                "durable realtime projection is editable; disposable search rebuild remains retryable"
+            );
+        }
+        if complete_projection {
+            self.notebook_capture_store
+                .complete_projection_unless_purging(&run.id)
+                .map_err(store_error)?;
+        }
+        Ok(())
+    }
+
+    /// T2 twin of [`Self::replace_notebook_utterance_lane`]: identical
+    /// SQLite validation and optimistic-lock staging; only the document
+    /// verb differs.
+    #[allow(dead_code)] // wired to the FFI entry by the shard-4 cutover
+    pub(crate) fn replace_notebook_utterance_lane_t2(
+        &self,
+        utterance_id: &str,
+        lane_language: &str,
+        text: &str,
+        expected_revision: u64,
+    ) -> Result<FfiNotebookCaptureUtterance, CoreError> {
+        self.validated_utterance_for_lane_replacement(utterance_id, lane_language)?;
+        let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
+        let mutation = self
+            .notebook_capture_store
+            .stage_utterance_variant_replacement(
+                utterance_id,
+                lane_language,
+                text,
+                expected_revision,
+            )
+            .map_err(store_error)?;
+        self.apply_notebook_projection_mutation_t2(&mutation)
+            .map(Into::into)
+    }
+
+    /// T2 twin of [`Self::apply_notebook_projection_mutation`]. Forward-
+    /// replays one durable lane mutation; the caller holds the editor
+    /// mutation guard. The receipt machinery is gone: the verb targets the
+    /// block by id and is idempotent, so startup replay of a pending
+    /// mutation re-applies it and finishes only the SQLite override commit.
+    fn apply_notebook_projection_mutation_t2(
+        &self,
+        mutation: &NotebookProjectionMutation,
+    ) -> Result<RealtimeUtterance, CoreError> {
+        let run = self
+            .notebook_capture_store
+            .get_run_for_session(&mutation.session_id)
+            .map_err(store_error)?
+            .ok_or_else(|| CoreError::NotFound {
+                message: format!("capture session {}", mutation.session_id),
+            })?;
+        let tab = match self.realtime_transcript_tab(&run.notebook_id) {
+            Ok(tab) => tab,
+            Err(error) => {
+                self.cancel_projection_mutation_after_error(mutation, &error)?;
+                return Err(error);
+            }
+        };
+        if let Err(error) =
+            self.block_document_open(tab.doc_id.clone(), FfiDocumentKind::Transcript)
+        {
+            self.cancel_projection_mutation_after_error(mutation, &error)?;
+            return Err(error);
+        }
+
+        let lane_key = capture_lane_id(&mutation.lane_language);
+        let mut previous: Option<String> = None;
+        let mut document_durable = false;
+        let apply_result = (|| -> Result<RealtimeUtterance, CoreError> {
+            self.with_transcript(&tab.doc_id, |projection| {
+                let blocks = projection.refresh();
+                let block = blocks
+                    .iter()
+                    .find(|block| block.id == mutation.utterance_id)
+                    .ok_or_else(|| CoreError::ValidationFailed {
+                        message: format!(
+                            "T2 block for utterance {} is missing",
+                            mutation.utterance_id
+                        ),
+                    })?;
+                // The pre-verb value is the rollback material; its absence
+                // for a translated lane means the lane was never projected
+                // (the T2 analog of missing ownership marks).
+                let rollback_value = match mutation.lane {
+                    UtteranceLane::Source => block.text.clone(),
+                    UtteranceLane::Translated => {
+                        block.lanes.get(&lane_key).cloned().ok_or_else(|| {
+                            CoreError::ValidationFailed {
+                                message: format!(
+                                    "T2 lane {lane_key} is missing on block {}",
+                                    mutation.utterance_id
+                                ),
+                            }
+                        })?
+                    }
+                };
+                previous = Some(rollback_value);
+                match mutation.lane {
+                    UtteranceLane::Source => {
+                        projection.user_replace_text(&mutation.utterance_id, &mutation.target_text)
+                    }
+                    UtteranceLane::Translated => projection.user_replace_lane(
+                        &mutation.utterance_id,
+                        &lane_key,
+                        &mutation.target_text,
+                    ),
+                }
+                .map_err(store_error)
+            })?;
+            self.persist_block_document(&tab.doc_id)?;
+            document_durable = true;
+
+            let updated = self
+                .notebook_capture_store
+                .commit_projection_mutation(&mutation.id)
+                .map_err(store_error)?;
+            match self
+                .notebook_capture_store
+                .list_utterances(&mutation.session_id)
+                .map_err(store_error)
+                .and_then(|visible| {
+                    self.rebuild_finalized_capture_search_index_through(
+                        &mutation.session_id,
+                        &visible,
+                        run.realtime_loro_applied_revision,
+                    )
+                }) {
+                Ok(()) => {}
+                Err(error) => {
+                    // The block edit and SQLite override are already
+                    // committed. FTS is disposable and startup/retry can
+                    // rebuild it; do not turn a successful edit into a
+                    // false UI failure.
+                    tracing::warn!(
+                        session_id = %mutation.session_id,
+                        mutation_id = %mutation.id,
+                        error = %error,
+                        "capture lane edit committed; search projection remains retryable"
+                    );
+                }
+            }
+            Ok(updated)
+        })();
+
+        match apply_result {
+            Ok(updated) => Ok(updated),
+            Err(error) if document_durable => {
+                // The user's bytes are durable but the SQLite override
+                // commit is not. Keep the mutation pending so startup
+                // replays the idempotent verb and finishes only the
+                // override commit.
+                Err(error)
+            }
+            Err(error) => {
+                if let Some(previous) = previous.as_deref() {
+                    // The verb may have applied in memory without reaching
+                    // disk. Restore the pre-verb value so a cancelled
+                    // mutation leaves the document exactly as it found it.
+                    let rollback = self.with_transcript(&tab.doc_id, |projection| {
+                        match mutation.lane {
+                            UtteranceLane::Source => {
+                                projection.user_replace_text(&mutation.utterance_id, previous)
+                            }
+                            UtteranceLane::Translated => projection.user_replace_lane(
+                                &mutation.utterance_id,
+                                &lane_key,
+                                previous,
+                            ),
+                        }
+                        .map_err(store_error)
+                    });
+                    if let Err(rollback_error) = rollback {
+                        return Err(CoreError::InternalError {
+                            message: format!(
+                                "lane mutation failed ({error}); T2 block rollback failed ({rollback_error}); pending mutation retained for recovery"
+                            ),
+                        });
+                    }
+                }
+                self.cancel_projection_mutation_after_error(mutation, &error)?;
+                Err(error)
+            }
+        }
     }
 }
 
@@ -19075,5 +19576,498 @@ mod tests {
             .runtime
             .block_on(core.task_queue.get_task(&retained_task))
             .is_ok());
+    }
+
+    /// Mirror suite for the T2 capture pipeline (switchover charter shard 2):
+    /// every test here shadows an epoch-1 protocol test above, with the
+    /// document assertions moved from rendered flat text to typed blocks.
+    mod t2 {
+        use super::*;
+
+        fn t2_projection() -> TranscriptProjection {
+            TranscriptProjection::open(vt_store::document_schema::new_block_document(
+                vt_store::document_schema::DocumentKind::Transcript,
+            ))
+            .unwrap()
+        }
+
+        /// T2 twin of `project_test_snapshots`: replays each SQLite snapshot
+        /// through the production upsert loop and returns the block list.
+        fn t2_project_test_snapshots(
+            snapshots: Vec<Vec<RealtimeUtterance>>,
+        ) -> Vec<UtteranceBlock> {
+            let projection = t2_projection();
+            for snapshot in &snapshots {
+                t2_upsert_finalized_utterances(&projection, "session-a", snapshot).unwrap();
+            }
+            projection.blocks()
+        }
+
+        fn t2_final_source(
+            session_id: &str,
+            id: &str,
+            sequence: u64,
+            text: &str,
+        ) -> RealtimeUtterance {
+            let mut utterance = projected_utterance();
+            utterance.session_id = session_id.into();
+            utterance.id = id.into();
+            utterance.sequence = sequence;
+            utterance.source_text = text.into();
+            utterance.translated_language = None;
+            utterance.translated_text = None;
+            utterance.variants = vec![projected_source_variant("en", text, 1)];
+            utterance
+        }
+
+        fn t2_block_doc_path(temp: &tempfile::TempDir, doc_id: &str) -> std::path::PathBuf {
+            temp.path()
+                .join("block-documents")
+                .join(format!("{doc_id}.loro"))
+        }
+
+        fn t2_blocks(core: &ZulangueCore, doc_id: &str) -> Vec<UtteranceBlock> {
+            core.with_transcript(doc_id, |projection| Ok(projection.refresh()))
+                .unwrap()
+        }
+
+        /// 用户可见覆盖层里的一条车道(裸机器行永远不带 edit revision)。
+        fn t2_visible_lane(
+            core: &ZulangueCore,
+            utterance_id: &str,
+            lane_language: &str,
+        ) -> RealtimeUtteranceVariant {
+            core.notebook_capture_store
+                .list_utterances("session-a")
+                .unwrap()
+                .into_iter()
+                .find(|utterance| utterance.id == utterance_id)
+                .unwrap()
+                .variants
+                .into_iter()
+                .find(|variant| normalize_language(&variant.language) == lane_language)
+                .unwrap()
+        }
+
+        // ---- projection write path (mirror of the incremental render tests) ----
+
+        #[test]
+        fn t2_projection_converges_to_identical_blocks_for_out_of_order_finals() {
+            let finals = two_multilingual_final_utterances();
+            let expected = t2_project_test_snapshots(vec![finals.clone()]);
+            assert_eq!(
+                expected.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(),
+                vec!["utterance-0", "utterance-1"],
+                "块序=句序"
+            );
+            assert_eq!(expected[0].text, "source zero");
+            assert_eq!(expected[0].owner, "capture:session-a");
+            assert_eq!(expected[0].lanes["zh"], "零");
+            assert_eq!(expected[0].lanes["th"], "ศูนย์");
+            assert_eq!(expected[1].lanes["zh"], "一");
+
+            let sources_first = finals
+                .iter()
+                .cloned()
+                .map(|mut utterance| {
+                    utterance
+                        .variants
+                        .retain(|variant| variant.role == UtteranceVariantRole::Source);
+                    utterance.translated_language = None;
+                    utterance.translated_text = None;
+                    utterance
+                })
+                .collect::<Vec<_>>();
+
+            let mut translation_first = finals.clone();
+            for utterance in &mut translation_first {
+                utterance.completion = UtteranceCompletion::Partial;
+                utterance.source_projection_revision = 0;
+                utterance.variants.clear();
+            }
+            translation_first[1].variants = vec![projected_translation_variant("ZH-hans", "一", 4)];
+
+            let mut first_sparse = translation_first.clone();
+            first_sparse[1].variants = vec![projected_translation_variant("TH-th", "หนึ่ง", 6)];
+            let mut second_sparse = first_sparse.clone();
+            second_sparse[0].variants = vec![projected_translation_variant("zh-Hans", "零", 3)];
+            let mut sources_with_sparse_translations = finals.clone();
+            sources_with_sparse_translations[0]
+                .variants
+                .retain(|variant| {
+                    variant.role == UtteranceVariantRole::Source
+                        || capture_lane_id(&variant.language) == "zh"
+                });
+            sources_with_sparse_translations[1]
+                .variants
+                .retain(|variant| {
+                    variant.role == UtteranceVariantRole::Source
+                        || capture_lane_id(&variant.language) == "th"
+                });
+
+            for projected in [
+                t2_project_test_snapshots(vec![sources_first, finals.clone()]),
+                t2_project_test_snapshots(vec![translation_first, finals.clone()]),
+                t2_project_test_snapshots(vec![
+                    first_sparse,
+                    second_sparse,
+                    sources_with_sparse_translations,
+                    finals.clone(),
+                ]),
+            ] {
+                assert_eq!(projected, expected);
+            }
+        }
+
+        #[test]
+        fn t2_projection_ignores_partial_lanes_until_each_lane_is_final() {
+            let projection = t2_projection();
+            let mut utterance = projected_utterance();
+            utterance.variants[0].completion = Some(UtteranceCompletion::Partial);
+            t2_upsert_finalized_utterances(&projection, "session-a", &[utterance.clone()]).unwrap();
+            let blocks = projection.blocks();
+            assert_eq!(blocks.len(), 1);
+            assert_eq!(blocks[0].text, "good morning 🌏", "源 Final 照常落块");
+            assert!(blocks[0].lanes.is_empty(), "Partial 译文车道不落块");
+
+            // 全推测的句子连块都不产生。
+            let mut speculative = projected_utterance();
+            speculative.id = "utterance-spec".into();
+            speculative.sequence = 1;
+            speculative.completion = UtteranceCompletion::Partial;
+            speculative.variants[0].completion = Some(UtteranceCompletion::Partial);
+            speculative.variants[1].completion = Some(UtteranceCompletion::Partial);
+            t2_upsert_finalized_utterances(
+                &projection,
+                "session-a",
+                &[utterance.clone(), speculative],
+            )
+            .unwrap();
+            assert_eq!(projection.blocks().len(), 1);
+
+            // 车道 Final 之后才落地。
+            utterance.variants[0].completion = Some(UtteranceCompletion::Complete);
+            t2_upsert_finalized_utterances(&projection, "session-a", &[utterance]).unwrap();
+            assert_eq!(projection.blocks()[0].lanes["zh"], "早上好");
+        }
+
+        #[test]
+        fn t2_machine_never_rewrites_a_user_frozen_lane() {
+            let projection = t2_projection();
+            let mut utterance = projected_utterance();
+            t2_upsert_finalized_utterances(&projection, "session-a", &[utterance.clone()]).unwrap();
+            projection
+                .user_replace_lane("utterance-a", "zh", "早上好(人工)")
+                .unwrap();
+
+            // 机器带着修订回来,但 SQLite 车道 edit revision 已经 > 0。
+            utterance.variants[0].text = Some("早上好(机器v2)".into());
+            utterance.variants[0].edit_revision = 1;
+            utterance.source_text = "good morning (revised)".into();
+            utterance.variants[1].text = Some("good morning (revised)".into());
+            t2_upsert_finalized_utterances(&projection, "session-a", &[utterance]).unwrap();
+
+            let blocks = projection.blocks();
+            assert_eq!(blocks[0].text, "good morning (revised)", "源车道照常推进");
+            assert_eq!(
+                blocks[0].lanes["zh"], "早上好(人工)",
+                "冻结车道机器绝不覆盖"
+            );
+        }
+
+        #[test]
+        fn t2_translation_only_shell_projects_without_source_and_fills_in_later() {
+            let projection = t2_projection();
+            let mut utterance = projected_utterance();
+            utterance.completion = UtteranceCompletion::Partial;
+            utterance.source_projection_revision = 0;
+            // 源变体尚未 Final,译文已 Final(译文先于原文的既有语义)。
+            utterance.variants[1].completion = Some(UtteranceCompletion::Partial);
+            t2_upsert_finalized_utterances(&projection, "session-a", &[utterance.clone()]).unwrap();
+            let blocks = projection.blocks();
+            assert_eq!(blocks.len(), 1);
+            assert_eq!(blocks[0].text, "", "源未 Final,text 留白");
+            assert_eq!(blocks[0].lanes["zh"], "早上好");
+
+            // 源随后 Final:text 补上,车道不动。
+            utterance.completion = UtteranceCompletion::Complete;
+            utterance.variants[1].completion = Some(UtteranceCompletion::Complete);
+            t2_upsert_finalized_utterances(&projection, "session-a", &[utterance]).unwrap();
+            let blocks = projection.blocks();
+            assert_eq!(blocks[0].text, "good morning 🌏");
+            assert_eq!(blocks[0].lanes["zh"], "早上好");
+        }
+
+        #[test]
+        fn t2_late_finals_insert_in_sequence_order_across_annotations_and_sessions() {
+            let projection = t2_projection();
+            let u0 = t2_final_source("session-a", "a0", 0, "零");
+            let mut u1 = t2_final_source("session-a", "a1", 1, "一");
+            u1.completion = UtteranceCompletion::Partial;
+            u1.variants[0].completion = Some(UtteranceCompletion::Partial);
+            let u2 = t2_final_source("session-a", "a2", 2, "二");
+            t2_upsert_finalized_utterances(
+                &projection,
+                "session-a",
+                &[u0.clone(), u1.clone(), u2.clone()],
+            )
+            .unwrap();
+            // 用户在当前区域尾插批注,然后 session-b 开始。
+            projection.insert_annotation(2, "n1", "备注").unwrap();
+            let b0 = t2_final_source("session-b", "b0", 0, "乙零");
+            t2_upsert_finalized_utterances(&projection, "session-b", &[b0]).unwrap();
+
+            // 迟到的 a1 Final:插回 a0 与 a2 之间。
+            let mut u1_final = u1.clone();
+            u1_final.completion = UtteranceCompletion::Complete;
+            u1_final.variants[0].completion = Some(UtteranceCompletion::Complete);
+            t2_upsert_finalized_utterances(
+                &projection,
+                "session-a",
+                &[u0.clone(), u1_final, u2.clone()],
+            )
+            .unwrap();
+
+            // 迟到的 a3(序号最大):跳过尾随批注,停在 session-b 区域之前。
+            let u3 = t2_final_source("session-a", "a3", 3, "三");
+            t2_upsert_finalized_utterances(&projection, "session-a", &[u0, u2, u3]).unwrap();
+
+            let ids: Vec<_> = projection.blocks().into_iter().map(|b| b.id).collect();
+            assert_eq!(ids, vec!["a0", "a1", "a2", "n1", "a3", "b0"]);
+        }
+
+        // ---- full-core integration (mirror of the projected_core_fixture tests) ----
+
+        #[test]
+        fn t2_incremental_projection_acks_watermark_and_persists_blocks() {
+            let (temp, core, _notebook_id, _run_id, doc_id) = projected_core_fixture();
+            core.project_notebook_realtime_incremental_t2("session-a")
+                .unwrap();
+            let projected = core
+                .notebook_capture_store
+                .load_realtime_loro_projection("session-a")
+                .unwrap();
+            assert_eq!(projected.applied_revision, projected.desired_revision);
+            assert!(t2_block_doc_path(&temp, &doc_id).exists());
+
+            // 关句柄、从磁盘重开:块在,形状完整。
+            core.block_document_close(doc_id.clone()).unwrap();
+            core.block_document_open(doc_id.clone(), FfiDocumentKind::Transcript)
+                .unwrap();
+            let blocks = t2_blocks(&core, &doc_id);
+            assert_eq!(blocks.len(), 1);
+            assert_eq!(blocks[0].id, "utterance-a");
+            assert_eq!(blocks[0].owner, "capture:session-a");
+            assert_eq!(blocks[0].text, "hello");
+            assert_eq!(blocks[0].lanes["zh"], "你好");
+        }
+
+        #[test]
+        fn t2_up_to_date_incremental_projection_skips_machine_fact_hydration() {
+            let (temp, core, _notebook_id, _run_id, _doc_id) = projected_core_fixture();
+            core.project_notebook_realtime_incremental_t2("session-a")
+                .unwrap();
+
+            let conn = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+            conn.pragma_update(None, "ignore_check_constraints", "ON")
+                .unwrap();
+            conn.execute(
+                "UPDATE realtime_utterances
+                 SET completion = 'invalid-test-value'
+                 WHERE id = 'utterance-a'",
+                [],
+            )
+            .unwrap();
+            conn.pragma_update(None, "ignore_check_constraints", "OFF")
+                .unwrap();
+            assert!(core
+                .notebook_capture_store
+                .load_realtime_loro_projection("session-a")
+                .is_err());
+
+            core.project_notebook_realtime_incremental_t2("session-a")
+                .expect("an up-to-date wake must not hydrate the full machine-fact ledger");
+        }
+
+        #[test]
+        fn t2_terminal_projection_keeps_search_and_ready_semantics_after_incremental_ack() {
+            let (_temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
+            core.project_notebook_realtime_incremental_t2("session-a")
+                .unwrap();
+            core.search_store
+                .index_session("session-a", "stale disposable index")
+                .unwrap();
+            assert!(core.search_sessions("hello".into(), 10).unwrap().is_empty());
+
+            core.project_notebook_capture_t2(&run_id).unwrap();
+
+            let run = core
+                .notebook_capture_store
+                .get_run(&run_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(run.projection_state, ProjectionState::Ready);
+            assert!(core
+                .search_sessions("hello".into(), 10)
+                .unwrap()
+                .iter()
+                .any(|result| result.session_id == "session-a"));
+        }
+
+        /// 收据整族退役的核心证明:ACK 之前中断的重放(把同一份快照原样
+        /// 再 upsert 一遍)终态逐字相同。
+        #[test]
+        fn t2_replaying_an_applied_snapshot_is_idempotent() {
+            let (_temp, core, _notebook_id, _run_id, doc_id) = projected_core_fixture();
+            core.project_notebook_realtime_incremental_t2("session-a")
+                .unwrap();
+            let before = t2_blocks(&core, &doc_id);
+            assert_eq!(before.len(), 1);
+
+            // 第二次唤醒:UpToDate,无变化。
+            core.project_notebook_realtime_incremental_t2("session-a")
+                .unwrap();
+            assert_eq!(t2_blocks(&core, &doc_id), before);
+
+            // 崩溃重放:绕过水位,直接重放整份快照。
+            let snapshot = core
+                .notebook_capture_store
+                .load_realtime_loro_projection("session-a")
+                .unwrap();
+            core.with_transcript(&doc_id, |projection| {
+                t2_upsert_finalized_utterances(
+                    projection,
+                    "session-a",
+                    &snapshot.machine_utterances,
+                )
+            })
+            .unwrap();
+            assert_eq!(t2_blocks(&core, &doc_id), before);
+        }
+
+        // ---- user correction path (mirror of the lane mutation tests) ----
+
+        #[test]
+        fn t2_two_sequential_unicode_lane_edits_commit_override_and_block() {
+            let (_temp, core, _notebook_id, _run_id, doc_id) = projected_core_fixture();
+            core.project_notebook_realtime_incremental_t2("session-a")
+                .unwrap();
+
+            core.replace_notebook_utterance_lane_t2(
+                "utterance-a",
+                "zh",
+                "第一次编辑 🧭\n第二行",
+                0,
+            )
+            .unwrap();
+            core.replace_notebook_utterance_lane_t2("utterance-a", "zh", "第二次编辑 你好🌏", 1)
+                .unwrap();
+
+            let blocks = t2_blocks(&core, &doc_id);
+            assert_eq!(blocks[0].lanes["zh"], "第二次编辑 你好🌏");
+            // 覆盖层是可见事实:裸机器行保持原文本,edit revision 记在
+            // 可见变体上。
+            let variant = t2_visible_lane(&core, "utterance-a", "zh");
+            assert_eq!(variant.edit_revision, 2);
+            assert_eq!(variant.text.as_deref(), Some("第二次编辑 你好🌏"));
+
+            // 过期的 expectedRevision:逐字不变的乐观锁拒绝,文档不动。
+            let error = core
+                .replace_notebook_utterance_lane_t2("utterance-a", "zh", "过期编辑", 0)
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("0"),
+                "冲突错误报出期望修订: {error}"
+            );
+            assert_eq!(
+                t2_blocks(&core, &doc_id)[0].lanes["zh"],
+                "第二次编辑 你好🌏"
+            );
+            assert!(core
+                .notebook_capture_store
+                .list_pending_projection_mutations()
+                .unwrap()
+                .is_empty());
+
+            // 机器重放绝不覆盖已接管车道:用可见事实整卷重放(生产的
+            // 崩溃重放语义),frozen 来自真实的车道 edit revision。
+            let visible = core
+                .notebook_capture_store
+                .list_utterances("session-a")
+                .unwrap();
+            core.with_transcript(&doc_id, |projection| {
+                t2_upsert_finalized_utterances(projection, "session-a", &visible)
+            })
+            .unwrap();
+            assert_eq!(
+                t2_blocks(&core, &doc_id)[0].lanes["zh"],
+                "第二次编辑 你好🌏",
+                "重放绝不覆盖用户车道"
+            );
+        }
+
+        /// 镜像 durable_user_lane_receipt_replays_only_the_sqlite_commit_after_crash:
+        /// 文档动词 + 落盘已完成、SQLite 覆盖提交缺席的崩溃窗口,启动重放
+        /// 只补提交,车道修订恰好 +1。
+        #[test]
+        fn t2_pending_mutation_replays_only_the_sqlite_commit_after_crash() {
+            let (_temp, core, _notebook_id, _run_id, doc_id) = projected_core_fixture();
+            core.project_notebook_realtime_incremental_t2("session-a")
+                .unwrap();
+
+            let mutation = core
+                .notebook_capture_store
+                .stage_utterance_variant_replacement("utterance-a", "zh", "人工订正 ✍️", 0)
+                .unwrap();
+            core.with_transcript(&doc_id, |projection| {
+                projection
+                    .user_replace_lane("utterance-a", "zh", "人工订正 ✍️")
+                    .map_err(store_error)
+            })
+            .unwrap();
+            core.persist_block_document(&doc_id).unwrap();
+
+            // 启动重放:幂等动词重放 + 只补 SQLite 提交。
+            core.apply_notebook_projection_mutation_t2(&mutation)
+                .unwrap();
+
+            assert_eq!(t2_blocks(&core, &doc_id)[0].lanes["zh"], "人工订正 ✍️");
+            let variant = t2_visible_lane(&core, "utterance-a", "zh");
+            assert_eq!(variant.edit_revision, 1, "重放不能二次递增");
+            assert_eq!(variant.text.as_deref(), Some("人工订正 ✍️"));
+            assert!(core
+                .notebook_capture_store
+                .list_pending_projection_mutations()
+                .unwrap()
+                .is_empty());
+        }
+
+        /// 镜像 corrupt_snapshot_never_commits_projection_lane_mutation_or_purge
+        /// 的取消语义:文档动词失败必须取消暂存行,SQLite 车道不动。
+        #[test]
+        fn t2_missing_block_cancels_the_staged_mutation() {
+            let (temp, core, _notebook_id, _run_id, doc_id) = projected_core_fixture();
+            core.project_notebook_realtime_incremental_t2("session-a")
+                .unwrap();
+            // 弄丢块文档(极端损坏情形):关句柄、删文件。
+            core.block_document_close(doc_id.clone()).unwrap();
+            std::fs::remove_file(t2_block_doc_path(&temp, &doc_id)).unwrap();
+
+            let error = core
+                .replace_notebook_utterance_lane_t2("utterance-a", "zh", "编辑", 0)
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("is missing"),
+                "缺块要报得出名字: {error}"
+            );
+            assert!(core
+                .notebook_capture_store
+                .list_pending_projection_mutations()
+                .unwrap()
+                .is_empty());
+            let variant = t2_visible_lane(&core, "utterance-a", "zh");
+            assert_eq!(variant.edit_revision, 0);
+            assert_eq!(variant.text.as_deref(), Some("你好"));
+        }
     }
 }
