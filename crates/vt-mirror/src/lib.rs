@@ -9,6 +9,7 @@
 //! 出处与许可证见本 crate 的 THIRD_PARTY.md。
 
 pub mod change;
+pub mod diff;
 pub mod lis;
 pub mod schema;
 pub mod utils;
