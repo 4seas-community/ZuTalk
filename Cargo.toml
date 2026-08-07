@@ -12,6 +12,7 @@ members = [
     "crates/vt-share",
     "crates/vt-ffi",
     "crates/vt-i18n",
+    "crates/vt-mirror",
     "tools/uniffi-bindgen",
 ]
 

@@ -1,0 +1,16 @@
+[package]
+name = "vt-mirror"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+# 本 crate 是移植代码,不随工作区的 GPL-3.0-or-later:内核移植自
+# loro-mirror(MIT),部分逻辑含 macro 仓库的修改(AGPL-3.0)。取最严格的
+# 血统声明。出处逐文件标注,见 THIRD_PARTY.md。
+license = "AGPL-3.0-or-later"
+publish = false
+
+[dependencies]
+loro = "1"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,27 @@
+# vt-mirror 代码出处
+
+本 crate 不是原创设计,而是把「应用状态 ↔ Loro CRDT」同步引擎从
+TypeScript 移植到 Rust。移植策略:**先照译测试,再照译实现**,测试就是
+上游行为的规格书。
+
+## 血统
+
+- **上游**:[loro-dev/loro-mirror](https://github.com/loro-dev/loro-mirror),
+  MIT License, Copyright (c) 2024 Loro。
+- **直接蓝本**:[macro-inc/macro](https://github.com/macro-inc/macro) 仓库
+  内嵌的 `packages/loro-mirror`(`@loro-mirror/core` 0.1.0)——它派生自
+  上游的早期版本并带有 macro 的修改;macro 仓库整体按
+  GNU AGPL-3.0 授权,其 `THIRD_PARTY_LICENSES.md` 保留了上游 MIT 声明。
+
+因此本 crate 按 **AGPL-3.0-or-later** 声明(两个血统中较严格者),
+并保留上游 MIT 归属。采纳 AGPL 为项目决定,记录于
+docs/architecture/document-schema-decision.md。
+
+## 文件对应表
+
+| 本 crate | 蓝本(macro 内嵌 loro-mirror) |
+|---|---|
+| `src/lis.rs` | `src/core/diff.ts` 的 `longestIncreasingSubsequence` |
+| `tests/`(逐模块) | `tests/core/*.test.ts` 照译 |
+
+后续移植按此表续记,一行一个模块;没登记的文件不存在于蓝本,属自研。

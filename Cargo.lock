@@ -5807,6 +5807,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vt-mirror"
+version = "0.0.0"
+dependencies = [
+ "loro",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "vt-model"
 version = "0.0.0"
 dependencies = [
