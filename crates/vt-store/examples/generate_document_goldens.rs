@@ -17,8 +17,8 @@ fn main() {
     fs::create_dir_all(&golden_dir).expect("create golden dir");
 
     for (kind, file_name) in [
-        (DocumentKind::Transcript, "document-golden-transcript.1.bin"),
-        (DocumentKind::Note, "document-golden-note.1.bin"),
+        (DocumentKind::Transcript, "document-golden-transcript.2.bin"),
+        (DocumentKind::Note, "document-golden-note.2.bin"),
     ] {
         let path = golden_dir.join(file_name);
         // 已发布的 golden 不可再生成覆盖,删除文件即表示明确要换代。

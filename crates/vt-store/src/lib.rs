@@ -12,6 +12,7 @@ pub mod migration;
 pub mod note_outline;
 pub mod notebook_capture_store;
 pub mod notebook_store;
+pub mod replay_migration;
 pub mod search;
 pub mod session_meta;
 pub mod session_query;

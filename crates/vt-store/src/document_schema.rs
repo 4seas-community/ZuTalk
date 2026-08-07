@@ -154,7 +154,6 @@ fn note_node_schema() -> Arc<Schema> {
 ///   按名寻址,天然共享,无需预制。
 pub fn build_golden_bytes(kind: DocumentKind) -> Vec<u8> {
     let doc = LoroDoc::new();
-    doc.set_record_timestamp(true);
 
     let meta = doc.get_map(DOCUMENT_META);
     meta.insert(SCHEMA_EPOCH_KEY, BLOCK_SCHEMA_EPOCH as i64)
@@ -172,21 +171,24 @@ pub fn build_golden_bytes(kind: DocumentKind) -> Vec<u8> {
             .expect("golden note children");
     }
 
-    doc.commit();
+    // 黄金祖先的提交一律打时间戳 0:loro 的提交时间戳单调不减,任何
+    // 真实历史(含重放迁移带来的原时间戳)都必须能排在祖先之后。用
+    // 生成时的墙钟会把比它早的历史时间戳全部钳平——阶段 4 踩过的坑。
+    doc.commit_with(loro::CommitOptions::new().timestamp(0));
     doc.export(loro::ExportMode::Snapshot)
         .expect("golden export")
 }
 
 /// 某 kind 的黄金祖先,构建期生成、版本化提交的原字节。
 ///
-/// 文件名里的 `.1` 是纪元内版本号:字节一旦提交就冻结,要换就换文件名,
+/// 文件名里的版本号是纪元内版本号:字节一旦提交就冻结,要换就换文件名,
 /// 与 macro 的 `markdown-golden.1` 同款缓存爆破策略。
 pub fn golden_snapshot(kind: DocumentKind) -> &'static [u8] {
     match kind {
         DocumentKind::Transcript => {
-            include_bytes!("../golden/document-golden-transcript.1.bin")
+            include_bytes!("../golden/document-golden-transcript.2.bin")
         }
-        DocumentKind::Note => include_bytes!("../golden/document-golden-note.1.bin"),
+        DocumentKind::Note => include_bytes!("../golden/document-golden-note.2.bin"),
     }
 }
 
