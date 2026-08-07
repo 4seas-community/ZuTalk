@@ -733,6 +733,56 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func verifyApiKey(scope: String, candidate: String?) async throws  -> FfiProviderConnectionCheck
 
     /**
+     * 落盘并关闭。未打开时幂等成功。
+     */
+    func blockDocumentClose(docId: String) throws
+
+    /**
+     * 打开(或按黄金祖先新建)一份块文档。幂等:已打开时校验 kind 后
+     * 原样返回。
+     */
+    func blockDocumentOpen(docId: String, kind: FfiDocumentKind) throws
+
+    /**
+     * 用整份大纲行重放笔记结构(一次编辑手势一次调用)。
+     *
+     * 注意蓝本已知局限:同一次重放里「删行」与「跨删除位的移动」不能
+     * 混——单一手势天然满足;批量导入请拆多次调用。
+     */
+    func noteApplyOutline(docId: String, rows: [FfiOutlineRow]) throws
+
+    /**
+     * 笔记的大纲行(先序)。
+     */
+    func noteOutlineRows(docId: String) throws  -> [FfiOutlineRow]
+
+    /**
+     * 当前句块序列(文档序)。
+     */
+    func transcriptBlocks(docId: String) throws  -> [FfiUtteranceBlock]
+
+    /**
+     * 用户在句块之间插批注块。
+     */
+    func transcriptInsertAnnotation(docId: String, index: UInt32, annotationId: String, text: String) throws
+
+    /**
+     * 机器投影:追加或更新一个采集句块。`frozen_lanes` 是用户已接管的
+     * 车道(事实来自 SQLite 车道 edit revision),机器绝不覆盖。
+     */
+    func transcriptMachineUpsert(docId: String, write: FfiMachineBlockWrite, frozenLanes: [String]) throws
+
+    /**
+     * 用户订正一条译文车道。
+     */
+    func transcriptUserReplaceLane(docId: String, blockId: String, lane: String, text: String) throws
+
+    /**
+     * 用户订正原文车道。
+     */
+    func transcriptUserReplaceText(docId: String, blockId: String, text: String) throws
+
+    /**
      * 应用用户编辑。apply 成功后:
      * 1. 把 snapshot 存到磁盘(跨进程持久)
      * 2. 查找注册的 FfiEditorCallback，通知 Swift 文档已变化。
@@ -1495,6 +1545,124 @@ open func verifyApiKey(scope: String, candidate: String?)async throws  -> FfiPro
             liftFunc: FfiConverterTypeFfiProviderConnectionCheck_lift,
             errorHandler: FfiConverterTypeCoreError_lift
         )
+}
+
+    /**
+     * 落盘并关闭。未打开时幂等成功。
+     */
+open func blockDocumentClose(docId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_block_document_close(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),$0
+    )
+}
+}
+
+    /**
+     * 打开(或按黄金祖先新建)一份块文档。幂等:已打开时校验 kind 后
+     * 原样返回。
+     */
+open func blockDocumentOpen(docId: String, kind: FfiDocumentKind)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_block_document_open(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),
+        FfiConverterTypeFfiDocumentKind_lower(kind),$0
+    )
+}
+}
+
+    /**
+     * 用整份大纲行重放笔记结构(一次编辑手势一次调用)。
+     *
+     * 注意蓝本已知局限:同一次重放里「删行」与「跨删除位的移动」不能
+     * 混——单一手势天然满足;批量导入请拆多次调用。
+     */
+open func noteApplyOutline(docId: String, rows: [FfiOutlineRow])throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_note_apply_outline(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),
+        FfiConverterSequenceTypeFfiOutlineRow.lower(rows),$0
+    )
+}
+}
+
+    /**
+     * 笔记的大纲行(先序)。
+     */
+open func noteOutlineRows(docId: String)throws  -> [FfiOutlineRow]  {
+    return try  FfiConverterSequenceTypeFfiOutlineRow.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_note_outline_rows(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),$0
+    )
+})
+}
+
+    /**
+     * 当前句块序列(文档序)。
+     */
+open func transcriptBlocks(docId: String)throws  -> [FfiUtteranceBlock]  {
+    return try  FfiConverterSequenceTypeFfiUtteranceBlock.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_transcript_blocks(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),$0
+    )
+})
+}
+
+    /**
+     * 用户在句块之间插批注块。
+     */
+open func transcriptInsertAnnotation(docId: String, index: UInt32, annotationId: String, text: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_transcript_insert_annotation(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),
+        FfiConverterUInt32.lower(index),
+        FfiConverterString.lower(annotationId),
+        FfiConverterString.lower(text),$0
+    )
+}
+}
+
+    /**
+     * 机器投影:追加或更新一个采集句块。`frozen_lanes` 是用户已接管的
+     * 车道(事实来自 SQLite 车道 edit revision),机器绝不覆盖。
+     */
+open func transcriptMachineUpsert(docId: String, write: FfiMachineBlockWrite, frozenLanes: [String])throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_transcript_machine_upsert(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),
+        FfiConverterTypeFfiMachineBlockWrite_lower(write),
+        FfiConverterSequenceString.lower(frozenLanes),$0
+    )
+}
+}
+
+    /**
+     * 用户订正一条译文车道。
+     */
+open func transcriptUserReplaceLane(docId: String, blockId: String, lane: String, text: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_transcript_user_replace_lane(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),
+        FfiConverterString.lower(blockId),
+        FfiConverterString.lower(lane),
+        FfiConverterString.lower(text),$0
+    )
+}
+}
+
+    /**
+     * 用户订正原文车道。
+     */
+open func transcriptUserReplaceText(docId: String, blockId: String, text: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_transcript_user_replace_text(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),
+        FfiConverterString.lower(blockId),
+        FfiConverterString.lower(text),$0
+    )
+}
 }
 
     /**
@@ -2978,6 +3146,68 @@ public func FfiConverterTypeFfiJoinRequest_lift(_ buf: RustBuffer) throws -> Ffi
 #endif
 public func FfiConverterTypeFfiJoinRequest_lower(_ value: FfiJoinRequest) -> RustBuffer {
     return FfiConverterTypeFfiJoinRequest.lower(value)
+}
+
+
+public struct FfiMachineBlockWrite: Equatable, Hashable {
+    public var id: String
+    public var owner: String
+    public var text: String
+    public var lanes: [String: String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, owner: String, text: String, lanes: [String: String]) {
+        self.id = id
+        self.owner = owner
+        self.text = text
+        self.lanes = lanes
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiMachineBlockWrite: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiMachineBlockWrite: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMachineBlockWrite {
+        return
+            try FfiMachineBlockWrite(
+                id: FfiConverterString.read(from: &buf),
+                owner: FfiConverterString.read(from: &buf),
+                text: FfiConverterString.read(from: &buf),
+                lanes: FfiConverterDictionaryStringString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiMachineBlockWrite, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.owner, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterDictionaryStringString.write(value.lanes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiMachineBlockWrite_lift(_ buf: RustBuffer) throws -> FfiMachineBlockWrite {
+    return try FfiConverterTypeFfiMachineBlockWrite.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiMachineBlockWrite_lower(_ value: FfiMachineBlockWrite) -> RustBuffer {
+    return FfiConverterTypeFfiMachineBlockWrite.lower(value)
 }
 
 
@@ -4777,6 +5007,64 @@ public func FfiConverterTypeFfiNotebookTranscriptSegment_lower(_ value: FfiNoteb
 }
 
 
+public struct FfiOutlineRow: Equatable, Hashable {
+    public var id: String
+    public var depth: UInt32
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, depth: UInt32, text: String) {
+        self.id = id
+        self.depth = depth
+        self.text = text
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiOutlineRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiOutlineRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiOutlineRow {
+        return
+            try FfiOutlineRow(
+                id: FfiConverterString.read(from: &buf),
+                depth: FfiConverterUInt32.read(from: &buf),
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiOutlineRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterUInt32.write(value.depth, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiOutlineRow_lift(_ buf: RustBuffer) throws -> FfiOutlineRow {
+    return try FfiConverterTypeFfiOutlineRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiOutlineRow_lower(_ value: FfiOutlineRow) -> RustBuffer {
+    return FfiConverterTypeFfiOutlineRow.lower(value)
+}
+
+
 public struct FfiProviderConnectionCheck: Equatable, Hashable {
     public var status: FfiProviderConnectionStatus
     public var checkedAtMs: UInt64
@@ -5368,6 +5656,74 @@ public func FfiConverterTypeFfiSpeakerParticipant_lower(_ value: FfiSpeakerParti
 }
 
 
+public struct FfiUtteranceBlock: Equatable, Hashable {
+    public var id: String
+    public var owner: String
+    public var text: String
+    /**
+     * 车道语言 → 文本,只含实际存在的车道。
+     */
+    public var lanes: [String: String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, owner: String, text: String,
+        /**
+         * 车道语言 → 文本,只含实际存在的车道。
+         */lanes: [String: String]) {
+        self.id = id
+        self.owner = owner
+        self.text = text
+        self.lanes = lanes
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiUtteranceBlock: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiUtteranceBlock: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiUtteranceBlock {
+        return
+            try FfiUtteranceBlock(
+                id: FfiConverterString.read(from: &buf),
+                owner: FfiConverterString.read(from: &buf),
+                text: FfiConverterString.read(from: &buf),
+                lanes: FfiConverterDictionaryStringString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiUtteranceBlock, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.owner, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterDictionaryStringString.write(value.lanes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiUtteranceBlock_lift(_ buf: RustBuffer) throws -> FfiUtteranceBlock {
+    return try FfiConverterTypeFfiUtteranceBlock.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiUtteranceBlock_lower(_ value: FfiUtteranceBlock) -> RustBuffer {
+    return FfiConverterTypeFfiUtteranceBlock.lower(value)
+}
+
+
 /**
  * 导入结果 (FFI DTO)
  */
@@ -5883,6 +6239,73 @@ public func FfiConverterTypeCoreError_lift(_ buf: RustBuffer) throws -> CoreErro
 public func FfiConverterTypeCoreError_lower(_ value: CoreError) -> RustBuffer {
     return FfiConverterTypeCoreError.lower(value)
 }
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum FfiDocumentKind: Equatable, Hashable {
+
+    case transcript
+    case note
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiDocumentKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiDocumentKind: FfiConverterRustBuffer {
+    typealias SwiftType = FfiDocumentKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiDocumentKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .transcript
+
+        case 2: return .note
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiDocumentKind, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .transcript:
+            writeInt(&buf, Int32(1))
+
+
+        case .note:
+            writeInt(&buf, Int32(2))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiDocumentKind_lift(_ buf: RustBuffer) throws -> FfiDocumentKind {
+    return try FfiConverterTypeFfiDocumentKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiDocumentKind_lower(_ value: FfiDocumentKind) -> RustBuffer {
+    return FfiConverterTypeFfiDocumentKind.lower(value)
+}
+
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
@@ -7778,6 +8201,31 @@ fileprivate struct FfiConverterSequenceTypeFfiNotebookTab: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiOutlineRow: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiOutlineRow]
+
+    public static func write(_ value: [FfiOutlineRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiOutlineRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiOutlineRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiOutlineRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiOutlineRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiRoomMember: FfiConverterRustBuffer {
     typealias SwiftType = [FfiRoomMember]
 
@@ -7878,6 +8326,31 @@ fileprivate struct FfiConverterSequenceTypeFfiSpeakerParticipant: FfiConverterRu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiUtteranceBlock: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiUtteranceBlock]
+
+    public static func write(_ value: [FfiUtteranceBlock], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiUtteranceBlock.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiUtteranceBlock] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiUtteranceBlock]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiUtteranceBlock.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeSearchResultInfo: FfiConverterRustBuffer {
     typealias SwiftType = [SearchResultInfo]
 
@@ -7947,6 +8420,32 @@ fileprivate struct FfiConverterSequenceTypeTaskInfoDto: FfiConverterRustBuffer {
             seq.append(try FfiConverterTypeTaskInfoDto.read(from: &buf))
         }
         return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterDictionaryStringString: FfiConverterRustBuffer {
+    public static func write(_ value: [String: String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for (key, value) in value {
+            FfiConverterString.write(key, into: &buf)
+            FfiConverterString.write(value, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String: String] {
+        let len: Int32 = try readInt(&buf)
+        var dict = [String: String]()
+        dict.reserveCapacity(Int(len))
+        for _ in 0..<len {
+            let key = try FfiConverterString.read(from: &buf)
+            let value = try FfiConverterString.read(from: &buf)
+            dict[key] = value
+        }
+        return dict
     }
 }
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
@@ -8074,6 +8573,33 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_verify_api_key() != 35576) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_block_document_close() != 38949) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_block_document_open() != 16172) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_note_apply_outline() != 43276) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_note_outline_rows() != 37535) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_transcript_blocks() != 52652) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_transcript_insert_annotation() != 2046) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_transcript_machine_upsert() != 21473) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_transcript_user_replace_lane() != 4383) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_transcript_user_replace_text() != 36846) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_apply_edit() != 35643) {

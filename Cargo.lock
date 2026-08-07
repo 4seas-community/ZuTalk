@@ -5791,6 +5791,7 @@ dependencies = [
  "vt-crypto",
  "vt-export",
  "vt-i18n",
+ "vt-mirror",
  "vt-model",
  "vt-pipeline",
  "vt-share",

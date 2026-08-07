@@ -4,6 +4,7 @@
 //! 分层职责与「改完跨语言接口要重新生成绑定」见
 //! docs/architecture/ARCHITECTURE.md「代码边界」。
 
+pub mod block_document_api;
 pub(crate) mod capture_erasure;
 pub mod editor_api;
 pub mod lane_credential_api;
@@ -334,6 +335,8 @@ pub struct ZulangueCore {
     /// connection instead of reading one saved key from the store.
     pub(crate) lane_credential_broker:
         Arc<Mutex<Option<Arc<crate::lane_credential_api::LaneCredentialBroker>>>>,
+    /// 打开中的第 2 纪元块文档(T2/B),见 block_document_api。
+    pub(crate) block_documents: crate::block_document_api::BlockDocumentRegistry,
     /// 待写盘的 editor session 集合。apply_edit 只 enqueue，后台 flusher
     /// 每 ~500ms drain 一次。这样单字符输入不再每次都阻塞主线程做 fs::write,
     /// 同一 session 连敲也只合并成一次 snapshot 写入。
@@ -690,6 +693,7 @@ impl ZulangueCore {
             context_pack_store,
             editor_callbacks,
             lane_credential_broker: Arc::new(Mutex::new(None)),
+            block_documents: Default::default(),
             pending_snapshot_saves,
             task_queue,
             session_task_registry,

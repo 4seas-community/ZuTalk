@@ -10,6 +10,7 @@ vt-model = { path = "../vt-model" }
 vt-audio = { path = "../vt-audio" }
 vt-pipeline = { path = "../vt-pipeline" }
 vt-store = { path = "../vt-store" }
+vt-mirror = { path = "../vt-mirror" }
 vt-crypto = { path = "../vt-crypto" }
 vt-stt = { path = "../vt-stt" }
 vt-export = { path = "../vt-export" }
