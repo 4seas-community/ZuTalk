@@ -22,6 +22,9 @@ pub mod transcribe_api;
 
 uniffi::setup_scaffolding!();
 
+// 测试要能说出录音条共享指示器的三种状态的名字。
+pub use share_api::FfiSessionBroadcastStatus;
+
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;

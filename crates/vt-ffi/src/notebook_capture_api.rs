@@ -5428,6 +5428,7 @@ impl ZulangueCore {
             (*self.notebook_capture_store).clone(),
             Some(crate::share_api::ShareCaptionTap::new(
                 self.share_runtime.clone(),
+                notebook_id.clone(),
             )),
         )?;
 

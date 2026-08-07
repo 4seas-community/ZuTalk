@@ -83,6 +83,64 @@ fn the_share_code_survives_a_view_being_recreated() {
     assert_eq!(host.current_share_code(), None, "停止后不该再交出码");
 }
 
+/// 录音条上的共享指示器必须说真话:在共享范围内亮、不在时灭、静音后变灰。
+///
+/// 判定与 `ShareCaptionTap::broadcast` 同一份 —— 这里锁住的是 FFI 查询那一半。
+#[test]
+fn the_broadcast_status_matches_the_share_scope() {
+    use vt_ffi::FfiSessionBroadcastStatus;
+
+    let dir = tempfile::tempdir().unwrap();
+    let host = core(&dir);
+
+    // 没在共享:任何录音都不该亮指示器。
+    assert_eq!(
+        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
+        FfiSessionBroadcastStatus::NotShared
+    );
+
+    // 共享整本 nb-1:其中的录音在播,别的 Notebook 不在。
+    host.start_sharing(Some("nb-1".into()), None, false)
+        .unwrap();
+    assert_eq!(
+        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
+        FfiSessionBroadcastStatus::Broadcasting
+    );
+    assert_eq!(
+        host.session_broadcast_status("nb-2".into(), "sess-2".into()),
+        FfiSessionBroadcastStatus::NotShared,
+        "共享着 nb-1,在 nb-2 里录音不该显示成在共享"
+    );
+
+    // 一键静音只影响这一段,松开就恢复。
+    host.set_session_broadcast_muted("sess-1".into(), true);
+    assert_eq!(
+        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
+        FfiSessionBroadcastStatus::Muted
+    );
+    host.set_session_broadcast_muted("sess-1".into(), false);
+    assert_eq!(
+        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
+        FfiSessionBroadcastStatus::Broadcasting
+    );
+
+    // 停止共享后指示器灭,静音清单也不跨共享残留。
+    host.set_session_broadcast_muted("sess-1".into(), true);
+    host.stop_sharing().unwrap();
+    assert_eq!(
+        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
+        FfiSessionBroadcastStatus::NotShared
+    );
+    host.start_sharing(Some("nb-1".into()), None, false)
+        .unwrap();
+    assert_eq!(
+        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
+        FfiSessionBroadcastStatus::Broadcasting,
+        "上一场共享的静音不该带进下一场"
+    );
+    host.stop_sharing().unwrap();
+}
+
 /// 收到的内容有固定的家,而且这个家是幂等创建的。
 #[test]
 fn the_shared_inbox_notebook_is_created_once() {

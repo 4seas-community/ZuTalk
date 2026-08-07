@@ -828,6 +828,13 @@
 "share.stop" = "共有を停止";
 "share.stop_note" = "以降の送信を停止します。相手が既に受け取った内容は削除できません。";
 "share.audio_never" = "音声が共有されることはありません。";
+"share.capture.live" = "字幕を共有中";
+"share.capture.live_hint" = "ルームの参加者にこの録音の字幕がリアルタイムで表示されています。音声は決して共有されません。";
+"share.capture.mute" = "この録音は共有しない";
+"share.capture.mute_hint" = "この録音の字幕だけを止めます。共有自体は続きます。";
+"share.capture.muted" = "この録音は共有していません";
+"share.capture.muted_hint" = "共有は有効ですが、この録音の字幕は送信されていません。";
+"share.capture.unmute" = "再開";
 "share.empty" = "まだ何も共有していません。";
 "share.role.host" = "ホストのみ編集可、他は閲覧のみ";
 "share.role.everyone" = "全員が編集可";

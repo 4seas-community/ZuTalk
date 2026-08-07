@@ -185,6 +185,21 @@ impl From<vt_share::net::CaptionLinkPath> for FfiShareLinkPath {
     }
 }
 
+/// 某段正在录的音此刻对房间的广播状态。
+///
+/// 录音条上的共享指示器靠它说真话:指示器亮不亮必须与 `ShareCaptionTap`
+/// 的实际放行逻辑同源,否则又是一个「恒真指示器」。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FfiSessionBroadcastStatus {
+    /// 不在任何共享范围内(或本机没在主持)。
+    NotShared,
+    /// 这段录音的字幕正在播给房间。
+    Broadcasting,
+    /// 在共享范围内,但用户对这一段按了静音。只影响本次录音,
+    /// 共享本身还开着。
+    Muted,
+}
+
 /// 当前共享状态的一帧快照。
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiShareState {
@@ -219,6 +234,9 @@ pub(crate) struct ShareRuntime {
     transport: FfiShareTransport,
     /// 本机播出的最后一帧。用来区分「还没开始录音」和「播了但对方没收到」。
     last_broadcast_revision: Option<u64>,
+    /// 用户按下「停止共享这段」的录音。只影响这些 session 本次的广播,
+    /// 不清除共享本身 —— 见 share-p2p.md §4.1「关闭只影响本次」。
+    muted_sessions: std::collections::BTreeSet<String>,
     /// 已加入的 gossip 房间。在场与名册靠它 —— 没有它,房间里看不见彼此。
     room: Option<Arc<vt_share::net::RoomHandle>>,
 }
@@ -318,6 +336,7 @@ impl ZulangueCore {
             roster: None,
             transport: wanted,
             last_broadcast_revision: None,
+            muted_sessions: Default::default(),
             room: None,
         });
         Ok(endpoint)
@@ -611,6 +630,9 @@ impl ZulangueCore {
             // ViewedRoom 的 Drop 会中止接收任务。
             runtime.viewing = None;
             runtime.roster = None;
+            // 静音是对「这一场共享」说的。共享结束,静音清单跟着清零,
+            // 下次共享从干净状态开始。
+            runtime.muted_sessions.clear();
             // 先道别再拆房间 —— 丢掉 RoomHandle 会中止事件循环,
             // 那之后就没人替你说这句话了,别人要等超时才知道你走了。
             if let Some(room) = runtime.room.take() {
@@ -799,6 +821,54 @@ impl ZulangueCore {
             lines,
         }
     }
+
+    /// 某段录音此刻会不会被播给房间。
+    ///
+    /// 录音条上的共享指示器每一拍问一次。判定必须与 [`ShareCaptionTap::broadcast`]
+    /// 的放行逻辑逐条对应 —— 指示器亮着而字幕没在发、或反过来,都比没有指示器更坏。
+    pub fn session_broadcast_status(
+        &self,
+        notebook_id: String,
+        session_id: String,
+    ) -> FfiSessionBroadcastStatus {
+        let guard = self.share_runtime.lock().unwrap();
+        let Some(runtime) = guard.as_ref() else {
+            return FfiSessionBroadcastStatus::NotShared;
+        };
+        let Some(hosting) = runtime.hosting.as_ref() else {
+            return FfiSessionBroadcastStatus::NotShared;
+        };
+        let in_scope = match &hosting.code.scope {
+            ScopeId::Notebook {
+                notebook_id: shared,
+            } => shared == &notebook_id,
+            ScopeId::Session { session_id: shared } => shared == &session_id,
+        };
+        if !in_scope {
+            return FfiSessionBroadcastStatus::NotShared;
+        }
+        if runtime.muted_sessions.contains(&session_id) {
+            FfiSessionBroadcastStatus::Muted
+        } else {
+            FfiSessionBroadcastStatus::Broadcasting
+        }
+    }
+
+    /// 对一段录音按下(或松开)「停止共享这段」。
+    ///
+    /// 只影响这个 session 本次的广播;共享继续开着,Notebook 的共享范围不变。
+    /// 没在主持时是 no-op —— 界面上此时也不该有这个按钮。
+    pub fn set_session_broadcast_muted(&self, session_id: String, muted: bool) {
+        let mut guard = self.share_runtime.lock().unwrap();
+        let Some(runtime) = guard.as_mut() else {
+            return;
+        };
+        if muted {
+            runtime.muted_sessions.insert(session_id);
+        } else {
+            runtime.muted_sessions.remove(&session_id);
+        }
+    }
 }
 
 /// 采集侧到分享通道的接线。
@@ -810,14 +880,20 @@ impl ZulangueCore {
 #[derive(Clone)]
 pub(crate) struct ShareCaptionTap {
     runtime: Arc<ShareRuntimeSlot>,
+    /// 这条 tap 服务的录音属于哪个 Notebook。在采集启动处绑定 —— 那里
+    /// notebook 归属是确定已知的,不需要回头查库。
+    capture_notebook_id: String,
 }
 
 impl ShareCaptionTap {
-    pub(crate) fn new(runtime: Arc<ShareRuntimeSlot>) -> Self {
-        Self { runtime }
+    pub(crate) fn new(runtime: Arc<ShareRuntimeSlot>, capture_notebook_id: String) -> Self {
+        Self {
+            runtime,
+            capture_notebook_id,
+        }
     }
 
-    /// 把一帧本机预览广播给房间。非主持人、未共享、范围不符时都是 no-op。
+    /// 把一帧本机预览广播给房间。非主持人、未共享、范围不符、被静音时都是 no-op。
     pub(crate) fn broadcast(&self, preview: &FfiNotebookCaptureLivePreview) {
         let Ok(guard) = self.runtime.lock() else {
             return;
@@ -831,11 +907,26 @@ impl ShareCaptionTap {
         };
         let scope = &hosting.code.scope;
 
-        // 按单次录音共享时,只广播那一场的字幕。
-        if let ScopeId::Session { session_id } = scope {
-            if session_id != &preview.session_id {
-                return;
+        match scope {
+            // 按单次录音共享时,只广播那一场的字幕。
+            ScopeId::Session { session_id } => {
+                if session_id != &preview.session_id {
+                    return;
+                }
             }
+            // 按 Notebook 共享时,只广播**那个 Notebook 里**的录音。以前这里
+            // 没有过滤:共享着 Notebook A,去 Notebook B 录音,字幕照发 ——
+            // 而屏幕上没有任何地方说这件事。
+            ScopeId::Notebook { notebook_id } => {
+                if notebook_id != &self.capture_notebook_id {
+                    return;
+                }
+            }
+        }
+
+        // 用户对这一段按了「停止共享」。指示器与这里必须同一份判定。
+        if runtime.muted_sessions.contains(&preview.session_id) {
+            return;
         }
 
         runtime

@@ -828,6 +828,13 @@
 "share.stop" = "Arrêter le partage";
 "share.stop_note" = "Arrête les envois suivants. Impossible de supprimer ce que les autres ont déjà reçu.";
 "share.audio_never" = "L'audio n'est jamais partagé.";
+"share.capture.live" = "Sous-titres partagés";
+"share.capture.live_hint" = "Les personnes de votre salon voient les sous-titres de cet enregistrement en direct. L'audio n'est jamais partagé.";
+"share.capture.mute" = "Ne pas partager celui-ci";
+"share.capture.mute_hint" = "Retient les sous-titres de cet enregistrement. Le partage reste actif.";
+"share.capture.muted" = "Enregistrement non partagé";
+"share.capture.muted_hint" = "Le partage est actif, mais les sous-titres de cet enregistrement sont retenus.";
+"share.capture.unmute" = "Reprendre";
 "share.empty" = "Rien n'est encore partagé.";
 "share.role.host" = "L'hôte peut modifier, les autres en lecture seule";
 "share.role.everyone" = "Tout le monde peut modifier";

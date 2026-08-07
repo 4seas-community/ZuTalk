@@ -1153,6 +1153,22 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      */
     func roomMembers()  -> [FfiRoomMember]
 
+    /**
+     * 某段录音此刻会不会被播给房间。
+     *
+     * 录音条上的共享指示器每一拍问一次。判定必须与 [`ShareCaptionTap::broadcast`]
+     * 的放行逻辑逐条对应 —— 指示器亮着而字幕没在发、或反过来,都比没有指示器更坏。
+     */
+    func sessionBroadcastStatus(notebookId: String, sessionId: String)  -> FfiSessionBroadcastStatus
+
+    /**
+     * 对一段录音按下(或松开)「停止共享这段」。
+     *
+     * 只影响这个 session 本次的广播;共享继续开着,Notebook 的共享范围不变。
+     * 没在主持时是 no-op —— 界面上此时也不该有这个按钮。
+     */
+    func setSessionBroadcastMuted(sessionId: String, muted: Bool)
+
     func setShareDisplayName(name: String) throws
 
     /**
@@ -2596,6 +2612,37 @@ open func roomMembers() -> [FfiRoomMember]  {
             self.uniffiCloneHandle(),$0
     )
 })
+}
+
+    /**
+     * 某段录音此刻会不会被播给房间。
+     *
+     * 录音条上的共享指示器每一拍问一次。判定必须与 [`ShareCaptionTap::broadcast`]
+     * 的放行逻辑逐条对应 —— 指示器亮着而字幕没在发、或反过来,都比没有指示器更坏。
+     */
+open func sessionBroadcastStatus(notebookId: String, sessionId: String) -> FfiSessionBroadcastStatus  {
+    return try!  FfiConverterTypeFfiSessionBroadcastStatus_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_session_broadcast_status(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
+     * 对一段录音按下(或松开)「停止共享这段」。
+     *
+     * 只影响这个 session 本次的广播;共享继续开着,Notebook 的共享范围不变。
+     * 没在主持时是 no-op —— 界面上此时也不该有这个按钮。
+     */
+open func setSessionBroadcastMuted(sessionId: String, muted: Bool)  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_set_session_broadcast_muted(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterBool.lower(muted),$0
+    )
+}
 }
 
 open func setShareDisplayName(name: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
@@ -7452,6 +7499,96 @@ public func FfiConverterTypeFfiProviderConnectionStatus_lower(_ value: FfiProvid
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * 某段正在录的音此刻对房间的广播状态。
+ *
+ * 录音条上的共享指示器靠它说真话:指示器亮不亮必须与 `ShareCaptionTap`
+ * 的实际放行逻辑同源,否则又是一个「恒真指示器」。
+ */
+
+public enum FfiSessionBroadcastStatus: Equatable, Hashable {
+
+    /**
+     * 不在任何共享范围内(或本机没在主持)。
+     */
+    case notShared
+    /**
+     * 这段录音的字幕正在播给房间。
+     */
+    case broadcasting
+    /**
+     * 在共享范围内,但用户对这一段按了静音。只影响本次录音,
+     * 共享本身还开着。
+     */
+    case muted
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSessionBroadcastStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSessionBroadcastStatus: FfiConverterRustBuffer {
+    typealias SwiftType = FfiSessionBroadcastStatus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSessionBroadcastStatus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .notShared
+
+        case 2: return .broadcasting
+
+        case 3: return .muted
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiSessionBroadcastStatus, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .notShared:
+            writeInt(&buf, Int32(1))
+
+
+        case .broadcasting:
+            writeInt(&buf, Int32(2))
+
+
+        case .muted:
+            writeInt(&buf, Int32(3))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSessionBroadcastStatus_lift(_ buf: RustBuffer) throws -> FfiSessionBroadcastStatus {
+    return try FfiConverterTypeFfiSessionBroadcastStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSessionBroadcastStatus_lower(_ value: FfiSessionBroadcastStatus) -> RustBuffer {
+    return FfiConverterTypeFfiSessionBroadcastStatus.lower(value)
+}
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * 观看端到主持人此刻实际走的链路。真值来自 QUIC 连接当前选中的传输
  * 路径——「直连被禁、只剩中继」是 AP 隔离网络的诊断特征。
  */
@@ -9170,6 +9307,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_room_members() != 55319) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_session_broadcast_status() != 13978) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_set_session_broadcast_muted() != 55549) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_set_share_display_name() != 63085) {

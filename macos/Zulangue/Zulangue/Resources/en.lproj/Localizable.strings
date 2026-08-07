@@ -828,6 +828,13 @@
 "share.stop" = "Stop sharing";
 "share.stop_note" = "Stops sending further updates. It cannot delete what others already received.";
 "share.audio_never" = "Audio is never shared.";
+"share.capture.live" = "Sharing captions";
+"share.capture.live_hint" = "People in your room see this recording's captions as you speak. Audio is never shared.";
+"share.capture.mute" = "Stop for this recording";
+"share.capture.mute_hint" = "Holds back this recording's captions. Sharing itself stays on.";
+"share.capture.muted" = "Not sharing this recording";
+"share.capture.muted_hint" = "Sharing is on, but this recording's captions are held back.";
+"share.capture.unmute" = "Resume";
 "share.empty" = "Not sharing anything yet.";
 "share.role.host" = "Host can edit, others read only";
 "share.role.everyone" = "Everyone can edit";

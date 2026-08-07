@@ -400,6 +400,15 @@ struct NotebookCaptureToolbar: View {
                 .help(String(localized: "capture.toolbar.pause_billing_detail"))
                 .accessibilityHint(Text(String(localized: "capture.toolbar.pause_billing_detail")))
             }
+
+            // 共享指示器:这段录音的字幕正在(或暂停)发给房间里的人。
+            // share-p2p.md §4.1 的要求 —— 录音进行中常驻可见,一键可关。
+            if capture.isCaptureActive, capture.notebookId == notebookId {
+                ShareBroadcastIndicator(
+                    notebookId: notebookId,
+                    sessionId: capture.sessionId
+                )
+            }
         }
         .onAppear { publishPlannedLaneCount() }
         .onChange(of: profileEditor.draft.selectedLanguages) { publishPlannedLaneCount() }
@@ -601,6 +610,87 @@ struct NotebookCaptureToolbar: View {
         return capture.remoteHealth == .connecting
             || capture.remoteHealth == .live
             || capture.remoteHealth == .degraded
+    }
+}
+
+/// 录音条上的共享指示器。share-p2p.md §4.1:录音进行中,常驻可见,一键可关,
+/// 关闭只影响本次。
+///
+/// 状态每秒问一次核心。判定与 Rust 侧广播放行是同一份逻辑
+/// (`session_broadcast_status` 与 `ShareCaptionTap::broadcast` 逐条对应)——
+/// 指示器亮着而字幕没在发、或反过来,都比没有指示器更坏。
+struct ShareBroadcastIndicator: View {
+    let notebookId: String
+    let sessionId: String?
+
+    @State private var status: FfiSessionBroadcastStatus = .notShared
+    private let heartbeat = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+
+    private var core: (any ZulangueCoreProtocol)? { CoreClient.shared.core }
+
+    var body: some View {
+        Group {
+            switch status {
+            case .notShared:
+                EmptyView()
+            case .broadcasting:
+                HStack(spacing: Spacing.sm) {
+                    Label(
+                        String(localized: "share.capture.live"),
+                        systemImage: "dot.radiowaves.left.and.right"
+                    )
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.signalAmber)
+                    .help(String(localized: "share.capture.live_hint"))
+
+                    Button(String(localized: "share.capture.mute")) {
+                        setMuted(true)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.textSecondary)
+                    .underline()
+                    .help(String(localized: "share.capture.mute_hint"))
+                    .accessibilityIdentifier("capture.share_mute")
+                }
+                .accessibilityIdentifier("capture.share_live")
+            case .muted:
+                HStack(spacing: Spacing.sm) {
+                    Label(
+                        String(localized: "share.capture.muted"),
+                        systemImage: "dot.radiowaves.left.and.right"
+                    )
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.textTertiary)
+                    .help(String(localized: "share.capture.muted_hint"))
+
+                    Button(String(localized: "share.capture.unmute")) {
+                        setMuted(false)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.textSecondary)
+                    .underline()
+                }
+                .accessibilityIdentifier("capture.share_muted")
+            }
+        }
+        .onAppear { refresh() }
+        .onReceive(heartbeat) { _ in refresh() }
+    }
+
+    private func refresh() {
+        guard let core, let sessionId else {
+            status = .notShared
+            return
+        }
+        status = core.sessionBroadcastStatus(notebookId: notebookId, sessionId: sessionId)
+    }
+
+    private func setMuted(_ muted: Bool) {
+        guard let core, let sessionId else { return }
+        core.setSessionBroadcastMuted(sessionId: sessionId, muted: muted)
+        refresh()
     }
 }
 

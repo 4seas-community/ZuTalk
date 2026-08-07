@@ -827,6 +827,13 @@
 "share.stop" = "Teilen beenden";
 "share.stop_note" = "Stoppt weitere Übertragungen. Bereits Empfangenes lässt sich nicht löschen.";
 "share.audio_never" = "Audio wird niemals geteilt.";
+"share.capture.live" = "Untertitel werden geteilt";
+"share.capture.live_hint" = "Die Personen in deinem Raum sehen die Untertitel dieser Aufnahme live. Audio wird niemals geteilt.";
+"share.capture.mute" = "Diese Aufnahme nicht teilen";
+"share.capture.mute_hint" = "Hält nur die Untertitel dieser Aufnahme zurück. Das Teilen selbst bleibt an.";
+"share.capture.muted" = "Diese Aufnahme wird nicht geteilt";
+"share.capture.muted_hint" = "Das Teilen ist an, aber die Untertitel dieser Aufnahme werden zurückgehalten.";
+"share.capture.unmute" = "Fortsetzen";
 "share.empty" = "Noch nichts geteilt.";
 "share.role.host" = "Host kann bearbeiten, andere nur lesen";
 "share.role.everyone" = "Alle können bearbeiten";

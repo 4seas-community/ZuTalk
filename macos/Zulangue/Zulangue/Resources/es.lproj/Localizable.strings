@@ -827,6 +827,13 @@
 "share.stop" = "Dejar de compartir";
 "share.stop_note" = "Detiene los envíos siguientes. No puede borrar lo que otros ya recibieron.";
 "share.audio_never" = "El audio nunca se comparte.";
+"share.capture.live" = "Compartiendo subtítulos";
+"share.capture.live_hint" = "Las personas de tu sala ven los subtítulos de esta grabación en directo. El audio nunca se comparte.";
+"share.capture.mute" = "No compartir esta";
+"share.capture.mute_hint" = "Retiene los subtítulos de esta grabación. El uso compartido sigue activo.";
+"share.capture.muted" = "Esta grabación no se comparte";
+"share.capture.muted_hint" = "El uso compartido está activo, pero los subtítulos de esta grabación están retenidos.";
+"share.capture.unmute" = "Reanudar";
 "share.empty" = "Aún no compartes nada.";
 "share.role.host" = "El anfitrión edita, los demás solo leen";
 "share.role.everyone" = "Todos pueden editar";

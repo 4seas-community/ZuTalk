@@ -828,6 +828,13 @@
 "share.stop" = "停止共享";
 "share.stop_note" = "只停止继续发送，无法删除对方已经收到的内容。";
 "share.audio_never" = "音频永远不会被共享。";
+"share.capture.live" = "正在共享字幕";
+"share.capture.live_hint" = "房间里的人正在实时看到这段录音的字幕。音频永远不会被共享。";
+"share.capture.mute" = "这段不共享";
+"share.capture.mute_hint" = "只扣下这段录音的字幕，共享本身仍开着。";
+"share.capture.muted" = "这段录音未在共享";
+"share.capture.muted_hint" = "共享开着，但这段录音的字幕被扣下了。";
+"share.capture.unmute" = "恢复";
 "share.empty" = "还没有共享任何内容。";
 "share.role.host" = "主持人可写，其他人只读";
 "share.role.everyone" = "所有人可编辑";

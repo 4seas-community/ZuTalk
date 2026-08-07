@@ -828,6 +828,13 @@
 "share.stop" = "공유 중지";
 "share.stop_note" = "이후 전송만 중지합니다. 상대가 이미 받은 내용은 삭제할 수 없습니다.";
 "share.audio_never" = "오디오는 절대 공유되지 않습니다.";
+"share.capture.live" = "자막 공유 중";
+"share.capture.live_hint" = "룸에 있는 사람들이 이 녹음의 자막을 실시간으로 보고 있습니다. 오디오는 절대 공유되지 않습니다.";
+"share.capture.mute" = "이 녹음은 공유 안 함";
+"share.capture.mute_hint" = "이 녹음의 자막만 보류합니다. 공유 자체는 계속 켜져 있습니다.";
+"share.capture.muted" = "이 녹음은 공유되지 않음";
+"share.capture.muted_hint" = "공유는 켜져 있지만 이 녹음의 자막은 보류 중입니다.";
+"share.capture.unmute" = "재개";
 "share.empty" = "아직 공유 중인 항목이 없습니다.";
 "share.role.host" = "호스트만 편집 가능, 나머지는 읽기 전용";
 "share.role.everyone" = "모두 편집 가능";
