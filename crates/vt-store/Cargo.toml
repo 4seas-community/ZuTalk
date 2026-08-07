@@ -9,6 +9,7 @@ publish = false
 [dependencies]
 vt-model = { path = "../vt-model" }
 vt-crypto = { path = "../vt-crypto" }
+vt-mirror = { path = "../vt-mirror" }
 rusqlite = { version = "0.39", features = ["bundled"] }
 tracing.workspace = true
 thiserror.workspace = true

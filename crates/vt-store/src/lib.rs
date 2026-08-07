@@ -5,6 +5,7 @@
 //! docs/architecture/ARCHITECTURE.md「转录编辑所有权」。
 
 pub mod context_pack_store;
+pub mod document_schema;
 pub mod editor_bridge;
 pub mod migration;
 pub mod notebook_capture_store;

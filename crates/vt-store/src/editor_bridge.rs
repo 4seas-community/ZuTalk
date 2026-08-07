@@ -220,8 +220,8 @@ pub const CURRENT_SCHEMA_EPOCH: u64 = 1;
 /// `CURRENT_SCHEMA_EPOCH` 演进 —— 「字段缺失」的含义在字段引入那一刻就
 /// 冻结了。
 const PRE_EPOCH_FIELD: u64 = 1;
-const DOCUMENT_META: &str = "zulangue_document_meta";
-const SCHEMA_EPOCH_KEY: &str = "schema_epoch";
+pub(crate) const DOCUMENT_META: &str = "zulangue_document_meta";
+pub(crate) const SCHEMA_EPOCH_KEY: &str = "schema_epoch";
 
 /// 读一份文档声明的纪元。缺失或损坏都按 [`PRE_EPOCH_FIELD`] 读 —— 判定必须
 /// 在每台机器上得出同一个答案,否则同一份文档会被两个对端读出两个纪元。

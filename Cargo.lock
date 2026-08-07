@@ -5881,6 +5881,7 @@ dependencies = [
  "tracing",
  "uuid",
  "vt-crypto",
+ "vt-mirror",
  "vt-model",
 ]
 
