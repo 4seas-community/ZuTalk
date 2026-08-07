@@ -249,3 +249,15 @@ markdown 重灌迁移(历史会归零,换成重放迁移)。
 **两套结构之间仍然共享:** `schema_epoch`、销毁收据 map、分享信封与
 准入入口(按 kind 分发)、稳定 id 约定、重放迁移工具骨架、黄金祖先
 (各 kind 一份 golden)、`set_record_timestamp`。
+
+## 决定记录补充(2026-08-07):抄 macro,接受 AGPL
+
+「能复制别人代码就不自研」定为执行原则。状态↔CRDT 同步引擎不再设计,
+整体移植 macro 内嵌的 loro-mirror(上游 loro-dev/loro-mirror 为 MIT;
+macro 仓库整体 AGPL-3.0,**项目明确接受 AGPL**,移植成果所在的
+`vt-mirror` crate 按两个血统中较严者声明 AGPL-3.0-or-later,与工作区的
+GPL-3.0-or-later 按 GPLv3 §13 合并)。移植纪律:先照译蓝本测试看红,
+再照译实现看绿;蓝本怪癖照抄并用测试钉死,一切偏离逐条声明——出处
+对应表见 `crates/vt-mirror/THIRD_PARTY.md`。不可移植的部分要么是 JS
+生态件(Lexical/immer/微任务),要么是 macro 的「Rust 只当 HTTP 客户端」
+架构,均已在盘点中排除。
