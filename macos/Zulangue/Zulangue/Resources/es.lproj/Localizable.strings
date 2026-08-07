@@ -865,6 +865,12 @@
 "share.status.receiving" = "Recibiendo subtítulos";
 "share.status.receiving_hint" = "Son los subtítulos del anfitrión. No se guardan en este Mac.";
 
+/* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
+"share.link.direct" = "Conexión directa";
+"share.link.relayed" = "Vía relé";
+"share.link.direct_hint" = "El tráfico fluye de par a par: la perforación NAT tuvo éxito.";
+"share.link.relayed_hint" = "La conexión directa falló; el tráfico se reenvía por el relé, aún cifrado de extremo a extremo. Común en redes con aislamiento AP.";
+
 /* 设置:中继准入 */
 "settings.p2p.relay_ready" = "Retransmisión disponible";
 "settings.p2p.relay_ready_hint" = "Este Mac está registrado, así que la retransmisión se hará cargo cuando dos Mac no se alcancen directamente.";

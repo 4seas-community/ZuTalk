@@ -860,10 +860,27 @@ impl Drop for RoomHandle {
     }
 }
 
+/// 观看端到主持人此刻实际走的链路。
+///
+/// 真值来自 QUIC 连接当前**选中**的传输路径,不是配置也不是猜测——
+/// 「直连被禁、只剩中继」正是 AP 隔离网络的诊断特征,双机验证清单
+/// 靠这个区分。曾经有一个写死 true 的指示器,恒真的指示器比没有更坏,
+/// 被撤掉了;这个类型是它的真值接班人。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptionLinkPath {
+    /// 打洞成功,流量端到端直达。
+    Direct,
+    /// 直连没打通,流量经中继转发(仍端到端加密)。
+    Relayed,
+}
+
 /// 收到的字幕帧汇集处。
 #[derive(Debug, Clone, Default)]
 pub struct CaptionInbox {
     frames: Arc<Mutex<Vec<CaptionFrame>>>,
+    /// 到主持人的当前链路。`None` = 没连上(或刚断开重连中)。
+    /// 用同步锁:唯一的读方(share_state)是同步调用,写方每帧一次。
+    link: Arc<std::sync::Mutex<Option<CaptionLinkPath>>>,
 }
 
 impl CaptionInbox {
@@ -872,9 +889,30 @@ impl CaptionInbox {
         std::mem::take(&mut *self.frames.lock().await)
     }
 
+    /// 当前到主持人的链路。
+    pub fn link_path(&self) -> Option<CaptionLinkPath> {
+        *self.link.lock().unwrap()
+    }
+
+    fn set_link_path(&self, value: Option<CaptionLinkPath>) {
+        *self.link.lock().unwrap() = value;
+    }
+
     async fn push(&self, frame: CaptionFrame) {
         self.frames.lock().await.push(frame);
     }
+}
+
+/// 连接当前选中路径的链路类型。选中路径尚未确立时按保守值报中继——
+/// 打洞成功与否只有「选中了直连路径」才算数。
+fn caption_link_path_of(conn: &Connection) -> Option<CaptionLinkPath> {
+    let paths = conn.paths();
+    let selected = paths.iter().find(|path| path.is_selected())?;
+    Some(if selected.is_relay() {
+        CaptionLinkPath::Relayed
+    } else {
+        CaptionLinkPath::Direct
+    })
 }
 
 /// 字幕通道的服务端。
@@ -932,6 +970,9 @@ pub async fn receive_captions(
             Ok(()) => {}
             Err(error) => tracing::debug!(%error, "字幕连接中断,准备重连"),
         }
+        // 断线期间不显示过期的链路——「没连上」和「经中继」在界面上
+        // 必须是两句话。
+        inbox.set_link_path(None);
         tokio::time::sleep(RECONNECT_DELAY).await;
     }
 }
@@ -947,8 +988,12 @@ async fn receive_captions_once(
         .connect(host, LIVE_CAPTION_ALPN)
         .await
         .map_err(|e| NetError::Connect(e.to_string()))?;
+    inbox.set_link_path(caption_link_path_of(&conn));
 
     while let Ok(mut stream) = conn.accept_uni().await {
+        // 每帧刷新一次:打洞在首帧之后才成功时,指示器要跟着从
+        // 「经中继」升级成「直连」。paths() 是快照读,每帧一次很便宜。
+        inbox.set_link_path(caption_link_path_of(&conn));
         match read_message::<_, CaptionFrame>(&mut stream).await {
             Ok(frame) if frame.scope == scope => inbox.push(frame).await,
             Ok(_) => tracing::debug!("丢弃一帧属于其他共享范围的字幕"),

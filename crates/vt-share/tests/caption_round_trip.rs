@@ -83,6 +83,12 @@ async fn caption_frame_crosses_two_real_endpoints() {
         got[0].lines[0].target_text.as_deref(),
         Some("译:こんにちは")
     );
+    // 链路指示是真值:同机双端点无中继,收到帧后必然报「直连」。
+    assert_eq!(
+        inbox.link_path(),
+        Some(vt_share::net::CaptionLinkPath::Direct),
+        "同机直连必须报 Direct,而不是写死或缺席"
+    );
 
     listening.abort();
     host.shutdown().await;

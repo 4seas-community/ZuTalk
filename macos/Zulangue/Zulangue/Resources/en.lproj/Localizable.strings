@@ -866,6 +866,12 @@
 "share.status.receiving" = "Receiving captions";
 "share.status.receiving_hint" = "These are the host's captions. They are not saved to this Mac.";
 
+/* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
+"share.link.direct" = "Direct";
+"share.link.relayed" = "Via relay";
+"share.link.direct_hint" = "Traffic flows peer-to-peer — hole punching succeeded.";
+"share.link.relayed_hint" = "Direct connection failed; traffic is forwarded through the relay, still end-to-end encrypted. Common on networks with AP isolation.";
+
 /* 设置:中继准入 */
 "settings.p2p.relay_ready" = "Relay ready";
 "settings.p2p.relay_ready_hint" = "This Mac is registered, so the relay will carry a connection when two Macs cannot reach each other directly.";

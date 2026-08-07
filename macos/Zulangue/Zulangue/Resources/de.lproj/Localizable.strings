@@ -865,6 +865,12 @@
 "share.status.receiving" = "Untertitel werden empfangen";
 "share.status.receiving_hint" = "Das sind die Untertitel des Hosts. Sie werden auf diesem Mac nicht gespeichert.";
 
+/* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
+"share.link.direct" = "Direktverbindung";
+"share.link.relayed" = "Über Relay";
+"share.link.direct_hint" = "Der Datenverkehr fließt direkt zwischen den Geräten — Holepunching erfolgreich.";
+"share.link.relayed_hint" = "Direktverbindung fehlgeschlagen; der Verkehr läuft über das Relay, weiterhin Ende-zu-Ende-verschlüsselt. Üblich in Netzen mit AP-Isolation.";
+
 /* 设置:中继准入 */
 "settings.p2p.relay_ready" = "Relay verfügbar";
 "settings.p2p.relay_ready_hint" = "Dieser Mac ist registriert — das Relay übernimmt, wenn zwei Macs sich nicht direkt erreichen.";

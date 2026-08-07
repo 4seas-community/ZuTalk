@@ -78,6 +78,25 @@ struct SharePage: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
+            // 观看端的链路指示。真值来自 QUIC 当前选中的传输路径——
+            // 「经中继」是 AP 隔离网络的诊断特征(双机清单第一/二条靠它)。
+            // 没连上时不显示:「没连上」和「经中继」必须是两句话。
+            if let link = viewModel.viewerLink {
+                Label(
+                    link == .direct
+                        ? String(localized: "share.link.direct")
+                        : String(localized: "share.link.relayed"),
+                    systemImage: link == .direct ? "bolt.fill" : "antenna.radiowaves.left.and.right"
+                )
+                .font(.captionMedium)
+                .foregroundColor(link == .direct ? .signalGreen : .signalAmber)
+                .help(
+                    link == .direct
+                        ? String(localized: "share.link.direct_hint")
+                        : String(localized: "share.link.relayed_hint")
+                )
+                .accessibilityIdentifier("share.link_path")
+            }
         }
         .padding(Spacing.sm)
         .background(Color.textTertiary.opacity(0.08))
@@ -470,6 +489,8 @@ final class ShareViewModel: ObservableObject {
     @Published private(set) var lines: [FfiSharedCaptionLine] = []
     @Published private(set) var errorMessage: String?
     @Published private(set) var status: ShareStatus = .idle
+    /// 观看端到主持人的当前链路;没在观看或还没连上时为 nil。
+    @Published private(set) var viewerLink: FfiShareLinkPath?
     @Published private(set) var copied: Bool = false
     @Published private(set) var nearby: [FfiNearbyPeer] = []
     @Published private(set) var joinRequests: [FfiJoinRequest] = []
@@ -670,6 +691,7 @@ final class ShareViewModel: ObservableObject {
         let state = core.shareState()
         isSharing = state.isSharing
         hostOnly = state.hostOnly
+        viewerLink = state.viewerLink
         lines = state.lines
         if shareCode == nil { shareCode = core.currentShareCode() }
         joinRequests = core.pendingJoinRequests()

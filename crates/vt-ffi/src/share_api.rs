@@ -242,6 +242,23 @@ pub enum FfiJoinOutcome {
     TimedOut,
 }
 
+/// 观看端到主持人此刻实际走的链路。真值来自 QUIC 连接当前选中的传输
+/// 路径——「直连被禁、只剩中继」是 AP 隔离网络的诊断特征。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FfiShareLinkPath {
+    Direct,
+    Relayed,
+}
+
+impl From<vt_share::net::CaptionLinkPath> for FfiShareLinkPath {
+    fn from(value: vt_share::net::CaptionLinkPath) -> Self {
+        match value {
+            vt_share::net::CaptionLinkPath::Direct => Self::Direct,
+            vt_share::net::CaptionLinkPath::Relayed => Self::Relayed,
+        }
+    }
+}
+
 /// 当前共享状态的一帧快照。
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiShareState {
@@ -252,6 +269,8 @@ pub struct FfiShareState {
     pub host_only: bool,
     /// 本机是这个房间的主持人。
     pub is_host: bool,
+    /// 观看端到主持人的当前链路;没在观看或还没连上时为 `None`。
+    pub viewer_link: Option<FfiShareLinkPath>,
     /// 已应用的字幕帧号;还没收到任何帧时为 `None`。
     pub applied_revision: Option<u64>,
     /// 本机作为主持人已经播出的最后一帧。`None` 表示**一帧都还没播** ——
@@ -757,6 +776,7 @@ impl ZulangueCore {
                 is_viewing: false,
                 host_only: false,
                 is_host: false,
+                viewer_link: None,
                 applied_revision: None,
                 broadcast_revision: None,
                 lines: Vec::new(),
@@ -798,6 +818,11 @@ impl ZulangueCore {
             is_viewing: runtime.viewing.is_some(),
             host_only,
             is_host,
+            viewer_link: runtime
+                .viewing
+                .as_ref()
+                .and_then(|room| room.inbox.link_path())
+                .map(Into::into),
             applied_revision,
             broadcast_revision: runtime.last_broadcast_revision,
             lines,

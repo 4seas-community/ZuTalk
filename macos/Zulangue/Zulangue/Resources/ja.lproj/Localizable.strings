@@ -866,6 +866,12 @@
 "share.status.receiving" = "字幕を受信中";
 "share.status.receiving_hint" = "ホストの字幕です。この Mac には保存されません。";
 
+/* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
+"share.link.direct" = "直接接続";
+"share.link.relayed" = "リレー経由";
+"share.link.direct_hint" = "トラフィックはピア間を直接流れています（ホールパンチング成功）。";
+"share.link.relayed_hint" = "直接接続が確立できず、リレー経由で転送しています（引き続きエンドツーエンド暗号化）。AP 分離のあるネットワークでよく起こります。";
+
 /* 设置:中继准入 */
 "settings.p2p.relay_ready" = "リレー利用可能";
 "settings.p2p.relay_ready_hint" = "この Mac は登録済みです。直接つながらないときはリレーが中継します。";

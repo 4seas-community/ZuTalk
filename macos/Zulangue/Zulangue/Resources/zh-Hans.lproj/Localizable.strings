@@ -866,6 +866,12 @@
 "share.status.receiving" = "正在接收字幕";
 "share.status.receiving_hint" = "这是主持人的字幕，不会保存到这台 Mac。";
 
+/* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
+"share.link.direct" = "直连";
+"share.link.relayed" = "经中继";
+"share.link.direct_hint" = "流量点对点直达，打洞成功。";
+"share.link.relayed_hint" = "直连没打通，流量经中继转发（仍端到端加密）。开了 AP 隔离的 Wi-Fi 上很常见。";
+
 /* 设置:中继准入 */
 "settings.p2p.relay_ready" = "中继可用";
 "settings.p2p.relay_ready_hint" = "这台 Mac 已登记，两台机器直连不通时中继会接手。";
