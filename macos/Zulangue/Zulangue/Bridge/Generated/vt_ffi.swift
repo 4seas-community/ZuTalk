@@ -752,6 +752,22 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func noteApplyOutline(docId: String, rows: [FfiOutlineRow]) throws
 
     /**
+     * 笔记 tab 的块文档入口:打开(必要时**从第 1 纪元迁移**)并返回
+     * doc_id。这是新大纲编辑器的唯一打开路径。
+     *
+     * 迁移规则(决定记录:笔记侧「可以宽松些」——内容迁移,历史归备份):
+     * - 已有块文档:直接打开;
+     * - 只有第 1 纪元平文本快照:逐行拆成深度 0 的大纲行(空行保留,
+     * 行即段落),写成 B 文档,旧快照改名 `<file>.pre-epoch2` 留档,
+     * **不删除**;
+     * - 两者都无:按黄金祖先新建。
+     *
+     * 只接受 ManualNote tab:转录稿文档是证据,走阶段 4 的严格重放
+     * 迁移,绝不从这条宽松通道过。
+     */
+    func noteBlockDocumentOpen(notebookId: String, tabId: String) throws  -> String
+
+    /**
      * 笔记的大纲行(先序)。
      */
     func noteOutlineRows(docId: String) throws  -> [FfiOutlineRow]
@@ -1584,6 +1600,30 @@ open func noteApplyOutline(docId: String, rows: [FfiOutlineRow])throws   {try ru
         FfiConverterSequenceTypeFfiOutlineRow.lower(rows),$0
     )
 }
+}
+
+    /**
+     * 笔记 tab 的块文档入口:打开(必要时**从第 1 纪元迁移**)并返回
+     * doc_id。这是新大纲编辑器的唯一打开路径。
+     *
+     * 迁移规则(决定记录:笔记侧「可以宽松些」——内容迁移,历史归备份):
+     * - 已有块文档:直接打开;
+     * - 只有第 1 纪元平文本快照:逐行拆成深度 0 的大纲行(空行保留,
+     * 行即段落),写成 B 文档,旧快照改名 `<file>.pre-epoch2` 留档,
+     * **不删除**;
+     * - 两者都无:按黄金祖先新建。
+     *
+     * 只接受 ManualNote tab:转录稿文档是证据,走阶段 4 的严格重放
+     * 迁移,绝不从这条宽松通道过。
+     */
+open func noteBlockDocumentOpen(notebookId: String, tabId: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_note_block_document_open(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),
+        FfiConverterString.lower(tabId),$0
+    )
+})
 }
 
     /**
@@ -8582,6 +8622,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_note_apply_outline() != 43276) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_note_block_document_open() != 19624) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_note_outline_rows() != 37535) {

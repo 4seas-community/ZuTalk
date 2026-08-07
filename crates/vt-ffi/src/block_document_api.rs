@@ -326,7 +326,93 @@ impl ZulangueCore {
     }
 }
 
+#[uniffi::export]
 impl ZulangueCore {
+    /// 笔记 tab 的块文档入口:打开(必要时**从第 1 纪元迁移**)并返回
+    /// doc_id。这是新大纲编辑器的唯一打开路径。
+    ///
+    /// 迁移规则(决定记录:笔记侧「可以宽松些」——内容迁移,历史归备份):
+    /// - 已有块文档:直接打开;
+    /// - 只有第 1 纪元平文本快照:逐行拆成深度 0 的大纲行(空行保留,
+    ///   行即段落),写成 B 文档,旧快照改名 `<file>.pre-epoch2` 留档,
+    ///   **不删除**;
+    /// - 两者都无:按黄金祖先新建。
+    ///
+    /// 只接受 ManualNote tab:转录稿文档是证据,走阶段 4 的严格重放
+    /// 迁移,绝不从这条宽松通道过。
+    pub fn note_block_document_open(
+        &self,
+        notebook_id: String,
+        tab_id: String,
+    ) -> Result<String, CoreError> {
+        let tab = self.resolve_product_editor_tab(&notebook_id, &tab_id)?;
+        if tab.builtin_kind != vt_store::notebook_store::BuiltinNotebookTab::ManualNote {
+            return Err(internal(format!(
+                "只有笔记 tab 走块文档;{:?} 不是",
+                tab.builtin_kind
+            )));
+        }
+        let doc_id = tab.doc_id;
+
+        let block_path = block_document_path(&self.data_dir, &doc_id)?;
+        if !block_path.exists() {
+            let legacy_path = crate::editor_api::snapshot_path(&self.data_dir, &doc_id);
+            if legacy_path.exists() {
+                self.migrate_legacy_note(&doc_id, &legacy_path)?;
+            }
+        }
+        self.block_document_open(doc_id.clone(), FfiDocumentKind::Note)?;
+        Ok(doc_id)
+    }
+}
+
+impl ZulangueCore {
+    /// 第 1 纪元笔记 → B 块文档的内容迁移。旧文件改名留档,失败时不动
+    /// 旧文件(下次打开重试)。
+    fn migrate_legacy_note(&self, doc_id: &str, legacy_path: &Path) -> Result<(), CoreError> {
+        let bytes = fs::read(legacy_path).map_err(|e| internal(format!("读第 1 纪元笔记: {e}")))?;
+        let legacy = LoroDoc::new();
+        legacy
+            .import(&bytes)
+            .map_err(|e| internal(format!("导入第 1 纪元笔记: {e}")))?;
+        let content = legacy.get_text("content").to_string();
+
+        // 逐行成行:行即段落,空行保留(内容逐字节可还原,深度全 0)。
+        let rows: Vec<OutlineRow> = content
+            .split('\n')
+            .map(|line| OutlineRow {
+                id: uuid::Uuid::new_v4().to_string(),
+                depth: 0,
+                text: line.to_string(),
+            })
+            .collect();
+
+        let doc = new_block_document(DocumentKind::Note);
+        let mirror =
+            Mirror::new(doc, Some(note_schema()), MirrorOptions::default()).map_err(internal)?;
+        let rebuilt = rebuild_note("root", &rows);
+        mirror
+            .set_state(
+                |state| {
+                    let mut next = state.clone();
+                    next[NOTE_ROOT] = rebuilt.clone();
+                    next
+                },
+                SetStateOptions {
+                    tags: Some(vec!["migration".to_string()]),
+                },
+            )
+            .map_err(internal)?;
+
+        // 先落新文档,再给旧文件改名——顺序不能反:改名后崩溃会丢内容,
+        // 落盘后崩溃只是下次多迁一遍(幂等,块文档已存在则不再走这里)。
+        let handle = BlockDocumentHandle::Note(mirror);
+        self.save_block_document(doc_id, &handle)?;
+        let backup = legacy_path.with_extension("loro.pre-epoch2");
+        fs::rename(legacy_path, &backup).map_err(|e| internal(format!("留档旧笔记: {e}")))?;
+        Ok(())
+    }
+
     fn with_transcript<T>(
         &self,
         doc_id: &str,
@@ -526,6 +612,66 @@ mod tests {
         assert_eq!(read_back.len(), 3);
         assert_eq!(read_back[1].id, "a1");
         assert_eq!(read_back[1].depth, 1);
+    }
+
+    #[test]
+    fn legacy_note_migrates_on_first_open_and_keeps_a_backup() {
+        let (dir, core) = core();
+        let notebook = core.create_notebook(Some("迁移".into())).unwrap();
+        let tabs = core.list_notebook_tabs(notebook.id.clone()).unwrap();
+        let note_tab = tabs
+            .iter()
+            .find(|tab| tab.builtin_kind == "manual_note")
+            .expect("Notebook 应有笔记 tab");
+
+        // 伪造一份第 1 纪元平文本笔记快照。
+        let legacy = LoroDoc::new();
+        legacy
+            .get_text("content")
+            .insert(0, "第一段\n\n第三行")
+            .unwrap();
+        legacy.commit();
+        let legacy_path = crate::editor_api::snapshot_path(dir.path(), &note_tab.doc_id);
+        fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+        fs::write(
+            &legacy_path,
+            legacy.export(loro::ExportMode::Snapshot).unwrap(),
+        )
+        .unwrap();
+
+        let doc_id = core
+            .note_block_document_open(notebook.id.clone(), note_tab.id.clone())
+            .unwrap();
+        let rows = core.note_outline_rows(doc_id.clone()).unwrap();
+        assert_eq!(
+            rows.iter().map(|r| r.text.as_str()).collect::<Vec<_>>(),
+            vec!["第一段", "", "第三行"],
+            "逐行成行,空行保留"
+        );
+        assert!(rows.iter().all(|r| r.depth == 0));
+
+        // 旧文件留档,原路径腾空;再次打开不再迁移(幂等)。
+        assert!(!legacy_path.exists());
+        assert!(legacy_path.with_extension("loro.pre-epoch2").exists());
+        core.block_document_close(doc_id.clone()).unwrap();
+        let reopened = core
+            .note_block_document_open(notebook.id, note_tab.id.clone())
+            .unwrap();
+        assert_eq!(core.note_outline_rows(reopened).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn transcript_tabs_are_refused_by_the_note_entry() {
+        let (_dir, core) = core();
+        let notebook = core.create_notebook(Some("拒".into())).unwrap();
+        let tabs = core.list_notebook_tabs(notebook.id.clone()).unwrap();
+        let async_tab = tabs
+            .iter()
+            .find(|tab| tab.builtin_kind == "async_transcript")
+            .expect("Notebook 应有 async tab");
+        assert!(core
+            .note_block_document_open(notebook.id, async_tab.id.clone())
+            .is_err());
     }
 
     #[test]

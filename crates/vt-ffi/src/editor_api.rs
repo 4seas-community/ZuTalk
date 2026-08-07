@@ -375,7 +375,7 @@ fn notebook_store_error(error: vt_store::NotebookStoreError) -> CoreError {
 }
 
 impl ZulangueCore {
-    fn resolve_product_editor_tab(
+    pub(crate) fn resolve_product_editor_tab(
         &self,
         notebook_id: &str,
         tab_id: &str,
