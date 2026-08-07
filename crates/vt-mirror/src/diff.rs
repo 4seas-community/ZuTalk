@@ -20,6 +20,11 @@
 //! 会掉进「同 id → 递归 diff → 空结果」,输出与直接跳过一致,只是省掉
 //! 无操作递归。
 //!
+//! 已知蓝本局限(照抄,调用方需知):`diffMovableList` 的 move 变更用的
+//! 是**删除前的旧索引**——同一批状态更新里既有删除又有跨过删除位的
+//! move 时,apply 阶段会索引越界(TS 蓝本同样如此)。上层把重排与删除
+//! 作为两次 set_state 提交即可绕开;等上游修了再跟。
+//!
 //! 错误信息逐字保留蓝本的 throw 文案。
 
 use loro::{ContainerID, ContainerTrait, ContainerType, LoroDoc, ValueOrContainer};
