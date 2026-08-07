@@ -59,22 +59,34 @@
      `load_realtime_loro_projection_if_pending_visible`(同一事务、
      合并用户覆盖),T2 投影改用它——冻结车道带真实 edit revision,
      被覆盖的源车道重放写的是覆盖本身的字节。
-3. **读端切换准备**(Swift):NotebookTranscriptProjectionStore 增加
-   块文档读路径(transcript_blocks / 事件),按 feature 判断走哪边;
-   Delta 解析路径保留至切换完成。
-4. **拨闸**:转录稿 tab 打开路径换 `open-or-migrate`(块文档优先,
-   旧快照就地严格迁移),产线写路径同 commit 切到 T2;双机清单跑一遍
-   (阶段 5 的验收项)。**前置补课(分片 2 侦察发现)**:T2 的销毁链
-   动词还不存在——schema 已带 `zulangue_session_purge_receipts`,但
-   「删除 session 所属全部句块 + 落收据」尚无实现(门面刻意没有删块
-   函数,purge 需要一个绕过门面动词集的专用入口),必须在拨闸 commit
-   之前落地。
+3. ✅ **读端侦察定案**(2026-08-08,修正原「Swift 双路」计划):实测
+   读端拓扑后,本片为**空集**——实时转录文档在本机没有任何 Swift 读者
+   (UI 走 SQLite 历史 + cue/帧字幕,从不读文档);
+   NotebookTranscriptProjectionStore 与 LoroDeltaParser 只服务 Async
+   Transcript tab,而 async 文档明确不在本切换范围(保持第 1 纪元平
+   文本)。真正的读端准备是把 T2 文档挂进 EditorBridge——分享文档同步
+   (version/updates_since/import)、纪元准入、销毁收据一家子都从
+   bridge 应答——随分片 4 的 open-or-migrate 一并落地(同一份
+   LoroDoc,克隆共享状态,bridge 导入对投影门面立即可见)。
+4. ✅ **拨闸**(2026-08-08):产线一个 commit 全量切 T2——增量投影、
+   停止后投影状态机、订正 FFI(replace_notebook_utterance_lane)、
+   启动恢复、pending 订正重放、投影重试,全部指向 T2 写路径;打开
+   一律走 `open-or-migrate`(严格迁移拒绝 → 投影态 Failed / 销毁
+   任务保持 pending,均 fail-closed);销毁链按 tab 分发:
+   RealtimeTranscript 目标走「purge_session_blocks + 收据」(删除与
+   收据两次提交间崩溃 = 零块删除重放 + 补收据,无需回滚点),async
+   与笔记目标走旧路逐字不动。前置补课(T2 销毁动词、bridge 挂载)
+   已随本片先行落地。**双机清单待人工跑**(阶段 5 验收项,未完成)。
 5. **退役**:第三层旧代码负行数下线——resolve_capture_owned_range、
    remote_update_touches_capture_owned_range、render/plan/CaptureDeltaIndex、
-   三张锚点 map、投影/用户收据族、LoroDeltaParser(Swift 读端跟着换后)。
-   同时删 `TranscriptWritePath::Epoch1Flat` 分发与
-   `load_realtime_loro_projection_if_pending`(裸机器版,收据族的唯一
-   消费者)。
+   三张锚点 map、投影/用户收据族、旧 sync/apply 产线函数、
+   `TranscriptWritePath::Epoch1Flat` 分发、
+   `load_realtime_loro_projection_if_pending`(裸机器版,收据摘要的
+   唯一消费者)。**修订**:LoroDeltaParser **保留**(Async tab 仍以
+   Delta 解析读自己的平文本文档,不在切换范围);分享准入的第 1 纪元
+   回退删除后,非第 2 纪元文档的远端 update 一律拒收(fail-closed
+   ——拨闸后本机所有转录稿文档均为第 2 纪元,epoch-1 准入的唯一
+   历史客户已不存在)。
 
 ## 不变量(每片都要守)
 

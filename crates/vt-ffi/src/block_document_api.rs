@@ -391,7 +391,6 @@ impl ZulangueCore {
     ///   留档;**非线性历史拒迁**,旧文件不动,错误上抛(调用方决定把
     ///   投影态标 failed);
     /// - 两者都无:按黄金祖先新建。
-    #[allow(dead_code)] // 拨闸 commit 接线后移除
     pub(crate) fn open_transcript_block_document(&self, doc_id: &str) -> Result<(), CoreError> {
         let block_path = block_document_path(&self.data_dir, doc_id)?;
         if !block_path.exists() {

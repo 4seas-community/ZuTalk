@@ -43,8 +43,6 @@ use vt_stt::{
     TranslationConfig, CURRENT_NOTEBOOK_CAPTURE_ENGINE,
 };
 
-use crate::block_document_api::FfiDocumentKind;
-
 use crate::task_worker::{
     reconcile_capture_async_task_receipt_on_startup, StartupCaptureAsyncReceiptOutcome,
 };
@@ -6501,7 +6499,8 @@ impl ZulangueCore {
     }
 
     /// Incrementally materializes every durable completed utterance into the
-    /// realtime Loro document without completing the capture projection.
+    /// realtime transcript document without completing the capture projection.
+    /// Since the cutover this writes the epoch-2 block document.
     pub fn project_notebook_realtime_incremental(
         &self,
         session_id: String,
@@ -6514,7 +6513,7 @@ impl ZulangueCore {
                 message: format!("capture session {session_id}"),
             })?;
         self.ensure_capture_projection_not_purging(&run.session_id)?;
-        self.sync_bilingual_capture_into_realtime_tab(&run, false)
+        self.sync_capture_into_t2_transcript(&run, false)
     }
 
     /// Retries only the local Async Transcript Loro materialization. The
@@ -6581,7 +6580,7 @@ impl ZulangueCore {
                 expected_revision,
             )
             .map_err(store_error)?;
-        self.apply_notebook_projection_mutation(&mutation)
+        self.apply_notebook_projection_mutation_t2(&mutation)
             .map(Into::into)
     }
 }
@@ -7355,10 +7354,67 @@ impl ZulangueCore {
         error
     }
 
+    /// Whether a purge target is the Realtime Transcript tab — the one
+    /// document family the T2 cutover moved to epoch-2 blocks. Async
+    /// transcript and note targets keep the legacy flat-text purge route
+    /// byte-for-byte. A tab that can no longer be resolved falls back to
+    /// the legacy route, which fails closed on missing anchors.
+    fn is_realtime_transcript_purge_target(
+        &self,
+        target: &vt_store::notebook_capture_store::ProjectionPurgeTarget,
+    ) -> Result<bool, CoreError> {
+        use vt_store::BuiltinNotebookTab;
+        Ok(self
+            .notebook_store
+            .list_tabs(&target.notebook_id)
+            .map_err(store_error)?
+            .into_iter()
+            .any(|tab| {
+                tab.id == target.tab_id
+                    && tab.builtin_kind == BuiltinNotebookTab::RealtimeTranscript
+            }))
+    }
+
+    /// T2 destroy chain for one realtime transcript target: open-or-migrate
+    /// (a refused migration keeps the durable purge job pending — the strict
+    /// channel's fail-closed twin of "a corrupt snapshot never absorbs a
+    /// purge"), then delete the session's machine blocks and set the purge
+    /// receipt on the same document. Deletion and receipt are two commits;
+    /// a crash between them replays as a zero-block deletion plus the
+    /// receipt write, so the pair converges without a rollback point.
+    fn purge_t2_transcript_target(
+        &self,
+        plan: &SessionPurgePlan,
+        target: &vt_store::notebook_capture_store::ProjectionPurgeTarget,
+    ) -> Result<(), CoreError> {
+        self.open_transcript_block_document(&target.doc_id)?;
+        if self
+            .editor_bridge
+            .has_session_purge_receipt(&target.doc_id, &plan.session_id)
+            .map_err(store_error)?
+        {
+            self.persist_block_document(&target.doc_id)?;
+            return Ok(());
+        }
+        self.with_transcript(&target.doc_id, |projection| {
+            projection
+                .purge_session_blocks(&plan.session_id)
+                .map_err(store_error)
+        })?;
+        self.editor_bridge
+            .set_session_purge_receipt(&target.doc_id, &plan.session_id)
+            .map_err(store_error)?;
+        self.persist_block_document(&target.doc_id)
+    }
+
     fn purge_loro_session_ranges(&self, plan: &SessionPurgePlan) -> Result<(), CoreError> {
         use vt_store::EditOp;
         let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
         for target in &plan.projection_targets {
+            if self.is_realtime_transcript_purge_target(target)? {
+                self.purge_t2_transcript_target(plan, target)?;
+                continue;
+            }
             crate::editor_api::open_editor_session_strict(
                 &self.data_dir,
                 &self.editor_bridge,
@@ -7560,6 +7616,20 @@ impl ZulangueCore {
     fn clear_session_purge_loro_receipts(&self, plan: &SessionPurgePlan) -> Result<(), CoreError> {
         let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
         for target in &plan.projection_targets {
+            if self.is_realtime_transcript_purge_target(target)? {
+                self.open_transcript_block_document(&target.doc_id)?;
+                if self
+                    .editor_bridge
+                    .has_session_purge_receipt(&target.doc_id, &plan.session_id)
+                    .map_err(store_error)?
+                {
+                    self.editor_bridge
+                        .clear_session_purge_receipt(&target.doc_id, &plan.session_id)
+                        .map_err(store_error)?;
+                    self.persist_block_document(&target.doc_id)?;
+                }
+                continue;
+            }
             crate::editor_api::open_editor_session_strict(
                 &self.data_dir,
                 &self.editor_bridge,
@@ -8030,7 +8100,7 @@ impl ZulangueCore {
             .list_pending_projection_mutations()
             .map_err(store_error)?;
         for mutation in pending {
-            if let Err(error) = self.apply_notebook_projection_mutation(&mutation) {
+            if let Err(error) = self.apply_notebook_projection_mutation_t2(&mutation) {
                 tracing::warn!(
                     session_id = %mutation.session_id,
                     mutation_id = %mutation.id,
@@ -8095,14 +8165,14 @@ impl ZulangueCore {
         self.ensure_capture_projection_not_purging(session_id)?;
 
         if run.capture_state.is_active() {
-            return self.sync_bilingual_capture_into_realtime_tab(&run, false);
+            return self.sync_capture_into_t2_transcript(&run, false);
         }
 
         match run.projection_state {
             ProjectionState::Ready => {
                 // A terminal run can already be Ready while a later durable
                 // Final still has an unacknowledged realtime watermark.
-                self.sync_bilingual_capture_into_realtime_tab(&run, false)
+                self.sync_capture_into_t2_transcript(&run, false)
             }
             ProjectionState::Failed => {
                 run = self
@@ -8409,6 +8479,7 @@ impl ZulangueCore {
     /// Forward-replays one durable lane mutation. The caller must hold the
     /// global editor mutation lock so purge, user edits, projections, and the
     /// snapshot flusher cannot interleave with the Loro/SQLite commit boundary.
+    #[allow(dead_code)] // unreachable since the cutover; retired in shard 5
     fn apply_notebook_projection_mutation(
         &self,
         mutation: &NotebookProjectionMutation,
@@ -8644,19 +8715,12 @@ impl ZulangueCore {
         self.project_notebook_capture_with_ownership(run_id)
     }
 
-    /// T2 twin of [`Self::project_notebook_capture`]: the identical
-    /// projection-state machine completing into the epoch-2 block document.
-    #[cfg(test)]
-    fn project_notebook_capture_t2(&self, run_id: &str) -> Result<(), CoreError> {
-        let _ownership_guard = self.capture_ownership_gate.lock().unwrap();
-        self.project_notebook_capture_with_ownership_via(run_id, TranscriptWritePath::Epoch2Blocks)
-    }
-
     /// Projects while the caller holds `capture_ownership_gate`. Stop already
     /// owns the gate across audio finalization; retry and direct recovery enter
-    /// through gate-taking wrappers.
+    /// through gate-taking wrappers. Since the cutover the production write
+    /// path is the epoch-2 block document.
     fn project_notebook_capture_with_ownership(&self, run_id: &str) -> Result<(), CoreError> {
-        self.project_notebook_capture_with_ownership_via(run_id, TranscriptWritePath::Epoch1Flat)
+        self.project_notebook_capture_with_ownership_via(run_id, TranscriptWritePath::Epoch2Blocks)
     }
 
     /// The projection-state machine (Pending → Projecting → Ready/Failed) is
@@ -9124,8 +9188,8 @@ impl ZulangueCore {
 /// and this enum retire together in shard 5 of the switchover charter.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TranscriptWritePath {
+    #[allow(dead_code)] // unreachable since the cutover; deleted in shard 5
     Epoch1Flat,
-    #[allow(dead_code)] // constructed by tests until the shard-4 cutover
     Epoch2Blocks,
 }
 
@@ -9248,23 +9312,6 @@ fn t2_upsert_finalized_utterances(
 }
 
 impl ZulangueCore {
-    /// T2 twin of [`Self::project_notebook_realtime_incremental`].
-    #[allow(dead_code)] // wired to the FFI entry by the shard-4 cutover
-    pub(crate) fn project_notebook_realtime_incremental_t2(
-        &self,
-        session_id: &str,
-    ) -> Result<(), CoreError> {
-        let run = self
-            .notebook_capture_store
-            .get_run_for_session(session_id)
-            .map_err(store_error)?
-            .ok_or_else(|| CoreError::NotFound {
-                message: format!("capture session {session_id}"),
-            })?;
-        self.ensure_capture_projection_not_purging(&run.session_id)?;
-        self.sync_capture_into_t2_transcript(&run, false)
-    }
-
     /// T2 twin of [`Self::sync_bilingual_capture_into_realtime_tab`]: the
     /// same critical section, pending-snapshot selection, watermark ACK,
     /// search rebuild, and Ready completion, with the document side swapped
@@ -9303,7 +9350,10 @@ impl ZulangueCore {
         let tab = self.realtime_transcript_tab(&run.notebook_id)?;
         self.require_single_realtime_transcript_projection(&tab.id, run)?;
 
-        self.block_document_open(tab.doc_id.clone(), FfiDocumentKind::Transcript)?;
+        // Open-or-migrate: a legacy epoch-1 snapshot goes through the strict
+        // replay migration here; refusal (non-linear history) fails the
+        // projection loudly and the caller's state machine marks it Failed.
+        self.open_transcript_block_document(&tab.doc_id)?;
         self.with_transcript(&tab.doc_id, |handle| {
             t2_upsert_finalized_utterances(handle, &run.session_id, &projection.machine_utterances)
         })?;
@@ -9360,32 +9410,6 @@ impl ZulangueCore {
         Ok(())
     }
 
-    /// T2 twin of [`Self::replace_notebook_utterance_lane`]: identical
-    /// SQLite validation and optimistic-lock staging; only the document
-    /// verb differs.
-    #[allow(dead_code)] // wired to the FFI entry by the shard-4 cutover
-    pub(crate) fn replace_notebook_utterance_lane_t2(
-        &self,
-        utterance_id: &str,
-        lane_language: &str,
-        text: &str,
-        expected_revision: u64,
-    ) -> Result<FfiNotebookCaptureUtterance, CoreError> {
-        self.validated_utterance_for_lane_replacement(utterance_id, lane_language)?;
-        let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
-        let mutation = self
-            .notebook_capture_store
-            .stage_utterance_variant_replacement(
-                utterance_id,
-                lane_language,
-                text,
-                expected_revision,
-            )
-            .map_err(store_error)?;
-        self.apply_notebook_projection_mutation_t2(&mutation)
-            .map(Into::into)
-    }
-
     /// T2 twin of [`Self::apply_notebook_projection_mutation`]. Forward-
     /// replays one durable lane mutation; the caller holds the editor
     /// mutation guard. The receipt machinery is gone: the verb targets the
@@ -9409,9 +9433,7 @@ impl ZulangueCore {
                 return Err(error);
             }
         };
-        if let Err(error) =
-            self.block_document_open(tab.doc_id.clone(), FfiDocumentKind::Transcript)
-        {
+        if let Err(error) = self.open_transcript_block_document(&tab.doc_id) {
             self.cancel_projection_mutation_after_error(mutation, &error)?;
             return Err(error);
         }
@@ -9874,6 +9896,7 @@ fn push_capture_text_range(ranges: &mut Vec<crate::editor_api::TextRange>, pos: 
 /// new projections. Older snapshots may carry marks such as `EN-US` or
 /// `zh-Hans`; treating those as distinct would duplicate the lane on replay or
 /// make it impossible to edit after the SQLite language migration.
+#[allow(dead_code)] // unreachable since the cutover; retired in shard 5
 fn find_unique_capture_lane_range(
     delta_json: &str,
     session_id: &str,
@@ -9945,6 +9968,7 @@ fn resolve_capture_section_range(
     Ok(Some(crate::editor_api::TextRange { pos, len }))
 }
 
+#[allow(dead_code)] // unreachable since the cutover; retired in shard 5
 fn render_replacement_lane(
     current: &RealtimeUtterance,
     mutation: &NotebookProjectionMutation,
@@ -10161,6 +10185,7 @@ fn realtime_projection_receipt(
     }
 }
 
+#[allow(dead_code)] // unreachable since the cutover; retired in shard 5
 fn notebook_projection_mutation_receipt(
     mutation: &NotebookProjectionMutation,
 ) -> vt_store::editor_bridge::UserMutationReceipt {
@@ -11917,11 +11942,15 @@ mod tests {
             .find(|tab| tab.builtin_kind == "realtime_transcript")
             .unwrap()
             .doc_id;
-        assert!(core
-            .editor_bridge
-            .get_content(&doc_id)
-            .unwrap()
-            .contains("en: durable stop transcript"));
+        let blocks = core
+            .with_transcript(&doc_id, |projection| Ok(projection.refresh()))
+            .unwrap();
+        let block = blocks
+            .iter()
+            .find(|block| block.id == "stop-projection-utterance")
+            .expect("stop must project the Final utterance into the T2 document");
+        assert_eq!(block.text, "durable stop transcript");
+        assert_eq!(block.lanes["zh"], "持久停止转录");
         db.execute_batch("DROP TRIGGER fail_stop_remote_diagnostic;")
             .unwrap();
     }
@@ -17515,11 +17544,12 @@ mod tests {
             .unwrap();
         assert_eq!(after.applied_revision, after.desired_revision);
         assert_eq!(after.desired_revision, before.desired_revision);
-        assert!(core
-            .editor_bridge
-            .get_content(&doc_id)
-            .unwrap()
-            .contains("你好"));
+        let blocks = core
+            .with_transcript(&doc_id, |projection| Ok(projection.refresh()))
+            .unwrap();
+        assert!(blocks
+            .iter()
+            .any(|block| block.lanes.get("zh").is_some_and(|lane| lane == "你好")));
 
         let machine = core
             .notebook_capture_store
@@ -18312,7 +18342,7 @@ mod tests {
 
         {
             let _guard = crate::editor_api::editor_document_mutation_guard();
-            core.apply_notebook_projection_mutation(&mutation)
+            core.apply_notebook_projection_mutation_t2(&mutation)
                 .expect_err("SQLite failure must leave the durable mutation pending");
         }
         assert!(core
@@ -18320,23 +18350,31 @@ mod tests {
             .get_projection_mutation(&mutation.id)
             .unwrap()
             .is_some());
-        assert_eq!(
-            core.editor_bridge
-                .get_content(&doc_id)
+        let lane_text = |core: &ZulangueCore| {
+            core.with_transcript(&doc_id, |projection| Ok(projection.refresh()))
                 .unwrap()
-                .matches("用户崩溃重放")
-                .count(),
-            1
+                .into_iter()
+                .find(|block| block.id == "utterance-a")
+                .unwrap()
+                .lanes["zh"]
+                .clone()
+        };
+        assert_eq!(
+            lane_text(&core),
+            "用户崩溃重放",
+            "文档字节先于 SQLite 提交持久"
         );
 
-        // Evict the live document so replay must discover the receipt in the
-        // exact snapshot bytes fsynced before the injected SQLite failure.
+        // Drop the live handles without saving so replay must reopen the
+        // exact bytes persisted before the injected SQLite failure.
+        core.block_documents.lock().unwrap().remove(&doc_id);
         core.editor_bridge.evict(&doc_id);
         db.execute_batch("DROP TRIGGER fail_lane_override_commit;")
             .unwrap();
         let updated = {
             let _guard = crate::editor_api::editor_document_mutation_guard();
-            core.apply_notebook_projection_mutation(&mutation).unwrap()
+            core.apply_notebook_projection_mutation_t2(&mutation)
+                .unwrap()
         };
         assert_eq!(updated.translated_text.as_deref(), Some("用户崩溃重放"));
         assert_eq!(
@@ -18353,19 +18391,10 @@ mod tests {
             .unwrap()
             .is_none());
         assert_eq!(
-            core.editor_bridge
-                .get_content(&doc_id)
-                .unwrap()
-                .matches("用户崩溃重放")
-                .count(),
-            1,
-            "receipt replay must not apply Replace twice"
+            lane_text(&core),
+            "用户崩溃重放",
+            "idempotent verb replay converges to the same lane bytes"
         );
-        let receipt = notebook_projection_mutation_receipt(&mutation);
-        assert!(core
-            .editor_bridge
-            .has_user_mutation_receipt(&doc_id, &receipt)
-            .unwrap());
         let machine_after = core
             .notebook_capture_store
             .get_machine_utterance_by_id("utterance-a")
@@ -18406,8 +18435,16 @@ mod tests {
     fn startup_recovery_recovers_a_previously_rejected_segment_into_the_projected_lane() {
         let (temp, core, _notebook_id, run_id, doc_id) = projected_core_fixture();
         core.project_notebook_capture(&run_id).unwrap();
-        let projected = core.editor_bridge.get_content(&doc_id).unwrap();
-        assert!(projected.contains("zh: 你好\n"), "{projected}");
+        let projected_lane = |core: &ZulangueCore| {
+            core.with_transcript(&doc_id, |projection| Ok(projection.refresh()))
+                .unwrap()
+                .into_iter()
+                .find(|block| block.id == "utterance-a")
+                .unwrap()
+                .lanes["zh"]
+                .clone()
+        };
+        assert_eq!(projected_lane(&core), "你好");
 
         // The row's translation as an old build left it: the head segment bound
         // and projected, the tail durably in the inbox but rejected from the
@@ -18444,9 +18481,11 @@ mod tests {
             .find(|variant| variant.language == "zh")
             .unwrap();
         assert_eq!(lane.text.as_deref(), Some("你好 世界"));
-        let recovered = core.editor_bridge.get_content(&doc_id).unwrap();
-        assert!(recovered.contains("zh: 你好 世界\n"), "{recovered}");
-        assert_eq!(recovered.matches("zh: ").count(), 1, "{recovered}");
+        assert_eq!(
+            projected_lane(&core),
+            "你好 世界",
+            "recovery grows the projected lane in place (one zh lane per block by construction)"
+        );
     }
 
     #[test]
@@ -18554,14 +18593,21 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), corrupt);
 
         // Build a valid Ready projection, then corrupt only its authoritative
-        // durable snapshot before staging a lane edit.
+        // durable block document before staging a lane edit. Dropping the
+        // live handles forces the edit path to reopen the corrupt bytes.
         std::fs::remove_file(&path).unwrap();
         core.editor_bridge.evict(&doc_id);
         core.notebook_capture_store
             .retry_projection(&run_id)
             .unwrap();
         core.project_notebook_capture(&run_id).unwrap();
-        std::fs::write(&path, corrupt).unwrap();
+        let block_path = temp
+            .path()
+            .join("block-documents")
+            .join(format!("{doc_id}.loro"));
+        std::fs::write(&block_path, corrupt).unwrap();
+        core.block_documents.lock().unwrap().remove(&doc_id);
+        core.editor_bridge.evict(&doc_id);
         let original = core
             .notebook_capture_store
             .get_utterance_by_id("utterance-a")
@@ -18593,7 +18639,7 @@ mod tests {
             .list_pending_projection_mutations()
             .unwrap()
             .is_empty());
-        assert_eq!(std::fs::read(&path).unwrap(), corrupt);
+        assert_eq!(std::fs::read(&block_path).unwrap(), corrupt);
 
         assert!(core.purge_session_forever("session-a").is_err());
         assert!(core
@@ -18606,7 +18652,7 @@ mod tests {
             .get_session_purge_job("session-a")
             .unwrap()
             .is_some());
-        assert_eq!(std::fs::read(&path).unwrap(), corrupt);
+        assert_eq!(std::fs::read(&block_path).unwrap(), corrupt);
     }
 
     #[test]
@@ -18659,9 +18705,12 @@ mod tests {
     fn one_failed_pending_purge_does_not_block_core_reopen() {
         let (temp, core, _notebook_id, run_id, doc_id) = projected_core_fixture();
         core.project_notebook_capture(&run_id).unwrap();
-        let path = crate::editor_api::snapshot_path(temp.path(), &doc_id);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, b"corrupt-purge-snapshot").unwrap();
+        let block_path = temp
+            .path()
+            .join("block-documents")
+            .join(format!("{doc_id}.loro"));
+        std::fs::write(&block_path, b"corrupt-purge-snapshot").unwrap();
+        core.block_documents.lock().unwrap().remove(&doc_id);
         core.editor_bridge.evict(&doc_id);
         assert!(core.purge_session_forever("session-a").is_err());
         let before = core
@@ -18682,7 +18731,10 @@ mod tests {
             .expect("the failed purge must remain retryable");
         assert!(
             quarantined.last_error.as_deref().is_some_and(|message| {
-                message.contains("snapshot") || message.contains("Loro") || message.contains("loro")
+                message.contains("snapshot")
+                    || message.contains("Loro")
+                    || message.contains("loro")
+                    || message.contains("块文档")
             }),
             "unexpected durable purge error: {:?}",
             quarantined.last_error
@@ -19877,7 +19929,7 @@ mod tests {
         #[test]
         fn t2_incremental_projection_acks_watermark_and_persists_blocks() {
             let (temp, core, _notebook_id, _run_id, doc_id) = projected_core_fixture();
-            core.project_notebook_realtime_incremental_t2("session-a")
+            core.project_notebook_realtime_incremental("session-a".into())
                 .unwrap();
             let projected = core
                 .notebook_capture_store
@@ -19888,8 +19940,11 @@ mod tests {
 
             // 关句柄、从磁盘重开:块在,形状完整。
             core.block_document_close(doc_id.clone()).unwrap();
-            core.block_document_open(doc_id.clone(), FfiDocumentKind::Transcript)
-                .unwrap();
+            core.block_document_open(
+                doc_id.clone(),
+                crate::block_document_api::FfiDocumentKind::Transcript,
+            )
+            .unwrap();
             let blocks = t2_blocks(&core, &doc_id);
             assert_eq!(blocks.len(), 1);
             assert_eq!(blocks[0].id, "utterance-a");
@@ -19901,7 +19956,7 @@ mod tests {
         #[test]
         fn t2_up_to_date_incremental_projection_skips_machine_fact_hydration() {
             let (temp, core, _notebook_id, _run_id, _doc_id) = projected_core_fixture();
-            core.project_notebook_realtime_incremental_t2("session-a")
+            core.project_notebook_realtime_incremental("session-a".into())
                 .unwrap();
 
             let conn = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
@@ -19921,21 +19976,21 @@ mod tests {
                 .load_realtime_loro_projection("session-a")
                 .is_err());
 
-            core.project_notebook_realtime_incremental_t2("session-a")
+            core.project_notebook_realtime_incremental("session-a".into())
                 .expect("an up-to-date wake must not hydrate the full machine-fact ledger");
         }
 
         #[test]
         fn t2_terminal_projection_keeps_search_and_ready_semantics_after_incremental_ack() {
             let (_temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
-            core.project_notebook_realtime_incremental_t2("session-a")
+            core.project_notebook_realtime_incremental("session-a".into())
                 .unwrap();
             core.search_store
                 .index_session("session-a", "stale disposable index")
                 .unwrap();
             assert!(core.search_sessions("hello".into(), 10).unwrap().is_empty());
 
-            core.project_notebook_capture_t2(&run_id).unwrap();
+            core.project_notebook_capture(&run_id).unwrap();
 
             let run = core
                 .notebook_capture_store
@@ -19955,13 +20010,13 @@ mod tests {
         #[test]
         fn t2_replaying_an_applied_snapshot_is_idempotent() {
             let (_temp, core, _notebook_id, _run_id, doc_id) = projected_core_fixture();
-            core.project_notebook_realtime_incremental_t2("session-a")
+            core.project_notebook_realtime_incremental("session-a".into())
                 .unwrap();
             let before = t2_blocks(&core, &doc_id);
             assert_eq!(before.len(), 1);
 
             // 第二次唤醒:UpToDate,无变化。
-            core.project_notebook_realtime_incremental_t2("session-a")
+            core.project_notebook_realtime_incremental("session-a".into())
                 .unwrap();
             assert_eq!(t2_blocks(&core, &doc_id), before);
 
@@ -19986,18 +20041,23 @@ mod tests {
         #[test]
         fn t2_two_sequential_unicode_lane_edits_commit_override_and_block() {
             let (_temp, core, _notebook_id, _run_id, doc_id) = projected_core_fixture();
-            core.project_notebook_realtime_incremental_t2("session-a")
+            core.project_notebook_realtime_incremental("session-a".into())
                 .unwrap();
 
-            core.replace_notebook_utterance_lane_t2(
-                "utterance-a",
-                "zh",
-                "第一次编辑 🧭\n第二行",
+            core.replace_notebook_utterance_lane(
+                "utterance-a".into(),
+                "zh".into(),
+                "第一次编辑 🧭\n第二行".into(),
                 0,
             )
             .unwrap();
-            core.replace_notebook_utterance_lane_t2("utterance-a", "zh", "第二次编辑 你好🌏", 1)
-                .unwrap();
+            core.replace_notebook_utterance_lane(
+                "utterance-a".into(),
+                "zh".into(),
+                "第二次编辑 你好🌏".into(),
+                1,
+            )
+            .unwrap();
 
             let blocks = t2_blocks(&core, &doc_id);
             assert_eq!(blocks[0].lanes["zh"], "第二次编辑 你好🌏");
@@ -20009,7 +20069,12 @@ mod tests {
 
             // 过期的 expectedRevision:逐字不变的乐观锁拒绝,文档不动。
             let error = core
-                .replace_notebook_utterance_lane_t2("utterance-a", "zh", "过期编辑", 0)
+                .replace_notebook_utterance_lane(
+                    "utterance-a".into(),
+                    "zh".into(),
+                    "过期编辑".into(),
+                    0,
+                )
                 .unwrap_err();
             assert!(
                 error.to_string().contains("0"),
@@ -20048,7 +20113,7 @@ mod tests {
         #[test]
         fn t2_pending_mutation_replays_only_the_sqlite_commit_after_crash() {
             let (_temp, core, _notebook_id, _run_id, doc_id) = projected_core_fixture();
-            core.project_notebook_realtime_incremental_t2("session-a")
+            core.project_notebook_realtime_incremental("session-a".into())
                 .unwrap();
 
             let mutation = core
@@ -20083,14 +20148,19 @@ mod tests {
         #[test]
         fn t2_missing_block_cancels_the_staged_mutation() {
             let (temp, core, _notebook_id, _run_id, doc_id) = projected_core_fixture();
-            core.project_notebook_realtime_incremental_t2("session-a")
+            core.project_notebook_realtime_incremental("session-a".into())
                 .unwrap();
             // 弄丢块文档(极端损坏情形):关句柄、删文件。
             core.block_document_close(doc_id.clone()).unwrap();
             std::fs::remove_file(t2_block_doc_path(&temp, &doc_id)).unwrap();
 
             let error = core
-                .replace_notebook_utterance_lane_t2("utterance-a", "zh", "编辑", 0)
+                .replace_notebook_utterance_lane(
+                    "utterance-a".into(),
+                    "zh".into(),
+                    "编辑".into(),
+                    0,
+                )
                 .unwrap_err();
             assert!(
                 error.to_string().contains("is missing"),
