@@ -14,6 +14,7 @@ pub mod notebook_store;
 pub mod search;
 pub mod session_meta;
 pub mod session_query;
+pub mod transcript_projection;
 
 pub use context_pack_store::{
     BoundContextPack, ContextCompilation, ContextContentKind, ContextOmission,
