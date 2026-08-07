@@ -47,6 +47,9 @@ impl DocumentSync for FakeDoc {
             .to_le_bytes()
             .to_vec()
     }
+    fn schema_epoch(&self, _scope: &ScopeId, _document_id: &str) -> Option<u64> {
+        Some(1)
+    }
     fn updates_since(
         &self,
         _scope: &ScopeId,

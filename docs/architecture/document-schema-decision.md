@@ -12,7 +12,8 @@ LoroDoc
 ├── LoroMap(CAPTURE_ANCHOR_STARTS)             ← owner_key → Cursor(二进制)
 ├── LoroMap(CAPTURE_ANCHOR_ENDS)               ← owner_key → Cursor(二进制)
 ├── LoroMap(CAPTURE_ANCHOR_SESSIONS)           ← owner_key → capture_session_id
-└── LoroMap("zulangue_session_purge_receipts") ← 销毁收据
+├── LoroMap("zulangue_session_purge_receipts") ← 销毁收据
+└── LoroMap("zulangue_document_meta")          ← schema_epoch=1（阶段 1 已落地）
 ```
 
 必须先说清楚**不在**文档里的东西，因为它们不受本决策影响：
@@ -185,8 +186,11 @@ kind = "note":
 
 ## 阶段划分
 
-1. **纪元字段先行**（半天）:现有文档与分享信封先带上 `schema_epoch=1`,
-   为混流拒绝做准备——这一步无论最终选哪个方案都需要;
+1. **纪元字段先行**（半天,**已落地 2026-08-07**）:文档打开即在根部
+   `zulangue_document_meta` 补写 `schema_epoch=1`(只补缺,不盖写更高纪元);
+   `DocumentUpdatePayload` 带同字段,接收端在归属检查之后、作者判定之前比对,
+   不匹配拒收(`SchemaEpochMismatch`),判不出来拒收(`SchemaEpochUnknown`),
+   发送侧判不出来不发;
 2. 新 schema 的 editor_bridge(块投影、静态守卫)+ 性质测试;
 3. 块列表 ↔ NSTextView 映射层,EditorSurface 状态收敛同场施工;
 4. 重放迁移工具 + 逐 frontier 验证器;首启迁移,旧文件留 `.pre-epoch2` 备份;

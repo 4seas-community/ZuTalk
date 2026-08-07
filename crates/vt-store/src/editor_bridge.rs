@@ -211,6 +211,46 @@ const USER_MUTATION_RECEIPTS: &str = "zulangue_user_mutation_receipts";
 const PROJECTION_RECEIPT_NAMESPACE: &str = "realtime_projection";
 const DURABLE_RECEIPT_SCHEMA_VERSION: u8 = 1;
 
+/// 文档结构纪元。今天的所有文档都是第 1 纪元(平文本 + 锚点 map);T2/B
+/// 迁移引入第 2 纪元时递增。新旧纪元不得混流 —— 两个纪元的 oplog 属于两个
+/// 结构不同的文档,合并会同时损坏两边。见
+/// docs/architecture/document-schema-decision.md「迁移」一节。
+pub const CURRENT_SCHEMA_EPOCH: u64 = 1;
+/// 纪元字段引入之前的文档一律按第 1 纪元读。这个值永远是 1,不随
+/// `CURRENT_SCHEMA_EPOCH` 演进 —— 「字段缺失」的含义在字段引入那一刻就
+/// 冻结了。
+const PRE_EPOCH_FIELD: u64 = 1;
+const DOCUMENT_META: &str = "zulangue_document_meta";
+const SCHEMA_EPOCH_KEY: &str = "schema_epoch";
+
+/// 读一份文档声明的纪元。缺失或损坏都按 [`PRE_EPOCH_FIELD`] 读 —— 判定必须
+/// 在每台机器上得出同一个答案,否则同一份文档会被两个对端读出两个纪元。
+fn schema_epoch_of(doc: &LoroDoc) -> u64 {
+    let Some(value) = doc.get_map(DOCUMENT_META).get(SCHEMA_EPOCH_KEY) else {
+        return PRE_EPOCH_FIELD;
+    };
+    match value.get_deep_value() {
+        LoroValue::I64(epoch) => u64::try_from(epoch).unwrap_or(PRE_EPOCH_FIELD),
+        _ => PRE_EPOCH_FIELD,
+    }
+}
+
+/// 给尚无纪元字段的文档补上当前纪元。已带字段的文档原样保留 —— 未来第 2
+/// 纪元的文档绝不能在这里被盖写回 1。写入失败不致命:读侧对缺失字段的
+/// 解读(第 1 纪元)与今天要写的值一致。
+fn stamp_schema_epoch(doc: &LoroDoc) {
+    let meta = doc.get_map(DOCUMENT_META);
+    if meta.get(SCHEMA_EPOCH_KEY).is_some() {
+        return;
+    }
+    if meta
+        .insert(SCHEMA_EPOCH_KEY, CURRENT_SCHEMA_EPOCH as i64)
+        .is_ok()
+    {
+        doc.commit();
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CaptureAnchorWrite {
     Start,
@@ -408,6 +448,7 @@ impl EditorBridge {
         if let Some(existing) = sessions.get_mut(session_id) {
             existing.refcount = existing.refcount.saturating_add(1);
         } else {
+            stamp_schema_epoch(&doc);
             sessions.insert(
                 session_id.to_string(),
                 OpenSession {
@@ -437,6 +478,7 @@ impl EditorBridge {
             // 语义上已过期(对应的 EditorHandle 持有者不再活跃)。
             existing.callback = Some(callback);
         } else {
+            stamp_schema_epoch(&doc);
             sessions.insert(
                 session_id.to_string(),
                 OpenSession {
@@ -1160,6 +1202,8 @@ impl EditorBridge {
         new_doc
             .import(snapshot)
             .map_err(|e| EditorBridgeError::LoroError(e.to_string()))?;
+        // 换入的快照可能来自纪元字段引入之前的备份。
+        stamp_schema_epoch(&new_doc);
 
         // 2. 持锁只做 swap + generation++ + clone callback handle
         let (new_generation, callback_for_notify) = {
@@ -2409,6 +2453,14 @@ impl EditorBridge {
         session.doc.export(loro::ExportMode::updates(&from)).ok()
     }
 
+    /// 一篇打开中的文档声明的结构纪元。未打开返回 `None` —— 同步家族的
+    /// 问题只对打开的文档有答案,与 `document_version` 一致;上层把
+    /// `None` 按拒收处理。
+    pub fn schema_epoch(&self, document_id: &str) -> Option<u64> {
+        let sessions = self.sessions.lock().unwrap();
+        Some(schema_epoch_of(&sessions.get(document_id)?.doc))
+    }
+
     /// 合入一份**已经通过准入**的远端更新。
     pub fn import_remote_update(&self, document_id: &str, update: &[u8]) -> bool {
         let mut sessions = self.sessions.lock().unwrap();
@@ -2483,5 +2535,89 @@ mod document_sync_tests {
         assert!(bridge.document_version("missing").is_none());
         assert!(bridge.updates_since("missing", b"").is_none());
         assert!(!bridge.import_remote_update("missing", b"anything"));
+    }
+}
+
+#[cfg(test)]
+mod schema_epoch_tests {
+    use super::*;
+
+    /// 打开即盖章:新文档与纪元字段引入前的旧文档,离开 open 时都带上
+    /// 当前纪元。
+    #[test]
+    fn opening_stamps_the_current_epoch() {
+        let bridge = EditorBridge::new();
+        bridge.open("doc", LoroDoc::new()).unwrap();
+        assert_eq!(bridge.schema_epoch("doc"), Some(CURRENT_SCHEMA_EPOCH));
+    }
+
+    /// 纪元随快照落盘,重开不再补写 —— 第二次 open 读到的是持久化的值。
+    #[test]
+    fn the_epoch_survives_a_snapshot_round_trip() {
+        let bridge = EditorBridge::new();
+        bridge.open("doc", LoroDoc::new()).unwrap();
+        let snapshot = bridge.export_snapshot("doc").unwrap();
+
+        let reopened = LoroDoc::new();
+        reopened.import(&snapshot).unwrap();
+        let vv_before = reopened.oplog_vv();
+        let second = EditorBridge::new();
+        second.open("doc", reopened).unwrap();
+        assert_eq!(second.schema_epoch("doc"), Some(CURRENT_SCHEMA_EPOCH));
+
+        // 已带字段的文档不该再产生一笔盖章 op。
+        let sessions = second.sessions.lock().unwrap();
+        assert_eq!(sessions.get("doc").unwrap().doc.oplog_vv(), vv_before);
+    }
+
+    /// 已声明更高纪元的文档绝不能被降级盖写 —— stamp 只补缺,不覆盖。
+    #[test]
+    fn a_future_epoch_is_never_stamped_back_down() {
+        let doc = LoroDoc::new();
+        doc.get_map(DOCUMENT_META)
+            .insert(SCHEMA_EPOCH_KEY, (CURRENT_SCHEMA_EPOCH + 1) as i64)
+            .unwrap();
+        doc.commit();
+        let bridge = EditorBridge::new();
+        bridge.open("doc", doc).unwrap();
+        assert_eq!(bridge.schema_epoch("doc"), Some(CURRENT_SCHEMA_EPOCH + 1));
+    }
+
+    /// 换入纪元字段引入前的备份快照,也要在换入时补上字段。
+    #[test]
+    fn replacing_with_a_pre_epoch_snapshot_stamps_it() {
+        let legacy = LoroDoc::new();
+        legacy.get_text("content").insert(0, "旧内容").unwrap();
+        legacy.commit();
+        let snapshot = legacy.export(loro::ExportMode::Snapshot).unwrap();
+
+        let bridge = EditorBridge::new();
+        bridge.open("doc", LoroDoc::new()).unwrap();
+        bridge.replace_document("doc", &snapshot).unwrap();
+        assert_eq!(bridge.schema_epoch("doc"), Some(CURRENT_SCHEMA_EPOCH));
+    }
+
+    /// 损坏的纪元值必须在每台机器上读出同一个答案。
+    #[test]
+    fn a_corrupt_epoch_value_reads_deterministically() {
+        let doc = LoroDoc::new();
+        doc.get_map(DOCUMENT_META)
+            .insert(SCHEMA_EPOCH_KEY, "not-a-number")
+            .unwrap();
+        doc.commit();
+        assert_eq!(schema_epoch_of(&doc), PRE_EPOCH_FIELD);
+
+        let negative = LoroDoc::new();
+        negative
+            .get_map(DOCUMENT_META)
+            .insert(SCHEMA_EPOCH_KEY, -5i64)
+            .unwrap();
+        negative.commit();
+        assert_eq!(schema_epoch_of(&negative), PRE_EPOCH_FIELD);
+    }
+
+    #[test]
+    fn an_unopened_document_has_no_epoch() {
+        assert_eq!(EditorBridge::new().schema_epoch("missing"), None);
     }
 }

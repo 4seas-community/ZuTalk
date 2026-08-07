@@ -112,6 +112,12 @@ impl vt_share::DocumentSync for LoroDocumentSync {
             .unwrap_or_default()
     }
 
+    fn schema_epoch(&self, _scope: &ScopeId, document_id: &str) -> Option<u64> {
+        // 未打开的文档判不出纪元,按 None 让上层拒收/不发 —— 与 version /
+        // updates_since 一样,同步家族只对打开的文档有答案。
+        self.editor.schema_epoch(document_id)
+    }
+
     fn updates_since(
         &self,
         _scope: &ScopeId,
@@ -956,7 +962,14 @@ mod tests {
         };
         let host = iroh::SecretKey::generate();
         let roster = RoomRoster::new(scope.clone(), host.public(), WritePolicy::Everyone);
-        let envelope = seal_update(&scope, document_id, update, &host).unwrap();
+        let envelope = seal_update(
+            &scope,
+            document_id,
+            vt_store::editor_bridge::CURRENT_SCHEMA_EPOCH,
+            update,
+            &host,
+        )
+        .unwrap();
 
         // NotebookCaptureStore 只在 Notebook 范围下才被问到,Session 范围用不着它。
         let store = Arc::new(

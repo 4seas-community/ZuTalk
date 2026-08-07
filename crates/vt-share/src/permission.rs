@@ -114,6 +114,10 @@ pub enum AdmissionDenial {
     TouchesCaptureOwnedRange,
     #[error("这篇文档不属于本共享范围")]
     DocumentNotInScope,
+    #[error("文档结构纪元不匹配:本机 {local},对端 {remote}")]
+    SchemaEpochMismatch { local: u64, remote: u64 },
+    #[error("本机判不出这篇文档的结构纪元")]
+    SchemaEpochUnknown,
 }
 
 /// 文档更新的编辑边界裁决。

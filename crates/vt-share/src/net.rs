@@ -580,9 +580,14 @@ fn spawn_update_pusher(
                 Err(broadcast::error::RecvError::Closed) => break,
             };
             let (document_id, bytes) = update.as_ref();
+            // 与 respond_to_have 同一条纪律:纪元判不出来就不发。
+            let Some(schema_epoch) = context.sink.schema_epoch(&context.scope, document_id) else {
+                continue;
+            };
             let Some(envelope) = seal_update(
                 &context.scope,
                 document_id,
+                schema_epoch,
                 bytes.clone(),
                 identity.secret(),
             ) else {

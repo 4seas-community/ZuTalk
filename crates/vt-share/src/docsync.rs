@@ -6,8 +6,8 @@
 //!
 //! # 每一份进来的更新都要过门
 //!
-//! 合入之前跑完整条准入链:验签 → 成员资格 → 写入策略 → 编辑边界。**判不出来一律
-//! 拒收** —— 判不出来时放行,等于这道门不存在。
+//! 合入之前跑完整条准入链:归属 → 结构纪元 → 验签 → 成员资格 → 写入策略 →
+//! 编辑边界。**判不出来一律拒收** —— 判不出来时放行,等于这道门不存在。
 //!
 //! 见 `docs/architecture/share-p2p.md` 第 4.2 节。
 
@@ -25,6 +25,11 @@ use crate::room::ScopeId;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentUpdatePayload {
     pub document_id: String,
+    /// 这份更新所属文档的结构纪元。**它也是对端声称的**,接收侧必须与本机
+    /// 同一篇文档的纪元比对,不匹配大声拒绝 —— 两个纪元的 oplog 属于两个
+    /// 结构不同的文档,CRDT 会把混流老实合并成一篇两边都损坏的东西。
+    /// 见 docs/architecture/document-schema-decision.md「迁移」一节。
+    pub schema_epoch: u64,
     pub update: Vec<u8>,
 }
 
@@ -64,6 +69,12 @@ pub trait DocumentSync: Send + Sync {
 
     /// 某一篇文档的当前版本,用于告诉对方「我有到这里」。
     fn version(&self, scope: &ScopeId, document_id: &str) -> Vec<u8>;
+
+    /// 这篇文档当前的结构纪元。
+    ///
+    /// **判不出来必须返回 `None`**,上层按拒收处理 —— 纪元未知时放行,
+    /// 等于允许另一纪元的操作混进这篇文档的历史。
+    fn schema_epoch(&self, scope: &ScopeId, document_id: &str) -> Option<u64>;
 
     /// 对方停在 `version` 时,这篇文档缺的那些更新。没有则返回 `None`。
     fn updates_since(&self, scope: &ScopeId, document_id: &str, version: &[u8]) -> Option<Vec<u8>>;
@@ -107,6 +118,19 @@ pub fn handle_incoming_update(
         return IncomingOutcome::Denied(AdmissionDenial::DocumentNotInScope);
     }
 
+    // 纪元紧随归属:另一纪元的更新无论作者是谁、权限如何都不能合入。
+    // 混流不是权限问题,是结构损坏 —— 所以它排在作者与写入策略之前。
+    match sink.schema_epoch(roster.scope(), &payload.document_id) {
+        None => return IncomingOutcome::Denied(AdmissionDenial::SchemaEpochUnknown),
+        Some(local) if local != payload.schema_epoch => {
+            return IncomingOutcome::Denied(AdmissionDenial::SchemaEpochMismatch {
+                local,
+                remote: payload.schema_epoch,
+            });
+        }
+        Some(_) => {}
+    }
+
     if let Err(denial) = admit_document_update(
         &envelope,
         &payload.document_id,
@@ -127,11 +151,13 @@ pub fn handle_incoming_update(
 pub fn seal_update(
     scope: &ScopeId,
     document_id: &str,
+    schema_epoch: u64,
     update: Vec<u8>,
     secret: &iroh::SecretKey,
 ) -> Option<Vec<u8>> {
     let payload = postcard::to_stdvec(&DocumentUpdatePayload {
         document_id: document_id.to_string(),
+        schema_epoch,
         update,
     })
     .ok()?;
@@ -176,7 +202,11 @@ pub fn respond_to_have(
         let Some(update) = sink.updates_since(scope, &document_id, peer_version) else {
             continue;
         };
-        if let Some(bytes) = seal_update(scope, &document_id, update, secret) {
+        // 纪元判不出来就不发。发一个猜出来的纪元,等于替对端跳过混流检查。
+        let Some(schema_epoch) = sink.schema_epoch(scope, &document_id) else {
+            continue;
+        };
+        if let Some(bytes) = seal_update(scope, &document_id, schema_epoch, update, secret) {
             envelopes.push(bytes);
         }
     }
@@ -197,6 +227,7 @@ mod tests {
     use std::sync::Mutex;
 
     const DOC: &str = "doc-1";
+    const EPOCH: u64 = 1;
 
     /// 记录被合入了什么,用来断言「拒收的东西没有偷偷进去」。
     struct RecordingSink {
@@ -205,6 +236,8 @@ mod tests {
         docs: BTreeSet<String>,
         /// 待补给对方的历史,按文档。
         pending: Option<Vec<u8>>,
+        /// 本机文档的结构纪元;`None` 模拟判不出来。
+        epoch: Option<u64>,
         accept: bool,
     }
 
@@ -214,6 +247,7 @@ mod tests {
                 applied: Mutex::new(Vec::new()),
                 docs: [DOC.to_string()].into_iter().collect(),
                 pending: None,
+                epoch: Some(EPOCH),
                 accept: true,
             }
         }
@@ -243,6 +277,9 @@ mod tests {
         }
         fn version(&self, _scope: &ScopeId, _document_id: &str) -> Vec<u8> {
             Vec::new()
+        }
+        fn schema_epoch(&self, _scope: &ScopeId, _document_id: &str) -> Option<u64> {
+            self.epoch
         }
         fn updates_since(
             &self,
@@ -280,7 +317,23 @@ mod tests {
     }
 
     fn signed(secret: &SecretKey, document_id: &str, payload: &[u8]) -> Vec<u8> {
-        seal_update(&scope(), document_id, payload.to_vec(), secret).unwrap()
+        seal_update(&scope(), document_id, EPOCH, payload.to_vec(), secret).unwrap()
+    }
+
+    fn signed_with_epoch(
+        secret: &SecretKey,
+        document_id: &str,
+        schema_epoch: u64,
+        payload: &[u8],
+    ) -> Vec<u8> {
+        seal_update(
+            &scope(),
+            document_id,
+            schema_epoch,
+            payload.to_vec(),
+            secret,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -321,6 +374,66 @@ mod tests {
             IncomingOutcome::Denied(AdmissionDenial::DocumentNotInScope)
         );
         assert!(sink.applied().is_empty(), "范围外的文档一个字节都不该合入");
+    }
+
+    /// 另一纪元的更新无论作者是谁都不能合入 —— 两个纪元的 oplog 属于两个
+    /// 结构不同的文档,CRDT 会把混流合并成一篇两边都损坏的东西。
+    #[test]
+    fn an_update_from_another_schema_epoch_is_refused_loudly() {
+        let host = SecretKey::generate();
+        let roster = RoomRoster::new(scope(), host.public(), WritePolicy::Everyone);
+        let sink = RecordingSink::accepting();
+
+        assert_eq!(
+            handle_incoming_update(
+                &signed_with_epoch(&host, DOC, EPOCH + 1, b"epoch-2-bytes"),
+                &roster,
+                &AllowAllBoundaries,
+                &sink
+            ),
+            IncomingOutcome::Denied(AdmissionDenial::SchemaEpochMismatch {
+                local: EPOCH,
+                remote: EPOCH + 1,
+            })
+        );
+        assert!(sink.applied().is_empty(), "混流一个字节都不能合入");
+    }
+
+    /// 纪元判不出来一律拒收 —— 与准入链其它环节同一条家法。
+    #[test]
+    fn an_unknown_local_epoch_refuses_the_update() {
+        let host = SecretKey::generate();
+        let roster = RoomRoster::new(scope(), host.public(), WritePolicy::Everyone);
+        let sink = RecordingSink {
+            epoch: None,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            handle_incoming_update(
+                &signed(&host, DOC, b"x"),
+                &roster,
+                &AllowAllBoundaries,
+                &sink
+            ),
+            IncomingOutcome::Denied(AdmissionDenial::SchemaEpochUnknown)
+        );
+        assert!(sink.applied().is_empty());
+    }
+
+    /// 纪元判不出来也不发 —— 发一个猜的纪元等于替对端跳过混流检查。
+    #[test]
+    fn an_unknown_local_epoch_sends_nothing() {
+        let host = SecretKey::generate();
+        let sink = RecordingSink {
+            pending: Some(b"history".to_vec()),
+            epoch: None,
+            ..Default::default()
+        };
+        assert_eq!(
+            respond_to_have(&[], &scope(), &sink, &host),
+            DocSyncMessage::UpToDate
+        );
     }
 
     /// 被拒的更新**一个字节都不能**到达文档层。
