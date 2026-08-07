@@ -1003,12 +1003,22 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def send_admin_login(self, message: str = "") -> None:
+        # autocomplete is off on purpose. A password field that advertises
+        # itself as a saved credential makes Safari and Chrome raise their own
+        # password-manager prompts (fill offers, Touch ID, "save this?"), and a
+        # bare token box that summons system-looking dialogs reads as phishing.
+        # The token belongs to the operator's server config, not to a browser
+        # keychain, so nothing here should be offered up for storage.
         body = (
             "<h1>Zulangue invites</h1>"
             + (f"<p class='warn'>{html.escape(message)}</p>" if message else "")
-            + "<form method='post' action='/admin/login'>"
+            + "<p class='dim'>Operator console for issuing invitation codes. "
+            "Sign in with the <code>ZULANGUE_ADMIN_TOKEN</code> set on this "
+            "server. Nothing here touches your Mac or its keychain.</p>"
+            "<form method='post' action='/admin/login'>"
             "<label>Admin token<br><input type='password' name='token' "
-            "autofocus autocomplete='current-password'></label> "
+            "autofocus autocomplete='off' spellcheck='false' "
+            "data-1p-ignore data-lpignore='true'></label> "
             "<button type='submit'>Sign in</button></form>"
         )
         self.send_html(200, admin_document(body))
