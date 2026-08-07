@@ -5840,6 +5840,7 @@ dependencies = [
  "iroh-gossip",
  "iroh-mdns-address-lookup",
  "iroh-tickets",
+ "n0-future",
  "postcard",
  "serde",
  "serde_json",
@@ -5847,6 +5848,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "uuid",
  "vt-export",
  "vt-model",
 ]
