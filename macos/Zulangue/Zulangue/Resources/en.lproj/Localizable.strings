@@ -488,7 +488,6 @@
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "No transcript yet";
 "editor.empty.no_transcript_desc" = "Transcript becomes available after recording finishes.";
-"editor.empty.unavailable_title" = "Editor unavailable";
 "editor.empty.no_doc_title" = "No active document";
 "editor.empty.no_doc_desc" = "Start a recording to create a new document you can edit live while the audio captures.";
 
@@ -555,6 +554,15 @@
 /* Document editor */
 "editor.toolbar.show_sources" = "Show sources";
 "editor.toolbar.show_tasks" = "Show tasks";
+
+/* Outline note editor (block document) */
+"editor.outline.load_failed_title" = "Notes could not be opened";
+"editor.outline.retry" = "Try again";
+"editor.outline.apply_failed" = "The note change could not be saved";
+"editor.outline.row_label" = "Outline row, level %lld";
+"editor.outline.indent" = "Indent";
+"editor.outline.outdent" = "Outdent";
+"editor.outline.delete_row" = "Delete row";
 "editor.tasks.title" = "Tasks";
 "editor.tasks.count_format" = "%lld background tasks";
 "editor.tasks.refresh" = "Refresh tasks";

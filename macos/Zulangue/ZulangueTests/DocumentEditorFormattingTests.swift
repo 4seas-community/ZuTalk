@@ -68,7 +68,8 @@ final class DocumentEditorTaskQueuePanelTests: XCTestCase {
         XCTAssertTrue(source.contains("case tasks"))
         XCTAssertTrue(source.contains("@StateObject private var notebookTasks = NotebookTasksViewModel()"))
         XCTAssertTrue(source.contains("NotebookTasksPanel(viewModel: notebookTasks)"))
-        XCTAssertTrue(source.contains("ToolButton(systemIcon: \"checklist\""))
+        XCTAssertTrue(source.contains("BlockNoteUtilityBar("))
+        XCTAssertTrue(source.contains("Image(systemName: \"checklist\")"))
         XCTAssertTrue(source.contains("client.listTasks(statusFilter: nil)"))
     }
 
@@ -123,10 +124,17 @@ final class DocumentEditorMinimalMVPSmokeTests: XCTestCase {
             )
         }
 
-        XCTAssertTrue(page.contains("DocumentTextView("))
-        XCTAssertTrue(page.contains("final class LoroBackedTextView: NSTextView"))
-        XCTAssertTrue(page.contains("func textDidChange(_ notification: Notification)"))
-        XCTAssertTrue(page.contains(".accessibilityHint(Text(isEditable ?"))
+        // 本地编辑面从平文本编辑器换成了大纲编辑器(块文档 FFI)。
+        let outlineEditor = try String(
+            contentsOf: root.appendingPathComponent("Pages/BlockNoteEditorView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(page.contains("BlockNoteEditorView(notebookId: notebookId, tabId: tabId)"))
+        XCTAssertFalse(page.contains("DocumentTextView("))
+        XCTAssertFalse(page.contains("LoroBackedTextView"))
+        XCTAssertTrue(outlineEditor.contains("store.insertRow(after: row.id)"))
+        XCTAssertTrue(outlineEditor.contains("store.replaceText(rowId: row.id, text: draft)"))
+        XCTAssertTrue(outlineEditor.contains(".accessibilityLabel(Text(String("))
         XCTAssertFalse(page.contains("NotebookAskPanel("))
         XCTAssertFalse(page.contains("submitNotebookAskTask"))
         XCTAssertFalse(page.contains("editor.toolbar.show_sources"))
@@ -191,7 +199,7 @@ final class DocumentEditorWorkspacePanelLocalizationTests: XCTestCase {
 
         for key in toolbarKeys {
             XCTAssertTrue(
-                source.contains("tooltip: String(localized: \"\(key)\")"),
+                source.contains(".help(String(localized: \"\(key)\"))"),
                 "\(key) should be used by editor toolbar actions"
             )
         }
@@ -230,65 +238,5 @@ final class DocumentEditorWorkspacePanelLocalizationTests: XCTestCase {
             contentsOf: root.appendingPathComponent("Resources/\(locale)/Localizable.strings"),
             encoding: .utf8
         )
-    }
-}
-
-final class DocumentEditorFormattingTests: XCTestCase {
-    func testLegacyListStringDecodesAsDepthOne() {
-        let style = LoroListStyle.decode(from: "bullet")
-
-        XCTAssertEqual(style, LoroListStyle(kind: "bullet", depth: 1))
-    }
-
-    func testListStyleValueJsonRoundTripsDepth() throws {
-        let style = LoroListStyle(kind: "ordered", depth: 3)
-        let raw = try JSONSerialization.jsonObject(with: Data(style.valueJson.utf8))
-        let decoded = LoroListStyle.decode(from: raw)
-
-        XCTAssertEqual(decoded, style)
-    }
-
-    func testRenderAttributesExposeListDepthAndIndent() {
-        let attrs = LoroAttributedStringBuilder.renderAttributes(
-            for: [
-                LoroMarkKey.list: [
-                    "kind": "ordered",
-                    "depth": 3,
-                ]
-            ],
-            style: .default
-        )
-
-        XCTAssertEqual(attrs[.zulangueListKind] as? String, "ordered")
-        XCTAssertEqual((attrs[.zulangueListDepth] as? NSNumber)?.intValue, 3)
-
-        let paragraphStyle = attrs[.paragraphStyle] as? NSParagraphStyle
-        let expectedIndent = LoroRenderStyle.listBaseIndent + (2 * LoroRenderStyle.listIndentStep)
-        XCTAssertEqual(paragraphStyle?.headIndent ?? 0, expectedIndent, accuracy: 0.001)
-        XCTAssertEqual(paragraphStyle?.firstLineHeadIndent ?? 0, expectedIndent, accuracy: 0.001)
-    }
-
-    func testReadableInsetCentersOnWideWindowsAndClampsOnNarrowWindows() {
-        let style = LoroRenderStyle.default
-
-        XCTAssertEqual(
-            style.readableHorizontalInset(for: 640),
-            LoroRenderStyle.minimumHorizontalInset,
-            accuracy: 0.001
-        )
-        XCTAssertGreaterThan(
-            style.readableHorizontalInset(for: 1400),
-            LoroRenderStyle.minimumHorizontalInset
-        )
-    }
-
-    func testHeadingParagraphStyleAddsMoreVerticalRhythmThanBody() {
-        let style = LoroRenderStyle.default
-        let body = style.paragraphStyle()
-        let heading = style.paragraphStyle(headingLevel: 1)
-
-        XCTAssertGreaterThan(heading.paragraphSpacingBefore, body.paragraphSpacingBefore)
-        XCTAssertGreaterThan(heading.paragraphSpacing, body.paragraphSpacing)
-        XCTAssertGreaterThan(heading.lineSpacing, body.lineSpacing)
     }
 }

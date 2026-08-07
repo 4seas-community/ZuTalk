@@ -488,7 +488,6 @@
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "尚无转录稿";
 "editor.empty.no_transcript_desc" = "录音结束后转录稿才可用。";
-"editor.empty.unavailable_title" = "编辑器不可用";
 "editor.empty.no_doc_title" = "无活动文档";
 "editor.empty.no_doc_desc" = "开始录音会创建一个新文档,可在录制同时实时编辑。";
 
@@ -555,6 +554,15 @@
 /* Document editor */
 "editor.toolbar.show_sources" = "显示来源";
 "editor.toolbar.show_tasks" = "显示任务";
+
+/* 大纲笔记编辑器(块文档) */
+"editor.outline.load_failed_title" = "笔记暂时打不开";
+"editor.outline.retry" = "重试";
+"editor.outline.apply_failed" = "这次笔记改动没有保存成功";
+"editor.outline.row_label" = "大纲行,第 %lld 级";
+"editor.outline.indent" = "增加缩进";
+"editor.outline.outdent" = "减少缩进";
+"editor.outline.delete_row" = "删除此行";
 "editor.tasks.title" = "任务";
 "editor.tasks.count_format" = "%lld 个后台任务";
 "editor.tasks.refresh" = "刷新任务";

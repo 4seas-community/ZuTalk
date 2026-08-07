@@ -488,7 +488,6 @@
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "ยังไม่มีบทถอดเสียง";
 "editor.empty.no_transcript_desc" = "บทถอดเสียงจะพร้อมใช้งานหลังการบันทึกเสร็จสิ้น";
-"editor.empty.unavailable_title" = "ตัวแก้ไขไม่พร้อมใช้งาน";
 "editor.empty.no_doc_title" = "ไม่มีเอกสารที่ใช้งานอยู่";
 "editor.empty.no_doc_desc" = "เริ่มการบันทึกเพื่อสร้างเอกสารใหม่ที่คุณแก้ไขได้แบบสดระหว่างบันทึกเสียง";
 
@@ -555,6 +554,15 @@
 /* Document editor */
 "editor.toolbar.show_sources" = "แสดงแหล่งที่มา";
 "editor.toolbar.show_tasks" = "แสดงงาน";
+
+/* ตัวแก้ไขโน้ตแบบเค้าโครง (เอกสารบล็อก) */
+"editor.outline.load_failed_title" = "ไม่สามารถเปิดโน้ตได้";
+"editor.outline.retry" = "ลองอีกครั้ง";
+"editor.outline.apply_failed" = "บันทึกการแก้ไขโน้ตไม่สำเร็จ";
+"editor.outline.row_label" = "แถวเค้าโครง ระดับ %lld";
+"editor.outline.indent" = "เพิ่มการเยื้อง";
+"editor.outline.outdent" = "ลดการเยื้อง";
+"editor.outline.delete_row" = "ลบแถวนี้";
 "editor.tasks.title" = "งาน";
 "editor.tasks.count_format" = "งานเบื้องหลัง %lld งาน";
 "editor.tasks.refresh" = "รีเฟรชงาน";

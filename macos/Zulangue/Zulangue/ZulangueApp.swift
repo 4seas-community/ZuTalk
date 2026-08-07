@@ -30,8 +30,9 @@ struct ZulangueApp: App {
             CommandGroup(replacing: .newItem) {}
             // 主窗口改由 AppKit WindowSystem 持有,不再暴露空白 SwiftUI settings scene。
             CommandGroup(replacing: .appSettings) {}
-            // 屏蔽 Format 菜单 ⌘B/⌘I/⌘U 的默认 toggleBold:/toggleItalic:,
-            // 让我们的 LoroBackedTextView.performKeyEquivalent 能接到
+            // 屏蔽 Format 菜单 ⌘B/⌘I/⌘U 的默认 toggleBold:/toggleItalic:。
+            // 富文本编辑器已拆除(笔记走大纲编辑器,无格式化),保留屏蔽
+            // 避免出现一排对纯文本行无效的系统菜单项。
             CommandGroup(replacing: .textFormatting) {}
         }
     }

@@ -487,7 +487,6 @@
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "Noch kein Transkript";
 "editor.empty.no_transcript_desc" = "Das Transkript wird verfügbar, sobald die Aufnahme beendet ist.";
-"editor.empty.unavailable_title" = "Editor nicht verfügbar";
 "editor.empty.no_doc_title" = "Kein aktives Dokument";
 "editor.empty.no_doc_desc" = "Starte eine Aufnahme, um ein neues Dokument zu erstellen, das du während der Audioaufnahme live bearbeiten kannst.";
 
@@ -554,6 +553,15 @@
 /* Document editor */
 "editor.toolbar.show_sources" = "Quellen einblenden";
 "editor.toolbar.show_tasks" = "Aufgaben einblenden";
+
+/* Gliederungs-Notizeditor (Blockdokument) */
+"editor.outline.load_failed_title" = "Notizen konnten nicht geöffnet werden";
+"editor.outline.retry" = "Erneut versuchen";
+"editor.outline.apply_failed" = "Die Notizänderung konnte nicht gespeichert werden";
+"editor.outline.row_label" = "Gliederungszeile, Ebene %lld";
+"editor.outline.indent" = "Einrücken";
+"editor.outline.outdent" = "Ausrücken";
+"editor.outline.delete_row" = "Zeile löschen";
 "editor.tasks.title" = "Aufgaben";
 "editor.tasks.count_format" = "%lld Hintergrundaufgaben";
 "editor.tasks.refresh" = "Aufgaben aktualisieren";

@@ -476,7 +476,6 @@
 "editor.tab.transcript.hint" = "音声の文字起こし";
 "menubar.recording.mode.local" = "ローカル";
 "menubar.recording.mode.remote" = "SONIOX RT5";
-"editor.empty.unavailable_title" = "エディタが利用不可";
 "editor.empty.no_doc_title" = "アクティブドキュメントなし";
 "editor.empty.no_doc_desc" = "録音を開始すると録音と同時に編集できる新しいドキュメントが作成されます。";
 
@@ -543,6 +542,15 @@
 /* Document editor */
 "editor.toolbar.show_sources" = "ソースを表示";
 "editor.toolbar.show_tasks" = "タスクを表示";
+
+/* アウトラインノートエディタ(ブロックドキュメント) */
+"editor.outline.load_failed_title" = "ノートを開けませんでした";
+"editor.outline.retry" = "再試行";
+"editor.outline.apply_failed" = "ノートの変更を保存できませんでした";
+"editor.outline.row_label" = "アウトライン行、レベル %lld";
+"editor.outline.indent" = "インデント";
+"editor.outline.outdent" = "インデント解除";
+"editor.outline.delete_row" = "行を削除";
 "editor.tasks.title" = "タスク";
 "editor.tasks.count_format" = "%lld 件のバックグラウンドタスク";
 "editor.tasks.refresh" = "タスクを更新";

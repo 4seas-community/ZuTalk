@@ -2924,13 +2924,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testOnlyManualNotesMountTheLoroTextEditor() {
-        XCTAssertTrue(NotebookDocumentSurfacePolicy.mountsLoroTextEditor(for: .manualNote))
-        XCTAssertFalse(NotebookDocumentSurfacePolicy.mountsLoroTextEditor(for: .realtimeTranscript))
-        XCTAssertFalse(NotebookDocumentSurfacePolicy.mountsLoroTextEditor(for: .asyncTranscript))
-    }
-
-    @MainActor
     func testStartingFromSettingsAlwaysRevealsTheNewRealtimeSession() async throws {
         let tempDir = NSTemporaryDirectory()
             .appending("zulangue-settings-start-route-\(UUID().uuidString)")
@@ -6977,12 +6970,12 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(documentEditor.contains("capture settings is a fourth UI-only surface"))
         XCTAssertFalse(documentEditor.contains("tabID: \"capture-settings\""))
         XCTAssertTrue(documentEditor.contains("makeFirstResponder(nil)"))
-        XCTAssertTrue(documentEditor.contains("tv.isEditable = isEditable"))
+        XCTAssertTrue(documentEditor.contains(".disabled(surface.showsNotebookOverlay)"))
         XCTAssertFalse(documentEditor.contains("showsCaptureToolbar"))
         XCTAssertFalse(captureViews.contains("revealRealtimeTranscriptOnStart"))
         XCTAssertFalse(documentEditor.contains("captureProfileEditor: captureProfileEditor"))
         XCTAssertTrue(documentEditor.contains(
-            "NotebookDocumentSurfacePolicy.mountsLoroTextEditor"
+            "BlockNoteEditorView(notebookId: notebookId, tabId: tabId)"
         ))
         XCTAssertFalse(settingsView.contains("remoteSection"))
         XCTAssertFalse(settingsView.contains("translationSection"))

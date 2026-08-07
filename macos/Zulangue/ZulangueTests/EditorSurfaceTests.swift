@@ -43,15 +43,13 @@ final class EditorSurfaceTests: XCTestCase {
         route: EditorRoute?,
         tab: NotebookTabViewModel?,
         captureSettings: String? = nil,
-        resources: Bool = false,
-        bridgeError: String? = nil
+        resources: Bool = false
     ) -> EditorSurface {
         EditorSurfacePolicy.resolve(
             route: route,
             activeTab: tab,
             presentedCaptureSettingsNotebookId: captureSettings,
-            isShowingResources: resources,
-            bridgeError: bridgeError
+            isShowingResources: resources
         )
     }
 
@@ -62,7 +60,6 @@ final class EditorSurfaceTests: XCTestCase {
 
         XCTAssertEqual(surface, .asyncNeedsSession(notebookId: "nb"))
         XCTAssertFalse(surface.showsTranscriptLayer)
-        XCTAssertFalse(surface.mountsTextEditor)
     }
 
     func testDocumentWhoseTabsHaveNotLoadedIsItsOwnSurface() {
@@ -94,7 +91,6 @@ final class EditorSurfaceTests: XCTestCase {
             )
             XCTAssertEqual(surface, .captureSettings(notebookId: "nb"), "\(displayType)")
             XCTAssertTrue(surface.showsNotebookOverlay)
-            XCTAssertFalse(surface.allowsTextEditing)
         }
     }
 
@@ -124,22 +120,6 @@ final class EditorSurfaceTests: XCTestCase {
         )
 
         XCTAssertEqual(surface, .captureSettings(notebookId: "nb"))
-    }
-
-    func testBridgeErrorOutranksTabContentButNotOverlays() {
-        XCTAssertEqual(
-            resolve(route: route(session: "s1"), tab: tab(.manualNote), bridgeError: "boom"),
-            .documentUnavailable(message: "boom")
-        )
-        XCTAssertEqual(
-            resolve(
-                route: route(session: "s1"),
-                tab: tab(.manualNote),
-                captureSettings: "nb",
-                bridgeError: "boom"
-            ),
-            .captureSettings(notebookId: "nb")
-        )
     }
 
     // MARK: - Realtime
@@ -213,57 +193,46 @@ final class EditorSurfaceTests: XCTestCase {
         )
         let opened = resolve(route: route(session: "s1"), tab: tab(.manualNote))
         XCTAssertEqual(opened, .manualNote(notebookId: "nb", tabId: "tab"))
-        XCTAssertTrue(opened.mountsTextEditor)
-        XCTAssertTrue(opened.allowsTextEditing)
     }
 
     // MARK: - Totality
 
-    /// The property the old model could not state: every combination resolves,
-    /// and only the manual note surface is editable.
-    func testEveryCombinationResolvesAndOnlyManualNoteEdits() {
+    /// The property the old model could not state: every combination resolves
+    /// onto a named surface, so nothing can fall through to a blank page.
+    func testEveryCombinationResolvesToANamedSurface() {
         let displayTypes: [NotebookTabDisplayType] = [
             .realtimeTranscript, .asyncTranscript, .manualNote,
         ]
         let statuses: [NotebookTabStatus] = [.ready, .pending, .failed, .live]
         let sessions: [String?] = [nil, "s1"]
         let overlays: [(String?, Bool)] = [(nil, false), ("nb", false), (nil, true), ("nb", true)]
-        let errors: [String?] = [nil, "boom"]
 
         var seen: Set<EditorSurface> = []
         for displayType in displayTypes {
             for status in statuses {
                 for session in sessions {
                     for (settings, resources) in overlays {
-                        for error in errors {
-                            let surface = resolve(
-                                route: route(session: session),
-                                tab: tab(displayType, status: status),
-                                captureSettings: settings,
-                                resources: resources,
-                                bridgeError: error
-                            )
-                            seen.insert(surface)
-                            XCTAssertEqual(
-                                surface.allowsTextEditing,
-                                surface == .manualNote(notebookId: "nb", tabId: "tab"),
-                                "\(displayType) \(status) \(String(describing: session))"
-                            )
-                        }
+                        let surface = resolve(
+                            route: route(session: session),
+                            tab: tab(displayType, status: status),
+                            captureSettings: settings,
+                            resources: resources
+                        )
+                        seen.insert(surface)
                     }
                 }
             }
         }
 
-        // 192 combinations collapse onto exactly these twelve named surfaces.
+        // 96 combinations collapse onto exactly these eleven named surfaces.
         // Listing them is the point: the old model could not say what the
-        // content area was capable of showing.
+        // content area was capable of showing. (documentUnavailable left with
+        // the Loro text bridge: the outline editor owns its own failure state.)
         XCTAssertEqual(
             seen,
             [
                 .captureSettings(notebookId: "nb"),
                 .resources(notebookId: "nb"),
-                .documentUnavailable(message: "boom"),
                 .realtime(notebookId: "nb", sessionId: nil),
                 .realtime(notebookId: "nb", sessionId: "s1"),
                 .asyncPending(notebookId: "nb", tabId: "tab"),

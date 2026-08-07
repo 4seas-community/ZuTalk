@@ -487,7 +487,6 @@
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "Aún no hay transcripción";
 "editor.empty.no_transcript_desc" = "La transcripción estará disponible cuando termine la grabación.";
-"editor.empty.unavailable_title" = "Editor no disponible";
 "editor.empty.no_doc_title" = "Ningún documento activo";
 "editor.empty.no_doc_desc" = "Inicie una grabación para crear un documento nuevo que puede editar en vivo mientras se captura el audio.";
 
@@ -554,6 +553,15 @@
 /* Document editor */
 "editor.toolbar.show_sources" = "Mostrar fuentes";
 "editor.toolbar.show_tasks" = "Mostrar tareas";
+
+/* Editor de notas en esquema (documento de bloques) */
+"editor.outline.load_failed_title" = "No se pudieron abrir las notas";
+"editor.outline.retry" = "Reintentar";
+"editor.outline.apply_failed" = "No se pudo guardar el cambio de la nota";
+"editor.outline.row_label" = "Fila del esquema, nivel %lld";
+"editor.outline.indent" = "Aumentar sangría";
+"editor.outline.outdent" = "Reducir sangría";
+"editor.outline.delete_row" = "Eliminar fila";
 "editor.tasks.title" = "Tareas";
 "editor.tasks.count_format" = "%lld tareas en segundo plano";
 "editor.tasks.refresh" = "Actualizar tareas";

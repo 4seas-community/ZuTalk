@@ -488,7 +488,6 @@
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "Aucune transcription pour l’instant";
 "editor.empty.no_transcript_desc" = "La transcription devient disponible à la fin de l’enregistrement.";
-"editor.empty.unavailable_title" = "Éditeur indisponible";
 "editor.empty.no_doc_title" = "Aucun document actif";
 "editor.empty.no_doc_desc" = "Démarrez un enregistrement pour créer un nouveau document que vous pouvez modifier en direct pendant la capture audio.";
 
@@ -555,6 +554,15 @@
 /* Document editor */
 "editor.toolbar.show_sources" = "Afficher les sources";
 "editor.toolbar.show_tasks" = "Afficher les tâches";
+
+/* Éditeur de notes en plan (document par blocs) */
+"editor.outline.load_failed_title" = "Impossible d'ouvrir les notes";
+"editor.outline.retry" = "Réessayer";
+"editor.outline.apply_failed" = "La modification de la note n'a pas pu être enregistrée";
+"editor.outline.row_label" = "Ligne de plan, niveau %lld";
+"editor.outline.indent" = "Augmenter le retrait";
+"editor.outline.outdent" = "Diminuer le retrait";
+"editor.outline.delete_row" = "Supprimer la ligne";
 "editor.tasks.title" = "Tâches";
 "editor.tasks.count_format" = "%lld tâches en arrière-plan";
 "editor.tasks.refresh" = "Actualiser les tâches";

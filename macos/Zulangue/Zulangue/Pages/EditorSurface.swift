@@ -21,9 +21,6 @@ enum EditorSurface: Equatable, Hashable {
     /// `missingDocument`: this one is transient and resolves on its own.
     case tabsLoading(notebookId: String)
 
-    /// The Loro bridge refused to open the document.
-    case documentUnavailable(message: String)
-
     /// Notebook-level overlays. Both sit above whatever tab is selected and
     /// return to it when dismissed.
     case captureSettings(notebookId: String)
@@ -54,27 +51,12 @@ enum EditorSurface: Equatable, Hashable {
 }
 
 extension EditorSurface {
-    /// True while the surface is one the Loro text editor owns. The editor view
-    /// stays mounted for every surface — it holds the cursor, scroll offset and
-    /// IME state across tab switches — so this drives opacity and hit testing,
-    /// not whether the view exists.
-    var mountsTextEditor: Bool {
-        switch self {
-        case .manualNote:
-            return true
-        case .missingDocument, .tabsLoading, .documentUnavailable, .captureSettings,
-             .resources, .realtime, .asyncTranscript, .asyncPending, .asyncFailed,
-             .asyncNeedsSession, .manualTimeline:
-            return false
-        }
-    }
-
     /// True while a transcript view is the visible surface.
     var showsTranscriptLayer: Bool {
         switch self {
         case .realtime, .asyncTranscript:
             return true
-        case .missingDocument, .tabsLoading, .documentUnavailable, .captureSettings,
+        case .missingDocument, .tabsLoading, .captureSettings,
              .resources, .asyncPending, .asyncFailed, .asyncNeedsSession,
              .manualTimeline, .manualNote:
             return false
@@ -86,17 +68,11 @@ extension EditorSurface {
         switch self {
         case .captureSettings, .resources:
             return true
-        case .missingDocument, .tabsLoading, .documentUnavailable, .realtime,
+        case .missingDocument, .tabsLoading, .realtime,
              .asyncTranscript, .asyncPending, .asyncFailed, .asyncNeedsSession,
              .manualTimeline, .manualNote:
             return false
         }
-    }
-
-    /// Text editing is only offered when the editor is both mounted and
-    /// uncovered.
-    var allowsTextEditing: Bool {
-        mountsTextEditor && showsNotebookOverlay == false
     }
 }
 
@@ -109,8 +85,7 @@ enum EditorSurfacePolicy {
         route: EditorRoute?,
         activeTab: NotebookTabViewModel?,
         presentedCaptureSettingsNotebookId: String?,
-        isShowingResources: Bool,
-        bridgeError: String?
+        isShowingResources: Bool
     ) -> EditorSurface {
         guard let route, route.documentID.isEmpty == false else {
             return .missingDocument
@@ -124,12 +99,6 @@ enum EditorSurfacePolicy {
         }
         if isShowingResources {
             return .resources(notebookId: notebookId)
-        }
-
-        // A broken bridge outranks tab content: there is nothing to show and
-        // the reason is more useful than an empty surface.
-        if let bridgeError, bridgeError.isEmpty == false {
-            return .documentUnavailable(message: bridgeError)
         }
 
         guard let activeTab else {
