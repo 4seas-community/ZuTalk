@@ -98,17 +98,15 @@ pub fn try_update_to_insert_container(
             .or_else(|| try_infer_container_type(change.value.as_ref()?, None))
     });
 
-    match container_type {
-        Some(
-            child_type @ (ContainerType::Map
-            | ContainerType::List
-            | ContainerType::Text
-            | ContainerType::Counter),
-        ) => {
-            change.kind = ChangeKind::InsertContainer { child_type };
-        }
-        // 蓝本怪癖 3:switch 没有 MovableList 分支,升级落空。
-        _ => {}
+    // 蓝本怪癖 3:switch 没有 MovableList 分支,升级落空。
+    if let Some(
+        child_type @ (ContainerType::Map
+        | ContainerType::List
+        | ContainerType::Text
+        | ContainerType::Counter),
+    ) = container_type
+    {
+        change.kind = ChangeKind::InsertContainer { child_type };
     }
 
     change

@@ -68,10 +68,7 @@ pub fn set_path_value(obj: &mut Value, path: &[&str], value: Option<Value>) {
     }
     let mut current = obj;
     for key in &path[..path.len() - 1] {
-        let needs_object = match &*current {
-            Value::Object(_) | Value::Array(_) => false,
-            _ => true,
-        };
+        let needs_object = !matches!(&*current, Value::Object(_) | Value::Array(_));
         if needs_object {
             *current = Value::Object(serde_json::Map::new());
         }

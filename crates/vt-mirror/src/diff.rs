@@ -556,12 +556,12 @@ pub fn diff_list(
         });
     }
 
-    for i in old_len..new_len {
+    for (i, item) in new_state.iter().enumerate().take(new_len).skip(old_len) {
         changes.push(try_update_to_insert_container(
             Change {
                 container: Some(container_id.clone()),
                 key: ChangeKey::Index(i),
-                value: Some(new_state[i].clone()),
+                value: Some(item.clone()),
                 kind: ChangeKind::Insert,
             },
             true,

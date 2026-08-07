@@ -377,7 +377,7 @@ impl Mirror {
         for container_diff in &event.events {
             match &container_diff.diff {
                 Diff::List(items) => {
-                    let schema = self.get_container_schema(&container_diff.target);
+                    let schema = self.get_container_schema(container_diff.target);
                     for item in items {
                         let ListDiffItem::Insert { insert, .. } = item else {
                             continue;
@@ -407,7 +407,7 @@ impl Mirror {
                             continue;
                         };
                         let child_schema = self
-                            .get_schema_for_child(&container_diff.target, key)
+                            .get_schema_for_child(container_diff.target, key)
                             .filter(|schema| schema.is_container_schema());
                         if child_schema.is_none() {
                             tracing::warn!(

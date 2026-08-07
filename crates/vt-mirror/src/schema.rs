@@ -385,7 +385,7 @@ pub fn get_default_value(schema: &Schema) -> Option<Value> {
             options.required.then(|| Value::String(String::new()))
         }
         Schema::PlainNumber(options) => options.required.then(|| Value::from(0)),
-        Schema::PlainBoolean(options) => options.required.then(|| Value::Bool(false)),
+        Schema::PlainBoolean(options) => options.required.then_some(Value::Bool(false)),
         Schema::Map { fields, .. } | Schema::Root { fields, .. } => {
             let mut result = serde_json::Map::new();
             for (key, field_schema) in fields {
