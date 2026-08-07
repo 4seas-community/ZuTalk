@@ -9,5 +9,8 @@
 //! 出处与许可证见本 crate 的 THIRD_PARTY.md。
 
 pub mod lis;
+pub mod schema;
+pub mod value;
 
 pub use lis::longest_increasing_subsequence;
+pub use value::{deep_equal, get_path_value, is_object, set_path_value, Value};
