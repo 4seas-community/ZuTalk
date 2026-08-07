@@ -2193,6 +2193,31 @@ impl EditorBridge {
         spans
     }
 
+    /// 第 2 纪元文档的准入裁决(阶段 5 的按 kind 分发)。
+    ///
+    /// - 文档未打开或不是第 2 纪元(kind 缺失) → `None`,调用方走第 1
+    ///   纪元的 fork+重放守卫;
+    /// - 第 2 纪元 → `Some(拒收与否)`:按 kind 规则手册静态判定,拒收
+    ///   理由记 tracing。两个纪元的守卫在准入链上是同一格,谁当值由
+    ///   文档自己声明的纪元决定。
+    pub fn epoch2_admission_refuses(&self, document_id: &str, update: &[u8]) -> Option<bool> {
+        let sessions = self.sessions.lock().unwrap();
+        let session = sessions.get(document_id)?;
+        let kind = crate::document_schema::document_kind(&session.doc)?;
+        match crate::block_guard::admit_block_update(&session.doc, kind, update) {
+            Ok(()) => Some(false),
+            Err(denial) => {
+                tracing::info!(
+                    document_id = %document_id,
+                    kind = %kind.as_str(),
+                    %denial,
+                    "第 2 纪元准入拒收"
+                );
+                Some(true)
+            }
+        }
+    }
+
     /// 一份远端 Loro 更新是否触碰了采集投影拥有的区间。
     ///
     /// 返回 `true` 表示必须拒收。任何无法判定的情况也返回 `true` —— 判不出来时
@@ -2619,5 +2644,84 @@ mod schema_epoch_tests {
     #[test]
     fn an_unopened_document_has_no_epoch() {
         assert_eq!(EditorBridge::new().schema_epoch("missing"), None);
+    }
+}
+
+#[cfg(test)]
+mod epoch2_admission_tests {
+    use super::*;
+    use crate::document_schema::{new_block_document, DocumentKind};
+    use crate::transcript_projection::TranscriptProjection;
+
+    /// 建一份带内容的 T2 文档开进 bridge,并造一份远端更新。
+    fn t2_with_remote_edit(edit_user_block: bool) -> (EditorBridge, Vec<u8>) {
+        let projection =
+            TranscriptProjection::open(new_block_document(DocumentKind::Transcript)).unwrap();
+        projection
+            .machine_upsert_block(
+                crate::transcript_projection::MachineBlockWrite {
+                    id: "u1".into(),
+                    owner: "capture:s1".into(),
+                    text: "机器句".into(),
+                    lanes: Default::default(),
+                },
+                &Default::default(),
+            )
+            .unwrap();
+        projection.insert_annotation(1, "n1", "批注").unwrap();
+
+        let remote = new_block_document(DocumentKind::Transcript);
+        remote
+            .import(&projection.doc().export(loro::ExportMode::Snapshot).unwrap())
+            .unwrap();
+        let remote_projection = TranscriptProjection::open(remote).unwrap();
+        let base_vv = projection.doc().oplog_vv();
+        if edit_user_block {
+            remote_projection
+                .user_replace_text("n1", "批注(远端)")
+                .unwrap();
+        } else {
+            remote_projection
+                .user_replace_text("u1", "篡改机器句")
+                .unwrap();
+        }
+        let update = remote_projection
+            .doc()
+            .export(loro::ExportMode::updates(&base_vv))
+            .unwrap();
+
+        let bridge = EditorBridge::new();
+        bridge.open("t2-doc", projection.doc().fork()).unwrap();
+        (bridge, update)
+    }
+
+    #[test]
+    fn epoch2_capture_block_edit_is_refused_by_the_dispatch() {
+        let (bridge, update) = t2_with_remote_edit(false);
+        assert_eq!(
+            bridge.epoch2_admission_refuses("t2-doc", &update),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn epoch2_annotation_edit_is_admitted_by_the_dispatch() {
+        let (bridge, update) = t2_with_remote_edit(true);
+        assert_eq!(
+            bridge.epoch2_admission_refuses("t2-doc", &update),
+            Some(false)
+        );
+    }
+
+    /// 第 1 纪元文档不在本分发的辖区:返回 None,调用方走 fork+重放守卫。
+    #[test]
+    fn epoch1_documents_are_out_of_jurisdiction() {
+        let bridge = EditorBridge::new();
+        let legacy = LoroDoc::new();
+        legacy.get_text("content").insert(0, "平文本").unwrap();
+        legacy.commit();
+        bridge.open("legacy", legacy).unwrap();
+        assert_eq!(bridge.epoch2_admission_refuses("legacy", b"x"), None);
+        assert_eq!(bridge.epoch2_admission_refuses("missing", b"x"), None);
     }
 }

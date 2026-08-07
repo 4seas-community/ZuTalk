@@ -53,6 +53,12 @@ impl vt_share::CaptureBoundaryGuard for LoroCaptureBoundaryGuard {
         document_id: &str,
         update: &[u8],
     ) -> bool {
+        // 阶段 5 的按纪元分发:第 2 纪元文档走 block_guard 的静态规则手册,
+        // 第 1 纪元维持 fork+重放。谁当值由文档自己声明的纪元决定,准入链
+        // 的这一格对上层保持同一形状。
+        if let Some(refuses) = self.editor.epoch2_admission_refuses(document_id, update) {
+            return refuses;
+        }
         self.editor
             .remote_update_touches_capture_owned_range(document_id, update)
     }
