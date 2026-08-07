@@ -1,8 +1,9 @@
 # T2 采集产线切换战役（阶段 3/4 收尾 + 阶段 5 完成）
 
-状态：**宪章**（2026-08-07）。守卫分发已落地；产线切换按下述分片推进，
-每片独立绿、独立可回滚。笔记侧已整体完成（大纲编辑器 + 宽松迁移),
-本文只管**转录稿**。
+状态：**代码侧完结**（2026-08-08）。五个分片全部落地，旧第三层负行数
+下线；唯一未关账的验收项是**双机清单人工跑一遍**（见
+docs/share-two-machine-check.md）。笔记侧此前已整体完成（大纲编辑器 +
+宽松迁移)，本文只管**转录稿**。
 
 ## 为什么必须原子、为什么可以分片
 
@@ -77,16 +78,21 @@
    收据两次提交间崩溃 = 零块删除重放 + 补收据,无需回滚点),async
    与笔记目标走旧路逐字不动。前置补课(T2 销毁动词、bridge 挂载)
    已随本片先行落地。**双机清单待人工跑**(阶段 5 验收项,未完成)。
-5. **退役**:第三层旧代码负行数下线——resolve_capture_owned_range、
-   remote_update_touches_capture_owned_range、render/plan/CaptureDeltaIndex、
-   三张锚点 map、投影/用户收据族、旧 sync/apply 产线函数、
-   `TranscriptWritePath::Epoch1Flat` 分发、
-   `load_realtime_loro_projection_if_pending`(裸机器版,收据摘要的
-   唯一消费者)。**修订**:LoroDeltaParser **保留**(Async tab 仍以
-   Delta 解析读自己的平文本文档,不在切换范围);分享准入的第 1 纪元
-   回退删除后,非第 2 纪元文档的远端 update 一律拒收(fail-closed
-   ——拨闸后本机所有转录稿文档均为第 2 纪元,epoch-1 准入的唯一
-   历史客户已不存在)。
+5. ✅ **退役**(2026-08-08):第三层旧代码负行数下线——
+   resolve_capture_owned_range、remote_update_touches_capture_owned_range
+   (fork+重放守卫全套)、render/plan/CaptureDeltaIndex、三张锚点 map、
+   投影/用户收据族(apply_projection_batch / apply_user_mutation_batch
+   与全部收据类型、编码、getter)、旧 sync/apply 产线函数、
+   `TranscriptWritePath` 分发、裸机器版投影加载器,连同它们的测试
+   人口整体移除。两处按侦察修订:
+   - **LoroDeltaParser 保留**:Async tab 仍以 Delta 解析读自己的
+     平文本文档,不在切换范围。旧 purge 路(async/笔记目标)对
+     CaptureDeltaIndex 的依赖蒸馏成一个 40 行的
+     `legacy_session_section_range`(逐段扫 session_id 标记、分裂
+     区间 fail-closed),大机器随之退役;
+   - **分享准入 fail-closed**:第 1 纪元回退删除后,非第 2 纪元
+     文档(未打开、或残存平文本)的远端 update 一律拒收——放行
+     等于这道门不存在。信封纪元按本地文档实际声明封装。
 
 ## 不变量(每片都要守)
 

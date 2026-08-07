@@ -4474,45 +4474,13 @@ impl NotebookCaptureStore {
         list_machine_utterances_from_conn(&self.conn.lock().unwrap(), session_id)
     }
 
-    /// Selects projector work from one SQLite read transaction.
-    ///
-    /// The common up-to-date path returns after reading only the watermarks.
-    /// When work is pending, the watermarks and machine utterances come from
-    /// the same read snapshot, so revision R cannot be paired with R+1 facts.
-    pub fn load_realtime_loro_projection_if_pending(
-        &self,
-        session_id: &str,
-    ) -> Result<RealtimeLoroProjectionLoad, NotebookCaptureStoreError> {
-        require_nonempty("session_id", session_id)?;
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Deferred)?;
-        let watermark =
-            get_realtime_loro_projection_from_conn(&tx, session_id)?.ok_or_else(|| {
-                NotebookCaptureStoreError::NotFound(format!("capture session {session_id}"))
-            })?;
-        let load = if watermark.is_pending() {
-            let machine_utterances = list_machine_utterances_from_conn(&tx, session_id)?;
-            RealtimeLoroProjectionLoad::Pending(RealtimeLoroProjectionSnapshot {
-                session_id: watermark.session_id,
-                desired_revision: watermark.desired_revision,
-                applied_revision: watermark.applied_revision,
-                machine_utterances,
-            })
-        } else {
-            RealtimeLoroProjectionLoad::UpToDate(watermark)
-        };
-        tx.commit()?;
-        Ok(load)
-    }
-
-    /// T2 projector twin of [`Self::load_realtime_loro_projection_if_pending`]:
-    /// the identical one-transaction pending selection, but machine facts
-    /// arrive with user overrides merged (visible lane text plus lane edit
-    /// revisions). The epoch-2 projector derives its frozen lanes from these
+    /// Selects projector work from one SQLite read transaction. The common
+    /// up-to-date path returns after reading only the watermarks; a pending
+    /// load pairs the watermarks with machine facts from the same read
+    /// snapshot, with user overrides merged in (visible lane text plus lane
+    /// edit revisions). The T2 projector derives its frozen lanes from these
     /// edit revisions, and an overridden source lane's text is the override
-    /// itself, so re-upserting it writes byte-identical content. The epoch-1
-    /// projector must keep the raw variant: its receipt digests bind the
-    /// unmerged machine facts.
+    /// itself, so re-upserting it writes byte-identical content.
     pub fn load_realtime_loro_projection_if_pending_visible(
         &self,
         session_id: &str,
@@ -9990,7 +9958,7 @@ mod tests {
             .unwrap();
 
         let pending = store
-            .load_realtime_loro_projection_if_pending("session-projector-fast-path")
+            .load_realtime_loro_projection_if_pending_visible("session-projector-fast-path")
             .unwrap();
         let pending = match pending {
             RealtimeLoroProjectionLoad::Pending(snapshot) => snapshot,
@@ -10046,7 +10014,7 @@ mod tests {
         }
 
         let up_to_date = store
-            .load_realtime_loro_projection_if_pending("session-projector-fast-path")
+            .load_realtime_loro_projection_if_pending_visible("session-projector-fast-path")
             .unwrap();
         match up_to_date {
             RealtimeLoroProjectionLoad::UpToDate(watermark) => assert_eq!(

@@ -733,7 +733,9 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func verifyApiKey(scope: String, candidate: String?) async throws  -> FfiProviderConnectionCheck
 
     /**
-     * 落盘并关闭。未打开时幂等成功。
+     * 落盘并关闭。未打开时幂等成功。转录稿同时从 EditorBridge 撤下
+     * ——bridge 挂载的生命周期与注册表句柄绑定,防止两边各持一份
+     * 漂移的文档。
      */
     func blockDocumentClose(docId: String) throws
 
@@ -983,7 +985,8 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
 
     /**
      * Incrementally materializes every durable completed utterance into the
-     * realtime Loro document without completing the capture projection.
+     * realtime transcript document without completing the capture projection.
+     * Since the cutover this writes the epoch-2 block document.
      */
     func projectNotebookRealtimeIncremental(sessionId: String) throws
 
@@ -1564,7 +1567,9 @@ open func verifyApiKey(scope: String, candidate: String?)async throws  -> FfiPro
 }
 
     /**
-     * 落盘并关闭。未打开时幂等成功。
+     * 落盘并关闭。未打开时幂等成功。转录稿同时从 EditorBridge 撤下
+     * ——bridge 挂载的生命周期与注册表句柄绑定,防止两边各持一份
+     * 漂移的文档。
      */
 open func blockDocumentClose(docId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_block_document_close(
@@ -2174,7 +2179,8 @@ open func previewNotebookCaptureContext(notebookId: String)throws  -> FfiNoteboo
 
     /**
      * Incrementally materializes every durable completed utterance into the
-     * realtime Loro document without completing the capture projection.
+     * realtime transcript document without completing the capture projection.
+     * Since the cutover this writes the epoch-2 block document.
      */
 open func projectNotebookRealtimeIncremental(sessionId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_project_notebook_realtime_incremental(
@@ -8615,7 +8621,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_verify_api_key() != 35576) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_block_document_close() != 38949) {
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_block_document_close() != 21984) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_block_document_open() != 16172) {
@@ -8759,7 +8765,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_preview_notebook_capture_context() != 41211) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_project_notebook_realtime_incremental() != 18098) {
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_project_notebook_realtime_incremental() != 38428) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_push_notebook_capture_session() != 3507) {

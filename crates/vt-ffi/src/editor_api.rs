@@ -229,26 +229,6 @@ fn flush_snapshot_to_disk_result_with_temp_path(
     persist_snapshot_bytes_unlocked(data_dir, session_id, &bytes, temp_path)
 }
 
-/// Persists the exact snapshot returned by an atomic EditorBridge batch.
-///
-/// Callers can therefore bind the bytes they fsync to the receipt they later
-/// acknowledge in SQLite, rather than re-exporting a potentially newer doc.
-pub(crate) fn persist_snapshot_bytes_to_disk_result(
-    data_dir: &Path,
-    session_id: &str,
-    bytes: &[u8],
-) -> Result<(), String> {
-    let _flush_guard = SNAPSHOT_FLUSH_LOCK
-        .lock()
-        .map_err(|_| "snapshot flush lock poisoned".to_string())?;
-    persist_snapshot_bytes_unlocked(
-        data_dir,
-        session_id,
-        bytes,
-        snapshot_temp_path(data_dir, session_id),
-    )
-}
-
 fn persist_snapshot_bytes_unlocked(
     data_dir: &Path,
     session_id: &str,

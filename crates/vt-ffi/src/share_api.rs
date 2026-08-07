@@ -53,14 +53,13 @@ impl vt_share::CaptureBoundaryGuard for LoroCaptureBoundaryGuard {
         document_id: &str,
         update: &[u8],
     ) -> bool {
-        // 阶段 5 的按纪元分发:第 2 纪元文档走 block_guard 的静态规则手册,
-        // 第 1 纪元维持 fork+重放。谁当值由文档自己声明的纪元决定,准入链
-        // 的这一格对上层保持同一形状。
-        if let Some(refuses) = self.editor.epoch2_admission_refuses(document_id, update) {
-            return refuses;
-        }
+        // T2 切换完成后,可共享的转录稿文档全部是第 2 纪元块文档,由
+        // block_guard 的静态规则手册裁决。判不出纪元/种类(文档未打开、
+        // 或残存的第 1 纪元文档)一律拒收——第 1 纪元的 fork+重放守卫
+        // 已退役,失败关闭是它唯一正确的替身:放行等于这道门不存在。
         self.editor
-            .remote_update_touches_capture_owned_range(document_id, update)
+            .epoch2_admission_refuses(document_id, update)
+            .unwrap_or(true)
     }
 }
 
@@ -930,28 +929,53 @@ mod tests {
     ///
     /// 这条测试的意义在于串起三个 crate:`vt-share` 出规则、`vt-store` 出 Loro
     /// 判定、`vt-ffi` 把两者接上。任何一处接错,这里就会放行一份该拒的更新。
-    fn remote_edit(session_id: &str, at: usize) -> (vt_store::EditorBridge, Vec<u8>) {
+    /// 建一份 T2 转录稿开进 bridge,远端分叉出一份真实可合入的更新:
+    /// `edit_capture_block` 决定远端改的是采集句块还是自己插的批注。
+    fn remote_edit(
+        session_id: &str,
+        edit_capture_block: bool,
+    ) -> (vt_store::EditorBridge, Vec<u8>) {
         use loro::LoroDoc;
+        use vt_store::document_schema::{new_block_document, DocumentKind};
+        use vt_store::transcript_projection::TranscriptProjection;
         use vt_store::EditorBridge;
 
-        let doc = LoroDoc::new();
-        doc.get_text("content").insert(0, "0123456789").unwrap();
-        doc.commit();
-        let editor = EditorBridge::new();
-        editor.open(session_id, doc).unwrap();
-        editor
-            .set_capture_owned_range(session_id, "owner", "cap-1", 2, 6)
+        let projection =
+            TranscriptProjection::open(new_block_document(DocumentKind::Transcript)).unwrap();
+        projection
+            .machine_upsert_block(
+                vt_store::transcript_projection::MachineBlockWrite {
+                    id: "u1".into(),
+                    owner: format!("capture:{session_id}"),
+                    text: "机器句".into(),
+                    lanes: Default::default(),
+                },
+                &Default::default(),
+                None,
+            )
             .unwrap();
+        let editor = EditorBridge::new();
+        editor.open(session_id, projection.doc().clone()).unwrap();
 
-        // 远端从同一份快照分叉,产生一份真实可合入的更新。
         let remote = LoroDoc::new();
         remote
             .import(&editor.export_snapshot(session_id).unwrap())
             .unwrap();
         let before = remote.oplog_vv();
-        remote.get_text("content").insert(at, "插进来").unwrap();
-        remote.commit();
-        let update = remote.export(loro::ExportMode::updates(&before)).unwrap();
+        let remote_projection = TranscriptProjection::open(remote).unwrap();
+        if edit_capture_block {
+            remote_projection
+                .user_replace_text("u1", "远端篡改机器句")
+                .unwrap();
+        } else {
+            remote_projection
+                .insert_annotation(1, "n1", "远端批注")
+                .unwrap();
+        }
+        let update = remote_projection
+            .doc()
+            .export(loro::ExportMode::updates(&before))
+            .unwrap();
         (editor, update)
     }
 
@@ -968,14 +992,12 @@ mod tests {
         };
         let host = iroh::SecretKey::generate();
         let roster = RoomRoster::new(scope.clone(), host.public(), WritePolicy::Everyone);
-        let envelope = seal_update(
-            &scope,
-            document_id,
-            vt_store::editor_bridge::CURRENT_SCHEMA_EPOCH,
-            update,
-            &host,
-        )
-        .unwrap();
+        // 信封纪元照本地文档实际声明的来;查不出(文档不在范围)时按
+        // 当前纪元封,让 scope 检查自己出面拒绝。
+        let epoch = editor
+            .schema_epoch(session_id)
+            .unwrap_or(vt_store::editor_bridge::CURRENT_SCHEMA_EPOCH);
+        let envelope = seal_update(&scope, document_id, epoch, update, &host).unwrap();
 
         // NotebookCaptureStore 只在 Notebook 范围下才被问到,Session 范围用不着它。
         let store = Arc::new(
@@ -993,18 +1015,18 @@ mod tests {
     }
 
     #[test]
-    fn admission_chain_refuses_a_remote_edit_inside_the_capture_range() {
-        let (editor, update) = remote_edit("session-1", 4);
+    fn admission_chain_refuses_a_remote_edit_of_a_capture_block() {
+        let (editor, update) = remote_edit("session-1", true);
         assert_eq!(
             run_chain("session-1", "session-1", update, editor),
             vt_share::IncomingOutcome::Denied(vt_share::AdmissionDenial::TouchesCaptureOwnedRange)
         );
     }
 
-    /// 落在采集区间之外的同一条链路必须放行,否则这道门就是「拒绝一切」。
+    /// 批注块的同一条链路必须放行,否则这道门就是「拒绝一切」。
     #[test]
-    fn admission_chain_accepts_a_remote_edit_outside_the_capture_range() {
-        let (editor, update) = remote_edit("session-2", 9);
+    fn admission_chain_accepts_a_remote_annotation() {
+        let (editor, update) = remote_edit("session-2", false);
         assert_eq!(
             run_chain("session-2", "session-2", update, editor),
             vt_share::IncomingOutcome::Applied
@@ -1016,10 +1038,38 @@ mod tests {
     /// 文档 id 由对端声称,这是唯一挡住它的检查。
     #[test]
     fn a_session_room_cannot_write_into_another_document() {
-        let (editor, update) = remote_edit("session-3", 9);
+        let (editor, update) = remote_edit("session-3", false);
         assert_eq!(
             run_chain("session-3", "somebody-elses-doc", update, editor),
             vt_share::IncomingOutcome::Denied(vt_share::AdmissionDenial::DocumentNotInScope)
+        );
+    }
+
+    /// 第 1 纪元(或纪元不明)的文档在守卫退役后一律拒收:失败关闭是
+    /// fork+重放守卫唯一正确的替身。
+    #[test]
+    fn admission_chain_fails_closed_for_a_non_epoch2_document() {
+        use loro::LoroDoc;
+        use vt_store::EditorBridge;
+
+        let doc = LoroDoc::new();
+        doc.get_text("content").insert(0, "旧平文本").unwrap();
+        doc.commit();
+        let editor = EditorBridge::new();
+        editor.open("session-4", doc).unwrap();
+
+        let remote = LoroDoc::new();
+        remote
+            .import(&editor.export_snapshot("session-4").unwrap())
+            .unwrap();
+        let before = remote.oplog_vv();
+        remote.get_text("content").insert(0, "远端编辑 ").unwrap();
+        remote.commit();
+        let update = remote.export(loro::ExportMode::updates(&before)).unwrap();
+
+        assert_eq!(
+            run_chain("session-4", "session-4", update, editor),
+            vt_share::IncomingOutcome::Denied(vt_share::AdmissionDenial::TouchesCaptureOwnedRange)
         );
     }
 
