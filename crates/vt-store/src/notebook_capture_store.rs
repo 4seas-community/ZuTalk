@@ -981,11 +981,17 @@ pub struct SessionPurgePlan {
     /// global data-directory path.
     #[serde(default)]
     pub canonical_artifact_names: Vec<String>,
-    /// Canonical filename prefixes relative to the Zulangue data directory.
-    /// This covers both committed chunks (`{session}.chunk.`) and interrupted
-    /// recovery temp files (`.{session}.chunk.`).
+    /// Legacy canonical filename prefixes relative to the Zulangue data
+    /// directory root. This covers pre-relocation committed chunks
+    /// (`{session}.chunk.`) and their interrupted recovery temp files
+    /// (`.{session}.chunk.`), which a not-yet-relocated install can still hold.
     #[serde(default)]
     pub canonical_artifact_prefixes: Vec<String>,
+    /// Canonical directories relative to the Zulangue data directory that this
+    /// session exclusively owns. Removing them recursively destroys the
+    /// session's audio without enumerating the data directory root.
+    #[serde(default)]
+    pub canonical_artifact_dirs: Vec<String>,
     pub utterance_count: u64,
 }
 
@@ -7558,6 +7564,7 @@ fn build_session_purge_plan(
             format!("{session_id}.chunk."),
             format!(".{session_id}.chunk."),
         ],
+        canonical_artifact_dirs: vec![format!("audio/{session_id}")],
         ..SessionPurgePlan::default()
     };
     if let Some((run_id, journal, audio, audio_key, context_key)) = run {

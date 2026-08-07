@@ -4,6 +4,7 @@
 //! 分层职责与「改完跨语言接口要重新生成绑定」见
 //! docs/architecture/ARCHITECTURE.md「代码边界」。
 
+pub(crate) mod audio_layout;
 pub mod block_document_api;
 pub(crate) mod capture_erasure;
 pub mod editor_api;
@@ -628,6 +629,9 @@ impl ZulangueCore {
                     message: format!("Context Pack store: {e}"),
                 }
             })?;
+        // Runs before capture recovery and before any purge resumes so both see
+        // one canonical audio layout instead of a half-relocated one.
+        audio_layout::relocate_legacy_session_audio(&path, &db_path);
         recover_interrupted_capture_audio(
             &path,
             &notebook_capture_store,
@@ -1149,6 +1153,20 @@ pub(crate) fn recover_interrupted_capture_audio_run(
         .as_deref()
         .map(PathBuf::from)
         .ok_or_else(|| "interrupted capture has no journal path".to_string())?;
+    // A crash between relocating the journal and rewriting its recorded path
+    // leaves the row pointing at the vacated location. Preferring the canonical
+    // location keeps that journal recoverable instead of silently falling
+    // through to the weaker chunk-index rebuild.
+    let journal_path = if journal_path.exists() {
+        journal_path
+    } else {
+        let canonical = vt_pipeline::session_capture_journal_path(data_dir, &run.session_id);
+        if canonical.exists() {
+            canonical
+        } else {
+            journal_path
+        }
+    };
     let key_ref = run
         .audio_key_ref
         .as_deref()
@@ -1234,13 +1252,23 @@ fn indexed_capture_chunks(
     for index in 0..chunk_count {
         let start_frame = index.saturating_mul(frames_per_chunk);
         let end_frame = captured_frames.min(start_frame.saturating_add(frames_per_chunk));
-        let path = data_dir.join(format!("{session_id}.chunk.{index:05}.enc"));
-        if !path.exists() {
-            return Err(format!(
-                "missing finalized capture chunk {}",
-                path.display()
-            ));
-        }
+        let index = index as usize;
+        // A capture interrupted before the startup relocation finished can still
+        // have chunks at the flat data-directory root, so the legacy name stays
+        // recoverable until that session has been moved.
+        let canonical = vt_pipeline::session_audio_chunk_path(data_dir, session_id, index);
+        let path = if canonical.exists() {
+            canonical
+        } else {
+            let legacy = vt_pipeline::legacy_session_audio_chunk_path(data_dir, session_id, index);
+            if !legacy.exists() {
+                return Err(format!(
+                    "missing finalized capture chunk {}",
+                    canonical.display()
+                ));
+            }
+            legacy
+        };
         chunks.push(RecordingAudioChunk {
             chunk_id: format!("{session_id}:audio:{index:05}"),
             path,
@@ -1802,16 +1830,15 @@ mod tests {
             0
         );
         assert_eq!(process_test_key_refs(tmp.path()), keys_before);
-        assert!(
-            std::fs::read_dir(tmp.path())
-                .unwrap()
-                .filter_map(Result::ok)
-                .all(|entry| {
-                    !entry
-                        .file_name()
-                        .to_string_lossy()
-                        .ends_with(".capture-journal.enc")
-                }),
+        let audio_root = tmp.path().join(vt_pipeline::SESSION_AUDIO_ROOT_DIR);
+        let surviving_journals = std::fs::read_dir(&audio_root)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter(|session| session.path().join("capture-journal.enc").exists())
+            .count();
+        assert_eq!(
+            surviving_journals, 0,
             "create_run rollback must delete the journal even without a durable run row"
         );
 

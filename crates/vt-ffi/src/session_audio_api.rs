@@ -190,11 +190,10 @@ impl ZulangueCore {
             // would make permanent-delete attempt to remove the data directory;
             // the canonical path remains safe and discoverable even when audio
             // materialization fails before the retention ledger is written.
-            let prospective_audio_path = self
-                .data_dir
-                .join(format!("{session_id}.chunk.00000.enc"))
-                .to_string_lossy()
-                .into_owned();
+            let prospective_audio_path =
+                vt_pipeline::session_audio_chunk_path(&self.data_dir, &session_id, 0)
+                    .to_string_lossy()
+                    .into_owned();
             self.session_meta
                 .set_encrypted_path(&session_id, &prospective_audio_path, &key_ref)
                 .map_err(|e| CoreError::InternalError {
@@ -737,8 +736,9 @@ mod tests {
             .set_audio_format("chunked-session", 1000, 1)
             .unwrap();
 
-        let chunk0 = tmp.path().join("chunked-session.chunk.00000.enc");
-        let chunk1 = tmp.path().join("chunked-session.chunk.00001.enc");
+        let chunk0 = vt_pipeline::session_audio_chunk_path(tmp.path(), "chunked-session", 0);
+        let chunk1 = vt_pipeline::session_audio_chunk_path(tmp.path(), "chunked-session", 1);
+        std::fs::create_dir_all(chunk0.parent().unwrap()).unwrap();
         let first_second = f32_samples_to_bytes(&vec![1.0_f32; 1000]);
         let second_second = f32_samples_to_bytes(&vec![2.0_f32; 1000]);
         vt_crypto::encrypt_to_file(&chunk0, &key, &first_second).unwrap();
@@ -886,7 +886,11 @@ mod tests {
             .unwrap();
         assert_eq!(chunks.len(), 1);
         assert!(PathBuf::from(&chunks[0].local_path).exists());
-        assert!(chunks[0].local_path.ends_with(".chunk.00000.enc"));
+        assert_eq!(
+            PathBuf::from(&chunks[0].local_path),
+            vt_pipeline::session_audio_chunk_path(tmp.path(), &import_result.session_id, 0),
+            "imported audio must land in the session's own directory"
+        );
         let legacy_path = tmp.path().join(format!("{}.enc", import_result.session_id));
         assert!(
             !legacy_path.exists(),

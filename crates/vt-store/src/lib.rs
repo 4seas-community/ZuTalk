@@ -4,6 +4,7 @@
 //! SQLite 事实与 Loro 可编辑投影的所有权划分见
 //! docs/architecture/ARCHITECTURE.md「转录编辑所有权」。
 
+pub mod audio_paths;
 pub mod block_guard;
 pub mod context_pack_store;
 pub mod document_schema;
@@ -18,6 +19,7 @@ pub mod session_meta;
 pub mod session_query;
 pub mod transcript_projection;
 
+pub use audio_paths::repair_recorded_audio_paths;
 pub use context_pack_store::{
     BoundContextPack, ContextCompilation, ContextContentKind, ContextOmission,
     ContextOmissionReason, ContextPackDocument, ContextPackDocumentSource, ContextPackRecord,

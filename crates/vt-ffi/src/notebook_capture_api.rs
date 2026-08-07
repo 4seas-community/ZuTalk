@@ -4615,6 +4615,27 @@ fn require_single_file_prefix(value: &str) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// A purge directory is a relative, non-escaping path whose final component is
+/// the purged session id, such as `audio/<session_id>`. Rejecting absolute
+/// paths, `..`, and any directory that is not session-scoped keeps a corrupted
+/// or hand-edited durable purge plan from escalating a recursive removal into
+/// deleting a shared parent like `audio`.
+fn require_session_scoped_artifact_dir(value: &str, session_id: &str) -> Result<(), CoreError> {
+    let path = std::path::Path::new(value);
+    let is_safe = !value.is_empty()
+        && path.is_relative()
+        && path.components().all(
+            |component| matches!(component, std::path::Component::Normal(name) if !name.is_empty()),
+        )
+        && path.file_name().and_then(|name| name.to_str()) == Some(session_id);
+    if !is_safe {
+        return Err(CoreError::ValidationFailed {
+            message: format!("invalid canonical capture artifact directory: {value}"),
+        });
+    }
+    Ok(())
+}
+
 fn require_path_within_data_dir(
     data_dir: &std::path::Path,
     candidate: &std::path::Path,
@@ -5430,9 +5451,7 @@ impl ZulangueCore {
         // journal. There is no crash window containing an orphan catalogue row
         // or an undiscoverable external artifact.
         let key_ref = format!("zulangue.audio.{session_id}");
-        let journal_path = self
-            .data_dir
-            .join(format!("{session_id}.capture-journal.enc"));
+        let journal_path = vt_pipeline::session_capture_journal_path(&self.data_dir, &session_id);
         let run_id = uuid::Uuid::new_v4().to_string();
         let requested_remote = profile.remote_realtime_enabled;
         let run = match self.notebook_capture_store.create_session_and_run(
@@ -7504,6 +7523,27 @@ impl ZulangueCore {
                 }
             }
         }
+        // Every remaining artifact this session owns lives under its own audio
+        // directory, so one recursive removal replaces per-file bookkeeping and
+        // also takes any abandoned `.recovering` temp file with it.
+        for dir in &plan.canonical_artifact_dirs {
+            require_session_scoped_artifact_dir(dir, &plan.session_id)?;
+            let path = self.data_dir.join(dir);
+            require_path_within_data_dir(&self.data_dir, &path)?;
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(CoreError::InternalError {
+                        message: format!(
+                            "delete capture artifact directory {}: {error}",
+                            path.display()
+                        ),
+                    });
+                }
+            }
+        }
+
         for key_ref in &plan.key_refs {
             match self.key_store.delete_key(key_ref) {
                 Ok(()) | Err(vt_crypto::CryptoError::KeyNotFound { .. }) => {}
@@ -17750,9 +17790,7 @@ mod tests {
             .get_run_for_session(&started.session_id)
             .unwrap()
             .unwrap();
-        let chunk_path = temp
-            .path()
-            .join(format!("{}.chunk.00000.enc", started.session_id));
+        let chunk_path = vt_pipeline::session_audio_chunk_path(temp.path(), &started.session_id, 0);
         std::fs::create_dir(&chunk_path).unwrap();
 
         let error = core
@@ -17820,9 +17858,7 @@ mod tests {
                 .as_deref()
                 .expect("active capture has a recovery journal"),
         );
-        let chunk_path = temp
-            .path()
-            .join(format!("{}.chunk.00000.enc", started.session_id));
+        let chunk_path = vt_pipeline::session_audio_chunk_path(temp.path(), &started.session_id, 0);
         std::fs::create_dir(&chunk_path).unwrap();
 
         let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();

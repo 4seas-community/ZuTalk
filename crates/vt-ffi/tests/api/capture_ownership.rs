@@ -58,9 +58,7 @@ fn invalid_local_audio_interrupts_durably_and_releases_capture_ownership() {
             Box::new(NoopCaptureCallback),
         )
         .unwrap();
-    let journal_path = tmp
-        .path()
-        .join(format!("{}.capture-journal.enc", first.session_id));
+    let journal_path = vt_pipeline::session_capture_journal_path(tmp.path(), &first.session_id);
 
     core.push_notebook_capture_session(first.session_id.clone(), vec![0_u8; 3_200])
         .unwrap();

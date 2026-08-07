@@ -17,6 +17,62 @@ const CAPTURE_JOURNAL_MAGIC: &[u8; 8] = b"VTCAPJ1\0";
 const CAPTURE_JOURNAL_SYNC_INTERVAL: u64 = 10;
 const MAX_CAPTURE_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
+/// Container for every per-session audio directory, relative to the data dir.
+pub const SESSION_AUDIO_ROOT_DIR: &str = "audio";
+
+/// `<data_dir>/audio/<session_id>` — the canonical home of one session's
+/// encrypted audio. Every artifact a session owns on disk lives here, so
+/// destroying the audio is a single directory removal rather than a filename
+/// prefix scan of the data directory root.
+pub fn session_audio_dir(data_dir: &Path, session_id: &str) -> PathBuf {
+    data_dir.join(SESSION_AUDIO_ROOT_DIR).join(session_id)
+}
+
+/// The chunk index stays in the file name: recovery rebuilds the chunk list by
+/// deriving each path from the session id and the chunk ordinal, so the name
+/// must remain a pure function of those two values.
+pub fn session_audio_chunk_path(data_dir: &Path, session_id: &str, index: usize) -> PathBuf {
+    session_audio_dir(data_dir, session_id).join(format!("chunk.{index:05}.enc"))
+}
+
+pub fn session_capture_journal_path(data_dir: &Path, session_id: &str) -> PathBuf {
+    session_audio_dir(data_dir, session_id).join("capture-journal.enc")
+}
+
+/// Flat data-directory-root layout used before per-session audio directories.
+/// Retained so a database written by an older build stays readable until the
+/// startup relocation finishes.
+pub fn legacy_session_audio_chunk_path(data_dir: &Path, session_id: &str, index: usize) -> PathBuf {
+    data_dir.join(format!("{session_id}.chunk.{index:05}.enc"))
+}
+
+/// A session id becomes a directory name, so anything that could escape the
+/// data directory has to fail before a path is built from it.
+pub fn require_session_id_path_component(session_id: &str) -> Result<(), RecordingError> {
+    let is_single_component = !session_id.is_empty()
+        && session_id != "."
+        && session_id != ".."
+        && !session_id.contains('/')
+        && !session_id.contains('\\')
+        && !session_id.contains('\0')
+        && Path::new(session_id).components().count() == 1;
+    if !is_single_component {
+        return Err(RecordingError::InvalidAudio {
+            message: format!("session id is not a usable directory name: {session_id}"),
+        });
+    }
+    Ok(())
+}
+
+fn create_session_audio_dir(data_dir: &Path, session_id: &str) -> Result<PathBuf, RecordingError> {
+    require_session_id_path_component(session_id)?;
+    let dir = session_audio_dir(data_dir, session_id);
+    std::fs::create_dir_all(&dir).map_err(|error| RecordingError::WriteFailed {
+        message: error.to_string(),
+    })?;
+    Ok(dir)
+}
+
 /// 录音配置
 #[derive(Debug, Clone)]
 pub struct RecordingConfig {
@@ -82,12 +138,8 @@ impl CaptureAudioJournal {
         config: RecordingConfig,
         key: SessionKey,
     ) -> Result<Self, RecordingError> {
-        std::fs::create_dir_all(&config.data_dir).map_err(|error| RecordingError::WriteFailed {
-            message: error.to_string(),
-        })?;
-        let journal_path = config
-            .data_dir
-            .join(format!("{session_id}.capture-journal.enc"));
+        create_session_audio_dir(&config.data_dir, &session_id)?;
+        let journal_path = session_capture_journal_path(&config.data_dir, &session_id);
         let file = create_capture_journal_file(&journal_path, |file| {
             file.write_all(CAPTURE_JOURNAL_MAGIC)?;
             file.sync_data()
@@ -358,7 +410,7 @@ pub fn recover_capture_audio_journal(
     let encrypted_path = audio_chunks
         .first()
         .map(|chunk| chunk.path.clone())
-        .unwrap_or_else(|| data_dir.join(format!("{session_id}.chunk.00000.enc")));
+        .unwrap_or_else(|| session_audio_chunk_path(data_dir, session_id, 0));
     Ok(RecoveredCaptureAudio {
         session_id: session_id.to_string(),
         encrypted_path,
@@ -385,15 +437,13 @@ impl RecoveredCaptureChunkWriter<'_> {
         start_frame: u64,
         index: usize,
     ) -> Result<RecordingAudioChunk, RecordingError> {
-        std::fs::create_dir_all(self.data_dir).map_err(|error| RecordingError::WriteFailed {
-            message: error.to_string(),
-        })?;
-        let path = self
-            .data_dir
-            .join(format!("{}.chunk.{index:05}.enc", self.session_id));
-        let temporary = self.data_dir.join(format!(
-            ".{}.chunk.{index:05}.{}.recovering",
-            self.session_id,
+        let session_dir = create_session_audio_dir(self.data_dir, self.session_id)?;
+        let path = session_audio_chunk_path(self.data_dir, self.session_id, index);
+        // The temp name stays inside the session directory so an abandoned
+        // recovery attempt is destroyed by the same directory removal that
+        // destroys the session's committed chunks.
+        let temporary = session_dir.join(format!(
+            ".chunk.{index:05}.{}.recovering",
             uuid::Uuid::new_v4()
         ));
         if let Err(error) = encrypt_to_file(&temporary, self.key, plaintext) {
@@ -414,7 +464,7 @@ impl RecoveredCaptureChunkWriter<'_> {
                 message: format!("install recovered capture chunk: {error}"),
             });
         }
-        if let Ok(directory) = File::open(self.data_dir) {
+        if let Ok(directory) = File::open(&session_dir) {
             let _ = directory.sync_all();
         }
         let frame_count = (plaintext.len() / self.bytes_per_frame) as u64;
@@ -444,11 +494,7 @@ pub fn write_encrypted_audio_chunks(
     sample_rate: u32,
     channels: u16,
 ) -> Result<Vec<RecordingAudioChunk>, RecordingError> {
-    if !data_dir.exists() {
-        std::fs::create_dir_all(data_dir).map_err(|e| RecordingError::WriteFailed {
-            message: e.to_string(),
-        })?;
-    }
+    create_session_audio_dir(data_dir, session_id)?;
 
     let bytes_per_frame = channels.max(1) as usize * 4;
     let frames_per_chunk = sample_rate.max(1) as usize * 60;
@@ -473,7 +519,7 @@ pub fn write_encrypted_audio_chunks(
             start_ms
         };
         let chunk_id = format!("{session_id}:audio:{index:05}");
-        let path = data_dir.join(format!("{session_id}.chunk.{index:05}.enc"));
+        let path = session_audio_chunk_path(data_dir, session_id, index);
         if let Err(error) = encrypt_to_file(&path, key, chunk_bytes_slice) {
             // Import/capture materialization is all-or-nothing at this layer.
             // A later chunk failure must not leave earlier encrypted chunks
@@ -576,8 +622,13 @@ mod tests {
         let result = journal.stop().unwrap();
         assert_eq!(result.duration_ms, 100);
         assert!(
-            tmp.path().join("capture-1.capture-journal.enc").exists(),
+            session_capture_journal_path(tmp.path(), "capture-1").exists(),
             "orchestration must retain the journal until durable indexes commit"
+        );
+        assert_eq!(
+            result.encrypted_path,
+            session_audio_chunk_path(tmp.path(), "capture-1", 0),
+            "capture audio must land in the session's own directory"
         );
 
         let mut reader =

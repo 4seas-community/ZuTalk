@@ -11,8 +11,11 @@ pub mod task_queue;
 pub use import::{import_audio_file, ImportError, ImportResult};
 pub use privacy::{DestroyError, PrivacyDestroyer};
 pub use recording::{
-    recover_capture_audio_journal, write_encrypted_audio_chunks, CaptureAudioJournal,
+    legacy_session_audio_chunk_path, recover_capture_audio_journal,
+    require_session_id_path_component, session_audio_chunk_path, session_audio_dir,
+    session_capture_journal_path, write_encrypted_audio_chunks, CaptureAudioJournal,
     RecordingAudioChunk, RecordingConfig, RecordingError, RecordingResult, RecoveredCaptureAudio,
+    SESSION_AUDIO_ROOT_DIR,
 };
 pub use task_queue::{
     RemoteTaskAuthorization, Task, TaskInfo, TaskPayload, TaskPriority, TaskQueue, TaskQueueError,
