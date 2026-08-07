@@ -3692,7 +3692,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private var pendingLivePreview: NotebookCaptureLivePreviewDTO?
     private var utteranceGapRepair: UtteranceGapRepair?
     private var utteranceGapRepairTask: Task<Void, Never>?
-    private var terminalTransitionLease: TerminalTransitionLease?
+    /// Published because `isEditable` reads it: the transcript withdraws its
+    /// lane carets for the length of a terminal transition, and a caret that
+    /// outlives the store's own gate is a caret whose commit is rejected.
+    @Published private var terminalTransitionLease: TerminalTransitionLease?
     private var terminalTransitionDrainPending = false
     private var pendingTerminalTransitionEvent: NotebookCaptureEventDTO?
     private var audioDrainWatchdogTask: Task<Void, Never>?

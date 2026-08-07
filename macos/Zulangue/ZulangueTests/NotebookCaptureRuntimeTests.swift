@@ -6738,6 +6738,49 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
     }
 
+    /// The active run's rows come from the capture overlay while
+    /// `history.runs` keeps no utterances for that session. Routing a live
+    /// lane commit at the history store therefore failed its lookup gate
+    /// after the row had already offered a caret. The commit must reach the
+    /// store that owns the rows, and the caret must respect the capture
+    /// store's own editing gate.
+    func testActiveRunLaneEditsCommitAgainstTheCaptureStore() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Zulangue", isDirectory: true)
+        let captureViews = try String(
+            contentsOf: root.appendingPathComponent("Pages/NotebookCaptureViews.swift"),
+            encoding: .utf8
+        )
+
+        let activeRunStart = try XCTUnwrap(
+            captureViews.range(of: "private struct NotebookRealtimeActiveRunView: View")
+        )
+        let activeRunView = String(captureViews[activeRunStart.lowerBound...])
+        XCTAssertTrue(
+            activeRunView.contains("try await capture.replaceLane("),
+            "a live lane edit must commit against the capture store that owns the presented rows"
+        )
+        XCTAssertFalse(
+            activeRunView.contains("history.replaceLane("),
+            "history.runs holds no utterances for the active session, so its replaceLane can only throw projectionLocked"
+        )
+        XCTAssertTrue(
+            captureViews.contains("isLaneEditingEnabled: capture.isEditable"),
+            "the live caret must withdraw while a terminal transition holds the session"
+        )
+
+        let utteranceViewStart = try XCTUnwrap(
+            captureViews.range(of: "struct NotebookRealtimeUtteranceView: View")
+        )
+        let utteranceView = String(captureViews[utteranceViewStart.lowerBound...])
+        XCTAssertTrue(
+            utteranceView.contains("guard isLaneEditingEnabled else { return false }"),
+            "the run-level gate must sit above every per-lane projection watermark"
+        )
+    }
+
     func testCaptureSurfacesKeepControlsNotebookOnlyAndAccessible() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

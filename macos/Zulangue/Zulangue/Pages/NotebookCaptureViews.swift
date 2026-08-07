@@ -2642,6 +2642,10 @@ private struct NotebookRealtimeHistoryView: View {
                 NotebookRealtimeActiveRunView(
                     run: run,
                     presentationMode: presentationMode,
+                    // Read here rather than inside the active-run boundary:
+                    // this view already observes the capture store, and that
+                    // boundary deliberately observes only the preview frame.
+                    isLaneEditingEnabled: capture.isEditable,
                     history: history,
                     capture: capture,
                     liveTailAnchorID: liveTailAnchor(run.sessionId),
@@ -2657,6 +2661,14 @@ private struct NotebookRealtimeHistoryView: View {
                         liveTranslationCues: [],
                         presentationMode: presentationMode,
                         isFocused: true,
+                        isLaneEditingEnabled: true,
+                        replaceLane: { utteranceId, language, text in
+                            try await history.replaceLane(
+                                utteranceId: utteranceId,
+                                language: language,
+                                text: text
+                            )
+                        },
                         history: history
                     )
                 }
@@ -2802,6 +2814,7 @@ private struct NotebookRealtimeHistoryView: View {
 private struct NotebookRealtimeActiveRunView: View {
     let run: NotebookCaptureHistoryRunDTO
     let presentationMode: NotebookTranscriptPresentationMode
+    let isLaneEditingEnabled: Bool
     let history: NotebookCaptureHistoryStore
     private let capture: ActiveBilingualTranscriptStore
     private let liveTailAnchorID: String
@@ -2811,6 +2824,7 @@ private struct NotebookRealtimeActiveRunView: View {
     init(
         run: NotebookCaptureHistoryRunDTO,
         presentationMode: NotebookTranscriptPresentationMode,
+        isLaneEditingEnabled: Bool,
         history: NotebookCaptureHistoryStore,
         capture: ActiveBilingualTranscriptStore,
         liveTailAnchorID: String,
@@ -2818,6 +2832,7 @@ private struct NotebookRealtimeActiveRunView: View {
     ) {
         self.run = run
         self.presentationMode = presentationMode
+        self.isLaneEditingEnabled = isLaneEditingEnabled
         self.history = history
         self.capture = capture
         self.liveTailAnchorID = liveTailAnchorID
@@ -2838,6 +2853,16 @@ private struct NotebookRealtimeActiveRunView: View {
                 liveTranslationCues: capture.presentedTranslationCueSnapshot,
                 presentationMode: presentationMode,
                 isFocused: true,
+                isLaneEditingEnabled: isLaneEditingEnabled,
+                // The live run's rows are the capture store's own utterances,
+                // so its store is the only one that can accept an edit to them.
+                replaceLane: { utteranceId, language, text in
+                    try await capture.replaceLane(
+                        utteranceId: utteranceId,
+                        language: language,
+                        text: text
+                    )
+                },
                 history: history
             )
             Color.clear
@@ -3021,6 +3046,14 @@ struct NotebookRealtimeUtteranceView: View {
     let liveTranslationCues: [NotebookCaptureTranslationCueDTO]
     let presentationMode: NotebookTranscriptPresentationMode
     let isFocused: Bool
+    /// Run-level editing gate, above the per-lane projection watermark. The
+    /// active run closes it while a terminal transition holds the session.
+    let isLaneEditingEnabled: Bool
+    /// A lane edit must reach the store that owns the rows on screen. The
+    /// active run's utterances come from the capture overlay and `history.runs`
+    /// deliberately keeps none for it, so routing every commit at the history
+    /// store made a live edit fail the very gate this view had just opened.
+    let replaceLane: (String, String, String) async throws -> Void
     @ObservedObject var history: NotebookCaptureHistoryStore
     @State private var laneEditingState = BilingualLaneEditingState()
     @State private var speakerSelection: NotebookSpeakerSelection?
@@ -3110,7 +3143,8 @@ struct NotebookRealtimeUtteranceView: View {
     }
 
     private var hasAnyEditableLane: Bool {
-        presentedUtterances.contains { utterance in
+        guard isLaneEditingEnabled else { return false }
+        return presentedUtterances.contains { utterance in
             utterance.isLoroEditableLane(
                 language: utterance.sourceLanguage,
                 appliedRevision: run.realtimeLoroAppliedRevision
@@ -3317,13 +3351,10 @@ struct NotebookRealtimeUtteranceView: View {
                         ),
                         speakerDisplayName: speakerDisplayName(for: utterance),
                         onManageSpeaker: { selectSpeaker(for: utterance) },
+                        isLaneEditingEnabled: isLaneEditingEnabled,
                         realtimeLoroAppliedRevision: run.realtimeLoroAppliedRevision,
                         onReplace: { language, text in
-                            try await history.replaceLane(
-                                utteranceId: utterance.id,
-                                language: language,
-                                text: text
-                            )
+                            try await replaceLane(utterance.id, language, text)
                         },
                         onEditingChanged: { target, focused in
                             updateLaneEditingState(target, focused: focused)
@@ -3364,16 +3395,12 @@ struct NotebookRealtimeUtteranceView: View {
                         utterance: utterance,
                         speakerDisplayName: speakerDisplayName(for: utterance),
                         onManageSpeaker: { selectSpeaker(for: utterance) },
-                        isEditable: utterance.isLoroEditableLane(
+                        isEditable: isLaneEditingEnabled && utterance.isLoroEditableLane(
                             language: utterance.sourceLanguage,
                             appliedRevision: run.realtimeLoroAppliedRevision
                         ),
                         onReplace: { language, text in
-                            try await history.replaceLane(
-                                utteranceId: utterance.id,
-                                language: language,
-                                text: text
-                            )
+                            try await replaceLane(utterance.id, language, text)
                         },
                         onEditingChanged: { target, focused in
                             updateLaneEditingState(target, focused: focused)
@@ -3839,6 +3866,7 @@ private struct MultilingualUtteranceRow: View {
     let projection: NotebookCaptureLaneProjection
     let speakerDisplayName: String?
     let onManageSpeaker: () -> Void
+    let isLaneEditingEnabled: Bool
     let realtimeLoroAppliedRevision: UInt64
     let onReplace: (String, String) async throws -> Void
     let onEditingChanged: (BilingualLaneEditTarget, Bool) -> Void
@@ -3910,7 +3938,7 @@ private struct MultilingualUtteranceRow: View {
                                 laneLanguage: normalizedSourceLanguage
                             ),
                             text: unselectedLanguageText,
-                            isEditable: utterance.isLoroEditableLane(
+                            isEditable: isLaneEditingEnabled && utterance.isLoroEditableLane(
                                 language: normalizedSourceLanguage,
                                 appliedRevision: realtimeLoroAppliedRevision
                             ),
@@ -3975,7 +4003,7 @@ private struct MultilingualUtteranceRow: View {
                 ),
                 text: projectedLane.text,
                 missingLaneState: projectedLane.missingLaneState,
-                isEditable: utterance.isLoroEditableLane(
+                isEditable: isLaneEditingEnabled && utterance.isLoroEditableLane(
                     language: projectedLane.language,
                     appliedRevision: realtimeLoroAppliedRevision
                 ),
