@@ -4,6 +4,7 @@
 //! SQLite 事实与 Loro 可编辑投影的所有权划分见
 //! docs/architecture/ARCHITECTURE.md「转录编辑所有权」。
 
+pub mod block_guard;
 pub mod context_pack_store;
 pub mod document_schema;
 pub mod editor_bridge;

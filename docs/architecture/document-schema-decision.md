@@ -195,8 +195,10 @@ kind = "note":
    (**部分落地 2026-08-07**:同步引擎整体移植自 loro-mirror,见
    `crates/vt-mirror`;T2/B 两张 schema 表与每 kind 黄金祖先见
    `crates/vt-store/src/document_schema.rs`——八语车道固定成键,语言
-   范围长在 schema 里。尚欠:静态守卫按 kind 换规则手册、editor_bridge
-   块投影接线);
+   范围长在 schema 里。静态守卫已落地:`crates/vt-store/src/block_guard.rs`
+   按 kind 换规则手册——transcript 拒 move/拒删块/远端只准 user 批注块,
+   note 全放开,两类共享 meta 与收据不可远端触碰,判不出来一律拒收。
+   尚欠:editor_bridge 块投影接线,阶段 3 同场);
 3. 块列表 ↔ NSTextView 映射层,EditorSurface 状态收敛同场施工;
 4. 重放迁移工具 + 逐 frontier 验证器;首启迁移,旧文件留 `.pre-epoch2` 备份;
 5. 分享边界守卫换静态判定,双机清单跑一遍。
