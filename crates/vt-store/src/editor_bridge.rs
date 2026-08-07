@@ -1111,9 +1111,16 @@ mod epoch2_admission_tests {
                 .user_replace_text("n1", "批注(远端)")
                 .unwrap();
         } else {
-            remote_projection
-                .user_replace_text("u1", "篡改机器句")
-                .unwrap();
+            // 篡改机器块的归属字段——车道订正已放行,身份字段仍锁死。
+            let block = remote_projection
+                .doc()
+                .get_list("utterances")
+                .get(0)
+                .and_then(|value| value.into_container().ok())
+                .and_then(|container| container.into_map().ok())
+                .expect("首块是 map");
+            block.insert("owner", "user").unwrap();
+            remote_projection.doc().commit();
         }
         let update = remote_projection
             .doc()
@@ -1126,7 +1133,7 @@ mod epoch2_admission_tests {
     }
 
     #[test]
-    fn epoch2_capture_block_edit_is_refused_by_the_dispatch() {
+    fn epoch2_capture_block_identity_tamper_is_refused_by_the_dispatch() {
         let (bridge, update) = t2_with_remote_edit(false);
         assert_eq!(
             bridge.epoch2_admission_refuses("t2-doc", &update),

@@ -478,12 +478,15 @@ mod tests {
 
     #[test]
     fn capture_boundary_blocks_before_the_merge() {
+        // 边界对成员生效(宿主按「宿主即机器」豁免,见 permission 的测试)。
         let host = SecretKey::generate();
-        let roster = RoomRoster::new(scope(), host.public(), WritePolicy::Everyone);
+        let member = SecretKey::generate();
+        let mut roster = RoomRoster::new(scope(), host.public(), WritePolicy::Everyone);
+        roster.admit(member.public());
         let sink = RecordingSink::accepting();
 
         assert_eq!(
-            handle_incoming_update(&signed(&host, DOC, b"x"), &roster, &RejectAll, &sink),
+            handle_incoming_update(&signed(&member, DOC, b"x"), &roster, &RejectAll, &sink),
             IncomingOutcome::Denied(AdmissionDenial::TouchesCaptureOwnedRange)
         );
         assert!(sink.applied().is_empty());

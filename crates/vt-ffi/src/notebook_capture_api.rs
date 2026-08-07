@@ -8752,7 +8752,7 @@ fn t2_capture_owner(session_id: &str) -> String {
 /// variant. Returns `None` while the utterance has no Final lane at all — a
 /// block appears only once it has projectable content, mirroring the old
 /// Final-only render.
-fn t2_machine_block_write(utterance: &RealtimeUtterance) -> Option<MachineBlockWrite> {
+pub(crate) fn t2_machine_block_write(utterance: &RealtimeUtterance) -> Option<MachineBlockWrite> {
     let source_final = utterance.source_lane_is_complete();
     let mut lanes = BTreeMap::new();
     for variant in finalized_translation_variants(utterance) {
@@ -8802,7 +8802,7 @@ fn t2_frozen_lanes(utterance: &RealtimeUtterance) -> BTreeSet<String> {
 ///   section's end, never inside a later session;
 /// - no region yet: append at the document end, exactly where the old
 ///   renderer placed a brand-new session section.
-fn t2_insert_anchor(
+pub(crate) fn t2_insert_anchor(
     blocks: &[UtteranceBlock],
     session_id: &str,
     sequence_by_id: &HashMap<&str, u64>,
@@ -8955,6 +8955,9 @@ impl ZulangueCore {
                 .complete_projection_unless_purging(&run.id)
                 .map_err(store_error)?;
         }
+        // 正在共享这个 session 时,把新落地的 Final 事实刷进共享文档并
+        // 推送。best-effort:共享侧失败绝不影响采集产线。
+        self.refresh_shared_session_document(&run.session_id);
         Ok(())
     }
 
@@ -9066,7 +9069,21 @@ impl ZulangueCore {
         })();
 
         match apply_result {
-            Ok(updated) => Ok(updated),
+            Ok(updated) => {
+                // 正在共享这个 session 时,把订正显式施加到共享文档并推送
+                // (机器刷新按影子让行,不会替宿主搬运订正)。best-effort。
+                let lane_key = match mutation.lane {
+                    UtteranceLane::Source => None,
+                    UtteranceLane::Translated => Some(capture_lane_id(&mutation.lane_language)),
+                };
+                self.propagate_lane_edit_to_shared_session(
+                    &mutation.session_id,
+                    &mutation.utterance_id,
+                    lane_key.as_deref(),
+                    &mutation.target_text,
+                );
+                Ok(updated)
+            }
             Err(error) if document_durable => {
                 // The user's bytes are durable but the SQLite override
                 // commit is not. Keep the mutation pending so startup

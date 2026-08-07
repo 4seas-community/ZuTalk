@@ -10,8 +10,11 @@
 //! 规则手册(docs/architecture/document-schema-decision.md「双侧写」):
 //!
 //! - `kind = transcript`:块序不可变(move 一律拒绝);句块不可远端删除;
-//!   远端只能**插 owner = "user" 的批注块**、**改 owner = "user" 的块**;
-//!   采集块(owner = "capture:…")远端一个字节都不能动。
+//!   远端只能**插 owner = "user" 的批注块**、**改 owner = "user" 的块**、
+//!   **订正采集块的车道内容**(text 与 lanes 子树——协作订正的人类层);
+//!   采集块的 map 本身(owner / id / 容器替换)与块的存在、顺序,远端
+//!   一个字节都不能动。谁有资格订正由准入链的写入策略把关,宿主自己的
+//!   机器投影则在 vt-share 准入层按「宿主即机器」豁免边界。
 //! - `kind = note`:move/缩进/重排全放开,无采集块,owner 检查为空操作。
 //! - 两类共享:根部 meta(纪元/kind)与销毁收据 map 是本机事实,远端
 //!   更新不得触碰。
@@ -19,7 +22,7 @@
 //! 与准入链其它环节同一条家法:**判不出来一律拒收**。
 
 use loro::event::{Diff, ListDiffItem};
-use loro::{ContainerID, LoroDoc, LoroValue, ValueOrContainer};
+use loro::{ContainerID, ContainerTrait, LoroDoc, LoroValue, ValueOrContainer};
 use std::sync::{Arc, Mutex};
 
 use crate::document_schema::{DocumentKind, NOTE_ROOT, TRANSCRIPT_UTTERANCES};
@@ -167,17 +170,41 @@ pub fn admit_block_update(
                 } else {
                     // 块内改动:块容器是规范化链上根列表的直接孩子;target
                     // 自己是块(块的 map diff)或块的后代(text/lanes)。
+                    //
+                    // owner 从**导入前的本机文档**读:从 fork(导入后)读
+                    // 等于让这份 update 自己给自己发通行证——先把 owner 改
+                    // 成 "user" 再动内容就能冒充批注块。本机没有这个块时
+                    // 才落到 fork(新插入的块,其 owner 已在根列表的插入
+                    // 检查里核过)。
                     let block_cid = chain[1];
-                    let owner = fork
-                        .get_map(block_cid.clone())
-                        .get("owner")
-                        .map(|value| value.get_deep_value());
+                    let block = if current.has_container(block_cid) {
+                        current.get_map(block_cid.clone())
+                    } else {
+                        fork.get_map(block_cid.clone())
+                    };
+                    let owner = block.get("owner").map(|value| value.get_deep_value());
                     match owner {
                         Some(LoroValue::String(owner)) if owner.as_str() == USER_OWNER => {}
                         Some(LoroValue::String(owner)) => {
-                            return Err(BlockAdmissionDenial::ForeignBlockTouched {
-                                owner: owner.to_string(),
+                            // 采集块:证据性质锁的是**存在、顺序与归属**——
+                            // 块本身的 map(owner / id / 容器替换)远端不得
+                            // 触碰。车道内容(text 与 lanes 子树)是可协作
+                            // 订正的人类层,放行;写入策略(HostOnly)在
+                            // 准入链上一格把关。
+                            let lane_subtree = chain.get(2).is_some_and(|child| {
+                                ["text", "lanes"].iter().any(|key| {
+                                    matches!(
+                                        block.get(key),
+                                        Some(ValueOrContainer::Container(handler))
+                                            if handler.id() == **child
+                                    )
+                                })
                             });
+                            if !lane_subtree {
+                                return Err(BlockAdmissionDenial::ForeignBlockTouched {
+                                    owner: owner.to_string(),
+                                });
+                            }
                         }
                         // owner 缺失或不是字符串:判不出来,拒收。
                         _ => return Err(BlockAdmissionDenial::Undecidable),
@@ -244,10 +271,32 @@ mod tests {
     }
 
     #[test]
-    fn editing_a_capture_block_is_refused_by_owner_lookup() {
+    fn lane_corrections_on_capture_blocks_are_admitted() {
+        // 车道内容(text 与 lanes 子树)是可协作订正的人类层。
         let (local, remote) = pair(DocumentKind::Transcript, transcript_state());
         let mut state = remote.get_state();
-        state[TRANSCRIPT_UTTERANCES][0]["text"] = json!("远端篡改机器句");
+        state[TRANSCRIPT_UTTERANCES][0]["text"] = json!("远端订正机器句");
+        state[TRANSCRIPT_UTTERANCES][0]["lanes"]["zh"] = json!("远端订正译文");
+        remote
+            .set_state(|_| state.clone(), Default::default())
+            .unwrap();
+
+        assert_eq!(
+            admit_block_update(
+                &local,
+                DocumentKind::Transcript,
+                &update_since(&local, &remote)
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn tampering_with_a_capture_blocks_identity_is_refused() {
+        // 块的 map 本身(owner 等归属字段)仍然一个字节不能动。
+        let (local, remote) = pair(DocumentKind::Transcript, transcript_state());
+        let mut state = remote.get_state();
+        state[TRANSCRIPT_UTTERANCES][0]["owner"] = json!("user");
         remote
             .set_state(|_| state.clone(), Default::default())
             .unwrap();
@@ -260,7 +309,8 @@ mod tests {
             ),
             Err(BlockAdmissionDenial::ForeignBlockTouched {
                 owner: "capture:s1".into()
-            })
+            }),
+            "owner 按导入前的本机文档判,update 无法自己给自己发通行证"
         );
     }
 

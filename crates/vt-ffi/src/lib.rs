@@ -15,6 +15,7 @@ pub mod session_audio_api;
 pub(crate) mod session_move;
 pub mod settings_api;
 pub(crate) mod share_api;
+pub mod shared_session_docs;
 pub mod speaker_directory_api;
 pub(crate) mod task_worker;
 pub mod transcribe_api;
@@ -339,6 +340,7 @@ pub struct ZulangueCore {
         Arc<Mutex<Option<Arc<crate::lane_credential_api::LaneCredentialBroker>>>>,
     /// 打开中的第 2 纪元块文档(T2/B),见 block_document_api。
     pub(crate) block_documents: crate::block_document_api::BlockDocumentRegistry,
+    pub(crate) shared_sessions: std::sync::Arc<crate::shared_session_docs::SharedSessionState>,
     /// 待写盘的 editor session 集合。apply_edit 只 enqueue，后台 flusher
     /// 每 ~500ms drain 一次。这样单字符输入不再每次都阻塞主线程做 fs::write,
     /// 同一 session 连敲也只合并成一次 snapshot 写入。
@@ -699,6 +701,7 @@ impl ZulangueCore {
             editor_callbacks,
             lane_credential_broker: Arc::new(Mutex::new(None)),
             block_documents: Default::default(),
+            shared_sessions: Default::default(),
             pending_snapshot_saves,
             task_queue,
             session_task_registry,

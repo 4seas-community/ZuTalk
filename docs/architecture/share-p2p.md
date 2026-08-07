@@ -351,3 +351,80 @@ relay 部署与 `/v1/relay-auth`、`test_share_no_audio_gate.sh`。
   后者更友好但要拆 Loro update，代价未评估。
 - 房间名册怎么分发与更新（主持人签名的成员列表 vs gossip 内广播）。
 - 大房间下 gossip 的实测扇出成本，需要在第二期收数据后再定人数上限。
+
+## 11. 收端落库与协同编辑（v1 定案，2026-08-08）
+
+第三期的落地形态。此前文档同步只有骨架：宿主 `enable_document_sync` 武装了
+受理端，但按 session_id 键控的文档从未在 bridge 里打开过（version /
+updates_since 永远答不出来），观看端既不武装同步也不拨催缺，
+`publish_document_update` 无人调用——链路端到端不通。本节是打通它的定案。
+
+### 同步单元：按 session 一份 T2 块文档，doc id = session_id
+
+**为什么不能直接同步转录稿 tab 文档**：tab 文档按 Notebook 一份、含全部
+session；按单次录音共享时同步它会把同 Notebook 里其它录音也发出去——隐私
+穿孔。CRDT update 不可按内容过滤，所以同步单元必须天然等于共享单元。
+
+共享文档是**从 SQLite 可见事实独立投影出来的第二份 T2 文档**（复用
+`t2_upsert_finalized_utterances` 同一投影器），不是 tab 文档的 fork。
+两台机器各自从黄金起点开同一 session 的空文档也能安全合并：T2 的根容器
+按名收敛，句块由唯一投影方（宿主）创建，无并发建块。
+
+- 宿主：`enable_document_sync` 时物化范围内全部 session 的共享文档
+  （bridge 按 session_id 挂载，纪元准入、version、updates_since 就地生效）；
+  实时采集在 T2 投影 ack 后刷新 + publish；
+- 文件落 `block-documents/<session_id>.loro`，与 tab 文档同一目录同一纪律。
+- 共享文档**只在 bridge 常驻**，动词与读取经 `TranscriptProjection::open`
+  于 LoroDoc 克隆（共享状态）上瞬时进行——不进块文档注册表，不与笔记/tab
+  的生命周期纠缠。
+
+### 跨端的「机器让人」：车道机器影子
+
+本机的冻结事实（SQLite 车道 edit revision）覆盖不了观看端的编辑。宿主为
+每个共享 session 维护一张**机器影子**（lane → 机器最后写入的文本，进程内
+存活）：刷新时共享文档当前文本 ≠ 影子 → 该车道视为被人接管，机器让行。
+宿主自己的车道订正不走机器刷新，在订正提交处显式以 user 动词施加到共享
+文档并推送。已声明的边界：宿主重启后影子以当时文档现状重建，重启前观看端
+的未同步编辑可能被其后的机器修订覆盖——v1 接受，影子持久化留给后续。
+
+### 观看端：落库进「分享」Notebook
+
+- `join_share` 后自动武装文档同步并拨 `sync_document_with(host)` 催缺
+  （单次拨号，断线重连留给后续）；
+- 收到范围内未打开的文档 → 黄金起点开新 + bridge 挂载（先开再判纪元，
+  否则 SchemaEpochUnknown 会把第一笔更新拒之门外）→ import → 落盘
+  `block-documents/shared/<session_id>.loro`;
+- **台账即目录**：收到过什么 = shared/ 下有什么文件,内容即真相,不设
+  SQLite 台账(收到时间取文件时间,标题取首块文本)。「分享」收件
+  Notebook 由 `shared_inbox_notebook` 幂等供给,v1 里它是收到内容的
+  逻辑归属与 UI 入口;把收到的 session 真正挂进 Notebook 阅读器的
+  SQLite 关联留给 Notebook 读端成形之后;
+- **范围判定（观看端）**：只认已入册的 id——Session 范围在加入时由
+  分享码钉死那一个。**Notebook 范围 v1 不落库**（入册清单为空,一切
+  拒收,字幕照旧）:接受成员自报的 id 会打开 bridge 键位抢占面
+  （远端内容冒名顶替本机同 id 文档）,宿主签名的文档清单成形之前
+  不冒这个险。挂载处另有占用防御:id 已被本机其它文档占用时拒绝
+  挂载共享文档;
+- 观看端编辑走 T2 用户动词（订正车道/原文、插批注）,提交后导出自上次
+  发布版本以来的 update 推给房间;HostOnly 房间宿主按既有写入策略拒收,
+  UI 按 host_only 直接禁用编辑入口。
+
+### 准入规则的两处精确放宽（随本节落地）
+
+- **宿主豁免编辑边界**（vt-share 准入层）:采集边界守卫防的是「别人碰
+  机器的内容」,共享 session 文档里的机器就是宿主——验签与成员资格
+  在前,豁免只对证明了身份的宿主生效;成员的更新仍逐条过边界。
+- **车道订正层**（block_guard 规则手册）:采集块的 text 与 lanes 子树
+  是可协作订正的人类层,成员可改;块的 map 本身（owner / id / 容器
+  替换）、块的存在与顺序仍一个字节不能动。谁有资格订正由写入策略
+  （HostOnly / Everyone）把关。
+- 顺带修复一个既有漏洞:守卫此前从**导入后**的副本读 owner,一份
+  update 可以先把 owner 改成 "user" 再动内容,自己给自己发通行证。
+  现在 owner 一律按**导入前**的本机文档判,本机没有的块才落到副本
+  （新插入块的 owner 已在根列表的插入检查里核过）。
+
+### 不变量
+
+- 音频照旧结构性排除;
+- 收到的内容永远只进「分享」Notebook,不与本机录音混住;
+- 准入链一格不少:归属 → 纪元 → 验签 → 成员 → 写策略 → block_guard。

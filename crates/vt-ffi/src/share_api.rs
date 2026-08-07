@@ -35,7 +35,7 @@ use crate::{CoreError, ZulangueCore};
 /// `vt-share` 定义了这个端口却不实现它:判定必须真的把更新应用一次才知道它动了
 /// 哪里,而那需要持有文档。实现落在这里,探测跑在 `EditorBridge` fork 出的副本上。
 ///
-/// 文档 id 由载荷带来,归属判定见 [`LoroDocumentSync::document_in_scope`]。
+/// 文档 id 由载荷带来,归属判定见 [`crate::shared_session_docs::SharedDocSync`]。
 pub(crate) struct LoroCaptureBoundaryGuard {
     editor: vt_store::EditorBridge,
 }
@@ -60,80 +60,6 @@ impl vt_share::CaptureBoundaryGuard for LoroCaptureBoundaryGuard {
         self.editor
             .epoch2_admission_refuses(document_id, update)
             .unwrap_or(true)
-    }
-}
-
-/// 用 `EditorBridge` 回答文档同步的三个问题。
-///
-/// 与 [`LoroCaptureBoundaryGuard`] 同理:`vt-share` 定义端口但不认识 Loro,
-/// 实现落在持有文档的这一侧。
-///
-/// 共享范围里有哪些文档,由这一层回答。
-///
-/// 按单次录音共享时只有一篇,id 就是 session_id;按 Notebook 共享时是该 Notebook
-/// 下的全部录音,来自 `list_notebook_capture_history_summaries`。
-///
-/// **归属判定是这里最要紧的一件事。** 文档 id 随载荷从对端来,不验就等于允许一个
-/// 房间去写它管不着的文档。任何查不出来的情况都判为不属于 —— 放行等于没有这道检查。
-pub(crate) struct LoroDocumentSync {
-    editor: vt_store::EditorBridge,
-    capture_store: Arc<vt_store::NotebookCaptureStore>,
-}
-
-impl LoroDocumentSync {
-    pub(crate) fn new(
-        editor: vt_store::EditorBridge,
-        capture_store: Arc<vt_store::NotebookCaptureStore>,
-    ) -> Self {
-        Self {
-            editor,
-            capture_store,
-        }
-    }
-}
-
-impl vt_share::DocumentSync for LoroDocumentSync {
-    fn documents(&self, scope: &ScopeId) -> Vec<String> {
-        match scope {
-            ScopeId::Session { session_id } => vec![session_id.clone()],
-            ScopeId::Notebook { notebook_id } => self
-                .capture_store
-                .list_notebook_capture_history_summaries(notebook_id)
-                .map(|runs| runs.into_iter().map(|run| run.session_id).collect())
-                .unwrap_or_default(),
-        }
-    }
-
-    fn document_in_scope(&self, scope: &ScopeId, document_id: &str) -> bool {
-        match scope {
-            ScopeId::Session { session_id } => session_id == document_id,
-            ScopeId::Notebook { .. } => self.documents(scope).iter().any(|id| id == document_id),
-        }
-    }
-
-    fn version(&self, _scope: &ScopeId, document_id: &str) -> Vec<u8> {
-        self.editor
-            .document_version(document_id)
-            .unwrap_or_default()
-    }
-
-    fn schema_epoch(&self, _scope: &ScopeId, document_id: &str) -> Option<u64> {
-        // 未打开的文档判不出纪元,按 None 让上层拒收/不发 —— 与 version /
-        // updates_since 一样,同步家族只对打开的文档有答案。
-        self.editor.schema_epoch(document_id)
-    }
-
-    fn updates_since(
-        &self,
-        _scope: &ScopeId,
-        document_id: &str,
-        version: &[u8],
-    ) -> Option<Vec<u8>> {
-        self.editor.updates_since(document_id, version)
-    }
-
-    fn apply(&self, _scope: &ScopeId, document_id: &str, update: &[u8]) -> bool {
-        self.editor.import_remote_update(document_id, update)
     }
 }
 
@@ -295,6 +221,20 @@ pub(crate) struct ShareRuntime {
     last_broadcast_revision: Option<u64>,
     /// 已加入的 gossip 房间。在场与名册靠它 —— 没有它,房间里看不见彼此。
     room: Option<Arc<vt_share::net::RoomHandle>>,
+}
+
+impl ShareRuntime {
+    pub(crate) fn endpoint_handle(&self) -> Arc<ShareEndpoint> {
+        self.endpoint.clone()
+    }
+
+    pub(crate) fn is_hosting(&self) -> bool {
+        self.hosting.is_some()
+    }
+
+    pub(crate) fn roster_scope(&self) -> Option<ScopeId> {
+        self.roster.as_ref().map(|roster| roster.scope().clone())
+    }
 }
 
 struct HostedRoom {
@@ -664,6 +604,7 @@ impl ZulangueCore {
     /// **只停止继续发送。** 已经合并进对方文档的内容无法收回 —— 房间密钥轮换让老成员
     /// 拿不到后续、也进不来新房间,仅此而已。界面必须如实说明这一点。
     pub fn stop_sharing(&self) -> Result<(), CoreError> {
+        self.shared_sessions.clear_room_state();
         let mut guard = self.share_runtime.lock().unwrap();
         if let Some(runtime) = guard.as_mut() {
             runtime.hosting = None;
@@ -724,11 +665,28 @@ impl ZulangueCore {
             parsed.policy,
         ));
         runtime.viewing = Some(ViewedRoom {
-            scope,
+            scope: scope.clone(),
             host_only: matches!(parsed.policy, WritePolicy::HostOnly),
             inbox,
             projection: CaptionReceiver::new(),
             task,
+        });
+        drop(guard);
+
+        // 收端落库从这里开始:按单次录音共享时那一篇预先入册,然后武装
+        // 文档同步、拨一次催缺。失败不挡字幕——字幕走独立通道。
+        if let ScopeId::Session { session_id } = &scope {
+            self.shared_sessions.register_known(session_id);
+        }
+        if let Err(error) = self.enable_document_sync() {
+            tracing::warn!(%error, "文档同步未能武装;字幕仍可用");
+        }
+        let sync_endpoint = endpoint.clone();
+        let sync_host = parsed.host.clone();
+        self.runtime.spawn(async move {
+            if let Err(error) = sync_endpoint.sync_document_with(sync_host).await {
+                tracing::warn!(%error, "文档催缺未完成;对端的后续推送仍会送达");
+            }
         });
         Ok(())
     }
@@ -738,27 +696,40 @@ impl ZulangueCore {
     /// 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
     /// 每一笔编辑都会推给对端,对端推来的每一笔都要过完整条准入链才会合入。
     pub fn enable_document_sync(&self) -> Result<(), CoreError> {
-        let guard = self.share_runtime.lock().unwrap();
-        let Some(runtime) = guard.as_ref() else {
-            return Err(CoreError::ValidationFailed {
-                message: "尚未开始共享".into(),
-            });
+        let (endpoint, roster, hosting) = {
+            let guard = self.share_runtime.lock().unwrap();
+            let Some(runtime) = guard.as_ref() else {
+                return Err(CoreError::ValidationFailed {
+                    message: "尚未开始共享".into(),
+                });
+            };
+            let Some(roster) = runtime.roster.clone() else {
+                return Err(CoreError::ValidationFailed {
+                    message: "尚未开始共享".into(),
+                });
+            };
+            (runtime.endpoint.clone(), roster, runtime.hosting.is_some())
         };
-        let Some(roster) = runtime.roster.clone() else {
-            return Err(CoreError::ValidationFailed {
-                message: "尚未开始共享".into(),
-            });
-        };
+        let scope = roster.scope().clone();
+
+        // 宿主先物化范围内的共享文档:version / updates_since 只对打开的
+        // 文档有答案,不物化的同步是一场空转。
+        if hosting {
+            self.materialize_shared_sessions(&scope)?;
+        }
+
         let context = vt_share::DocSyncContext {
-            scope: roster.scope().clone(),
+            scope,
             roster: Arc::new(tokio::sync::Mutex::new(roster)),
             guard: Arc::new(LoroCaptureBoundaryGuard::new(self.editor_bridge.clone())),
-            sink: Arc::new(LoroDocumentSync::new(
+            sink: Arc::new(crate::shared_session_docs::SharedDocSync::new(
+                self.shared_sessions.clone(),
                 self.editor_bridge.clone(),
                 self.notebook_capture_store.clone(),
+                self.data_dir.clone(),
+                hosting,
             )),
         };
-        let endpoint = runtime.endpoint.clone();
         self.runtime
             .block_on(async move { endpoint.enable_document_sync(context).await });
         Ok(())
@@ -954,12 +925,16 @@ mod tests {
     ///
     /// 这条测试的意义在于串起三个 crate:`vt-share` 出规则、`vt-store` 出 Loro
     /// 判定、`vt-ffi` 把两者接上。任何一处接错,这里就会放行一份该拒的更新。
-    /// 建一份 T2 转录稿开进 bridge,远端分叉出一份真实可合入的更新:
-    /// `edit_capture_block` 决定远端改的是采集句块还是自己插的批注。
-    fn remote_edit(
-        session_id: &str,
-        edit_capture_block: bool,
-    ) -> (vt_store::EditorBridge, Vec<u8>) {
+    /// 远端改动的三种形态:订正机器块车道(放行)、插批注(放行)、
+    /// 篡改机器块归属字段(拒)。
+    enum RemoteEdit {
+        LaneCorrection,
+        Annotation,
+        OwnerTamper,
+    }
+
+    /// 建一份 T2 转录稿开进 bridge,远端分叉出一份真实可合入的更新。
+    fn remote_edit(session_id: &str, edit: RemoteEdit) -> (vt_store::EditorBridge, Vec<u8>) {
         use loro::LoroDoc;
         use vt_store::document_schema::{new_block_document, DocumentKind};
         use vt_store::transcript_projection::TranscriptProjection;
@@ -988,14 +963,24 @@ mod tests {
             .unwrap();
         let before = remote.oplog_vv();
         let remote_projection = TranscriptProjection::open(remote).unwrap();
-        if edit_capture_block {
-            remote_projection
-                .user_replace_text("u1", "远端篡改机器句")
-                .unwrap();
-        } else {
-            remote_projection
+        match edit {
+            RemoteEdit::LaneCorrection => remote_projection
+                .user_replace_text("u1", "远端订正机器句")
+                .unwrap(),
+            RemoteEdit::Annotation => remote_projection
                 .insert_annotation(1, "n1", "远端批注")
-                .unwrap();
+                .unwrap(),
+            RemoteEdit::OwnerTamper => {
+                let block = remote_projection
+                    .doc()
+                    .get_list("utterances")
+                    .get(0)
+                    .and_then(|value| value.into_container().ok())
+                    .and_then(|container| container.into_map().ok())
+                    .expect("首块是 map");
+                block.insert("owner", "user").unwrap();
+                remote_projection.doc().commit();
+            }
         }
         let update = remote_projection
             .doc()
@@ -1010,19 +995,33 @@ mod tests {
         update: Vec<u8>,
         editor: vt_store::EditorBridge,
     ) -> vt_share::IncomingOutcome {
+        run_chain_as(session_id, document_id, update, editor, false)
+    }
+
+    /// `author_is_host`:宿主按「宿主即机器」豁免编辑边界,成员逐条过。
+    fn run_chain_as(
+        session_id: &str,
+        document_id: &str,
+        update: Vec<u8>,
+        editor: vt_store::EditorBridge,
+        author_is_host: bool,
+    ) -> vt_share::IncomingOutcome {
         use vt_share::{handle_incoming_update, seal_update, RoomRoster, WritePolicy};
 
         let scope = ScopeId::Session {
             session_id: session_id.into(),
         };
         let host = iroh::SecretKey::generate();
-        let roster = RoomRoster::new(scope.clone(), host.public(), WritePolicy::Everyone);
+        let member = iroh::SecretKey::generate();
+        let mut roster = RoomRoster::new(scope.clone(), host.public(), WritePolicy::Everyone);
+        roster.admit(member.public());
+        let author = if author_is_host { &host } else { &member };
         // 信封纪元照本地文档实际声明的来;查不出(文档不在范围)时按
         // 当前纪元封,让 scope 检查自己出面拒绝。
         let epoch = editor
             .schema_epoch(session_id)
             .unwrap_or(vt_store::editor_bridge::CURRENT_SCHEMA_EPOCH);
-        let envelope = seal_update(&scope, document_id, epoch, update, &host).unwrap();
+        let envelope = seal_update(&scope, document_id, epoch, update, author).unwrap();
 
         // NotebookCaptureStore 只在 Notebook 范围下才被问到,Session 范围用不着它。
         let store = Arc::new(
@@ -1031,27 +1030,42 @@ mod tests {
             ))
             .unwrap(),
         );
+        let temp = tempfile::tempdir().unwrap();
         handle_incoming_update(
             &envelope,
             &roster,
             &LoroCaptureBoundaryGuard::new(editor.clone()),
-            &LoroDocumentSync::new(editor, store),
+            &crate::shared_session_docs::SharedDocSync::new(
+                std::sync::Arc::new(crate::shared_session_docs::SharedSessionState::default()),
+                editor,
+                store,
+                temp.path().to_path_buf(),
+                true,
+            ),
         )
     }
 
     #[test]
-    fn admission_chain_refuses_a_remote_edit_of_a_capture_block() {
-        let (editor, update) = remote_edit("session-1", true);
+    fn admission_chain_refuses_identity_tamper_but_admits_lane_correction() {
+        // 成员篡改机器块归属字段:拒。
+        let (editor, update) = remote_edit("session-1", RemoteEdit::OwnerTamper);
         assert_eq!(
             run_chain("session-1", "session-1", update, editor),
             vt_share::IncomingOutcome::Denied(vt_share::AdmissionDenial::TouchesCaptureOwnedRange)
+        );
+
+        // 成员订正机器块的车道内容:协作订正的人类层,放行。
+        let (editor, update) = remote_edit("session-1b", RemoteEdit::LaneCorrection);
+        assert_eq!(
+            run_chain("session-1b", "session-1b", update, editor),
+            vt_share::IncomingOutcome::Applied
         );
     }
 
     /// 批注块的同一条链路必须放行,否则这道门就是「拒绝一切」。
     #[test]
     fn admission_chain_accepts_a_remote_annotation() {
-        let (editor, update) = remote_edit("session-2", false);
+        let (editor, update) = remote_edit("session-2", RemoteEdit::Annotation);
         assert_eq!(
             run_chain("session-2", "session-2", update, editor),
             vt_share::IncomingOutcome::Applied
@@ -1063,7 +1077,7 @@ mod tests {
     /// 文档 id 由对端声称,这是唯一挡住它的检查。
     #[test]
     fn a_session_room_cannot_write_into_another_document() {
-        let (editor, update) = remote_edit("session-3", false);
+        let (editor, update) = remote_edit("session-3", RemoteEdit::Annotation);
         assert_eq!(
             run_chain("session-3", "somebody-elses-doc", update, editor),
             vt_share::IncomingOutcome::Denied(vt_share::AdmissionDenial::DocumentNotInScope)

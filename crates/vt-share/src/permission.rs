@@ -185,7 +185,13 @@ pub fn admit_document_update(
     if !roster.may_write(envelope.author) {
         return Err(AdmissionDenial::ReadOnlyForThisAuthor);
     }
-    if guard.touches_capture_owned_range(roster.scope(), document_id, update) {
+    // 宿主豁免编辑边界:采集边界守卫防的是「别人碰机器的内容」,而共享
+    // session 文档里的机器就是宿主——它的机器块投影必须能到达观看端。
+    // 验签与成员资格在前,豁免只对证明了身份的宿主生效;成员(非宿主)
+    // 的更新仍逐条过边界。
+    if envelope.author != roster.host()
+        && guard.touches_capture_owned_range(roster.scope(), document_id, update)
+    {
         return Err(AdmissionDenial::TouchesCaptureOwnedRange);
     }
     Ok(())
@@ -298,11 +304,21 @@ mod tests {
 
     /// 编辑边界对主持人同样成立 —— 采集投影拥有的区间不属于任何人。
     #[test]
-    fn capture_owned_range_blocks_even_the_host() {
+    fn capture_boundary_exempts_the_host_and_blocks_members() {
+        // 宿主即机器:它的机器投影必须能到达观看端,边界对它豁免。
         let host = SecretKey::generate();
         let r = roster(&host, WritePolicy::HostOnly);
         assert_eq!(
             admit_document_update(&update_from(&host), DOC, b"", &r, &RejectAll),
+            Ok(())
+        );
+
+        // 成员(非宿主)的更新仍逐条过边界。
+        let member = SecretKey::generate();
+        let mut r = roster(&host, WritePolicy::Everyone);
+        r.admit(member.public());
+        assert_eq!(
+            admit_document_update(&update_from(&member), DOC, b"", &r, &RejectAll),
             Err(AdmissionDenial::TouchesCaptureOwnedRange)
         );
     }
