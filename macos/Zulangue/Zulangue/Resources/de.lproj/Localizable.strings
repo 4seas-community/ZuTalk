@@ -439,6 +439,13 @@
 "resources.status.pending" = "In Verarbeitung";
 "resources.status.ready" = "Verfügbar";
 "resources.status.failed" = "Fehlgeschlagen";
+"resources.move" = "Aufnahme in ein anderes Notizbuch verschieben…";
+"resources.move.title" = "Aufnahme verschieben";
+"resources.move.message" = "Audio, beide Transkripte und die persönliche Notiz von „%@“ werden gemeinsam verschoben und nach Aufnahmezeit einsortiert.";
+"resources.move.action" = "Verschieben";
+"resources.move.no_destination" = "Es gibt kein anderes Notizbuch für diese Aufnahme.";
+"resources.move.done" = "Aufnahme verschoben";
+"resources.move.failed" = "Aufnahme konnte nicht verschoben werden";
 "resources.delete" = "Aufnahme in den Papierkorb verschieben";
 "resources.delete.confirm_title" = "„%@“ in den Papierkorb verschieben?";
 "resources.delete.confirm_button" = "In den Papierkorb";

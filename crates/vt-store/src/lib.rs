@@ -44,7 +44,7 @@ pub use notebook_capture_store::{
 };
 pub use notebook_store::{
     BuiltinNotebookTab, NotebookRecord, NotebookSessionLinkRecord, NotebookSessionProjectionRecord,
-    NotebookStore, NotebookStoreError, NotebookTabRecord,
+    NotebookStore, NotebookStoreError, NotebookTabRecord, SessionMovePlan, SessionMoveTarget,
 };
 pub use search::{RealtimeSearchProjectionOutcome, SearchResult, SearchStore, SearchStoreError};
 pub use session_meta::{

@@ -440,6 +440,13 @@
 "resources.status.pending" = "처리";
 "resources.status.ready" = "가능";
 "resources.status.failed" = "실패";
+"resources.move" = "녹음을 다른 노트북으로 이동…";
+"resources.move.title" = "녹음 이동";
+"resources.move.message" = "“%@”의 오디오와 두 가지 전사, 개인 메모가 함께 이동하며 녹음 시간 순서로 배치됩니다.";
+"resources.move.action" = "이동";
+"resources.move.no_destination" = "이동할 다른 노트북이 없습니다.";
+"resources.move.done" = "녹음을 이동했습니다";
+"resources.move.failed" = "녹음을 이동할 수 없습니다";
 "resources.delete" = "녹음을 휴지통으로 이동";
 "resources.delete.confirm_title" = "\"%@\"을(를) 휴지통으로 이동하시겠습니까?";
 "resources.delete.confirm_button" = "휴지통으로 이동";

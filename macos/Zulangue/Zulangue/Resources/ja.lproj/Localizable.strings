@@ -412,6 +412,13 @@
 "resources.status.pending" = "処理中";
 "resources.status.ready" = "利用可能";
 "resources.status.failed" = "失敗";
+"resources.move" = "録音を別のノートブックへ移動…";
+"resources.move.title" = "録音を移動";
+"resources.move.message" = "「%@」の音声、2 種類の文字起こし、手書きメモがまとめて移動し、録音日時の順に並びます。";
+"resources.move.action" = "移動";
+"resources.move.no_destination" = "移動先になるノートブックがありません。";
+"resources.move.done" = "録音を移動しました";
+"resources.move.failed" = "録音を移動できませんでした";
 "resources.delete" = "録音をゴミ箱に移動";
 "resources.delete.confirm_title" = "「%@」をゴミ箱に移動しますか?";
 "resources.delete.confirm_button" = "ゴミ箱に移動";

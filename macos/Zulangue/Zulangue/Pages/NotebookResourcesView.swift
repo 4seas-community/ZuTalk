@@ -156,12 +156,48 @@ final class NotebookResourcesViewModel: ObservableObject {
             return false
         }
     }
+
+    /// The notebooks a recording could move to — every live notebook except
+    /// the one it is already in.
+    func moveDestinations(
+        excluding notebookId: String,
+        core: (any ZulangueCoreProtocol)? = nil
+    ) -> [FfiNotebook] {
+        guard let core = core ?? CoreClient.shared.core else { return [] }
+        let notebooks = (try? core.listNotebooks()) ?? []
+        return notebooks.filter { $0.deletedAt == nil && $0.id != notebookId }
+    }
+
+    /// Moves a recording and everything it owns into another notebook. The core
+    /// refuses this while the session is being captured or permanently deleted,
+    /// so the error is surfaced rather than swallowed.
+    func moveToNotebook(
+        sessionId: String,
+        targetNotebookId: String,
+        core: (any ZulangueCoreProtocol)? = nil
+    ) -> String? {
+        guard let core = core ?? CoreClient.shared.core else {
+            return String(localized: "resources.move.failed")
+        }
+        do {
+            try core.moveSessionToNotebook(
+                sessionId: sessionId,
+                targetNotebookId: targetNotebookId
+            )
+            items.removeAll { $0.id == sessionId }
+            NotificationCenter.default.post(name: .zulangueSessionUpdated, object: nil)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
 }
 
 struct NotebookResourcesView: View {
     let notebookId: String
     let onOpenSession: (String) -> Void
     @StateObject private var viewModel = NotebookResourcesViewModel()
+    @State private var movingSession: NotebookResourceItem?
 
     var body: some View {
         ScrollView {
@@ -204,6 +240,9 @@ struct NotebookResourcesView: View {
                                 onVerifyAudioDestruction: {
                                     verifyAudioDestruction(sessionId: item.id)
                                 },
+                                onMove: {
+                                    movingSession = item
+                                },
                                 onMoveToTrash: {
                                     if viewModel.moveToTrash(sessionId: item.id) == false {
                                         ToastCenter.shared.error(
@@ -227,6 +266,32 @@ struct NotebookResourcesView: View {
         .onReceive(NotificationCenter.default.publisher(for: .zulangueSessionUpdated)) { _ in
             viewModel.load(notebookId: notebookId)
         }
+        .sheet(item: $movingSession) { session in
+            MoveSessionSheet(
+                sessionTitle: session.title,
+                destinations: viewModel.moveDestinations(excluding: notebookId),
+                onCancel: { movingSession = nil },
+                onConfirm: { targetNotebookId in
+                    movingSession = nil
+                    move(session: session, to: targetNotebookId)
+                }
+            )
+        }
+    }
+
+    /// Moves the recording, then follows it: the editor route names this
+    /// notebook's tab and document ids, which no longer own the session, so
+    /// reloading in place would open a notebook that does not hold it.
+    private func move(session: NotebookResourceItem, to targetNotebookId: String) {
+        if let failure = viewModel.moveToNotebook(
+            sessionId: session.id,
+            targetNotebookId: targetNotebookId
+        ) {
+            ToastCenter.shared.error(String(localized: "resources.move.failed"), detail: failure)
+            return
+        }
+        ToastCenter.shared.success(String(localized: "resources.move.done"))
+        MainNavigationStore.shared.openSession(session.id)
     }
 
     /// User-facing "prove it": recompute the receipt, report it, and reveal
@@ -281,6 +346,7 @@ private struct NotebookResourceBlock: View {
     let onOpen: () -> Void
     let onDestroyAudio: () -> Void
     let onVerifyAudioDestruction: () -> Void
+    let onMove: () -> Void
     let onMoveToTrash: () -> Void
 
     @State private var isConfirmingAudioDestroy = false
@@ -309,6 +375,15 @@ private struct NotebookResourceBlock: View {
                     .foregroundColor(.textSecondary)
 
                 Menu {
+                    Button {
+                        onMove()
+                    } label: {
+                        Label(
+                            String(localized: "resources.move"),
+                            systemImage: "arrow.right.doc.on.clipboard"
+                        )
+                    }
+                    Divider()
                     Button(role: .destructive) {
                         isConfirmingTrash = true
                     } label: {
@@ -508,6 +583,78 @@ private struct NotebookResourceBlock: View {
         case .ready: .signalGreen
         case .failed: .signalRed
         case .destroyed: .textSecondary
+        }
+    }
+}
+
+/// Picks the notebook a recording moves to.
+///
+/// The destination is always chosen explicitly and never inherited from
+/// whichever notebook happens to be open — the same rule the share sheet
+/// states, and for the same reason: moving a meeting into the wrong notebook
+/// is silent and easy to miss.
+private struct MoveSessionSheet: View {
+    let sessionTitle: String
+    let destinations: [FfiNotebook]
+    let onCancel: () -> Void
+    let onConfirm: (String) -> Void
+
+    @State private var selectedNotebookId: String = ""
+
+    private var displayTitle: String {
+        sessionTitle.isEmpty ? String(localized: "resources.untitled_recording") : sessionTitle
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Text(String(localized: "resources.move.title"))
+                    .font(.titleMD)
+                    .foregroundColor(.textPrimary)
+                Text(String(format: String(localized: "resources.move.message"), displayTitle))
+                    .font(.bodySM)
+                    .foregroundColor(.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if destinations.isEmpty {
+                Text(String(localized: "resources.move.no_destination"))
+                    .font(.bodySM)
+                    .foregroundColor(.textTertiary)
+            } else {
+                Picker("", selection: $selectedNotebookId) {
+                    ForEach(destinations, id: \.id) { notebook in
+                        Text(notebook.title).tag(notebook.id)
+                    }
+                }
+                .labelsHidden()
+                .accessibilityIdentifier("resources.move.picker")
+            }
+
+            HStack(spacing: Spacing.sm) {
+                Spacer()
+
+                Button(String(localized: "common.cancel")) {
+                    onCancel()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button(String(localized: "resources.move.action")) {
+                    guard selectedNotebookId.isEmpty == false else { return }
+                    onConfirm(selectedNotebookId)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(selectedNotebookId.isEmpty)
+                .accessibilityIdentifier("resources.move.confirm")
+            }
+        }
+        .padding(Spacing.xl)
+        .frame(width: 440)
+        .background(Color.bgRoot)
+        .onAppear {
+            if selectedNotebookId.isEmpty, let first = destinations.first {
+                selectedNotebookId = first.id
+            }
         }
     }
 }

@@ -440,6 +440,13 @@
 "resources.status.pending" = "Processing";
 "resources.status.ready" = "Available";
 "resources.status.failed" = "Failed";
+"resources.move" = "Move recording to another notebook…";
+"resources.move.title" = "Move recording";
+"resources.move.message" = "The audio, both transcripts, and the personal note for “%@” all move together. They are placed by recording time.";
+"resources.move.action" = "Move";
+"resources.move.no_destination" = "There is no other notebook to move this recording to.";
+"resources.move.done" = "Recording moved";
+"resources.move.failed" = "Could not move the recording";
 "resources.delete" = "Move recording to Trash";
 "resources.delete.confirm_title" = "Move \"%@\" to Trash?";
 "resources.delete.confirm_button" = "Move to Trash";

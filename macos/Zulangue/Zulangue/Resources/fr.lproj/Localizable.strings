@@ -440,6 +440,13 @@
 "resources.status.pending" = "Traitement";
 "resources.status.ready" = "Disponible";
 "resources.status.failed" = "Échec";
+"resources.move" = "Déplacer l’enregistrement vers un autre carnet…";
+"resources.move.title" = "Déplacer l’enregistrement";
+"resources.move.message" = "L’audio, les deux transcriptions et la note personnelle de « %@ » se déplacent ensemble, classés par date d’enregistrement.";
+"resources.move.action" = "Déplacer";
+"resources.move.no_destination" = "Aucun autre carnet ne peut recevoir cet enregistrement.";
+"resources.move.done" = "Enregistrement déplacé";
+"resources.move.failed" = "Impossible de déplacer l’enregistrement";
 "resources.delete" = "Déplacer l’enregistrement vers la corbeille";
 "resources.delete.confirm_title" = "Déplacer « %@ » vers la corbeille ?";
 "resources.delete.confirm_button" = "Déplacer vers la corbeille";

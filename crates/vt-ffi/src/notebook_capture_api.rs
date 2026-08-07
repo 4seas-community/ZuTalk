@@ -823,7 +823,7 @@ fn profile_update_from_ffi(value: &FfiNotebookCaptureProfile) -> NotebookCapture
     }
 }
 
-fn store_error(error: impl std::fmt::Display) -> CoreError {
+pub(crate) fn store_error(error: impl std::fmt::Display) -> CoreError {
     CoreError::InternalError {
         message: error.to_string(),
     }
@@ -9164,7 +9164,7 @@ fn push_capture_text_range(ranges: &mut Vec<crate::editor_api::TextRange>, pos: 
 /// range of runs whose `session_id` attribute names the purged session.
 /// A session split across disjoint ranges fails closed, exactly like the
 /// retired delta index it distills.
-fn legacy_session_section_range(
+pub(crate) fn legacy_session_section_range(
     delta_json: &str,
     session_id: &str,
 ) -> Result<Option<crate::editor_api::TextRange>, CoreError> {

@@ -31,6 +31,8 @@ pub enum TranscriptProjectionError {
     BlockNotFound(String),
     #[error("句块 id 不可为空")]
     EmptyBlockId,
+    #[error("session {0:?} 的句块被其它 session 打断,整段无法界定")]
+    SessionSliceInterleaved(String),
     #[error("镜像层错误: {0}")]
     Mirror(String),
 }
@@ -262,6 +264,103 @@ impl TranscriptProjection {
         Ok(removed)
     }
 
+    /// 搬迁链专用读:一次会议在本文档里占据的**整段**,文档序。
+    ///
+    /// 一次会议的资源是一个整体,搬去别的 Notebook 时批注必须跟着走——
+    /// 用户写在那段记录旁边的话属于那次会议,不属于它当时所在的本子。
+    /// 批注块的 owner 恒为 `"user"`,不带 session 归属,所以归属只能由
+    /// **位置**决定:整段 = 该 session 首个采集块起,到下一个采集块之前
+    /// 为止,途中与尾随的批注一并计入。段首之前的批注属于上一段,不动。
+    ///
+    /// 段内出现别的 session 的采集块时**失败关闭**:那意味着文档序不再是
+    /// 录制时间序,搬迁的落点无从谈起,宁可报错也不要切错边界。
+    pub fn session_slice(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<UtteranceBlock>, TranscriptProjectionError> {
+        let state = self.mirror.get_state();
+        let Some(items) = state.get(TRANSCRIPT_UTTERANCES).and_then(Value::as_array) else {
+            return Ok(Vec::new());
+        };
+        let Some(range) = session_slice_range(items, session_id)? else {
+            return Ok(Vec::new());
+        };
+        Ok(self.blocks()[range].to_vec())
+    }
+
+    /// 搬迁链专用写:把 [`Self::session_slice`] 取出的整段按原顺序插入到
+    /// `before_block_id` 之前(`None` 追加到文档尾)。返回真正新增的块数。
+    ///
+    /// **按 id 幂等**:已存在的块跳过而不是再插一遍。搬迁是「先写目标、
+    /// 再翻指针、最后清源」,崩溃重放会把同一段再喂一次,幂等让重放收敛
+    /// 成空操作,而不是把一次会议变成两份。
+    pub fn splice_session_slice(
+        &self,
+        blocks: &[UtteranceBlock],
+        before_block_id: Option<&str>,
+    ) -> Result<usize, TranscriptProjectionError> {
+        if blocks.iter().any(|block| block.id.is_empty()) {
+            return Err(TranscriptProjectionError::EmptyBlockId);
+        }
+        for block in blocks {
+            validate_lanes(block.lanes.keys())?;
+        }
+        let mut state = self.mirror.get_state();
+        let items = ensure_items(&mut state);
+        let mut cursor = match before_block_id {
+            None => items.len(),
+            Some(anchor) => items
+                .iter()
+                .position(|item| item.get("id").and_then(Value::as_str) == Some(anchor))
+                .ok_or_else(|| TranscriptProjectionError::BlockNotFound(anchor.to_string()))?,
+        };
+        let mut inserted = 0_usize;
+        for block in blocks {
+            if items
+                .iter()
+                .any(|item| item.get("id").and_then(Value::as_str) == Some(block.id.as_str()))
+            {
+                continue;
+            }
+            items.insert(
+                cursor,
+                json!({
+                    "id": block.id,
+                    "owner": block.owner,
+                    "text": block.text,
+                    "lanes": block.lanes,
+                }),
+            );
+            cursor += 1;
+            inserted += 1;
+        }
+        if inserted == 0 {
+            return Ok(0);
+        }
+        self.commit(state, "move")?;
+        Ok(inserted)
+    }
+
+    /// 搬迁链专用写:删掉 [`Self::session_slice`] 界定的整段,返回删除数。
+    ///
+    /// 与 [`Self::purge_session_blocks`] 的分工:销毁只按 owner 删采集块,
+    /// 刻意留下批注(用户的话不因一次销毁而消失);搬迁删的是整段,批注
+    /// 跟着去了新本子,留在原处才是丢失。幂等:段不存在时是空操作。
+    pub fn remove_session_slice(
+        &self,
+        session_id: &str,
+    ) -> Result<usize, TranscriptProjectionError> {
+        let mut state = self.mirror.get_state();
+        let items = ensure_items(&mut state);
+        let Some(range) = session_slice_range(items, session_id)? else {
+            return Ok(0);
+        };
+        let removed = range.len();
+        items.drain(range);
+        self.commit(state, "move")?;
+        Ok(removed)
+    }
+
     fn mutate_block(
         &self,
         block_id: &str,
@@ -291,6 +390,48 @@ impl TranscriptProjection {
         )?;
         Ok(())
     }
+}
+
+fn block_owner(item: &Value) -> &str {
+    item.get("owner")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+}
+
+/// 一次会议在文档序里占据的下标区间,见 [`TranscriptProjection::session_slice`]。
+fn session_slice_range(
+    items: &[Value],
+    session_id: &str,
+) -> Result<Option<std::ops::Range<usize>>, TranscriptProjectionError> {
+    let owner = format!("capture:{session_id}");
+    let mut capture_indices = items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| block_owner(item) == owner);
+    let Some((start, _)) = capture_indices.next() else {
+        return Ok(None);
+    };
+    let last_capture = capture_indices
+        .next_back()
+        .map(|(index, _)| index)
+        .unwrap_or(start);
+
+    // 段内只允许本 session 的采集块和批注块。
+    if items[start..=last_capture]
+        .iter()
+        .any(|item| block_owner(item) != owner && block_owner(item) != USER_OWNER)
+    {
+        return Err(TranscriptProjectionError::SessionSliceInterleaved(
+            session_id.to_string(),
+        ));
+    }
+
+    // 尾随批注:写在这段之后、下一段采集块之前的话,属于这一段。
+    let mut end = last_capture;
+    while end + 1 < items.len() && block_owner(&items[end + 1]) == USER_OWNER {
+        end += 1;
+    }
+    Ok(Some(start..end + 1))
 }
 
 fn ensure_items(state: &mut Value) -> &mut Vec<Value> {
@@ -674,5 +815,193 @@ mod tests {
                 prop_assert_eq!(projection.blocks(), model.blocks.clone());
             }
         }
+    }
+
+    fn capture_for(session: &str, id: &str, text: &str) -> MachineBlockWrite {
+        MachineBlockWrite {
+            id: id.to_string(),
+            owner: format!("capture:{session}"),
+            text: text.to_string(),
+            lanes: BTreeMap::new(),
+        }
+    }
+
+    /// 一份两段会议的文档:s1 两句 + 段内批注 + 尾随批注,然后 s2 一句。
+    fn two_session_document() -> TranscriptProjection {
+        let projection = projection();
+        for write in [
+            capture_for("s1", "s1-a", "一"),
+            capture_for("s1", "s1-b", "二"),
+        ] {
+            projection
+                .machine_upsert_block(write, &BTreeSet::new(), None)
+                .unwrap();
+        }
+        projection
+            .insert_annotation(1, "note-inside", "段内批注")
+            .unwrap();
+        projection
+            .insert_annotation(3, "note-trailing", "尾随批注")
+            .unwrap();
+        projection
+            .machine_upsert_block(capture_for("s2", "s2-a", "三"), &BTreeSet::new(), None)
+            .unwrap();
+        projection
+    }
+
+    #[test]
+    fn a_session_slice_carries_the_annotations_written_inside_and_after_it() {
+        let projection = two_session_document();
+
+        let slice = projection.session_slice("s1").unwrap();
+
+        assert_eq!(
+            slice.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(),
+            vec!["s1-a", "note-inside", "s1-b", "note-trailing"],
+            "批注写在哪次会议旁边就属于哪次会议"
+        );
+        assert_eq!(
+            projection
+                .session_slice("s2")
+                .unwrap()
+                .iter()
+                .map(|b| b.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["s2-a"]
+        );
+    }
+
+    #[test]
+    fn removing_a_slice_takes_its_annotations_and_leaves_the_other_session() {
+        let projection = two_session_document();
+
+        let removed = projection.remove_session_slice("s1").unwrap();
+
+        assert_eq!(removed, 4);
+        assert_eq!(
+            projection
+                .blocks()
+                .iter()
+                .map(|b| b.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["s2-a"]
+        );
+    }
+
+    #[test]
+    fn purge_and_move_differ_exactly_on_the_annotations() {
+        let purged = two_session_document();
+        purged.purge_session_blocks("s1").unwrap();
+        assert_eq!(
+            purged
+                .blocks()
+                .iter()
+                .map(|b| b.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["note-inside", "note-trailing", "s2-a"],
+            "销毁只删采集块,用户的话留下"
+        );
+
+        let moved = two_session_document();
+        moved.remove_session_slice("s1").unwrap();
+        assert_eq!(
+            moved
+                .blocks()
+                .iter()
+                .map(|b| b.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["s2-a"],
+            "搬迁把整段带走,批注跟着会议"
+        );
+    }
+
+    #[test]
+    fn a_slice_splices_in_front_of_a_later_recording() {
+        let source = two_session_document();
+        let slice = source.session_slice("s1").unwrap();
+        let target = projection();
+        target
+            .machine_upsert_block(
+                capture_for("later", "later-a", "后来"),
+                &BTreeSet::new(),
+                None,
+            )
+            .unwrap();
+
+        let inserted = target
+            .splice_session_slice(&slice, Some("later-a"))
+            .unwrap();
+
+        assert_eq!(inserted, 4);
+        assert_eq!(
+            target
+                .blocks()
+                .iter()
+                .map(|b| b.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["s1-a", "note-inside", "s1-b", "note-trailing", "later-a"],
+            "整段按原顺序落在更晚那次会议之前"
+        );
+        let restored = target.blocks();
+        assert_eq!(restored[0].owner, "capture:s1", "owner 原样保留");
+        assert_eq!(restored[1].owner, USER_OWNER);
+    }
+
+    #[test]
+    fn splicing_the_same_slice_twice_is_a_no_op() {
+        let source = two_session_document();
+        let slice = source.session_slice("s1").unwrap();
+        let target = projection();
+        target.splice_session_slice(&slice, None).unwrap();
+
+        let again = target.splice_session_slice(&slice, None).unwrap();
+
+        assert_eq!(again, 0, "崩溃重放不得把一次会议变成两份");
+        assert_eq!(target.blocks().len(), 4);
+    }
+
+    #[test]
+    fn an_absent_session_slices_and_removes_to_nothing() {
+        let projection = two_session_document();
+        assert!(projection.session_slice("never-here").unwrap().is_empty());
+        assert_eq!(projection.remove_session_slice("never-here").unwrap(), 0);
+        assert_eq!(projection.blocks().len(), 5);
+    }
+
+    #[test]
+    fn an_interleaved_session_fails_closed_instead_of_cutting_a_wrong_edge() {
+        let projection = projection();
+        for write in [
+            capture_for("s1", "s1-a", "一"),
+            capture_for("s2", "s2-a", "二"),
+            capture_for("s1", "s1-b", "三"),
+        ] {
+            projection
+                .machine_upsert_block(write, &BTreeSet::new(), None)
+                .unwrap();
+        }
+
+        assert!(matches!(
+            projection.session_slice("s1"),
+            Err(TranscriptProjectionError::SessionSliceInterleaved(_))
+        ));
+        assert!(matches!(
+            projection.remove_session_slice("s1"),
+            Err(TranscriptProjectionError::SessionSliceInterleaved(_))
+        ));
+        assert_eq!(projection.blocks().len(), 3, "失败关闭不得动文档");
+    }
+
+    #[test]
+    fn splicing_before_a_missing_anchor_is_refused_loudly() {
+        let source = two_session_document();
+        let slice = source.session_slice("s1").unwrap();
+        let target = projection();
+
+        assert!(matches!(
+            target.splice_session_slice(&slice, Some("not-here")),
+            Err(TranscriptProjectionError::BlockNotFound(_))
+        ));
+        assert!(target.blocks().is_empty());
     }
 }

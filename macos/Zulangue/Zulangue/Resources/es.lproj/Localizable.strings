@@ -439,6 +439,13 @@
 "resources.status.pending" = "Procesando";
 "resources.status.ready" = "Disponible";
 "resources.status.failed" = "Error";
+"resources.move" = "Mover la grabación a otro cuaderno…";
+"resources.move.title" = "Mover grabación";
+"resources.move.message" = "El audio, las dos transcripciones y la nota personal de «%@» se mueven juntos y se ordenan por fecha de grabación.";
+"resources.move.action" = "Mover";
+"resources.move.no_destination" = "No hay otro cuaderno al que mover esta grabación.";
+"resources.move.done" = "Grabación movida";
+"resources.move.failed" = "No se pudo mover la grabación";
 "resources.delete" = "Mover la grabación a la papelera";
 "resources.delete.confirm_title" = "¿Mover “%@” a la papelera?";
 "resources.delete.confirm_button" = "Mover a la papelera";

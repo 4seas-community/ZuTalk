@@ -440,6 +440,13 @@
 "resources.status.pending" = "处理中";
 "resources.status.ready" = "可用";
 "resources.status.failed" = "失败";
+"resources.move" = "移动录音到其他笔记本…";
+"resources.move.title" = "移动录音";
+"resources.move.message" = "“%@”的录音、两份转录和手写笔记会一起移动，并按录制时间排入新笔记本。";
+"resources.move.action" = "移动";
+"resources.move.no_destination" = "没有其他笔记本可供移动。";
+"resources.move.done" = "录音已移动";
+"resources.move.failed" = "无法移动这条录音";
 "resources.delete" = "将录音移入回收站";
 "resources.delete.confirm_title" = "将“%@”移入回收站？";
 "resources.delete.confirm_button" = "移入回收站";

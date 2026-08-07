@@ -360,6 +360,22 @@ impl ZulangueCore {
         Ok(sessions.into_iter().map(Into::into).collect())
     }
 
+    /// Moves a recording, and everything it owns, into another Notebook.
+    ///
+    /// The session's realtime transcript, async transcript, manual note, and
+    /// the annotations written alongside them all travel together; its audio
+    /// needs no move because no Notebook owns it. The sections land in the
+    /// target ordered by when the recording happened, not by when it was moved.
+    ///
+    /// Refused while the session is being captured or permanently deleted.
+    pub fn move_session_to_notebook(
+        &self,
+        session_id: String,
+        target_notebook_id: String,
+    ) -> Result<(), CoreError> {
+        self.move_session_to_notebook_inner(&session_id, &target_notebook_id)
+    }
+
     pub fn import_audio_into_notebook(
         &self,
         path: String,

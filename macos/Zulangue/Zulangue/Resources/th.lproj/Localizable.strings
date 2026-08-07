@@ -440,6 +440,13 @@
 "resources.status.pending" = "กำลังประมวลผล";
 "resources.status.ready" = "พร้อมใช้งาน";
 "resources.status.failed" = "ล้มเหลว";
+"resources.move" = "ย้ายการบันทึกไปสมุดบันทึกอื่น…";
+"resources.move.title" = "ย้ายการบันทึก";
+"resources.move.message" = "เสียง ถอดความทั้งสองแบบ และบันทึกส่วนตัวของ “%@” จะย้ายไปด้วยกัน และเรียงตามเวลาที่บันทึก";
+"resources.move.action" = "ย้าย";
+"resources.move.no_destination" = "ไม่มีสมุดบันทึกอื่นให้ย้ายไป";
+"resources.move.done" = "ย้ายการบันทึกแล้ว";
+"resources.move.failed" = "ย้ายการบันทึกไม่สำเร็จ";
 "resources.delete" = "ย้ายการบันทึกไปที่ถังขยะ";
 "resources.delete.confirm_title" = "ย้าย “%@” ไปที่ถังขยะหรือไม่";
 "resources.delete.confirm_button" = "ย้ายไปที่ถังขยะ";

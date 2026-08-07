@@ -883,6 +883,18 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func listNotebooks() throws  -> [FfiNotebook]
 
     /**
+     * Moves a recording, and everything it owns, into another Notebook.
+     *
+     * The session's realtime transcript, async transcript, manual note, and
+     * the annotations written alongside them all travel together; its audio
+     * needs no move because no Notebook owns it. The sections land in the
+     * target ordered by when the recording happened, not by when it was moved.
+     *
+     * Refused while the session is being captured or permanently deleted.
+     */
+    func moveSessionToNotebook(sessionId: String, targetNotebookId: String) throws
+
+    /**
      * Names the complete personal note associated with one recording time.
      * This only updates projection metadata; it never mutates note text,
      * session ownership, or the session timestamp.
@@ -1898,6 +1910,25 @@ open func listNotebooks()throws  -> [FfiNotebook]  {
             self.uniffiCloneHandle(),$0
     )
 })
+}
+
+    /**
+     * Moves a recording, and everything it owns, into another Notebook.
+     *
+     * The session's realtime transcript, async transcript, manual note, and
+     * the annotations written alongside them all travel together; its audio
+     * needs no move because no Notebook owns it. The sections land in the
+     * target ordered by when the recording happened, not by when it was moved.
+     *
+     * Refused while the session is being captured or permanently deleted.
+     */
+open func moveSessionToNotebook(sessionId: String, targetNotebookId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_move_session_to_notebook(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterString.lower(targetNotebookId),$0
+    )
+}
 }
 
     /**
@@ -5407,6 +5438,10 @@ public struct FfiShareState: Equatable, Hashable {
      */
     public var isHost: Bool
     /**
+     * 观看端到主持人的当前链路;没在观看或还没连上时为 `None`。
+     */
+    public var viewerLink: FfiShareLinkPath?
+    /**
      * 已应用的字幕帧号;还没收到任何帧时为 `None`。
      */
     public var appliedRevision: UInt64?
@@ -5431,6 +5466,9 @@ public struct FfiShareState: Equatable, Hashable {
          * 本机是这个房间的主持人。
          */isHost: Bool,
         /**
+         * 观看端到主持人的当前链路;没在观看或还没连上时为 `None`。
+         */viewerLink: FfiShareLinkPath?,
+        /**
          * 已应用的字幕帧号;还没收到任何帧时为 `None`。
          */appliedRevision: UInt64?,
         /**
@@ -5442,6 +5480,7 @@ public struct FfiShareState: Equatable, Hashable {
         self.isViewing = isViewing
         self.hostOnly = hostOnly
         self.isHost = isHost
+        self.viewerLink = viewerLink
         self.appliedRevision = appliedRevision
         self.broadcastRevision = broadcastRevision
         self.lines = lines
@@ -5467,6 +5506,7 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
                 isViewing: FfiConverterBool.read(from: &buf),
                 hostOnly: FfiConverterBool.read(from: &buf),
                 isHost: FfiConverterBool.read(from: &buf),
+                viewerLink: FfiConverterOptionTypeFfiShareLinkPath.read(from: &buf),
                 appliedRevision: FfiConverterOptionUInt64.read(from: &buf),
                 broadcastRevision: FfiConverterOptionUInt64.read(from: &buf),
                 lines: FfiConverterSequenceTypeFfiSharedCaptionLine.read(from: &buf)
@@ -5478,6 +5518,7 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
         FfiConverterBool.write(value.isViewing, into: &buf)
         FfiConverterBool.write(value.hostOnly, into: &buf)
         FfiConverterBool.write(value.isHost, into: &buf)
+        FfiConverterOptionTypeFfiShareLinkPath.write(value.viewerLink, into: &buf)
         FfiConverterOptionUInt64.write(value.appliedRevision, into: &buf)
         FfiConverterOptionUInt64.write(value.broadcastRevision, into: &buf)
         FfiConverterSequenceTypeFfiSharedCaptionLine.write(value.lines, into: &buf)
@@ -7252,6 +7293,77 @@ public func FfiConverterTypeFfiProviderConnectionStatus_lower(_ value: FfiProvid
 }
 
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * 观看端到主持人此刻实际走的链路。真值来自 QUIC 连接当前选中的传输
+ * 路径——「直连被禁、只剩中继」是 AP 隔离网络的诊断特征。
+ */
+
+public enum FfiShareLinkPath: Equatable, Hashable {
+
+    case direct
+    case relayed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiShareLinkPath: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiShareLinkPath: FfiConverterRustBuffer {
+    typealias SwiftType = FfiShareLinkPath
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiShareLinkPath {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .direct
+
+        case 2: return .relayed
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiShareLinkPath, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .direct:
+            writeInt(&buf, Int32(1))
+
+
+        case .relayed:
+            writeInt(&buf, Int32(2))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiShareLinkPath_lift(_ buf: RustBuffer) throws -> FfiShareLinkPath {
+    return try FfiConverterTypeFfiShareLinkPath.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiShareLinkPath_lower(_ value: FfiShareLinkPath) -> RustBuffer {
+    return FfiConverterTypeFfiShareLinkPath.lower(value)
+}
+
+
 
 
 
@@ -7840,6 +7952,30 @@ fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureMode: FfiConverterRus
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeFfiNotebookCaptureMode.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeFfiShareLinkPath: FfiConverterRustBuffer {
+    typealias SwiftType = FfiShareLinkPath?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiShareLinkPath.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiShareLinkPath.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -8694,6 +8830,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebooks() != 13876) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_move_session_to_notebook() != 52211) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_rename_notebook_manual_note() != 53332) {
