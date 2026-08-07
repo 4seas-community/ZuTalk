@@ -24,6 +24,8 @@ docs/architecture/document-schema-decision.md。
 | `src/lis.rs` | `src/core/diff.ts` 的 `longestIncreasingSubsequence` |
 | `src/value.rs` | `src/core/utils.ts` 的 isObject/deepEqual/getPathValue/setPathValue;测试照译 `tests/core/utils.test.ts` |
 | `src/schema.rs` | `src/schema/{index,types,validators}.ts`;测试为 validators.ts 的逐分支规格(蓝本无专属测试),两处怪癖照抄并以测试钉死 |
+| `src/change.rs` | `src/core/mirror.ts` 的 `Change` / `InferContainerOptions` 类型 |
+| `src/utils.rs` | `src/core/utils.ts` 余下的容器工具;测试为逐分支规格,怪癖 3(MovableList 升级落空)照抄钉死 |
 | `tests/`(逐模块) | `tests/core/*.test.ts` 照译 |
 
 后续移植按此表续记,一行一个模块;没登记的文件不存在于蓝本,属自研。

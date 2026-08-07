@@ -8,8 +8,10 @@
 //! 行为改动 —— 我们要的是别人已经付过调试成本的行为,不是相似的新代码。
 //! 出处与许可证见本 crate 的 THIRD_PARTY.md。
 
+pub mod change;
 pub mod lis;
 pub mod schema;
+pub mod utils;
 pub mod value;
 
 pub use lis::longest_increasing_subsequence;
