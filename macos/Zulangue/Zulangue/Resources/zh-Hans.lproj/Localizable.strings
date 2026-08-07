@@ -570,6 +570,7 @@
 "editor.tasks.empty.detail" = "后台异步转录任务会显示在这里。";
 "editor.tasks.retry_format" = "重试 %lld 次";
 /* Accessibility labels */
+"editor.outline.drag_handle" = "拖动以重新排序";
 
 /* Notebook 多语言录音 */
 "common.close" = "关闭";

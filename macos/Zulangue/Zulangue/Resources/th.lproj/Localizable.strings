@@ -570,6 +570,7 @@
 "editor.tasks.empty.detail" = "งานถอดเสียงในเบื้องหลังจะปรากฏที่นี่";
 "editor.tasks.retry_format" = "ลองใหม่ %lld ครั้ง";
 /* Accessibility labels */
+"editor.outline.drag_handle" = "ลากเพื่อจัดลำดับใหม่";
 
 /* Notebook multilingual capture */
 "common.close" = "ปิด";

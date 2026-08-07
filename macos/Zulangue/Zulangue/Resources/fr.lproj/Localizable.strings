@@ -570,6 +570,7 @@
 "editor.tasks.empty.detail" = "Les tâches de transcription en arrière-plan apparaîtront ici.";
 "editor.tasks.retry_format" = "%lld tentatives";
 /* Accessibility labels */
+"editor.outline.drag_handle" = "Glisser pour réordonner";
 
 /* Notebook multilingual capture */
 "common.close" = "Fermer";

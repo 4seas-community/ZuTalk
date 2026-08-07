@@ -569,6 +569,7 @@
 "editor.tasks.empty.detail" = "Hintergrund-Transkriptionsaufträge erscheinen hier.";
 "editor.tasks.retry_format" = "%lld Wiederholungen";
 /* Accessibility labels */
+"editor.outline.drag_handle" = "Ziehen zum Umsortieren";
 
 /* Notebook multilingual capture */
 "common.close" = "Schließen";

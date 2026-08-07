@@ -5,8 +5,10 @@
 // 失败回滚本地镜像并 Toast。Rust 落盘状态是权威,Swift 只保留一份乐观镜像,
 // 所以任何失败都能回到与磁盘一致的状态。
 //
-// 蓝本已知局限:同一次重放里「删行」与「跨删除位的移动」不能混。这里每个
-// 手势单独一次 apply,且 v1 没有任何移动手势(不做拖拽重排),天然满足。
+// 蓝本已知局限(macro 的 diffMovableList 实测同源):同一次重放里「删行」
+// 与「跨删除位的移动」不能混——move 的 fromIndex 用删除前的索引空间,混用
+// 会错位。这里靠手势构造保证:并块 = 删除 + 文本更新(无移动);拖拽 =
+// 移动 + 深度更新(无删除)。任何新手势都不得在一次 apply 里同时含两者。
 
 import Combine
 import Foundation
@@ -96,6 +98,110 @@ final class BlockNoteStore: ObservableObject {
             next = [Self.makeRow(depth: 0)]
         }
         apply(next)
+    }
+
+    /// 行首/空行退格:把 rowId 行并入上一行,返回上一行 id 供 UI 移焦点。
+    ///
+    /// `draftText` 是行内未提交的草稿(退格发生时草稿还没写回 store)。
+    /// 空行的并入退化成纯删除——同一条路径,不另设「删行手势」。
+    /// 后续更深的行不动:扁平 (id, depth, text) 模型下,重建树会让它们
+    /// 自然归入前面的浅行,正是大纲编辑器「并块后子行过继」的语义。
+    /// 首行没有上一行,no-op 返回 nil。
+    @discardableResult
+    func mergeWithPreviousRow(rowId: String, draftText: String) -> String? {
+        guard let (next, previousId) = Self.mergedRows(rows, rowId: rowId, draftText: draftText)
+        else { return nil }
+        // 删除 + 文本更新,无移动——见文件头的蓝本约束。
+        return apply(next) ? previousId : nil
+    }
+
+    /// 并块的纯运算,供直接单测。返回 (新行列表, 并入行的 id);首行或
+    /// 找不到行时返回 nil。
+    static func mergedRows(
+        _ rows: [FfiOutlineRow],
+        rowId: String,
+        draftText: String
+    ) -> ([FfiOutlineRow], String)? {
+        guard let index = rows.firstIndex(where: { $0.id == rowId }), index > 0 else {
+            return nil
+        }
+        var next = rows
+        next[index - 1].text += draftText
+        next.remove(at: index)
+        return (next, next[index - 1].id)
+    }
+
+    /// rowId 行的子树范围:本行 + 紧随其后所有更深的行(先序连续段)。
+    func subtreeRange(of rowId: String) -> Range<Int>? {
+        Self.subtreeRange(in: rows, of: rowId)
+    }
+
+    static func subtreeRange(in rows: [FfiOutlineRow], of rowId: String) -> Range<Int>? {
+        guard let start = rows.firstIndex(where: { $0.id == rowId }) else { return nil }
+        var end = start + 1
+        while end < rows.count, rows[end].depth > rows[start].depth {
+            end += 1
+        }
+        return start..<end
+    }
+
+    /// 拖拽重排:把 rowId 的整棵子树移动到 targetRowId 之前(nil = 移到
+    /// 末尾)。落点语义只有 before/after 两态(after 由调用方换算成「下一
+    /// 行之前」),不做「拖成子块」——缩进只归 ⌘]/Tab 管,与 macro 同一
+    /// 决策。
+    ///
+    /// - 落点在子树自身范围内 → no-op(拖进自己会把子树拆散);
+    /// - 子树整体移动,内部相对深度保持;基准深度按落点处「上一行
+    ///   depth+1」的既有上限收紧,保住「不悬空跳级」不变量;
+    /// - 纯移动 + 深度更新,无删除——见文件头的蓝本约束。
+    func moveSubtree(rowId: String, before targetRowId: String?) {
+        guard let next = Self.movedRows(rows, subtreeOf: rowId, before: targetRowId) else {
+            return
+        }
+        apply(next)
+    }
+
+    /// 拖拽重排的纯运算,供直接单测。no-op(落点在子树内/原位/行不存在)
+    /// 返回 nil。
+    static func movedRows(
+        _ rows: [FfiOutlineRow],
+        subtreeOf rowId: String,
+        before targetRowId: String?
+    ) -> [FfiOutlineRow]? {
+        guard let range = subtreeRange(in: rows, of: rowId) else { return nil }
+        let targetIndex: Int
+        if let targetRowId {
+            guard let found = rows.firstIndex(where: { $0.id == targetRowId }) else { return nil }
+            targetIndex = found
+        } else {
+            targetIndex = rows.count
+        }
+        // 落点在子树内部(含紧贴子树尾 = 原位)都是 no-op。
+        if range.contains(targetIndex) || targetIndex == range.upperBound {
+            return nil
+        }
+
+        var next = rows
+        let group = Array(next[range])
+        next.removeSubrange(range)
+        // 移除后落点索引左移。
+        let insertIndex = targetIndex > range.lowerBound
+            ? targetIndex - group.count
+            : targetIndex
+        next.insert(contentsOf: group, at: insertIndex)
+
+        // 基准深度收紧:不能比落点处的上一行深超过 1 级。子树整体平移,
+        // 相对结构不动;组内每行 depth ≥ base ≥ shift,减后必不为负。
+        let previousDepth = insertIndex > 0 ? next[insertIndex - 1].depth : nil
+        let cap = previousDepth.map { $0 + 1 } ?? 0
+        let base = group[0].depth
+        if base > cap {
+            let shift = base - cap
+            for offset in 0..<group.count {
+                next[insertIndex + offset].depth -= shift
+            }
+        }
+        return next
     }
 
     /// 缩进:depth+1,上限为前一行 depth+1(大纲不允许悬空跳级)。

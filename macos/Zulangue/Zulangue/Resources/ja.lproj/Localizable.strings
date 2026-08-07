@@ -558,6 +558,7 @@
 "editor.tasks.empty.detail" = "バックグラウンド文字起こしジョブがここに表示されます。";
 "editor.tasks.retry_format" = "%lld 回再試行";
 /* Accessibility labels */
+"editor.outline.drag_handle" = "ドラッグして並べ替え";
 
 /* Notebook multilingual capture */
 "common.close" = "閉じる";

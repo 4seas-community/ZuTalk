@@ -570,6 +570,7 @@
 "editor.tasks.empty.detail" = "Background transcription jobs will appear here.";
 "editor.tasks.retry_format" = "%lld retries";
 /* Accessibility labels */
+"editor.outline.drag_handle" = "Drag to reorder";
 
 /* Notebook multilingual capture */
 "common.close" = "Close";
