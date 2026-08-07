@@ -170,11 +170,18 @@ impl ZulangueCore {
         Ok(())
     }
 
-    /// 落盘并关闭。未打开时幂等成功。
+    /// 落盘并关闭。未打开时幂等成功。转录稿同时从 EditorBridge 撤下
+    /// ——bridge 挂载的生命周期与注册表句柄绑定,防止两边各持一份
+    /// 漂移的文档。
     pub fn block_document_close(&self, doc_id: String) -> Result<(), CoreError> {
         let handle = self.block_documents.lock().unwrap().remove(&doc_id);
         match handle {
-            Some(handle) => self.save_block_document(&doc_id, &handle),
+            Some(handle) => {
+                if matches!(handle, BlockDocumentHandle::Transcript(_)) {
+                    self.editor_bridge.evict(&doc_id);
+                }
+                self.save_block_document(&doc_id, &handle)
+            }
             None => Ok(()),
         }
     }
@@ -368,6 +375,74 @@ impl ZulangueCore {
 }
 
 impl ZulangueCore {
+    /// 转录稿产线的块文档入口:打开(必要时**从第 1 纪元严格迁移**),
+    /// 并把同一份 LoroDoc 挂进 EditorBridge。
+    ///
+    /// bridge 挂载就是 T2 转录稿在本机的全部「读端」:本机 UI 读 SQLite
+    /// 历史与帧字幕,从不读文档;分享同步、纪元准入、销毁收据一家子都
+    /// 从 bridge 应答。挂载的是同一份底层文档(LoroDoc 克隆共享状态),
+    /// 所以远端 update 经 bridge 导入后,投影门面的下一次 refresh 就能
+    /// 看到。
+    ///
+    /// 迁移规则(宪章阶段 4:转录稿是证据,严格重放):
+    /// - 已有块文档:直接打开;
+    /// - 只有第 1 纪元快照:`migrate_transcript_history` 逐 frontier
+    ///   验证重放,成功后新文档落盘、旧快照改名 `<file>.pre-epoch2`
+    ///   留档;**非线性历史拒迁**,旧文件不动,错误上抛(调用方决定把
+    ///   投影态标 failed);
+    /// - 两者都无:按黄金祖先新建。
+    #[allow(dead_code)] // 拨闸 commit 接线后移除
+    pub(crate) fn open_transcript_block_document(&self, doc_id: &str) -> Result<(), CoreError> {
+        let block_path = block_document_path(&self.data_dir, doc_id)?;
+        if !block_path.exists() {
+            let legacy_path = crate::editor_api::snapshot_path(&self.data_dir, doc_id);
+            if legacy_path.exists() {
+                self.migrate_legacy_transcript(doc_id, &legacy_path)?;
+            }
+        }
+        self.block_document_open(doc_id.to_string(), FfiDocumentKind::Transcript)?;
+        self.register_transcript_in_bridge(doc_id)
+    }
+
+    /// 第 1 纪元转录稿 → T2 的严格迁移。先落新文档再改名旧文件,顺序
+    /// 与笔记通道同一纪律:改名后崩溃会丢内容,落盘后崩溃只是下次重迁
+    /// 一遍(块文档已存在则不再走这里)。
+    fn migrate_legacy_transcript(&self, doc_id: &str, legacy_path: &Path) -> Result<(), CoreError> {
+        let bytes =
+            fs::read(legacy_path).map_err(|e| internal(format!("读第 1 纪元转录稿: {e}")))?;
+        let legacy = LoroDoc::new();
+        legacy
+            .import(&bytes)
+            .map_err(|e| internal(format!("导入第 1 纪元转录稿: {e}")))?;
+        let migrated = vt_store::replay_migration::migrate_transcript_history(&legacy)
+            .map_err(|e| internal(format!("严格迁移转录稿 {doc_id}: {e}")))?;
+        let handle = BlockDocumentHandle::Transcript(
+            TranscriptProjection::open(migrated).map_err(internal)?,
+        );
+        self.save_block_document(doc_id, &handle)?;
+        let backup = legacy_path.with_extension("loro.pre-epoch2");
+        fs::rename(legacy_path, &backup).map_err(|e| internal(format!("留档旧转录稿: {e}")))?;
+        Ok(())
+    }
+
+    /// 把注册表里的 T2 转录稿挂进 EditorBridge(同一底层文档)。bridge
+    /// 里同 key 的旧句柄(第 1 纪元的内存文档)先驱逐——块文档打开后,
+    /// bridge 这个 key 的唯一合法身份就是这份 T2 文档。
+    fn register_transcript_in_bridge(&self, doc_id: &str) -> Result<(), CoreError> {
+        let doc = {
+            let registry = self.block_documents.lock().unwrap();
+            match registry.get(doc_id) {
+                Some(BlockDocumentHandle::Transcript(projection)) => projection.doc().clone(),
+                _ => return Err(internal(format!("块文档 {doc_id} 不是打开中的转录稿"))),
+            }
+        };
+        self.editor_bridge.evict(doc_id);
+        self.editor_bridge
+            .open(doc_id, doc)
+            .map_err(|e| internal(format!("转录稿挂载 bridge: {e}")))?;
+        Ok(())
+    }
+
     /// 第 1 纪元笔记 → B 块文档的内容迁移。旧文件改名留档,失败时不动
     /// 旧文件(下次打开重试)。
     fn migrate_legacy_note(&self, doc_id: &str, legacy_path: &Path) -> Result<(), CoreError> {
@@ -660,6 +735,120 @@ mod tests {
             .note_block_document_open(notebook.id, note_tab.id.clone())
             .unwrap();
         assert_eq!(core.note_outline_rows(reopened).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn transcript_open_or_migrate_creates_opens_and_migrates() {
+        let (dir, core) = core();
+
+        // 两者都无:按黄金祖先新建,并挂进 bridge。
+        core.open_transcript_block_document("t-fresh").unwrap();
+        assert!(core.transcript_blocks("t-fresh".into()).unwrap().is_empty());
+        assert_eq!(core.editor_bridge.schema_epoch("t-fresh"), Some(2));
+
+        // 已有块文档:关掉重开,直接打开。
+        core.transcript_machine_upsert("t-fresh".into(), machine("u1", "一"), vec![])
+            .unwrap();
+        core.block_document_close("t-fresh".into()).unwrap();
+        assert!(
+            !core.editor_bridge.is_session_open("t-fresh"),
+            "关闭同时撤下 bridge 挂载"
+        );
+        core.open_transcript_block_document("t-fresh").unwrap();
+        assert_eq!(core.transcript_blocks("t-fresh".into()).unwrap().len(), 1);
+
+        // 只有第 1 纪元快照:严格重放迁移 + 留档。
+        let legacy = LoroDoc::new();
+        legacy
+            .get_text("content")
+            .insert(0, "## session-a\n机器句\n")
+            .unwrap();
+        legacy.commit();
+        let legacy_path = crate::editor_api::snapshot_path(dir.path(), "t-legacy");
+        fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+        fs::write(
+            &legacy_path,
+            legacy.export(loro::ExportMode::Snapshot).unwrap(),
+        )
+        .unwrap();
+
+        core.open_transcript_block_document("t-legacy").unwrap();
+        let blocks = core.transcript_blocks("t-legacy".into()).unwrap();
+        assert_eq!(
+            blocks.iter().map(|b| b.text.as_str()).collect::<Vec<_>>(),
+            vec!["## session-a", "机器句", ""],
+            "行块保真:每行一块(末尾换行产生空尾行)"
+        );
+        assert_eq!(blocks[1].owner, "capture:session-a");
+        assert!(!legacy_path.exists());
+        assert!(legacy_path.with_extension("loro.pre-epoch2").exists());
+    }
+
+    #[test]
+    fn transcript_migration_refuses_non_linear_history_and_keeps_the_original() {
+        let (dir, core) = core();
+        let a = LoroDoc::new();
+        a.get_text("content").insert(0, "共同起点\n").unwrap();
+        a.commit();
+        let b = LoroDoc::new();
+        b.import(&a.export(loro::ExportMode::Snapshot).unwrap())
+            .unwrap();
+        a.get_text("content").insert(0, "甲 ").unwrap();
+        a.commit();
+        b.get_text("content").insert(0, "乙 ").unwrap();
+        b.commit();
+        a.import(&b.export(loro::ExportMode::Snapshot).unwrap())
+            .unwrap();
+
+        let legacy_path = crate::editor_api::snapshot_path(dir.path(), "t-forked");
+        fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+        fs::write(&legacy_path, a.export(loro::ExportMode::Snapshot).unwrap()).unwrap();
+
+        let error = core.open_transcript_block_document("t-forked").unwrap_err();
+        assert!(
+            error.to_string().contains("非线性"),
+            "拒迁要报出原因: {error}"
+        );
+        assert!(legacy_path.exists(), "旧文件不动");
+        assert!(
+            !block_document_path(dir.path(), "t-forked")
+                .unwrap()
+                .exists(),
+            "不留半成品块文档"
+        );
+    }
+
+    /// bridge 挂载与注册表共享同一份底层文档:经 bridge 导入的远端
+    /// update,投影门面 refresh 后立即可见——这是分享同步在 T2 上继续
+    /// 工作的前提。
+    #[test]
+    fn bridge_registration_shares_the_same_document_state() {
+        let (_dir, core) = core();
+        core.open_transcript_block_document("t-share").unwrap();
+        core.transcript_machine_upsert("t-share".into(), machine("u1", "一"), vec![])
+            .unwrap();
+
+        // 远端:从 bridge 导出的快照分叉出一份,插一个批注块。
+        let remote = LoroDoc::new();
+        remote
+            .import(&core.editor_bridge.export_snapshot("t-share").unwrap())
+            .unwrap();
+        let remote_projection = TranscriptProjection::open(remote).unwrap();
+        remote_projection
+            .insert_annotation(1, "n1", "远端批注")
+            .unwrap();
+        let update = remote_projection
+            .doc()
+            .export(loro::ExportMode::Snapshot)
+            .unwrap();
+
+        assert!(core.editor_bridge.import_remote_update("t-share", &update));
+        let blocks = core.transcript_blocks("t-share".into()).unwrap();
+        assert_eq!(
+            blocks.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(),
+            vec!["u1", "n1"],
+            "bridge 导入对投影门面立即可见"
+        );
     }
 
     #[test]

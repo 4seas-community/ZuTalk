@@ -237,6 +237,31 @@ impl TranscriptProjection {
         self.commit(state, "user")
     }
 
+    /// 销毁链专用入口:删除 `session_id` 采集所属的全部句块,返回删除数。
+    ///
+    /// 门面的动词集刻意没有删块函数——结构性排除机器与用户的删除;销毁
+    /// 是隐私义务,是唯一例外,所以它绕开动词集、按 owner 整族删除:
+    /// - 只删 `owner == "capture:<session_id>"` 的块;
+    /// - 用户批注与其它 session 的块原样保留;
+    /// - 幂等:没有目标块时是空操作(崩溃重放的空操作路径,收据判定
+    ///   仍由调用方的销毁收据 map 承担,两纪元同名同义)。
+    pub fn purge_session_blocks(
+        &self,
+        session_id: &str,
+    ) -> Result<usize, TranscriptProjectionError> {
+        let owner = format!("capture:{session_id}");
+        let mut state = self.mirror.get_state();
+        let items = ensure_items(&mut state);
+        let before = items.len();
+        items.retain(|item| item.get("owner").and_then(Value::as_str) != Some(owner.as_str()));
+        let removed = before - items.len();
+        if removed == 0 {
+            return Ok(0);
+        }
+        self.commit(state, "purge")?;
+        Ok(removed)
+    }
+
     fn mutate_block(
         &self,
         block_id: &str,
@@ -460,6 +485,27 @@ mod tests {
             projection.user_replace_lane("ghost", "zh", "x"),
             Err(TranscriptProjectionError::BlockNotFound("ghost".into()))
         );
+    }
+
+    #[test]
+    fn purge_removes_only_the_target_sessions_machine_blocks() {
+        let projection = projection();
+        projection
+            .machine_upsert_block(machine("u1", "一", &[("zh", "壹")]), &BTreeSet::new(), None)
+            .unwrap();
+        projection.insert_annotation(1, "n1", "批注").unwrap();
+        let mut other = machine("b1", "乙", &[]);
+        other.owner = "capture:s2".into();
+        projection
+            .machine_upsert_block(other, &BTreeSet::new(), None)
+            .unwrap();
+
+        assert_eq!(projection.purge_session_blocks("s1").unwrap(), 1);
+        let remaining: Vec<_> = projection.blocks().into_iter().map(|b| b.id).collect();
+        assert_eq!(remaining, vec!["n1", "b1"], "批注与他 session 的块保留");
+
+        // 幂等:再销毁一次是空操作。
+        assert_eq!(projection.purge_session_blocks("s1").unwrap(), 0);
     }
 
     /// 两端并发:A 机器追加,B 用户订正,交换后一致。
