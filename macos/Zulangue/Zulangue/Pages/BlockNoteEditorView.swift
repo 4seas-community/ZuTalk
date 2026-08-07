@@ -6,7 +6,8 @@
 //
 // 键盘模型(v2):
 //   · Return       → 提交本行并在其后插入同深度新行,焦点移过去
-//   · ⌘] / ⌘[      → 当前聚焦行缩进 / 反缩进
+//   · Tab / ⇧Tab   → 当前聚焦行缩进 / 反缩进(抢在焦点循环之前)
+//   · ⌘] / ⌘[      → 同上,给把 Tab 留给焦点导航的用户一条别路
 //   · 行首退格      → 并入上一行(空行退化成删行),焦点移上一行
 //   · 拖拽重排      → 左侧悬浮把手,整棵子树随行移动;落点只有
 //                     before/after 两态,「拖成子块」刻意不做——缩进
@@ -88,6 +89,11 @@ struct BlockNoteEditorView: View {
 
     /// 隐形快捷键宿主。SwiftUI 的 keyboardShortcut 需要一个 Button 载体,
     /// 藏起来但保持可命中(0 尺寸 + 无障碍隐藏)。
+    ///
+    /// Tab / ⇧Tab 也在这里:macOS 的 TextField 默认把 Tab 交给焦点循环
+    /// (跳下一行输入框),缩进必须抢在它之前。key equivalent 在事件进
+    /// 响应链之前匹配——与 macro 用最高优先级命令 + preventDefault 拦
+    /// Tab 是同一手法。没有聚焦行时按钮禁用,Tab 回归正常焦点语义。
     private var indentShortcuts: some View {
         Group {
             Button(String(localized: "editor.outline.indent")) {
@@ -99,6 +105,18 @@ struct BlockNoteEditorView: View {
                 if let rowId = focusedRowId { store.outdent(rowId: rowId) }
             }
             .keyboardShortcut("[", modifiers: .command)
+
+            Button(String(localized: "editor.outline.indent")) {
+                if let rowId = focusedRowId { store.indent(rowId: rowId) }
+            }
+            .keyboardShortcut(.tab, modifiers: [])
+            .disabled(focusedRowId == nil)
+
+            Button(String(localized: "editor.outline.outdent")) {
+                if let rowId = focusedRowId { store.outdent(rowId: rowId) }
+            }
+            .keyboardShortcut(.tab, modifiers: .shift)
+            .disabled(focusedRowId == nil)
         }
         .opacity(0)
         .frame(width: 0, height: 0)
