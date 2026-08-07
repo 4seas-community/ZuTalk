@@ -52,6 +52,12 @@ struct SharePage: View {
                     nearbySection
                     joinSection
                 }
+
+                // 收到与共享过的转录稿:房间散了内容还在,这一节不随
+                // isSharing 显隐。
+                if !viewModel.sharedSessions.isEmpty {
+                    sharedSessionsSection
+                }
             }
             .padding(.horizontal, Spacing.xl)
             .padding(.vertical, Spacing.lg)
@@ -270,6 +276,31 @@ struct SharePage: View {
                 .labelsHidden()
                 .accessibilityIdentifier("share.notebook_picker")
 
+                // 范围:整本 vs 单条录音。单条才有收端落库与协同订正
+                // (Notebook 范围 v1 只有字幕,见 share-p2p.md §11)。
+                Picker("", selection: $viewModel.shareWholeNotebook) {
+                    Text(String(localized: "share.scope.notebook")).tag(true)
+                    Text(String(localized: "share.scope.single")).tag(false)
+                }
+                .pickerStyle(.radioGroup)
+                .accessibilityIdentifier("share.scope")
+
+                if !viewModel.shareWholeNotebook {
+                    if viewModel.recentSessions.isEmpty {
+                        Text(String(localized: "share.scope.no_sessions"))
+                            .font(.bodySM)
+                            .foregroundColor(.textSecondary)
+                    } else {
+                        Picker("", selection: $viewModel.selectedSessionID) {
+                            ForEach(viewModel.recentSessions, id: \.sessionId) { run in
+                                Text(Self.sessionLabel(run)).tag(run.sessionId)
+                            }
+                        }
+                        .labelsHidden()
+                        .accessibilityIdentifier("share.session_picker")
+                    }
+                }
+
                 Picker("", selection: $viewModel.hostOnlySelection) {
                     Text(String(localized: "share.role.everyone")).tag(false)
                     Text(String(localized: "share.role.host")).tag(true)
@@ -280,7 +311,10 @@ struct SharePage: View {
                 Button(String(localized: "share.start")) {
                     viewModel.confirmingStart = true
                 }
-                .disabled(viewModel.selectedNotebookID.isEmpty)
+                .disabled(
+                    viewModel.selectedNotebookID.isEmpty
+                        || (!viewModel.shareWholeNotebook && viewModel.selectedSessionID.isEmpty)
+                )
                 .accessibilityIdentifier("share.start")
             }
         }
@@ -295,6 +329,53 @@ struct SharePage: View {
         } message: {
             Text(String(localized: "share.start.confirm.body"))
         }
+    }
+
+    /// 收到与共享过的转录稿(台账即 shared/ 目录)。点开即读,权限内可订正。
+    private var sharedSessionsSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text(String(localized: "share.received.title"))
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+            ForEach(viewModel.sharedSessions, id: \.sessionId) { info in
+                Button {
+                    viewModel.openSharedSession = SharedSessionRoute(id: info.sessionId)
+                } label: {
+                    HStack(spacing: Spacing.sm) {
+                        Image(systemName: "doc.text")
+                            .foregroundColor(.textSecondary)
+                        Text(info.preview.isEmpty
+                             ? String(localized: "share.received.untitled")
+                             : info.preview)
+                            .font(.bodySM)
+                            .foregroundColor(.textPrimary)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(String(
+                            format: String(localized: "share.received.blocks"),
+                            Int64(info.blockCount)
+                        ))
+                        .font(.captionMedium)
+                        .foregroundColor(.textTertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityIdentifier("share.received")
+        .sheet(item: $viewModel.openSharedSession) { route in
+            SharedSessionView(
+                sessionId: route.id,
+                editable: viewModel.canEditSharedSessions
+            )
+        }
+    }
+
+    private static func sessionLabel(_ run: FfiNotebookCaptureHistoryRun) -> String {
+        let stamp = run.completedAt ?? run.createdAt
+        let short = String(run.sessionId.prefix(8))
+        return stamp.isEmpty ? short : "\(stamp) · \(short)"
     }
 
     /// 对方的实时字幕。只读投影,不落库 —— 看到的是别人的内容,不是本机 Notebook。
@@ -427,6 +508,11 @@ struct SharePage: View {
     }
 }
 
+/// sheet(item:) 的最小身份包装:内容就是 session id。
+struct SharedSessionRoute: Identifiable {
+    let id: String
+}
+
 /// 分享页现在处于什么状态。
 ///
 /// 引入这个类型是因为原来的界面**分不出**「加入成功在等主持人录音」和
@@ -479,8 +565,19 @@ enum ShareStatus {
 final class ShareViewModel: ObservableObject {
     @Published var pastedCode: String = ""
     @Published var hostOnlySelection: Bool = false
+    /// 共享范围:整本 Notebook(仅字幕)或单条录音(字幕 + 落库协同)。
+    @Published var shareWholeNotebook: Bool = true
+    @Published var selectedSessionID: String = "" {
+        didSet { /* picker 直连,无副作用 */ }
+    }
+    @Published private(set) var recentSessions: [FfiNotebookCaptureHistoryRun] = []
+    @Published private(set) var sharedSessions: [FfiSharedSessionInfo] = []
+    /// 打开中的共享 session 详情(sheet)。
+    @Published var openSharedSession: SharedSessionRoute?
     @Published var confirmingStart: Bool = false
-    @Published var selectedNotebookID: String = ""
+    @Published var selectedNotebookID: String = "" {
+        didSet { loadRecentSessions() }
+    }
     @Published private(set) var notebooks: [FfiNotebook] = []
     @Published private(set) var shortIdentity: String = "—"
     @Published private(set) var shareCode: String?
@@ -539,9 +636,11 @@ final class ShareViewModel: ObservableObject {
             return
         }
         do {
+            // 单条录音按 session 范围共享(notebookId 必须为 nil,FFI 校验
+            // 二选一);整本仍按 Notebook 范围。
             shareCode = try core.startSharing(
-                notebookId: selectedNotebookID,
-                sessionId: nil,
+                notebookId: shareWholeNotebook ? selectedNotebookID : nil,
+                sessionId: shareWholeNotebook ? nil : selectedSessionID,
                 hostOnly: hostOnlySelection
             )
             // 文档协同要在共享开始之后才接得上 —— 它靠当前房间的名册判定谁能写。
@@ -686,6 +785,27 @@ final class ShareViewModel: ObservableObject {
         Task { await CommunityInviteSession.shared.enrollCurrentShareEndpoint() }
     }
 
+    /// 选中 Notebook 的近期录音,给「单条录音」范围选。
+    private func loadRecentSessions() {
+        guard let core, !selectedNotebookID.isEmpty else {
+            recentSessions = []
+            return
+        }
+        recentSessions =
+            (try? core.listNotebookCaptureHistorySummaries(notebookId: selectedNotebookID)) ?? []
+        if !recentSessions.contains(where: { $0.sessionId == selectedSessionID }) {
+            selectedSessionID = recentSessions.first?.sessionId ?? ""
+        }
+    }
+
+    /// 共享 session 可否编辑:只读房间里的观看者不行(推送会被宿主拒收,
+    /// 本地改了也是孤儿编辑);其余情况放开——房间散了以后是本机批注。
+    var canEditSharedSessions: Bool {
+        !(isSharing && !isHostRole && hostOnly)
+    }
+
+    private var isHostRole: Bool { status == .hostingWaiting || status == .hostingLive }
+
     private func refreshState() {
         guard let core else { return }
         let state = core.shareState()
@@ -696,6 +816,8 @@ final class ShareViewModel: ObservableObject {
         if shareCode == nil { shareCode = core.currentShareCode() }
         joinRequests = core.pendingJoinRequests()
         members = core.roomMembers()
+
+        sharedSessions = core.listSharedSessions()
 
         status = {
             if !state.isSharing { return .idle }

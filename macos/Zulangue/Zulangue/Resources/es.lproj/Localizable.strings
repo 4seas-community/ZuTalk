@@ -879,6 +879,20 @@
 "share.link.direct_hint" = "El tráfico fluye de par a par: la perforación NAT tuvo éxito.";
 "share.link.relayed_hint" = "La conexión directa falló; el tráfico se reenvía por el relé, aún cifrado de extremo a extremo. Común en redes con aislamiento AP.";
 
+/* 分享:范围选择、收到的转录稿与协同订正 */
+"share.scope.notebook" = "Compartir todo el cuaderno (solo subtítulos en vivo)";
+"share.scope.single" = "Compartir una grabación (subtítulos + copia que el otro conserva)";
+"share.scope.no_sessions" = "Este cuaderno aún no tiene grabaciones.";
+"share.received.title" = "Transcripciones compartidas";
+"share.received.untitled" = "(sin texto todavía)";
+"share.received.blocks" = "%lld bloques";
+"shared.editor.title" = "Transcripción compartida";
+"shared.editor.read_only" = "Sala de solo lectura";
+"shared.editor.add_annotation" = "Añadir nota";
+"shared.editor.done" = "Hecho";
+"shared.editor.empty_title" = "Aún no hay nada aquí";
+"shared.editor.empty_body" = "El contenido aparece a medida que se sincroniza la transcripción del anfitrión.";
+
 /* 设置:中继准入 */
 "settings.p2p.relay_ready" = "Retransmisión disponible";
 "settings.p2p.relay_ready_hint" = "Este Mac está registrado, así que la retransmisión se hará cargo cuando dos Mac no se alcancen directamente.";

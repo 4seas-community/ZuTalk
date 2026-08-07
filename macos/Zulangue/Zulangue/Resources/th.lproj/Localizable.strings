@@ -880,6 +880,20 @@
 "share.link.direct_hint" = "ทราฟฟิกวิ่งตรงระหว่างเครื่อง — เจาะ NAT สำเร็จ";
 "share.link.relayed_hint" = "เชื่อมต่อโดยตรงไม่สำเร็จ ทราฟฟิกถูกส่งผ่านรีเลย์ (ยังเข้ารหัสแบบ end-to-end) พบบ่อยในเครือข่ายที่เปิด AP isolation";
 
+/* 分享:范围选择、收到的转录稿与协同订正 */
+"share.scope.notebook" = "แชร์ทั้งสมุดบันทึก (เฉพาะคำบรรยายสด)";
+"share.scope.single" = "แชร์การบันทึกหนึ่งรายการ (คำบรรยาย + สำเนาที่อีกฝ่ายเก็บได้)";
+"share.scope.no_sessions" = "สมุดบันทึกนี้ยังไม่มีการบันทึก";
+"share.received.title" = "ทรานสคริปต์ที่แชร์";
+"share.received.untitled" = "(ยังไม่มีข้อความ)";
+"share.received.blocks" = "%lld บล็อก";
+"shared.editor.title" = "ทรานสคริปต์ที่แชร์";
+"shared.editor.read_only" = "ห้องอ่านอย่างเดียว";
+"shared.editor.add_annotation" = "เพิ่มบันทึกย่อ";
+"shared.editor.done" = "เสร็จ";
+"shared.editor.empty_title" = "ยังไม่มีอะไรที่นี่";
+"shared.editor.empty_body" = "เนื้อหาจะปรากฏเมื่อทรานสคริปต์ของโฮสต์ซิงค์เข้ามา";
+
 /* 设置:中继准入 */
 "settings.p2p.relay_ready" = "รีเลย์พร้อมใช้";
 "settings.p2p.relay_ready_hint" = "Mac เครื่องนี้ลงทะเบียนแล้ว รีเลย์จะรับช่วงเมื่อสองเครื่องติดต่อกันโดยตรงไม่ได้";

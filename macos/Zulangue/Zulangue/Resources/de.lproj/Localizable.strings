@@ -879,6 +879,20 @@
 "share.link.direct_hint" = "Der Datenverkehr fließt direkt zwischen den Geräten — Holepunching erfolgreich.";
 "share.link.relayed_hint" = "Direktverbindung fehlgeschlagen; der Verkehr läuft über das Relay, weiterhin Ende-zu-Ende-verschlüsselt. Üblich in Netzen mit AP-Isolation.";
 
+/* 分享:范围选择、收到的转录稿与协同订正 */
+"share.scope.notebook" = "Ganzes Notizbuch teilen (nur Live-Untertitel)";
+"share.scope.single" = "Eine Aufnahme teilen (Untertitel + Kopie, die bleibt)";
+"share.scope.no_sessions" = "Dieses Notizbuch hat noch keine Aufnahmen.";
+"share.received.title" = "Geteilte Transkripte";
+"share.received.untitled" = "(noch kein Text)";
+"share.received.blocks" = "%lld Blöcke";
+"shared.editor.title" = "Geteiltes Transkript";
+"shared.editor.read_only" = "Nur-Lesen-Raum";
+"shared.editor.add_annotation" = "Notiz hinzufügen";
+"shared.editor.done" = "Fertig";
+"shared.editor.empty_title" = "Hier ist noch nichts";
+"shared.editor.empty_body" = "Inhalte erscheinen, sobald das Transkript des Gastgebers synchronisiert wird.";
+
 /* 设置:中继准入 */
 "settings.p2p.relay_ready" = "Relay verfügbar";
 "settings.p2p.relay_ready_hint" = "Dieser Mac ist registriert — das Relay übernimmt, wenn zwei Macs sich nicht direkt erreichen.";

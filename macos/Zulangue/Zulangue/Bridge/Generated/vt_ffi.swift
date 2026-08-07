@@ -1209,6 +1209,31 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
      */
     func stopSharing() throws
 
+    /**
+     * shared/ 目录台账:收到过与共享过的全部 session 文档。
+     */
+    func listSharedSessions()  -> [FfiSharedSessionInfo]
+
+    /**
+     * 一份共享 session 的句块(文档序)。
+     */
+    func sharedSessionBlocks(sessionId: String) throws  -> [FfiUtteranceBlock]
+
+    /**
+     * 在共享 session 的句块之间插批注。
+     */
+    func sharedSessionInsertAnnotation(sessionId: String, index: UInt32, annotationId: String, text: String) throws
+
+    /**
+     * 订正共享 session 的一条译文车道,并把增量推给房间。
+     */
+    func sharedSessionReplaceLane(sessionId: String, blockId: String, lane: String, text: String) throws
+
+    /**
+     * 订正共享 session 的原文车道。
+     */
+    func sharedSessionReplaceText(sessionId: String, blockId: String, text: String) throws
+
     func createSpeakerParticipant(displayName: String) throws  -> FfiSpeakerParticipant
 
     func linkNotebookSessionSpeaker(sessionSpeakerId: String, participantId: String) throws  -> FfiSessionSpeaker
@@ -2681,6 +2706,70 @@ open func startSharing(notebookId: String?, sessionId: String?, hostOnly: Bool)t
 open func stopSharing()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_stop_sharing(
             self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+    /**
+     * shared/ 目录台账:收到过与共享过的全部 session 文档。
+     */
+open func listSharedSessions() -> [FfiSharedSessionInfo]  {
+    return try!  FfiConverterSequenceTypeFfiSharedSessionInfo.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_list_shared_sessions(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 一份共享 session 的句块(文档序)。
+     */
+open func sharedSessionBlocks(sessionId: String)throws  -> [FfiUtteranceBlock]  {
+    return try  FfiConverterSequenceTypeFfiUtteranceBlock.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_shared_session_blocks(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
+     * 在共享 session 的句块之间插批注。
+     */
+open func sharedSessionInsertAnnotation(sessionId: String, index: UInt32, annotationId: String, text: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_shared_session_insert_annotation(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterUInt32.lower(index),
+        FfiConverterString.lower(annotationId),
+        FfiConverterString.lower(text),$0
+    )
+}
+}
+
+    /**
+     * 订正共享 session 的一条译文车道,并把增量推给房间。
+     */
+open func sharedSessionReplaceLane(sessionId: String, blockId: String, lane: String, text: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_shared_session_replace_lane(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterString.lower(blockId),
+        FfiConverterString.lower(lane),
+        FfiConverterString.lower(text),$0
+    )
+}
+}
+
+    /**
+     * 订正共享 session 的原文车道。
+     */
+open func sharedSessionReplaceText(sessionId: String, blockId: String, text: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_shared_session_replace_text(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterString.lower(blockId),
+        FfiConverterString.lower(text),$0
     )
 }
 }
@@ -5689,6 +5778,73 @@ public func FfiConverterTypeFfiSharedCaptionLine_lower(_ value: FfiSharedCaption
 }
 
 
+/**
+ * 一条收到(或正在共享)的 session 摘要。
+ */
+public struct FfiSharedSessionInfo: Equatable, Hashable {
+    public var sessionId: String
+    /**
+     * 首个句块的正文,给列表当标题;空文档为空串。
+     */
+    public var preview: String
+    public var blockCount: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(sessionId: String,
+        /**
+         * 首个句块的正文,给列表当标题;空文档为空串。
+         */preview: String, blockCount: UInt32) {
+        self.sessionId = sessionId
+        self.preview = preview
+        self.blockCount = blockCount
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSharedSessionInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSharedSessionInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSharedSessionInfo {
+        return
+            try FfiSharedSessionInfo(
+                sessionId: FfiConverterString.read(from: &buf),
+                preview: FfiConverterString.read(from: &buf),
+                blockCount: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiSharedSessionInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.sessionId, into: &buf)
+        FfiConverterString.write(value.preview, into: &buf)
+        FfiConverterUInt32.write(value.blockCount, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSharedSessionInfo_lift(_ buf: RustBuffer) throws -> FfiSharedSessionInfo {
+    return try FfiConverterTypeFfiSharedSessionInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSharedSessionInfo_lower(_ value: FfiSharedSessionInfo) -> RustBuffer {
+    return FfiConverterTypeFfiSharedSessionInfo.lower(value)
+}
+
+
 public struct FfiSpeakerParticipant: Equatable, Hashable {
     public var id: String
     public var displayName: String
@@ -8483,6 +8639,31 @@ fileprivate struct FfiConverterSequenceTypeFfiSharedCaptionLine: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiSharedSessionInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiSharedSessionInfo]
+
+    public static func write(_ value: [FfiSharedSessionInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiSharedSessionInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiSharedSessionInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiSharedSessionInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiSharedSessionInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiSpeakerParticipant: FfiConverterRustBuffer {
     typealias SwiftType = [FfiSpeakerParticipant]
 
@@ -9016,6 +9197,21 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_stop_sharing() != 45792) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_list_shared_sessions() != 7648) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_shared_session_blocks() != 21009) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_shared_session_insert_annotation() != 42723) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_shared_session_replace_lane() != 26934) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_shared_session_replace_text() != 51486) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_create_speaker_participant() != 26189) {
