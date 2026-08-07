@@ -9,6 +9,7 @@ pub mod context_pack_store;
 pub mod document_schema;
 pub mod editor_bridge;
 pub mod migration;
+pub mod note_outline;
 pub mod notebook_capture_store;
 pub mod notebook_store;
 pub mod search;
