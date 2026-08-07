@@ -11,6 +11,7 @@
 pub mod change;
 pub mod diff;
 pub mod lis;
+pub mod mirror;
 pub mod schema;
 pub mod utils;
 pub mod value;

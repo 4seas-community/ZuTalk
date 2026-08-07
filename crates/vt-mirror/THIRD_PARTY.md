@@ -27,6 +27,7 @@ docs/architecture/document-schema-decision.md。
 | `src/change.rs` | `src/core/mirror.ts` 的 `Change` / `InferContainerOptions` 类型 |
 | `src/utils.rs` | `src/core/utils.ts` 余下的容器工具;测试为逐分支规格,怪癖 3(MovableList 升级落空)照抄钉死 |
 | `src/diff.rs` | `src/core/diff.ts` 余下全部(diffContainer/diffText/diffMap/diffList/diffListWithIdSelector/diffMovableList);怪癖 4(useContainer 恒真)、5(diffMap 假值旧值重插)照抄钉死;两处 `===` 引用相等以 deep_equal 替代(输出等价,模块注释有论证) |
+| `src/mirror.rs` | `src/core/mirror.ts` 全部(Mirror 本体、容器注册表、事件订阅、changes 应用);state.ts 的 createStore 门面并入本类型,immer reducer 不移植;怪癖 6(updateMapEntry 插容器后纯值盖写)照抄钉死;awaitMirrorSync 微任务 hack、订阅表泄漏、handler 参与 deepEqual 三处按模块注释declared 偏离 |
 | `tests/`(逐模块) | `tests/core/*.test.ts` 照译 |
 
 后续移植按此表续记,一行一个模块;没登记的文件不存在于蓝本,属自研。
