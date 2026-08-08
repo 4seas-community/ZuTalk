@@ -834,6 +834,121 @@ mod tests {
         );
     }
 
+    /// 乱序到达:后一笔先到,前一笔后到,宿主最终仍要收敛。
+    ///
+    /// 每笔更新一条独立 uni-stream,QUIC 不保证跨流顺序;负载下回环 UDP
+    /// 也会丢包重传。缺依赖的那笔在准入探测与合入时的遭遇 —— 是挂起等
+    /// 前置,还是被当作「判不出来」拒收 —— 决定快手连发会不会把对端
+    /// 永远卡在旧版本。
+    #[test]
+    fn out_of_order_updates_still_converge_at_the_host() {
+        use std::sync::Arc;
+        use vt_share::{
+            handle_incoming_update, seal_update, IncomingOutcome, RoomRoster, WritePolicy,
+        };
+
+        let host_key = iroh::SecretKey::generate();
+        let viewer_key = iroh::SecretKey::generate();
+        let scope = ScopeId::Session {
+            session_id: "session-o".into(),
+        };
+        let store = Arc::new(
+            vt_store::notebook_capture_store::NotebookCaptureStore::new(&std::path::PathBuf::from(
+                ":memory:",
+            ))
+            .unwrap(),
+        );
+
+        // 宿主:物化一条批注作底稿。
+        let host_dir = tempfile::tempdir().unwrap();
+        let host_state = Arc::new(SharedSessionState::default());
+        let host_bridge = vt_store::EditorBridge::new();
+        let host_doc =
+            ensure_shared_session_doc(&host_state, &host_bridge, host_dir.path(), "session-o")
+                .unwrap();
+        host_doc.insert_annotation(0, "note-1", "底稿").unwrap();
+        let host_sink = SharedDocSync::new(
+            host_state.clone(),
+            host_bridge.clone(),
+            store.clone(),
+            host_dir.path().to_path_buf(),
+            true,
+        );
+
+        // 观看端:收到全量,然后连改两笔,分别导出两份相邻的 delta。
+        let viewer_dir = tempfile::tempdir().unwrap();
+        let viewer_state = Arc::new(SharedSessionState::default());
+        let viewer_bridge = vt_store::EditorBridge::new();
+        viewer_state.register_known("session-o");
+        let viewer_sink = SharedDocSync::new(
+            viewer_state.clone(),
+            viewer_bridge.clone(),
+            store,
+            viewer_dir.path().to_path_buf(),
+            false,
+        );
+        let mut roster = RoomRoster::new(scope.clone(), host_key.public(), WritePolicy::Everyone);
+        roster.admit(viewer_key.public());
+        let guard_host = crate::share_api::LoroCaptureBoundaryGuard::new(host_bridge.clone());
+        let guard_viewer = crate::share_api::LoroCaptureBoundaryGuard::new(viewer_bridge.clone());
+
+        let full = host_doc
+            .doc()
+            .export(loro::ExportMode::updates(&loro::VersionVector::default()))
+            .unwrap();
+        let envelope = seal_update(&scope, "session-o", 2, full, &host_key).unwrap();
+        assert_eq!(
+            handle_incoming_update(&envelope, &roster, &guard_viewer, &viewer_sink),
+            IncomingOutcome::Applied
+        );
+        let viewer_doc = ensure_shared_session_doc(
+            &viewer_state,
+            &viewer_bridge,
+            viewer_dir.path(),
+            "session-o",
+        )
+        .unwrap();
+
+        let block_id = viewer_doc.refresh()[0].id.clone();
+        let v0 = viewer_doc.doc().oplog_vv();
+        viewer_doc.user_replace_text(&block_id, "第 1 版").unwrap();
+        let v1 = viewer_doc.doc().oplog_vv();
+        let d1 = viewer_doc
+            .doc()
+            .export(loro::ExportMode::updates(&v0))
+            .unwrap();
+        viewer_doc.user_replace_text(&block_id, "第 2 版").unwrap();
+        let d2 = viewer_doc
+            .doc()
+            .export(loro::ExportMode::updates(&v1))
+            .unwrap();
+
+        // 后一笔先到。无论这一步的结论是合入(挂起)还是拒收,都不许
+        // 让链路死掉 —— 关键断言在最后。
+        let e2 = seal_update(&scope, "session-o", 2, d2, &viewer_key).unwrap();
+        let out_of_order_outcome = handle_incoming_update(&e2, &roster, &guard_host, &host_sink);
+        // 前一笔补到。
+        let e1 = seal_update(&scope, "session-o", 2, d1, &viewer_key).unwrap();
+        assert_eq!(
+            handle_incoming_update(&e1, &roster, &guard_host, &host_sink),
+            IncomingOutcome::Applied
+        );
+        // 若 e2 曾被拒收,重传一次(上层的补救手段)也该能救回来。
+        if out_of_order_outcome != IncomingOutcome::Applied {
+            let retry = handle_incoming_update(&e2, &roster, &guard_host, &host_sink);
+            assert_eq!(
+                retry,
+                IncomingOutcome::Applied,
+                "先到的 e2 第一次结论是 {out_of_order_outcome:?};前置补齐后重试仍不过 —— 链路死锁"
+            );
+        }
+        assert_eq!(
+            host_doc.refresh()[0].text,
+            "第 2 版",
+            "乱序到达后宿主必须收敛到最后一笔;e2 首次结论: {out_of_order_outcome:?}"
+        );
+    }
+
     /// 端到端同步链(不含传输,传输由 vt-share 自己的测试盖):宿主物化
     /// → 观看端按需开+落盘 → 观看端订正 → 宿主收敛且机器让行;
     /// HostOnly 房间观看端的推送被拒。

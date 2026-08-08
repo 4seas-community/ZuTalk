@@ -594,6 +594,26 @@ impl ZulangueCore {
         };
 
         let endpoint = self.ensure_share_endpoint()?;
+
+        // 一次一个房间。观看中开播、共享中再开播,都会把两套房间状态
+        // 拧在一起(名册互相顶替、viewing 与 hosting 并存)—— 拒绝比
+        // 造出说不清的混合状态诚实。
+        {
+            let guard = self.share_runtime.lock().unwrap();
+            if let Some(runtime) = guard.as_ref() {
+                if runtime.viewing.is_some() {
+                    return Err(CoreError::ValidationFailed {
+                        message: "正在观看别人的共享;先离开那个房间,再从这台 Mac 分享".into(),
+                    });
+                }
+                if runtime.hosting.is_some() {
+                    return Err(CoreError::ValidationFailed {
+                        message: "已经在共享;先停止当前共享,再开始新的一场".into(),
+                    });
+                }
+            }
+        }
+
         let identity_id = endpoint.endpoint_id();
         let host = self.runtime.block_on(endpoint.endpoint_addr());
         let code = ShareCode::new(
@@ -652,6 +672,9 @@ impl ZulangueCore {
             // 静音是对「这一场共享」说的。共享结束,静音清单跟着清零,
             // 下次共享从干净状态开始。
             runtime.muted_sessions.clear();
+            // 播出水位同理:不清零,下一场共享会在录音开始前就显示成
+            // 「正在播出」—— hostingWaiting 与 hostingLive 的区分靠它。
+            runtime.last_broadcast_revision = None;
             // 先道别再拆房间 —— 丢掉 RoomHandle 会中止事件循环,
             // 那之后就没人替你说这句话了,别人要等超时才知道你走了。
             if let Some(room) = runtime.room.take() {
@@ -672,6 +695,29 @@ impl ZulangueCore {
         })?;
 
         let endpoint = self.ensure_share_endpoint()?;
+
+        // 主持中不能加入别人的房间(一次一个房间)。观看中换房间是允许的,
+        // 但要先跟老房间道别 —— 静默消失让那边的人等到超时才知道你走了。
+        {
+            let mut guard = self.share_runtime.lock().unwrap();
+            if let Some(runtime) = guard.as_mut() {
+                if runtime.hosting.is_some() {
+                    return Err(CoreError::ValidationFailed {
+                        message: "正在主持共享;先停止,再加入别人的房间".into(),
+                    });
+                }
+                if runtime.viewing.is_some() || runtime.room.is_some() {
+                    self.shared_sessions.clear_room_state();
+                    runtime.viewing = None;
+                    runtime.roster = None;
+                    if let Some(room) = runtime.room.take() {
+                        self.runtime
+                            .block_on(async move { room.announce_departure().await });
+                    }
+                }
+            }
+        }
+
         let inbox = CaptionInbox::default();
         let scope = parsed.scope.clone();
         let host_addr = parsed.host.clone();
@@ -1051,6 +1097,50 @@ pub(crate) type ShareRuntimeSlot = Mutex<Option<ShareRuntime>>;
 mod tests {
     use super::*;
     use vt_crypto::MemoryKeyStore;
+
+    /// tap 的**帧级**放行:静音与范围不符的帧真的不发,不只是状态查询说不发。
+    ///
+    /// `session_broadcast_status` 锁的是指示器那一半;这里锁广播那一半 ——
+    /// 两半漂移开,就是「指示器灭着,字幕还在往外走」这种最坏的组合。
+    /// 以 `last_broadcast_revision`(只在真正送出时推进)为观察点。
+    #[test]
+    fn the_tap_refuses_muted_and_out_of_scope_frames_at_send_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        core.start_sharing(Some("nb-1".into()), None, false)
+            .unwrap();
+
+        let tap_in_scope = ShareCaptionTap::new(core.share_runtime.clone(), "nb-1".into());
+        let tap_other_notebook = ShareCaptionTap::new(core.share_runtime.clone(), "nb-2".into());
+
+        // 别的 Notebook 里的录音:一帧都不许出去。
+        tap_other_notebook.broadcast(&preview("sess-b", 1));
+        assert_eq!(
+            core.share_state().broadcast_revision,
+            None,
+            "共享着 nb-1,nb-2 的帧不得广播"
+        );
+
+        // 范围内但被静音:同样一帧不许出去。
+        core.set_session_broadcast_muted("sess-a".into(), true);
+        tap_in_scope.broadcast(&preview("sess-a", 2));
+        assert_eq!(
+            core.share_state().broadcast_revision,
+            None,
+            "静音的录音不得广播 —— 指示器灭着字幕还在走是最坏的组合"
+        );
+
+        // 解除静音:恢复播出。
+        core.set_session_broadcast_muted("sess-a".into(), false);
+        tap_in_scope.broadcast(&preview("sess-a", 3));
+        assert_eq!(core.share_state().broadcast_revision, Some(3));
+
+        core.stop_sharing().unwrap();
+
+        // 停止后 tap 变 no-op。
+        tap_in_scope.broadcast(&preview("sess-a", 4));
+        assert_eq!(core.share_state().broadcast_revision, None);
+    }
 
     /// 身份必须稳定:第二次取回的公钥要和第一次相同,否则联系人保存的公钥会失效。
     #[test]

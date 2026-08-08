@@ -15,6 +15,14 @@ use std::time::Duration;
 use vt_ffi::ZulangueCore;
 
 fn core(dir: &tempfile::TempDir) -> ZulangueCore {
+    // 诊断开关:RUST_LOG=vt_share=debug,vt_store=info 时打印传输与准入日志。
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("vt_share=warn")),
+        )
+        .with_writer(std::io::stderr)
+        .try_init();
     ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap()
 }
 
@@ -328,5 +336,239 @@ fn a_new_room_resets_the_ended_state() {
     );
 
     host.stop_sharing().unwrap();
+    viewer.stop_sharing().unwrap();
+}
+
+/// 连发订正:每笔一条独立 uni-stream,QUIC 不保证它们按序到达。
+///
+/// CRDT 的依赖机制要能扛住乱序(缺前置的更新挂起,等前置到齐再合入),
+/// 否则快手订正会把对端卡在旧版本。终态必须是最后一笔。
+#[test]
+fn a_burst_of_edits_converges_to_the_last_version() {
+    let host_dir = tempfile::tempdir().unwrap();
+    let viewer_dir = tempfile::tempdir().unwrap();
+    let host = core(&host_dir);
+    let viewer = core(&viewer_dir);
+
+    let session = "sess-burst";
+    let code = host
+        .start_sharing(None, Some(session.into()), false)
+        .unwrap();
+    host.enable_document_sync().unwrap();
+    viewer.join_share(code).unwrap();
+    assert!(wait_until(10, || host.room_members().len() >= 2));
+
+    host.shared_session_insert_annotation(session.into(), 0, "note-1".into(), "第 0 版".into())
+        .unwrap();
+    assert!(wait_until(10, || {
+        viewer
+            .shared_session_blocks(session.into())
+            .map(|blocks| !blocks.is_empty())
+            .unwrap_or(false)
+    }));
+
+    // 观看端不停顿地连发 20 笔。
+    let block_id = viewer.shared_session_blocks(session.into()).unwrap()[0]
+        .id
+        .clone();
+    for i in 1..=20 {
+        viewer
+            .shared_session_replace_text(session.into(), block_id.clone(), format!("第 {i} 版"))
+            .unwrap();
+    }
+
+    let converged = wait_until(10, || {
+        host.shared_session_blocks(session.into())
+            .map(|blocks| blocks[0].text == "第 20 版")
+            .unwrap_or(false)
+    });
+    let host_text = host.shared_session_blocks(session.into()).unwrap()[0]
+        .text
+        .clone();
+    assert!(
+        converged,
+        "宿主必须收敛到最后一笔 —— 乱序到达的中间版本不得卡住链路;宿主停在: {host_text:?}"
+    );
+
+    host.stop_sharing().unwrap();
+    viewer.stop_sharing().unwrap();
+}
+
+/// 同一个块,两边几乎同时改:必须收敛到**同一个**结果。
+///
+/// 赢家是谁由 CRDT 决定,这里不押注;押的是「不许各自表述」——
+/// 会议里两个人同时改同一句,散会后两台机器显示不同内容是不可接受的。
+#[test]
+fn conflicting_edits_on_the_same_block_converge_identically() {
+    let host_dir = tempfile::tempdir().unwrap();
+    let viewer_dir = tempfile::tempdir().unwrap();
+    let host = core(&host_dir);
+    let viewer = core(&viewer_dir);
+
+    let session = "sess-conflict";
+    let code = host
+        .start_sharing(None, Some(session.into()), false)
+        .unwrap();
+    host.enable_document_sync().unwrap();
+    viewer.join_share(code).unwrap();
+    assert!(wait_until(10, || host.room_members().len() >= 2));
+
+    host.shared_session_insert_annotation(session.into(), 0, "note-1".into(), "原文".into())
+        .unwrap();
+    assert!(wait_until(10, || {
+        viewer
+            .shared_session_blocks(session.into())
+            .map(|blocks| !blocks.is_empty())
+            .unwrap_or(false)
+    }));
+    let block_id = viewer.shared_session_blocks(session.into()).unwrap()[0]
+        .id
+        .clone();
+
+    // 两边背靠背地写,不等对方。
+    host.shared_session_replace_text(session.into(), block_id.clone(), "宿主的版本".into())
+        .unwrap();
+    viewer
+        .shared_session_replace_text(session.into(), block_id, "观看端的版本".into())
+        .unwrap();
+
+    // 不断言谁赢,断言两边一字不差,且是两个候选之一。
+    let text_of = |core: &ZulangueCore| {
+        core.shared_session_blocks(session.into())
+            .map(|blocks| blocks[0].text.clone())
+            .unwrap_or_default()
+    };
+    assert!(
+        wait_until(10, || {
+            let h = text_of(&host);
+            let v = text_of(&viewer);
+            !h.is_empty() && h == v
+        }),
+        "冲突之后两边必须收敛到同一个结果,不许各自表述"
+    );
+    let settled = text_of(&host);
+    assert!(
+        settled == "宿主的版本"
+            || settled == "观看端的版本"
+            // 字符级合并也可接受 —— 只要两边一致。
+            || settled.contains("版本"),
+        "收敛结果应当来自两个候选(或其字符级合并): {settled}"
+    );
+
+    host.stop_sharing().unwrap();
+    viewer.stop_sharing().unwrap();
+}
+
+/// 分享身份与收件跨 App 重启存续。
+///
+/// 「身份稳定是前提 —— 换一次,联系人保存的公钥全部失效」(share-p2p.md §2);
+/// 收件是落盘文件,重启后照样在,还能作为新一场共享的底稿被催缺出去。
+#[test]
+fn identity_and_received_copies_survive_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let session = "sess-restart";
+
+    // 第一世:立身份,写内容,不告而别(不 stop,模拟直接退出)。
+    let first_identity = {
+        let core = core(&dir);
+        let identity = core.share_identity().unwrap().endpoint_id;
+        core.shared_session_insert_annotation(
+            session.into(),
+            0,
+            "note-1".into(),
+            "重启前写的".into(),
+        )
+        .unwrap();
+        identity
+    };
+
+    // 第二世:同一目录重开。
+    let reborn = core(&dir);
+    assert_eq!(
+        reborn.share_identity().unwrap().endpoint_id,
+        first_identity,
+        "身份必须跨重启稳定,否则联系人保存的公钥全部失效"
+    );
+    let listed = reborn.list_shared_sessions();
+    assert!(
+        listed
+            .iter()
+            .any(|info| info.session_id == session && info.block_count >= 1),
+        "落盘的收件重启后要还在"
+    );
+
+    // 重启后的内容还能作为新一场共享的底稿,被晚加入的人催缺到。
+    let viewer_dir = tempfile::tempdir().unwrap();
+    let viewer = core(&viewer_dir);
+    let code = reborn
+        .start_sharing(None, Some(session.into()), false)
+        .unwrap();
+    reborn.enable_document_sync().unwrap();
+    viewer.join_share(code).unwrap();
+    assert!(
+        wait_until(10, || {
+            viewer
+                .shared_session_blocks(session.into())
+                .map(|blocks| blocks.iter().any(|b| b.text == "重启前写的"))
+                .unwrap_or(false)
+        }),
+        "重启前的内容应当能在新一场共享里被催缺出去"
+    );
+
+    reborn.stop_sharing().unwrap();
+    viewer.stop_sharing().unwrap();
+}
+
+/// 一次一个房间:主持中不能加入,观看中不能开播;换房间要跟老房间道别。
+#[test]
+fn one_room_at_a_time_and_polite_room_switching() {
+    let host1_dir = tempfile::tempdir().unwrap();
+    let host2_dir = tempfile::tempdir().unwrap();
+    let viewer_dir = tempfile::tempdir().unwrap();
+    let host1 = core(&host1_dir);
+    let host2 = core(&host2_dir);
+    let viewer = core(&viewer_dir);
+
+    let code1 = host1
+        .start_sharing(None, Some("sess-one".into()), false)
+        .unwrap();
+    let code2 = host2
+        .start_sharing(None, Some("sess-two".into()), false)
+        .unwrap();
+
+    // 主持中不能加入别人的房间。
+    assert!(
+        host1.join_share(code2.clone()).is_err(),
+        "主持中加入别人的房间会把两套房间状态拧在一起"
+    );
+    // 已在共享不能再次开始。
+    assert!(host1
+        .start_sharing(None, Some("sess-three".into()), false)
+        .is_err());
+
+    // 观看中不能开始分享。
+    viewer.join_share(code1).unwrap();
+    assert!(viewer
+        .start_sharing(None, Some("sess-mine".into()), false)
+        .is_err());
+    assert!(wait_until(10, || host1.room_members().len() >= 2));
+
+    // 观看中换房间:允许,而且老房间**很快**知道人走了 —— 靠道别,
+    // 不是等超时。
+    viewer.join_share(code2).unwrap();
+    assert!(
+        wait_until(10, || host1.room_members().len() == 1),
+        "换房间要道别,老主持人不该等超时才发现人走了"
+    );
+    assert!(wait_until(10, || host2.room_members().len() >= 2));
+    let state = viewer.share_state();
+    assert!(state.is_viewing);
+    assert_eq!(state.scope_session_id.as_deref(), Some("sess-two"));
+
+    // 双重停止是幂等的。
+    host1.stop_sharing().unwrap();
+    host1.stop_sharing().unwrap();
+    host2.stop_sharing().unwrap();
+    viewer.stop_sharing().unwrap();
     viewer.stop_sharing().unwrap();
 }

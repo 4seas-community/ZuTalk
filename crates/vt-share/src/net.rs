@@ -348,7 +348,8 @@ impl ShareEndpoint {
             }
         }
 
-        // 之后双向互推:各自开 uni-stream 发自己的更新。
+        // 之后双向互推:各自开 uni-stream 发自己的更新。反熵与应答
+        // 与推送并跑 —— 推送是快路径,对账兜底。
         let outbound = spawn_update_pusher(
             conn.clone(),
             self.doc_updates.subscribe(),
@@ -356,8 +357,11 @@ impl ShareEndpoint {
             context.clone(),
             self.identity.clone(),
         );
-        let inbound = spawn_update_reader(conn, context, self.doc_envelopes.clone());
-        let _ = tokio::join!(outbound, inbound);
+        let inbound =
+            spawn_update_reader(conn.clone(), context.clone(), self.doc_envelopes.clone());
+        let responder = spawn_have_responder(conn.clone(), context.clone(), self.identity.clone());
+        let prober = spawn_anti_entropy(conn, context, self.doc_envelopes.clone());
+        let _ = tokio::join!(outbound, inbound, responder, prober);
         Ok(())
     }
 
@@ -607,6 +611,72 @@ impl ShareEndpoint {
 }
 
 /// 把一份收到的更新过门再合入。
+/// 反熵间隔:每隔这么久与对端对一次版本账。
+///
+/// 实时推送是快路径,但它建立在「每一笔都送到了」的假设上 —— 丢包、
+/// 误拒、任务假死,任何一笔缺席都会让后续更新永远挂起(CRDT 等前置)。
+/// 版本对账不做这个假设:双方各自宣告到哪了,缺什么补什么,幂等。
+/// 追平时只有一来一回的 Have/UpToDate,代价可以忽略。
+const ANTI_ENTROPY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// 持续应答对端的版本宣告 —— 每条进来的 bi-stream 答一次。
+///
+/// 首次催缺与之后的反熵轮询走同一条协议,这里不区分。
+fn spawn_have_responder(
+    conn: Connection,
+    context: DocSyncContext,
+    identity: ShareIdentity,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            let (mut send, mut recv) = match conn.accept_bi().await {
+                Ok(pair) => pair,
+                Err(_) => break,
+            };
+            if let Ok(DocSyncMessage::Have { versions }) =
+                read_message::<_, DocSyncMessage>(&mut recv).await
+            {
+                let reply = respond_to_have(
+                    &versions,
+                    &context.scope,
+                    context.sink.as_ref(),
+                    identity.secret(),
+                );
+                let _ = write_message(&mut send, &reply).await;
+                let _ = send.finish();
+            }
+        }
+    })
+}
+
+/// 周期性向对端宣告本机版本,收下补发。反熵的主动半边。
+fn spawn_anti_entropy(
+    conn: Connection,
+    context: DocSyncContext,
+    relay: broadcast::Sender<Arc<Vec<u8>>>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(ANTI_ENTROPY_INTERVAL).await;
+            let Ok((mut send, mut recv)) = conn.open_bi().await else {
+                break;
+            };
+            let have = declare_versions(&context.scope, context.sink.as_ref());
+            if write_message(&mut send, &have).await.is_err() {
+                break;
+            }
+            let _ = send.finish();
+            if let Ok(DocSyncMessage::Updates { envelopes }) =
+                read_message::<_, DocSyncMessage>(&mut recv).await
+            {
+                for envelope in envelopes {
+                    apply_incoming(&context, &envelope, Some(&relay)).await;
+                }
+            }
+        }
+    })
+}
+
 async fn apply_incoming(
     context: &DocSyncContext,
     envelope: &[u8],
@@ -651,7 +721,10 @@ fn spawn_update_pusher(
                         Ok(update) => update,
                         // 文档更新落后就没法只补最新的 —— CRDT 需要每一笔。断开让对方
                         // 重连后走补齐历史那条路,比装作没事继续发要诚实。
-                        Err(broadcast::error::RecvError::Lagged(_)) => break,
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!(missed = n, "文档推送任务退出:本机更新队列落后");
+                            break;
+                        }
                         Err(broadcast::error::RecvError::Closed) => break,
                     };
                     let (document_id, bytes) = update.as_ref();
@@ -676,23 +749,31 @@ fn spawn_update_pusher(
                     match relayed_envelope {
                         Ok(envelope) => envelope.as_ref().clone(),
                         // 转发信封同样一笔不能丢:落后就断开重来。
-                        Err(broadcast::error::RecvError::Lagged(_)) => break,
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!(missed = n, "文档推送任务退出:转发队列落后");
+                            break;
+                        }
                         Err(broadcast::error::RecvError::Closed) => break,
                     }
                 }
             };
-            let Ok(mut stream) = conn.open_uni().await else {
-                break;
+            let stream = match conn.open_uni().await {
+                Ok(stream) => stream,
+                Err(error) => {
+                    tracing::warn!(%error, "文档推送任务退出:开流失败(连接已断)");
+                    break;
+                }
             };
-            if write_message(
+            let mut stream = stream;
+            if let Err(error) = write_message(
                 &mut stream,
                 &DocSyncMessage::Updates {
                     envelopes: vec![envelope],
                 },
             )
             .await
-            .is_err()
             {
+                tracing::warn!(%error, "文档推送任务退出:写流失败");
                 break;
             }
             let _ = stream.finish();
@@ -707,7 +788,14 @@ fn spawn_update_reader(
     relay: broadcast::Sender<Arc<Vec<u8>>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        while let Ok(mut stream) = conn.accept_uni().await {
+        loop {
+            let mut stream = match conn.accept_uni().await {
+                Ok(stream) => stream,
+                Err(error) => {
+                    tracing::warn!(%error, "文档读取任务退出:连接已断");
+                    break;
+                }
+            };
             match read_message::<_, DocSyncMessage>(&mut stream).await {
                 Ok(DocSyncMessage::Updates { envelopes }) => {
                     for envelope in envelopes {
@@ -805,22 +893,9 @@ impl ProtocolHandler for DocSyncAcceptor {
             return Ok(());
         };
 
-        // 先应答补齐历史的请求。
-        if let Ok((mut send, mut recv)) = connection.accept_bi().await {
-            if let Ok(DocSyncMessage::Have { versions }) =
-                read_message::<_, DocSyncMessage>(&mut recv).await
-            {
-                let reply = respond_to_have(
-                    &versions,
-                    &context.scope,
-                    context.sink.as_ref(),
-                    self.identity.secret(),
-                );
-                let _ = write_message(&mut send, &reply).await;
-                let _ = send.finish();
-            }
-        }
-
+        // 版本宣告的应答常驻 —— 首次催缺与之后每一轮反熵都走它。
+        let responder =
+            spawn_have_responder(connection.clone(), context.clone(), self.identity.clone());
         let outbound = spawn_update_pusher(
             connection.clone(),
             self.updates.subscribe(),
@@ -828,8 +903,11 @@ impl ProtocolHandler for DocSyncAcceptor {
             context.clone(),
             self.identity.clone(),
         );
-        let inbound = spawn_update_reader(connection, context, self.envelopes.clone());
-        let _ = tokio::join!(outbound, inbound);
+        let inbound =
+            spawn_update_reader(connection.clone(), context.clone(), self.envelopes.clone());
+        // 受理侧也主动对账:宿主同样可能缺成员的更新。
+        let prober = spawn_anti_entropy(connection, context, self.envelopes.clone());
+        let _ = tokio::join!(responder, outbound, inbound, prober);
         Ok(())
     }
 }
