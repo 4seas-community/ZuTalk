@@ -737,7 +737,7 @@ impl ZulangueCore {
     /// 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
     /// 每一笔编辑都会推给对端,对端推来的每一笔都要过完整条准入链才会合入。
     pub fn enable_document_sync(&self) -> Result<(), CoreError> {
-        let (endpoint, roster, hosting) = {
+        let (endpoint, roster, room, hosting) = {
             let guard = self.share_runtime.lock().unwrap();
             let Some(runtime) = guard.as_ref() else {
                 return Err(CoreError::ValidationFailed {
@@ -749,7 +749,18 @@ impl ZulangueCore {
                     message: "尚未开始共享".into(),
                 });
             };
-            (runtime.endpoint.clone(), roster, runtime.hosting.is_some())
+            (
+                runtime.endpoint.clone(),
+                roster,
+                runtime.room.clone(),
+                runtime.hosting.is_some(),
+            )
+        };
+        // 名册以房间在场为准:enable 之前已经进来的成员不能被落下。
+        // 之后的进出由房间事件循环持续刷进 DocSyncContext。
+        let roster = match room {
+            Some(room) => self.runtime.block_on(async move { room.roster().await }),
+            None => roster,
         };
         let scope = roster.scope().clone();
 

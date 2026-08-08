@@ -510,6 +510,7 @@ impl ShareEndpoint {
         let task = {
             let presence = presence.clone();
             let secret = self.identity.secret().clone();
+            let doc_context = self.doc_context.clone();
             tokio::spawn(async move {
                 use futures_lite::StreamExt;
                 while let Some(event) = receiver.next().await {
@@ -542,6 +543,16 @@ impl ShareEndpoint {
                     // 名册变了就由主持人重新广播。非主持人的 roster_broadcast 是 None,
                     // 所以这一段对观看者天然是空转。
                     if changed {
+                        // 文档准入门的名册要跟着进化。它在 enable 时拿到的只是
+                        // 一份快照 —— 不刷新,后来被批准的成员的每一笔订正都会
+                        // 在成员检查上被拒收,表现为「观看端改了,主持人永远
+                        // 收不到」,而且两边都不报错。
+                        if let Some(context) = doc_context.lock().await.as_ref() {
+                            if context.scope == scope {
+                                *context.roster.lock().await =
+                                    presence.lock().await.roster().clone();
+                            }
+                        }
                         let broadcast = presence.lock().await.roster_broadcast();
                         if let Some(roster) = broadcast {
                             if let Ok(bytes) = seal_control(&roster, &scope, &secret) {

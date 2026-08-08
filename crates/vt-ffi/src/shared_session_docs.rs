@@ -514,8 +514,27 @@ impl vt_share::DocumentSync for SharedDocSync {
     }
 
     fn apply(&self, _scope: &ScopeId, document_id: &str, update: &[u8]) -> bool {
+        // 导入前的版本向量。导入后凡是涨了的 peer 计数,都是**这笔远端更新
+        // 带来的** —— 要并进发布水位。不做这一步,观看端第一笔订正的导出会
+        // 从空水位开始,把宿主的建块历史整包带上;对端的准入门(成员不得
+        // 增删块)会把整笔拒收,表现为「订正永远到不了主持人」。
+        let projection = {
+            let open = self.state.open.lock().unwrap();
+            open.get(document_id).cloned()
+        };
+        let pre = projection.as_ref().map(|p| p.doc().oplog_vv());
+
         let applied = self.editor.import_remote_update(document_id, update);
         if applied {
+            if let (Some(projection), Some(pre)) = (projection.as_ref(), pre.as_ref()) {
+                let post = projection.doc().oplog_vv();
+                let mut published = self.state.published.lock().unwrap();
+                let entry = published.entry(document_id.to_string()).or_default();
+                entry
+                    .extend_to_include_vv(post.iter().filter(|(peer, counter)| {
+                        **counter > pre.get(*peer).copied().unwrap_or(0)
+                    }));
+            }
             if let Err(error) = persist_shared_session_doc(&self.state, &self.data_dir, document_id)
             {
                 tracing::warn!(document_id, %error, "共享文档落盘失败;内容仍在内存,下一笔合入重试");
