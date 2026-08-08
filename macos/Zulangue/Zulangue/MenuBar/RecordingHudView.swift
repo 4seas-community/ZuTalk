@@ -25,6 +25,9 @@ struct RecordingHudView: View {
             Text(info.elapsedString)
                 .font(Font.monoNum11)
                 .foregroundColor(Color.textPrimary)
+            // 字幕正在离开这台机器时,药丸上亮一粒琥珀色电波(§4.1)。
+            // 药丸 ignoresMouseEvents,所以只给被动指示,不给按钮。
+            ShareBroadcastGlyph()
         }
         .padding(.horizontal, Spacing.sm)
         .frame(height: Spacing.lg)

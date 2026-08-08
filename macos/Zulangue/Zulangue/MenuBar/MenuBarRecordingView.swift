@@ -9,6 +9,7 @@ struct MenuBarRecordingView: View {
     let info: RecordingInfo
     let recentLines: [TranscriptLine]
     @ObservedObject private var subtitleOverlay = SubtitleOverlayCoordinator.shared
+    @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
@@ -18,6 +19,14 @@ struct MenuBarRecordingView: View {
                 remoteHealth: info.remoteHealth,
                 projectionState: info.projectionState
             )
+            // 共享指示器(§4.1):App 缩在菜单栏里录音时,这里是用户唯一
+            // 看得见的表面 —— 字幕在不在离开这台机器,必须在这里也说。
+            if let notebookId = capture.notebookId {
+                ShareBroadcastIndicator(
+                    notebookId: notebookId,
+                    sessionId: capture.sessionId
+                )
+            }
             readOnlyNotice
             if !recentLines.isEmpty {
                 transcriptSection

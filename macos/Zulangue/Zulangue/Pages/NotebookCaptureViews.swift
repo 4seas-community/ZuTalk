@@ -694,6 +694,47 @@ struct ShareBroadcastIndicator: View {
     }
 }
 
+/// 被动版共享指示灯:一个琥珀色图标,没有按钮。
+///
+/// 给 HUD 药丸这类不可交互(ignoresMouseEvents)或空间紧张的表面用 ——
+/// 它们只回答一个问题:**此刻我的话在不在离开这台机器**。静音与未共享
+/// 都不亮:亮 = 在发,同一份判定,不做第三种含糊状态。
+struct ShareBroadcastGlyph: View {
+    @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @State private var broadcasting = false
+    private let heartbeat = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+
+    private var core: (any ZulangueCoreProtocol)? { CoreClient.shared.core }
+
+    var body: some View {
+        Group {
+            if broadcasting {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.signalAmber)
+                    .help(String(localized: "share.capture.live_hint"))
+                    .accessibilityLabel(String(localized: "share.capture.live"))
+            }
+        }
+        .onAppear { refresh() }
+        .onReceive(heartbeat) { _ in refresh() }
+    }
+
+    private func refresh() {
+        guard let core,
+              let notebookId = capture.notebookId,
+              let sessionId = capture.sessionId
+        else {
+            broadcasting = false
+            return
+        }
+        broadcasting = core.sessionBroadcastStatus(
+            notebookId: notebookId,
+            sessionId: sessionId
+        ) == .broadcasting
+    }
+}
+
 // MARK: - Realtime capture command center
 
 /// Realtime exists before the first session. The profile editor represents the
