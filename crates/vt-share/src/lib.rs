@@ -30,7 +30,10 @@ mod shareable;
 mod sharecode;
 mod wire;
 
-pub use caption::{CaptionFrame, CaptionLine, CaptionReceiver, FrameOutcome};
+pub use caption::{
+    CaptionCue, CaptionFrame, CaptionLaneHealth, CaptionLine, CaptionReceiver, CaptionUtterance,
+    FrameOutcome,
+};
 pub use docsync::{
     declare_versions, handle_incoming_update, respond_to_have, seal_update, DocSyncMessage,
     DocumentSync, DocumentUpdatePayload, DocumentVersion, IncomingOutcome,

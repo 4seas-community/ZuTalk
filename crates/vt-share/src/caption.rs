@@ -36,13 +36,96 @@ pub struct CaptionLine {
     pub completion: String,
 }
 
+/// 一句话在线上帧里的完整形态。字段与采集层的
+/// `FfiNotebookCaptureUtterance` 逐一对应,但**镜像声明,不引用** ——
+/// `vt-share` 依赖不到 `vt-ffi`,这是依赖图门禁的一部分。
+///
+/// 主机本地的投影水位(`source_projection_revision` 等)不过网:它们描述的是
+/// 主机自己的落库进度,对接收端没有意义。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CaptionUtterance {
+    pub id: String,
+    pub session_id: String,
+    pub sequence: u64,
+    pub revision: u64,
+    pub speaker: Option<String>,
+    pub source_language: String,
+    /// 推测性尾部的 durable 语言还是 und 时的临时车道标签。
+    pub provisional_source_language: Option<String>,
+    pub source_text: String,
+    pub source_start_ms: Option<u64>,
+    pub source_end_ms: Option<u64>,
+    pub translated_language: Option<String>,
+    pub translated_text: Option<String>,
+    /// "partial" 或 "complete"。
+    pub completion: String,
+    pub alignment: String,
+}
+
+/// 一条多语言翻译 cue 的线上形态。镜像自 `FfiNotebookCaptureTranslationCue`。
+/// 已撤回的 cue 不上线 —— 帧是 replace-in-full 的,缺席即撤回。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CaptionCue {
+    pub target_language: String,
+    pub group_epoch: u64,
+    pub provider_sequence: u64,
+    pub source_language: String,
+    pub source_start_ms: Option<u64>,
+    pub source_end_ms: Option<u64>,
+    pub text: String,
+    pub completion: String,
+    pub revision: u64,
+}
+
+/// 一条语言车道此刻的健康状态。镜像自 `FfiNotebookCaptureLaneHealth` 的
+/// 呈现子集 —— 主机的排队延迟等诊断细节不过网。
+///
+/// 没有它,接收端分不清「这条车道还在连」和「这条车道坏了不会再有字」——
+/// 这正是 lane health 存在的理由,压扁的行列表曾把它整个丢掉。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CaptionLaneHealth {
+    /// `None` 是 canonical 转写车道。
+    pub target_language: Option<String>,
+    /// "live" | "connecting" | "failed"
+    pub state: String,
+    pub group_epoch: u64,
+}
+
 /// 一帧字幕:当前 tail 的完整快照。
+///
+/// `lines` 是压扁的兼容投影(旧接收端只认它);`utterances`/`cues`/`lane_health`
+/// 是完整形态,接收端有则优先使用。两份都由广播端从同一帧预览翻出,
+/// 不存在分歧源。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CaptionFrame {
     pub scope: ScopeId,
     /// 只在这条预览通道内单调。跳号无害,因为每帧都是完整的。
     pub preview_revision: u64,
     pub lines: Vec<CaptionLine>,
+    /// 这一帧属于主播的哪一场录音。旧帧没有这个字段,serde 默认为空。
+    #[serde(default)]
+    pub session_id: String,
+    #[serde(default)]
+    pub utterances: Vec<CaptionUtterance>,
+    #[serde(default)]
+    pub cues: Vec<CaptionCue>,
+    #[serde(default)]
+    pub lane_health: Vec<CaptionLaneHealth>,
+}
+
+impl CaptionFrame {
+    /// 只带压扁行的帧,完整形态字段为空。旧测试与不需要完整画布的路径用。
+    pub fn flat(scope: ScopeId, preview_revision: u64, lines: Vec<CaptionLine>) -> Self {
+        Self {
+            scope,
+            preview_revision,
+            lines,
+            session_id: String::new(),
+            utterances: Vec::new(),
+            cues: Vec::new(),
+            lane_health: Vec::new(),
+        }
+    }
 }
 
 /// 接收端的字幕投影。
@@ -51,7 +134,8 @@ pub struct CaptionFrame {
 #[derive(Debug, Default)]
 pub struct CaptionReceiver {
     applied_revision: Option<u64>,
-    lines: Vec<CaptionLine>,
+    /// 最新一帧的完整内容。replace-in-full,所以留一帧就够。
+    frame: Option<CaptionFrame>,
 }
 
 /// 一帧被接收后的处置。
@@ -76,7 +160,12 @@ impl CaptionReceiver {
     }
 
     pub fn lines(&self) -> &[CaptionLine] {
-        &self.lines
+        self.frame.as_ref().map(|f| f.lines.as_slice()).unwrap_or(&[])
+    }
+
+    /// 最新一帧的完整形态;还没收到任何帧时为 `None`。
+    pub fn latest_frame(&self) -> Option<&CaptionFrame> {
+        self.frame.as_ref()
     }
 
     /// 收下一帧。
@@ -93,14 +182,14 @@ impl CaptionReceiver {
             }
         }
         self.applied_revision = Some(frame.preview_revision);
-        self.lines = frame.lines;
+        self.frame = Some(frame);
         FrameOutcome::Applied
     }
 
     /// 广播结束或断线时清空。投影不留残影。
     pub fn clear(&mut self) {
         self.applied_revision = None;
-        self.lines.clear();
+        self.frame = None;
     }
 }
 
@@ -131,6 +220,39 @@ mod tests {
                 target_language: Some("zh-Hans".into()),
                 target_text: Some(format!("译:{text}")),
                 completion: "partial".into(),
+            }],
+            session_id: "s-1".into(),
+            utterances: vec![CaptionUtterance {
+                id: "u1".into(),
+                session_id: "s-1".into(),
+                sequence: 1,
+                revision,
+                speaker: None,
+                source_language: "ja".into(),
+                provisional_source_language: None,
+                source_text: text.into(),
+                source_start_ms: Some(0),
+                source_end_ms: Some(500),
+                translated_language: Some("zh-Hans".into()),
+                translated_text: Some(format!("译:{text}")),
+                completion: "partial".into(),
+                alignment: "aligned".into(),
+            }],
+            cues: vec![CaptionCue {
+                target_language: "ko".into(),
+                group_epoch: 1,
+                provider_sequence: 1,
+                source_language: "ja".into(),
+                source_start_ms: Some(0),
+                source_end_ms: Some(500),
+                text: "안녕".into(),
+                completion: "partial".into(),
+                revision,
+            }],
+            lane_health: vec![CaptionLaneHealth {
+                target_language: Some("ko".into()),
+                state: "live".into(),
+                group_epoch: 1,
             }],
         }
     }
@@ -215,5 +337,44 @@ mod tests {
         let bytes = serde_json::to_vec(&f).unwrap();
         let back: CaptionFrame = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(back, f);
+    }
+
+    /// 旧版广播端的帧没有完整形态字段,新接收端必须照收 —— 压扁的
+    /// `lines` 仍在,只是完整画布退化为分享页的行列表。
+    #[test]
+    fn legacy_frame_without_rich_fields_still_decodes() {
+        let legacy = serde_json::json!({
+            "scope": { "session": { "session_id": "s-1" } },
+            "preview_revision": 4,
+            "lines": [{
+                "speaker": null,
+                "source_language": "ja",
+                "source_text": "旧帧",
+                "target_language": null,
+                "target_text": null,
+                "completion": "partial"
+            }]
+        });
+        let back: CaptionFrame = serde_json::from_value(legacy).unwrap();
+        assert_eq!(back.preview_revision, 4);
+        assert_eq!(back.lines.len(), 1);
+        assert!(back.session_id.is_empty());
+        assert!(back.utterances.is_empty());
+        assert!(back.cues.is_empty());
+        assert!(back.lane_health.is_empty());
+    }
+
+    /// 完整形态随帧替换:接收端手里永远只有最新一帧的 utterance/cue。
+    #[test]
+    fn latest_frame_exposes_rich_payload_and_replaces_in_full() {
+        let mut rx = CaptionReceiver::new();
+        rx.accept(frame(1, "一"), &scope());
+        rx.accept(frame(2, "二"), &scope());
+        let latest = rx.latest_frame().expect("已收到帧");
+        assert_eq!(latest.utterances.len(), 1);
+        assert_eq!(latest.utterances[0].source_text, "二");
+        assert_eq!(latest.session_id, "s-1");
+        assert_eq!(latest.cues.len(), 1);
+        assert_eq!(latest.lane_health[0].state, "live");
     }
 }

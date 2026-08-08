@@ -229,6 +229,10 @@ pub struct FfiShareState {
     /// 不该殃及散场后留下的其它收件。Notebook 范围或未共享时为 `None`。
     pub scope_session_id: Option<String>,
     pub lines: Vec<FfiSharedCaptionLine>,
+    /// 观看端:主播最新一帧的**完整**预览 —— 与主播本机画布收到的同一形态
+    /// (多语言 lane、cue、lane 健康齐全)。旧版主播只发压扁行时为 `None`,
+    /// 此时界面退化为 `lines` 列表。
+    pub remote_preview: Option<FfiNotebookCaptureLivePreview>,
 }
 
 /// 进程内的分享运行时。
@@ -762,6 +766,8 @@ impl ZulangueCore {
 
         // 收端落库从这里开始:按单次录音共享时那一篇预先入册,然后武装
         // 文档同步、拨一次催缺。失败不挡字幕——字幕走独立通道。
+        // Notebook 范围在这里入不了册(session 还不存在)——之后由
+        // share_state 在吸收字幕帧时按主播宣告逐个登记。
         if let ScopeId::Session { session_id } = &scope {
             self.shared_sessions.register_known(session_id);
         }
@@ -854,6 +860,7 @@ impl ZulangueCore {
                 host_left: false,
                 scope_session_id: None,
                 lines: Vec::new(),
+                remote_preview: None,
             };
         };
 
@@ -866,6 +873,7 @@ impl ZulangueCore {
 
         let mut applied_revision = None;
         let mut lines = Vec::new();
+        let mut remote_preview = None;
         if let Some(room) = runtime.viewing.as_mut() {
             let scope = room.scope.clone();
             for frame in self.runtime.block_on(room.inbox.drain()) {
@@ -885,6 +893,20 @@ impl ZulangueCore {
                     completion: line.completion.clone(),
                 })
                 .collect();
+            remote_preview = room.projection.latest_frame().and_then(remote_preview_from);
+
+            // Notebook 范围的收端落库入册:主播在字幕通道里宣告的 session id
+            // 可以入册 —— 字幕帧只来自与主播 QUIC 认证的直连,且已过范围
+            // 检查,等价于**主播自报**,不是「成员自报」;bridge 键位占用
+            // 防御照旧兜底(id 撞上本机文档时拒绝挂载)。Session 范围在
+            // 加入时已由分享码钉死,不需要这条。
+            if matches!(&scope, ScopeId::Notebook { .. }) {
+                if let Some(preview) = remote_preview.as_ref() {
+                    if !preview.session_id.is_empty() {
+                        self.shared_sessions.register_known(&preview.session_id);
+                    }
+                }
+            }
         }
 
         // 主持人是否已道别 —— 只对观看端有意义,主持人自己永远是 false。
@@ -919,6 +941,7 @@ impl ZulangueCore {
                 _ => None,
             },
             lines,
+            remote_preview,
         }
     }
 
@@ -1083,10 +1106,147 @@ fn caption_frame_from(
             }),
     );
 
+    // 完整形态与压扁行同源同帧。接收端有完整形态就能还原主播本机画布的
+    // 观感;旧接收端只认 `lines`,所以两份都发。
+    let utterances = preview
+        .utterances
+        .iter()
+        .map(|u| vt_share::CaptionUtterance {
+            id: u.id.clone(),
+            session_id: u.session_id.clone(),
+            sequence: u.sequence,
+            revision: u.revision,
+            speaker: u.session_speaker_id.clone(),
+            source_language: u.source_language.clone(),
+            provisional_source_language: u.provisional_source_language.clone(),
+            source_text: u.source_text.clone(),
+            source_start_ms: u.source_start_ms,
+            source_end_ms: u.source_end_ms,
+            translated_language: u.translated_language.clone(),
+            translated_text: u.translated_text.clone(),
+            completion: u.completion.clone(),
+            alignment: u.alignment.clone(),
+        })
+        .collect();
+
+    // 帧是 replace-in-full 的:撤回的 cue 直接缺席即可,不需要墓碑。
+    let cues = preview
+        .translation_cues
+        .iter()
+        .filter(|c| !c.withdrawn)
+        .map(|c| vt_share::CaptionCue {
+            target_language: c.target_language.clone(),
+            group_epoch: c.group_epoch,
+            provider_sequence: c.provider_sequence,
+            source_language: c.source_language.clone(),
+            source_start_ms: c.source_start_ms,
+            source_end_ms: c.source_end_ms,
+            text: c.text.clone(),
+            completion: c.completion.clone(),
+            revision: c.revision,
+        })
+        .collect();
+
+    let lane_health = preview
+        .lane_health
+        .iter()
+        .map(|h| vt_share::CaptionLaneHealth {
+            target_language: h.target_language.clone(),
+            state: h.state.clone(),
+            group_epoch: h.group_epoch,
+        })
+        .collect();
+
     vt_share::CaptionFrame {
         scope,
         preview_revision: preview.preview_revision,
         lines,
+        session_id: preview.session_id.clone(),
+        utterances,
+        cues,
+        lane_health,
+    }
+}
+
+/// 把线上帧的完整形态还原成采集层的预览类型。
+///
+/// 主机本地的投影水位在对端没有意义,一律置零;`language_variants` 在实时
+/// 预览帧上本就恒空(durable 变体是落库事实,不在预览里合成)。
+/// 旧版主播的帧没有完整形态 —— 返回 `None`,界面退化为压扁行列表。
+fn remote_preview_from(frame: &vt_share::CaptionFrame) -> Option<FfiNotebookCaptureLivePreview> {
+    if frame.session_id.is_empty() && frame.utterances.is_empty() && frame.cues.is_empty() {
+        return None;
+    }
+    Some(FfiNotebookCaptureLivePreview {
+        session_id: frame.session_id.clone(),
+        preview_revision: frame.preview_revision,
+        utterances: frame
+            .utterances
+            .iter()
+            .map(|u| crate::notebook_capture_api::FfiNotebookCaptureUtterance {
+                id: u.id.clone(),
+                session_id: u.session_id.clone(),
+                sequence: u.sequence,
+                revision: u.revision,
+                session_speaker_id: u.speaker.clone(),
+                source_language: u.source_language.clone(),
+                provisional_source_language: u.provisional_source_language.clone(),
+                source_text: u.source_text.clone(),
+                source_start_ms: u.source_start_ms,
+                source_end_ms: u.source_end_ms,
+                translated_language: u.translated_language.clone(),
+                translated_text: u.translated_text.clone(),
+                completion: u.completion.clone(),
+                alignment: u.alignment.clone(),
+                source_projection_revision: 0,
+                source_edit_revision: 0,
+                language_variants: Vec::new(),
+            })
+            .collect(),
+        translation_cues: frame
+            .cues
+            .iter()
+            .map(|c| crate::notebook_capture_api::FfiNotebookCaptureTranslationCue {
+                target_language: c.target_language.clone(),
+                group_epoch: c.group_epoch,
+                provider_sequence: c.provider_sequence,
+                source_language: c.source_language.clone(),
+                source_start_ms: c.source_start_ms,
+                source_end_ms: c.source_end_ms,
+                text: c.text.clone(),
+                completion: c.completion.clone(),
+                withdrawn: false,
+                revision: c.revision,
+            })
+            .collect(),
+        lane_health: frame
+            .lane_health
+            .iter()
+            .map(|h| crate::notebook_capture_api::FfiNotebookCaptureLaneHealth {
+                target_language: h.target_language.clone(),
+                state: h.state.clone(),
+                group_epoch: h.group_epoch,
+                final_audio_proc_ms: None,
+                total_audio_proc_ms: None,
+                lag_ms: None,
+                input_discontinuous: false,
+            })
+            .collect(),
+    })
+}
+
+impl ZulangueCore {
+    /// 测试专用:以主播身份把一帧预览按**真实 tap 路径**广播出去。
+    ///
+    /// 集成测试没有真采集回调可挂,但范围过滤、静音、完整帧翻译这些
+    /// 判定必须走生产代码,不能在测试里手搭旁路。
+    #[doc(hidden)]
+    pub fn broadcast_live_preview_for_test(
+        &self,
+        capture_notebook_id: String,
+        preview: &FfiNotebookCaptureLivePreview,
+    ) {
+        ShareCaptionTap::new(self.share_runtime.clone(), capture_notebook_id).broadcast(preview);
     }
 }
 
@@ -1400,7 +1560,15 @@ mod tests {
                     revision: 1,
                 },
             ],
-            lane_health: vec![],
+            lane_health: vec![crate::notebook_capture_api::FfiNotebookCaptureLaneHealth {
+                target_language: Some("ko".into()),
+                state: "connecting".into(),
+                group_epoch: 1,
+                final_audio_proc_ms: Some(1200),
+                total_audio_proc_ms: Some(1500),
+                lag_ms: Some(300),
+                input_discontinuous: false,
+            }],
         }
     }
 
@@ -1430,6 +1598,53 @@ mod tests {
                 .all(|l| l.target_text.as_deref() != Some("retiré")),
             "撤回的 cue 不该出现在线上帧里"
         );
+    }
+
+    /// 完整形态过网往返:接收端还原出的预览与主播本机画布收到的同一形态。
+    /// 这是「收端画布 = 主播画布」的根 —— 压扁行列表曾把 lane/cue/健康全丢掉。
+    #[test]
+    fn full_preview_round_trips_across_the_wire_shape() {
+        let scope = ScopeId::Session {
+            session_id: "s".into(),
+        };
+        let frame = caption_frame_from(scope, &preview("s", 9));
+
+        assert_eq!(frame.session_id, "s");
+        assert_eq!(frame.utterances.len(), 1);
+        assert_eq!(frame.cues.len(), 1, "撤回的 cue 在完整形态里同样缺席");
+        assert_eq!(frame.lane_health.len(), 1);
+        assert_eq!(frame.lane_health[0].state, "connecting");
+
+        let back = remote_preview_from(&frame).expect("完整形态可还原");
+        assert_eq!(back.session_id, "s");
+        assert_eq!(back.preview_revision, 9);
+        assert_eq!(back.utterances[0].source_text, "こんにちは");
+        assert_eq!(
+            back.utterances[0].provisional_source_language.as_deref(),
+            Some("ja"),
+            "临时车道标签必须过网,否则对端把 und 放不进车道"
+        );
+        assert_eq!(back.utterances[0].source_start_ms, Some(0));
+        assert_eq!(back.translation_cues.len(), 1);
+        assert_eq!(back.translation_cues[0].target_language, "ko");
+        assert!(!back.translation_cues[0].withdrawn);
+        assert_eq!(back.lane_health[0].target_language.as_deref(), Some("ko"));
+        assert_eq!(back.lane_health[0].state, "connecting");
+        // 主机本地的诊断细节不过网,还原侧一律置空。
+        assert_eq!(back.lane_health[0].lag_ms, None);
+    }
+
+    /// 旧版主播只发压扁行 —— 还原不出完整预览,界面必须退化而不是崩。
+    #[test]
+    fn a_legacy_flat_frame_yields_no_remote_preview() {
+        let frame = vt_share::CaptionFrame::flat(
+            ScopeId::Session {
+                session_id: "s".into(),
+            },
+            1,
+            vec![],
+        );
+        assert!(remote_preview_from(&frame).is_none());
     }
 
     /// **音频门禁在这一层的具体形态:线上帧里没有任何可以承载 PCM 的字段。**

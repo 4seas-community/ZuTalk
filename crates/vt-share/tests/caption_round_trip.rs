@@ -32,11 +32,7 @@ fn line(text: &str) -> CaptionLine {
 }
 
 fn frame(revision: u64, lines: Vec<CaptionLine>) -> CaptionFrame {
-    CaptionFrame {
-        scope: scope(),
-        preview_revision: revision,
-        lines,
-    }
+    CaptionFrame::flat(scope(), revision, lines)
 }
 
 async fn endpoint() -> ShareEndpoint {

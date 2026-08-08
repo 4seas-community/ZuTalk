@@ -255,6 +255,126 @@ fn notebook_scope_rooms_stay_captions_only() {
     viewer.stop_sharing().unwrap();
 }
 
+/// Notebook 范围的落库入口:**主播在字幕通道宣告过的 session** 可以入册。
+///
+/// 字幕帧只来自与主播 QUIC 认证的直连且已过范围检查 —— 它是主播自报,
+/// 不是成员自报,不打开键位抢占面。宣告后,主播对那一场的文档推送
+/// 观看端要照收并落盘;完整预览帧(多语言画布的根)也要到手。
+#[test]
+fn a_caption_announced_session_lands_in_a_notebook_scope_room() {
+    let host_dir = tempfile::tempdir().unwrap();
+    let viewer_dir = tempfile::tempdir().unwrap();
+    let host = core(&host_dir);
+    let viewer = core(&viewer_dir);
+
+    let session = "sess-nb-live";
+    let code = host
+        .start_sharing(Some("nb-live".into()), None, false)
+        .unwrap();
+    host.enable_document_sync().unwrap();
+    viewer.join_share(code).unwrap();
+    assert!(wait_until(10, || host.room_members().len() >= 2));
+
+    // 主播开始「录音」:字幕帧按真实 tap 路径反复播出(字幕连接的建立
+    // 时刻不确定,单发一帧可能落在连接之前)。观看端轮询 share_state,
+    // 直到完整预览帧到手 —— 这一步同时完成 session 入册。
+    let mut revision = 0u64;
+    assert!(
+        wait_until(10, || {
+            revision += 1;
+            host.broadcast_live_preview_for_test("nb-live".into(), &live_preview(session, revision));
+            viewer
+                .share_state()
+                .remote_preview
+                .as_ref()
+                .map(|p| p.session_id == session)
+                .unwrap_or(false)
+        }),
+        "观看端应当收到完整预览帧"
+    );
+
+    let state = viewer.share_state();
+    let preview = state.remote_preview.expect("完整帧已到");
+    assert_eq!(preview.utterances.len(), 1, "utterance 车道要完整过网");
+    assert_eq!(preview.translation_cues.len(), 1, "多语言 cue 要完整过网");
+    assert_eq!(preview.lane_health.len(), 1, "lane 健康要完整过网");
+    assert!(
+        !state.lines.is_empty(),
+        "压扁行的兼容投影与完整帧同源并存"
+    );
+
+    // 宣告过的 session:主播的文档写入要能落到观看端。
+    host.shared_session_insert_annotation(session.into(), 0, "note-1".into(), "现场笔记".into())
+        .unwrap();
+    assert!(
+        wait_until(10, || {
+            viewer
+                .shared_session_blocks(session.into())
+                .map(|blocks| blocks.iter().any(|b| b.text == "现场笔记"))
+                .unwrap_or(false)
+        }),
+        "字幕宣告过的 session,文档内容必须落到观看端"
+    );
+    assert!(
+        !viewer.list_shared_sessions().is_empty(),
+        "落盘后收件台账里应当有这一场"
+    );
+
+    host.stop_sharing().unwrap();
+    viewer.stop_sharing().unwrap();
+}
+
+fn live_preview(session_id: &str, revision: u64) -> vt_ffi::notebook_capture_api::FfiNotebookCaptureLivePreview {
+    use vt_ffi::notebook_capture_api::{
+        FfiNotebookCaptureLaneHealth, FfiNotebookCaptureLivePreview,
+        FfiNotebookCaptureTranslationCue, FfiNotebookCaptureUtterance,
+    };
+    FfiNotebookCaptureLivePreview {
+        session_id: session_id.into(),
+        preview_revision: revision,
+        utterances: vec![FfiNotebookCaptureUtterance {
+            id: "u1".into(),
+            session_id: session_id.into(),
+            sequence: 1,
+            revision,
+            session_speaker_id: Some("spk".into()),
+            source_language: "ja".into(),
+            provisional_source_language: None,
+            source_text: "こんにちは".into(),
+            source_start_ms: Some(0),
+            source_end_ms: Some(500),
+            translated_language: Some("zh-Hans".into()),
+            translated_text: Some("你好".into()),
+            completion: "partial".into(),
+            alignment: "aligned".into(),
+            source_projection_revision: 0,
+            source_edit_revision: 0,
+            language_variants: vec![],
+        }],
+        translation_cues: vec![FfiNotebookCaptureTranslationCue {
+            target_language: "ko".into(),
+            group_epoch: 1,
+            provider_sequence: 1,
+            source_language: "ja".into(),
+            source_start_ms: Some(0),
+            source_end_ms: Some(500),
+            text: "안녕하세요".into(),
+            completion: "partial".into(),
+            withdrawn: false,
+            revision,
+        }],
+        lane_health: vec![FfiNotebookCaptureLaneHealth {
+            target_language: Some("ko".into()),
+            state: "live".into(),
+            group_epoch: 1,
+            final_audio_proc_ms: None,
+            total_audio_proc_ms: None,
+            lag_ms: None,
+            input_discontinuous: false,
+        }],
+    }
+}
+
 /// 删了副本再进同一个房间,催缺把它再拉回来。
 ///
 /// 删除只删本机副本;房间还开着、宿主手里还有 —— 重新加入后应当能

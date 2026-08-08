@@ -1246,13 +1246,13 @@ mod tests {
         let ep = ShareEndpoint::bind(&identity, ShareEndpointConfig::default())
             .await
             .unwrap();
-        ep.broadcast_caption(CaptionFrame {
-            scope: ScopeId::Session {
+        ep.broadcast_caption(CaptionFrame::flat(
+            ScopeId::Session {
                 session_id: "s".into(),
             },
-            preview_revision: 1,
-            lines: vec![],
-        });
+            1,
+            vec![],
+        ));
         ep.shutdown().await;
     }
 
@@ -1260,13 +1260,13 @@ mod tests {
     async fn inbox_drains_once() {
         let inbox = CaptionInbox::default();
         inbox
-            .push(CaptionFrame {
-                scope: ScopeId::Session {
+            .push(CaptionFrame::flat(
+                ScopeId::Session {
                     session_id: "s".into(),
                 },
-                preview_revision: 1,
-                lines: vec![],
-            })
+                1,
+                vec![],
+            ))
             .await;
         assert_eq!(inbox.drain().await.len(), 1);
         assert!(inbox.drain().await.is_empty());

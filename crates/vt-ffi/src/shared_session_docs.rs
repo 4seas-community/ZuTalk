@@ -472,9 +472,11 @@ impl vt_share::DocumentSync for SharedDocSync {
             };
         }
         // 观看端只认已入册的 id。Session 范围在加入时由分享码钉死那一个;
-        // Notebook 范围 v1 不落库(named-set 为空 → 一切拒收,字幕照旧)
-        // ——接受成员自报的 id 会打开 bridge 键位抢占面(顶掉本机同名
-        // 文档),宿主签名的文档清单成形之前不冒这个险(设计文档 §11)。
+        // Notebook 范围由**主播在字幕通道宣告过的 session** 逐个入册
+        // (share_state 吸收帧时登记)——字幕帧只来自与主播 QUIC 认证的
+        // 直连且已过范围检查,等价于主播自报。**成员自报的 id 仍然一律
+        // 拒收**:那才是 bridge 键位抢占面(顶掉本机同名文档)的入口,
+        // 宿主签名的文档清单成形之前不冒这个险(设计文档 §11)。
         let _ = scope;
         self.state.known.lock().unwrap().contains(document_id)
     }

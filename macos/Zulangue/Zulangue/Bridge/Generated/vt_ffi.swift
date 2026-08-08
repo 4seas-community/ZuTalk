@@ -5813,6 +5813,12 @@ public struct FfiShareState: Equatable, Hashable {
      */
     public var scopeSessionId: String?
     public var lines: [FfiSharedCaptionLine]
+    /**
+     * 观看端:主播最新一帧的**完整**预览 —— 与主播本机画布收到的同一形态
+     * (多语言 lane、cue、lane 健康齐全)。旧版主播只发压扁行时为 `None`,
+     * 此时界面退化为 `lines` 列表。
+     */
+    public var remotePreview: FfiNotebookCaptureLivePreview?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -5845,7 +5851,12 @@ public struct FfiShareState: Equatable, Hashable {
          * 当前房间按单次录音共享时,那一场的 session id。收件列表用它判定
          * **哪一条**受房间写入策略约束 —— 只读约束只属于当前房间的那份文档,
          * 不该殃及散场后留下的其它收件。Notebook 范围或未共享时为 `None`。
-         */scopeSessionId: String?, lines: [FfiSharedCaptionLine]) {
+         */scopeSessionId: String?, lines: [FfiSharedCaptionLine],
+        /**
+         * 观看端:主播最新一帧的**完整**预览 —— 与主播本机画布收到的同一形态
+         * (多语言 lane、cue、lane 健康齐全)。旧版主播只发压扁行时为 `None`,
+         * 此时界面退化为 `lines` 列表。
+         */remotePreview: FfiNotebookCaptureLivePreview?) {
         self.isSharing = isSharing
         self.isViewing = isViewing
         self.hostOnly = hostOnly
@@ -5856,6 +5867,7 @@ public struct FfiShareState: Equatable, Hashable {
         self.hostLeft = hostLeft
         self.scopeSessionId = scopeSessionId
         self.lines = lines
+        self.remotePreview = remotePreview
     }
 
 
@@ -5883,7 +5895,8 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
                 broadcastRevision: FfiConverterOptionUInt64.read(from: &buf),
                 hostLeft: FfiConverterBool.read(from: &buf),
                 scopeSessionId: FfiConverterOptionString.read(from: &buf),
-                lines: FfiConverterSequenceTypeFfiSharedCaptionLine.read(from: &buf)
+                lines: FfiConverterSequenceTypeFfiSharedCaptionLine.read(from: &buf),
+                remotePreview: FfiConverterOptionTypeFfiNotebookCaptureLivePreview.read(from: &buf)
         )
     }
 
@@ -5898,6 +5911,7 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
         FfiConverterBool.write(value.hostLeft, into: &buf)
         FfiConverterOptionString.write(value.scopeSessionId, into: &buf)
         FfiConverterSequenceTypeFfiSharedCaptionLine.write(value.lines, into: &buf)
+        FfiConverterOptionTypeFfiNotebookCaptureLivePreview.write(value.remotePreview, into: &buf)
     }
 }
 
@@ -8578,6 +8592,30 @@ fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureContextReceipt: FfiCo
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeFfiNotebookCaptureContextReceipt.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureLivePreview: FfiConverterRustBuffer {
+    typealias SwiftType = FfiNotebookCaptureLivePreview?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiNotebookCaptureLivePreview.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiNotebookCaptureLivePreview.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
