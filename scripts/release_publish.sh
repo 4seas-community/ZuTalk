@@ -61,48 +61,7 @@ LOCAL_COMMIT="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
   || fail "tag $GITHUB_REF_NAME does not point at HEAD"
 echo "✓ signed tag $GITHUB_REF_NAME → ${LOCAL_COMMIT:0:12}"
 
-# ── 3. 等镜像:GitHub 上必须已经有同一个提交的同名标签 ────────────────
-#
-# 主库在 Gitea,GitHub 是镜像。抢在同步之前发布的话,GitHub 会拿默认
-# 分支 HEAD **自己造一个同名标签** —— 既不是那个签名标签,还可能指向
-# 别的提交。所以宁可等。
-step "等待镜像同步"
-REMOTE_COMMIT=""
-attempt=1
-while [[ "$attempt" -le "$MIRROR_ATTEMPTS" ]]; do
-  REMOTE_SHA="$(
-    gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" \
-      --jq '.object.sha' 2>/dev/null || true
-  )"
-  if [[ -n "$REMOTE_SHA" ]]; then
-    REMOTE_TYPE="$(
-      gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" \
-        --jq '.object.type'
-    )"
-    if [[ "$REMOTE_TYPE" == "tag" ]]; then
-      REMOTE_COMMIT="$(
-        gh api "repos/$GITHUB_REPOSITORY/git/tags/$REMOTE_SHA" --jq '.object.sha'
-      )"
-    else
-      REMOTE_COMMIT="$REMOTE_SHA"
-    fi
-    break
-  fi
-  [[ "$attempt" -lt "$MIRROR_ATTEMPTS" ]] \
-    || fail "tag $GITHUB_REF_NAME never reached $GITHUB_REPOSITORY; push it before publishing"
-  echo "· 还没同步过来 ($attempt/$MIRROR_ATTEMPTS),等 ${MIRROR_INTERVAL}s"
-  sleep "$MIRROR_INTERVAL"
-  attempt=$((attempt + 1))
-done
-[[ "$REMOTE_COMMIT" == "$LOCAL_COMMIT" ]] \
-  || fail "mirrored tag points at ${REMOTE_COMMIT:0:12}, not the signed ${LOCAL_COMMIT:0:12}"
-echo "✓ mirrored tag matches the signed tag"
-
-if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-  fail "release $GITHUB_REF_NAME already exists; delete it or cut a new version"
-fi
-
-# ── 4. appcast 说要哪些文件,就凑齐哪些文件 ──────────────────────────
+# ── 3. appcast 说要哪些文件,就凑齐哪些文件 ──────────────────────────
 step "按 appcast 点名清点产物"
 [[ -f "$APPCAST" ]] || fail "$APPCAST is missing; run 'just release-sparkle-adhoc' first"
 grep -Fq "<!-- sparkle-signatures:" "$APPCAST" \
@@ -142,7 +101,7 @@ ASSETS+=("$SHA_FILE" "$APPCAST")
 echo "· Zulangue-macOS.sha256"
 echo "· appcast.xml"
 
-# ── 5. delta 的基线必须真的是已发布过的版本 ─────────────────────────
+# ── 4. delta 的基线必须真的是已发布过的版本 ─────────────────────────
 #
 # 基线挑错了不会炸,只会让用户下完 delta 校验失败、再白下一遍全量。
 # 悄悄浪费带宽正是最不容易被发现的那类问题。
@@ -166,6 +125,47 @@ for base_dmg in "$UPDATE_DIR"/Zulangue-*.dmg; do
 done
 if [[ "$BASE_COUNT" -eq 0 ]]; then
   echo "· 这一版没有基线,所有人走全量下载"
+fi
+
+# ── 5. 等镜像:GitHub 上必须已经有同一个提交的同名标签 ────────────────
+#
+# 主库在 Gitea,GitHub 是镜像。抢在同步之前发布的话,GitHub 会拿默认
+# 分支 HEAD **自己造一个同名标签** —— 既不是那个签名标签,还可能指向
+# 别的提交。所以宁可等。
+step "等待镜像同步"
+REMOTE_COMMIT=""
+attempt=1
+while [[ "$attempt" -le "$MIRROR_ATTEMPTS" ]]; do
+  REMOTE_SHA="$(
+    gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" \
+      --jq '.object.sha' 2>/dev/null || true
+  )"
+  if [[ -n "$REMOTE_SHA" ]]; then
+    REMOTE_TYPE="$(
+      gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" \
+        --jq '.object.type'
+    )"
+    if [[ "$REMOTE_TYPE" == "tag" ]]; then
+      REMOTE_COMMIT="$(
+        gh api "repos/$GITHUB_REPOSITORY/git/tags/$REMOTE_SHA" --jq '.object.sha'
+      )"
+    else
+      REMOTE_COMMIT="$REMOTE_SHA"
+    fi
+    break
+  fi
+  [[ "$attempt" -lt "$MIRROR_ATTEMPTS" ]] \
+    || fail "tag $GITHUB_REF_NAME never reached $GITHUB_REPOSITORY; push it before publishing"
+  echo "· 还没同步过来 ($attempt/$MIRROR_ATTEMPTS),等 ${MIRROR_INTERVAL}s"
+  sleep "$MIRROR_INTERVAL"
+  attempt=$((attempt + 1))
+done
+[[ "$REMOTE_COMMIT" == "$LOCAL_COMMIT" ]] \
+  || fail "mirrored tag points at ${REMOTE_COMMIT:0:12}, not the signed ${LOCAL_COMMIT:0:12}"
+echo "✓ mirrored tag matches the signed tag"
+
+if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+  fail "release $GITHUB_REF_NAME already exists; delete it or cut a new version"
 fi
 
 # ── 6. 发布 ─────────────────────────────────────────────────────────
