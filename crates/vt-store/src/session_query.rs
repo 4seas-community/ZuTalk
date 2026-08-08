@@ -1,6 +1,7 @@
 //! 会话查询/过滤/排序/分页
 //! 权威：D5 §10
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -152,6 +153,29 @@ impl SessionQueryStore {
             rusqlite::Error::QueryReturnedNoRows => SessionQueryError::NotFound(id.to_string()),
             other => SessionQueryError::DbError(other.to_string()),
         })
+    }
+
+    /// 给定的 id 里,哪些在垃圾箱。
+    ///
+    /// 给「拿到一批 id 之后要过滤掉已删的」这类调用方用(全文搜索命中
+    /// 就是),按 id 精确问,不靠「列出全部已删再取交集」—— 后者一有
+    /// 分页上限就会漏。id 不存在的当作不在垃圾箱:那是调用方自己的
+    /// 陈旧引用,不是软删状态。
+    pub fn trashed_among(&self, ids: &[String]) -> Result<HashSet<String>, SessionQueryError> {
+        if ids.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT id FROM session_records WHERE id = ?1 AND deleted_at IS NOT NULL")?;
+        let mut trashed = HashSet::new();
+        for id in ids {
+            let mut rows = stmt.query(rusqlite::params![id])?;
+            if rows.next()?.is_some() {
+                trashed.insert(id.clone());
+            }
+        }
+        Ok(trashed)
     }
 
     /// 软删一个 session。deleted_at 设为当前时间(UTC ISO-8601 风格)。

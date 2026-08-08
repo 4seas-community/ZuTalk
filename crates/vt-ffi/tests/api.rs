@@ -6,3 +6,5 @@ mod notebook_api;
 mod privacy_enforcement;
 #[path = "api/session_info.rs"]
 mod session_info;
+#[path = "api/trash_lifecycle.rs"]
+mod trash_lifecycle;

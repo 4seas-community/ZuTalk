@@ -888,9 +888,15 @@ impl ZulangueCore {
     //     session,再落一条 session_purge_jobs 墓碑并分阶段执行。墓碑刻意活过
     //     session 自己的行,好让文件、密钥、任务和 Loro 的清理在崩溃后能续上。
     //     不可撤销。
+    //
+    // 一条横贯的规矩:**正在录的不能删**。软删与硬删一视同仁 —— 否则
+    // 「删了它」之后录音还在往一个已删对象里写音频、烧 provider 分钟,
+    // 停下来才发现东西直接落进了垃圾箱。停止录音是删除的前置条件。
 
     /// 软删单个 session。幂等:已软删再调是 no-op。
+    /// 正在录音的拒绝 —— 先停止,再删。
     pub fn soft_delete_session(&self, session_id: String) -> Result<(), CoreError> {
+        self.reject_deleting_a_live_recording(std::slice::from_ref(&session_id))?;
         self.session_store
             .soft_delete(&session_id)
             .map_err(|e| match e {
@@ -904,7 +910,10 @@ impl ZulangueCore {
     }
 
     /// 批量软删。部分不存在的 id 视为成功(幂等)。
+    ///
+    /// 名单里有正在录的,整批拒绝:悄悄跳过一条,用户会以为全删掉了。
     pub fn soft_delete_sessions(&self, session_ids: Vec<String>) -> Result<(), CoreError> {
+        self.reject_deleting_a_live_recording(&session_ids)?;
         self.session_store
             .soft_delete_many(&session_ids)
             .map_err(|e| CoreError::InternalError {
@@ -952,7 +961,11 @@ impl ZulangueCore {
         self.purge_session_forever(&session_id)
     }
 
-    /// 全文搜索会话
+    /// 全文搜索会话。
+    ///
+    /// 垃圾箱里的录音不出现在结果里。软删只动 `session_records.deleted_at`,
+    /// 全文索引原样留着(恢复之后要能立刻搜回来),所以过滤在这里做:
+    /// 删掉的东西还能被搜出来,删除就成了障眼法。
     pub fn search_sessions(
         &self,
         query: String,
@@ -965,8 +978,16 @@ impl ZulangueCore {
                 message: e.to_string(),
             })?;
 
+        let hit_ids: Vec<String> = results.iter().map(|r| r.session_id.clone()).collect();
+        let trashed =
+            self.session_store
+                .trashed_among(&hit_ids)
+                .map_err(|e| CoreError::InternalError {
+                    message: e.to_string(),
+                })?;
         Ok(results
             .into_iter()
+            .filter(|r| !trashed.contains(&r.session_id))
             .map(|r| SearchResultInfo {
                 session_id: r.session_id,
                 snippet: r.snippet,
@@ -1345,6 +1366,21 @@ fn persist_recovered_capture_indexes(
 }
 
 impl ZulangueCore {
+    /// 删除一族动词的共同前置:名单里不许有正在录的那一条。
+    ///
+    /// 放在没有 `#[uniffi::export]` 的 impl 里 —— 它是内部守卫,不是给
+    /// Swift 调的动词。挂进导出块会把一条私有前置变成公开 API。
+    fn reject_deleting_a_live_recording(&self, session_ids: &[String]) -> Result<(), CoreError> {
+        for session_id in session_ids {
+            if self.is_capturing_session(session_id) {
+                return Err(CoreError::ValidationFailed {
+                    message: format!("cannot delete session {session_id} while it is recording"),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// 集成测试 helper：暴露 SessionMetaStore 引用以便注入 token / 元数据。
     /// 仅供 vt-ffi/tests 使用，UniFFI 不会导出。
     #[doc(hidden)]
@@ -1358,6 +1394,35 @@ impl ZulangueCore {
     #[doc(hidden)]
     pub fn key_exists_for_test(&self, key_ref: &str) -> bool {
         self.key_store.key_exists(key_ref)
+    }
+
+    /// 集成测试 helper:直接往全文索引里写一句。真实路径要跑完一整轮
+    /// 转录才有索引内容,而搜索本身的性质(垃圾箱过滤、彻底删除清索引)
+    /// 与内容从哪来无关。
+    #[doc(hidden)]
+    pub fn index_session_for_test(&self, session_id: &str, content: &str) {
+        self.search_store
+            .index_session(session_id, content)
+            .expect("index session for test");
+    }
+
+    /// 集成测试 helper:登记一位 provider 报出来的说话人。
+    ///
+    /// 真实路径只有 provider 的 diarization 事件能造出 session speaker,
+    /// 跨 crate 的集成测试够不到;而命名、认领、解绑那几条性质与说话人
+    /// 从哪来无关。返回新建(或已存在)的 session_speaker_id。
+    #[doc(hidden)]
+    pub fn ensure_session_speaker_for_test(
+        &self,
+        session_id: &str,
+        provider_label: &str,
+    ) -> Result<String, CoreError> {
+        self.notebook_capture_store
+            .ensure_session_speaker(session_id, 0, "test", provider_label)
+            .map(|speaker| speaker.id)
+            .map_err(|error| CoreError::InternalError {
+                message: error.to_string(),
+            })
     }
 
     /// 实际执行销毁

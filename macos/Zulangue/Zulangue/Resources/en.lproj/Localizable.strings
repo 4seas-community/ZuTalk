@@ -413,6 +413,7 @@
 "home.recent.row.untitled" = "Untitled recording";
 "home.recordings.load_failed" = "Recordings could not be loaded.";
 "home.recording.delete_failed" = "The recording could not be moved to Trash.";
+"home.recording.delete_while_recording" = "You can delete this recording once it stops.";
 "home.recording.bulk_delete_failed" = "The recordings could not be moved to Trash.";
 "home.create.title" = "New Notebook";
 "home.create.description" = "Name it before anything is created.";

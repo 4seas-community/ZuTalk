@@ -413,6 +413,7 @@
 "home.recent.row.untitled" = "การบันทึกไม่มีชื่อ";
 "home.recordings.load_failed" = "ไม่สามารถโหลดการบันทึกได้";
 "home.recording.delete_failed" = "ไม่สามารถย้ายการบันทึกไปถังขยะได้";
+"home.recording.delete_while_recording" = "ลบการบันทึกนี้ได้เมื่อหยุดบันทึกแล้ว";
 "home.recording.bulk_delete_failed" = "ไม่สามารถย้ายการบันทึกเหล่านี้ไปถังขยะได้";
 "home.create.title" = "Notebook ใหม่";
 "home.create.description" = "ตั้งชื่อก่อนที่จะสร้างสิ่งใด";

@@ -347,6 +347,11 @@ impl ZulangueCore {
         Ok(tabs.into_iter().map(Into::into).collect())
     }
 
+    /// 这个 Notebook 里有哪些录音。
+    ///
+    /// 垃圾箱里的不算 —— Home 的列表(`query_sessions`,默认 ActiveOnly)
+    /// 与 Notebook 的「几段录音」读的是同一件事实,两边给出不同的数,
+    /// 用户只能猜哪个是真的。关联行本身留着不动:恢复之后要原样回来。
     pub fn list_notebook_sessions(
         &self,
         notebook_id: String,
@@ -357,7 +362,18 @@ impl ZulangueCore {
             .map_err(|e| CoreError::InternalError {
                 message: e.to_string(),
             })?;
-        Ok(sessions.into_iter().map(Into::into).collect())
+        let ids: Vec<String> = sessions.iter().map(|s| s.session_id.clone()).collect();
+        let trashed =
+            self.session_store
+                .trashed_among(&ids)
+                .map_err(|e| CoreError::InternalError {
+                    message: e.to_string(),
+                })?;
+        Ok(sessions
+            .into_iter()
+            .filter(|s| !trashed.contains(&s.session_id))
+            .map(Into::into)
+            .collect())
     }
 
     /// Moves a recording, and everything it owns, into another Notebook.
@@ -430,6 +446,12 @@ impl ZulangueCore {
         Ok(import.result)
     }
 
+    /// 这个 tab 上有哪些段落。
+    ///
+    /// 与 `list_notebook_sessions` 同一条纪律:录音进了垃圾箱,它的段落
+    /// 就不该还挂在 tab 上 —— 采集历史(`list_notebook_capture_history`)
+    /// 早就按 `s.deleted_at IS NULL` 过滤,同一个界面的几条数据路要给
+    /// 同一个答案。投影行本身不动,恢复之后段落原样回来。
     pub fn list_notebook_session_projections(
         &self,
         tab_id: String,
@@ -440,7 +462,18 @@ impl ZulangueCore {
             .map_err(|e| CoreError::InternalError {
                 message: e.to_string(),
             })?;
-        Ok(projections.into_iter().map(Into::into).collect())
+        let ids: Vec<String> = projections.iter().map(|p| p.session_id.clone()).collect();
+        let trashed =
+            self.session_store
+                .trashed_among(&ids)
+                .map_err(|e| CoreError::InternalError {
+                    message: e.to_string(),
+                })?;
+        Ok(projections
+            .into_iter()
+            .filter(|p| !trashed.contains(&p.session_id))
+            .map(Into::into)
+            .collect())
     }
 
     /// Names the complete personal note associated with one recording time.

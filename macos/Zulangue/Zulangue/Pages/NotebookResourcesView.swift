@@ -22,6 +22,8 @@ struct NotebookResourceItem: Identifiable, Equatable {
     let realtimeTranscript: NotebookResourceStatus
     let asyncTranscript: NotebookResourceStatus
     let manualNote: NotebookResourceStatus
+    /// 还在录。Core 拒绝删除正在录的 session,删除入口跟着禁用。
+    var isRecording: Bool = false
 }
 
 @MainActor
@@ -113,7 +115,8 @@ final class NotebookResourcesViewModel: ObservableObject {
                     manualNote: projectionsByKind[
                         "manual_note",
                         default: []
-                    ].contains(session.id) ? .ready : .missing
+                    ].contains(session.id) ? .ready : .missing,
+                    isRecording: session.status.lowercased() == "recording"
                 )
             }
             .sorted { $0.createdAt > $1.createdAt }
@@ -384,6 +387,8 @@ private struct NotebookResourceBlock: View {
                         )
                     }
                     Divider()
+                    // 录音进行中删不了(Core 软删与彻底删除都拒绝)。
+                    // 禁用 + 一句原因,比给一个必然失败的按钮诚实。
                     Button(role: .destructive) {
                         isConfirmingTrash = true
                     } label: {
@@ -391,6 +396,11 @@ private struct NotebookResourceBlock: View {
                             String(localized: "resources.delete"),
                             systemImage: "trash"
                         )
+                    }
+                    .disabled(item.isRecording)
+
+                    if item.isRecording {
+                        Text(String(localized: "home.recording.delete_while_recording"))
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")

@@ -7200,14 +7200,18 @@ impl ZulangueCore {
         Ok(())
     }
 
-    fn reject_active_session_purge(&self, session_id: &str) -> Result<(), CoreError> {
-        let active_capture = self
-            .active_notebook_capture
+    /// 这个 session 此刻正在录吗。删除一族的动词都靠它 —— 录音进行中
+    /// 不接受任何形式的删除,停下来才谈得上删。
+    pub(crate) fn is_capturing_session(&self, session_id: &str) -> bool {
+        self.active_notebook_capture
             .lock()
             .unwrap()
             .as_ref()
-            .is_some_and(|capture| capture.session_id == session_id);
-        if active_capture {
+            .is_some_and(|capture| capture.session_id == session_id)
+    }
+
+    fn reject_active_session_purge(&self, session_id: &str) -> Result<(), CoreError> {
+        if self.is_capturing_session(session_id) {
             return Err(CoreError::ValidationFailed {
                 message: format!("cannot permanently delete active session {session_id}"),
             });

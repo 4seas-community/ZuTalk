@@ -385,6 +385,7 @@
 "home.recent.row.untitled" = "無題の録音";
 "home.recordings.load_failed" = "録音一覧を読み込めませんでした。";
 "home.recording.delete_failed" = "録音をゴミ箱に移動できませんでした。";
+"home.recording.delete_while_recording" = "録音を停止すると削除できます。";
 "home.recording.bulk_delete_failed" = "録音をゴミ箱に移動できませんでした。";
 "home.create.title" = "新規 Notebook";
 "home.create.description" = "名前を確認するまで作成されません。";

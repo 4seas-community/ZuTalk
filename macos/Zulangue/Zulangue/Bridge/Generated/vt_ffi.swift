@@ -670,7 +670,11 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func restoreSession(sessionId: String) throws
 
     /**
-     * 全文搜索会话
+     * 全文搜索会话。
+     *
+     * 垃圾箱里的录音不出现在结果里。软删只动 `session_records.deleted_at`,
+     * 全文索引原样留着(恢复之后要能立刻搜回来),所以过滤在这里做:
+     * 删掉的东西还能被搜出来,删除就成了障眼法。
      */
     func searchSessions(query: String, limit: UInt32) throws  -> [SearchResultInfo]
 
@@ -715,11 +719,14 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
 
     /**
      * 软删单个 session。幂等:已软删再调是 no-op。
+     * 正在录音的拒绝 —— 先停止,再删。
      */
     func softDeleteSession(sessionId: String) throws
 
     /**
      * 批量软删。部分不存在的 id 视为成功(幂等)。
+     *
+     * 名单里有正在录的,整批拒绝:悄悄跳过一条,用户会以为全删掉了。
      */
     func softDeleteSessions(sessionIds: [String]) throws
 
@@ -893,8 +900,23 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
 
     func importAudioIntoNotebook(path: String, notebookId: String) throws  -> ImportResultInfo
 
+    /**
+     * 这个 tab 上有哪些段落。
+     *
+     * 与 `list_notebook_sessions` 同一条纪律:录音进了垃圾箱,它的段落
+     * 就不该还挂在 tab 上 —— 采集历史(`list_notebook_capture_history`)
+     * 早就按 `s.deleted_at IS NULL` 过滤,同一个界面的几条数据路要给
+     * 同一个答案。投影行本身不动,恢复之后段落原样回来。
+     */
     func listNotebookSessionProjections(tabId: String) throws  -> [FfiNotebookSessionProjection]
 
+    /**
+     * 这个 Notebook 里有哪些录音。
+     *
+     * 垃圾箱里的不算 —— Home 的列表(`query_sessions`,默认 ActiveOnly)
+     * 与 Notebook 的「几段录音」读的是同一件事实,两边给出不同的数,
+     * 用户只能猜哪个是真的。关联行本身留着不动:恢复之后要原样回来。
+     */
     func listNotebookSessions(notebookId: String) throws  -> [FfiNotebookSessionLink]
 
     func listNotebookTabs(notebookId: String) throws  -> [FfiNotebookTab]
@@ -1523,7 +1545,11 @@ open func restoreSession(sessionId: String)throws   {try rustCallWithError(FfiCo
 }
 
     /**
-     * 全文搜索会话
+     * 全文搜索会话。
+     *
+     * 垃圾箱里的录音不出现在结果里。软删只动 `session_records.deleted_at`,
+     * 全文索引原样留着(恢复之后要能立刻搜回来),所以过滤在这里做:
+     * 删掉的东西还能被搜出来,删除就成了障眼法。
      */
 open func searchSessions(query: String, limit: UInt32)throws  -> [SearchResultInfo]  {
     return try  FfiConverterSequenceTypeSearchResultInfo.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
@@ -1600,6 +1626,7 @@ open func shutdown()throws   {try rustCallWithError(FfiConverterTypeCoreError_li
 
     /**
      * 软删单个 session。幂等:已软删再调是 no-op。
+     * 正在录音的拒绝 —— 先停止,再删。
      */
 open func softDeleteSession(sessionId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_soft_delete_session(
@@ -1611,6 +1638,8 @@ open func softDeleteSession(sessionId: String)throws   {try rustCallWithError(Ff
 
     /**
      * 批量软删。部分不存在的 id 视为成功(幂等)。
+     *
+     * 名单里有正在录的,整批拒绝:悄悄跳过一条,用户会以为全删掉了。
      */
 open func softDeleteSessions(sessionIds: [String])throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_soft_delete_sessions(
@@ -1983,6 +2012,14 @@ open func importAudioIntoNotebook(path: String, notebookId: String)throws  -> Im
 })
 }
 
+    /**
+     * 这个 tab 上有哪些段落。
+     *
+     * 与 `list_notebook_sessions` 同一条纪律:录音进了垃圾箱,它的段落
+     * 就不该还挂在 tab 上 —— 采集历史(`list_notebook_capture_history`)
+     * 早就按 `s.deleted_at IS NULL` 过滤,同一个界面的几条数据路要给
+     * 同一个答案。投影行本身不动,恢复之后段落原样回来。
+     */
 open func listNotebookSessionProjections(tabId: String)throws  -> [FfiNotebookSessionProjection]  {
     return try  FfiConverterSequenceTypeFfiNotebookSessionProjection.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_list_notebook_session_projections(
@@ -1992,6 +2029,13 @@ open func listNotebookSessionProjections(tabId: String)throws  -> [FfiNotebookSe
 })
 }
 
+    /**
+     * 这个 Notebook 里有哪些录音。
+     *
+     * 垃圾箱里的不算 —— Home 的列表(`query_sessions`,默认 ActiveOnly)
+     * 与 Notebook 的「几段录音」读的是同一件事实,两边给出不同的数,
+     * 用户只能猜哪个是真的。关联行本身留着不动:恢复之后要原样回来。
+     */
 open func listNotebookSessions(notebookId: String)throws  -> [FfiNotebookSessionLink]  {
     return try  FfiConverterSequenceTypeFfiNotebookSessionLink.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_list_notebook_sessions(
@@ -9364,7 +9408,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_restore_session() != 3059) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_search_sessions() != 25183) {
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_search_sessions() != 44519) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_set_api_key() != 50303) {
@@ -9379,10 +9423,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_shutdown() != 61514) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_soft_delete_session() != 22088) {
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_soft_delete_session() != 10792) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_soft_delete_sessions() != 59867) {
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_soft_delete_sessions() != 8450) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_verify_api_key() != 35576) {
@@ -9460,10 +9504,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zulanguecore_import_audio_into_notebook() != 54890) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebook_session_projections() != 52943) {
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebook_session_projections() != 32385) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebook_sessions() != 330) {
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebook_sessions() != 6405) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_list_notebook_tabs() != 73) {

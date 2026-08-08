@@ -412,6 +412,7 @@
 "home.recent.row.untitled" = "Grabación sin título";
 "home.recordings.load_failed" = "No se pudieron cargar las grabaciones.";
 "home.recording.delete_failed" = "La grabación no se pudo mover a la Papelera.";
+"home.recording.delete_while_recording" = "Podrás eliminar esta grabación cuando se detenga.";
 "home.recording.bulk_delete_failed" = "Las grabaciones no se pudieron mover a la Papelera.";
 "home.create.title" = "Nuevo Notebook";
 "home.create.description" = "Póngale nombre antes de crear nada.";

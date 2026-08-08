@@ -413,6 +413,7 @@
 "home.recent.row.untitled" = "未命名录音";
 "home.recordings.load_failed" = "无法载入录音列表。";
 "home.recording.delete_failed" = "无法将这条录音移到回收站。";
+"home.recording.delete_while_recording" = "录音结束后才能删除这段录音。";
 "home.recording.bulk_delete_failed" = "无法将这些录音移到回收站。";
 "home.create.title" = "新建 Notebook";
 "home.create.description" = "确认名称后才会真正创建。";

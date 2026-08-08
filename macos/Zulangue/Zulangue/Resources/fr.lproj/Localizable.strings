@@ -413,6 +413,7 @@
 "home.recent.row.untitled" = "Enregistrement sans titre";
 "home.recordings.load_failed" = "Les enregistrements n’ont pas pu être chargés.";
 "home.recording.delete_failed" = "L’enregistrement n’a pas pu être placé dans la corbeille.";
+"home.recording.delete_while_recording" = "Vous pourrez supprimer cet enregistrement une fois qu’il sera arrêté.";
 "home.recording.bulk_delete_failed" = "Les enregistrements n’ont pas pu être placés dans la corbeille.";
 "home.create.title" = "Nouveau Notebook";
 "home.create.description" = "Nommez-le avant toute création.";

@@ -840,8 +840,16 @@ private struct HomeSessionRow: View {
             .accessibilityIdentifier("home.session.\(session.id)")
 
             Menu {
+                // 正在录的删不了(Core 软删与彻底删除都拒绝)。禁用而不是
+                // 藏起来 —— 按钮消失了用户会以为是别的毛病,禁用配一句
+                // 原因才说得清「等录完」。
                 Button(role: .destructive, action: onDelete) {
                     Label(String(localized: "common.delete"), systemImage: "trash")
+                }
+                .disabled(session.isRecording)
+
+                if session.isRecording {
+                    Text(String(localized: "home.recording.delete_while_recording"))
                 }
             } label: {
                 Image(systemName: "ellipsis")

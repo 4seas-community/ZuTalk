@@ -412,6 +412,7 @@
 "home.recent.row.untitled" = "Aufnahme ohne Titel";
 "home.recordings.load_failed" = "Aufnahmen konnten nicht geladen werden.";
 "home.recording.delete_failed" = "Die Aufnahme konnte nicht in den Papierkorb bewegt werden.";
+"home.recording.delete_while_recording" = "Diese Aufnahme lässt sich löschen, sobald sie gestoppt ist.";
 "home.recording.bulk_delete_failed" = "Die Aufnahmen konnten nicht in den Papierkorb bewegt werden.";
 "home.create.title" = "Neues Notebook";
 "home.create.description" = "Benenne es, bevor etwas erstellt wird.";

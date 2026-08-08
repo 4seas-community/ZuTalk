@@ -65,6 +65,13 @@ enum HomeSessionStatusState: Equatable {
 }
 
 extension SessionListItem {
+    /// 这段录音此刻还在录。删除一族的入口都要看它 —— Core 会拒绝删除
+    /// 正在录的 session(软删与彻底删除一视同仁),UI 不该先摆出一个
+    /// 注定失败的按钮。
+    var isRecording: Bool {
+        rawStatus.lowercased() == "recording"
+    }
+
     var homeStatusState: HomeSessionStatusState? {
         let normalizedStatus = rawStatus.lowercased()
         if normalizedStatus == "recording" {
@@ -150,18 +157,32 @@ class LibraryViewModel: ObservableObject {
         selectedIds.removeAll()
     }
 
+    /// 正在录的选不进来:批量删除里混进一条正在录的,Core 会整批拒绝
+    /// (删一半更糟),所以根本不让它进名单。
     func toggleSelected(_ id: String) {
         if selectedIds.contains(id) {
             selectedIds.remove(id)
+        } else if isRecording(id) {
+            ToastCenter.shared.info(String(localized: "home.recording.delete_while_recording"))
         } else {
             selectedIds.insert(id)
         }
+    }
+
+    private func isRecording(_ id: String) -> Bool {
+        sessions.first { $0.id == id }?.isRecording ?? false
     }
 
     /// 单删(右键 ContextMenu)→ 软删到 Trash。
     @MainActor
     func softDelete(_ id: String) {
         guard let core = CoreClient.shared.core else { return }
+        // 菜单项本来就禁着;这里再拦一道,防的是「点开菜单时还没开始录,
+        // 点下去时已经在录」那一拍。
+        guard !isRecording(id) else {
+            ToastCenter.shared.info(String(localized: "home.recording.delete_while_recording"))
+            return
+        }
         do {
             try core.softDeleteSession(sessionId: id)
             sessions.removeAll { $0.id == id }
@@ -181,6 +202,10 @@ class LibraryViewModel: ObservableObject {
     func softDeleteSelected() {
         guard !selectedIds.isEmpty, let core = CoreClient.shared.core else { return }
         let ids = Array(selectedIds)
+        guard !ids.contains(where: { isRecording($0) }) else {
+            ToastCenter.shared.info(String(localized: "home.recording.delete_while_recording"))
+            return
+        }
         do {
             try core.softDeleteSessions(sessionIds: ids)
             sessions.removeAll { selectedIds.contains($0.id) }
