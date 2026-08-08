@@ -6,9 +6,23 @@
 条目按当时发布的原文归档,不做事后修饰 —— 所以偶尔会看到标题落后于
 它实际发布的标签(每条开头的 `tag:` 注释是准的)。
 
+这份文件是版本记录的**权威副本**:发布页上的下载文件会被清理,说明会
+留下,但仓库里这一份不依赖任何外部服务。
+
 ---
 
-<!-- tag: v0.3.2 -->
+<!-- tag: v0.3.3 · 2026-08-08 -->
+# Zulangue 0.3.3
+
+A maintenance release. Nothing in the app looks or behaves differently from
+0.3.2 — this version exists to exercise the release process end to end, and
+carries the accumulated test and tooling work behind it.
+
+Zulangue requires macOS 15.5 or later.
+
+---
+
+<!-- tag: v0.3.2 · 2026-08-08 -->
 # Zulangue 0.3.2
 
 Sharing a room now tells you what it is doing, notes gained real structure,
@@ -53,7 +67,7 @@ Zulangue requires macOS 15.5 or later.
 
 ---
 
-<!-- tag: v0.3.1 -->
+<!-- tag: v0.3.1 · 2026-08-07 -->
 # Zulangue 0.3.1
 
 Shared recordings now outlive the room, and the app's notes and transcripts
@@ -83,7 +97,7 @@ Zulangue requires macOS 15.5 or later.
 
 ---
 
-<!-- tag: v0.3.0 -->
+<!-- tag: v0.3.0 · 2026-08-06 -->
 # Zulangue 0.3.0
 
 This release adds sharing. A new Share tab lets one Mac carry its live captions
@@ -120,7 +134,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.2.3 -->
+<!-- tag: v0.2.3 · 2026-08-05 -->
 # Zulangue 0.2.3
 
 This release makes the main window remember where you left it, gives the
@@ -159,7 +173,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.2.2 -->
+<!-- tag: v0.2.2 · 2026-08-02 -->
 # Zulangue 0.2.2
 
 This release hardens long-running live transcription, makes stopping a capture
@@ -189,7 +203,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.2.1 -->
+<!-- tag: v0.2.1 · 2026-08-01 -->
 # Zulangue 0.2.1
 
 This release makes long-running Notebook work smoother, adds direct navigation
@@ -224,7 +238,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.2.0 -->
+<!-- tag: v0.2.0 · 2026-08-01 -->
 # Zulangue 0.2.0
 
 This release turns Zulangue into a more focused multilingual live-captioning
@@ -264,7 +278,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.1.11 -->
+<!-- tag: v0.1.11 · 2026-08-01 -->
 # Zulangue 0.1.11
 
 This release makes long, fast-moving multilingual captions easier to follow
@@ -273,7 +287,7 @@ on both desk-sized windows and large audience displays.
 - **Audience mode is now the default and appears first.** Existing explicit
   mode choices remain saved, while new and reset installations open directly
   into the live audience view.
-- **Fast Chinese captions stay visually stable.** High-frequency interim
+- **Fast-moving captions stay visually stable.** High-frequency interim
   hypotheses are coalesced into readable refreshes, final corrections still
   appear immediately, and whole-paragraph fade animations no longer create
   ghosted text during rapid speech.
@@ -283,7 +297,7 @@ on both desk-sized windows and large audience displays.
   empty region.
 - **Long translations remain visible in every language.** Audience columns
   anchor their newest text to the bottom, while notebook language columns can
-  expand to fit unequal English, Chinese, Thai, and other translation lengths.
+  expand to fit translations of very different lengths.
 - **Notebook language columns keep up with live subtitles.** A newly arrived
   translation cue is shown immediately even before it binds to a durable
   transcript row, then hands off cleanly once that row catches up.
@@ -301,7 +315,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.1.10 -->
+<!-- tag: v0.1.10 · 2026-08-01 -->
 # Zulangue 0.1.10
 
 This release rebuilds live multilingual subtitles around the capture
@@ -347,7 +361,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.1.9 -->
+<!-- tag: v0.1.9 · 2026-07-31 -->
 # Zulangue 0.1.9
 
 This release makes audio deletion verifiable, fixes audio-file transcription
@@ -379,19 +393,24 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.1.7 -->
+<!-- tag: v0.1.7 · 2026-07-31 -->
+# Zulangue 0.1.7
+
+这一版打了标签但没有发布页,也就没有留下发布说明。列在这里是为了让
+版本序列不缺号。
+
+---
+
+<!-- tag: v0.1.6 · 2026-07-31 -->
 # Zulangue 0.1.6
 
-This release brings Zulangue to seven languages.
+This release expands Zulangue's interface localization.
 
-- The app interface is now available in English, ไทย (Thai), 日本語
-  (Japanese), Français, Español, Deutsch, and 简体中文
-  (Simplified Chinese). Pick your language in **Settings → General**.
-- Error messages from the transcription engine are localized into the same
-  seven languages.
-- The project README is available in all seven languages as well.
-- Fills in a handful of interface strings that were missing from the
-  Japanese localization.
+- The app interface and transcription-engine error messages are now available
+  in additional languages. Pick your language in **Settings → General**.
+- The project README is available in additional localized editions.
+- Fills in a handful of interface strings that were missing from localized
+  editions.
 - Continues to verify updates with the project-specific Sparkle signing key.
 
 Zulangue requires macOS 15.5 or later.
@@ -402,30 +421,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.1.6 -->
-# Zulangue 0.1.6
-
-This release brings Zulangue to eight languages.
-
-- The app interface is now available in English, ไทย (Thai), မြန်မာ
-  (Burmese), 日本語 (Japanese), Français, Español, Deutsch, and 简体中文
-  (Simplified Chinese). Pick your language in **Settings → General**.
-- Error messages from the transcription engine are localized into the same
-  eight languages.
-- The project README is available in all eight languages as well.
-- Fills in a handful of interface strings that were missing from the
-  Japanese localization.
-- Continues to verify updates with the project-specific Sparkle signing key.
-
-Zulangue requires macOS 15.5 or later.
-
-This build is not notarized by Apple. If macOS blocks the first launch, open
-Zulangue from Finder with **Control-click → Open**, or allow it in
-**System Settings → Privacy & Security**.
-
----
-
-<!-- tag: v0.1.5 -->
+<!-- tag: v0.1.5 · 2026-07-31 -->
 # Zulangue 0.1.5
 
 This release fixes a bug that could freeze live transcription mid-recording
@@ -449,7 +445,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.1.4 -->
+<!-- tag: v0.1.4 · 2026-07-31 -->
 # Zulangue 0.1.4
 
 This release keeps multilingual transcripts durable across restarts and
@@ -473,7 +469,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.1.3 -->
+<!-- tag: v0.1.3 · 2026-07-30 -->
 # Zulangue 0.1.3
 
 This release makes live multilingual transcription safer to edit and easier to
@@ -495,7 +491,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.1.2 -->
+<!-- tag: v0.1.2 · 2026-07-30 -->
 # Zulangue 0.1.2
 
 This release makes live multilingual work easier to follow and organize.
@@ -515,7 +511,7 @@ Zulangue from Finder with **Control-click → Open**, or allow it in
 
 ---
 
-<!-- tag: v0.1.1 -->
+<!-- tag: v0.1.1 · 2026-07-30 -->
 # Zulangue 0.1.1
 
 This is the first Zulangue release with built-in update checks.
@@ -530,3 +526,8 @@ Zulangue requires macOS 15.5 or later.
 This build is not notarized by Apple. If macOS blocks the first launch, open
 Zulangue from Finder with **Control-click → Open**, or allow it in
 **System Settings → Privacy & Security**.
+
+---
+
+<!-- tag: v0.1.0 · 2026-07-30 -->
+**Full Changelog**: https://github.com/Zuddev/zulangue/commits/v0.1.0
