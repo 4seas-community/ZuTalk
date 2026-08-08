@@ -13,6 +13,11 @@ use vt_store::{
 
 use crate::{CoreError, ZulangueCore};
 
+/// 新装好的 App 里落笔的第一个家。
+///
+/// 随核心启动幂等创建 —— 第一次录音不该以「先学会新建 Notebook」为前提。
+pub const DEFAULT_NOTEBOOK_TITLE: &str = "默认";
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiNotebook {
     pub id: String,

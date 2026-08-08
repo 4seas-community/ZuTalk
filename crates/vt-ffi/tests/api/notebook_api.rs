@@ -8,14 +8,41 @@ fn make_core() -> (TempDir, ZulangueCore) {
 }
 
 #[test]
+fn a_fresh_core_ships_with_default_and_share_notebooks() {
+    let tmp = TempDir::new().unwrap();
+    let data_dir = tmp.path().to_str().unwrap().to_string();
+
+    let core = ZulangueCore::new_for_test(data_dir.clone()).unwrap();
+    let titles: Vec<String> = core
+        .list_notebooks()
+        .unwrap()
+        .into_iter()
+        .map(|n| n.title)
+        .collect();
+    // 「默认」排最前:主页第一眼看到的就是落笔的地方。
+    assert_eq!(titles, vec!["默认", "分享"]);
+
+    // 重开核心不重复建。
+    drop(core);
+    let core = ZulangueCore::new_for_test(data_dir).unwrap();
+    let titles: Vec<String> = core
+        .list_notebooks()
+        .unwrap()
+        .into_iter()
+        .map(|n| n.title)
+        .collect();
+    assert_eq!(titles, vec!["默认", "分享"]);
+}
+
+#[test]
 fn create_notebook_exposes_exact_builtin_tabs_over_ffi() {
     let (_tmp, core) = make_core();
 
     let notebook = core.create_notebook(Some("Research".into())).unwrap();
 
+    // 内置的「默认」「分享」之外,新建的这个也在列表里。
     let notebooks = core.list_notebooks().unwrap();
-    assert_eq!(notebooks.len(), 1);
-    assert_eq!(notebooks[0].id, notebook.id);
+    assert!(notebooks.iter().any(|n| n.id == notebook.id));
 
     let tabs = core.list_notebook_tabs(notebook.id).unwrap();
     assert_eq!(tabs.len(), 3);

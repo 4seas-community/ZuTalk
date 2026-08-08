@@ -570,6 +570,29 @@ impl ZulangueCore {
             message: format!("main database schema: {e}"),
         })?;
 
+        // 内置 Notebook 随核心启动就位:「默认」让第一段录音不必先新建
+        // Notebook,「分享」是收到的共享内容唯一的落点(share-p2p.md §11)。
+        // 按标题幂等;Notebook 没有删除通路,查活着的列表就够了。
+        // 「分享」先建 —— 列表按时间倒序,后建的「默认」排在最前。
+        match notebook_store.list_notebooks() {
+            Ok(existing) => {
+                for title in [
+                    crate::share_api::SHARED_INBOX_NOTEBOOK_TITLE,
+                    crate::notebook_api::DEFAULT_NOTEBOOK_TITLE,
+                ] {
+                    if existing.iter().any(|n| n.title == title) {
+                        continue;
+                    }
+                    if let Err(e) = notebook_store.create_notebook(Some(title)) {
+                        tracing::warn!("startup builtin notebook \"{title}\" (non-fatal): {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("startup builtin notebooks skipped (non-fatal): {e}");
+            }
+        }
+
         let session_store =
             SessionQueryStore::new(&db_path).map_err(|e| CoreError::InitFailed {
                 message: format!("session store: {e}"),

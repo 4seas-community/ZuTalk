@@ -477,5 +477,6 @@ session；按单次录音共享时同步它会把同 Notebook 里其它录音也
 **仍然延后**:收到的 session 与「分享」Notebook 的 SQLite 关联。收到的
 内容没有事实层(文档即真相是本节定案),`attach_session_to_notebook`
 要求 session 在事实层存在,造假记录违反定案——这一步等 Notebook 读端
-支持纯文档 session 之后再做。目前「分享」Notebook 由首次收件时幂等
-创建,收件的入口在分享页的台账列表。
+支持纯文档 session 之后再做。「分享」Notebook 随核心启动幂等创建
+(与「默认」一起,内置 Notebook 不等首次使用),收件的入口在分享页
+的台账列表。

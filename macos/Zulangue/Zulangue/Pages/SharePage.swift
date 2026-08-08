@@ -780,8 +780,6 @@ final class ShareViewModel: ObservableObject {
     @Published var pendingDeleteSession: FfiSharedSessionInfo?
     /// 当前房间按单次录音共享时,那一场的 session id。只读约束只属于它。
     @Published private(set) var scopeSessionId: String?
-    /// 收件 Notebook 只需要确保一次;它在核心里是幂等创建的。
-    private var ensuredInboxNotebook = false
     @Published var confirmingStart: Bool = false
     @Published var selectedNotebookID: String = "" {
         didSet { loadRecentSessions() }
@@ -1144,13 +1142,6 @@ final class ShareViewModel: ObservableObject {
         members = core.roomMembers()
 
         sharedSessions = core.listSharedSessions()
-
-        // 第一次出现收件时,把「分享」收件 Notebook 立起来 —— 它是收到内容
-        // 在库里的家(share-p2p.md §11),核心里幂等,这里只确保一次。
-        if sharedSessions.isEmpty == false, ensuredInboxNotebook == false {
-            ensuredInboxNotebook = true
-            _ = try? core.sharedInboxNotebook()
-        }
 
         status = {
             if !state.isSharing { return .idle }
