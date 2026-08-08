@@ -572,3 +572,62 @@ fn one_room_at_a_time_and_polite_room_switching() {
     viewer.stop_sharing().unwrap();
     viewer.stop_sharing().unwrap();
 }
+
+/// 敲门请求台的边界:没在共享、没在主持、id 是垃圾。
+///
+/// 「附近的人」那条真链路要靠 mDNS 发现,在沙箱里不可靠 —— 发现之后的
+/// 那一段(请求、批准、拒绝、钥匙只在批准后交出)由 `vt-share` 的
+/// `nearby_join.rs` 直接盖住。这里盖的是 FFI 这一层的边界:UI 每隔一拍
+/// 就轮询一次请求台,它在任何状态下都不许崩、不许卡、不许把钥匙漏给
+/// 一条根本不存在的请求。
+#[test]
+fn the_join_desk_stays_sane_when_there_is_no_room() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(&dir);
+
+    // 还没开共享:请求台是空的,不是 panic。
+    assert!(core.pending_join_requests().is_empty());
+    // 没在主持时批准任何东西都不该「成功」—— 那意味着凭空发了张钥匙。
+    assert!(!core.approve_join_request("ghost-request".into()).unwrap());
+    assert!(!core.decline_join_request("ghost-request".into()));
+
+    // 开了共享:请求台仍然是空的(没人敲门),批准不存在的请求依然不成立。
+    let _code = core
+        .start_sharing(None, Some("sess-desk".into()), false)
+        .unwrap();
+    assert!(core.pending_join_requests().is_empty());
+    assert!(
+        !core.approve_join_request("ghost-request".into()).unwrap(),
+        "主持中也不许凭一个编造的 request_id 把分享码发出去"
+    );
+    assert!(!core.decline_join_request("ghost-request".into()));
+
+    // 请求加入一个连格式都不对的 endpoint id:立刻报错,不去拨号等超时。
+    assert!(core
+        .request_to_join_nearby("not-an-endpoint-id".into())
+        .is_err());
+    assert!(core.request_to_join_nearby(String::new()).is_err());
+
+    core.stop_sharing().unwrap();
+    assert!(core.pending_join_requests().is_empty());
+    assert!(!core.approve_join_request("ghost-request".into()).unwrap());
+}
+
+/// 扫描「附近的人」不许把界面卡住,也不许把自己算成邻居。
+#[test]
+fn scanning_for_neighbours_is_bounded_and_never_finds_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(&dir);
+    let me = core.share_identity().unwrap().endpoint_id;
+
+    let started = std::time::Instant::now();
+    let peers = core.nearby_peers(0).unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(30),
+        "扫描窗口要有上限 —— 这是一次同步 FFI 调用,卡住就是界面卡住"
+    );
+    assert!(
+        peers.iter().all(|peer| peer.endpoint_id != me),
+        "自己不是附近的人"
+    );
+}
