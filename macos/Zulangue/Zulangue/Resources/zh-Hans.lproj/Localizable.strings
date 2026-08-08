@@ -851,6 +851,7 @@
 "share.start.confirm.body" = "在共享开着期间，你在这个 Notebook 里开始的录音，字幕会实时发给房间里的每个人。音频永远不会被共享。停止只停后续，无法删除对方已经收到的内容。";
 "share.start.confirm.session_title" = "共享这段录音？";
 "share.start.confirm.session_body" = "被你放进来的人会保留这段录音转录稿的一份副本，并在房间允许时一起订正。音频永远不会被共享。停止只停后续，无法删除对方已经收到的内容。";
+"share.start.confirm.remember" = "这个 Notebook 下次不再询问。";
 
 /* 设置:分享(点对点)传输 */
 "settings.section.p2p_name" = "分享";

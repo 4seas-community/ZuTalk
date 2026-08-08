@@ -407,7 +407,7 @@ struct SharePage: View {
                 .accessibilityIdentifier("share.policy")
 
                 Button(String(localized: "share.start")) {
-                    viewModel.confirmingStart = true
+                    viewModel.requestStart()
                 }
                 .disabled(
                     viewModel.selectedNotebookID.isEmpty
@@ -423,15 +423,16 @@ struct SharePage: View {
             isPresented: $viewModel.confirmingStart
         ) {
             Button(String(localized: "share.start"), role: .destructive) {
-                viewModel.start()
+                viewModel.confirmStart()
             }
             Button(String(localized: "share.cancel"), role: .cancel) {}
         } message: {
-            // 这段话必须描述真实行为。它以前承诺「之后在这个 Notebook 里开始的
-            // 录音会默认共享」—— 但那个 per-Notebook 记忆并不存在,共享只活到
-            // 停止或退出为止。文案宁可少承诺,不能多承诺。
+            // 这段话必须描述真实行为,宁可少承诺,不能多承诺。
+            // Notebook 范围首次确认后会被记住(share-p2p.md §4.1),所以
+            // 那一版文案要把「下次不再问」也说出来。
             Text(viewModel.shareWholeNotebook
                  ? String(localized: "share.start.confirm.body")
+                     + " " + String(localized: "share.start.confirm.remember")
                  : String(localized: "share.start.confirm.session_body"))
         }
     }
@@ -863,6 +864,41 @@ final class ShareViewModel: ObservableObject {
         shareCode = core.currentShareCode()
         refreshState()
         startPollingIfNeeded()
+    }
+
+    /// 「开始共享」按钮的入口。首次为一个 Notebook 开启必须显式确认一次
+    /// (share-p2p.md §4.1);确认过的 Notebook 不再问。单条录音每次都问 ——
+    /// 它给出去的是一份对方保留的副本,分量更重。
+    func requestStart() {
+        if shareWholeNotebook, Self.confirmedNotebooks().contains(selectedNotebookID) {
+            start()
+        } else {
+            confirmingStart = true
+        }
+    }
+
+    /// 确认对话框的「开始」。Notebook 范围顺手记住这本已经确认过。
+    func confirmStart() {
+        if shareWholeNotebook {
+            Self.rememberConfirmedNotebook(selectedNotebookID)
+        }
+        start()
+    }
+
+    /// 已确认过共享的 Notebook 集合。这是 UI 层的确认记忆,不是共享状态 ——
+    /// 共享本身仍然只活到停止或退出为止。
+    private static let confirmedNotebooksKey = "share.confirmedNotebookIds"
+
+    private static func confirmedNotebooks() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: confirmedNotebooksKey) ?? [])
+    }
+
+    private static func rememberConfirmedNotebook(_ notebookID: String) {
+        guard notebookID.isEmpty == false else { return }
+        var ids = UserDefaults.standard.stringArray(forKey: confirmedNotebooksKey) ?? []
+        guard ids.contains(notebookID) == false else { return }
+        ids.append(notebookID)
+        UserDefaults.standard.set(ids, forKey: confirmedNotebooksKey)
     }
 
     func start() {

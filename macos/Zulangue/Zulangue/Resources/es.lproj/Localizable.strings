@@ -850,6 +850,7 @@
 "share.start.confirm.body" = "Mientras este uso compartido esté abierto, las grabaciones que inicies en este notebook envían sus subtítulos en directo a toda la sala. El audio nunca se comparte. Detenerlo frena los envíos siguientes, pero no borra lo que otros ya recibieron.";
 "share.start.confirm.session_title" = "¿Compartir esta grabación?";
 "share.start.confirm.session_body" = "Las personas que dejes entrar conservan una copia de la transcripción de esta grabación y pueden ayudar a corregirla si la sala lo permite. El audio nunca se comparte. Detenerlo frena los envíos siguientes, pero no borra lo que ya recibieron.";
+"share.start.confirm.remember" = "No se volverá a preguntar para este notebook.";
 
 /* 设置:分享(点对点)传输 */
 "settings.section.p2p_name" = "Compartir";
