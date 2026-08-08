@@ -881,6 +881,8 @@
 "share.status.joined_waiting_hint" = "Estás conectado. Los subtítulos aparecen cuando el anfitrión empiece a grabar.";
 "share.status.receiving" = "Recibiendo subtítulos";
 "share.status.receiving_hint" = "Son los subtítulos del anfitrión. No se guardan en este Mac.";
+"share.status.host_left" = "El anfitrión terminó este uso compartido";
+"share.status.host_left_hint" = "No llegará nada más. Lo que ya recibiste se queda en este Mac.";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "Conexión directa";

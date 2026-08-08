@@ -152,6 +152,10 @@ pub struct RoomPresence {
     roster: RoomRoster,
     /// 谁叫什么。从各自的 Hello 里攒出来 —— 名册广播装不下这些。
     names: std::collections::BTreeMap<EndpointId, String>,
+    /// 主持人**明确道过别**。只有显式 Goodbye 才置位 —— 邻居掉线可能只是
+    /// 瞬断,不该在观看端显示成「对方结束了共享」。观看端靠它区分
+    /// 「还在收」与「这场已经散了,收到的内容还在」。
+    host_departed: bool,
 }
 
 impl RoomPresence {
@@ -181,7 +185,13 @@ impl RoomPresence {
             seen,
             roster,
             names,
+            host_departed: false,
         }
+    }
+
+    /// 主持人是否已明确道别。主持人自己这一侧永远是 `false`。
+    pub fn host_departed(&self) -> bool {
+        self.host_departed
     }
 
     /// 房间里某人的名字。没自报过就没有。
@@ -213,6 +223,11 @@ impl RoomPresence {
     pub fn apply(&mut self, author: EndpointId, control: RoomControl) -> bool {
         match control {
             RoomControl::Hello { display_name } => {
+                // 道过别的主持人又打招呼 —— 撤销「已结束」。防的是短命的
+                // 停止/重开序列把观看端永久卡在「已结束」上。
+                if author == self.host {
+                    self.host_departed = false;
+                }
                 // 名字每次都更新:有人改了昵称再打招呼,房间里应当跟着变。
                 // 没自报名字不算「名字变了」—— 否则每一次重复的 Hello 都会
                 // 被当成变化,把房间刷个不停。
@@ -234,12 +249,14 @@ impl RoomPresence {
                 false
             }
             RoomControl::Goodbye => {
-                self.seen.remove(&author);
-                self.names.remove(&author);
-                if self.is_host {
-                    return self.roster.remove(author);
+                let changed = self.remove_presence(author);
+                // 主持人明确道别:观看端据此把「接收中」切换成「已结束,
+                // 收到的内容还在」。这两种状态以前在屏幕上长得一模一样。
+                if author == self.host && !self.is_host {
+                    self.host_departed = true;
+                    return true;
                 }
-                false
+                changed
             }
             RoomControl::Roster { members, host_only } => {
                 if self.is_host {
@@ -284,9 +301,20 @@ impl RoomPresence {
         })
     }
 
-    /// gossip 报告一个直接邻居掉线。视同 `Goodbye` 的兜底。
+    /// gossip 报告一个直接邻居掉线。名册处理视同 `Goodbye` 的兜底,但**不**
+    /// 视为主持人宣布结束 —— 瞬断和道别必须是两句话,掉线的主持人可能马上回来。
     pub fn neighbor_down(&mut self, who: EndpointId) -> bool {
-        self.apply(who, RoomControl::Goodbye)
+        self.remove_presence(who)
+    }
+
+    /// 把一个人从在场与名字表里拿掉。名册只有主持人有权改。
+    fn remove_presence(&mut self, who: EndpointId) -> bool {
+        self.seen.remove(&who);
+        self.names.remove(&who);
+        if self.is_host {
+            return self.roster.remove(who);
+        }
+        false
     }
 }
 
@@ -610,6 +638,47 @@ mod tests {
         presence.apply(guest.public(), RoomControl::hello(""));
         assert!(presence.neighbor_down(guest.public()));
         assert!(!presence.roster().is_member(guest.public()));
+    }
+
+    /// 主持人道别后,观看端要能说出「这场结束了」—— 以前它永远停在「接收中」,
+    /// 画面定格在最后一帧,和网络卡死无法区分。
+    #[test]
+    fn a_viewer_learns_the_host_departed() {
+        let host = SecretKey::generate();
+        let viewer = SecretKey::generate();
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            viewer.public(),
+            "",
+            WritePolicy::Everyone,
+        );
+        assert!(!presence.host_departed());
+        assert!(
+            presence.apply(host.public(), RoomControl::Goodbye),
+            "主持人道别必须触发界面刷新"
+        );
+        assert!(presence.host_departed());
+
+        // 主持人回来打招呼,「已结束」解除。
+        presence.apply(host.public(), RoomControl::hello("主持人"));
+        assert!(!presence.host_departed());
+    }
+
+    /// 瞬断不是道别:邻居掉线只动名册,不该让观看端显示「对方结束了共享」。
+    #[test]
+    fn a_dropped_link_is_not_a_departure_announcement() {
+        let host = SecretKey::generate();
+        let viewer = SecretKey::generate();
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            viewer.public(),
+            "",
+            WritePolicy::Everyone,
+        );
+        presence.neighbor_down(host.public());
+        assert!(!presence.host_departed());
     }
 
     /// 主持人自己掉不出房间 —— 否则房间会失去唯一的写入权威。

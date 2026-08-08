@@ -882,6 +882,8 @@
 "share.status.joined_waiting_hint" = "你已经连上了。等主持人开始录音，字幕就会出现。";
 "share.status.receiving" = "正在接收字幕";
 "share.status.receiving_hint" = "这是主持人的字幕，不会保存到这台 Mac。";
+"share.status.host_left" = "主持人结束了这次共享";
+"share.status.host_left_hint" = "不会再有新内容。你已经收到的都还在这台 Mac 上。";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "直连";

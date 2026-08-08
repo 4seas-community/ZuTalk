@@ -882,6 +882,8 @@
 "share.status.joined_waiting_hint" = "연결되었습니다. 호스트가 녹음을 시작하면 자막이 나타납니다.";
 "share.status.receiving" = "자막 수신 중";
 "share.status.receiving_hint" = "호스트의 자막입니다. 이 Mac에 저장되지 않습니다.";
+"share.status.host_left" = "호스트가 이 공유를 종료했습니다";
+"share.status.host_left_hint" = "더 이상 새 내용이 오지 않습니다. 이미 받은 내용은 이 Mac에 그대로 남아 있습니다.";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "직접 연결";

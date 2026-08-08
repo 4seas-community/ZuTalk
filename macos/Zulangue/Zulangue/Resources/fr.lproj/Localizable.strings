@@ -882,6 +882,8 @@
 "share.status.joined_waiting_hint" = "Vous êtes connecté. Les sous-titres arrivent quand l'hôte lance l'enregistrement.";
 "share.status.receiving" = "Réception des sous-titres";
 "share.status.receiving_hint" = "Ce sont les sous-titres de l'hôte. Ils ne sont pas enregistrés sur ce Mac.";
+"share.status.host_left" = "L'hôte a mis fin à ce partage";
+"share.status.host_left_hint" = "Rien de plus n'arrivera. Ce que vous avez déjà reçu reste sur ce Mac.";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "Connexion directe";

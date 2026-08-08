@@ -530,18 +530,22 @@ enum ShareStatus {
     case hostingLive
     case joinedWaiting
     case receiving
+    /// 主持人明确道别了。与「接收中的最后一帧」必须是两句话 —— 以前这两种
+    /// 情况在屏幕上一模一样,画面定格,像卡死。
+    case hostLeft
 
     var icon: String {
         switch self {
         case .idle: return "person.2"
         case .hostingWaiting, .joinedWaiting: return "clock"
         case .hostingLive, .receiving: return "dot.radiowaves.left.and.right"
+        case .hostLeft: return "antenna.radiowaves.left.and.right.slash"
         }
     }
 
     var tint: Color {
         switch self {
-        case .idle: return .textTertiary
+        case .idle, .hostLeft: return .textTertiary
         case .hostingWaiting, .joinedWaiting: return .signalAmber
         case .hostingLive, .receiving: return .signalGreen
         }
@@ -554,6 +558,7 @@ enum ShareStatus {
         case .hostingLive: return String(localized: "share.status.hosting_live")
         case .joinedWaiting: return String(localized: "share.status.joined_waiting")
         case .receiving: return String(localized: "share.status.receiving")
+        case .hostLeft: return String(localized: "share.status.host_left")
         }
     }
 
@@ -564,6 +569,7 @@ enum ShareStatus {
         case .hostingLive: return String(localized: "share.status.hosting_live_hint")
         case .joinedWaiting: return String(localized: "share.status.joined_waiting_hint")
         case .receiving: return String(localized: "share.status.receiving_hint")
+        case .hostLeft: return String(localized: "share.status.host_left_hint")
         }
     }
 }
@@ -833,6 +839,9 @@ final class ShareViewModel: ObservableObject {
                 // 而不是网络有问题 —— 这两句话必须说得不一样。
                 return state.broadcastRevision == nil ? .hostingWaiting : .hostingLive
             }
+            // 主持人道别优先于「接收中」:散场后画面定格在最后一帧,
+            // 不说这一句,它和网络卡死无法区分。
+            if state.hostLeft { return .hostLeft }
             return state.appliedRevision == nil ? .joinedWaiting : .receiving
         }()
     }

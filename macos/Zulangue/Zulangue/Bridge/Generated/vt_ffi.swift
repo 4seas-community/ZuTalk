@@ -5587,6 +5587,11 @@ public struct FfiShareState: Equatable, Hashable {
      * 说成不同的话,否则用户只会看到「什么都没有」。
      */
     public var broadcastRevision: UInt64?
+    /**
+     * 主持人已明确道别(仅观看端有意义)。界面据此显示「这场已结束,
+     * 收到的内容还在」,而不是永远停在「接收中」的最后一帧。
+     */
+    public var hostLeft: Bool
     public var lines: [FfiSharedCaptionLine]
 
     // Default memberwise initializers are never public by default, so we
@@ -5611,7 +5616,11 @@ public struct FfiShareState: Equatable, Hashable {
          * 本机作为主持人已经播出的最后一帧。`None` 表示**一帧都还没播** ——
          * 通常是主持人还没开始录音,而不是网络有问题。这两种情况在界面上必须
          * 说成不同的话,否则用户只会看到「什么都没有」。
-         */broadcastRevision: UInt64?, lines: [FfiSharedCaptionLine]) {
+         */broadcastRevision: UInt64?,
+        /**
+         * 主持人已明确道别(仅观看端有意义)。界面据此显示「这场已结束,
+         * 收到的内容还在」,而不是永远停在「接收中」的最后一帧。
+         */hostLeft: Bool, lines: [FfiSharedCaptionLine]) {
         self.isSharing = isSharing
         self.isViewing = isViewing
         self.hostOnly = hostOnly
@@ -5619,6 +5628,7 @@ public struct FfiShareState: Equatable, Hashable {
         self.viewerLink = viewerLink
         self.appliedRevision = appliedRevision
         self.broadcastRevision = broadcastRevision
+        self.hostLeft = hostLeft
         self.lines = lines
     }
 
@@ -5645,6 +5655,7 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
                 viewerLink: FfiConverterOptionTypeFfiShareLinkPath.read(from: &buf),
                 appliedRevision: FfiConverterOptionUInt64.read(from: &buf),
                 broadcastRevision: FfiConverterOptionUInt64.read(from: &buf),
+                hostLeft: FfiConverterBool.read(from: &buf),
                 lines: FfiConverterSequenceTypeFfiSharedCaptionLine.read(from: &buf)
         )
     }
@@ -5657,6 +5668,7 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
         FfiConverterOptionTypeFfiShareLinkPath.write(value.viewerLink, into: &buf)
         FfiConverterOptionUInt64.write(value.appliedRevision, into: &buf)
         FfiConverterOptionUInt64.write(value.broadcastRevision, into: &buf)
+        FfiConverterBool.write(value.hostLeft, into: &buf)
         FfiConverterSequenceTypeFfiSharedCaptionLine.write(value.lines, into: &buf)
     }
 }

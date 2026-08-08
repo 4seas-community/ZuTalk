@@ -852,6 +852,12 @@ impl RoomHandle {
     pub async fn member_count(&self) -> usize {
         self.presence.lock().await.roster().members().count()
     }
+
+    /// 主持人是否已明确道别。观看端据此把「接收中」切换成
+    /// 「这场已结束,收到的内容还在」。
+    pub async fn host_departed(&self) -> bool {
+        self.presence.lock().await.host_departed()
+    }
 }
 
 impl Drop for RoomHandle {

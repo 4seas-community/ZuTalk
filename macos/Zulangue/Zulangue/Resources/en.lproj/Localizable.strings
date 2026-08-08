@@ -882,6 +882,8 @@
 "share.status.joined_waiting_hint" = "You are connected. Captions appear once the host starts recording.";
 "share.status.receiving" = "Receiving captions";
 "share.status.receiving_hint" = "These are the host's captions. They are not saved to this Mac.";
+"share.status.host_left" = "The host ended this share";
+"share.status.host_left_hint" = "Nothing more will arrive. What you already received stays on this Mac.";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "Direct";

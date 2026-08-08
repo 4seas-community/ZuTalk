@@ -882,6 +882,8 @@
 "share.status.joined_waiting_hint" = "接続できています。ホストが録音を始めると字幕が表示されます。";
 "share.status.receiving" = "字幕を受信中";
 "share.status.receiving_hint" = "ホストの字幕です。この Mac には保存されません。";
+"share.status.host_left" = "ホストがこの共有を終了しました";
+"share.status.host_left_hint" = "これ以上は届きません。すでに受け取った内容はこの Mac に残っています。";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "直接接続";

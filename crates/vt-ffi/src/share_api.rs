@@ -218,6 +218,9 @@ pub struct FfiShareState {
     /// 通常是主持人还没开始录音,而不是网络有问题。这两种情况在界面上必须
     /// 说成不同的话,否则用户只会看到「什么都没有」。
     pub broadcast_revision: Option<u64>,
+    /// 主持人已明确道别(仅观看端有意义)。界面据此显示「这场已结束,
+    /// 收到的内容还在」,而不是永远停在「接收中」的最后一帧。
+    pub host_left: bool,
     pub lines: Vec<FfiSharedCaptionLine>,
 }
 
@@ -772,6 +775,7 @@ impl ZulangueCore {
                 viewer_link: None,
                 applied_revision: None,
                 broadcast_revision: None,
+                host_left: false,
                 lines: Vec::new(),
             };
         };
@@ -806,6 +810,20 @@ impl ZulangueCore {
                 .collect();
         }
 
+        // 主持人是否已道别 —— 只对观看端有意义,主持人自己永远是 false。
+        let host_left = if runtime.viewing.is_some() {
+            match runtime.room.as_ref() {
+                Some(room) => {
+                    let room = room.clone();
+                    self.runtime
+                        .block_on(async move { room.host_departed().await })
+                }
+                None => false,
+            }
+        } else {
+            false
+        };
+
         FfiShareState {
             is_sharing: is_host || runtime.viewing.is_some(),
             is_viewing: runtime.viewing.is_some(),
@@ -818,6 +836,7 @@ impl ZulangueCore {
                 .map(Into::into),
             applied_revision,
             broadcast_revision: runtime.last_broadcast_revision,
+            host_left,
             lines,
         }
     }

@@ -141,6 +141,52 @@ fn the_broadcast_status_matches_the_share_scope() {
     host.stop_sharing().unwrap();
 }
 
+/// 主持人停止共享后,观看端要能看出「这场已结束」。
+///
+/// 以前观看端的状态机只有「等第一帧」和「接收中」两态:主持人走了,画面
+/// 定格在最后一帧,永远显示「Receiving captions」—— 和网络卡死无法区分。
+#[test]
+fn a_viewer_sees_the_host_leave() {
+    let host_dir = tempfile::tempdir().unwrap();
+    let viewer_dir = tempfile::tempdir().unwrap();
+    let host = core(&host_dir);
+    let viewer = core(&viewer_dir);
+
+    let code = host
+        .start_sharing(None, Some("sess-1".into()), false)
+        .unwrap();
+    viewer.join_share(code).unwrap();
+    assert!(!viewer.share_state().host_left, "主持人还在,不该显示已结束");
+
+    // 等 gossip 网格先立起来:道别只送达已经连上的人,不重发。
+    // 现实里主持人总是先看到有人在房间里,然后才结束 —— 测试同序。
+    let mut connected = false;
+    for _ in 0..200 {
+        if host.room_members().len() >= 2 {
+            connected = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(connected, "观看端应当先出现在主持人的房间名册里");
+
+    // stop_sharing 先道别再拆房间;Goodbye 经 gossip 送达要一点时间。
+    host.stop_sharing().unwrap();
+    let mut left = false;
+    for _ in 0..200 {
+        if viewer.share_state().host_left {
+            left = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(left, "主持人停止后,观看端必须能看出这场已经散了");
+
+    // 观看端自己退出,状态回到干净的未共享。
+    viewer.stop_sharing().unwrap();
+    assert!(!viewer.share_state().host_left);
+}
+
 /// 收到的内容有固定的家,而且这个家是幂等创建的。
 #[test]
 fn the_shared_inbox_notebook_is_created_once() {

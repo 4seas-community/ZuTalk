@@ -881,6 +881,8 @@
 "share.status.joined_waiting_hint" = "Du bist verbunden. Untertitel erscheinen, sobald der Host aufnimmt.";
 "share.status.receiving" = "Untertitel werden empfangen";
 "share.status.receiving_hint" = "Das sind die Untertitel des Hosts. Sie werden auf diesem Mac nicht gespeichert.";
+"share.status.host_left" = "Der Host hat dieses Teilen beendet";
+"share.status.host_left_hint" = "Es kommt nichts mehr an. Was du bereits erhalten hast, bleibt auf diesem Mac.";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "Direktverbindung";
