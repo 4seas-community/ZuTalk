@@ -572,6 +572,16 @@
 "editor.outline.delete_row" = "행 삭제";
 "editor.outline.undo" = "실행 취소";
 "editor.outline.redo" = "다시 실행";
+"editor.outline.turn_into" = "형식 바꾸기";
+"editor.outline.kind.paragraph" = "본문";
+"editor.outline.kind.heading1" = "제목 1";
+"editor.outline.kind.heading2" = "제목 2";
+"editor.outline.kind.heading3" = "제목 3";
+"editor.outline.kind.quote" = "인용";
+"editor.outline.kind.task" = "할 일";
+"editor.outline.kind.divider" = "구분선";
+"editor.outline.task.done" = "완료";
+"editor.outline.task.todo" = "미완료";
 "editor.tasks.title" = "작업";
 "editor.tasks.count_format" = "%lld개의 백그라운드 작업";
 "editor.tasks.refresh" = "작업 새로 고침";

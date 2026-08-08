@@ -571,6 +571,16 @@
 "editor.outline.delete_row" = "Zeile löschen";
 "editor.outline.undo" = "Widerrufen";
 "editor.outline.redo" = "Wiederholen";
+"editor.outline.turn_into" = "Umwandeln in";
+"editor.outline.kind.paragraph" = "Text";
+"editor.outline.kind.heading1" = "Überschrift 1";
+"editor.outline.kind.heading2" = "Überschrift 2";
+"editor.outline.kind.heading3" = "Überschrift 3";
+"editor.outline.kind.quote" = "Zitat";
+"editor.outline.kind.task" = "Aufgabe";
+"editor.outline.kind.divider" = "Trennlinie";
+"editor.outline.task.done" = "Erledigt";
+"editor.outline.task.todo" = "Offen";
 "editor.tasks.title" = "Aufgaben";
 "editor.tasks.count_format" = "%lld Hintergrundaufgaben";
 "editor.tasks.refresh" = "Aufgaben aktualisieren";

@@ -20,6 +20,53 @@
 use serde_json::json;
 use vt_mirror::value::Value;
 
+/// 行的块类型。存进节点 `$.kind`(缺省 = 段落,不写键);任务块的勾选
+/// 态存 `$.checked`。这与 macro 在 Lexical 序列化里的 `type`/`checked`
+/// 字段同构——类型是节点级 LWW 标量,不参与文本 CRDT。
+///
+/// 未知的 `$.kind` 值按段落渲染但**原样保留**(见 `KIND_*` 常量与
+/// flatten 的读取规则):老版本打开新版本的文档,类型降级显示,不丢数据。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutlineKind {
+    #[default]
+    Paragraph,
+    Heading1,
+    Heading2,
+    Heading3,
+    Quote,
+    Task,
+    Divider,
+}
+
+impl OutlineKind {
+    /// `$.kind` 里的持久化字面量。段落返回 None:缺省不写键。
+    pub fn as_meta_str(self) -> Option<&'static str> {
+        match self {
+            Self::Paragraph => None,
+            Self::Heading1 => Some("heading1"),
+            Self::Heading2 => Some("heading2"),
+            Self::Heading3 => Some("heading3"),
+            Self::Quote => Some("quote"),
+            Self::Task => Some("task"),
+            Self::Divider => Some("divider"),
+        }
+    }
+
+    /// 从 `$.kind` 读回。未知值按段落——渲染降级,数据由元数据保留
+    /// 规则负责不丢。
+    pub fn from_meta(value: Option<&str>) -> Self {
+        match value {
+            Some("heading1") => Self::Heading1,
+            Some("heading2") => Self::Heading2,
+            Some("heading3") => Self::Heading3,
+            Some("quote") => Self::Quote,
+            Some("task") => Self::Task,
+            Some("divider") => Self::Divider,
+            _ => Self::Paragraph,
+        }
+    }
+}
+
 /// 一行大纲:Swift 侧渲染与命中都以它为单位。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutlineRow {
@@ -27,6 +74,9 @@ pub struct OutlineRow {
     /// 0 = 根节点的直接孩子。
     pub depth: usize,
     pub text: String,
+    pub kind: OutlineKind,
+    /// 只对 `Task` 有意义;其余类型恒 false。
+    pub checked: bool,
 }
 
 /// 树(B 笔记根节点的状态形状)→ 大纲行,先序深度优先。
@@ -52,6 +102,7 @@ fn flatten_node(node: &Value, depth: usize, rows: &mut Vec<OutlineRow>) {
         // 不猜,与守卫同一条家法。
         return;
     };
+    let meta = node.get("$");
     rows.push(OutlineRow {
         id: id.to_string(),
         depth,
@@ -60,6 +111,11 @@ fn flatten_node(node: &Value, depth: usize, rows: &mut Vec<OutlineRow>) {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string(),
+        kind: OutlineKind::from_meta(meta.and_then(|m| m.get("kind")).and_then(Value::as_str)),
+        checked: meta
+            .and_then(|m| m.get("checked"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     });
     if let Some(children) = node.get("children").and_then(Value::as_array) {
         for child in children {
@@ -89,8 +145,15 @@ pub fn rebuild_note(root_id: &str, rows: &[OutlineRow]) -> Value {
         };
         path.truncate(depth);
 
+        let mut meta = json!({"id": row.id});
+        if let Some(kind) = row.kind.as_meta_str() {
+            meta["kind"] = json!(kind);
+        }
+        if row.checked {
+            meta["checked"] = json!(true);
+        }
         let node = json!({
-            "$": {"id": row.id},
+            "$": meta,
             "text": row.text,
             "children": [],
         });
@@ -123,6 +186,8 @@ mod tests {
             id: id.to_string(),
             depth,
             text: text.to_string(),
+            kind: OutlineKind::Paragraph,
+            checked: false,
         }
     }
 
@@ -168,22 +233,83 @@ mod tests {
         assert_eq!(flatten_note(&root), vec![row("b", 0, "二")]);
     }
 
+    #[test]
+    fn kinds_and_checked_round_trip_through_meta() {
+        let rows = vec![
+            OutlineRow {
+                kind: OutlineKind::Heading1,
+                ..row("h", 0, "标题")
+            },
+            OutlineRow {
+                kind: OutlineKind::Task,
+                checked: true,
+                ..row("t", 0, "待办")
+            },
+            OutlineRow {
+                kind: OutlineKind::Divider,
+                ..row("d", 0, "")
+            },
+            row("p", 0, "普通段落"),
+        ];
+        let tree = rebuild_note("root", &rows);
+        // 段落不写 kind 键;任务写 checked。
+        assert!(tree["children"][3]["$"].get("kind").is_none());
+        assert_eq!(tree["children"][1]["$"]["checked"], json!(true));
+        assert_eq!(flatten_note(&tree), rows);
+    }
+
+    #[test]
+    fn unknown_kind_values_degrade_to_paragraph_on_read() {
+        let root = json!({
+            "$": {"id": "root"},
+            "children": [
+                {"$": {"id": "a", "kind": "hologram"}, "text": "未来类型", "children": []},
+            ],
+        });
+        assert_eq!(flatten_note(&root)[0].kind, OutlineKind::Paragraph);
+    }
+
     // ---- 性质测试:这层的唯一规格 ----
 
-    /// 合法行序列的策略:深度按重建规则生成,天然合法。
+    /// 合法行序列的策略:深度按重建规则生成,天然合法。类型与勾选一并
+    /// 随机——往返恒等必须覆盖 `$.kind`/`$.checked` 的写读对称。
     fn legal_rows() -> impl Strategy<Value = Vec<OutlineRow>> {
-        prop::collection::vec(("[a-z]{1,6}", 0usize..4, "[a-z一-鿿]{0,6}"), 0..16).prop_map(|raw| {
+        let kinds = [
+            OutlineKind::Paragraph,
+            OutlineKind::Heading1,
+            OutlineKind::Heading2,
+            OutlineKind::Heading3,
+            OutlineKind::Quote,
+            OutlineKind::Task,
+            OutlineKind::Divider,
+        ];
+        prop::collection::vec(
+            (
+                "[a-z]{1,6}",
+                0usize..4,
+                "[a-z一-鿿]{0,6}",
+                0usize..7,
+                any::<bool>(),
+            ),
+            0..16,
+        )
+        .prop_map(move |raw| {
             let mut rows: Vec<OutlineRow> = Vec::new();
-            for (index, (id, depth, text)) in raw.into_iter().enumerate() {
+            for (index, (id, depth, text, kind_index, checked)) in raw.into_iter().enumerate() {
                 let depth = match rows.last() {
                     None => 0,
                     Some(previous) => depth.min(previous.depth + 1),
                 };
+                let kind = kinds[kind_index];
                 rows.push(OutlineRow {
                     // id 加序号保证唯一:行身份是编辑器的命根。
                     id: format!("{id}-{index}"),
                     depth,
                     text,
+                    kind,
+                    // checked 只在任务块上有效——非任务块生成 false,
+                    // 否则「行 → 树 → 行」会把它归一化掉,恒等不成立。
+                    checked: checked && kind == OutlineKind::Task,
                 });
             }
             rows
@@ -220,6 +346,8 @@ mod tests {
                     id: format!("{id}-{index}"),
                     depth,
                     text,
+                    kind: OutlineKind::Paragraph,
+                    checked: false,
                 })
                 .collect();
             let flattened = flatten_note(&rebuild_note("root", &rows));

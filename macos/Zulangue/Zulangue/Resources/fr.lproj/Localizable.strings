@@ -572,6 +572,16 @@
 "editor.outline.delete_row" = "Supprimer la ligne";
 "editor.outline.undo" = "Annuler";
 "editor.outline.redo" = "Rétablir";
+"editor.outline.turn_into" = "Transformer en";
+"editor.outline.kind.paragraph" = "Texte";
+"editor.outline.kind.heading1" = "Titre 1";
+"editor.outline.kind.heading2" = "Titre 2";
+"editor.outline.kind.heading3" = "Titre 3";
+"editor.outline.kind.quote" = "Citation";
+"editor.outline.kind.task" = "Tâche";
+"editor.outline.kind.divider" = "Séparateur";
+"editor.outline.task.done" = "Terminée";
+"editor.outline.task.todo" = "Non terminée";
 "editor.tasks.title" = "Tâches";
 "editor.tasks.count_format" = "%lld tâches en arrière-plan";
 "editor.tasks.refresh" = "Actualiser les tâches";

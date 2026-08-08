@@ -13,6 +13,11 @@
 //                     before/after 两态,「拖成子块」刻意不做——缩进
 //                     只归 ⌘]/⌘[ 管(与 macro 的拖拽语义同一决策)
 //   · 删除行        → 行右键菜单(保留,给触控板用户一条明路)
+//
+// 块类型(标题/引用/任务/分隔线)按 macro 的同一手势模型:行首敲
+// Markdown 记号 + 空格当场变身(`# ` `## ` `### ` `> ` `- [ ] ` `--- `),
+// 右键菜单是等价的明路。非段落行的行首退格先降回段落,第二下才并块 ——
+// 一下退格就把标题并进上一行,是最容易误伤的手势。
 
 import Combine
 import SwiftUI
@@ -214,27 +219,27 @@ private struct BlockNoteRowView: View {
                     return NSItemProvider(object: row.id as NSString)
                 }
 
-            // 层级记号:顶层圆点,下层短横。
-            Text(row.depth == 0 ? "•" : "–")
-                .font(.body)
-                .foregroundColor(.textTertiary)
-                .frame(width: 12, alignment: .center)
-                .accessibilityHidden(true)
-                .padding(.leading, CGFloat(row.depth) * BlockNoteEditorView.indentStep)
+            marker
 
-            TextField("", text: $draft, selection: $selection, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .foregroundColor(.textPrimary)
-                .lineLimit(1...)
-                .focused($focusedRowId, equals: row.id)
-                .onSubmit(submitRow)
-                .onKeyPress(.delete) { handleBackspace() }
-                .accessibilityLabel(Text(String(
-                    format: String(localized: "editor.outline.row_label"),
-                    Int64(row.depth)
-                )))
-                .accessibilityValue(Text(draft))
+            if row.kind == .divider {
+                dividerRule
+            } else {
+                TextField("", text: $draft, selection: $selection, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(Self.font(for: row.kind))
+                    .foregroundColor(row.checked ? .textTertiary : .textPrimary)
+                    .strikethrough(row.checked)
+                    .italic(row.kind == .quote)
+                    .lineLimit(1...)
+                    .focused($focusedRowId, equals: row.id)
+                    .onSubmit(submitRow)
+                    .onKeyPress(.delete) { handleBackspace() }
+                    .accessibilityLabel(Text(String(
+                        format: String(localized: "editor.outline.row_label"),
+                        Int64(row.depth)
+                    )))
+                    .accessibilityValue(Text(draft))
+            }
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
@@ -259,6 +264,22 @@ private struct BlockNoteRowView: View {
             )
         )
         .contextMenu {
+            // 类型菜单是 Markdown 手势的等价明路 —— 不记得记号的人也
+            // 有路可走。
+            Menu(String(localized: "editor.outline.turn_into")) {
+                ForEach(Self.kindChoices) { choice in
+                    Button {
+                        store.setKind(rowId: row.id, kind: choice.kind)
+                    } label: {
+                        if row.kind == choice.kind {
+                            Label(String(localized: choice.key), systemImage: "checkmark")
+                        } else {
+                            Text(String(localized: choice.key))
+                        }
+                    }
+                }
+            }
+            Divider()
             Button(String(localized: "editor.outline.indent")) {
                 store.indent(rowId: row.id)
             }
@@ -277,7 +298,20 @@ private struct BlockNoteRowView: View {
             }
         }
         // 草稿上报:两段式撤销靠它判断「聚焦行还有没提交的字」。
+        // 行首 Markdown 记号当场变身,只从段落出发 —— 否则标题里想打
+        // 一个真的 `# ` 都打不出来。
         .onChange(of: draft) { _, newValue in
+            if row.kind == .paragraph,
+               let hit = BlockNoteStore.markdownPrefix(newValue) {
+                draft = hit.rest
+                store.applyMarkdownPrefix(
+                    rowId: row.id,
+                    kind: hit.kind,
+                    checked: hit.checked,
+                    text: hit.rest
+                )
+                return
+            }
             store.noteDraftChanged(rowId: row.id, draft: newValue)
         }
         // 撤销/重做换掉权威状态时,草稿无条件刷回权威文本——聚焦中的
@@ -293,6 +327,89 @@ private struct BlockNoteRowView: View {
         }
     }
 
+    /// 「转换为」菜单的一项。
+    struct KindChoice: Identifiable {
+        let id: String
+        let key: String.LocalizationValue
+        let kind: FfiOutlineKind
+    }
+
+    static let kindChoices: [KindChoice] = [
+        KindChoice(id: "paragraph", key: "editor.outline.kind.paragraph", kind: .paragraph),
+        KindChoice(id: "heading1", key: "editor.outline.kind.heading1", kind: .heading1),
+        KindChoice(id: "heading2", key: "editor.outline.kind.heading2", kind: .heading2),
+        KindChoice(id: "heading3", key: "editor.outline.kind.heading3", kind: .heading3),
+        KindChoice(id: "quote", key: "editor.outline.kind.quote", kind: .quote),
+        KindChoice(id: "task", key: "editor.outline.kind.task", kind: .task),
+        KindChoice(id: "divider", key: "editor.outline.kind.divider", kind: .divider),
+    ]
+
+    /// 行首记号:段落是圆点/短横,任务是可点的方框,引用是竖条,标题与
+    /// 分隔线不占记号(留白本身就是层级信号)。缩进的前导内边距统一挂在
+    /// 这里,文本列才不会随类型漂移。
+    @ViewBuilder
+    private var marker: some View {
+        Group {
+            switch row.kind {
+            case .task:
+                Button {
+                    store.toggleChecked(rowId: row.id)
+                } label: {
+                    Image(systemName: row.checked ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 12))
+                        .foregroundColor(row.checked ? .brandAccent : .textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(String(localized: "editor.outline.kind.task")))
+                .accessibilityValue(Text(String(localized: row.checked
+                    ? "editor.outline.task.done"
+                    : "editor.outline.task.todo")))
+            case .quote:
+                Rectangle()
+                    .fill(Color.borderActive)
+                    .frame(width: 2)
+                    .frame(maxHeight: .infinity)
+                    .accessibilityHidden(true)
+            case .heading1, .heading2, .heading3, .divider:
+                Color.clear.accessibilityHidden(true)
+            case .paragraph:
+                Text(row.depth == 0 ? "•" : "–")
+                    .font(.body)
+                    .foregroundColor(.textTertiary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .frame(width: 12, alignment: .center)
+        .padding(.leading, CGFloat(row.depth) * BlockNoteEditorView.indentStep)
+    }
+
+    /// 分隔线:没有文本可编辑,但仍是一行 —— 可聚焦、可退格删掉,否则
+    /// 键盘用户会被一条删不掉的线卡住。
+    private var dividerRule: some View {
+        Rectangle()
+            .fill(Color.borderSubtle)
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .focusable()
+            .focused($focusedRowId, equals: row.id)
+            .onKeyPress(.delete) {
+                store.deleteRow(rowId: row.id)
+                return .handled
+            }
+            .accessibilityLabel(Text(String(localized: "editor.outline.kind.divider")))
+    }
+
+    private static func font(for kind: FfiOutlineKind) -> Font {
+        switch kind {
+        case .heading1: .title2.weight(.semibold)
+        case .heading2: .title3.weight(.semibold)
+        case .heading3: .headline
+        default: .body
+        }
+    }
+
     /// Return:先提交本行草稿,再在其后插入同深度新行并移焦点。
     private func submitRow() {
         store.replaceText(rowId: row.id, text: draft)
@@ -305,8 +422,15 @@ private struct BlockNoteRowView: View {
     }
 
     /// 行首退格 → 并入上一行;空行退化成删行。其余位置放行给系统删字。
+    ///
+    /// 非段落行先降回段落:一下退格就把标题并进上一行是最容易误伤的
+    /// 手势,给它加一格 —— 与 macro 的「先卸格式,再并块」同一决策。
     private func handleBackspace() -> KeyPress.Result {
         guard caretIsAtStart else { return .ignored }
+        if row.kind != .paragraph {
+            store.setKind(rowId: row.id, kind: .paragraph)
+            return .handled
+        }
         guard let previousId = store.mergeWithPreviousRow(rowId: row.id, draftText: draft) else {
             // 首行行首:没有可并入的上一行,吞掉退格避免系统再删一个字。
             return draft.isEmpty ? .handled : .ignored

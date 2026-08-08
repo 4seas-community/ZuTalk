@@ -5368,13 +5368,23 @@ public struct FfiOutlineRow: Equatable, Hashable {
     public var id: String
     public var depth: UInt32
     public var text: String
+    public var kind: FfiOutlineKind
+    /**
+     * 只对任务块有意义。
+     */
+    public var checked: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, depth: UInt32, text: String) {
+    public init(id: String, depth: UInt32, text: String, kind: FfiOutlineKind,
+        /**
+         * 只对任务块有意义。
+         */checked: Bool) {
         self.id = id
         self.depth = depth
         self.text = text
+        self.kind = kind
+        self.checked = checked
     }
 
 
@@ -5395,7 +5405,9 @@ public struct FfiConverterTypeFfiOutlineRow: FfiConverterRustBuffer {
             try FfiOutlineRow(
                 id: FfiConverterString.read(from: &buf),
                 depth: FfiConverterUInt32.read(from: &buf),
-                text: FfiConverterString.read(from: &buf)
+                text: FfiConverterString.read(from: &buf),
+                kind: FfiConverterTypeFfiOutlineKind.read(from: &buf),
+                checked: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -5403,6 +5415,8 @@ public struct FfiConverterTypeFfiOutlineRow: FfiConverterRustBuffer {
         FfiConverterString.write(value.id, into: &buf)
         FfiConverterUInt32.write(value.depth, into: &buf)
         FfiConverterString.write(value.text, into: &buf)
+        FfiConverterTypeFfiOutlineKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.checked, into: &buf)
     }
 }
 
@@ -7571,6 +7585,111 @@ public func FfiConverterTypeFfiNotebookRemoteHealth_lift(_ buf: RustBuffer) thro
 #endif
 public func FfiConverterTypeFfiNotebookRemoteHealth_lower(_ value: FfiNotebookRemoteHealth) -> RustBuffer {
     return FfiConverterTypeFfiNotebookRemoteHealth.lower(value)
+}
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * 行的块类型。与 `vt_store::note_outline::OutlineKind` 一一对应。
+ */
+
+public enum FfiOutlineKind: Equatable, Hashable {
+
+    case paragraph
+    case heading1
+    case heading2
+    case heading3
+    case quote
+    case task
+    case divider
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiOutlineKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiOutlineKind: FfiConverterRustBuffer {
+    typealias SwiftType = FfiOutlineKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiOutlineKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .paragraph
+
+        case 2: return .heading1
+
+        case 3: return .heading2
+
+        case 4: return .heading3
+
+        case 5: return .quote
+
+        case 6: return .task
+
+        case 7: return .divider
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiOutlineKind, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .paragraph:
+            writeInt(&buf, Int32(1))
+
+
+        case .heading1:
+            writeInt(&buf, Int32(2))
+
+
+        case .heading2:
+            writeInt(&buf, Int32(3))
+
+
+        case .heading3:
+            writeInt(&buf, Int32(4))
+
+
+        case .quote:
+            writeInt(&buf, Int32(5))
+
+
+        case .task:
+            writeInt(&buf, Int32(6))
+
+
+        case .divider:
+            writeInt(&buf, Int32(7))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiOutlineKind_lift(_ buf: RustBuffer) throws -> FfiOutlineKind {
+    return try FfiConverterTypeFfiOutlineKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiOutlineKind_lower(_ value: FfiOutlineKind) -> RustBuffer {
+    return FfiConverterTypeFfiOutlineKind.lower(value)
 }
 
 

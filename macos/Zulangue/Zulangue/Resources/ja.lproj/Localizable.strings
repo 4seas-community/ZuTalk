@@ -560,6 +560,16 @@
 "editor.outline.delete_row" = "行を削除";
 "editor.outline.undo" = "取り消す";
 "editor.outline.redo" = "やり直す";
+"editor.outline.turn_into" = "種類を変更";
+"editor.outline.kind.paragraph" = "本文";
+"editor.outline.kind.heading1" = "見出し 1";
+"editor.outline.kind.heading2" = "見出し 2";
+"editor.outline.kind.heading3" = "見出し 3";
+"editor.outline.kind.quote" = "引用";
+"editor.outline.kind.task" = "タスク";
+"editor.outline.kind.divider" = "区切り線";
+"editor.outline.task.done" = "完了";
+"editor.outline.task.todo" = "未完了";
 "editor.tasks.title" = "タスク";
 "editor.tasks.count_format" = "%lld 件のバックグラウンドタスク";
 "editor.tasks.refresh" = "タスクを更新";

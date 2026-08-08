@@ -572,6 +572,16 @@
 "editor.outline.delete_row" = "ลบแถวนี้";
 "editor.outline.undo" = "เลิกทำ";
 "editor.outline.redo" = "ทำซ้ำ";
+"editor.outline.turn_into" = "เปลี่ยนเป็น";
+"editor.outline.kind.paragraph" = "ข้อความ";
+"editor.outline.kind.heading1" = "หัวข้อ 1";
+"editor.outline.kind.heading2" = "หัวข้อ 2";
+"editor.outline.kind.heading3" = "หัวข้อ 3";
+"editor.outline.kind.quote" = "คำพูดอ้างอิง";
+"editor.outline.kind.task" = "สิ่งที่ต้องทำ";
+"editor.outline.kind.divider" = "เส้นคั่น";
+"editor.outline.task.done" = "เสร็จแล้ว";
+"editor.outline.task.todo" = "ยังไม่เสร็จ";
 "editor.tasks.title" = "งาน";
 "editor.tasks.count_format" = "งานเบื้องหลัง %lld งาน";
 "editor.tasks.refresh" = "รีเฟรชงาน";

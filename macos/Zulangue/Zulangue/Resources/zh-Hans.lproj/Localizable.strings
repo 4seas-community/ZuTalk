@@ -572,6 +572,16 @@
 "editor.outline.delete_row" = "删除此行";
 "editor.outline.undo" = "撤销";
 "editor.outline.redo" = "重做";
+"editor.outline.turn_into" = "转换为";
+"editor.outline.kind.paragraph" = "正文";
+"editor.outline.kind.heading1" = "标题 1";
+"editor.outline.kind.heading2" = "标题 2";
+"editor.outline.kind.heading3" = "标题 3";
+"editor.outline.kind.quote" = "引用";
+"editor.outline.kind.task" = "待办";
+"editor.outline.kind.divider" = "分隔线";
+"editor.outline.task.done" = "已完成";
+"editor.outline.task.todo" = "未完成";
 "editor.tasks.title" = "任务";
 "editor.tasks.count_format" = "%lld 个后台任务";
 "editor.tasks.refresh" = "刷新任务";

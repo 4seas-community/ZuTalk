@@ -9,9 +9,11 @@
 //! 同步写盘。块文档以句块/大纲行为提交粒度(不是击键粒度),同步写的
 //! 成本可接受;将来接进击键路径时再并入 500ms 合并写盘的 flusher。
 //!
-//! 笔记的「整份重放」有一条保真规则:重放只携带 (id, depth, text),
-//! 既有节点 `$` 里 id 之外的元数据(将来的创建时间、样式等)按 id 原样
-//! 保留——否则每次大纲编辑都会把元数据冲掉。
+//! 笔记的「整份重放」有一条保真规则:重放只携带行自己的字段
+//! (id, depth, text, kind, checked),既有节点 `$` 里这些之外的元数据
+//! (将来的创建时间等)按 id 原样保留——否则每次大纲编辑都会把元数据
+//! 冲掉。反过来,行携带的键不进保留集:留存的旧 `$.kind` 会把「标题降回
+//! 段落」这类手势立刻冲回去。
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
@@ -19,13 +21,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use loro::{LoroDoc, UndoManager};
-use serde_json::json;
 use vt_mirror::mirror::{Mirror, MirrorOptions, SetStateOptions};
 use vt_mirror::value::Value;
 use vt_store::document_schema::{
     document_kind, new_block_document, note_schema, DocumentKind, NOTE_ROOT,
 };
-use vt_store::note_outline::{flatten_note, rebuild_note, OutlineRow};
+use vt_store::note_outline::{flatten_note, rebuild_note, OutlineKind, OutlineRow};
 use vt_store::transcript_projection::{MachineBlockWrite, TranscriptProjection, UtteranceBlock};
 
 use crate::{CoreError, ZulangueCore};
@@ -73,11 +74,54 @@ pub struct FfiMachineBlockWrite {
     pub lanes: HashMap<String, String>,
 }
 
+/// 行的块类型。与 `vt_store::note_outline::OutlineKind` 一一对应。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FfiOutlineKind {
+    Paragraph,
+    Heading1,
+    Heading2,
+    Heading3,
+    Quote,
+    Task,
+    Divider,
+}
+
+impl From<FfiOutlineKind> for OutlineKind {
+    fn from(value: FfiOutlineKind) -> Self {
+        match value {
+            FfiOutlineKind::Paragraph => Self::Paragraph,
+            FfiOutlineKind::Heading1 => Self::Heading1,
+            FfiOutlineKind::Heading2 => Self::Heading2,
+            FfiOutlineKind::Heading3 => Self::Heading3,
+            FfiOutlineKind::Quote => Self::Quote,
+            FfiOutlineKind::Task => Self::Task,
+            FfiOutlineKind::Divider => Self::Divider,
+        }
+    }
+}
+
+impl From<OutlineKind> for FfiOutlineKind {
+    fn from(value: OutlineKind) -> Self {
+        match value {
+            OutlineKind::Paragraph => Self::Paragraph,
+            OutlineKind::Heading1 => Self::Heading1,
+            OutlineKind::Heading2 => Self::Heading2,
+            OutlineKind::Heading3 => Self::Heading3,
+            OutlineKind::Quote => Self::Quote,
+            OutlineKind::Task => Self::Task,
+            OutlineKind::Divider => Self::Divider,
+        }
+    }
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiOutlineRow {
     pub id: String,
     pub depth: u32,
     pub text: String,
+    pub kind: FfiOutlineKind,
+    /// 只对任务块有意义。
+    pub checked: bool,
 }
 
 /// 一次撤销/重做动词的结果快照。
@@ -302,6 +346,8 @@ impl ZulangueCore {
                     id: row.id,
                     depth: row.depth as u32,
                     text: row.text,
+                    kind: row.kind.into(),
+                    checked: row.checked,
                 })
                 .collect())
         })
@@ -323,6 +369,8 @@ impl ZulangueCore {
                     id: row.id.clone(),
                     depth: row.depth as usize,
                     text: row.text.clone(),
+                    kind: row.kind.into(),
+                    checked: row.checked,
                 })
                 .collect();
 
@@ -532,6 +580,9 @@ impl ZulangueCore {
                 id: uuid::Uuid::new_v4().to_string(),
                 depth: 0,
                 text: line.to_string(),
+                // 第 1 纪元只有纯文本,没有块类型可迁移。
+                kind: OutlineKind::Paragraph,
+                checked: false,
             })
             .collect();
 
@@ -625,7 +676,13 @@ impl ZulangueCore {
     }
 }
 
-/// 重放保真:既有节点 `$` 里 id 之外的键按 id 拷回重建的树。
+/// 大纲行自己携带、每次重放都重写的 `$` 键。留存的旧元数据不得覆盖
+/// 它们——否则「把段落改成标题」这类手势会被上一版的 `$.kind` 立刻
+/// 冲回去。id 恒定,kind/checked 以行为准(段落/未勾选时不写键,
+/// 留存侧也必须跟着消失,所以这几个键从 saved 里整体剔除)。
+const ROW_OWNED_META_KEYS: [&str; 3] = ["id", "kind", "checked"];
+
+/// 重放保真:既有节点 `$` 里行不携带的键按 id 拷回重建的树。
 fn preserve_node_metadata(current_root: &Value, rebuilt_root: &mut Value) {
     let mut metadata_by_id: HashMap<String, Value> = HashMap::new();
     collect_metadata(current_root, &mut metadata_by_id);
@@ -635,8 +692,16 @@ fn preserve_node_metadata(current_root: &Value, rebuilt_root: &mut Value) {
 fn collect_metadata(node: &Value, sink: &mut HashMap<String, Value>) {
     if let Some(meta) = node.get("$") {
         if let Some(id) = meta.get("id").and_then(Value::as_str) {
-            if meta.as_object().is_some_and(|m| m.len() > 1) {
-                sink.insert(id.to_string(), meta.clone());
+            // 只留行不携带的键;全是行携带键时无须留存。
+            let preserved: serde_json::Map<String, serde_json::Value> = meta
+                .as_object()
+                .into_iter()
+                .flatten()
+                .filter(|(key, _)| !ROW_OWNED_META_KEYS.contains(&key.as_str()))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            if !preserved.is_empty() {
+                sink.insert(id.to_string(), Value::Object(preserved));
             }
         }
     }
@@ -655,9 +720,11 @@ fn restore_metadata(node: &mut Value, metadata_by_id: &HashMap<String, Value>) {
         .map(|s| s.to_string());
     if let Some(id) = id {
         if let Some(saved) = metadata_by_id.get(&id) {
-            let mut merged = saved.clone();
-            merged["id"] = json!(id);
-            node["$"] = merged;
+            if let (Some(meta), Some(saved_map)) = (node["$"].as_object_mut(), saved.as_object()) {
+                for (key, value) in saved_map {
+                    meta.insert(key.clone(), value.clone());
+                }
+            }
         }
     }
     if let Some(children) = node.get_mut("children").and_then(Value::as_array_mut) {
@@ -670,6 +737,7 @@ fn restore_metadata(node: &mut Value, metadata_by_id: &HashMap<String, Value>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use tempfile::TempDir;
 
     fn core() -> (TempDir, ZulangueCore) {
@@ -749,21 +817,12 @@ mod tests {
         core.block_document_open("n1".into(), FfiDocumentKind::Note)
             .unwrap();
         let rows = vec![
+            outline_row("a", "一"),
             FfiOutlineRow {
-                id: "a".into(),
-                depth: 0,
-                text: "一".into(),
-            },
-            FfiOutlineRow {
-                id: "a1".into(),
                 depth: 1,
-                text: "一之一".into(),
+                ..outline_row("a1", "一之一")
             },
-            FfiOutlineRow {
-                id: "b".into(),
-                depth: 0,
-                text: "二".into(),
-            },
+            outline_row("b", "二"),
         ];
         core.note_apply_outline("n1".into(), rows.clone()).unwrap();
         let read_back = core.note_outline_rows("n1".into()).unwrap();
@@ -777,6 +836,8 @@ mod tests {
             id: id.into(),
             depth: 0,
             text: text.into(),
+            kind: FfiOutlineKind::Paragraph,
+            checked: false,
         }
     }
 
@@ -1013,15 +1074,8 @@ mod tests {
         let (_dir, core) = core();
         core.block_document_open("n1".into(), FfiDocumentKind::Note)
             .unwrap();
-        core.note_apply_outline(
-            "n1".into(),
-            vec![FfiOutlineRow {
-                id: "a".into(),
-                depth: 0,
-                text: "一".into(),
-            }],
-        )
-        .unwrap();
+        core.note_apply_outline("n1".into(), vec![outline_row("a", "一")])
+            .unwrap();
 
         // 直接往节点 $ 里塞一个未来的元数据键(模拟创建时间)。
         {
@@ -1037,15 +1091,8 @@ mod tests {
         }
 
         // 重放一次纯文本编辑:元数据必须原样保留。
-        core.note_apply_outline(
-            "n1".into(),
-            vec![FfiOutlineRow {
-                id: "a".into(),
-                depth: 0,
-                text: "一(改)".into(),
-            }],
-        )
-        .unwrap();
+        core.note_apply_outline("n1".into(), vec![outline_row("a", "一(改)")])
+            .unwrap();
 
         let registry = core.block_documents.lock().unwrap();
         let Some(BlockDocumentHandle::Note { mirror, .. }) = registry.get("n1") else {
@@ -1057,5 +1104,47 @@ mod tests {
             json!("2026-08-07")
         );
         assert_eq!(state[NOTE_ROOT]["children"][0]["text"], json!("一(改)"));
+    }
+
+    #[test]
+    fn kind_changes_win_over_preserved_metadata() {
+        let (_dir, core) = core();
+        core.block_document_open("n1".into(), FfiDocumentKind::Note)
+            .unwrap();
+        // 第一版:标题 + 勾选的任务。
+        core.note_apply_outline(
+            "n1".into(),
+            vec![
+                FfiOutlineRow {
+                    kind: FfiOutlineKind::Heading1,
+                    ..outline_row("a", "标题")
+                },
+                FfiOutlineRow {
+                    kind: FfiOutlineKind::Task,
+                    checked: true,
+                    ..outline_row("b", "待办")
+                },
+            ],
+        )
+        .unwrap();
+
+        // 第二版:标题降级回段落,任务取消勾选。留存的旧 $.kind/$.checked
+        // 不得把这次改动冲回去。
+        core.note_apply_outline(
+            "n1".into(),
+            vec![
+                outline_row("a", "标题"),
+                FfiOutlineRow {
+                    kind: FfiOutlineKind::Task,
+                    ..outline_row("b", "待办")
+                },
+            ],
+        )
+        .unwrap();
+
+        let read_back = core.note_outline_rows("n1".into()).unwrap();
+        assert_eq!(read_back[0].kind, FfiOutlineKind::Paragraph);
+        assert_eq!(read_back[1].kind, FfiOutlineKind::Task);
+        assert!(!read_back[1].checked);
     }
 }

@@ -151,6 +151,65 @@ final class BlockNoteStore: ObservableObject {
         apply(next)
     }
 
+    /// 改块类型(右键菜单 / Markdown 手势)。类型是节点级标量,不参与
+    /// 文本 CRDT —— 与文本改动分开成一次手势,便于撤销时各归各。
+    func setKind(rowId: String, kind: FfiOutlineKind) {
+        guard let index = rows.firstIndex(where: { $0.id == rowId }),
+              rows[index].kind != kind
+        else { return }
+        var next = rows
+        next[index].kind = kind
+        // 勾选态只属于任务块。转出去就清掉,免得转回来时旧勾诈尸。
+        if kind != .task {
+            next[index].checked = false
+        }
+        apply(next)
+    }
+
+    /// 勾/取消勾任务块。非任务块 no-op。
+    func toggleChecked(rowId: String) {
+        guard let index = rows.firstIndex(where: { $0.id == rowId }),
+              rows[index].kind == .task
+        else { return }
+        var next = rows
+        next[index].checked.toggle()
+        apply(next)
+    }
+
+    /// Markdown 前缀手势的落地:一次 apply 同时改类型、勾选与文本 ——
+    /// 分成两次会让撤销要按两下才回到用户敲下记号之前。
+    func applyMarkdownPrefix(
+        rowId: String,
+        kind: FfiOutlineKind,
+        checked: Bool,
+        text: String
+    ) {
+        guard let index = rows.firstIndex(where: { $0.id == rowId }) else { return }
+        var next = rows
+        next[index].kind = kind
+        next[index].checked = checked
+        next[index].text = text
+        apply(next)
+    }
+
+    /// 行首 Markdown 记号 + 空格 → 块类型。返回 (类型, 勾选, 吃掉记号后
+    /// 的余文);不匹配返回 nil。长记号排在短记号前,`## ` 不会被 `# ` 抢走。
+    static func markdownPrefix(_ text: String) -> (kind: FfiOutlineKind, checked: Bool, rest: String)? {
+        let rules: [(prefix: String, kind: FfiOutlineKind, checked: Bool)] = [
+            ("### ", .heading3, false),
+            ("## ", .heading2, false),
+            ("# ", .heading1, false),
+            ("- [x] ", .task, true),
+            ("- [ ] ", .task, false),
+            ("--- ", .divider, false),
+            ("> ", .quote, false),
+        ]
+        for rule in rules where text.hasPrefix(rule.prefix) {
+            return (rule.kind, rule.checked, String(text.dropFirst(rule.prefix.count)))
+        }
+        return nil
+    }
+
     /// 在 rowId 之后插入新行(nil = 追加到末尾)。深度继承锚点行。
     /// 返回新行 id 供 UI 移焦点;apply 失败时返回 nil,焦点留在原行。
     @discardableResult
@@ -165,9 +224,25 @@ final class BlockNoteStore: ObservableObject {
             insertIndex = rows.count
             depth = rows.last?.depth ?? 0
         }
-        let newRow = Self.makeRow(depth: depth)
+        let anchorRow: FfiOutlineRow?
+        if let rowId {
+            anchorRow = rows.first(where: { $0.id == rowId })
+        } else {
+            anchorRow = rows.last
+        }
+        let anchorKind: FfiOutlineKind = anchorRow?.kind ?? .paragraph
+        let newRow = Self.makeRow(depth: depth, kind: Self.continuationKind(after: anchorKind))
         next.insert(newRow, at: insertIndex)
         return apply(next) ? newRow.id : nil
+    }
+
+    /// Return 之后新行的类型:清单类(任务、引用)顺着写下去,其余一律
+    /// 回到段落 —— 标题下面接着写的是正文,不是又一个标题。
+    static func continuationKind(after kind: FfiOutlineKind) -> FfiOutlineKind {
+        switch kind {
+        case .task, .quote: kind
+        default: .paragraph
+        }
     }
 
     /// v1 简单删除:只删这一行,子行不收养、不随删。删空后补一行空 row,
@@ -329,7 +404,7 @@ final class BlockNoteStore: ObservableObject {
         }
     }
 
-    private static func makeRow(depth: UInt32) -> FfiOutlineRow {
-        FfiOutlineRow(id: UUID().uuidString, depth: depth, text: "")
+    private static func makeRow(depth: UInt32, kind: FfiOutlineKind = .paragraph) -> FfiOutlineRow {
+        FfiOutlineRow(id: UUID().uuidString, depth: depth, text: "", kind: kind, checked: false)
     }
 }

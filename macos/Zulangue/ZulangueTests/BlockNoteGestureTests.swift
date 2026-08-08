@@ -11,7 +11,7 @@ import XCTest
 @MainActor
 final class BlockNoteGestureTests: XCTestCase {
     private func row(_ id: String, _ depth: UInt32, _ text: String = "") -> FfiOutlineRow {
-        FfiOutlineRow(id: id, depth: depth, text: text)
+        FfiOutlineRow(id: id, depth: depth, text: text, kind: .paragraph, checked: false)
     }
 
     // MARK: - 并块(行首/空行退格)
@@ -90,6 +90,49 @@ final class BlockNoteGestureTests: XCTestCase {
         XCTAssertEqual(next.map(\.id), ["a2", "a3", "r", "r1"])
         XCTAssertEqual(next[0].depth, 0, "首位没有上一行,基准收到 0")
         XCTAssertEqual(next[1].depth, 1, "子行随组平移,相对结构不压平")
+    }
+
+    // MARK: - 块类型手势
+
+    func testMarkdownPrefixesTurnIntoBlockKindsAndEatTheMarker() {
+        let cases: [(String, FfiOutlineKind, Bool, String)] = [
+            ("# 标题", .heading1, false, "标题"),
+            ("## 标题", .heading2, false, "标题"),
+            ("### 标题", .heading3, false, "标题"),
+            ("> 引文", .quote, false, "引文"),
+            ("- [ ] 待办", .task, false, "待办"),
+            ("- [x] 已办", .task, true, "已办"),
+            ("--- ", .divider, false, ""),
+        ]
+        for (input, kind, checked, rest) in cases {
+            let hit = BlockNoteStore.markdownPrefix(input)
+            XCTAssertEqual(hit?.kind, kind, "\(input) 应变成 \(kind)")
+            XCTAssertEqual(hit?.checked, checked)
+            XCTAssertEqual(hit?.rest, rest, "记号要被吃掉,余文原样留下")
+        }
+    }
+
+    func testLongerMarkersWinOverShorterOnes() {
+        // `## ` 先匹配二级标题;短记号排在后面才不会把它抢走。
+        XCTAssertEqual(BlockNoteStore.markdownPrefix("## x")?.kind, .heading2)
+        XCTAssertEqual(BlockNoteStore.markdownPrefix("### x")?.kind, .heading3)
+    }
+
+    func testNonPrefixTextIsLeftAlone() {
+        // 没有空格就不是手势 —— 用户可能只是在写「#1 号」。
+        XCTAssertNil(BlockNoteStore.markdownPrefix("#标题"))
+        XCTAssertNil(BlockNoteStore.markdownPrefix("普通一行"))
+        XCTAssertNil(BlockNoteStore.markdownPrefix("行中间有 # 号"))
+    }
+
+    func testReturnContinuesListKindsButNotHeadings() {
+        // 清单顺着写下去,标题下面接的是正文。
+        XCTAssertEqual(BlockNoteStore.continuationKind(after: .task), .task)
+        XCTAssertEqual(BlockNoteStore.continuationKind(after: .quote), .quote)
+        XCTAssertEqual(BlockNoteStore.continuationKind(after: .heading1), .paragraph)
+        XCTAssertEqual(BlockNoteStore.continuationKind(after: .heading3), .paragraph)
+        XCTAssertEqual(BlockNoteStore.continuationKind(after: .divider), .paragraph)
+        XCTAssertEqual(BlockNoteStore.continuationKind(after: .paragraph), .paragraph)
     }
 
     func testMoveKeepsDepthWhenDestinationAllowsIt() {

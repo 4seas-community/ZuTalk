@@ -571,6 +571,16 @@
 "editor.outline.delete_row" = "Eliminar fila";
 "editor.outline.undo" = "Deshacer";
 "editor.outline.redo" = "Rehacer";
+"editor.outline.turn_into" = "Convertir en";
+"editor.outline.kind.paragraph" = "Texto";
+"editor.outline.kind.heading1" = "Título 1";
+"editor.outline.kind.heading2" = "Título 2";
+"editor.outline.kind.heading3" = "Título 3";
+"editor.outline.kind.quote" = "Cita";
+"editor.outline.kind.task" = "Tarea";
+"editor.outline.kind.divider" = "Separador";
+"editor.outline.task.done" = "Hecha";
+"editor.outline.task.todo" = "Sin hacer";
 "editor.tasks.title" = "Tareas";
 "editor.tasks.count_format" = "%lld tareas en segundo plano";
 "editor.tasks.refresh" = "Actualizar tareas";
