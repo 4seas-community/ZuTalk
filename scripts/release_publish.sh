@@ -132,6 +132,12 @@ if [[ "$BASE_COUNT" -eq 0 ]]; then
   echo "· 这一版没有基线,所有人走全量下载"
 fi
 
+# 已经发过就别等镜像了 —— 重跑一次的人最不该做的事,是先等上十分钟
+# 再被告知这一版早就发出去了。
+if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+  fail "release $GITHUB_REF_NAME already exists; delete it or cut a new version"
+fi
+
 # ── 5. 等镜像:GitHub 上必须已经有同一个提交的同名标签 ────────────────
 #
 # 主库在 Gitea,GitHub 是镜像。抢在同步之前发布的话,GitHub 会拿默认
@@ -169,10 +175,6 @@ done
 [[ "$REMOTE_COMMIT" == "$LOCAL_COMMIT" ]] \
   || fail "mirrored tag points at ${REMOTE_COMMIT:0:12}, not the signed ${LOCAL_COMMIT:0:12}"
 echo "✓ mirrored tag matches the signed tag"
-
-if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-  fail "release $GITHUB_REF_NAME already exists; delete it or cut a new version"
-fi
 
 # ── 6. 发布 ─────────────────────────────────────────────────────────
 step "发布 $GITHUB_REF_NAME"
