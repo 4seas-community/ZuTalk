@@ -902,6 +902,9 @@
 "share.received.title" = "Transcriptions partagées";
 "share.received.untitled" = "(pas encore de texte)";
 "share.received.blocks" = "%lld blocs";
+"share.received.delete" = "Supprimer de ce Mac";
+"share.received.delete.confirm_title" = "Supprimer cette transcription reçue ?";
+"share.received.delete.confirm_body" = "Supprime uniquement la copie sur ce Mac. Les copies des autres ne sont pas affectées.";
 "shared.editor.title" = "Transcription partagée";
 "shared.editor.read_only" = "Salle en lecture seule";
 "shared.editor.add_annotation" = "Ajouter une note";

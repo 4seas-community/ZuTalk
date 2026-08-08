@@ -63,6 +63,15 @@ impl SharedSessionState {
     pub(crate) fn clear_room_state(&self) {
         self.known.lock().unwrap().clear();
     }
+
+    /// 把一个 session 的全部进程内痕迹清掉。删除收件时用 —— 台账即目录,
+    /// 内存里的投影、影子、发布水位、入册记录都要一起走。
+    pub(crate) fn remove(&self, session_id: &str) {
+        self.open.lock().unwrap().remove(session_id);
+        self.shadows.lock().unwrap().remove(session_id);
+        self.published.lock().unwrap().remove(session_id);
+        self.known.lock().unwrap().remove(session_id);
+    }
 }
 
 pub(crate) fn shared_documents_dir(data_dir: &Path) -> PathBuf {
@@ -527,6 +536,9 @@ pub struct FfiSharedSessionInfo {
     /// 首个句块的正文,给列表当标题;空文档为空串。
     pub preview: String,
     pub block_count: u32,
+    /// 收到(最后合入)的时刻,Unix 秒。台账即目录 —— 这就是文件 mtime,
+    /// 与 share-p2p.md §11「收到时间取文件时间」一致。拿不到时为 0。
+    pub received_at_epoch: i64,
 }
 
 #[uniffi::export]
@@ -552,6 +564,13 @@ impl ZulangueCore {
                 continue;
             };
             let blocks = projection.refresh();
+            let received_at_epoch = entry
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|elapsed| elapsed.as_secs() as i64)
+                .unwrap_or(0);
             sessions.push(FfiSharedSessionInfo {
                 session_id: session_id.to_string(),
                 preview: blocks
@@ -560,10 +579,29 @@ impl ZulangueCore {
                     .map(|block| block.text.chars().take(80).collect())
                     .unwrap_or_default(),
                 block_count: blocks.len() as u32,
+                received_at_epoch,
             });
         }
-        sessions.sort_by(|a, b| a.session_id.cmp(&b.session_id));
+        // 新收到的在最上面;同一秒内落盘的按 id 稳定排序。
+        sessions.sort_by(|a, b| {
+            b.received_at_epoch
+                .cmp(&a.received_at_epoch)
+                .then_with(|| a.session_id.cmp(&b.session_id))
+        });
         sessions
+    }
+
+    /// 删除一份收到的共享转录稿。**只删本机副本** —— 台账即目录,文件没了
+    /// 记录就没了;别人手里的副本不受影响,这与停止共享同一条真话。
+    pub fn delete_shared_session(&self, session_id: String) -> Result<(), CoreError> {
+        let path = shared_document_path(&self.data_dir, &session_id)?;
+        // 先卸内存与 bridge,再删文件 —— 反过来,一个后台落盘会把文件写回来。
+        self.shared_sessions.remove(&session_id);
+        self.editor_bridge.evict(&session_id);
+        if path.exists() {
+            fs::remove_file(&path).map_err(|e| internal(format!("删除共享文档: {e}")))?;
+        }
+        Ok(())
     }
 
     /// 一份共享 session 的句块(文档序)。

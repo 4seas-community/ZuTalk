@@ -902,6 +902,9 @@
 "share.received.title" = "Shared transcripts";
 "share.received.untitled" = "(no text yet)";
 "share.received.blocks" = "%lld blocks";
+"share.received.delete" = "Delete from this Mac";
+"share.received.delete.confirm_title" = "Delete this received transcript?";
+"share.received.delete.confirm_body" = "Removes only the copy on this Mac. Copies other people hold are not affected.";
 "shared.editor.title" = "Shared transcript";
 "shared.editor.read_only" = "Read-only room";
 "shared.editor.add_annotation" = "Add note";

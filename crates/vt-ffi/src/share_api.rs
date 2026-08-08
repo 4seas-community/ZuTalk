@@ -221,6 +221,10 @@ pub struct FfiShareState {
     /// 主持人已明确道别(仅观看端有意义)。界面据此显示「这场已结束,
     /// 收到的内容还在」,而不是永远停在「接收中」的最后一帧。
     pub host_left: bool,
+    /// 当前房间按单次录音共享时,那一场的 session id。收件列表用它判定
+    /// **哪一条**受房间写入策略约束 —— 只读约束只属于当前房间的那份文档,
+    /// 不该殃及散场后留下的其它收件。Notebook 范围或未共享时为 `None`。
+    pub scope_session_id: Option<String>,
     pub lines: Vec<FfiSharedCaptionLine>,
 }
 
@@ -776,6 +780,7 @@ impl ZulangueCore {
                 applied_revision: None,
                 broadcast_revision: None,
                 host_left: false,
+                scope_session_id: None,
                 lines: Vec::new(),
             };
         };
@@ -837,6 +842,10 @@ impl ZulangueCore {
             applied_revision,
             broadcast_revision: runtime.last_broadcast_revision,
             host_left,
+            scope_session_id: match runtime.roster_scope() {
+                Some(ScopeId::Session { session_id }) => Some(session_id),
+                _ => None,
+            },
             lines,
         }
     }

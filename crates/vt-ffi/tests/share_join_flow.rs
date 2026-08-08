@@ -198,6 +198,34 @@ fn the_shared_inbox_notebook_is_created_once() {
     assert_eq!(first.title, "分享");
 }
 
+/// 收到的转录稿能删,而且只删本机副本。
+///
+/// 对一个隐私敏感的产品,「收到了但删不掉」是个洞:台账即目录,
+/// 删除 = 文件消失 + 内存痕迹清空,幂等。
+#[test]
+fn a_received_transcript_can_be_deleted_locally() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(&dir);
+
+    // 插一条批注就会物化这份共享文档(ensure → 动词 → 落盘)。
+    core.shared_session_insert_annotation("sess-del".into(), 0, "note-1".into(), "记一笔".into())
+        .unwrap();
+    let listed = core.list_shared_sessions();
+    assert_eq!(listed.len(), 1);
+    assert!(
+        listed[0].received_at_epoch > 0,
+        "收到时间取文件 mtime,不该是 0"
+    );
+
+    core.delete_shared_session("sess-del".into()).unwrap();
+    assert!(
+        core.list_shared_sessions().is_empty(),
+        "台账即目录:文件没了记录就没了"
+    );
+    // 幂等:重复删除不抛错。
+    core.delete_shared_session("sess-del".into()).unwrap();
+}
+
 /// 坏掉的分享码要抛错 —— 界面靠这个错误才有话可说。
 #[test]
 fn a_damaged_code_reports_an_error_instead_of_doing_nothing() {

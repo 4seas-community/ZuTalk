@@ -1226,6 +1226,12 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func stopSharing() throws
 
     /**
+     * 删除一份收到的共享转录稿。**只删本机副本** —— 台账即目录,文件没了
+     * 记录就没了;别人手里的副本不受影响,这与停止共享同一条真话。
+     */
+    func deleteSharedSession(sessionId: String) throws
+
+    /**
      * shared/ 目录台账:收到过与共享过的全部 session 文档。
      */
     func listSharedSessions()  -> [FfiSharedSessionInfo]
@@ -2753,6 +2759,18 @@ open func startSharing(notebookId: String?, sessionId: String?, hostOnly: Bool)t
 open func stopSharing()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_stop_sharing(
             self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+    /**
+     * 删除一份收到的共享转录稿。**只删本机副本** —— 台账即目录,文件没了
+     * 记录就没了;别人手里的副本不受影响,这与停止共享同一条真话。
+     */
+open func deleteSharedSession(sessionId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_delete_shared_session(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
     )
 }
 }
@@ -5592,6 +5610,12 @@ public struct FfiShareState: Equatable, Hashable {
      * 收到的内容还在」,而不是永远停在「接收中」的最后一帧。
      */
     public var hostLeft: Bool
+    /**
+     * 当前房间按单次录音共享时,那一场的 session id。收件列表用它判定
+     * **哪一条**受房间写入策略约束 —— 只读约束只属于当前房间的那份文档,
+     * 不该殃及散场后留下的其它收件。Notebook 范围或未共享时为 `None`。
+     */
+    public var scopeSessionId: String?
     public var lines: [FfiSharedCaptionLine]
 
     // Default memberwise initializers are never public by default, so we
@@ -5620,7 +5644,12 @@ public struct FfiShareState: Equatable, Hashable {
         /**
          * 主持人已明确道别(仅观看端有意义)。界面据此显示「这场已结束,
          * 收到的内容还在」,而不是永远停在「接收中」的最后一帧。
-         */hostLeft: Bool, lines: [FfiSharedCaptionLine]) {
+         */hostLeft: Bool,
+        /**
+         * 当前房间按单次录音共享时,那一场的 session id。收件列表用它判定
+         * **哪一条**受房间写入策略约束 —— 只读约束只属于当前房间的那份文档,
+         * 不该殃及散场后留下的其它收件。Notebook 范围或未共享时为 `None`。
+         */scopeSessionId: String?, lines: [FfiSharedCaptionLine]) {
         self.isSharing = isSharing
         self.isViewing = isViewing
         self.hostOnly = hostOnly
@@ -5629,6 +5658,7 @@ public struct FfiShareState: Equatable, Hashable {
         self.appliedRevision = appliedRevision
         self.broadcastRevision = broadcastRevision
         self.hostLeft = hostLeft
+        self.scopeSessionId = scopeSessionId
         self.lines = lines
     }
 
@@ -5656,6 +5686,7 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
                 appliedRevision: FfiConverterOptionUInt64.read(from: &buf),
                 broadcastRevision: FfiConverterOptionUInt64.read(from: &buf),
                 hostLeft: FfiConverterBool.read(from: &buf),
+                scopeSessionId: FfiConverterOptionString.read(from: &buf),
                 lines: FfiConverterSequenceTypeFfiSharedCaptionLine.read(from: &buf)
         )
     }
@@ -5669,6 +5700,7 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
         FfiConverterOptionUInt64.write(value.appliedRevision, into: &buf)
         FfiConverterOptionUInt64.write(value.broadcastRevision, into: &buf)
         FfiConverterBool.write(value.hostLeft, into: &buf)
+        FfiConverterOptionString.write(value.scopeSessionId, into: &buf)
         FfiConverterSequenceTypeFfiSharedCaptionLine.write(value.lines, into: &buf)
     }
 }
@@ -5847,16 +5879,26 @@ public struct FfiSharedSessionInfo: Equatable, Hashable {
      */
     public var preview: String
     public var blockCount: UInt32
+    /**
+     * 收到(最后合入)的时刻,Unix 秒。台账即目录 —— 这就是文件 mtime,
+     * 与 share-p2p.md §11「收到时间取文件时间」一致。拿不到时为 0。
+     */
+    public var receivedAtEpoch: Int64
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(sessionId: String,
         /**
          * 首个句块的正文,给列表当标题;空文档为空串。
-         */preview: String, blockCount: UInt32) {
+         */preview: String, blockCount: UInt32,
+        /**
+         * 收到(最后合入)的时刻,Unix 秒。台账即目录 —— 这就是文件 mtime,
+         * 与 share-p2p.md §11「收到时间取文件时间」一致。拿不到时为 0。
+         */receivedAtEpoch: Int64) {
         self.sessionId = sessionId
         self.preview = preview
         self.blockCount = blockCount
+        self.receivedAtEpoch = receivedAtEpoch
     }
 
 
@@ -5877,7 +5919,8 @@ public struct FfiConverterTypeFfiSharedSessionInfo: FfiConverterRustBuffer {
             try FfiSharedSessionInfo(
                 sessionId: FfiConverterString.read(from: &buf),
                 preview: FfiConverterString.read(from: &buf),
-                blockCount: FfiConverterUInt32.read(from: &buf)
+                blockCount: FfiConverterUInt32.read(from: &buf),
+                receivedAtEpoch: FfiConverterInt64.read(from: &buf)
         )
     }
 
@@ -5885,6 +5928,7 @@ public struct FfiConverterTypeFfiSharedSessionInfo: FfiConverterRustBuffer {
         FfiConverterString.write(value.sessionId, into: &buf)
         FfiConverterString.write(value.preview, into: &buf)
         FfiConverterUInt32.write(value.blockCount, into: &buf)
+        FfiConverterInt64.write(value.receivedAtEpoch, into: &buf)
     }
 }
 
@@ -9352,6 +9396,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_stop_sharing() != 45792) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_delete_shared_session() != 44432) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_list_shared_sessions() != 7648) {

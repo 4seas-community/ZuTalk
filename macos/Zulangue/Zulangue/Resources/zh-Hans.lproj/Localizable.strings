@@ -902,6 +902,9 @@
 "share.received.title" = "共享的转录稿";
 "share.received.untitled" = "（暂无文本）";
 "share.received.blocks" = "%lld 个句块";
+"share.received.delete" = "从这台 Mac 删除";
+"share.received.delete.confirm_title" = "删除这份收到的转录稿？";
+"share.received.delete.confirm_body" = "只删除这台 Mac 上的副本。别人手里的副本不受影响。";
 "shared.editor.title" = "共享转录稿";
 "shared.editor.read_only" = "只读房间";
 "shared.editor.add_annotation" = "加批注";

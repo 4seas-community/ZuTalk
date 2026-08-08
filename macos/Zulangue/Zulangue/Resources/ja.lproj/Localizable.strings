@@ -902,6 +902,9 @@
 "share.received.title" = "共有された文字起こし";
 "share.received.untitled" = "（まだテキストなし）";
 "share.received.blocks" = "%lld ブロック";
+"share.received.delete" = "この Mac から削除";
+"share.received.delete.confirm_title" = "受け取った文字起こしを削除しますか？";
+"share.received.delete.confirm_body" = "この Mac のコピーだけを削除します。ほかの人が持つコピーには影響しません。";
 "shared.editor.title" = "共有文字起こし";
 "shared.editor.read_only" = "読み取り専用ルーム";
 "shared.editor.add_annotation" = "メモを追加";

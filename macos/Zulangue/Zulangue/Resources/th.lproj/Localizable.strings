@@ -902,6 +902,9 @@
 "share.received.title" = "ทรานสคริปต์ที่แชร์";
 "share.received.untitled" = "(ยังไม่มีข้อความ)";
 "share.received.blocks" = "%lld บล็อก";
+"share.received.delete" = "ลบออกจากเครื่องนี้";
+"share.received.delete.confirm_title" = "ลบบทถอดเสียงที่ได้รับนี้หรือไม่";
+"share.received.delete.confirm_body" = "ลบเฉพาะสำเนาในเครื่อง Mac นี้ สำเนาของคนอื่นไม่ได้รับผลกระทบ";
 "shared.editor.title" = "ทรานสคริปต์ที่แชร์";
 "shared.editor.read_only" = "ห้องอ่านอย่างเดียว";
 "shared.editor.add_annotation" = "เพิ่มบันทึกย่อ";

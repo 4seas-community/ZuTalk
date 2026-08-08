@@ -364,7 +364,8 @@ struct SharePage: View {
         }
     }
 
-    /// 收到与共享过的转录稿(台账即 shared/ 目录)。点开即读,权限内可订正。
+    /// 收到与共享过的转录稿(台账即 shared/ 目录)。点开即读,权限内可订正,
+    /// 右键可删本机副本。
     private var sharedSessionsSection: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             Text(String(localized: "share.received.title"))
@@ -377,32 +378,74 @@ struct SharePage: View {
                     HStack(spacing: Spacing.sm) {
                         Image(systemName: "doc.text")
                             .foregroundColor(.textSecondary)
-                        Text(info.preview.isEmpty
-                             ? String(localized: "share.received.untitled")
-                             : info.preview)
-                            .font(.bodySM)
-                            .foregroundColor(.textPrimary)
-                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(info.preview.isEmpty
+                                 ? String(localized: "share.received.untitled")
+                                 : info.preview)
+                                .font(.bodySM)
+                                .foregroundColor(.textPrimary)
+                                .lineLimit(1)
+                            // 什么时候收的 + 有多少内容。没有时间戳,昨天收的
+                            // 和三周前收的在列表里没法区分。
+                            Text(Self.receivedDetail(info))
+                                .font(.captionMedium)
+                                .foregroundColor(.textTertiary)
+                        }
                         Spacer()
-                        Text(String(
-                            format: String(localized: "share.received.blocks"),
-                            Int64(info.blockCount)
-                        ))
-                        .font(.captionMedium)
-                        .foregroundColor(.textTertiary)
+                        // 只有当前房间约束的那一条挂锁 —— 只读是房间的属性,
+                        // 不是收件的属性,散场后的收件都是本机批注。
+                        if viewModel.canEditSharedSession(info.sessionId) == false {
+                            Image(systemName: "lock")
+                                .font(.system(size: 10))
+                                .foregroundColor(.textTertiary)
+                        }
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    Button(role: .destructive) {
+                        viewModel.pendingDeleteSession = info
+                    } label: {
+                        Text(String(localized: "share.received.delete"))
+                    }
+                }
             }
         }
         .accessibilityIdentifier("share.received")
         .sheet(item: $viewModel.openSharedSession) { route in
             SharedSessionView(
                 sessionId: route.id,
-                editable: viewModel.canEditSharedSessions
+                editable: viewModel.canEditSharedSession(route.id)
             )
         }
+        .confirmationDialog(
+            String(localized: "share.received.delete.confirm_title"),
+            isPresented: Binding(
+                get: { viewModel.pendingDeleteSession != nil },
+                set: { if !$0 { viewModel.pendingDeleteSession = nil } }
+            ),
+            presenting: viewModel.pendingDeleteSession
+        ) { info in
+            Button(String(localized: "share.received.delete"), role: .destructive) {
+                viewModel.deleteSharedSession(info.sessionId)
+            }
+            Button(String(localized: "share.cancel"), role: .cancel) {}
+        } message: { _ in
+            Text(String(localized: "share.received.delete.confirm_body"))
+        }
+    }
+
+    /// 「收到时间 · N 块」。文件时间拿不到时只剩块数。
+    private static func receivedDetail(_ info: FfiSharedSessionInfo) -> String {
+        let blocks = String(
+            format: String(localized: "share.received.blocks"),
+            Int64(info.blockCount)
+        )
+        guard info.receivedAtEpoch > 0 else { return blocks }
+        let stamp = Date(timeIntervalSince1970: TimeInterval(info.receivedAtEpoch))
+            .formatted(date: .abbreviated, time: .shortened)
+        return "\(stamp) · \(blocks)"
     }
 
     private static func sessionLabel(_ run: FfiNotebookCaptureHistoryRun) -> String {
@@ -653,6 +696,12 @@ final class ShareViewModel: ObservableObject {
     @Published private(set) var sharedSessions: [FfiSharedSessionInfo] = []
     /// 打开中的共享 session 详情(sheet)。
     @Published var openSharedSession: SharedSessionRoute?
+    /// 等确认删除的收件。确认对话框以它有无为开关。
+    @Published var pendingDeleteSession: FfiSharedSessionInfo?
+    /// 当前房间按单次录音共享时,那一场的 session id。只读约束只属于它。
+    @Published private(set) var scopeSessionId: String?
+    /// 收件 Notebook 只需要确保一次;它在核心里是幂等创建的。
+    private var ensuredInboxNotebook = false
     @Published var confirmingStart: Bool = false
     @Published var selectedNotebookID: String = "" {
         didSet { loadRecentSessions() }
@@ -879,13 +928,26 @@ final class ShareViewModel: ObservableObject {
         }
     }
 
-    /// 共享 session 可否编辑:只读房间里的观看者不行(推送会被宿主拒收,
-    /// 本地改了也是孤儿编辑);其余情况放开——房间散了以后是本机批注。
-    var canEditSharedSessions: Bool {
-        !(isSharing && !isHostRole && hostOnly)
+    /// 一条收件可否编辑。只读约束**只属于当前房间的那份文档**:只读房间里的
+    /// 观看者改它,推送会被宿主拒收,本地改了也是孤儿编辑。其它收件 ——
+    /// 散场后留下的、或与当前房间无关的 —— 都是本机批注,随便改。
+    /// 以前这是一个全局开关,进一个只读房间会把所有历史收件都锁上。
+    func canEditSharedSession(_ sessionId: String) -> Bool {
+        !(isSharing && !isHost && hostOnly && scopeSessionId == sessionId)
     }
 
-    private var isHostRole: Bool { status == .hostingWaiting || status == .hostingLive }
+    /// 删除一份收到的转录稿。只删本机副本 —— 与停止共享同一条真话,
+    /// 别人手里的不受影响。
+    func deleteSharedSession(_ sessionId: String) {
+        guard let core else { return }
+        pendingDeleteSession = nil
+        do {
+            try core.deleteSharedSession(sessionId: sessionId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        refreshState()
+    }
 
     private func refreshState() {
         guard let core else { return }
@@ -894,12 +956,20 @@ final class ShareViewModel: ObservableObject {
         isHost = state.isHost
         hostOnly = state.hostOnly
         viewerLink = state.viewerLink
+        scopeSessionId = state.scopeSessionId
         lines = state.lines
         if shareCode == nil { shareCode = core.currentShareCode() }
         joinRequests = core.pendingJoinRequests()
         members = core.roomMembers()
 
         sharedSessions = core.listSharedSessions()
+
+        // 第一次出现收件时,把「分享」收件 Notebook 立起来 —— 它是收到内容
+        // 在库里的家(share-p2p.md §11),核心里幂等,这里只确保一次。
+        if sharedSessions.isEmpty == false, ensuredInboxNotebook == false {
+            ensuredInboxNotebook = true
+            _ = try? core.sharedInboxNotebook()
+        }
 
         status = {
             if !state.isSharing { return .idle }

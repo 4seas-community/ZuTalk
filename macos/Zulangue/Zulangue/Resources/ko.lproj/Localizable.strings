@@ -902,6 +902,9 @@
 "share.received.title" = "공유된 전사본";
 "share.received.untitled" = "(아직 텍스트 없음)";
 "share.received.blocks" = "블록 %lld개";
+"share.received.delete" = "이 Mac에서 삭제";
+"share.received.delete.confirm_title" = "받은 전사본을 삭제할까요?";
+"share.received.delete.confirm_body" = "이 Mac의 사본만 삭제합니다. 다른 사람이 가진 사본에는 영향이 없습니다.";
 "shared.editor.title" = "공유 전사본";
 "shared.editor.read_only" = "읽기 전용 방";
 "shared.editor.add_annotation" = "메모 추가";
