@@ -76,6 +76,7 @@ struct SharePage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
         .onAppear { viewModel.reload() }
+        .onDisappear { viewModel.viewDisappeared() }
     }
 
     /// 两条道:我来分享 / 加入别人的。
@@ -729,6 +730,7 @@ final class ShareViewModel: ObservableObject {
         didSet { saveNicknameDebounced() }
     }
     private var nicknameSaveTask: Task<Void, Never>?
+    private var errorExpiryTask: Task<Void, Never>?
 
     /// 观看端的字幕投影靠轮询刷新。帧是 replace-in-full 的,跳帧无害,所以
     /// 「取最新状态」与「每帧回调」在观感上等价 —— 见 vt-ffi/src/share_api.rs。
@@ -736,10 +738,33 @@ final class ShareViewModel: ObservableObject {
 
     private var core: (any ZulangueCoreProtocol)? { CoreClient.shared.core }
 
+    /// 错误会过期。「They declined.」是一句回答,不是一块墓碑 —— 挂十秒够读完,
+    /// 之后自己消失,不用等下一次成功操作来冲掉它。
+    private func showError(_ message: String) {
+        errorMessage = message
+        errorExpiryTask?.cancel()
+        errorExpiryTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard Task.isCancelled == false else { return }
+            errorMessage = nil
+        }
+    }
+
+    private func clearError() {
+        errorExpiryTask?.cancel()
+        errorMessage = nil
+    }
+
+    /// 页面离场就停轮询。以前只有「停止共享」会停 —— 逛过一次分享页,
+    /// 5 Hz 的定时器(每拍还要扫一遍 shared/ 目录)就跟到 App 退出。
+    func viewDisappeared() {
+        stopPolling()
+    }
+
     func reload() {
         guard let core else {
             // 以前这里是静默 return,于是核心没就绪时整个页面毫无反应。
-            errorMessage = String(localized: "share.core_unavailable")
+            showError(String(localized: "share.core_unavailable"))
             return
         }
         shortIdentity = (try? core.shareIdentity().shortLabel) ?? "—"
@@ -758,11 +783,11 @@ final class ShareViewModel: ObservableObject {
 
     func start() {
         guard let core else {
-            errorMessage = String(localized: "share.core_unavailable")
+            showError(String(localized: "share.core_unavailable"))
             return
         }
         guard !selectedNotebookID.isEmpty else {
-            errorMessage = String(localized: "share.needs_notebook")
+            showError(String(localized: "share.needs_notebook"))
             return
         }
         do {
@@ -775,12 +800,12 @@ final class ShareViewModel: ObservableObject {
             )
             // 文档协同要在共享开始之后才接得上 —— 它靠当前房间的名册判定谁能写。
             try core.enableDocumentSync()
-            errorMessage = nil
+            clearError()
             enrollForRelayFallback()
             refreshState()
             startPollingIfNeeded()
         } catch {
-            errorMessage = error.localizedDescription
+            showError(error.localizedDescription)
         }
     }
 
@@ -801,7 +826,7 @@ final class ShareViewModel: ObservableObject {
 
     func copyShareCode() {
         guard let shareCode else {
-            errorMessage = String(localized: "share.no_code_yet")
+            showError(String(localized: "share.no_code_yet"))
             return
         }
         NSPasteboard.general.clearContents()
@@ -815,7 +840,7 @@ final class ShareViewModel: ObservableObject {
 
     func join() {
         guard let core else {
-            errorMessage = String(localized: "share.core_unavailable")
+            showError(String(localized: "share.core_unavailable"))
             return
         }
         let code = pastedCode.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -823,25 +848,29 @@ final class ShareViewModel: ObservableObject {
         do {
             try core.joinShare(code: code)
             pastedCode = ""
-            errorMessage = nil
+            clearError()
             enrollForRelayFallback()
             refreshState()
             startPollingIfNeeded()
         } catch {
             // 以前这行的结果没有任何地方显示,于是粘贴一个坏掉的分享码
-            // 看起来就是「点了没反应」。
-            errorMessage = String(localized: "share.join_failed")
+            // 看起来就是「点了没反应」。通用句给方向,底层原因跟在后面 ——
+            // 码过期、范围不符、网络不通是三种不同的下一步。
+            showError(
+                String(localized: "share.join_failed")
+                    + "\n" + error.localizedDescription
+            )
         }
     }
 
     /// 扫一遍同一网络里的 Zulangue。
     func scanNearby() {
         guard let core else {
-            errorMessage = String(localized: "share.core_unavailable")
+            showError(String(localized: "share.core_unavailable"))
             return
         }
         scanning = true
-        errorMessage = nil
+        clearError()
         // **不能在主线程上调它。** nearbyPeers 是同步的,要阻塞三秒收集 mDNS 宣告;
         // 在 @MainActor 上调用会把界面冻住三秒。
         Task.detached {
@@ -850,7 +879,7 @@ final class ShareViewModel: ObservableObject {
                 self.scanning = false
                 switch result {
                 case .success(let peers): self.nearby = peers
-                case .failure(let error): self.errorMessage = error.localizedDescription
+                case .failure(let error): self.showError(error.localizedDescription)
                 }
             }
         }
@@ -859,7 +888,7 @@ final class ShareViewModel: ObservableObject {
     /// 向同一网络里的某台机器请求加入。批准后自动进房。
     func askToJoin(_ endpointID: String) {
         guard let core else { return }
-        errorMessage = nil
+        clearError()
         asking = true
         // **绝不能在主线程上调它。** 它会一直等到对方点批准或超时 —— 最长一分钟。
         // 在 @MainActor 上调用会让整个 App 冻住那么久。
@@ -873,13 +902,13 @@ final class ShareViewModel: ObservableObject {
                     self.enrollForRelayFallback()
                     self.reload()
                 case .success(.notSharing):
-                    self.errorMessage = String(localized: "share.nearby.not_sharing")
+                    self.showError(String(localized: "share.nearby.not_sharing"))
                 case .success(.declined):
-                    self.errorMessage = String(localized: "share.nearby.declined")
+                    self.showError(String(localized: "share.nearby.declined"))
                 case .success(.timedOut):
-                    self.errorMessage = String(localized: "share.nearby.timed_out")
+                    self.showError(String(localized: "share.nearby.timed_out"))
                 case .failure(let error):
-                    self.errorMessage = error.localizedDescription
+                    self.showError(error.localizedDescription)
                 }
             }
         }
@@ -902,7 +931,7 @@ final class ShareViewModel: ObservableObject {
         try? core.stopSharing()
         shareCode = nil
         lines = []
-        errorMessage = nil
+        clearError()
         stopPolling()
         refreshState()
     }
@@ -944,7 +973,7 @@ final class ShareViewModel: ObservableObject {
         do {
             try core.deleteSharedSession(sessionId: sessionId)
         } catch {
-            errorMessage = error.localizedDescription
+            showError(error.localizedDescription)
         }
         refreshState()
     }
