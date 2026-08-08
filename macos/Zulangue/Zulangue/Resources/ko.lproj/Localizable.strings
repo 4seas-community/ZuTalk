@@ -827,6 +827,8 @@
 "share.join" = "코드로 참여";
 "share.stop" = "공유 중지";
 "share.stop_note" = "이후 전송만 중지합니다. 상대가 이미 받은 내용은 삭제할 수 없습니다.";
+"share.leave" = "룸에서 나가기";
+"share.leave_note" = "나가면 더 이상 수신하지 않습니다. 이미 받은 전사본은 이 Mac에 남습니다.";
 "share.audio_never" = "오디오는 절대 공유되지 않습니다.";
 "share.capture.live" = "자막 공유 중";
 "share.capture.live_hint" = "룸에 있는 사람들이 이 녹음의 자막을 실시간으로 보고 있습니다. 오디오는 절대 공유되지 않습니다.";

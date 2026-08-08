@@ -502,15 +502,28 @@ struct SharePage: View {
                 .font(.bodySM)
                 .foregroundColor(.textSecondary)
 
-            Button(String(localized: "share.stop"), role: .destructive) {
-                viewModel.stop()
-            }
-            .accessibilityIdentifier("share.stop")
+            if viewModel.isHost {
+                Button(String(localized: "share.stop"), role: .destructive) {
+                    viewModel.stop()
+                }
+                .accessibilityIdentifier("share.stop")
 
-            // 停止共享的真实语义。不写这句,用户会以为点了停止对方就看不到了。
-            Text(String(localized: "share.stop_note"))
-                .font(.bodySM)
-                .foregroundColor(.textTertiary)
+                // 停止共享的真实语义。不写这句,用户会以为点了停止对方就看不到了。
+                Text(String(localized: "share.stop_note"))
+                    .font(.bodySM)
+                    .foregroundColor(.textTertiary)
+            } else {
+                // 观看端不是在「停止共享」—— 那是主持人的动作,连同那句
+                // 「删不掉对方已收到的」警告,对只想离开的人全是错话。
+                Button(String(localized: "share.leave")) {
+                    viewModel.stop()
+                }
+                .accessibilityIdentifier("share.leave")
+
+                Text(String(localized: "share.leave_note"))
+                    .font(.bodySM)
+                    .foregroundColor(.textTertiary)
+            }
         }
     }
 }
@@ -595,6 +608,8 @@ final class ShareViewModel: ObservableObject {
     @Published private(set) var shortIdentity: String = "—"
     @Published private(set) var shareCode: String?
     @Published private(set) var isSharing: Bool = false
+    /// 本机是当前房间的主持人。决定收尾按钮是「停止共享」还是「离开房间」。
+    @Published private(set) var isHost: Bool = false
     @Published private(set) var hostOnly: Bool = false
     @Published private(set) var lines: [FfiSharedCaptionLine] = []
     @Published private(set) var errorMessage: String?
@@ -823,6 +838,7 @@ final class ShareViewModel: ObservableObject {
         guard let core else { return }
         let state = core.shareState()
         isSharing = state.isSharing
+        isHost = state.isHost
         hostOnly = state.hostOnly
         viewerLink = state.viewerLink
         lines = state.lines

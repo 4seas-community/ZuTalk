@@ -826,6 +826,8 @@
 "share.join" = "Mit Code beitreten";
 "share.stop" = "Teilen beenden";
 "share.stop_note" = "Stoppt weitere Übertragungen. Bereits Empfangenes lässt sich nicht löschen.";
+"share.leave" = "Raum verlassen";
+"share.leave_note" = "Beendet den Empfang. Bereits erhaltene Transkripte bleiben auf diesem Mac.";
 "share.audio_never" = "Audio wird niemals geteilt.";
 "share.capture.live" = "Untertitel werden geteilt";
 "share.capture.live_hint" = "Die Personen in deinem Raum sehen die Untertitel dieser Aufnahme live. Audio wird niemals geteilt.";

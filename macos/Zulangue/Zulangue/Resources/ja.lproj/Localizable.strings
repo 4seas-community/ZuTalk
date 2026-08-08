@@ -827,6 +827,8 @@
 "share.join" = "コードで参加";
 "share.stop" = "共有を停止";
 "share.stop_note" = "以降の送信を停止します。相手が既に受け取った内容は削除できません。";
+"share.leave" = "ルームを退出";
+"share.leave_note" = "退出すると受信は止まります。すでに受け取った文字起こしはこの Mac に残ります。";
 "share.audio_never" = "音声が共有されることはありません。";
 "share.capture.live" = "字幕を共有中";
 "share.capture.live_hint" = "ルームの参加者にこの録音の字幕がリアルタイムで表示されています。音声は決して共有されません。";

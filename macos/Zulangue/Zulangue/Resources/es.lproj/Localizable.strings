@@ -826,6 +826,8 @@
 "share.join" = "Unirse con un código";
 "share.stop" = "Dejar de compartir";
 "share.stop_note" = "Detiene los envíos siguientes. No puede borrar lo que otros ya recibieron.";
+"share.leave" = "Salir de la sala";
+"share.leave_note" = "Deja de recibir. Las transcripciones que ya recibiste se quedan en este Mac.";
 "share.audio_never" = "El audio nunca se comparte.";
 "share.capture.live" = "Compartiendo subtítulos";
 "share.capture.live_hint" = "Las personas de tu sala ven los subtítulos de esta grabación en directo. El audio nunca se comparte.";

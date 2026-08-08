@@ -827,6 +827,8 @@
 "share.join" = "Join with a code";
 "share.stop" = "Stop sharing";
 "share.stop_note" = "Stops sending further updates. It cannot delete what others already received.";
+"share.leave" = "Leave the room";
+"share.leave_note" = "Stops receiving. Transcripts you already received stay on this Mac.";
 "share.audio_never" = "Audio is never shared.";
 "share.capture.live" = "Sharing captions";
 "share.capture.live_hint" = "People in your room see this recording's captions as you speak. Audio is never shared.";

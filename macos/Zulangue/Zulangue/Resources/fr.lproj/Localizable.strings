@@ -827,6 +827,8 @@
 "share.join" = "Rejoindre avec un code";
 "share.stop" = "Arrêter le partage";
 "share.stop_note" = "Arrête les envois suivants. Impossible de supprimer ce que les autres ont déjà reçu.";
+"share.leave" = "Quitter le salon";
+"share.leave_note" = "Arrête la réception. Les transcriptions déjà reçues restent sur ce Mac.";
 "share.audio_never" = "L'audio n'est jamais partagé.";
 "share.capture.live" = "Sous-titres partagés";
 "share.capture.live_hint" = "Les personnes de votre salon voient les sous-titres de cet enregistrement en direct. L'audio n'est jamais partagé.";

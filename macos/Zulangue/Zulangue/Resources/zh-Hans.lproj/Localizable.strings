@@ -827,6 +827,8 @@
 "share.join" = "用分享码加入";
 "share.stop" = "停止共享";
 "share.stop_note" = "只停止继续发送，无法删除对方已经收到的内容。";
+"share.leave" = "离开房间";
+"share.leave_note" = "离开后不再接收。已经收到的转录稿留在这台 Mac 上。";
 "share.audio_never" = "音频永远不会被共享。";
 "share.capture.live" = "正在共享字幕";
 "share.capture.live_hint" = "房间里的人正在实时看到这段录音的字幕。音频永远不会被共享。";
