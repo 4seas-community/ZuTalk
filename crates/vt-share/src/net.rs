@@ -261,6 +261,18 @@ impl ShareEndpoint {
         let _ = self.captions.send(Arc::new(frame));
     }
 
+    /// 等到与任一配置中继握手成功,或超时。
+    ///
+    /// 中继握手要过 relay-auth 门禁:没在邀请码服务登记过的 endpoint 会被
+    /// 拒之门外,表现就是这里一直等不到 —— 所以「等到了」证明的是
+    /// 「邀请码 → 登记 → 中继放行」整条链,不只是网络通。
+    /// 真实网络冒烟(scripts/share_relay_smoke.sh)靠它做断言。
+    pub async fn relay_online(&self, timeout: std::time::Duration) -> bool {
+        tokio::time::timeout(timeout, self.endpoint.online())
+            .await
+            .is_ok()
+    }
+
     /// 主持人视角:此刻连着字幕通道的观看端,以及各自实际走的链路。
     ///
     /// 与观看端的 `link_path` 同一份真值来源(QUIC 当前选中的传输路径)。
