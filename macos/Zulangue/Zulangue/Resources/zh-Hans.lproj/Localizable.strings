@@ -894,8 +894,8 @@
 "share.link.relayed_hint" = "直连没打通，流量经中继转发（仍端到端加密）。开了 AP 隔离的 Wi-Fi 上很常见。";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
-"share.scope.notebook" = "共享整个 Notebook（仅实时字幕）";
-"share.scope.single" = "共享一条录音（字幕 + 对方可保留的副本）";
+"share.scope.notebook" = "只播字幕：对方实时看这个 Notebook 的录音，什么都不保留。";
+"share.scope.single" = "共享一段录音：对方保留转录稿，可一起订正。";
 "share.scope.no_sessions" = "这个 Notebook 还没有录音。";
 "share.received.title" = "共享的转录稿";
 "share.received.untitled" = "（暂无文本）";

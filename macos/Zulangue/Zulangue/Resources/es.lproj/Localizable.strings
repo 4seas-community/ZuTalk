@@ -893,8 +893,8 @@
 "share.link.relayed_hint" = "La conexión directa falló; el tráfico se reenvía por el relé, aún cifrado de extremo a extremo. Común en redes con aislamiento AP.";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
-"share.scope.notebook" = "Compartir todo el cuaderno (solo subtítulos en vivo)";
-"share.scope.single" = "Compartir una grabación (subtítulos + copia que el otro conserva)";
+"share.scope.notebook" = "Solo subtítulos en directo: los demás ven las grabaciones de este notebook sin conservar nada.";
+"share.scope.single" = "Una grabación: los demás conservan su transcripción y pueden ayudar a corregirla.";
 "share.scope.no_sessions" = "Este cuaderno aún no tiene grabaciones.";
 "share.received.title" = "Transcripciones compartidas";
 "share.received.untitled" = "(sin texto todavía)";

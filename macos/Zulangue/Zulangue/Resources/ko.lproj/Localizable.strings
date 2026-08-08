@@ -894,8 +894,8 @@
 "share.link.relayed_hint" = "직접 연결이 실패하여 릴레이를 거쳐 전달 중입니다(여전히 종단 간 암호화). AP 격리가 켜진 네트워크에서 흔합니다.";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
-"share.scope.notebook" = "노트북 전체 공유(실시간 자막만)";
-"share.scope.single" = "녹음 한 건 공유(자막 + 상대가 보관하는 사본)";
+"share.scope.notebook" = "자막만 송출: 상대는 이 노트북의 녹음을 실시간으로 볼 뿐, 아무것도 남지 않습니다.";
+"share.scope.single" = "녹음 하나 공유: 상대가 전사본을 보관하고 함께 교정할 수 있습니다.";
 "share.scope.no_sessions" = "이 노트북에는 아직 녹음이 없습니다.";
 "share.received.title" = "공유된 전사본";
 "share.received.untitled" = "(아직 텍스트 없음)";
