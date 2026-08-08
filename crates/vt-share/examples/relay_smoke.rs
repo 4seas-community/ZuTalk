@@ -41,7 +41,7 @@ async fn main() {
             let identity = ShareIdentity::from_secret_bytes(&bytes);
             let timeout: u64 = timeout.parse().expect("超时秒数");
 
-            let relay_urls = parse_relay_urls(&[relay.clone()]).expect("中继地址");
+            let relay_urls = parse_relay_urls(std::slice::from_ref(relay)).expect("中继地址");
             let endpoint = ShareEndpoint::bind(
                 &identity,
                 ShareEndpointConfig {
