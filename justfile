@@ -138,6 +138,10 @@ sync-version:
 version-check:
     bash "{{ project_dir }}/scripts/check_release_version.sh"
 
+# 版本号递进：Cargo 与 Xcode 一起改，构建号 +1，旧说明归档进 CHANGELOG
+bump version:
+    bash "{{ project_dir }}/scripts/bump_release_version.sh" "{{ version }}"
+
 # 完整质量门禁
 ci-check:
     cargo fmt --all -- --check
@@ -743,18 +747,32 @@ sparkle-appcast:
     set -euo pipefail
     : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
     : "${GITHUB_REF_NAME:?GITHUB_REF_NAME is required}"
+    # 下载地址会被签进 appcast:仓库名打错的话签名照样有效、地址却是
+    # 错的,事后从产物上看不出来。对着 github remote 核一遍。
+    bash "{{ project_dir }}/scripts/check_release_destination.sh"
     UPDATE_DIR="{{ build_dir }}/update"
     mkdir -p "$UPDATE_DIR"
     find "$UPDATE_DIR" -mindepth 1 -depth -delete
-    DMG=$(ls -t {{ dmg_dir }}/Zulangue-*.dmg 2>/dev/null | head -1)
-    test -f "$DMG" || { echo "FAIL: release DMG is missing"; exit 1; }
+    VERSION="${GITHUB_REF_NAME#v}"
+    DMG="{{ dmg_dir }}/Zulangue-${VERSION}.dmg"
+    # 按名字取,不按 mtime:重建过一次旧版本就能让 "最新的那个文件"
+    # 指向别人。
+    test -f "$DMG" || { echo "FAIL: release DMG for $VERSION is missing"; exit 1; }
     cp "$DMG" "$UPDATE_DIR/"
     BASENAME="$(basename "$DMG" .dmg)"
     cp "{{ project_dir }}/packaging/release-notes.md" "$UPDATE_DIR/${BASENAME}.md"
-    # Delta updates need the published DMGs of the two previous versions in
-    # place; a full download stays available for everyone else.
-    ls -t {{ dmg_dir }}/Zulangue-*.dmg 2>/dev/null | sed -n '2,3p' | while read -r OLD; do
-        cp "$OLD" "$UPDATE_DIR/"
+    # 增量更新要拿前两个版本的 DMG 作基线。基线按**版本号**排序挑选 ——
+    # 之前按 mtime 挑,本地任何一个旧 DMG 被重建就会静默拿错基线,用户
+    # 那边表现为 delta 校验失败、白下一遍全量。挑不满两个不算失败:
+    # 全量下载对所有人始终可用。
+    for OLD_VERSION in $(
+        ls {{ dmg_dir }}/Zulangue-*.dmg 2>/dev/null |
+            sed 's|.*/Zulangue-||; s|\.dmg$||' |
+            grep -vFx "$VERSION" |
+            sort -V | tail -2
+    ); do
+        cp "{{ dmg_dir }}/Zulangue-${OLD_VERSION}.dmg" "$UPDATE_DIR/"
+        echo "· delta 基线: $OLD_VERSION"
     done
 
     TOOL_DIR="$(mktemp -d)"
@@ -787,7 +805,11 @@ sparkle-appcast:
     grep -Fq "<!-- sparkle-signatures:" "$UPDATE_DIR/appcast.xml" \
         || { echo "FAIL: appcast.xml itself is not signed"; exit 1; }
     cp "$UPDATE_DIR/appcast.xml" "{{ dmg_dir }}/appcast.xml"
+    # 校验和跟着这一次的 DMG 生成。文件名不带版本号,手工生成就会漏 ——
+    # 用一句「记得重新生成」代替一步自动化,总有一次会忘。
+    ( cd "{{ dmg_dir }}" && shasum -a 256 "Zulangue-${VERSION}.dmg" > Zulangue-macOS.sha256 )
     echo "✓ Signed Sparkle appcast generated"
+    echo "✓ SHA-256 written for Zulangue-${VERSION}.dmg"
 
 # 单一社区发布包：Universal app + Ad Hoc 签名 + Sparkle 配置 + DMG。
 release-adhoc: release xcode-build-universal assert-universal-app assert-adhoc-app assert-sparkle-configured-app assert-public-app-privacy dmg
@@ -797,6 +819,33 @@ release-adhoc: release xcode-build-universal assert-universal-app assert-adhoc-a
 # Sparkle 私钥签署更新包和 appcast。CI 不运行此 recipe。
 release-sparkle-adhoc: release-adhoc sparkle-appcast
     @echo "✓ Ad Hoc + Sparkle 本机发布产物完成: build/dmg/"
+
+# 打 OpenPGP 签名标签并推到主库（产物先生成，标签才推）
+release-tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # 标签一旦推出去就是对外承诺。先确认产物签得出来、门禁过得了,
+    # 再让别人看见。
+    : "${GITHUB_REF_NAME:?GITHUB_REF_NAME is required}"
+    bash "{{ project_dir }}/scripts/check_release_version.sh"
+    [[ -z "$(git status --porcelain)" ]] \
+        || { echo "FAIL: 工作树不干净,标签描述不了发出去的东西"; exit 1; }
+    VERSION="${GITHUB_REF_NAME#v}"
+    BUILD="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \([0-9]*\);.*/\1/p' \
+        "{{ macos_dir }}/Zulangue.xcodeproj/project.pbxproj" | sort -u)"
+    git tag -s "$GITHUB_REF_NAME" -m "Zulangue ${VERSION} (build ${BUILD})"
+    git tag -v "$GITHUB_REF_NAME" >/dev/null
+    git push origin HEAD
+    git push origin "$GITHUB_REF_NAME"
+    echo "✓ 签名标签 $GITHUB_REF_NAME 已推到主库"
+
+# 发到 GitHub Release：等镜像、按 appcast 点名清点附件、传完逐个复核
+release-publish:
+    bash "{{ project_dir }}/scripts/release_publish.sh"
+
+# 一条命令走完发布：产物 → 签名标签 → 推送 → Release → 复核
+release-ship: release-sparkle-adhoc release-tag release-publish
+    @echo "✓ 发布完成"
 
 # 完整签名发布（需要 Developer ID、公证凭据和源码中固定的 Sparkle 公钥）
 release-full: release xcode-build-universal-signed assert-universal-app assert-release-app-signature assert-sparkle-configured-app assert-public-app-privacy dmg sign-release-dmg notarize-release assert-release-dmg-gatekeeper-accepted
