@@ -959,7 +959,7 @@
 
 /* 分享:昵称与成员 */
 "share.nickname" = "Your name in a room";
-"share.nickname.prompt" = "e.g. Alex's Mac";
+"share.nickname.prompt" = "e.g. my MacBook";
 "share.nickname.note" = "Shown to people you share with. Leave it blank and they will only see your key.";
 "share.members" = "In this room";
 "share.members.unnamed" = "Unnamed";

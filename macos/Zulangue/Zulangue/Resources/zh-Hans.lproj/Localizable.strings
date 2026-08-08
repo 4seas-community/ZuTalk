@@ -959,7 +959,7 @@
 
 /* 分享:昵称与成员 */
 "share.nickname" = "你在房间里的名字";
-"share.nickname.prompt" = "例如：Alex 的 Mac";
+"share.nickname.prompt" = "例如：我的 MacBook";
 "share.nickname.note" = "共享的人会看到它。留空的话，他们只看得到你的密钥。";
 "share.members" = "这个房间里";
 "share.members.unnamed" = "未命名";

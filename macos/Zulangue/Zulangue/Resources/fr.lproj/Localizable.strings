@@ -959,7 +959,7 @@
 
 /* 分享:昵称与成员 */
 "share.nickname" = "Votre nom dans un salon";
-"share.nickname.prompt" = "ex. le Mac de Alex";
+"share.nickname.prompt" = "ex. mon MacBook";
 "share.nickname.note" = "Visible par les personnes avec qui vous partagez. Laissé vide, elles ne verront que votre clé.";
 "share.members" = "Dans ce salon";
 "share.members.unnamed" = "Sans nom";

@@ -959,7 +959,7 @@
 
 /* 分享:昵称与成员 */
 "share.nickname" = "방에서 쓸 이름";
-"share.nickname.prompt" = "예: Alex의 Mac";
+"share.nickname.prompt" = "예: 내 MacBook";
 "share.nickname.note" = "공유하는 사람에게 표시됩니다. 비워 두면 키만 보입니다.";
 "share.members" = "이 방에는";
 "share.members.unnamed" = "이름 없음";

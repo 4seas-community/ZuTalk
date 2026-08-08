@@ -958,7 +958,7 @@
 
 /* 分享:昵称与成员 */
 "share.nickname" = "Dein Name im Raum";
-"share.nickname.prompt" = "z. B. Alexs Mac";
+"share.nickname.prompt" = "z. B. mein MacBook";
 "share.nickname.note" = "Sichtbar für die Personen, mit denen du teilst. Leer gelassen sehen sie nur deinen Schlüssel.";
 "share.members" = "In diesem Raum";
 "share.members.unnamed" = "Ohne Namen";

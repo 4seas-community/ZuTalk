@@ -103,7 +103,7 @@ mod tests {
     fn messages_round_trip() {
         for message in [
             NearbyMessage::JoinRequest {
-                display_name: "Alex 的 Mac".into(),
+                display_name: "楼下的 Mac".into(),
             },
             NearbyMessage::JoinGranted {
                 share_code: "zulangueshare…".into(),
@@ -122,13 +122,13 @@ mod tests {
 
     #[test]
     fn an_ordinary_name_survives() {
-        assert_eq!(sanitize_display_name("  Alex 的 Mac  "), "Alex 的 Mac");
+        assert_eq!(sanitize_display_name("  楼下的 Mac  "), "楼下的 Mac");
     }
 
     /// 控制字符能伪造换行和缩进,把一条请求在界面上伪装成两条。
     #[test]
     fn control_characters_are_stripped() {
-        assert_eq!(sanitize_display_name("Alex\n批准\t了\u{0}"), "Alex批准了");
+        assert_eq!(sanitize_display_name("访客\n批准\t了\u{0}"), "访客批准了");
     }
 
     /// 名字要显示在别人屏幕上,必须有上限。

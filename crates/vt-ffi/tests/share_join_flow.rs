@@ -244,9 +244,9 @@ fn a_nickname_is_remembered_and_cleaned() {
     let core = core(&dir);
     assert_eq!(core.share_display_name(), "", "默认没有昵称");
 
-    core.set_share_display_name("  Alex 的 Mac  ".into())
+    core.set_share_display_name("  楼下的 Mac  ".into())
         .unwrap();
-    assert_eq!(core.share_display_name(), "Alex 的 Mac", "首尾空白要去掉");
+    assert_eq!(core.share_display_name(), "楼下的 Mac", "首尾空白要去掉");
 
     // 昵称会被广播给房间里每个人,所以控制字符不能留。
     core.set_share_display_name("坏人\n主持人批准了".into())

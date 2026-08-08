@@ -484,7 +484,10 @@ mod tests {
     #[test]
     fn map_field_errors_carry_the_key_prefix() {
         assert_eq!(
-            validate_schema(&person_map(), Some(&json!({"name": "alex", "age": "old"}))),
+            validate_schema(
+                &person_map(),
+                Some(&json!({"name": "someone", "age": "old"}))
+            ),
             Err(vec!["age: Value must be a number".to_string()])
         );
         // required 字段缺失:前缀 + required 消息
@@ -497,7 +500,7 @@ mod tests {
     #[test]
     fn map_accepts_valid_objects() {
         assert_eq!(
-            validate_schema(&person_map(), Some(&json!({"name": "alex", "age": 3}))),
+            validate_schema(&person_map(), Some(&json!({"name": "someone", "age": 3}))),
             Ok(())
         );
     }
@@ -548,7 +551,7 @@ mod tests {
         assert_eq!(
             validate_schema(
                 &schema,
-                Some(&json!({"meta": {"name": "alex"}, "extra": 1}))
+                Some(&json!({"meta": {"name": "someone"}, "extra": 1}))
             ),
             Err(vec!["Unknown property: extra".to_string()])
         );

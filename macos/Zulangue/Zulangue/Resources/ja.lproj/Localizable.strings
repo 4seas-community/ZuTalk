@@ -959,7 +959,7 @@
 
 /* 分享:昵称与成员 */
 "share.nickname" = "ルームでの名前";
-"share.nickname.prompt" = "例：Alex の Mac";
+"share.nickname.prompt" = "例：私の MacBook";
 "share.nickname.note" = "共有相手に表示されます。空欄にすると鍵だけが見えます。";
 "share.members" = "このルーム";
 "share.members.unnamed" = "名前なし";
