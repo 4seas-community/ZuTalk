@@ -106,10 +106,15 @@ echo "· appcast.xml"
 # 基线挑错了不会炸,只会让用户下完 delta 校验失败、再白下一遍全量。
 # 悄悄浪费带宽正是最不容易被发现的那类问题。
 step "核对 delta 基线"
-PUBLISHED="$(
+# 同样按退出码判断:失败时 gh 会把错误正文打到 stdout,当成版本列表用
+# 会让「基线发布过吗」这一问变成一句空话。
+PUBLISHED=""
+if ! PUBLISHED="$(
   gh release list --repo "$GITHUB_REPOSITORY" --limit 30 --json tagName \
-    --jq '.[].tagName' 2>/dev/null || true
-)"
+    --jq '.[].tagName' 2>/dev/null
+)"; then
+  PUBLISHED=""
+fi
 BASE_COUNT=0
 for base_dmg in "$UPDATE_DIR"/Zulangue-*.dmg; do
   [[ -f "$base_dmg" ]] || continue
@@ -136,19 +141,20 @@ step "等待镜像同步"
 REMOTE_COMMIT=""
 attempt=1
 while [[ "$attempt" -le "$MIRROR_ATTEMPTS" ]]; do
-  REMOTE_SHA="$(
+  # 一次请求拿到 sha 与类型,并且**按退出码**判断有没有拿到 ——
+  # `gh api --jq` 在 404 时会把错误 JSON 打到 stdout,拿"输出非空"
+  # 当成功会让一个不存在的标签看起来存在。
+  if REF="$(
     gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" \
-      --jq '.object.sha' 2>/dev/null || true
-  )"
-  if [[ -n "$REMOTE_SHA" ]]; then
-    REMOTE_TYPE="$(
-      gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" \
-        --jq '.object.type'
-    )"
+      --jq '.object.sha + " " + .object.type' 2>/dev/null
+  )"; then
+    REMOTE_SHA="${REF%% *}"
+    REMOTE_TYPE="${REF##* }"
     if [[ "$REMOTE_TYPE" == "tag" ]]; then
+      # 附注标签:再解一层才是提交。
       REMOTE_COMMIT="$(
         gh api "repos/$GITHUB_REPOSITORY/git/tags/$REMOTE_SHA" --jq '.object.sha'
-      )"
+      )" || fail "cannot dereference the mirrored tag object $REMOTE_SHA"
     else
       REMOTE_COMMIT="$REMOTE_SHA"
     fi
