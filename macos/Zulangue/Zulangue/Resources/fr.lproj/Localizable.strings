@@ -825,6 +825,8 @@
 "share.identity" = "Votre clé de partage";
 "share.copy_code" = "Copier le code de partage";
 "share.join" = "Rejoindre avec un code";
+"share.mode.host" = "Partager depuis ce Mac";
+"share.mode.join" = "Rejoindre quelqu'un";
 "share.stop" = "Arrêter le partage";
 "share.stop_note" = "Arrête les envois suivants. Impossible de supprimer ce que les autres ont déjà reçu.";
 "share.leave" = "Quitter le salon";

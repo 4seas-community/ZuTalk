@@ -825,6 +825,8 @@
 "share.identity" = "你的分享密钥";
 "share.copy_code" = "复制分享码";
 "share.join" = "用分享码加入";
+"share.mode.host" = "从这台 Mac 分享";
+"share.mode.join" = "加入别人的";
 "share.stop" = "停止共享";
 "share.stop_note" = "只停止继续发送，无法删除对方已经收到的内容。";
 "share.leave" = "离开房间";

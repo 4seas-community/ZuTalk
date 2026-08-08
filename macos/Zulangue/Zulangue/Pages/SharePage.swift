@@ -16,20 +16,19 @@ import SwiftUI
 
 struct SharePage: View {
     @StateObject private var viewModel = ShareViewModel()
+    @FocusState private var joinFieldFocused: Bool
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.lg) {
-                identitySection
-
-                // 音频约束是这个功能最该被看见的一句话,所以它常驻在页面顶部区域,
-                // 而不是藏在设置或帮助里。
-                audioNotice
-
                 // 状态横幅常驻。用户最需要知道的一句话是「现在到底怎么了」,
                 // 而这一句以前根本不存在 —— 加入成功、加入失败、等主持人录音,
                 // 三种情况在界面上长得一模一样,都是「什么也没发生」。
                 statusBanner
+
+                // 音频约束是这个功能最该被看见的一句话,所以它常驻在页面顶部区域,
+                // 而不是藏在设置或帮助里。
+                audioNotice
 
                 if let error = viewModel.errorMessage {
                     errorBanner(error)
@@ -41,6 +40,7 @@ struct SharePage: View {
                 }
 
                 if viewModel.isSharing {
+                    identitySection
                     membersSection
                     activeSection
 
@@ -48,9 +48,20 @@ struct SharePage: View {
                         captionSection
                     }
                 } else {
-                    startSection
-                    nearbySection
-                    joinSection
+                    // 角色是这个页面上最早、且互斥的一个决定:要么把自己的内容
+                    // 分出去,要么加入别人的。以前两套器械混在一页里,想加入的人
+                    // 要滚过主持人的全部器械才找得到粘贴框。
+                    modePicker
+
+                    switch viewModel.idleMode {
+                    case .host:
+                        identitySection
+                        startSection
+                    case .join:
+                        joinSection
+                        nearbySection
+                        nicknameSection
+                    }
                 }
 
                 // 收到与共享过的转录稿:房间散了内容还在,这一节不随
@@ -65,6 +76,21 @@ struct SharePage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
         .onAppear { viewModel.reload() }
+    }
+
+    /// 两条道:我来分享 / 加入别人的。
+    private var modePicker: some View {
+        Picker("", selection: $viewModel.idleMode) {
+            Text(String(localized: "share.mode.host")).tag(ShareEntryMode.host)
+            Text(String(localized: "share.mode.join")).tag(ShareEntryMode.join)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .accessibilityIdentifier("share.mode")
+        .onChange(of: viewModel.idleMode) { _, mode in
+            // 切到加入道,光标直接落进粘贴框 —— 拿着码来的人下一步只有粘贴。
+            joinFieldFocused = (mode == .join)
+        }
     }
 
     /// 现在处于什么状态,以及接下来该做什么。
@@ -481,6 +507,9 @@ struct SharePage: View {
                 TextField("", text: $viewModel.pastedCode, prompt: Text(verbatim: "zulangueshare…"))
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
+                    .focused($joinFieldFocused)
+                    // 粘完按回车就该走,不该再去找按钮。
+                    .onSubmit { viewModel.join() }
                     .accessibilityIdentifier("share.join.field")
 
                 Button(String(localized: "share.join")) {
@@ -488,6 +517,22 @@ struct SharePage: View {
                 }
                 .disabled(viewModel.pastedCode.isEmpty)
             }
+        }
+    }
+
+    /// 昵称,给加入道单独用 —— 「请求加入」会把名字发给对方。
+    private var nicknameSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text(String(localized: "share.nickname"))
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+            TextField("", text: $viewModel.nickname, prompt: Text(String(localized: "share.nickname.prompt")))
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { viewModel.saveNickname() }
+                .accessibilityIdentifier("share.nickname.join")
+            Text(String(localized: "share.nickname.note"))
+                .font(.bodySM)
+                .foregroundColor(.textTertiary)
         }
     }
 
@@ -531,6 +576,12 @@ struct SharePage: View {
 /// sheet(item:) 的最小身份包装:内容就是 session id。
 struct SharedSessionRoute: Identifiable {
     let id: String
+}
+
+/// 空闲态的两条道。角色互斥,页面第一屏就该分叉。
+enum ShareEntryMode {
+    case host
+    case join
 }
 
 /// 分享页现在处于什么状态。
@@ -590,6 +641,8 @@ enum ShareStatus {
 @MainActor
 final class ShareViewModel: ObservableObject {
     @Published var pastedCode: String = ""
+    /// 空闲态选中的道:分享自己的,还是加入别人的。
+    @Published var idleMode: ShareEntryMode = .host
     @Published var hostOnlySelection: Bool = false
     /// 共享范围:整本 Notebook(仅字幕)或单条录音(字幕 + 落库协同)。
     @Published var shareWholeNotebook: Bool = true

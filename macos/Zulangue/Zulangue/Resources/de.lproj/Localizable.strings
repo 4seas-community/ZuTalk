@@ -824,6 +824,8 @@
 "share.identity" = "Dein Teilen-Schlüssel";
 "share.copy_code" = "Teilen-Code kopieren";
 "share.join" = "Mit Code beitreten";
+"share.mode.host" = "Von diesem Mac teilen";
+"share.mode.join" = "Jemandem beitreten";
 "share.stop" = "Teilen beenden";
 "share.stop_note" = "Stoppt weitere Übertragungen. Bereits Empfangenes lässt sich nicht löschen.";
 "share.leave" = "Raum verlassen";

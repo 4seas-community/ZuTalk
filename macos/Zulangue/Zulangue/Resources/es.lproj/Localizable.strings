@@ -824,6 +824,8 @@
 "share.identity" = "Tu clave para compartir";
 "share.copy_code" = "Copiar código";
 "share.join" = "Unirse con un código";
+"share.mode.host" = "Compartir desde este Mac";
+"share.mode.join" = "Unirse a otra persona";
 "share.stop" = "Dejar de compartir";
 "share.stop_note" = "Detiene los envíos siguientes. No puede borrar lo que otros ya recibieron.";
 "share.leave" = "Salir de la sala";

@@ -825,6 +825,8 @@
 "share.identity" = "내 공유 키";
 "share.copy_code" = "공유 코드 복사";
 "share.join" = "코드로 참여";
+"share.mode.host" = "이 Mac에서 공유";
+"share.mode.join" = "다른 사람 공유에 참여";
 "share.stop" = "공유 중지";
 "share.stop_note" = "이후 전송만 중지합니다. 상대가 이미 받은 내용은 삭제할 수 없습니다.";
 "share.leave" = "룸에서 나가기";

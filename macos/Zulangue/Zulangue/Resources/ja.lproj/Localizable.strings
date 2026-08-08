@@ -825,6 +825,8 @@
 "share.identity" = "共有キー";
 "share.copy_code" = "共有コードをコピー";
 "share.join" = "コードで参加";
+"share.mode.host" = "この Mac から共有";
+"share.mode.join" = "ほかの人の共有に参加";
 "share.stop" = "共有を停止";
 "share.stop_note" = "以降の送信を停止します。相手が既に受け取った内容は削除できません。";
 "share.leave" = "ルームを退出";
