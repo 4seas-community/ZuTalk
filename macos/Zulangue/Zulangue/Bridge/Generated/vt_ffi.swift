@@ -775,6 +775,25 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func noteOutlineRows(docId: String) throws  -> [FfiOutlineRow]
 
     /**
+     * 重做最近一次被撤销的手势。语义同 [`Self::note_undo`]。
+     */
+    func noteRedo(docId: String) throws  -> FfiNoteUndoState
+
+    /**
+     * 撤销最近一次本机编辑手势。`performed=false` 表示栈已空(不是错误)。
+     *
+     * 撤销由 Loro 的 UndoManager 以逆操作提交实现——它也是一次普通的
+     * 本地提交,mirror 经根订阅自动跟进,这里再显式 sync 一次只为把
+     * 「读到的行必是撤销后的行」写成代码里的事实而不是订阅时序的巧合。
+     */
+    func noteUndo(docId: String) throws  -> FfiNoteUndoState
+
+    /**
+     * 当前撤销栈状态(不执行任何操作,`performed` 恒 false)。
+     */
+    func noteUndoState(docId: String) throws  -> FfiNoteUndoState
+
+    /**
      * 当前句块序列(文档序)。
      */
     func transcriptBlocks(docId: String) throws  -> [FfiUtteranceBlock]
@@ -1696,6 +1715,46 @@ open func noteBlockDocumentOpen(notebookId: String, tabId: String)throws  -> Str
 open func noteOutlineRows(docId: String)throws  -> [FfiOutlineRow]  {
     return try  FfiConverterSequenceTypeFfiOutlineRow.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zulanguecore_note_outline_rows(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),$0
+    )
+})
+}
+
+    /**
+     * 重做最近一次被撤销的手势。语义同 [`Self::note_undo`]。
+     */
+open func noteRedo(docId: String)throws  -> FfiNoteUndoState  {
+    return try  FfiConverterTypeFfiNoteUndoState_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_note_redo(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),$0
+    )
+})
+}
+
+    /**
+     * 撤销最近一次本机编辑手势。`performed=false` 表示栈已空(不是错误)。
+     *
+     * 撤销由 Loro 的 UndoManager 以逆操作提交实现——它也是一次普通的
+     * 本地提交,mirror 经根订阅自动跟进,这里再显式 sync 一次只为把
+     * 「读到的行必是撤销后的行」写成代码里的事实而不是订阅时序的巧合。
+     */
+open func noteUndo(docId: String)throws  -> FfiNoteUndoState  {
+    return try  FfiConverterTypeFfiNoteUndoState_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_note_undo(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(docId),$0
+    )
+})
+}
+
+    /**
+     * 当前撤销栈状态(不执行任何操作,`performed` 恒 false)。
+     */
+open func noteUndoState(docId: String)throws  -> FfiNoteUndoState  {
+    return try  FfiConverterTypeFfiNoteUndoState_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_note_undo_state(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(docId),$0
     )
@@ -3499,6 +3558,73 @@ public func FfiConverterTypeFfiNearbyPeer_lift(_ buf: RustBuffer) throws -> FfiN
 #endif
 public func FfiConverterTypeFfiNearbyPeer_lower(_ value: FfiNearbyPeer) -> RustBuffer {
     return FfiConverterTypeFfiNearbyPeer.lower(value)
+}
+
+
+/**
+ * 一次撤销/重做动词的结果快照。
+ */
+public struct FfiNoteUndoState: Equatable, Hashable {
+    /**
+     * 这次调用真的回退/重做了一步(false = 栈空,no-op)。
+     */
+    public var performed: Bool
+    public var canUndo: Bool
+    public var canRedo: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 这次调用真的回退/重做了一步(false = 栈空,no-op)。
+         */performed: Bool, canUndo: Bool, canRedo: Bool) {
+        self.performed = performed
+        self.canUndo = canUndo
+        self.canRedo = canRedo
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNoteUndoState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNoteUndoState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNoteUndoState {
+        return
+            try FfiNoteUndoState(
+                performed: FfiConverterBool.read(from: &buf),
+                canUndo: FfiConverterBool.read(from: &buf),
+                canRedo: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNoteUndoState, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.performed, into: &buf)
+        FfiConverterBool.write(value.canUndo, into: &buf)
+        FfiConverterBool.write(value.canRedo, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNoteUndoState_lift(_ buf: RustBuffer) throws -> FfiNoteUndoState {
+    return try FfiConverterTypeFfiNoteUndoState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNoteUndoState_lower(_ value: FfiNoteUndoState) -> RustBuffer {
+    return FfiConverterTypeFfiNoteUndoState.lower(value)
 }
 
 
@@ -9156,6 +9282,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_note_outline_rows() != 37535) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_note_redo() != 36304) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_note_undo() != 392) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_note_undo_state() != 64984) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_transcript_blocks() != 52652) {

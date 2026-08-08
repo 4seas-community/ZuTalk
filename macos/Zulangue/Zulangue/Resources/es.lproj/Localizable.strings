@@ -569,6 +569,8 @@
 "editor.outline.indent" = "Aumentar sangría";
 "editor.outline.outdent" = "Reducir sangría";
 "editor.outline.delete_row" = "Eliminar fila";
+"editor.outline.undo" = "Deshacer";
+"editor.outline.redo" = "Rehacer";
 "editor.tasks.title" = "Tareas";
 "editor.tasks.count_format" = "%lld tareas en segundo plano";
 "editor.tasks.refresh" = "Actualizar tareas";

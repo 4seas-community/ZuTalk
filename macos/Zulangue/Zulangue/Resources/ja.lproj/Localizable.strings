@@ -558,6 +558,8 @@
 "editor.outline.indent" = "インデント";
 "editor.outline.outdent" = "インデント解除";
 "editor.outline.delete_row" = "行を削除";
+"editor.outline.undo" = "取り消す";
+"editor.outline.redo" = "やり直す";
 "editor.tasks.title" = "タスク";
 "editor.tasks.count_format" = "%lld 件のバックグラウンドタスク";
 "editor.tasks.refresh" = "タスクを更新";

@@ -570,6 +570,8 @@
 "editor.outline.indent" = "เพิ่มการเยื้อง";
 "editor.outline.outdent" = "ลดการเยื้อง";
 "editor.outline.delete_row" = "ลบแถวนี้";
+"editor.outline.undo" = "เลิกทำ";
+"editor.outline.redo" = "ทำซ้ำ";
 "editor.tasks.title" = "งาน";
 "editor.tasks.count_format" = "งานเบื้องหลัง %lld งาน";
 "editor.tasks.refresh" = "รีเฟรชงาน";

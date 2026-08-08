@@ -570,6 +570,8 @@
 "editor.outline.indent" = "增加缩进";
 "editor.outline.outdent" = "减少缩进";
 "editor.outline.delete_row" = "删除此行";
+"editor.outline.undo" = "撤销";
+"editor.outline.redo" = "重做";
 "editor.tasks.title" = "任务";
 "editor.tasks.count_format" = "%lld 个后台任务";
 "editor.tasks.refresh" = "刷新任务";

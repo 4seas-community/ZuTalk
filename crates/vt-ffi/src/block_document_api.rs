@@ -18,7 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use loro::LoroDoc;
+use loro::{LoroDoc, UndoManager};
 use serde_json::json;
 use vt_mirror::mirror::{Mirror, MirrorOptions, SetStateOptions};
 use vt_mirror::value::Value;
@@ -80,18 +80,39 @@ pub struct FfiOutlineRow {
     pub text: String,
 }
 
+/// 一次撤销/重做动词的结果快照。
+#[derive(Debug, Clone, Copy, uniffi::Record)]
+pub struct FfiNoteUndoState {
+    /// 这次调用真的回退/重做了一步(false = 栈空,no-op)。
+    pub performed: bool,
+    pub can_undo: bool,
+    pub can_redo: bool,
+}
+
 /// 打开中的块文档。
 pub(crate) enum BlockDocumentHandle {
     Transcript(TranscriptProjection),
-    Note(Mirror),
+    Note {
+        mirror: Mirror,
+        /// 本机会话内的撤销栈。Loro 的 UndoManager 只回退本 peer 的提交,
+        /// 我们「一次手势一次提交」的动词模型让它天然以手势为撤销单元
+        /// (merge interval 保持 0,不做击键合并——草稿层已经合并过了)。
+        /// 不落盘:撤销栈是会话状态,重开文档从空栈开始。
+        undo: Mutex<UndoManager>,
+    },
 }
 
 impl BlockDocumentHandle {
     fn doc(&self) -> &LoroDoc {
         match self {
             Self::Transcript(projection) => projection.doc(),
-            Self::Note(mirror) => mirror.doc(),
+            Self::Note { mirror, .. } => mirror.doc(),
         }
+    }
+
+    fn for_note(mirror: Mirror) -> Self {
+        let undo = Mutex::new(UndoManager::new(mirror.doc()));
+        Self::Note { mirror, undo }
     }
 }
 
@@ -161,7 +182,7 @@ impl ZulangueCore {
             DocumentKind::Transcript => {
                 BlockDocumentHandle::Transcript(TranscriptProjection::open(doc).map_err(internal)?)
             }
-            DocumentKind::Note => BlockDocumentHandle::Note(
+            DocumentKind::Note => BlockDocumentHandle::for_note(
                 Mirror::new(doc, Some(note_schema()), MirrorOptions::default())
                     .map_err(internal)?,
             ),
@@ -332,6 +353,58 @@ impl ZulangueCore {
         })?;
         self.persist_block_document(&doc_id)
     }
+
+    /// 撤销最近一次本机编辑手势。`performed=false` 表示栈已空(不是错误)。
+    ///
+    /// 撤销由 Loro 的 UndoManager 以逆操作提交实现——它也是一次普通的
+    /// 本地提交,mirror 经根订阅自动跟进,这里再显式 sync 一次只为把
+    /// 「读到的行必是撤销后的行」写成代码里的事实而不是订阅时序的巧合。
+    pub fn note_undo(&self, doc_id: String) -> Result<FfiNoteUndoState, CoreError> {
+        let state = self.with_note_undo(&doc_id, |mirror, undo| {
+            let mut undo = undo.lock().unwrap();
+            let performed = undo.undo().map_err(internal)?;
+            mirror.sync_from_loro();
+            Ok(FfiNoteUndoState {
+                performed,
+                can_undo: undo.can_undo(),
+                can_redo: undo.can_redo(),
+            })
+        })?;
+        if state.performed {
+            self.persist_block_document(&doc_id)?;
+        }
+        Ok(state)
+    }
+
+    /// 重做最近一次被撤销的手势。语义同 [`Self::note_undo`]。
+    pub fn note_redo(&self, doc_id: String) -> Result<FfiNoteUndoState, CoreError> {
+        let state = self.with_note_undo(&doc_id, |mirror, undo| {
+            let mut undo = undo.lock().unwrap();
+            let performed = undo.redo().map_err(internal)?;
+            mirror.sync_from_loro();
+            Ok(FfiNoteUndoState {
+                performed,
+                can_undo: undo.can_undo(),
+                can_redo: undo.can_redo(),
+            })
+        })?;
+        if state.performed {
+            self.persist_block_document(&doc_id)?;
+        }
+        Ok(state)
+    }
+
+    /// 当前撤销栈状态(不执行任何操作,`performed` 恒 false)。
+    pub fn note_undo_state(&self, doc_id: String) -> Result<FfiNoteUndoState, CoreError> {
+        self.with_note_undo(&doc_id, |_, undo| {
+            let undo = undo.lock().unwrap();
+            Ok(FfiNoteUndoState {
+                performed: false,
+                can_undo: undo.can_undo(),
+                can_redo: undo.can_redo(),
+            })
+        })
+    }
 }
 
 #[uniffi::export]
@@ -481,7 +554,7 @@ impl ZulangueCore {
 
         // 先落新文档,再给旧文件改名——顺序不能反:改名后崩溃会丢内容,
         // 落盘后崩溃只是下次多迁一遍(幂等,块文档已存在则不再走这里)。
-        let handle = BlockDocumentHandle::Note(mirror);
+        let handle = BlockDocumentHandle::for_note(mirror);
         self.save_block_document(doc_id, &handle)?;
         let backup = legacy_path.with_extension("loro.pre-epoch2");
         fs::rename(legacy_path, &backup).map_err(|e| internal(format!("留档旧笔记: {e}")))?;
@@ -497,7 +570,7 @@ impl ZulangueCore {
         let registry = self.block_documents.lock().unwrap();
         match registry.get(doc_id) {
             Some(BlockDocumentHandle::Transcript(projection)) => run(projection),
-            Some(BlockDocumentHandle::Note(_)) => {
+            Some(BlockDocumentHandle::Note { .. }) => {
                 Err(internal(format!("块文档 {doc_id} 是笔记,不接受转录稿动词")))
             }
             None => Err(internal(format!("块文档 {doc_id} 未打开"))),
@@ -509,9 +582,18 @@ impl ZulangueCore {
         doc_id: &str,
         run: impl FnOnce(&Mirror) -> Result<T, CoreError>,
     ) -> Result<T, CoreError> {
+        self.with_note_undo(doc_id, |mirror, _| run(mirror))
+    }
+
+    /// 同 `with_note`,但连撤销栈一起交给闭包(撤销动词要它)。
+    fn with_note_undo<T>(
+        &self,
+        doc_id: &str,
+        run: impl FnOnce(&Mirror, &Mutex<UndoManager>) -> Result<T, CoreError>,
+    ) -> Result<T, CoreError> {
         let registry = self.block_documents.lock().unwrap();
         match registry.get(doc_id) {
-            Some(BlockDocumentHandle::Note(mirror)) => run(mirror),
+            Some(BlockDocumentHandle::Note { mirror, undo }) => run(mirror, undo),
             Some(BlockDocumentHandle::Transcript(_)) => {
                 Err(internal(format!("块文档 {doc_id} 是转录稿,不接受笔记动词")))
             }
@@ -688,6 +770,68 @@ mod tests {
         assert_eq!(read_back.len(), 3);
         assert_eq!(read_back[1].id, "a1");
         assert_eq!(read_back[1].depth, 1);
+    }
+
+    fn outline_row(id: &str, text: &str) -> FfiOutlineRow {
+        FfiOutlineRow {
+            id: id.into(),
+            depth: 0,
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn undo_reverts_one_gesture_and_redo_restores_it() {
+        let (_dir, core) = core();
+        core.block_document_open("n1".into(), FfiDocumentKind::Note)
+            .unwrap();
+
+        // 两次独立手势 = 两个撤销单元。
+        core.note_apply_outline("n1".into(), vec![outline_row("a", "一")])
+            .unwrap();
+        core.note_apply_outline("n1".into(), vec![outline_row("a", "一改")])
+            .unwrap();
+
+        let state = core.note_undo("n1".into()).unwrap();
+        assert!(state.performed);
+        assert!(state.can_redo);
+        assert_eq!(core.note_outline_rows("n1".into()).unwrap()[0].text, "一");
+
+        let state = core.note_redo("n1".into()).unwrap();
+        assert!(state.performed);
+        assert_eq!(core.note_outline_rows("n1".into()).unwrap()[0].text, "一改");
+    }
+
+    #[test]
+    fn undo_on_an_empty_stack_is_a_calm_no_op() {
+        let (_dir, core) = core();
+        core.block_document_open("n1".into(), FfiDocumentKind::Note)
+            .unwrap();
+        let state = core.note_undo("n1".into()).unwrap();
+        assert!(!state.performed);
+        assert!(!state.can_undo);
+        assert!(!state.can_redo);
+    }
+
+    #[test]
+    fn undo_survives_persistence_and_stack_resets_on_reopen() {
+        let (_dir, core) = core();
+        core.block_document_open("n1".into(), FfiDocumentKind::Note)
+            .unwrap();
+        core.note_apply_outline("n1".into(), vec![outline_row("a", "一")])
+            .unwrap();
+        core.note_apply_outline("n1".into(), vec![outline_row("a", "一改")])
+            .unwrap();
+        assert!(core.note_undo("n1".into()).unwrap().performed);
+
+        // 撤销后的状态落盘;重开后内容是撤销后的,撤销栈从空开始。
+        core.block_document_close("n1".into()).unwrap();
+        core.block_document_open("n1".into(), FfiDocumentKind::Note)
+            .unwrap();
+        assert_eq!(core.note_outline_rows("n1".into()).unwrap()[0].text, "一");
+        let state = core.note_undo_state("n1".into()).unwrap();
+        assert!(!state.can_undo);
+        assert!(!state.can_redo);
     }
 
     #[test]
@@ -882,7 +1026,7 @@ mod tests {
         // 直接往节点 $ 里塞一个未来的元数据键(模拟创建时间)。
         {
             let registry = core.block_documents.lock().unwrap();
-            let Some(BlockDocumentHandle::Note(mirror)) = registry.get("n1") else {
+            let Some(BlockDocumentHandle::Note { mirror, .. }) = registry.get("n1") else {
                 panic!("n1 应当是笔记");
             };
             let mut state = mirror.get_state();
@@ -904,7 +1048,7 @@ mod tests {
         .unwrap();
 
         let registry = core.block_documents.lock().unwrap();
-        let Some(BlockDocumentHandle::Note(mirror)) = registry.get("n1") else {
+        let Some(BlockDocumentHandle::Note { mirror, .. }) = registry.get("n1") else {
             panic!("n1 应当是笔记");
         };
         let state = mirror.get_state();

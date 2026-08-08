@@ -570,6 +570,8 @@
 "editor.outline.indent" = "Augmenter le retrait";
 "editor.outline.outdent" = "Diminuer le retrait";
 "editor.outline.delete_row" = "Supprimer la ligne";
+"editor.outline.undo" = "Annuler";
+"editor.outline.redo" = "Rétablir";
 "editor.tasks.title" = "Tâches";
 "editor.tasks.count_format" = "%lld tâches en arrière-plan";
 "editor.tasks.refresh" = "Actualiser les tâches";

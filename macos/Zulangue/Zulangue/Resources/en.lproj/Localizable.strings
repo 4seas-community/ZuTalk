@@ -570,6 +570,8 @@
 "editor.outline.indent" = "Indent";
 "editor.outline.outdent" = "Outdent";
 "editor.outline.delete_row" = "Delete row";
+"editor.outline.undo" = "Undo";
+"editor.outline.redo" = "Redo";
 "editor.tasks.title" = "Tasks";
 "editor.tasks.count_format" = "%lld background tasks";
 "editor.tasks.refresh" = "Refresh tasks";

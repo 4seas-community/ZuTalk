@@ -570,6 +570,8 @@
 "editor.outline.indent" = "들여쓰기";
 "editor.outline.outdent" = "내어쓰기";
 "editor.outline.delete_row" = "행 삭제";
+"editor.outline.undo" = "실행 취소";
+"editor.outline.redo" = "다시 실행";
 "editor.tasks.title" = "작업";
 "editor.tasks.count_format" = "%lld개의 백그라운드 작업";
 "editor.tasks.refresh" = "작업 새로 고침";

@@ -21,6 +21,20 @@ final class BlockNoteStore: ObservableObject {
     /// 打开失败的原因。非 nil 时 UI 显示空态 + 重试。
     @Published private(set) var loadError: String?
 
+    /// 撤销/重做可用性。每次成功 apply / undo / redo 后刷新。
+    @Published private(set) var canUndo = false
+    @Published private(set) var canRedo = false
+
+    /// 权威纪元:撤销/重做把行整体换掉时自增。行视图据此把本地草稿
+    /// 强制刷回权威文本——平时草稿只在失焦时跟随权威,而撤销改的
+    /// 恰恰可能是聚焦中的那一行。
+    @Published private(set) var authorityEpoch = 0
+
+    /// 各行未提交的草稿(rowId → 草稿文本)。不发布:每个键击都会更新,
+    /// 走 @Published 会白白抖动整个视图树。只有撤销用它判断「先回退
+    /// 草稿还是回退文档」。
+    private var drafts: [String: String] = [:]
+
     /// noteBlockDocumentOpen 返回的 doc_id。nil 表示尚未打开或已关闭。
     private(set) var docId: String?
 
@@ -43,6 +57,7 @@ final class BlockNoteStore: ObservableObject {
             docId = id
             rows = loaded
             loadError = nil
+            refreshUndoState()
         } catch {
             docId = nil
             rows = []
@@ -55,7 +70,73 @@ final class BlockNoteStore: ObservableObject {
         guard let docId else { return }
         self.docId = nil
         rows = []
+        drafts = [:]
+        canUndo = false
+        canRedo = false
         try? CoreClient.shared.core?.blockDocumentClose(docId: docId)
+    }
+
+    // MARK: - 撤销 / 重做
+
+    /// 行视图每次草稿变化都上报到这里(便宜的字典写,无视图抖动)。
+    func noteDraftChanged(rowId: String, draft: String) {
+        drafts[rowId] = draft
+    }
+
+    /// ⌘Z。两段式:聚焦行还有未提交的草稿改动时,第一下只把草稿刷回
+    /// 权威文本(经典编辑器里「先撤掉正在打的字」);草稿干净时才回退
+    /// 文档层的上一个手势。
+    func undo(focusedRowId: String?) {
+        if let focusedRowId,
+           let draft = drafts[focusedRowId],
+           let row = rows.first(where: { $0.id == focusedRowId }),
+           draft != row.text {
+            discardDrafts()
+            return
+        }
+        performUndoRedo { core, docId in try core.noteUndo(docId: docId) }
+    }
+
+    /// ⇧⌘Z。草稿层没有「重做」概念,直接走文档层。
+    func redo() {
+        performUndoRedo { core, docId in try core.noteRedo(docId: docId) }
+    }
+
+    /// 丢弃全部未提交草稿:自增权威纪元,行视图把草稿刷回权威文本。
+    private func discardDrafts() {
+        drafts = [:]
+        authorityEpoch += 1
+    }
+
+    private func performUndoRedo(
+        _ op: (ZulangueCore, String) throws -> FfiNoteUndoState
+    ) {
+        guard let docId, let core = CoreClient.shared.core else { return }
+        do {
+            let state = try op(core, docId)
+            canUndo = state.canUndo
+            canRedo = state.canRedo
+            guard state.performed else { return }
+            var loaded = try core.noteOutlineRows(docId: docId)
+            if loaded.isEmpty {
+                loaded = [Self.makeRow(depth: 0)]
+            }
+            rows = loaded
+            discardDrafts()
+        } catch {
+            ToastCenter.shared.error(
+                String(localized: "editor.outline.apply_failed"),
+                detail: error.localizedDescription
+            )
+        }
+    }
+
+    private func refreshUndoState() {
+        guard let docId, let core = CoreClient.shared.core,
+              let state = try? core.noteUndoState(docId: docId)
+        else { return }
+        canUndo = state.canUndo
+        canRedo = state.canRedo
     }
 
     // MARK: - 编辑手势(改本地 → apply → 失败回滚)
@@ -236,6 +317,7 @@ final class BlockNoteStore: ObservableObject {
         rows = next
         do {
             try core.noteApplyOutline(docId: docId, rows: next)
+            refreshUndoState()
             return true
         } catch {
             rows = previous

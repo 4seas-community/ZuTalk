@@ -117,6 +117,20 @@ struct BlockNoteEditorView: View {
             }
             .keyboardShortcut(.tab, modifiers: .shift)
             .disabled(focusedRowId == nil)
+
+            // ⌘Z / ⇧⌘Z:文档层撤销。行内草稿的「打字撤销」也归这里——
+            // 聚焦行草稿有未提交改动时,第一下先把草稿刷回权威文本,
+            // 第二下才回退上一个手势(两段式,见 BlockNoteStore.undo)。
+            Button(String(localized: "editor.outline.undo")) {
+                store.undo(focusedRowId: focusedRowId)
+            }
+            .keyboardShortcut("z", modifiers: .command)
+
+            Button(String(localized: "editor.outline.redo")) {
+                store.redo()
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .disabled(!store.canRedo)
         }
         .opacity(0)
         .frame(width: 0, height: 0)
@@ -261,6 +275,15 @@ private struct BlockNoteRowView: View {
             if focusedRowId != row.id {
                 draft = newValue
             }
+        }
+        // 草稿上报:两段式撤销靠它判断「聚焦行还有没提交的字」。
+        .onChange(of: draft) { _, newValue in
+            store.noteDraftChanged(rowId: row.id, draft: newValue)
+        }
+        // 撤销/重做换掉权威状态时,草稿无条件刷回权威文本——聚焦中的
+        // 行也不例外,否则失焦时旧草稿会把撤销结果又写回去。
+        .onChange(of: store.authorityEpoch) { _, _ in
+            draft = row.text
         }
         // 失焦提交:与 BilingualLaneText 的失焦提交同一手感。
         .onChange(of: focusedRowId) { previous, current in
