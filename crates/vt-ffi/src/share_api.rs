@@ -781,6 +781,9 @@ impl ZulangueCore {
                 self.data_dir.clone(),
                 hosting,
             )),
+            // 只有主持人转发成员更新 —— 成员之间没有连接,A 的订正要经
+            // 这一跳才到得了 B。
+            hosting,
         };
         self.runtime
             .block_on(async move { endpoint.enable_document_sync(context).await });

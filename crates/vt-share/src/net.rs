@@ -39,6 +39,11 @@ pub struct DocSyncContext {
     pub roster: Arc<Mutex<crate::permission::RoomRoster>>,
     pub guard: Arc<dyn CaptureBoundaryGuard + Send + Sync>,
     pub sink: Arc<dyn DocumentSync>,
+    /// 本机是这个范围的主持人。**只有主持人转发成员的更新** —— 文档更新走
+    /// 成对直连流(成员↔主持人),成员之间没有连接;A 的订正只有经主持人
+    /// 转发才到得了 B。观看端不转发,所以回声(自己的更新被转回来)在
+    /// 观看端就地止步,不会成环。
+    pub hosting: bool,
 }
 
 impl std::fmt::Debug for DocSyncContext {
@@ -56,6 +61,7 @@ impl Clone for DocSyncContext {
             roster: self.roster.clone(),
             guard: self.guard.clone(),
             sink: self.sink.clone(),
+            hosting: self.hosting,
         }
     }
 }
@@ -135,6 +141,10 @@ pub struct ShareEndpoint {
     /// 此刻连着字幕通道的观看端连接。主持人的链路诊断从这里读 ——
     /// AP 隔离(两机清单第一/二条)要靠主持人也看得见「谁在走中继」才判得出。
     caption_watchers: Arc<std::sync::Mutex<Vec<Connection>>>,
+    /// 主持人转发面:成员推来、验签合入成功的**原始信封**,原样发给
+    /// 所有文档连接。保留原作者签名 —— 接收端照常按名册验 A,不是
+    /// 主持人替 A 背书。观看端从不往里写。
+    doc_envelopes: broadcast::Sender<Arc<Vec<u8>>>,
 }
 
 impl ShareEndpoint {
@@ -147,6 +157,8 @@ impl ShareEndpoint {
         // 文档更新不能丢,所以队列开得比字幕深得多:字幕丢旧帧无害,少一份 CRDT
         // 更新却会让两端永远不收敛。
         let (doc_updates, _) = broadcast::channel::<Arc<(String, Vec<u8>)>>(256);
+        // 主持人转发面,深度同上 —— 同样一笔都不能丢。
+        let (doc_envelopes, _) = broadcast::channel::<Arc<Vec<u8>>>(256);
         let doc_context: Arc<Mutex<Option<DocSyncContext>>> = Arc::new(Mutex::new(None));
         let join_desk = Arc::new(JoinRequestDesk::default());
         // 主持中的分享码。请求台批准时要交出它;没在共享时它是 None,
@@ -220,6 +232,7 @@ impl ShareEndpoint {
                 DocSyncAcceptor {
                     context: doc_context.clone(),
                     updates: doc_updates.clone(),
+                    envelopes: doc_envelopes.clone(),
                     identity: identity.clone(),
                 },
             )
@@ -239,6 +252,7 @@ impl ShareEndpoint {
             hosted_code,
             mdns,
             caption_watchers,
+            doc_envelopes,
         })
     }
 
@@ -330,7 +344,7 @@ impl ShareEndpoint {
             read_message::<_, DocSyncMessage>(&mut recv).await
         {
             for envelope in envelopes {
-                apply_incoming(&context, &envelope).await;
+                apply_incoming(&context, &envelope, Some(&self.doc_envelopes)).await;
             }
         }
 
@@ -338,10 +352,11 @@ impl ShareEndpoint {
         let outbound = spawn_update_pusher(
             conn.clone(),
             self.doc_updates.subscribe(),
+            self.doc_envelopes.subscribe(),
             context.clone(),
             self.identity.clone(),
         );
-        let inbound = spawn_update_reader(conn, context);
+        let inbound = spawn_update_reader(conn, context, self.doc_envelopes.clone());
         let _ = tokio::join!(outbound, inbound);
         Ok(())
     }
@@ -592,7 +607,11 @@ impl ShareEndpoint {
 }
 
 /// 把一份收到的更新过门再合入。
-async fn apply_incoming(context: &DocSyncContext, envelope: &[u8]) {
+async fn apply_incoming(
+    context: &DocSyncContext,
+    envelope: &[u8],
+    relay: Option<&broadcast::Sender<Arc<Vec<u8>>>>,
+) {
     let roster = context.roster.lock().await.clone();
     match handle_incoming_update(
         envelope,
@@ -600,40 +619,67 @@ async fn apply_incoming(context: &DocSyncContext, envelope: &[u8]) {
         context.guard.as_ref(),
         context.sink.as_ref(),
     ) {
-        IncomingOutcome::Applied => {}
+        IncomingOutcome::Applied => {
+            // 主持人转发合入成功的成员更新:成员之间没有连接,A 的订正
+            // 只有这一跳才到得了 B。原始信封原样转发,签名仍是 A 的 ——
+            // 每个接收端照常过完整条准入链。发回给 A 自己也无害:那些
+            // ops A 已经有,合入是幂等的。被拒的更新不转发。
+            if context.hosting {
+                if let Some(relay) = relay {
+                    let _ = relay.send(Arc::new(envelope.to_vec()));
+                }
+            }
+        }
         outcome => tracing::debug!(?outcome, "丢弃一份未通过准入的文档更新"),
     }
 }
 
-/// 持续把本机更新推给一个对端。
+/// 持续把更新推给一个对端。两个来源:本机更新(要用本机身份签名封装)与
+/// 主持人转发面上的成员信封(已带原作者签名,原样送出)。
 fn spawn_update_pusher(
     conn: Connection,
     mut updates: broadcast::Receiver<Arc<(String, Vec<u8>)>>,
+    mut relayed: broadcast::Receiver<Arc<Vec<u8>>>,
     context: DocSyncContext,
     identity: ShareIdentity,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            let update = match updates.recv().await {
-                Ok(update) => update,
-                // 文档更新落后就没法只补最新的 —— CRDT 需要每一笔。断开让对方
-                // 重连后走补齐历史那条路,比装作没事继续发要诚实。
-                Err(broadcast::error::RecvError::Lagged(_)) => break,
-                Err(broadcast::error::RecvError::Closed) => break,
-            };
-            let (document_id, bytes) = update.as_ref();
-            // 与 respond_to_have 同一条纪律:纪元判不出来就不发。
-            let Some(schema_epoch) = context.sink.schema_epoch(&context.scope, document_id) else {
-                continue;
-            };
-            let Some(envelope) = seal_update(
-                &context.scope,
-                document_id,
-                schema_epoch,
-                bytes.clone(),
-                identity.secret(),
-            ) else {
-                continue;
+            let envelope: Vec<u8> = tokio::select! {
+                update = updates.recv() => {
+                    let update = match update {
+                        Ok(update) => update,
+                        // 文档更新落后就没法只补最新的 —— CRDT 需要每一笔。断开让对方
+                        // 重连后走补齐历史那条路,比装作没事继续发要诚实。
+                        Err(broadcast::error::RecvError::Lagged(_)) => break,
+                        Err(broadcast::error::RecvError::Closed) => break,
+                    };
+                    let (document_id, bytes) = update.as_ref();
+                    // 与 respond_to_have 同一条纪律:纪元判不出来就不发。
+                    let Some(schema_epoch) =
+                        context.sink.schema_epoch(&context.scope, document_id)
+                    else {
+                        continue;
+                    };
+                    let Some(envelope) = seal_update(
+                        &context.scope,
+                        document_id,
+                        schema_epoch,
+                        bytes.clone(),
+                        identity.secret(),
+                    ) else {
+                        continue;
+                    };
+                    envelope
+                }
+                relayed_envelope = relayed.recv() => {
+                    match relayed_envelope {
+                        Ok(envelope) => envelope.as_ref().clone(),
+                        // 转发信封同样一笔不能丢:落后就断开重来。
+                        Err(broadcast::error::RecvError::Lagged(_)) => break,
+                        Err(broadcast::error::RecvError::Closed) => break,
+                    }
+                }
             };
             let Ok(mut stream) = conn.open_uni().await else {
                 break;
@@ -655,13 +701,17 @@ fn spawn_update_pusher(
 }
 
 /// 持续接收对端推来的更新。
-fn spawn_update_reader(conn: Connection, context: DocSyncContext) -> tokio::task::JoinHandle<()> {
+fn spawn_update_reader(
+    conn: Connection,
+    context: DocSyncContext,
+    relay: broadcast::Sender<Arc<Vec<u8>>>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Ok(mut stream) = conn.accept_uni().await {
             match read_message::<_, DocSyncMessage>(&mut stream).await {
                 Ok(DocSyncMessage::Updates { envelopes }) => {
                     for envelope in envelopes {
-                        apply_incoming(&context, &envelope).await;
+                        apply_incoming(&context, &envelope, Some(&relay)).await;
                     }
                 }
                 Ok(_) => {}
@@ -742,6 +792,8 @@ impl ProtocolHandler for NearbyAcceptor {
 struct DocSyncAcceptor {
     context: Arc<Mutex<Option<DocSyncContext>>>,
     updates: broadcast::Sender<Arc<(String, Vec<u8>)>>,
+    /// 主持人转发面。见 [`ShareEndpoint::doc_envelopes`]。
+    envelopes: broadcast::Sender<Arc<Vec<u8>>>,
     identity: ShareIdentity,
 }
 
@@ -772,10 +824,11 @@ impl ProtocolHandler for DocSyncAcceptor {
         let outbound = spawn_update_pusher(
             connection.clone(),
             self.updates.subscribe(),
+            self.envelopes.subscribe(),
             context.clone(),
             self.identity.clone(),
         );
-        let inbound = spawn_update_reader(connection, context);
+        let inbound = spawn_update_reader(connection, context, self.envelopes.clone());
         let _ = tokio::join!(outbound, inbound);
         Ok(())
     }

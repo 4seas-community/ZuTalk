@@ -86,6 +86,7 @@ async fn endpoint_with_doc(
                 policy,
             ))),
             guard: Arc::new(AllowAllBoundaries),
+            hosting: false,
             sink: doc,
         })
         .await;
@@ -123,6 +124,7 @@ async fn late_joiner_receives_the_missing_history() {
             WritePolicy::Everyone,
         ))),
         guard: Arc::new(AllowAllBoundaries),
+        hosting: true,
         sink: host_doc.clone(),
     })
     .await;
@@ -157,6 +159,7 @@ async fn live_updates_reach_a_connected_peer() {
             WritePolicy::Everyone,
         ))),
         guard: Arc::new(AllowAllBoundaries),
+        hosting: true,
         sink: host_doc,
     })
     .await;
