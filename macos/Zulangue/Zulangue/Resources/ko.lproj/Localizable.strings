@@ -952,3 +952,4 @@
 "share.members.you" = "나";
 "share.members.host" = "호스트";
 "share.nearby.asking" = "응답 기다리는 중…";
+"share.nearby.abandon" = "그만 기다리기";

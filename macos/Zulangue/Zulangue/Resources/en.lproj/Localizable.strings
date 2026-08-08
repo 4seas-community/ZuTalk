@@ -952,3 +952,4 @@
 "share.members.you" = "you";
 "share.members.host" = "host";
 "share.nearby.asking" = "Waiting for an answer…";
+"share.nearby.abandon" = "Stop waiting";

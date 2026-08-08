@@ -75,7 +75,12 @@ struct SharePage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
-        .onAppear { viewModel.reload() }
+        .onAppear {
+            viewModel.reload()
+            if viewModel.isSharing == false, viewModel.idleMode == .join {
+                viewModel.startNearbyAutoScan()
+            }
+        }
         .onDisappear { viewModel.viewDisappeared() }
     }
 
@@ -91,6 +96,12 @@ struct SharePage: View {
         .onChange(of: viewModel.idleMode) { _, mode in
             // 切到加入道,光标直接落进粘贴框 —— 拿着码来的人下一步只有粘贴。
             joinFieldFocused = (mode == .join)
+            // 附近的人不该要人按按钮才找:进入加入道即扫,持续刷新。
+            if mode == .join {
+                viewModel.startNearbyAutoScan()
+            } else {
+                viewModel.stopNearbyAutoScan()
+            }
         }
     }
 
@@ -260,12 +271,22 @@ struct SharePage: View {
                             .font(.caption)
                             .foregroundColor(.textSecondary)
                         Spacer()
-                        Button(viewModel.asking
-                               ? String(localized: "share.nearby.asking")
-                               : String(localized: "share.nearby.ask")) {
-                            viewModel.askToJoin(peer.endpointId)
+                        if viewModel.askingPeer == peer.endpointId {
+                            // 等待最长一分钟,必须说出来,还要给一条退路 ——
+                            // 敲错门的人不该被钉在原地等超时。
+                            Text(String(localized: "share.nearby.asking"))
+                                .font(.bodySM)
+                                .foregroundColor(.textSecondary)
+                            Button(String(localized: "share.nearby.abandon")) {
+                                viewModel.abandonAsk()
+                            }
+                        } else {
+                            Button(String(localized: "share.nearby.ask")) {
+                                viewModel.askToJoin(peer.endpointId)
+                            }
+                            // 单飞:一次只敲一扇门,其余行等这一问有了结果。
+                            .disabled(viewModel.askingPeer != nil)
                         }
-                        .disabled(viewModel.asking)
                     }
                 }
             }
@@ -723,8 +744,13 @@ final class ShareViewModel: ObservableObject {
     @Published private(set) var nearby: [FfiNearbyPeer] = []
     @Published private(set) var joinRequests: [FfiJoinRequest] = []
     @Published private(set) var scanning: Bool = false
-    /// 正在等对方回答。这一等最长一分钟,界面必须说出来,否则看起来像卡死。
-    @Published private(set) var asking: Bool = false
+    /// 正在等哪台机器回答。这一等最长一分钟,界面必须说出来,还必须可放弃。
+    @Published private(set) var askingPeer: String?
+    /// 放弃计数。放弃后迟到的回答按代际号丢弃 —— FFI 调用本身要等到
+    /// 对方回答或超时,取消的只是**我们对结果的关心**。
+    private var askGeneration = 0
+    /// 加入道的自动扫描。手动按钮保留作立即刷新。
+    private var nearbyScanTimer: Timer?
     @Published private(set) var members: [FfiRoomMember] = []
     @Published var nickname: String = "" {
         didSet { saveNicknameDebounced() }
@@ -759,6 +785,7 @@ final class ShareViewModel: ObservableObject {
     /// 5 Hz 的定时器(每拍还要扫一遍 shared/ 目录)就跟到 App 退出。
     func viewDisappeared() {
         stopPolling()
+        stopNearbyAutoScan()
     }
 
     func reload() {
@@ -869,6 +896,8 @@ final class ShareViewModel: ObservableObject {
             showError(String(localized: "share.core_unavailable"))
             return
         }
+        // 自动扫描每 10 秒来一次,一次要阻塞后台线程 3 秒 —— 不叠加。
+        guard scanning == false else { return }
         scanning = true
         clearError()
         // **不能在主线程上调它。** nearbyPeers 是同步的,要阻塞三秒收集 mDNS 宣告;
@@ -886,16 +915,23 @@ final class ShareViewModel: ObservableObject {
     }
 
     /// 向同一网络里的某台机器请求加入。批准后自动进房。
+    ///
+    /// 单飞:一次只敲一扇门。等待可放弃 —— 放弃后 FFI 调用继续跑到超时,
+    /// 但结果按代际号丢弃,界面立即解锁。
     func askToJoin(_ endpointID: String) {
-        guard let core else { return }
+        guard let core, askingPeer == nil else { return }
         clearError()
-        asking = true
+        askingPeer = endpointID
+        askGeneration += 1
+        let generation = askGeneration
         // **绝不能在主线程上调它。** 它会一直等到对方点批准或超时 —— 最长一分钟。
         // 在 @MainActor 上调用会让整个 App 冻住那么久。
         Task.detached {
             let result = Result { try core.requestToJoinNearby(endpointId: endpointID) }
             await MainActor.run {
-                self.asking = false
+                // 用户已放弃这一问:迟到的回答不再有人关心。
+                guard generation == self.askGeneration else { return }
+                self.askingPeer = nil
                 switch result {
                 case .success(.joined):
                     // 对方批准了,钥匙已经经局域网直连交过来,房间也进了。
@@ -912,6 +948,27 @@ final class ShareViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// 放弃当前的加入等待。对方那边的请求会自然超时消失。
+    func abandonAsk() {
+        askGeneration += 1
+        askingPeer = nil
+    }
+
+    /// 加入道的自动扫描:进入即扫,之后每 10 秒刷一遍。
+    /// 手动「找一找」按钮保留,作立即刷新。
+    func startNearbyAutoScan() {
+        guard nearbyScanTimer == nil else { return }
+        scanNearby()
+        nearbyScanTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.scanNearby() }
+        }
+    }
+
+    func stopNearbyAutoScan() {
+        nearbyScanTimer?.invalidate()
+        nearbyScanTimer = nil
     }
 
     func approve(_ requestID: String) {
@@ -982,6 +1039,8 @@ final class ShareViewModel: ObservableObject {
         guard let core else { return }
         let state = core.shareState()
         isSharing = state.isSharing
+        // 进了房间就不用再找人了。
+        if isSharing { stopNearbyAutoScan() }
         isHost = state.isHost
         hostOnly = state.hostOnly
         viewerLink = state.viewerLink

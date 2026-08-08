@@ -951,3 +951,4 @@
 "share.members.you" = "du";
 "share.members.host" = "Host";
 "share.nearby.asking" = "Warte auf Antwort…";
+"share.nearby.abandon" = "Nicht mehr warten";
