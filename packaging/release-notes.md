@@ -1,26 +1,41 @@
-# Zulangue 0.3.1
+# Zulangue 0.3.2
 
-Shared recordings now outlive the room, and the app's notes and transcripts
-moved to a sturdier document foundation.
+Sharing a room now tells you what it is doing, notes gained real structure,
+and deleting a recording finally means the same thing everywhere in the app.
 
-- **A shared recording is yours to keep.** When someone shares a single
-  recording, the transcript arrives as a copy on your Mac and stays after the
-  room closes. Find it in the Share tab under Shared transcripts.
-- **Correct a transcript together.** In rooms where everyone may write,
-  corrections to the transcript's text and translations sync between Macs as
-  they are typed, and a correction someone made by hand is never overwritten
-  by the machine. Read-only rooms show a lock instead.
-- **See how you are connected.** While viewing a share, a green bolt means a
-  direct connection; an amber antenna means traffic is relayed. This tells
-  apart a slow room from an isolated Wi-Fi.
-- **Outline editing grows up.** Backspace at the start of a line merges it
-  into the one above; drag the handle beside a line to move it — its indented
-  children move with it.
-- **Move a recording to another notebook.** The recording moves whole — both
-  transcripts, the note, and the audio — and lands in time order.
-- **A sturdier document foundation.** Transcripts and notes now live in a
-  block-structured document store. Existing transcripts migrate automatically
-  and verifiably the first time they are opened; the previous files are kept
-  alongside as .pre-epoch2 backups.
+- **Rooms of three or more work.** A correction made by one watcher never
+  reached the others: the host kept it to itself instead of passing it on.
+  Everyone in the room now sees everyone's corrections.
+- **A dropped update no longer stalls the room.** The two Macs compare
+  versions every couple of seconds and fill in whatever the other is missing,
+  so a single lost message cannot leave a transcript frozen at an old version.
+- **You can always tell when captions are leaving your Mac.** The recording
+  bar, the menu bar popover, and the floating pill each carry the indicator,
+  and any of them can mute this recording without ending the share.
+- **Someone knocking gets your attention.** Join requests now appear wherever
+  you are in the app, not only on the Share page.
+- **The Share page knows which side you are on.** Hosting and joining are
+  separate from the first screen, the join box takes a code and the Return
+  key, and each scope says plainly what the other person ends up with.
+- **Watchers can leave, and know when the host has.** The viewer gets a Leave
+  button rather than the host's Stop, and is told when the host ends the room
+  instead of watching a transcript quietly stop moving.
+- **Received transcripts are yours to manage.** Each one carries the time it
+  arrived and can be deleted on its own.
+- **One room at a time.** Starting a share while watching someone else's — or
+  hosting two rooms at once — is refused instead of producing a room state
+  that no screen can describe. Switching rooms says goodbye to the old one, so
+  nobody waits for a timeout to learn you left.
+- **Notes are a real outline.** Undo and redo work the way they do everywhere
+  else, Tab and Shift-Tab indent, and a line can become a heading, quote,
+  to-do, or divider — type `#`, `>`, or `- [ ]` and the marker turns into the
+  block. There is a "Turn into" menu for when you would rather not remember
+  the shortcuts.
+- **Deleting a recording means deleting it.** A recording in the Trash no
+  longer turns up in search results, no longer counts towards its notebook,
+  and no longer leaves its transcript sections on the notebook's tabs.
+  Restoring brings all of it back.
+- **A recording that is still recording cannot be deleted.** Stop it first —
+  the delete option says so rather than failing after the fact.
 
 Zulangue requires macOS 15.5 or later.
