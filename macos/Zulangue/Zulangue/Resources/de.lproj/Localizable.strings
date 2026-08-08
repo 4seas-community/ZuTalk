@@ -843,7 +843,9 @@
 "share.cancel" = "Abbrechen";
 "share.needs_notebook" = "Öffne zuerst ein Notebook — geteilt wird immer ein Notebook.";
 "share.start.confirm.title" = "Dieses Notebook teilen?";
-"share.start.confirm.body" = "Aufnahmen, die in diesem Notebook starten, teilen ihre Untertitel standardmäßig. Audio wird niemals geteilt. Ein späteres Beenden stoppt weitere Übertragungen, löscht aber nichts, was andere bereits erhalten haben.";
+"share.start.confirm.body" = "Solange dieses Teilen offen ist, senden Aufnahmen, die du in diesem Notebook startest, ihre Untertitel live an alle im Raum. Audio wird niemals geteilt. Beenden stoppt weitere Übertragungen, löscht aber nichts, was andere bereits erhalten haben.";
+"share.start.confirm.session_title" = "Diese Aufnahme teilen?";
+"share.start.confirm.session_body" = "Wer eingelassen wird, behält eine Kopie des Transkripts dieser Aufnahme und kann sie mitkorrigieren, wenn der Raum es erlaubt. Audio wird niemals geteilt. Beenden stoppt weitere Übertragungen, löscht aber nichts, was andere bereits erhalten haben.";
 
 /* 设置:分享(点对点)传输 */
 "settings.section.p2p_name" = "Teilen";

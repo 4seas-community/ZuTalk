@@ -319,7 +319,9 @@ struct SharePage: View {
             }
         }
         .confirmationDialog(
-            String(localized: "share.start.confirm.title"),
+            viewModel.shareWholeNotebook
+                ? String(localized: "share.start.confirm.title")
+                : String(localized: "share.start.confirm.session_title"),
             isPresented: $viewModel.confirmingStart
         ) {
             Button(String(localized: "share.start"), role: .destructive) {
@@ -327,7 +329,12 @@ struct SharePage: View {
             }
             Button(String(localized: "share.cancel"), role: .cancel) {}
         } message: {
-            Text(String(localized: "share.start.confirm.body"))
+            // 这段话必须描述真实行为。它以前承诺「之后在这个 Notebook 里开始的
+            // 录音会默认共享」—— 但那个 per-Notebook 记忆并不存在,共享只活到
+            // 停止或退出为止。文案宁可少承诺,不能多承诺。
+            Text(viewModel.shareWholeNotebook
+                 ? String(localized: "share.start.confirm.body")
+                 : String(localized: "share.start.confirm.session_body"))
         }
     }
 

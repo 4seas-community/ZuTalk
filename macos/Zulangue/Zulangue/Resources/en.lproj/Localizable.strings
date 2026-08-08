@@ -844,7 +844,9 @@
 "share.cancel" = "Cancel";
 "share.needs_notebook" = "Open a notebook first — sharing is scoped to one.";
 "share.start.confirm.title" = "Start sharing this notebook?";
-"share.start.confirm.body" = "Recordings started in this notebook will share their captions by default. Audio is never shared. Stopping later halts further updates but cannot delete what others already received.";
+"share.start.confirm.body" = "While this share is open, recordings you start in this notebook send their live captions to everyone in the room. Audio is never shared. Stopping halts further updates but cannot delete what others already received.";
+"share.start.confirm.session_title" = "Share this recording?";
+"share.start.confirm.session_body" = "People you let in keep a copy of this recording's transcript and can help correct it where the room allows. Audio is never shared. Stopping halts further updates but cannot delete what they already received.";
 
 /* 设置:分享(点对点)传输 */
 "settings.section.p2p_name" = "Sharing";
