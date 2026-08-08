@@ -929,6 +929,9 @@
 "share.requests.approve" = "Hereinlassen";
 "share.requests.decline" = "Ablehnen";
 "share.requests.note" = "Der Name ist selbst eingegeben. Nur der Schlüssel darunter lässt sich nicht fälschen.";
+"share.knock.toast" = "%@ möchte deinem Teilen beitreten";
+"share.knock.toast_detail" = "Im Tab „Teilen“ annehmen oder ablehnen.";
+"share.knock.badge_label" = "%lld Beitrittsanfragen warten";
 
 /* 分享:昵称与成员 */
 "share.nickname" = "Dein Name im Raum";

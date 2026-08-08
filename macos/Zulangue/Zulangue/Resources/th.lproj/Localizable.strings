@@ -930,6 +930,9 @@
 "share.requests.approve" = "ให้เข้า";
 "share.requests.decline" = "ปฏิเสธ";
 "share.requests.note" = "ชื่อเป็นสิ่งที่อีกฝ่ายพิมพ์เอง คีย์ด้านล่างเท่านั้นที่ปลอมไม่ได้";
+"share.knock.toast" = "%@ ต้องการเข้าร่วมการแชร์ของคุณ";
+"share.knock.toast_detail" = "อนุมัติหรือปฏิเสธได้ในแท็บแชร์";
+"share.knock.badge_label" = "มีคำขอเข้าร่วม %lld รายการรออยู่";
 
 /* 分享:昵称与成员 */
 "share.nickname" = "ชื่อของคุณในห้อง";

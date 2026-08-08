@@ -929,6 +929,9 @@
 "share.requests.approve" = "Dejar entrar";
 "share.requests.decline" = "Rechazar";
 "share.requests.note" = "El nombre es el que escribieron. La clave de abajo es lo único que no se puede falsificar.";
+"share.knock.toast" = "%@ quiere unirse a tu sala";
+"share.knock.toast_detail" = "Aprueba o rechaza en la pestaña Compartir.";
+"share.knock.badge_label" = "%lld solicitudes de unión en espera";
 
 /* 分享:昵称与成员 */
 "share.nickname" = "Tu nombre en una sala";

@@ -5,6 +5,7 @@ struct MainShellView: View {
     @ObservedObject private var softwareUpdate = SoftwareUpdateController.shared
     @ObservedObject private var store: MainNavigationStore
     @ObservedObject private var communityInvite = CommunityInviteSession.shared
+    @ObservedObject private var shareActivity = ShareActivityStore.shared
     @State private var isSidebarHidden = false
 
     init(store: MainNavigationStore) {
@@ -33,7 +34,11 @@ struct MainShellView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot.ignoresSafeArea())
         .toastOverlay()
-        .onAppear { store.recordSnapshot() }
+        .onAppear {
+            store.recordSnapshot()
+            // 敲门请求一分钟就超时,提醒必须全局在场,不能等用户逛到分享页。
+            ShareActivityStore.shared.start()
+        }
         .task(id: needsOnboarding) {
             guard needsOnboarding == false else { return }
             for attempt in 0..<3 {
@@ -109,7 +114,8 @@ struct MainShellView: View {
                     icon: "person.2.fill",
                     label: String(localized: "sidebar.share"),
                     active: activeTab == .share,
-                    accId: AccessibilityID.mainTabShare
+                    accId: AccessibilityID.mainTabShare,
+                    badge: shareActivity.pendingJoinRequests.count
                 ) {
                     store.select(tab: .share)
                 }
@@ -187,6 +193,7 @@ struct MainShellView: View {
         label: String,
         active: Bool,
         accId: String?,
+        badge: Int = 0,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -199,6 +206,22 @@ struct MainShellView: View {
                     .font(.body)
                     .foregroundColor(active ? .textPrimary : .textSecondary)
                 Spacer()
+                // 有人在等回答时的角标。敲门一分钟就超时,所以这个数字
+                // 必须在用户不在分享页时也看得见。
+                if badge > 0 {
+                    Text("\(badge)")
+                        .font(.captionMedium)
+                        .monospacedDigit()
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.signalAmber)
+                        .clipShape(Capsule())
+                        .accessibilityLabel(String(
+                            format: String(localized: "share.knock.badge_label"),
+                            badge
+                        ))
+                }
             }
             .padding(.horizontal, Spacing.sm + 2)
             .frame(minHeight: 44)

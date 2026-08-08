@@ -930,6 +930,9 @@
 "share.requests.approve" = "Let in";
 "share.requests.decline" = "Decline";
 "share.requests.note" = "The name is what they typed. The key underneath is the only part that cannot be faked.";
+"share.knock.toast" = "%@ wants to join your share";
+"share.knock.toast_detail" = "Approve or decline in the Share tab.";
+"share.knock.badge_label" = "%lld join requests waiting";
 
 /* 分享:昵称与成员 */
 "share.nickname" = "Your name in a room";

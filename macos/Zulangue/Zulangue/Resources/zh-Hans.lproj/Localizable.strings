@@ -930,6 +930,9 @@
 "share.requests.approve" = "放行";
 "share.requests.decline" = "拒绝";
 "share.requests.note" = "名字是对方自己填的。下面那串密钥才是伪造不了的部分。";
+"share.knock.toast" = "%@ 想加入你的共享";
+"share.knock.toast_detail" = "到「分享」页批准或拒绝。";
+"share.knock.badge_label" = "%lld 个加入请求等待处理";
 
 /* 分享:昵称与成员 */
 "share.nickname" = "你在房间里的名字";

@@ -930,6 +930,9 @@
 "share.requests.approve" = "許可";
 "share.requests.decline" = "断る";
 "share.requests.note" = "名前は相手が入力したものです。その下の鍵だけが偽装できません。";
+"share.knock.toast" = "%@ が共有への参加を求めています";
+"share.knock.toast_detail" = "「共有」タブで承認または拒否してください。";
+"share.knock.badge_label" = "%lld 件の参加リクエストが待機中";
 
 /* 分享:昵称与成员 */
 "share.nickname" = "ルームでの名前";

@@ -930,6 +930,9 @@
 "share.requests.approve" = "허용";
 "share.requests.decline" = "거절";
 "share.requests.note" = "이름은 상대가 입력한 것입니다. 아래 키만이 위조할 수 없는 부분입니다.";
+"share.knock.toast" = "%@ 님이 공유 참여를 요청했습니다";
+"share.knock.toast_detail" = "공유 탭에서 승인하거나 거절하세요.";
+"share.knock.badge_label" = "%lld개의 참여 요청 대기 중";
 
 /* 分享:昵称与成员 */
 "share.nickname" = "방에서 쓸 이름";

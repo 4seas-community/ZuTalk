@@ -930,6 +930,9 @@
 "share.requests.approve" = "Laisser entrer";
 "share.requests.decline" = "Refuser";
 "share.requests.note" = "Le nom est celui qu'ils ont saisi. Seule la clé en dessous ne peut pas être falsifiée.";
+"share.knock.toast" = "%@ souhaite rejoindre votre partage";
+"share.knock.toast_detail" = "Approuvez ou refusez dans l'onglet Partage.";
+"share.knock.badge_label" = "%lld demandes d'adhésion en attente";
 
 /* 分享:昵称与成员 */
 "share.nickname" = "Votre nom dans un salon";
