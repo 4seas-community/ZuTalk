@@ -132,6 +132,9 @@ pub struct ShareEndpoint {
     display_name: Arc<Mutex<String>>,
     /// 局域网发现服务。`None` 表示设置里没开。
     mdns: Option<iroh_mdns_address_lookup::MdnsAddressLookup>,
+    /// 此刻连着字幕通道的观看端连接。主持人的链路诊断从这里读 ——
+    /// AP 隔离(两机清单第一/二条)要靠主持人也看得见「谁在走中继」才判得出。
+    caption_watchers: Arc<std::sync::Mutex<Vec<Connection>>>,
 }
 
 impl ShareEndpoint {
@@ -194,6 +197,7 @@ impl ShareEndpoint {
             .await
             .map_err(|e| NetError::Bind(e.to_string()))?;
 
+        let caption_watchers: Arc<std::sync::Mutex<Vec<Connection>>> = Default::default();
         let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
         let router = Router::builder(endpoint.clone())
             .accept(iroh_gossip::ALPN, gossip.clone())
@@ -201,6 +205,7 @@ impl ShareEndpoint {
                 LIVE_CAPTION_ALPN,
                 CaptionAcceptor {
                     captions: captions.clone(),
+                    watchers: caption_watchers.clone(),
                 },
             )
             .accept(
@@ -233,6 +238,7 @@ impl ShareEndpoint {
             display_name,
             hosted_code,
             mdns,
+            caption_watchers,
         })
     }
 
@@ -253,6 +259,19 @@ impl ShareEndpoint {
     pub fn broadcast_caption(&self, frame: CaptionFrame) {
         // send 只在没有订阅者时报错,那是正常状态,不是故障。
         let _ = self.captions.send(Arc::new(frame));
+    }
+
+    /// 主持人视角:此刻连着字幕通道的观看端,以及各自实际走的链路。
+    ///
+    /// 与观看端的 `link_path` 同一份真值来源(QUIC 当前选中的传输路径)。
+    /// 已断开的连接顺手剪掉 —— 注册表只在 accept 与这里被碰,不需要后台清扫。
+    pub fn caption_watchers(&self) -> Vec<(iroh::EndpointId, CaptionLinkPath)> {
+        let mut guard = self.caption_watchers.lock().unwrap();
+        guard.retain(|conn| conn.close_reason().is_none());
+        guard
+            .iter()
+            .filter_map(|conn| Some((conn.remote_id(), caption_link_path_of(conn)?)))
+            .collect()
     }
 
     /// 接上文档同步。在此之前 `DOC_SYNC_ALPN` 上的连接一律被拒。
@@ -929,10 +948,18 @@ fn caption_link_path_of(conn: &Connection) -> Option<CaptionLinkPath> {
 #[derive(Debug, Clone)]
 struct CaptionAcceptor {
     captions: broadcast::Sender<Arc<CaptionFrame>>,
+    /// 活跃观看端注册表,主持人的链路诊断从这里读。
+    watchers: Arc<std::sync::Mutex<Vec<Connection>>>,
 }
 
 impl ProtocolHandler for CaptionAcceptor {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+        {
+            // 登记进注册表,顺手剪掉已断开的 —— 重连会积累死连接。
+            let mut watchers = self.watchers.lock().unwrap();
+            watchers.retain(|conn| conn.close_reason().is_none());
+            watchers.push(connection.clone());
+        }
         let mut rx = self.captions.subscribe();
         loop {
             let frame = match rx.recv().await {

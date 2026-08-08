@@ -48,8 +48,12 @@ final class CommunityInviteSession: ObservableObject {
     @Published private(set) var plannedLaneCount = 1
 
     private let baseURL = URL(string: "https://zulangue-invite.exe.xyz")!
-    private let keychainService = "xyz.voice.zulangue.community-invite"
-    private let keychainAccount = "access-token"
+    /// 邀请 token 存在 app 私有目录的 0600 文件里，而不是钥匙串。发布构建
+    /// 是 ad-hoc 签名，每个构建的签名身份都不同，钥匙串条目的 ACL 会在每次
+    /// 更新后拒认新二进制，向用户索要登录钥匙串密码。token 泄露的最坏后果
+    /// 只是烧掉共享额度，配不上这个代价。
+    private let tokenFileURL: URL
+    private var accessToken: String?
     private var activeRealtimeSessionID: String?
     /// Realtime capture streams the same audio once per Soniox lane, so invite
     /// time must be charged per lane, not per wall-clock second.
@@ -58,6 +62,12 @@ final class CommunityInviteSession: ObservableObject {
     /// the core asks it for a single-use key per connection, so no invite key
     /// is ever written into the shared credential runtime.
     private var laneCredentialProvider: CommunityInviteLaneCredentialProvider?
+
+    private init() {
+        tokenFileURL = Self.defaultTokenFileURL()
+        accessToken = Self.loadToken(from: tokenFileURL)
+        Self.purgeLegacyKeychainItem()
+    }
 
     var isActive: Bool { accessToken != nil }
 
@@ -327,12 +337,8 @@ final class CommunityInviteSession: ObservableObject {
     /// Deletes the redeemed invitation from this Mac and returns the app to
     /// its normal credential state (the user's own saved key, if any).
     func removeInvite() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
-        ]
-        SecItemDelete(query as CFDictionary)
+        try? FileManager.default.removeItem(at: tokenFileURL)
+        accessToken = nil
         laneCredentialProvider?.discardPooledKeys()
         laneCredentialProvider = nil
         CoreClient.shared.core?.setLaneCredentialRequester(requester: nil)
@@ -382,36 +388,56 @@ final class CommunityInviteSession: ObservableObject {
         }
     }
 
-    private var accessToken: String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data
+    /// 和 provider 凭据同一个 Secrets 目录，跟随同一套测试隔离。
+    static func defaultTokenFileURL() -> URL {
+        ProviderCredentialFileStore.defaultFileURL()
+            .deletingLastPathComponent()
+            .appendingPathComponent("community-invite.json", isDirectory: false)
+    }
+
+    static func loadToken(from url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url),
+              data.count <= 64 * 1024,
+              let document = try? JSONDecoder().decode(InviteTokenDocument.self, from: data),
+              document.version == 1
         else { return nil }
-        return String(data: data, encoding: .utf8)
+        let token = document.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
     }
 
     private func saveAccessToken(_ token: String) throws {
-        let data = Data(token.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
-        ]
-        SecItemDelete(query as CFDictionary)
-        let insert = query.merging([
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ]) { _, new in new }
-        guard SecItemAdd(insert as CFDictionary, nil) == errSecSuccess else {
+        do {
+            let data = try JSONEncoder().encode(
+                InviteTokenDocument(version: 1, accessToken: token)
+            )
+            let directoryURL = tokenFileURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(
+                at: directoryURL,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try data.write(to: tokenFileURL, options: [.atomic])
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: tokenFileURL.path
+            )
+        } catch {
             throw CommunityInviteError.secureStorageFailed
         }
+        accessToken = token
+    }
+
+    /// 旧版本把 token 存在钥匙串。只删不读：读取会触发钥匙串密码框——
+    /// 正是这次要消灭的弹窗——而删除不碰密文，所以是安静的。token 就此
+    /// 丢弃，持有邀请的用户重新兑换一次邀请码。
+    private static func purgeLegacyKeychainItem() {
+        guard TestEnvironment.isAnyTestMode == false else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "xyz.voice.zulangue.community-invite",
+            kSecAttrAccount as String: "access-token",
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 
     private func request<Response: Decodable>(
@@ -436,6 +462,16 @@ final class CommunityInviteSession: ObservableObject {
               (200..<300).contains(http.statusCode)
         else { throw CommunityInviteError.requestFailed }
         return try JSONDecoder().decode(Response.self, from: data)
+    }
+}
+
+private struct InviteTokenDocument: Codable {
+    let version: Int
+    let accessToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case version
+        case accessToken = "access_token"
     }
 }
 

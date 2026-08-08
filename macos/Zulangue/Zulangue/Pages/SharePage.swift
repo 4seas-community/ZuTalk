@@ -194,6 +194,25 @@ struct SharePage: View {
                             .foregroundColor(.textTertiary)
                     }
                     Spacer()
+                    // 主持人视角的链路诊断:谁在直连、谁在走中继。
+                    // 「大家都经中继」= 这个 Wi-Fi 八成开了 AP 隔离。
+                    if let link = member.link {
+                        Label(
+                            link == .direct
+                                ? String(localized: "share.link.direct")
+                                : String(localized: "share.link.relayed"),
+                            systemImage: link == .direct
+                                ? "bolt.fill"
+                                : "antenna.radiowaves.left.and.right"
+                        )
+                        .font(.captionMedium)
+                        .foregroundColor(link == .direct ? .signalGreen : .signalAmber)
+                        .help(
+                            link == .direct
+                                ? String(localized: "share.link.direct_hint")
+                                : String(localized: "share.link.relayed_hint")
+                        )
+                    }
                     Text(member.shortLabel)
                         .font(.caption)
                         .foregroundColor(.textTertiary)

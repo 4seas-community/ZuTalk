@@ -53,6 +53,56 @@ final class CommunityInviteLaneCountTests: XCTestCase {
     }
 }
 
+/// The invite access token lives in an app-private file, not the Keychain:
+/// releases are ad-hoc signed, so a Keychain item would demand the login
+/// keychain password after every update.
+@MainActor
+final class CommunityInviteTokenFileTests: XCTestCase {
+    private var directoryURL: URL!
+    private var fileURL: URL!
+
+    override func setUpWithError() throws {
+        directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+        fileURL = directoryURL.appendingPathComponent(
+            "community-invite.json",
+            isDirectory: false
+        )
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directoryURL)
+    }
+
+    func testLoadTokenReadsVersionedDocumentAndTrims() throws {
+        try Data(#"{"version":1,"access_token":" tok-123 "}"#.utf8).write(to: fileURL)
+        XCTAssertEqual(CommunityInviteSession.loadToken(from: fileURL), "tok-123")
+    }
+
+    func testLoadTokenReturnsNilForMissingFile() {
+        XCTAssertNil(CommunityInviteSession.loadToken(from: fileURL))
+    }
+
+    func testLoadTokenRejectsUnknownVersion() throws {
+        try Data(#"{"version":2,"access_token":"tok"}"#.utf8).write(to: fileURL)
+        XCTAssertNil(CommunityInviteSession.loadToken(from: fileURL))
+    }
+
+    func testLoadTokenRejectsBlankToken() throws {
+        try Data(#"{"version":1,"access_token":"  "}"#.utf8).write(to: fileURL)
+        XCTAssertNil(CommunityInviteSession.loadToken(from: fileURL))
+    }
+
+    func testLoadTokenRejectsMalformedJSON() throws {
+        try Data("not json".utf8).write(to: fileURL)
+        XCTAssertNil(CommunityInviteSession.loadToken(from: fileURL))
+    }
+}
+
 /// Invite lanes take a single-use key per connection. These cover the parts
 /// that decide whether a recording survives: where each key comes from, and
 /// whether a failure ends the recording or lets it reconnect.

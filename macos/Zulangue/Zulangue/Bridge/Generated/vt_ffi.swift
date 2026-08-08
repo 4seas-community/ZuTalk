@@ -5365,6 +5365,11 @@ public struct FfiRoomMember: Equatable, Hashable {
      */
     public var isMe: Bool
     public var isHost: Bool
+    /**
+     * 主持人视角:这个成员的字幕连接实际走的链路。观看端看别人、
+     * 以及自己那一行都是 `None` —— 不知道就不显示,不猜。
+     */
+    public var link: FfiShareLinkPath?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -5374,12 +5379,17 @@ public struct FfiRoomMember: Equatable, Hashable {
          */displayName: String,
         /**
          * 是不是你自己。
-         */isMe: Bool, isHost: Bool) {
+         */isMe: Bool, isHost: Bool,
+        /**
+         * 主持人视角:这个成员的字幕连接实际走的链路。观看端看别人、
+         * 以及自己那一行都是 `None` —— 不知道就不显示,不猜。
+         */link: FfiShareLinkPath?) {
         self.endpointId = endpointId
         self.shortLabel = shortLabel
         self.displayName = displayName
         self.isMe = isMe
         self.isHost = isHost
+        self.link = link
     }
 
 
@@ -5402,7 +5412,8 @@ public struct FfiConverterTypeFfiRoomMember: FfiConverterRustBuffer {
                 shortLabel: FfiConverterString.read(from: &buf),
                 displayName: FfiConverterString.read(from: &buf),
                 isMe: FfiConverterBool.read(from: &buf),
-                isHost: FfiConverterBool.read(from: &buf)
+                isHost: FfiConverterBool.read(from: &buf),
+                link: FfiConverterOptionTypeFfiShareLinkPath.read(from: &buf)
         )
     }
 
@@ -5412,6 +5423,7 @@ public struct FfiConverterTypeFfiRoomMember: FfiConverterRustBuffer {
         FfiConverterString.write(value.displayName, into: &buf)
         FfiConverterBool.write(value.isMe, into: &buf)
         FfiConverterBool.write(value.isHost, into: &buf)
+        FfiConverterOptionTypeFfiShareLinkPath.write(value.link, into: &buf)
     }
 }
 

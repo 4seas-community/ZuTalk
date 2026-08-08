@@ -142,6 +142,9 @@ pub struct FfiRoomMember {
     /// 是不是你自己。
     pub is_me: bool,
     pub is_host: bool,
+    /// 主持人视角:这个成员的字幕连接实际走的链路。观看端看别人、
+    /// 以及自己那一行都是 `None` —— 不知道就不显示,不猜。
+    pub link: Option<FfiShareLinkPath>,
 }
 
 /// 一条等着你回答的加入请求。
@@ -526,7 +529,7 @@ impl ZulangueCore {
 
     /// 房间里都有谁。没在房间里时为空。
     pub fn room_members(&self) -> Vec<FfiRoomMember> {
-        let (room, me) = {
+        let (room, me, endpoint) = {
             let guard = self.share_runtime.lock().unwrap();
             let Some(runtime) = guard.as_ref() else {
                 return Vec::new();
@@ -534,9 +537,17 @@ impl ZulangueCore {
             let Some(room) = runtime.room.clone() else {
                 return Vec::new();
             };
-            (room, runtime.endpoint.endpoint_id())
+            (
+                room,
+                runtime.endpoint.endpoint_id(),
+                runtime.endpoint.clone(),
+            )
         };
         let host = room.host();
+        // 主持人这一侧:每个观看端字幕连接实际走的链路。观看端没人连它,
+        // 表为空,所有成员的 link 自然是 None。
+        let links: std::collections::BTreeMap<_, _> =
+            endpoint.caption_watchers().into_iter().collect();
         self.runtime.block_on(async move {
             room.members_with_names()
                 .await
@@ -547,6 +558,7 @@ impl ZulangueCore {
                     display_name,
                     is_me: id == me,
                     is_host: id == host,
+                    link: links.get(&id).copied().map(Into::into),
                 })
                 .collect()
         })
