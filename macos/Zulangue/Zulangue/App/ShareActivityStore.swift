@@ -23,6 +23,8 @@ final class ShareActivityStore: ObservableObject {
     /// 请求超时或被处理后从请求台消失,这里保留 id 无害 —— 同一个
     /// request_id 不会复用。
     private var announcedRequestIds: Set<String> = []
+    /// 上一拍的 host_left。只在 false→true 的越变上出 Toast。
+    private var lastHostLeft = false
     private var timer: Timer?
 
     private var core: (any ZulangueCoreProtocol)? { CoreClient.shared.core }
@@ -54,5 +56,16 @@ final class ShareActivityStore: ObservableObject {
         if requests.map(\.requestId) != pendingJoinRequests.map(\.requestId) {
             pendingJoinRequests = requests
         }
+
+        // 主持人道别也要全局说一声 —— 观看的人未必正停在分享页上。
+        // 只报越变(false→true):分享页的状态条负责持续陈述。
+        let state = core.shareState()
+        if state.hostLeft, lastHostLeft == false {
+            ToastCenter.shared.info(
+                String(localized: "share.status.host_left"),
+                detail: String(localized: "share.status.host_left_hint")
+            )
+        }
+        lastHostLeft = state.hostLeft
     }
 }

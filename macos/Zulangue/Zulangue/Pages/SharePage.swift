@@ -19,59 +19,15 @@ struct SharePage: View {
     @FocusState private var joinFieldFocused: Bool
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.lg) {
-                // 状态横幅常驻。用户最需要知道的一句话是「现在到底怎么了」,
-                // 而这一句以前根本不存在 —— 加入成功、加入失败、等主持人录音,
-                // 三种情况在界面上长得一模一样,都是「什么也没发生」。
-                statusBanner
+        VStack(spacing: 0) {
+            // 状态横幅**吸顶**,不随内容滚走。用户最需要知道的一句话是
+            // 「现在到底怎么了」—— 字幕滚上来以后,这一句更不能被顶出屏幕。
+            statusBanner
+                .padding(.horizontal, Spacing.xl)
+                .padding(.top, Spacing.lg)
+                .padding(.bottom, Spacing.sm)
 
-                // 音频约束是这个功能最该被看见的一句话,所以它常驻在页面顶部区域,
-                // 而不是藏在设置或帮助里。
-                audioNotice
-
-                if let error = viewModel.errorMessage {
-                    errorBanner(error)
-                }
-
-                // 主持人要先看到有人在敲门,这比其他任何东西都急。
-                if !viewModel.joinRequests.isEmpty {
-                    joinRequestsSection
-                }
-
-                if viewModel.isSharing {
-                    identitySection
-                    membersSection
-                    activeSection
-
-                    if !viewModel.lines.isEmpty {
-                        captionSection
-                    }
-                } else {
-                    // 角色是这个页面上最早、且互斥的一个决定:要么把自己的内容
-                    // 分出去,要么加入别人的。以前两套器械混在一页里,想加入的人
-                    // 要滚过主持人的全部器械才找得到粘贴框。
-                    modePicker
-
-                    switch viewModel.idleMode {
-                    case .host:
-                        identitySection
-                        startSection
-                    case .join:
-                        joinSection
-                        nearbySection
-                        nicknameSection
-                    }
-                }
-
-                // 收到与共享过的转录稿:房间散了内容还在,这一节不随
-                // isSharing 显隐。
-                if !viewModel.sharedSessions.isEmpty {
-                    sharedSessionsSection
-                }
-            }
-            .padding(.horizontal, Spacing.xl)
-            .padding(.vertical, Spacing.lg)
+            scrollBody
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
@@ -82,6 +38,81 @@ struct SharePage: View {
             }
         }
         .onDisappear { viewModel.viewDisappeared() }
+    }
+
+    private var scrollBody: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.lg) {
+                    // 音频约束是这个功能最该被看见的一句话,所以它常驻在页面
+                    // 顶部区域,而不是藏在设置或帮助里。
+                    audioNotice
+
+                    if let error = viewModel.errorMessage {
+                        errorBanner(error)
+                    }
+
+                    // 主持人要先看到有人在敲门,这比其他任何东西都急。
+                    if !viewModel.joinRequests.isEmpty {
+                        joinRequestsSection
+                    }
+
+                    mainColumns
+                }
+                .padding(.horizontal, Spacing.xl)
+                .padding(.bottom, Spacing.lg)
+                .padding(.top, Spacing.sm)
+            }
+            // 新行到达就跟到底 —— 看直播字幕的人不该一直手动往下滚。
+            // 帧是 replace-in-full 的,以行数+末行原文作为「有新内容」的信号。
+            .onChange(of: captionFollowKey) { _, _ in
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo("share-captions-end", anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    /// 字幕跟随的触发信号:行数或末行文本变了。
+    private var captionFollowKey: String {
+        "\(viewModel.lines.count)|\(viewModel.lines.last?.sourceText ?? "")"
+    }
+
+    @ViewBuilder
+    private var mainColumns: some View {
+        if viewModel.isSharing {
+            identitySection
+            membersSection
+            activeSection
+
+            if !viewModel.lines.isEmpty {
+                captionSection
+                Color.clear
+                    .frame(height: 1)
+                    .id("share-captions-end")
+            }
+        } else {
+            // 角色是这个页面上最早、且互斥的一个决定:要么把自己的内容
+            // 分出去,要么加入别人的。以前两套器械混在一页里,想加入的人
+            // 要滚过主持人的全部器械才找得到粘贴框。
+            modePicker
+
+            switch viewModel.idleMode {
+            case .host:
+                identitySection
+                startSection
+            case .join:
+                joinSection
+                nearbySection
+                nicknameSection
+            }
+        }
+
+        // 收到与共享过的转录稿:房间散了内容还在,这一节不随
+        // isSharing 显隐。
+        if !viewModel.sharedSessions.isEmpty {
+            sharedSessionsSection
+        }
     }
 
     /// 两条道:我来分享 / 加入别人的。
@@ -445,11 +476,18 @@ struct SharePage: View {
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
+                    // 当前房间正在同步的那条禁删:doc-sync 对范围内文档按需
+                    // 重建,删了下一笔远端更新又会把它拉回来 —— 一个「删不掉」
+                    // 的删除按钮比禁用的按钮更坏。先离开房间,再删。
                     Button(role: .destructive) {
                         viewModel.pendingDeleteSession = info
                     } label: {
                         Text(String(localized: "share.received.delete"))
                     }
+                    .disabled(
+                        viewModel.isSharing
+                            && viewModel.scopeSessionId == info.sessionId
+                    )
                 }
             }
         }
