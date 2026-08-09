@@ -187,6 +187,28 @@ class CaptionWebTests(unittest.TestCase):
         status, _ = self.request("GET", f"/r/{room['room_id']}")
         self.assertEqual(status, 404)
 
+    def test_viewer_page_script_parses(self):
+        """内联脚本必须是合法 JS。
+
+        页面是 Python 字符串里的一大段 JS —— 一个跑进字符串字面量的
+        `\\n` 转义就能让整页脚本 SyntaxError,而服务端毫不知情:HTTP 200、
+        HTML 正常,只有浏览器控制台里一句报错,页面全白。生产上真发生过。
+        没有 node 时跳过(CI 机器上有)。
+        """
+        import shutil
+        import subprocess
+        import tempfile
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node 不可用,跳过 JS 语法检查")
+        script = server.VIEWER_PAGE.split("<script>")[1].split("</script>")[0]
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as handle:
+            handle.write(script)
+            path = handle.name
+        result = subprocess.run([node, "--check", path], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_keep_alive_survives_rejected_and_bodyless_reads(self):
         """连接复用下的请求体卫生 —— 生产抓到过的真 bug。
 

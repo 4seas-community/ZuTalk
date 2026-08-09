@@ -206,7 +206,9 @@ VIEWER_PAGE = """<!DOCTYPE html>
     gap: 14px; padding: 4px 0 6px; border-bottom: 1px solid #2a2a2a;
     margin-bottom: 10px; }
   .colhead span { font-size: 12px; color: #888; }
-  .live { opacity: 0.65; border-left: 3px solid #6c6; padding-left: 10px; }
+  /* 正在说的文字:直接续在稿后原地刷新,不做引用块。弱色区分推测性。 */
+  #livetail .cell { color: #9a9a9a; }
+  #livetail p { margin: 0 0 12px; }
   #follow {
     position: fixed; right: 16px; bottom: 16px; display: none;
     background: #2a2; color: #fff; border: none; border-radius: 999px;
@@ -228,7 +230,7 @@ VIEWER_PAGE = """<!DOCTYPE html>
 <main id="main">
   <div id="colhead"></div>
   <div id="transcript"></div>
-  <div id="livetail" class="live"></div>
+  <div id="livetail"></div>
 </main>
 <button id="follow"></button>
 <script>
@@ -367,34 +369,44 @@ function renderLangButtons() {
   }
 }
 
+// 选中的语言里,只有当前房间数据里真实存在的才占一栏。
+// localStorage 里的选择可能带着上一场的语言(比如 fr)——那门语言在这
+// 一场不存在时,按钮不会渲染出来,用户既看到多余的空栏又无从取消。
+// 以「可用 ∩ 已选」渲染,语言真出现时按钮亮起,随时可关。
+function activeColumns() {
+  const available = new Set(collectLanguages());
+  const filtered = state.selected.filter((key) => available.has(key));
+  return filtered.length ? filtered : ["source"];
+}
+
 // 稿里某一栏的取值:「原文」取块文本,语言取车道;批注块只有原文。
 function cellText(block, key) {
   if (key === "source") return block.text || "";
   return (block.lanes && block.lanes[key]) || "";
 }
 
-function gridStyle(element) {
-  element.style.gridTemplateColumns = `repeat(${state.selected.length}, 1fr)`;
+function gridStyle(element, count) {
+  element.style.gridTemplateColumns = `repeat(${count}, 1fr)`;
 }
 
-function renderColumnHead() {
+function renderColumnHead(columns) {
   const head = el("colhead");
   head.textContent = "";
-  if (state.selected.length < 2) return;
-  gridStyle(head);
+  if (columns.length < 2) { head.className = ""; return; }
+  gridStyle(head, columns.length);
   head.className = "colhead";
-  for (const key of state.selected) {
+  for (const key of columns) {
     const span = document.createElement("span");
     span.textContent = columnLabel(key);
     head.appendChild(span);
   }
 }
 
-function appendRow(holder, values, annotation) {
+function appendRow(holder, columns, values, annotation) {
   if (values.every((v) => !v)) return;
   const row = document.createElement("div");
   row.className = "row";
-  gridStyle(row);
+  gridStyle(row, columns.length);
   for (const value of values) {
     const cell = document.createElement("div");
     cell.className = "cell" + (value ? "" : " empty");
@@ -411,7 +423,7 @@ function appendRow(holder, values, annotation) {
   holder.appendChild(row);
 }
 
-function renderTranscript() {
+function renderTranscript(columns) {
   const holder = el("transcript");
   holder.textContent = "";
   for (const session of state.sessions) {
@@ -420,7 +432,8 @@ function renderTranscript() {
     for (const block of (session.blocks || [])) {
       appendRow(
         sessionDiv,
-        state.selected.map((key) => cellText(block, key)),
+        columns,
+        columns.map((key) => cellText(block, key)),
         block.owner === "user"
       );
     }
@@ -429,8 +442,7 @@ function renderTranscript() {
 }
 
 // 已进稿的句子。实时尾部(bounded tail)会包含刚落定的句子,而它们同时
-// 已经出现在稿区 —— 不去重的话,整屏内容都是双份。主播本机画布靠
-// durable/预览按 sequence 合并解决同一个问题;这里的合并键是
+// 已经出现在稿区 —— 不去重的话,整屏内容都是双份。合并键是
 // session_id + 句块 id(T2 块 id 就是 utterance id)。
 function transcribedIds() {
   const ids = new Set();
@@ -442,48 +454,107 @@ function transcribedIds() {
   return ids;
 }
 
-// 稿里某语言已有的文本。cue 没有句块 id,按文本去重。
-function transcribedTexts(lang) {
-  const texts = new Set();
+// 某一栏在稿里已有的全部文本,连成大串做包含判断 —— 真实录音的推测
+// 片段(「Testing.」这类)往往是已落稿句子的子串,等价判断拦不住它们。
+function columnHaystack(key) {
+  const parts = [];
   for (const session of state.sessions) {
     for (const block of (session.blocks || [])) {
-      if (block.lanes && block.lanes[lang]) texts.add(block.lanes[lang]);
+      const text = cellText(block, key);
+      if (text) parts.push(text);
     }
   }
-  return texts;
+  return parts.join(" ");
 }
 
-function liveCellText(u, key) {
-  if (key === "source") return u.source_text || "";
-  if (u.translated_language === key) return u.translated_text || "";
-  return "";
+// 一栏的实时内容:只收属于这门语言的句子,与稿去重,只留最近几行。
+//
+// 真实录音的帧里,utterance 的语言会飘(语言识别、辅助车道的片段都在
+// 同一个尾部里)——不按语言分栏的话,英语碎句、法语片段全部糊进第一栏,
+// 越积越长,这正是「栏目下面出现很长一段文字」的来源。主播本机画布靠
+// 每语言一条车道的投影解决同一个问题。
+const LIVE_LINES_PER_COLUMN = 3;
+
+// 本帧的主导源语言。真实录音里语言识别会飘,辅助车道的碎片也混在同一个
+// 尾部 —— 原文栏只收主导语言,漂移片段要么归自己语言的栏,要么不显示。
+// 信号分两级:带说话人标识的句子(canonical 车道产物)优先参与判定,
+// 碎片通常没有;同级按句数加权,长度只作平票裁决 —— 一句冗长的外语
+// 碎片不该赢过两句正主。
+function dominantSourceLanguage(frame) {
+  const utterances = frame.utterances || [];
+  const speakered = utterances.filter((u) => u.speaker);
+  const pool = speakered.length ? speakered : utterances;
+  const count = {};
+  const length = {};
+  for (const u of pool) {
+    const src = u.provisional_source_language || u.source_language || "und";
+    count[src] = (count[src] || 0) + 1;
+    length[src] = (length[src] || 0) + (u.source_text || "").length;
+  }
+  let best = null;
+  for (const lang of Object.keys(count)) {
+    if (best === null
+        || count[lang] > count[best]
+        || (count[lang] === count[best] && length[lang] > length[best])) {
+      best = lang;
+    }
+  }
+  return best;
 }
 
-function renderLive() {
+function liveColumnLines(key, dominantSource) {
+  const frame = state.frame;
+  if (!frame) return [];
+  const seen = transcribedIds();
+  const lines = [];
+  for (const u of (frame.utterances || [])) {
+    if (seen.has((u.session_id || "") + ":" + u.id)) continue;
+    const src = u.provisional_source_language || u.source_language;
+    if (key === "source") {
+      const effective = src || "und";
+      if ((effective === dominantSource || effective === "und") && u.source_text) {
+        lines.push(u.source_text);
+      }
+    } else if (u.translated_language === key && u.translated_text) {
+      lines.push(u.translated_text);
+    } else if (src === key && u.source_text) {
+      lines.push(u.source_text);
+    }
+  }
+  // 句子车道没覆盖的语言,用该语言最新的 cue 补上。
+  if (key !== "source" && lines.length === 0) {
+    const latest = (frame.cues || []).filter((c) => c.target_language === key).pop();
+    if (latest && latest.text) lines.push(latest.text);
+  }
+  const haystack = columnHaystack(key);
+  return lines.filter((t) => t && !haystack.includes(t)).slice(-LIVE_LINES_PER_COLUMN);
+}
+
+// 正在说的文字直接续在稿后原地刷新 —— 与 App 录音画布同一观感,
+// 不做引用块。每栏一个独立的小栈,新句把旧句往上顶。
+function renderLive(columns) {
   const holder = el("livetail");
   holder.textContent = "";
   const frame = state.frame;
   if (!frame || state.ended) return;
-  const seen = transcribedIds();
-  const allUtterances = frame.utterances || [];
-  const utterances = allUtterances.filter(
-    (u) => !seen.has((u.session_id || "") + ":" + u.id)
-  );
-  const cues = frame.cues || [];
-  if (allUtterances.length) {
-    for (const u of utterances) {
-      appendRow(holder, state.selected.map((key) => liveCellText(u, key)), false);
+  if ((frame.utterances || []).length || (frame.cues || []).length) {
+    const dominantSource = dominantSourceLanguage(frame);
+    const stacks = columns.map((key) => liveColumnLines(key, dominantSource));
+    if (stacks.every((stack) => stack.length === 0)) return;
+    const row = document.createElement("div");
+    row.className = "row";
+    gridStyle(row, columns.length);
+    for (const stack of stacks) {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      for (const text of stack) {
+        const p = document.createElement("p");
+        p.textContent = text;
+        cell.appendChild(p);
+      }
+      row.appendChild(cell);
     }
-    // 句子车道没覆盖的语言,各用该语言最新的 cue 补一行(稿里已有的不重复)。
-    const fallback = state.selected.map((key) => {
-      if (key === "source") return "";
-      const covered = allUtterances.some((u) => u.translated_language === key);
-      if (covered) return "";
-      const latest = cues.filter((c) => c.target_language === key).pop();
-      if (!latest || !latest.text) return "";
-      return transcribedTexts(key).has(latest.text) ? "" : latest.text;
-    });
-    appendRow(holder, fallback, false);
+    holder.appendChild(row);
   } else {
     // 旧版主播:只有压扁行,不分栏。
     for (const line of (frame.lines || [])) {
@@ -498,10 +569,11 @@ function renderLive() {
 }
 
 function render() {
+  const columns = activeColumns();
   renderLangButtons();
-  renderColumnHead();
-  renderTranscript();
-  renderLive();
+  renderColumnHead(columns);
+  renderTranscript(columns);
+  renderLive(columns);
   if (state.following) el("main").scrollTop = el("main").scrollHeight;
 }
 
