@@ -1183,54 +1183,60 @@ fn remote_preview_from(frame: &vt_share::CaptionFrame) -> Option<FfiNotebookCapt
         utterances: frame
             .utterances
             .iter()
-            .map(|u| crate::notebook_capture_api::FfiNotebookCaptureUtterance {
-                id: u.id.clone(),
-                session_id: u.session_id.clone(),
-                sequence: u.sequence,
-                revision: u.revision,
-                session_speaker_id: u.speaker.clone(),
-                source_language: u.source_language.clone(),
-                provisional_source_language: u.provisional_source_language.clone(),
-                source_text: u.source_text.clone(),
-                source_start_ms: u.source_start_ms,
-                source_end_ms: u.source_end_ms,
-                translated_language: u.translated_language.clone(),
-                translated_text: u.translated_text.clone(),
-                completion: u.completion.clone(),
-                alignment: u.alignment.clone(),
-                source_projection_revision: 0,
-                source_edit_revision: 0,
-                language_variants: Vec::new(),
-            })
+            .map(
+                |u| crate::notebook_capture_api::FfiNotebookCaptureUtterance {
+                    id: u.id.clone(),
+                    session_id: u.session_id.clone(),
+                    sequence: u.sequence,
+                    revision: u.revision,
+                    session_speaker_id: u.speaker.clone(),
+                    source_language: u.source_language.clone(),
+                    provisional_source_language: u.provisional_source_language.clone(),
+                    source_text: u.source_text.clone(),
+                    source_start_ms: u.source_start_ms,
+                    source_end_ms: u.source_end_ms,
+                    translated_language: u.translated_language.clone(),
+                    translated_text: u.translated_text.clone(),
+                    completion: u.completion.clone(),
+                    alignment: u.alignment.clone(),
+                    source_projection_revision: 0,
+                    source_edit_revision: 0,
+                    language_variants: Vec::new(),
+                },
+            )
             .collect(),
         translation_cues: frame
             .cues
             .iter()
-            .map(|c| crate::notebook_capture_api::FfiNotebookCaptureTranslationCue {
-                target_language: c.target_language.clone(),
-                group_epoch: c.group_epoch,
-                provider_sequence: c.provider_sequence,
-                source_language: c.source_language.clone(),
-                source_start_ms: c.source_start_ms,
-                source_end_ms: c.source_end_ms,
-                text: c.text.clone(),
-                completion: c.completion.clone(),
-                withdrawn: false,
-                revision: c.revision,
-            })
+            .map(
+                |c| crate::notebook_capture_api::FfiNotebookCaptureTranslationCue {
+                    target_language: c.target_language.clone(),
+                    group_epoch: c.group_epoch,
+                    provider_sequence: c.provider_sequence,
+                    source_language: c.source_language.clone(),
+                    source_start_ms: c.source_start_ms,
+                    source_end_ms: c.source_end_ms,
+                    text: c.text.clone(),
+                    completion: c.completion.clone(),
+                    withdrawn: false,
+                    revision: c.revision,
+                },
+            )
             .collect(),
         lane_health: frame
             .lane_health
             .iter()
-            .map(|h| crate::notebook_capture_api::FfiNotebookCaptureLaneHealth {
-                target_language: h.target_language.clone(),
-                state: h.state.clone(),
-                group_epoch: h.group_epoch,
-                final_audio_proc_ms: None,
-                total_audio_proc_ms: None,
-                lag_ms: None,
-                input_discontinuous: false,
-            })
+            .map(
+                |h| crate::notebook_capture_api::FfiNotebookCaptureLaneHealth {
+                    target_language: h.target_language.clone(),
+                    state: h.state.clone(),
+                    group_epoch: h.group_epoch,
+                    final_audio_proc_ms: None,
+                    total_audio_proc_ms: None,
+                    lag_ms: None,
+                    input_discontinuous: false,
+                },
+            )
             .collect(),
     })
 }

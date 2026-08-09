@@ -282,7 +282,10 @@ fn a_caption_announced_session_lands_in_a_notebook_scope_room() {
     assert!(
         wait_until(10, || {
             revision += 1;
-            host.broadcast_live_preview_for_test("nb-live".into(), &live_preview(session, revision));
+            host.broadcast_live_preview_for_test(
+                "nb-live".into(),
+                &live_preview(session, revision),
+            );
             viewer
                 .share_state()
                 .remote_preview
@@ -298,10 +301,7 @@ fn a_caption_announced_session_lands_in_a_notebook_scope_room() {
     assert_eq!(preview.utterances.len(), 1, "utterance 车道要完整过网");
     assert_eq!(preview.translation_cues.len(), 1, "多语言 cue 要完整过网");
     assert_eq!(preview.lane_health.len(), 1, "lane 健康要完整过网");
-    assert!(
-        !state.lines.is_empty(),
-        "压扁行的兼容投影与完整帧同源并存"
-    );
+    assert!(!state.lines.is_empty(), "压扁行的兼容投影与完整帧同源并存");
 
     // 宣告过的 session:主播的文档写入要能落到观看端。
     host.shared_session_insert_annotation(session.into(), 0, "note-1".into(), "现场笔记".into())
@@ -324,7 +324,10 @@ fn a_caption_announced_session_lands_in_a_notebook_scope_room() {
     viewer.stop_sharing().unwrap();
 }
 
-fn live_preview(session_id: &str, revision: u64) -> vt_ffi::notebook_capture_api::FfiNotebookCaptureLivePreview {
+fn live_preview(
+    session_id: &str,
+    revision: u64,
+) -> vt_ffi::notebook_capture_api::FfiNotebookCaptureLivePreview {
     use vt_ffi::notebook_capture_api::{
         FfiNotebookCaptureLaneHealth, FfiNotebookCaptureLivePreview,
         FfiNotebookCaptureTranslationCue, FfiNotebookCaptureUtterance,

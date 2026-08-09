@@ -160,7 +160,10 @@ impl CaptionReceiver {
     }
 
     pub fn lines(&self) -> &[CaptionLine] {
-        self.frame.as_ref().map(|f| f.lines.as_slice()).unwrap_or(&[])
+        self.frame
+            .as_ref()
+            .map(|f| f.lines.as_slice())
+            .unwrap_or(&[])
     }
 
     /// 最新一帧的完整形态;还没收到任何帧时为 `None`。
@@ -172,13 +175,26 @@ impl CaptionReceiver {
     ///
     /// **replace-in-full**:应用即整体替换,不做增量合并。这正是丢帧无害的原因 ——
     /// 中间少收几帧,下一帧照样描述完整的当前状态。
+    ///
+    /// **换场即新通道。** `preview_revision` 只在单次录音的预览通道内单调
+    /// (`next_preview_revision` 每场从 1 起);Notebook 范围的房间跨越多场
+    /// 录音,拿上一场的水位去卡新一场,第二场的每一帧都会被误判为 Stale ——
+    /// 观看端画面从此定格。session 变了就重置水位;旧版主播的帧没有
+    /// session_id(恒为空串),两帧相等,自然回落到纯单调。
     pub fn accept(&mut self, frame: CaptionFrame, expected_scope: &ScopeId) -> FrameOutcome {
         if &frame.scope != expected_scope {
             return FrameOutcome::WrongScope;
         }
-        if let Some(applied) = self.applied_revision {
-            if frame.preview_revision <= applied {
-                return FrameOutcome::Stale;
+        let same_session = self
+            .frame
+            .as_ref()
+            .map(|current| current.session_id == frame.session_id)
+            .unwrap_or(false);
+        if same_session {
+            if let Some(applied) = self.applied_revision {
+                if frame.preview_revision <= applied {
+                    return FrameOutcome::Stale;
+                }
             }
         }
         self.applied_revision = Some(frame.preview_revision);
@@ -362,6 +378,28 @@ mod tests {
         assert!(back.utterances.is_empty());
         assert!(back.cues.is_empty());
         assert!(back.lane_health.is_empty());
+    }
+
+    /// 换场即新通道:第二场录音的 revision 从头计数,不能被上一场的水位
+    /// 卡死 —— 否则 Notebook 范围的房间从第二场起画面永远定格。
+    #[test]
+    fn a_new_session_resets_the_revision_watermark() {
+        let mut rx = CaptionReceiver::new();
+        let mut first = frame(87, "第一场结尾");
+        first.session_id = "session-a".into();
+        assert_eq!(rx.accept(first, &scope()), FrameOutcome::Applied);
+
+        // 新一场,revision 回到 1:必须照常应用。
+        let mut second = frame(1, "第二场开头");
+        second.session_id = "session-b".into();
+        assert_eq!(rx.accept(second, &scope()), FrameOutcome::Applied);
+        assert_eq!(rx.applied_revision(), Some(1));
+        assert_eq!(rx.lines()[0].source_text, "第二场开头");
+
+        // 同一场内旧帧照旧丢弃 —— 重置只发生在换场那一下。
+        let mut stale = frame(1, "迟到帧");
+        stale.session_id = "session-b".into();
+        assert_eq!(rx.accept(stale, &scope()), FrameOutcome::Stale);
     }
 
     /// 完整形态随帧替换:接收端手里永远只有最新一帧的 utterance/cue。
