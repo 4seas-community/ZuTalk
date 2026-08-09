@@ -359,14 +359,43 @@ function renderTranscript() {
   }
 }
 
+// 已进稿的句子。实时尾部(bounded tail)会包含刚落定的句子,而它们同时
+// 已经出现在稿区 —— 不去重的话,整屏内容都是双份。主播本机画布靠
+// durable/预览按 sequence 合并解决同一个问题;这里的合并键是
+// session_id + 句块 id(T2 块 id 就是 utterance id)。
+function transcribedIds() {
+  const ids = new Set();
+  for (const session of state.sessions) {
+    for (const block of (session.blocks || [])) {
+      ids.add(session.session_id + ":" + block.id);
+    }
+  }
+  return ids;
+}
+
+// 稿里某语言已有的文本。cue 没有句块 id,按文本去重 —— 最新 cue 的内容
+// 已经落进稿的车道时,不再在实时区重复一行。
+function transcribedTexts(lang) {
+  const texts = new Set();
+  for (const session of state.sessions) {
+    for (const block of (session.blocks || [])) {
+      if (block.lanes && block.lanes[lang]) texts.add(block.lanes[lang]);
+    }
+  }
+  return texts;
+}
+
 function renderLive() {
   const holder = el("livetail");
   holder.textContent = "";
   const frame = state.frame;
   if (!frame || state.ended) return;
-  const utterances = frame.utterances || [];
+  const seen = transcribedIds();
+  const utterances = (frame.utterances || []).filter(
+    (u) => !seen.has((u.session_id || "") + ":" + u.id)
+  );
   const cues = frame.cues || [];
-  if (utterances.length) {
+  if ((frame.utterances || []).length) {
     for (const u of utterances) {
       const src = u.provisional_source_language || u.source_language;
       let text = null;
@@ -379,11 +408,14 @@ function renderLive() {
         holder.appendChild(p);
       }
     }
-    // 句子车道没覆盖的语言,用该语言最新的 cue 补上。
+    // 句子车道没覆盖的语言,用该语言最新的 cue 补上(稿里已有的不重复)。
     if (state.lang) {
       const latest = cues.filter((c) => c.target_language === state.lang).pop();
-      const covered = utterances.some((u) => u.translated_language === state.lang);
-      if (latest && !covered && latest.text) {
+      const covered = (frame.utterances || []).some(
+        (u) => u.translated_language === state.lang
+      );
+      if (latest && !covered && latest.text
+          && !transcribedTexts(state.lang).has(latest.text)) {
         const p = document.createElement("p");
         p.className = "block partial";
         p.textContent = latest.text;
@@ -417,7 +449,11 @@ main.addEventListener("scroll", () => {
   state.following = nearBottom;
   el("follow").style.display = nearBottom ? "none" : "block";
 });
-el("follow").onclick = () => { state.following = true; render(); };
+el("follow").onclick = () => {
+  state.following = true;
+  el("follow").style.display = "none";
+  render();
+};
 
 renderChrome();
 
