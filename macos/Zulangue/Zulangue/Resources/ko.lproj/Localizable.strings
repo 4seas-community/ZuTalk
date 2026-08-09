@@ -979,3 +979,13 @@
 "shared_inbox.lane_canonical" = "원문";
 "shared_inbox.lane_connecting" = "이 언어 레인은 아직 연결 중입니다";
 "shared_inbox.lane_failed" = "이 언어 레인은 실패했습니다. 더 이상 내용이 오지 않습니다";
+
+"share.web.title" = "웹 공유";
+"share.web.start" = "웹 공유 시작";
+"share.web.hint" = "QR 코드를 스캔하면 앱 없이 브라우저에서 실시간 자막을 볼 수 있습니다. 언어도 전환할 수 있습니다.";
+"share.web.confirm.title" = "웹 공유를 시작할까요?";
+"share.web.confirm.body" = "자막 텍스트가 평문으로 자막 서버를 거칩니다. 링크가 있는 사람은 누구나 볼 수 있습니다. 오디오는 절대 공유되지 않습니다.";
+"share.web.plaintext_note" = "자막 텍스트가 평문으로 서버를 거칩니다. 링크가 있는 사람은 누구나 볼 수 있습니다.";
+"share.web.copy" = "링크 복사";
+"share.web.stop" = "웹 공유 중지";
+"share.web.qr_label" = "실시간 자막 페이지 QR 코드";

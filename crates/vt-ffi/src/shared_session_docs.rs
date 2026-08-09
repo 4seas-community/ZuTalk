@@ -386,6 +386,11 @@ impl ZulangueCore {
                 .endpoint_handle()
                 .publish_document_update(session_id.to_string(), update);
         }
+        drop(guard);
+
+        // 网页分享开着的话,同一份稿顺带推给网页 —— 只有真有增量时才走到
+        // 这里(上面按版本向量早退),所以不会空推。
+        self.push_web_share_blocks(session_id);
     }
 
     /// 这个 session 是否落在当前主持的共享范围内(且文档同步已武装)。

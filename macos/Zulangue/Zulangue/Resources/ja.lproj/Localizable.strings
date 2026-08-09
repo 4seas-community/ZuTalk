@@ -979,3 +979,13 @@
 "shared_inbox.lane_canonical" = "原文";
 "shared_inbox.lane_connecting" = "この言語レーンは接続中です";
 "shared_inbox.lane_failed" = "この言語レーンは失敗しました。これ以上は届きません";
+
+"share.web.title" = "ウェブ共有";
+"share.web.start" = "ウェブ共有を開始";
+"share.web.hint" = "QRコードをスキャンすると、アプリなしでブラウザからライブ字幕を読めます。言語も切り替えられます。";
+"share.web.confirm.title" = "ウェブ共有を開始しますか？";
+"share.web.confirm.body" = "字幕テキストは平文で字幕サーバーを経由します。リンクを知っている人は誰でも閲覧できます。音声は決して共有されません。";
+"share.web.plaintext_note" = "字幕テキストは平文でサーバーを経由します。リンクを知っている人は誰でも閲覧できます。";
+"share.web.copy" = "リンクをコピー";
+"share.web.stop" = "ウェブ共有を停止";
+"share.web.qr_label" = "ライブ字幕ページのQRコード";

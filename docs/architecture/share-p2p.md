@@ -6,6 +6,8 @@
 
 本文只描述分享路径。实时分段本身的权威机制见
 [timeline-projection.md](timeline-projection.md)，本文不重复。
+面向浏览器的扫码观看（明文经服务器，隐私性质不同）另见
+[share-web-captions.md](share-web-captions.md)。
 
 ## 0. 非目标
 

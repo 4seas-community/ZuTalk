@@ -253,6 +253,9 @@ pub(crate) struct ShareRuntime {
     muted_sessions: std::collections::BTreeSet<String>,
     /// 已加入的 gossip 房间。在场与名册靠它 —— 没有它,房间里看不见彼此。
     room: Option<Arc<vt_share::net::RoomHandle>>,
+    /// 网页分享(明文经服务器,见 share-web-captions.md)。它是「当前这场
+    /// 共享」的属性:随停止共享一起收口,不能独立于房间存在。
+    pub(crate) web_share: Option<Arc<crate::share_web::WebShareRuntime>>,
 }
 
 impl ShareRuntime {
@@ -352,6 +355,7 @@ impl ZulangueCore {
             last_broadcast_revision: None,
             muted_sessions: Default::default(),
             room: None,
+            web_share: None,
         });
         Ok(endpoint)
     }
@@ -669,6 +673,10 @@ impl ZulangueCore {
         self.shared_sessions.clear_room_state();
         let mut guard = self.share_runtime.lock().unwrap();
         if let Some(runtime) = guard.as_mut() {
+            // 网页分享随房间一起收口:先关房(尽力而为,服务端有 TTL 兜底)。
+            if let Some(web) = runtime.web_share.take() {
+                web.close(&self.runtime);
+            }
             runtime.hosting = None;
             // ViewedRoom 的 Drop 会中止接收任务。
             runtime.viewing = None;
@@ -1052,9 +1060,12 @@ impl ShareCaptionTap {
             return;
         }
 
-        runtime
-            .endpoint
-            .broadcast_caption(caption_frame_from(scope.clone(), preview));
+        // 同一帧、同一放行:网页通道在这之后分流,P2P 不发的帧网页也不发。
+        let frame = caption_frame_from(scope.clone(), preview);
+        if let Some(web) = runtime.web_share.as_ref() {
+            web.publish_frame(&frame);
+        }
+        runtime.endpoint.broadcast_caption(frame);
         drop(guard);
         if let Ok(mut guard) = self.runtime.lock() {
             if let Some(runtime) = guard.as_mut() {
@@ -1259,8 +1270,80 @@ impl ZulangueCore {
 /// 供 `ZulangueCore` 持有的运行时槽位。
 pub(crate) type ShareRuntimeSlot = Mutex<Option<ShareRuntime>>;
 
+/// 测试共用的预览帧样本。share_web 的测试也要同一份 —— 帧的形状只声明一次。
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::FfiNotebookCaptureLivePreview;
+
+    pub(crate) fn preview(session_id: &str, revision: u64) -> FfiNotebookCaptureLivePreview {
+        use crate::notebook_capture_api::{
+            FfiNotebookCaptureTranslationCue, FfiNotebookCaptureUtterance,
+        };
+        FfiNotebookCaptureLivePreview {
+            session_id: session_id.into(),
+            preview_revision: revision,
+            utterances: vec![FfiNotebookCaptureUtterance {
+                id: "u1".into(),
+                session_id: session_id.into(),
+                sequence: 1,
+                revision: 1,
+                session_speaker_id: Some("spk".into()),
+                source_language: "und".into(),
+                provisional_source_language: Some("ja".into()),
+                source_text: "こんにちは".into(),
+                source_start_ms: Some(0),
+                source_end_ms: Some(500),
+                translated_language: Some("zh-Hans".into()),
+                translated_text: Some("你好".into()),
+                completion: "partial".into(),
+                alignment: "aligned".into(),
+                source_projection_revision: 0,
+                source_edit_revision: 0,
+                language_variants: vec![],
+            }],
+            translation_cues: vec![
+                FfiNotebookCaptureTranslationCue {
+                    target_language: "ko".into(),
+                    group_epoch: 1,
+                    provider_sequence: 1,
+                    source_language: "ja".into(),
+                    source_start_ms: Some(0),
+                    source_end_ms: Some(500),
+                    text: "안녕하세요".into(),
+                    completion: "partial".into(),
+                    withdrawn: false,
+                    revision: 1,
+                },
+                // 已撤回的 cue 不该被广播出去。
+                FfiNotebookCaptureTranslationCue {
+                    target_language: "fr".into(),
+                    group_epoch: 1,
+                    provider_sequence: 2,
+                    source_language: "ja".into(),
+                    source_start_ms: Some(0),
+                    source_end_ms: Some(500),
+                    text: "retiré".into(),
+                    completion: "partial".into(),
+                    withdrawn: true,
+                    revision: 1,
+                },
+            ],
+            lane_health: vec![crate::notebook_capture_api::FfiNotebookCaptureLaneHealth {
+                target_language: Some("ko".into()),
+                state: "connecting".into(),
+                group_epoch: 1,
+                final_audio_proc_ms: Some(1200),
+                total_audio_proc_ms: Some(1500),
+                lag_ms: Some(300),
+                input_discontinuous: false,
+            }],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::test_support::preview;
     use super::*;
     use vt_crypto::MemoryKeyStore;
 
@@ -1511,71 +1594,6 @@ mod tests {
             run_chain("session-4", "session-4", update, editor),
             vt_share::IncomingOutcome::Denied(vt_share::AdmissionDenial::TouchesCaptureOwnedRange)
         );
-    }
-
-    fn preview(session_id: &str, revision: u64) -> FfiNotebookCaptureLivePreview {
-        use crate::notebook_capture_api::{
-            FfiNotebookCaptureTranslationCue, FfiNotebookCaptureUtterance,
-        };
-        FfiNotebookCaptureLivePreview {
-            session_id: session_id.into(),
-            preview_revision: revision,
-            utterances: vec![FfiNotebookCaptureUtterance {
-                id: "u1".into(),
-                session_id: session_id.into(),
-                sequence: 1,
-                revision: 1,
-                session_speaker_id: Some("spk".into()),
-                source_language: "und".into(),
-                provisional_source_language: Some("ja".into()),
-                source_text: "こんにちは".into(),
-                source_start_ms: Some(0),
-                source_end_ms: Some(500),
-                translated_language: Some("zh-Hans".into()),
-                translated_text: Some("你好".into()),
-                completion: "partial".into(),
-                alignment: "aligned".into(),
-                source_projection_revision: 0,
-                source_edit_revision: 0,
-                language_variants: vec![],
-            }],
-            translation_cues: vec![
-                FfiNotebookCaptureTranslationCue {
-                    target_language: "ko".into(),
-                    group_epoch: 1,
-                    provider_sequence: 1,
-                    source_language: "ja".into(),
-                    source_start_ms: Some(0),
-                    source_end_ms: Some(500),
-                    text: "안녕하세요".into(),
-                    completion: "partial".into(),
-                    withdrawn: false,
-                    revision: 1,
-                },
-                // 已撤回的 cue 不该被广播出去。
-                FfiNotebookCaptureTranslationCue {
-                    target_language: "fr".into(),
-                    group_epoch: 1,
-                    provider_sequence: 2,
-                    source_language: "ja".into(),
-                    source_start_ms: Some(0),
-                    source_end_ms: Some(500),
-                    text: "retiré".into(),
-                    completion: "partial".into(),
-                    withdrawn: true,
-                    revision: 1,
-                },
-            ],
-            lane_health: vec![crate::notebook_capture_api::FfiNotebookCaptureLaneHealth {
-                target_language: Some("ko".into()),
-                state: "connecting".into(),
-                group_epoch: 1,
-                final_audio_proc_ms: Some(1200),
-                total_audio_proc_ms: Some(1500),
-                lag_ms: Some(300),
-                input_discontinuous: false,
-            }],
-        }
     }
 
     /// 两条车道原样过去,撤回的 cue 不发。

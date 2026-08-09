@@ -5775,6 +5775,7 @@ dependencies = [
  "iroh",
  "libc",
  "loro",
+ "reqwest 0.12.28",
  "rusqlite",
  "serde",
  "serde_json",

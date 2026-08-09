@@ -12,6 +12,7 @@
 //   3. 「只读」由每个接收端自行过滤,不是发送端强制 —— 界面不得暗示更强的保证。
 
 import Combine
+import CoreImage.CIFilterBuiltins
 import SwiftUI
 
 struct SharePage: View {
@@ -679,6 +680,8 @@ struct SharePage: View {
                 .foregroundColor(.textSecondary)
 
             if viewModel.isHost {
+                webShareSection
+
                 Button(String(localized: "share.stop"), role: .destructive) {
                     viewModel.stop()
                 }
@@ -714,6 +717,111 @@ struct SharePage: View {
                     .foregroundColor(.textTertiary)
             }
         }
+    }
+}
+
+extension SharePage {
+    /// 网页分享:给没装应用的人一个二维码。
+    ///
+    /// 与 P2P 分享隐私性质不同 —— 字幕明文经过服务器(用户 2026-08-09
+    /// 定案),所以开启前必须确认一次,开启后警示句常驻,不能只说一遍。
+    @ViewBuilder
+    fileprivate var webShareSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text(String(localized: "share.web.title"))
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+
+            if let webShare = viewModel.webShare {
+                if let qr = Self.qrImage(for: webShare.viewerUrl) {
+                    Image(nsImage: qr)
+                        .interpolation(.none)
+                        .resizable()
+                        .frame(width: 168, height: 168)
+                        .background(Color.white)
+                        .padding(6)
+                        .background(Color.white)
+                        .cornerRadius(6)
+                        .accessibilityLabel(Text(String(localized: "share.web.qr_label")))
+                        .accessibilityIdentifier("share.web.qr")
+                }
+
+                // 链接必须显示出来,不能只给复制按钮 —— 复制失效时用户
+                // 还有第二条路;看得见才能核对。与分享码同一条理由。
+                Text(webShare.viewerUrl)
+                    .font(.caption)
+                    .foregroundColor(.textSecondary)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("share.web.url")
+
+                HStack(spacing: Spacing.sm) {
+                    Button(String(localized: "share.web.copy")) {
+                        viewModel.copyWebShareURL()
+                    }
+                    .accessibilityIdentifier("share.web.copy")
+
+                    Button(String(localized: "share.web.stop")) {
+                        viewModel.stopWebShare()
+                    }
+                    .accessibilityIdentifier("share.web.stop")
+
+                    if viewModel.webShareCopied {
+                        Text(String(localized: "share.copied"))
+                            .font(.bodySM)
+                            .foregroundColor(.signalGreen)
+                    }
+                }
+
+                // 常驻警示:这条通道的隐私性质与 P2P 不同。
+                Text(String(localized: "share.web.plaintext_note"))
+                    .font(.bodySM)
+                    .foregroundColor(.signalAmber)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Button {
+                    viewModel.confirmingWebShare = true
+                } label: {
+                    Label(
+                        String(localized: "share.web.start"),
+                        systemImage: "qrcode"
+                    )
+                }
+                .disabled(viewModel.webShareStarting)
+                .accessibilityIdentifier("share.web.start")
+
+                Text(String(localized: "share.web.hint"))
+                    .font(.bodySM)
+                    .foregroundColor(.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityIdentifier("share.web")
+        .confirmationDialog(
+            String(localized: "share.web.confirm.title"),
+            isPresented: $viewModel.confirmingWebShare
+        ) {
+            Button(String(localized: "share.web.start"), role: .destructive) {
+                viewModel.startWebShare()
+            }
+            Button(String(localized: "share.cancel"), role: .cancel) {}
+        } message: {
+            // 明文经服务器必须在点下去之前说清楚,不能事后才见到警示。
+            Text(String(localized: "share.web.confirm.body"))
+        }
+    }
+
+    /// 观看页链接的二维码。CoreImage 内置生成器,零新依赖。
+    private static func qrImage(for text: String) -> NSImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(text.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        // 原始点阵很小,先放大再关插值,方块才是方的。
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+        let representation = NSCIImageRep(ciImage: scaled)
+        let image = NSImage(size: representation.size)
+        image.addRepresentation(representation)
+        return image
     }
 }
 
@@ -815,6 +923,13 @@ final class ShareViewModel: ObservableObject {
     @Published private(set) var lines: [FfiSharedCaptionLine] = []
     /// 主播最新一帧的完整预览;旧版主播或没在观看时为 nil。
     @Published private(set) var remotePreview: FfiNotebookCaptureLivePreview?
+    /// 网页分享的当前状态;没开时为 nil。
+    @Published private(set) var webShare: FfiWebShareInfo?
+    /// 开启前的明文确认框。
+    @Published var confirmingWebShare: Bool = false
+    /// 建房走网络,期间按钮不可再点。
+    @Published private(set) var webShareStarting: Bool = false
+    @Published private(set) var webShareCopied: Bool = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var status: ShareStatus = .idle
     /// 观看端到主持人的当前链路;没在观看或还没连上时为 nil。
@@ -1107,6 +1222,44 @@ final class ShareViewModel: ObservableObject {
         refreshState()
     }
 
+    /// 开启网页分享。建房要走网络 —— **绝不能在主线程上调**,
+    /// 连不上服务时超时是 10 秒,主线程会冻整整 10 秒。
+    func startWebShare() {
+        guard let core, webShareStarting == false else { return }
+        webShareStarting = true
+        clearError()
+        Task.detached {
+            let result = Result { try core.startWebShare(serviceUrl: nil) }
+            await MainActor.run {
+                self.webShareStarting = false
+                switch result {
+                case .success(let info):
+                    self.webShare = info
+                case .failure(let error):
+                    self.showError(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    /// 关闭网页分享(P2P 共享继续)。
+    func stopWebShare() {
+        guard let core else { return }
+        core.stopWebShare()
+        webShare = nil
+    }
+
+    func copyWebShareURL() {
+        guard let webShare else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(webShare.viewerUrl, forType: .string)
+        webShareCopied = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            webShareCopied = false
+        }
+    }
+
     /// 把本机身份登记到邀请码服务,好让中继在打洞失败时肯放行。
     ///
     /// 不做这一步中继会拒绝每一个真实用户,而且拒绝是安静的:局域网直连照常可用,
@@ -1161,6 +1314,8 @@ final class ShareViewModel: ObservableObject {
         scopeSessionId = state.scopeSessionId
         lines = state.lines
         remotePreview = state.remotePreview
+        // 网页分享随停止共享一并收口,这里跟核心对齐,不留悬空的二维码。
+        webShare = core.webShareState()
         if shareCode == nil { shareCode = core.currentShareCode() }
         joinRequests = core.pendingJoinRequests()
         members = core.roomMembers()

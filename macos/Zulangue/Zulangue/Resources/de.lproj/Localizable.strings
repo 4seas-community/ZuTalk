@@ -978,3 +978,13 @@
 "shared_inbox.lane_canonical" = "Original";
 "shared_inbox.lane_connecting" = "Diese Sprachspur verbindet sich noch";
 "shared_inbox.lane_failed" = "Diese Sprachspur ist ausgefallen – hier kommt nichts mehr an";
+
+"share.web.title" = "Web-Freigabe";
+"share.web.start" = "Web-Freigabe starten";
+"share.web.hint" = "Wer den QR-Code scannt, kann das Live-Transkript im Browser lesen – ohne App, Sprachen umschaltbar.";
+"share.web.confirm.title" = "Web-Freigabe starten?";
+"share.web.confirm.body" = "Der Untertiteltext läuft im Klartext über den Untertitel-Server. Jeder mit dem Link kann mitlesen. Audio wird niemals geteilt.";
+"share.web.plaintext_note" = "Der Untertiteltext läuft im Klartext über den Server. Jeder mit dem Link kann mitlesen.";
+"share.web.copy" = "Link kopieren";
+"share.web.stop" = "Web-Freigabe beenden";
+"share.web.qr_label" = "QR-Code der Live-Untertitelseite";

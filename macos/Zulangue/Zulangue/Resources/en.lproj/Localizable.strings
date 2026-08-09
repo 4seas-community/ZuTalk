@@ -979,3 +979,13 @@
 "shared_inbox.lane_canonical" = "Source";
 "shared_inbox.lane_connecting" = "This language lane is still connecting";
 "shared_inbox.lane_failed" = "This language lane failed — nothing more will arrive on it";
+
+"share.web.title" = "Web share";
+"share.web.start" = "Start web share";
+"share.web.hint" = "Anyone who scans the QR code can read the live transcript in a browser — no app needed, languages switchable.";
+"share.web.confirm.title" = "Start web share?";
+"share.web.confirm.body" = "Caption text will pass through the caption server in plain text. Anyone with the link can read along. Audio is never shared.";
+"share.web.plaintext_note" = "Caption text passes through the server in plain text. Anyone with the link can read along.";
+"share.web.copy" = "Copy link";
+"share.web.stop" = "Stop web share";
+"share.web.qr_label" = "QR code for the live caption page";

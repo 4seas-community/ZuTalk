@@ -1267,6 +1267,23 @@ public protocol ZulangueCoreProtocol: AnyObject, Sendable {
     func stopSharing() throws
 
     /**
+     * 开启网页分享。仅主持中可开;返回观看页地址。
+     *
+     * `service_url` 为空用默认部署位。重复调用返回当前房间,不重复建房。
+     */
+    func startWebShare(serviceUrl: String?) throws  -> FfiWebShareInfo
+
+    /**
+     * 关闭网页分享(共享本身继续)。
+     */
+    func stopWebShare()
+
+    /**
+     * 当前网页分享的快照;没开时为 `None`。
+     */
+    func webShareState()  -> FfiWebShareInfo?
+
+    /**
      * 删除一份收到的共享转录稿。**只删本机副本** —— 台账即目录,文件没了
      * 记录就没了;别人手里的副本不受影响,这与停止共享同一条真话。
      */
@@ -2864,6 +2881,41 @@ open func stopSharing()throws   {try rustCallWithError(FfiConverterTypeCoreError
             self.uniffiCloneHandle(),$0
     )
 }
+}
+
+    /**
+     * 开启网页分享。仅主持中可开;返回观看页地址。
+     *
+     * `service_url` 为空用默认部署位。重复调用返回当前房间,不重复建房。
+     */
+open func startWebShare(serviceUrl: String?)throws  -> FfiWebShareInfo  {
+    return try  FfiConverterTypeFfiWebShareInfo_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zulanguecore_start_web_share(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionString.lower(serviceUrl),$0
+    )
+})
+}
+
+    /**
+     * 关闭网页分享(共享本身继续)。
+     */
+open func stopWebShare()  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_stop_web_share(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+    /**
+     * 当前网页分享的快照;没开时为 `None`。
+     */
+open func webShareState() -> FfiWebShareInfo?  {
+    return try!  FfiConverterOptionTypeFfiWebShareInfo.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zulanguecore_web_share_state(
+            self.uniffiCloneHandle(),$0
+    )
+})
 }
 
     /**
@@ -6281,6 +6333,65 @@ public func FfiConverterTypeFfiUtteranceBlock_lower(_ value: FfiUtteranceBlock) 
 
 
 /**
+ * 给 UI 的网页分享快照。
+ */
+public struct FfiWebShareInfo: Equatable, Hashable {
+    /**
+     * 观看页地址 —— 二维码与复制按钮的内容。
+     */
+    public var viewerUrl: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 观看页地址 —— 二维码与复制按钮的内容。
+         */viewerUrl: String) {
+        self.viewerUrl = viewerUrl
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiWebShareInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiWebShareInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiWebShareInfo {
+        return
+            try FfiWebShareInfo(
+                viewerUrl: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiWebShareInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.viewerUrl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiWebShareInfo_lift(_ buf: RustBuffer) throws -> FfiWebShareInfo {
+    return try FfiConverterTypeFfiWebShareInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiWebShareInfo_lower(_ value: FfiWebShareInfo) -> RustBuffer {
+    return FfiConverterTypeFfiWebShareInfo.lower(value)
+}
+
+
+/**
  * 导入结果 (FFI DTO)
  */
 public struct ImportResultInfo: Equatable, Hashable {
@@ -8624,6 +8735,30 @@ fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureLivePreview: FfiConve
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeFfiWebShareInfo: FfiConverterRustBuffer {
+    typealias SwiftType = FfiWebShareInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiWebShareInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiWebShareInfo.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureMode: FfiConverterRustBuffer {
     typealias SwiftType = FfiNotebookCaptureMode?
 
@@ -9744,6 +9879,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_stop_sharing() != 45792) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_start_web_share() != 18484) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_stop_web_share() != 46311) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zulanguecore_web_share_state() != 479) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zulanguecore_delete_shared_session() != 44432) {

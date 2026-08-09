@@ -15,6 +15,7 @@ pub mod session_audio_api;
 pub(crate) mod session_move;
 pub mod settings_api;
 pub(crate) mod share_api;
+pub mod share_web;
 pub mod shared_session_docs;
 pub mod speaker_directory_api;
 pub(crate) mod task_worker;
