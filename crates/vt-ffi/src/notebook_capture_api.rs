@@ -16305,6 +16305,119 @@ mod tests {
         );
     }
 
+    /// The upgrade path for recordings made before the segment join became
+    /// script-aware.
+    ///
+    /// Such a recording holds a settled Chinese lane composed with an ASCII
+    /// space between two segments — bytes an older build wrote and a reader
+    /// has already seen. Startup backfill binds whatever segments were still
+    /// unbound and recomposes the lane, which now joins those same two
+    /// segments without the space. The append-only guard is what decides
+    /// whether that recomposition is an extension or a rewrite, and a byte
+    /// prefix says "rewrite": the settled text is no longer a prefix of
+    /// anything. That verdict would fail the reconcile of every affected
+    /// recording at launch, over a space that was never content.
+    #[test]
+    fn startup_recovery_extends_a_lane_an_older_build_composed_with_a_stray_space() {
+        let (temp, core, _notebook_id, run_id, doc_id) = projected_core_fixture();
+        core.project_notebook_capture(&run_id).unwrap();
+
+        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        // The lane exactly as an older build left it: two segments already
+        // bound, joined by the script-blind rule.
+        db.execute(
+            "UPDATE realtime_utterance_variants
+             SET text = '你好 世界'
+             WHERE utterance_id = 'utterance-a' AND language = 'zh'",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO realtime_translation_inbox
+             (session_id, lane_index, group_epoch, provider_sequence,
+              target_language, source_language, source_text,
+              source_start_ms, source_end_ms, translated_text,
+              completion, state, revision, bound_utterance_id, bound_sequence,
+              created_at, updated_at)
+             VALUES
+             ('session-a', 1, 0, 0, 'zh', 'en', 'hello', 0, 500,
+              '你好', 'complete', 'present', 0, 'utterance-a', 0, '', ''),
+             ('session-a', 1, 0, 1, 'zh', 'en', 'hello', 0, 500,
+              '世界', 'complete', 'present', 0, 'utterance-a', 0, '', ''),
+             ('session-a', 1, 0, 2, 'zh', 'en', 'hello', 0, 500,
+              '再见', 'complete', 'present', 0, NULL, NULL, '', '')",
+            [],
+        )
+        .unwrap();
+        drop(db);
+
+        core.resume_pending_notebook_projection_mutations().unwrap();
+
+        let lane_text = core
+            .notebook_capture_store
+            .get_machine_utterance_by_id("utterance-a")
+            .unwrap()
+            .unwrap()
+            .variants
+            .into_iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap()
+            .text;
+        assert_eq!(
+            lane_text.as_deref(),
+            Some("你好世界再见"),
+            "补绑照常推进,顺带把旧规则留下的空格收掉"
+        );
+
+        let projected = core
+            .with_transcript(&doc_id, |projection| Ok(projection.refresh()))
+            .unwrap()
+            .into_iter()
+            .find(|block| block.id == "utterance-a")
+            .unwrap()
+            .lanes["zh"]
+            .clone();
+        assert_eq!(projected, "你好世界再见");
+
+        // The repair happens once and replay stays idempotent. Recovery
+        // replays bound rows on every launch, so a settled lane recomposing to
+        // bytes it already holds must neither fail nor write; a future change
+        // that turned replay into a write would bump the lane revision, and
+        // through it the projection watermark, on a recording nothing is
+        // changing.
+        let revision_after_repair = zh_lane_revision(&core);
+        for _ in 0..3 {
+            core.notebook_capture_store
+                .reconcile_translation_inbox_after_recovery("session-a")
+                .expect("重放已绑定的行不该失败");
+        }
+        assert_eq!(
+            zh_lane_revision(&core),
+            revision_after_repair,
+            "重放已定稿的车道不该产生新修订"
+        );
+        assert_eq!(zh_lane_text(&core).as_deref(), Some("你好世界再见"));
+    }
+
+    fn zh_lane_variant(core: &ZulangueCore) -> RealtimeUtteranceVariant {
+        core.notebook_capture_store
+            .get_machine_utterance_by_id("utterance-a")
+            .unwrap()
+            .unwrap()
+            .variants
+            .into_iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap()
+    }
+
+    fn zh_lane_text(core: &ZulangueCore) -> Option<String> {
+        zh_lane_variant(core).text
+    }
+
+    fn zh_lane_revision(core: &ZulangueCore) -> u64 {
+        zh_lane_variant(core).revision
+    }
+
     #[test]
     fn startup_realtime_fts_repair_preserves_ready_async_search_authority() {
         let (temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();

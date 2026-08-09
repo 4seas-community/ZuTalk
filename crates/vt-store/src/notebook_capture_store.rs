@@ -5972,22 +5972,29 @@ fn needs_separator_between(accumulated: &str, next: &str) -> bool {
 }
 
 /// Whether a recomposed lane still says everything the settled lane already
-/// showed, in order, and adds to it.
+/// showed, in the same order, without taking any of it back.
 ///
 /// The invariant being protected is "a reader never sees what they already
-/// read change", and a byte prefix was a faithful proxy for it while the
-/// segment join was byte-stable. It stopped being one when the join became
+/// read change". A byte prefix was a faithful proxy for it while the segment
+/// join was byte-stable, and stopped being one when the join became
 /// script-aware: a recording made by an older build holds Chinese and Thai
 /// lanes composed with a spurious ASCII space between two segments, and
-/// recomposing them now — which startup backfill does for every recording
-/// that still has unbound segments — produces the same words without it.
-/// Refusing that as a rewrite would turn a typography correction into a
-/// hard `Conflict` on every affected recording at launch.
+/// recomposing those same segments now produces the same words without it.
+///
+/// That is not a hypothetical migration step. Startup recovery replays every
+/// already-bound row before it looks for new bindings
+/// ([`NotebookCaptureStore::reconcile_translation_inbox_after_recovery`]), so
+/// every affected recording recomposes its settled lanes on every launch.
+/// Under a byte prefix the replay reads as a rewrite, the `Conflict` aborts
+/// the whole reconcile transaction, and the segments that were waiting to be
+/// backfilled never get bound — silently, forever.
 ///
 /// So the byte prefix is tried first, and a whitespace-insensitive prefix is
-/// the fallback. Only boundary whitespace can differ: text inside a segment
-/// is the provider's, untouched.
-fn extends_settled_lane(settled: &str, incoming: &str) -> bool {
+/// the fallback. The fallback accepts equal length: same words, whitespace
+/// repaired, nothing added is exactly the replay case. Only boundary
+/// whitespace can differ — text inside a segment is the provider's, untouched
+/// — so this cannot admit a content change.
+fn preserves_settled_lane(settled: &str, incoming: &str) -> bool {
     if incoming.len() > settled.len() && incoming.starts_with(settled) {
         return true;
     }
@@ -5995,7 +6002,7 @@ fn extends_settled_lane(settled: &str, incoming: &str) -> bool {
         |value: &str| -> String { value.chars().filter(|c| !c.is_whitespace()).collect() };
     let settled = without_whitespace(settled);
     let incoming = without_whitespace(incoming);
-    incoming.len() > settled.len() && incoming.starts_with(&settled)
+    incoming.len() >= settled.len() && incoming.starts_with(&settled)
 }
 
 /// Concatenates every auxiliary segment bound to one canonical row's language
@@ -6395,7 +6402,7 @@ fn upsert_translation_variant_from_conn(
             let extends_final_lane = lane_write == TranslationLaneWrite::ComposeAuxiliarySegments
                 && incoming_is_final
                 && existing.text.as_deref().is_some_and(|settled| {
-                    text.is_some_and(|incoming| extends_settled_lane(settled, incoming))
+                    text.is_some_and(|incoming| preserves_settled_lane(settled, incoming))
                 });
             if !incoming_is_final && !extends_final_lane {
                 // Complete is the absorbing owner state for one normalized
@@ -8089,22 +8096,26 @@ mod tests {
     /// or every recording that already holds a space-joined CJK lane fails
     /// its startup backfill instead of being corrected by it.
     #[test]
-    fn settled_lane_extension_survives_the_join_rule_changing() {
+    fn settled_lane_guard_survives_the_join_rule_changing() {
         // Byte prefix: the ordinary spaced-script case.
-        assert!(extends_settled_lane("we should", "we should start over"));
+        assert!(preserves_settled_lane("we should", "we should start over"));
         // Old build joined two Chinese segments with a space; the new
         // composition drops it and adds a third segment.
-        assert!(extends_settled_lane("你好 世界", "你好世界再见"));
-        assert!(extends_settled_lane("สวัสดี ครับ", "สวัสดีครับทุกคน"));
+        assert!(preserves_settled_lane("你好 世界", "你好世界再见"));
+        assert!(preserves_settled_lane("สวัสดี ครับ", "สวัสดีครับทุกคน"));
 
-        // Not an extension: a genuine rewrite of what the reader already saw.
-        assert!(!extends_settled_lane("你好世界", "你好朋友"));
-        assert!(!extends_settled_lane("we should", "we shall start over"));
-        // Same words, nothing added — nothing to write.
-        assert!(!extends_settled_lane("你好 世界", "你好世界"));
-        assert!(!extends_settled_lane("we should", "we should"));
-        // Shrinking is never an extension.
-        assert!(!extends_settled_lane("你好世界再见", "你好世界"));
+        // The replay case: recovery recomposes the *same* bound segments
+        // under the new rule, so the words are identical and only the stray
+        // space is gone. Refusing this aborts the whole reconcile.
+        assert!(preserves_settled_lane("你好 世界", "你好世界"));
+        assert!(preserves_settled_lane("we should", "we should"));
+
+        // A genuine rewrite of what the reader already saw is still refused.
+        assert!(!preserves_settled_lane("你好世界", "你好朋友"));
+        assert!(!preserves_settled_lane("we should", "we shall start over"));
+        // Taking words back is never allowed.
+        assert!(!preserves_settled_lane("你好世界再见", "你好世界"));
+        assert!(!preserves_settled_lane("we should start over", "we should"));
     }
 
     fn fixture() -> (TempDir, NotebookCaptureStore, String) {

@@ -283,6 +283,16 @@ impl WebShareRuntime {
 
     /// 测试用装配:不起推送任务,把分割线的接收端交给测试直接查看。
     /// 生产的 `assemble` 会把它交给发送任务,那时测试就观察不到了。
+    ///
+    /// **`pending_blocks` 无人清空正是它的用途。**生产的发送任务醒来第一
+    /// 件事是 `mem::take` 整个待发队列——它就该这样,那是一个缓冲区不是
+    /// 台账。所以任何读 `pending_blocks_for_test` 的测试都必须用这个装配:
+    /// 用生产装配时,断言与发送任务在抢同一个队列,谁先到看调度器心情。
+    ///
+    /// 两个 watch 接收端由一个只负责持有、什么都不做的任务留着。
+    /// `watch::send` 在接收端全部消失后**不再更新值**,直接丢掉它们会让
+    /// `latest_frame_for_test` 永远是空——这个装配的契约是「除了没人清空
+    /// 待发队列,其余与生产一致」。
     #[cfg(test)]
     fn assemble_without_sender(
         runtime: &tokio::runtime::Runtime,
@@ -290,10 +300,14 @@ impl WebShareRuntime {
         Self,
         tokio::sync::mpsc::UnboundedReceiver<WebSegmentPayload>,
     ) {
-        let (frame_tx, _frame_rx) = tokio::sync::watch::channel::<Option<CaptionFrame>>(None);
-        let (blocks_tx, _blocks_rx) = tokio::sync::watch::channel::<u64>(0);
+        let (frame_tx, frame_rx) = tokio::sync::watch::channel::<Option<CaptionFrame>>(None);
+        let (blocks_tx, blocks_rx) = tokio::sync::watch::channel::<u64>(0);
         let (segment_tx, segment_rx) = tokio::sync::mpsc::unbounded_channel::<WebSegmentPayload>();
-        let runtime_handle = runtime.spawn(async {});
+        let runtime_handle = runtime.spawn(async move {
+            let _frame_rx = frame_rx;
+            let _blocks_rx = blocks_rx;
+            std::future::pending::<()>().await;
+        });
         (
             Self {
                 viewer_url: "http://127.0.0.1:1/r/test".into(),
@@ -607,21 +621,34 @@ mod tests {
     use super::*;
     use crate::share_api::ShareCaptionTap;
 
-    fn attach_web_runtime(core: &ZulangueCore) -> Arc<WebShareRuntime> {
-        let web = Arc::new(WebShareRuntime::assemble(
-            &core.runtime,
-            // 死端口:推送任务的失败路径本来就是静默丢帧,测试里无害。
-            "http://127.0.0.1:1/v1/rooms/test-room".into(),
-            "test-token".into(),
-            "http://127.0.0.1:1/r/test-room".into(),
-        ));
+    /// 把网页分享运行时挂进已经开始的共享。
+    ///
+    /// 用的是不起发送任务的装配。从前这里装的是生产运行时加一个死端口,
+    /// 理由是「推送失败本来就静默丢帧,测试里无害」——但发送任务醒来做的
+    /// 第一件事不是 POST,而是 `mem::take` 走整个待发队列,POST 在那之后。
+    /// 于是读 `pending_blocks_for_test` 的断言与它抢同一个队列:两次推送
+    /// 之间只要有一点真实工作(查库、刷文档),任务就有机会醒来清空第一
+    /// 笔,断言看到的只剩第二笔。实测这一条让
+    /// `opening_a_notebook_room_pushes_every_session_in_scope` 二十次挂八次。
+    ///
+    /// 返回分割线接收端而不是丢掉它:丢掉之后 `publish_segment` 会静默
+    /// 失败,那是下一个同类陷阱。调用方不关心就绑成 `_segments`,关心就
+    /// 直接读。
+    fn attach_web_runtime(
+        core: &ZulangueCore,
+    ) -> (
+        Arc<WebShareRuntime>,
+        tokio::sync::mpsc::UnboundedReceiver<WebSegmentPayload>,
+    ) {
+        let (runtime, segments) = WebShareRuntime::assemble_without_sender(&core.runtime);
+        let web = Arc::new(runtime);
         core.share_runtime
             .lock()
             .unwrap()
             .as_mut()
             .expect("共享已开始")
             .web_share = Some(web.clone());
-        web
+        (web, segments)
     }
 
     /// 没在共享、或不是主持人,网页分享开不了。
@@ -642,7 +669,7 @@ mod tests {
         let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         core.start_sharing(Some("nb-web".into()), None, false)
             .unwrap();
-        let web = attach_web_runtime(&core);
+        let (web, _segments) = attach_web_runtime(&core);
 
         let tap = ShareCaptionTap::new(core.share_runtime.clone(), "nb-web".into());
 
@@ -674,7 +701,7 @@ mod tests {
         core.start_sharing(None, Some("sess-doc".into()), false)
             .unwrap();
         core.enable_document_sync().unwrap();
-        let web = attach_web_runtime(&core);
+        let (web, _segments) = attach_web_runtime(&core);
 
         core.shared_session_insert_annotation("sess-doc".into(), 0, "n1".into(), "网页稿".into())
             .unwrap();
@@ -766,7 +793,7 @@ mod tests {
         core.start_sharing(Some(notebook.id.clone()), None, false)
             .unwrap();
         core.enable_document_sync().unwrap();
-        let web = attach_web_runtime(&core);
+        let (web, _segments) = attach_web_runtime(&core);
 
         // 范围列表按录制先后 —— 网页按到达顺序排稿。
         assert_eq!(core.web_share_scope_sessions(), recorded);
@@ -821,7 +848,7 @@ mod tests {
         core.start_sharing(None, Some("sess-spk".into()), false)
             .unwrap();
         core.enable_document_sync().unwrap();
-        let web = attach_web_runtime(&core);
+        let (web, _segments) = attach_web_runtime(&core);
 
         core.shared_session_insert_annotation("sess-spk".into(), 0, "n1".into(), "批注".into())
             .unwrap();
