@@ -413,9 +413,18 @@ class Handler(BaseHTTPRequestHandler):
         return header[len(prefix):] if header.startswith(prefix) else ""
 
     def read_body(self) -> bytes | None:
+        """读掉并返回请求体;超限时排干后返回 None。
+
+        **每个带体的请求都必须先走它、再谈拒绝。** 响应而不读体,未读字节
+        会留在 keep-alive 连接里,毒害下一个经边缘代理复用同一后端连接的
+        请求 —— 表现为 501 `Unsupported method ('{}GET')`,而且殃及的是
+        **别人**的请求。本地测试抓不到:测试客户端不共享后端连接,只有
+        代理的连接池会。生产冒烟(caption_web_prod_smoke.sh)抓到过一次,
+        不许再犯。
+        """
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
-            return None
+            return b""
         if length > MAX_BODY_BYTES:
             # 先把声明的长度有界地排干再拒绝 —— 不读就回复,客户端还在写,
             # 只会看到 connection reset 而不是 413。排不完的直接断连。
@@ -434,6 +443,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------------
     def do_GET(self) -> None:
+        # 病理客户端会给 GET 带体;不排干同样毒害连接复用。
+        self.read_body()
         if self.path == "/healthz":
             self.send_json(200, {"status": "ok", "rooms": len(self.store.rooms)})
             return
@@ -492,6 +503,9 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------------
     def do_POST(self) -> None:
+        # 体必须最先读 —— 在任何拒绝之前。见 read_body 的注释。
+        body = self.read_body()
+
         if self.path == "/v1/rooms":
             room = self.store.create_room(self.client_address[0])
             if room is None:
@@ -514,17 +528,15 @@ class Handler(BaseHTTPRequestHandler):
                 if room is None:
                     self.send_json(401, {"error": "unauthorized"})
                     return
-                body = self.read_body()
                 if body is None:
                     self.send_json(413, {"error": "payload_too_large"})
                     return
                 try:
-                    data = json.loads(body)
+                    data = json.loads(body) if body else None
                 except json.JSONDecodeError:
-                    self.send_json(400, {"error": "invalid_json"})
-                    return
+                    data = None
                 if not isinstance(data, dict):
-                    self.send_json(400, {"error": "invalid_payload"})
+                    self.send_json(400, {"error": "invalid_json"})
                     return
                 self.store.publish(room, event, data)
                 self.send_json(200, {"status": "accepted"})
@@ -534,6 +546,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------------
     def do_DELETE(self) -> None:
+        self.read_body()
         if self.path.startswith("/v1/rooms/"):
             room_id = self.path[len("/v1/rooms/"):]
             room = self.store.room_for_publish(room_id, self.bearer_token())

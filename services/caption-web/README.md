@@ -25,20 +25,33 @@
 与 invite / relay 同一形态:单文件 Python(仅标准库)、systemd 托管、
 TLS 由 exe.dev 边缘终结,VM 只讲 HTTP。
 
+exe.dev 的边缘代理**固定转发到 `:8000`**、每台 VM 只有一个代理端口,所以
+caption-web 独占一台 VM(`zulangue-caption`),与 relay 不合并的理由相同。
+
 ```bash
+# exe.dev 控制台
+ssh exe.dev new --name zulangue-caption --cpu 1 --memory 1GB
+ssh exe.dev tag zulangue-caption seas4
+
 # VM 上(服务目录按 zulangue-caption-web.service 里的 WorkingDirectory)
-mkdir -p "$SERVICE_HOME/zulangue-caption-web"
-scp server.py "<vm>:$SERVICE_HOME/zulangue-caption-web/"
-scp zulangue-caption-web.service <vm>:/etc/systemd/system/
-systemctl daemon-reload && systemctl enable --now zulangue-caption-web
-curl -s http://127.0.0.1:8100/healthz
+scp server.py zulangue-caption.exe.xyz:zulangue-caption-web/
+scp zulangue-caption-web.service zulangue-caption.exe.xyz:
+ssh zulangue-caption.exe.xyz 'sudo install -m644 zulangue-caption-web.service \
+    /etc/systemd/system/ && sudo systemctl daemon-reload && \
+    sudo systemctl enable --now zulangue-caption-web'
+
+# 放开登录墙(不放开的话,扫码的人会先被要求登录 exe.dev)
+ssh exe.dev share port zulangue-caption 8000
+ssh exe.dev share set-public zulangue-caption
+
+curl -s https://zulangue-caption.exe.xyz/healthz
 ```
 
-边缘代理把 `zulangue-caption.exe.xyz` 转发到 `:8100`。`--public-base`
-必须是浏览器可达的公开地址 —— 观看页链接由服务端用它拼出。
+`--public-base` 必须是浏览器可达的公开地址 —— 观看页链接由服务端用它拼出。
 
 **注意 SSE**:边缘代理需要允许长响应(禁响应缓冲)。服务端每 25 秒发
-一条心跳注释,穿透常见的空闲超时。
+一条心跳注释,穿透常见的空闲超时。`scripts/caption_web_prod_smoke.sh`
+对已部署实例验证整条链路(含 SSE 穿透)。
 
 ## 接口
 

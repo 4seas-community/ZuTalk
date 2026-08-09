@@ -6,7 +6,8 @@ After=network-online.target
 Type=simple
 User=exedev
 WorkingDirectory=/home/exedev/zulangue-caption-web
-ExecStart=/usr/bin/python3 server.py --host 0.0.0.0 --port 8100 --public-base https://zulangue-caption.exe.xyz
+# exe.dev 的边缘代理固定转发到 :8000(TLS 在边缘终结,VM 只讲 HTTP)。
+ExecStart=/usr/bin/python3 server.py --host 0.0.0.0 --port 8000 --public-base https://zulangue-caption.exe.xyz
 Restart=on-failure
 RestartSec=2
 UMask=0077

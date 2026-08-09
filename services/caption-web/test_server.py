@@ -180,6 +180,49 @@ class CaptionWebTests(unittest.TestCase):
         status, _ = self.request("GET", f"/r/{room['room_id']}")
         self.assertEqual(status, 404)
 
+    def test_keep_alive_survives_rejected_and_bodyless_reads(self):
+        """连接复用下的请求体卫生 —— 生产抓到过的真 bug。
+
+        边缘代理会把多个客户端复用到同一条后端 keep-alive 连接上。任何
+        「响应了却没读体」的路径(401、建房忽略体)都会把残字节留在连接
+        里,下一个请求被解析成 `{}GET` → 501,而且殃及别人。这里在单条
+        连接上连发:带体建房 → 带体的未授权 POST → GET,每一步都必须
+        得到正确回答。
+        """
+        import http.client
+
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            # 带体建房(App 的 reqwest .json(&{}) 就是这么发的)。
+            conn.request(
+                "POST", "/v1/rooms", body="{}",
+                headers={"Content-Type": "application/json"},
+            )
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            room = json.loads(response.read())
+
+            # 未授权、带体:必须 401,且不残留字节。
+            conn.request(
+                "POST", f"/v1/rooms/{room['room_id']}/frame",
+                body=json.dumps({"preview_revision": 1}),
+                headers={
+                    "Authorization": "Bearer wrong",
+                    "Content-Type": "application/json",
+                },
+            )
+            response = conn.getresponse()
+            self.assertEqual(response.status, 401)
+            response.read()
+
+            # 同一条连接的下一个请求:修复前这里是 501 ('{}GET')。
+            conn.request("GET", "/healthz")
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            response.read()
+        finally:
+            conn.close()
+
     def test_oversized_payload_is_refused(self):
         room = self.create_room()
         request = urllib.request.Request(
