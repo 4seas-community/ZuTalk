@@ -386,9 +386,15 @@ xcode-build-universal:
     set -euo pipefail
     OUT="{{ app_build_dir }}"
     mkdir -p "$OUT" "{{ xcode_cloned_source_packages }}"
-    if [ -e "$OUT/Zulangue.app" ]; then
-        find "$OUT/Zulangue.app" -depth -delete
-    fi
+    # 产物目录与 host 版 `just xcode-build` 共用,而 host 构建会在这里留下
+    # 一个**只有本机架构**的 libZulangueFFI.a(它是工程内静态库目标的产物,
+    # 不是 Rust 侧的 lipo 产物)。universal 构建把它当成链接输入,x86_64
+    # 那一半就会 ld 失败 —— 表现为「刚跑过 xcode-build 的机器发不了版」。
+    # 只删 Zulangue.app 挡不住,整个产物目录都要从干净开始。两样东西留下:
+    # 日志(失败时要读它)与 .gitkeep(被跟踪的占位文件,删了工作树就脏,
+    # 而脏工作树会让紧随其后的打标签步骤整个停下)。
+    find "$OUT" -mindepth 1 -maxdepth 1 ! -name '*.log' ! -name '.gitkeep' \
+        -exec rm -rf {} +
     LOG="$OUT/xcodebuild-universal.log"
     echo "Building universal release app: arm64 x86_64"
     if ! xcodebuild build \
