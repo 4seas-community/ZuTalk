@@ -214,7 +214,17 @@ VIEWER_PAGE = """<!DOCTYPE html>
   .cell { line-height: 1.55; font-size: 17px; min-width: 0;
     overflow-wrap: break-word; }
   .cell.empty { color: #555; }
-  .cell .annotation { color: #9ac; font-size: 15px; }
+  /* 回落原文的格子:内容是真的,只是这门语言还没译到/不需要译。
+     弱一档颜色说明「这不是译文」,又不至于像空格子那样读不下去。 */
+  .cell.fallback { color: #b8b8b8; }
+  /* 批注不属于任何一门语言:一条横跨全部栏的行,而不是复制三份。 */
+  .annotation-row { margin: 0 0 12px; color: #9ac; font-size: 15px;
+    line-height: 1.55; overflow-wrap: break-word; }
+  /* 说话人:一行字幕之上的一条小标,横跨全部栏 —— 同一句话在三栏里
+     是同一个人说的,标三次是三份噪音。 */
+  .speaker { font-size: 12px; color: #8ab; letter-spacing: 0.04em;
+    margin: 10px 0 4px; }
+  #livetail .speaker { color: #778; }
   .colhead { position: sticky; top: 0; background: #111; display: grid;
     gap: 14px; padding: 4px 0 6px; border-bottom: 1px solid #2a2a2a;
     margin-bottom: 10px; }
@@ -268,6 +278,7 @@ const UI = {
     started: "录音开始",
     paused: "录音已暂停",
     source: "原文",
+    speaker: "说话人 {n}",
   },
   "en": {
     title: "Zulangue Live Captions",
@@ -279,6 +290,7 @@ const UI = {
     started: "recording started",
     paused: "recording paused",
     source: "Source",
+    speaker: "Speaker {n}",
   },
   "th": {
     title: "Zulangue ซับไตเติลสด",
@@ -290,6 +302,7 @@ const UI = {
     started: "เริ่มบันทึก",
     paused: "หยุดบันทึกชั่วคราว",
     source: "ต้นฉบับ",
+    speaker: "ผู้พูด {n}",
   },
 };
 
@@ -318,10 +331,31 @@ function loadSelection() {
 
 const state = { sessions: [], frame: null, segments: [], selected: loadSelection(),
                 langs: [], following: true, ended: false, statusKey: "connecting",
-                uiLang: detectUiLang() };
+                uiLang: detectUiLang(), speakers: {} };
 const el = (id) => document.getElementById(id);
 const t = (key) => UI[state.uiLang][key];
 const columnLabel = (key) => key === "source" ? t("source") : key;
+
+// 说话人名录:标识 → {name, label}。主播给过名字就用名字(那是专名,
+// 不翻译);只有 provider 编号时,「说话人 3」这句话按观看者的界面语言
+// 拼 —— 与页面其余文案同一条规矩。
+// 稿与实时帧用同一套标识,所以名录只有一份,两个时态共用。
+function speakerLabel(id) {
+  if (!id) return null;
+  const speaker = state.speakers[id];
+  if (!speaker) return null;
+  if (speaker.name) return speaker.name;
+  if (!speaker.label) return null;
+  return t("speaker").replace("{n}", speaker.label);
+}
+
+// 名录来自块快照,按 session 累加 —— 一场会议里几场录音各有各的说话人,
+// 后到的那场不该把前一场的名字抹掉。
+function mergeSpeakers(session) {
+  const speakers = session && session.speakers;
+  if (!speakers) return;
+  for (const id of Object.keys(speakers)) state.speakers[id] = speakers[id];
+}
 
 function renderChrome() {
   document.documentElement.lang = state.uiLang;
@@ -404,10 +438,23 @@ function activeColumns() {
   return filtered.length ? filtered : ["source"];
 }
 
-// 稿里某一栏的取值:「原文」取块文本,语言取车道;批注块只有原文。
+// 稿里某一栏的取值:「原文」取块文本,语言取车道,**车道缺席回落原文**。
+//
+// 回落不是补白,是这一栏唯一正确的内容:原文本来就是中文时,系统不会
+// 再造一条「中文→中文」的车道,于是选中文的那一栏在稿里一格车道都没有。
+// 不回落,一场中文会议的中文栏就整屏空着——译文栏满满当当,原文栏反倒
+// 什么都没有。同理,一句英文原话在英文栏、一句泰语原话在泰语栏,都靠
+// 这条回落。译文只是暂时没到时,回落也比空格子强:先读到话,译文到了
+// 自然顶上。
 function cellText(block, key) {
   if (key === "source") return block.text || "";
-  return (block.lanes && block.lanes[key]) || "";
+  return (block.lanes && block.lanes[key]) || block.text || "";
+}
+
+// 这一格是回落来的原文,不是这门语言的译文。
+function isFallbackCell(block, key) {
+  if (key === "source") return false;
+  return !(block.lanes && block.lanes[key]) && !!block.text;
 }
 
 function gridStyle(element, count) {
@@ -427,25 +474,41 @@ function renderColumnHead(columns) {
   }
 }
 
-function appendRow(holder, columns, values, annotation) {
+function appendRow(holder, columns, block) {
+  const values = columns.map((key) => cellText(block, key));
   if (values.every((v) => !v)) return;
   const row = document.createElement("div");
   row.className = "row";
   gridStyle(row, columns.length);
-  for (const value of values) {
+  columns.forEach((key, index) => {
+    const value = values[index];
     const cell = document.createElement("div");
-    cell.className = "cell" + (value ? "" : " empty");
-    if (annotation && value) {
-      const span = document.createElement("span");
-      span.className = "annotation";
-      span.textContent = value;
-      cell.appendChild(span);
-    } else {
-      cell.textContent = value || "";
-    }
+    cell.className = "cell"
+      + (value ? "" : " empty")
+      + (value && isFallbackCell(block, key) ? " fallback" : "");
+    cell.textContent = value || "";
     row.appendChild(cell);
-  }
+  });
   holder.appendChild(row);
+}
+
+// 批注不属于任何一门语言:横跨全部栏一行,而不是在三栏里各印一遍。
+// 只放进原文栏也不行 —— 观看者可能一栏原文都没选,那条批注就凭空没了。
+function appendAnnotation(holder, block) {
+  if (!block.text) return;
+  const row = document.createElement("div");
+  row.className = "annotation-row";
+  row.textContent = block.text;
+  holder.appendChild(row);
+}
+
+// 说话人小标:横跨全部栏,只在换人时出现。同一个人连着说几句,标一次
+// 就够 —— 每句都标,读起来全是名字。
+function appendSpeaker(holder, label) {
+  const div = document.createElement("div");
+  div.className = "speaker";
+  div.textContent = label;
+  holder.appendChild(div);
 }
 
 function formatTime(epochSeconds) {
@@ -503,16 +566,23 @@ function renderTranscript(columns) {
       appendDivider(sessionDiv, segment);
       placed.add(segment);
     }
+    // 换人才标一次。批注与分割线打断连续性:它们之后的第一句要重新
+    // 报一次名字,否则读者得往上翻很远才知道现在是谁在说。
+    let lastSpeaker = null;
     for (const block of (session.blocks || [])) {
-      appendRow(
-        sessionDiv,
-        columns,
-        columns.map((key) => cellText(block, key)),
-        block.owner === "user"
-      );
+      if (block.owner === "user") {
+        appendAnnotation(sessionDiv, block);
+        lastSpeaker = null;
+      } else {
+        const label = speakerLabel(block.speaker);
+        if (label && block.speaker !== lastSpeaker) appendSpeaker(sessionDiv, label);
+        lastSpeaker = block.speaker || null;
+        appendRow(sessionDiv, columns, block);
+      }
       for (const segment of mine.filter((s) => s.after_block_id === block.id)) {
         appendDivider(sessionDiv, segment);
         placed.add(segment);
+        lastSpeaker = null;
       }
     }
     holder.appendChild(sessionDiv);
@@ -624,6 +694,11 @@ function renderLive(columns) {
     const dominantSource = dominantSourceLanguage(frame);
     const stacks = columns.map((key) => liveColumnLines(key, dominantSource));
     if (stacks.every((stack) => stack.length === 0)) return;
+    // 正在说话的是谁:取本帧最后一句带说话人的话。实时区一次只有几行,
+    // 逐行标名字反而挤,一条小标说清「现在这段是谁在说」就够。
+    const live = (frame.utterances || []).filter((u) => u.speaker).pop();
+    const label = live ? speakerLabel(live.speaker) : null;
+    if (label) appendSpeaker(holder, label);
     const row = document.createElement("div");
     row.className = "row";
     gridStyle(row, columns.length);
@@ -681,12 +756,15 @@ source.addEventListener("init", (e) => {
   state.sessions = data.sessions || [];
   state.frame = data.frame;
   state.segments = data.segments || [];
+  state.speakers = {};
+  for (const session of state.sessions) mergeSpeakers(session);
   setStatus("live");
   render();
 });
 source.addEventListener("frame", (e) => { state.frame = JSON.parse(e.data); render(); });
 source.addEventListener("blocks", (e) => {
   const data = JSON.parse(e.data);
+  mergeSpeakers(data);
   const index = state.sessions.findIndex((s) => s.session_id === data.session_id);
   if (index >= 0) state.sessions[index] = data; else state.sessions.push(data);
   render();

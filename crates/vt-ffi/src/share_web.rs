@@ -4,8 +4,9 @@
 //!
 //! 1. **帧必须经 `ShareCaptionTap` 的同一放行判定**再进这里 —— 范围过滤与
 //!    per-session 静音只有一套,P2P 不发的帧网页也不发。
-//! 2. **推送不阻塞采集**。帧与块都进 `watch` 通道(新值覆盖旧值,与
-//!    replace-in-full 天然搭配),独立任务慢慢发,发不动就只发最新。
+//! 2. **推送不阻塞采集**。帧进 `watch` 通道(新值覆盖旧值,与 replace-in-full
+//!    天然搭配);块按 session 覆盖后排队 —— 稿的「只留最新」是每个 session
+//!    一份,单槽会让开房时连推的几场只活下来最后一场。独立任务慢慢发。
 //! 3. **纯文本**。这条通道承载的类型与 P2P 字幕通道相同,音频门禁
 //!    (share-p2p.md §5)原样生效。
 //!
@@ -39,6 +40,23 @@ struct WebBlock {
     owner: String,
     text: String,
     lanes: HashMap<String, String>,
+    /// 这句话的说话人在本场录音内的标识,查 [`WebBlocksPayload::speakers`]
+    /// 取显示用的名字。批注块与未分离说话人的句子为 `None`。
+    speaker: Option<String>,
+}
+
+/// 一个说话人在网页上的显示材料。
+///
+/// 名字与编号分两个字段,是因为**「说话人 3」这句话得由网页按观看者的
+/// 界面语言拼**——观看页的文案是三语的,一个在主播机器上拼死的中文
+/// 「说话人 3」对泰语观众就是谜语。用户给过名字(会话内改名或联系人)
+/// 时名字原样送,那是专名,不翻译。
+#[derive(Debug, Clone, Serialize)]
+struct WebSpeaker {
+    /// 用户给的名字:会话内改名优先,其次关联联系人的名字。
+    name: Option<String>,
+    /// provider 的原始编号,如 "3"。网页用它拼本地化的「说话人 3」。
+    label: String,
 }
 
 /// 一个 session 的稿。replace-in-full:服务端按 session 只留最新。
@@ -46,6 +64,9 @@ struct WebBlock {
 struct WebBlocksPayload {
     session_id: String,
     blocks: Vec<WebBlock>,
+    /// 本场录音的说话人名录:标识 → 显示材料。稿与实时帧用的是同一套
+    /// 标识,所以网页两个时态共用这一份名录,不必各带一份名字。
+    speakers: HashMap<String, WebSpeaker>,
 }
 
 /// 录音的开始/暂停在网页上的分割线。
@@ -83,7 +104,15 @@ pub(crate) struct WebShareRuntime {
     room_url: String,
     publish_token: String,
     frame_tx: tokio::sync::watch::Sender<Option<CaptionFrame>>,
-    blocks_tx: tokio::sync::watch::Sender<Option<WebBlocksPayload>>,
+    /// 待发的块快照,**按 session 覆盖、按首次出现排序**。
+    ///
+    /// 单槽 watch 在这里是错的:稿的 replace-in-full 是「每个 session 只留
+    /// 最新」,不是「全局只留最新」。开房时把范围内几场录音连着推,单槽
+    /// 会让前几场被最后一场顶掉,网页上于是永远缺前半场。所以覆盖按
+    /// session 做,槽位本身是个有序表。
+    pending_blocks: Arc<std::sync::Mutex<Vec<WebBlocksPayload>>>,
+    /// 只用来叫醒推送任务;真正的载荷在 `pending_blocks` 里。
+    blocks_tx: tokio::sync::watch::Sender<u64>,
     /// 分割线是事件不是状态,所以是队列不是 watch —— 覆盖会丢掉
     /// 「暂停过一次」这件事本身。
     segment_tx: tokio::sync::mpsc::UnboundedSender<WebSegmentPayload>,
@@ -106,13 +135,15 @@ impl WebShareRuntime {
         viewer_url: String,
     ) -> Self {
         let (frame_tx, mut frame_rx) = tokio::sync::watch::channel::<Option<CaptionFrame>>(None);
-        let (blocks_tx, mut blocks_rx) =
-            tokio::sync::watch::channel::<Option<WebBlocksPayload>>(None);
+        let (blocks_tx, mut blocks_rx) = tokio::sync::watch::channel::<u64>(0);
         let (segment_tx, mut segment_rx) =
             tokio::sync::mpsc::unbounded_channel::<WebSegmentPayload>();
+        let pending_blocks: Arc<std::sync::Mutex<Vec<WebBlocksPayload>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
 
         let task = {
             let room_url = room_url.clone();
+            let pending_blocks = pending_blocks.clone();
             let token = publish_token.clone();
             runtime.spawn(async move {
                 let client = match reqwest::Client::builder()
@@ -145,16 +176,23 @@ impl WebShareRuntime {
                         }
                         changed = blocks_rx.changed() => {
                             if changed.is_err() { break; }
-                            let payload = blocks_rx.borrow_and_update().clone();
-                            let Some(payload) = payload else { continue };
-                            let result = client
-                                .post(format!("{room_url}/blocks"))
-                                .bearer_auth(&token)
-                                .json(&payload)
-                                .send()
-                                .await;
-                            if let Err(error) = result {
-                                tracing::debug!(%error, "网页分享:块快照未送达");
+                            blocks_rx.borrow_and_update();
+                            // 整批取走再发:发的期间新来的稿落进新的一批,
+                            // 下一轮唤醒接着发,不会互相顶掉。
+                            let batch = {
+                                let mut pending = pending_blocks.lock().unwrap();
+                                std::mem::take(&mut *pending)
+                            };
+                            for payload in batch {
+                                let result = client
+                                    .post(format!("{room_url}/blocks"))
+                                    .bearer_auth(&token)
+                                    .json(&payload)
+                                    .send()
+                                    .await;
+                                if let Err(error) = result {
+                                    tracing::debug!(%error, "网页分享:块快照未送达");
+                                }
                             }
                         }
                         segment = segment_rx.recv() => {
@@ -187,6 +225,7 @@ impl WebShareRuntime {
             room_url,
             publish_token,
             frame_tx,
+            pending_blocks,
             blocks_tx,
             segment_tx,
             task,
@@ -203,8 +242,20 @@ impl WebShareRuntime {
         let _ = self.frame_tx.send(Some(frame.clone()));
     }
 
+    /// 一个 session 的最新稿。同一 session 的旧值原地覆盖(位置不变,稿的
+    /// 先后就是网页上的先后),不同 session 各占一格。
     fn publish_blocks(&self, payload: WebBlocksPayload) {
-        let _ = self.blocks_tx.send(Some(payload));
+        {
+            let mut pending = self.pending_blocks.lock().unwrap();
+            match pending
+                .iter_mut()
+                .find(|queued| queued.session_id == payload.session_id)
+            {
+                Some(queued) => *queued = payload,
+                None => pending.push(payload),
+            }
+        }
+        self.blocks_tx.send_modify(|version| *version += 1);
     }
 
     fn publish_segment(&self, payload: WebSegmentPayload) {
@@ -240,7 +291,7 @@ impl WebShareRuntime {
         tokio::sync::mpsc::UnboundedReceiver<WebSegmentPayload>,
     ) {
         let (frame_tx, _frame_rx) = tokio::sync::watch::channel::<Option<CaptionFrame>>(None);
-        let (blocks_tx, _blocks_rx) = tokio::sync::watch::channel::<Option<WebBlocksPayload>>(None);
+        let (blocks_tx, _blocks_rx) = tokio::sync::watch::channel::<u64>(0);
         let (segment_tx, segment_rx) = tokio::sync::mpsc::unbounded_channel::<WebSegmentPayload>();
         let runtime_handle = runtime.spawn(async {});
         (
@@ -249,6 +300,7 @@ impl WebShareRuntime {
                 room_url: "http://127.0.0.1:1/v1/rooms/test".into(),
                 publish_token: "t".into(),
                 frame_tx,
+                pending_blocks: Arc::new(std::sync::Mutex::new(Vec::new())),
                 blocks_tx,
                 segment_tx,
                 task: runtime_handle,
@@ -257,12 +309,26 @@ impl WebShareRuntime {
         )
     }
 
+    /// 待发的稿:每个 session 一格,顺序即推送顺序。
     #[cfg(test)]
-    fn latest_blocks_for_test(&self) -> Option<(String, usize)> {
-        self.blocks_tx
-            .borrow()
-            .as_ref()
+    fn pending_blocks_for_test(&self) -> Vec<(String, usize)> {
+        self.pending_blocks
+            .lock()
+            .unwrap()
+            .iter()
             .map(|p| (p.session_id.clone(), p.blocks.len()))
+            .collect()
+    }
+
+    #[cfg(test)]
+    fn pending_speakers_for_test(&self, session_id: &str) -> HashMap<String, WebSpeaker> {
+        self.pending_blocks
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|p| p.session_id == session_id)
+            .map(|p| p.speakers.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -280,18 +346,99 @@ impl ZulangueCore {
         let Ok(blocks) = self.shared_session_blocks(session_id.to_string()) else {
             return;
         };
+        // 说话人不在 T2 文档里(块只有 id/owner/text/lanes),事实在 SQLite
+        // 的采集行上。稿的块 id 就是 utterance id,所以这里查一次表就能把
+        // 两边接上;转发别人的稿时查不到行,名录为空,网页照旧只是不显示
+        // 说话人 —— 缺名字不该让稿本身消失。
+        let speaker_by_block: HashMap<String, String> = self
+            .notebook_capture_store
+            .list_utterances(session_id)
+            .map(|utterances| {
+                utterances
+                    .into_iter()
+                    .filter_map(|u| u.session_speaker_id.map(|speaker| (u.id, speaker)))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let speakers = self.web_speaker_directory(session_id);
         web.publish_blocks(WebBlocksPayload {
             session_id: session_id.to_string(),
             blocks: blocks
                 .into_iter()
                 .map(|b| WebBlock {
+                    speaker: speaker_by_block.get(&b.id).cloned(),
                     id: b.id,
                     owner: b.owner,
                     text: b.text,
                     lanes: b.lanes,
                 })
                 .collect(),
+            speakers,
         });
+    }
+
+    /// 当前主持范围里的全部 session,按录制先后。网页按到达顺序排稿,
+    /// 所以这里的顺序就是观看者读到的顺序。没在主持时为空。
+    fn web_share_scope_sessions(&self) -> Vec<String> {
+        let scope = {
+            let guard = self.share_runtime.lock().unwrap();
+            guard.as_ref().and_then(|r| r.roster_scope())
+        };
+        match scope {
+            Some(vt_share::ScopeId::Session { session_id }) => vec![session_id],
+            Some(vt_share::ScopeId::Notebook { notebook_id }) => self
+                .notebook_capture_store
+                .list_notebook_capture_history_summaries(&notebook_id)
+                .map(|runs| runs.into_iter().map(|run| run.session_id).collect())
+                .unwrap_or_default(),
+            None => Vec::new(),
+        }
+    }
+
+    /// 本场录音的说话人名录。取名规则与 App 画布一致:会话内改名优先,
+    /// 其次关联联系人的名字,都没有就只送 provider 编号让网页自己拼。
+    fn web_speaker_directory(&self, session_id: &str) -> HashMap<String, WebSpeaker> {
+        let Ok(speakers) = self
+            .notebook_capture_store
+            .list_session_speakers(session_id)
+        else {
+            return HashMap::new();
+        };
+        if speakers.is_empty() {
+            return HashMap::new();
+        }
+        // 联系人表只在真有说话人时才读 —— 大多数录音一个联系人都没关联。
+        let participants: HashMap<String, String> = self
+            .notebook_capture_store
+            .list_participants()
+            .map(|values| values.into_iter().map(|p| (p.id, p.display_name)).collect())
+            .unwrap_or_default();
+        speakers
+            .into_iter()
+            .map(|speaker| {
+                let name = speaker
+                    .local_display_name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+                    .or_else(|| {
+                        speaker
+                            .participant_id
+                            .as_deref()
+                            .and_then(|id| participants.get(id))
+                            .map(|name| name.trim().to_string())
+                            .filter(|name| !name.is_empty())
+                    });
+                (
+                    speaker.id,
+                    WebSpeaker {
+                        name,
+                        label: speaker.provider_label,
+                    },
+                )
+            })
+            .collect()
     }
 }
 
@@ -415,16 +562,15 @@ impl ZulangueCore {
             runtime.web_share = Some(web);
         }
 
-        // 按单条录音共享时,把已有的稿先推一份 —— 晚扫码的人不该等到
-        // 下一次发布才看到内容。Notebook 范围随下一次发布补上。
-        let scope_session = {
-            let guard = self.share_runtime.lock().unwrap();
-            guard.as_ref().and_then(|r| match r.roster_scope() {
-                Some(vt_share::ScopeId::Session { session_id }) => Some(session_id),
-                _ => None,
-            })
-        };
-        if let Some(session_id) = scope_session {
+        // 开房就把范围内已有的稿全推一份。**这是「网页保存整场记录」的
+        // 唯一入口**:服务端给每个新订阅者重放全部块快照,所以只要稿到过
+        // 服务端,几点扫码进来的人都从头看得到。反过来,不推的 session 在
+        // 它下一次真有增量之前,网页上就是不存在 —— 一个只讲过话不再更新
+        // 的历史录音会永远缺席。
+        //
+        // Notebook 范围因此必须逐场推,不能等下一次发布:一场会议的前半段
+        // 往往早就录完了,再也不会有增量。
+        for session_id in self.web_share_scope_sessions() {
             self.push_web_share_blocks(&session_id);
         }
 
@@ -533,9 +679,159 @@ mod tests {
         core.shared_session_insert_annotation("sess-doc".into(), 0, "n1".into(), "网页稿".into())
             .unwrap();
 
-        let (session_id, block_count) = web.latest_blocks_for_test().expect("发布应推块快照");
-        assert_eq!(session_id, "sess-doc");
-        assert_eq!(block_count, 1);
+        assert_eq!(
+            web.pending_blocks_for_test(),
+            vec![("sess-doc".to_string(), 1)],
+            "发布应推块快照"
+        );
+
+        core.stop_sharing().unwrap();
+    }
+
+    /// 一场会议的几份稿连着推,谁也不许顶掉谁。
+    ///
+    /// 单槽 watch 曾让这件事必然发生:开房时把范围内几场录音一次推完,
+    /// 只有最后一场进得了服务端,网页上前半场永远缺席。
+    #[test]
+    fn queued_block_snapshots_do_not_evict_each_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let (web, _segments) = WebShareRuntime::assemble_without_sender(&core.runtime);
+
+        let snapshot = |session_id: &str, blocks: usize| WebBlocksPayload {
+            session_id: session_id.to_string(),
+            blocks: (0..blocks)
+                .map(|index| WebBlock {
+                    id: format!("b{index}"),
+                    owner: format!("capture:{session_id}"),
+                    text: "话".into(),
+                    lanes: HashMap::new(),
+                    speaker: None,
+                })
+                .collect(),
+            speakers: HashMap::new(),
+        };
+
+        web.publish_blocks(snapshot("sess-a", 1));
+        web.publish_blocks(snapshot("sess-b", 2));
+        // 同一 session 的新稿原地覆盖:位置不动,内容更新。
+        web.publish_blocks(snapshot("sess-a", 3));
+
+        assert_eq!(
+            web.pending_blocks_for_test(),
+            vec![("sess-a".to_string(), 3), ("sess-b".to_string(), 2)]
+        );
+    }
+
+    /// Notebook 范围开房:范围内每一场录音都要推,不能只推最后一场。
+    ///
+    /// 一场会议的前半段往往早就录完、再也不会有增量 —— 靠「下一次发布
+    /// 补上」等于永远不补,网页上那半场就是不存在。
+    #[test]
+    fn opening_a_notebook_room_pushes_every_session_in_scope() {
+        use crate::notebook_capture_api::{
+            FfiNotebookCaptureCallback, FfiNotebookCaptureEvent, FfiNotebookCaptureLivePreview,
+        };
+
+        struct Silent;
+        impl FfiNotebookCaptureCallback for Silent {
+            fn on_capture_event(&self, _event: FfiNotebookCaptureEvent) {}
+            fn on_live_preview(&self, _preview: FfiNotebookCaptureLivePreview) {}
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core.create_notebook(Some("论坛".into())).unwrap();
+
+        let mut recorded = Vec::new();
+        for _ in 0..2 {
+            let profile = core
+                .get_notebook_capture_profile(notebook.id.clone())
+                .unwrap();
+            let capture = core
+                .start_notebook_capture_session(
+                    notebook.id.clone(),
+                    profile.revision,
+                    None,
+                    Box::new(Silent),
+                )
+                .unwrap();
+            core.push_notebook_capture_session(capture.session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+            core.stop_notebook_capture_session(capture.session_id.clone())
+                .unwrap();
+            recorded.push(capture.session_id);
+        }
+
+        core.start_sharing(Some(notebook.id.clone()), None, false)
+            .unwrap();
+        core.enable_document_sync().unwrap();
+        let web = attach_web_runtime(&core);
+
+        // 范围列表按录制先后 —— 网页按到达顺序排稿。
+        assert_eq!(core.web_share_scope_sessions(), recorded);
+
+        for session_id in core.web_share_scope_sessions() {
+            core.push_web_share_blocks(&session_id);
+        }
+        let pushed: Vec<String> = web
+            .pending_blocks_for_test()
+            .into_iter()
+            .map(|(session_id, _)| session_id)
+            .collect();
+        assert_eq!(pushed, recorded, "范围内每一场都要推,且不许互相顶掉");
+
+        core.stop_sharing().unwrap();
+    }
+
+    /// 说话人的线上契约:块带 `speaker` 标识,载荷带 `speakers` 名录,
+    /// 名录里名字与编号分开。观看页按这几个键名读,改名即断线。
+    #[test]
+    fn the_speaker_wire_contract_holds() {
+        let payload = WebBlocksPayload {
+            session_id: "s".into(),
+            blocks: vec![WebBlock {
+                id: "u1".into(),
+                owner: "capture:s".into(),
+                text: "话".into(),
+                lanes: HashMap::new(),
+                speaker: Some("spk-2".into()),
+            }],
+            speakers: HashMap::from([(
+                "spk-2".into(),
+                WebSpeaker {
+                    name: None,
+                    label: "2".into(),
+                },
+            )]),
+        };
+        let json: serde_json::Value = serde_json::to_value(&payload).unwrap();
+        assert_eq!(json["blocks"][0]["speaker"], "spk-2");
+        // 名字缺席时送 null 而不是省略键:网页据此拼「说话人 2」。
+        assert!(json["speakers"]["spk-2"]["name"].is_null());
+        assert_eq!(json["speakers"]["spk-2"]["label"], "2");
+    }
+
+    /// 转发别人的稿(本机没有采集事实)时名录为空 —— 网页退回不显示
+    /// 说话人,而不是让整份稿消失。
+    #[test]
+    fn a_session_without_capture_facts_publishes_an_empty_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        core.start_sharing(None, Some("sess-spk".into()), false)
+            .unwrap();
+        core.enable_document_sync().unwrap();
+        let web = attach_web_runtime(&core);
+
+        core.shared_session_insert_annotation("sess-spk".into(), 0, "n1".into(), "批注".into())
+            .unwrap();
+
+        assert_eq!(
+            web.pending_blocks_for_test(),
+            vec![("sess-spk".to_string(), 1)],
+            "名录为空不该拦下稿本身"
+        );
+        assert!(web.pending_speakers_for_test("sess-spk").is_empty());
 
         core.stop_sharing().unwrap();
     }
@@ -625,7 +921,15 @@ mod tests {
                 owner: "capture:s".into(),
                 text: "文字".into(),
                 lanes: HashMap::from([("zh-hans".into(), "文字".into())]),
+                speaker: Some("spk-1".into()),
             }],
+            speakers: HashMap::from([(
+                "spk-1".into(),
+                WebSpeaker {
+                    name: Some("项飙".into()),
+                    label: "1".into(),
+                },
+            )]),
         };
         let json = serde_json::to_string(&payload).unwrap();
         for banned in ["pcm", "audio", "wav", "sample_rate", "channels"] {

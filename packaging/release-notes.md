@@ -13,11 +13,23 @@ Web share, refined by watching a real meeting through it.
 - **The live text reads like the app's own recording view**: it
   continues under the transcript and refreshes in place instead of
   sitting in a quoted block.
+- **You can see who is speaking.** Both the web page and the floating
+  subtitle window label each turn, using the name you gave the speaker
+  when you have given one, and "Speaker 2" in the reader's own language
+  when you have not.
+- **Watching someone's room looks like your own recording.** The
+  floating subtitle window used to fall back to a single scrolling list
+  for viewers; it now draws the same per-language columns the host sees,
+  built from the languages the host is actually running.
 
-Fixes in the web page: finalized sentences no longer appeared twice;
+Fixes in the web page: a column for the language being spoken is no
+longer blank — the original text fills it, because nothing translates
+Chinese into Chinese; finalized sentences no longer appeared twice;
 each column now shows only its own language, so language-detection
 drift and stray fragments no longer pile up under the first heading;
-and a language left over from an earlier session no longer occupies a
-column you couldn't remove.
+a language left over from an earlier session no longer occupies a
+column you couldn't remove; host notes now span the columns instead of
+being repeated in each; and scanning the code mid-meeting now shows
+every recording shared so far, not only the one still running.
 
 Zulangue requires macOS 15.5 or later.
