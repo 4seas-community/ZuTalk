@@ -7,7 +7,11 @@ Type=simple
 User=exedev
 WorkingDirectory=/home/exedev/zulangue-caption-web
 # exe.dev 的边缘代理固定转发到 :8000(TLS 在边缘终结,VM 只讲 HTTP)。
-ExecStart=/usr/bin/python3 server.py --host 0.0.0.0 --port 8000 --public-base https://zulangue-caption.exe.xyz
+#
+# --state-file:房间落盘,好让一次部署或一次 OOM 不把会场里所有二维码
+# 同时作废。文件里是字幕明文与发布口令,服务自己按 0600 建;UMask=0077
+# 兜住目录。留存期一到,清扫会连着盘上的记录一起去掉。
+ExecStart=/usr/bin/python3 server.py --host 0.0.0.0 --port 8000 --public-base https://zulangue-caption.exe.xyz --state-file /home/exedev/zulangue-caption-web/rooms.json
 Restart=on-failure
 RestartSec=2
 UMask=0077

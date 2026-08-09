@@ -984,8 +984,8 @@
 "share.web.start" = "开启网页分享";
 "share.web.hint" = "扫二维码就能在浏览器里看实时字幕稿——不用装应用，语言可切换。";
 "share.web.confirm.title" = "开启网页分享？";
-"share.web.confirm.body" = "字幕明文会经过字幕服务器；拿到链接的人都能看。音频永远不会被分享。";
-"share.web.plaintext_note" = "字幕明文经过服务器；拿到链接的人都能看。";
+"share.web.confirm.body" = "字幕明文会经过字幕服务器，并在分享结束后继续保留一段时间；拿到链接的人都能看。音频永远不会被分享。";
+"share.web.plaintext_note" = "字幕明文经过服务器并保留一段时间；拿到链接的人都能看。";
 "share.web.copy" = "复制链接";
 "share.web.stop" = "停止网页分享";
 "share.web.qr_label" = "实时字幕网页的二维码";

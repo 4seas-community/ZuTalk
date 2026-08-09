@@ -6,8 +6,10 @@
 - 主持人的 App 建房后推两种载荷:帧(实时 tail,replace-in-full)与
   块快照(稿,按 session 只留最新)。浏览器经 SSE 订阅。
 - **明文经过本服务**是产品定案(2026-08-09),App 的 UI 负责把这句话
-  说给主持人;本服务的责任是不留超过必要的东西:全部状态在内存,
-  房间关闭或空闲超时即清,进程重启即空。
+  说给主持人;本服务的责任是不留超过必要的东西:留存期一到就清,
+  在那之前稿一直读得到 —— 停止共享只封笔不删,重启不作废链接。
+  「重启即空」曾被当作一条隐私保证,其实不是:明文本来就要在这台机器上
+  待满整个留存期,重启清空只是让恰好那一刻拿着链接的人白拿。
 - 房间号即门票(不可猜测),发布口令只有主持人持有。
 - 上限挡的是脚本滥用,不是「未授权用户用不了」。
 """
@@ -16,8 +18,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import queue
 import secrets
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,8 +30,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 MAX_ROOMS = 200
 # 帧与块快照的单次载荷上限。多语言长会议的块快照也远在这之下。
 MAX_BODY_BYTES = 1 * 1024 * 1024
-# 最后一次推送之后,房间还能活多久。与会议时长同量级。
-ROOM_IDLE_TTL_SECONDS = 6 * 60 * 60
+# 最后一次推送之后,房间还能活多久 —— 停止共享之后也按它计时。
+#
+# 会议散场恰恰是最多人去读稿的时候:主持人一按停止就让链接变成 404,
+# 等于把「扫码看字幕」缩成「必须现场看完」。所以停止共享不再删房,
+# 只是封笔;房间读到留存期满为止。窗口越长,明文在服务器上待得越久 ——
+# 这个数就是那条取舍,`--retention-hours` 可覆盖。
+ROOM_RETENTION_SECONDS = 24 * 60 * 60
 # 每个 IP 每分钟最多建几个房。正常使用是一场会议一个。
 MAX_CREATES_PER_MINUTE = 6
 # 单房间的 SSE 订阅上限 —— 会议室量级,不是直播量级。
@@ -61,14 +70,28 @@ class Room:
 
 
 class RoomStore:
-    """全部内存态。锁保护房间表;每个订阅者一条队列,fanout 不做背压 ——
-    队列满了丢旧消息,和帧的 replace-in-full 性质一致。"""
+    """锁保护房间表;每个订阅者一条队列,fanout 不做背压 —— 队列满了丢
+    旧消息,和帧的 replace-in-full 性质一致。
 
-    def __init__(self) -> None:
+    配了 `state_path` 就把房间落一份盘,好让重启不作废别人手里的链接
+    (见 `snapshot` 的注释)。没配就是纯内存,与从前一致。
+    """
+
+    def __init__(
+        self,
+        state_path: str | None = None,
+        retention_seconds: float = ROOM_RETENTION_SECONDS,
+    ) -> None:
         self.lock = threading.Lock()
         self.rooms: dict[str, Room] = {}
         # IP → 最近建房时间戳列表(限速用)。
         self.creates_by_ip: dict[str, list[float]] = {}
+        self.state_path = state_path
+        self.retention_seconds = retention_seconds
+        # 有没有需要落盘的改动。落盘是去抖的:推送是说话的频率,每一次
+        # 都 fsync 一遍毫无意义 —— 帧不落盘,稿是 replace-in-full 的,
+        # 崩溃最多丢掉最后几秒的一次覆盖,主播还活着就会再推一份。
+        self.dirty = False
 
     def create_room(self, client_ip: str) -> Room | None:
         with self.lock:
@@ -86,7 +109,105 @@ class RoomStore:
                 publish_token=secrets.token_urlsafe(32),
             )
             self.rooms[room.room_id] = room
+            self.dirty = True
             return room
+
+    # ------------------------------------------------------------------
+    # 落盘
+    #
+    # 从前这里写的是「进程重启即空」。它读起来像一条隐私保证,其实不是:
+    # 明文本来就在这台机器的内存里待满整个留存期,重启清空并不让谁更
+    # 安全,只是让**恰好那一刻**手里拿着链接的人白拿 —— 一次部署、一次
+    # OOM、一次 systemd 重启,会场里所有二维码同时作废,而会还在开。
+    # 所以落盘,并把真话写进 UI 与文档:字幕在服务器上以明文保存,
+    # 保存多久由留存期决定。
+    #
+    # 落的是稿(块快照)、分割线、房间身份;**不落帧** —— 帧是推测性的
+    # 半句话,重启后要么主播再推一份,要么它本来就该消失。
+
+    def snapshot(self) -> dict:
+        with self.lock:
+            elapsed_to_epoch = time.time() - now()
+            return {
+                "version": 1,
+                "rooms": [
+                    {
+                        "room_id": room.room_id,
+                        "publish_token": room.publish_token,
+                        # 存墙钟:monotonic 跨进程没有意义。存的是「最后
+                        # 一次推送发生在哪个绝对时刻」,载入时再换算回来。
+                        "created_at_epoch": room.created_at + elapsed_to_epoch,
+                        "last_activity_epoch": room.last_activity + elapsed_to_epoch,
+                        "blocks": room.blocks,
+                        "session_order": room.session_order,
+                        "segments": room.segments,
+                        "ended": room.ended,
+                    }
+                    for room in self.rooms.values()
+                ],
+            }
+
+    def flush(self) -> bool:
+        """脏了才写,写则原子替换。返回这次是否真的写了。"""
+        if self.state_path is None:
+            return False
+        with self.lock:
+            if not self.dirty:
+                return False
+            self.dirty = False
+        payload = json.dumps(self.snapshot(), ensure_ascii=False).encode()
+        temporary = f"{self.state_path}.tmp"
+        # 0600:这份文件里有字幕明文和发布口令。
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except BaseException:
+            os.unlink(temporary)
+            raise
+        os.replace(temporary, self.state_path)
+        return True
+
+    def load(self) -> int:
+        """载入快照,丢掉留存期已满的房间。返回载入的房间数。
+
+        文件坏了不拦启动:一份读不懂的快照的正确处置是当作没有房间,
+        而不是让整个服务起不来 —— 服务活着,主播重开一次分享就有新房。
+        """
+        if self.state_path is None or not os.path.exists(self.state_path):
+            return 0
+        try:
+            with open(self.state_path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+            rooms = payload["rooms"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return 0
+        cutoff = time.time() - self.retention_seconds
+        elapsed_to_epoch = time.time() - now()
+        loaded = 0
+        with self.lock:
+            for stored in rooms:
+                try:
+                    last_activity_epoch = float(stored["last_activity_epoch"])
+                    if last_activity_epoch < cutoff:
+                        continue
+                    room = Room(
+                        room_id=str(stored["room_id"]),
+                        publish_token=str(stored["publish_token"]),
+                    )
+                    room.created_at = float(stored["created_at_epoch"]) - elapsed_to_epoch
+                    room.last_activity = last_activity_epoch - elapsed_to_epoch
+                    room.blocks = dict(stored["blocks"])
+                    room.session_order = list(stored["session_order"])
+                    room.segments = list(stored["segments"])
+                    room.ended = bool(stored["ended"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                self.rooms[room.room_id] = room
+                loaded += 1
+        return loaded
 
     def room_for_publish(self, room_id: str, token: str) -> Room | None:
         with self.lock:
@@ -102,8 +223,9 @@ class RoomStore:
             return self.rooms.get(room_id)
 
     def sweep_idle(self) -> int:
-        """清掉空闲超时的房间。返回清掉的数量。"""
-        cutoff = now() - ROOM_IDLE_TTL_SECONDS
+        """清掉留存期满的房间。返回清掉的数量。**这里是唯一真正删稿的
+        地方** —— 停止共享只封笔,不删。"""
+        cutoff = now() - self.retention_seconds
         removed = 0
         with self.lock:
             for room_id in list(self.rooms):
@@ -112,15 +234,26 @@ class RoomStore:
                     self._end_room_locked(room)
                     del self.rooms[room_id]
                     removed += 1
+            if removed:
+                self.dirty = True
         return removed
 
     def end_room(self, room: Room) -> None:
+        """封笔:不再收推送,已连着的人收到 `ended`,**稿留下**。
+
+        散场恰恰是最多人去读稿的时候。删房等于把「扫码看字幕」缩成
+        「必须现场看完」,而稿本来就已经在服务器上了 —— 提前删它并不
+        改变明文经过服务器这件事,只是让来晚的人白扫一次码。
+        """
         with self.lock:
             self._end_room_locked(room)
-            self.rooms.pop(room.room_id, None)
+            self.dirty = True
 
     def _end_room_locked(self, room: Room) -> None:
         room.ended = True
+        # 最后一帧是推测性的半句话。分享已经结束,它不会再被修正了,
+        # 留着只会让人以为还有人在说 —— 与暂停时的处置同一条理。
+        room.frame = None
         for subscriber in room.subscribers:
             offer(subscriber, {"event": "ended", "data": {}})
         room.subscribers.clear()
@@ -128,6 +261,8 @@ class RoomStore:
     def publish(self, room: Room, event: str, data: dict) -> None:
         with self.lock:
             room.last_activity = now()
+            # 帧不落盘,所以一帧不算脏 —— 否则说话的频率就是写盘的频率。
+            self.dirty = self.dirty or event != "frame"
             if event == "frame":
                 room.frame = data
             elif event == "blocks":
@@ -147,19 +282,27 @@ class RoomStore:
                 offer(subscriber, {"event": event, "data": data})
 
     def subscribe(self, room: Room) -> queue.Queue | None:
-        """挂一个订阅者,并立刻塞进全量初始状态。"""
+        """挂一个订阅者,并立刻塞进全量初始状态。
+
+        已封笔的房间照样订阅得上:发全量,再发一条 `ended`,然后收线 ——
+        散场之后扫码进来的人读到的是完整的稿和一句「已结束」,而不是
+        404。这条路不占订阅名额,连接发完就断。
+        """
         with self.lock:
-            if room.ended:
-                return None
-            if len(room.subscribers) >= MAX_SUBSCRIBERS_PER_ROOM:
-                return None
             subscriber: queue.Queue = queue.Queue(maxsize=SUBSCRIBER_QUEUE_DEPTH)
             init = {
                 "sessions": [room.blocks[sid] for sid in room.session_order],
                 "frame": room.frame,
                 "segments": list(room.segments),
+                # 网页据此说清「这个链接还能开多久」。
+                "retention_hours": round(self.retention_seconds / 3600),
             }
             offer(subscriber, {"event": "init", "data": init})
+            if room.ended:
+                offer(subscriber, {"event": "ended", "data": {}})
+                return subscriber
+            if len(room.subscribers) >= MAX_SUBSCRIBERS_PER_ROOM:
+                return None
             room.subscribers.append(subscriber)
             return subscriber
 
@@ -273,7 +416,8 @@ const UI = {
     connecting: "连接中…",
     live: "实时",
     reconnecting: "重连中…",
-    ended: "这场分享已结束。字幕稿会保留到你关闭页面。",
+    ended: "这场分享已结束。字幕稿留在这个链接上,约 {n} 小时后清除。",
+    endedUnknown: "这场分享已结束。字幕稿暂时留在这个链接上。",
     follow: "↓ 回到实时",
     started: "录音开始",
     paused: "录音已暂停",
@@ -285,7 +429,8 @@ const UI = {
     connecting: "connecting…",
     live: "live",
     reconnecting: "reconnecting…",
-    ended: "This share has ended. The transcript stays until you close the page.",
+    ended: "This share has ended. The transcript stays at this link for about {n} more hours.",
+    endedUnknown: "This share has ended. The transcript stays at this link for now.",
     follow: "↓ Live",
     started: "recording started",
     paused: "recording paused",
@@ -297,7 +442,8 @@ const UI = {
     connecting: "กำลังเชื่อมต่อ…",
     live: "สด",
     reconnecting: "กำลังเชื่อมต่อใหม่…",
-    ended: "การแชร์นี้จบแล้ว ทรานสคริปต์จะยังอยู่จนกว่าคุณจะปิดหน้านี้",
+    ended: "การแชร์นี้จบแล้ว ทรานสคริปต์จะยังอยู่ที่ลิงก์นี้อีกประมาณ {n} ชั่วโมง",
+    endedUnknown: "การแชร์นี้จบแล้ว ทรานสคริปต์จะยังอยู่ที่ลิงก์นี้ชั่วคราว",
     follow: "↓ กลับสู่สด",
     started: "เริ่มบันทึก",
     paused: "หยุดบันทึกชั่วคราว",
@@ -331,9 +477,18 @@ function loadSelection() {
 
 const state = { sessions: [], frame: null, segments: [], selected: loadSelection(),
                 langs: [], following: true, ended: false, statusKey: "connecting",
-                uiLang: detectUiLang(), speakers: {} };
+                uiLang: detectUiLang(), speakers: {}, retentionHours: null };
 const el = (id) => document.getElementById(id);
 const t = (key) => UI[state.uiLang][key];
+
+// 「已结束」要说清这个链接还能开多久 —— 停止共享之后稿留在服务器上,
+// 不说清楚,读的人不知道该现在读完还是可以晚点回来。留存期由服务端
+// 随全量一起下发;没拿到就退回不承诺具体时长的说法。
+function statusText() {
+  if (state.statusKey !== "ended") return t(state.statusKey);
+  if (!state.retentionHours) return t("endedUnknown");
+  return t("ended").replace("{n}", state.retentionHours);
+}
 const columnLabel = (key) => key === "source" ? t("source") : key;
 
 // 说话人名录:标识 → {name, label}。主播给过名字就用名字(那是专名,
@@ -361,7 +516,7 @@ function renderChrome() {
   document.documentElement.lang = state.uiLang;
   document.title = t("title");
   const status = el("status");
-  status.textContent = t(state.statusKey);
+  status.textContent = statusText();
   status.className = "status" + (state.statusKey === "ended" ? " ended" : "");
   el("follow").textContent = t("follow");
   el("uilang").value = state.uiLang;
@@ -758,6 +913,7 @@ source.addEventListener("init", (e) => {
   state.segments = data.segments || [];
   state.speakers = {};
   for (const session of state.sessions) mergeSpeakers(session);
+  state.retentionHours = data.retention_hours || null;
   setStatus("live");
   render();
 });
@@ -877,7 +1033,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             subscriber = self.store.subscribe(room)
             if subscriber is None:
-                self.send_json(429 if not room.ended else 410, {"error": "unavailable"})
+                self.send_json(429, {"error": "too_many_subscribers"})
                 return
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
@@ -965,6 +1121,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(401, {"error": "unauthorized"})
                 return
             self.store.end_room(room)
+            # 封笔立刻落盘:重启后这间房必须还是「已结束」,不能因为丢了
+            # 这一次改动而重新变成可写。
+            self.store.flush()
             self.send_json(200, {"status": "ended"})
             return
         self.send_json(404, {"error": "not_found"})
@@ -974,18 +1133,31 @@ class QuietServer(ThreadingHTTPServer):
     """浏览器关页、代理掐线都是常态 —— 断连不打 traceback。"""
 
     def handle_error(self, request, client_address) -> None:  # noqa: N802
-        import sys
-
         error = sys.exception()
         if isinstance(error, (BrokenPipeError, ConnectionResetError)):
             return
         super().handle_error(request, client_address)
 
 
-def sweep_loop(store: RoomStore, interval_seconds: float) -> None:
+def maintenance_loop(
+    store: RoomStore,
+    flush_seconds: float = 5,
+    sweep_seconds: float = 300,
+) -> None:
+    """一条线程管两件事:去抖落盘(秒级)与清扫过期(分钟级)。"""
+    since_sweep = 0.0
     while True:
-        time.sleep(interval_seconds)
-        store.sweep_idle()
+        time.sleep(flush_seconds)
+        since_sweep += flush_seconds
+        try:
+            store.flush()
+        except OSError as error:
+            # 写不下去不该拖垮服务:房间还在内存里,字幕照常发。下一拍
+            # 再试;真的一直写不了,重启会丢房 —— 与从前的行为等同。
+            print(f"caption-web: 状态落盘失败: {error}", file=sys.stderr)
+        if since_sweep >= sweep_seconds:
+            since_sweep = 0.0
+            store.sweep_idle()
 
 
 def main() -> None:
@@ -997,10 +1169,28 @@ def main() -> None:
         default="https://zulangue-caption.exe.xyz",
         help="观看页链接的公开基址(反代后面的服务自己拼不出来)",
     )
+    parser.add_argument(
+        "--state-file",
+        default=None,
+        help="房间落盘位置。不给就是纯内存:重启即空,会场里的二维码"
+        "同时作废。给了就是明文字幕以 0600 存在这个文件里,直到留存期满。",
+    )
+    parser.add_argument(
+        "--retention-hours",
+        type=float,
+        default=ROOM_RETENTION_SECONDS / 3600,
+        help="最后一次推送之后,稿还留多久(停止共享之后也按它计时)",
+    )
     args = parser.parse_args()
 
-    store = RoomStore()
-    threading.Thread(target=sweep_loop, args=(store, 300), daemon=True).start()
+    store = RoomStore(
+        state_path=args.state_file,
+        retention_seconds=args.retention_hours * 3600,
+    )
+    loaded = store.load()
+    if loaded:
+        print(f"caption-web: 从快照载入 {loaded} 个房间", file=sys.stderr)
+    threading.Thread(target=maintenance_loop, args=(store,), daemon=True).start()
     server = QuietServer((args.host, args.port), Handler)
     server.store = store  # type: ignore[attr-defined]
     server.public_base = args.public_base.rstrip("/")  # type: ignore[attr-defined]

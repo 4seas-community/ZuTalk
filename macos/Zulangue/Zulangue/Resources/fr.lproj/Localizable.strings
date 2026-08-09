@@ -984,8 +984,8 @@
 "share.web.start" = "Démarrer le partage web";
 "share.web.hint" = "Scanner le code QR permet de lire la transcription en direct dans un navigateur — sans application, langues commutables.";
 "share.web.confirm.title" = "Démarrer le partage web ?";
-"share.web.confirm.body" = "Le texte des sous-titres transitera en clair par le serveur de sous-titres. Toute personne ayant le lien peut lire. L'audio n'est jamais partagé.";
-"share.web.plaintext_note" = "Le texte des sous-titres transite en clair par le serveur. Toute personne ayant le lien peut lire.";
+"share.web.confirm.body" = "Le texte des sous-titres transitera en clair par le serveur de sous-titres et y restera un moment après la fin du partage. Toute personne ayant le lien peut lire. L'audio n'est jamais partagé.";
+"share.web.plaintext_note" = "Le texte des sous-titres transite en clair par le serveur et y reste un moment. Toute personne ayant le lien peut lire.";
 "share.web.copy" = "Copier le lien";
 "share.web.stop" = "Arrêter le partage web";
 "share.web.qr_label" = "Code QR de la page de sous-titres en direct";

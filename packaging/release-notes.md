@@ -21,6 +21,14 @@ Web share, refined by watching a real meeting through it.
   floating subtitle window used to fall back to a single scrolling list
   for viewers; it now draws the same per-language columns the host sees,
   built from the languages the host is actually running.
+- **The transcript outlives the meeting.** Stopping the share used to
+  turn the link into a dead end that instant, and restarting the caption
+  server voided every code in the room at once. The transcript now stays
+  readable at its link for about a day after the last words arrive, and
+  survives a server restart. Say so plainly: caption text passes through
+  the server unencrypted **and is kept there for that while** — the
+  start-sharing screen says it, and the page itself tells readers how
+  long the link has left.
 
 Fixes in the web page: a column for the language being spoken is no
 longer blank — the original text fills it, because nothing translates

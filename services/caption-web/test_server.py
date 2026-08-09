@@ -1,6 +1,7 @@
 """caption-web 的行为测试:走真实 HTTP,不 mock handler。"""
 
 import json
+import os
 import threading
 import unittest
 import urllib.error
@@ -103,15 +104,20 @@ class CaptionWebTests(unittest.TestCase):
         self.assertEqual(event, "blocks")
         self.assertEqual(data["blocks"][0]["lanes"]["en"], "hello")
 
-        # 关房:订阅端收 ended,晚来的观看者 404。
+        # 封笔:订阅端收 ended,主播不能再写,但稿留着(见散场后那条测试)。
         status, _ = self.request(
             "DELETE", f"/v1/rooms/{room['room_id']}", token=room["publish_token"]
         )
         self.assertEqual(status, 200)
         event, _ = self.read_event(stream)
         self.assertEqual(event, "ended")
-        status, _ = self.request("GET", f"/r/{room['room_id']}")
-        self.assertEqual(status, 404)
+        status, _ = self.request(
+            "POST",
+            f"/v1/rooms/{room['room_id']}/frame",
+            body={"preview_revision": 99},
+            token=room["publish_token"],
+        )
+        self.assertEqual(status, 401, "封笔之后不接受推送")
 
     def test_late_subscriber_gets_the_transcript_so_far(self):
         room = self.create_room()
@@ -137,6 +143,107 @@ class CaptionWebTests(unittest.TestCase):
         # 晚扫码的人拿到此前全部的稿(按出现顺序)与最新一帧。
         self.assertEqual([s["session_id"] for s in data["sessions"]], ["s1", "s2"])
         self.assertEqual(data["frame"]["preview_revision"], 9)
+
+    def test_the_transcript_outlives_the_share(self):
+        """散场之后扫码进来的人读到整份稿,不是 404。
+
+        会议散场恰恰是最多人去读稿的时候。从前 DELETE 把房间整个删掉,
+        「扫码看字幕」于是缩成「必须现场看完」;而稿本来就已经在服务器
+        上了,提前删它不改变明文经过服务器这件事,只让来晚的人白扫一次码。
+        """
+        room = self.create_room()
+        rid, token = room["room_id"], room["publish_token"]
+        self.request(
+            "POST", f"/v1/rooms/{rid}/blocks",
+            body={"session_id": "s1", "blocks": [
+                {"id": "b1", "owner": "capture:s1", "text": "讲完了", "lanes": {}}]},
+            token=token,
+        )
+        # 半句推测文本停在屏幕上比没有更坏 —— 封笔时它必须消失。
+        self.request(
+            "POST", f"/v1/rooms/{rid}/frame",
+            body={"preview_revision": 5, "session_id": "s1"}, token=token,
+        )
+        self.request("DELETE", f"/v1/rooms/{rid}", token=token)
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{self.port}/r/{rid}", timeout=5
+        ) as page:
+            self.assertEqual(page.status, 200, "散场后观看页仍然打得开")
+
+        stream = self.open_sse(rid)
+        event, data = self.read_event(stream)
+        self.assertEqual(event, "init")
+        self.assertEqual([s["session_id"] for s in data["sessions"]], ["s1"])
+        self.assertIsNone(data["frame"], "封笔要清掉推测性的半句话")
+        self.assertGreater(data["retention_hours"], 0, "网页要说得出链接还能开多久")
+        # 全量之后紧跟一条 ended:读到的是完整的稿和一句「已结束」。
+        event, _ = self.read_event(stream)
+        self.assertEqual(event, "ended")
+
+        # 留存期一到才真的删。
+        self.store.rooms[rid].last_activity -= self.store.retention_seconds + 1
+        self.assertEqual(self.store.sweep_idle(), 1)
+        status, _ = self.request("GET", f"/r/{rid}")
+        self.assertEqual(status, 404)
+
+    def test_rooms_survive_a_restart(self):
+        """重启不作废会场里的二维码。
+
+        「进程重启即空」读起来像隐私保证,其实不是:明文本来就要在这台
+        机器上待满整个留存期。它真正的效果是一次部署、一次 OOM 就让所有
+        扫过码的人同时失联,而会还在开。
+        """
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = f"{directory}/rooms.json"
+            self.store.state_path = path
+            room = self.create_room()
+            rid, token = room["room_id"], room["publish_token"]
+            self.request(
+                "POST", f"/v1/rooms/{rid}/blocks",
+                body={"session_id": "s1", "blocks": [
+                    {"id": "b1", "owner": "capture:s1", "text": "第一句", "lanes": {}}]},
+                token=token,
+            )
+            self.request(
+                "POST", f"/v1/rooms/{rid}/segment",
+                body={"kind": "started", "session_id": "s1", "at": 1},
+                token=token,
+            )
+            self.request(
+                "POST", f"/v1/rooms/{rid}/frame",
+                body={"preview_revision": 3, "session_id": "s1"}, token=token,
+            )
+            self.assertTrue(self.store.flush())
+            self.assertFalse(self.store.flush(), "不脏就不写")
+            self.assertEqual(oct(os.stat(path).st_mode)[-3:], "600",
+                             "文件里有字幕明文和发布口令")
+
+            # 换一个进程的仓库:同一份快照,同一间房。
+            revived = RoomStore(state_path=path)
+            self.assertEqual(revived.load(), 1)
+            room_again = revived.rooms[rid]
+            self.assertEqual(room_again.publish_token, token, "主播要能接着推")
+            self.assertEqual(room_again.session_order, ["s1"])
+            self.assertEqual(room_again.blocks["s1"]["blocks"][0]["text"], "第一句")
+            self.assertEqual(room_again.segments[0]["kind"], "started")
+            self.assertIsNone(room_again.frame, "帧是推测性的,不落盘")
+
+            # 留存期已满的房间不该复活。
+            stale = RoomStore(state_path=path, retention_seconds=0)
+            self.assertEqual(stale.load(), 0)
+
+    def test_a_corrupt_snapshot_does_not_block_startup(self):
+        """读不懂的快照当作没有房间,而不是让服务起不来。"""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = f"{directory}/rooms.json"
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("{ not json")
+            self.assertEqual(RoomStore(state_path=path).load(), 0)
 
     def test_publish_requires_the_token(self):
         room = self.create_room()
@@ -181,7 +288,7 @@ class CaptionWebTests(unittest.TestCase):
     def test_idle_rooms_are_swept(self):
         room = self.create_room()
         stored = self.store.rooms[room["room_id"]]
-        stored.last_activity -= server.ROOM_IDLE_TTL_SECONDS + 1
+        stored.last_activity -= self.store.retention_seconds + 1
         removed = self.store.sweep_idle()
         self.assertEqual(removed, 1)
         status, _ = self.request("GET", f"/r/{room['room_id']}")

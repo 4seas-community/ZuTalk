@@ -984,8 +984,8 @@
 "share.web.start" = "Start web share";
 "share.web.hint" = "Anyone who scans the QR code can read the live transcript in a browser — no app needed, languages switchable.";
 "share.web.confirm.title" = "Start web share?";
-"share.web.confirm.body" = "Caption text will pass through the caption server in plain text. Anyone with the link can read along. Audio is never shared.";
-"share.web.plaintext_note" = "Caption text passes through the server in plain text. Anyone with the link can read along.";
+"share.web.confirm.body" = "Caption text will pass through the caption server in plain text and stay there for a while after the share ends. Anyone with the link can read along. Audio is never shared.";
+"share.web.plaintext_note" = "Caption text passes through the server in plain text and is kept there for a while. Anyone with the link can read along.";
 "share.web.copy" = "Copy link";
 "share.web.stop" = "Stop web share";
 "share.web.qr_label" = "QR code for the live caption page";
