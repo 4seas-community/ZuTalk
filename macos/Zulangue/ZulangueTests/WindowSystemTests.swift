@@ -1080,6 +1080,191 @@ final class WindowSystemTests: XCTestCase {
     }
 
     /// 两方对谈的主播不发 cue,译文绑在句子上。观看端照样要有两栏。
+    // MARK: - 观看端字幕画布的端到端(下半场)
+
+    /// 这一帧不是手写的:它是两个真实 core 过真实端点之后,观看端**实际
+    /// 收到**的那一帧,由 `vt-ffi/tests/share_viewer_caption_canvas.rs`
+    /// 落成 golden。上半场证明帧过得来,这一半证明画布画得出栏目。
+    ///
+    /// 分成两半是因为让主播广播一帧的入口(`broadcast_live_preview_for_test`)
+    /// 故意没有上 FFI 面 —— 为测试方便往出货接口上加方法,代价比一份
+    /// golden 大。两边按同样的字段名读写;给 FFI 记录加字段时记得这里。
+    private struct WireLivePreview: Decodable {
+        struct Utterance: Decodable {
+            let id: String
+            let sessionId: String
+            let sequence: UInt64
+            let revision: UInt64
+            let sessionSpeakerId: String?
+            let sourceLanguage: String
+            let provisionalSourceLanguage: String?
+            let sourceText: String
+            let sourceStartMs: UInt64?
+            let sourceEndMs: UInt64?
+            let translatedLanguage: String?
+            let translatedText: String?
+            let completion: String
+            let alignment: String
+        }
+        struct Cue: Decodable {
+            let targetLanguage: String
+            let groupEpoch: UInt64
+            let providerSequence: UInt64
+            let sourceLanguage: String
+            let sourceStartMs: UInt64?
+            let sourceEndMs: UInt64?
+            let text: String
+            let completion: String
+            let withdrawn: Bool
+            let revision: UInt64
+        }
+        struct Lane: Decodable {
+            let targetLanguage: String?
+            let state: String
+            let groupEpoch: UInt64
+        }
+        let sessionId: String
+        let previewRevision: UInt64
+        let utterances: [Utterance]
+        let translationCues: [Cue]
+        let laneHealth: [Lane]
+
+        var ffi: FfiNotebookCaptureLivePreview {
+            FfiNotebookCaptureLivePreview(
+                sessionId: sessionId,
+                previewRevision: previewRevision,
+                utterances: utterances.map {
+                    FfiNotebookCaptureUtterance(
+                        id: $0.id,
+                        sessionId: $0.sessionId,
+                        sequence: $0.sequence,
+                        revision: $0.revision,
+                        sessionSpeakerId: $0.sessionSpeakerId,
+                        sourceLanguage: $0.sourceLanguage,
+                        provisionalSourceLanguage: $0.provisionalSourceLanguage,
+                        sourceText: $0.sourceText,
+                        sourceStartMs: $0.sourceStartMs,
+                        sourceEndMs: $0.sourceEndMs,
+                        translatedLanguage: $0.translatedLanguage,
+                        translatedText: $0.translatedText,
+                        completion: $0.completion,
+                        alignment: $0.alignment,
+                        sourceProjectionRevision: 0,
+                        sourceEditRevision: 0,
+                        languageVariants: []
+                    )
+                },
+                translationCues: translationCues.map {
+                    FfiNotebookCaptureTranslationCue(
+                        targetLanguage: $0.targetLanguage,
+                        groupEpoch: $0.groupEpoch,
+                        providerSequence: $0.providerSequence,
+                        sourceLanguage: $0.sourceLanguage,
+                        sourceStartMs: $0.sourceStartMs,
+                        sourceEndMs: $0.sourceEndMs,
+                        text: $0.text,
+                        completion: $0.completion,
+                        withdrawn: $0.withdrawn,
+                        revision: $0.revision
+                    )
+                },
+                laneHealth: laneHealth.map {
+                    FfiNotebookCaptureLaneHealth(
+                        targetLanguage: $0.targetLanguage,
+                        state: $0.state,
+                        groupEpoch: $0.groupEpoch,
+                        finalAudioProcMs: nil,
+                        totalAudioProcMs: nil,
+                        lagMs: nil,
+                        inputDiscontinuous: false
+                    )
+                }
+            )
+        }
+    }
+
+    func testSharedRoomOverlayDrawsColumnsFromTheWireGolden() throws {
+        let goldenURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Golden/shared-live-preview.json")
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let wire = try decoder.decode(
+            WireLivePreview.self,
+            from: try Data(contentsOf: goldenURL)
+        )
+
+        let input = SubtitleOverlayView.sharedAudienceInput(preview: wire.ffi)
+
+        // 栏目 = 主播真的在跑的车道 + 这一帧的主导原文语言。中文主讲排头,
+        // 英泰各占一栏 —— 与主播本机看到的三栏是同一件事。
+        XCTAssertEqual(input.languages, ["zh", "en", "th"])
+        XCTAssertEqual(input.failedLanguages, ["th"])
+
+        let columns = SubtitleAudienceTimeline.columns(
+            languages: input.languages,
+            utterances: input.utterances,
+            placement: input.placement,
+            cues: { input.cuesByLanguage[$0] ?? [] }
+        )
+        XCTAssertEqual(
+            columns["zh"]?.map(\.text),
+            ["家庭、流动和附近。", "我们从哪里开始讲起呢。"]
+        )
+        XCTAssertEqual(columns["en"]?.map(\.text), ["Family, mobility, and the nearby."])
+        XCTAssertEqual(
+            columns["th"]?.map(\.text),
+            ["ครอบครัว การเคลื่อนย้าย และสิ่งใกล้ตัว"],
+            "撤回的那条 cue 不该出现在栏里"
+        )
+
+        // 被认成法语的那句碎片:不占栏,也不许混进中文栏。画布把它放进
+        // 「没有归属」条,与主播本机的处置一致。
+        let drifted = try XCTUnwrap(input.utterances.first { $0.sourceText == "une bribe" })
+        XCTAssertNil(input.placement(drifted))
+        XCTAssertFalse(
+            columns.values.joined().contains { $0.text == "une bribe" },
+            "飘走的碎片一旦落进某一栏，读的人会以为主讲人说了这句"
+        )
+
+        // 修好之前,观看端走的是一列滚动的横条:没有分栏,原文与译文
+        // 上下叠着。三栏各自有内容,就是那条路已经不存在了。
+        XCTAssertEqual(columns.keys.count, 3)
+        XCTAssertTrue(columns.values.allSatisfy { $0.isEmpty == false })
+    }
+
+    /// 上面那条证明画布**画得出**栏目,证明不了观看端**真的走**这块画布 ——
+    /// 把 `sharedFeedBody` 改回一列滚动的横条,它照样绿。视图的接线只有
+    /// 读源码钉得住(与 `NotebookCaptureRuntimeTests` 那一族同一手法)。
+    func testSharedFeedIsWiredToTheSharedCanvasNotItsOwnList() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent(
+                    "Zulangue/WindowSystem/Surfaces/SubtitleOverlayController.swift"
+                ),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: "private func sharedFeedBody("))
+        let end = try XCTUnwrap(
+            source[start.upperBound...].range(of: "static func sharedAudienceInput(")
+        )
+        let sharedFeed = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(
+            sharedFeed.contains("audienceTimelineCanvas("),
+            "观看端必须走与本机录音同一块画布"
+        )
+        XCTAssertTrue(sharedFeed.contains("Self.sharedAudienceInput(preview: preview)"))
+        XCTAssertFalse(
+            sharedFeed.contains("ScrollView"),
+            "一列滚动的横条正是被修掉的那条路;它回来了,三语会议就又变成一列"
+        )
+        // 旧版主播只发压扁行,那条退化路径要留着 —— 它不是被修掉的东西。
+        XCTAssertTrue(sharedFeed.contains("sharedFeedLegacyLines("))
+    }
+
     func testSharedRoomCaptionsCarryTranslationsBoundToUtterances() {
         let preview = FfiNotebookCaptureLivePreview(
             sessionId: "remote",

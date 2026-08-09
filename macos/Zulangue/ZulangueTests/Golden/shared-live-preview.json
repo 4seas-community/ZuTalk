@@ -1,0 +1,97 @@
+{
+  "lane_health": [
+    {
+      "group_epoch": 1,
+      "state": "live",
+      "target_language": null
+    },
+    {
+      "group_epoch": 1,
+      "state": "live",
+      "target_language": "en"
+    },
+    {
+      "group_epoch": 1,
+      "state": "failed",
+      "target_language": "th"
+    }
+  ],
+  "preview_revision": 7,
+  "session_id": "sess-canvas",
+  "translation_cues": [
+    {
+      "completion": "complete",
+      "group_epoch": 1,
+      "provider_sequence": 1,
+      "revision": 1,
+      "source_end_ms": 2800,
+      "source_language": "zh-Hans",
+      "source_start_ms": 1000,
+      "target_language": "en",
+      "text": "Family, mobility, and the nearby.",
+      "withdrawn": false
+    },
+    {
+      "completion": "complete",
+      "group_epoch": 1,
+      "provider_sequence": 1,
+      "revision": 1,
+      "source_end_ms": 2800,
+      "source_language": "zh-Hans",
+      "source_start_ms": 1000,
+      "target_language": "th",
+      "text": "ครอบครัว การเคลื่อนย้าย และสิ่งใกล้ตัว",
+      "withdrawn": false
+    }
+  ],
+  "utterances": [
+    {
+      "alignment": "source_only",
+      "completion": "complete",
+      "id": "u1",
+      "provisional_source_language": null,
+      "revision": 1,
+      "sequence": 1,
+      "session_id": "sess-canvas",
+      "session_speaker_id": "spk-1",
+      "source_end_ms": 1800,
+      "source_language": "zh-Hans",
+      "source_start_ms": 1000,
+      "source_text": "家庭、流动和附近。",
+      "translated_language": null,
+      "translated_text": null
+    },
+    {
+      "alignment": "source_only",
+      "completion": "complete",
+      "id": "u2",
+      "provisional_source_language": null,
+      "revision": 1,
+      "sequence": 2,
+      "session_id": "sess-canvas",
+      "session_speaker_id": "spk-1",
+      "source_end_ms": 2800,
+      "source_language": "zh-Hans",
+      "source_start_ms": 2000,
+      "source_text": "我们从哪里开始讲起呢。",
+      "translated_language": null,
+      "translated_text": null
+    },
+    {
+      "alignment": "source_only",
+      "completion": "complete",
+      "id": "u3",
+      "provisional_source_language": null,
+      "revision": 1,
+      "sequence": 3,
+      "session_id": "sess-canvas",
+      "session_speaker_id": null,
+      "source_end_ms": 3800,
+      "source_language": "fr",
+      "source_start_ms": 3000,
+      "source_text": "une bribe",
+      "translated_language": null,
+      "translated_text": null
+    }
+  ]
+}
