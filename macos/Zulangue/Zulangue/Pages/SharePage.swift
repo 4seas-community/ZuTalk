@@ -85,7 +85,7 @@ struct SharePage: View {
             membersSection
             activeSection
 
-            if !viewModel.lines.isEmpty {
+            if viewModel.remotePreview != nil || !viewModel.lines.isEmpty {
                 captionSection
                 Color.clear
                     .frame(height: 1)
@@ -534,24 +534,32 @@ struct SharePage: View {
         return stamp.isEmpty ? short : "\(stamp) · \(short)"
     }
 
-    /// 对方的实时字幕。只读投影,不落库 —— 看到的是别人的内容,不是本机 Notebook。
+    /// 对方的实时字幕。只读投影 —— 看到的是别人的内容,不是本机 Notebook。
+    /// 完整帧在手时用多语言画布(与「分享」Notebook 的实时视图同一组件),
+    /// 旧版主播只发压扁行时退化为行列表。
+    @ViewBuilder
     private var captionSection: some View {
-        VStack(alignment: .leading, spacing: Spacing.xs) {
-            ForEach(Array(viewModel.lines.enumerated()), id: \.offset) { _, line in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(line.sourceText)
-                        .font(.body)
-                        .foregroundColor(.textPrimary)
-                    if let translated = line.targetText, !translated.isEmpty {
-                        Text(translated)
-                            .font(.bodySM)
-                            .foregroundColor(.textSecondary)
+        if let preview = viewModel.remotePreview {
+            SharedLivePreviewCanvas(preview: preview)
+                .accessibilityIdentifier("share.captions")
+        } else {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                ForEach(Array(viewModel.lines.enumerated()), id: \.offset) { _, line in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(line.sourceText)
+                            .font(.body)
+                            .foregroundColor(.textPrimary)
+                        if let translated = line.targetText, !translated.isEmpty {
+                            Text(translated)
+                                .font(.bodySM)
+                                .foregroundColor(.textSecondary)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .accessibilityIdentifier("share.captions")
         }
-        .accessibilityIdentifier("share.captions")
     }
 
     private var identitySection: some View {
@@ -683,10 +691,23 @@ struct SharePage: View {
             } else {
                 // 观看端不是在「停止共享」—— 那是主持人的动作,连同那句
                 // 「删不掉对方已收到的」警告,对只想离开的人全是错话。
-                Button(String(localized: "share.leave")) {
-                    viewModel.stop()
+                HStack(spacing: Spacing.sm) {
+                    Button(String(localized: "share.leave")) {
+                        viewModel.stop()
+                    }
+                    .accessibilityIdentifier("share.leave")
+
+                    // 观看端的悬浮字幕:数据源是远端帧。
+                    Button {
+                        WindowCommandRouter.shared.requestToggleSubtitleOverlay()
+                    } label: {
+                        Label(
+                            String(localized: "capture.toolbar.subtitle_window.open"),
+                            systemImage: "pip.enter"
+                        )
+                    }
+                    .accessibilityIdentifier("share.subtitle_window")
                 }
-                .accessibilityIdentifier("share.leave")
 
                 Text(String(localized: "share.leave_note"))
                     .font(.bodySM)
@@ -792,6 +813,8 @@ final class ShareViewModel: ObservableObject {
     @Published private(set) var isHost: Bool = false
     @Published private(set) var hostOnly: Bool = false
     @Published private(set) var lines: [FfiSharedCaptionLine] = []
+    /// 主播最新一帧的完整预览;旧版主播或没在观看时为 nil。
+    @Published private(set) var remotePreview: FfiNotebookCaptureLivePreview?
     @Published private(set) var errorMessage: String?
     @Published private(set) var status: ShareStatus = .idle
     /// 观看端到主持人的当前链路;没在观看或还没连上时为 nil。
@@ -1137,6 +1160,7 @@ final class ShareViewModel: ObservableObject {
         viewerLink = state.viewerLink
         scopeSessionId = state.scopeSessionId
         lines = state.lines
+        remotePreview = state.remotePreview
         if shareCode == nil { shareCode = core.currentShareCode() }
         joinRequests = core.pendingJoinRequests()
         members = core.roomMembers()

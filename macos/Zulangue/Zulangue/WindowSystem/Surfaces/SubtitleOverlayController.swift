@@ -955,6 +955,9 @@ struct SubtitleOverlayView: View {
     @ObservedObject private var livePresentation: NotebookCaptureLivePresentationStore
     @ObservedObject private var coordinator = SubtitleOverlayCoordinator.shared
     @ObservedObject private var presentationSettings = SubtitleOverlayPresentationSettings.shared
+    // 观看端分支的数据源:别人房间里的远端预览帧。本机没在录而人在房间里
+    // 时,画布切到它 —— 同一扇窗、同一套主题与字号,只有内容来源不同。
+    @ObservedObject private var shareActivity = ShareActivityStore.shared
     @Environment(\.accessibilityReduceTransparency)
     private var accessibilityReduceTransparency
     @AppStorage(SubtitleOverlayBackdropPolicy.defaultsKey)
@@ -1399,19 +1402,118 @@ struct SubtitleOverlayView: View {
         .accessibilityIdentifier(identifier)
     }
 
+    /// 观看端分支生效的条件:本机没在录,而人在别人的房间里。
+    /// 本机采集永远优先 —— 同时成立时(理论上不会,录音入口在房间中
+    /// 是禁用的)以本机为准,不会把两场内容混在一扇窗里。
+    private var showsSharedFeed: Bool {
+        store.isCaptureActive == false && shareActivity.isViewing
+    }
+
     private var subtitleBody: some View {
         GeometryReader { geometry in
             Group {
-                switch presentationSettings.displayMode {
-                case .conversation:
-                    conversationBody(geometry: geometry)
-                case .audience:
-                    audienceBody(geometry: geometry)
+                if showsSharedFeed {
+                    sharedFeedBody(geometry: geometry)
+                } else {
+                    switch presentationSettings.displayMode {
+                    case .conversation:
+                        conversationBody(geometry: geometry)
+                    case .audience:
+                        audienceBody(geometry: geometry)
+                    }
                 }
             }
             .onAppear { canvasSize = geometry.size }
             .onChange(of: geometry.size) { _, size in canvasSize = size }
         }
+    }
+
+    /// 远端帧的字幕投影:最后一句的原文 + 各语言最新译文,一语一行。
+    /// 帧是 replace-in-full 的,整个画面每帧重画,没有增量状态;
+    /// cue 与句子的对应不在这里重算(share-p2p.md §3.2 的红线),
+    /// cue 按语言取最新 —— 与「分享」Notebook 的画布同一策略。
+    @ViewBuilder
+    private func sharedFeedBody(geometry: GeometryProxy) -> some View {
+        if shareActivity.hostLeft {
+            emptyState(
+                String(localized: "share.status.host_left"),
+                systemImage: "antenna.radiowaves.left.and.right.slash"
+            )
+        } else if let preview = shareActivity.remotePreview {
+            sharedFeedTranscript(preview: preview)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+        } else if shareActivity.remoteLines.isEmpty == false {
+            // 旧版主播:只有压扁行。
+            sharedFeedLegacyLines(shareActivity.remoteLines)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+        } else {
+            emptyState(
+                String(localized: "subtitle.overlay.waiting"),
+                systemImage: "waveform"
+            )
+        }
+    }
+
+    private func sharedFeedTranscript(preview: FfiNotebookCaptureLivePreview) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(preview.utterances, id: \.id) { utterance in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(utterance.sourceText)
+                            .font(.system(size: fontSize, weight: .medium))
+                            .foregroundColor(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let text = utterance.translatedText, text.isEmpty == false {
+                            Text(text)
+                                .font(.system(size: fontSize * 0.86))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ForEach(
+                    SharedLivePreviewCanvas.latestCuesByLanguage(preview.translationCues),
+                    id: \.targetLanguage
+                ) { cue in
+                    Text(cue.text)
+                        .font(.system(size: fontSize * 0.86))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(16)
+        }
+        .defaultScrollAnchor(.bottom)
+        .scrollIndicators(.hidden)
+    }
+
+    private func sharedFeedLegacyLines(_ lines: [FfiSharedCaptionLine]) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    VStack(alignment: .leading, spacing: 4) {
+                        if line.sourceText.isEmpty == false {
+                            Text(line.sourceText)
+                                .font(.system(size: fontSize, weight: .medium))
+                                .foregroundColor(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let text = line.targetText, text.isEmpty == false {
+                            Text(text)
+                                .font(.system(size: fontSize * 0.86))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(16)
+        }
+        .defaultScrollAnchor(.bottom)
+        .scrollIndicators(.hidden)
     }
 
     private func conversationBody(geometry: GeometryProxy) -> some View {

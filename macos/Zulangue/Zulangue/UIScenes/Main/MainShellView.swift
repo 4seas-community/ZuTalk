@@ -115,7 +115,8 @@ struct MainShellView: View {
                     label: String(localized: "sidebar.share"),
                     active: activeTab == .share,
                     accId: AccessibilityID.mainTabShare,
-                    badge: shareActivity.pendingJoinRequests.count
+                    badge: shareActivity.pendingJoinRequests.count,
+                    live: shareActivity.isInRoom
                 ) {
                     store.select(tab: .share)
                 }
@@ -194,6 +195,7 @@ struct MainShellView: View {
         active: Bool,
         accId: String?,
         badge: Int = 0,
+        live: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -206,6 +208,15 @@ struct MainShellView: View {
                     .font(.body)
                     .foregroundColor(active ? .textPrimary : .textSecondary)
                 Spacer()
+                // 在房间中的实时徽记 —— 用户不在分享页时也要知道自己
+                // 还连着一场共享(它占着录音入口,也吃着网络)。
+                if live {
+                    Circle()
+                        .fill(Color.signalGreen)
+                        .frame(width: 7, height: 7)
+                        .accessibilityLabel(String(localized: "share.sidebar.live_label"))
+                        .accessibilityIdentifier("sidebar.share.live")
+                }
                 // 有人在等回答时的角标。敲门一分钟就超时,所以这个数字
                 // 必须在用户不在分享页时也看得见。
                 if badge > 0 {

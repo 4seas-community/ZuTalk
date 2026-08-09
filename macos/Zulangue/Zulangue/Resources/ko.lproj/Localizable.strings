@@ -967,3 +967,15 @@
 "share.members.host" = "호스트";
 "share.nearby.asking" = "응답 기다리는 중…";
 "share.nearby.abandon" = "그만 기다리기";
+
+"capture.toolbar.joined_room" = "룸에 참여 중";
+"capture.toolbar.joined_room_hint" = "상대방의 실시간 자막을 받고 있습니다. 여기서 녹음하려면 공유 페이지에서 룸을 나가세요.";
+"share.sidebar.live_label" = "룸에 참여 중";
+"shared_inbox.live_title" = "실시간 수신 중";
+"shared_inbox.live_waiting" = "참여했습니다. 호스트가 녹음을 시작하기를 기다리는 중입니다.";
+"shared_inbox.empty_title" = "아직 받은 내용이 없습니다";
+"shared_inbox.empty_body" = "공유받은 전사본이 여기에 표시됩니다. 룸이 진행되는 동안 실시간으로 갱신되고, 끝난 뒤에도 보관됩니다.";
+"shared_inbox.session_live" = "실시간";
+"shared_inbox.lane_canonical" = "원문";
+"shared_inbox.lane_connecting" = "이 언어 레인은 아직 연결 중입니다";
+"shared_inbox.lane_failed" = "이 언어 레인은 실패했습니다. 더 이상 내용이 오지 않습니다";

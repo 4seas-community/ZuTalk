@@ -967,3 +967,15 @@
 "share.members.host" = "ホスト";
 "share.nearby.asking" = "返事を待っています…";
 "share.nearby.abandon" = "待つのをやめる";
+
+"capture.toolbar.joined_room" = "ルームに参加中";
+"capture.toolbar.joined_room_hint" = "相手のライブ字幕を受信しています。ここで録音するには、共有ページでルームを退出してください。";
+"share.sidebar.live_label" = "ルームに参加中";
+"shared_inbox.live_title" = "ライブ受信中";
+"shared_inbox.live_waiting" = "参加しました。ホストの録音開始を待っています。";
+"shared_inbox.empty_title" = "まだ何も受信していません";
+"shared_inbox.empty_body" = "共有された文字起こしがここに表示されます。ルームの進行中はリアルタイムで更新され、終了後も保存されます。";
+"shared_inbox.session_live" = "ライブ";
+"shared_inbox.lane_canonical" = "原文";
+"shared_inbox.lane_connecting" = "この言語レーンは接続中です";
+"shared_inbox.lane_failed" = "この言語レーンは失敗しました。これ以上は届きません";

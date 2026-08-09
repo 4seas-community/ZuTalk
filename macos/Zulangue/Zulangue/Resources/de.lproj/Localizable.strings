@@ -966,3 +966,15 @@
 "share.members.host" = "Host";
 "share.nearby.asking" = "Warte auf Antwort…";
 "share.nearby.abandon" = "Nicht mehr warten";
+
+"capture.toolbar.joined_room" = "In einem geteilten Raum";
+"capture.toolbar.joined_room_hint" = "Du empfängst die Live-Untertitel von jemand anderem. Verlasse den Raum auf der Teilen-Seite, bevor du hier aufnimmst.";
+"share.sidebar.live_label" = "In einem geteilten Raum";
+"shared_inbox.live_title" = "Live-Empfang";
+"shared_inbox.live_waiting" = "Beigetreten. Warten, bis der Host die Aufnahme startet.";
+"shared_inbox.empty_title" = "Noch nichts empfangen";
+"shared_inbox.empty_body" = "Mit dir geteilte Transkripte erscheinen hier – live, solange der Raum offen ist, und bleiben danach erhalten.";
+"shared_inbox.session_live" = "Live";
+"shared_inbox.lane_canonical" = "Original";
+"shared_inbox.lane_connecting" = "Diese Sprachspur verbindet sich noch";
+"shared_inbox.lane_failed" = "Diese Sprachspur ist ausgefallen – hier kommt nichts mehr an";

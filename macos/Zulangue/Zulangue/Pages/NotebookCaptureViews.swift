@@ -356,6 +356,7 @@ struct NotebookCaptureToolbar: View {
     let notebookId: String
     @ObservedObject var profileEditor: NotebookCaptureProfileEditorModel
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var shareActivity = ShareActivityStore.shared
     @State private var isStarting = false
     @State private var isPausing = false
     @State private var isStopping = false
@@ -383,6 +384,11 @@ struct NotebookCaptureToolbar: View {
                         .help(String(localized: "capture.open_notebook_hint"))
                         .accessibilityLabel(Text(String(localized: "capture.open_notebook")))
                     }
+                } else if shareActivity.isViewing {
+                    // 在别人的房间里就不能录音:收端的字幕来自远端,本机
+                    // 再开一路采集会把两场内容拧在一起。这里不是禁用按钮
+                    // 就完事 —— 要说清楚现在处于什么状态、出口在哪。
+                    joinedRoomStatus
                 } else {
                     startButton
                 }
@@ -433,6 +439,32 @@ struct NotebookCaptureToolbar: View {
     /// translation lane per language. Invite billing charges per lane.
     static func remoteLaneCount(selectedLanguages: [String]) -> Int {
         selectedLanguages.count <= 2 ? 1 : selectedLanguages.count + 1
+    }
+
+    /// 「加入房间中」:占据录音按钮的位置,点它去分享页(离开房间的出口
+    /// 在那里)。样式沿用录音按钮的药丸,但用琥珀信号色 —— 它是状态,
+    /// 不是危险,也不是可以按下去开始的东西。
+    private var joinedRoomStatus: some View {
+        Button {
+            MainNavigationStore.shared.select(tab: .share)
+        } label: {
+            Label(
+                String(localized: "capture.toolbar.joined_room"),
+                systemImage: "dot.radiowaves.left.and.right"
+            )
+            .font(.captionMedium)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 28)
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.signalAmber)
+        .background(Color.signalAmber.opacity(0.12))
+        .overlay(Capsule().strokeBorder(Color.signalAmber.opacity(0.45), lineWidth: 0.5))
+        .clipShape(Capsule())
+        .help(String(localized: "capture.toolbar.joined_room_hint"))
+        .accessibilityLabel(Text(String(localized: "capture.toolbar.joined_room")))
+        .accessibilityHint(Text(String(localized: "capture.toolbar.joined_room_hint")))
+        .accessibilityIdentifier("capture.joined_room")
     }
 
     private var startButton: some View {

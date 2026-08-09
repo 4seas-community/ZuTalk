@@ -87,6 +87,8 @@ struct DocumentEditorPage: View {
     @State private var isShowingExportSheet = false
     @State private var presentedCaptureSettingsNotebookId: String?
     @State private var isShowingResources = false
+    /// 「分享」收件 Notebook 的判定源。观察它,id 迟到时页面能换对视图。
+    @ObservedObject private var shareActivity = ShareActivityStore.shared
 
     /// Notebook-scoped unified tab surface, including realtime transcript.
     @State private var notebookTabs: [NotebookTabViewModel] = []
@@ -166,7 +168,18 @@ struct DocumentEditorPage: View {
                 // Realtime is constructed even without a session: it is the
                 // Notebook's capture command center. Async remains
                 // session-scoped because it only displays a finished task.
+                // 「分享」收件 Notebook 例外:它的内容来自别人的房间,不是
+                // 本机采集 —— 同一个 tab 位置换成收件视图(实时画布 + 台账)。
                 if let transcriptTab = activeNotebookTab,
+                   transcriptTab.displayType == .realtimeTranscript,
+                   transcriptTab.notebookId == shareActivity.sharedInboxNotebookId {
+                    SharedInboxPage(notebookId: transcriptTab.notebookId)
+                        .id("shared-inbox:\(transcriptTab.notebookId)")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .opacity(surface.showsTranscriptLayer ? 1 : 0)
+                        .allowsHitTesting(surface.showsTranscriptLayer)
+                        .accessibilityHidden(surface.showsTranscriptLayer == false)
+                } else if let transcriptTab = activeNotebookTab,
                    transcriptTab.displayType == .realtimeTranscript {
                     NotebookRealtimeTranscriptPage(
                         notebookId: transcriptTab.notebookId,

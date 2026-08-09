@@ -967,3 +967,15 @@
 "share.members.host" = "hôte";
 "share.nearby.asking" = "En attente d'une réponse…";
 "share.nearby.abandon" = "Ne plus attendre";
+
+"capture.toolbar.joined_room" = "Dans une salle partagée";
+"capture.toolbar.joined_room_hint" = "Vous recevez les sous-titres en direct de quelqu'un d'autre. Quittez la salle depuis la page Partage avant d'enregistrer ici.";
+"share.sidebar.live_label" = "Dans une salle partagée";
+"shared_inbox.live_title" = "Réception en direct";
+"shared_inbox.live_waiting" = "Salle rejointe. En attente que l'hôte commence l'enregistrement.";
+"shared_inbox.empty_title" = "Rien reçu pour l'instant";
+"shared_inbox.empty_body" = "Les transcriptions partagées avec vous apparaîtront ici — en direct tant que la salle est ouverte, puis conservées.";
+"shared_inbox.session_live" = "En direct";
+"shared_inbox.lane_canonical" = "Source";
+"shared_inbox.lane_connecting" = "Cette voie de langue se connecte encore";
+"shared_inbox.lane_failed" = "Cette voie de langue a échoué — plus rien n'y arrivera";

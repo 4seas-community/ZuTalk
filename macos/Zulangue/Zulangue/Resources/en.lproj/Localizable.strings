@@ -967,3 +967,15 @@
 "share.members.host" = "host";
 "share.nearby.asking" = "Waiting for an answer…";
 "share.nearby.abandon" = "Stop waiting";
+
+"capture.toolbar.joined_room" = "In a shared room";
+"capture.toolbar.joined_room_hint" = "You're receiving someone else's live captions. Leave the room on the Share page before recording here.";
+"share.sidebar.live_label" = "In a shared room";
+"shared_inbox.live_title" = "Receiving live";
+"shared_inbox.live_waiting" = "Joined. Waiting for the host to start recording.";
+"shared_inbox.empty_title" = "Nothing received yet";
+"shared_inbox.empty_body" = "Transcripts shared with you will appear here — live while the room is open, and kept after it ends.";
+"shared_inbox.session_live" = "Live";
+"shared_inbox.lane_canonical" = "Source";
+"shared_inbox.lane_connecting" = "This language lane is still connecting";
+"shared_inbox.lane_failed" = "This language lane failed — nothing more will arrive on it";

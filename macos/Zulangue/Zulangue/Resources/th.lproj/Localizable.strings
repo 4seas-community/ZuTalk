@@ -967,3 +967,15 @@
 "share.members.host" = "ผู้ดำเนินรายการ";
 "share.nearby.asking" = "กำลังรอคำตอบ…";
 "share.nearby.abandon" = "เลิกรอ";
+
+"capture.toolbar.joined_room" = "อยู่ในห้องแชร์";
+"capture.toolbar.joined_room_hint" = "กำลังรับซับไตเติลสดของอีกฝ่าย หากต้องการอัดเสียงที่นี่ ให้ออกจากห้องในหน้าแชร์ก่อน";
+"share.sidebar.live_label" = "อยู่ในห้องแชร์";
+"shared_inbox.live_title" = "กำลังรับสด";
+"shared_inbox.live_waiting" = "เข้าร่วมแล้ว กำลังรอโฮสต์เริ่มอัดเสียง";
+"shared_inbox.empty_title" = "ยังไม่ได้รับเนื้อหา";
+"shared_inbox.empty_body" = "ทรานสคริปต์ที่แชร์ให้คุณจะปรากฏที่นี่ — อัปเดตสดระหว่างห้องเปิดอยู่ และเก็บไว้หลังจบ";
+"shared_inbox.session_live" = "สด";
+"shared_inbox.lane_canonical" = "ต้นฉบับ";
+"shared_inbox.lane_connecting" = "เลนภาษานี้กำลังเชื่อมต่อ";
+"shared_inbox.lane_failed" = "เลนภาษานี้ล้มเหลว จะไม่มีเนื้อหามาอีก";

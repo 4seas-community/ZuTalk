@@ -967,3 +967,15 @@
 "share.members.host" = "主持人";
 "share.nearby.asking" = "等待对方回应…";
 "share.nearby.abandon" = "不等了";
+
+"capture.toolbar.joined_room" = "加入房间中";
+"capture.toolbar.joined_room_hint" = "正在接收对方的实时字幕。要在这里录音，先到分享页离开房间。";
+"share.sidebar.live_label" = "正在房间中";
+"shared_inbox.live_title" = "实时接收中";
+"shared_inbox.live_waiting" = "已加入房间，等主持人开始录音。";
+"shared_inbox.empty_title" = "还没有收到内容";
+"shared_inbox.empty_body" = "别人共享给你的转录稿会出现在这里——房间进行中实时更新，散场后保留。";
+"shared_inbox.session_live" = "实时";
+"shared_inbox.lane_canonical" = "原文";
+"shared_inbox.lane_connecting" = "这条语言车道还在连接";
+"shared_inbox.lane_failed" = "这条语言车道已失败，不会再有内容";
