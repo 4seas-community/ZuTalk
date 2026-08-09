@@ -162,6 +162,13 @@ class CaptionWebTests(unittest.TestCase):
         # 会议室网络不可预设能出外网:页面必须无外部资源。
         self.assertNotIn("http://", page.split("<body>")[1])
         self.assertNotIn("https://", page.split("<body>")[1])
+        # 界面文案三语齐备:观看的人是简中/泰/英背景,英文独占的
+        # 「This share has ended」对另外两种人就是谜语。
+        self.assertIn("这场分享已结束", page)
+        self.assertIn("การแชร์นี้จบแล้ว", page)
+        self.assertIn("This share has ended", page)
+        for lang in ("zh-Hans", "en", "th"):
+            self.assertIn(f'"{lang}"', page)
 
     def test_create_rate_limit_per_ip(self):
         for _ in range(server.MAX_CREATES_PER_MINUTE):

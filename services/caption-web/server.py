@@ -175,7 +175,7 @@ VIEWER_PAGE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zulangue Live Captions</title>
+<title>Zulangue</title>
 <style>
   :root { color-scheme: light dark; }
   body {
@@ -193,6 +193,8 @@ VIEWER_PAGE = """<!DOCTYPE html>
   .lang { border: 1px solid #555; background: none; color: #ccc;
     border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: 13px; }
   .lang.active { border-color: #6c6; color: #6c6; }
+  #uilang { border: 1px solid #444; background: #111; color: #999;
+    border-radius: 6px; padding: 3px 6px; font-size: 12px; }
   main { flex: 1; overflow-y: auto; padding: 16px 14px 40px; }
   .session { margin-bottom: 20px; }
   .block { margin: 0 0 12px; line-height: 1.55; font-size: 17px; }
@@ -210,7 +212,12 @@ VIEWER_PAGE = """<!DOCTYPE html>
 <header>
   <span class="title">Zulangue</span>
   <span id="langs"></span>
-  <span class="status" id="status">connecting…</span>
+  <span class="status" id="status"></span>
+  <select id="uilang" aria-label="Interface language">
+    <option value="zh-Hans">中文</option>
+    <option value="en">English</option>
+    <option value="th">ไทย</option>
+  </select>
 </header>
 <main id="main">
   <div id="transcript"></div>
@@ -219,8 +226,69 @@ VIEWER_PAGE = """<!DOCTYPE html>
 <button id="follow">↓ Live</button>
 <script>
 "use strict";
-const state = { sessions: [], frame: null, lang: null, langs: [], following: true, ended: false };
+// 界面文案(非内容)的三语:观看的人是简中/泰/英三种语言背景,
+// 「This share has ended」对英语不好的人就是一句谜语。内容语言按钮
+// (稿显示哪条车道)与界面语言互相独立。
+const UI = {
+  "zh-Hans": {
+    title: "Zulangue 实时字幕",
+    connecting: "连接中…",
+    live: "实时",
+    reconnecting: "重连中…",
+    ended: "这场分享已结束。字幕稿会保留到你关闭页面。",
+    follow: "↓ 回到实时",
+  },
+  "en": {
+    title: "Zulangue Live Captions",
+    connecting: "connecting…",
+    live: "live",
+    reconnecting: "reconnecting…",
+    ended: "This share has ended. The transcript stays until you close the page.",
+    follow: "↓ Live",
+  },
+  "th": {
+    title: "Zulangue ซับไตเติลสด",
+    connecting: "กำลังเชื่อมต่อ…",
+    live: "สด",
+    reconnecting: "กำลังเชื่อมต่อใหม่…",
+    ended: "การแชร์นี้จบแล้ว ทรานสคริปต์จะยังอยู่จนกว่าคุณจะปิดหน้านี้",
+    follow: "↓ กลับสู่สด",
+  },
+};
+
+function detectUiLang() {
+  try {
+    const saved = localStorage.getItem("zulangue-ui-lang");
+    if (saved && UI[saved]) return saved;
+  } catch (e) { /* 隐私模式下 localStorage 可能不可用 */ }
+  const nav = (navigator.language || "en").toLowerCase();
+  if (nav.startsWith("zh")) return "zh-Hans";
+  if (nav.startsWith("th")) return "th";
+  return "en";
+}
+
+const state = { sessions: [], frame: null, lang: null, langs: [], following: true,
+                ended: false, statusKey: "connecting", uiLang: detectUiLang() };
 const el = (id) => document.getElementById(id);
+const t = (key) => UI[state.uiLang][key];
+
+function renderChrome() {
+  document.documentElement.lang = state.uiLang;
+  document.title = t("title");
+  const status = el("status");
+  status.textContent = t(state.statusKey);
+  status.className = "status" + (state.statusKey === "ended" ? " ended" : "");
+  el("follow").textContent = t("follow");
+  el("uilang").value = state.uiLang;
+}
+
+function setStatus(key) { state.statusKey = key; renderChrome(); }
+
+el("uilang").addEventListener("change", (e) => {
+  state.uiLang = UI[e.target.value] ? e.target.value : "en";
+  try { localStorage.setItem("zulangue-ui-lang", state.uiLang); } catch (err) { /* 同上 */ }
+  renderChrome();
+});
 
 function collectLanguages() {
   const langs = new Set();
@@ -351,13 +419,15 @@ main.addEventListener("scroll", () => {
 });
 el("follow").onclick = () => { state.following = true; render(); };
 
+renderChrome();
+
 const roomId = location.pathname.split("/").pop();
 const source = new EventSource(`/v1/rooms/${roomId}/events`);
 source.addEventListener("init", (e) => {
   const data = JSON.parse(e.data);
   state.sessions = data.sessions || [];
   state.frame = data.frame;
-  el("status").textContent = "live";
+  setStatus("live");
   render();
 });
 source.addEventListener("frame", (e) => { state.frame = JSON.parse(e.data); render(); });
@@ -370,12 +440,10 @@ source.addEventListener("blocks", (e) => {
 source.addEventListener("ended", () => {
   state.ended = true;
   source.close();
-  const status = el("status");
-  status.textContent = "This share has ended. The transcript stays until you close the page.";
-  status.className = "status ended";
+  setStatus("ended");
   render();
 });
-source.onerror = () => { if (!state.ended) el("status").textContent = "reconnecting…"; };
+source.onerror = () => { if (!state.ended) setStatus("reconnecting"); };
 </script>
 </body>
 </html>

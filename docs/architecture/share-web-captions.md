@@ -112,6 +112,11 @@ stop_sharing ────────►   DELETE /v1/rooms/{id}      ──SSE�
 
 单文件内联 HTML/JS/CSS,无外部资源(会议室网络不可预设能访问 CDN):
 
+- **界面文案三语**(简体中文 / ไทย / English):观看的人就是这三种语言
+  背景,英文独占的「This share has ended」对另外两种人是谜语。按
+  `navigator.language` 自动选,右上角可手动切并记进 localStorage;
+  界面语言与内容语言按钮互相独立;
+
 - 顶部语言按钮:从块车道与帧 cue/utterance 语言并集自动生成,
   切换即切稿的显示车道与实时 tail 的字幕语言;
 - 正文:落定块(选中语言的车道文本,缺席回落原文)+ 实时 tail
