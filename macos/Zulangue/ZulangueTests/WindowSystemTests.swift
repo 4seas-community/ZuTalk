@@ -995,6 +995,125 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertFalse(source.contains("NSVisualEffectView"))
     }
 
+    /// 在别人房间里看字幕,栏目要和本机录音一样是「一门语言一栏」。
+    ///
+    /// 观看端曾经走一条完全独立的渲染:一列滚动的横条,原文在上译文在下,
+    /// 既不分栏也不认语言。同一场三语会议,主播看到三栏,进房间的人看到
+    /// 一列 —— 这条测试钉住的就是「两边同一块画布」。
+    func testSharedRoomCaptionsUseTheSameLanguageColumnsAsLocalCapture() {
+        let utterance = { (sequence: UInt64, speaker: String?, language: String, text: String) in
+            FfiNotebookCaptureUtterance(
+                id: "utt-\(sequence)",
+                sessionId: "remote",
+                sequence: sequence,
+                revision: 1,
+                sessionSpeakerId: speaker,
+                sourceLanguage: language,
+                provisionalSourceLanguage: nil,
+                sourceText: text,
+                sourceStartMs: sequence * 1_000,
+                sourceEndMs: sequence * 1_000 + 500,
+                translatedLanguage: nil,
+                translatedText: nil,
+                completion: "complete",
+                alignment: "source_only",
+                sourceProjectionRevision: 0,
+                sourceEditRevision: 0,
+                languageVariants: []
+            )
+        }
+        let lane = { (language: String?, state: String) in
+            FfiNotebookCaptureLaneHealth(
+                targetLanguage: language,
+                state: state,
+                groupEpoch: 0,
+                finalAudioProcMs: nil,
+                totalAudioProcMs: nil,
+                lagMs: nil,
+                inputDiscontinuous: false
+            )
+        }
+        let preview = FfiNotebookCaptureLivePreview(
+            sessionId: "remote",
+            previewRevision: 7,
+            utterances: [
+                utterance(0, "spk-1", "zh-Hans", "第一句"),
+                utterance(1, "spk-1", "zh-Hans", "第二句"),
+                // 语言识别飘了一句:没有说话人,不该凭空长出一栏法语。
+                utterance(2, nil, "fr", "une bribe"),
+            ],
+            translationCues: [
+                FfiNotebookCaptureTranslationCue(
+                    targetLanguage: "en",
+                    groupEpoch: 0,
+                    providerSequence: 0,
+                    sourceLanguage: "zh",
+                    sourceStartMs: 0,
+                    sourceEndMs: 1_500,
+                    text: "First and second sentence.",
+                    completion: "partial",
+                    withdrawn: false,
+                    revision: 1
+                ),
+            ],
+            laneHealth: [lane(nil, "live"), lane("en", "live"), lane("th", "failed")]
+        )
+
+        let input = SubtitleOverlayView.sharedAudienceInput(preview: preview)
+
+        // 主导原文在第一栏,主播真的在跑的车道各占一栏;飘出来的 fr 不占栏。
+        XCTAssertEqual(input.languages, ["zh", "en", "th"])
+        XCTAssertEqual(input.failedLanguages, ["th"])
+
+        let columns = SubtitleAudienceTimeline.columns(
+            languages: input.languages,
+            utterances: input.utterances,
+            placement: input.placement,
+            cues: { input.cuesByLanguage[$0] ?? [] }
+        )
+        XCTAssertEqual(columns["zh"]?.map(\.text), ["第一句", "第二句"])
+        XCTAssertEqual(columns["en"]?.map(\.text), ["First and second sentence."])
+        // 坏掉的车道是空栏,不是等待省略号 —— 那条判定在 waitingLanguages。
+        XCTAssertEqual(columns["th"]?.isEmpty, true)
+        // 飘的那一句没有归属,画布把它放进「没有归属」条,而不是塞进中文栏。
+        XCTAssertNil(input.placement(input.utterances[2]))
+    }
+
+    /// 两方对谈的主播不发 cue,译文绑在句子上。观看端照样要有两栏。
+    func testSharedRoomCaptionsCarryTranslationsBoundToUtterances() {
+        let preview = FfiNotebookCaptureLivePreview(
+            sessionId: "remote",
+            previewRevision: 3,
+            utterances: [
+                FfiNotebookCaptureUtterance(
+                    id: "utt-0",
+                    sessionId: "remote",
+                    sequence: 0,
+                    revision: 1,
+                    sessionSpeakerId: "spk-1",
+                    sourceLanguage: "zh-Hans",
+                    provisionalSourceLanguage: nil,
+                    sourceText: "你好",
+                    sourceStartMs: 0,
+                    sourceEndMs: 500,
+                    translatedLanguage: "en",
+                    translatedText: "Hello",
+                    completion: "complete",
+                    alignment: "aligned",
+                    sourceProjectionRevision: 0,
+                    sourceEditRevision: 0,
+                    languageVariants: []
+                ),
+            ],
+            translationCues: [],
+            laneHealth: []
+        )
+
+        let input = SubtitleOverlayView.sharedAudienceInput(preview: preview)
+        XCTAssertEqual(input.languages, ["zh", "en"])
+        XCTAssertEqual(input.cuesByLanguage["en"]?.map(\.text), ["Hello"])
+    }
+
     func testAudienceTimelineColumnsAnchorByTimeAndKeepIndependentSegmentation() {
         let source = { (sequence: UInt64, language: String, text: String, start: UInt64) in
             NotebookCaptureUtteranceDTO(

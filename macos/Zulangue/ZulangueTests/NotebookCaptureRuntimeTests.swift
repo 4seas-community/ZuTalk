@@ -6895,8 +6895,12 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let conversationLaneView = String(
             overlayViews[conversationLaneStart.lowerBound..<conversationLaneEnd.lowerBound]
         )
+        // 画布本身已经不认 store —— 它吃 `AudienceCanvasInput`,好让远端房间
+        // 的帧走同一块画布。本机那一侧的读取搬进了 `localAudienceInput`,
+        // 所以切片从它开始:下面几条钉的是「观众输入是有界的」,不是
+        // 「哪个函数里写着这行」。
         let audienceTimelineStart = try XCTUnwrap(
-            overlayViews.range(of: "private func audienceTimelineBody(")
+            overlayViews.range(of: "private var localAudienceInput: AudienceCanvasInput")
         )
         let audienceTimelineEnd = try XCTUnwrap(
             overlayViews[audienceTimelineStart.upperBound...]

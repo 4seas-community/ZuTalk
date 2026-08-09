@@ -1428,10 +1428,12 @@ struct SubtitleOverlayView: View {
         }
     }
 
-    /// 远端帧的字幕投影:最后一句的原文 + 各语言最新译文,一语一行。
-    /// 帧是 replace-in-full 的,整个画面每帧重画,没有增量状态;
-    /// cue 与句子的对应不在这里重算(share-p2p.md §3.2 的红线),
-    /// cue 按语言取最新 —— 与「分享」Notebook 的画布同一策略。
+    /// 远端帧的字幕投影。帧是 replace-in-full 的,整个画面每帧重画,没有
+    /// 增量状态;cue 与句子的对应不在这里重算(share-p2p.md §3.2 的红线)。
+    ///
+    /// **画布与本机录音同一块。** 在别人房间里看字幕和自己录音看字幕,是
+    /// 同一件事的两个来源,不该长成两个产品:本机三语是三栏,进了房间却
+    /// 变成一列滚动的横条,观众得重新学一次怎么读。差别只在内容从哪来。
     @ViewBuilder
     private func sharedFeedBody(geometry: GeometryProxy) -> some View {
         if shareActivity.hostLeft {
@@ -1440,8 +1442,11 @@ struct SubtitleOverlayView: View {
                 systemImage: "antenna.radiowaves.left.and.right.slash"
             )
         } else if let preview = shareActivity.remotePreview {
-            sharedFeedTranscript(preview: preview)
-                .frame(width: geometry.size.width, height: geometry.size.height)
+            audienceTimelineCanvas(
+                geometry: geometry,
+                input: Self.sharedAudienceInput(preview: preview)
+            )
+            .frame(width: geometry.size.width, height: geometry.size.height)
         } else if shareActivity.remoteLines.isEmpty == false {
             // 旧版主播:只有压扁行。
             sharedFeedLegacyLines(shareActivity.remoteLines)
@@ -1454,39 +1459,109 @@ struct SubtitleOverlayView: View {
         }
     }
 
-    private func sharedFeedTranscript(preview: FfiNotebookCaptureLivePreview) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(preview.utterances, id: \.id) { utterance in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(utterance.sourceText)
-                            .font(.system(size: fontSize, weight: .medium))
-                            .foregroundColor(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let text = utterance.translatedText, text.isEmpty == false {
-                            Text(text)
-                                .font(.system(size: fontSize * 0.86))
-                                .foregroundColor(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                ForEach(
-                    SharedLivePreviewCanvas.latestCuesByLanguage(preview.translationCues),
-                    id: \.targetLanguage
-                ) { cue in
-                    Text(cue.text)
-                        .font(.system(size: fontSize * 0.86))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(16)
+    /// 远端帧 → 画布输入。
+    ///
+    /// 本机录音的栏目来自采集档案(用户自己选的几门语言)。房间里没有这份
+    /// 档案:观看的人不曾配置主播讲什么、译什么。所以栏目从帧本身认 ——
+    /// **主播真的在跑的车道**(lane health / cue 的目标语言)加上这一帧的
+    /// 主导原文语言。
+    ///
+    /// 认车道而不认「出现过的语言」,是因为真实录音里语言识别会飘:一句
+    /// 被误判成法语的中文不该凭空长出一栏法语。飘出来的句子落进画布本来
+    /// 就有的「没有归属」条,与主播本机的处置一致。
+    static func sharedAudienceInput(
+        preview: FfiNotebookCaptureLivePreview
+    ) -> AudienceCanvasInput {
+        let frame = RustNotebookCaptureClient.map(preview)
+        let utterances = frame.utterances
+        let dominantSource = dominantSourceLanguage(utterances)
+
+        var lanes: [String] = frame.laneHealth
+            .compactMap { $0.targetLanguage }
+            .map(normalizedLanguageCode)
+        if lanes.isEmpty {
+            // 旧版主播不发 lane health。退回「有译文的语言」——比无栏可看强。
+            lanes = frame.translationCues.map { normalizedLanguageCode($0.targetLanguage) }
+                + utterances.compactMap { $0.translatedLanguage }.map(normalizedLanguageCode)
         }
-        .defaultScrollAnchor(.bottom)
-        .scrollIndicators(.hidden)
+        var seen: Set<String> = []
+        var languages: [String] = []
+        for language in [dominantSource].compactMap({ $0 }) + lanes.sorted()
+        where seen.insert(language).inserted {
+            languages.append(language)
+        }
+
+        var cuesByLanguage = Dictionary(
+            grouping: frame.translationCues.filter { $0.withdrawn == false },
+            by: { normalizedLanguageCode($0.targetLanguage) }
+        )
+        // 两方对谈的主播不发 cue,译文绑在句子上。把它按 cue 的形状递给
+        // 画布 —— 这不是重算对应关系(那条红线还在),是把主播自己定好的
+        // 绑定原样搬过来。
+        for utterance in utterances {
+            guard let language = utterance.translatedLanguage.map(normalizedLanguageCode),
+                  let text = utterance.translatedText,
+                  text.isEmpty == false,
+                  cuesByLanguage[language] == nil
+            else { continue }
+            cuesByLanguage[language, default: []].append(
+                NotebookCaptureTranslationCueDTO(
+                    targetLanguage: language,
+                    groupEpoch: 0,
+                    providerSequence: utterance.sequence,
+                    sourceLanguage: normalizedLanguageCode(utterance.sourceLanguage),
+                    sourceStartMs: utterance.sourceStartMs,
+                    sourceEndMs: utterance.sourceEndMs,
+                    text: text,
+                    completion: utterance.completion,
+                    withdrawn: false,
+                    revision: utterance.revision
+                )
+            )
+        }
+
+        return AudienceCanvasInput(
+            languages: languages,
+            utterances: utterances,
+            placement: { utterance in
+                NotebookCaptureHistoryPolicy.audienceSourcePlacement(
+                    for: utterance,
+                    selectedLanguages: languages,
+                    lastIdentifiedSourceLanguage: dominantSource
+                )
+            },
+            cuesByLanguage: cuesByLanguage,
+            failedLanguages: Set(
+                frame.laneHealth
+                    .filter { $0.state == .failed }
+                    .compactMap { $0.targetLanguage }
+                    .map(normalizedLanguageCode)
+            )
+        )
+    }
+
+    /// 这一帧里说的主要是哪门语言。带说话人标识的句子(canonical 车道的
+    /// 产物)优先参与判定 —— 辅助车道的碎片通常没有说话人。同级按句数,
+    /// 长度只作平票裁决:一句冗长的外语碎片不该赢过两句正主。
+    static func dominantSourceLanguage(
+        _ utterances: [NotebookCaptureUtteranceDTO]
+    ) -> String? {
+        let speakered = utterances.filter { $0.sessionSpeakerId != nil }
+        let pool = speakered.isEmpty ? utterances : speakered
+        var count: [String: Int] = [:]
+        var length: [String: Int] = [:]
+        for utterance in pool {
+            let language = normalizedLanguageCode(
+                utterance.provisionalSourceLanguage ?? utterance.sourceLanguage
+            )
+            guard language.isEmpty == false, language != "und" else { continue }
+            count[language, default: 0] += 1
+            length[language, default: 0] += utterance.sourceText.count
+        }
+        return count.keys.max { left, right in
+            if count[left] != count[right] { return count[left]! < count[right]! }
+            return length[left]! < length[right]!
+        }
     }
 
     private func sharedFeedLegacyLines(_ lines: [FfiSharedCaptionLine]) -> some View {
@@ -1645,22 +1720,59 @@ struct SubtitleOverlayView: View {
         }
     }
 
+    /// One audience canvas's input, independent of where the words came from.
+    ///
+    /// The canvas used to read `store` directly, which is why the audience
+    /// looked at two different products depending on whose room they were in:
+    /// the host got per-language columns, and anyone watching a shared room
+    /// got a single scrolling list, because the shared branch had no way to
+    /// reach the layout at all. Both sources now fill this one value.
+    struct AudienceCanvasInput {
+        let languages: [String]
+        let utterances: [NotebookCaptureUtteranceDTO]
+        let placement: (NotebookCaptureUtteranceDTO) -> String?
+        let cuesByLanguage: [String: [NotebookCaptureTranslationCueDTO]]
+        let failedLanguages: Set<String>
+    }
+
+    /// The local capture's input. Freezes one coherent presentation frame:
+    /// the previous body rebuilt and sorted the complete session three times,
+    /// and recomputed the durable language fallback once for every source
+    /// row, so provider-rate preview updates got progressively more expensive
+    /// as a meeting grew even though the canvas shows at most eight cards.
+    private var localAudienceInput: AudienceCanvasInput {
+        AudienceCanvasInput(
+            languages: store.selectedLanguages,
+            utterances: store.presentedAudienceUtterances(
+                maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount
+            ),
+            placement: store.makeAudienceSourcePlacement(),
+            cuesByLanguage: Dictionary(
+                grouping: store.presentedTranslationCueSnapshot,
+                by: { normalizedLanguageCode($0.targetLanguage) }
+            ),
+            failedLanguages: store.failedTranslationLanguages
+        )
+    }
+
     @ViewBuilder
     private func audienceTimelineBody(geometry: GeometryProxy) -> some View {
-        let languages = store.selectedLanguages
-        // Freeze one coherent presentation frame. The previous body rebuilt
-        // and sorted the complete session three times, and recomputed the
-        // durable language fallback once for every source row. Provider-rate
-        // preview updates therefore became progressively more expensive as a
-        // meeting grew even though the canvas shows at most eight cards.
-        let utterances = store.presentedAudienceUtterances(
-            maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount
-        )
-        let placement = store.makeAudienceSourcePlacement()
-        let cuesByLanguage = Dictionary(
-            grouping: store.presentedTranslationCueSnapshot,
-            by: { normalizedLanguageCode($0.targetLanguage) }
-        )
+        if store.isCaptureActive {
+            audienceTimelineCanvas(geometry: geometry, input: localAudienceInput)
+        } else {
+            Color.clear
+        }
+    }
+
+    @ViewBuilder
+    private func audienceTimelineCanvas(
+        geometry: GeometryProxy,
+        input: AudienceCanvasInput
+    ) -> some View {
+        let languages = input.languages
+        let utterances = input.utterances
+        let placement = input.placement
+        let cuesByLanguage = input.cuesByLanguage
         let bandSize = SubtitleOverlayLayoutPolicy.audienceColumnCount(
             width: geometry.size.width - 24,
             languageCount: languages.count,
@@ -1695,7 +1807,7 @@ struct SubtitleOverlayView: View {
         )
         let waiting = SubtitleAudienceTimeline.waitingLanguages(
             columns: columns,
-            failedLanguages: store.failedTranslationLanguages
+            failedLanguages: input.failedLanguages
         )
         let unrouted = SubtitleAudienceTimeline.unroutedText(
             utterances: utterances,
@@ -1708,9 +1820,11 @@ struct SubtitleOverlayView: View {
                 .filter { $0.kind == .translation }
                 .map(\.id)
         )
+        // 有没有字就画不画 —— 上游(本机采集 / 远端房间)是否还活着,由调用
+        // 方在进来之前判断;画布只对内容负责。
         let hasWords = trimmed.values.contains { $0.isEmpty == false } || unrouted != nil
 
-        if store.isCaptureActive, hasWords {
+        if hasWords {
             VStack(spacing: 8) {
                 ForEach(bandStarts, id: \.self) { start in
                     HStack(alignment: .bottom, spacing: 8) {
@@ -2222,6 +2336,12 @@ struct SubtitleOverlayView: View {
     }
 
     private func normalizedLanguageCode(_ code: String) -> String {
+        Self.normalizedLanguageCode(code)
+    }
+
+    /// 纯字符串折叠,不碰任何视图状态 —— 标 nonisolated,好让它在
+    /// `map` 这类非隔离闭包里用。
+    nonisolated static func normalizedLanguageCode(_ code: String) -> String {
         code
             .lowercased()
             .replacingOccurrences(of: "_", with: "-")
