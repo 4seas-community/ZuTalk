@@ -406,6 +406,10 @@ xcode-build-universal:
         SYMROOT="$OUT/.symroot-universal" \
         OBJROOT="$OUT/.intermediates-universal" \
         CONFIGURATION_BUILD_DIR="$OUT" \
+        DEPLOYMENT_POSTPROCESSING=YES \
+        STRIP_INSTALLED_PRODUCT=YES \
+        STRIP_STYLE=debugging \
+        COPY_PHASE_STRIP=YES \
         >"$LOG" 2>&1; then
         grep -E "error:|warning:|BUILD|ARCHS|ONLY_ACTIVE_ARCH|libvt_ffi" "$LOG" | tail -120 || tail -120 "$LOG"
         exit 1
@@ -534,22 +538,35 @@ assert-public-app-privacy:
     set -euo pipefail
     APP="{{ app_build_dir }}/Zulangue.app"
     test -d "$APP" || { echo "FAIL: $APP 不存在"; exit 1; }
+    # 二进制安全地直接扫文件,不经 strings —— macOS 的 strings 对这个
+    # 147MB 的胖二进制一个字符串都吐不出来(试过 -a、-arch all,全是 0),
+    # 于是「没有本机路径」这句话曾经是靠一个瞎了的探针说出来的。
+    # grep -a 把整个文件当文本扫,调试信息里的路径一样跑不掉。
     SCAN="$(mktemp)"
     trap 'rm -f "$SCAN"' EXIT
-    find "$APP" -type f -maxdepth 6 -exec strings {} \; >"$SCAN"
-    if grep -Eq '/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/' "$SCAN"; then
+    find "$APP" -type f -maxdepth 6 -print0 \
+        | xargs -0 grep -oaE '/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/' 2>/dev/null \
+        | sort -u >"$SCAN" || true
+    if [ -s "$SCAN" ]; then
         echo "FAIL: release app contains a machine-local user path" >&2
+        head -5 "$SCAN" >&2
         exit 1
     fi
-    # The public update-feed URL contains the current GitHub organization name.
-    # Exclude only that exact, required URL; all other legacy identity matches
-    # remain release-blocking.
-    EXPECTED_FEED='https://github.com/4seas-community/zulangue/releases/latest/download/appcast.xml'
+    # 旧身份检查走同一条路:连上下文一起抠出来,再把那条必须存在的
+    # 更新源地址排除掉(它本身就带着现在的 GitHub 组织名)。
+    ALLOWED_CONTEXT='github.com/4seas-community/zulangue'
     prior_identity_pattern='4[[:space:]_-]*S''EAS|Four''Seas|Voice''Tool|Gi''tea'
-    if grep -Fv "$EXPECTED_FEED" "$SCAN" | grep -Eiq "$prior_identity_pattern"; then
+    IDENTITY="$(mktemp)"
+    find "$APP" -type f -maxdepth 6 -print0 \
+        | xargs -0 grep -oaEi ".{0,40}(${prior_identity_pattern}).{0,40}" 2>/dev/null \
+        | grep -Fv "$ALLOWED_CONTEXT" | sort -u >"$IDENTITY" || true
+    if [ -s "$IDENTITY" ]; then
         echo "FAIL: release app contains a prior product or service identity" >&2
+        head -5 "$IDENTITY" >&2
+        rm -f "$IDENTITY"
         exit 1
     fi
+    rm -f "$IDENTITY"
     echo "✓ Release app contains no machine-local paths or prior identities"
 
 # 先生成最新 Rust 库与 UniFFI 绑定，再构建 Xcode 应用。
