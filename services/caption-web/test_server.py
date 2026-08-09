@@ -277,6 +277,23 @@ class CaptionWebTests(unittest.TestCase):
         for lang in ("zh-Hans", "en", "th"):
             self.assertIn(f'"{lang}"', page)
 
+    def test_live_tail_columns_anchor_to_the_bottom_like_the_app_canvas(self):
+        """实时区各栏底端对齐 ——「现在」在底边。
+
+        每栏是自己的一叠 `<p>`,行数天然不等:辅助流断句比 canonical 粗,
+        译文栏的句子更长更少。顶端起排时,最新的那一句在三栏里落在三个
+        不同高度,读者看到的就是「语言不在同一行」。App 画布早就是底端
+        锚定的,网页跟上同一条规矩,两个界面才对同一件事给同一个答案。
+
+        稿区不需要这条:它是按块分行的网格,行对齐由每一行自己保证。
+        """
+        page = server.VIEWER_PAGE
+        self.assertIn("#livetail .row { align-items: end; }", page)
+        # 末行的下外边距会把底边顶开,对齐就差那 12px。
+        self.assertIn("#livetail p:last-child { margin-bottom: 0; }", page)
+        # 稿区保持原样:那里不该被底端对齐改写。
+        self.assertNotIn("#transcript .row { align-items", page)
+
     def test_create_rate_limit_per_ip(self):
         for _ in range(server.MAX_CREATES_PER_MINUTE):
             status, _ = self.request("POST", "/v1/rooms")

@@ -63,6 +63,15 @@ pub struct MachineBlockWrite {
     pub lanes: BTreeMap<String, String>,
 }
 
+/// 一批机器投影里的一条:写入本身,加上执行它需要的两个调用方决定
+/// (哪些车道被用户接管、新块插在谁前面)。
+#[derive(Debug, Clone)]
+pub struct MachineBlockUpsert {
+    pub write: MachineBlockWrite,
+    pub frozen_lanes: BTreeSet<String>,
+    pub insert_before: Option<String>,
+}
+
 /// T2 文档句柄。克隆共享同一底层镜像。
 #[derive(Clone)]
 pub struct TranscriptProjection {
@@ -141,53 +150,44 @@ impl TranscriptProjection {
         frozen_lanes: &BTreeSet<String>,
         insert_before: Option<&str>,
     ) -> Result<(), TranscriptProjectionError> {
-        if write.id.is_empty() {
-            return Err(TranscriptProjectionError::EmptyBlockId);
+        self.machine_upsert_blocks(vec![MachineBlockUpsert {
+            write,
+            frozen_lanes: frozen_lanes.clone(),
+            insert_before: insert_before.map(str::to_string),
+        }])
+    }
+
+    /// [`Self::machine_upsert_block`] 的批量形态,语义逐条相同,但整批只做
+    /// **一次** `get_state`/`set_state`。
+    ///
+    /// 单条形态每次调用都要整份状态深拷贝、整份 schema 校验、整份 diff,
+    /// 于是「重放整场」的投影器是 O(条数 × 文档大小)。投影一次要写的块
+    /// 天然是一批,批量提交把那条曲线拉回线性——这是本层唯一的性能形状,
+    /// 不改任何可观察语义。
+    ///
+    /// 副产物是更强的原子性:任一条写入被拒(空 id、越界车道、锚点不存在)
+    /// 时整批都不落地,不会像逐条循环那样留下半批已提交的状态。
+    pub fn machine_upsert_blocks(
+        &self,
+        upserts: Vec<MachineBlockUpsert>,
+    ) -> Result<(), TranscriptProjectionError> {
+        if upserts.is_empty() {
+            return Ok(());
         }
-        validate_lanes(write.lanes.keys())?;
+        for upsert in &upserts {
+            if upsert.write.id.is_empty() {
+                return Err(TranscriptProjectionError::EmptyBlockId);
+            }
+            validate_lanes(upsert.write.lanes.keys())?;
+        }
 
         let mut state = self.mirror.get_state();
-        let items = ensure_items(&mut state);
-
-        match items
-            .iter_mut()
-            .find(|item| item.get("id").and_then(Value::as_str) == Some(write.id.as_str()))
         {
-            Some(existing) => {
-                existing["text"] = json!(write.text);
-                let lanes = existing["lanes"]
-                    .as_object_mut()
-                    .expect("schema 保证 lanes 是对象");
-                for (lane, text) in &write.lanes {
-                    if frozen_lanes.contains(lane) {
-                        continue; // 机器让人:用户接管的车道机器绝不覆盖
-                    }
-                    lanes.insert(lane.clone(), json!(text));
-                }
-            }
-            None => {
-                let block = json!({
-                    "id": write.id,
-                    "owner": write.owner,
-                    "text": write.text,
-                    "lanes": write.lanes,
-                });
-                match insert_before {
-                    None => items.push(block),
-                    Some(anchor) => {
-                        let Some(index) = items.iter().position(|item| {
-                            item.get("id").and_then(Value::as_str) == Some(anchor)
-                        }) else {
-                            return Err(TranscriptProjectionError::BlockNotFound(
-                                anchor.to_string(),
-                            ));
-                        };
-                        items.insert(index, block);
-                    }
-                }
+            let items = ensure_items(&mut state);
+            for upsert in upserts {
+                apply_machine_upsert(items, upsert)?;
             }
         }
-
         self.commit(state, "machine")
     }
 
@@ -390,6 +390,58 @@ impl TranscriptProjection {
         )?;
         Ok(())
     }
+}
+
+/// 把一条机器写入应用到句块数组上。语义与单条 upsert 的文档注释一致;
+/// 抽出来只是为了让批量提交能在同一份状态上连续应用多条。
+fn apply_machine_upsert(
+    items: &mut Vec<Value>,
+    upsert: MachineBlockUpsert,
+) -> Result<(), TranscriptProjectionError> {
+    let MachineBlockUpsert {
+        write,
+        frozen_lanes,
+        insert_before,
+    } = upsert;
+
+    match items
+        .iter_mut()
+        .find(|item| item.get("id").and_then(Value::as_str) == Some(write.id.as_str()))
+    {
+        Some(existing) => {
+            existing["text"] = json!(write.text);
+            let lanes = existing["lanes"]
+                .as_object_mut()
+                .expect("schema 保证 lanes 是对象");
+            for (lane, text) in &write.lanes {
+                if frozen_lanes.contains(lane) {
+                    continue; // 机器让人:用户接管的车道机器绝不覆盖
+                }
+                lanes.insert(lane.clone(), json!(text));
+            }
+        }
+        None => {
+            let block = json!({
+                "id": write.id,
+                "owner": write.owner,
+                "text": write.text,
+                "lanes": write.lanes,
+            });
+            match insert_before.as_deref() {
+                None => items.push(block),
+                Some(anchor) => {
+                    let Some(index) = items
+                        .iter()
+                        .position(|item| item.get("id").and_then(Value::as_str) == Some(anchor))
+                    else {
+                        return Err(TranscriptProjectionError::BlockNotFound(anchor.to_string()));
+                    };
+                    items.insert(index, block);
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn block_owner(item: &Value) -> &str {

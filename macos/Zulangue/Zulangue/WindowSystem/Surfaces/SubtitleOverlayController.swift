@@ -56,7 +56,16 @@ enum SubtitleOverlayFontPolicy {
         let heightBudget = Double(canvasSize.height) / 13
         let columns = Double(max(languageCount, 1))
         let perColumnFactor = mode == .audience ? 10.0 : 8.0
-        let widthBudget = Double(canvasSize.width - 24) / (perColumnFactor * columns)
+        // The same chrome the layout policy prices in. If automatic sized
+        // type against the raw width it would pick a size that fits N columns
+        // arithmetically and then watch the layout drop to N-1, which is the
+        // one thing automatic exists to prevent.
+        let separator = mode == .audience
+            ? Double(SubtitleOverlayLayoutPolicy.audienceColumnSpacing)
+            : Double(SubtitleOverlayLayoutPolicy.conversationLaneDividerWidth)
+        let chrome = Double(SubtitleOverlayLayoutPolicy.canvasHorizontalPadding)
+            + separator * (columns - 1)
+        let widthBudget = (Double(canvasSize.width) - chrome) / (perColumnFactor * columns)
         let quantized = (min(heightBudget, widthBudget) / step).rounded(.down) * step
         return clamped(quantized)
     }
@@ -90,39 +99,66 @@ enum SubtitleOverlayLayoutPolicy {
     static let maximumLanguageCount = 3
     static let maximumAudienceRowCount = 8
 
+    /// Width the columns never get: the canvas padding on both sides, plus
+    /// the separator between neighbours. Every entry point below takes the
+    /// **canvas** width and subtracts this itself, so the chrome is priced in
+    /// exactly once — deciding capacity from a width the padding has already
+    /// spent promises a column narrower than the minimum the decision exists
+    /// to guarantee, and having callers pre-subtract it invites two callers
+    /// to disagree about whether they already did.
+    static let canvasHorizontalPadding: CGFloat = 24
+    static let audienceColumnSpacing: CGFloat = 8
+    static let conversationLaneDividerWidth: CGFloat = 1
+
+    /// Width actually available to `count` audience tiles on this canvas.
+    static func audienceContentWidth(width: CGFloat, columns: Int) -> CGFloat {
+        width - canvasHorizontalPadding
+            - audienceColumnSpacing * CGFloat(max(columns - 1, 0))
+    }
+
+    /// Width actually available to `lanes` conversation lanes on this canvas.
+    static func conversationContentWidth(width: CGFloat, lanes: Int) -> CGFloat {
+        width - canvasHorizontalPadding
+            - conversationLaneDividerWidth * CGFloat(max(lanes - 1, 0))
+    }
+
     static func conversationLayout(
         width: CGFloat,
         languageCount: Int,
         fontSize: Double
     ) -> SubtitleOverlayConversationLayout {
-        width >= minimumColumnWidth(fontSize: fontSize) * CGFloat(max(languageCount, 1))
+        let lanes = max(languageCount, 1)
+        return conversationContentWidth(width: width, lanes: lanes)
+            >= minimumColumnWidth(fontSize: fontSize) * CGFloat(lanes)
             ? .columns
             : .stacked
     }
 
+    /// How many audience tiles fit side by side, degrading **one column at a
+    /// time**.
+    ///
+    /// Three languages on a canvas that affords only two used to collapse
+    /// straight to a single column, which the band layout then renders as
+    /// three full-width bands stacked vertically. To the room that reads as
+    /// "the languages stopped lining up", triggered by a canvas that was only
+    /// marginally too narrow — and it flips back and forth across a single
+    /// point of window width or one step of the font slider. Two columns plus
+    /// one is the honest degradation: it keeps as much side-by-side reading
+    /// as the canvas can actually pay for.
     static func audienceColumnCount(
         width: CGFloat,
         languageCount: Int,
         fontSize: Double
     ) -> Int {
         let count = min(max(languageCount, 1), maximumLanguageCount)
-        let capacity = max(
-            1,
-            Int(width / minimumAudienceTileWidth(fontSize: fontSize))
-        )
-
-        switch count {
-        case 1:
-            return 1
-        case 2:
-            return capacity >= 2 ? 2 : 1
-        case 3:
-            return capacity >= 3 ? 3 : 1
-        default:
-            if capacity >= 4 { return 4 }
-            if capacity >= 2 { return 2 }
-            return 1
+        let tile = minimumAudienceTileWidth(fontSize: fontSize)
+        var fits = 1
+        while fits < count,
+              audienceContentWidth(width: width, columns: fits + 1)
+                >= tile * CGFloat(fits + 1) {
+            fits += 1
         }
+        return fits
     }
 
     /// Audience retention is canvas-driven: the row count is whatever the box
@@ -1774,7 +1810,7 @@ struct SubtitleOverlayView: View {
         let placement = input.placement
         let cuesByLanguage = input.cuesByLanguage
         let bandSize = SubtitleOverlayLayoutPolicy.audienceColumnCount(
-            width: geometry.size.width - 24,
+            width: geometry.size.width,
             languageCount: languages.count,
             fontSize: fontSize
         )
@@ -1956,7 +1992,7 @@ struct SubtitleOverlayView: View {
         if store.isCaptureActive, utterances.isEmpty == false {
             VStack(spacing: 10) {
                 ForEach(utterances) { utterance in
-                    audienceRow(utterance, width: geometry.size.width - 24)
+                    audienceRow(utterance, width: geometry.size.width)
                         .frame(maxWidth: .infinity)
                         .transition(.opacity)
                 }

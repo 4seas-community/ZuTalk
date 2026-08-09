@@ -28,7 +28,9 @@ use vt_store::notebook_capture_store::{
     RealtimeUtteranceVariant, RemoteHealth, SessionPurgeJob, SessionPurgePlan, UtteranceAlignment,
     UtteranceCompletion, UtteranceLane, UtteranceVariantRole, UtteranceVariantState,
 };
-use vt_store::transcript_projection::{MachineBlockWrite, TranscriptProjection, UtteranceBlock};
+use vt_store::transcript_projection::{
+    MachineBlockUpsert, MachineBlockWrite, TranscriptProjection, UtteranceBlock,
+};
 #[cfg(test)]
 use vt_store::ContextPackDocumentSource;
 use vt_store::{
@@ -516,6 +518,35 @@ impl From<vt_stt::NotebookCaptureEngine> for FfiNotebookCaptureEngineDescriptor 
     }
 }
 
+/// Text as a reader should see it, not as the provider packed it.
+///
+/// Soniox tokens carry their own word-boundary whitespace (`" world"`), and
+/// the aggregation layer concatenates them byte for byte on purpose: the
+/// machine fact ledger stores what arrived. A segment that opens mid-speech
+/// therefore begins with the space that separated it from the previous word.
+/// Every surface that renders one lane per column then showed that lane
+/// indented one space past its neighbours — and only the source lane, because
+/// the translation lane happened to be trimmed further downstream. Two columns
+/// disagreeing about their own left edge is the whole of the "格式" complaint.
+///
+/// The trim belongs at this boundary and nowhere else: the ledger keeps the
+/// bytes it received (exports read it directly and do their own trimming),
+/// and everything past the FFI sees a sentence instead of a fragment of a
+/// concatenation. Doing it per surface is what let the two lanes drift apart
+/// in the first place.
+fn display_text(text: String) -> String {
+    let trimmed = text.trim();
+    if trimmed.len() == text.len() {
+        text
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn display_text_opt(text: Option<String>) -> Option<String> {
+    text.map(display_text)
+}
+
 impl From<RealtimeUtterance> for FfiNotebookCaptureUtterance {
     fn from(value: RealtimeUtterance) -> Self {
         let language_variants = value
@@ -528,7 +559,7 @@ impl From<RealtimeUtterance> for FfiNotebookCaptureUtterance {
                     UtteranceVariantRole::Translation => "translation",
                 }
                 .to_string(),
-                text: variant.text,
+                text: display_text_opt(variant.text),
                 state: match variant.state {
                     UtteranceVariantState::Waiting => "waiting",
                     UtteranceVariantState::Ready => "ready",
@@ -555,11 +586,11 @@ impl From<RealtimeUtterance> for FfiNotebookCaptureUtterance {
             session_speaker_id: value.session_speaker_id,
             source_language: value.source_language,
             provisional_source_language: None,
-            source_text: value.source_text,
+            source_text: display_text(value.source_text),
             source_start_ms: value.source_start_ms,
             source_end_ms: value.source_end_ms,
             translated_language: value.translated_language,
-            translated_text: value.translated_text,
+            translated_text: display_text_opt(value.translated_text),
             completion: match value.completion {
                 UtteranceCompletion::Partial => "partial",
                 UtteranceCompletion::Complete => "complete",
@@ -592,11 +623,11 @@ fn ffi_live_preview(value: AssembledRealtimeUtterance) -> FfiNotebookCaptureUtte
         session_speaker_id: None,
         source_language: value.source_language,
         provisional_source_language,
-        source_text: value.source_text,
+        source_text: display_text(value.source_text),
         source_start_ms: value.source_start_ms,
         source_end_ms: value.source_end_ms,
         translated_language: value.translated_language,
-        translated_text: value.translated_text,
+        translated_text: display_text_opt(value.translated_text),
         completion: "partial".to_string(),
         alignment: match value.alignment {
             UtteranceAlignment::Paired => "paired",
@@ -3323,7 +3354,7 @@ fn translation_cue_from_inbox_item(
         source_language: item.source_language.clone(),
         source_start_ms: item.source_start_ms,
         source_end_ms: item.source_end_ms,
-        text: item.translated_text.clone().unwrap_or_default(),
+        text: display_text(item.translated_text.clone().unwrap_or_default()),
         completion: match item.completion {
             Some(UtteranceCompletion::Complete) => "complete".to_string(),
             // A withdrawn tombstone has no completion; "partial" keeps the
@@ -8852,35 +8883,139 @@ pub(crate) fn t2_insert_anchor(
         .map(|block| block.id.clone())
 }
 
+/// Whether the document already says exactly what this write would say.
+///
+/// Machine writes never remove lanes and never touch a lane the user has
+/// taken over, so "already current" is: same text, and every lane the write
+/// carries either frozen or already holding that text.
+fn t2_block_is_current(
+    block: &UtteranceBlock,
+    write: &MachineBlockWrite,
+    frozen: &BTreeSet<String>,
+) -> bool {
+    block.text == write.text
+        && write
+            .lanes
+            .iter()
+            .all(|(lane, text)| frozen.contains(lane) || block.lanes.get(lane) == Some(text))
+}
+
 /// Replays every Final fact of the snapshot into the block document. Pure
 /// function of (document state, machine facts): running it twice, or across
 /// a crash, terminates in the identical block list — this replaces the
 /// epoch-1 projection receipt as the idempotence proof.
+///
+/// The replay is over the whole snapshot on purpose (that is what makes it a
+/// pure function and what makes crash recovery just "run it again"), but it
+/// only *writes* what the document does not already say. Two costs used to
+/// scale with the session rather than with the new facts, and both are gone:
+///
+/// - the block list was re-read from the document per utterance, each read a
+///   full-document materialization. It is read once and the batch's own
+///   effects are modelled locally, which is all the anchor scan needs;
+/// - each utterance committed separately, so a settled line paid a full
+///   state clone, schema validation and diff to write bytes identical to the
+///   ones already there. Unchanged blocks are now skipped outright, and what
+///   remains commits as one batch.
+///
+/// Measured before this change: one replay of an 800-line session took 8.6 s
+/// and produced a byte-identical document. The replay of a session where
+/// nothing changed is now the common case during recording — one new Final
+/// against n settled lines — and it costs one batch commit.
+///
+/// Returns how many blocks the batch actually wrote. Zero means the document
+/// already said everything the snapshot says; that number is the observable
+/// the cost fix is pinned on, and it is worth a trace line because a replay
+/// that keeps rewriting settled lines is exactly the regression to catch.
 fn t2_upsert_finalized_utterances(
     projection: &TranscriptProjection,
     session_id: &str,
     utterances: &[RealtimeUtterance],
-) -> Result<(), CoreError> {
+) -> Result<usize, CoreError> {
     let sequence_by_id: HashMap<&str, u64> = utterances
         .iter()
         .map(|utterance| (utterance.id.as_str(), utterance.sequence))
         .collect();
     // Converge remote imports once so anchors resolve against the full list.
-    projection.refresh();
+    let mut blocks = projection.refresh();
+    let mut index_by_id: HashMap<String, usize> = blocks
+        .iter()
+        .enumerate()
+        .map(|(index, block)| (block.id.clone(), index))
+        .collect();
+    let mut upserts: Vec<MachineBlockUpsert> = Vec::new();
+
     for utterance in utterances {
         let Some(write) = t2_machine_block_write(utterance) else {
             continue;
         };
         let frozen = t2_frozen_lanes(utterance);
-        // Re-read per utterance: each anchor decision must see the block
-        // inserted for the previous one.
-        let blocks = projection.blocks();
-        let anchor = t2_insert_anchor(&blocks, session_id, &sequence_by_id, utterance.sequence);
-        projection
-            .machine_upsert_block(write, &frozen, anchor.as_deref())
-            .map_err(store_error)?;
+
+        match index_by_id.get(&write.id).copied() {
+            Some(index) => {
+                if t2_block_is_current(&blocks[index], &write, &frozen) {
+                    continue;
+                }
+                // Keep the local list a faithful model of what this batch
+                // will produce, so any later anchor decision reads the same
+                // document the write side will.
+                let block = &mut blocks[index];
+                block.text = write.text.clone();
+                for (lane, text) in &write.lanes {
+                    if frozen.contains(lane) {
+                        continue;
+                    }
+                    block.lanes.insert(lane.clone(), text.clone());
+                }
+                upserts.push(MachineBlockUpsert {
+                    write,
+                    frozen_lanes: frozen,
+                    insert_before: None,
+                });
+            }
+            None => {
+                // Model and write must agree on where the block lands, so the
+                // anchor is kept only when the local list can place it — the
+                // same resolution the write side performs by id.
+                let (position, anchor) = match t2_insert_anchor(
+                    &blocks,
+                    session_id,
+                    &sequence_by_id,
+                    utterance.sequence,
+                ) {
+                    Some(anchor) => match index_by_id.get(&anchor).copied() {
+                        Some(position) => (position, Some(anchor)),
+                        None => (blocks.len(), None),
+                    },
+                    None => (blocks.len(), None),
+                };
+                let inserted = UtteranceBlock {
+                    id: write.id.clone(),
+                    owner: write.owner.clone(),
+                    text: write.text.clone(),
+                    lanes: write.lanes.clone(),
+                };
+                blocks.insert(position, inserted);
+                for existing in index_by_id.values_mut() {
+                    if *existing >= position {
+                        *existing += 1;
+                    }
+                }
+                index_by_id.insert(write.id.clone(), position);
+                upserts.push(MachineBlockUpsert {
+                    write,
+                    frozen_lanes: frozen,
+                    insert_before: anchor,
+                });
+            }
+        }
     }
-    Ok(())
+
+    let written = upserts.len();
+    projection
+        .machine_upsert_blocks(upserts)
+        .map_err(store_error)?;
+    Ok(written)
 }
 
 impl ZulangueCore {
@@ -8926,9 +9061,18 @@ impl ZulangueCore {
         // replay migration here; refusal (non-linear history) fails the
         // projection loudly and the caller's state machine marks it Failed.
         self.open_transcript_block_document(&tab.doc_id)?;
-        self.with_transcript(&tab.doc_id, |handle| {
+        let written_blocks = self.with_transcript(&tab.doc_id, |handle| {
             t2_upsert_finalized_utterances(handle, &run.session_id, &projection.machine_utterances)
         })?;
+        // Counts and line numbers only — the privacy gate forbids transcript
+        // text in logs. `written` far below `replayed` is the healthy shape:
+        // the replay stays whole-snapshot for idempotence, the write does not.
+        tracing::debug!(
+            session_id = %run.session_id,
+            replayed = projection.machine_utterances.len(),
+            written = written_blocks,
+            "realtime block projection batch"
+        );
         self.persist_block_document(&tab.doc_id)?;
 
         // The upserted snapshot is durable. Advance the SQLite watermark so
@@ -14171,6 +14315,39 @@ mod tests {
         );
     }
 
+    /// The ledger keeps the provider's bytes; the UI gets a sentence. Both
+    /// lanes must cross this boundary the same way — the columns disagreeing
+    /// about their own left edge was the visible bug, and it existed because
+    /// only one of them was trimmed, further downstream.
+    #[test]
+    fn ffi_utterance_hands_the_ui_trimmed_lanes_without_touching_the_ledger() {
+        let mut utterance = projected_utterance();
+        // Soniox word tokens carry their own leading space, so a segment that
+        // opens mid-speech starts with one.
+        utterance.source_text = " good morning ".into();
+        utterance.translated_text = Some(" 早上好 ".into());
+        utterance.variants[0].text = Some(" 早上好 ".into());
+
+        let ledger = utterance.clone();
+        let dto: FfiNotebookCaptureUtterance = utterance.into();
+
+        assert_eq!(dto.source_text, "good morning");
+        assert_eq!(dto.translated_text.as_deref(), Some("早上好"));
+        assert_eq!(dto.language_variants[0].text.as_deref(), Some("早上好"));
+
+        assert_eq!(
+            ledger.source_text, " good morning ",
+            "机器事实账本保留 provider 原样的字节"
+        );
+
+        // Text that needs no trimming crosses unchanged — including the
+        // interior spacing a sentence legitimately carries.
+        let mut untouched = projected_utterance();
+        untouched.source_text = "good morning 🌏".into();
+        let dto: FfiNotebookCaptureUtterance = untouched.into();
+        assert_eq!(dto.source_text, "good morning 🌏");
+    }
+
     fn projected_utterance() -> RealtimeUtterance {
         RealtimeUtterance {
             id: "utterance-a".into(),
@@ -16118,10 +16295,12 @@ mod tests {
             .iter()
             .find(|variant| variant.language == "zh")
             .unwrap();
-        assert_eq!(lane.text.as_deref(), Some("你好 世界"));
+        // Two Chinese segments join without a space: the boundary between two
+        // provider segments is ours to set, and Chinese does not mark it.
+        assert_eq!(lane.text.as_deref(), Some("你好世界"));
         assert_eq!(
             projected_lane(&core),
-            "你好 世界",
+            "你好世界",
             "recovery grows the projected lane in place (one zh lane per block by construction)"
         );
     }
@@ -17499,6 +17678,66 @@ mod tests {
                 blocks[0].lanes["zh"], "早上好(人工)",
                 "冻结车道机器绝不覆盖"
             );
+        }
+
+        /// The projector replays the whole snapshot every time — that is what
+        /// makes it a pure function of (document, facts) and what makes crash
+        /// recovery just "run it again". What must not scale with the session
+        /// is the **writing**: a settled line that the document already holds
+        /// costs a full state clone, schema validation and diff per commit, so
+        /// rewriting it once per capture event is what turned a 90-minute
+        /// recording into seconds of no-op work per new sentence.
+        ///
+        /// Pinning the written count rather than wall clock keeps the test
+        /// honest on a loaded machine while still failing the moment the
+        /// replay starts rewriting what it already wrote.
+        #[test]
+        fn t2_replay_writes_only_the_lines_that_changed() {
+            let projection = t2_projection();
+            let mut session: Vec<RealtimeUtterance> = (0..8)
+                .map(|index| {
+                    t2_final_source(
+                        "session-a",
+                        &format!("utterance-{index}"),
+                        index,
+                        &format!("line {index}"),
+                    )
+                })
+                .collect();
+
+            let written =
+                t2_upsert_finalized_utterances(&projection, "session-a", &session).unwrap();
+            assert_eq!(written, 8, "首次投影写下每一行");
+
+            let written =
+                t2_upsert_finalized_utterances(&projection, "session-a", &session).unwrap();
+            assert_eq!(written, 0, "重放一份文档已经持有的快照,一个块都不该写");
+
+            // One new Final arrives. The cost of the replay is the new line,
+            // not the eight settled ones it is replayed alongside.
+            session.push(t2_final_source("session-a", "utterance-8", 8, "line 8"));
+            let written =
+                t2_upsert_finalized_utterances(&projection, "session-a", &session).unwrap();
+            assert_eq!(written, 1, "只写新到的那一行");
+
+            // A provider revision of an old line is still written: skipping is
+            // "already says this", never "already saw this id".
+            session[3].source_text = "line 3 (revised)".into();
+            session[3].variants = vec![projected_source_variant("en", "line 3 (revised)", 2)];
+            let written =
+                t2_upsert_finalized_utterances(&projection, "session-a", &session).unwrap();
+            assert_eq!(written, 1, "订正过的旧行照常写");
+
+            let blocks = projection.blocks();
+            assert_eq!(
+                blocks.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(),
+                (0..9)
+                    .map(|index| format!("utterance-{index}"))
+                    .collect::<Vec<_>>(),
+                "跳过未变的块不影响顺序"
+            );
+            assert_eq!(blocks[3].text, "line 3 (revised)");
+            assert_eq!(blocks[8].text, "line 8");
         }
 
         #[test]

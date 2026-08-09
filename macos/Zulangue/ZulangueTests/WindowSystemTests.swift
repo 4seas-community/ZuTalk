@@ -2288,6 +2288,98 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(SubtitleOverlayLayoutPolicy.maximumLanguageCount, 3)
     }
 
+    /// Three languages on a canvas that affords two must render two columns
+    /// and one, not three stacked bands. The old policy jumped 3 → 1, so a
+    /// canvas a few points too narrow — or one step of the font slider — took
+    /// the room from "three columns side by side" to "nothing lines up".
+    func testSubtitleOverlayLayoutPolicy_audienceColumnsDegradeOneAtATime() {
+        // tile = max(340, 10 × font) = 400 at this size.
+        let font = 40.0
+        let tile = SubtitleOverlayLayoutPolicy.minimumAudienceTileWidth(fontSize: font)
+        XCTAssertEqual(tile, 400)
+
+        // Exactly enough for three tiles plus padding plus two gaps.
+        let threeUp = tile * 3
+            + SubtitleOverlayLayoutPolicy.canvasHorizontalPadding
+            + SubtitleOverlayLayoutPolicy.audienceColumnSpacing * 2
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceColumnCount(
+                width: threeUp,
+                languageCount: 3,
+                fontSize: font
+            ),
+            3
+        )
+        // One point short of three: two columns, never one.
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceColumnCount(
+                width: threeUp - 1,
+                languageCount: 3,
+                fontSize: font
+            ),
+            2
+        )
+
+        let twoUp = tile * 2
+            + SubtitleOverlayLayoutPolicy.canvasHorizontalPadding
+            + SubtitleOverlayLayoutPolicy.audienceColumnSpacing
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceColumnCount(
+                width: twoUp,
+                languageCount: 3,
+                fontSize: font
+            ),
+            2
+        )
+        // Below two tiles it finally collapses to one — the honest floor.
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceColumnCount(
+                width: twoUp - 1,
+                languageCount: 3,
+                fontSize: font
+            ),
+            1
+        )
+    }
+
+    /// The gaps between columns are real width. A canvas sized from the bare
+    /// per-column minimum, with no room for the padding and separators, must
+    /// not be told the columns fit.
+    func testSubtitleOverlayLayoutPolicy_chromeCountsAgainstColumnCapacity() {
+        let font = 30.0
+        let column = SubtitleOverlayLayoutPolicy.minimumColumnWidth(fontSize: font)
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.conversationLayout(
+                width: column * 3,
+                languageCount: 3,
+                fontSize: font
+            ),
+            .stacked,
+            "三栏的裸宽度不含内边距与分隔线,不该判定为放得下"
+        )
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.conversationLayout(
+                width: column * 3
+                    + SubtitleOverlayLayoutPolicy.canvasHorizontalPadding
+                    + SubtitleOverlayLayoutPolicy.conversationLaneDividerWidth * 2,
+                languageCount: 3,
+                fontSize: font
+            ),
+            .columns
+        )
+
+        let tile = SubtitleOverlayLayoutPolicy.minimumAudienceTileWidth(fontSize: font)
+        XCTAssertEqual(
+            SubtitleOverlayLayoutPolicy.audienceColumnCount(
+                width: tile * 3,
+                languageCount: 3,
+                fontSize: font
+            ),
+            2,
+            "观众栏同理:算上 chrome 只放得下两栏"
+        )
+    }
+
     func testSubtitleOverlayFontPolicy_clampsAndStepsWithinReadableRange() {
         XCTAssertEqual(SubtitleOverlayFontPolicy.clamped(2), 16)
         // Projector-canvas sizes are legitimate values, not clamp targets.
@@ -2342,9 +2434,12 @@ final class WindowSystemTests: XCTestCase {
             mode: .audience
         )
         XCTAssertEqual(audience, 62)
+        // The canvas width goes in raw: the policy prices the padding and the
+        // inter-tile gaps itself, and automatic reserves the same chrome, so
+        // the size it picks is one the layout can actually honour.
         XCTAssertEqual(
             SubtitleOverlayLayoutPolicy.audienceColumnCount(
-                width: 1_920 - 24,
+                width: 1_920,
                 languageCount: 3,
                 fontSize: audience
             ),

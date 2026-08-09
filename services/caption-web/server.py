@@ -375,6 +375,13 @@ VIEWER_PAGE = """<!DOCTYPE html>
   /* 正在说的文字:直接续在稿后原地刷新,不做引用块。弱色区分推测性。 */
   #livetail .cell { color: #9a9a9a; }
   #livetail p { margin: 0 0 12px; }
+  /* 各栏底端对齐 —— 与 App 画布同一条规矩:「现在」永远在底边,跨语言
+     的对应关系在读者正在读的那一行上自动成立。各栏行数天然不等(辅助
+     流断句比 canonical 粗),顶端起排会让最新的那句在三栏里落在三个高度,
+     看起来就是「语言不在同一行」。上面的稿是按块分行的网格,那里行对齐
+     由每行自己保证,只有实时区需要这条。 */
+  #livetail .row { align-items: end; }
+  #livetail p:last-child { margin-bottom: 0; }
   /* 录音的开始/暂停:一条横跨全部栏的线,不属于任何一栏。 */
   .divider { display: flex; align-items: center; gap: 10px;
     margin: 18px 0 14px; color: #7a7a7a; font-size: 12px; }

@@ -87,9 +87,15 @@ struct SharedInboxPage: View {
                         id: \.offset
                     ) { _, line in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(line.sourceText)
-                                .font(.body)
-                                .foregroundColor(.textPrimary)
+                            // 压扁行里,译文 cue 的原文栏本来就是空的
+                            // (share_api 的 caption_frame_from 只搬运,不重做
+                            // 对应关系)。无条件画它就是每条译文上面多一条
+                            // 空行的高度 —— 读者看到的是凭空的间隔。
+                            if line.sourceText.isEmpty == false {
+                                Text(line.sourceText)
+                                    .font(.body)
+                                    .foregroundColor(.textPrimary)
+                            }
                             if let translated = line.targetText, !translated.isEmpty {
                                 Text(translated)
                                     .font(.bodySM)

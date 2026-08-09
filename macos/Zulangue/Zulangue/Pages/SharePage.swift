@@ -547,9 +547,13 @@ struct SharePage: View {
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 ForEach(Array(viewModel.lines.enumerated()), id: \.offset) { _, line in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(line.sourceText)
-                            .font(.body)
-                            .foregroundColor(.textPrimary)
+                        // 同 SharedInboxPage:译文 cue 的压扁行没有原文,
+                        // 无条件画一条空 Text 就是一段凭空的间隔。
+                        if line.sourceText.isEmpty == false {
+                            Text(line.sourceText)
+                                .font(.body)
+                                .foregroundColor(.textPrimary)
+                        }
                         if let translated = line.targetText, !translated.isEmpty {
                             Text(translated)
                                 .font(.bodySM)

@@ -5940,6 +5940,64 @@ struct ComposedTranslationLane {
     completion: Option<UtteranceCompletion>,
 }
 
+/// Whether a character belongs to a writing system that sets word boundaries
+/// without spaces. Mirrors `SubtitlePacedReveal.script(for:)` on the Swift
+/// side, which classifies the same ranges to pace reveal speed.
+fn is_dense_script(character: char) -> bool {
+    matches!(character as u32,
+        0x2E80..=0x9FFF     // CJK radicals through unified ideographs (incl. kana)
+        | 0xF900..=0xFAFF   // compatibility ideographs
+        | 0x0E00..=0x0E7F   // Thai
+    )
+}
+
+/// Whether joining two auxiliary segments needs a space between them.
+///
+/// The provider expresses spacing inside a segment by putting it on the
+/// tokens themselves (`" world"`); the boundary *between* two segments is
+/// ours to decide, because the provider never emitted one. Deciding it
+/// blindly — a space whenever neither side already carries whitespace — put
+/// an ASCII space in the middle of Chinese and Thai sentences, which have no
+/// such boundary mark. A space belongs there only when **both** sides are
+/// written in a script that separates words with one.
+fn needs_separator_between(accumulated: &str, next: &str) -> bool {
+    let (Some(previous), Some(following)) = (accumulated.chars().next_back(), next.chars().next())
+    else {
+        return false; // Nothing on one side: no boundary to mark.
+    };
+    !previous.is_whitespace()
+        && !following.is_whitespace()
+        && !is_dense_script(previous)
+        && !is_dense_script(following)
+}
+
+/// Whether a recomposed lane still says everything the settled lane already
+/// showed, in order, and adds to it.
+///
+/// The invariant being protected is "a reader never sees what they already
+/// read change", and a byte prefix was a faithful proxy for it while the
+/// segment join was byte-stable. It stopped being one when the join became
+/// script-aware: a recording made by an older build holds Chinese and Thai
+/// lanes composed with a spurious ASCII space between two segments, and
+/// recomposing them now — which startup backfill does for every recording
+/// that still has unbound segments — produces the same words without it.
+/// Refusing that as a rewrite would turn a typography correction into a
+/// hard `Conflict` on every affected recording at launch.
+///
+/// So the byte prefix is tried first, and a whitespace-insensitive prefix is
+/// the fallback. Only boundary whitespace can differ: text inside a segment
+/// is the provider's, untouched.
+fn extends_settled_lane(settled: &str, incoming: &str) -> bool {
+    if incoming.len() > settled.len() && incoming.starts_with(settled) {
+        return true;
+    }
+    let without_whitespace =
+        |value: &str| -> String { value.chars().filter(|c| !c.is_whitespace()).collect() };
+    let settled = without_whitespace(settled);
+    let incoming = without_whitespace(incoming);
+    incoming.len() > settled.len() && incoming.starts_with(&settled)
+}
+
 /// Concatenates every auxiliary segment bound to one canonical row's language
 /// lane, in the order the words were spoken.
 ///
@@ -6000,10 +6058,7 @@ fn composed_translation_lane_from_conn(
         }
         // The first segment is copied verbatim so a single-segment lane keeps
         // the provider's own leading spacing, byte for byte.
-        if !text.is_empty()
-            && !text.ends_with(char::is_whitespace)
-            && !segment.starts_with(char::is_whitespace)
-        {
+        if needs_separator_between(&text, segment) {
             text.push(' ');
         }
         text.push_str(segment);
@@ -6340,9 +6395,7 @@ fn upsert_translation_variant_from_conn(
             let extends_final_lane = lane_write == TranslationLaneWrite::ComposeAuxiliarySegments
                 && incoming_is_final
                 && existing.text.as_deref().is_some_and(|settled| {
-                    text.is_some_and(|incoming| {
-                        incoming.len() > settled.len() && incoming.starts_with(settled)
-                    })
+                    text.is_some_and(|incoming| extends_settled_lane(settled, incoming))
                 });
             if !incoming_is_final && !extends_final_lane {
                 // Complete is the absorbing owner state for one normalized
@@ -7998,6 +8051,61 @@ fn to_sql_conversion_error(error: NotebookCaptureStoreError) -> rusqlite::Error 
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    /// Auxiliary segments are joined by us, not by the provider — it never
+    /// emitted the boundary between two of its own segments. The join used to
+    /// be script-blind, so a Chinese or Thai lane composed from two segments
+    /// grew an ASCII space in the middle of a sentence that has no such mark.
+    #[test]
+    fn segment_join_marks_a_boundary_only_where_the_script_uses_one() {
+        // Dense scripts set their own boundaries: never a space.
+        assert!(!needs_separator_between("他说", "我们再讲一遍"));
+        assert!(!needs_separator_between("ผมคิดว่า", "เราควรเริ่มใหม่"));
+        assert!(!needs_separator_between("こんにちは", "世界"));
+
+        // Spaced scripts need one, because the provider put word spacing on
+        // tokens and there are no tokens across a segment boundary.
+        assert!(needs_separator_between("we should", "start over"));
+        assert!(needs_separator_between("bonjour", "tout le monde"));
+        // Korean is one of the eight and writes spaces between words; Hangul
+        // syllables sit above the dense ranges precisely so this holds.
+        assert!(needs_separator_between("안녕하세요", "반갑습니다"));
+
+        // Whitespace already present on either side is not doubled.
+        assert!(!needs_separator_between("we should ", "start over"));
+        assert!(!needs_separator_between("we should", " start over"));
+
+        // Nothing on one side is not a boundary.
+        assert!(!needs_separator_between("", "start over"));
+        assert!(!needs_separator_between("we should", ""));
+
+        // A mixed boundary stays unspaced: the dense side is the one whose
+        // reader would see a space that does not belong there.
+        assert!(!needs_separator_between("他说", "hello"));
+        assert!(!needs_separator_between("hello", "他说"));
+    }
+
+    /// The append-only guard has to survive the join rule changing under it,
+    /// or every recording that already holds a space-joined CJK lane fails
+    /// its startup backfill instead of being corrected by it.
+    #[test]
+    fn settled_lane_extension_survives_the_join_rule_changing() {
+        // Byte prefix: the ordinary spaced-script case.
+        assert!(extends_settled_lane("we should", "we should start over"));
+        // Old build joined two Chinese segments with a space; the new
+        // composition drops it and adds a third segment.
+        assert!(extends_settled_lane("你好 世界", "你好世界再见"));
+        assert!(extends_settled_lane("สวัสดี ครับ", "สวัสดีครับทุกคน"));
+
+        // Not an extension: a genuine rewrite of what the reader already saw.
+        assert!(!extends_settled_lane("你好世界", "你好朋友"));
+        assert!(!extends_settled_lane("we should", "we shall start over"));
+        // Same words, nothing added — nothing to write.
+        assert!(!extends_settled_lane("你好 世界", "你好世界"));
+        assert!(!extends_settled_lane("we should", "we should"));
+        // Shrinking is never an extension.
+        assert!(!extends_settled_lane("你好世界再见", "你好世界"));
+    }
 
     fn fixture() -> (TempDir, NotebookCaptureStore, String) {
         let temp = tempfile::tempdir().unwrap();
