@@ -542,11 +542,18 @@ assert-public-app-privacy:
     # 147MB 的胖二进制一个字符串都吐不出来(试过 -a、-arch all,全是 0),
     # 于是「没有本机路径」这句话曾经是靠一个瞎了的探针说出来的。
     # grep -a 把整个文件当文本扫,调试信息里的路径一样跑不掉。
+    # Xcode 把 .strings 编成 UTF-16,ASCII grep 一个字都看不见它们 ——
+    # 本地化文案恰恰是最可能藏进旧身份名字的地方。所以每个文件扫两遍:
+    # 原始字节一遍,再按 UTF-16 转成 UTF-8 一遍。
+    scan_all() {
+        find "$APP" -type f -maxdepth 6 -print0 | xargs -0 -I{} sh -c '
+            grep -oaE "$1" "$2" 2>/dev/null
+            iconv -f UTF-16 -t UTF-8 "$2" 2>/dev/null | grep -oaE "$1" 2>/dev/null
+        ' _ "$1" {}
+    }
     SCAN="$(mktemp)"
     trap 'rm -f "$SCAN"' EXIT
-    find "$APP" -type f -maxdepth 6 -print0 \
-        | xargs -0 grep -oaE '/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/' 2>/dev/null \
-        | sort -u >"$SCAN" || true
+    scan_all '/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/' | sort -u >"$SCAN" || true
     if [ -s "$SCAN" ]; then
         echo "FAIL: release app contains a machine-local user path" >&2
         head -5 "$SCAN" >&2
@@ -557,8 +564,7 @@ assert-public-app-privacy:
     ALLOWED_CONTEXT='github.com/4seas-community/zulangue'
     prior_identity_pattern='4[[:space:]_-]*S''EAS|Four''Seas|Voice''Tool|Gi''tea'
     IDENTITY="$(mktemp)"
-    find "$APP" -type f -maxdepth 6 -print0 \
-        | xargs -0 grep -oaEi ".{0,40}(${prior_identity_pattern}).{0,40}" 2>/dev/null \
+    scan_all ".{0,40}(${prior_identity_pattern}).{0,40}" \
         | grep -Fv "$ALLOWED_CONTEXT" | sort -u >"$IDENTITY" || true
     if [ -s "$IDENTITY" ]; then
         echo "FAIL: release app contains a prior product or service identity" >&2
