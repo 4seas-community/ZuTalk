@@ -267,10 +267,7 @@ fn a_trilingual_frame_reaches_the_viewer_with_everything_the_canvas_needs() {
         .map(|c| c.target_language.as_str())
         .collect();
     assert_eq!(cue_languages, vec!["en", "th"], "撤回的 cue 不得过网");
-    assert!(received
-        .translation_cues
-        .iter()
-        .all(|c| c.text != "ถอนแล้ว"));
+    assert!(received.translation_cues.iter().all(|c| c.text != "ถอนแล้ว"));
 
     // lane health 是栏目的来源:主播真的在跑的车道才配有一栏。
     let lanes: Vec<(Option<&str>, &str)> = received
@@ -287,9 +284,7 @@ fn a_trilingual_frame_reaches_the_viewer_with_everything_the_canvas_needs() {
     // ── 把收到的这一帧交给下半场。
     let actual = to_golden_json(&received);
     let path = golden_path();
-    if std::env::var("ZULANGUE_REGENERATE_CAPTION_GOLDEN").as_deref() == Ok("1")
-        || !path.exists()
-    {
+    if std::env::var("ZULANGUE_REGENERATE_CAPTION_GOLDEN").as_deref() == Ok("1") || !path.exists() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, &actual).unwrap();
         panic!("golden 已写入 {},重跑一次以验证", path.display());
