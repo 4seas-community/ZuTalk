@@ -34,6 +34,9 @@ MAX_CREATES_PER_MINUTE = 6
 MAX_SUBSCRIBERS_PER_ROOM = 200
 # 订阅者队列深度。帧是 replace-in-full 的,浏览器掉队就丢旧帧。
 SUBSCRIBER_QUEUE_DEPTH = 32
+# 一场会议里录音开始/暂停的次数上限。超过就丢最旧的 —— 分割线是
+# 追加式的,不设上限的话一次误触发的循环能把内存撑爆。
+MAX_SEGMENTS_PER_ROOM = 500
 
 
 def now() -> float:
@@ -51,6 +54,8 @@ class Room:
         self.blocks: dict[str, dict] = {}
         # session_id 首次出现的顺序,网页按它排稿。
         self.session_order: list[str] = []
+        # 录音开始/暂停的分割线。追加式:顺序即语义,不能被覆盖。
+        self.segments: list[dict] = []
         self.subscribers: list[queue.Queue] = []
         self.ended = False
 
@@ -131,6 +136,13 @@ class RoomStore:
                     if session_id not in room.blocks:
                         room.session_order.append(session_id)
                     room.blocks[session_id] = data
+            elif event == "segment":
+                room.segments.append(data)
+                del room.segments[:-MAX_SEGMENTS_PER_ROOM]
+                # 暂停即字幕停住:清掉最后一帧,否则晚扫码的人会看到
+                # 一句停在半空的推测文本,以为还在说。
+                if data.get("kind") == "paused":
+                    room.frame = None
             for subscriber in list(room.subscribers):
                 offer(subscriber, {"event": event, "data": data})
 
@@ -145,6 +157,7 @@ class RoomStore:
             init = {
                 "sessions": [room.blocks[sid] for sid in room.session_order],
                 "frame": room.frame,
+                "segments": list(room.segments),
             }
             offer(subscriber, {"event": "init", "data": init})
             room.subscribers.append(subscriber)
@@ -209,6 +222,12 @@ VIEWER_PAGE = """<!DOCTYPE html>
   /* 正在说的文字:直接续在稿后原地刷新,不做引用块。弱色区分推测性。 */
   #livetail .cell { color: #9a9a9a; }
   #livetail p { margin: 0 0 12px; }
+  /* 录音的开始/暂停:一条横跨全部栏的线,不属于任何一栏。 */
+  .divider { display: flex; align-items: center; gap: 10px;
+    margin: 18px 0 14px; color: #7a7a7a; font-size: 12px; }
+  .divider::before, .divider::after {
+    content: ""; height: 1px; background: #333; flex: 1; }
+  .divider.paused { color: #666; }
   #follow {
     position: fixed; right: 16px; bottom: 16px; display: none;
     background: #2a2; color: #fff; border: none; border-radius: 999px;
@@ -246,6 +265,8 @@ const UI = {
     reconnecting: "重连中…",
     ended: "这场分享已结束。字幕稿会保留到你关闭页面。",
     follow: "↓ 回到实时",
+    started: "录音开始",
+    paused: "录音已暂停",
     source: "原文",
   },
   "en": {
@@ -255,6 +276,8 @@ const UI = {
     reconnecting: "reconnecting…",
     ended: "This share has ended. The transcript stays until you close the page.",
     follow: "↓ Live",
+    started: "recording started",
+    paused: "recording paused",
     source: "Source",
   },
   "th": {
@@ -264,6 +287,8 @@ const UI = {
     reconnecting: "กำลังเชื่อมต่อใหม่…",
     ended: "การแชร์นี้จบแล้ว ทรานสคริปต์จะยังอยู่จนกว่าคุณจะปิดหน้านี้",
     follow: "↓ กลับสู่สด",
+    started: "เริ่มบันทึก",
+    paused: "หยุดบันทึกชั่วคราว",
     source: "ต้นฉบับ",
   },
 };
@@ -291,8 +316,8 @@ function loadSelection() {
   return ["source"];
 }
 
-const state = { sessions: [], frame: null, selected: loadSelection(), langs: [],
-                following: true, ended: false, statusKey: "connecting",
+const state = { sessions: [], frame: null, segments: [], selected: loadSelection(),
+                langs: [], following: true, ended: false, statusKey: "connecting",
                 uiLang: detectUiLang() };
 const el = (id) => document.getElementById(id);
 const t = (key) => UI[state.uiLang][key];
@@ -423,12 +448,61 @@ function appendRow(holder, columns, values, annotation) {
   holder.appendChild(row);
 }
 
+function formatTime(epochSeconds) {
+  if (!epochSeconds) return "";
+  try {
+    return new Date(epochSeconds * 1000).toLocaleTimeString(undefined,
+      { hour: "2-digit", minute: "2-digit" });
+  } catch (e) { return ""; }
+}
+
+// 一条分割线。开始的线带时间,暂停的线只说「停了」。
+function appendDivider(holder, segment) {
+  const div = document.createElement("div");
+  const started = segment.kind === "started";
+  div.className = "divider" + (started ? "" : " paused");
+  const label = document.createElement("span");
+  const time = formatTime(segment.at);
+  label.textContent = started
+    ? (time ? `${time} · ${t("started")}` : t("started"))
+    : t("paused");
+  div.appendChild(label);
+  holder.appendChild(div);
+}
+
+// 暂停紧接着恢复(中间没有内容)时,两条线并排毫无意义 —— 只画后
+// 那条带时间的。暂停后一直没恢复,那条「已暂停」就是当前状态,要留着。
+function mergedSegments() {
+  const merged = [];
+  for (const segment of state.segments) {
+    const previous = merged[merged.length - 1];
+    if (previous
+        && previous.kind === "paused"
+        && segment.kind === "started"
+        && previous.session_id === segment.session_id
+        && (previous.after_block_id || null) === (segment.after_block_id || null)) {
+      merged[merged.length - 1] = segment;
+    } else {
+      merged.push(segment);
+    }
+  }
+  return merged;
+}
+
 function renderTranscript(columns) {
   const holder = el("transcript");
   holder.textContent = "";
+  const segments = mergedSegments();
+  const placed = new Set();
   for (const session of state.sessions) {
     const sessionDiv = document.createElement("div");
     sessionDiv.className = "session";
+    const mine = segments.filter((s) => s.session_id === session.session_id);
+    // 这一场开头的线(还没有内容时录的)。
+    for (const segment of mine.filter((s) => !s.after_block_id)) {
+      appendDivider(sessionDiv, segment);
+      placed.add(segment);
+    }
     for (const block of (session.blocks || [])) {
       appendRow(
         sessionDiv,
@@ -436,8 +510,17 @@ function renderTranscript(columns) {
         columns.map((key) => cellText(block, key)),
         block.owner === "user"
       );
+      for (const segment of mine.filter((s) => s.after_block_id === block.id)) {
+        appendDivider(sessionDiv, segment);
+        placed.add(segment);
+      }
     }
     holder.appendChild(sessionDiv);
+  }
+  // 还没有稿的线(房间刚开、第一场录音尚未落定内容)照样要显示 ——
+  // 「已经开始录了」本身就是观看者需要的信息。
+  for (const segment of segments) {
+    if (!placed.has(segment)) appendDivider(holder, segment);
   }
 }
 
@@ -597,6 +680,7 @@ source.addEventListener("init", (e) => {
   const data = JSON.parse(e.data);
   state.sessions = data.sessions || [];
   state.frame = data.frame;
+  state.segments = data.segments || [];
   setStatus("live");
   render();
 });
@@ -605,6 +689,13 @@ source.addEventListener("blocks", (e) => {
   const data = JSON.parse(e.data);
   const index = state.sessions.findIndex((s) => s.session_id === data.session_id);
   if (index >= 0) state.sessions[index] = data; else state.sessions.push(data);
+  render();
+});
+source.addEventListener("segment", (e) => {
+  const data = JSON.parse(e.data);
+  state.segments.push(data);
+  // 暂停即字幕停住 —— 半句推测文本不能一直挂在屏幕上。
+  if (data.kind === "paused") state.frame = null;
   render();
 });
 source.addEventListener("ended", () => {
@@ -759,7 +850,11 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
-        for suffix, event in (("/frame", "frame"), ("/blocks", "blocks")):
+        for suffix, event in (
+            ("/frame", "frame"),
+            ("/blocks", "blocks"),
+            ("/segment", "segment"),
+        ):
             if self.path.startswith("/v1/rooms/") and self.path.endswith(suffix):
                 room_id = self.path[len("/v1/rooms/"):-len(suffix)]
                 room = self.store.room_for_publish(room_id, self.bearer_token())

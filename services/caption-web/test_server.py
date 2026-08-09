@@ -187,6 +187,43 @@ class CaptionWebTests(unittest.TestCase):
         status, _ = self.request("GET", f"/r/{room['room_id']}")
         self.assertEqual(status, 404)
 
+    def test_pause_marker_stops_the_live_tail_for_late_subscribers(self):
+        """暂停即字幕停住 —— 半句推测文本不能挂在屏幕上等下一个人看到。
+
+        房间不散:分割线全部保留在 init 里,晚扫码的人也看得到这场录音
+        断过、几点重开的。
+        """
+        room = self.create_room()
+        rid, token = room["room_id"], room["publish_token"]
+        self.request("POST", f"/v1/rooms/{rid}/blocks",
+                     body={"session_id": "s1", "blocks": [
+                         {"id": "b1", "owner": "capture:s1", "text": "第一段", "lanes": {}}]},
+                     token=token)
+        self.request("POST", f"/v1/rooms/{rid}/frame",
+                     body={"preview_revision": 3, "session_id": "s1",
+                           "utterances": [{"id": "u9", "session_id": "s1",
+                                           "source_text": "说到一半"}]},
+                     token=token)
+        self.request("POST", f"/v1/rooms/{rid}/segment",
+                     body={"kind": "paused", "session_id": "s1", "at": 1000,
+                           "after_block_id": "b1"}, token=token)
+
+        stream = self.open_sse(rid)
+        event, data = self.read_event(stream)
+        self.assertEqual(event, "init")
+        self.assertIsNone(data["frame"], "暂停后最后一帧必须清掉")
+        self.assertEqual(len(data["segments"]), 1)
+        self.assertEqual(data["segments"][0]["kind"], "paused")
+
+        # 房间还活着:恢复录音的线照常追加,带着重开的时间。
+        self.request("POST", f"/v1/rooms/{rid}/segment",
+                     body={"kind": "started", "session_id": "s1", "at": 2000,
+                           "after_block_id": "b1"}, token=token)
+        event, data = self.read_event(stream)
+        self.assertEqual(event, "segment")
+        self.assertEqual(data["kind"], "started")
+        self.assertEqual(data["at"], 2000)
+
     def test_viewer_page_script_parses(self):
         """内联脚本必须是合法 JS。
 
