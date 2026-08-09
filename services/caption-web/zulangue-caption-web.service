@@ -1,0 +1,15 @@
+[Unit]
+Description=Zulangue caption-web service (scan-to-view live captions)
+After=network-online.target
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/zulangue-caption-web
+ExecStart=/usr/bin/python3 server.py --host 0.0.0.0 --port 8100 --public-base https://zulangue-caption.exe.xyz
+Restart=on-failure
+RestartSec=2
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
