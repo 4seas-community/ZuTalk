@@ -77,11 +77,23 @@ RUST_EVENTS=$(curl -sN --max-time 3 "$BASE/v1/rooms/$RUST_ROOM/events" || true)
 echo "$RUST_EVENTS" | grep -q "こんにちは" || { echo "✗ Rust 推的帧没到生产"; exit 1; }
 echo "$RUST_EVENTS" | grep -q "冒烟稿" || { echo "✗ Rust 推的稿没到生产"; exit 1; }
 
-step "关房:订阅者收 ended,晚来的人 404"
+step "封笔:不再收推送,稿仍读得到"
 curl -sf --max-time 15 -X DELETE -H "Authorization: Bearer $TOKEN" \
     "$BASE/v1/rooms/$ROOM_ID" > /dev/null
+# 散场之后扫码进来的人要读到整份稿,不是 404 —— 会议散场恰恰是最多人
+# 去读稿的时候。稿由留存期兜底清除,不由「停止共享」清除。
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$BASE/r/$ROOM_ID")
-test "$STATUS" = "404" || { echo "✗ 关房后观看页得到 $STATUS,期望 404"; exit 1; }
+test "$STATUS" = "200" || { echo "✗ 封笔后观看页得到 $STATUS,期望 200"; exit 1; }
+ENDED_EVENTS=$(curl -sN --max-time 3 "$BASE/v1/rooms/$ROOM_ID/events" || true)
+echo "$ENDED_EVENTS" | grep -q "event: init" \
+    || { echo "✗ 封笔后订阅拿不到全量"; exit 1; }
+echo "$ENDED_EVENTS" | grep -q "event: ended" \
+    || { echo "✗ 封笔后订阅没收到 ended"; exit 1; }
+# 封笔之后主播不能再写。
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+    -d '{"preview_revision":99}' "$BASE/v1/rooms/$ROOM_ID/frame")
+test "$STATUS" = "401" || { echo "✗ 封笔后仍接受推送($STATUS)"; exit 1; }
 # Rust 那间由服务端 TTL 兜底(测试进程退出即弃房),这里替它收尾。
 curl -s --max-time 15 -X DELETE "$BASE/v1/rooms/$RUST_ROOM" \
     -H "Authorization: Bearer unknown" > /dev/null || true
