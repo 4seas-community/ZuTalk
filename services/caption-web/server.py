@@ -180,7 +180,7 @@ VIEWER_PAGE = """<!DOCTYPE html>
   :root { color-scheme: light dark; }
   body {
     margin: 0; font-family: -apple-system, "PingFang SC", "Hiragino Sans",
-    "Noto Sans", sans-serif; background: #111; color: #eee;
+    "Noto Sans", "Noto Sans Thai", sans-serif; background: #111; color: #eee;
     display: flex; flex-direction: column; height: 100dvh;
   }
   header {
@@ -197,10 +197,16 @@ VIEWER_PAGE = """<!DOCTYPE html>
     border-radius: 6px; padding: 3px 6px; font-size: 12px; }
   main { flex: 1; overflow-y: auto; padding: 16px 14px 40px; }
   .session { margin-bottom: 20px; }
-  .block { margin: 0 0 12px; line-height: 1.55; font-size: 17px; }
-  .block .annotation { color: #9ac; font-size: 15px; }
+  .row { display: grid; gap: 14px; margin: 0 0 12px; }
+  .cell { line-height: 1.55; font-size: 17px; min-width: 0;
+    overflow-wrap: break-word; }
+  .cell.empty { color: #555; }
+  .cell .annotation { color: #9ac; font-size: 15px; }
+  .colhead { position: sticky; top: 0; background: #111; display: grid;
+    gap: 14px; padding: 4px 0 6px; border-bottom: 1px solid #2a2a2a;
+    margin-bottom: 10px; }
+  .colhead span { font-size: 12px; color: #888; }
   .live { opacity: 0.65; border-left: 3px solid #6c6; padding-left: 10px; }
-  .live .partial { font-style: normal; }
   #follow {
     position: fixed; right: 16px; bottom: 16px; display: none;
     background: #2a2; color: #fff; border: none; border-radius: 999px;
@@ -220,15 +226,16 @@ VIEWER_PAGE = """<!DOCTYPE html>
   </select>
 </header>
 <main id="main">
+  <div id="colhead"></div>
   <div id="transcript"></div>
   <div id="livetail" class="live"></div>
 </main>
-<button id="follow">↓ Live</button>
+<button id="follow"></button>
 <script>
 "use strict";
 // 界面文案(非内容)的三语:观看的人是简中/泰/英三种语言背景,
 // 「This share has ended」对英语不好的人就是一句谜语。内容语言按钮
-// (稿显示哪条车道)与界面语言互相独立。
+// (稿显示哪些车道)与界面语言互相独立。
 const UI = {
   "zh-Hans": {
     title: "Zulangue 实时字幕",
@@ -237,6 +244,7 @@ const UI = {
     reconnecting: "重连中…",
     ended: "这场分享已结束。字幕稿会保留到你关闭页面。",
     follow: "↓ 回到实时",
+    source: "原文",
   },
   "en": {
     title: "Zulangue Live Captions",
@@ -245,6 +253,7 @@ const UI = {
     reconnecting: "reconnecting…",
     ended: "This share has ended. The transcript stays until you close the page.",
     follow: "↓ Live",
+    source: "Source",
   },
   "th": {
     title: "Zulangue ซับไตเติลสด",
@@ -253,6 +262,7 @@ const UI = {
     reconnecting: "กำลังเชื่อมต่อใหม่…",
     ended: "การแชร์นี้จบแล้ว ทรานสคริปต์จะยังอยู่จนกว่าคุณจะปิดหน้านี้",
     follow: "↓ กลับสู่สด",
+    source: "ต้นฉบับ",
   },
 };
 
@@ -267,10 +277,24 @@ function detectUiLang() {
   return "en";
 }
 
-const state = { sessions: [], frame: null, lang: null, langs: [], following: true,
-                ended: false, statusKey: "connecting", uiLang: detectUiLang() };
+// 内容语言选择:最多三个,分栏并排。"source" 是「原文」伪语言 ——
+// 稿的原文不在车道里(车道只有译文),没有它就没法把原文当一栏选。
+const MAX_COLUMNS = 3;
+
+function loadSelection() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("zulangue-content-langs") || "null");
+    if (Array.isArray(saved) && saved.length) return saved.slice(0, MAX_COLUMNS);
+  } catch (e) { /* 同上 */ }
+  return ["source"];
+}
+
+const state = { sessions: [], frame: null, selected: loadSelection(), langs: [],
+                following: true, ended: false, statusKey: "connecting",
+                uiLang: detectUiLang() };
 const el = (id) => document.getElementById(id);
 const t = (key) => UI[state.uiLang][key];
+const columnLabel = (key) => key === "source" ? t("source") : key;
 
 function renderChrome() {
   document.documentElement.lang = state.uiLang;
@@ -280,6 +304,8 @@ function renderChrome() {
   status.className = "status" + (state.statusKey === "ended" ? " ended" : "");
   el("follow").textContent = t("follow");
   el("uilang").value = state.uiLang;
+  state.langs = [];  // 语言按钮里的「原文」标签要跟着界面语言换,强制重建。
+  render();
 }
 
 function setStatus(key) { state.statusKey = key; renderChrome(); }
@@ -300,38 +326,89 @@ function collectLanguages() {
   const frame = state.frame;
   if (frame) {
     for (const u of (frame.utterances || [])) {
-      const src = u.provisional_source_language || u.source_language;
-      if (src && src !== "und") langs.add(src);
       if (u.translated_language) langs.add(u.translated_language);
     }
     for (const c of (frame.cues || [])) langs.add(c.target_language);
     for (const line of (frame.lines || [])) {
-      if (line.source_language && line.source_language !== "und") langs.add(line.source_language);
       if (line.target_language) langs.add(line.target_language);
     }
   }
-  return Array.from(langs).sort();
+  return ["source", ...Array.from(langs).sort()];
+}
+
+function toggleLanguage(key) {
+  const index = state.selected.indexOf(key);
+  if (index >= 0) {
+    state.selected.splice(index, 1);
+    if (state.selected.length === 0) state.selected = ["source"];
+  } else {
+    state.selected.push(key);
+    while (state.selected.length > MAX_COLUMNS) state.selected.shift();
+  }
+  try { localStorage.setItem("zulangue-content-langs", JSON.stringify(state.selected)); }
+  catch (e) { /* 同上 */ }
+  state.langs = [];  // 强制重建按钮的选中态。
+  render();
 }
 
 function renderLangButtons() {
   const langs = collectLanguages();
-  if (JSON.stringify(langs) === JSON.stringify(state.langs)) return;
-  state.langs = langs;
+  const signature = JSON.stringify([langs, state.selected, state.uiLang]);
+  if (signature === state.langsSignature) return;
+  state.langsSignature = signature;
   const holder = el("langs");
   holder.textContent = "";
-  for (const lang of langs) {
+  for (const key of langs) {
     const button = document.createElement("button");
-    button.className = "lang" + (state.lang === lang ? " active" : "");
-    button.textContent = lang;
-    button.onclick = () => { state.lang = (state.lang === lang ? null : lang); render(); };
+    button.className = "lang" + (state.selected.includes(key) ? " active" : "");
+    button.textContent = columnLabel(key);
+    button.onclick = () => toggleLanguage(key);
     holder.appendChild(button);
   }
 }
 
-function blockText(block) {
-  // 选中语言有车道就用车道;没有回落原文 —— 空白比原文更糟。
-  if (state.lang && block.lanes && block.lanes[state.lang]) return block.lanes[state.lang];
-  return block.text || "";
+// 稿里某一栏的取值:「原文」取块文本,语言取车道;批注块只有原文。
+function cellText(block, key) {
+  if (key === "source") return block.text || "";
+  return (block.lanes && block.lanes[key]) || "";
+}
+
+function gridStyle(element) {
+  element.style.gridTemplateColumns = `repeat(${state.selected.length}, 1fr)`;
+}
+
+function renderColumnHead() {
+  const head = el("colhead");
+  head.textContent = "";
+  if (state.selected.length < 2) return;
+  gridStyle(head);
+  head.className = "colhead";
+  for (const key of state.selected) {
+    const span = document.createElement("span");
+    span.textContent = columnLabel(key);
+    head.appendChild(span);
+  }
+}
+
+function appendRow(holder, values, annotation) {
+  if (values.every((v) => !v)) return;
+  const row = document.createElement("div");
+  row.className = "row";
+  gridStyle(row);
+  for (const value of values) {
+    const cell = document.createElement("div");
+    cell.className = "cell" + (value ? "" : " empty");
+    if (annotation && value) {
+      const span = document.createElement("span");
+      span.className = "annotation";
+      span.textContent = value;
+      cell.appendChild(span);
+    } else {
+      cell.textContent = value || "";
+    }
+    row.appendChild(cell);
+  }
+  holder.appendChild(row);
 }
 
 function renderTranscript() {
@@ -341,19 +418,11 @@ function renderTranscript() {
     const sessionDiv = document.createElement("div");
     sessionDiv.className = "session";
     for (const block of (session.blocks || [])) {
-      const p = document.createElement("p");
-      p.className = "block";
-      const text = blockText(block);
-      if (!text) continue;
-      if (block.owner === "user") {
-        const span = document.createElement("span");
-        span.className = "annotation";
-        span.textContent = text;
-        p.appendChild(span);
-      } else {
-        p.textContent = text;
-      }
-      sessionDiv.appendChild(p);
+      appendRow(
+        sessionDiv,
+        state.selected.map((key) => cellText(block, key)),
+        block.owner === "user"
+      );
     }
     holder.appendChild(sessionDiv);
   }
@@ -373,8 +442,7 @@ function transcribedIds() {
   return ids;
 }
 
-// 稿里某语言已有的文本。cue 没有句块 id,按文本去重 —— 最新 cue 的内容
-// 已经落进稿的车道时,不再在实时区重复一行。
+// 稿里某语言已有的文本。cue 没有句块 id,按文本去重。
 function transcribedTexts(lang) {
   const texts = new Set();
   for (const session of state.sessions) {
@@ -385,51 +453,44 @@ function transcribedTexts(lang) {
   return texts;
 }
 
+function liveCellText(u, key) {
+  if (key === "source") return u.source_text || "";
+  if (u.translated_language === key) return u.translated_text || "";
+  return "";
+}
+
 function renderLive() {
   const holder = el("livetail");
   holder.textContent = "";
   const frame = state.frame;
   if (!frame || state.ended) return;
   const seen = transcribedIds();
-  const utterances = (frame.utterances || []).filter(
+  const allUtterances = frame.utterances || [];
+  const utterances = allUtterances.filter(
     (u) => !seen.has((u.session_id || "") + ":" + u.id)
   );
   const cues = frame.cues || [];
-  if ((frame.utterances || []).length) {
+  if (allUtterances.length) {
     for (const u of utterances) {
-      const src = u.provisional_source_language || u.source_language;
-      let text = null;
-      if (!state.lang || state.lang === src) text = u.source_text;
-      else if (state.lang === u.translated_language) text = u.translated_text;
-      if (text) {
-        const p = document.createElement("p");
-        p.className = "block partial";
-        p.textContent = text;
-        holder.appendChild(p);
-      }
+      appendRow(holder, state.selected.map((key) => liveCellText(u, key)), false);
     }
-    // 句子车道没覆盖的语言,用该语言最新的 cue 补上(稿里已有的不重复)。
-    if (state.lang) {
-      const latest = cues.filter((c) => c.target_language === state.lang).pop();
-      const covered = (frame.utterances || []).some(
-        (u) => u.translated_language === state.lang
-      );
-      if (latest && !covered && latest.text
-          && !transcribedTexts(state.lang).has(latest.text)) {
-        const p = document.createElement("p");
-        p.className = "block partial";
-        p.textContent = latest.text;
-        holder.appendChild(p);
-      }
-    }
+    // 句子车道没覆盖的语言,各用该语言最新的 cue 补一行(稿里已有的不重复)。
+    const fallback = state.selected.map((key) => {
+      if (key === "source") return "";
+      const covered = allUtterances.some((u) => u.translated_language === key);
+      if (covered) return "";
+      const latest = cues.filter((c) => c.target_language === key).pop();
+      if (!latest || !latest.text) return "";
+      return transcribedTexts(key).has(latest.text) ? "" : latest.text;
+    });
+    appendRow(holder, fallback, false);
   } else {
-    // 旧版主播:只有压扁行。
+    // 旧版主播:只有压扁行,不分栏。
     for (const line of (frame.lines || [])) {
-      const text = state.lang && state.lang === line.target_language
-        ? line.target_text : line.source_text;
+      const text = line.source_text || line.target_text;
       if (!text) continue;
       const p = document.createElement("p");
-      p.className = "block partial";
+      p.className = "cell";
       p.textContent = text;
       holder.appendChild(p);
     }
@@ -438,6 +499,7 @@ function renderLive() {
 
 function render() {
   renderLangButtons();
+  renderColumnHead();
   renderTranscript();
   renderLive();
   if (state.following) el("main").scrollTop = el("main").scrollHeight;
