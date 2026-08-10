@@ -113,6 +113,11 @@ relay 那台的 `IROH_RELAY_HTTP_BEARER_TOKEN` 不动——那是中继自己要
 `CommunityInviteSession.baseURL`）。**这一版必须在 3.1 与 3.2 验证通过之后才能
 发布**，否则新客户端会连向尚不存在的主机名。
 
+这条不靠人记得：`just release-tag` 会先跑
+`scripts/check_service_endpoints.sh`，从源码里取出这三个主机名，逐个确认能解析
+且 HTTPS 连得上，否则拒绝打标签。它查的是外部解析器——本机若有 VPN/代理的合成
+DNS，任何名字都会"解析成功"。
+
 ### 3.4 caption 的 `--public-base`
 
 仓库里的单元已经写成 `https://zutalk-caption.exe.xyz`，随 3.2 生效。此后**新生成

@@ -106,3 +106,9 @@ grep -Fq 'https://github.com/4seas-community/ZuTalk/releases/latest/download/app
   || fail "the public HTTPS appcast URL must be configured"
 
 echo "local-keychain Ad Hoc Sparkle release gate is fail-closed"
+
+# 客户端服务地址检查必须在标签推出去之前跑。标签一旦推出就是对外承诺,
+# 而"地址指向不存在的主机名"是唯一一类构建全绿、只在用户那边失败的错误。
+tag_body="$(recipe_body release-tag)"
+grep -Fq 'check_service_endpoints.sh' <<<"$tag_body" \
+  || fail "release-tag must verify the client's service endpoints resolve"

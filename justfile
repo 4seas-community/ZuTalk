@@ -861,6 +861,9 @@ release-tag:
     # 再让别人看见。
     : "${GITHUB_REF_NAME:?GITHUB_REF_NAME is required}"
     bash "{{ project_dir }}/scripts/check_release_version.sh"
+    # 客户端编译进去的服务地址必须已经存在。构建与测试都发现不了这件事:
+    # 地址指向不存在的主机名时一切照常绿,失败只发生在用户那边。
+    bash "{{ project_dir }}/scripts/check_service_endpoints.sh"
     [[ -z "$(git status --porcelain)" ]] \
         || { echo "FAIL: 工作树不干净,标签描述不了发出去的东西"; exit 1; }
     VERSION="${GITHUB_REF_NAME#v}"
