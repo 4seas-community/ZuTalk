@@ -24,7 +24,7 @@ use vt_share::CaptionFrame;
 use crate::{CoreError, ZuTalkCore};
 
 /// 默认部署位。与 invite / relay 同一域名家族,可在开启时覆盖。
-pub const DEFAULT_WEB_CAPTION_SERVICE: &str = "https://zulangue-caption.exe.xyz";
+pub const DEFAULT_WEB_CAPTION_SERVICE: &str = "https://zutalk-caption.exe.xyz";
 
 /// 给 UI 的网页分享快照。
 #[derive(Debug, Clone, uniffi::Record)]

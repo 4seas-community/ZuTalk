@@ -4,21 +4,30 @@
 还没有**。这份文档是把线上也迁过去的顺序，以及一份「哪些名字永远不改」的清单
 ——后者比前者更重要，因为它是无法从代码里看出来的。
 
-## 0. 先读这条：为什么不能直接替换
+## 0. 先读这条：这次切换会打断谁
 
 三个客户端地址不是普通字符串，是三台正在服务的机器：
 
-| 常量 | 位置 | 指向 |
+| 常量 | 位置 | 现指向（未发布） |
 |---|---|---|
-| `DEFAULT_RELAY_URL` | crates/vt-ffi/src/share_api.rs | `zulangue-relay.exe.xyz` |
-| `DEFAULT_WEB_CAPTION_SERVICE` | crates/vt-ffi/src/share_web.rs | `zulangue-caption.exe.xyz` |
-| 邀请码 `baseURL` | macos/ZuTalk/ZuTalk/App/CommunityInviteSession.swift | `zulangue-invite.exe.xyz` |
+| `DEFAULT_RELAY_URL` | crates/vt-ffi/src/share_api.rs | `zutalk-relay.exe.xyz` |
+| `DEFAULT_WEB_CAPTION_SERVICE` | crates/vt-ffi/src/share_web.rs | `zutalk-caption.exe.xyz` |
+| 邀请码 `baseURL` | macos/ZuTalk/ZuTalk/App/CommunityInviteSession.swift | `zutalk-invite.exe.xyz` |
 
-已经装了 0.3.x 与 0.4.0 的用户，客户端里硬编码的就是旧地址。更麻烦的是 caption
+已发布的 0.3.x 与 0.4.0 里，这三个常量硬编码的仍是**旧地址**——它们编译进了用户
+机器上的二进制，改不动。更麻烦的是 caption
 服务的 `--public-base` 会被**烤进已经发出去的二维码和观看页链接**——那些链接的
 持有者不是你的用户，你没有任何渠道通知他们。
 
-所以旧主机名的下线是一个**有代价的决定**，不是清理工作。下线日期见第 4 节。
+**决定（2026-08-10）：不设过渡期，切换即下线旧名。** 代价是明确的，接受它：
+
+- 0.3.x 与 0.4.0 的已装客户端，分享、网页字幕、邀请码兑换在切换那一刻起失效，
+  直到用户更新；
+- 已经发出去的旧地址二维码与观看页链接**永久失效**，且持链接的人不是你的用户，
+  无法通知。
+
+要降低第一项的影响，就在切换前先把带新地址的版本发出去、给更新留出时间；第二项
+无法降低，只能承担。
 
 ## 1. 永远不改的名字
 
@@ -35,18 +44,16 @@
 
 判据是一致的：**凡是用来找「改名之前就已经存在的东西」的名字，都不跟着改名走。**
 
-## 2. 环境变量：已经两个名字都认
+## 2. 环境变量：只认一个名字
 
-`ZUTALK_ADMIN_TOKEN` / `ZUTALK_RELAY_AUTH_TOKEN` 是当前名，改名前的 `ZULANGUE_*`
-仍然读得到（`services/community-invite/server.py` 的 `env_secret`，以及
-report-stats.py 与 smoke-test.sh 里的同款回退）。
+`ZUTALK_ADMIN_TOKEN` / `ZUTALK_RELAY_AUTH_TOKEN`，没有回退。
 
-这样做的原因：代码与机器上的 `service.env` 不是同一次部署。只认新名的话，谁先落
-地都会让管理面板与中继鉴权**静默 401**——日志里不会有任何一行说这是改名造成的。
-两边都认，两侧就互相独立，任意顺序都安全。
+代价是代码与机器上的 `service.env` **必须同一步更新**：只改一边，管理面板与中继
+鉴权会立刻 401。这是刻意的——凭据读空时每个调用方都拒绝请求，失败是响亮的，而
+不是一个继续接受任何输入的服务。第 3.2 节把两件事放在同一步。
 
-回退由 `services/community-invite/test_server.py::ServiceCredentialNameTests`
-守住，共 4 条。
+由 `services/community-invite/test_server.py::ServiceCredentialNameTests` 守住，
+其中一条专门断言改名前的 `ZULANGUE_*` **不再**被接受。
 
 ## 3. 线上迁移顺序
 
@@ -91,37 +98,43 @@ curl -s https://zutalk-caption.exe.xyz/healthz     # 新名也须可用
 
 这一步有**数秒中断**。share-relay 那台中断期间正在进行的分享会重连。
 
-`service.env` 里的键名此时可以改成 `ZUTALK_*`，也可以不改——两边都认（第 2 节）。
+**同一步**把 `service.env` 里的键名改成 `ZUTALK_*`（第 2 节：没有回退，只改一边
+会立刻 401）：
 
-### 3.3 客户端常量（下一版 App）
+```bash
+sudo sed -i 's/^ZULANGUE_/ZUTALK_/' ~/zutalk-community-invite/service.env
+```
 
-三个常量改指新地址，发一版。**在 3.1 与 3.2 验证通过之前不要做这一步。**
+relay 那台的 `IROH_RELAY_HTTP_BEARER_TOKEN` 不动——那是中继自己要求的名字。
 
-改完之后：新装的客户端用新地址，旧客户端继续用旧地址，两者都通向同一批服务器。
+### 3.3 客户端常量（已改，随下一版发出）
+
+三个常量已经指向新地址（`DEFAULT_RELAY_URL`、`DEFAULT_WEB_CAPTION_SERVICE`、
+`CommunityInviteSession.baseURL`）。**这一版必须在 3.1 与 3.2 验证通过之后才能
+发布**，否则新客户端会连向尚不存在的主机名。
 
 ### 3.4 caption 的 `--public-base`
 
-仓库里的单元已经写成 `https://zutalk-caption.exe.xyz`。它一生效，**新生成的**二维
-码就指向新地址；**已经发出去的**旧地址二维码依赖旧主机名继续解析。
+仓库里的单元已经写成 `https://zutalk-caption.exe.xyz`，随 3.2 生效。此后**新生成
+的**二维码指向新地址；已经发出去的旧地址二维码在 3.5 之后失效。
 
-## 4. 旧名下线日期
+### 3.5 下线旧主机名
 
-**2027-08-10**（0.4.0 发布后一年）。
+确认 3.1–3.3 全部生效后，删除三条旧 DNS 记录并回收证书。这一步执行后，未更新的
+客户端与已发出的旧二维码不再可用（见第 0 节）。
 
-下线之前必须确认：
+## 4. 建议：把断裂说给用户听
 
-1. 旧主机名的访问日志连续 30 天无客户端流量（二维码扫码也算）；
-2. Sparkle 更新统计显示 0.3.x / 0.4.0 的活跃安装量归零或可接受；
-3. 在下线前一个版本的发布说明里写明旧链接将失效。
-
-三条有任何一条不成立，就把日期往后推——旧名多留一年的成本是一组 DNS 记录和证
-书，链接失效的成本是别人手上的二维码打不开。
+不设过渡期意味着断裂发生在用户那边而不是运维这边，所以它至少要**被预告**：在带
+新地址的那一版发布说明里写明「更新后旧的分享链接与二维码会失效，请重新生成」。
+这不改变技术方案，只是让失效对用户是预期内的事。
 
 ## 5. 当前状态
 
-- [x] 仓库、systemd 单元、部署文档、冒烟脚本、环境变量（含回退与测试）
+- [x] 仓库、systemd 单元、部署文档、冒烟脚本、环境变量（单名 + 测试）
+- [x] 3.3 客户端常量已指向新地址（**尚未发布**）
 - [ ] 3.1 DNS 记录 + 证书
-- [ ] 3.2 三台机器的目录与单元改名
-- [ ] 3.3 客户端常量（下一版）
+- [ ] 3.2 三台机器的目录、单元与 `service.env` 改名（同一步）
 - [ ] 3.4 `--public-base` 生效（随 3.2）
-- [ ] 4. 到期下线旧名
+- [ ] 发布带新地址的客户端版本
+- [ ] 3.5 删除旧 DNS 记录

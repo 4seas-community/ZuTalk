@@ -621,22 +621,17 @@ class RelayStatsTest(unittest.TestCase):
 
 
 class ServiceCredentialNameTests(unittest.TestCase):
-    """The rename from Zulangue to ZuTalk reaches `service.env` on machines
-    this repository does not deploy in the same step as the code. If the
-    server only read the new name, whichever side landed first would leave
-    the admin panel and relay auth rejecting every caller — a 401 with
-    nothing in the logs attributing it to a rename. Both names must work
-    until the old one's removal date passes."""
+    """Credentials are read under one name only.
+
+    `service.env` on each machine is updated in the same step that deploys
+    this code, so there is no second name to fall back to. What matters is
+    that a drift between the two reads empty and gets the request refused —
+    never a service that accepts whatever it is handed."""
 
     def setUp(self):
         self._saved = {
             key: os.environ.get(key)
-            for key in (
-                "ZUTALK_ADMIN_TOKEN",
-                "ZULANGUE_ADMIN_TOKEN",
-                "ZUTALK_RELAY_AUTH_TOKEN",
-                "ZULANGUE_RELAY_AUTH_TOKEN",
-            )
+            for key in ("ZUTALK_ADMIN_TOKEN", "ZUTALK_RELAY_AUTH_TOKEN")
         }
         for key in self._saved:
             os.environ.pop(key, None)
@@ -652,14 +647,14 @@ class ServiceCredentialNameTests(unittest.TestCase):
         os.environ["ZUTALK_ADMIN_TOKEN"] = "new"
         self.assertEqual(server.env_secret("ADMIN_TOKEN"), "new")
 
-    def test_pre_rename_name_still_works(self):
+    def test_pre_rename_name_is_not_honoured(self):
+        # Deliberate: a machine still carrying the old key name must fail
+        # closed and be noticed, not authenticate on a name we retired.
         os.environ["ZULANGUE_ADMIN_TOKEN"] = "old"
-        self.assertEqual(server.env_secret("ADMIN_TOKEN"), "old")
-
-    def test_current_name_wins_when_both_are_set(self):
-        os.environ["ZULANGUE_RELAY_AUTH_TOKEN"] = "old"
-        os.environ["ZUTALK_RELAY_AUTH_TOKEN"] = "new"
-        self.assertEqual(server.env_secret("RELAY_AUTH_TOKEN"), "new")
+        try:
+            self.assertEqual(server.env_secret("ADMIN_TOKEN"), "")
+        finally:
+            os.environ.pop("ZULANGUE_ADMIN_TOKEN", None)
 
     def test_absent_reads_empty_rather_than_raising(self):
         # An empty secret is refused by the callers; a KeyError here would

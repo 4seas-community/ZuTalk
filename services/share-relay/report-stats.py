@@ -11,8 +11,7 @@
     ZUTALK_RELAY_AUTH_TOKEN=... ./report-stats.py
 
 环境变量：
-    ZUTALK_RELAY_AUTH_TOKEN   与邀请码服务共享的凭据（必需；
-                              改名前的 ZULANGUE_ 仍然认）
+    ZUTALK_RELAY_AUTH_TOKEN   与邀请码服务共享的凭据（必需）
     RELAY_METRICS_URL          默认 http://127.0.0.1:9090/metrics
     INVITE_URL                 默认 https://zutalk-invite.exe.xyz
     RELAY_STATE_FILE           默认 ~/zutalk-share-relay/data/last-metrics.json
@@ -85,12 +84,8 @@ def main() -> int:
     # 两个名字都认。中继的 service.env 里存的是 IROH_RELAY_HTTP_BEARER_TOKEN
     # (中继自己要用那个名),同一个值。让脚本认它,就不必在 systemd 单元里绕一层
     # shell 去改名 —— 那层 shell 里的变量展开语义正是上一版 401 的原因。
-    # 改名后先认 ZUTALK_,再认改名前的 ZULANGUE_ —— 代码与机器上的
-    # service.env 不是同一次部署,谁先落地都不该让上报静默 401。
-    token = (
-        os.environ.get("ZUTALK_RELAY_AUTH_TOKEN")
-        or os.environ.get("ZULANGUE_RELAY_AUTH_TOKEN")
-        or os.environ.get("IROH_RELAY_HTTP_BEARER_TOKEN", "")
+    token = os.environ.get("ZUTALK_RELAY_AUTH_TOKEN") or os.environ.get(
+        "IROH_RELAY_HTTP_BEARER_TOKEN", ""
     )
     if not token:
         print("ZUTALK_RELAY_AUTH_TOKEN 未设置", file=sys.stderr)

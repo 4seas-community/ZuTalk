@@ -15,7 +15,7 @@ set -euo pipefail
 
 INVITE_URL="${INVITE_URL:-https://invite.exe.dev}"
 # 改名后先认 ZUTALK_，旧名保留到 docs/service-rename.md 写明的期限。
-TOKEN="${ZUTALK_RELAY_AUTH_TOKEN:-${ZULANGUE_RELAY_AUTH_TOKEN:-}}"
+TOKEN="${ZUTALK_RELAY_AUTH_TOKEN:-}"
 ACCESS="${INVITE_ACCESS_TOKEN:-}"
 
 fail() {

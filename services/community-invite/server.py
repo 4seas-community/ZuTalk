@@ -25,20 +25,17 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+
 def env_secret(suffix: str) -> str:
-    """Reads a service credential under the current name, then the old one.
+    """Reads a service credential from the environment.
 
-    The product was renamed from Zulangue to ZuTalk, and these names live in
-    `service.env` on machines this repository does not deploy atomically. If
-    the code only read the new name, whichever of {code, machine} landed first
-    would leave the admin panel and relay auth silently unauthenticated — a
-    401 with nothing in the logs saying a rename caused it. Reading both makes
-    the two sides independent, so either order is safe.
-
-    The old name is scheduled for removal; see docs/service-rename.md for the
-    date and the check that has to pass before it goes.
+    One name, no fallback: `service.env` on each machine is updated in the
+    same step that deploys this code (docs/service-rename.md §3). A missing
+    secret reads empty and every caller refuses the request, which is the
+    behaviour we want if the two ever drift — a refusal, not a service that
+    quietly accepts whatever it is handed.
     """
-    return os.environ.get(f"ZUTALK_{suffix}") or os.environ.get(f"ZULANGUE_{suffix}", "")
+    return os.environ.get(f"ZUTALK_{suffix}", "")
 
 
 DEFAULT_QUOTA_SECONDS = 30 * 60 * 60
