@@ -170,6 +170,8 @@
 "export.progress" = "Exportation…";
 "export.dialog.location" = "Choisir l’emplacement d’exportation";
 "export.error_format" = "Échec de l’exportation : %@";
+"export.subtitles_incomplete" = "Sous-titres incomplets";
+"export.subtitles_omitted_format" = "Lignes sans horodatage : %lld. Les fichiers .srt/.vtt les omettent ; la transcription les conserve.";
 "common.export.action" = "Exporter";
 
 

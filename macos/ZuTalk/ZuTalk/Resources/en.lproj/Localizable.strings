@@ -170,6 +170,8 @@
 "export.progress" = "Exporting…";
 "export.dialog.location" = "Choose export location";
 "export.error_format" = "Export failed: %@";
+"export.subtitles_incomplete" = "Subtitles are incomplete";
+"export.subtitles_omitted_format" = "Lines without timing: %lld. The .srt/.vtt files leave them out; the transcript keeps them.";
 "common.export.action" = "Export";
 
 

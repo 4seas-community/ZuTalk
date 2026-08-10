@@ -1124,7 +1124,7 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      * 3. 调用 vt-export::export_zip
      * 4. 写入 output_path
      */
-    func exportSessionZip(sessionId: String, outputPath: String, options: ExportZipOptions) throws  -> UInt64
+    func exportSessionZip(sessionId: String, outputPath: String, options: ExportZipOptions) throws  -> ExportZipOutcome
 
     /**
      * Format one durable capture session for the local macOS clipboard.
@@ -2591,8 +2591,8 @@ open func listTasks(statusFilter: String?)throws  -> [TaskInfoDto]  {
      * 3. 调用 vt-export::export_zip
      * 4. 写入 output_path
      */
-open func exportSessionZip(sessionId: String, outputPath: String, options: ExportZipOptions)throws  -> UInt64  {
-    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+open func exportSessionZip(sessionId: String, outputPath: String, options: ExportZipOptions)throws  -> ExportZipOutcome  {
+    return try  FfiConverterTypeExportZipOutcome_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zutalkcore_export_session_zip(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(sessionId),
@@ -3303,6 +3303,79 @@ public func FfiConverterTypeExportZipOptions_lift(_ buf: RustBuffer) throws -> E
 #endif
 public func FfiConverterTypeExportZipOptions_lower(_ value: ExportZipOptions) -> RustBuffer {
     return FfiConverterTypeExportZipOptions.lower(value)
+}
+
+
+/**
+ * 一次 zip 导出发生了什么（FFI DTO）。
+ *
+ * 从前这里只回一个字节数，于是「有几行没写进字幕文件」没有任何出口：
+ * 一份没有时间戳的转录会导出一个 0 字节的 `.srt`，而导出面板默认就勾着
+ * SRT，用户什么提示都收不到。字节数回答不了这件事，所以换成记录。
+ */
+public struct ExportZipOutcome: Equatable, Hashable {
+    public var bytesWritten: UInt64
+    /**
+     * 没有时间区间、因而进不了 SRT/VTT 的行数。
+     *
+     * 只在这次确实要了 SRT 或 VTT 时才计；两种格式取的是同一批行，所以
+     * 一个数覆盖两者。没要字幕就恒为 0——那不是「没有遗漏」，是「没问」。
+     */
+    public var subtitleRowsOmitted: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(bytesWritten: UInt64,
+        /**
+         * 没有时间区间、因而进不了 SRT/VTT 的行数。
+         *
+         * 只在这次确实要了 SRT 或 VTT 时才计；两种格式取的是同一批行，所以
+         * 一个数覆盖两者。没要字幕就恒为 0——那不是「没有遗漏」，是「没问」。
+         */subtitleRowsOmitted: UInt64) {
+        self.bytesWritten = bytesWritten
+        self.subtitleRowsOmitted = subtitleRowsOmitted
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ExportZipOutcome: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeExportZipOutcome: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ExportZipOutcome {
+        return
+            try ExportZipOutcome(
+                bytesWritten: FfiConverterUInt64.read(from: &buf),
+                subtitleRowsOmitted: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ExportZipOutcome, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.bytesWritten, into: &buf)
+        FfiConverterUInt64.write(value.subtitleRowsOmitted, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExportZipOutcome_lift(_ buf: RustBuffer) throws -> ExportZipOutcome {
+    return try FfiConverterTypeExportZipOutcome.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExportZipOutcome_lower(_ value: ExportZipOutcome) -> RustBuffer {
+    return FfiConverterTypeExportZipOutcome.lower(value)
 }
 
 
@@ -9875,7 +9948,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_list_tasks() != 25342) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_export_session_zip() != 40526) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_export_session_zip() != 39759) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_get_session_transcript_clipboard_text() != 13456) {

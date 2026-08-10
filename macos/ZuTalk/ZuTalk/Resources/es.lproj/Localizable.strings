@@ -169,6 +169,8 @@
 "export.progress" = "Exportando…";
 "export.dialog.location" = "Elegir ubicación de exportación";
 "export.error_format" = "Error al exportar: %@";
+"export.subtitles_incomplete" = "Subtítulos incompletos";
+"export.subtitles_omitted_format" = "Líneas sin marca de tiempo: %lld. Los archivos .srt/.vtt las omiten; la transcripción las conserva.";
 "common.export.action" = "Exportar";
 
 

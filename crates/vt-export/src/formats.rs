@@ -423,7 +423,7 @@ pub fn export_txt(data: &ExportData) -> Result<String, ExportError> {
 pub fn export_srt(data: &ExportData) -> Result<String, ExportError> {
     let mut out = String::new();
 
-    for (i, token) in subtitle_tokens(data).into_iter().enumerate() {
+    for (i, token) in subtitle_tokens(data).tokens.into_iter().enumerate() {
         let idx = i + 1;
         let start = format_time_srt(token.start_ms);
         let end = format_time_srt(token.end_ms);
@@ -437,7 +437,7 @@ pub fn export_srt(data: &ExportData) -> Result<String, ExportError> {
 pub fn export_vtt(data: &ExportData) -> Result<String, ExportError> {
     let mut out = String::from("WEBVTT\n\n");
 
-    for token in subtitle_tokens(data) {
+    for token in subtitle_tokens(data).tokens {
         let start = format_time_vtt(token.start_ms);
         let end = format_time_vtt(token.end_ms);
         out.push_str(&format!("{start} --> {end}\n{}\n\n", token.text));
@@ -446,32 +446,63 @@ pub fn export_vtt(data: &ExportData) -> Result<String, ExportError> {
     Ok(out)
 }
 
-fn subtitle_tokens(data: &ExportData) -> Vec<ExportToken> {
+/// 一次字幕筛选的结果：写得进去的，和写不进去的有几行。
+///
+/// 两者来自同一次遍历，所以调用方报出来的数字不可能与文件里的内容对不上。
+/// 分开算一遍是这个仓库刚踩过的坑（同一个前缀写两处，改一处就错账）。
+pub struct SubtitleSelection {
+    pub tokens: Vec<ExportToken>,
+    /// 没有可用时间区间、因而进不了 SRT/VTT 的行数。
+    ///
+    /// 成因有二：供应商整段没给 token 元数据（这行本来就没有时间），或者
+    /// 起止相等（零长度 cue 在 SRT 里不合法）。两种都**不编时间**——那是
+    /// [`docs/architecture/timeline-projection.md`] 定下的取舍——所以这里
+    /// 只能计数，让上层把这件事说给用户，而不是安静地少写几行。
+    pub omitted_rows: u64,
+}
+
+/// 挑出能进字幕文件的行，并数清楚挑剩下多少。
+///
+/// 公开是因为调用方需要在写完文件之后回答「有没有东西没写进去」。异步转录
+/// 路径的 token 天生带时间，不会有遗漏。
+pub fn subtitle_tokens(data: &ExportData) -> SubtitleSelection {
     match &data.transcript {
-        ExportTranscript::AsyncTokens(tokens) => tokens
-            .iter()
-            .map(|token| ExportToken {
-                text: token.text.clone(),
-                start_ms: token.start_ms,
-                end_ms: token.end_ms,
-            })
-            .collect(),
-        ExportTranscript::NotebookCapture { utterances, .. }
-        | ExportTranscript::NotebookCaptureLanguageColumns { utterances, .. } => utterances
-            .iter()
-            .filter_map(|utterance| {
-                let (Some(start_ms), Some(end_ms)) =
-                    (utterance.source_start_ms, utterance.source_end_ms)
-                else {
-                    return None;
-                };
-                (end_ms > start_ms).then(|| ExportToken {
-                    text: utterance.source_text.clone(),
-                    start_ms,
-                    end_ms,
+        ExportTranscript::AsyncTokens(tokens) => SubtitleSelection {
+            tokens: tokens
+                .iter()
+                .map(|token| ExportToken {
+                    text: token.text.clone(),
+                    start_ms: token.start_ms,
+                    end_ms: token.end_ms,
                 })
-            })
-            .collect(),
+                .collect(),
+            omitted_rows: 0,
+        },
+        ExportTranscript::NotebookCapture { utterances, .. }
+        | ExportTranscript::NotebookCaptureLanguageColumns { utterances, .. } => {
+            let mut omitted_rows = 0u64;
+            let tokens = utterances
+                .iter()
+                .filter_map(|utterance| {
+                    let usable = match (utterance.source_start_ms, utterance.source_end_ms) {
+                        (Some(start_ms), Some(end_ms)) if end_ms > start_ms => Some(ExportToken {
+                            text: utterance.source_text.clone(),
+                            start_ms,
+                            end_ms,
+                        }),
+                        _ => None,
+                    };
+                    if usable.is_none() {
+                        omitted_rows += 1;
+                    }
+                    usable
+                })
+                .collect();
+            SubtitleSelection {
+                tokens,
+                omitted_rows,
+            }
+        }
     }
 }
 
@@ -884,6 +915,78 @@ mod tests {
             }),
             ""
         );
+    }
+
+    /// 一行没有时间就进不了字幕文件。这不是缺陷,不编时间是既定取舍;
+    /// 缺陷是**不告诉任何人**。这条钉的就是那个数字与文件内容同源。
+    #[test]
+    fn rows_without_a_time_range_are_counted_not_just_dropped() {
+        let untimed = |text: &str, start: Option<u64>, end: Option<u64>| ExportUtterance {
+            source_language: "en".into(),
+            source_text: text.into(),
+            source_start_ms: start,
+            source_end_ms: end,
+            translated_language: None,
+            translated_text: None,
+            language_variants: Vec::new(),
+        };
+        let data = ExportData {
+            title: "Untimed".into(),
+            transcript: ExportTranscript::NotebookCapture {
+                left_language: "en".into(),
+                right_language: None,
+                utterances: vec![
+                    untimed("timed", Some(0), Some(2_000)),
+                    // 供应商整段没给 token 元数据。
+                    untimed("no timing at all", None, None),
+                    // 只有起点,拿不出区间。
+                    untimed("start only", Some(3_000), None),
+                    // 零长度 cue 在 SRT 里不合法。
+                    untimed("zero length", Some(4_000), Some(4_000)),
+                ],
+            },
+            summary: None,
+        };
+
+        let selection = subtitle_tokens(&data);
+        assert_eq!(selection.tokens.len(), 1);
+        assert_eq!(selection.omitted_rows, 3);
+
+        // 数字必须描述文件里真实发生的事:写进去的正是留下的那一行。
+        let srt = export_srt(&data).unwrap();
+        assert!(srt.contains("timed"));
+        assert!(!srt.contains("no timing at all"));
+        assert_eq!(srt.matches(" --> ").count(), selection.tokens.len());
+    }
+
+    /// 全场都没有时间戳时,SRT 是空字符串、VTT 只剩表头 —— 一个看起来
+    /// 导出成功了的空文件。这里断言的是「计数覆盖到了这种最坏情况」,
+    /// 因为它正是用户最没法自己看出来的那种。
+    #[test]
+    fn a_wholly_untimed_transcript_reports_every_row_as_omitted() {
+        let data = ExportData {
+            title: "All untimed".into(),
+            transcript: ExportTranscript::NotebookCapture {
+                left_language: "en".into(),
+                right_language: None,
+                utterances: (0..4)
+                    .map(|index| ExportUtterance {
+                        source_language: "en".into(),
+                        source_text: format!("line {index}"),
+                        source_start_ms: None,
+                        source_end_ms: None,
+                        translated_language: None,
+                        translated_text: None,
+                        language_variants: Vec::new(),
+                    })
+                    .collect(),
+            },
+            summary: None,
+        };
+
+        assert_eq!(subtitle_tokens(&data).omitted_rows, 4);
+        assert_eq!(export_srt(&data).unwrap(), "");
+        assert_eq!(export_vtt(&data).unwrap(), "WEBVTT\n\n");
     }
 
     #[test]

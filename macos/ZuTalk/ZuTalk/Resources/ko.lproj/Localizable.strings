@@ -170,6 +170,8 @@
 "export.progress" = "내보내는 중…";
 "export.dialog.location" = "내보내기 위치 선택";
 "export.error_format" = "내보내기 실패: %@";
+"export.subtitles_incomplete" = "자막이 불완전합니다";
+"export.subtitles_omitted_format" = "시간 정보가 없는 줄: %lld. .srt/.vtt에는 빠지지만 전사본에는 그대로 남아 있습니다.";
 "common.export.action" = "수출";
 
 

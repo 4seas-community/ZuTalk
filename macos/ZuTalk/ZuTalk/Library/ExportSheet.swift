@@ -92,17 +92,29 @@ struct ExportSheet: View {
         let outputPath = url.path
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let bytesWritten = try core.exportSessionZip(
+                let outcome = try core.exportSessionZip(
                     sessionId: sid,
                     outputPath: outputPath,
                     options: options
                 )
                 DispatchQueue.main.async {
                     isExporting = false
-                    ToastCenter.shared.success(
-                        "Exported",
-                        detail: "\(bytesWritten / 1024) KB → \(url.lastPathComponent)"
-                    )
+                    let size = "\(outcome.bytesWritten / 1024) KB → \(url.lastPathComponent)"
+                    // 供应商偶尔整段不给时间戳,那些行进不了 .srt/.vtt。
+                    // 文件没法变得更好——不编时间是既定取舍——但一份 0 字节
+                    // 的 .srt 配一句「导出成功」是在说假话,所以这里改口。
+                    if outcome.subtitleRowsOmitted > 0 {
+                        let detail = String(
+                            format: String(localized: "export.subtitles_omitted_format"),
+                            outcome.subtitleRowsOmitted
+                        )
+                        ToastCenter.shared.warning(
+                            String(localized: "export.subtitles_incomplete"),
+                            detail: "\(detail)\n\(size)"
+                        )
+                    } else {
+                        ToastCenter.shared.success("Exported", detail: size)
+                    }
                     dismiss()
                 }
             } catch {

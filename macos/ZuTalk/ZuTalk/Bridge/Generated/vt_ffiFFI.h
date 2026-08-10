@@ -766,7 +766,7 @@ RustBuffer uniffi_vt_ffi_fn_method_zutalkcore_list_tasks(uint64_t ptr, RustBuffe
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_EXPORT_SESSION_ZIP
 #define UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_EXPORT_SESSION_ZIP
-uint64_t uniffi_vt_ffi_fn_method_zutalkcore_export_session_zip(uint64_t ptr, RustBuffer session_id, RustBuffer output_path, RustBuffer options, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_vt_ffi_fn_method_zutalkcore_export_session_zip(uint64_t ptr, RustBuffer session_id, RustBuffer output_path, RustBuffer options, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_GET_SESSION_TRANSCRIPT_CLIPBOARD_TEXT

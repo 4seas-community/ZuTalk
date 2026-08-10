@@ -170,6 +170,8 @@
 "export.progress" = "导出中…";
 "export.dialog.location" = "选择导出位置";
 "export.error_format" = "导出失败:%@";
+"export.subtitles_incomplete" = "字幕不完整";
+"export.subtitles_omitted_format" = "没有时间信息的行:%lld。.srt/.vtt 不含这些行,转录稿仍然完整。";
 "common.export.action" = "导出";
 
 

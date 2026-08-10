@@ -170,6 +170,8 @@
 "export.progress" = "กำลังส่งออก…";
 "export.dialog.location" = "เลือกตำแหน่งส่งออก";
 "export.error_format" = "การส่งออกล้มเหลว: %@";
+"export.subtitles_incomplete" = "คำบรรยายไม่ครบ";
+"export.subtitles_omitted_format" = "บรรทัดที่ไม่มีเวลา: %lld ไฟล์ .srt/.vtt ไม่รวมบรรทัดเหล่านี้ แต่ยังอยู่ในบทถอดความ";
 "common.export.action" = "ส่งออก";
 
 

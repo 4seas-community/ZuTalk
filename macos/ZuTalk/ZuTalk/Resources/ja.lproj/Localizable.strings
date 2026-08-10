@@ -170,6 +170,8 @@
 "export.progress" = "書き出し中…";
 "export.dialog.location" = "書き出し先を選択";
 "export.error_format" = "書き出し失敗: %@";
+"export.subtitles_incomplete" = "字幕が不完全です";
+"export.subtitles_omitted_format" = "時間情報のない行: %lld。.srt/.vtt には含まれません。文字起こしには残っています。";
 "common.export.action" = "書き出し";
 
 

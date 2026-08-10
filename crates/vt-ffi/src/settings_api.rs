@@ -3,8 +3,9 @@
 use std::collections::HashMap;
 
 use vt_export::{
-    export_clipboard_text, export_zip, ClipboardTranscript, ClipboardUtterance, ExportData,
-    ExportLanguageVariant, ExportOptions, ExportToken, ExportTranscript, ExportUtterance,
+    export_clipboard_text, export_zip, subtitle_tokens, ClipboardTranscript, ClipboardUtterance,
+    ExportData, ExportLanguageVariant, ExportOptions, ExportToken, ExportTranscript,
+    ExportUtterance,
 };
 use vt_store::notebook_capture_store::{
     CaptureMode, NotebookCaptureProfile, UtteranceVariantRole, UtteranceVariantState,
@@ -22,6 +23,21 @@ pub struct ExportZipOptions {
     pub include_srt: bool,
     pub include_vtt: bool,
     pub include_txt: bool,
+}
+
+/// 一次 zip 导出发生了什么（FFI DTO）。
+///
+/// 从前这里只回一个字节数，于是「有几行没写进字幕文件」没有任何出口：
+/// 一份没有时间戳的转录会导出一个 0 字节的 `.srt`，而导出面板默认就勾着
+/// SRT，用户什么提示都收不到。字节数回答不了这件事，所以换成记录。
+#[derive(uniffi::Record)]
+pub struct ExportZipOutcome {
+    pub bytes_written: u64,
+    /// 没有时间区间、因而进不了 SRT/VTT 的行数。
+    ///
+    /// 只在这次确实要了 SRT 或 VTT 时才计；两种格式取的是同一批行，所以
+    /// 一个数覆盖两者。没要字幕就恒为 0——那不是「没有遗漏」，是「没问」。
+    pub subtitle_rows_omitted: u64,
 }
 
 // MARK: - ZuTalkCore impls
@@ -149,7 +165,7 @@ impl ZuTalkCore {
         session_id: String,
         output_path: String,
         options: ExportZipOptions,
-    ) -> Result<u64, CoreError> {
+    ) -> Result<ExportZipOutcome, CoreError> {
         let record =
             self.session_store
                 .get_session(&session_id)
@@ -191,7 +207,18 @@ impl ZuTalkCore {
             message: format!("write zip: {e}"),
         })?;
 
-        Ok(zip_bytes.len() as u64)
+        // 走的是 vt-export 里挑选字幕行的同一个函数，所以这个数字描述的
+        // 正是刚写进 zip 的那两个文件，不是第二次估算。
+        let subtitle_rows_omitted = if export_options.include_srt || export_options.include_vtt {
+            subtitle_tokens(&export_data).omitted_rows
+        } else {
+            0
+        };
+
+        Ok(ExportZipOutcome {
+            bytes_written: zip_bytes.len() as u64,
+            subtitle_rows_omitted,
+        })
     }
 }
 
@@ -502,7 +529,7 @@ mod tests {
 
         // 导出 zip（不含音频，避免长测试）
         let output = tmp.path().join("session.zip");
-        let bytes_written = core
+        let outcome = core
             .export_session_zip(
                 import.session_id,
                 output.to_str().unwrap().to_string(),
@@ -516,10 +543,62 @@ mod tests {
             )
             .unwrap();
 
-        assert!(bytes_written > 0);
+        assert!(outcome.bytes_written > 0);
         assert!(output.exists());
         let metadata = std::fs::metadata(&output).unwrap();
-        assert_eq!(metadata.len(), bytes_written);
+        assert_eq!(metadata.len(), outcome.bytes_written);
+        // 异步转录的 token 天生带时间,这条路径不该有遗漏。
+        assert_eq!(outcome.subtitle_rows_omitted, 0);
+    }
+
+    /// 一份没有时间戳的实时转录会导出一个 0 字节的 `.srt`,而面板默认
+    /// 勾着 SRT。文件本身没法变得更好——不编时间是既定取舍——但这件事
+    /// 必须有个出口能说给用户,这条钉的就是那个出口。
+    #[test]
+    fn export_reports_the_subtitle_rows_it_could_not_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(tmp.path().to_string_lossy().to_string()).unwrap();
+        let session_id = seed_untimed_capture_session(&core);
+
+        let output = tmp.path().join("untimed.zip");
+        let outcome = core
+            .export_session_zip(
+                session_id.clone(),
+                output.to_str().unwrap().to_string(),
+                ExportZipOptions {
+                    include_audio: false,
+                    include_markdown: true,
+                    include_srt: true,
+                    include_vtt: false,
+                    include_txt: false,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(outcome.subtitle_rows_omitted, 2);
+        let zip_bytes = std::fs::read(&output).unwrap();
+        // 数字与文件同源:一行都没写进去。
+        assert_eq!(read_zip_entry(&zip_bytes, "transcript.srt").unwrap(), b"");
+        // 稿本身照常导出——丢的是字幕文件,不是内容。
+        let markdown = read_zip_entry(&zip_bytes, "transcript.md").unwrap();
+        assert!(String::from_utf8_lossy(&markdown).contains("没有时间的一句"));
+
+        // 没要字幕就不报数:那是「没问」,不是「没有遗漏」。
+        let quiet = tmp.path().join("no-subtitles.zip");
+        let outcome = core
+            .export_session_zip(
+                session_id,
+                quiet.to_str().unwrap().to_string(),
+                ExportZipOptions {
+                    include_audio: false,
+                    include_markdown: true,
+                    include_srt: false,
+                    include_vtt: false,
+                    include_txt: false,
+                },
+            )
+            .unwrap();
+        assert_eq!(outcome.subtitle_rows_omitted, 0);
     }
 
     fn read_zip_entry(zip_bytes: &[u8], name: &str) -> Option<Vec<u8>> {
@@ -545,6 +624,100 @@ mod tests {
             })
             .unwrap();
         core.session_meta.set_tokens(sid, tokens).unwrap();
+    }
+
+    /// 一场每行都没有时间戳的实时转录 —— 供应商整段不给 token 元数据时
+    /// 就是这个样子。返回 session id。
+    fn seed_untimed_capture_session(core: &ZuTalkCore) -> String {
+        use vt_store::notebook_capture_store::{
+            CaptureMode, NewNotebookCaptureRun, NewRealtimeUtterance, NotebookCaptureProfileUpdate,
+            RemoteHealth, UtteranceAlignment, UtteranceCompletion,
+        };
+
+        let sid = "session-untimed";
+        let notebook = core.create_notebook(Some("Untimed export".into())).unwrap();
+        let initial = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let profile = core
+            .notebook_capture_store
+            .update_profile(
+                &notebook.id,
+                initial.revision,
+                &NotebookCaptureProfileUpdate {
+                    remote_realtime_enabled: true,
+                    capture_mode: CaptureMode::TranscriptionOnly,
+                    // 单选一种语言时,legacy 字段由 legacy_capture_language_pair
+                    // 补出第二个,不能随手写。
+                    language_a: "zh".into(),
+                    language_b: "en".into(),
+                    left_language: "zh".into(),
+                    right_language: "en".into(),
+                    selected_languages: vec!["zh".into()],
+                    common_caption_language: None,
+                    privacy_level: "standard".into(),
+                    send_context_to_soniox: false,
+                },
+            )
+            .unwrap();
+        core.session_store
+            .insert_session(&vt_store::SessionRecord {
+                id: sid.into(),
+                title: "Untimed facts".into(),
+                session_type: "recording".into(),
+                status: "completed".into(),
+                duration_ms: 2_000,
+                created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                deleted_at: None,
+            })
+            .unwrap();
+        core.notebook_capture_store
+            .create_run(
+                &NewNotebookCaptureRun {
+                    id: format!("run-{sid}"),
+                    notebook_id: notebook.id,
+                    session_id: sid.into(),
+                    remote_health: RemoteHealth::Connecting,
+                    audio_journal_path: format!("/{sid}.journal"),
+                    audio_key_ref: format!("key-{sid}"),
+                    sample_rate: 16_000,
+                    channels: 1,
+                },
+                &profile,
+            )
+            .unwrap();
+        core.notebook_capture_store
+            .claim_provider_provenance(
+                sid,
+                vt_store::notebook_capture_store::CaptureProviderRole::Realtime,
+                vt_stt::CURRENT_NOTEBOOK_CAPTURE_ENGINE.provider_id,
+                vt_stt::CURRENT_NOTEBOOK_CAPTURE_ENGINE.realtime_model_id,
+            )
+            .unwrap();
+        for (sequence, source_text) in [(0, "没有时间的一句"), (1, "同样没有时间")] {
+            core.notebook_capture_store
+                .upsert_utterance(
+                    &NewRealtimeUtterance {
+                        id: format!("utterance-{sid}-{sequence}"),
+                        session_id: sid.into(),
+                        sequence,
+                        session_speaker_id: None,
+                        source_language: "zh".into(),
+                        source_text: source_text.into(),
+                        // 这就是被测的那件事:事实层没有时间,也不许编。
+                        source_start_ms: None,
+                        source_end_ms: None,
+                        translated_language: None,
+                        translated_text: None,
+                        completion: UtteranceCompletion::Complete,
+                        alignment: UtteranceAlignment::TranslationPending,
+                    },
+                    None,
+                )
+                .unwrap();
+        }
+        sid.into()
     }
 
     fn seed_two_way_capture(core: &ZuTalkCore, sid: &str) -> String {
