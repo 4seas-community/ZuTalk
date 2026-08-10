@@ -6,11 +6,11 @@
 # 浏览器,本地测不出)、TLS 下的 reqwest 推送、公网可达性、登录墙是否
 # 真的放开了。手动运行,不进 ci-check —— 它依赖外部服务与网络。
 #
-#   CAPTION_URL=https://zulangue-caption.exe.xyz scripts/caption_web_prod_smoke.sh
+#   CAPTION_URL=https://zutalk-caption.exe.xyz scripts/caption_web_prod_smoke.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BASE="${CAPTION_URL:-https://zulangue-caption.exe.xyz}"
+BASE="${CAPTION_URL:-https://zutalk-caption.exe.xyz}"
 step() { printf '\n== %s ==\n' "$1"; }
 
 step "服务可达(且没有登录墙)"

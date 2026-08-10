@@ -8,13 +8,14 @@
 计数器归零，此时把当前值整个当作增量——宁可少算一点，也不要报出负数。
 
 用法（由 systemd timer 每 15 分钟调一次）：
-    ZULANGUE_RELAY_AUTH_TOKEN=... ./report-stats.py
+    ZUTALK_RELAY_AUTH_TOKEN=... ./report-stats.py
 
 环境变量：
-    ZULANGUE_RELAY_AUTH_TOKEN  与邀请码服务共享的凭据（必需）
+    ZUTALK_RELAY_AUTH_TOKEN   与邀请码服务共享的凭据（必需；
+                              改名前的 ZULANGUE_ 仍然认）
     RELAY_METRICS_URL          默认 http://127.0.0.1:9090/metrics
-    INVITE_URL                 默认 https://zulangue-invite.exe.xyz
-    RELAY_STATE_FILE           默认 ~/zulangue-share-relay/data/last-metrics.json
+    INVITE_URL                 默认 https://zutalk-invite.exe.xyz
+    RELAY_STATE_FILE           默认 ~/zutalk-share-relay/data/last-metrics.json
 """
 
 from __future__ import annotations
@@ -40,11 +41,11 @@ COUNTERS = {
 UNIQUE_CLIENTS = "relayserver_unique_client_keys_total"
 
 METRICS_URL = os.environ.get("RELAY_METRICS_URL", "http://127.0.0.1:9090/metrics")
-INVITE_URL = os.environ.get("INVITE_URL", "https://zulangue-invite.exe.xyz")
+INVITE_URL = os.environ.get("INVITE_URL", "https://zutalk-invite.exe.xyz")
 STATE_FILE = pathlib.Path(
     os.environ.get(
         "RELAY_STATE_FILE",
-        str(pathlib.Path.home() / "zulangue-share-relay" / "data" / "last-metrics.json"),
+        str(pathlib.Path.home() / "zutalk-share-relay" / "data" / "last-metrics.json"),
     )
 )
 
@@ -84,11 +85,15 @@ def main() -> int:
     # 两个名字都认。中继的 service.env 里存的是 IROH_RELAY_HTTP_BEARER_TOKEN
     # (中继自己要用那个名),同一个值。让脚本认它,就不必在 systemd 单元里绕一层
     # shell 去改名 —— 那层 shell 里的变量展开语义正是上一版 401 的原因。
-    token = os.environ.get("ZULANGUE_RELAY_AUTH_TOKEN") or os.environ.get(
-        "IROH_RELAY_HTTP_BEARER_TOKEN", ""
+    # 改名后先认 ZUTALK_,再认改名前的 ZULANGUE_ —— 代码与机器上的
+    # service.env 不是同一次部署,谁先落地都不该让上报静默 401。
+    token = (
+        os.environ.get("ZUTALK_RELAY_AUTH_TOKEN")
+        or os.environ.get("ZULANGUE_RELAY_AUTH_TOKEN")
+        or os.environ.get("IROH_RELAY_HTTP_BEARER_TOKEN", "")
     )
     if not token:
-        print("ZULANGUE_RELAY_AUTH_TOKEN 未设置", file=sys.stderr)
+        print("ZUTALK_RELAY_AUTH_TOKEN 未设置", file=sys.stderr)
         return 2
 
     try:

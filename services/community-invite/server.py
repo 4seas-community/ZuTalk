@@ -25,6 +25,22 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+def env_secret(suffix: str) -> str:
+    """Reads a service credential under the current name, then the old one.
+
+    The product was renamed from Zulangue to ZuTalk, and these names live in
+    `service.env` on machines this repository does not deploy atomically. If
+    the code only read the new name, whichever of {code, machine} landed first
+    would leave the admin panel and relay auth silently unauthenticated — a
+    401 with nothing in the logs saying a rename caused it. Reading both makes
+    the two sides independent, so either order is safe.
+
+    The old name is scheduled for removal; see docs/service-rename.md for the
+    date and the check that has to pass before it goes.
+    """
+    return os.environ.get(f"ZUTALK_{suffix}") or os.environ.get(f"ZULANGUE_{suffix}", "")
+
+
 DEFAULT_QUOTA_SECONDS = 30 * 60 * 60
 SECONDS_PER_GIVE = 6 * 60 * 60
 DEFAULT_GIVES = 5
@@ -924,7 +940,7 @@ class Handler(BaseHTTPRequestHandler):
     # mutation carries a CSRF token bound to that session.
 
     def admin_token(self) -> str:
-        return os.environ.get("ZULANGUE_ADMIN_TOKEN", "")
+        return env_secret("ADMIN_TOKEN")
 
     def admin_session(self) -> str | None:
         """Returns the caller's live admin session id, or None."""
@@ -1013,7 +1029,7 @@ class Handler(BaseHTTPRequestHandler):
             "<h1>ZuTalk invites</h1>"
             + (f"<p class='warn'>{html.escape(message)}</p>" if message else "")
             + "<p class='dim'>Operator console for issuing invitation codes. "
-            "Sign in with the <code>ZULANGUE_ADMIN_TOKEN</code> set on this "
+            "Sign in with the <code>ZUTALK_ADMIN_TOKEN</code> set on this "
             "server. Nothing here touches your Mac or its keychain.</p>"
             "<form method='post' action='/admin/login'>"
             "<label>Admin token<br><input type='password' name='token' "
@@ -1255,7 +1271,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/v1/relay-auth":
             # relay 自己调用这个端点,它不带邀请码,只带 endpoint id。
             # 服务间凭据走 IROH_RELAY_HTTP_BEARER_TOKEN,不落配置文件。
-            expected = os.environ.get("ZULANGUE_RELAY_AUTH_TOKEN", "")
+            expected = env_secret("RELAY_AUTH_TOKEN")
             presented = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
             if not expected or not hmac.compare_digest(presented, expected):
                 self.send_json(401, {"error": "unauthorized"})
@@ -1283,7 +1299,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/v1/relay-stats":
             # 中继上报,凭据与门禁同一把。
-            expected = os.environ.get("ZULANGUE_RELAY_AUTH_TOKEN", "")
+            expected = env_secret("RELAY_AUTH_TOKEN")
             presented = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
             if not expected or not hmac.compare_digest(presented, expected):
                 self.send_json(401, {"error": "unauthorized"})

@@ -8,13 +8,14 @@
 #   4. 登记后被放行            —— 门禁把自己人也挡了
 #
 # 用法:
-#   ZULANGUE_RELAY_AUTH_TOKEN=... INVITE_URL=https://invite.exe.dev ./smoke-test.sh
+#   ZUTALK_RELAY_AUTH_TOKEN=... INVITE_URL=https://invite.exe.dev ./smoke-test.sh
 #   # 想连第 4 步一起验,再给一个已兑换的邀请 access token:
-#   ZULANGUE_RELAY_AUTH_TOKEN=... INVITE_ACCESS_TOKEN=... ./smoke-test.sh
+#   ZUTALK_RELAY_AUTH_TOKEN=... INVITE_ACCESS_TOKEN=... ./smoke-test.sh
 set -euo pipefail
 
 INVITE_URL="${INVITE_URL:-https://invite.exe.dev}"
-TOKEN="${ZULANGUE_RELAY_AUTH_TOKEN:-}"
+# 改名后先认 ZUTALK_，旧名保留到 docs/service-rename.md 写明的期限。
+TOKEN="${ZUTALK_RELAY_AUTH_TOKEN:-${ZULANGUE_RELAY_AUTH_TOKEN:-}}"
 ACCESS="${INVITE_ACCESS_TOKEN:-}"
 
 fail() {
@@ -22,7 +23,7 @@ fail() {
   exit 1
 }
 
-[[ -n "$TOKEN" ]] || fail "需要 ZULANGUE_RELAY_AUTH_TOKEN(与中继的 IROH_RELAY_HTTP_BEARER_TOKEN 同值)"
+[[ -n "$TOKEN" ]] || fail "需要 ZUTALK_RELAY_AUTH_TOKEN(与中继的 IROH_RELAY_HTTP_BEARER_TOKEN 同值)"
 
 # 一个不可能被登记的 endpoint id:合法长度的全 f。
 NEVER_ENROLLED="$(printf 'f%.0s' {1..64})"

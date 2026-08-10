@@ -33,7 +33,8 @@ Sparkle 密钥不是 Soniox、GitHub、Apple ID 或 Git 提交签名密钥。它
 ```
 
 > `--account` 是登录 Keychain 里的查找名，不是产品名。这对密钥在改名成
-> ZuTalk 之前就生成了，账户名保持 `Zulangue` 不动：App 里内置的公钥对应
+> 账户名保持 `Zulangue` 不动，它属于「永远不改的名字」——完整清单与判据见
+> [docs/service-rename.md](service-rename.md) 第 1 节。ZuTalk 之前就生成了，App 里内置的公钥对应
 > 的正是这把私钥，换个账户名等于找不到它，而用新生成的密钥签出来的更新
 > 会被所有已安装的 App 拒收。要改名只能连同轮换公钥一起做，那是另一件事。
 

@@ -1,3 +1,4 @@
+import os
 import pathlib
 import tempfile
 import threading
@@ -617,3 +618,50 @@ class RelayStatsTest(unittest.TestCase):
     def test_nothing_is_stored_when_a_report_is_refused(self):
         self.store.record_relay_stats(self.DAY, {"bytes_sent": -5})
         self.assertEqual(self.store.relay_stats(), [])
+
+
+class ServiceCredentialNameTests(unittest.TestCase):
+    """The rename from Zulangue to ZuTalk reaches `service.env` on machines
+    this repository does not deploy in the same step as the code. If the
+    server only read the new name, whichever side landed first would leave
+    the admin panel and relay auth rejecting every caller — a 401 with
+    nothing in the logs attributing it to a rename. Both names must work
+    until the old one's removal date passes."""
+
+    def setUp(self):
+        self._saved = {
+            key: os.environ.get(key)
+            for key in (
+                "ZUTALK_ADMIN_TOKEN",
+                "ZULANGUE_ADMIN_TOKEN",
+                "ZUTALK_RELAY_AUTH_TOKEN",
+                "ZULANGUE_RELAY_AUTH_TOKEN",
+            )
+        }
+        for key in self._saved:
+            os.environ.pop(key, None)
+
+    def tearDown(self):
+        for key, value in self._saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def test_current_name_is_read(self):
+        os.environ["ZUTALK_ADMIN_TOKEN"] = "new"
+        self.assertEqual(server.env_secret("ADMIN_TOKEN"), "new")
+
+    def test_pre_rename_name_still_works(self):
+        os.environ["ZULANGUE_ADMIN_TOKEN"] = "old"
+        self.assertEqual(server.env_secret("ADMIN_TOKEN"), "old")
+
+    def test_current_name_wins_when_both_are_set(self):
+        os.environ["ZULANGUE_RELAY_AUTH_TOKEN"] = "old"
+        os.environ["ZUTALK_RELAY_AUTH_TOKEN"] = "new"
+        self.assertEqual(server.env_secret("RELAY_AUTH_TOKEN"), "new")
+
+    def test_absent_reads_empty_rather_than_raising(self):
+        # An empty secret is refused by the callers; a KeyError here would
+        # take the whole request handler down instead.
+        self.assertEqual(server.env_secret("ADMIN_TOKEN"), "")

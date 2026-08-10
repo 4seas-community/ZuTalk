@@ -40,18 +40,18 @@ caption-web 独占一台 VM(`zutalk-caption`),与 relay 不合并的理由相同
 ssh exe.dev new --name zutalk-caption --cpu 1 --memory 1GB
 ssh exe.dev tag zutalk-caption seas4
 
-# VM 上(服务目录按 zulangue-caption-web.service 里的 WorkingDirectory)
-scp server.py zulangue-caption.exe.xyz:zulangue-caption-web/
-scp zulangue-caption-web.service zulangue-caption.exe.xyz:
-ssh zulangue-caption.exe.xyz 'sudo install -m644 zulangue-caption-web.service \
+# VM 上(服务目录按 zutalk-caption-web.service 里的 WorkingDirectory)
+scp server.py zutalk-caption.exe.xyz:zutalk-caption-web/
+scp zutalk-caption-web.service zutalk-caption.exe.xyz:
+ssh zutalk-caption.exe.xyz 'sudo install -m644 zutalk-caption-web.service \
     /etc/systemd/system/ && sudo systemctl daemon-reload && \
-    sudo systemctl enable --now zulangue-caption-web'
+    sudo systemctl enable --now zutalk-caption-web'
 
 # 放开登录墙(不放开的话,扫码的人会先被要求登录 exe.dev)
 ssh exe.dev share port zutalk-caption 8000
 ssh exe.dev share set-public zutalk-caption
 
-curl -s https://zulangue-caption.exe.xyz/healthz
+curl -s https://zutalk-caption.exe.xyz/healthz
 ```
 
 `--public-base` 必须是浏览器可达的公开地址 —— 观看页链接由服务端用它拼出。

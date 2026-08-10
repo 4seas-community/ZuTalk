@@ -16,9 +16,9 @@
 
 | | |
 | --- | --- |
-| 中继 | `zulangue-relay.exe.xyz`（1 vCPU / 2 GB），systemd 单元 `zulangue-share-relay` |
-| 邀请码服务 | `zulangue-invite.exe.xyz`，门禁端点 `/v1/relay-auth` |
-| 客户端用的 relay URL | `https://zulangue-relay.exe.xyz` |
+| 中继 | `zutalk-relay.exe.xyz`（1 vCPU / 2 GB），systemd 单元 `zutalk-share-relay` |
+| 邀请码服务 | `zutalk-invite.exe.xyz`，门禁端点 `/v1/relay-auth` |
+| 客户端用的 relay URL | `https://zutalk-relay.exe.xyz` |
 
 exe.dev 的网络模型和一般 VM 不同，本目录里的 `relay.toml` 是**通用形态**，实际
 部署用的是下面这几条差异：
@@ -45,14 +45,14 @@ exe.dev 的网络模型和一般 VM 不同，本目录里的 `relay.toml` 是**�
 cargo install --git https://github.com/n0-computer/iroh --tag v1.0.3 --features server iroh-relay
 ```
 
-放好文件。`RELAY_HOME` 取 `zulangue-share-relay.service` 里 `WorkingDirectory`
+放好文件。`RELAY_HOME` 取 `zutalk-share-relay.service` 里 `WorkingDirectory`
 的值：
 
 ```bash
-RELAY_HOME=~/zulangue-share-relay
+RELAY_HOME=~/zutalk-share-relay
 install -Dm755 ~/.cargo/bin/iroh-relay "$RELAY_HOME/bin/iroh-relay"
 install -Dm644 relay.toml "$RELAY_HOME/relay.toml"
-sudo install -Dm644 zulangue-share-relay.service /etc/systemd/system/zulangue-share-relay.service
+sudo install -Dm644 zutalk-share-relay.service /etc/systemd/system/zutalk-share-relay.service
 ```
 
 服务间凭据只存在于 `service.env`，**永远不要提交**：
@@ -62,19 +62,19 @@ umask 077
 printf 'IROH_RELAY_HTTP_BEARER_TOKEN=%s\n' "$(openssl rand -hex 32)" > "$RELAY_HOME/service.env"
 ```
 
-同一个值要写进邀请码服务的 `service.env`，键名是 `ZULANGUE_RELAY_AUTH_TOKEN`——
+同一个值要写进邀请码服务的 `service.env`，键名是 `ZUTALK_RELAY_AUTH_TOKEN`——
 两边不一致时中继的每次鉴权都会拿到 401，表现为「所有人都连不上中继」。
 
 启动：
 
 ```bash
-sudo systemctl enable --now zulangue-share-relay
+sudo systemctl enable --now zutalk-share-relay
 ```
 
 ## 运营统计
 
 中继每 15 分钟把自己的 Prometheus 计数器按天报给邀请码服务
-(`zulangue-relay-stats.timer` → `report-stats.py` → `POST /v1/relay-stats`)。
+(`zutalk-relay-stats.timer` → `report-stats.py` → `POST /v1/relay-stats`)。
 
 **这条路径在结构上产不出社交图谱。** 中继的计数器是全局量 —— 累计字节、连接数、
 掉包数 —— 它们**不带标签**,没有「谁连了谁」这种维度可读。服务端那张 `relay_daily`
@@ -114,7 +114,7 @@ iroh-relay 1.0.3 的文档说鉴权请求带 `X-Iroh-Endpoint-Id` 头，**但源
 ## 验证门禁真的在拦
 
 ```bash
-ZULANGUE_RELAY_AUTH_TOKEN=... INVITE_URL=https://invite.exe.dev ./smoke-test.sh
+ZUTALK_RELAY_AUTH_TOKEN=... INVITE_URL=https://invite.exe.dev ./smoke-test.sh
 ```
 
 它验四件事:服务可达、未登记被拒、token 不符 401、登记后放行。**但 curl 类测试
