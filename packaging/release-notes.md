@@ -73,6 +73,18 @@ share, refined by watching a real meeting through it.
   status row, which broke the columns and told the room something only
   an operator can act on. It now appears as what it is — speech. The
   saved transcript still says when an identity was never established.
+- **Older recordings finish filling in their translations.** Some
+  recordings held translated fragments that were waiting to be attached
+  to a line and never were — quietly, with nothing to see. Opening the
+  app now completes them, and tidies up the stray spaces those lines
+  were saved with. If you share such a recording, viewers get the
+  completed version too.
+
+Also fixed: a transcription service that went quiet without closing the
+connection would leave the app holding every second of audio it had sent
+since — up to about 115 MB an hour, in an app whose whole posture is that
+audio does not stick around. It now keeps only the few seconds a
+reconnect could actually use.
 
 Fixes in the web page: the live text at the bottom now bottom-aligns
 across columns the way the app's own window does; a column for the
