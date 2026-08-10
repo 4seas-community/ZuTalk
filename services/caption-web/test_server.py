@@ -27,12 +27,15 @@ class CaptionWebTests(unittest.TestCase):
         self.httpd.server_close()
 
     # ------------------------------------------------------------------
-    def request(self, method, path, body=None, token=None):
+    def request(self, method, path, body=None, token=None, forwarded_for=None):
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.port}{path}", method=method
         )
         if token:
             request.add_header("Authorization", f"Bearer {token}")
+        if forwarded_for:
+            # 边缘代理加的那个头。测试直连,所以要自己加。
+            request.add_header("X-Forwarded-For", forwarded_for)
         data = None
         if body is not None:
             data = json.dumps(body).encode()
@@ -301,6 +304,64 @@ class CaptionWebTests(unittest.TestCase):
         status, payload = self.request("POST", "/v1/rooms")
         self.assertEqual(status, 429)
         self.assertEqual(payload["error"], "room_limit")
+
+    def test_rate_limit_counts_the_forwarded_caller_not_the_proxy(self):
+        """线上 TLS 在边缘终结,每个请求的 peer 都是回环地址。
+
+        不认转发地址的话,这里第二个主持人会被第一个主持人用掉的额度挡住
+        —— 「每个调用方 6 次/分钟」在生产上会变成「全站 6 次/分钟」。
+        """
+        for _ in range(server.MAX_CREATES_PER_MINUTE):
+            status, _ = self.request("POST", "/v1/rooms", forwarded_for="203.0.113.7")
+            self.assertEqual(status, 200)
+        status, _ = self.request("POST", "/v1/rooms", forwarded_for="203.0.113.7")
+        self.assertEqual(status, 429)
+
+        # 另一个主持人,同一个边缘代理:不该受影响。
+        status, _ = self.request("POST", "/v1/rooms", forwarded_for="203.0.113.8")
+        self.assertEqual(status, 200)
+
+    def test_forged_forwarded_headers_still_hit_a_global_ceiling(self):
+        """转发地址是客户端能伪造的,所以它只分桶,不放行。"""
+        accepted = 0
+        for index in range(server.MAX_CREATES_PER_MINUTE_GLOBAL + 5):
+            status, _ = self.request(
+                "POST", "/v1/rooms", forwarded_for=f"198.51.100.{index}"
+            )
+            if status == 200:
+                accepted += 1
+        self.assertEqual(accepted, server.MAX_CREATES_PER_MINUTE_GLOBAL)
+
+    def test_a_full_server_does_not_spend_the_caller_s_rate_allowance(self):
+        """房满是容量,不是滥用。
+
+        从前限速戳记在容量检查之前,于是满员期间每次拒绝都要扣一格额度:
+        调用方问六次之后,连「满了」都问不到了,收到的变成限速拒绝。
+        """
+        original, server.MAX_ROOMS = server.MAX_ROOMS, 0
+        try:
+            for _ in range(server.MAX_CREATES_PER_MINUTE + 3):
+                status, payload = self.request("POST", "/v1/rooms")
+                self.assertEqual(status, 429)
+                self.assertEqual(payload["error"], "room_limit")
+        finally:
+            server.MAX_ROOMS = original
+
+        self.assertEqual(self.store.creates_by_ip, {})
+        # 额度一格没动过,腾出位置后照常能建。
+        status, _ = self.request("POST", "/v1/rooms")
+        self.assertEqual(status, 200)
+
+    def test_rate_limit_buckets_do_not_grow_without_bound(self):
+        """认了转发地址之后,键的数量由调用方决定,过期的必须整条丢掉。"""
+        for index in range(20):
+            self.request("POST", "/v1/rooms", forwarded_for=f"192.0.2.{index}")
+        self.assertGreater(len(self.store.creates_by_ip), 1)
+
+        for stamps in self.store.creates_by_ip.values():
+            stamps[:] = [t - 61 for t in stamps]
+        self.request("POST", "/v1/rooms", forwarded_for="192.0.2.250")
+        self.assertEqual(list(self.store.creates_by_ip), ["192.0.2.250"])
 
     def test_idle_rooms_are_swept(self):
         room = self.create_room()

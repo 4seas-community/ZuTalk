@@ -37,8 +37,12 @@ MAX_BODY_BYTES = 1 * 1024 * 1024
 # 只是封笔;房间读到留存期满为止。窗口越长,明文在服务器上待得越久 ——
 # 这个数就是那条取舍,`--retention-hours` 可覆盖。
 ROOM_RETENTION_SECONDS = 24 * 60 * 60
-# 每个 IP 每分钟最多建几个房。正常使用是一场会议一个。
+# 每个调用方每分钟最多建几个房。正常使用是一场会议一个。
 MAX_CREATES_PER_MINUTE = 6
+# 全站每分钟建房上限。调用方身份取自 X-Forwarded-For,那是客户端能伪造的,
+# 所以再压一个伪造绕不开的桶。它比任何真实场景都宽 —— 房间总数上限本来就是
+# 200,这个桶只是让脚本填不快。真正的门禁(建房接邀请码)仍是延后项,见 README。
+MAX_CREATES_PER_MINUTE_GLOBAL = 30
 # 单房间的 SSE 订阅上限 —— 会议室量级,不是直播量级。
 MAX_SUBSCRIBERS_PER_ROOM = 200
 # 订阅者队列深度。帧是 replace-in-full 的,浏览器掉队就丢旧帧。
@@ -93,22 +97,38 @@ class RoomStore:
         # 崩溃最多丢掉最后几秒的一次覆盖,主播还活着就会再推一份。
         self.dirty = False
 
-    def create_room(self, client_ip: str) -> Room | None:
+    def create_room(self, client_key: str) -> Room | None:
+        """`client_key` 是调用方身份,由 Handler.client_key() 给出。
+
+        它可能被伪造(见那里的注释),所以除了按调用方限速,还有一个**伪造
+        绕不开的全局桶**;两个都过了才建房。
+        """
         with self.lock:
             window_start = now() - 60
-            stamps = [t for t in self.creates_by_ip.get(client_ip, []) if t > window_start]
+            # 过期的桶整条丢掉。只清正在用的那个键会让字典随不同调用方
+            # 无界增长 —— 从前每个请求都是回环地址,只有一个键,所以看不
+            # 出来;认了转发地址之后就看得出来了。
+            self.creates_by_ip = {
+                key: fresh
+                for key, stamps in self.creates_by_ip.items()
+                if (fresh := [t for t in stamps if t > window_start])
+            }
+            stamps = self.creates_by_ip.get(client_key, [])
             if len(stamps) >= MAX_CREATES_PER_MINUTE:
                 return None
-            stamps.append(now())
-            self.creates_by_ip[client_ip] = stamps
+            if sum(len(s) for s in self.creates_by_ip.values()) >= MAX_CREATES_PER_MINUTE_GLOBAL:
+                return None
 
             if len(self.rooms) >= MAX_ROOMS:
+                # 房满是容量,不是滥用。先记限速再查容量的话,满员期间每次
+                # 拒绝都还要扣掉一格额度,调用方六次之后连「满了」都问不到。
                 return None
             room = Room(
                 room_id=secrets.token_urlsafe(16),
                 publish_token=secrets.token_urlsafe(32),
             )
             self.rooms[room.room_id] = room
+            self.creates_by_ip.setdefault(client_key, []).append(now())
             self.dirty = True
             return room
 
@@ -969,6 +989,23 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:  # 静默访问日志;错误仍走 stderr
         pass
 
+    def client_key(self) -> str:
+        """建房限速用来区分调用方的键。
+
+        TLS 在 exe.dev 的边缘终结,VM 只讲 HTTP,所以 `client_address` 对**每
+        一个**请求都是回环地址。拿它当限速键,等于把「每个调用方 6 次/分钟」
+        变成「全站 6 次/分钟」:同一分钟里第七个开网页分享的主持人会拿到 429,
+        而真正的滥用者也照样藏在同一个桶里。
+
+        转发地址客户端能伪造,所以它只用来分桶,不用来放行 —— 伪造绕不开的
+        那一层是 create_room 里的全局桶。邀请码服务在同一部署形态下早已这么
+        做(community-invite/server.py 的 login_client_key)。
+        """
+        forwarded = self.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()[:64]
+        return self.client_address[0]
+
     def send_json(self, status: int, payload: dict) -> None:
         # ensure_ascii=False:中日韩文本按 UTF-8 原样输出,比 \uXXXX 转义
         # 省一半以上字节 —— 这个服务的载荷几乎全是这三种文字。
@@ -1079,7 +1116,7 @@ class Handler(BaseHTTPRequestHandler):
         body = self.read_body()
 
         if self.path == "/v1/rooms":
-            room = self.store.create_room(self.client_address[0])
+            room = self.store.create_room(self.client_key())
             if room is None:
                 self.send_json(429, {"error": "room_limit"})
                 return
