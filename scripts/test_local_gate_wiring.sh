@@ -66,6 +66,7 @@ for script in \
   scripts/test_macos_rust_test_gate.sh \
   scripts/test_release_distribution_gate.sh \
   scripts/test_release_universal_app_gate.sh \
+  scripts/test_update_identity_gate.sh \
   scripts/test_bundle_id_recovery_gate.sh \
   scripts/test_secret_material_storage_gate.sh \
   scripts/test_minimal_mvp_architecture_gate.sh \

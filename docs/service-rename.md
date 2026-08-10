@@ -65,6 +65,7 @@ HTTPS 连得上，否则拒绝打标签。它现在守的是上表这三个名�
 | `.zulangue-core.lock` / `zulangue.db` | 同上 | 老用户的数据目录 | 迁移认不出旧目录 |
 | `xyz.voice.zulangue.community-invite` | CommunityInviteSession.swift | 老用户的 Keychain | 已兑换的邀请码消失 |
 | Sparkle keychain 账户 `Zulangue` | justfile / docs/releasing.md | 本机 Keychain | 发布时找不到私钥；App 内置公钥对应的就是这把。**有门禁**：scripts/test_release_distribution_gate.sh |
+| `ZuTalk.app`（bundle 文件名）+ `xyz.voice.zutalk` | packaging/update-identity.json | 已装 0.4.x 的用户 | Sparkle 在更新包里找不到要装的 bundle，此后每次更新都失败（第 1.5 节）。**有门禁**：scripts/check_update_identity.sh |
 | 三个 `zulangue-*.exe.xyz` 主机名 | share_api.rs / share_web.rs / CommunityInviteSession.swift | DNS + 已发布的二进制 | 已装客户端全部失联（见第 0 节）。**有门禁**：scripts/check_service_endpoints.sh |
 | CHANGELOG 中 0.3.x 条目 | CHANGELOG.md | 已发布的原文 | 不回溯改写（文件抬头已写明） |
 
@@ -99,6 +100,50 @@ CHANGELOG 并发出去了。持有者是**已发布的 0.4.0 客户端**，所�
 
 HTTP 线上协议（`/v1/rooms`、`/frame`、`/blocks`、`/segment`、`/r/<id>`、
 `/healthz`）**一个产品名都不含**，所以它天然不受任何改名影响。新加接口照此办理。
+
+### 1.5 判据漏掉的一个持有者：已装的 app 自己
+
+**0.4.0 让所有 0.3.x 安装从此更新不动了，而且追不回来。** 用户点「安装更新」，
+Sparkle 下载完整包，然后弹出「此更新未正确签名，无法验证其真实性」——签名是好的，
+这句话把人带到了完全错误的方向。
+
+漏掉的持有者是**已装的那份 app 自己**。Sparkle 解包之后要在更新目录里挑出「要装
+的是哪一个 bundle」，判据写死在 `Autoupdate/SUInstaller.m` 里，三条全部取自已装
+那份手里的名字：
+
+1. 新 bundle 的文件名 == 已装 app 的文件名（`Zulangue.app`）
+2. 新 bundle 的文件名 == 已装 app 的显示名 + `.app`
+3. 新 bundle 的 `CFBundleIdentifier` == 已装 app 的 `CFBundleIdentifier`
+
+0.4.0 同时改掉了文件名（`Zulangue.app` → `ZuTalk.app`）与 bundle ID
+（`xyz.voice.zulangue` → `xyz.voice.zutalk`），三条一条不剩。Sparkle 报的是
+`No suitable install is found in the update`，而这个错误（`SUValidationError`）在
+`SPUInstallerDriver` 里被统一翻成那句「未正确签名」。0.4.1 更新失败时的系统日志逐
+字记着这个顺序：
+
+```text
+OK: EdDSA signature is correct for update
+Searched …/Installation/…  for Zulangue.(app|pkg)
+Error: No suitable install is found in the update. The update will be rejected.
+Error: 此更新未正确签名，无法验证其真实性。
+```
+
+表 1.1 里的 `xyz.voice.zulangue` 那一行只盯着「偏好设置读不到」，而
+LegacyIdentityMigration 把数据目录与偏好域都接住了，于是改名看起来是完整的。没接
+住的是**谁来找这个更新**——那份判据不在我们的代码里，在用户机器上那个已经发出去
+的二进制里。
+
+**已装的 0.3.x 副本改不回来**：它编译进去的判据就是那两个旧名字。唯一的出路是手动
+重新下载安装一次（数据与偏好由 LegacyIdentityMigration 自动接管，删掉旧 app 之
+前先把它退出，否则数据目录带锁、迁移这次会跳过）。能通知到这批用户的渠道只有更新
+提示里显示的发布说明。
+
+**现在冻结的是 0.4.x 那份身份**：`ZuTalk.app` + `xyz.voice.zutalk`，记在
+`packaging/update-identity.json`。`just release-adhoc` / `release-full` 会跑
+`scripts/check_update_identity.sh` 逐条核对上面三条判据，不中就拒绝出包；
+`scripts/test_update_identity_gate.sh` 守着这道门禁本身还挂在发布路径上。要再改一
+次名，就必须在同一个提交里改那份记录——也就是明写下「放弃现存的全部安装」，而不
+是让它作为改名的顺手连带发生第二次。
 
 ## 2. 环境变量：只认一个名字，而且是改名前那个
 

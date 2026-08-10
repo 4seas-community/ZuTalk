@@ -154,6 +154,7 @@ ci-check:
     bash scripts/test_macos_rust_test_gate.sh
     bash scripts/test_release_distribution_gate.sh
     bash scripts/test_release_universal_app_gate.sh
+    bash scripts/test_update_identity_gate.sh
     bash scripts/test_bundle_id_recovery_gate.sh
     bash scripts/test_secret_material_storage_gate.sh
     bash scripts/test_minimal_mvp_architecture_gate.sh
@@ -176,6 +177,7 @@ local-gate-static:
     bash scripts/test_macos_rust_test_gate.sh
     bash scripts/test_release_distribution_gate.sh
     bash scripts/test_release_universal_app_gate.sh
+    bash scripts/test_update_identity_gate.sh
     bash scripts/test_bundle_id_recovery_gate.sh
     bash scripts/test_secret_material_storage_gate.sh
     bash scripts/test_minimal_mvp_architecture_gate.sh
@@ -528,6 +530,11 @@ assert-sparkle-configured-app:
         || { echo "FAIL: ZuTalk executable is not linked to Sparkle"; exit 1; }
     echo "✓ Sparkle feed, public key, framework, and strict verification are configured"
 
+# 签名对了不等于装得上:Sparkle 还要用**已装那份**手里的名字,在更新包里
+# 找出要装的 bundle。找不到的报错是「此更新未正确签名」,签名却是好的。
+assert-sparkle-update-identity:
+    bash "{{ project_dir }}/scripts/check_update_identity.sh" "{{ app_build_dir }}/ZuTalk.app"
+
 assert-adhoc-app:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -844,7 +851,7 @@ sparkle-appcast:
     echo "✓ SHA-256 written for ZuTalk-${VERSION}.dmg"
 
 # 单一社区发布包：Universal app + Ad Hoc 签名 + Sparkle 配置 + DMG。
-release-adhoc: release xcode-build-universal assert-universal-app assert-adhoc-app assert-sparkle-configured-app assert-public-app-privacy dmg
+release-adhoc: release xcode-build-universal assert-universal-app assert-adhoc-app assert-sparkle-configured-app assert-sparkle-update-identity assert-public-app-privacy dmg
     @echo "✓ Ad Hoc Universal release 完成: build/dmg/ZuTalk-*.dmg"
 
 # 本机正式发布包：先构建 Ad Hoc DMG，再使用登录 Keychain 中的 Zulangue
@@ -884,7 +891,7 @@ release-ship: release-sparkle-adhoc release-tag release-publish
     @echo "✓ 发布完成"
 
 # 完整签名发布（需要 Developer ID、公证凭据和源码中固定的 Sparkle 公钥）
-release-full: release xcode-build-universal-signed assert-universal-app assert-release-app-signature assert-sparkle-configured-app assert-public-app-privacy dmg sign-release-dmg notarize-release assert-release-dmg-gatekeeper-accepted
+release-full: release xcode-build-universal-signed assert-universal-app assert-release-app-signature assert-sparkle-configured-app assert-sparkle-update-identity assert-public-app-privacy dmg sign-release-dmg notarize-release assert-release-dmg-gatekeeper-accepted
     @echo "✓ 完整签名 + 公证 release 完成: build/dmg/ZuTalk-*.dmg"
 
 # --- 内部 recipes ---

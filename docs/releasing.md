@@ -79,6 +79,13 @@ just release-ship
 - **目的地**：`GITHUB_REPOSITORY` 必须与 `github` remote 一致。下载地址
   会被**签进** appcast——仓库名打错的话签名依然有效、地址却指向别处，
   从产物上看不出来。`GITHUB_REF_NAME` 由版本检查与 Cargo 版本对齐。
+- **更新可达性**：签名对了不等于装得上。Sparkle 解包之后，要用**已装那份
+  app** 手里的名字（bundle 文件名 / 显示名 / bundle ID）在更新包里挑出要装
+  的 bundle，三条判据全不中就拒收，而报错是「此更新未正确签名」——签名却是
+  好的，这句话会把人带到错误的方向。0.4.0 同时改了文件名与 bundle ID，所有
+  0.3.x 安装因此永久失去自动更新。`release-adhoc` 会拿
+  `packaging/update-identity.json` 逐条核对，详见
+  [docs/service-rename.md](service-rename.md) 第 1.5 节。
 - **镜像竞态**：主库在 Gitea，GitHub 是镜像。抢在同步之前发布的话，
   GitHub 会拿默认分支 HEAD 自己造一个同名标签——既不是那个签名标签，
   还可能指向别的提交。发布前会等，并比对提交号；`gh` 那边也带

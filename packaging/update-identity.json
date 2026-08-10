@@ -1,0 +1,7 @@
+{
+  "bundle_file_name": "ZuTalk.app",
+  "display_name": "ZuTalk",
+  "bundle_id": "xyz.voice.zutalk",
+  "since_version": "0.4.0",
+  "note": "用户机器上那份已装的 app 用这三个名字在下载来的更新包里找「要装的是哪一个」。新版本必须至少还中其中一条,否则每一份已装副本都会拒收更新,而且报的是「此更新未正确签名」——签名是好的,这句话会把人带偏。判据、后果与 0.3.x 那批追不回来的安装见 docs/service-rename.md 第 1.5 节;门禁是 scripts/check_update_identity.sh。"
+}
