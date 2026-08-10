@@ -153,5 +153,5 @@ curl -s https://zulangue-caption.exe.xyz/healthz   # 主机名不变，改完仍
 - [x] 第 2 节环境变量键名已撤销回 `ZULANGUE_*`（单名 + 测试守住反方向）——
       **服务端代码现在可以直接部署，没有前置条件**
 - [ ] 3.2 三台机器的目录与单元改名——纯整齐，尚未决定做不做；不做的话，仓库里的
-      `zutalk-*.service`（含 `WorkingDirectory=/home/exedev/zutalk-*`）与机器上
-      的实际路径对不上，谁照着它部署谁踩坑
+      `zutalk-*.service`（它的 `WorkingDirectory` 与 `EnvironmentFile` 都写着
+      `zutalk-*` 目录）与机器上的实际目录对不上，谁照着它部署谁踩坑
