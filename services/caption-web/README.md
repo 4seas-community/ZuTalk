@@ -41,9 +41,9 @@ ssh exe.dev new --name zutalk-caption --cpu 1 --memory 1GB
 ssh exe.dev tag zutalk-caption seas4
 
 # VM 上(服务目录按 zutalk-caption-web.service 里的 WorkingDirectory)
-scp server.py zutalk-caption.exe.xyz:zutalk-caption-web/
-scp zutalk-caption-web.service zutalk-caption.exe.xyz:
-ssh zutalk-caption.exe.xyz 'sudo install -m644 zutalk-caption-web.service \
+scp server.py zulangue-caption.exe.xyz:zutalk-caption-web/
+scp zutalk-caption-web.service zulangue-caption.exe.xyz:
+ssh zulangue-caption.exe.xyz 'sudo install -m644 zutalk-caption-web.service \
     /etc/systemd/system/ && sudo systemctl daemon-reload && \
     sudo systemctl enable --now zutalk-caption-web'
 
@@ -51,7 +51,7 @@ ssh zutalk-caption.exe.xyz 'sudo install -m644 zutalk-caption-web.service \
 ssh exe.dev share port zutalk-caption 8000
 ssh exe.dev share set-public zutalk-caption
 
-curl -s https://zutalk-caption.exe.xyz/healthz
+curl -s https://zulangue-caption.exe.xyz/healthz
 ```
 
 `--public-base` 必须是浏览器可达的公开地址 —— 观看页链接由服务端用它拼出。

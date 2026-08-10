@@ -16,9 +16,9 @@
 
 | | |
 | --- | --- |
-| 中继 | `zutalk-relay.exe.xyz`（1 vCPU / 2 GB），systemd 单元 `zutalk-share-relay` |
-| 邀请码服务 | `zutalk-invite.exe.xyz`，门禁端点 `/v1/relay-auth` |
-| 客户端用的 relay URL | `https://zutalk-relay.exe.xyz` |
+| 中继 | `zulangue-relay.exe.xyz`（1 vCPU / 2 GB），systemd 单元 `zutalk-share-relay` |
+| 邀请码服务 | `zulangue-invite.exe.xyz`，门禁端点 `/v1/relay-auth` |
+| 客户端用的 relay URL | `https://zulangue-relay.exe.xyz` |
 
 exe.dev 的网络模型和一般 VM 不同，本目录里的 `relay.toml` 是**通用形态**，实际
 部署用的是下面这几条差异：

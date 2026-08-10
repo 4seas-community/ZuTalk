@@ -13,7 +13,7 @@
 环境变量：
     ZUTALK_RELAY_AUTH_TOKEN   与邀请码服务共享的凭据（必需）
     RELAY_METRICS_URL          默认 http://127.0.0.1:9090/metrics
-    INVITE_URL                 默认 https://zutalk-invite.exe.xyz
+    INVITE_URL                 默认 https://zulangue-invite.exe.xyz
     RELAY_STATE_FILE           默认 ~/zutalk-share-relay/data/last-metrics.json
 """
 
@@ -40,7 +40,7 @@ COUNTERS = {
 UNIQUE_CLIENTS = "relayserver_unique_client_keys_total"
 
 METRICS_URL = os.environ.get("RELAY_METRICS_URL", "http://127.0.0.1:9090/metrics")
-INVITE_URL = os.environ.get("INVITE_URL", "https://zutalk-invite.exe.xyz")
+INVITE_URL = os.environ.get("INVITE_URL", "https://zulangue-invite.exe.xyz")
 STATE_FILE = pathlib.Path(
     os.environ.get(
         "RELAY_STATE_FILE",

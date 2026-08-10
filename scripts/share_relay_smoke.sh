@@ -11,9 +11,9 @@
 # 不进 ci-check —— 它依赖外部服务与网络。
 set -euo pipefail
 
-INVITE_SSH="${ZUTALK_INVITE_SSH:-zutalk-invite.exe.xyz}"
-INVITE_URL="${ZUTALK_INVITE_URL:-https://zutalk-invite.exe.xyz}"
-RELAY_URL="${ZUTALK_RELAY_URL:-https://zutalk-relay.exe.xyz}"
+INVITE_SSH="${ZUTALK_INVITE_SSH:-zulangue-invite.exe.xyz}"
+INVITE_URL="${ZUTALK_INVITE_URL:-https://zulangue-invite.exe.xyz}"
+RELAY_URL="${ZUTALK_RELAY_URL:-https://zulangue-relay.exe.xyz}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

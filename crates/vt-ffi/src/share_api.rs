@@ -73,7 +73,7 @@ pub const SHARED_INBOX_NOTEBOOK_TITLE: &str = "分享";
 ///
 /// 清空**不是故障状态**:局域网内直连本来就不需要中继,分享码里带着直连地址,
 /// 断网也能配对。中继只在跨网络打洞失败时才介入。
-pub const DEFAULT_RELAY_URL: &str = "https://zutalk-relay.exe.xyz";
+pub const DEFAULT_RELAY_URL: &str = "https://zulangue-relay.exe.xyz";
 
 /// 身份密钥在本机密钥库里的固定名字。
 ///

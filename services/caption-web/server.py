@@ -1173,7 +1173,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8100)
     parser.add_argument(
         "--public-base",
-        default="https://zutalk-caption.exe.xyz",
+        default="https://zulangue-caption.exe.xyz",
         help="观看页链接的公开基址(反代后面的服务自己拼不出来)",
     )
     parser.add_argument(

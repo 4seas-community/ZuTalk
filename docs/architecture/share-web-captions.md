@@ -64,7 +64,7 @@ stop_sharing ────────►   DELETE /v1/rooms/{id}      ──SSE�
 ## 2. 服务:services/caption-web
 
 与 `community-invite` 同一形态:Python 标准库单文件、systemd 托管、
-用户自己部署。默认部署位 `https://zutalk-caption.exe.xyz`。
+用户自己部署。默认部署位 `https://zulangue-caption.exe.xyz`。
 
 ### 接口
 

@@ -47,7 +47,7 @@ final class CommunityInviteSession: ObservableObject {
     /// time instead of raw lane-seconds.
     @Published private(set) var plannedLaneCount = 1
 
-    private let baseURL = URL(string: "https://zutalk-invite.exe.xyz")!
+    private let baseURL = URL(string: "https://zulangue-invite.exe.xyz")!
     /// 邀请 token 存在 app 私有目录的 0600 文件里，而不是钥匙串。发布构建
     /// 是 ad-hoc 签名，每个构建的签名身份都不同，钥匙串条目的 ACL 会在每次
     /// 更新后拒认新二进制，向用户索要登录钥匙串密码。token 泄露的最坏后果

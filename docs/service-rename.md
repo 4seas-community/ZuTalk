@@ -1,33 +1,40 @@
-# 服务改名：zulangue-* → zutalk-*
+# 服务改名：仓库改完，主机名不改
 
-产品在 0.4.0 改名为 ZuTalk。仓库、部署单元、环境变量已经跟着改完；**线上主机名
-还没有**。这份文档是把线上也迁过去的顺序，以及一份「哪些名字永远不改」的清单
-——后者比前者更重要，因为它是无法从代码里看出来的。
+产品在 0.4.0 改名为 ZuTalk。仓库、部署单元、工作目录、环境变量已经跟着改完；
+**线上主机名不跟着改**。这份文档的主体是一份「哪些名字永远不改」的清单——它无法
+从代码里看出来——外加一份主机名迁移的顺序，那份现在是备查，不是待办。
 
-## 0. 先读这条：这次切换会打断谁
+## 0. 先读这条：主机名迁移已撤销
 
-三个客户端地址不是普通字符串，是三台正在服务的机器：
+**决定（2026-08-11）：三个 `zutalk-*` 主机名不启用，客户端与服务端一律继续用
+`zulangue-*`。** 第 3.1、3.4、3.5 节随之作废，保留在下面只为记录当时的推理。
 
-| 常量 | 位置 | 现指向（未发布） |
+| 常量 | 位置 | 指向 |
 |---|---|---|
-| `DEFAULT_RELAY_URL` | crates/vt-ffi/src/share_api.rs | `zutalk-relay.exe.xyz` |
-| `DEFAULT_WEB_CAPTION_SERVICE` | crates/vt-ffi/src/share_web.rs | `zutalk-caption.exe.xyz` |
-| 邀请码 `baseURL` | macos/ZuTalk/ZuTalk/App/CommunityInviteSession.swift | `zutalk-invite.exe.xyz` |
+| `DEFAULT_RELAY_URL` | crates/vt-ffi/src/share_api.rs | `zulangue-relay.exe.xyz` |
+| `DEFAULT_WEB_CAPTION_SERVICE` | crates/vt-ffi/src/share_web.rs | `zulangue-caption.exe.xyz` |
+| 邀请码 `baseURL` | macos/ZuTalk/ZuTalk/App/CommunityInviteSession.swift | `zulangue-invite.exe.xyz` |
 
-已发布的 0.3.x 与 0.4.0 里，这三个常量硬编码的仍是**旧地址**——它们编译进了用户
-机器上的二进制，改不动。更麻烦的是 caption
-服务的 `--public-base` 会被**烤进已经发出去的二维码和观看页链接**——那些链接的
-持有者不是你的用户，你没有任何渠道通知他们。
+这三个常量编译进用户机器上的二进制，发出去就改不动。0.3.x 与 0.4.0 已装的客户端
+里是同样三个地址，所以维持现状意味着**没有任何一台已装客户端会因为改名而失效**。
+caption 的 `--public-base` 同理：已经发出去的二维码与观看页链接继续有效，而那些
+链接的持有者不是你的用户，本来就没有渠道通知。
 
-**决定（2026-08-10）：不设过渡期，切换即下线旧名。** 代价是明确的，接受它：
+撤销之前的推理仍然成立，只是结论反过来了：迁移主机名的代价是已装客户端与已发出
+的链接同时失效，收益只是名字整齐。主机名对用户不可见——它出现在二维码里，不出现
+在界面上——所以这份收益买不起那份代价。
 
-- 0.3.x 与 0.4.0 的已装客户端，分享、网页字幕、邀请码兑换在切换那一刻起失效，
-  直到用户更新；
-- 已经发出去的旧地址二维码与观看页链接**永久失效**，且持链接的人不是你的用户，
-  无法通知。
+判断这件事不能靠人记得：`just release-tag` 会先跑
+`scripts/check_service_endpoints.sh`，从源码常量里取出主机名，逐个确认能解析且
+HTTPS 连得上，否则拒绝打标签。它现在守的是上表这三个名字。
 
-要降低第一项的影响，就在切换前先把带新地址的版本发出去、给更新留出时间；第二项
-无法降低，只能承担。
+### 0.1 曾经的决定（2026-08-10，已撤销）
+
+原计划是不设过渡期、切换即下线旧名，接受已装客户端与已发出链接同时失效。客户端
+常量先改成了 `zutalk-*`（a6ec1d9），DNS 记录始终没有添加，于是工作区里的代码有一
+天指向了三个不存在的主机名——构建、测试与当时所有门禁照常通过。
+`scripts/check_service_endpoints.sh`（f1c99bd）就是为拦住这个窗口写的，也确实拦住
+了 0.4.1。
 
 ## 1. 永远不改的名字
 
@@ -57,9 +64,16 @@
 
 ## 3. 线上迁移顺序
 
+**3.1、3.4、3.5 已作废**（见第 0 节）：它们是启用与下线主机名的步骤，而主机名不
+换了。原文保留，因为哪天真要迁移时，推理与顺序比重写一遍可靠。
+
+3.2 仍然要做，它是目录、单元名与 `service.env` 键名，与主机名无关；机器上现在还
+是旧单元名和 `ZULANGUE_*`，而仓库里的服务端代码只认 `ZUTALK_*`（第 2 节），所以
+**在 3.2 做完之前不要把服务端代码部署上去**，否则每个调用方立刻 401。
+
 每一步都可单独回退。**不要跳步**——顺序本身就是不停服的保证。
 
-### 3.1 DNS（需要 DNS 服务商权限）
+### 3.1 DNS（需要 DNS 服务商权限）—— 已作废
 
 给三个新名字加记录，指向**与旧名相同的 IP**：
 
@@ -83,7 +97,7 @@ dig +short @1.1.1.1 zutalk-relay.exe.xyz
 以 caption 为例，其余两台同理：
 
 ```bash
-ssh zutalk-caption.exe.xyz
+ssh zulangue-caption.exe.xyz
 sudo systemctl stop zulangue-caption-web
 mv ~/zulangue-caption-web ~/zutalk-caption-web
 # 新单元来自仓库 services/caption-web/zutalk-caption-web.service
@@ -92,8 +106,7 @@ sudo systemctl disable zulangue-caption-web
 sudo rm /etc/systemd/system/zulangue-caption-web.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now zutalk-caption-web
-curl -s https://zulangue-caption.exe.xyz/healthz   # 旧名仍须可用
-curl -s https://zutalk-caption.exe.xyz/healthz     # 新名也须可用
+curl -s https://zulangue-caption.exe.xyz/healthz   # 主机名不变，改完仍须可用
 ```
 
 这一步有**数秒中断**。share-relay 那台中断期间正在进行的分享会重连。
@@ -107,39 +120,34 @@ sudo sed -i 's/^ZULANGUE_/ZUTALK_/' ~/zutalk-community-invite/service.env
 
 relay 那台的 `IROH_RELAY_HTTP_BEARER_TOKEN` 不动——那是中继自己要求的名字。
 
-### 3.3 客户端常量（已改，随下一版发出）
+### 3.3 客户端常量：不动
 
-三个常量已经指向新地址（`DEFAULT_RELAY_URL`、`DEFAULT_WEB_CAPTION_SERVICE`、
-`CommunityInviteSession.baseURL`）。**这一版必须在 3.1 与 3.2 验证通过之后才能
-发布**，否则新客户端会连向尚不存在的主机名。
+三个常量（`DEFAULT_RELAY_URL`、`DEFAULT_WEB_CAPTION_SERVICE`、
+`CommunityInviteSession.baseURL`）指向 `zulangue-*`，与 0.3.x、0.4.0 已装客户端
+里的一致。发版不再有前置条件。
 
-这条不靠人记得：`just release-tag` 会先跑
-`scripts/check_service_endpoints.sh`，从源码里取出这三个主机名，逐个确认能解析
-且 HTTPS 连得上，否则拒绝打标签。它查的是外部解析器——本机若有 VPN/代理的合成
-DNS，任何名字都会"解析成功"。
+`just release-tag` 仍会先跑 `scripts/check_service_endpoints.sh`——它从源码常量里
+取主机名，所以换了指向也不用改脚本，现在守的就是这三个旧名。它查外部解析器：本机
+若有 VPN/代理的合成 DNS，任何名字都会"解析成功"。
 
-### 3.4 caption 的 `--public-base`
+### 3.4 caption 的 `--public-base` —— 已作废
 
-仓库里的单元已经写成 `https://zutalk-caption.exe.xyz`，随 3.2 生效。此后**新生成
-的**二维码指向新地址；已经发出去的旧地址二维码在 3.5 之后失效。
+仓库里的单元维持 `https://zulangue-caption.exe.xyz`。已经发出去的二维码与观看页
+链接继续有效。
 
-### 3.5 下线旧主机名
+### 3.5 下线旧主机名 —— 已作废
 
-确认 3.1–3.3 全部生效后，删除三条旧 DNS 记录并回收证书。这一步执行后，未更新的
-客户端与已发出的旧二维码不再可用（见第 0 节）。
+三个主机名不下线。
 
-## 4. 建议：把断裂说给用户听
+## 4. 不需要预告断裂
 
-不设过渡期意味着断裂发生在用户那边而不是运维这边，所以它至少要**被预告**：在带
-新地址的那一版发布说明里写明「更新后旧的分享链接与二维码会失效，请重新生成」。
-这不改变技术方案，只是让失效对用户是预期内的事。
+主机名不换，所以没有断裂可预告：已装客户端的分享、网页字幕、邀请码兑换不受影响，
+已发出的二维码与观看页链接继续有效。发布说明里不需要为此写任何东西。
 
 ## 5. 当前状态
 
 - [x] 仓库、systemd 单元、部署文档、冒烟脚本、环境变量（单名 + 测试）
-- [x] 3.3 客户端常量已指向新地址（**尚未发布**）
-- [ ] 3.1 DNS 记录 + 证书
-- [ ] 3.2 三台机器的目录、单元与 `service.env` 改名（同一步）
-- [ ] 3.4 `--public-base` 生效（随 3.2）
-- [ ] 发布带新地址的客户端版本
-- [ ] 3.5 删除旧 DNS 记录
+- [x] 3.3 客户端常量指向 `zulangue-*`，与已发布版本一致
+- [x] 3.1 / 3.4 / 3.5 已作废（主机名不换）
+- [ ] 3.2 三台机器的目录、单元与 `service.env` 改名（同一步）——**服务端代码要等
+      这一步做完才能部署**，仓库里的它只认 `ZUTALK_*`
