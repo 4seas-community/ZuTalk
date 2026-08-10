@@ -1,19 +1,10 @@
 # ZuTalk 0.4.1
 
-This update finishes the move to the ZuTalk name, including the services used
-for sharing, web captions, and community invites. It also keeps a live-caption
-row in speaking order when the transcription provider omits its timestamp.
+The app icon now reads ZuTalk, and a live-caption row stays in speaking order
+when the transcription provider omits its timestamp.
 
 ZuTalk requires macOS 15.5 or later.
 
-- **Update before starting a new shared room.** Sharing, web captions, and
-  community invites now use ZuTalk service addresses. Versions 0.4.0 and older
-  still contain the retired Zulangue addresses, so those online services stop
-  working for them after the service move. Macs that share across networks
-  should update together.
-- **Create a new web-caption link after updating.** QR codes and viewer links
-  created by older versions contain the retired caption address and cannot be
-  redirected. Start a new web share in 0.4.1 to create a working link.
 - **An untimed live-caption row stays where it was spoken.** A provider response
   can occasionally omit timing metadata. That row used to fall to the bottom of
   the audience canvas, below sentences spoken minutes later. It now inherits an
