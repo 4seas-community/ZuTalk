@@ -621,17 +621,17 @@ class RelayStatsTest(unittest.TestCase):
 
 
 class ServiceCredentialNameTests(unittest.TestCase):
-    """Credentials are read under one name only.
+    """Credentials are read under one name only, and it is the pre-rename one.
 
-    `service.env` on each machine is updated in the same step that deploys
-    this code, so there is no second name to fall back to. What matters is
-    that a drift between the two reads empty and gets the request refused —
-    never a service that accepts whatever it is handed."""
+    `ZULANGUE_*` is what `service.env` on each machine already holds, so the
+    0.4.0 rename deliberately stops at this boundary. There is no second name
+    to fall back to: a drift between code and machine reads empty and gets the
+    request refused — never a service that accepts whatever it is handed."""
 
     def setUp(self):
         self._saved = {
             key: os.environ.get(key)
-            for key in ("ZUTALK_ADMIN_TOKEN", "ZUTALK_RELAY_AUTH_TOKEN")
+            for key in ("ZULANGUE_ADMIN_TOKEN", "ZULANGUE_RELAY_AUTH_TOKEN")
         }
         for key in self._saved:
             os.environ.pop(key, None)
@@ -644,17 +644,18 @@ class ServiceCredentialNameTests(unittest.TestCase):
                 os.environ[key] = value
 
     def test_current_name_is_read(self):
-        os.environ["ZUTALK_ADMIN_TOKEN"] = "new"
-        self.assertEqual(server.env_secret("ADMIN_TOKEN"), "new")
+        os.environ["ZULANGUE_ADMIN_TOKEN"] = "set-on-the-machines"
+        self.assertEqual(server.env_secret("ADMIN_TOKEN"), "set-on-the-machines")
 
-    def test_pre_rename_name_is_not_honoured(self):
-        # Deliberate: a machine still carrying the old key name must fail
-        # closed and be noticed, not authenticate on a name we retired.
-        os.environ["ZULANGUE_ADMIN_TOKEN"] = "old"
+    def test_renamed_name_is_not_honoured(self):
+        # Deliberate, and this direction is the one worth pinning: a future
+        # rename to ZUTALK_ has to change the machines in the same step, so it
+        # must not be able to start working here on its own first.
+        os.environ["ZUTALK_ADMIN_TOKEN"] = "not-on-the-machines"
         try:
             self.assertEqual(server.env_secret("ADMIN_TOKEN"), "")
         finally:
-            os.environ.pop("ZULANGUE_ADMIN_TOKEN", None)
+            os.environ.pop("ZUTALK_ADMIN_TOKEN", None)
 
     def test_absent_reads_empty_rather_than_raising(self):
         # An empty secret is refused by the callers; a KeyError here would

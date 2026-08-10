@@ -33,7 +33,7 @@ The server divides the reservation by the lane count to derive that bound.
 Passing the raw reservation would let every lane run the full reservation on
 its own, overshooting the quota by the lane count.
 
-Set `ZUTALK_ADMIN_TOKEN` in `service.env` to enable the admin panel at
+Set `ZULANGUE_ADMIN_TOKEN` in `service.env` to enable the admin panel at
 `/admin`. Signing in exchanges the token for an HttpOnly, SameSite=Strict
 session cookie (8 hours, memory-only — a restart signs you out); every
 mutation carries a CSRF token bound to that session, so the token never rides

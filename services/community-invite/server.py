@@ -29,13 +29,17 @@ from pathlib import Path
 def env_secret(suffix: str) -> str:
     """Reads a service credential from the environment.
 
-    One name, no fallback: `service.env` on each machine is updated in the
-    same step that deploys this code (docs/service-rename.md §3). A missing
-    secret reads empty and every caller refuses the request, which is the
-    behaviour we want if the two ever drift — a refusal, not a service that
-    quietly accepts whatever it is handed.
+    The prefix stays `ZULANGUE_` and does not follow the 0.4.0 rename. It
+    names a key that already exists in `service.env` on each machine, and
+    renaming it buys tidiness at the price of every caller getting a 401 the
+    moment the code and the machine disagree (docs/service-rename.md §2).
+
+    One name, no fallback. A missing secret reads empty and every caller
+    refuses the request, which is the behaviour we want if the two ever do
+    drift — a refusal, not a service that quietly accepts whatever it is
+    handed.
     """
-    return os.environ.get(f"ZUTALK_{suffix}", "")
+    return os.environ.get(f"ZULANGUE_{suffix}", "")
 
 
 DEFAULT_QUOTA_SECONDS = 30 * 60 * 60
@@ -1026,7 +1030,7 @@ class Handler(BaseHTTPRequestHandler):
             "<h1>ZuTalk invites</h1>"
             + (f"<p class='warn'>{html.escape(message)}</p>" if message else "")
             + "<p class='dim'>Operator console for issuing invitation codes. "
-            "Sign in with the <code>ZUTALK_ADMIN_TOKEN</code> set on this "
+            "Sign in with the <code>ZULANGUE_ADMIN_TOKEN</code> set on this "
             "server. Nothing here touches your Mac or its keychain.</p>"
             "<form method='post' action='/admin/login'>"
             "<label>Admin token<br><input type='password' name='token' "
@@ -1492,7 +1496,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", default=os.environ.get("ZUTALK_INVITE_DB", "data/invites.db"))
+    # Same rule as env_secret: a name that finds something already on the
+    # machine does not follow the rename.
+    parser.add_argument("--db", default=os.environ.get("ZULANGUE_INVITE_DB", "data/invites.db"))
     sub = parser.add_subparsers(dest="command", required=True)
     serve = sub.add_parser("serve")
     serve.add_argument("--host", default="127.0.0.1")

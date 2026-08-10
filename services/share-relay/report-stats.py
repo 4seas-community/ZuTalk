@@ -8,10 +8,10 @@
 计数器归零，此时把当前值整个当作增量——宁可少算一点，也不要报出负数。
 
 用法（由 systemd timer 每 15 分钟调一次）：
-    ZUTALK_RELAY_AUTH_TOKEN=... ./report-stats.py
+    ZULANGUE_RELAY_AUTH_TOKEN=... ./report-stats.py
 
 环境变量：
-    ZUTALK_RELAY_AUTH_TOKEN   与邀请码服务共享的凭据（必需）
+    ZULANGUE_RELAY_AUTH_TOKEN  与邀请码服务共享的凭据（必需）
     RELAY_METRICS_URL          默认 http://127.0.0.1:9090/metrics
     INVITE_URL                 默认 https://zulangue-invite.exe.xyz
     RELAY_STATE_FILE           默认 ~/zutalk-share-relay/data/last-metrics.json
@@ -84,11 +84,11 @@ def main() -> int:
     # 两个名字都认。中继的 service.env 里存的是 IROH_RELAY_HTTP_BEARER_TOKEN
     # (中继自己要用那个名),同一个值。让脚本认它,就不必在 systemd 单元里绕一层
     # shell 去改名 —— 那层 shell 里的变量展开语义正是上一版 401 的原因。
-    token = os.environ.get("ZUTALK_RELAY_AUTH_TOKEN") or os.environ.get(
+    token = os.environ.get("ZULANGUE_RELAY_AUTH_TOKEN") or os.environ.get(
         "IROH_RELAY_HTTP_BEARER_TOKEN", ""
     )
     if not token:
-        print("ZUTALK_RELAY_AUTH_TOKEN 未设置", file=sys.stderr)
+        print("ZULANGUE_RELAY_AUTH_TOKEN 未设置", file=sys.stderr)
         return 2
 
     try:

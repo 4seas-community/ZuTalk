@@ -62,7 +62,7 @@ umask 077
 printf 'IROH_RELAY_HTTP_BEARER_TOKEN=%s\n' "$(openssl rand -hex 32)" > "$RELAY_HOME/service.env"
 ```
 
-同一个值要写进邀请码服务的 `service.env`，键名是 `ZUTALK_RELAY_AUTH_TOKEN`——
+同一个值要写进邀请码服务的 `service.env`，键名是 `ZULANGUE_RELAY_AUTH_TOKEN`——
 两边不一致时中继的每次鉴权都会拿到 401，表现为「所有人都连不上中继」。
 
 启动：
@@ -114,7 +114,7 @@ iroh-relay 1.0.3 的文档说鉴权请求带 `X-Iroh-Endpoint-Id` 头，**但源
 ## 验证门禁真的在拦
 
 ```bash
-ZUTALK_RELAY_AUTH_TOKEN=... INVITE_URL=https://invite.exe.dev ./smoke-test.sh
+ZULANGUE_RELAY_AUTH_TOKEN=... INVITE_URL=https://invite.exe.dev ./smoke-test.sh
 ```
 
 它验四件事:服务可达、未登记被拒、token 不符 401、登记后放行。**但 curl 类测试
