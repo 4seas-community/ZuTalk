@@ -56,7 +56,7 @@ SONIOX_API_KEY=... python3 server.py --db data/invites.db reconcile --hours 24
 
 Entries are stored under Soniox's own uuid, so overlapping windows and repeat
 runs never double-count — a cron every few hours is the intended use. Usage
-whose `client_reference_id` does not carry the `zutalk-community:` prefix,
+whose `client_reference_id` does not carry the `zulangue-community:` prefix,
 or names a session this database never issued, is kept unattributed; the
 admin page shows it separately alongside billed hours and cost per invite.
 A large gap between reported and billed hours means a client under-reported.

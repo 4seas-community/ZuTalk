@@ -459,9 +459,11 @@ const UI = {
   },
 };
 
+// 这两个键存在观众自己的浏览器里,不跟 0.4.0 改名走 —— 改了等于把已经看过
+// 一次的人的语言选择清空,而那些浏览器我们既碰不到也通知不到。
 function detectUiLang() {
   try {
-    const saved = localStorage.getItem("zutalk-ui-lang");
+    const saved = localStorage.getItem("zulangue-ui-lang");
     if (saved && UI[saved]) return saved;
   } catch (e) { /* 隐私模式下 localStorage 可能不可用 */ }
   const nav = (navigator.language || "en").toLowerCase();
@@ -476,7 +478,7 @@ const MAX_COLUMNS = 3;
 
 function loadSelection() {
   try {
-    const saved = JSON.parse(localStorage.getItem("zutalk-content-langs") || "null");
+    const saved = JSON.parse(localStorage.getItem("zulangue-content-langs") || "null");
     if (Array.isArray(saved) && saved.length) return saved.slice(0, MAX_COLUMNS);
   } catch (e) { /* 同上 */ }
   return ["source"];
@@ -535,7 +537,7 @@ function setStatus(key) { state.statusKey = key; renderChrome(); }
 
 el("uilang").addEventListener("change", (e) => {
   state.uiLang = UI[e.target.value] ? e.target.value : "en";
-  try { localStorage.setItem("zutalk-ui-lang", state.uiLang); } catch (err) { /* 同上 */ }
+  try { localStorage.setItem("zulangue-ui-lang", state.uiLang); } catch (err) { /* 同上 */ }
   renderChrome();
 });
 
@@ -568,7 +570,7 @@ function toggleLanguage(key) {
     state.selected.push(key);
     while (state.selected.length > MAX_COLUMNS) state.selected.shift();
   }
-  try { localStorage.setItem("zutalk-content-langs", JSON.stringify(state.selected)); }
+  try { localStorage.setItem("zulangue-content-langs", JSON.stringify(state.selected)); }
   catch (e) { /* 同上 */ }
   state.langs = [];  // 强制重建按钮的选中态。
   render();

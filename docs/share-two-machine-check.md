@@ -76,7 +76,7 @@
 **不对时看哪里**：
 ```bash
 # 中继有没有拒绝这台机器
-ssh zulangue-relay.exe.xyz 'sudo journalctl -u zutalk-share-relay --since "5 min ago" | grep -i "access check"'
+ssh zulangue-relay.exe.xyz 'sudo journalctl -u zulangue-share-relay --since "5 min ago" | grep -i "access check"'
 ```
 注意「正文不是 true」这条消息对**拒绝**和**故障**是同一句。要分辨，看已登记的
 endpoint 有没有出现 `access check OK`。
@@ -148,7 +148,7 @@ Goodbye 没送达，看 gossip 是不是早就断了。
 跑完以上，中继应当记下了流量：
 
 ```bash
-ssh zulangue-invite.exe.xyz 'cd ~/zutalk-community-invite && python3 -c "
+ssh zulangue-invite.exe.xyz 'cd ~/zulangue-community-invite && python3 -c "
 import sqlite3; db=sqlite3.connect(\"data/invites.db\"); db.row_factory=sqlite3.Row
 for r in db.execute(\"SELECT * FROM relay_daily ORDER BY day DESC LIMIT 3\"): print(dict(r))
 "'
