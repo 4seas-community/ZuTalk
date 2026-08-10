@@ -742,17 +742,67 @@ enum NotebookCaptureLivePresentation {
         return Array(rows.suffix(limit))
     }
 
+    /// Sort-only lower bounds for the source rows this session never received a
+    /// provider timestamp for, keyed by utterance id.
+    ///
+    /// A row carries no time when the provider omitted token metadata for the
+    /// words it holds. Reading that as "later than everything timed" drops the
+    /// row to the bottom of its column, which is wrong in the one way an
+    /// audience notices: the sentence they just heard appears below sentences
+    /// spoken minutes ago. What is actually known about such a row is that it
+    /// was not spoken before the row ahead of it, so that row's coverage is
+    /// carried forward as its bound.
+    ///
+    /// This must be computed over the whole durable session, before any
+    /// pruning: a bound taken from whichever rows survived pruning is a
+    /// different bound, and the bounded and full audience projections have to
+    /// stay presentation-equivalent. Durable rows arrive in sequence order.
+    ///
+    /// The bound is deliberately not a timestamp. It never reaches coverage
+    /// arithmetic — a lane held up entirely by inherited bounds must still read
+    /// as behind — and it is never persisted, exported, or displayed.
+    ///
+    /// A nil `sessionId` takes every row, for a caller that was already handed
+    /// one session's rows — a shared room's frame, for one.
+    static func inheritedSourceAnchors(
+        durable: [NotebookCaptureUtteranceDTO],
+        sessionId: String?
+    ) -> [String: UInt64] {
+        var anchors: [String: UInt64] = [:]
+        var carried: UInt64?
+        for utterance in durable
+        where sessionId.map({ utterance.sessionId == $0 }) ?? true {
+            guard let start = utterance.sourceStartMs else {
+                if let carried {
+                    anchors[utterance.id] = carried
+                }
+                continue
+            }
+            // The most recent timed row, not the greatest coverage ever seen:
+            // timestamps restart with a stream group, and a bound taken from
+            // the old epoch's clock would push the row back down the column
+            // the restart just lifted it out of.
+            carried = utterance.sourceEndMs ?? start
+        }
+        return anchors
+    }
+
     /// The durable source rows that can still affect an audience canvas with
     /// `maximumRows` visible cards per language. This preserves each language's
     /// independently sorted suffix, the greatest coverage item used by the
     /// waiting indicator, and the global suffix used by the unrouted strip.
     /// Everything else is provably invisible until the next durable change.
+    ///
+    /// `inheritedSourceAnchors` must be the whole-session map from the function
+    /// above. Pruning happens here, so an untimed row is selected — or dropped —
+    /// under the same order the canvas will later paint it in.
     static func audienceDurableCandidates(
         durable: [NotebookCaptureUtteranceDTO],
         sessionId: String,
         selectedLanguages: [String],
         lastIdentifiedSourceLanguage: String?,
-        maximumRows: Int
+        maximumRows: Int,
+        inheritedSourceAnchors: [String: UInt64] = [:]
     ) -> [NotebookCaptureUtteranceDTO] {
         let limit = max(maximumRows, 0)
         guard limit > 0 else { return [] }
@@ -761,7 +811,9 @@ enum NotebookCaptureLivePresentation {
             _ left: NotebookCaptureUtteranceDTO,
             _ right: NotebookCaptureUtteranceDTO
         ) -> Bool {
-            switch (left.sourceStartMs, right.sourceStartMs) {
+            let leftAnchor = left.sourceStartMs ?? inheritedSourceAnchors[left.id]
+            let rightAnchor = right.sourceStartMs ?? inheritedSourceAnchors[right.id]
+            switch (leftAnchor, rightAnchor) {
             case let (.some(leftAnchor), .some(rightAnchor)) where leftAnchor != rightAnchor:
                 return leftAnchor < rightAnchor
             case (.some, .none):
@@ -769,6 +821,11 @@ enum NotebookCaptureLivePresentation {
             case (.none, .some):
                 return false
             default:
+                // Same instant: what was measured there precedes what merely
+                // cannot have happened before it.
+                if (left.sourceStartMs == nil) != (right.sourceStartMs == nil) {
+                    return right.sourceStartMs == nil
+                }
                 return left.sequence < right.sequence
             }
         }
@@ -3589,6 +3646,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         let fallbackLanguage: String?
         let maximumRows: Int
         let utterances: [NotebookCaptureUtteranceDTO]
+        let inheritedSourceAnchors: [String: UInt64]
     }
     private var audienceDurablePresentationCache: AudienceDurablePresentationCache?
     private var cachedLastIdentifiedSourceLanguage: String?
@@ -3761,6 +3819,61 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         )
     }
 
+    /// One coherent durable audience frame: the bounded candidate rows and the
+    /// whole-session anchor bounds they were pruned under. The two must come
+    /// from the same computation — pruning an untimed row under one order and
+    /// painting it under another is exactly how a bounded column stops matching
+    /// the full one.
+    private func audienceDurablePresentation(
+        maximumRows: Int,
+        sessionId: String
+    ) -> AudienceDurablePresentationCache? {
+        guard maximumRows > 0 else { return nil }
+        let languages = selectedLanguages
+        let fallbackLanguage = lastIdentifiedSourceLanguage ?? languages.first
+        if let cache = audienceDurablePresentationCache,
+           cache.sessionId == sessionId,
+           cache.selectedLanguages == languages,
+           cache.fallbackLanguage == fallbackLanguage,
+           cache.maximumRows == maximumRows {
+            return cache
+        }
+        let anchors = NotebookCaptureLivePresentation.inheritedSourceAnchors(
+            durable: utterances,
+            sessionId: sessionId
+        )
+        let cache = AudienceDurablePresentationCache(
+            sessionId: sessionId,
+            selectedLanguages: languages,
+            fallbackLanguage: fallbackLanguage,
+            maximumRows: maximumRows,
+            utterances: NotebookCaptureLivePresentation.audienceDurableCandidates(
+                durable: utterances,
+                sessionId: sessionId,
+                selectedLanguages: languages,
+                lastIdentifiedSourceLanguage: fallbackLanguage,
+                maximumRows: maximumRows,
+                inheritedSourceAnchors: anchors
+            ),
+            inheritedSourceAnchors: anchors
+        )
+        audienceDurablePresentationCache = cache
+        return cache
+    }
+
+    /// The sort-only bounds belonging to `presentedAudienceUtterances` at the
+    /// same row budget. Live preview rows are absent on purpose: they are the
+    /// newest words in the session, so having no bound already places them
+    /// where they belong.
+    func presentedAudienceInheritedSourceAnchors(maximumRows: Int) -> [String: UInt64] {
+        let maximumRows = max(maximumRows, 0)
+        guard maximumRows > 0, let sessionId else { return [:] }
+        return audienceDurablePresentation(
+            maximumRows: maximumRows,
+            sessionId: sessionId
+        )?.inheritedSourceAnchors ?? [:]
+    }
+
     /// A presentation-equivalent, canvas-bounded audience input. Durable
     /// candidates are rebuilt only when durable rows/profile context changes;
     /// provider-rate preview frames merge into that small cache without
@@ -3768,31 +3881,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     func presentedAudienceUtterances(maximumRows: Int) -> [NotebookCaptureUtteranceDTO] {
         let maximumRows = max(maximumRows, 0)
         guard maximumRows > 0, let sessionId else { return [] }
-        let languages = selectedLanguages
-        let fallbackLanguage = lastIdentifiedSourceLanguage ?? languages.first
-        let durableCandidates: [NotebookCaptureUtteranceDTO]
-        if let cache = audienceDurablePresentationCache,
-           cache.sessionId == sessionId,
-           cache.selectedLanguages == languages,
-           cache.fallbackLanguage == fallbackLanguage,
-           cache.maximumRows == maximumRows {
-            durableCandidates = cache.utterances
-        } else {
-            durableCandidates = NotebookCaptureLivePresentation.audienceDurableCandidates(
-                durable: utterances,
-                sessionId: sessionId,
-                selectedLanguages: languages,
-                lastIdentifiedSourceLanguage: fallbackLanguage,
-                maximumRows: maximumRows
-            )
-            audienceDurablePresentationCache = AudienceDurablePresentationCache(
-                sessionId: sessionId,
-                selectedLanguages: languages,
-                fallbackLanguage: fallbackLanguage,
-                maximumRows: maximumRows,
-                utterances: durableCandidates
-            )
-        }
+        let durableCandidates = audienceDurablePresentation(
+            maximumRows: maximumRows,
+            sessionId: sessionId
+        )?.utterances ?? []
 
         func containsDurableSequence(_ sequence: UInt64) -> Bool {
             var lowerBound = 0

@@ -253,6 +253,13 @@ enum SubtitleAudienceTimeline {
         /// segment can START rows before the newest speech and still cover
         /// it entirely.
         let endMs: UInt64?
+        /// A lower bound for an item the provider never timed: the coverage of
+        /// the nearest earlier item from its own stream. Sorting only. It is a
+        /// true statement ("not spoken before this"), not a measurement, so it
+        /// must never reach the coverage arithmetic — a lane carried entirely
+        /// by inherited bounds would read as caught up and the waiting
+        /// ellipsis would never appear again.
+        let inheritedAnchorMs: UInt64?
         /// Provider order, the tiebreak within one stream's own output.
         let order: UInt64
         /// A final source line bypasses the visual refresh budget so the
@@ -260,16 +267,28 @@ enum SubtitleAudienceTimeline {
         let isComplete: Bool
     }
 
-    /// Spoken order: anchored items by time (source before its own
-    /// translation on a tie), unanchored items after everything timed.
+    /// Spoken order: anchored items by time, source before its own translation
+    /// on a tie. An item the provider never timed does not fall to the end of
+    /// its column; it inherits the coverage of the nearest earlier item from
+    /// its own stream and sorts there.
+    ///
     /// Timestamps restart when a whole stream group restarts, so ordering
     /// across a restart leans on the fact that old-epoch items leave the
     /// visible suffix almost immediately.
+    ///
+    /// `inheritedSourceAnchors` maps an utterance id to that lower bound. It is
+    /// supplied by the caller rather than derived here because the audience
+    /// canvas is fed a pruned candidate set: a bound computed from whatever
+    /// rows survived pruning is not the bound computed from the whole session,
+    /// and the bounded and full projections must stay presentation-equivalent.
+    /// Cues need no such argument — their lane is never pruned before it
+    /// arrives here.
     static func columns(
         languages: [String],
         utterances: [NotebookCaptureUtteranceDTO],
         placement: (NotebookCaptureUtteranceDTO) -> String?,
         cues: (String) -> [NotebookCaptureTranslationCueDTO],
+        inheritedSourceAnchors: [String: UInt64] = [:],
         visibleLimit: Int? = nil
     ) -> [String: [Item]] {
         var columns: [String: [Item]] = [:]
@@ -300,12 +319,17 @@ enum SubtitleAudienceTimeline {
             guard let language = placement(utterance),
                   columns[language] != nil
             else { continue }
+            var inheritedSourceAnchorMs: UInt64?
+            if utterance.sourceStartMs == nil {
+                inheritedSourceAnchorMs = inheritedSourceAnchors[utterance.id]
+            }
             retain(Item(
                 id: "source:\(utterance.id)",
                 kind: .source,
                 text: utterance.sourceText,
                 anchorMs: utterance.sourceStartMs,
                 endMs: utterance.sourceEndMs,
+                inheritedAnchorMs: inheritedSourceAnchorMs,
                 order: utterance.sequence,
                 isComplete: utterance.completion == "complete"
             ), in: language)
@@ -336,12 +360,23 @@ enum SubtitleAudienceTimeline {
                         && cue.providerSequence < latestTimedCue.providerSequence) {
                     continue
                 }
+                // The survivor of the retirement rule above is the newest cue
+                // this lane has, so the newest timed sibling's coverage is its
+                // lower bound. That still places it last in the lane, as an
+                // unanchored head always was — but now behind that sibling by
+                // a stated fact rather than by having no time at all.
+                var inheritedCueAnchorMs: UInt64?
+                if cue.sourceStartMs == nil, let latestTimedCue {
+                    inheritedCueAnchorMs = latestTimedCue.sourceEndMs
+                        ?? latestTimedCue.sourceStartMs
+                }
                 retain(Item(
                     id: "cue:\(cue.id)",
                     kind: .translation,
                     text: cue.text,
                     anchorMs: cue.sourceStartMs,
                     endMs: cue.sourceEndMs,
+                    inheritedAnchorMs: inheritedCueAnchorMs,
                     order: cue.providerSequence,
                     isComplete: cue.completion == "complete"
                 ), in: language)
@@ -366,7 +401,9 @@ enum SubtitleAudienceTimeline {
     }
 
     nonisolated private static func itemComesBefore(_ left: Item, _ right: Item) -> Bool {
-        switch (left.anchorMs, right.anchorMs) {
+        let leftAnchor = left.anchorMs ?? left.inheritedAnchorMs
+        let rightAnchor = right.anchorMs ?? right.inheritedAnchorMs
+        switch (leftAnchor, rightAnchor) {
         case let (.some(leftAnchor), .some(rightAnchor)) where leftAnchor != rightAnchor:
             return leftAnchor < rightAnchor
         case (.some, .none):
@@ -374,6 +411,11 @@ enum SubtitleAudienceTimeline {
         case (.none, .some):
             return false
         default:
+            // Same instant: what was measured there precedes what merely
+            // cannot have happened before it.
+            if (left.anchorMs == nil) != (right.anchorMs == nil) {
+                return right.anchorMs == nil
+            }
             switch (left.kind, right.kind) {
             case (.source, .translation):
                 return true
@@ -481,11 +523,18 @@ enum SubtitleConversationTimeline {
         let languages = Array(
             languages.prefix(SubtitleOverlayLayoutPolicy.maximumLanguageCount)
         )
+        // Conversation is handed the suffix it renders, so that suffix is the
+        // whole input this projection has; there is no pruning step upstream to
+        // take the bounds from instead.
         let columns = SubtitleAudienceTimeline.columns(
             languages: languages,
             utterances: utterances,
             placement: placement,
-            cues: cues
+            cues: cues,
+            inheritedSourceAnchors: NotebookCaptureLivePresentation.inheritedSourceAnchors(
+                durable: utterances,
+                sessionId: nil
+            )
         )
         let waitingLanguages = SubtitleAudienceTimeline.waitingLanguages(
             columns: columns,
@@ -1572,6 +1621,12 @@ struct SubtitleOverlayView: View {
                     .filter { $0.state == .failed }
                     .compactMap { $0.targetLanguage }
                     .map(normalizedLanguageCode)
+            ),
+            // 房间里这一帧就是画布看得见的全部,所以下界直接从它算 ——
+            // 本机那条路要先绕开裁剪,这里没有裁剪可绕。
+            inheritedSourceAnchors: NotebookCaptureLivePresentation.inheritedSourceAnchors(
+                durable: utterances,
+                sessionId: nil
             )
         )
     }
@@ -1769,6 +1824,11 @@ struct SubtitleOverlayView: View {
         let placement: (NotebookCaptureUtteranceDTO) -> String?
         let cuesByLanguage: [String: [NotebookCaptureTranslationCueDTO]]
         let failedLanguages: Set<String>
+        /// Sort-only lower bounds for rows the provider never timed, keyed by
+        /// utterance id. It travels with `utterances` because the local capture
+        /// hands over a pruned candidate set, and the bound has to come from
+        /// the session those rows were pruned out of.
+        var inheritedSourceAnchors: [String: UInt64] = [:]
     }
 
     /// The local capture's input. Freezes one coherent presentation frame:
@@ -1787,7 +1847,10 @@ struct SubtitleOverlayView: View {
                 grouping: store.presentedTranslationCueSnapshot,
                 by: { normalizedLanguageCode($0.targetLanguage) }
             ),
-            failedLanguages: store.failedTranslationLanguages
+            failedLanguages: store.failedTranslationLanguages,
+            inheritedSourceAnchors: store.presentedAudienceInheritedSourceAnchors(
+                maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount
+            )
         )
     }
 
@@ -1839,6 +1902,7 @@ struct SubtitleOverlayView: View {
             cues: { language in
                 cuesByLanguage[normalizedLanguageCode(language)] ?? []
             },
+            inheritedSourceAnchors: input.inheritedSourceAnchors,
             visibleLimit: itemBudget
         )
         let waiting = SubtitleAudienceTimeline.waitingLanguages(

@@ -1526,6 +1526,119 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    func testUntimedSourceRowSortsWhereItWasSpokenWithoutClaimingCoverage() {
+        func source(
+            _ sequence: UInt64,
+            _ language: String,
+            _ text: String,
+            _ start: UInt64?
+        ) -> NotebookCaptureUtteranceDTO {
+            NotebookCaptureUtteranceDTO(
+                id: "utt-\(sequence)",
+                sessionId: "session",
+                sequence: sequence,
+                revision: 1,
+                sourceLanguage: language,
+                sourceText: text,
+                sourceStartMs: start,
+                sourceEndMs: start.map { $0 + 500 },
+                translatedLanguage: nil,
+                translatedText: nil,
+                completion: "complete",
+                alignment: "source_only"
+            )
+        }
+        // The middle row is what a provider that omitted token metadata leaves
+        // behind. Reading it as "later than everything timed" is what put a
+        // sentence the audience just heard underneath sentences from minutes
+        // ago.
+        let utterances = [
+            source(0, "zh", "第一句", 1_000),
+            source(1, "zh", "无时间的一句", nil),
+            source(2, "zh", "第三句", 3_000),
+        ]
+        let anchors = NotebookCaptureLivePresentation.inheritedSourceAnchors(
+            durable: utterances,
+            sessionId: "session"
+        )
+        XCTAssertEqual(
+            anchors,
+            ["utt-1": 1_500],
+            "only untimed rows get a bound, and it is the coverage ahead of them"
+        )
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.columns(
+                languages: ["zh"],
+                utterances: utterances,
+                placement: { _ in "zh" },
+                cues: { _ in [] }
+            )["zh"]?.map(\.text),
+            ["第一句", "第三句", "无时间的一句"],
+            "with no bound supplied an untimed row still falls to the bottom"
+        )
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.columns(
+                languages: ["zh"],
+                utterances: utterances,
+                placement: { _ in "zh" },
+                cues: { _ in [] },
+                inheritedSourceAnchors: anchors
+            )["zh"]?.map(\.text),
+            ["第一句", "无时间的一句", "第三句"],
+            "the bound places it after the row it cannot have preceded"
+        )
+
+        // The bound states an order, never a measurement. A lane holding only
+        // untimed rows has covered nothing, so it keeps its waiting ellipsis —
+        // folding the bound into coverage would silently retire that promise.
+        let split = [
+            source(0, "zh", "第一句", 1_000),
+            source(1, "en", "untimed english", nil),
+            source(2, "zh", "第三句", 3_000),
+        ]
+        let splitAnchors = NotebookCaptureLivePresentation.inheritedSourceAnchors(
+            durable: split,
+            sessionId: "session"
+        )
+        let splitColumns = SubtitleAudienceTimeline.columns(
+            languages: ["zh", "en"],
+            utterances: split,
+            placement: { $0.sourceLanguage },
+            cues: { _ in [] },
+            inheritedSourceAnchors: splitAnchors
+        )
+        XCTAssertEqual(splitColumns["en"]?.map(\.text), ["untimed english"])
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.waitingLanguages(columns: splitColumns),
+            ["en"],
+            "an inherited bound must never read as coverage"
+        )
+
+        // A stream group restart puts the clock back to zero. The bound has to
+        // follow the new epoch, or the first untimed row after a restart is
+        // pushed back down among the rows the restart just left behind.
+        let restarted = [
+            source(0, "zh", "重启前", 600_000),
+            source(1, "zh", "重启后", 0),
+            source(2, "zh", "重启后无时间", nil),
+            source(3, "zh", "重启后再一句", 1_000),
+        ]
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.columns(
+                languages: ["zh"],
+                utterances: restarted,
+                placement: { _ in "zh" },
+                cues: { _ in [] },
+                inheritedSourceAnchors: NotebookCaptureLivePresentation.inheritedSourceAnchors(
+                    durable: restarted,
+                    sessionId: "session"
+                )
+            )["zh"]?.map(\.text),
+            ["重启后", "重启后无时间", "重启后再一句", "重启前"],
+            "the bound tracks the most recent timed row, not the greatest coverage seen"
+        )
+    }
+
     func testBoundedAudienceColumnsPreserveFullProjectionForLongSparseSession() {
         let languages = ["en", "zh", "th"]
         var utterances: [NotebookCaptureUtteranceDTO] = [
@@ -1618,18 +1731,31 @@ final class WindowSystemTests: XCTestCase {
                 lastIdentifiedSourceLanguage: "en"
             )
         }
+        // Bounds come from the whole session, exactly once, and both the
+        // pruning and the painting below read that same map. Deriving them
+        // again from the pruned set is the mistake this invariant catches.
+        let anchors = NotebookCaptureLivePresentation.inheritedSourceAnchors(
+            durable: utterances,
+            sessionId: "session"
+        )
+        XCTAssertFalse(
+            anchors.isEmpty,
+            "this session must contain untimed rows for the invariant to mean anything"
+        )
         let full = SubtitleAudienceTimeline.columns(
             languages: languages,
             utterances: utterances,
             placement: placement,
-            cues: { $0 == "zh" ? cues : [] }
+            cues: { $0 == "zh" ? cues : [] },
+            inheritedSourceAnchors: anchors
         )
         let candidates = NotebookCaptureLivePresentation.audienceDurableCandidates(
             durable: utterances,
             sessionId: "session",
             selectedLanguages: languages,
             lastIdentifiedSourceLanguage: "en",
-            maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount
+            maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount,
+            inheritedSourceAnchors: anchors
         )
         XCTAssertLessThanOrEqual(
             candidates.count,
@@ -1644,6 +1770,7 @@ final class WindowSystemTests: XCTestCase {
                 utterances: candidates,
                 placement: placement,
                 cues: { $0 == "zh" ? cues : [] },
+                inheritedSourceAnchors: anchors,
                 visibleLimit: limit
             )
             for language in languages {

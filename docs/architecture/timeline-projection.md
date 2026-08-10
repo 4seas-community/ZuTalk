@@ -86,6 +86,11 @@ cue(lane, group_epoch, provider_sequence, start_ms, end_ms, text, completion, ro
 - 源 cue 的区间来自它自己的 token。
 - 译文 cue 没有自己的时间，**继承同段源 cue 的区间**。这是译文无时间戳的直接后果，
   也是本设计承认的精度上限。
+- 源 cue 也可能没有时间：供应商整段不给 token 元数据时就是如此。这种 cue 拿到一个
+  **排序下界**——它前面那条 cue 的覆盖终点，即「不早于此」。这是陈述，不是测量：
+  下界只进排序，永不进覆盖度。一条全靠下界撑着的 lane 仍然算落后，等待省略号照常出现。
+  把「没有时间」当成「排在最后」会让刚说完的一句落到几分钟前的句子下面，这是投影
+  唯一一处观众必定看得出来的错序。
 - cue 不引用任何其他 cue。没有 `bound_utterance_id`，没有占位检查，没有
   「durably unbound」这种状态。
 
