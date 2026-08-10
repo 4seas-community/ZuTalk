@@ -867,6 +867,70 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(store.utterances.map(\.sourceText), ["Hello"])
     }
 
+    /// A provider replacement can retire a speculative row outright. Until
+    /// withdrawal had a delta shape, saying so meant resending the whole
+    /// session — a read that runs while the callback mailbox lock is held,
+    /// which is the publication boundary for every caption on screen. Measured
+    /// at 800 lines that read costs 10.4 ms against 0.05 ms for a delta, and
+    /// it ran twice per withdrawal, on speech that withdraws constantly.
+    @MainActor
+    func testWithdrawnRowsLeaveOnTheDeltaInsteadOfForcingAWholeSessionResend() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var kept = NotebookCaptureUtteranceDTO.sample.replacingIdentity(id: "kept", sequence: 0)
+        kept.sourceText = "This one stays"
+        var speculative = NotebookCaptureUtteranceDTO.sample
+            .replacingIdentity(id: "speculative", sequence: 1)
+        speculative.sourceText = "This one was a guess"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [kept, speculative],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        XCTAssertEqual(store.utterances.count, 2)
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 2,
+            isFullSnapshot: false,
+            removedSequences: [1]
+        ))
+
+        XCTAssertEqual(
+            store.utterances.map(\.id), ["kept"],
+            "撤回的推测行随 delta 消失"
+        )
+        XCTAssertEqual(
+            client.listUtterancesCount, 0,
+            "撤回不再触发整场重读"
+        )
+
+        // A withdrawal that leaves a translation-only shell behind arrives as
+        // an upsert of that shell; Rust guarantees the sequence is not also in
+        // the removal list, so the row survives regardless of apply order.
+        var shell = NotebookCaptureUtteranceDTO.sample.replacingIdentity(id: "shell", sequence: 2)
+        shell.sourceText = ""
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [shell],
+            eventRevision: 3,
+            isFullSnapshot: false,
+            removedSequences: [5]
+        ))
+        XCTAssertEqual(store.utterances.map(\.id), ["kept", "shell"])
+        store.resetForTesting()
+    }
+
     @MainActor
     func testSequentialCaptureDeltasUpsertBySessionAndSequenceWithoutFullReload() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
@@ -5510,6 +5574,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             postStopProviderId: "soniox",
             postStopModelId: "stt-rt-v5",
             utterances: [],
+            removedSequences: [],
             translationCues: [],
             laneHealth: [],
             contextReceipt: nil,
@@ -5556,6 +5621,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             postStopProviderId: nil,
             postStopModelId: nil,
             utterances: [],
+            removedSequences: [],
             translationCues: [],
             laneHealth: [],
             contextReceipt: nil,
@@ -5867,6 +5933,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             postStopProviderId: nil,
             postStopModelId: nil,
             utterances: [],
+            removedSequences: [],
             translationCues: [],
             laneHealth: [],
             contextReceipt: nil,
@@ -6587,6 +6654,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         eventRevision: UInt64 = 0,
         isFullSnapshot: Bool = true,
         realtimeLoroAppliedRevision: UInt64? = nil,
+        removedSequences: [UInt64] = [],
         translationCues: [NotebookCaptureTranslationCueDTO] = [],
         laneHealth: [NotebookCaptureLaneHealthDTO] = []
     ) -> NotebookCaptureEventDTO {
@@ -6607,6 +6675,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             remoteHealth: state.isActive ? .live : .off,
             projectionState: state.isActive ? .pending : .ready,
             utterances: utterances,
+            removedSequences: removedSequences,
             translationCues: translationCues,
             laneHealth: laneHealth,
             contextReceipt: nil,
@@ -7207,8 +7276,19 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertFalse(activeCapture.contains("Capture profile snapshot is unavailable."))
         XCTAssertTrue(overlayViews.contains("if store.isCaptureActive == false"))
         XCTAssertTrue(overlayViews.contains("capture.transcript.waiting_lane"))
-        XCTAssertTrue(overlayViews.contains("capture.transcript.unselected_language"))
-        XCTAssertTrue(overlayViews.contains("capture.transcript.language_pending"))
+        // The canvas is what the room is looking at, and it carries no system
+        // prose: an audience cannot act on "language pending" and does not
+        // know what a lane is. A labelled status row is also a different shape
+        // from the lines around it, so one unidentified line visibly broke the
+        // column grid. Those lines now render as what they are — speech, full
+        // width, unlabelled. The operator is told through operator chrome.
+        XCTAssertFalse(overlayViews.contains("capture.transcript.unselected_language"))
+        XCTAssertFalse(overlayViews.contains("capture.transcript.language_pending"))
+        // The durable transcript page keeps both: its reader is not in the
+        // room, is reading afterwards, and is served by knowing that an
+        // identity was never established.
+        XCTAssertTrue(captureViews.contains("capture.transcript.unselected_language"))
+        XCTAssertTrue(captureViews.contains("capture.transcript.language_pending"))
         XCTAssertTrue(overlayViews.contains("lane.missingLaneState == .waiting"))
         XCTAssertTrue(overlayViews.contains("lane.missingLaneState == .failed"))
         XCTAssertTrue(overlayViews.contains("capture.transcript.failed_lane"))

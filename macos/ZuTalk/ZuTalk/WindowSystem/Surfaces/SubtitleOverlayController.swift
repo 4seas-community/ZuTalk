@@ -1924,24 +1924,50 @@ struct SubtitleOverlayView: View {
                     startsRevealed: item.id != items.last?.id
                 )
             }
-            if waiting {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: max(CGFloat(fontSize) * 0.55, 12), weight: .semibold))
-                    .foregroundColor(.secondary.opacity(0.55))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: CGFloat(fontSize) * 1.6,
-                        alignment: .bottomLeading
-                    )
-                    .background(subtitleCardBackground)
+            if waiting, items.isEmpty {
+                // An empty waiting column is the whole column: the promise has
+                // nothing to displace, and a bare gap would read as a lane
+                // that died rather than one that is a beat behind.
+                waitingCard
             }
         }
         .frame(maxWidth: .infinity, alignment: .bottom)
+        // The ellipsis is a promise, not content, so it must not move content.
+        // Stacked under the newest card it pushed that card up off the shared
+        // bottom edge — and the bottom edge is the one correspondence this
+        // layout guarantees, the whole reason columns are allowed to disagree
+        // about everything above it. A lane one beat behind therefore showed
+        // its current line higher than every sibling's, which reads exactly
+        // like the languages having come out of alignment. As an overlay it
+        // says the same thing and displaces nothing.
+        .overlay(alignment: .bottomTrailing) {
+            if waiting, items.isEmpty == false {
+                waitingGlyph
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 10)
+            }
+        }
         .animation(.easeOut(duration: 0.22), value: items.map(\.id))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(languageName(language)))
+    }
+
+    private var waitingGlyph: some View {
+        Image(systemName: "ellipsis")
+            .font(.system(size: max(CGFloat(fontSize) * 0.55, 12), weight: .semibold))
+            .foregroundColor(.secondary.opacity(0.55))
+    }
+
+    private var waitingCard: some View {
+        waitingGlyph
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: CGFloat(fontSize) * 1.6,
+                alignment: .bottomLeading
+            )
+            .background(subtitleCardBackground)
     }
 
     /// Source cards paint as delivered — the canonical preview already flows
@@ -2027,23 +2053,28 @@ struct SubtitleOverlayView: View {
     ) -> some View {
         let projection = store.projection(for: utterance)
 
+        // A line whose language is still unidentified, or whose language the
+        // room did not select, is still speech. It shows as speech: full
+        // width, no label, no icon.
+        //
+        // This used to be a captioned status row — "语言待定" with an
+        // ellipsis glyph, in a different colour from every line around it.
+        // The overlay is what the room is looking at, and the standing
+        // invariant for it is that the canvas never carries system prose: the
+        // audience has no idea what a language lane is and cannot act on the
+        // news. Worse, the labelled row is a different shape from its
+        // neighbours, so a single unidentified line visibly broke the column
+        // grid — one of the ways "the languages stopped lining up" showed up
+        // in practice. The operator still needs to know; that belongs in
+        // operator chrome, which already reports lane health on hover.
+        //
+        // The durable transcript page keeps the stricter labelled treatment.
+        // Its reader is not in the room, is reading afterwards, and is served
+        // by knowing that the identity was never established.
         if let pendingLanguage = projection.pendingLanguage {
-            statusRow(
-                title: String(localized: "capture.transcript.language_pending"),
-                detail: pendingLanguage,
-                systemImage: "ellipsis",
-                color: .secondary
-            )
+            audiencePlainText(pendingLanguage)
         } else if let outsideText = projection.unselectedLanguageText {
-            statusRow(
-                title: String(
-                    format: String(localized: "capture.transcript.unselected_language"),
-                    displayLanguageCode(utterance.sourceLanguage)
-                ),
-                detail: outsideText,
-                systemImage: "character.bubble",
-                color: .secondary
-            )
+            audiencePlainText(outsideText)
         } else {
             if layout == .columns {
                 // A shared bottom edge keeps every language's newest words in

@@ -4137,6 +4137,24 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
     public var postStopModelId: String?
     public var utterances: [FfiNotebookCaptureUtterance]
     /**
+     * Sequences whose utterance no longer exists — a provider replacement
+     * withdrew a speculative row outright.
+     *
+     * Removal used to have no delta representation at all, so the only way
+     * to tell a client that a row vanished was to resend the whole session.
+     * Withdrawal is not a rare event — the provider replaces its speculative
+     * tail constantly — and that full read runs while the callback mailbox
+     * lock is held, which is the publication boundary for every caption.
+     * Measured at 800 lines: the full read costs 10.4 ms against 0.05 ms for
+     * a delta, and it happens twice per event.
+     *
+     * A sequence never appears here and in `utterances` at once: when a
+     * withdrawal leaves a translation-only shell behind, the shell is an
+     * upsert and the row is not gone. Clients can therefore apply the two
+     * lists in either order.
+     */
+    public var removedSequences: [UInt64]
+    /**
      * Auxiliary translation facts as time-anchored cues, independent of any
      * canonical row binding. On a full snapshot this replaces the client's
      * cue view with every present cue of the session; on a delta it carries
@@ -4190,6 +4208,23 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
          * its durable provider boundary.
          */realtimeProviderId: String?, realtimeModelId: String?, postStopProviderId: String?, postStopModelId: String?, utterances: [FfiNotebookCaptureUtterance],
         /**
+         * Sequences whose utterance no longer exists — a provider replacement
+         * withdrew a speculative row outright.
+         *
+         * Removal used to have no delta representation at all, so the only way
+         * to tell a client that a row vanished was to resend the whole session.
+         * Withdrawal is not a rare event — the provider replaces its speculative
+         * tail constantly — and that full read runs while the callback mailbox
+         * lock is held, which is the publication boundary for every caption.
+         * Measured at 800 lines: the full read costs 10.4 ms against 0.05 ms for
+         * a delta, and it happens twice per event.
+         *
+         * A sequence never appears here and in `utterances` at once: when a
+         * withdrawal leaves a translation-only shell behind, the shell is an
+         * upsert and the row is not gone. Clients can therefore apply the two
+         * lists in either order.
+         */removedSequences: [UInt64],
+        /**
          * Auxiliary translation facts as time-anchored cues, independent of any
          * canonical row binding. On a full snapshot this replaces the client's
          * cue view with every present cue of the session; on a delta it carries
@@ -4228,6 +4263,7 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
         self.postStopProviderId = postStopProviderId
         self.postStopModelId = postStopModelId
         self.utterances = utterances
+        self.removedSequences = removedSequences
         self.translationCues = translationCues
         self.laneHealth = laneHealth
         self.contextReceipt = contextReceipt
@@ -4274,6 +4310,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
                 postStopProviderId: FfiConverterOptionString.read(from: &buf),
                 postStopModelId: FfiConverterOptionString.read(from: &buf),
                 utterances: FfiConverterSequenceTypeFfiNotebookCaptureUtterance.read(from: &buf),
+                removedSequences: FfiConverterSequenceUInt64.read(from: &buf),
                 translationCues: FfiConverterSequenceTypeFfiNotebookCaptureTranslationCue.read(from: &buf),
                 laneHealth: FfiConverterSequenceTypeFfiNotebookCaptureLaneHealth.read(from: &buf),
                 contextReceipt: FfiConverterOptionTypeFfiNotebookCaptureContextReceipt.read(from: &buf),
@@ -4306,6 +4343,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.postStopProviderId, into: &buf)
         FfiConverterOptionString.write(value.postStopModelId, into: &buf)
         FfiConverterSequenceTypeFfiNotebookCaptureUtterance.write(value.utterances, into: &buf)
+        FfiConverterSequenceUInt64.write(value.removedSequences, into: &buf)
         FfiConverterSequenceTypeFfiNotebookCaptureTranslationCue.write(value.translationCues, into: &buf)
         FfiConverterSequenceTypeFfiNotebookCaptureLaneHealth.write(value.laneHealth, into: &buf)
         FfiConverterOptionTypeFfiNotebookCaptureContextReceipt.write(value.contextReceipt, into: &buf)
@@ -8825,6 +8863,31 @@ fileprivate struct FfiConverterOptionCallbackInterfaceFfiLaneCredentialRequester
         case 1: return try FfiConverterCallbackInterfaceFfiLaneCredentialRequester.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceUInt64: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt64]
+
+    public static func write(_ value: [UInt64], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt64.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt64] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt64]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterUInt64.read(from: &buf))
+        }
+        return seq
     }
 }
 

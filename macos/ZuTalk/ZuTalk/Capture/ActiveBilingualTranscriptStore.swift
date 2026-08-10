@@ -472,6 +472,10 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
     var realtimeLagMs: UInt64? = nil
     let projectionState: NotebookProjectionState
     let utterances: [NotebookCaptureUtteranceDTO]
+    /// Sequences a provider replacement withdrew. Deltas only — a full
+    /// snapshot's `utterances` is already the whole truth. Rust never puts a
+    /// sequence in both lists, so order between the two does not matter.
+    var removedSequences: [UInt64] = []
     /// Deltas carry only cues changed by this event; a full snapshot replaces
     /// the session's whole cue view. A withdrawn cue removes its entry.
     let translationCues: [NotebookCaptureTranslationCueDTO]
@@ -506,6 +510,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         realtimeLagMs: UInt64? = nil,
         projectionState: NotebookProjectionState,
         utterances: [NotebookCaptureUtteranceDTO],
+        removedSequences: [UInt64] = [],
         translationCues: [NotebookCaptureTranslationCueDTO] = [],
         laneHealth: [NotebookCaptureLaneHealthDTO] = [],
         contextReceipt: NotebookCaptureContextReceiptDTO?,
@@ -535,6 +540,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         self.realtimeLagMs = realtimeLagMs
         self.projectionState = projectionState
         self.utterances = utterances
+        self.removedSequences = removedSequences
         self.translationCues = translationCues
         self.laneHealth = laneHealth
         self.contextReceipt = contextReceipt
@@ -1742,6 +1748,7 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             realtimeLagMs: value.realtimeLagMs,
             projectionState: map(value.projectionState),
             utterances: value.utterances.map(Self.map),
+            removedSequences: value.removedSequences,
             translationCues: value.translationCues.map { cue in
                 NotebookCaptureTranslationCueDTO(
                     targetLanguage: cue.targetLanguage,
@@ -5302,6 +5309,24 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         refreshRecentTranscriptPresentation()
     }
 
+    /// Drops rows a provider replacement withdrew.
+    ///
+    /// The durable row is already gone in Rust, so this is not a policy
+    /// decision the client gets to weigh — it is the client catching up. What
+    /// it must not do is drop a row the same batch is re-adding as a
+    /// translation-only shell; Rust guarantees a sequence is never in both
+    /// lists, and [`reconcileUtterances`] applies them in one pass either way.
+    private func removeUtterances(sequences: [UInt64]) {
+        guard sequences.isEmpty == false else { return }
+        let withdrawn = Set(sequences)
+        let remaining = utterances.filter {
+            $0.sessionId != sessionId || withdrawn.contains($0.sequence) == false
+        }
+        guard remaining.count != utterances.count else { return }
+        utterances = remaining
+        refreshRecentTranscriptPresentation()
+    }
+
     /// Applies edit barriers before revision arbitration, matching the durable
     /// callback contract. Keeping this step ordered matters because observing a
     /// callback that contains a committed lane may retire its process-local
@@ -5720,6 +5745,14 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         // Apply the newest durable delta immediately. If the dispatcher
         // coalesced one or more revisions, the async authoritative pass below
         // fills in omitted rows without blocking the MainActor.
+        //
+        // Withdrawal is part of the delta: a provider replacement can retire a
+        // speculative row outright, and until that had a delta shape the only
+        // way to say so was a whole-session resend on the publication path.
+        // Rust guarantees a sequence is never in both lists — a withdrawal
+        // that leaves a translation-only shell behind sends the shell as an
+        // upsert — so the two can be applied in either order.
+        removeUtterances(sequences: event.removedSequences)
         merge(event.utterances)
         lastAppliedEventRevision = event.eventRevision
 

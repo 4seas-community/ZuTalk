@@ -5945,9 +5945,21 @@ struct ComposedTranslationLane {
 /// side, which classifies the same ranges to pace reveal speed.
 fn is_dense_script(character: char) -> bool {
     matches!(character as u32,
-        0x2E80..=0x9FFF     // CJK radicals through unified ideographs (incl. kana)
+        0x3040..=0x30FF     // kana
+        | 0x3400..=0x9FFF   // CJK extension A through unified ideographs
         | 0xF900..=0xFAFF   // compatibility ideographs
         | 0x0E00..=0x0E7F   // Thai
+    )
+}
+
+/// Punctuation drawn on a full-width body: it carries its own sidebearing, so
+/// a space beside it reads as a gap rather than as word separation.
+fn is_wide_punctuation(character: char) -> bool {
+    matches!(character as u32,
+        0x3000..=0x303F     // CJK symbols and punctuation, incl. the ideographic space
+        | 0xFF01..=0xFF20   // fullwidth ASCII punctuation and digits' neighbours
+        | 0xFF3B..=0xFF40
+        | 0xFF5B..=0xFF65
     )
 }
 
@@ -5958,17 +5970,31 @@ fn is_dense_script(character: char) -> bool {
 /// ours to decide, because the provider never emitted one. Deciding it
 /// blindly — a space whenever neither side already carries whitespace — put
 /// an ASCII space in the middle of Chinese and Thai sentences, which have no
-/// such boundary mark. A space belongs there only when **both** sides are
-/// written in a script that separates words with one.
+/// such boundary mark.
+///
+/// The rule is the ordinary typographic one, in three parts:
+///
+/// - two dense-script characters take nothing: Chinese, Japanese and Thai set
+///   word boundaries without a space, and inserting one is the reported bug;
+/// - a dense/spaced boundary takes a space. Mixed-script setting puts a thin
+///   space there and a normal space is the closest thing available; without
+///   it a Latin word abutting Chinese reads as one cramped run
+///   (`他说ZuTalk`). Korean is spaced and lands here correctly — Hangul sits
+///   above the dense ranges on purpose;
+/// - either side being wide punctuation takes nothing: `。` already carries
+///   half an em of its own space, and adding more opens a visible hole.
 fn needs_separator_between(accumulated: &str, next: &str) -> bool {
     let (Some(previous), Some(following)) = (accumulated.chars().next_back(), next.chars().next())
     else {
         return false; // Nothing on one side: no boundary to mark.
     };
-    !previous.is_whitespace()
-        && !following.is_whitespace()
-        && !is_dense_script(previous)
-        && !is_dense_script(following)
+    if previous.is_whitespace() || following.is_whitespace() {
+        return false; // A boundary one side already marks.
+    }
+    if is_wide_punctuation(previous) || is_wide_punctuation(following) {
+        return false;
+    }
+    !(is_dense_script(previous) && is_dense_script(following))
 }
 
 /// Whether a recomposed lane still says everything the settled lane already
@@ -5994,7 +6020,7 @@ fn needs_separator_between(accumulated: &str, next: &str) -> bool {
 /// repaired, nothing added is exactly the replay case. Only boundary
 /// whitespace can differ — text inside a segment is the provider's, untouched
 /// — so this cannot admit a content change.
-fn preserves_settled_lane(settled: &str, incoming: &str) -> bool {
+pub fn preserves_settled_lane(settled: &str, incoming: &str) -> bool {
     if incoming.len() > settled.len() && incoming.starts_with(settled) {
         return true;
     }
@@ -6649,7 +6675,10 @@ fn hydrate_utterance_variants(
     conn: &Connection,
     utterance: &mut RealtimeUtterance,
 ) -> Result<(), NotebookCaptureStoreError> {
-    let mut stmt = conn.prepare(&format!(
+    // Cached: this runs once per utterance inside every whole-session load,
+    // so an uncached prepare pays SQLite's parser and planner per row of the
+    // session rather than once per process.
+    let mut stmt = conn.prepare_cached(&format!(
         "{UTTERANCE_VARIANT_SELECT}
          WHERE utterance_id = ?1
          ORDER BY CASE role WHEN 'source' THEN 0 ELSE 1 END,
@@ -6740,7 +6769,9 @@ fn apply_utterance_overrides(
     utterance: &mut RealtimeUtterance,
 ) -> Result<(), NotebookCaptureStoreError> {
     let overrides = {
-        let mut stmt = conn.prepare(
+        // Cached for the same reason as the variant hydration above: once per
+        // utterance of every whole-session load.
+        let mut stmt = conn.prepare_cached(
             "SELECT lane, lane_language, text,
                     machine_utterance_revision, machine_variant_revision,
                     edit_revision
@@ -8078,6 +8109,18 @@ mod tests {
         // syllables sit above the dense ranges precisely so this holds.
         assert!(needs_separator_between("안녕하세요", "반갑습니다"));
 
+        // A mixed boundary takes one. Mixed-script setting puts a thin space
+        // between Latin and Han; a normal space is what we have, and without
+        // it the two runs collide.
+        assert!(needs_separator_between("他说", "ZuTalk 很好"));
+        assert!(needs_separator_between("ZuTalk", "很好用"));
+        assert!(needs_separator_between("ครับ", "OK"));
+
+        // Wide punctuation carries its own space; another one opens a hole.
+        assert!(!needs_separator_between("他说。", "Hello"));
+        assert!(!needs_separator_between("他说，", "OK"));
+        assert!(!needs_separator_between("Hello", "。世界"));
+
         // Whitespace already present on either side is not doubled.
         assert!(!needs_separator_between("we should ", "start over"));
         assert!(!needs_separator_between("we should", " start over"));
@@ -8085,11 +8128,6 @@ mod tests {
         // Nothing on one side is not a boundary.
         assert!(!needs_separator_between("", "start over"));
         assert!(!needs_separator_between("we should", ""));
-
-        // A mixed boundary stays unspaced: the dense side is the one whose
-        // reader would see a space that does not belong there.
-        assert!(!needs_separator_between("他说", "hello"));
-        assert!(!needs_separator_between("hello", "他说"));
     }
 
     /// The append-only guard has to survive the join rule changing under it,

@@ -25,6 +25,7 @@ use std::sync::Mutex;
 use loro::LoroDoc;
 use vt_share::ScopeId;
 use vt_store::document_schema::{document_kind, new_block_document, DocumentKind};
+use vt_store::notebook_capture_store::preserves_settled_lane;
 use vt_store::transcript_projection::TranscriptProjection;
 
 use crate::notebook_capture_api::{store_error, t2_insert_anchor, t2_machine_block_write};
@@ -187,6 +188,16 @@ pub(crate) fn refresh_shared_session_from_facts(
         let mut frozen = BTreeSet::new();
         if let Some(current) = current {
             // 影子首见(宿主重启后)以现状初始化:现状即视为机器所写。
+            //
+            // 「与机器现在要写的不一致」是**证据**,不是结论。机器自己也会
+            // 让车道长出新内容 —— 补绑一个此前未绑的段落就会 —— 而那种
+            // 变化有个签名:文档里的现值仍然被新值原样包含,只是更短。真的
+            // 人工订正会岔开,不会是前缀。
+            //
+            // 这条区分不是理论上的。升级后段落拼接改成按文字系统决定,老的
+            // 共享文档里存着旧规则拼出的带空格文本,机器现在写不带空格的
+            // 同一句话。只看「不一致」就会把它判成人工接管,把那条车道永久
+            // 让给一个并不存在的用户 —— 观看者从此收不到这条车道的补绑内容。
             for (lane, incoming) in &write.lanes {
                 let key = (write.id.clone(), lane.clone());
                 let doc_text = current.lanes.get(lane);
@@ -194,7 +205,9 @@ pub(crate) fn refresh_shared_session_from_facts(
                     (Some(doc_text), Some(shadowed)) if doc_text != shadowed => {
                         frozen.insert(lane.clone());
                     }
-                    (Some(doc_text), None) if doc_text != incoming => {
+                    (Some(doc_text), None)
+                        if doc_text != incoming && !preserves_settled_lane(doc_text, incoming) =>
+                    {
                         shadow.insert(key, doc_text.clone());
                         frozen.insert(lane.clone());
                     }

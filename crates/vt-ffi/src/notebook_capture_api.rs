@@ -314,6 +314,22 @@ pub struct FfiNotebookCaptureEvent {
     pub post_stop_provider_id: Option<String>,
     pub post_stop_model_id: Option<String>,
     pub utterances: Vec<FfiNotebookCaptureUtterance>,
+    /// Sequences whose utterance no longer exists — a provider replacement
+    /// withdrew a speculative row outright.
+    ///
+    /// Removal used to have no delta representation at all, so the only way
+    /// to tell a client that a row vanished was to resend the whole session.
+    /// Withdrawal is not a rare event — the provider replaces its speculative
+    /// tail constantly — and that full read runs while the callback mailbox
+    /// lock is held, which is the publication boundary for every caption.
+    /// Measured at 800 lines: the full read costs 10.4 ms against 0.05 ms for
+    /// a delta, and it happens twice per event.
+    ///
+    /// A sequence never appears here and in `utterances` at once: when a
+    /// withdrawal leaves a translation-only shell behind, the shell is an
+    /// upsert and the row is not gone. Clients can therefore apply the two
+    /// lists in either order.
+    pub removed_sequences: Vec<u64>,
     /// Auxiliary translation facts as time-anchored cues, independent of any
     /// canonical row binding. On a full snapshot this replaces the client's
     /// cue view with every present cue of the session; on a delta it carries
@@ -966,6 +982,7 @@ fn event_from_run(
         // Cues are attached at the three re-materialization points (delta
         // emission, refresh, full snapshot), not here: most events carry none
         // and the builder has no store access.
+        removed_sequences: Vec::new(),
         translation_cues: Vec::new(),
         lane_health: Vec::new(),
         context_receipt: parse_context_receipt(&run),
@@ -1199,8 +1216,9 @@ struct AssembledRealtimeUtterance {
 #[derive(Debug, Default)]
 struct PersistedCaptureChanges {
     utterances: Vec<RealtimeUtterance>,
+    /// Sequences withdrawn by this batch. Published on the delta channel; the
+    /// full-session resend they used to force is gone.
     removed_sequences: Vec<u64>,
-    requires_full_snapshot: bool,
     /// Auxiliary cue facts changed by this batch, including withdrawal
     /// tombstones. Emitted on the durable delta channel alongside utterances.
     translation_cues: Vec<FfiNotebookCaptureTranslationCue>,
@@ -1702,7 +1720,7 @@ async fn collect_stream_events(
                     Ok(_) => {
                         context_applied = true;
                         if let Ok(Some(run)) = store.get_run(&run_id) {
-                            emit_capture_delta(run, Vec::new(), Vec::new(), &callback);
+                            emit_capture_delta(run, Vec::new(), Vec::new(), Vec::new(), &callback);
                         }
                     }
                     Err(error) => {
@@ -2017,24 +2035,20 @@ async fn collect_stream_events(
         let live_preview_cues =
             publishes_live_preview.then(|| live_translation_cue_snapshot(&live_translation_cues));
 
-        if persisted.requires_full_snapshot {
-            if let Ok(Some(run)) = store.get_run(&run_id) {
-                let mut event = event_full_snapshot_from_run(&store, run).map_err(|error| {
-                    local_persistence_failure(
-                        "load full callback snapshot after partial removal",
-                        error,
-                    )
-                })?;
-                event.lane_health = lane_health_snapshot(&lanes);
-                callback.send(event);
-            }
-        } else if !persisted.is_empty() || !persisted.translation_cues.is_empty() {
+        if !persisted.is_empty()
+            || !persisted.removed_sequences.is_empty()
+            || !persisted.translation_cues.is_empty()
+        {
             // A cue-only batch is a real delta: an auxiliary partial can grow
             // for seconds before the slower canonical lane persists any row.
+            // So is a removal-only batch, now that removal has a delta shape:
+            // a withdrawn speculative row used to force a whole-session resend
+            // on the publication path for want of one field.
             if let Ok(Some(run)) = store.get_run(&run_id) {
                 emit_capture_delta(
                     run,
                     persisted.utterances,
+                    persisted.removed_sequences,
                     persisted.translation_cues,
                     &callback,
                 );
@@ -2054,7 +2068,7 @@ async fn collect_stream_events(
         mark_waiting_translation_variants_unavailable(&store, &session_id, &mut canonical_matches)?;
     if !unavailable.is_empty() {
         if let Ok(Some(run)) = store.get_run(&run_id) {
-            emit_capture_delta(run, unavailable, Vec::new(), &callback);
+            emit_capture_delta(run, unavailable, Vec::new(), Vec::new(), &callback);
         }
     }
     Ok(())
@@ -2376,7 +2390,6 @@ fn persist_stream_lane_updates(
     );
     Ok(PersistedCaptureChanges {
         utterances: latest_utterance_revisions(persisted),
-        requires_full_snapshot: !removed_sequences.is_empty(),
         removed_sequences,
         translation_cues,
     })
@@ -3245,7 +3258,6 @@ fn persist_assembled_utterances(
     }
     Ok(PersistedCaptureChanges {
         utterances: persisted_updates,
-        requires_full_snapshot: !removed_sequences.is_empty(),
         removed_sequences,
         translation_cues: Vec::new(),
     })
@@ -3296,9 +3308,32 @@ fn missing_remote_truth(run: &NotebookCaptureRun) -> (RemoteHealth, ProviderFail
     (health, failure)
 }
 
+/// Which withdrawn sequences a client should be told about.
+///
+/// A withdrawal that leaves a translation-only shell behind is an upsert of
+/// that shell, not a removal: the row is still there, holding the words an
+/// auxiliary stream settled before the canonical one gave up on its source.
+/// Publishing the sequence as removed *and* upserting the shell would make the
+/// outcome depend on which list the receiver applied last — a bug that shows
+/// up on one machine, once, under load.
+///
+/// Filtering here buys the strong wire contract instead: the two lists never
+/// name the same sequence, so either order works.
+fn wire_removals(removed: Vec<u64>, upserted: &[FfiNotebookCaptureUtterance]) -> Vec<u64> {
+    removed
+        .into_iter()
+        .filter(|sequence| {
+            !upserted
+                .iter()
+                .any(|utterance| utterance.sequence == *sequence)
+        })
+        .collect()
+}
+
 fn emit_capture_delta(
     run: NotebookCaptureRun,
     changed_utterances: Vec<RealtimeUtterance>,
+    removed_sequences: Vec<u64>,
     changed_translation_cues: Vec<FfiNotebookCaptureTranslationCue>,
     callback: &CaptureCallbackSink,
 ) {
@@ -3306,6 +3341,7 @@ fn emit_capture_delta(
     // busy. `CaptureCallbackSink` revisions make that loss explicit so Swift
     // performs one bounded full rebuild instead of receiving O(n^2) snapshots.
     let mut event = event_from_run(run, changed_utterances, false);
+    event.removed_sequences = wire_removals(removed_sequences, &event.utterances);
     event.translation_cues = changed_translation_cues;
     callback.send(event);
 }
@@ -3699,6 +3735,15 @@ impl CaptureCallbackSink {
                     }
                 } else {
                     std::mem::take(&mut event.translation_cues)
+                };
+                // Removals are a fact of the batch that produced this event,
+                // not of the run the refresh re-reads — the rows are gone, so
+                // no re-read can rediscover them. A full snapshot needs none:
+                // the list it carries is already the whole truth.
+                refreshed.removed_sequences = if event.is_full_snapshot {
+                    Vec::new()
+                } else {
+                    std::mem::take(&mut event.removed_sequences)
                 };
                 refreshed.realtime_lag_ms = event.realtime_lag_ms;
                 if matches!(
@@ -8883,6 +8928,35 @@ pub(crate) fn t2_insert_anchor(
         .map(|block| block.id.clone())
 }
 
+/// How many Final watermarks a live capture may advance between search-index
+/// rebuilds. Roughly a few minutes of speech at the measured rate.
+const SEARCH_INDEX_REBUILD_INTERVAL: u64 = 32;
+
+/// Whether this projection pass should rebuild the session's search index.
+///
+/// The index is one replace-in-full row per session, rebuilt by concatenating
+/// the whole session's text — so rebuilding it once per sentence costs a
+/// full-session read and a full-session string on every sentence, and by the
+/// end of a long recording that is the most expensive thing the projector
+/// does. It buys nothing anyone can perceive: during a recording the user is
+/// recording, the transcript surface reads the store directly rather than the
+/// index, and nobody can search for a sentence faster than it is being said.
+///
+/// So the index tracks a live session in steps rather than continuously, and
+/// is always exact where exactness is actually observable:
+///
+/// - a finalized capture rebuilds unconditionally — that is the state a
+///   reader will search later, and it must be complete;
+/// - a crash mid-recording is repaired at startup, which rebuilds from
+///   whatever was durable.
+///
+/// Stateless on purpose: the watermark is monotonic and advances by one per
+/// Final, so a modulus gives "at most once per interval" without a timer or a
+/// per-session map, and without a clock a test would have to control.
+fn search_index_is_due(complete_projection: bool, applied_revision: u64) -> bool {
+    complete_projection || applied_revision.is_multiple_of(SEARCH_INDEX_REBUILD_INTERVAL)
+}
+
 /// Whether the document already says exactly what this write would say.
 ///
 /// Machine writes never remove lanes and never touch a lane the user has
@@ -9100,6 +9174,9 @@ impl ZuTalkCore {
         }
 
         let search_result = (|| -> Result<(), CoreError> {
+            if !search_index_is_due(complete_projection, projection.desired_revision) {
+                return Ok(());
+            }
             let visible = self
                 .notebook_capture_store
                 .list_utterances(&run.session_id)
@@ -11276,8 +11353,9 @@ mod tests {
         )
         .unwrap();
         assert!(
-            removal.requires_full_snapshot,
-            "a durable deletion must force a replace-in-full callback"
+            !removal.removed_sequences.is_empty(),
+            "a durable deletion must reach the client — it now rides the delta \
+             instead of forcing a whole-session resend"
         );
         assert!(
             core.notebook_capture_store
@@ -11935,7 +12013,10 @@ mod tests {
             0,
         )
         .unwrap();
-        assert!(removal.requires_full_snapshot);
+        // The withdrawal is recorded. What the client receives for it is the
+        // surviving shell as an upsert, not a removal — see
+        // `withdrawal_leaving_a_shell_publishes_the_shell_not_a_removal`.
+        assert!(!removal.removed_sequences.is_empty());
 
         let shell = core
             .notebook_capture_store
@@ -12280,7 +12361,10 @@ mod tests {
             0,
         )
         .unwrap();
-        assert!(removal.requires_full_snapshot);
+        // The withdrawal is recorded. What the client receives for it is the
+        // surviving shell as an upsert, not a removal — see
+        // `withdrawal_leaving_a_shell_publishes_the_shell_not_a_removal`.
+        assert!(!removal.removed_sequences.is_empty());
         let shell = removal
             .utterances
             .first()
@@ -12420,7 +12504,7 @@ mod tests {
         let persisted =
             persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, delta, 0)
                 .unwrap();
-        assert!(persisted.requires_full_snapshot);
+        assert!(!persisted.removed_sequences.is_empty());
         let shell = persisted.utterances.first().unwrap();
         assert!(!shell.has_source_lane());
         let zh = shell
@@ -14307,6 +14391,80 @@ mod tests {
             context_confirmation_digest(&first).unwrap(),
             context_confirmation_digest(&second).unwrap()
         );
+    }
+
+    /// A withdrawal that leaves a translation-only shell behind is not a
+    /// removal: the row is still there, holding the words the auxiliary stream
+    /// settled before the canonical one gave up on its source. Publishing the
+    /// sequence as removed *and* upserting the shell would leave the outcome
+    /// dependent on which list the receiver applied last — a class of bug that
+    /// only shows up on one machine, once, under load.
+    ///
+    /// So the emit side filters, and the wire contract is the strong one: the
+    /// two lists never name the same sequence, and a client may apply them in
+    /// either order.
+    /// A finished recording is what someone searches; a running one is what
+    /// someone is sitting through. The index has to be exact for the first and
+    /// only roughly current for the second, and rebuilding it per sentence
+    /// costs a whole-session read plus a whole-session string every sentence.
+    #[test]
+    fn search_index_tracks_a_live_session_in_steps_and_a_finished_one_exactly() {
+        // Finalization always rebuilds, whatever the watermark says. This is
+        // the state a later reader searches.
+        for revision in [0, 1, 7, 31, 32, 999] {
+            assert!(search_index_is_due(true, revision), "rev {revision}");
+        }
+
+        // A live capture rebuilds on the interval and skips between.
+        assert!(search_index_is_due(false, 0));
+        assert!(search_index_is_due(false, SEARCH_INDEX_REBUILD_INTERVAL));
+        assert!(search_index_is_due(
+            false,
+            SEARCH_INDEX_REBUILD_INTERVAL * 4
+        ));
+        assert!(!search_index_is_due(false, 1));
+        assert!(!search_index_is_due(
+            false,
+            SEARCH_INDEX_REBUILD_INTERVAL - 1
+        ));
+        assert!(!search_index_is_due(
+            false,
+            SEARCH_INDEX_REBUILD_INTERVAL + 1
+        ));
+
+        // At most one rebuild per interval across any stretch of a session.
+        let live_rebuilds = (1..=SEARCH_INDEX_REBUILD_INTERVAL * 3)
+            .filter(|revision| search_index_is_due(false, *revision))
+            .count();
+        assert_eq!(live_rebuilds, 3);
+    }
+
+    #[test]
+    fn withdrawal_leaving_a_shell_publishes_the_shell_not_a_removal() {
+        let shell = |sequence: u64| {
+            let mut utterance: FfiNotebookCaptureUtterance = projected_utterance().into();
+            utterance.sequence = sequence;
+            utterance
+        };
+
+        // Sequence 7 survived as a translation-only shell; 8 is really gone.
+        assert_eq!(wire_removals(vec![7, 8], &[shell(7)]), vec![8]);
+
+        // Nothing surviving: every withdrawal is published as one.
+        assert_eq!(wire_removals(vec![7, 8], &[]), vec![7, 8]);
+
+        // Nothing withdrawn: an ordinary delta carries no removals.
+        assert!(wire_removals(Vec::new(), &[shell(7)]).is_empty());
+
+        // The contract the client relies on, stated as a check rather than a
+        // comment: whatever goes out, the two lists never name the same row,
+        // so applying them in either order lands in the same place.
+        let upserted = [shell(1), shell(7)];
+        let removals = wire_removals(vec![1, 7, 9], &upserted);
+        for utterance in &upserted {
+            assert!(!removals.contains(&utterance.sequence));
+        }
+        assert_eq!(removals, vec![9]);
     }
 
     /// The ledger keeps the provider's bytes; the UI gets a sentence. Both

@@ -439,6 +439,34 @@ impl StreamRecoveryState {
         };
         self.next_audio_ms = frame.end_ms;
         self.sent_frames.push_back(frame);
+        self.drop_unreplayable_frames();
+    }
+
+    /// Audio too old to ever be replayed is audio we are only storing.
+    ///
+    /// Trimming otherwise happens solely on acknowledgement, which assumes the
+    /// provider keeps reporting progress. A connection that stays open while
+    /// `total_audio_proc_ms` stalls therefore retains every frame of the
+    /// session — 32 KB per second of speech, so about 115 MB an hour, of PCM
+    /// that no reconnect can use.
+    ///
+    /// The ceiling is not a new policy, it is the one already written down:
+    /// [`prepare_replay`](Self::prepare_replay) abandons replay outright once
+    /// an outage exceeds [`CONTINUITY_WINDOW`], and never replays from earlier
+    /// than [`REPLAY_OVERLAP`] before the acknowledged point. Anything older
+    /// than both is unreachable by construction.
+    fn drop_unreplayable_frames(&mut self) {
+        let horizon = (CONTINUITY_WINDOW + REPLAY_OVERLAP).as_millis() as u64;
+        let Some(retain_from) = self.next_audio_ms.checked_sub(horizon) else {
+            return;
+        };
+        while self
+            .sent_frames
+            .front()
+            .is_some_and(|frame| frame.end_ms <= retain_from)
+        {
+            self.sent_frames.pop_front();
+        }
     }
 
     fn acknowledge(&mut self, provider_total_ms: u64) -> (u64, u64) {
@@ -1790,6 +1818,39 @@ mod tests {
             soniox_stream_context_json(&context).unwrap(),
             Some(serde_json::to_string(&wire).unwrap())
         );
+    }
+
+    /// A provider that keeps the socket open while it stops reporting progress
+    /// is not a hypothetical: acknowledgement is the only thing that trimmed
+    /// the replay buffer, so a stalled `total_audio_proc_ms` used to retain
+    /// every frame of the session. At 32 KB of PCM per second that is roughly
+    /// 115 MB an hour of audio no reconnect could ever use — held by an app
+    /// whose whole posture is that audio does not stay around.
+    #[test]
+    fn a_provider_that_stops_acknowledging_cannot_grow_the_replay_buffer() {
+        let mut recovery = StreamRecoveryState::default();
+        // Ten minutes of speech in 100 ms frames, never acknowledged.
+        for _ in 0..6_000 {
+            recovery.record_sent(vec![0; 3_200]);
+        }
+        assert_eq!(recovery.acknowledged_ms, 0, "provider never acknowledged");
+
+        let retained_ms: u64 = recovery
+            .sent_frames
+            .iter()
+            .map(|frame| frame.pcm.len() as u64 / PCM_BYTES_PER_MILLISECOND)
+            .sum();
+        let ceiling = (CONTINUITY_WINDOW + REPLAY_OVERLAP).as_millis() as u64;
+        assert!(
+            retained_ms <= ceiling + 100,
+            "retained {retained_ms} ms of audio, ceiling is {ceiling} ms"
+        );
+
+        // The ceiling is exactly what replay can reach: a reconnect inside the
+        // continuity window still gets its overlap back, so trimming has not
+        // cost the recovery anything it was using.
+        let replay = recovery.prepare_replay(Duration::from_secs(1));
+        assert!(!replay.is_empty(), "短暂断线仍要能回放");
     }
 
     #[test]
