@@ -1082,6 +1082,10 @@ struct RealtimeSegmentRevision {
     complete: bool,
     source_dirty: bool,
     translation_dirty: bool,
+    /// One-shot latch for the source-timing census. A completed segment is
+    /// re-assembled whenever a later translation dirties it, so without this
+    /// the same row would be counted once per revision.
+    source_timestamp_censused: bool,
 }
 
 impl RealtimeSegmentRevision {
@@ -1107,6 +1111,7 @@ impl RealtimeSegmentRevision {
             complete: false,
             source_dirty: false,
             translation_dirty: false,
+            source_timestamp_censused: false,
         }
     }
 
@@ -1238,6 +1243,72 @@ impl std::ops::DerefMut for PersistedCaptureChanges {
     }
 }
 
+/// How much of this lane's source timing the provider actually sent.
+///
+/// Observability only; carries no transcript text. A source row that reaches
+/// the client with no `source_start_ms` is a row the audience timeline can
+/// only place by inheriting a lower bound from the row ahead of it, and one
+/// that no subtitle export can emit at all. Whether that is worth repairing
+/// at the ingest end depends on how often it happens, and to which lanes —
+/// which nothing measured until this census.
+///
+/// Tokens are counted only when final. Partials are rewritten continuously,
+/// so counting them would inflate the denominator by roughly the provider's
+/// revision rate and make the ratio mean nothing.
+#[derive(Debug, Default, Clone, Copy)]
+struct SourceTimestampCensus {
+    final_tokens: u64,
+    untimed_final_tokens: u64,
+    completed_segments: u64,
+    untimed_completed_segments: u64,
+    /// Bounds of the untimed run, for reading clustering out of one line.
+    first_untimed_sequence: Option<u64>,
+    last_untimed_sequence: Option<u64>,
+}
+
+impl SourceTimestampCensus {
+    fn record_final_token(&mut self, timed: bool) {
+        self.final_tokens = self.final_tokens.saturating_add(1);
+        if !timed {
+            self.untimed_final_tokens = self.untimed_final_tokens.saturating_add(1);
+        }
+    }
+
+    fn record_completed_segment(&mut self, sequence: u64, timed: bool) {
+        self.completed_segments = self.completed_segments.saturating_add(1);
+        if timed {
+            return;
+        }
+        self.untimed_completed_segments = self.untimed_completed_segments.saturating_add(1);
+        self.first_untimed_sequence.get_or_insert(sequence);
+        self.last_untimed_sequence = Some(sequence);
+    }
+
+    fn merge(&mut self, other: Self) {
+        self.final_tokens = self.final_tokens.saturating_add(other.final_tokens);
+        self.untimed_final_tokens = self
+            .untimed_final_tokens
+            .saturating_add(other.untimed_final_tokens);
+        self.completed_segments = self
+            .completed_segments
+            .saturating_add(other.completed_segments);
+        self.untimed_completed_segments = self
+            .untimed_completed_segments
+            .saturating_add(other.untimed_completed_segments);
+        if self.first_untimed_sequence.is_none() {
+            self.first_untimed_sequence = other.first_untimed_sequence;
+        }
+        if other.last_untimed_sequence.is_some() {
+            self.last_untimed_sequence = other.last_untimed_sequence;
+        }
+    }
+
+    /// Nothing was missing. The common case, and the one that must stay silent.
+    fn is_complete(&self) -> bool {
+        self.untimed_final_tokens == 0 && self.untimed_completed_segments == 0
+    }
+}
+
 /// Response-order utterance assembler. It keeps provider speaker and language
 /// orthogonal, splits only on final source-token identity changes, and never
 /// correlates translation tokens by timestamp.
@@ -1256,6 +1327,10 @@ struct RealtimeUtteranceAssembler {
     /// requiring a globally unique identity match.
     latest_translation_segment: Option<usize>,
     unattached_translation_tokens: u64,
+    /// Since the last finalization boundary; logged and cleared there.
+    generation_source_timestamps: SourceTimestampCensus,
+    /// Whole lane, whole session. Reported once when the group ends.
+    session_source_timestamps: SourceTimestampCensus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2064,6 +2139,7 @@ async fn collect_stream_events(
             );
         }
     }
+    report_session_source_timestamps(&lanes);
     let unavailable =
         mark_waiting_translation_variants_unavailable(&store, &session_id, &mut canonical_matches)?;
     if !unavailable.is_empty() {
@@ -2072,6 +2148,35 @@ async fn collect_stream_events(
         }
     }
     Ok(())
+}
+
+/// One closing line per lane that lost source timing, so a session's rate is
+/// readable without summing the per-boundary lines. A lane the provider timed
+/// completely stays silent — the point of the census is to find out whether
+/// the untimed case is rare enough to leave alone, and a log that reports the
+/// healthy case cannot answer that at a glance.
+fn report_session_source_timestamps(lanes: &[StreamAggregationLane]) {
+    for lane in lanes {
+        let census = lane.assembler.session_source_timestamps();
+        if census.is_complete() {
+            continue;
+        }
+        tracing::warn!(
+            lane = lane
+                .descriptor
+                .target_language
+                .as_deref()
+                .unwrap_or("canonical"),
+            group_epoch = lane.group_epoch,
+            final_tokens = census.final_tokens,
+            untimed_final_tokens = census.untimed_final_tokens,
+            completed_segments = census.completed_segments,
+            untimed_completed_segments = census.untimed_completed_segments,
+            first_untimed_sequence = census.first_untimed_sequence,
+            last_untimed_sequence = census.last_untimed_sequence,
+            "lane ended with source rows carrying no capture-timeline anchor"
+        );
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4085,6 +4190,8 @@ impl RealtimeUtteranceAssembler {
             latest_original_segment: None,
             latest_translation_segment: None,
             unattached_translation_tokens: 0,
+            generation_source_timestamps: SourceTimestampCensus::default(),
+            session_source_timestamps: SourceTimestampCensus::default(),
         }
     }
 
@@ -4170,6 +4277,10 @@ impl RealtimeUtteranceAssembler {
             *end = Some(end.map_or(next, |current| current.max(next)));
         }
         segment.source_dirty = true;
+        if token.is_final {
+            self.generation_source_timestamps
+                .record_final_token(token.start_ms.is_some());
+        }
         self.latest_original_segment = Some(segment_index);
     }
 
@@ -4365,7 +4476,37 @@ impl RealtimeUtteranceAssembler {
                 segment.translation_dirty = true;
             }
         }
-        self.take_dirty_updates()
+        let updates = self.take_dirty_updates();
+        self.report_source_timestamp_generation();
+        updates
+    }
+
+    /// One line per finalization boundary, and only when something was
+    /// missing. Reconnects finalize before they advance, so a line landing
+    /// immediately before a `Reconnecting` record is the correlation that
+    /// answers whether untimed rows cluster after a restart — without adding
+    /// a second log stream to read it out of.
+    fn report_source_timestamp_generation(&mut self) {
+        let census = std::mem::take(&mut self.generation_source_timestamps);
+        self.session_source_timestamps.merge(census);
+        if census.is_complete() {
+            return;
+        }
+        tracing::warn!(
+            final_tokens = census.final_tokens,
+            untimed_final_tokens = census.untimed_final_tokens,
+            completed_segments = census.completed_segments,
+            untimed_completed_segments = census.untimed_completed_segments,
+            first_untimed_sequence = census.first_untimed_sequence,
+            last_untimed_sequence = census.last_untimed_sequence,
+            "provider omitted source token timing; these rows carry no capture-timeline anchor"
+        );
+    }
+
+    fn session_source_timestamps(&self) -> SourceTimestampCensus {
+        let mut census = self.session_source_timestamps;
+        census.merge(self.generation_source_timestamps);
+        census
     }
 
     fn advance(&mut self) {
@@ -4430,7 +4571,9 @@ impl RealtimeUtteranceAssembler {
         let selected_languages = self.selected_languages.clone();
         let capture_mode = self.capture_mode;
         let common_caption_language = self.common_caption_language.clone();
-        self.segments
+        let mut census = SourceTimestampCensus::default();
+        let updates = self
+            .segments
             .iter_mut()
             .filter_map(|segment| {
                 if !segment.source_dirty && !segment.translation_dirty {
@@ -4459,7 +4602,7 @@ impl RealtimeUtteranceAssembler {
                 {
                     return None;
                 }
-                Some(assemble_segment(
+                let assembled = assemble_segment(
                     &session_id,
                     &selected_languages,
                     capture_mode,
@@ -4467,9 +4610,22 @@ impl RealtimeUtteranceAssembler {
                     segment,
                     source_dirty,
                     translation_dirty,
-                ))
+                );
+                // Census the row exactly as the client will receive it, and
+                // only rows that reach the client — the filters above already
+                // dropped the ones that never will.
+                if segment.complete && !segment.source_timestamp_censused {
+                    segment.source_timestamp_censused = true;
+                    census.record_completed_segment(
+                        segment.sequence,
+                        assembled.utterance.source_start_ms.is_some(),
+                    );
+                }
+                Some(assembled)
             })
-            .collect()
+            .collect();
+        self.generation_source_timestamps.merge(census);
+        updates
     }
 
     /// Complete process-local replacement view of every unfinished canonical
@@ -11251,6 +11407,104 @@ mod tests {
         );
         assert!(zh.projection_revision > 0);
         assert_eq!(translation_final.source_text, "hel");
+    }
+
+    #[test]
+    fn source_timestamp_census_counts_the_rows_the_client_actually_receives() {
+        let mut assembler = RealtimeUtteranceAssembler::new("census-session".into(), &profile());
+        assert!(
+            assembler.session_source_timestamps().is_complete(),
+            "a lane that has produced nothing has lost nothing"
+        );
+
+        assembler.apply_tokens(&[token(
+            "hello",
+            SttStreamTranslationStatus::Original,
+            "en",
+            Some(1_000),
+            Some(1_500),
+            true,
+        )]);
+        let timed = assembler.finalize();
+        assert_eq!(timed.len(), 1);
+        assert_eq!(timed[0].utterance.source_start_ms, Some(1_000));
+        assembler.advance();
+        assert!(
+            assembler.session_source_timestamps().is_complete(),
+            "a fully timed lane must stay silent"
+        );
+
+        // The provider stops sending token metadata. A partial rides along:
+        // partials are rewritten continuously, so counting them would inflate
+        // the denominator by the revision rate.
+        assembler.apply_tokens(&[token(
+            "wor",
+            SttStreamTranslationStatus::Original,
+            "en",
+            None,
+            None,
+            false,
+        )]);
+        assembler.apply_tokens(&[token(
+            "world",
+            SttStreamTranslationStatus::Original,
+            "en",
+            None,
+            None,
+            true,
+        )]);
+        let untimed = assembler.finalize();
+        assert_eq!(untimed.len(), 1);
+        assert_eq!(untimed[0].utterance.source_start_ms, None);
+        assembler.advance();
+
+        let census = assembler.session_source_timestamps();
+        assert_eq!(census.final_tokens, 2, "the partial must not be counted");
+        assert_eq!(census.untimed_final_tokens, 1);
+        assert_eq!(census.completed_segments, 2);
+        assert_eq!(census.untimed_completed_segments, 1);
+        assert_eq!(census.first_untimed_sequence, Some(1));
+        assert_eq!(census.last_untimed_sequence, Some(1));
+        assert!(!census.is_complete());
+    }
+
+    #[test]
+    fn source_timestamp_census_counts_a_revised_row_once() {
+        let (_temp, core, runtime_profile) = assembler_store_fixture("census-revision-session");
+        let mut assembler =
+            RealtimeUtteranceAssembler::new("census-revision-session".into(), &runtime_profile);
+        // A completed source row is re-assembled whenever a later translation
+        // dirties it. The census counts rows, not revisions of rows.
+        let source = assembler.apply_tokens(&[attributed_token(
+            "hello",
+            SttStreamTranslationStatus::Original,
+            Some("en"),
+            None,
+            Some("speaker-a"),
+            true,
+        )]);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, source, 0)
+            .unwrap();
+        let translation = assembler.apply_tokens(&[attributed_token(
+            "你好",
+            SttStreamTranslationStatus::Translation,
+            Some("zh"),
+            Some("en"),
+            Some("speaker-a"),
+            true,
+        )]);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, translation, 0)
+            .unwrap();
+        assembler.finalize();
+
+        let census = assembler.session_source_timestamps();
+        assert_eq!(census.final_tokens, 1, "translation tokens are not source");
+        assert_eq!(census.untimed_final_tokens, 1);
+        assert_eq!(
+            census.completed_segments, 1,
+            "one row, however many revisions it went through"
+        );
+        assert_eq!(census.untimed_completed_segments, 1);
     }
 
     #[test]
