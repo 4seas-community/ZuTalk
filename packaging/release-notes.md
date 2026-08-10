@@ -1,4 +1,4 @@
-# ZuTalk 0.3.6
+# ZuTalk 0.4.0
 
 Zulangue is now ZuTalk — same app, same recordings, new name. Plus web
 share, refined by watching a real meeting through it.
@@ -14,7 +14,7 @@ share, refined by watching a real meeting through it.
   different app, so the old one stays in /Applications and will not
   receive updates again. Open ZuTalk first, check your recordings are
   there, then delete it.
-- **Sharing needs both Macs on 0.3.6.** The rename goes all the way down
+- **Sharing needs both Macs on 0.4.0.** The rename goes all the way down
   into the connection and document formats, so a ZuTalk Mac and a
   Zulangue Mac cannot see each other at all. Update together.
 
@@ -48,7 +48,35 @@ share, refined by watching a real meeting through it.
   start-sharing screen says it, and the page itself tells readers how
   long the link has left.
 
-Fixes in the web page: a column for the language being spoken is no
+## Captions that stay lined up, and translation that stays quick
+
+- **Long recordings stop bogging down.** Translation used to grow
+  sluggish after a while, and the cause was not the translation at all:
+  every new sentence made the app rewrite the entire transcript it had
+  already written. It now writes only what changed. At around 800 lines
+  — roughly a ninety-minute recording — that work went from 8.6 seconds
+  a sentence to under ten milliseconds.
+- **The languages line up again.** A window slightly too narrow for
+  three columns used to collapse to one, stacking the languages instead
+  of setting them side by side; it now drops to two, then one. Columns
+  also account for their own padding, so a canvas that says it fits
+  three really does.
+- **The newest line sits on the same edge in every column.** A language
+  running a beat behind showed a small ellipsis, and that ellipsis was
+  pushing its current line up out of alignment with the others.
+- **Stray spaces are gone.** Chinese and Thai sentences no longer pick
+  up a space in the middle, a Latin word next to Chinese no longer
+  collides with it, and the original-language column no longer sits
+  indented one space from its neighbours.
+- **The floating window stopped explaining itself.** A line whose
+  language had not been identified yet used to appear as a labelled
+  status row, which broke the columns and told the room something only
+  an operator can act on. It now appears as what it is — speech. The
+  saved transcript still says when an identity was never established.
+
+Fixes in the web page: the live text at the bottom now bottom-aligns
+across columns the way the app's own window does; a column for the
+language being spoken is no
 longer blank — the original text fills it, because nothing translates
 Chinese into Chinese; finalized sentences no longer appeared twice;
 each column now shows only its own language, so language-detection
