@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 WORKFLOW="$ROOT_DIR/.github/workflows/macos-build.yaml"
 JUSTFILE="$ROOT_DIR/justfile"
-PROJECT_FILE="$ROOT_DIR/macos/Zulangue/Zulangue.xcodeproj/project.pbxproj"
+PROJECT_FILE="$ROOT_DIR/macos/ZuTalk/ZuTalk.xcodeproj/project.pbxproj"
 HOSTED_PR_MAX_MACOS_DEPLOYMENT_TARGET="${HOSTED_PR_MAX_MACOS_DEPLOYMENT_TARGET:-15.5}"
 
 fail() {
@@ -38,8 +38,8 @@ swift_body="$(recipe_body swift-test)"
 [[ -n "$swift_body" ]] || fail "justfile must define swift-test"
 grep -Eq 'xcodebuild[[:space:]]+test' <<<"$swift_body" \
   || fail "swift-test must run xcodebuild test"
-grep -Eq -- '-scheme[[:space:]]+ZulangueTests' <<<"$swift_body" \
-  || fail "swift-test must run the ZulangueTests scheme"
+grep -Eq -- '-scheme[[:space:]]+ZuTalkTests' <<<"$swift_body" \
+  || fail "swift-test must run the ZuTalkTests scheme"
 
 awk -v max="$HOSTED_PR_MAX_MACOS_DEPLOYMENT_TARGET" '
   /MACOSX_DEPLOYMENT_TARGET =/ {

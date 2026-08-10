@@ -1,26 +1,26 @@
 #!/usr/bin/env ruby
-# Sync all Swift source files into the Zulangue Xcode project
+# Sync all Swift source files into the ZuTalk Xcode project
 # Ensures every .swift file on disk is referenced by the correct target
 
 require 'xcodeproj'
 require 'pathname'
 
-project_path = File.join(__dir__, '..', 'macos', 'Zulangue', 'Zulangue.xcodeproj')
+project_path = File.join(__dir__, '..', 'macos', 'ZuTalk', 'ZuTalk.xcodeproj')
 project = Xcodeproj::Project.open(project_path)
 
-app_target = project.targets.find { |t| t.name == 'Zulangue' }
-test_target = project.targets.find { |t| t.name == 'ZulangueTests' }
+app_target = project.targets.find { |t| t.name == 'ZuTalk' }
+test_target = project.targets.find { |t| t.name == 'ZuTalkTests' }
 
 unless app_target
-  puts "ERROR: Zulangue target not found"
+  puts "ERROR: ZuTalk target not found"
   exit 1
 end
 
 # 使用 group 的 name 或 path 查找已有引用，避免创建重复 group。
 
 project_dir = File.dirname(project_path)
-source_dir = File.join(project_dir, 'Zulangue')
-test_dir = File.join(project_dir, 'ZulangueTests')
+source_dir = File.join(project_dir, 'ZuTalk')
+test_dir = File.join(project_dir, 'ZuTalkTests')
 
 # Helper: find or create nested group matching directory structure
 # new_group(part, part) 可能只有 path，因此查询时同时检查 name 和 path。
@@ -46,20 +46,20 @@ rescue
 end
 
 # --- Sync app target ---
-# Zulangue/ 是 PBXFileSystemSynchronizedRootGroup；Xcode 会自动包含其中的
+# ZuTalk/ 是 PBXFileSystemSynchronizedRootGroup；Xcode 会自动包含其中的
 # Swift 文件，因此主 app 不再额外写入显式 build file。
-puts "=== Syncing Zulangue target ==="
-puts "  (no-op: Zulangue/ is a PBXFileSystemSynchronizedRootGroup;"
+puts "=== Syncing ZuTalk target ==="
+puts "  (no-op: ZuTalk/ is a PBXFileSystemSynchronizedRootGroup;"
 puts "   new .swift files are auto-picked up by Xcode)"
 added_app = 0
 
 # --- Sync test target ---
-puts "\n=== Syncing ZulangueTests target ==="
+puts "\n=== Syncing ZuTalkTests target ==="
 
-test_group = project.main_group.groups.find { |g| (g.name || g.path) == 'ZulangueTests' }
+test_group = project.main_group.groups.find { |g| (g.name || g.path) == 'ZuTalkTests' }
 unless test_group
-  test_group = project.main_group.new_group('ZulangueTests', 'ZulangueTests')
-  puts "Created ZulangueTests group"
+  test_group = project.main_group.new_group('ZuTalkTests', 'ZuTalkTests')
+  puts "Created ZuTalkTests group"
 end
 
 existing_test_files = Set.new
@@ -75,21 +75,21 @@ Dir.glob(File.join(test_dir, '*.swift')).each do |file|
 
   file_ref = test_group.new_reference(basename)
   test_target.source_build_phase.add_file_reference(file_ref) if test_target
-  puts "  Added to ZulangueTests: #{basename}"
+  puts "  Added to ZuTalkTests: #{basename}"
   added_test += 1
 end
 
-# --- Create Zulangue scheme if missing ---
+# --- Create ZuTalk scheme if missing ---
 schemes_dir = File.join(project_path, 'xcshareddata', 'xcschemes')
-zulangue_scheme = File.join(schemes_dir, 'Zulangue.xcscheme')
-unless File.exist?(zulangue_scheme)
-  puts "\n=== Creating Zulangue scheme ==="
+zutalk_scheme = File.join(schemes_dir, 'ZuTalk.xcscheme')
+unless File.exist?(zutalk_scheme)
+  puts "\n=== Creating ZuTalk scheme ==="
   scheme = Xcodeproj::XCScheme.new
   scheme.add_build_target(app_target)
   scheme.set_launch_target(app_target)
   FileUtils.mkdir_p(schemes_dir)
-  scheme.save_as(project_path, 'Zulangue')
-  puts "  Created Zulangue.xcscheme"
+  scheme.save_as(project_path, 'ZuTalk')
+  puts "  Created ZuTalk.xcscheme"
 end
 
 project.save

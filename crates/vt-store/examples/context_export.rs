@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let keys = Arc::new(FileKeyStore::new(
         data_dir.join("Secrets").join("content-keys.json"),
     )?);
-    let store = ContextPackStore::new(&data_dir.join("zulangue.db"), keys)?;
+    let store = ContextPackStore::new(&data_dir.join("zutalk.db"), keys)?;
 
     let document = store.export_pack_document(&pack_id)?;
     std::fs::write(&out_path, serde_json::to_string_pretty(&document)?)?;

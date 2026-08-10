@@ -1,4 +1,4 @@
-//! Zulangue 加密层
+//! ZuTalk 加密层
 //!
 //! AES-256-GCM 加密 + 本机私有文件密钥存储 + zeroize 内存清零。
 //! 当前持久化边界见 `docs/architecture/ARCHITECTURE.md`。

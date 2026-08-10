@@ -10,10 +10,10 @@
 
 use std::time::Duration;
 
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
-fn core(dir: &tempfile::TempDir) -> ZulangueCore {
-    ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap()
+fn core(dir: &tempfile::TempDir) -> ZuTalkCore {
+    ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap()
 }
 
 /// 轮询直到条件成立,最多等 `seconds` 秒。gossip 与 doc-sync 都是异步送达,

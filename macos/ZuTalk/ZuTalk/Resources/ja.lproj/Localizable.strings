@@ -1,0 +1,991 @@
+/* ZuTalk 日本語ローカライズ */
+
+/* General */
+"app.name" = "ZuTalk";
+"common.cancel" = "キャンセル";
+"common.delete" = "削除";
+
+/* Onboarding — Welcome */
+"onboarding.welcome.button" = "続ける →";
+"onboarding.welcome.bullet1" = "「英語面接」など、会話の種類ごとに Notebook を作ります。";
+"onboarding.welcome.bullet2" = "Notebook を開き、「録音を開始」をクリックします。";
+"onboarding.welcome.bullet3" = "停止後、字幕、音声、ノートを同じ場所で確認できます。";
+"onboarding.welcome.privacy" = "データは既定でこの Mac に保存されます。リモート文字起こしは会議ごとに選択します。";
+"onboarding.visual.live" = "ライブ文字起こし";
+"onboarding.visual.speaker.host" = "ホスト";
+"onboarding.visual.speaker.guest" = "参加者";
+"onboarding.visual.language.zh" = "中文";
+"onboarding.visual.language.en" = "English";
+"onboarding.visual.language.ja" = "日本語";
+"onboarding.visual.microphone.title" = "マイクの準備完了";
+"onboarding.visual.microphone.detail" = "その場を録音 · リアルタイムで文字起こし";
+
+/* Onboarding — Permissions */
+"onboarding.permissions.title" = "最初の会話を記録する準備";
+"onboarding.permissions.subtitle" = "マイクへのアクセスを許可すると、その場の音声を録音してリアルタイムで文字起こしできます。";
+"onboarding.permissions.hint" = "先にアプリへ進み、最初の録音時に許可することもできます。";
+"onboarding.permissions.mic.name" = "マイク";
+"onboarding.permissions.mic.usage" = "会話を録音し、リアルタイム文字起こしを作成します。";
+"onboarding.permissions.action.grant" = "許可する";
+"onboarding.permissions.action.open_settings" = "システム設定を開く";
+"onboarding.permissions.continue" = "ZUTALK を開く →";
+
+/* Onboarding — API Keys */
+"onboarding.keys.title" = "ライブ字幕を有効にする";
+"onboarding.keys.subtitle" = "自分の Soniox API キーを入力して、ライブ字幕を有効にします。";
+"community_invite.placeholder" = "招待コードを入力";
+"community_invite.action" = "招待を有効にする";
+"community_invite.active" = "コミュニティ招待が有効です";
+"community_invite.thirty_hours" = "5 Give · 約 30 時間";
+"community_invite.shared_detail" = "リアルタイム文字起こしと翻訳で共用します。音声ファイルの文字起こしは自分のキーを使用します。";
+"community_invite.invalid" = "招待コードが無効です。招待者に確認してください。";
+"community_invite.unavailable" = "コミュニティサービスを一時的に利用できません。後でもう一度お試しください。";
+"community_invite.remaining_recordable_format" = "あと約 %1$lld 時間 %2$lld 分録音できます";
+"community_invite.remaining_recordable_hint" = "招待時間は文字起こしレーンごとに消費されます。対象言語を増やすほど、録音 1 分あたりの消費時間が増えます。";
+"community_invite.settings.title" = "コミュニティ招待";
+"community_invite.settings.subtitle" = "利用できる残り時間を確認するか、招待コードを入力します。";
+"community_invite.resources.remaining" = "残り時間";
+"community_invite.remaining_detail_format" = "%1$lld 時間 %2$lld 分";
+"community_invite.refresh" = "残り時間を更新";
+"community_invite.replace" = "新しい招待コードを使う";
+"community_invite.inactive" = "コミュニティ招待は未使用です";
+"community_invite.use_toggle" = "コミュニティ招待で文字起こし";
+"community_invite.use_toggle_detail" = "オンのときは招待時間を優先し、オフのときは自分の保存済みキーを使用します。";
+"community_invite.remove" = "招待を削除";
+"community_invite.remove_detail" = "この Mac から招待を削除し、自分のキーの使用に戻します。";
+"community_invite.remove_confirm_title" = "この招待を削除しますか？";
+"community_invite.remove_confirm_message" = "残りの共有時間は招待コード側に保持されます。コードは後で再入力できます。";
+"community_invite.remove_confirm_action" = "招待を削除";
+"community_invite.fallback_personal_key" = "招待時間が現在利用できないため、この録音は自分のキーを使用します。";
+"community_invite.async.needs_personal_key" = "音声ファイルの文字起こしには自分の API キーが必要です。設定で入力してください。";
+"community_invite.async.wait_for_recording" = "招待時間を使う録音が進行中です。先に録音を停止してから、この音声を文字起こししてください。";
+"editor.transcript.async.start" = "この音声を文字起こし";
+"editor.transcript.async.start_failed" = "音声の文字起こしを開始できませんでした";
+"editor.transcript.async.invite_add_key" = "自分の API キーを使う…";
+"editor.transcript.async.invite_add_key_hint" = "招待時間はリアルタイム文字起こしのみに使えます。音声ファイルの文字起こしは自分のキーでこの録音を音声エンジンにアップロードします。設定でキーを入力すると有効になります。";
+"onboarding.keys.voice_label" = "ライブ字幕サービス";
+"onboarding.keys.guide.create" = "登録";
+"onboarding.keys.guide.copy" = "キーをコピー";
+"onboarding.keys.guide.paste" = "下に貼り付け";
+"onboarding.keys.open_soniox" = "Soniox でキーを取得";
+"onboarding.keys.soniox.help" = "「確認して保存」はキーが使えるか確認するだけで、録音は送信しません。";
+"onboarding.keys.paste" = "Soniox API キー";
+"onboarding.keys.verify_and_save" = "確認して保存";
+"onboarding.keys.verify_saved" = "接続を確認";
+"onboarding.keys.skip" = "今はスキップ";
+"onboarding.keys.continue" = "続ける";
+"onboarding.keys.private_status" = "確認後にローカル保存";
+
+/* Onboarding — Step Indicator */
+"onboarding.step.signup" = "ZuTalk について";
+"onboarding.step.setup" = "録音の準備";
+"onboarding.step.tryout" = "ライブ字幕";
+
+/* Onboarding — Common */
+"onboarding.common.back" = "← 戻る";
+
+"sidebar.help" = "使い方";
+"updates.install_and_relaunch" = "更新して再起動";
+"updates.install_and_relaunch.hint" = "ダウンロード済みの更新をインストールして ZuTalk を再起動します";
+"updates.downloading" = "新しいバージョンをダウンロード中";
+"updates.downloading.hint" = "新しいバージョンをバックグラウンドでダウンロードしています。準備ができたら ZuTalk が再起動を促します。";
+"updates.preparing" = "更新を準備中";
+
+/* Library */
+
+/* Recording */
+
+/* Session Detail */
+"session.tab.audio" = "音声";
+
+/* Settings */
+
+/* Export */
+
+/* Trust Bar */
+
+/* Toast labels */
+
+/* Common language labels */
+"lang.en" = "English";
+"lang.ja" = "日本語";
+"lang.ko" = "한국어";
+"lang.fr" = "Français";
+"lang.de" = "Deutsch";
+"lang.es" = "Español";
+"lang.th" = "ไทย";
+"lang.zh_hans" = "简体中文";
+
+/* Appearance */
+"appearance.system" = "システムに従う";
+"appearance.light" = "ライト";
+"appearance.dark" = "ダーク";
+
+/* General settings section */
+"settings.general.title" = "一般";
+"settings.general.subtitle" = "アプリ全体の言語と外観の設定。";
+"settings.audio_input.title" = "オーディオ入力";
+"settings.audio_input.subtitle" = "macOS が認識しているマイク、USB オーディオインターフェース、ミキサーを選択します。";
+"settings.audio_input.device" = "入力デバイス";
+"settings.audio_input.channel_one_hint" = "このバージョンでは、選択したデバイスの最初の入力チャンネルを録音します。";
+"settings.audio_input.system_default" = "システムのデフォルト";
+"settings.audio_input.system_default_format" = "システムのデフォルト — %@";
+"settings.audio_input.unavailable_format" = "%@ — 使用不可";
+"settings.audio_input.refresh" = "入力デバイスを更新";
+"settings.audio_input.active_locked" = "録音中は入力デバイスがロックされます。";
+"settings.audio_input.error.query_format" = "オーディオデバイスを読み込めませんでした（%1$@、ステータス %2$@）。";
+"settings.audio_input.error.no_device" = "利用できるオーディオ入力デバイスがありません。";
+"settings.audio_input.error.unavailable_format" = "選択したオーディオ入力「%@」は利用できません。再接続するか、別のデバイスを選択してください。";
+"settings.audio_input.error.audio_unit_format" = "ZuTalk はオーディオ入力「%@」を開けませんでした。";
+"settings.audio_input.error.binding_format" = "ZuTalk はオーディオ入力「%1$@」を使用できませんでした（ステータス %2$@）。";
+"settings.audio_input.local_scope" = "デバイスの選択はこのMacに保存され、現在および今後の録音にすぐ適用されます。";
+"settings.audio_input.switching" = "音声入力を切り替えています…";
+"settings.audio_input.active_switch_hint" = "録音中でも切り替えられますが、切り替え時に短い音声が欠ける場合があります。";
+"settings.audio_input.active_elsewhere" = "別のNotebookで録音中です。録音中のNotebookから入力を切り替えてください。";
+"settings.audio_input.error.switch_unavailable" = "別の録音状態の切り替え中は音声入力を変更できません。しばらくしてから再試行してください。";
+"capture.toast.audio_input_switch_failed" = "音声入力を切り替えられませんでした";
+"settings.language.title" = "APP 言語";
+"settings.language.hint" = "Swift UI、メニューバー、Rust 層のエラーメッセージに反映されます。";
+"settings.language.restart_hint" = "ZuTalk を再起動すると UI が完全に切り替わります。Rust エラーメッセージは即時反映済み。";
+"settings.appearance.title" = "外観";
+
+
+
+
+
+
+/* Permissions */
+"permission.microphone.name" = "マイク";
+"permission.microphone.usage" = "音声を録音して Soniox で文字起こしします";
+
+/* Library — export sheet */
+"export.dialog.title" = "書き出しオプション";
+"export.dialog.text_format" = "テキスト形式";
+"export.dialog.audio_group" = "音声";
+"export.dialog.audio_include" = "音声ファイル (.wav) を含む";
+"export.dialog.markdown" = "Markdown (.md)";
+"export.dialog.srt" = "SRT 字幕 (.srt)";
+"export.dialog.vtt" = "WebVTT (.vtt)";
+"export.dialog.txt" = "プレーンテキスト (.txt)";
+"export.progress" = "書き出し中…";
+"export.dialog.location" = "書き出し先を選択";
+"export.error_format" = "書き出し失敗: %@";
+"common.export.action" = "書き出し";
+
+
+
+/* Recording settings */
+
+
+"editor.export.title" = "セッションを書き出し";
+"editor.export.hint" = "このセッションを ZIP として書き出す";
+"editor.export.no_session" = "書き出せる録音セッションがありません";
+"doc.scratchpad" = "個人メモ";
+
+
+/* Onboarding brand line */
+"onboarding.brand.subtitle" = "多言語コミュニケーション · LIVE MEETINGS";
+
+/* Settings sidebar section rawValues */
+"settings.section.general_name" = "一般";
+"settings.section.services_name" = "サービスと API";
+"settings.section.shortcuts_name" = "ショートカット";
+"settings.group.services" = "サービス接続";
+"settings.group.general" = "一般";
+
+/* Settings — API panels */
+"settings.credentials.enter_key" = "API キーを入力";
+"settings.credentials.local_storage_hint" = "現在の macOS ログインだけが読めるアプリ専用ファイルに暗号化せず保存し、起動時に自動で読み込みます。";
+"settings.credentials.trust_boundary_notice" = "ここに保存する認証情報は暗号化されません。ZuTalk は現在の信頼された macOS ログインとアプリ専用のローカルファイルに依存し、起動時に自動で読み込みます。";
+"settings.credentials.verify" = "検証";
+"settings.credentials.verify_and_save" = "検証して保存";
+"settings.credentials.verifying" = "検証中…";
+"settings.credentials.verifying_hint" = "Soniox に接続してこのキーを検証しています。";
+"settings.credentials.verified_hint" = "Soniox がこのキーを受け入れました。リモート文字起こしに使用できます。";
+"settings.credentials.verify_before_save_hint" = "新しいキーは Soniox の検証に成功した後にのみ保存されます。";
+"settings.credentials.verify_and_save_accessibility_format" = "%@ キーを検証して保存";
+"settings.credentials.verification.ready" = "Soniox 接続を検証しました";
+"settings.credentials.verification.invalid" = "Soniox がこのキーを拒否しました。無効または失効している可能性があります。";
+"settings.credentials.verification.organization_balance_exhausted" = "Soniox 組織の残高を使い切りました。";
+"settings.credentials.verification.organization_budget_exhausted" = "Soniox 組織の月間予算を使い切りました。";
+"settings.credentials.verification.project_budget_exhausted" = "Soniox プロジェクトの月間予算を使い切りました。";
+"settings.credentials.verification.quota_exhausted" = "Soniox アカウントに利用可能なクォータがありません。";
+"settings.credentials.verification.network_unavailable" = "Soniox に接続できません。ネットワークを確認して再試行してください。";
+"settings.credentials.verification.rate_limited" = "Soniox がリクエストを制限しています。しばらくしてから再試行してください。";
+"settings.credentials.verification.service_unavailable" = "Soniox の検証サービスは一時的に利用できません。";
+"settings.credentials.applied" = "保存済み · 読み込み済み";
+"settings.credentials.saved_inactive" = "保存済み · 要確認";
+"settings.credentials.runtime_only" = "今回のみ読み込み済み · 未保存";
+"settings.credentials.missing" = "未保存";
+"settings.credentials.clear" = "保存済みキーを削除";
+"settings.credentials.accessibility_applied_format" = "%@ のキーはこの Mac に保存され、ZuTalk で有効です。プロバイダー接続はまだ確認されていません。";
+"settings.credentials.accessibility_saved_inactive_format" = "%@ のキーはこの Mac に保存されていますが、ZuTalk では有効になっていません。復旧メッセージを確認してください。";
+"settings.credentials.accessibility_runtime_only_format" = "%@ のキーは今回の実行用に読み込まれていますが、保存されておらず、接続も未確認です。";
+"settings.credentials.accessibility_missing_format" = "%@ のキーは保存されていません。キーを入力して保存してください。";
+"settings.credentials.field_accessibility_format" = "%@ API キー";
+"settings.credentials.clear_accessibility_format" = "保存済みの %@ キーを削除";
+"settings.credentials.recovery_title" = "保存済みのプロバイダーキーを確認してください";
+"settings.credentials.recovery_hint" = "新しいキーを保存して読み取れないファイルを置き換えるか、ファイルを削除して保存済みの全プロバイダーキーを消去できます。";
+"settings.credentials.reset_file" = "保存済みキーファイルを削除";
+"settings.credentials.reset_file_accessibility_hint" = "ZuTalk がこの Mac に保存したすべてのプロバイダーキーを削除します。ローカル録音は引き続き利用できます。";
+"settings.credentials.provider_not_tested_hint" = "ZuTalk で使用するため読み込み済みです。プロバイダー接続とキーの有効性はまだ確認されていません。";
+"settings.credentials.saved_inactive_hint" = "この Mac に保存されていますが、ZuTalk では読み込まれていません。リモート処理を有効にする前に復旧メッセージを確認してください。";
+"settings.credentials.runtime_only_hint" = "今回の実行用に読み込まれていますが保存されていません。接続とキーの有効性は未確認です。";
+"settings.credentials.operation_error_format" = "サービス認証情報の更新に失敗しました: %@";
+"settings.credentials.delete_confirmation_title" = "保存済みの %@ キーを削除しますか？";
+"settings.credentials.delete_confirmation_message" = "ZuTalk はこの Mac から保存済みの %@ 認証情報を削除します。ローカル録音は引き続き使用できます。";
+"settings.credentials.delete_confirmation_action" = "キーを削除";
+"settings.credentials.reset_confirmation_title" = "保存済みのサービス認証情報をすべて削除しますか？";
+"settings.credentials.reset_confirmation_message" = "ZuTalk のプライベート認証情報ファイルをこの Mac から削除します。この操作は取り消せません。";
+"settings.credentials.reset_confirmation_action" = "認証情報ファイルを削除";
+"settings.credentials.replace" = "保存済みキーを置き換え";
+"settings.credentials.replace_accessibility_format" = "保存済みの %@ キーを置き換え";
+"settings.credentials.field_replacement_hint" = "新しいキーを入力し、確認に成功してから保存します。";
+"settings.credentials.error.unsupported_version_format" = "対応していないサービス認証情報ファイルのバージョンです: %d。";
+"settings.credentials.error.malformed_document" = "サービス認証情報ファイルが破損しています。";
+"settings.credentials.error.unknown_accounts" = "サービス認証情報ファイルに未対応のアカウント項目があります。";
+"settings.credentials.error.empty_credential_format" = "%@ の保存済み認証情報が空です。";
+"settings.credentials.error.credential_too_large_format" = "%@ の保存済み認証情報がサイズ上限を超えています。";
+"settings.credentials.error.file_too_large" = "サービス認証情報ファイルがサイズ上限を超えています。";
+"settings.credentials.error.unsafe_path_format" = "サービス認証情報のパスは安全な通常のプライベートファイルではありません: %@。";
+"settings.credentials.error.wrong_owner_format" = "サービス認証情報のパスは現在の macOS アカウントが所有していません: %@。";
+"settings.credentials.error.operation_failed_format" = "サービス認証情報の %@ に失敗しました（POSIX %d）。";
+"settings.credentials.error.core_unavailable" = "ローカルアプリサービスはまだ準備できていません。";
+"settings.credentials.error.empty_value" = "先に API キーを入力してください。";
+"settings.credentials.error.activation_failed_format" = "保存済み認証情報を %@ 用に読み込めませんでした。";
+"settings.credentials.error.clear_failed_format" = "%@ の認証情報を消去できませんでした。";
+"settings.credentials.error.persistence_failed" = "サービス認証情報をアプリ専用のローカルファイルに保存できませんでした。";
+"settings.credentials.error.runtime_cleanup_failed" = "実行中のサービス認証情報を安全に消去できませんでした。リモートサービスを使う前に ZuTalk を再起動するか、ローカルアプリサービスを修復してください。";
+
+/* Settings — Services & API */
+"settings.services.title" = "サービスと API";
+"settings.services.subtitle" = "グローバルなサービス認証情報を管理し、固定キャプチャエンジンを確認します。データ送信は Notebook ごとに設定します。";
+"settings.services.connection.title" = "サービス接続";
+"settings.services.connection.subtitle" = "現在 ZuTalk が対応するのは Soniox のみです。";
+"settings.services.no_egress_notice" = "キーを保存するだけで新たなデータ送信が許可されることはありません。各 Notebook でリモート処理を個別に許可する必要があります。Notebook がすでに許可し、認証情報待ちになっていたバックグラウンド処理は、キーが永続的に保存され読み込まれた後に再開する場合があります。";
+"settings.services.engine.title" = "キャプチャエンジン";
+"settings.services.engine.subtitle" = "読み取り専用。現在の MVP では Rust コアがエンジン選択を管理します。";
+"settings.services.engine.service" = "サービス";
+"settings.services.engine.realtime" = "リアルタイムキャプチャ";
+"settings.services.engine.realtime_detail" = "Notebook が明示的にリモート処理を有効にした場合、ライブ多言語文字起こしと言語別字幕に使用します。";
+"settings.services.engine.post_stop" = "停止後の処理";
+"settings.services.engine.post_stop_detail" = "確定したローカル録音を Soniox 非同期ファイル API にアップロードして文字起こしし、結果の取得後すぐにリモートのファイルと文字起こしジョブを削除します。";
+"settings.services.engine.post_stop_unavailable_detail" = "コアから停止後の実行方式が提供されませんでした。";
+"settings.services.engine.async_file_api" = "非同期ファイル API";
+"settings.services.engine.execution_unavailable" = "実行方式を利用できません";
+"settings.services.engine.fixed" = "固定";
+"settings.services.engine.unavailable" = "エンジンを利用できません";
+"settings.services.engine.accessibility_format" = "固定リアルタイムエンジン: %@";
+"settings.services.engine.post_stop_accessibility_format" = "固定の停止後エンジン：%@。Soniox 非同期ファイル API を使用し、文字起こし完了後すぐにリモート音声を削除します。";
+"settings.services.engine.post_stop_unavailable_accessibility_format" = "停止後エンジン: %@。実行方式を利用できません。";
+
+/* Settings — Privacy */
+
+/* Settings — Shortcuts */
+"settings.shortcuts.title" = "キーボードショートカット";
+"settings.shortcuts.subtitle" = "ZuTalk アクションのグローバルホットキー。";
+"settings.shortcuts.toggle_recording" = "Notebook 録音を開く";
+"settings.shortcuts.cycle_display" = "表示モードを切替";
+"settings.shortcuts.font_bigger" = "文字サイズを拡大";
+"settings.shortcuts.font_smaller" = "文字サイズを縮小";
+"settings.shortcuts.open_settings" = "設定を開く";
+
+
+/* Diagnostics */
+"diagnostics.operational.provider_keys" = "サービス認証情報";
+
+/* Toast — Floating panel */
+
+/* Toast — Microphone */
+
+/* Toast — Recording */
+
+/* Toast — Generic */
+
+/* Toast — Enhance / Editor */
+
+/* Sidebar (main window) */
+"sidebar.home" = "ホーム";
+"sidebar.trash" = "ゴミ箱";
+"sidebar.tab.editor" = "エディタ";
+"sidebar.tab.settings" = "設定";
+"sidebar.local_first" = "ローカル優先";
+"sidebar.notebook" = "Notebook";
+"sidebar.collapse" = "サイドバーを折りたたむ";
+"sidebar.expand" = "サイドバーを展開";
+"sidebar.back_to_home" = "ホームへ戻る";
+"menubar.action.quit" = "ZuTalk を終了";
+"menubar.action.quit_hint" = "アプリを終了します。録音中の場合は確認し、保存してから閉じます。";
+"app.quit.confirm.title" = "この録音はまだ終了していません。ZuTalk を終了しますか？";
+"app.quit.confirm.message" = "終了すると現在の録音を停止します。ZuTalk は受け付け済みのローカル音声を保存してから、リモート文字起こしの終了処理を試みます。";
+"app.quit.confirm.cancel" = "終了しない";
+"app.quit.confirm.action" = "録音を停止して終了";
+
+/* Session list group labels */
+"library.group.today" = "今日";
+"library.group.yesterday" = "昨日";
+
+/* Document editor residuals */
+"editor.tab.transcript" = "文字起こし";
+"editor.title.untitled" = "無題のノート";
+"editor.footer.local_encrypted" = "この Mac に保存済み";
+
+/* Home page */
+"home.workspace.load_failed" = "Notebook データを読み込めませんでした。";
+"home.workspace.select_failed" = "この Notebook を開けませんでした。";
+"home.workspace.resolve_failed" = "録音が属する Notebook を特定できませんでした。";
+"home.workspace.refresh_failed" = "Notebook データを更新できませんでした。";
+"home.workspace.load_failed.title" = "Notebook を利用できません";
+"home.workspace.load_failed.description" = "既存のデータは変更されていません。もう一度読み込んでください。";
+"home.workspace.retry" = "再試行";
+"home.notebook.current" = "現在の NOTEBOOK";
+"home.notebook.new" = "新規 Notebook";
+"home.notebook.new.help" = "Notebook を作成して名前を付ける";
+"home.notebook.none" = "Notebook なし";
+"home.notebook.switch" = "Notebook を切り替える";
+"home.notebook.description" = "録音、多言語文字起こし、ノートを一か所に。";
+"home.notebook.description.detail" = "録音操作は Notebook 内だけに表示され、各セッションの所属とコンテキストを保ちます。";
+"home.notebook.local_first" = "この Mac に保存";
+"home.library.title" = "Notebook";
+"home.library.subtitle" = "Notebook を選んで、録音、文字起こし、整理を続けます。";
+"home.library.open_hint" = "Notebook を開く";
+"home.library.session_count_format" = "%lld 件の録音";
+"home.notebook.open" = "Notebook を開く";
+"home.capture.return" = "録音画面に戻る";
+"home.capture.owner_here" = "選択中の Notebook に所属";
+"home.capture.owner_elsewhere" = "別の Notebook に所属";
+"home.no_notebook.title" = "最初の Notebook を作成";
+"home.no_notebook.description" = "Notebook は録音、文字起こし、ノート、任意の認識参考資料をまとめて管理します。";
+"home.first_use.step1.title" = "Notebook を作成";
+"home.first_use.step1.detail" = "同じ種類の会話をまとめるフォルダだと考えてください。";
+"home.first_use.step2.title" = "録音を開始";
+"home.first_use.step2.detail" = "Notebook を開くと、上部に赤い録音ボタンがあります。";
+"home.first_use.step3.title" = "結果を確認";
+"home.first_use.step3.detail" = "停止後、字幕、音声、ノートが同じ場所に残ります。";
+"home.first_use.action" = "最初の Notebook を作成";
+"home.import.action" = "音声を読み込む";
+"home.import.in_progress" = "読み込み中…";
+"home.import.completed" = "音声を読み込みました";
+"home.import.failed" = "音声を読み込めませんでした";
+"home.import.failed.detail" = "選択したファイルは変更されていません。形式を確認して再試行してください。";
+"home.import.no_notebook" = "Notebook が選択されていません";
+"home.import.no_notebook.detail" = "音声を読み込む前に Notebook を作成または選択してください。";
+"home.import.already_running" = "音声を読み込み中です";
+"home.import.already_running.detail" = "現在の音声の読み込みが完了するまでお待ちください。";
+"home.recent.title" = "最近の録音";
+"home.recent.count_format" = "この Notebook に %lld 件";
+"home.recent.search_placeholder" = "この Notebook を検索…";
+"home.recent.search.clear" = "検索をクリア";
+"home.recent.empty.title" = "この Notebook に録音はありません";
+"home.recent.empty.description" = "Notebook を開いて録音を始めるか、既存の音声を読み込んでください。";
+"home.recent.no_match.title" = "一致する録音はありません";
+"home.recent.no_match.description" = "別のタイトルまたは文字起こしの語句を試してください。";
+"home.recent.row.open_hint" = "所属する Notebook でこの録音を開きます";
+"home.recent.row.actions_format" = "%@ の操作";
+"home.recent.row.untitled" = "無題の録音";
+"home.recordings.load_failed" = "録音一覧を読み込めませんでした。";
+"home.recording.delete_failed" = "録音をゴミ箱に移動できませんでした。";
+"home.recording.delete_while_recording" = "録音を停止すると削除できます。";
+"home.recording.bulk_delete_failed" = "録音をゴミ箱に移動できませんでした。";
+"home.create.title" = "新規 Notebook";
+"home.create.description" = "名前を確認するまで作成されません。";
+"home.create.name_label" = "Notebook 名";
+"home.create.name_placeholder" = "例：毎週の会話";
+"home.create.local_first" = "Notebook と 3 つの固定タブはローカルに作成されます。";
+"home.create.action" = "Notebook を作成";
+"home.create.completed" = "Notebook を作成しました";
+"home.create.failed" = "Notebook を作成できませんでした。";
+"home.create.invalid_title" = "Notebook 名が必要です";
+"home.create.invalid_title.detail" = "作成前に名前を入力してください。";
+"home.create.title_too_long" = "Notebook 名が長すぎます";
+"resources.tab" = "リソース";
+"resources.tab.hint" = "この Notebook の各録音に対応するファイルと状態を表示";
+"resources.title" = "リソース";
+"resources.subtitle" = "各録音の音声、文字起こし、個人メモのファイル。";
+"resources.load_failed" = "リソースを読み込めませんでした";
+"resources.empty" = "この Notebook には録音リソースがありません";
+"resources.audio" = "音声";
+"resources.realtime" = "リアルタイム文字起こし";
+"resources.async" = "非同期文字起こし";
+"resources.note" = "個人メモ";
+"resources.untitled_recording" = "無題の録音";
+"resources.status.missing" = "未生成";
+"resources.status.pending" = "処理中";
+"resources.status.ready" = "利用可能";
+"resources.status.failed" = "失敗";
+"resources.move" = "録音を別のノートブックへ移動…";
+"resources.move.title" = "録音を移動";
+"resources.move.message" = "「%@」の音声、2 種類の文字起こし、手書きメモがまとめて移動し、録音日時の順に並びます。";
+"resources.move.action" = "移動";
+"resources.move.no_destination" = "移動先になるノートブックがありません。";
+"resources.move.done" = "録音を移動しました";
+"resources.move.failed" = "録音を移動できませんでした";
+"resources.delete" = "録音をゴミ箱に移動";
+"resources.delete.confirm_title" = "「%@」をゴミ箱に移動しますか?";
+"resources.delete.confirm_button" = "ゴミ箱に移動";
+"resources.delete.confirm_message" = "音声・文字起こし・個人メモはゴミ箱に移動し、そこから復元できます。";
+"resources.delete.failed" = "録音をゴミ箱に移動できませんでした";
+"resources.audio.saved" = "保存済み";
+"resources.audio.not_saved" = "未保存";
+"resources.audio.destroy" = "音声を削除";
+"resources.audio.destroy.confirm_title" = "「%@」の音声を完全に削除しますか?";
+"resources.audio.destroy.confirm_button" = "音声を削除";
+"resources.audio.destroy.confirm_message" = "音声ファイルは安全に消去され、復元できません。文字起こしと個人メモは残ります。";
+"resources.audio.destroy.failed" = "音声を削除できませんでした";
+"resources.status.destroyed" = "削除済み";
+"resources.audio.destroyed_at" = "%@ に破棄";
+"resources.audio.verify" = "削除を検証して保存フォルダを Finder で表示";
+"resources.audio.verify.failed" = "音声の削除を検証できませんでした";
+"resources.audio.verify.ok" = "音声の破棄を確認しました";
+"resources.audio.verify.ok.detail" = "%d 個の暗号化チャンクは上書き削除され、鍵も破棄済みで、残存ファイルはありません。保存フォルダを Finder で開きました。";
+"resources.audio.verify.residue" = "残存する音声ファイルが見つかりました";
+"resources.audio.verify.residue.detail" = "保存フォルダに %d 個のファイルが残っています。確認のため Finder で開きました。";
+"manual_note.title.placeholder" = "この時間メモに名前を付ける（任意）";
+"manual_note.title.save" = "メモのタイトルを保存";
+"manual_note.title.save_failed" = "メモのタイトルを保存できませんでした";
+"manual_note.created_at_format" = "作成日時 %@";
+"manual_note.timeline.title" = "個人メモ";
+"manual_note.timeline.subtitle" = "時系列で表示します。タイトルは任意で、カード上で直接編集できます。";
+"manual_note.timeline.load_failed" = "個人メモを読み込めませんでした";
+"manual_note.timeline.empty" = "録音後、対応する個人メモがここに表示されます";
+"manual_note.timeline.open" = "メモを開く";
+"home.create.title_too_long.detail_format" = "%lld 文字以内で入力してください。";
+
+
+
+/* Document editor empty states */
+"editor.empty.no_transcript_title" = "文字起こしはまだありません";
+"editor.empty.no_transcript_desc" = "録音終了後に文字起こしが利用可能になります。";
+"editor.transcript.realtime.empty_title" = "リアルタイム文字起こしなし";
+"editor.transcript.realtime.empty_desc" = "この録音セッションにはリアルタイム結果がありません。";
+"editor.transcript.async.pending_title" = "バックグラウンド文字起こしを処理中";
+"editor.transcript.async.pending_desc" = "明示的に要求した現在のリアルタイムエンジンによる再生を処理中です。";
+"editor.transcript.async.failed_title" = "バックグラウンド文字起こしに失敗";
+"editor.transcript.async.failed_desc" = "リモート文字起こしに失敗しました。録音はローカルに保存されています。";
+"editor.transcript.async.empty_title" = "停止後の文字起こしなし";
+"editor.transcript.async.empty_desc" = "停止後のバックグラウンド文字起こしは既定でオフで、このセッションでは要求されていません。";
+"editor.transcript.async.no_session_title" = "録音が選択されていません";
+"editor.transcript.async.no_session_desc" = "「リソース」タブで録音を選ぶと、停止後の文字起こしを表示または開始できます。";
+"editor.transcript.async.projection_pending_desc" = "プロバイダー結果は保存済みで、この Notebook に書き込んでいます。";
+"editor.transcript.async.projection_failed_title" = "文字起こし受信済み、Notebook への書き込みに失敗";
+"editor.transcript.async.projection_failed_desc" = "ローカル書き込みのみ再試行できます。録音は再送信されません。";
+"editor.transcript.async.status.loading" = "バックグラウンド文字起こしの状態を読み込み中";
+"editor.transcript.async.status.off" = "停止後のバックグラウンド文字起こしは要求されていません";
+"editor.transcript.async.status.provider_pending" = "リアルタイムエンジンで録音を再生中";
+"editor.transcript.async.status.provider_failed" = "リアルタイムエンジンでの再生に失敗";
+"editor.transcript.async.status.projection_pending" = "プロバイダー結果を保存済み · Notebook 書き込み待ち";
+"editor.transcript.async.status.projecting" = "保存済み文字起こしを Notebook に書き込み中";
+"editor.transcript.async.status.ready" = "停止後の文字起こしの準備完了";
+"editor.transcript.async.status.projection_failed" = "プロバイダー結果を保存済み · Notebook 書き込み失敗";
+"editor.transcript.async.retry_projection" = "ローカル書き込みを再試行";
+"editor.transcript.async.retry_projection_hint" = "音声を再送信せず、保存済み結果をこの Notebook に書き込みます。";
+"editor.transcript.async.retry_failed" = "保存済み文字起こしを書き込めませんでした";
+"editor.tab.transcript.live.hint" = "リアルタイム文字起こし — 録音中";
+"editor.tab.transcript.hint" = "音声の文字起こし";
+"menubar.recording.mode.local" = "ローカル";
+"menubar.recording.mode.remote" = "SONIOX RT5";
+"editor.empty.no_doc_title" = "アクティブドキュメントなし";
+"editor.empty.no_doc_desc" = "録音を開始すると録音と同時に編集できる新しいドキュメントが作成されます。";
+
+/* Async transcription in-progress & failed states */
+"editor.pending.transcribing" = "文字起こし中…";
+"editor.pending.subtitle"     = "バックグラウンドで実行中。完了すると内容が表示されます。";
+"editor.failed.transcribing"  = "文字起こし失敗";
+"editor.failed.subtitle"      = "ネットワーク不調か API レート制限の可能性。再試行してください。";
+
+/* Trash page */
+"trash.empty.title" = "ゴミ箱は空です";
+"trash.empty.desc" = "削除した録音は 30 日間保管された後、完全に削除されます。";
+"trash.action.restore" = "復元";
+"trash.action.purge" = "完全に削除";
+"trash.toast.restored" = "セッションを復元しました";
+"trash.toast.purged" = "完全に削除しました";
+"trash.purge.confirm_title" = "完全に削除しますか？";
+"trash.purge.confirm_desc" = "録音、文字起こし、関連データが消去されます。この操作は取り消せません。";
+"trash.purge.confirm_button" = "完全に削除";
+
+/* Onboarding — residuals */
+"onboarding.brand.name" = "ZuTalk";
+"onboarding.brand.tagline" = "多言語の交流を、現場での理解から会議後の整理まで、ひとつの場所で。";
+"onboarding.keys.testing_status" = "テスト中…";
+"onboarding.keys.connected_status" = "接続済み";
+
+/* Trust bar */
+"trust.version_format" = "ZuTalk · v%@";
+
+/* Menu Bar status item — popover content */
+"menubar.action.settings" = "設定";
+"updates.check" = "アップデートを確認…";
+"updates.unavailable.title" = "アップデートは未設定です";
+"updates.unavailable.message" = "この開発ビルドにはアップデート署名用の公開鍵が含まれていません。";
+"updates.unavailable.dismiss" = "OK";
+"settings.updates.title" = "ソフトウェアアップデート";
+"settings.updates.subtitle" = "署名済みアップデートを Sparkle から安全に受信します。";
+"settings.updates.automatic" = "アップデートを自動的に確認";
+"settings.updates.automatic_hint" = "署名済みアップデートフィードを定期的に確認し、新しいバージョンが利用可能になると通知します。";
+"menubar.recording.live_transcript" = "リアルタイム文字起こし";
+"menubar.recording.open_subtitles" = "ライブ字幕を開く";
+"menubar.recording.close_subtitles" = "ライブ字幕を閉じる";
+"menubar.recording.open_notebook" = "ノートを開く";
+"menubar.processing.open_session" = "セッションを開く";
+"menubar.suppressed.privacy.title" = "マイク権限が拒否されています";
+"menubar.suppressed.privacy.body" = "システム設定で ZuTalk にマイクアクセスを許可するまで録音できません。";
+"menubar.suppressed.privacy.action" = "システム設定を開く";
+"menubar.suppressed.disabled.title" = "ZuTalk は一時停止中";
+"menubar.suppressed.disabled.body" = "メニューバーエントリは設定で無効化されています。";
+"menubar.suppressed.disabled.action" = "ZuTalk 設定を開く";
+"menubar.suppressed.onboarding.title" = "初期設定を完了";
+"menubar.suppressed.onboarding.body" = "初回セットアップを完了すると ZuTalk が有効になります。";
+"menubar.suppressed.onboarding.action" = "セットアップを続行";
+"hud.recording.active" = "REC";
+"hud.recording.paused" = "PAUSED";
+"hud.a11y.recording_active_format" = "録音中 %@";
+"hud.a11y.recording_paused_format" = "録音一時停止 %@";
+
+/* DesignSystem previews */
+"preview.crosshair.blueprint" = "ブループリントコンテンツ";
+"preview.crosshair.hardware" = "ハードウェアコンテンツ";
+
+
+/* Document editor */
+"editor.toolbar.show_sources" = "ソースを表示";
+"editor.toolbar.show_tasks" = "タスクを表示";
+
+/* アウトラインノートエディタ(ブロックドキュメント) */
+"editor.outline.load_failed_title" = "ノートを開けませんでした";
+"editor.outline.retry" = "再試行";
+"editor.outline.apply_failed" = "ノートの変更を保存できませんでした";
+"editor.outline.row_label" = "アウトライン行、レベル %lld";
+"editor.outline.indent" = "インデント";
+"editor.outline.outdent" = "インデント解除";
+"editor.outline.delete_row" = "行を削除";
+"editor.outline.undo" = "取り消す";
+"editor.outline.redo" = "やり直す";
+"editor.outline.turn_into" = "種類を変更";
+"editor.outline.kind.paragraph" = "本文";
+"editor.outline.kind.heading1" = "見出し 1";
+"editor.outline.kind.heading2" = "見出し 2";
+"editor.outline.kind.heading3" = "見出し 3";
+"editor.outline.kind.quote" = "引用";
+"editor.outline.kind.task" = "タスク";
+"editor.outline.kind.divider" = "区切り線";
+"editor.outline.task.done" = "完了";
+"editor.outline.task.todo" = "未完了";
+"editor.tasks.title" = "タスク";
+"editor.tasks.count_format" = "%lld 件のバックグラウンドタスク";
+"editor.tasks.refresh" = "タスクを更新";
+"editor.tasks.empty" = "タスクはまだありません";
+"editor.tasks.empty.detail" = "バックグラウンド文字起こしジョブがここに表示されます。";
+"editor.tasks.retry_format" = "%lld 回再試行";
+/* Accessibility labels */
+"editor.outline.drag_handle" = "ドラッグして並べ替え";
+
+/* Notebook multilingual capture */
+"common.close" = "閉じる";
+"capture.error.ffi_unavailable" = "Notebook 録音サービスはまだ利用できません。";
+"capture.error.already_active" = "別の Notebook で録音中です。";
+"capture.error.remote_required" = "言語別字幕にはリモートリアルタイム処理が必要です。";
+"capture.error.context_requires_remote" = "参考資料を使う前に、リアルタイム文字起こしを有効にしてください。";
+"capture.error.languages_must_differ" = "重複しない言語を選んでください。";
+"capture.error.not_active" = "アクティブな Notebook 録音はありません。";
+"capture.error.projection_locked" = "投影が完了するまで文字起こしは読み取り専用です。";
+"capture.error.profile_snapshot_unavailable" = "この録音に保存された録音設定を読み込めません。";
+"capture.route.no_notebook" = "Notebook が選択されていません";
+"capture.route.no_notebook_detail" = "録音を開く前に Notebook を作成または選択してください。";
+"capture.route.unavailable" = "Notebook 録音を開けません";
+"capture.route.unavailable_detail" = "ZuTalk のローカルサービスが準備できていません。";
+"session.route.unavailable" = "録音を開けません";
+"session.route.unavailable_detail" = "録音は変更されていません。もう一度お試しください。";
+"capture.open_notebook" = "Notebook を開く";
+"capture.open_notebook_hint" = "録音操作は所有する Notebook 内でのみ行えます。";
+"subtitle.overlay.title" = "ライブ字幕";
+"subtitle.overlay.read_only" = "ライブ字幕 · 読み取り専用";
+"subtitle.overlay.accessibility_label" = "多言語ライブ字幕ウィンドウ";
+"subtitle.overlay.language_count" = "%lld 言語";
+"subtitle.overlay.waiting" = "音声を待っています…";
+"subtitle.overlay.degraded_lanes" = "これらの翻訳列は遅延または利用できません。文字起こしは継続中です。";
+"subtitle.overlay.recording_ended" = "録音が終了しました";
+"subtitle.overlay.font_size" = "字幕サイズ";
+"subtitle.overlay.background_opacity" = "字幕背景の不透明度";
+"subtitle.overlay.font_smaller" = "字幕を小さく";
+"subtitle.overlay.font_larger" = "字幕を大きく";
+"subtitle.overlay.font_auto.enable" = "字幕サイズをウィンドウに合わせる";
+"subtitle.overlay.font_auto.disable" = "字幕サイズを手動で調整する";
+"subtitle.overlay.font_auto.on" = "字幕サイズはウィンドウに追従します";
+"subtitle.overlay.font_auto.off" = "字幕サイズは手動設定です";
+"subtitle.overlay.move_resize_hint" = "ウィンドウをドラッグして移動し、辺または四隅をドラッグしてサイズを変更できます。";
+"subtitle.overlay.maximize" = "現在の画面いっぱいに表示";
+"subtitle.overlay.restore" = "字幕ウィンドウを元に戻す";
+"subtitle.overlay.pin" = "字幕を最前面に固定";
+"subtitle.overlay.unpin" = "字幕の固定を解除";
+"subtitle.overlay.pinned" = "すべてのデスクトップで最前面に固定";
+"subtitle.overlay.unpinned" = "固定されていません";
+"subtitle.overlay.theme.switch_to_light" = "明るい字幕にする";
+"subtitle.overlay.theme.switch_to_dark" = "暗い字幕にする";
+"subtitle.overlay.theme.dark" = "ダークキャンバス";
+"subtitle.overlay.theme.light" = "ライトキャンバス";
+"subtitle.overlay.mode" = "字幕モード";
+"subtitle.overlay.mode.conversation" = "対照";
+"subtitle.overlay.mode.audience" = "イベント";
+"subtitle.overlay.mode.conversation.help" = "言語間の会話、確認、理解のために直近の発話を表示します。";
+"subtitle.overlay.mode.audience.help" = "最大3言語で最新の発話を同じ優先度で表示します。";
+"capture.toolbar.start" = "録音開始";
+"capture.toolbar.starting" = "開始中…";
+"capture.toolbar.start_hint" = "録音と、選択した言語のリアルタイム文字起こしを開始します。サービスを一時的に利用できなくても録音は続行します。";
+"capture.toolbar.pause" = "一時停止";
+"capture.toolbar.pause_billing" = "リモート接続は課金が続く場合があります";
+"capture.toolbar.pause_billing_detail" = "一時停止時は現在の発話を確定しますが、Soniox 接続は keepalive で維持され、課金が続く場合があります。";
+"capture.toolbar.resume" = "再開";
+"capture.toolbar.stop" = "停止";
+"capture.toolbar.stop_hint" = "音声入力を停止します。リモート処理が有効な場合は、最後のリモート token も待ちます。";
+"capture.toolbar.active_other_notebook" = "録音は別の Notebook に属しています";
+"capture.toolbar.subtitle_window.open" = "ライブ字幕を開く";
+"capture.toolbar.subtitle_window.close" = "ライブ字幕を閉じる";
+"capture.toolbar.subtitle_window.hint" = "常に手前に表示される多言語ライブ字幕ウィンドウを開きます。";
+"capture.toolbar.subtitle_window.unavailable_hint" = "この Notebook で録音を開始してからライブ字幕を開いてください。";
+"capture.toast.start_failed" = "録音を開始できませんでした";
+"capture.toast.pause_failed" = "録音状態を変更できませんでした";
+"capture.toast.stop_failed" = "録音を停止できませんでした";
+"capture.toast.context_preview_failed" = "参考資料を確認できませんでした";
+"capture.toast.context_load_failed" = "参考資料を読み込めませんでした";
+"capture.toast.context_update_failed" = "参考資料を更新できませんでした";
+"capture.toast.edit_failed" = "文字起こしレーンを更新できませんでした";
+"capture.toast.projection_retry_failed" = "文字起こしの投影を再試行できませんでした";
+"capture.settings.title" = "設定";
+"capture.settings.subtitle" = "変更は自動保存され、この Notebook にのみ適用されます。";
+"capture.settings.tab" = "設定";
+"capture.settings.tab_hint" = "この Notebook の録音、言語、字幕設定を開きます。";
+"capture.settings.footer.realtime" = "言語とリアルタイムモードは「文字起こし」タブで選択します。";
+"capture.settings.active_locked" = "録音中です。言語、コンテキスト、保存設定は固定されていますが、音声入力は切り替えられます。";
+"capture.settings.autosave.loading" = "設定を読み込み中…";
+"capture.settings.autosave.saving" = "保存中…";
+"capture.settings.autosave.saved" = "自動保存済み";
+"capture.settings.autosave.load_failed" = "設定を読み込めませんでした";
+"capture.settings.autosave.save_failed" = "変更は保存されていません";
+"capture.settings.autosave.retry" = "再試行";
+"capture.settings.realtime.start_disclosure" = "「録音開始」で、選択した言語のリアルタイム文字起こしが始まります。サービスを一時的に利用できなくても録音は続行します。";
+"capture.settings.remote.credential.saved_inactive" = "Soniox キー · 保存済み · 要確認";
+"capture.settings.remote.credential.missing" = "Soniox キー · 未保存";
+"capture.settings.remote.credential.hint" = "これはローカルのキー準備状態だけを示します。録音の音声送信は「録音開始」をクリックしたときだけ許可されます。";
+"capture.settings.languages.question" = "このセッションではどの言語を使用しますか？";
+"capture.settings.languages.ordered_detail" = "表示順に追加してください。選択した各言語はそれぞれの列に表示され、発言の原文が先に現れた後、ほかの列が追って補われます。";
+"capture.settings.languages.search" = "追加する言語を検索";
+"capture.settings.languages.suggested" = "よく使う言語";
+"capture.settings.languages.no_results" = "未選択の言語に一致するものがありません。";
+"capture.settings.languages.maximum_reached" = "1セッションにつき最大3言語まで選択できます。";
+"capture.settings.languages.add_format" = "%@を追加";
+"capture.settings.languages.move_earlier" = "言語を前へ移動";
+"capture.settings.languages.move_later" = "言語を後ろへ移動";
+"capture.settings.languages.remove" = "言語を削除";
+"capture.realtime.controls.current_title" = "今回の録音設定";
+"capture.realtime.controls.profile_group" = "リアルタイム録音設定";
+"capture.realtime.controls.review_context" = "参考資料を確認";
+"capture.settings.context.title" = "認識参考資料";
+"capture.settings.context.preview" = "使用する内容を確認";
+"capture.settings.context.preview_count" = "%lld 文字";
+"capture.settings.context.empty" = "使用できる参考資料はまだありません。";
+"capture.settings.context.pack_detail" = "用語、人名、組織名、会議の背景を追加すると、文字起こしの精度向上に役立ちます。";
+"capture.settings.context.private_pack" = "現在の Notebook";
+"capture.settings.context.current_notebook_detail" = "この Notebook で使用";
+"capture.settings.context.selected" = "編集中";
+"capture.settings.context.not_selected" = "未選択";
+"capture.settings.context.create_library" = "作成";
+"capture.settings.after_stop.title" = "録音後の処理";
+"capture.settings.after_stop.engine" = "処理方法";
+"capture.settings.after_stop.detail" = "録音停止後、現在の文字起こしエンジンで残りの文字起こしを補完できます。";
+"capture.settings.after_stop.unavailable_detail" = "このバージョンでは録音後の処理を利用できません。";
+"capture.state.recording" = "録音中";
+"capture.state.paused" = "一時停止";
+"capture.state.draining" = "終了処理中";
+"capture.state.audio_drain_delayed" = "ローカル音声を保存しています";
+"capture.state.completed" = "完了";
+"capture.state.interrupted" = "中断";
+"capture.state.failed" = "失敗";
+"capture.remote.off" = "リモートオフ";
+"capture.remote.connecting" = "リモート接続中";
+"capture.remote.catching_up" = "字幕を追跡中、%d 秒遅延";
+"capture.remote.live" = "リモートライブ";
+"capture.remote.degraded" = "リモート低下";
+"capture.remote.unavailable" = "リモート利用不可";
+"capture.projection.pending" = "投影待ち";
+"capture.projection.projecting" = "投影中";
+"capture.projection.ready" = "編集可能";
+"capture.projection.failed" = "投影失敗";
+"capture.transcript.swap" = "左右の言語列を入れ替える";
+"capture.transcript.realtime_accessibility_label" = "リアルタイム文字起こし";
+"capture.transcript.run_navigator" = "録音ナビゲーター";
+"capture.transcript.open_recording" = "この録音を開く";
+"capture.transcript.loading_recording" = "この録音の文字起こしを読み込み中…";
+"capture.transcript.load_recording_failed" = "この録音を読み込めませんでした";
+"capture.transcript.back_to_live" = "ライブに戻る";
+"capture.transcript.transcription_heading" = "文字起こしタイムライン";
+"capture.transcript.transcription_empty_title" = "リアルタイム発話はありません";
+"capture.transcript.transcription_empty_detail" = "リモートリアルタイム処理を有効にして録音を開始すると、セッションの文字起こしが表示されます。";
+"capture.transcript.snapshot_unavailable_detail" = "保存済みの発話は保持されていますが、この録音の言語列設定がないため表示を安全に再構築できません。";
+"capture.transcript.read_only" = "録音または投影中は読み取り専用";
+"capture.transcript.copy" = "文字起こしをコピー";
+"capture.transcript.copy_hint" = "このセッションの文字起こしを、時刻、話者名、言語ラベル付きでコピーします。";
+"capture.transcript.copy_empty_hint" = "コピーできる文字起こしはまだありません。";
+"capture.transcript.copy_finish_edit_hint" = "現在の編集を完了またはキャンセルしてからコピーしてください。";
+"capture.transcript.copy_success" = "文字起こしをコピーしました";
+"capture.transcript.copy_success_detail" = "ほかのアプリに貼り付けられます。";
+"capture.transcript.copy_success_live_detail" = "現在の文字起こしスナップショットをコピーしました。録音は続行中です。";
+"capture.transcript.copy_failed" = "文字起こしをコピーできませんでした";
+"capture.transcript.copy_clipboard_failed" = "システムのクリップボードを更新できませんでした。";
+"capture.transcript.waiting_title" = "最初の発話を待っています";
+"capture.transcript.waiting_detail" = "リモート処理がオフまたは利用不可でもローカル録音は継続します。";
+"capture.transcript.language_pending" = "言語を確認してください…";
+"capture.transcript.unselected_language" = "%@を検出しましたが、このセッションでは選択されていません";
+"capture.transcript.presentation.timeline" = "タイムライン";
+"capture.transcript.presentation.timeline_detail" = "各発話を時系列に一度ずつ表示します。";
+"capture.transcript.presentation.language_columns" = "テキスト対照";
+"capture.transcript.presentation.language_columns_detail" = "選択した各言語を、それぞれの順序付き列に固定して表示します。";
+"capture.transcript.waiting_lane" = "%@ を待っています";
+"capture.transcript.failed_lane" = "%@ 列を生成できませんでした";
+"capture.transcript.source_timestamp" = "元音声の時刻 %@";
+"capture.speaker.fallback" = "話者";
+"capture.speaker.fallback_format" = "話者 %@";
+"capture.speaker.manage" = "話者を管理";
+"capture.speaker.chip_accessibility_format" = "話者：%@";
+"capture.speaker.manage_hint" = "この匿名話者の名前と参加者への関連付けを開きます。";
+"capture.speaker.editor.title" = "匿名話者";
+"capture.speaker.close" = "閉じる";
+"capture.speaker.privacy_detail" = "ローカルにはプロバイダーの匿名ラベルと入力した名前だけを保存します。声紋や音声特徴は保存しません。";
+"capture.speaker.session_name" = "この録音での名前";
+"capture.speaker.session_name_detail" = "この録音内の匿名話者だけに適用します。";
+"capture.speaker.session_name_placeholder" = "例：司会者";
+"capture.speaker.save" = "保存";
+"capture.speaker.clear" = "消去";
+"capture.speaker.participant" = "録音をまたぐ参加者";
+"capture.speaker.participant_detail" = "この匿名ラベルを管理する名前へ手動で関連付けます。言語から自動推定することはありません。";
+"capture.speaker.select_participant" = "参加者を選択";
+"capture.speaker.link" = "関連付け";
+"capture.speaker.new_participant_placeholder" = "新しい参加者名";
+"capture.speaker.create_and_link" = "作成して関連付け";
+"capture.speaker.unlink" = "関連付けを解除";
+"capture.speaker.identity_format" = "%@ · 話者 %@ · 接続 %@";
+"capture.transcript.edit_lane" = "%@ レーンを編集";
+"capture.transcript.edit_hint" = "Return キーまたはフォーカス移動で保存します。";
+"capture.transcript.retry_projection" = "投影を再試行";
+"capture.transcript.retry_projection_hint" = "保存済みの発話を Notebook の文字起こしへ再度書き込みます。";
+
+/* Home row preview placeholders */
+"home.row.preview.pending"   = "文字起こし中…";
+"home.row.preview.recording" = "録音中…";
+"home.row.preview.no_speech" = "音声なし";
+"home.row.preview.not_transcribed" = "未文字起こし";
+"home.row.preview.failed"    = "文字起こし失敗";
+"home.row.status.completed" = "録音完了";
+"home.row.status.imported" = "音声を読み込み済み";
+"library.toast.moved_to_trash" = "ゴミ箱に入れました";
+"library.toast.bulk_moved_to_trash" = "%lld件のセッションをゴミ箱に入れました";
+"doc.transcript_hd" = "非同期文字起こし";
+"capture.settings.retention.title" = "音声の保持";
+"capture.settings.retention.subtitle" = "録音開始時に、この Notebook の保持ポリシーを録音ごとに固定します。";
+"capture.settings.retention.standard.title" = "音声を保持";
+"capture.settings.retention.standard.detail" = "「完全に削除」を選ぶまで録音を保持します。";
+"capture.settings.retention.high.title" = "非同期文字起こし後に削除";
+"capture.settings.retention.high.detail" = "明示的な非同期文字起こしが成功した後、音声と鍵を削除します。";
+"capture.settings.retention.maximum.title" = "文字起こし後すぐ削除";
+"capture.settings.retention.maximum.detail" = "永続的な文字起こし事実が得られ次第、音声と鍵を削除します。文字起こしがない場合は、データ損失を防ぐため唯一の原本を保持します。";
+"sidebar.knowledge" = "知識ベース";
+"knowledge.title" = "知識ベース";
+"knowledge.subtitle" = "文字起こしのために、背景・固有名詞・訳語を準備します。";
+"knowledge.new" = "新しい知識ベース";
+"knowledge.create" = "作成";
+"knowledge.untitled" = "無題の知識ベース";
+"knowledge.name" = "知識ベース名";
+"knowledge.empty.title" = "最初の知識ベースを作成";
+"knowledge.empty.description" = "1 つのトピックの背景・人物・組織・用語を 1 つのプロファイルにまとめます。";
+"knowledge.card.no_summary" = "説明は未入力です";
+"knowledge.card.counts" = "用語 %lld 件 · 訳語 %lld 件";
+"knowledge.back" = "知識ベース";
+"knowledge.summary.placeholder" = "この知識ベースは何の認識に役立ちますか。一文で入力してください";
+"knowledge.saved_revision" = "自動保存済み · リビジョン %lld";
+"knowledge.ai.improve" = "AI で仕上げる";
+"knowledge.ai.coming_soon" = "AI による補完は次の統合で対応します。現在はプロファイル全体を手動で編集できます。";
+"knowledge.context.title" = "文字起こしに使うコンテキスト（概算）";
+"knowledge.general.title" = "概要";
+"knowledge.general.subtitle" = "どのような場面か、誰が話題になりうるかをモデルに伝えます。";
+"knowledge.general.topic" = "トピック";
+"knowledge.general.setting" = "場面";
+"knowledge.general.location" = "場所";
+"knowledge.general.people" = "人物";
+"knowledge.general.organizations" = "組織";
+"knowledge.general.languages" = "言語";
+"knowledge.background.title" = "背景情報";
+"knowledge.background.subtitle" = "役立つ背景を 1 つにまとめて直接編集できます。複数のファイルに分ける必要はありません。";
+"knowledge.terms.title" = "固有名詞";
+"knowledge.terms.subtitle" = "聞き間違えやすく、正確に認識する必要がある人名・地名・組織名・用語を追加します。";
+"knowledge.term.placeholder" = "固有名詞または用語";
+"knowledge.term.add" = "入力して Return キーで追加";
+"knowledge.translations.title" = "訳語";
+"knowledge.translations.subtitle" = "重要な語の訳語を指定します。原文と訳文が同じ場合は原文を保持します。";
+"knowledge.translation.source" = "原文";
+"knowledge.translation.target" = "訳語";
+"knowledge.translation.add" = "訳語を追加";
+"capture.settings.context.current" = "現在の知識ベース";
+"capture.settings.context.no_selection" = "未選択";
+"capture.settings.context.choose" = "切り替え";
+"knowledge.import_json" = "JSONを読み込む";
+"knowledge.import_json.message" = "ZuTalk知識ベースのJSONファイル（.zutalk-pack.json）を選択してください。";
+"knowledge.import_json.done" = "知識ベースを読み込みました";
+"knowledge.import_json.failed" = "知識ベースを読み込めませんでした";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "共有";
+"share.title" = "共有";
+"share.identity" = "共有キー";
+"share.copy_code" = "共有コードをコピー";
+"share.join" = "コードで参加";
+"share.mode.host" = "この Mac から共有";
+"share.mode.join" = "ほかの人の共有に参加";
+"share.stop" = "共有を停止";
+"share.stop_note" = "以降の送信を停止します。相手が既に受け取った内容は削除できません。";
+"share.leave" = "ルームを退出";
+"share.leave_note" = "退出すると受信は止まります。すでに受け取った文字起こしはこの Mac に残ります。";
+"share.audio_never" = "音声が共有されることはありません。";
+"share.capture.live" = "字幕を共有中";
+"share.capture.live_hint" = "ルームの参加者にこの録音の字幕がリアルタイムで表示されています。音声は決して共有されません。";
+"share.capture.mute" = "この録音は共有しない";
+"share.capture.mute_hint" = "この録音の字幕だけを止めます。共有自体は続きます。";
+"share.capture.muted" = "この録音は共有していません";
+"share.capture.muted_hint" = "共有は有効ですが、この録音の字幕は送信されていません。";
+"share.capture.unmute" = "再開";
+"share.empty" = "まだ何も共有していません。";
+"share.role.host" = "ホストのみ編集可、他は閲覧のみ";
+"share.role.everyone" = "全員が編集可";
+"share.direct" = "直接接続";
+"share.relayed" = "リレー経由";
+"share.start" = "共有を開始";
+"share.cancel" = "キャンセル";
+"share.needs_notebook" = "先にノートブックを開いてください。共有の範囲はノートブック単位です。";
+"share.start.confirm.title" = "このノートブックの共有を開始しますか？";
+"share.start.confirm.body" = "共有が開いている間、このノートブックで開始した録音の字幕はルームの全員にリアルタイムで送られます。音声が共有されることはありません。停止しても以降の送信が止まるだけで、相手が既に受け取った内容は削除できません。";
+"share.start.confirm.session_title" = "この録音を共有しますか？";
+"share.start.confirm.session_body" = "入室を許可した相手はこの録音の文字起こしのコピーを保持し、ルームの設定が許せば一緒に修正できます。音声が共有されることはありません。停止しても以降の送信が止まるだけで、相手が既に受け取った内容は削除できません。";
+"share.start.confirm.remember" = "このノートブックでは次回から確認しません。";
+
+/* 设置:分享(点对点)传输 */
+"settings.section.p2p_name" = "共有";
+"settings.p2p.title" = "共有";
+"settings.p2p.subtitle" = "この Mac が共有相手に到達する方法。";
+"settings.p2p.identity" = "この Mac の共有キー";
+"settings.p2p.copy_identity" = "コピー";
+"settings.p2p.identity_note" = "相手はこのキーでこの Mac を識別します。変更すると連絡先が保存した控えはすべて無効になります。";
+"settings.p2p.relay" = "リレーサーバー";
+"settings.p2p.relay_note" = "1 行に 1 つ。空欄なら直接接続のみ——同じ Wi-Fi 上ではそれで十分で、インターネットがなくても動きます。";
+"settings.p2p.relay_privacy" = "リレーは転送するだけです。通信は端から端まで暗号化されており、中身は読めません。";
+"settings.p2p.local_discovery" = "同じネットワーク上の相手を見つける";
+"settings.p2p.local_discovery_note" = "コードをやり取りせずに、ここにいる他の Mac を見つけて参加を依頼できます。ネットワーク上で見えるのは鍵だけです。macOS が初回にローカルネットワークの許可を求めます。拒否しても共有コードは使えます。";
+"settings.p2p.save" = "保存";
+"settings.p2p.restore_default" = "デフォルトに戻す";
+"settings.p2p.saved" = "保存しました";
+
+/* 分享:状态与提示 */
+"share.pick_notebook" = "共有するノートブック";
+"share.your_code" = "共有コード";
+"share.code_note" = "参加する人に送ってください。途中で改行や大文字小文字が変わっても問題ありません。";
+"share.copied" = "コピーしました";
+"share.no_code_yet" = "まだコードがありません。先に共有を開始してください。";
+"share.core_unavailable" = "共有を起動中です。少し待ってからもう一度お試しください。";
+"share.join_failed" = "この共有コードを読み取れません。もう一度送ってもらってください——メッセージからのコピーは文字が欠けることがあります。";
+"share.status.idle" = "未共有";
+"share.status.idle_hint" = "ノートブックを共有して字幕を送るか、もらったコードで参加します。";
+"share.status.hosting_waiting" = "共有中 — まだ何も送っていません";
+"share.status.hosting_waiting_hint" = "コードで参加できます。字幕は録音を開始してから流れます。";
+"share.status.hosting_live" = "字幕を送信中";
+"share.status.hosting_live_hint" = "参加者はあなたの文字起こしを見ています。";
+"share.status.joined_waiting" = "参加済み — ホスト待ち";
+"share.status.joined_waiting_hint" = "接続できています。ホストが録音を始めると字幕が表示されます。";
+"share.status.receiving" = "字幕を受信中";
+"share.status.receiving_hint" = "ホストの字幕です。この Mac には保存されません。";
+"share.status.host_left" = "ホストがこの共有を終了しました";
+"share.status.host_left_hint" = "これ以上は届きません。すでに受け取った内容はこの Mac に残っています。";
+
+/* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
+"share.link.direct" = "直接接続";
+"share.link.relayed" = "リレー経由";
+"share.link.direct_hint" = "トラフィックはピア間を直接流れています（ホールパンチング成功）。";
+"share.link.relayed_hint" = "直接接続が確立できず、リレー経由で転送しています（引き続きエンドツーエンド暗号化）。AP 分離のあるネットワークでよく起こります。";
+
+/* 分享:范围选择、收到的转录稿与协同订正 */
+"share.scope.notebook" = "字幕のみ配信：このノートブックの録音を相手はリアルタイムで見るだけで、何も残りません。";
+"share.scope.single" = "録音を 1 件共有：相手は文字起こしを保持し、一緒に修正できます。";
+"share.scope.no_sessions" = "このノートブックにはまだ録音がありません。";
+"share.received.title" = "共有された文字起こし";
+"share.received.untitled" = "（まだテキストなし）";
+"share.received.blocks" = "%lld ブロック";
+"share.received.delete" = "この Mac から削除";
+"share.received.delete.confirm_title" = "受け取った文字起こしを削除しますか？";
+"share.received.delete.confirm_body" = "この Mac のコピーだけを削除します。ほかの人が持つコピーには影響しません。";
+"shared.editor.title" = "共有文字起こし";
+"shared.editor.read_only" = "読み取り専用ルーム";
+"shared.editor.add_annotation" = "メモを追加";
+"shared.editor.done" = "完了";
+"shared.editor.empty_title" = "まだ何もありません";
+"shared.editor.empty_body" = "ホストの文字起こしが同期されるとここに表示されます。";
+
+/* 设置:中继准入 */
+"settings.p2p.relay_ready" = "リレー利用可能";
+"settings.p2p.relay_ready_hint" = "この Mac は登録済みです。直接つながらないときはリレーが中継します。";
+"settings.p2p.relay_not_registered" = "リレー利用不可";
+"settings.p2p.relay_not_registered_hint" = "登録できませんでした。同じネットワーク内の共有は使えます。足りないのはネットワークをまたぐときの代替経路だけです。";
+"settings.p2p.relay_needs_invite" = "リレーには招待が必要";
+"settings.p2p.relay_needs_invite_hint" = "リレーは招待された Mac のみ利用できます。招待がなくても同じネットワーク内では共有できますが、ネットワークをまたぐ代替経路はありません。";
+"settings.p2p.relay_registering" = "登録中…";
+"settings.p2p.relay_unknown" = "未確認";
+"settings.p2p.relay_unknown_hint" = "起動時と共有開始時に登録を確認します。";
+"settings.p2p.relay_retry" = "再試行";
+
+/* 分享:同一网络里的人 */
+"share.nearby" = "同じネットワークの人";
+"share.nearby.scan" = "探す";
+"share.nearby.scanning" = "探しています…";
+"share.nearby.empty" = "まだ見つかりません。両方の Mac で同じネットワーク上に ZuTalk を開いてください。";
+"share.nearby.ask" = "参加を依頼";
+"share.nearby.note" = "ネットワーク上で見えるのは鍵の文字列だけです——名前も会議名もありません。依頼するとあなたの名前が相手に送られ、相手が判断します。";
+"share.nearby.not_sharing" = "その Mac は今、何も共有していません。";
+"share.nearby.declined" = "断られました。";
+"share.nearby.timed_out" = "応答がありません。席を外しているかもしれません。";
+"share.requests" = "参加の依頼";
+"share.requests.unnamed" = "名前のない Mac";
+"share.requests.approve" = "許可";
+"share.requests.decline" = "断る";
+"share.requests.note" = "名前は相手が入力したものです。その下の鍵だけが偽装できません。";
+"share.knock.toast" = "%@ が共有への参加を求めています";
+"share.knock.toast_detail" = "「共有」タブで承認または拒否してください。";
+"share.knock.badge_label" = "%lld 件の参加リクエストが待機中";
+
+/* 分享:昵称与成员 */
+"share.nickname" = "ルームでの名前";
+"share.nickname.prompt" = "例：私の MacBook";
+"share.nickname.note" = "共有相手に表示されます。空欄にすると鍵だけが見えます。";
+"share.members" = "このルーム";
+"share.members.unnamed" = "名前なし";
+"share.members.you" = "あなた";
+"share.members.host" = "ホスト";
+"share.nearby.asking" = "返事を待っています…";
+"share.nearby.abandon" = "待つのをやめる";
+
+"capture.toolbar.joined_room" = "ルームに参加中";
+"capture.toolbar.joined_room_hint" = "相手のライブ字幕を受信しています。ここで録音するには、共有ページでルームを退出してください。";
+"share.sidebar.live_label" = "ルームに参加中";
+"shared_inbox.live_title" = "ライブ受信中";
+"shared_inbox.live_waiting" = "参加しました。ホストの録音開始を待っています。";
+"shared_inbox.empty_title" = "まだ何も受信していません";
+"shared_inbox.empty_body" = "共有された文字起こしがここに表示されます。ルームの進行中はリアルタイムで更新され、終了後も保存されます。";
+"shared_inbox.session_live" = "ライブ";
+"shared_inbox.lane_canonical" = "原文";
+"shared_inbox.lane_connecting" = "この言語レーンは接続中です";
+"shared_inbox.lane_failed" = "この言語レーンは失敗しました。これ以上は届きません";
+
+"share.web.title" = "ウェブ共有";
+"share.web.start" = "ウェブ共有を開始";
+"share.web.hint" = "QRコードをスキャンすると、アプリなしでブラウザからライブ字幕を読めます。言語も切り替えられます。";
+"share.web.confirm.title" = "ウェブ共有を開始しますか？";
+"share.web.confirm.body" = "字幕テキストは平文で字幕サーバーを経由し、共有の終了後もしばらくサーバーに残ります。リンクを知っている人は誰でも閲覧できます。音声は決して共有されません。";
+"share.web.plaintext_note" = "字幕テキストは平文でサーバーを経由し、しばらく保存されます。リンクを知っている人は誰でも閲覧できます。";
+"share.web.copy" = "リンクをコピー";
+"share.web.stop" = "ウェブ共有を停止";
+"share.web.qr_label" = "ライブ字幕ページのQRコード";

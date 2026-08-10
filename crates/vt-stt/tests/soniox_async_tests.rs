@@ -179,7 +179,7 @@ fn request<'a>(base_url: &'a str) -> SonioxAsyncRequest<'a> {
         language_hints: vec!["en".to_string()],
         enable_language_identification: false,
         context_json: None,
-        client_reference_id: Some("zulangue-task-1".to_string()),
+        client_reference_id: Some("zutalk-task-1".to_string()),
         overall_deadline: Duration::from_secs(30),
         poll_interval: Duration::from_millis(10),
     }
@@ -246,9 +246,9 @@ async fn async_flow_uploads_transcribes_and_deletes_remote_artifacts() {
         serde_json::json!({"terms": ["人类学论坛"], "text": "field notes"})
     );
     // 工件必须带稳定标签:文件名与 client_reference_id,供启动扫尾识别。
-    assert_eq!(create["client_reference_id"], "zulangue-task-1");
+    assert_eq!(create["client_reference_id"], "zutalk-task-1");
     assert!(
-        find_subslice(&recorded[0].body, b"zulangue-task-1.wav").is_some(),
+        find_subslice(&recorded[0].body, b"zutalk-task-1.wav").is_some(),
         "upload filename must carry the artifact tag"
     );
 }

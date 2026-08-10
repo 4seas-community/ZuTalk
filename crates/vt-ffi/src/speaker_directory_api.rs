@@ -4,7 +4,7 @@
 //! This API stores only user-entered names and explicit relationships. It does
 //! not store audio samples, embeddings, voiceprints, or automatic match data.
 
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 use vt_store::notebook_capture_store::{NotebookCaptureStoreError, Participant, SessionSpeaker};
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -48,7 +48,7 @@ impl From<SessionSpeaker> for FfiSessionSpeaker {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     pub fn list_speaker_participants(&self) -> Result<Vec<FfiSpeakerParticipant>, CoreError> {
         self.notebook_capture_store
             .list_participants()

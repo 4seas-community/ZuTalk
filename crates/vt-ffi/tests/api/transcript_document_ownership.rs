@@ -10,10 +10,10 @@
 
 use tempfile::TempDir;
 use vt_ffi::block_document_api::{FfiDocumentKind, FfiMachineBlockWrite};
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
-fn make_core(dir: &TempDir) -> ZulangueCore {
-    ZulangueCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
+fn make_core(dir: &TempDir) -> ZuTalkCore {
+    ZuTalkCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
 }
 
 fn machine_write(id: &str, text: &str, lanes: &[(&str, &str)]) -> FfiMachineBlockWrite {
@@ -28,7 +28,7 @@ fn machine_write(id: &str, text: &str, lanes: &[(&str, &str)]) -> FfiMachineBloc
     }
 }
 
-fn open_transcript(core: &ZulangueCore, doc_id: &str) {
+fn open_transcript(core: &ZuTalkCore, doc_id: &str) {
     core.block_document_open(doc_id.to_string(), FfiDocumentKind::Transcript)
         .unwrap();
 }

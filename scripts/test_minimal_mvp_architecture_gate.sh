@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-GENERATED_SWIFT="$ROOT_DIR/macos/Zulangue/Zulangue/Bridge/Generated/vt_ffi.swift"
-GENERATED_HEADER="$ROOT_DIR/macos/Zulangue/Zulangue/Bridge/Generated/vt_ffiFFI.h"
-XCODE_PROJECT="$ROOT_DIR/macos/Zulangue/Zulangue.xcodeproj/project.pbxproj"
+GENERATED_SWIFT="$ROOT_DIR/macos/ZuTalk/ZuTalk/Bridge/Generated/vt_ffi.swift"
+GENERATED_HEADER="$ROOT_DIR/macos/ZuTalk/ZuTalk/Bridge/Generated/vt_ffiFFI.h"
+XCODE_PROJECT="$ROOT_DIR/macos/ZuTalk/ZuTalk.xcodeproj/project.pbxproj"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -12,7 +12,7 @@ fail() {
 }
 
 for removed_path in \
-  crates/zulangued \
+  crates/zutalkd \
   crates/vt-sync \
   crates/vt-template \
   crates/vt-glossary \
@@ -23,20 +23,20 @@ for removed_path in \
   crates/vt-ffi/src/sync_api.rs \
   crates/vt-ffi/src/knowledge_api.rs \
   crates/vt-ffi/src/notebook_ask_api.rs \
-  macos/Zulangue/Zulangue/App/RecordingCommandRouter.swift \
-  macos/Zulangue/Zulangue/App/KnowledgeClient.swift \
-  macos/Zulangue/Zulangue/Bridge/EventConfig+Compatibility.swift \
-  macos/Zulangue/Zulangue/Library/TaskCallbackBridge.swift
+  macos/ZuTalk/ZuTalk/App/RecordingCommandRouter.swift \
+  macos/ZuTalk/ZuTalk/App/KnowledgeClient.swift \
+  macos/ZuTalk/ZuTalk/Bridge/EventConfig+Compatibility.swift \
+  macos/ZuTalk/ZuTalk/Library/TaskCallbackBridge.swift
 do
   [[ ! -e "$ROOT_DIR/$removed_path" ]] \
     || fail "removed MVP subsystem path returned: $removed_path"
 done
 
-if grep -Eq '"crates/(zulangued|vt-sync|vt-template|vt-glossary|vt-speaker|vt-llm)"' \
+if grep -Eq '"crates/(zutalkd|vt-sync|vt-template|vt-glossary|vt-speaker|vt-llm)"' \
     "$ROOT_DIR/Cargo.toml"; then
   fail "Cargo workspace must contain only the Notebook Capture MVP crates"
 fi
-if grep -Eq '^name = "(zulangued|vt-sync|vt-template|vt-glossary|vt-speaker|vt-llm)"$' \
+if grep -Eq '^name = "(zutalkd|vt-sync|vt-template|vt-glossary|vt-speaker|vt-llm)"$' \
     "$ROOT_DIR/Cargo.lock"; then
   fail "Cargo.lock retained a removed MVP package"
 fi

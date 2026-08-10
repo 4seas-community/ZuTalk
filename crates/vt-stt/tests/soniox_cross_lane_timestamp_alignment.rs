@@ -52,7 +52,7 @@ fn load_api_key() -> Option<String> {
 }
 
 fn requested_minutes() -> f64 {
-    std::env::var("ZULANGUE_ALIGNMENT_MINUTES")
+    std::env::var("ZUTALK_ALIGNMENT_MINUTES")
         .ok()
         .and_then(|value| value.trim().parse::<f64>().ok())
         .filter(|value| *value > 0.0)
@@ -357,7 +357,7 @@ async fn sibling_connections_agree_on_token_timestamps_over_a_long_run() {
     let canonical_config = SttConfig {
         language_hints: vec!["en".to_string(), "zh".to_string()],
         enable_language_identification: true,
-        client_reference_id: Some("zulangue-alignment-canonical".to_string()),
+        client_reference_id: Some("zutalk-alignment-canonical".to_string()),
         ..Default::default()
     };
     // An auxiliary lane: the same audio, plus a translation target. This is the
@@ -368,7 +368,7 @@ async fn sibling_connections_agree_on_token_timestamps_over_a_long_run() {
         translation: Some(TranslationConfig::OneWay {
             target_language: "th".to_string(),
         }),
-        client_reference_id: Some("zulangue-alignment-auxiliary".to_string()),
+        client_reference_id: Some("zutalk-alignment-auxiliary".to_string()),
         ..Default::default()
     };
 

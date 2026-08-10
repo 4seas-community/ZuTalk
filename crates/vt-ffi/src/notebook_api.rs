@@ -11,7 +11,7 @@ use vt_store::{
     SessionMetaStore, SessionQuery, SessionQueryStore,
 };
 
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 
 /// 新装好的 App 里落笔的第一个家。
 ///
@@ -318,7 +318,7 @@ struct RenderedSection {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     pub fn create_notebook(&self, title: Option<String>) -> Result<FfiNotebook, CoreError> {
         let notebook = self
             .notebook_store
@@ -505,7 +505,7 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     pub(crate) fn attach_session_to_notebook(
         &self,
         notebook_id: String,
@@ -538,11 +538,11 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     pub(crate) fn notebook_transcript_projector(&self) -> NotebookTranscriptProjector {
         NotebookTranscriptProjector::new(
             self.data_dir.clone(),
-            self.data_dir.join("zulangue.db"),
+            self.data_dir.join("zutalk.db"),
             self.notebook_store.clone(),
             self.editor_bridge.clone(),
             self.editor_callbacks.clone(),
@@ -826,9 +826,9 @@ mod import_tests {
         NotebookCaptureProfileUpdate, ProjectionState, RemoteHealth,
     };
 
-    fn setup() -> (TempDir, ZulangueCore) {
+    fn setup() -> (TempDir, ZuTalkCore) {
         let temp = TempDir::new().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_str().unwrap().to_string()).unwrap();
         // Keep task rows deterministic; these tests cover the durable import
         // intent/receipt boundary, not provider execution.
         core.worker_cancel.cancel();
@@ -844,7 +844,7 @@ mod import_tests {
     }
 
     fn set_profile_privacy(
-        core: &ZulangueCore,
+        core: &ZuTalkCore,
         notebook_id: &str,
         privacy_level: &str,
     ) -> NotebookCaptureProfile {
@@ -960,7 +960,7 @@ mod import_tests {
             .create_notebook(Some("Private rollback import".into()))
             .unwrap();
         set_profile_privacy(&core, &notebook.id, "high");
-        let connection = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let connection = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         connection
             .execute_batch(
                 "CREATE TRIGGER fail_notebook_import_privacy_snapshot
@@ -1003,7 +1003,7 @@ mod import_tests {
         let notebook = core
             .create_notebook(Some("Rollback import".into()))
             .unwrap();
-        let connection = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let connection = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         connection
             .execute_batch(
                 "CREATE TRIGGER fail_import_run

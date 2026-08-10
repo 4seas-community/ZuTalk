@@ -93,7 +93,7 @@ pub fn transcript_schema() -> Arc<Schema> {
 fn shared_root_fields() -> impl Iterator<Item = (&'static str, Arc<Schema>)> {
     [
         (DOCUMENT_META, Schema::map([])),
-        ("zulangue_session_purge_receipts", Schema::map([])),
+        ("zutalk_session_purge_receipts", Schema::map([])),
     ]
     .into_iter()
 }
@@ -186,9 +186,9 @@ pub fn build_golden_bytes(kind: DocumentKind) -> Vec<u8> {
 pub fn golden_snapshot(kind: DocumentKind) -> &'static [u8] {
     match kind {
         DocumentKind::Transcript => {
-            include_bytes!("../golden/document-golden-transcript.2.bin")
+            include_bytes!("../golden/document-golden-transcript.3.bin")
         }
-        DocumentKind::Note => include_bytes!("../golden/document-golden-note.2.bin"),
+        DocumentKind::Note => include_bytes!("../golden/document-golden-note.3.bin"),
     }
 }
 

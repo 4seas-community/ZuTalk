@@ -1,22 +1,22 @@
 # macOS 发布与更新
 
-Zulangue 的正式分发链路是：
+ZuTalk 的正式分发链路是：
 
 > Ad Hoc 签名的 Universal DMG → 用户首次确认安装 → Sparkle 2 定期检查
 > HTTPS appcast → 显示原生更新提示 → 验证 Ed25519 签名后替换
-> `Zulangue.app`
+> `ZuTalk.app`
 
 当前项目没有 Apple `Developer ID Application` 证书，因此安装包没有 Apple
 公证。首次安装可能被 Gatekeeper 阻止，用户需要在 Finder 中右键选择“打开”，
 或到“系统设置 → 隐私与安全性”确认。Ad Hoc 签名不能提供 Apple 开发者身份，
-但 Sparkle 签名仍会验证更新包和 appcast 是否由 Zulangue 项目签发。
+但 Sparkle 签名仍会验证更新包和 appcast 是否由 ZuTalk 项目签发。
 
 ## 安全边界
 
 当前发布只使用两组彼此独立的凭据：
 
 1. **项目 OpenPGP 密钥**：签 Git 提交和版本标签。
-2. **Sparkle Ed25519 密钥对**：验证 Zulangue 更新包和 appcast。
+2. **Sparkle Ed25519 密钥对**：验证 ZuTalk 更新包和 appcast。
 
 Sparkle 密钥不是 Soniox、GitHub、Apple ID 或 Git 提交签名密钥。它必须为软件
 更新单独生成。公钥会放进 App；私钥不得提交到 Git、写入 Release、构建日志或
@@ -32,14 +32,19 @@ Sparkle 密钥不是 Soniox、GitHub、Apple ID 或 Git 提交签名密钥。它
 ./bin/generate_keys --account Zulangue
 ```
 
+> `--account` 是登录 Keychain 里的查找名，不是产品名。这对密钥在改名成
+> ZuTalk 之前就生成了，账户名保持 `Zulangue` 不动：App 里内置的公钥对应
+> 的正是这把私钥，换个账户名等于找不到它，而用新生成的密钥签出来的更新
+> 会被所有已安装的 App 拒收。要改名只能连同轮换公钥一起做，那是另一件事。
+
 该命令会新建专用密钥，并将私钥保存到当前 macOS 登录 Keychain。Base64
 公钥写入 Xcode 项目的 `SPARKLE_PUBLIC_ED_KEY` 构建设置；公钥不是秘密，
-应跟随源码发布，让每个 Zulangue 安装包只接受该项目签发的更新。
+应跟随源码发布，让每个 ZuTalk 安装包只接受该项目签发的更新。
 
 将私钥导出到受保护的离线位置进行备份：
 
 ```bash
-./bin/generate_keys --account Zulangue -x /secure/offline/Zulangue-Sparkle.key
+./bin/generate_keys --account Zulangue -x /secure/offline/ZuTalk-Sparkle.key
 ```
 
 导出的文件等同于更新签名密码，不能放在仓库、同步盘、GitHub Secrets 或聊天
@@ -53,7 +58,7 @@ just bump 0.3.3                 # 版本号一次改对，旧说明归档进 CHA
 $EDITOR packaging/release-notes.md
 just local-gate
 
-GITHUB_REPOSITORY=4seas-community/zulangue \
+GITHUB_REPOSITORY=4seas-community/ZuTalk \
 GITHUB_REF_NAME=v0.3.3 \
 just release-ship
 ```
@@ -62,7 +67,7 @@ just release-ship
 
 1. **`release-sparkle-adhoc`** — Universal Ad Hoc 构建、DMG、增量更新包、
    用登录 Keychain 里的 Sparkle 私钥签署 appcast，并为这一份 DMG 生成
-   `Zulangue-macOS.sha256`。
+   `ZuTalk-macOS.sha256`。
 2. **`release-tag`** — 打 OpenPGP 签名标签，推送提交与标签到主库。
    产物先做出来、标签才推：标签一推出去就是对外承诺。
 3. **`release-publish`** — 等 GitHub 镜像收到标签，按 appcast 点名清点
@@ -79,7 +84,7 @@ just release-ship
   `--verify-tag`。
 - **附件齐全**：以 appcast 为准。它点名了哪些文件就传哪些——漏传一个
   delta 不会有任何提示，用户侧签名验证照样通过，下载 404。
-- **校验和**：`Zulangue-macOS.sha256` 文件名不带版本号，最容易发出上一
+- **校验和**：`ZuTalk-macOS.sha256` 文件名不带版本号，最容易发出上一
   版的那份。生成由 `sparkle-appcast` 负责，发布前再当场重算一次。
 - **delta 基线**：按版本号挑前两个版本，不按文件修改时间——本地任何一
   个旧 DMG 被重建就会静默拿错基线，用户那边表现为白下一遍全量。基线
@@ -109,7 +114,7 @@ Xcode 加 Ad Hoc 签名不是比特可复现的，所以那份 DMG 无法与本�
 appcast 使用稳定 HTTPS 地址：
 
 ```text
-https://github.com/4seas-community/zulangue/releases/latest/download/appcast.xml
+https://github.com/4seas-community/ZuTalk/releases/latest/download/appcast.xml
 ```
 
 其中的实际 DMG 下载地址绑定到不可变的版本标签，不使用可变的 `latest`
@@ -117,7 +122,7 @@ https://github.com/4seas-community/zulangue/releases/latest/download/appcast.xml
 
 ## 用户看到的行为
 
-- Zulangue 默认每天检查一次更新，不发送匿名系统画像。
+- ZuTalk 默认每天检查一次更新，不发送匿名系统画像。
 - 检查到新版本时，Sparkle 在后台下载并验证更新包；准备完成后，主窗口侧栏才显示
   “更新并重启”，由用户决定何时安装和重启。
 - 用户也可以在 App 菜单或菜单栏弹窗中选择“检查更新…”。
@@ -161,7 +166,7 @@ Release 标成 pre-release 或删掉附件——`latest` 会退回上一版，ap
 - `GITHUB_REPOSITORY` 与 `github` remote 不一致；
 - GitHub 上的标签还没到，或指向的不是本机那个签名标签；
 - appcast 点名的附件没有全部上传，或上传后取不到；
-- `Zulangue-macOS.sha256` 描述的不是这一次要发布的 DMG。
+- `ZuTalk-macOS.sha256` 描述的不是这一次要发布的 DMG。
 
 上述每一条都由 `just release-ship` 自动执行，`scripts/test_release_distribution_gate.sh`
 负责保证这些检查不会被悄悄删掉。

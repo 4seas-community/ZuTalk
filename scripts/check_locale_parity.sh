@@ -21,7 +21,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$ROOT"
 
-RES="macos/Zulangue/Zulangue/Resources"
+RES="macos/ZuTalk/ZuTalk/Resources"
 I18N="crates/vt-i18n/locales"
 BASE="en"
 

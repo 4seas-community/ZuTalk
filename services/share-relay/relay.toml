@@ -1,4 +1,4 @@
-# Zulangue 自建 iroh 中继。
+# ZuTalk 自建 iroh 中继。
 #
 # 这个中继「不公共」:只有向邀请码服务登记过 endpoint id 的客户端能用它。
 # 但要说清楚两件事 ——

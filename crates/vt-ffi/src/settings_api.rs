@@ -10,7 +10,7 @@ use vt_store::notebook_capture_store::{
     CaptureMode, NotebookCaptureProfile, UtteranceVariantRole, UtteranceVariantState,
 };
 
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 
 // MARK: - Export options
 
@@ -24,10 +24,10 @@ pub struct ExportZipOptions {
     pub include_txt: bool,
 }
 
-// MARK: - ZulangueCore impls
+// MARK: - ZuTalkCore impls
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// Format one durable capture session for the local macOS clipboard.
     ///
     /// Rust owns transcript selection, speaker-name precedence, and language
@@ -224,7 +224,7 @@ fn clipboard_language_columns(profile: &NotebookCaptureProfile) -> Vec<String> {
         })
 }
 
-fn export_transcript(core: &ZulangueCore, session_id: &str) -> Result<ExportTranscript, CoreError> {
+fn export_transcript(core: &ZuTalkCore, session_id: &str) -> Result<ExportTranscript, CoreError> {
     let run = core
         .notebook_capture_store
         .get_run_for_session(session_id)
@@ -319,7 +319,7 @@ fn notebook_capture_export(
 ///
 /// The capture run owns format/frame facts; the retention ledger owns ordered
 /// encrypted chunk locations. Any mismatch fails the whole requested export.
-fn decrypt_session_audio(core: &ZulangueCore, session_id: &str) -> Result<Vec<u8>, CoreError> {
+fn decrypt_session_audio(core: &ZuTalkCore, session_id: &str) -> Result<Vec<u8>, CoreError> {
     let run = core
         .notebook_capture_store
         .get_run_for_session(session_id)
@@ -448,9 +448,9 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn make_core() -> (TempDir, ZulangueCore) {
+    fn make_core() -> (TempDir, ZuTalkCore) {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         (tmp, core)
     }
 
@@ -531,7 +531,7 @@ mod tests {
         Some(buf)
     }
 
-    fn seed_session_with_tokens(core: &ZulangueCore, sid: &str, tokens: &[vt_model::Token]) {
+    fn seed_session_with_tokens(core: &ZuTalkCore, sid: &str, tokens: &[vt_model::Token]) {
         use vt_store::SessionRecord;
         core.session_store
             .insert_session(&SessionRecord {
@@ -547,7 +547,7 @@ mod tests {
         core.session_meta.set_tokens(sid, tokens).unwrap();
     }
 
-    fn seed_two_way_capture(core: &ZulangueCore, sid: &str) -> String {
+    fn seed_two_way_capture(core: &ZuTalkCore, sid: &str) -> String {
         use vt_model::{Token, TranslationStatus};
         use vt_store::notebook_capture_store::{
             CaptureMode, NewNotebookCaptureRun, NewRealtimeUtterance, NotebookCaptureProfileUpdate,
@@ -672,7 +672,7 @@ mod tests {
         first_speaker.id
     }
 
-    fn seed_multilingual_one_way_capture(core: &ZulangueCore, sid: &str) {
+    fn seed_multilingual_one_way_capture(core: &ZuTalkCore, sid: &str) {
         use vt_store::notebook_capture_store::{
             CaptureMode, NewNotebookCaptureRun, NewRealtimeUtterance, NotebookCaptureProfileUpdate,
             RemoteHealth, UtteranceAlignment, UtteranceCompletion, UtteranceVariantState,
@@ -993,7 +993,7 @@ mod tests {
         writer.finalize().unwrap();
     }
 
-    fn import_long_audio(core: &ZulangueCore, tmp: &TempDir) -> String {
+    fn import_long_audio(core: &ZuTalkCore, tmp: &TempDir) -> String {
         let source = tmp.path().join("sixty-one-seconds.wav");
         write_long_audio_fixture(&source);
         let notebook = core.create_notebook(Some("Long audio".into())).unwrap();

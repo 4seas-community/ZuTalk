@@ -47,7 +47,7 @@ use vt_stt::{
 use crate::task_worker::{
     reconcile_capture_async_task_receipt_on_startup, StartupCaptureAsyncReceiptOutcome,
 };
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum FfiNotebookCaptureMode {
@@ -3570,7 +3570,7 @@ impl CaptureCallbackSink {
         });
         let worker_mailbox = mailbox.clone();
         std::thread::Builder::new()
-            .name("zulangue-capture-callback".to_string())
+            .name("zutalk-capture-callback".to_string())
             .spawn(move || {
                 // Post-coalescing delivery is the one point where what Swift
                 // will present is known exactly, so the erasure baseline is
@@ -4675,7 +4675,7 @@ fn require_path_within_data_dir(
     {
         return Err(CoreError::ValidationFailed {
             message: format!(
-                "refusing to delete capture artifact outside Zulangue data directory: {}",
+                "refusing to delete capture artifact outside ZuTalk data directory: {}",
                 candidate.display()
             ),
         });
@@ -5004,7 +5004,7 @@ async fn join_cancelled_remote_group(
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     pub fn get_notebook_capture_engine_descriptor(&self) -> FfiNotebookCaptureEngineDescriptor {
         CURRENT_NOTEBOOK_CAPTURE_ENGINE.into()
     }
@@ -5186,7 +5186,7 @@ impl ZulangueCore {
         }
         let document: ContextPackDocument =
             serde_json::from_str(&document_json).map_err(|error| CoreError::ValidationFailed {
-                message: format!("this is not a Zulangue Context Pack document: {error}"),
+                message: format!("this is not a ZuTalk Context Pack document: {error}"),
             })?;
         self.context_pack_store
             .replace_library_pack_document(&pack_id, expected_revision, &document)
@@ -5343,7 +5343,7 @@ impl ZulangueCore {
         }
         let document: ContextPackDocument =
             serde_json::from_slice(&raw).map_err(|error| CoreError::ValidationFailed {
-                message: format!("this is not a Zulangue Context Pack file: {error}"),
+                message: format!("this is not a ZuTalk Context Pack file: {error}"),
             })?;
         let title_override = title_override
             .as_deref()
@@ -5479,7 +5479,7 @@ impl ZulangueCore {
         // refs in one main-DB transaction before creating any external key or
         // journal. There is no crash window containing an orphan catalogue row
         // or an undiscoverable external artifact.
-        let key_ref = format!("zulangue.audio.{session_id}");
+        let key_ref = format!("zutalk.audio.{session_id}");
         let journal_path = vt_pipeline::session_capture_journal_path(&self.data_dir, &session_id);
         let run_id = uuid::Uuid::new_v4().to_string();
         let requested_remote = profile.remote_realtime_enabled;
@@ -6163,7 +6163,7 @@ impl ZulangueCore {
                 .set_encrypted_path(
                     &session_id,
                     &audio_path,
-                    &format!("zulangue.audio.{session_id}"),
+                    &format!("zutalk.audio.{session_id}"),
                 )
                 .map_err(store_error)?;
             self.session_meta
@@ -6635,7 +6635,7 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// Shared pre-staging validation for a user lane replacement: the
     /// utterance and its run must exist and the target lane must be a
     /// complete, Ready variant. Both document epochs use this unchanged —
@@ -6697,7 +6697,7 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// Converges a run whose Stop command has already removed every
     /// process-local owner but failed before its terminal state was durable.
     /// Holding `capture_ownership_gate` and requiring the atomic detached
@@ -7076,7 +7076,7 @@ impl ZulangueCore {
             .set_encrypted_path(
                 session_id,
                 &audio_path,
-                &format!("zulangue.audio.{session_id}"),
+                &format!("zutalk.audio.{session_id}"),
             )
             .map_err(store_error)?;
         self.session_meta
@@ -8276,7 +8276,7 @@ impl ZulangueCore {
         }
         for receipt in scan.receipts {
             if let Err(error) = crate::transcribe_api::project_transcribe_search_receipt(
-                &self.data_dir.join("zulangue.db"),
+                &self.data_dir.join("zutalk.db"),
                 &receipt,
             ) {
                 tracing::warn!(
@@ -8467,7 +8467,7 @@ impl ZulangueCore {
         }
         crate::transcribe_api::enforce_privacy_after_task(
             &run.session_id,
-            &self.data_dir.join("zulangue.db"),
+            &self.data_dir.join("zutalk.db"),
             self.key_store.as_ref(),
         )
         .map_err(|message| CoreError::InternalError {
@@ -8491,7 +8491,7 @@ impl ZulangueCore {
                 ),
             })?;
         if let Err(error) = crate::transcribe_api::project_transcribe_search_receipt(
-            &self.data_dir.join("zulangue.db"),
+            &self.data_dir.join("zutalk.db"),
             &receipt,
         ) {
             tracing::warn!(
@@ -8503,7 +8503,7 @@ impl ZulangueCore {
         }
         crate::transcribe_api::enforce_privacy_after_task(
             &run.session_id,
-            &self.data_dir.join("zulangue.db"),
+            &self.data_dir.join("zutalk.db"),
             self.key_store.as_ref(),
         )
         .map_err(|message| CoreError::InternalError {
@@ -9018,7 +9018,7 @@ fn t2_upsert_finalized_utterances(
     Ok(written)
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// T2 twin of [`Self::sync_bilingual_capture_into_realtime_tab`]: the
     /// same critical section, pending-snapshot selection, watermark ACK,
     /// search rebuild, and Ready completion, with the document side swapped
@@ -9505,7 +9505,7 @@ mod tests {
     #[test]
     fn notebook_capture_engine_descriptor_matches_current_rust_engine() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let descriptor = core.get_notebook_capture_engine_descriptor();
         let engine = CURRENT_NOTEBOOK_CAPTURE_ENGINE;
 
@@ -9538,7 +9538,7 @@ mod tests {
     #[test]
     fn library_context_pack_document_ffi_lists_reads_and_replaces_json() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Knowledge settings".into()))
             .unwrap();
@@ -9618,7 +9618,7 @@ mod tests {
     #[test]
     fn notebook_capture_history_ffi_keeps_empty_runs_and_exposes_only_audio_presence() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core.create_notebook(Some("History FFI".into())).unwrap();
         let profile = core
             .notebook_capture_store
@@ -9791,8 +9791,7 @@ mod tests {
     #[test]
     fn default_remote_off_constructs_no_soniox_stream_and_sends_no_pcm() {
         let temp = tempfile::tempdir().unwrap();
-        let mut core =
-            ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let factory = Arc::new(CountingNotebookSonioxStreamFactory::default());
         core.notebook_soniox_stream_factory = factory.clone();
         // A configured key rules out "missing credentials" as the reason the
@@ -9833,7 +9832,7 @@ mod tests {
     #[test]
     fn failed_remote_start_cannot_install_connecting_owner_when_unavailable_write_fails() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Unavailable truth failure".into()))
             .unwrap();
@@ -9844,7 +9843,7 @@ mod tests {
         let profile = core.update_notebook_capture_profile(profile).unwrap();
         // Deliberately leave the Soniox key absent so construction fails after
         // the run is created but before a provider owner exists.
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_start_unavailable_health
              BEFORE UPDATE OF remote_health ON notebook_capture_runs
@@ -9881,8 +9880,7 @@ mod tests {
     #[test]
     fn multilingual_profile_starts_one_authoritative_timeline_and_one_stream_per_target() {
         let temp = tempfile::tempdir().unwrap();
-        let mut core =
-            ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let factory = Arc::new(TeardownTrackingNotebookSonioxStreamFactory::default());
         core.notebook_soniox_stream_factory = factory.clone();
         core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
@@ -9984,8 +9982,7 @@ mod tests {
     #[test]
     fn realtime_provenance_claim_failure_constructs_no_soniox_stream() {
         let temp = tempfile::tempdir().unwrap();
-        let mut core =
-            ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let factory = Arc::new(CountingNotebookSonioxStreamFactory::default());
         core.notebook_soniox_stream_factory = factory.clone();
         core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
@@ -9999,7 +9996,7 @@ mod tests {
             .unwrap();
         profile.remote_realtime_enabled = true;
         let profile = core.update_notebook_capture_profile(profile).unwrap();
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_realtime_provider_provenance
              BEFORE UPDATE OF realtime_provider_id, realtime_model_id
@@ -10041,8 +10038,7 @@ mod tests {
     #[test]
     fn interrupt_persistence_failure_tears_down_remote_owner_and_recoverable_journal() {
         let temp = tempfile::tempdir().unwrap();
-        let mut core =
-            ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let factory = Arc::new(TeardownTrackingNotebookSonioxStreamFactory::default());
         core.notebook_soniox_stream_factory = factory.clone();
         core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
@@ -10076,7 +10072,7 @@ mod tests {
         assert_eq!(factory.constructor_count.load(Ordering::SeqCst), 1);
         assert_eq!(factory.active_stream_count.load(Ordering::SeqCst), 1);
 
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_all_capture_interrupt_recovery
              BEFORE UPDATE OF capture_state ON notebook_capture_runs
@@ -10175,7 +10171,7 @@ mod tests {
     #[test]
     fn purged_detached_capture_marker_does_not_block_the_next_capture() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Purged detached marker".into()))
             .unwrap();
@@ -10211,15 +10207,14 @@ mod tests {
         title: &str,
     ) -> (
         tempfile::TempDir,
-        ZulangueCore,
+        ZuTalkCore,
         Arc<TeardownTrackingNotebookSonioxStreamFactory>,
         String,
         FfiNotebookCaptureProfile,
         FfiNotebookCaptureEvent,
     ) {
         let temp = tempfile::tempdir().unwrap();
-        let mut core =
-            ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let factory = Arc::new(TeardownTrackingNotebookSonioxStreamFactory::default());
         core.notebook_soniox_stream_factory = factory.clone();
         core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
@@ -10244,7 +10239,7 @@ mod tests {
     #[test]
     fn successful_audio_push_does_not_wait_for_the_long_running_ownership_gate() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Nonblocking push".into()))
             .unwrap();
@@ -10304,8 +10299,7 @@ mod tests {
     #[test]
     fn remote_backpressure_drain_does_not_consume_the_nine_block_local_queue_budget() {
         let temp = tempfile::tempdir().unwrap();
-        let mut core =
-            ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let factory = Arc::new(TeardownTrackingNotebookSonioxStreamFactory::default());
         factory.fail_pcm_send.store(true, Ordering::SeqCst);
         factory.hold_event_sender.store(true, Ordering::SeqCst);
@@ -10433,7 +10427,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let journal_path = std::path::PathBuf::from(run.audio_journal_path.as_ref().unwrap());
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_capture_audio_progress
              BEFORE UPDATE OF captured_frames ON notebook_capture_runs
@@ -10493,7 +10487,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let journal_path = std::path::PathBuf::from(run.audio_journal_path.as_ref().unwrap());
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_capture_remote_health
              BEFORE UPDATE OF remote_health ON notebook_capture_runs
@@ -10556,7 +10550,7 @@ mod tests {
                 }
             }
         }
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_pause_remote_health
              BEFORE UPDATE OF remote_health ON notebook_capture_runs
@@ -10662,7 +10656,7 @@ mod tests {
                 stream.stream_task.abort();
             }
         }
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_stop_remote_diagnostic
              BEFORE UPDATE OF remote_health ON notebook_capture_runs
@@ -10780,9 +10774,9 @@ mod tests {
 
     fn assembler_store_fixture(
         session_id: &str,
-    ) -> (tempfile::TempDir, ZulangueCore, NotebookCaptureProfile) {
+    ) -> (tempfile::TempDir, ZuTalkCore, NotebookCaptureProfile) {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Independent assembler lanes".into()))
             .unwrap();
@@ -10856,7 +10850,7 @@ mod tests {
     #[test]
     fn assembler_publication_shapes_upsert_without_local_persistence_failure() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Assembler store shape".into()))
             .unwrap();
@@ -13927,7 +13921,7 @@ mod tests {
     #[test]
     fn aux_translation_waits_for_canonical_and_partial_final_reuses_its_binding() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Aux before canonical".into()))
             .unwrap();
@@ -14245,7 +14239,7 @@ mod tests {
     fn compiler_context_mapping_matches_exact_soniox_wire_json() {
         let context = vt_store::SonioxContext {
             translation_terms: vec![vt_store::SonioxTranslationTerm {
-                source: "Zulangue".into(),
+                source: "ZuTalk".into(),
                 target: "语音工具".into(),
             }],
             terms: vec!["  exact term  ".into()],
@@ -14532,7 +14526,7 @@ mod tests {
     #[test]
     fn applied_lane_edit_does_not_wait_for_or_project_a_newer_pending_lane() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Lane-local editability".into()))
             .unwrap();
@@ -14595,7 +14589,7 @@ mod tests {
                 source.source_projection_revision + 1
             )
         );
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_unrelated_projection_ack
              BEFORE UPDATE OF realtime_loro_applied_revision ON notebook_capture_runs
@@ -14692,7 +14686,7 @@ mod tests {
     #[test]
     fn live_callback_payload_stays_constant_as_the_durable_session_grows() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Incremental callback".into()))
             .unwrap();
@@ -14749,7 +14743,7 @@ mod tests {
         // Corrupt an unrelated row's edit overlay. A callback implementation
         // that scans all 128 rows will fail before enqueueing sequence 127;
         // the O(delta) snapshot never touches sequence 0.
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.pragma_update(None, "ignore_check_constraints", true)
             .unwrap();
         db.execute(
@@ -14831,7 +14825,7 @@ mod tests {
     #[test]
     fn callback_publication_refreshes_stale_recording_state_after_pause_commit() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core.create_notebook(Some("Callback order".into())).unwrap();
         let profile = core
             .notebook_capture_store
@@ -14883,7 +14877,7 @@ mod tests {
     #[test]
     fn remote_truth_overlay_survives_full_reconcile_and_projection_ack_fallback() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Remote truth overlay".into()))
             .unwrap();
@@ -14955,7 +14949,7 @@ mod tests {
     #[test]
     fn pause_event_orders_after_a_send_that_read_recording_before_the_commit() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Linearized pause".into()))
             .unwrap();
@@ -15024,7 +15018,7 @@ mod tests {
     #[test]
     fn pause_direct_result_keeps_monotonic_revision_when_refresh_cannot_enqueue() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Direct pause revision".into()))
             .unwrap();
@@ -15059,7 +15053,7 @@ mod tests {
             None,
         )
         .unwrap();
-        rusqlite::Connection::open(temp.path().join("zulangue.db"))
+        rusqlite::Connection::open(temp.path().join("zutalk.db"))
             .unwrap()
             .execute(
                 "DELETE FROM notebook_capture_runs WHERE id = 'direct-pause-run'",
@@ -15079,7 +15073,7 @@ mod tests {
     #[test]
     fn projection_ack_after_queued_pause_only_raises_its_watermark() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core.create_notebook(Some("ACK order".into())).unwrap();
         let profile = core
             .notebook_capture_store
@@ -15193,9 +15187,9 @@ mod tests {
 
     fn projected_core_fixture_with_projection(
         attach_projection: bool,
-    ) -> (tempfile::TempDir, ZulangueCore, String, String, String) {
+    ) -> (tempfile::TempDir, ZuTalkCore, String, String, String) {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Projection test".into()))
             .unwrap();
@@ -15260,7 +15254,7 @@ mod tests {
         (temp, core, notebook.id, run.id, doc_id)
     }
 
-    fn projected_core_fixture() -> (tempfile::TempDir, ZulangueCore, String, String, String) {
+    fn projected_core_fixture() -> (tempfile::TempDir, ZuTalkCore, String, String, String) {
         projected_core_fixture_with_projection(true)
     }
 
@@ -15275,7 +15269,7 @@ mod tests {
             .unwrap();
         assert_eq!(projected.applied_revision, projected.desired_revision);
 
-        let conn = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let conn = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         conn.pragma_update(None, "ignore_check_constraints", "ON")
             .unwrap();
         conn.execute(
@@ -15330,7 +15324,7 @@ mod tests {
             .unwrap();
         assert!(before.desired_revision > 0);
         assert_eq!(before.applied_revision, 0);
-        rusqlite::Connection::open(temp.path().join("zulangue.db"))
+        rusqlite::Connection::open(temp.path().join("zutalk.db"))
             .unwrap()
             .execute(
                 "UPDATE notebook_capture_runs
@@ -15445,7 +15439,7 @@ mod tests {
     }
 
     fn start_async_local_capture(
-        core: &ZulangueCore,
+        core: &ZuTalkCore,
         notebook_id: &str,
     ) -> (FfiNotebookCaptureProfile, FfiNotebookCaptureEvent) {
         let profile = core
@@ -15463,7 +15457,7 @@ mod tests {
     }
 
     fn assert_journal_contains_recoverable_audio(
-        core: &ZulangueCore,
+        core: &ZuTalkCore,
         data_dir: &std::path::Path,
         run: &NotebookCaptureRun,
     ) {
@@ -15499,8 +15493,7 @@ mod tests {
             StopDurabilityFault::SessionRecord,
         ] {
             let temp = tempfile::tempdir().unwrap();
-            let core =
-                ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+            let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
             let notebook = core
                 .create_notebook(Some(format!("Stop fault {fault:?}")))
                 .unwrap();
@@ -15515,7 +15508,7 @@ mod tests {
             core.push_notebook_capture_session(started.session_id.clone(), vec![0_u8; 3_200])
                 .unwrap();
 
-            let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+            let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
             db.execute_batch(fault.trigger_sql()).unwrap();
             let error = core
                 .stop_notebook_capture_session(started.session_id.clone())
@@ -15617,7 +15610,7 @@ mod tests {
     #[test]
     fn journal_stop_failure_interrupts_pending_async_and_retains_recoverable_audio() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Journal stop fault".into()))
             .unwrap();
@@ -15685,7 +15678,7 @@ mod tests {
     #[test]
     fn ownerless_draining_stop_failure_recovers_without_restart_or_fabricated_reason() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Ownerless stop recovery".into()))
             .unwrap();
@@ -15706,7 +15699,7 @@ mod tests {
         let chunk_path = vt_pipeline::session_audio_chunk_path(temp.path(), &started.session_id, 0);
         std::fs::create_dir(&chunk_path).unwrap();
 
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_stop_interruption_state
              BEFORE UPDATE OF capture_state ON notebook_capture_runs
@@ -15837,7 +15830,7 @@ mod tests {
     #[test]
     fn successful_stop_preserves_session_identity_fields_and_updates_only_completion_fields() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Session identity".into()))
             .unwrap();
@@ -15879,7 +15872,7 @@ mod tests {
     #[test]
     fn controlled_audio_interrupt_preserves_audio_and_skips_async_projection() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core.create_notebook(Some("Interrupt test".into())).unwrap();
         let profile = core
             .get_notebook_capture_profile(notebook.id.clone())
@@ -16077,7 +16070,7 @@ mod tests {
     #[test]
     fn failed_fts_after_loro_fsync_does_not_block_ack_or_lane_editability() {
         let (temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
-        rusqlite::Connection::open(temp.path().join("zulangue.db"))
+        rusqlite::Connection::open(temp.path().join("zutalk.db"))
             .unwrap()
             .execute_batch("DROP TABLE search_index;")
             .unwrap();
@@ -16145,7 +16138,7 @@ mod tests {
                 expected_edit_revision,
             )
             .unwrap();
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_lane_override_commit
              BEFORE INSERT ON realtime_utterance_overrides
@@ -16165,7 +16158,7 @@ mod tests {
             .get_projection_mutation(&mutation.id)
             .unwrap()
             .is_some());
-        let lane_text = |core: &ZulangueCore| {
+        let lane_text = |core: &ZuTalkCore| {
             core.with_transcript(&doc_id, |projection| Ok(projection.refresh()))
                 .unwrap()
                 .into_iter()
@@ -16234,8 +16227,7 @@ mod tests {
             .is_empty());
         drop(db);
         drop(core);
-        let reopened =
-            ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let reopened = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         assert!(reopened
             .search_sessions("用户崩溃重放".into(), 10)
             .unwrap()
@@ -16250,7 +16242,7 @@ mod tests {
     fn startup_recovery_recovers_a_previously_rejected_segment_into_the_projected_lane() {
         let (temp, core, _notebook_id, run_id, doc_id) = projected_core_fixture();
         core.project_notebook_capture(&run_id).unwrap();
-        let projected_lane = |core: &ZulangueCore| {
+        let projected_lane = |core: &ZuTalkCore| {
             core.with_transcript(&doc_id, |projection| Ok(projection.refresh()))
                 .unwrap()
                 .into_iter()
@@ -16265,7 +16257,7 @@ mod tests {
         // and projected, the tail durably in the inbox but rejected from the
         // lane, and both now beyond the active-session API this recording has
         // long since left behind.
-        rusqlite::Connection::open(temp.path().join("zulangue.db"))
+        rusqlite::Connection::open(temp.path().join("zutalk.db"))
             .unwrap()
             .execute(
                 "INSERT INTO realtime_translation_inbox
@@ -16322,7 +16314,7 @@ mod tests {
         let (temp, core, _notebook_id, run_id, doc_id) = projected_core_fixture();
         core.project_notebook_capture(&run_id).unwrap();
 
-        let db = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         // The lane exactly as an older build left it: two segments already
         // bound, joined by the script-blind rule.
         db.execute(
@@ -16399,7 +16391,7 @@ mod tests {
         assert_eq!(zh_lane_text(&core).as_deref(), Some("你好世界再见"));
     }
 
-    fn zh_lane_variant(core: &ZulangueCore) -> RealtimeUtteranceVariant {
+    fn zh_lane_variant(core: &ZuTalkCore) -> RealtimeUtteranceVariant {
         core.notebook_capture_store
             .get_machine_utterance_by_id("utterance-a")
             .unwrap()
@@ -16410,11 +16402,11 @@ mod tests {
             .unwrap()
     }
 
-    fn zh_lane_text(core: &ZulangueCore) -> Option<String> {
+    fn zh_lane_text(core: &ZuTalkCore) -> Option<String> {
         zh_lane_variant(core).text
     }
 
-    fn zh_lane_revision(core: &ZulangueCore) -> u64 {
+    fn zh_lane_revision(core: &ZuTalkCore) -> u64 {
         zh_lane_variant(core).revision
     }
 
@@ -16427,7 +16419,7 @@ mod tests {
             .get_run(&run_id)
             .unwrap()
             .unwrap();
-        rusqlite::Connection::open(temp.path().join("zulangue.db"))
+        rusqlite::Connection::open(temp.path().join("zutalk.db"))
             .unwrap()
             .execute(
                 "UPDATE notebook_capture_runs
@@ -16475,7 +16467,7 @@ mod tests {
             .commit_async_provider_success(&run.session_id, task_id, &[token], &result_json)
             .unwrap();
         crate::transcribe_api::project_transcribe_search_receipt(
-            &temp.path().join("zulangue.db"),
+            &temp.path().join("zutalk.db"),
             &receipt,
         )
         .unwrap();
@@ -16588,11 +16580,11 @@ mod tests {
     #[test]
     fn failed_capture_start_cleanup_is_a_restartable_purge_saga() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let session = core.create_notebook_capture_session().unwrap();
         let blocked_path = temp.path().join("blocked-capture-artifact");
         std::fs::create_dir(&blocked_path).unwrap();
-        let key_ref = format!("zulangue.audio.{}", session.id);
+        let key_ref = format!("zutalk.audio.{}", session.id);
         core.key_store
             .store_key(&key_ref, &SessionKey::generate())
             .unwrap();
@@ -16652,7 +16644,7 @@ mod tests {
         core.shutdown().unwrap();
         drop(core);
 
-        let reopened = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string())
+        let reopened = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string())
             .expect("a session-scoped purge error must not abort Core startup");
         let quarantined = reopened
             .notebook_capture_store
@@ -16674,7 +16666,7 @@ mod tests {
     #[test]
     fn durable_provider_receipt_recovers_after_privacy_and_queue_completion_faults() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Receipt-only recovery".into()))
             .unwrap();
@@ -16829,7 +16821,7 @@ mod tests {
         core.shutdown().unwrap();
         drop(core);
 
-        let reopened = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string())
+        let reopened = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string())
             .expect("receipt recovery must not require a provider credential");
         assert!(!reopened.api_key_store.has("soniox"));
         assert_eq!(
@@ -16861,7 +16853,7 @@ mod tests {
     #[test]
     fn main_terminal_write_fault_converges_to_ready_in_the_same_process() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Same-process receipt recovery".into()))
             .unwrap();
@@ -17003,7 +16995,7 @@ mod tests {
                 },
                 |receipt| {
                     crate::transcribe_api::project_transcribe_search_receipt(
-                        &temp.path().join("zulangue.db"),
+                        &temp.path().join("zutalk.db"),
                         receipt,
                     )
                 },
@@ -17053,7 +17045,7 @@ mod tests {
     #[test]
     fn delete_forever_cancels_completed_receipt_recovery_without_resurrection() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Purge receipt race".into()))
             .unwrap();
@@ -17159,7 +17151,7 @@ mod tests {
         let recovery_loro_calls = Arc::clone(&loro_calls);
         let recovery_callback_calls = Arc::clone(&callback_calls);
         let recovery_release_fts = Arc::clone(&release_fts);
-        let db_path = temp.path().join("zulangue.db");
+        let db_path = temp.path().join("zutalk.db");
         let recovery = core.runtime.spawn(async move {
             crate::task_worker::recover_completed_provider_receipt_with(
                 recovery_core.task_queue.as_ref(),
@@ -17299,7 +17291,7 @@ mod tests {
     #[test]
     fn async_projection_retry_uses_persisted_tokens_without_reopening_provider_receipt() {
         let temp = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Async projection retry".into()))
             .unwrap();
@@ -17644,14 +17636,14 @@ mod tests {
                 .join(format!("{doc_id}.loro"))
         }
 
-        fn t2_blocks(core: &ZulangueCore, doc_id: &str) -> Vec<UtteranceBlock> {
+        fn t2_blocks(core: &ZuTalkCore, doc_id: &str) -> Vec<UtteranceBlock> {
             core.with_transcript(doc_id, |projection| Ok(projection.refresh()))
                 .unwrap()
         }
 
         /// 用户可见覆盖层里的一条车道(裸机器行永远不带 edit revision)。
         fn t2_visible_lane(
-            core: &ZulangueCore,
+            core: &ZuTalkCore,
             utterance_id: &str,
             lane_language: &str,
         ) -> RealtimeUtteranceVariant {
@@ -17949,7 +17941,7 @@ mod tests {
             core.project_notebook_realtime_incremental("session-a".into())
                 .unwrap();
 
-            let conn = rusqlite::Connection::open(temp.path().join("zulangue.db")).unwrap();
+            let conn = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
             conn.pragma_update(None, "ignore_check_constraints", "ON")
                 .unwrap();
             conn.execute(

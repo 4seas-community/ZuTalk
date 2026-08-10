@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::room::ScopeId;
 
 /// 签名覆盖范围的域分隔串。改动即协议破坏。
-const SIGNING_DOMAIN: &[u8] = b"zulangue/envelope/v1";
+const SIGNING_DOMAIN: &[u8] = b"zutalk/envelope/v1";
 
 /// 信封承载的载荷类型。
 ///

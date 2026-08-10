@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 JUSTFILE="$ROOT_DIR/justfile"
-PROJECT="$ROOT_DIR/macos/Zulangue/Zulangue.xcodeproj/project.pbxproj"
+PROJECT="$ROOT_DIR/macos/ZuTalk/ZuTalk.xcodeproj/project.pbxproj"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -27,11 +27,11 @@ has_line_with_bundle_ref() {
 }
 
 APP_BUNDLE_ID="$(awk '
-  /PRODUCT_BUNDLE_IDENTIFIER = xyz\.voice\.zulangue;/ { print "xyz.voice.zulangue"; exit }
+  /PRODUCT_BUNDLE_IDENTIFIER = xyz\.voice\.zutalk;/ { print "xyz.voice.zutalk"; exit }
 ' "$PROJECT")"
 
-[[ "$APP_BUNDLE_ID" == "xyz.voice.zulangue" ]] \
-  || fail "Zulangue app bundle id must be discoverable from the Xcode project"
+[[ "$APP_BUNDLE_ID" == "xyz.voice.zutalk" ]] \
+  || fail "ZuTalk app bundle id must be discoverable from the Xcode project"
 
 JUST_BUNDLE_ID="$(awk -F'"' '/^app_bundle_id[[:space:]]*:=/ { print $2; exit }' "$JUSTFILE")"
 [[ "$JUST_BUNDLE_ID" == "$APP_BUNDLE_ID" ]] \
@@ -49,7 +49,7 @@ done
 approve_body="$(recipe_body approve)"
 has_line_with_bundle_ref "$approve_body" "defaults delete" \
   || fail "approve must clear onboarding defaults for $APP_BUNDLE_ID"
-grep -Fq "zulangue.onboarding.completed" <<<"$approve_body" \
+grep -Fq "zutalk.onboarding.completed" <<<"$approve_body" \
   || fail "approve must clear the onboarding completion key"
 
 grep -Eq 'bash scripts/test_bundle_id_recovery_gate\.sh' "$JUSTFILE" \

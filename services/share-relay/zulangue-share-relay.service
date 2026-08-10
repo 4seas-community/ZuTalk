@@ -1,5 +1,5 @@
 [Unit]
-Description=Zulangue share relay (iroh)
+Description=ZuTalk share relay (iroh)
 After=network-online.target
 
 [Service]

@@ -10,5 +10,5 @@ regexes = [
   '''SPARKLE_PUBLIC_ED_KEY = "Sm3x2TVehf4jFO1YDLPFu2xVQfnPNYGp1IeDYsLZeg8="''',
 ]
 paths = [
-  '''macos/Zulangue/Zulangue\.xcodeproj/project\.pbxproj$''',
+  '''macos/ZuTalk/ZuTalk\.xcodeproj/project\.pbxproj$''',
 ]

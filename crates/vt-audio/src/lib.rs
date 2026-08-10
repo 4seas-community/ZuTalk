@@ -1,4 +1,4 @@
-//! Zulangue 音频层
+//! ZuTalk 音频层
 //!
 //! symphonia 解码 + 编码 + rubato 重采样。
 

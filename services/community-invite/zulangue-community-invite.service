@@ -1,5 +1,5 @@
 [Unit]
-Description=Zulangue community invite service
+Description=ZuTalk community invite service
 After=network-online.target
 
 [Service]

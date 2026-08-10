@@ -1776,7 +1776,7 @@ mod tests {
     #[test]
     fn context_wire_payload_preserves_confirmed_values_and_canonical_order() {
         let context = ContextConfig {
-            translation_terms: vec![("Zulangue".into(), "语音工具".into())],
+            translation_terms: vec![("ZuTalk".into(), "语音工具".into())],
             terms: vec!["  exact spacing  ".into()],
             general: vec![("project".into(), "  Sample Project  ".into())],
             text: Some(" leading and trailing ".into()),
@@ -1784,7 +1784,7 @@ mod tests {
         let wire = build_stream_context(Some(&context)).unwrap();
         assert_eq!(
             serde_json::to_string(&wire).unwrap(),
-            r#"{"translation_terms":[{"source":"Zulangue","target":"语音工具"}],"terms":["  exact spacing  "],"general":[{"key":"project","value":"  Sample Project  "}],"text":" leading and trailing "}"#
+            r#"{"translation_terms":[{"source":"ZuTalk","target":"语音工具"}],"terms":["  exact spacing  "],"general":[{"key":"project","value":"  Sample Project  "}],"text":" leading and trailing "}"#
         );
         assert_eq!(
             soniox_stream_context_json(&context).unwrap(),

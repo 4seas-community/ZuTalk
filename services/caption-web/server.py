@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Zulangue caption-web:扫码看实时字幕稿。
+"""ZuTalk caption-web:扫码看实时字幕稿。
 
 设计见 docs/architecture/share-web-captions.md。要点:
 
@@ -331,7 +331,7 @@ VIEWER_PAGE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zulangue</title>
+<title>ZuTalk</title>
 <style>
   :root { color-scheme: light dark; }
   body {
@@ -397,7 +397,7 @@ VIEWER_PAGE = """<!DOCTYPE html>
 </head>
 <body>
 <header>
-  <span class="title">Zulangue</span>
+  <span class="title">ZuTalk</span>
   <span id="langs"></span>
   <span class="status" id="status"></span>
   <select id="uilang" aria-label="Interface language">
@@ -419,7 +419,7 @@ VIEWER_PAGE = """<!DOCTYPE html>
 // (稿显示哪些车道)与界面语言互相独立。
 const UI = {
   "zh-Hans": {
-    title: "Zulangue 实时字幕",
+    title: "ZuTalk 实时字幕",
     connecting: "连接中…",
     live: "实时",
     reconnecting: "重连中…",
@@ -432,7 +432,7 @@ const UI = {
     speaker: "说话人 {n}",
   },
   "en": {
-    title: "Zulangue Live Captions",
+    title: "ZuTalk Live Captions",
     connecting: "connecting…",
     live: "live",
     reconnecting: "reconnecting…",
@@ -445,7 +445,7 @@ const UI = {
     speaker: "Speaker {n}",
   },
   "th": {
-    title: "Zulangue ซับไตเติลสด",
+    title: "ZuTalk ซับไตเติลสด",
     connecting: "กำลังเชื่อมต่อ…",
     live: "สด",
     reconnecting: "กำลังเชื่อมต่อใหม่…",
@@ -461,7 +461,7 @@ const UI = {
 
 function detectUiLang() {
   try {
-    const saved = localStorage.getItem("zulangue-ui-lang");
+    const saved = localStorage.getItem("zutalk-ui-lang");
     if (saved && UI[saved]) return saved;
   } catch (e) { /* 隐私模式下 localStorage 可能不可用 */ }
   const nav = (navigator.language || "en").toLowerCase();
@@ -476,7 +476,7 @@ const MAX_COLUMNS = 3;
 
 function loadSelection() {
   try {
-    const saved = JSON.parse(localStorage.getItem("zulangue-content-langs") || "null");
+    const saved = JSON.parse(localStorage.getItem("zutalk-content-langs") || "null");
     if (Array.isArray(saved) && saved.length) return saved.slice(0, MAX_COLUMNS);
   } catch (e) { /* 同上 */ }
   return ["source"];
@@ -535,7 +535,7 @@ function setStatus(key) { state.statusKey = key; renderChrome(); }
 
 el("uilang").addEventListener("change", (e) => {
   state.uiLang = UI[e.target.value] ? e.target.value : "en";
-  try { localStorage.setItem("zulangue-ui-lang", state.uiLang); } catch (err) { /* 同上 */ }
+  try { localStorage.setItem("zutalk-ui-lang", state.uiLang); } catch (err) { /* 同上 */ }
   renderChrome();
 });
 
@@ -568,7 +568,7 @@ function toggleLanguage(key) {
     state.selected.push(key);
     while (state.selected.length > MAX_COLUMNS) state.selected.shift();
   }
-  try { localStorage.setItem("zulangue-content-langs", JSON.stringify(state.selected)); }
+  try { localStorage.setItem("zutalk-content-langs", JSON.stringify(state.selected)); }
   catch (e) { /* 同上 */ }
   state.langs = [];  // 强制重建按钮的选中态。
   render();
@@ -1168,7 +1168,7 @@ def maintenance_loop(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Zulangue caption-web service")
+    parser = argparse.ArgumentParser(description="ZuTalk caption-web service")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8100)
     parser.add_argument(

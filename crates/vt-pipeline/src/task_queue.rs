@@ -25,7 +25,7 @@ pub enum TaskPayload {
     },
 }
 
-pub const REMOTE_TASK_AUTHORIZATION_SCHEMA_V1: &str = "zulangue.remote_processing_authorization.v1";
+pub const REMOTE_TASK_AUTHORIZATION_SCHEMA_V1: &str = "zutalk.remote_processing_authorization.v1";
 pub const REMOTE_TASK_AUTHORIZATION_PROVIDER_SONIOX: &str = "soniox";
 pub const REMOTE_TASK_AUTHORIZATION_DATA_RECORDED_AUDIO: &str = "recorded_audio";
 pub const REMOTE_TASK_AUTHORIZATION_PURPOSE_POST_RECORDING_TRANSCRIPTION: &str =

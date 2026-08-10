@@ -21,7 +21,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use vt_share::CaptionFrame;
 
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 
 /// 默认部署位。与 invite / relay 同一域名家族,可在开启时覆盖。
 pub const DEFAULT_WEB_CAPTION_SERVICE: &str = "https://zulangue-caption.exe.xyz";
@@ -346,7 +346,7 @@ impl WebShareRuntime {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 宿主发布共享 session 时,同一份块快照顺带推给网页。
     /// 不在主持、或没开网页分享时是 no-op。
     pub(crate) fn push_web_share_blocks(&self, session_id: &str) {
@@ -456,7 +456,7 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 录音开始/恢复或暂停时,在网页上留一条分割线。
     ///
     /// 放行判定与字幕同源(`session_broadcast_status`):这一段的字幕不
@@ -496,7 +496,7 @@ impl ZulangueCore {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 开启网页分享。仅主持中可开;返回观看页地址。
     ///
     /// `service_url` 为空用默认部署位。重复调用返回当前房间,不重复建房。
@@ -635,7 +635,7 @@ mod tests {
     /// 失败,那是下一个同类陷阱。调用方不关心就绑成 `_segments`,关心就
     /// 直接读。
     fn attach_web_runtime(
-        core: &ZulangueCore,
+        core: &ZuTalkCore,
     ) -> (
         Arc<WebShareRuntime>,
         tokio::sync::mpsc::UnboundedReceiver<WebSegmentPayload>,
@@ -655,7 +655,7 @@ mod tests {
     #[test]
     fn web_share_requires_an_active_hosted_share() {
         let dir = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         assert!(core.start_web_share(None).is_err());
         assert!(core.web_share_state().is_none());
         // stop 在未开启时是 no-op,不 panic。
@@ -666,7 +666,7 @@ mod tests {
     #[test]
     fn the_tap_feeds_the_web_channel_with_the_same_gating() {
         let dir = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         core.start_sharing(Some("nb-web".into()), None, false)
             .unwrap();
         let (web, _segments) = attach_web_runtime(&core);
@@ -697,7 +697,7 @@ mod tests {
     #[test]
     fn publishing_a_shared_session_pushes_blocks_to_the_web() {
         let dir = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         core.start_sharing(None, Some("sess-doc".into()), false)
             .unwrap();
         core.enable_document_sync().unwrap();
@@ -722,7 +722,7 @@ mod tests {
     #[test]
     fn queued_block_snapshots_do_not_evict_each_other() {
         let dir = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         let (web, _segments) = WebShareRuntime::assemble_without_sender(&core.runtime);
 
         let snapshot = |session_id: &str, blocks: usize| WebBlocksPayload {
@@ -767,7 +767,7 @@ mod tests {
         }
 
         let dir = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         let notebook = core.create_notebook(Some("论坛".into())).unwrap();
 
         let mut recorded = Vec::new();
@@ -844,7 +844,7 @@ mod tests {
     #[test]
     fn a_session_without_capture_facts_publishes_an_empty_directory() {
         let dir = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         core.start_sharing(None, Some("sess-spk".into()), false)
             .unwrap();
         core.enable_document_sync().unwrap();
@@ -872,7 +872,7 @@ mod tests {
         let base = std::env::var("CAPTION_WEB_SMOKE_URL")
             .expect("由 caption_web_smoke.sh 设置,例如 http://127.0.0.1:8100");
         let dir = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         core.start_sharing(None, Some("sess-smoke".into()), false)
             .unwrap();
         core.enable_document_sync().unwrap();
@@ -901,7 +901,7 @@ mod tests {
     #[test]
     fn segments_follow_the_same_gating_as_captions() {
         let dir = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         core.start_sharing(Some("nb-seg".into()), None, false)
             .unwrap();
         let (web, mut segments) = WebShareRuntime::assemble_without_sender(&core.runtime);

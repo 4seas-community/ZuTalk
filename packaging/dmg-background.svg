@@ -19,10 +19,10 @@
 
   <text x="360" y="66" text-anchor="middle"
         font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif"
-        font-size="28" font-weight="650" fill="#163B31">Install Zulangue</text>
+        font-size="28" font-weight="650" fill="#163B31">Install ZuTalk</text>
   <text x="360" y="96" text-anchor="middle"
         font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif"
-        font-size="15" fill="#54736A">Drag Zulangue into Applications</text>
+        font-size="15" fill="#54736A">Drag ZuTalk into Applications</text>
 
   <rect x="116" y="138" width="168" height="168" rx="36"
         fill="#FFFFFF" opacity="0.62" filter="url(#shadow)"/>
@@ -36,7 +36,7 @@
 
   <text x="200" y="342" text-anchor="middle"
         font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif"
-        font-size="16" font-weight="600" fill="#274B41">Zulangue</text>
+        font-size="16" font-weight="600" fill="#274B41">ZuTalk</text>
   <text x="520" y="342" text-anchor="middle"
         font-family="-apple-system, BlinkMacSystemFont, Helvetica Neue, sans-serif"
         font-size="16" font-weight="600" fill="#274B41">Applications</text>

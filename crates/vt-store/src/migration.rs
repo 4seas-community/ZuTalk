@@ -1,4 +1,4 @@
-//! Zulangue SQLite v31 schema.
+//! ZuTalk SQLite v31 schema.
 //!
 //! Fresh databases are installed directly at v31. The eight immediately
 //! preceding Notebook schemas (v23 through v30) are migrated in place so
@@ -530,7 +530,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (Zulangue accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -937,7 +937,7 @@ fn migrate_v23_to_v24(conn: &Connection) -> SqlResult<()> {
     )?;
     tx.pragma_update(None, "user_version", SPEAKER_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{OLDEST_SUPPORTED_VERSION} to v{SPEAKER_VERSION}");
+    tracing::info!("migrated ZuTalk schema v{OLDEST_SUPPORTED_VERSION} to v{SPEAKER_VERSION}");
     Ok(())
 }
 
@@ -1002,7 +1002,7 @@ fn migrate_v24_to_v25(conn: &Connection) -> SqlResult<()> {
     )?;
     tx.pragma_update(None, "user_version", SELECTED_LANGUAGES_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{SPEAKER_VERSION} to v{SELECTED_LANGUAGES_VERSION}");
+    tracing::info!("migrated ZuTalk schema v{SPEAKER_VERSION} to v{SELECTED_LANGUAGES_VERSION}");
     Ok(())
 }
 
@@ -1092,7 +1092,7 @@ fn migrate_v25_to_v26(conn: &Connection) -> SqlResult<()> {
     tx.pragma_update(None, "user_version", MULTILINGUAL_VERSION)?;
     tx.commit()?;
     tracing::info!(
-        "migrated Zulangue schema v{SELECTED_LANGUAGES_VERSION} to v{MULTILINGUAL_VERSION}"
+        "migrated ZuTalk schema v{SELECTED_LANGUAGES_VERSION} to v{MULTILINGUAL_VERSION}"
     );
     Ok(())
 }
@@ -1343,7 +1343,7 @@ fn migrate_v26_to_v27(conn: &Connection) -> SqlResult<()> {
     )?;
     tx.pragma_update(None, "user_version", REALTIME_LORO_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{MULTILINGUAL_VERSION} to v{REALTIME_LORO_VERSION}");
+    tracing::info!("migrated ZuTalk schema v{MULTILINGUAL_VERSION} to v{REALTIME_LORO_VERSION}");
     Ok(())
 }
 
@@ -1406,7 +1406,7 @@ fn migrate_v27_to_v28(conn: &Connection) -> SqlResult<()> {
     tx.pragma_update(None, "user_version", TRANSLATION_INBOX_VERSION)?;
     tx.commit()?;
     tracing::info!(
-        "migrated Zulangue schema v{REALTIME_LORO_VERSION} to v{TRANSLATION_INBOX_VERSION}"
+        "migrated ZuTalk schema v{REALTIME_LORO_VERSION} to v{TRANSLATION_INBOX_VERSION}"
     );
     Ok(())
 }
@@ -1417,7 +1417,7 @@ fn migrate_v28_to_v29(conn: &Connection) -> SqlResult<()> {
     tx.pragma_update(None, "user_version", TRANSCRIPT_GAPS_VERSION)?;
     tx.commit()?;
     tracing::info!(
-        "migrated Zulangue schema v{TRANSLATION_INBOX_VERSION} to v{TRANSCRIPT_GAPS_VERSION}"
+        "migrated ZuTalk schema v{TRANSLATION_INBOX_VERSION} to v{TRANSCRIPT_GAPS_VERSION}"
     );
     Ok(())
 }
@@ -1931,7 +1931,7 @@ fn install_current_baseline(conn: &Connection) -> SqlResult<()> {
     tx.execute_batch(provider_remote_artifacts_schema())?;
     tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
     tx.commit()?;
-    tracing::info!("installed clean Zulangue schema v{CURRENT_VERSION}");
+    tracing::info!("installed clean ZuTalk schema v{CURRENT_VERSION}");
     Ok(())
 }
 
@@ -2340,7 +2340,7 @@ fn migrate_v29_to_v30(conn: &Connection) -> SqlResult<()> {
         }
         tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
         tx.commit()?;
-        tracing::info!("migrated Zulangue schema v{TRANSCRIPT_GAPS_VERSION} to v{CURRENT_VERSION}");
+        tracing::info!("migrated ZuTalk schema v{TRANSCRIPT_GAPS_VERSION} to v{CURRENT_VERSION}");
         Ok(())
     })();
     conn.pragma_update(None, "legacy_alter_table", "OFF")?;
@@ -2371,7 +2371,7 @@ fn migrate_v30_to_v31(conn: &Connection) -> SqlResult<()> {
     )?;
     tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated Zulangue schema v{REMOTE_ARTIFACTS_VERSION} to v{CURRENT_VERSION}");
+    tracing::info!("migrated ZuTalk schema v{REMOTE_ARTIFACTS_VERSION} to v{CURRENT_VERSION}");
     Ok(())
 }
 

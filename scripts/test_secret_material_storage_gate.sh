@@ -7,9 +7,9 @@ CRYPTO_LIB="$ROOT_DIR/crates/vt-crypto/src/lib.rs"
 CRYPTO_MANIFEST="$ROOT_DIR/crates/vt-crypto/Cargo.toml"
 FILE_KEY_STORE="$ROOT_DIR/crates/vt-crypto/src/file_key_store.rs"
 PRIVATE_FILE_STORE="$ROOT_DIR/crates/vt-crypto/src/private_file_store.rs"
-SWIFT_ROOT="$ROOT_DIR/macos/Zulangue/Zulangue"
+SWIFT_ROOT="$ROOT_DIR/macos/ZuTalk/ZuTalk"
 PROVIDER_SESSION="$SWIFT_ROOT/App/ProviderCredentialSession.swift"
-APP_ENTRY="$SWIFT_ROOT/ZulangueApp.swift"
+APP_ENTRY="$SWIFT_ROOT/ZuTalkApp.swift"
 CORE_CLIENT="$SWIFT_ROOT/App/CoreClient.swift"
 TEST_ENVIRONMENT="$SWIFT_ROOT/App/TestEnvironment.swift"
 SONIOX_RT="$ROOT_DIR/crates/vt-stt/src/soniox_rt.rs"
@@ -34,9 +34,9 @@ if grep -Fq 'KeyManager' "$CRYPTO_LIB"; then
 fi
 
 grep -Fq 'let secrets_dir = path.join("Secrets")' "$CORE" \
-  || fail "ZulangueCore must isolate durable secret material in Secrets"
+  || fail "ZuTalkCore must isolate durable secret material in Secrets"
 grep -Fq 'FileKeyStore::new(secrets_dir.join("content-keys.json"))' "$CORE" \
-  || fail "ZulangueCore must persist content/audio keys in the private local store"
+  || fail "ZuTalkCore must persist content/audio keys in the private local store"
 
 # Static tripwires catch accidental path removal; the Rust tests named below
 # remain the behavioral authority for races, crash residue, and migration.
@@ -67,9 +67,9 @@ grep -Fq '#[serde(deny_unknown_fields)]' "$FILE_KEY_STORE" \
   || fail "content-key documents must reject unknown fields"
 
 grep -Fq 'Arc::new(MemoryApiKeyStore::new())' "$CORE" \
-  || fail "ZulangueCore production init must keep live provider keys in the Rust memory store"
+  || fail "ZuTalkCore production init must keep live provider keys in the Rust memory store"
 if grep -Eq 'Arc::new\(KeychainApiKeyStore|api_key_store[^;]*KeychainApiKeyStore' "$CORE"; then
-  fail "ZulangueCore production init must not wire provider API keys to Keychain"
+  fail "ZuTalkCore production init must not wire provider API keys to Keychain"
 fi
 
 [[ -f "$PROVIDER_SESSION" ]] \
@@ -124,10 +124,10 @@ grep -Fq 'func updateCredentials(' "$PROVIDER_SESSION" \
 grep -Fq 'removeSafeStaleTemporaryFilesLocked' "$PROVIDER_SESSION" \
   || fail "Provider credential storage must sweep safe crash-temporary files under lock"
 grep -Fq 'ProviderCredentialSession.shared.bootstrapSavedCredentials()' "$APP_ENTRY" \
-  || fail "Zulangue startup must make one synchronous saved-provider bootstrap decision"
+  || fail "ZuTalk startup must make one synchronous saved-provider bootstrap decision"
 grep -Fq 'TestEnvironment.shouldLoadSavedProviderCredentials' "$APP_ENTRY" \
-  || fail "Zulangue startup must isolate real provider credentials from test processes"
-grep -Fq 'ZulangueCore.newDeferred' "$CORE_CLIENT" \
+  || fail "ZuTalk startup must isolate real provider credentials from test processes"
+grep -Fq 'ZuTalkCore.newDeferred' "$CORE_CLIENT" \
   || fail "Production Swift startup must defer durable task claims until credentials are loaded"
 grep -Fq 'ProviderCredentialBootstrapGate' "$CORE" \
   || fail "Rust task claims must wait behind the provider credential bootstrap gate"
@@ -136,7 +136,7 @@ grep -Fq 'provider_credential_bootstrap.wait_or_cancelled' "$ROOT_DIR/crates/vt-
 grep -Fq 'completeProviderCredentialBootstrap()' "$PROVIDER_SESSION" \
   || fail "ProviderCredentialSession must open the worker gate after successful activation"
 grep -Fq 'environment["VT_TEST_MODE"] == "1"' "$TEST_ENVIRONMENT" \
-  || fail "UI-test detection must cover the launch flag used by ZulangueUITests"
+  || fail "UI-test detection must cover the launch flag used by ZuTalkUITests"
 
 if grep -Eq 'UserDefaults\.standard\.(set|register)|SecItem(Add|Update|CopyMatching|Delete)' \
     "$PROVIDER_SESSION"; then

@@ -1,5 +1,5 @@
 [Unit]
-Description=Report Zulangue relay operational counters
+Description=Report ZuTalk relay operational counters
 After=network-online.target zulangue-share-relay.service
 
 [Service]

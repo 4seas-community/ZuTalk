@@ -10,7 +10,7 @@ use vt_ffi::notebook_capture_api::{
     FfiNotebookCaptureCallback, FfiNotebookCaptureEvent, FfiNotebookCaptureInterruptReason,
     FfiNotebookCaptureLivePreview, FfiNotebookCaptureState,
 };
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
 struct NoopCaptureCallback;
 
@@ -19,12 +19,12 @@ impl FfiNotebookCaptureCallback for NoopCaptureCallback {
     fn on_live_preview(&self, _preview: FfiNotebookCaptureLivePreview) {}
 }
 
-fn make_core(dir: &TempDir) -> ZulangueCore {
-    ZulangueCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
+fn make_core(dir: &TempDir) -> ZuTalkCore {
+    ZuTalkCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
 }
 
 /// 开一次本机采集(无 provider),返回 (notebook_id, session_id)。
-fn start_capture(core: &ZulangueCore, title: &str) -> (String, String) {
+fn start_capture(core: &ZuTalkCore, title: &str) -> (String, String) {
     let notebook = core.create_notebook(Some(title.to_string())).unwrap();
     let profile = core
         .get_notebook_capture_profile(notebook.id.clone())
@@ -41,7 +41,7 @@ fn start_capture(core: &ZulangueCore, title: &str) -> (String, String) {
 }
 
 /// 还开得起下一次录音吗 —— 采集所有权有没有被卡住的唯一判据。
-fn can_start_another(core: &ZulangueCore, notebook_id: &str) -> bool {
+fn can_start_another(core: &ZuTalkCore, notebook_id: &str) -> bool {
     let Ok(profile) = core.get_notebook_capture_profile(notebook_id.to_string()) else {
         return false;
     };

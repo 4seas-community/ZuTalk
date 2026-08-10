@@ -1,4 +1,4 @@
-# Zulangue share relay
+# ZuTalk share relay
 
 自建 [iroh](https://github.com/n0-computer/iroh) 中继，供「分享」标签页在直连打洞
 失败时回落使用。设计见
@@ -29,7 +29,7 @@ exe.dev 的网络模型和一般 VM 不同，本目录里的 `relay.toml` 是**�
   VM 在 NAT 后面，只有 22 直接暴露。
 - **代理只转 HTTP，UDP 到不了 VM**，所以 `enable_quic_addr_discovery = false`。
   代价是打洞成功率略降，不影响可用性。
-- 代理默认要求 exe.dev 登录，须 `share set-public zulangue-relay` 放开。
+- 代理默认要求 exe.dev 登录，须 `share set-public zutalk-relay` 放开。
 - **每台 VM 只有一个代理端口**（`share port` 是单数），这就是中继没有和邀请码
   服务合并到一台的原因——合并要在关键路径的机器前面再架一层 nginx 分流。
 

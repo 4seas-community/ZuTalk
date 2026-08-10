@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let keys = Arc::new(FileKeyStore::new(
         data_dir.join("Secrets").join("content-keys.json"),
     )?);
-    let store = ContextPackStore::new(&data_dir.join("zulangue.db"), keys)?;
+    let store = ContextPackStore::new(&data_dir.join("zutalk.db"), keys)?;
 
     let document: ContextPackDocument = serde_json::from_slice(&std::fs::read(&file)?)?;
     let pack = store.import_pack_document(&document, title.as_deref())?;

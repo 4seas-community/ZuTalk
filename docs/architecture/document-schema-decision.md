@@ -12,8 +12,8 @@ LoroDoc
 ├── LoroMap(CAPTURE_ANCHOR_STARTS)             ← owner_key → Cursor(二进制)
 ├── LoroMap(CAPTURE_ANCHOR_ENDS)               ← owner_key → Cursor(二进制)
 ├── LoroMap(CAPTURE_ANCHOR_SESSIONS)           ← owner_key → capture_session_id
-├── LoroMap("zulangue_session_purge_receipts") ← 销毁收据
-└── LoroMap("zulangue_document_meta")          ← schema_epoch=1（阶段 1 已落地）
+├── LoroMap("zutalk_session_purge_receipts") ← 销毁收据
+└── LoroMap("zutalk_document_meta")          ← schema_epoch=1（阶段 1 已落地）
 ```
 
 必须先说清楚**不在**文档里的东西，因为它们不受本决策影响：
@@ -68,7 +68,7 @@ LoroDoc
 │       "meta":  LoroMap（预留:说话人引用、时间戳引用、缩进层级）
 │       "text":  LoroText（本块正文）
 │     }
-└── LoroMap("zulangue_session_purge_receipts")   ← 原样保留
+└── LoroMap("zutalk_session_purge_receipts")   ← 原样保留
 ```
 
 核心变化：**所有权从「文本上的区间」变成「块上的属性」**。
@@ -187,7 +187,7 @@ kind = "note":
 ## 阶段划分
 
 1. **纪元字段先行**（半天,**已落地 2026-08-07**）:文档打开即在根部
-   `zulangue_document_meta` 补写 `schema_epoch=1`(只补缺,不盖写更高纪元);
+   `zutalk_document_meta` 补写 `schema_epoch=1`(只补缺,不盖写更高纪元);
    `DocumentUpdatePayload` 带同字段,接收端在归属检查之后、作者判定之前比对,
    不匹配拒收(`SchemaEpochMismatch`),判不出来拒收(`SchemaEpochUnknown`),
    发送侧判不出来不发;
@@ -239,7 +239,7 @@ markdown 重灌迁移(历史会归零,换成重放迁移)。
       "text":  LoroText(原文车道)
       "lanes": LoroMap(lane → LoroText, 译文车道,可逐句订正)
     }
-  LoroMap("zulangue_session_purge_receipts")   ← 原样保留
+  LoroMap("zutalk_session_purge_receipts")   ← 原样保留
   ```
 
 决定性理由与本库家法同构:**结构性排除优于纪律性排除**(vt-share 用

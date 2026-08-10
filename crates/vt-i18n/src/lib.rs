@@ -1,4 +1,4 @@
-//! Zulangue 统一 i18n 层。
+//! ZuTalk 统一 i18n 层。
 //!
 //! 所有需要向用户展示文本的 Rust crate（vt-stt / vt-ffi / …）都走这里。
 //! 运行时 locale 由 Swift 端在启动 + 设置变更时推入 [`set_locale`]。

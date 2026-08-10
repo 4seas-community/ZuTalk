@@ -11,19 +11,19 @@
 
 use std::path::PathBuf;
 use tempfile::TempDir;
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
 fn fixture_wav() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vt-audio/tests/fixtures/test_16k_mono.wav")
 }
 
-fn make_core() -> (TempDir, ZulangueCore) {
+fn make_core() -> (TempDir, ZuTalkCore) {
     let tmp = TempDir::new().unwrap();
-    let core = ZulangueCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
+    let core = ZuTalkCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
     (tmp, core)
 }
 
-fn import_fixture(core: &ZulangueCore) -> vt_ffi::session_audio_api::ImportResultInfo {
+fn import_fixture(core: &ZuTalkCore) -> vt_ffi::session_audio_api::ImportResultInfo {
     let notebook = core
         .create_notebook(Some("Privacy tests".to_string()))
         .unwrap();
@@ -32,7 +32,7 @@ fn import_fixture(core: &ZulangueCore) -> vt_ffi::session_audio_api::ImportResul
 }
 
 fn import_fixture_with_privacy(
-    core: &ZulangueCore,
+    core: &ZuTalkCore,
     privacy_level: &str,
 ) -> vt_ffi::session_audio_api::ImportResultInfo {
     let notebook = core
@@ -49,7 +49,7 @@ fn import_fixture_with_privacy(
 
 /// 观测账本走 store 的测试钩子，而不是为测试单独保留一个生产 API。
 fn retention_chunks(
-    core: &ZulangueCore,
+    core: &ZuTalkCore,
     session_id: &str,
 ) -> Vec<vt_store::AudioChunkRetentionRecord> {
     core.session_meta_for_test()
@@ -57,7 +57,7 @@ fn retention_chunks(
         .expect("audio retention ledger")
 }
 
-fn retained_chunk_paths(core: &ZulangueCore, session_id: &str) -> Vec<PathBuf> {
+fn retained_chunk_paths(core: &ZuTalkCore, session_id: &str) -> Vec<PathBuf> {
     let chunks = retention_chunks(core, session_id);
     assert!(
         !chunks.is_empty(),
@@ -94,7 +94,7 @@ fn assert_chunk_files_deleted(paths: &[PathBuf]) {
     }
 }
 
-fn assert_current_audio_ownership(core: &ZulangueCore, session_id: &str) -> String {
+fn assert_current_audio_ownership(core: &ZuTalkCore, session_id: &str) -> String {
     let run = core
         .get_notebook_capture_session_event(session_id.to_string())
         .expect("Notebook import must have a current capture run");

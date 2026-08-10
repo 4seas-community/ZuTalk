@@ -26,8 +26,8 @@ grep -Fq 'runs-on: macos-15' "$WORKFLOW" \
   || fail "GitHub macOS workflow must use the pinned macOS 15 runner"
 grep -Fq 'just release-adhoc' "$WORKFLOW" \
   || fail "GitHub macOS workflow must build the Ad Hoc Universal verification artifact"
-grep -Fq 'build/dmg/Zulangue-*.dmg' "$WORKFLOW" \
-  || fail "GitHub macOS workflow must upload the single Zulangue DMG"
+grep -Fq 'build/dmg/ZuTalk-*.dmg' "$WORKFLOW" \
+  || fail "GitHub macOS workflow must upload the single ZuTalk DMG"
 
 grep -Eq '^xcode-build-universal:' "$JUSTFILE" \
   || fail "justfile must define a release-only universal Xcode build recipe"
@@ -62,7 +62,7 @@ grep -Eq '^assert-universal-app:' "$JUSTFILE" \
   || fail "justfile must define assert-universal-app"
 
 assert_body="$(recipe_body assert-universal-app)"
-grep -Eq 'lipo[[:space:]]+-archs.*Contents/MacOS/Zulangue|lipo[[:space:]]+-archs[[:space:]]+"\$BIN"' <<<"$assert_body" \
+grep -Eq 'lipo[[:space:]]+-archs.*Contents/MacOS/ZuTalk|lipo[[:space:]]+-archs[[:space:]]+"\$BIN"' <<<"$assert_body" \
   || fail "assert-universal-app must inspect the app executable with lipo -archs"
 grep -Eq 'lipo[[:space:]]+"\$BIN"[[:space:]]+-verify_arch' <<<"$assert_body" \
   || fail "assert-universal-app must verify architectures with lipo <binary> -verify_arch"
@@ -104,7 +104,7 @@ grep -Fq 'ln -s /Applications' "$friendly_dmg_script" \
   || fail "friendly DMG must include an Applications shortcut"
 grep -Fq 'packaging/dmg-background.png' "$friendly_dmg_script" \
   || fail "friendly DMG must include the branded background"
-grep -Fq 'set position of item "Zulangue.app"' "$friendly_dmg_script" \
+grep -Fq 'set position of item "ZuTalk.app"' "$friendly_dmg_script" \
   || fail "friendly DMG must position the app icon"
 grep -Fq 'set position of item "Applications"' "$friendly_dmg_script" \
   || fail "friendly DMG must position the Applications shortcut"

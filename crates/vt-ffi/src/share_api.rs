@@ -28,7 +28,7 @@ use vt_share::{
 };
 
 use crate::notebook_capture_api::FfiNotebookCaptureLivePreview;
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 
 /// 用 Loro 回答「这份远端更新碰了采集投影拥有的区间吗」。
 ///
@@ -122,7 +122,7 @@ impl Default for FfiShareTransport {
     }
 }
 
-/// 同一网络里看到的一台 Zulangue。
+/// 同一网络里看到的一台 ZuTalk。
 ///
 /// 局域网上只看得到不透明公钥 —— 对方是谁、在共享什么,都要连上去问,
 /// 而且要经过对方同意。
@@ -290,7 +290,7 @@ impl Drop for ViewedRoom {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 取回本机身份,首次调用时生成并存进密钥库。
     fn load_or_create_share_identity(&self) -> Result<ShareIdentity, CoreError> {
         if self.key_store.key_exists(SHARE_IDENTITY_KEY_REF) {
@@ -362,7 +362,7 @@ impl ZulangueCore {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 出厂默认的传输配置。设置页用它做「恢复默认」。
     pub fn default_share_transport(&self) -> FfiShareTransport {
         FfiShareTransport::default()
@@ -424,7 +424,7 @@ impl ZulangueCore {
         })
     }
 
-    /// 同一网络里有哪些 Zulangue。
+    /// 同一网络里有哪些 ZuTalk。
     ///
     /// 会阻塞 `seconds` 秒来收集 —— mDNS 是异步宣告的,立刻返回只会得到空列表。
     pub fn nearby_peers(&self, seconds: u32) -> Result<Vec<FfiNearbyPeer>, CoreError> {
@@ -1252,7 +1252,7 @@ fn remote_preview_from(frame: &vt_share::CaptionFrame) -> Option<FfiNotebookCapt
     })
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 测试专用:以主播身份把一帧预览按**真实 tap 路径**广播出去。
     ///
     /// 集成测试没有真采集回调可挂,但范围过滤、静音、完整帧翻译这些
@@ -1267,7 +1267,7 @@ impl ZulangueCore {
     }
 }
 
-/// 供 `ZulangueCore` 持有的运行时槽位。
+/// 供 `ZuTalkCore` 持有的运行时槽位。
 pub(crate) type ShareRuntimeSlot = Mutex<Option<ShareRuntime>>;
 
 /// 测试共用的预览帧样本。share_web 的测试也要同一份 —— 帧的形状只声明一次。
@@ -1355,7 +1355,7 @@ mod tests {
     #[test]
     fn the_tap_refuses_muted_and_out_of_scope_frames_at_send_time() {
         let dir = tempfile::tempdir().unwrap();
-        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         core.start_sharing(Some("nb-1".into()), None, false)
             .unwrap();
 

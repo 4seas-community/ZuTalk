@@ -976,18 +976,18 @@ pub struct SessionPurgePlan {
     pub projection_targets: Vec<ProjectionPurgeTarget>,
     pub file_paths: Vec<String>,
     pub key_refs: Vec<String>,
-    /// Canonical filenames relative to the Zulangue data directory. The FFI
+    /// Canonical filenames relative to the ZuTalk data directory. The FFI
     /// layer owns directory enumeration because SQLite intentionally stores no
     /// global data-directory path.
     #[serde(default)]
     pub canonical_artifact_names: Vec<String>,
-    /// Legacy canonical filename prefixes relative to the Zulangue data
+    /// Legacy canonical filename prefixes relative to the ZuTalk data
     /// directory root. This covers pre-relocation committed chunks
     /// (`{session}.chunk.`) and their interrupted recovery temp files
     /// (`.{session}.chunk.`), which a not-yet-relocated install can still hold.
     #[serde(default)]
     pub canonical_artifact_prefixes: Vec<String>,
-    /// Canonical directories relative to the Zulangue data directory that this
+    /// Canonical directories relative to the ZuTalk data directory that this
     /// session exclusively owns. Removing them recursively destroys the
     /// session's audio without enumerating the data directory root.
     #[serde(default)]
@@ -7586,7 +7586,7 @@ fn build_session_purge_plan(
         .optional()?;
     let mut plan = SessionPurgePlan {
         session_id: session_id.to_string(),
-        key_refs: vec![format!("zulangue.audio.{session_id}")],
+        key_refs: vec![format!("zutalk.audio.{session_id}")],
         canonical_artifact_names: vec![format!("{session_id}.capture-journal.enc")],
         canonical_artifact_prefixes: vec![
             format!("{session_id}.chunk."),
@@ -14384,7 +14384,7 @@ mod tests {
         assert!(begun
             .plan
             .key_refs
-            .contains(&"zulangue.audio.session-purge-job".into()));
+            .contains(&"zutalk.audio.session-purge-job".into()));
         assert_eq!(
             begun.plan.canonical_artifact_names,
             vec!["session-purge-job.capture-journal.enc"]

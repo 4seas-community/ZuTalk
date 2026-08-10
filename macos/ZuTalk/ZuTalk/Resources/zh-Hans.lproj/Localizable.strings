@@ -1,0 +1,991 @@
+/* ZuTalk 简体中文本地化 */
+
+/* General */
+"app.name" = "ZuTalk";
+"common.cancel" = "取消";
+"common.delete" = "删除";
+
+/* Onboarding — Welcome */
+"onboarding.welcome.button" = "继续 →";
+"onboarding.welcome.bullet1" = "为一类对话建一个 Notebook，例如“英语面试”。";
+"onboarding.welcome.bullet2" = "打开 Notebook，点击“开始录音”。";
+"onboarding.welcome.bullet3" = "停止后，在同一个地方查看字幕、录音和笔记。";
+"onboarding.welcome.privacy" = "数据默认保存在这台 Mac；远端转录由你在具体会议中开启。";
+"onboarding.visual.live" = "现场转录";
+"onboarding.visual.speaker.host" = "主持人";
+"onboarding.visual.speaker.guest" = "参与者";
+"onboarding.visual.language.zh" = "中文";
+"onboarding.visual.language.en" = "English";
+"onboarding.visual.language.ja" = "日本語";
+"onboarding.visual.microphone.title" = "麦克风已准备";
+"onboarding.visual.microphone.detail" = "录下现场 · 生成实时转录";
+
+/* Onboarding — Permissions */
+"onboarding.permissions.title" = "准备记录第一场对话";
+"onboarding.permissions.subtitle" = "允许 ZuTalk 使用麦克风，即可录下现场声音并生成实时转录。";
+"onboarding.permissions.hint" = "也可以先进入应用，稍后在第一次录音时授权。";
+"onboarding.permissions.mic.name" = "麦克风";
+"onboarding.permissions.mic.usage" = "用于录制现场声音和生成实时转录。";
+"onboarding.permissions.action.grant" = "授予权限";
+"onboarding.permissions.action.open_settings" = "打开系统设置";
+"onboarding.permissions.continue" = "进入 ZuTalk →";
+
+/* Onboarding — API Keys */
+"onboarding.keys.title" = "开启实时字幕";
+"onboarding.keys.subtitle" = "输入你自己的 Soniox API 密钥，开启实时字幕。";
+"community_invite.placeholder" = "输入邀请码";
+"community_invite.action" = "启用邀请";
+"community_invite.active" = "社区邀请已生效";
+"community_invite.thirty_hours" = "5 Give · 约 30 小时";
+"community_invite.shared_detail" = "实时转录和翻译共用这段时间；音频文件转录使用自己的密钥。";
+"community_invite.invalid" = "邀请码无效，请向邀请人确认。";
+"community_invite.unavailable" = "社区服务暂时不可用，请稍后再试。";
+"community_invite.remaining_recordable_format" = "约可再录 %1$lld 小时 %2$lld 分钟";
+"community_invite.remaining_recordable_hint" = "邀请时长按转录车道扣减：选择的目标语言越多，每分钟录音消耗的时长越多。";
+"community_invite.settings.title" = "社区邀请";
+"community_invite.settings.subtitle" = "查看你拥有的使用时长，或输入邀请码启用。";
+"community_invite.resources.remaining" = "剩余时间";
+"community_invite.remaining_detail_format" = "%1$lld 小时 %2$lld 分钟";
+"community_invite.refresh" = "刷新剩余时间";
+"community_invite.replace" = "更换邀请码";
+"community_invite.inactive" = "未启用社区邀请";
+"community_invite.use_toggle" = "用社区邀请进行转录";
+"community_invite.use_toggle_detail" = "开启时录音优先使用邀请时长；关闭后使用自己保存的密钥。";
+"community_invite.remove" = "删除邀请";
+"community_invite.remove_detail" = "从这台 Mac 上删除邀请，恢复使用自己的密钥。";
+"community_invite.remove_confirm_title" = "要删除这个邀请吗？";
+"community_invite.remove_confirm_message" = "剩余的共享时长仍保留在邀请码上，之后可以重新输入邀请码。";
+"community_invite.remove_confirm_action" = "删除邀请";
+"community_invite.fallback_personal_key" = "邀请时长暂时不可用——本次录音将使用你自己的密钥。";
+"community_invite.async.needs_personal_key" = "音频文件转录需要自己的 API 密钥。请在设置中录入。";
+"community_invite.async.wait_for_recording" = "当前有录音正在使用邀请时长。请先停止录音，再转录这段音频。";
+"editor.transcript.async.start" = "转录这段音频";
+"editor.transcript.async.start_failed" = "无法开始音频转录";
+"editor.transcript.async.invite_add_key" = "使用自己的 API 密钥…";
+"editor.transcript.async.invite_add_key_hint" = "邀请时长仅覆盖实时转录。音频文件转录会以你自己的密钥把这段录音上传给语音引擎——在设置中录入密钥后开启。";
+"onboarding.keys.voice_label" = "实时字幕服务";
+"onboarding.keys.guide.create" = "注册";
+"onboarding.keys.guide.copy" = "复制密钥";
+"onboarding.keys.guide.paste" = "粘贴到下方";
+"onboarding.keys.open_soniox" = "前往 Soniox 获取密钥";
+"onboarding.keys.soniox.help" = "点击“验证并保存”只检查密钥是否可用，不会上传录音。";
+"onboarding.keys.paste" = "Soniox API 密钥";
+"onboarding.keys.verify_and_save" = "验证并保存";
+"onboarding.keys.verify_saved" = "验证连接";
+"onboarding.keys.skip" = "暂时跳过";
+"onboarding.keys.continue" = "继续";
+"onboarding.keys.private_status" = "验证通过后才在本机保存";
+
+/* Onboarding — Step Indicator */
+"onboarding.step.signup" = "认识 ZuTalk";
+"onboarding.step.setup" = "准备录音";
+"onboarding.step.tryout" = "实时字幕";
+
+/* Onboarding — Common */
+"onboarding.common.back" = "← 返回";
+
+"sidebar.help" = "使用帮助";
+"updates.install_and_relaunch" = "更新并重启";
+"updates.install_and_relaunch.hint" = "安装已下载的更新并重新启动 ZuTalk";
+"updates.downloading" = "正在下载新版本";
+"updates.downloading.hint" = "新版本正在后台下载，准备好后 ZuTalk 会提示你重启。";
+"updates.preparing" = "正在准备更新";
+
+/* Library */
+
+/* Recording */
+
+/* Session Detail */
+"session.tab.audio" = "音频";
+
+/* Settings */
+
+/* Export */
+
+/* Trust Bar */
+
+/* Toast labels */
+
+/* Common language labels */
+"lang.en" = "English";
+"lang.ja" = "日本語";
+"lang.ko" = "한국어";
+"lang.fr" = "Français";
+"lang.de" = "Deutsch";
+"lang.es" = "Español";
+"lang.th" = "ไทย";
+"lang.zh_hans" = "简体中文";
+
+/* Appearance */
+"appearance.system" = "跟随系统";
+"appearance.light" = "浅色";
+"appearance.dark" = "深色";
+
+/* General settings section */
+"settings.general.title" = "常规";
+"settings.general.subtitle" = "整个 App 的语言与外观设置。";
+"settings.audio_input.title" = "音频输入";
+"settings.audio_input.subtitle" = "选择 macOS 已识别的麦克风、USB 声卡或调音台。";
+"settings.audio_input.device" = "输入设备";
+"settings.audio_input.channel_one_hint" = "当前版本录制所选设备的第 1 个输入通道。";
+"settings.audio_input.system_default" = "跟随系统默认";
+"settings.audio_input.system_default_format" = "跟随系统默认 — %@";
+"settings.audio_input.unavailable_format" = "%@ — 不可用";
+"settings.audio_input.refresh" = "刷新输入设备";
+"settings.audio_input.active_locked" = "录音进行中，输入设备已锁定。";
+"settings.audio_input.error.query_format" = "无法读取音频设备（%1$@，状态 %2$@）。";
+"settings.audio_input.error.no_device" = "当前没有可用的音频输入设备。";
+"settings.audio_input.error.unavailable_format" = "所选音频输入“%@”不可用，请重新连接或选择其他设备。";
+"settings.audio_input.error.audio_unit_format" = "ZuTalk 无法打开音频输入“%@”。";
+"settings.audio_input.error.binding_format" = "ZuTalk 无法使用音频输入“%1$@”（状态 %2$@）。";
+"settings.audio_input.local_scope" = "设备选择保存在此 Mac，并立即用于当前录音和之后的录音。";
+"settings.audio_input.switching" = "正在切换音频输入…";
+"settings.audio_input.active_switch_hint" = "录音中可以切换；切换瞬间可能漏掉一小段声音。";
+"settings.audio_input.active_elsewhere" = "另一份 Notebook 正在录音，请到当前录音的 Notebook 中切换输入。";
+"settings.audio_input.error.switch_unavailable" = "当前正在进行其他录音状态切换，请稍后再切换音频输入。";
+"capture.toast.audio_input_switch_failed" = "切换音频输入失败";
+"settings.language.title" = "APP 语言";
+"settings.language.hint" = "影响 Swift UI、菜单栏、Rust 端错误消息的显示语言。";
+"settings.language.restart_hint" = "重启 ZuTalk 后 UI 完全切换到新语言。Rust 错误消息已即时生效。";
+"settings.appearance.title" = "外观";
+
+
+
+
+
+
+/* Permissions */
+"permission.microphone.name" = "麦克风";
+"permission.microphone.usage" = "录制你说的话,发给 Soniox 转录";
+
+/* Library — export sheet */
+"export.dialog.title" = "导出选项";
+"export.dialog.text_format" = "文本格式";
+"export.dialog.audio_group" = "音频";
+"export.dialog.audio_include" = "包含音频文件 (.wav)";
+"export.dialog.markdown" = "Markdown (.md)";
+"export.dialog.srt" = "SRT 字幕 (.srt)";
+"export.dialog.vtt" = "WebVTT 字幕 (.vtt)";
+"export.dialog.txt" = "纯文本 (.txt)";
+"export.progress" = "导出中…";
+"export.dialog.location" = "选择导出位置";
+"export.error_format" = "导出失败:%@";
+"common.export.action" = "导出";
+
+
+
+/* Recording settings */
+
+
+"editor.export.title" = "导出会话";
+"editor.export.hint" = "将这个会话导出为 ZIP";
+"editor.export.no_session" = "没有可导出的录音会话";
+"doc.scratchpad" = "个人笔记";
+
+
+/* Onboarding brand line */
+"onboarding.brand.subtitle" = "多语言沟通与会议 · LIVE MULTILINGUAL MEETINGS";
+
+/* Settings sidebar section rawValues */
+"settings.section.general_name" = "常规";
+"settings.section.services_name" = "服务与 API";
+"settings.section.shortcuts_name" = "快捷键";
+
+/* Settings sidebar groups */
+"settings.group.services" = "服务连接";
+"settings.group.general" = "常规";
+
+/* Settings — API panels */
+"settings.credentials.enter_key" = "输入 API 密钥";
+"settings.credentials.local_storage_hint" = "以未加密文件保存在当前 macOS 登录账户的应用私有目录中，并在启动时自动加载。";
+"settings.credentials.trust_boundary_notice" = "在此保存的凭据不会加密。ZuTalk 信任当前 macOS 登录环境，将凭据保存在应用私有本地文件中，并在启动时自动加载。";
+"settings.credentials.verify" = "验证";
+"settings.credentials.verify_and_save" = "验证并保存";
+"settings.credentials.verifying" = "正在验证…";
+"settings.credentials.verifying_hint" = "正在连接 Soniox 验证此密钥。";
+"settings.credentials.verified_hint" = "Soniox 已接受此密钥，可以用于远程转录。";
+"settings.credentials.verify_before_save_hint" = "新密钥只有在 Soniox 验证通过后才会保存。";
+"settings.credentials.verify_and_save_accessibility_format" = "验证并保存 %@ 密钥";
+"settings.credentials.verification.ready" = "Soniox 连接已验证";
+"settings.credentials.verification.invalid" = "Soniox 拒绝了此密钥；密钥可能无效或已被撤销。";
+"settings.credentials.verification.organization_balance_exhausted" = "Soniox 组织余额已用尽。";
+"settings.credentials.verification.organization_budget_exhausted" = "Soniox 组织月度预算已用尽。";
+"settings.credentials.verification.project_budget_exhausted" = "Soniox 项目月度预算已用尽。";
+"settings.credentials.verification.quota_exhausted" = "Soniox 账户当前没有可用额度。";
+"settings.credentials.verification.network_unavailable" = "无法连接 Soniox，请检查网络后重试。";
+"settings.credentials.verification.rate_limited" = "Soniox 暂时限制了请求，请稍后重试。";
+"settings.credentials.verification.service_unavailable" = "Soniox 验证服务暂时不可用。";
+"settings.credentials.applied" = "已保存 · 已加载";
+"settings.credentials.saved_inactive" = "已保存 · 需要处理";
+"settings.credentials.runtime_only" = "本次运行已加载 · 未保存";
+"settings.credentials.missing" = "未保存";
+"settings.credentials.clear" = "删除已保存的密钥";
+"settings.credentials.accessibility_applied_format" = "%@ 密钥已保存在本机并在 ZuTalk 中生效，尚未验证服务连接。";
+"settings.credentials.accessibility_saved_inactive_format" = "%@ 密钥已保存在本机，但尚未在 ZuTalk 中生效。请查看恢复提示。";
+"settings.credentials.accessibility_runtime_only_format" = "%@ 密钥已为本次运行加载，但尚未保存，也未验证服务连接。";
+"settings.credentials.accessibility_missing_format" = "%@ 密钥尚未保存，请输入并保存密钥。";
+"settings.credentials.field_accessibility_format" = "%@ API 密钥";
+"settings.credentials.clear_accessibility_format" = "删除已保存的 %@ 密钥";
+"settings.credentials.recovery_title" = "已保存的服务密钥需要处理";
+"settings.credentials.recovery_hint" = "保存新密钥可替换无法读取的文件；也可以删除该文件，清除本机保存的全部服务密钥。";
+"settings.credentials.reset_file" = "删除已保存的密钥文件";
+"settings.credentials.reset_file_accessibility_hint" = "删除 ZuTalk 在本机保存的全部服务密钥。本地录音仍可使用。";
+"settings.credentials.provider_not_tested_hint" = "已加载供 ZuTalk 使用；尚未验证服务连接和密钥有效性。";
+"settings.credentials.saved_inactive_hint" = "密钥已保存在本机，但未加载供 ZuTalk 使用。启用远端处理前请先查看恢复提示。";
+"settings.credentials.runtime_only_hint" = "密钥已为本次运行加载但尚未保存；服务连接和密钥有效性均未验证。";
+"settings.credentials.operation_error_format" = "更新服务凭据失败：%@";
+"settings.credentials.delete_confirmation_title" = "删除已保存的 %@ 密钥？";
+"settings.credentials.delete_confirmation_message" = "ZuTalk 将从这台 Mac 删除已保存的 %@ 凭据，本地录音仍可使用。";
+"settings.credentials.delete_confirmation_action" = "删除密钥";
+"settings.credentials.reset_confirmation_title" = "删除全部已保存的服务凭据？";
+"settings.credentials.reset_confirmation_message" = "ZuTalk 将删除这台 Mac 上的应用私有凭据文件，此操作无法撤销。";
+"settings.credentials.reset_confirmation_action" = "删除凭据文件";
+"settings.credentials.replace" = "替换已保存的密钥";
+"settings.credentials.replace_accessibility_format" = "替换已保存的 %@ 密钥";
+"settings.credentials.field_replacement_hint" = "输入新密钥，验证通过后才会保存。";
+"settings.credentials.error.unsupported_version_format" = "不支持的服务凭据文件版本：%d。";
+"settings.credentials.error.malformed_document" = "服务凭据文件格式损坏。";
+"settings.credentials.error.unknown_accounts" = "服务凭据文件包含不受支持的账户条目。";
+"settings.credentials.error.empty_credential_format" = "%@ 的已保存凭据为空。";
+"settings.credentials.error.credential_too_large_format" = "%@ 的已保存凭据超过大小限制。";
+"settings.credentials.error.file_too_large" = "服务凭据文件超过大小限制。";
+"settings.credentials.error.unsafe_path_format" = "服务凭据路径不是安全的普通私有文件：%@。";
+"settings.credentials.error.wrong_owner_format" = "服务凭据路径不属于当前 macOS 账户：%@。";
+"settings.credentials.error.operation_failed_format" = "服务凭据%@失败（POSIX %d）。";
+"settings.credentials.error.core_unavailable" = "本地应用服务尚未就绪。";
+"settings.credentials.error.empty_value" = "请先输入 API 密钥。";
+"settings.credentials.error.activation_failed_format" = "已保存的凭据未能为 %@ 加载。";
+"settings.credentials.error.clear_failed_format" = "无法清除 %@ 的凭据。";
+"settings.credentials.error.persistence_failed" = "无法将服务凭据保存到应用私有本地文件。";
+"settings.credentials.error.runtime_cleanup_failed" = "无法安全清除运行中的服务凭据。使用远端服务前，请重启 ZuTalk 或修复本地应用服务。";
+
+/* Settings — Services & API */
+"settings.services.title" = "服务与 API";
+"settings.services.subtitle" = "管理全局服务凭据并查看固定录音引擎。数据是否外发由每个 Notebook 单独决定。";
+"settings.services.connection.title" = "服务连接";
+"settings.services.connection.subtitle" = "ZuTalk 目前只支持 Soniox。";
+"settings.services.no_egress_notice" = "保存密钥不会授予新的数据外发权限。每个 Notebook 仍须单独授权远端处理；若某项后台任务此前已获该 Notebook 授权，只是在等待凭据，它可能在密钥持久保存并成功加载后继续。";
+"settings.services.engine.title" = "录音引擎";
+"settings.services.engine.subtitle" = "只读。当前 MVP 的引擎选择由 Rust 核心统一管理。";
+"settings.services.engine.service" = "服务";
+"settings.services.engine.realtime" = "实时录音";
+"settings.services.engine.realtime_detail" = "Notebook 明确开启远端处理后，用于实时多语言转录和语言字幕。";
+"settings.services.engine.post_stop" = "停止后处理";
+"settings.services.engine.post_stop_detail" = "将已完成的本地录音上传到 Soniox 异步文件 API 转录，取回结果后立即删除远端文件与转录任务。";
+"settings.services.engine.post_stop_unavailable_detail" = "核心未提供停止后执行方式描述。";
+"settings.services.engine.async_file_api" = "异步文件 API";
+"settings.services.engine.execution_unavailable" = "执行方式不可用";
+"settings.services.engine.fixed" = "固定";
+"settings.services.engine.unavailable" = "引擎不可用";
+"settings.services.engine.accessibility_format" = "固定实时引擎：%@";
+"settings.services.engine.post_stop_accessibility_format" = "固定停止后引擎：%@。使用 Soniox 异步文件 API，转录完成后立即删除远端音频。";
+"settings.services.engine.post_stop_unavailable_accessibility_format" = "停止后引擎：%@。执行方式描述不可用。";
+
+/* Settings — Privacy section */
+
+/* Settings — Shortcuts */
+"settings.shortcuts.title" = "键盘快捷键";
+"settings.shortcuts.subtitle" = "ZuTalk 动作的全局快捷键。";
+"settings.shortcuts.toggle_recording" = "打开 Notebook 录音";
+"settings.shortcuts.cycle_display" = "切换显示模式";
+"settings.shortcuts.font_bigger" = "增大字号";
+"settings.shortcuts.font_smaller" = "减小字号";
+"settings.shortcuts.open_settings" = "打开设置";
+
+
+/* Diagnostics */
+"diagnostics.operational.provider_keys" = "服务凭据";
+
+/* Toast — Floating panel */
+
+/* Toast — Microphone */
+
+/* Toast — Recording */
+
+/* Toast — Generic */
+
+/* Toast — Enhance / Editor */
+
+/* Sidebar (main window) */
+"sidebar.home" = "主页";
+"sidebar.trash" = "回收站";
+"sidebar.tab.editor" = "编辑器";
+"sidebar.tab.settings" = "设置";
+"sidebar.local_first" = "本地优先";
+"sidebar.notebook" = "Notebook";
+"sidebar.collapse" = "收起侧栏";
+"sidebar.expand" = "展开侧栏";
+"sidebar.back_to_home" = "返回主页";
+"menubar.action.quit" = "退出 ZuTalk";
+"menubar.action.quit_hint" = "退出整个应用；若正在录音，会先确认，并在退出前保存本场录音。";
+"app.quit.confirm.title" = "当前录音尚未结束，仍要退出 ZuTalk 吗？";
+"app.quit.confirm.message" = "退出会停止当前录音。ZuTalk 会先保存已经接收的本地音频，再尝试完成远端转录收尾。";
+"app.quit.confirm.cancel" = "不退出";
+"app.quit.confirm.action" = "停止录音并退出";
+
+/* Session list group labels */
+"library.group.today" = "今天";
+"library.group.yesterday" = "昨天";
+
+/* Document editor residuals */
+"editor.tab.transcript" = "实时转录";
+"editor.transcript.realtime.empty_title" = "没有实时转录";
+"editor.transcript.realtime.empty_desc" = "这个录音 session 没有实时结果。";
+"editor.transcript.async.pending_title" = "后台转录处理中";
+"editor.transcript.async.pending_desc" = "你明确请求的当前实时引擎重放仍在处理。";
+"editor.transcript.async.failed_title" = "后台转录失败";
+"editor.transcript.async.failed_desc" = "远端转录失败，录音仍安全保存在本机。";
+"editor.transcript.async.empty_title" = "没有停止后转录";
+"editor.transcript.async.empty_desc" = "停止后后台转录默认关闭，本次 session 未提交该请求。";
+"editor.transcript.async.no_session_title" = "未选择录音";
+"editor.transcript.async.no_session_desc" = "在“资源”页选择一段录音，即可查看或发起停止后转录。";
+"editor.transcript.async.projection_pending_desc" = "供应商结果已保存，正在写入当前 Notebook。";
+"editor.transcript.async.projection_failed_title" = "转录已收到，但写入 Notebook 失败";
+"editor.transcript.async.projection_failed_desc" = "可只重试本地写入；ZuTalk 不会再次上传录音。";
+"editor.transcript.async.status.loading" = "正在读取后台转录状态";
+"editor.transcript.async.status.off" = "本次未请求停止后后台转录";
+"editor.transcript.async.status.provider_pending" = "实时引擎正在重放完整录音";
+"editor.transcript.async.status.provider_failed" = "实时引擎重放失败";
+"editor.transcript.async.status.projection_pending" = "供应商结果已保存 · 等待写入 Notebook";
+"editor.transcript.async.status.projecting" = "正在把已保存的转录写入 Notebook";
+"editor.transcript.async.status.ready" = "停止后转录已就绪";
+"editor.transcript.async.status.projection_failed" = "供应商结果已保存 · Notebook 写入失败";
+"editor.transcript.async.retry_projection" = "重试本地写入";
+"editor.transcript.async.retry_projection_hint" = "只把已保存的供应商结果写入 Notebook，不会再次上传音频。";
+"editor.transcript.async.retry_failed" = "无法写入已保存的转录";
+"menubar.recording.mode.local" = "本地";
+"menubar.recording.mode.remote" = "SONIOX RT5";
+"editor.title.untitled" = "未命名笔记";
+"editor.footer.local_encrypted" = "已保存到本机";
+
+/* Home page */
+"home.workspace.load_failed" = "无法载入 Notebook 数据。";
+"home.workspace.select_failed" = "无法打开这个 Notebook。";
+"home.workspace.resolve_failed" = "无法确定这条录音所属的 Notebook。";
+"home.workspace.refresh_failed" = "无法刷新 Notebook 数据。";
+"home.workspace.load_failed.title" = "Notebook 暂时不可用";
+"home.workspace.load_failed.description" = "现有数据没有被更改，请重试载入。";
+"home.workspace.retry" = "重试";
+"home.notebook.current" = "当前 NOTEBOOK";
+"home.notebook.new" = "新建 Notebook";
+"home.notebook.new.help" = "创建并命名一个 Notebook";
+"home.notebook.none" = "没有 Notebook";
+"home.notebook.switch" = "切换 Notebook";
+"home.notebook.description" = "在一个地方录音、查看多语言转录和写笔记。";
+"home.notebook.description.detail" = "录音控制只在 Notebook 内出现，因此每个 session 都会保留正确的归属和上下文。";
+"home.notebook.local_first" = "保存在本机";
+"home.library.title" = "Notebook";
+"home.library.subtitle" = "选择一个 Notebook，继续录音、转录和整理。";
+"home.library.open_hint" = "打开 Notebook";
+"home.library.session_count_format" = "%lld 条录音";
+"home.notebook.open" = "打开 Notebook";
+"home.capture.return" = "返回录音现场";
+"home.capture.owner_here" = "归属于当前选择的 Notebook";
+"home.capture.owner_elsewhere" = "归属于另一个 Notebook";
+"home.no_notebook.title" = "创建第一个 Notebook";
+"home.no_notebook.description" = "Notebook 统一管理录音、转录、笔记和可选的识别参考资料。";
+"home.first_use.step1.title" = "先创建 Notebook";
+"home.first_use.step1.detail" = "把它理解成一个文件夹，用来收纳同一类对话。";
+"home.first_use.step2.title" = "再开始录音";
+"home.first_use.step2.detail" = "进入 Notebook 后，红色录音按钮就在顶部。";
+"home.first_use.step3.title" = "最后查看结果";
+"home.first_use.step3.detail" = "停止录音后，字幕、音频和笔记都会留在里面。";
+"home.first_use.action" = "创建我的第一个 Notebook";
+"home.import.action" = "导入音频";
+"home.import.in_progress" = "正在导入…";
+"home.import.completed" = "音频已导入";
+"home.import.failed" = "无法导入音频";
+"home.import.failed.detail" = "所选文件没有被更改，请检查格式后重试。";
+"home.import.no_notebook" = "尚未选择 Notebook";
+"home.import.no_notebook.detail" = "请先创建或选择 Notebook，再导入音频。";
+"home.import.already_running" = "已有音频正在导入";
+"home.import.already_running.detail" = "请等待当前音频完成导入。";
+"home.recent.title" = "最近录音";
+"home.recent.count_format" = "这个 Notebook 中有 %lld 条";
+"home.recent.search_placeholder" = "搜索这个 Notebook…";
+"home.recent.search.clear" = "清除搜索";
+"home.recent.empty.title" = "这个 Notebook 还没有录音";
+"home.recent.empty.description" = "打开 Notebook 开始录音，或导入已有音频文件。";
+"home.recent.no_match.title" = "没有匹配的录音";
+"home.recent.no_match.description" = "换一个标题或转录片段试试。";
+"home.recent.row.open_hint" = "在所属 Notebook 中打开这条录音";
+"home.recent.row.actions_format" = "%@ 的操作";
+"home.recent.row.untitled" = "未命名录音";
+"home.recordings.load_failed" = "无法载入录音列表。";
+"home.recording.delete_failed" = "无法将这条录音移到回收站。";
+"home.recording.delete_while_recording" = "录音结束后才能删除这段录音。";
+"home.recording.bulk_delete_failed" = "无法将这些录音移到回收站。";
+"home.create.title" = "新建 Notebook";
+"home.create.description" = "确认名称后才会真正创建。";
+"home.create.name_label" = "Notebook 名称";
+"home.create.name_placeholder" = "例如：每周对话";
+"home.create.local_first" = "Notebook 与三个固定标签页都在本地创建。";
+"home.create.action" = "创建 Notebook";
+"home.create.completed" = "Notebook 已创建";
+"home.create.failed" = "无法创建 Notebook。";
+"home.create.invalid_title" = "需要填写 Notebook 名称";
+"home.create.invalid_title.detail" = "填写名称后再创建 Notebook。";
+"home.create.title_too_long" = "Notebook 名称过长";
+"resources.tab" = "资源";
+"resources.tab.hint" = "查看这个 Notebook 中每次录音的对应文件与状态";
+"resources.title" = "资源";
+"resources.subtitle" = "每次录音的音频、转录和个人笔记文件。";
+"resources.load_failed" = "无法载入资源";
+"resources.empty" = "这个 Notebook 还没有录音资源";
+"resources.audio" = "音频";
+"resources.realtime" = "实时转录";
+"resources.async" = "异步转录";
+"resources.note" = "个人笔记";
+"resources.untitled_recording" = "未命名录音";
+"resources.status.missing" = "尚未生成";
+"resources.status.pending" = "处理中";
+"resources.status.ready" = "可用";
+"resources.status.failed" = "失败";
+"resources.move" = "移动录音到其他笔记本…";
+"resources.move.title" = "移动录音";
+"resources.move.message" = "“%@”的录音、两份转录和手写笔记会一起移动，并按录制时间排入新笔记本。";
+"resources.move.action" = "移动";
+"resources.move.no_destination" = "没有其他笔记本可供移动。";
+"resources.move.done" = "录音已移动";
+"resources.move.failed" = "无法移动这条录音";
+"resources.delete" = "将录音移入回收站";
+"resources.delete.confirm_title" = "将“%@”移入回收站？";
+"resources.delete.confirm_button" = "移入回收站";
+"resources.delete.confirm_message" = "音频、转录和个人笔记会移入回收站，可在那里恢复。";
+"resources.delete.failed" = "无法将录音移入回收站";
+"resources.audio.saved" = "已保存";
+"resources.audio.not_saved" = "未保存";
+"resources.audio.destroy" = "删除音频";
+"resources.audio.destroy.confirm_title" = "永久删除“%@”的音频？";
+"resources.audio.destroy.confirm_button" = "删除音频";
+"resources.audio.destroy.confirm_message" = "音频文件会被安全销毁，无法恢复；转录和个人笔记会保留。";
+"resources.audio.destroy.failed" = "无法删除音频";
+"resources.status.destroyed" = "已删除";
+"resources.audio.destroyed_at" = "已于 %@ 销毁";
+"resources.audio.verify" = "验证删除并在访达中显示存储文件夹";
+"resources.audio.verify.failed" = "无法验证音频删除";
+"resources.audio.verify.ok" = "音频已确认销毁";
+"resources.audio.verify.ok.detail" = "%d 个加密分块已覆写删除，密钥已销毁，文件夹中无残留。存储文件夹已在访达中打开。";
+"resources.audio.verify.residue" = "发现残留音频文件";
+"resources.audio.verify.residue.detail" = "存储文件夹中仍有 %d 个文件，已在访达中打开供检查。";
+"manual_note.title.placeholder" = "给这份时间笔记命名（可选）";
+"manual_note.title.save" = "保存笔记标题";
+"manual_note.title.save_failed" = "无法保存笔记标题";
+"manual_note.created_at_format" = "创建于 %@";
+"manual_note.timeline.title" = "个人笔记";
+"manual_note.timeline.subtitle" = "按时间排列。标题可以为空，也可以直接在卡片中命名。";
+"manual_note.timeline.load_failed" = "无法载入个人笔记";
+"manual_note.timeline.empty" = "录音后，对应的个人笔记会出现在这里";
+"manual_note.timeline.open" = "打开笔记";
+"home.create.title_too_long.detail_format" = "请使用不超过 %lld 个字符。";
+"home.row.preview.pending"   = "转录中…";
+"home.row.preview.recording" = "录音中…";
+"home.row.preview.no_speech" = "无识别到语音";
+"home.row.preview.not_transcribed" = "未转录";
+"home.row.preview.failed"    = "转录失败";
+"home.row.status.completed" = "录音已完成";
+"home.row.status.imported" = "音频已导入";
+"library.toast.moved_to_trash" = "已移到回收站";
+"library.toast.bulk_moved_to_trash" = "%lld 个 session 已移到回收站";
+"doc.transcript_hd" = "异步转录";
+"editor.tab.transcript.live.hint" = "实时转录进行中";
+"editor.tab.transcript.hint" = "音频转录";
+
+
+
+/* Document editor empty states */
+"editor.empty.no_transcript_title" = "尚无转录稿";
+"editor.empty.no_transcript_desc" = "录音结束后转录稿才可用。";
+"editor.empty.no_doc_title" = "无活动文档";
+"editor.empty.no_doc_desc" = "开始录音会创建一个新文档,可在录制同时实时编辑。";
+
+/* Async transcription in-progress & failed states */
+"editor.pending.transcribing" = "正在转录中…";
+"editor.pending.subtitle"     = "请稍候,任务在后台运行,完成后内容会自动出现。";
+"editor.failed.transcribing"  = "转录失败";
+"editor.failed.subtitle"      = "可能是网络抖动或 API 限流。点下方重试一次。";
+
+/* Trash page */
+"trash.empty.title" = "回收站为空";
+"trash.empty.desc" = "删除的录音在此保留 30 天后永久移除。";
+"trash.action.restore" = "恢复";
+"trash.action.purge" = "永久删除";
+"trash.toast.restored" = "已恢复";
+"trash.toast.purged" = "已永久删除";
+"trash.purge.confirm_title" = "永久删除?";
+"trash.purge.confirm_desc" = "将清除录音、转录和相关数据，不可恢复。";
+"trash.purge.confirm_button" = "永久删除";
+
+/* Onboarding — residuals */
+"onboarding.brand.name" = "ZuTalk";
+"onboarding.brand.tagline" = "让每一场多语言交流，从现场理解到会后整理，都在同一个地方完成。";
+"onboarding.keys.testing_status" = "测试中…";
+"onboarding.keys.connected_status" = "已连接";
+
+/* Trust bar */
+"trust.version_format" = "ZuTalk · v%@";
+
+/* Menu Bar status item — popover content */
+"menubar.action.settings" = "设置";
+"updates.check" = "检查更新…";
+"updates.unavailable.title" = "尚未配置更新";
+"updates.unavailable.message" = "此开发版本未包含更新签名公钥。";
+"updates.unavailable.dismiss" = "好";
+"settings.updates.title" = "软件更新";
+"settings.updates.subtitle" = "通过 Sparkle 安全接收签名更新。";
+"settings.updates.automatic" = "自动检查更新";
+"settings.updates.automatic_hint" = "ZuTalk 会定期检查经过签名的更新源，并在新版本可用时提醒你。";
+"menubar.recording.live_transcript" = "实时转录";
+"menubar.recording.open_subtitles" = "打开实时字幕";
+"menubar.recording.close_subtitles" = "关闭实时字幕";
+"menubar.recording.open_notebook" = "打开笔记本";
+"menubar.processing.open_session" = "打开会话";
+"menubar.suppressed.privacy.title" = "麦克风权限被拒绝";
+"menubar.suppressed.privacy.body" = "在系统设置中允许 ZuTalk 访问麦克风后才能录音。";
+"menubar.suppressed.privacy.action" = "打开系统设置";
+"menubar.suppressed.disabled.title" = "ZuTalk 已暂停";
+"menubar.suppressed.disabled.body" = "菜单栏入口在设置中被关闭。";
+"menubar.suppressed.disabled.action" = "打开 ZuTalk 设置";
+"menubar.suppressed.onboarding.title" = "完成初次设置";
+"menubar.suppressed.onboarding.body" = "完成首次配置后即可启用 ZuTalk。";
+"menubar.suppressed.onboarding.action" = "继续设置";
+"hud.recording.active" = "REC";
+"hud.recording.paused" = "PAUSED";
+"hud.a11y.recording_active_format" = "正在录音 %@";
+"hud.a11y.recording_paused_format" = "录音已暂停 %@";
+
+/* DesignSystem previews */
+"preview.crosshair.blueprint" = "蓝图内容";
+"preview.crosshair.hardware" = "硬件内容";
+
+
+/* Document editor */
+"editor.toolbar.show_sources" = "显示来源";
+"editor.toolbar.show_tasks" = "显示任务";
+
+/* 大纲笔记编辑器(块文档) */
+"editor.outline.load_failed_title" = "笔记暂时打不开";
+"editor.outline.retry" = "重试";
+"editor.outline.apply_failed" = "这次笔记改动没有保存成功";
+"editor.outline.row_label" = "大纲行,第 %lld 级";
+"editor.outline.indent" = "增加缩进";
+"editor.outline.outdent" = "减少缩进";
+"editor.outline.delete_row" = "删除此行";
+"editor.outline.undo" = "撤销";
+"editor.outline.redo" = "重做";
+"editor.outline.turn_into" = "转换为";
+"editor.outline.kind.paragraph" = "正文";
+"editor.outline.kind.heading1" = "标题 1";
+"editor.outline.kind.heading2" = "标题 2";
+"editor.outline.kind.heading3" = "标题 3";
+"editor.outline.kind.quote" = "引用";
+"editor.outline.kind.task" = "待办";
+"editor.outline.kind.divider" = "分隔线";
+"editor.outline.task.done" = "已完成";
+"editor.outline.task.todo" = "未完成";
+"editor.tasks.title" = "任务";
+"editor.tasks.count_format" = "%lld 个后台任务";
+"editor.tasks.refresh" = "刷新任务";
+"editor.tasks.empty" = "暂无任务";
+"editor.tasks.empty.detail" = "后台异步转录任务会显示在这里。";
+"editor.tasks.retry_format" = "重试 %lld 次";
+/* Accessibility labels */
+"editor.outline.drag_handle" = "拖动以重新排序";
+
+/* Notebook 多语言录音 */
+"common.close" = "关闭";
+"capture.error.ffi_unavailable" = "Notebook 录音服务暂不可用。";
+"capture.error.already_active" = "另一个 Notebook 正在录音。";
+"capture.error.remote_required" = "语言字幕需要开启“远端实时处理”。";
+"capture.error.context_requires_remote" = "请先开启实时转录，再使用参考资料。";
+"capture.error.languages_must_differ" = "请选择互不重复的语言。";
+"capture.error.not_active" = "当前没有活跃的 Notebook 录音。";
+"capture.error.projection_locked" = "投影完成前，转录内容为只读。";
+"capture.error.profile_snapshot_unavailable" = "无法读取这次录音保存的录音配置。";
+"capture.route.no_notebook" = "尚未选择 Notebook";
+"capture.route.no_notebook_detail" = "请先创建或选择 Notebook，再打开录音。";
+"capture.route.unavailable" = "无法打开 Notebook 录音";
+"capture.route.unavailable_detail" = "ZuTalk 本地服务尚未就绪。";
+"session.route.unavailable" = "无法打开录音";
+"session.route.unavailable_detail" = "录音内容没有被更改，请重试。";
+"capture.open_notebook" = "打开 Notebook";
+"capture.open_notebook_hint" = "录音控制仅在所属 Notebook 内提供。";
+"subtitle.overlay.title" = "实时字幕";
+"subtitle.overlay.read_only" = "实时字幕 · 只读";
+"subtitle.overlay.accessibility_label" = "多语言实时字幕悬浮窗";
+"subtitle.overlay.language_count" = "%lld 种语言";
+"subtitle.overlay.waiting" = "正在等待语音…";
+"subtitle.overlay.degraded_lanes" = "这些译文栏落后或不可用，转录仍在继续。";
+"subtitle.overlay.recording_ended" = "录音已结束";
+"subtitle.overlay.font_size" = "字幕字号";
+"subtitle.overlay.background_opacity" = "字幕背景不透明度";
+"subtitle.overlay.font_smaller" = "减小字幕";
+"subtitle.overlay.font_larger" = "放大字幕";
+"subtitle.overlay.font_auto.enable" = "字号随窗口自动适配";
+"subtitle.overlay.font_auto.disable" = "改为手动调整字号";
+"subtitle.overlay.font_auto.on" = "字号跟随窗口大小";
+"subtitle.overlay.font_auto.off" = "字号为手动设定";
+"subtitle.overlay.move_resize_hint" = "拖动窗口可移动；拖动任意边缘或四角可调整大小。";
+"subtitle.overlay.maximize" = "铺满当前屏幕";
+"subtitle.overlay.restore" = "恢复字幕窗口";
+"subtitle.overlay.pin" = "将字幕固定在最前";
+"subtitle.overlay.unpin" = "取消字幕置顶";
+"subtitle.overlay.pinned" = "已置顶，并显示在所有桌面";
+"subtitle.overlay.unpinned" = "未置顶";
+"subtitle.overlay.theme.switch_to_light" = "使用浅色字幕";
+"subtitle.overlay.theme.switch_to_dark" = "使用深色字幕";
+"subtitle.overlay.theme.dark" = "深色画布";
+"subtitle.overlay.theme.light" = "浅色画布";
+"subtitle.overlay.mode" = "字幕模式";
+"subtitle.overlay.mode.conversation" = "对照";
+"subtitle.overlay.mode.audience" = "活动";
+"subtitle.overlay.mode.conversation.help" = "保留最近几句话，便于跨语言沟通、校对和理解。";
+"subtitle.overlay.mode.audience.help" = "以平等层级向观众显示最多三种语言的最新一句。";
+"capture.toolbar.start" = "开始录音";
+"capture.toolbar.starting" = "正在开始…";
+"capture.toolbar.start_hint" = "开始录音并按所选语言实时转录；服务暂时不可用时，录音仍会继续。";
+"capture.toolbar.pause" = "暂停";
+"capture.toolbar.pause_billing" = "远端连接仍可能计费";
+"capture.toolbar.pause_billing_detail" = "暂停会先结束当前话语，但 Soniox 连接仍通过 keepalive 保持，可能继续计费。";
+"capture.toolbar.resume" = "继续";
+"capture.toolbar.stop" = "停止";
+"capture.toolbar.stop_hint" = "停止音频输入；若已启用远端处理，ZuTalk 还会等待远端返回尾部 token。";
+"capture.toolbar.active_other_notebook" = "录音归属于另一个 Notebook";
+"capture.toolbar.subtitle_window.open" = "打开实时字幕";
+"capture.toolbar.subtitle_window.close" = "关闭实时字幕";
+"capture.toolbar.subtitle_window.hint" = "打开一个始终置顶的多语言实时字幕窗口。";
+"capture.toolbar.subtitle_window.unavailable_hint" = "请先在当前 Notebook 开始录音，再打开实时字幕。";
+"capture.toast.start_failed" = "无法开始录音";
+"capture.toast.pause_failed" = "无法切换录音状态";
+"capture.toast.stop_failed" = "无法停止录音";
+"capture.toast.context_preview_failed" = "无法查看参考资料";
+"capture.toast.context_load_failed" = "无法载入参考资料";
+"capture.toast.context_update_failed" = "无法更新参考资料";
+"capture.toast.edit_failed" = "无法更新转录语言列";
+"capture.toast.projection_retry_failed" = "无法重试转录投影";
+"capture.settings.title" = "设置";
+"capture.settings.subtitle" = "更改自动保存，仅作用于当前 Notebook。";
+"capture.settings.tab" = "设置";
+"capture.settings.tab_hint" = "打开当前 Notebook 的录音、语言与字幕设置。";
+"capture.settings.footer.realtime" = "语言与实时模式在「实时转录」标签中选择。";
+"capture.settings.active_locked" = "录音正在进行：语言、参考资料和音频保留设置已冻结；音频输入仍可切换。";
+"capture.settings.autosave.loading" = "正在加载设置…";
+"capture.settings.autosave.saving" = "正在保存…";
+"capture.settings.autosave.saved" = "已自动保存";
+"capture.settings.autosave.load_failed" = "无法加载设置";
+"capture.settings.autosave.save_failed" = "更改尚未保存";
+"capture.settings.autosave.retry" = "重试";
+"capture.settings.realtime.start_disclosure" = "点击「开始录音」后，将按所选语言实时转录；服务暂时不可用时，录音仍会继续。";
+"capture.settings.remote.credential.saved_inactive" = "Soniox 密钥 · 已保存 · 需要处理";
+"capture.settings.remote.credential.missing" = "Soniox 密钥 · 未保存";
+"capture.settings.remote.credential.hint" = "此状态只表示密钥在本机的保存和加载情况；只有点击「开始录音」才会授权本场音频外发。";
+"capture.settings.languages.question" = "本场会使用哪些语言？";
+"capture.settings.languages.ordered_detail" = "请按显示顺序添加。每种所选语言都会显示为一栏；说话原文先出现，其余栏目通常稍后补齐。";
+"capture.settings.languages.search" = "搜索并添加语言";
+"capture.settings.languages.suggested" = "常用语言";
+"capture.settings.languages.no_results" = "没有找到尚未选择的匹配语言。";
+"capture.settings.languages.maximum_reached" = "每场最多可选择三种语言。";
+"capture.settings.languages.add_format" = "添加 %@";
+"capture.settings.languages.move_earlier" = "将语言向前移动";
+"capture.settings.languages.move_later" = "将语言向后移动";
+"capture.settings.languages.remove" = "移除语言";
+"capture.realtime.controls.current_title" = "本次录音配置";
+"capture.realtime.controls.profile_group" = "实时录音配置";
+"capture.realtime.controls.review_context" = "查看参考资料";
+"capture.settings.context.title" = "识别参考资料";
+"capture.settings.context.preview" = "查看将使用的内容";
+"capture.settings.context.preview_count" = "共 %lld 个字符";
+"capture.settings.context.empty" = "还没有可用的参考资料。";
+"capture.settings.context.pack_detail" = "选择后会自动记住，并用于实时转录和异步转录。添加术语、人物、机构和会议背景，可提高转录准确度。";
+"capture.settings.context.private_pack" = "当前 Notebook";
+"capture.settings.context.current_notebook_detail" = "用于这个 Notebook";
+"capture.settings.context.selected" = "正在编辑";
+"capture.settings.context.not_selected" = "未选中";
+"capture.settings.context.create_library" = "创建";
+"capture.settings.after_stop.title" = "录音后处理";
+"capture.settings.after_stop.engine" = "处理方式";
+"capture.settings.after_stop.detail" = "停止录音后，可使用当前转录引擎补做转录。";
+"capture.settings.after_stop.unavailable_detail" = "当前版本没有可用的录音后处理方式。";
+"capture.state.recording" = "录音中";
+"capture.state.paused" = "已暂停";
+"capture.state.draining" = "收尾中";
+"capture.state.audio_drain_delayed" = "本地音频仍在保存";
+"capture.state.completed" = "已完成";
+"capture.state.interrupted" = "已中断";
+"capture.state.failed" = "失败";
+"capture.remote.off" = "远端关闭";
+"capture.remote.connecting" = "远端连接中";
+"capture.remote.catching_up" = "字幕正在追赶，落后 %d 秒";
+"capture.remote.live" = "远端实时";
+"capture.remote.degraded" = "远端降级";
+"capture.remote.unavailable" = "远端不可用";
+"capture.projection.pending" = "等待投影";
+"capture.projection.projecting" = "投影中";
+"capture.projection.ready" = "可编辑";
+"capture.projection.failed" = "投影失败";
+"capture.transcript.swap" = "交换左右语言列";
+"capture.transcript.realtime_accessibility_label" = "实时转录";
+"capture.transcript.run_navigator" = "录音导航";
+"capture.transcript.open_recording" = "打开这次录音";
+"capture.transcript.loading_recording" = "正在加载这次录音的转录…";
+"capture.transcript.load_recording_failed" = "无法加载这次录音";
+"capture.transcript.back_to_live" = "返回实时";
+"capture.transcript.transcription_heading" = "转录时间线";
+"capture.transcript.transcription_empty_title" = "暂无实时话语";
+"capture.transcript.transcription_empty_detail" = "开启远端实时处理并开始录音后，这里会显示本场转录。";
+"capture.transcript.snapshot_unavailable_detail" = "已保存的话语仍会保留，但缺少本次录音保存的语言栏目配置，无法安全重建显示。";
+"capture.transcript.read_only" = "录音或投影期间只读";
+"capture.transcript.copy" = "复制转录";
+"capture.transcript.copy_hint" = "复制本场 session 的转录，保留时间、说话人名称和语言标签。";
+"capture.transcript.copy_empty_hint" = "暂无可复制的转录内容。";
+"capture.transcript.copy_finish_edit_hint" = "请先完成或取消当前编辑，再复制转录。";
+"capture.transcript.copy_success" = "已复制转录";
+"capture.transcript.copy_success_detail" = "现在可以粘贴到其他应用。";
+"capture.transcript.copy_success_live_detail" = "已复制当前转录快照；录音仍在继续。";
+"capture.transcript.copy_failed" = "无法复制转录";
+"capture.transcript.copy_clipboard_failed" = "无法写入系统剪贴板。";
+"capture.transcript.waiting_title" = "正在等待第一条话语";
+"capture.transcript.waiting_detail" = "即使远端关闭或不可用，本地录音仍会继续。";
+"capture.transcript.language_pending" = "语言待确认…";
+"capture.transcript.unselected_language" = "检测到 %@，但本场未选择该语言";
+"capture.transcript.presentation.timeline" = "时间线";
+"capture.transcript.presentation.timeline_detail" = "按时间顺序，每段发言只显示一次。";
+"capture.transcript.presentation.language_columns" = "文字对照版";
+"capture.transcript.presentation.language_columns_detail" = "每种已选择的语言固定显示在自己的有序栏目中。";
+"capture.transcript.waiting_lane" = "等待 %@";
+"capture.transcript.failed_lane" = "未能生成 %@ 栏内容";
+"capture.transcript.source_timestamp" = "原始音频时间 %@";
+"capture.speaker.fallback" = "说话人";
+"capture.speaker.fallback_format" = "说话人 %@";
+"capture.speaker.manage" = "管理说话人";
+"capture.speaker.chip_accessibility_format" = "说话人：%@";
+"capture.speaker.manage_hint" = "打开此匿名说话人的命名和参与者关联。";
+"capture.speaker.editor.title" = "匿名说话人";
+"capture.speaker.close" = "关闭";
+"capture.speaker.privacy_detail" = "本地只保存服务商的匿名标签和你输入的名称，不保存声纹或音频特征。";
+"capture.speaker.session_name" = "本次录音名称";
+"capture.speaker.session_name_detail" = "只覆盖本次录音中的这个匿名说话人。";
+"capture.speaker.session_name_placeholder" = "例如：主持人";
+"capture.speaker.save" = "保存";
+"capture.speaker.clear" = "清除";
+"capture.speaker.participant" = "跨录音参与者";
+"capture.speaker.participant_detail" = "把这个匿名标签手工关联到你管理的名称。不会根据语言自动推断。";
+"capture.speaker.select_participant" = "选择参与者";
+"capture.speaker.link" = "关联";
+"capture.speaker.new_participant_placeholder" = "新参与者名称";
+"capture.speaker.create_and_link" = "创建并关联";
+"capture.speaker.unlink" = "解除关联";
+"capture.speaker.identity_format" = "%@ · 说话人 %@ · 连接 %@";
+"capture.transcript.edit_lane" = "编辑 %@ 语言列";
+"capture.transcript.edit_hint" = "按回车或移开焦点以保存该语言列。";
+"capture.transcript.retry_projection" = "重试投影";
+"capture.transcript.retry_projection_hint" = "重新把已保存的话语写入 Notebook 转录。";
+"capture.settings.retention.title" = "音频保留";
+"capture.settings.retention.subtitle" = "每次开始录音时，当前 Notebook 会冻结当次录音的保留策略。";
+"capture.settings.retention.standard.title" = "保留音频";
+"capture.settings.retention.standard.detail" = "保留录音，直到你选择“永久删除”。";
+"capture.settings.retention.high.title" = "异步转录后删除";
+"capture.settings.retention.high.detail" = "显式异步转录成功后，删除音频及其密钥。";
+"capture.settings.retention.maximum.title" = "任一转录完成后删除";
+"capture.settings.retention.maximum.detail" = "只要已有可持久重建的转录事实，就删除音频及其密钥；若还没有转录，则保留唯一源文件以避免数据丢失。";
+"sidebar.knowledge" = "知识库";
+"knowledge.title" = "知识库";
+"knowledge.subtitle" = "为转录准备背景、专有词和固定译法。";
+"knowledge.new" = "新建知识库";
+"knowledge.create" = "创建";
+"knowledge.untitled" = "未命名知识库";
+"knowledge.name" = "知识库名称";
+"knowledge.empty.title" = "建立第一个知识库";
+"knowledge.empty.description" = "把一个主题的背景、人物、机构和术语整理在同一张档案中。";
+"knowledge.card.no_summary" = "尚未填写说明";
+"knowledge.card.counts" = "%lld 个专有词 · %lld 条固定译法";
+"knowledge.back" = "知识库";
+"knowledge.summary.placeholder" = "用一句话说明这个知识库帮助识别什么";
+"knowledge.saved_revision" = "已自动保存 · 版本 %lld";
+"knowledge.ai.improve" = "让 AI 完善";
+"knowledge.ai.coming_soon" = "AI 完善将在下一步接入；现在可以手动编辑完整档案。";
+"knowledge.context.title" = "用于转录的上下文（约）";
+"knowledge.general.title" = "概况";
+"knowledge.general.subtitle" = "帮助模型理解这是什么场景，以及可能谈到谁。";
+"knowledge.general.topic" = "主题";
+"knowledge.general.setting" = "场景";
+"knowledge.general.location" = "地点";
+"knowledge.general.people" = "人物";
+"knowledge.general.organizations" = "机构";
+"knowledge.general.languages" = "主要语言";
+"knowledge.background.title" = "背景资料";
+"knowledge.background.subtitle" = "直接编辑一段最有助于本次转录的背景，不需要拆成很多文件。";
+"knowledge.terms.title" = "专有词";
+"knowledge.terms.subtitle" = "添加容易听错、但必须准确识别的人名、地名、机构和术语。";
+"knowledge.term.placeholder" = "专有词";
+"knowledge.term.add" = "输入后按回车添加";
+"knowledge.translations.title" = "固定译法";
+"knowledge.translations.subtitle" = "指定重要词语的译法；原文和译文相同表示保留原文。";
+"knowledge.translation.source" = "原文";
+"knowledge.translation.target" = "固定译法";
+"knowledge.translation.add" = "添加固定译法";
+"capture.settings.context.current" = "当前知识库";
+"capture.settings.context.no_selection" = "未选择";
+"capture.settings.context.choose" = "切换";
+"knowledge.import_json" = "导入 JSON";
+"knowledge.import_json.message" = "选择一个 ZuTalk 知识库 JSON 文件（.zutalk-pack.json）。";
+"knowledge.import_json.done" = "知识库已导入";
+"knowledge.import_json.failed" = "无法导入知识库";
+
+/* 分享:点对点字幕与文档协同 */
+"sidebar.share" = "分享";
+"share.title" = "分享";
+"share.identity" = "你的分享密钥";
+"share.copy_code" = "复制分享码";
+"share.join" = "用分享码加入";
+"share.mode.host" = "从这台 Mac 分享";
+"share.mode.join" = "加入别人的";
+"share.stop" = "停止共享";
+"share.stop_note" = "只停止继续发送，无法删除对方已经收到的内容。";
+"share.leave" = "离开房间";
+"share.leave_note" = "离开后不再接收。已经收到的转录稿留在这台 Mac 上。";
+"share.audio_never" = "音频永远不会被共享。";
+"share.capture.live" = "正在共享字幕";
+"share.capture.live_hint" = "房间里的人正在实时看到这段录音的字幕。音频永远不会被共享。";
+"share.capture.mute" = "这段不共享";
+"share.capture.mute_hint" = "只扣下这段录音的字幕，共享本身仍开着。";
+"share.capture.muted" = "这段录音未在共享";
+"share.capture.muted_hint" = "共享开着，但这段录音的字幕被扣下了。";
+"share.capture.unmute" = "恢复";
+"share.empty" = "还没有共享任何内容。";
+"share.role.host" = "主持人可写，其他人只读";
+"share.role.everyone" = "所有人可编辑";
+"share.direct" = "直连";
+"share.relayed" = "经中继";
+"share.start" = "开始共享";
+"share.cancel" = "取消";
+"share.needs_notebook" = "请先打开一个 Notebook——共享的范围是某一个 Notebook。";
+"share.start.confirm.title" = "开始共享这个 Notebook？";
+"share.start.confirm.body" = "在共享开着期间，你在这个 Notebook 里开始的录音，字幕会实时发给房间里的每个人。音频永远不会被共享。停止只停后续，无法删除对方已经收到的内容。";
+"share.start.confirm.session_title" = "共享这段录音？";
+"share.start.confirm.session_body" = "被你放进来的人会保留这段录音转录稿的一份副本，并在房间允许时一起订正。音频永远不会被共享。停止只停后续，无法删除对方已经收到的内容。";
+"share.start.confirm.remember" = "这个 Notebook 下次不再询问。";
+
+/* 设置:分享(点对点)传输 */
+"settings.section.p2p_name" = "分享";
+"settings.p2p.title" = "分享";
+"settings.p2p.subtitle" = "这台 Mac 用什么方式找到与你共享的人。";
+"settings.p2p.identity" = "这台 Mac 的分享密钥";
+"settings.p2p.copy_identity" = "复制";
+"settings.p2p.identity_note" = "别人靠这把密钥认出这台 Mac。更换它会让联系人保存的所有副本失效。";
+"settings.p2p.relay" = "中继服务器";
+"settings.p2p.relay_note" = "一行一个地址。留空表示只走直连——在同一个 Wi-Fi 下这样就够，完全断网也能用。";
+"settings.p2p.relay_privacy" = "中继只负责转发。流量端到端加密，它读不到经过的内容。";
+"settings.p2p.local_discovery" = "发现同一网络里的人";
+"settings.p2p.local_discovery_note" = "让你在这里找到别的 Mac 并请求加入，不必来回传分享码。网络上只看得到一串密钥。macOS 首次会询问本地网络权限，拒绝后分享码仍然可用。";
+"settings.p2p.save" = "保存";
+"settings.p2p.restore_default" = "恢复默认";
+"settings.p2p.saved" = "已保存";
+
+/* 分享:状态与提示 */
+"share.pick_notebook" = "共享哪个 Notebook";
+"share.your_code" = "分享码";
+"share.code_note" = "把它发给要加入的人。传递过程中被折行或改了大小写都不影响。";
+"share.copied" = "已复制";
+"share.no_code_yet" = "还没有分享码，先开始共享。";
+"share.core_unavailable" = "分享还在启动，请稍后再试。";
+"share.join_failed" = "这个分享码读不出来。让对方重发一次——从消息里复制容易丢字符。";
+"share.status.idle" = "未共享";
+"share.status.idle_hint" = "共享一个 Notebook 把字幕发给别人，或用别人给的分享码加入。";
+"share.status.hosting_waiting" = "共享中 — 还没发出内容";
+"share.status.hosting_waiting_hint" = "别人可以用你的分享码加入了。**开始录音后**才会有字幕发出去。";
+"share.status.hosting_live" = "正在发送你的字幕";
+"share.status.hosting_live_hint" = "加入的人都在看你正在转录的内容。";
+"share.status.joined_waiting" = "已加入 — 等待主持人";
+"share.status.joined_waiting_hint" = "你已经连上了。等主持人开始录音，字幕就会出现。";
+"share.status.receiving" = "正在接收字幕";
+"share.status.receiving_hint" = "这是主持人的字幕，不会保存到这台 Mac。";
+"share.status.host_left" = "主持人结束了这次共享";
+"share.status.host_left_hint" = "不会再有新内容。你已经收到的都还在这台 Mac 上。";
+
+/* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
+"share.link.direct" = "直连";
+"share.link.relayed" = "经中继";
+"share.link.direct_hint" = "流量点对点直达，打洞成功。";
+"share.link.relayed_hint" = "直连没打通，流量经中继转发（仍端到端加密）。开了 AP 隔离的 Wi-Fi 上很常见。";
+
+/* 分享:范围选择、收到的转录稿与协同订正 */
+"share.scope.notebook" = "只播字幕：对方实时看这个 Notebook 的录音，什么都不保留。";
+"share.scope.single" = "共享一段录音：对方保留转录稿，可一起订正。";
+"share.scope.no_sessions" = "这个 Notebook 还没有录音。";
+"share.received.title" = "共享的转录稿";
+"share.received.untitled" = "（暂无文本）";
+"share.received.blocks" = "%lld 个句块";
+"share.received.delete" = "从这台 Mac 删除";
+"share.received.delete.confirm_title" = "删除这份收到的转录稿？";
+"share.received.delete.confirm_body" = "只删除这台 Mac 上的副本。别人手里的副本不受影响。";
+"shared.editor.title" = "共享转录稿";
+"shared.editor.read_only" = "只读房间";
+"shared.editor.add_annotation" = "加批注";
+"shared.editor.done" = "完成";
+"shared.editor.empty_title" = "这里还是空的";
+"shared.editor.empty_body" = "主持人的转录稿同步进来后会显示在这里。";
+
+/* 设置:中继准入 */
+"settings.p2p.relay_ready" = "中继可用";
+"settings.p2p.relay_ready_hint" = "这台 Mac 已登记，两台机器直连不通时中继会接手。";
+"settings.p2p.relay_not_registered" = "中继不可用";
+"settings.p2p.relay_not_registered_hint" = "登记没成功。同一网络下分享照常可用，缺的只是跨网络时的兜底。";
+"settings.p2p.relay_needs_invite" = "中继需要邀请码";
+"settings.p2p.relay_needs_invite_hint" = "中继只对受邀的 Mac 开放。没有邀请码时，同一网络下仍可分享，但跨网络没有兜底。";
+"settings.p2p.relay_registering" = "正在登记…";
+"settings.p2p.relay_unknown" = "尚未检查";
+"settings.p2p.relay_unknown_hint" = "启动时和开始共享时都会检查登记。";
+"settings.p2p.relay_retry" = "重试";
+
+/* 分享:同一网络里的人 */
+"share.nearby" = "同一网络里的人";
+"share.nearby.scan" = "查找";
+"share.nearby.scanning" = "查找中…";
+"share.nearby.empty" = "还没找到人。两台 Mac 都要在同一网络下打开 ZuTalk。";
+"share.nearby.ask" = "请求加入";
+"share.nearby.note" = "网络上只看得到一串密钥——没有名字，也没有会议标题。请求加入会把你的名字发过去，由对方决定。";
+"share.nearby.not_sharing" = "那台 Mac 现在没有在共享。";
+"share.nearby.declined" = "对方拒绝了。";
+"share.nearby.timed_out" = "没有回应，对方可能离开了。";
+"share.requests" = "有人想加入";
+"share.requests.unnamed" = "未命名的 Mac";
+"share.requests.approve" = "放行";
+"share.requests.decline" = "拒绝";
+"share.requests.note" = "名字是对方自己填的。下面那串密钥才是伪造不了的部分。";
+"share.knock.toast" = "%@ 想加入你的共享";
+"share.knock.toast_detail" = "到「分享」页批准或拒绝。";
+"share.knock.badge_label" = "%lld 个加入请求等待处理";
+
+/* 分享:昵称与成员 */
+"share.nickname" = "你在房间里的名字";
+"share.nickname.prompt" = "例如：我的 MacBook";
+"share.nickname.note" = "共享的人会看到它。留空的话，他们只看得到你的密钥。";
+"share.members" = "这个房间里";
+"share.members.unnamed" = "未命名";
+"share.members.you" = "你";
+"share.members.host" = "主持人";
+"share.nearby.asking" = "等待对方回应…";
+"share.nearby.abandon" = "不等了";
+
+"capture.toolbar.joined_room" = "加入房间中";
+"capture.toolbar.joined_room_hint" = "正在接收对方的实时字幕。要在这里录音，先到分享页离开房间。";
+"share.sidebar.live_label" = "正在房间中";
+"shared_inbox.live_title" = "实时接收中";
+"shared_inbox.live_waiting" = "已加入房间，等主持人开始录音。";
+"shared_inbox.empty_title" = "还没有收到内容";
+"shared_inbox.empty_body" = "别人共享给你的转录稿会出现在这里——房间进行中实时更新，散场后保留。";
+"shared_inbox.session_live" = "实时";
+"shared_inbox.lane_canonical" = "原文";
+"shared_inbox.lane_connecting" = "这条语言车道还在连接";
+"shared_inbox.lane_failed" = "这条语言车道已失败，不会再有内容";
+
+"share.web.title" = "网页分享";
+"share.web.start" = "开启网页分享";
+"share.web.hint" = "扫二维码就能在浏览器里看实时字幕稿——不用装应用，语言可切换。";
+"share.web.confirm.title" = "开启网页分享？";
+"share.web.confirm.body" = "字幕明文会经过字幕服务器，并在分享结束后继续保留一段时间；拿到链接的人都能看。音频永远不会被分享。";
+"share.web.plaintext_note" = "字幕明文经过服务器并保留一段时间；拿到链接的人都能看。";
+"share.web.copy" = "复制链接";
+"share.web.stop" = "停止网页分享";
+"share.web.qr_label" = "实时字幕网页的二维码";

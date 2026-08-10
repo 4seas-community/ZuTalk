@@ -1,4 +1,4 @@
-//! Zulangue 管道编排层
+//! ZuTalk 管道编排层
 //!
 //! Notebook capture support, explicit async tasks, and session state.
 //! 录音与转录的职责划分见 docs/architecture/ARCHITECTURE.md「录音与转录」。

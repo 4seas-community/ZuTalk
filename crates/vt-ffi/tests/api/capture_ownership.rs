@@ -3,7 +3,7 @@ use vt_ffi::notebook_capture_api::{
     FfiNotebookCaptureCallback, FfiNotebookCaptureEvent, FfiNotebookCaptureLivePreview,
     FfiNotebookCaptureState, FfiNotebookRemoteHealth,
 };
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
 struct NoopCaptureCallback;
 
@@ -16,7 +16,7 @@ impl FfiNotebookCaptureCallback for NoopCaptureCallback {
 #[test]
 fn default_notebook_capture_starts_without_a_soniox_key_and_stays_remote_off() {
     let tmp = TempDir::new().unwrap();
-    let core = ZulangueCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
+    let core = ZuTalkCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
     let notebook = core
         .create_notebook(Some("Local-only default".into()))
         .unwrap();
@@ -43,7 +43,7 @@ fn default_notebook_capture_starts_without_a_soniox_key_and_stays_remote_off() {
 #[test]
 fn invalid_local_audio_interrupts_durably_and_releases_capture_ownership() {
     let tmp = TempDir::new().unwrap();
-    let core = ZulangueCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
+    let core = ZuTalkCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
     let notebook = core
         .create_notebook(Some("Local persistence failure".into()))
         .unwrap();

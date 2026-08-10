@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 WORKFLOW="$ROOT_DIR/.github/workflows/macos-build.yaml"
 JUSTFILE="$ROOT_DIR/justfile"
-PROJECT_FILE="$ROOT_DIR/macos/Zulangue/Zulangue.xcodeproj/project.pbxproj"
-INFO_PLIST="$ROOT_DIR/macos/Zulangue/Zulangue-Info.plist"
+PROJECT_FILE="$ROOT_DIR/macos/ZuTalk/ZuTalk.xcodeproj/project.pbxproj"
+INFO_PLIST="$ROOT_DIR/macos/ZuTalk/ZuTalk-Info.plist"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -47,6 +47,8 @@ grep -Eq '^release-sparkle-adhoc:.*release-adhoc.*sparkle-appcast' "$JUSTFILE" \
   || fail "the local release path must add a signed Sparkle appcast"
 
 appcast_body="$(recipe_body sparkle-appcast)"
+# 账户名是登录 Keychain 里那对密钥的查找名,不随产品改名走:密钥生成于
+# 改名之前,App 内置的公钥对应的就是它。这里断言的是那把真实存在的私钥。
 grep -Fq -- '--account Zulangue' <<<"$appcast_body" \
   || fail "appcast signing must use the dedicated local Keychain account"
 if grep -Fq 'SPARKLE_PRIVATE_ED_KEY' <<<"$appcast_body"; then
@@ -100,7 +102,7 @@ grep -A1 -F '<key>SURequireSignedFeed</key>' "$INFO_PLIST" | grep -Fq '<true/>' 
   || fail "the app must require a signed update feed"
 grep -A1 -F '<key>SUVerifyUpdateBeforeExtraction</key>' "$INFO_PLIST" | grep -Fq '<true/>' \
   || fail "the app must verify updates before extraction"
-grep -Fq 'https://github.com/4seas-community/zulangue/releases/latest/download/appcast.xml' "$PROJECT_FILE" \
+grep -Fq 'https://github.com/4seas-community/ZuTalk/releases/latest/download/appcast.xml' "$PROJECT_FILE" \
   || fail "the public HTTPS appcast URL must be configured"
 
 echo "local-keychain Ad Hoc Sparkle release gate is fail-closed"

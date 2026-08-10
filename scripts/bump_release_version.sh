@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT_DIR"
 
-PROJECT_FILE="macos/Zulangue/Zulangue.xcodeproj/project.pbxproj"
+PROJECT_FILE="macos/ZuTalk/ZuTalk.xcodeproj/project.pbxproj"
 CARGO_FILE="Cargo.toml"
 NOTES="packaging/release-notes.md"
 CHANGELOG="CHANGELOG.md"
@@ -46,12 +46,12 @@ NEW_BUILD=$((OLD_BUILD + 1))
 # 上一版的发布说明进 CHANGELOG,再腾出位置给这一版。以前 release-notes.md
 # 每次被整个覆盖,历史只活在 git log 和已发布的资产里。
 if [[ -f "$NOTES" ]]; then
-  if [[ -f "$CHANGELOG" ]] && grep -Fq "# Zulangue $OLD_VERSION" "$CHANGELOG"; then
+  if [[ -f "$CHANGELOG" ]] && grep -Fq "# ZuTalk $OLD_VERSION" "$CHANGELOG"; then
     echo "· CHANGELOG 里已经有 $OLD_VERSION,不重复归档"
   else
     TMP="$(mktemp)"
     {
-      echo "# Zulangue 更新历史"
+      echo "# ZuTalk 更新历史"
       echo
       echo "每一版的发布说明按时间倒序排列。当前正在准备的那一版在"
       echo "\`packaging/release-notes.md\`,发布后由 \`just bump\` 归档到这里。"
@@ -83,16 +83,18 @@ sed -i '' \
   "$PROJECT_FILE"
 
 cat > "$NOTES" <<EOF
-# Zulangue $NEW_VERSION
+# ZuTalk $NEW_VERSION
 
 <!-- 一句话说清这一版对用户意味着什么,然后逐条列出他们看得见的变化。
      这份文件会被嵌进 appcast,用户在更新提示里读到的就是它。 -->
 
-Zulangue requires macOS 15.5 or later.
+ZuTalk requires macOS 15.5 or later.
 EOF
 
 # Cargo.lock 跟着走,免得发布时才发现版本对不上。
-cargo metadata --no-deps --format-version 1 > /dev/null
+# 不能带 --no-deps:那样 cargo 不做依赖解析,也就不会重写 Cargo.lock,
+# workspace 成员的版本号会一直停在旧值上,直到某次 --locked 构建才炸出来。
+cargo metadata --format-version 1 > /dev/null
 
 bash "$ROOT_DIR/scripts/check_release_version.sh"
 echo "✓ $OLD_VERSION (build $OLD_BUILD) → $NEW_VERSION (build $NEW_BUILD)"

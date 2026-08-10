@@ -23,7 +23,7 @@ use vt_store::{
     AsyncTaskState, BuiltinNotebookTab, EditOp, EditorBridge, NotebookTabRecord, ProjectionState,
 };
 
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 
 /// 文档变更回调（Rust → Swift push）。
 ///
@@ -43,7 +43,7 @@ pub trait FfiEditorCallback: Send + Sync {
     fn on_doc_changed(&self, doc_id: String, generation: u64);
 }
 
-/// Zulangue 的 mark schema — 每个 key 对应的 expand 行为。
+/// ZuTalk 的 mark schema — 每个 key 对应的 expand 行为。
 /// Loro 强制要求 rich-text mark key 在 apply 前注册,否则返回
 /// "Style configuration missing" 错误。
 ///
@@ -354,7 +354,7 @@ fn notebook_store_error(error: vt_store::NotebookStoreError) -> CoreError {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     pub(crate) fn resolve_product_editor_tab(
         &self,
         notebook_id: &str,
@@ -633,7 +633,7 @@ impl From<FfiEditOp> for EditOp {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// Open one of the Notebook's exact three builtin documents. Callers never
     /// choose a Loro `doc_id`; Rust resolves it from the Notebook/tab identity.
     pub fn open_editor(&self, notebook_id: String, tab_id: String) -> Result<(), CoreError> {
@@ -698,7 +698,7 @@ impl ZulangueCore {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// Register a callback for a resolved builtin document.
     pub fn register_editor_callback(
         &self,
@@ -728,7 +728,7 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 内部:查 callback 并触发。找不到就静默。
     pub(crate) fn notify_editor_changed(&self, session_id: &str) {
         notify_editor_callback(&self.editor_callbacks, session_id);
@@ -747,7 +747,7 @@ impl ZulangueCore {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 获取编辑器内容(纯文本,丢所有 mark)
     pub fn get_editor_content(
         &self,
@@ -861,7 +861,7 @@ mod tests {
     }
 
     fn builtin_target(
-        core: &ZulangueCore,
+        core: &ZuTalkCore,
         title: &str,
         builtin_kind: BuiltinNotebookTab,
     ) -> EditorTarget {
@@ -880,31 +880,31 @@ mod tests {
         }
     }
 
-    fn manual_target(core: &ZulangueCore, title: &str) -> EditorTarget {
+    fn manual_target(core: &ZuTalkCore, title: &str) -> EditorTarget {
         builtin_target(core, title, BuiltinNotebookTab::ManualNote)
     }
 
-    fn open(core: &ZulangueCore, target: &EditorTarget) {
+    fn open(core: &ZuTalkCore, target: &EditorTarget) {
         core.open_editor(target.notebook_id.clone(), target.tab_id.clone())
             .unwrap();
     }
 
-    fn apply(core: &ZulangueCore, target: &EditorTarget, op: FfiEditOp) {
+    fn apply(core: &ZuTalkCore, target: &EditorTarget, op: FfiEditOp) {
         core.apply_edit(target.notebook_id.clone(), target.tab_id.clone(), op)
             .unwrap();
     }
 
-    fn content(core: &ZulangueCore, target: &EditorTarget) -> String {
+    fn content(core: &ZuTalkCore, target: &EditorTarget) -> String {
         core.get_editor_content(target.notebook_id.clone(), target.tab_id.clone())
             .unwrap()
     }
 
-    fn delta(core: &ZulangueCore, target: &EditorTarget) -> String {
+    fn delta(core: &ZuTalkCore, target: &EditorTarget) -> String {
         core.get_editor_delta(target.notebook_id.clone(), target.tab_id.clone())
             .unwrap()
     }
 
-    fn close(core: &ZulangueCore, target: &EditorTarget) {
+    fn close(core: &ZuTalkCore, target: &EditorTarget) {
         core.close_editor(target.notebook_id.clone(), target.tab_id.clone())
             .unwrap();
     }
@@ -912,7 +912,7 @@ mod tests {
     #[test]
     fn test_editor_ops_roundtrip() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let target = manual_target(&core, "Roundtrip");
 
         open(&core, &target);
@@ -938,7 +938,7 @@ mod tests {
     #[test]
     fn product_open_rejects_caller_supplied_or_cross_notebook_tab_identity() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let first = manual_target(&core, "First");
         let second = manual_target(&core, "Second");
 
@@ -951,7 +951,7 @@ mod tests {
     #[test]
     fn product_open_rejects_corrupt_snapshot_without_overwriting_it() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let target = manual_target(&core, "Corrupt");
         let path = snapshot_path(tmp.path(), &target.doc_id);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -982,7 +982,7 @@ mod tests {
     #[test]
     fn realtime_transcript_is_read_only_until_capture_projection_is_ready() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let target = builtin_target(&core, "Capture", BuiltinNotebookTab::RealtimeTranscript);
         open(&core, &target);
         assert!(!core
@@ -1054,7 +1054,7 @@ mod tests {
         let data_dir = tmp.path().to_str().unwrap().to_string();
 
         let target = {
-            let core = ZulangueCore::new(data_dir.clone()).unwrap();
+            let core = ZuTalkCore::new(data_dir.clone()).unwrap();
             let target = manual_target(&core, "Quit");
             open(&core, &target);
             apply(
@@ -1073,7 +1073,7 @@ mod tests {
         };
 
         // 新进程打开同一 data_dir,读回来必须有之前打的字
-        let core2 = ZulangueCore::new(data_dir).unwrap();
+        let core2 = ZuTalkCore::new(data_dir).unwrap();
         open(&core2, &target);
         let content = content(&core2, &target);
         assert_eq!(
@@ -1090,7 +1090,7 @@ mod tests {
         let data_dir = tmp.path().to_str().unwrap().to_string();
 
         let target = {
-            let core = ZulangueCore::new(data_dir.clone()).unwrap();
+            let core = ZuTalkCore::new(data_dir.clone()).unwrap();
             let target = manual_target(&core, "Shutdown");
             open(&core, &target);
             apply(
@@ -1105,7 +1105,7 @@ mod tests {
             target
         };
 
-        let core2 = ZulangueCore::new(data_dir).unwrap();
+        let core2 = ZuTalkCore::new(data_dir).unwrap();
         open(&core2, &target);
         let content = content(&core2, &target);
         assert_eq!(content, "via shutdown only");
@@ -1114,7 +1114,7 @@ mod tests {
     #[test]
     fn test_flush_all_editors_sync_handles_multiple_sessions() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let targets = ["a", "b", "c"]
             .into_iter()
             .map(|title| manual_target(&core, title))
@@ -1367,7 +1367,7 @@ mod tests {
     #[test]
     fn test_open_same_session_twice_preserves_content_after_one_close() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let target = manual_target(&core, "Refcount");
 
         open(&core, &target);
@@ -1402,7 +1402,7 @@ mod tests {
     #[test]
     fn test_final_close_actually_frees_session() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let target = manual_target(&core, "Final close");
 
         open(&core, &target);
@@ -1431,7 +1431,7 @@ mod tests {
         // 读旧(或空)snapshot —— 如果无条件覆盖内存,用户的编辑就没了。
         // refcount open 语义:已存在 session 只 ++,不动 LoroDoc。
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let target = manual_target(&core, "In-memory");
 
         open(&core, &target);
@@ -1457,7 +1457,7 @@ mod tests {
     #[test]
     fn test_flush_all_editors_sync_no_sessions_is_noop() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         // 没 open 任何 editor,flush 应当 ok 且不 panic
         core.flush_all_editors_sync().unwrap();
     }
@@ -1469,7 +1469,7 @@ mod tests {
 
         // Round 1:打开 / 编辑 / 关闭
         let target = {
-            let core = ZulangueCore::new(data_dir.clone()).unwrap();
+            let core = ZuTalkCore::new(data_dir.clone()).unwrap();
             let target = manual_target(&core, "Persist");
             open(&core, &target);
             apply(
@@ -1494,9 +1494,9 @@ mod tests {
             target
         };
 
-        // Round 2:重新 new ZulangueCore(模拟 App 重启),打开同一 session
+        // Round 2:重新 new ZuTalkCore(模拟 App 重启),打开同一 session
         {
-            let core = ZulangueCore::new(data_dir).unwrap();
+            let core = ZuTalkCore::new(data_dir).unwrap();
             open(&core, &target);
 
             let content = content(&core, &target);
@@ -1513,7 +1513,7 @@ mod tests {
     #[test]
     fn test_heading_mark_roundtrip() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let target = manual_target(&core, "Heading");
 
         open(&core, &target);
@@ -1549,7 +1549,7 @@ mod tests {
     #[test]
     fn test_strikethrough_mark_roundtrip() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let target = manual_target(&core, "Strikethrough");
 
         open(&core, &target);
@@ -1578,7 +1578,7 @@ mod tests {
     #[test]
     fn test_rich_text_mark_roundtrip() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let target = manual_target(&core, "Rich text");
 
         open(&core, &target);
@@ -1676,7 +1676,7 @@ mod tests {
     #[test]
     fn test_editor_closed_session_error() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let target = manual_target(&core, "Closed");
 
         let result = core.apply_edit(

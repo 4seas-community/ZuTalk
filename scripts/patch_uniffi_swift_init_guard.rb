@@ -12,9 +12,9 @@ helper = <<~SWIFT
       case .ok:
           return nil
       case .contractVersionMismatch:
-          return "UniFFI contract version mismatch: rebuild and redeploy Zulangue."
+          return "UniFFI contract version mismatch: rebuild and redeploy ZuTalk."
       case .apiChecksumMismatch:
-          return "UniFFI API checksum mismatch: rebuild and redeploy Zulangue."
+          return "UniFFI API checksum mismatch: rebuild and redeploy ZuTalk."
       }
   }
 

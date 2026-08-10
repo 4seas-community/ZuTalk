@@ -1,6 +1,6 @@
 //! API 层端到端回归测试
 //!
-//! 直接对 vt-ffi::ZulangueCore 的公共方法做端到端验证, 跨越所有 11 个 Rust crate
+//! 直接对 vt-ffi::ZuTalkCore 的公共方法做端到端验证, 跨越所有 11 个 Rust crate
 //! 真实链路 (rusqlite + Loro CRDT + aes-gcm + Soniox WebSocket + tokio runtime),
 //! 不经过 SwiftUI 客户端.
 //!
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
 // ============================================================================
 // Test helpers
@@ -44,9 +44,9 @@ fn load_env() {
     }
 }
 
-fn make_core() -> (TempDir, ZulangueCore) {
+fn make_core() -> (TempDir, ZuTalkCore) {
     let tmp = TempDir::new().unwrap();
-    let core = ZulangueCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
+    let core = ZuTalkCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
     (tmp, core)
 }
 

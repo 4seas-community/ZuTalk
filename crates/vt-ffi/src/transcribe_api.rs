@@ -29,7 +29,7 @@ const SONIOX_ASYNC_TASK_BASE_ALLOWANCE: Duration = Duration::from_secs(5 * 60);
 /// 远端工件标签。上传文件名与转录任务的 `client_reference_id` 都用它，
 /// 启动扫尾据此在远端清单里认出本机遗留的工件。
 pub(crate) fn provider_artifact_reference(task_id: &str) -> String {
-    format!("zulangue-{task_id}")
+    format!("zutalk-{task_id}")
 }
 
 /// 把 `soniox_async` 的远端工件生命周期落到 `provider_remote_artifacts` 日志。
@@ -819,16 +819,9 @@ mod tests {
         let cancel = CancellationToken::new();
         cancel.cancel();
 
-        let result = run_soniox_transcription(
-            "unused",
-            None,
-            None,
-            Vec::new(),
-            cancel,
-            "zulangue-t1",
-            None,
-        )
-        .await;
+        let result =
+            run_soniox_transcription("unused", None, None, Vec::new(), cancel, "zutalk-t1", None)
+                .await;
         assert!(matches!(result, Err(SonioxTranscriptionError::Cancelled)));
     }
 
@@ -933,7 +926,7 @@ mod tests {
 
     fn provider_output_fixture() -> (tempfile::TempDir, std::path::PathBuf, NotebookCaptureStore) {
         let temp = tempfile::tempdir().unwrap();
-        let db = temp.path().join("zulangue.db");
+        let db = temp.path().join("zutalk.db");
         let notebook = vt_store::NotebookStore::new(&db)
             .unwrap()
             .create_notebook(Some("Provider receipt"))
@@ -1368,7 +1361,7 @@ mod tests {
     #[test]
     fn test_enforce_privacy_after_task_returns_err_when_key_delete_fails() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let db = tmp.path().join("zulangue.db");
+        let db = tmp.path().join("zutalk.db");
         let session_meta = SessionMetaStore::new(&db).unwrap();
         session_meta
             .set_encrypted_path("s1", tmp.path().join("s1.enc").to_str().unwrap(), "key-1")
@@ -1386,7 +1379,7 @@ mod tests {
     #[test]
     fn test_enforce_privacy_after_task_returns_err_when_meta_missing() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let db = tmp.path().join("zulangue.db");
+        let db = tmp.path().join("zutalk.db");
         let _session_meta = SessionMetaStore::new(&db).unwrap();
         let key_store = vt_crypto::MemoryKeyStore::new();
 
@@ -1401,7 +1394,7 @@ mod tests {
     #[test]
     fn test_enforce_privacy_after_task_rejects_missing_or_invalid_level() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let db = tmp.path().join("zulangue.db");
+        let db = tmp.path().join("zutalk.db");
         let session_meta = SessionMetaStore::new(&db).unwrap();
         let sessions = vt_store::SessionQueryStore::new(&db).unwrap();
         for id in ["missing-level", "invalid-level"] {
@@ -1434,7 +1427,7 @@ mod tests {
     #[test]
     fn test_enforce_privacy_after_task_deletes_retention_chunks() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let db = tmp.path().join("zulangue.db");
+        let db = tmp.path().join("zutalk.db");
         let chunk_path = tmp.path().join("chunk-000.enc");
         std::fs::write(&chunk_path, b"encrypted chunk").unwrap();
 
@@ -1575,7 +1568,7 @@ mod tests {
         Arc<dyn KeyProvider>,
     ) {
         let tmp = TempDir::new().unwrap();
-        let db = tmp.path().join("zulangue.db");
+        let db = tmp.path().join("zutalk.db");
         let enc = tmp.path().join("session.enc");
 
         // 写一个假的 .enc 文件（内容不重要，enforce 只看存在）
@@ -1665,7 +1658,7 @@ mod tests {
     #[test]
     fn test_enforce_privacy_missing_session_is_err_for_async_terminal_path() {
         let tmp = TempDir::new().unwrap();
-        let db = tmp.path().join("zulangue.db");
+        let db = tmp.path().join("zutalk.db");
         let _ = SessionMetaStore::new(&db).unwrap(); // 创建空 db
         let key_store: Arc<dyn KeyProvider> = Arc::new(MemoryKeyStore::new());
 

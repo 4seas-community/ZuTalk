@@ -1,4 +1,4 @@
-//! Zulangue 存储层
+//! ZuTalk 存储层
 //!
 //! SQLite (rusqlite) + Loro CRDT 文档存储 + 文件系统管理。
 //! SQLite 事实与 Loro 可编辑投影的所有权划分见

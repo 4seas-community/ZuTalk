@@ -12,9 +12,9 @@
 
 use std::time::Duration;
 
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
-fn core(dir: &tempfile::TempDir) -> ZulangueCore {
+fn core(dir: &tempfile::TempDir) -> ZuTalkCore {
     // 诊断开关:RUST_LOG=vt_share=debug,vt_store=info 时打印传输与准入日志。
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
@@ -23,7 +23,7 @@ fn core(dir: &tempfile::TempDir) -> ZulangueCore {
         )
         .with_writer(std::io::stderr)
         .try_init();
-    ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap()
+    ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap()
 }
 
 fn wait_until(seconds: u64, mut check: impl FnMut() -> bool) -> bool {
@@ -188,7 +188,7 @@ fn both_sides_can_start_from_the_golden_ancestor_and_merge() {
         .unwrap();
 
     // 两边都应当收敛到同样的两条批注(顺序由 CRDT 决定,内容集合一致)。
-    let both = |core: &ZulangueCore| {
+    let both = |core: &ZuTalkCore| {
         core.shared_session_blocks(session.into())
             .map(|blocks| {
                 let texts: Vec<_> = blocks.iter().map(|b| b.text.clone()).collect();
@@ -203,7 +203,7 @@ fn both_sides_can_start_from_the_golden_ancestor_and_merge() {
     );
 
     // 收敛后两边文本集合一致 —— 不是各自表述。
-    let texts = |core: &ZulangueCore| {
+    let texts = |core: &ZuTalkCore| {
         let mut t: Vec<String> = core
             .shared_session_blocks(session.into())
             .unwrap()
@@ -556,7 +556,7 @@ fn conflicting_edits_on_the_same_block_converge_identically() {
         .unwrap();
 
     // 不断言谁赢,断言两边一字不差,且是两个候选之一。
-    let text_of = |core: &ZulangueCore| {
+    let text_of = |core: &ZuTalkCore| {
         core.shared_session_blocks(session.into())
             .map(|blocks| blocks[0].text.clone())
             .unwrap_or_default()

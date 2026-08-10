@@ -3,10 +3,10 @@
 //! 走真实的 FFI 路径:两个 core、真实端点、真实分享码。要回答的是——
 //! joinShare 是抛错了,还是成功了却没东西可看?
 
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
-fn core(dir: &tempfile::TempDir) -> ZulangueCore {
-    ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap()
+fn core(dir: &tempfile::TempDir) -> ZuTalkCore {
+    ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap()
 }
 
 #[test]
@@ -21,7 +21,7 @@ fn joining_with_a_valid_code_reports_a_usable_state() {
         .start_sharing(Some("nb-1".into()), None, false)
         .expect("开始共享应当成功");
     assert!(
-        code.starts_with("zulangueshare"),
+        code.starts_with("zutalkshare"),
         "分享码格式: {}",
         &code[..20.min(code.len())]
     );
@@ -232,7 +232,7 @@ fn a_damaged_code_reports_an_error_instead_of_doing_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let core = core(&dir);
     assert!(core
-        .join_share("zulangueshare-not-a-real-code".into())
+        .join_share("zutalkshare-not-a-real-code".into())
         .is_err());
     assert!(core.join_share(String::new()).is_err());
 }

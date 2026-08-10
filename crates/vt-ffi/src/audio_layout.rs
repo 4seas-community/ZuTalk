@@ -145,12 +145,12 @@ mod tests {
     #[test]
     fn unrelated_data_directory_files_are_never_relocated() {
         for name in [
-            "zulangue.db",
+            "zutalk.db",
             "tasks.db",
             "debug.log",
             "editor-docs",
             "notes.enc",
-            ".zulangue-core.lock",
+            ".zutalk-core.lock",
         ] {
             assert_eq!(
                 classify_legacy_audio_file(name),
@@ -226,7 +226,7 @@ mod tests {
     fn relocation_moves_files_and_repairs_every_recorded_path() {
         let temp = TempDir::new().unwrap();
         let data_dir = temp.path();
-        let db_path = data_dir.join("zulangue.db");
+        let db_path = data_dir.join("zutalk.db");
         let session_id = "0e6635be-db2d-4dbd-af11-b5ad84caabfe";
         let legacy_chunk = data_dir.join(format!("{session_id}.chunk.00000.enc"));
         let legacy_journal = data_dir.join(format!("{session_id}.capture-journal.enc"));
@@ -283,7 +283,7 @@ mod tests {
     fn relocation_is_idempotent() {
         let temp = TempDir::new().unwrap();
         let data_dir = temp.path();
-        let db_path = data_dir.join("zulangue.db");
+        let db_path = data_dir.join("zutalk.db");
         let session_id = "2cb1f645-96b5-4825-97c3-59eb66a869f5";
         let legacy_chunk = data_dir.join(format!("{session_id}.chunk.00000.enc"));
         let legacy_journal = data_dir.join(format!("{session_id}.capture-journal.enc"));
@@ -313,7 +313,7 @@ mod tests {
     fn a_row_whose_file_is_already_gone_keeps_its_recorded_path() {
         let temp = TempDir::new().unwrap();
         let data_dir = temp.path();
-        let db_path = data_dir.join("zulangue.db");
+        let db_path = data_dir.join("zutalk.db");
         let session_id = "44cac720-8ea8-4bd1-8e61-45e3a8d53dc8";
         let legacy_chunk = data_dir.join(format!("{session_id}.chunk.00000.enc"));
         let legacy_journal = data_dir.join(format!("{session_id}.capture-journal.enc"));

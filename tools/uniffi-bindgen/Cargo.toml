@@ -1,5 +1,5 @@
 [package]
-name = "zulangue-uniffi-bindgen"
+name = "zutalk-uniffi-bindgen"
 version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true

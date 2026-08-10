@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 /// topic 派生的域分隔串。改动即协议破坏。
-const TOPIC_DOMAIN: &[u8] = b"zulangue/room/v1";
+const TOPIC_DOMAIN: &[u8] = b"zutalk/room/v1";
 
 /// 共享范围。
 ///

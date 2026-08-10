@@ -238,7 +238,7 @@ pub struct BoundContextPack {
 
 /// Schema tag written into every exported Pack document. Import refuses
 /// anything else rather than guessing at an unknown layout.
-pub const CONTEXT_PACK_DOCUMENT_SCHEMA: &str = "zulangue.context-pack.v1";
+pub const CONTEXT_PACK_DOCUMENT_SCHEMA: &str = "zutalk.context-pack.v1";
 
 /// Upper bound on a Pack document accepted for import. Generous enough for a
 /// Pack of maximum-size sources, small enough to reject a mistaken file.
@@ -1264,7 +1264,7 @@ impl ContextPackStore {
         compilation: &ContextCompilation,
     ) -> Result<(), ContextPackStoreError> {
         validate_compilation(compilation)?;
-        let key_ref = format!("zulangue.context-snapshot.{run_id}");
+        let key_ref = format!("zutalk.context-snapshot.{run_id}");
         let key = SessionKey::generate();
         self.keys.store_key(&key_ref, &key)?;
         let ciphertext = encrypt_chunk(compilation.context_json.as_bytes(), &key)?;
@@ -1441,7 +1441,7 @@ impl ContextPackStore {
             ));
         }
         let id = uuid::Uuid::new_v4().to_string();
-        let key_ref = format!("zulangue.context-pack.{id}");
+        let key_ref = format!("zutalk.context-pack.{id}");
         let key = SessionKey::generate();
         self.keys.store_key(&key_ref, &key)?;
         let now = chrono::Utc::now().to_rfc3339();
@@ -2600,7 +2600,7 @@ mod tests {
                     title: "CSV".into(),
                     format: ContextSourceFormat::TranslationCsv,
                     content_kind: ContextContentKind::TranslationTerms,
-                    content: b"en,zh\nZulangue,\xe5\xa3\xb0\xe9\x9f\xb3\xe5\xb7\xa5\xe5\x85\xb7\n"
+                    content: b"en,zh\nZuTalk,\xe5\xa3\xb0\xe9\x9f\xb3\xe5\xb7\xa5\xe5\x85\xb7\n"
                         .to_vec(),
                     metadata: json!({}),
                 },
@@ -2610,11 +2610,7 @@ mod tests {
             .store
             .import_source(
                 &private.id,
-                &text_source(
-                    "Terms",
-                    ContextContentKind::Terms,
-                    "Zulangue\nZulangue\nMVP",
-                ),
+                &text_source("Terms", ContextContentKind::Terms, "ZuTalk\nZuTalk\nMVP"),
             )
             .unwrap();
         fixture
@@ -2647,7 +2643,7 @@ mod tests {
         assert_eq!(first, second);
         assert!(first.context_json.chars().count() <= 420);
         assert_eq!(first.context.translation_terms.len(), 2);
-        assert_eq!(first.context.terms, vec!["Zulangue", "MVP"]);
+        assert_eq!(first.context.terms, vec!["ZuTalk", "MVP"]);
         assert_eq!(first.context.general.len(), 1);
         assert!(first.receipt.omissions.iter().any(|value| {
             value.reason == ContextOmissionReason::Duplicate
@@ -2910,7 +2906,7 @@ mod tests {
         let fixture = fixture();
         let pack = seeded_library_pack(&fixture);
         let mut document = fixture.store.export_pack_document(&pack.id).unwrap();
-        document.schema = "zulangue.context-pack.v99".into();
+        document.schema = "zutalk.context-pack.v99".into();
         let error = fixture
             .store
             .import_pack_document(&document, None)

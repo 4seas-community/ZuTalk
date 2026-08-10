@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# locale_smoke.sh — 给 Zulangue.app 单独覆盖 AppleLanguages,不改系统语言.
+# locale_smoke.sh — 给 ZuTalk.app 单独覆盖 AppleLanguages,不改系统语言.
 #
 # 用法:
 #   ./scripts/locale_smoke.sh en       # 英文启动
@@ -12,8 +12,8 @@
 set -eu
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUNDLE_ID="xyz.voice.zulangue"
-APP_PATH="$ROOT_DIR/build/app/Zulangue.app"
+BUNDLE_ID="xyz.voice.zutalk"
+APP_PATH="$ROOT_DIR/build/app/ZuTalk.app"
 
 usage() { echo "usage: $0 {en|zh-Hans|ja|reset}" >&2; exit 2; }
 
@@ -21,7 +21,7 @@ usage() { echo "usage: $0 {en|zh-Hans|ja|reset}" >&2; exit 2; }
 lang="$1"
 
 # 杀掉在运行的实例,保证下次读到新的 AppleLanguages
-killall Zulangue 2>/dev/null || true
+killall ZuTalk 2>/dev/null || true
 sleep 0.4
 
 case "$lang" in

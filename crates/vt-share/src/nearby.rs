@@ -18,7 +18,7 @@
 use serde::{Deserialize, Serialize};
 
 /// 「附近的人」通道。与字幕、文档各自分开。
-pub const NEARBY_ALPN: &[u8] = b"zulangue/nearby/1";
+pub const NEARBY_ALPN: &[u8] = b"zutalk/nearby/1";
 
 /// 自报的名字最长多少字节。
 ///
@@ -87,7 +87,7 @@ pub struct PendingJoinRequest {
     pub display_name: String,
 }
 
-/// 同一网络里看到的一台 Zulangue。
+/// 同一网络里看到的一台 ZuTalk。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NearbyPeer {
     pub endpoint_id: iroh::EndpointId,
@@ -106,7 +106,7 @@ mod tests {
                 display_name: "楼下的 Mac".into(),
             },
             NearbyMessage::JoinGranted {
-                share_code: "zulangueshare…".into(),
+                share_code: "zutalkshare…".into(),
             },
             NearbyMessage::JoinDenied {
                 reason: DenyReason::Declined,

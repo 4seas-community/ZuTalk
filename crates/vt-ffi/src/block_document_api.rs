@@ -29,7 +29,7 @@ use vt_store::document_schema::{
 use vt_store::note_outline::{flatten_note, rebuild_note, OutlineKind, OutlineRow};
 use vt_store::transcript_projection::{MachineBlockWrite, TranscriptProjection, UtteranceBlock};
 
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum FfiDocumentKind {
@@ -182,7 +182,7 @@ fn block_document_path(data_dir: &Path, doc_id: &str) -> Result<PathBuf, CoreErr
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 打开(或按黄金祖先新建)一份块文档。幂等:已打开时校验 kind 后
     /// 原样返回。
     pub fn block_document_open(
@@ -456,7 +456,7 @@ impl ZulangueCore {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 笔记 tab 的块文档入口:打开(必要时**从第 1 纪元迁移**)并返回
     /// doc_id。这是新大纲编辑器的唯一打开路径。
     ///
@@ -495,7 +495,7 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 转录稿产线的块文档入口:打开(必要时**从第 1 纪元严格迁移**),
     /// 并把同一份 LoroDoc 挂进 EditorBridge。
     ///
@@ -740,9 +740,9 @@ mod tests {
     use serde_json::json;
     use tempfile::TempDir;
 
-    fn core() -> (TempDir, ZulangueCore) {
+    fn core() -> (TempDir, ZuTalkCore) {
         let dir = TempDir::new().unwrap();
-        let core = ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
         (dir, core)
     }
 

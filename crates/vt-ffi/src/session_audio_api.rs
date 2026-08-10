@@ -9,7 +9,7 @@ use vt_pipeline::recording::{
 };
 use vt_store::{AudioChunkRetentionRecord, SessionRecord};
 
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 
 /// 导入结果 (FFI DTO)
 #[derive(uniffi::Record)]
@@ -73,7 +73,7 @@ pub struct AudioDestructionReportInfo {
     pub delete_errors: Vec<String>,
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     pub(crate) fn record_source_audio_retention_chunks_strict(
         &self,
         session_id: &str,
@@ -105,7 +105,7 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// Notebook 导入路径使用的 crate-private 音频物化 helper。
     ///
     /// 该函数会创建 session，因此不能直接暴露给 Swift；公开入口必须先
@@ -290,7 +290,7 @@ impl ZulangueCore {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 列出任务（从 TaskQueue SQLite 查询）
     pub fn list_tasks(&self, status_filter: Option<String>) -> Result<Vec<TaskInfoDto>, CoreError> {
         let tasks = self
@@ -491,7 +491,7 @@ impl ZulangueCore {
 
         let meta = self.session_meta.get_meta(&session_id).ok();
         let meta_key_id = meta.as_ref().and_then(|m| m.key_id.clone());
-        let canonical_key_ref = format!("zulangue.audio.{session_id}");
+        let canonical_key_ref = format!("zutalk.audio.{session_id}");
         let key_deleted = meta_key_id
             .as_deref()
             .map(|key_id| !self.key_store.key_exists(key_id))
@@ -523,7 +523,7 @@ mod tests {
     #[test]
     fn test_import_audio_not_found() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let notebook = core.create_notebook(Some("Import test".into())).unwrap();
 
         let result =
@@ -534,7 +534,7 @@ mod tests {
     #[test]
     fn test_import_audio_persists_session() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
 
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../vt-audio/tests/fixtures/test_16k_mono.wav");
@@ -575,7 +575,7 @@ mod tests {
             ImportMetadataStep::PrivacyLevel,
         ] {
             let tmp = TempDir::new().unwrap();
-            let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+            let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
             let mut created_session_id = None;
             let result = core.import_audio_with_metadata_guard(
                 fixture.to_string_lossy().into_owned(),
@@ -602,7 +602,7 @@ mod tests {
                 "{failing_step:?} left a catalogue row"
             );
             assert!(core.session_meta.get_meta(&session_id).is_err());
-            assert!(!core.key_exists_for_test(&format!("zulangue.audio.{session_id}")));
+            assert!(!core.key_exists_for_test(&format!("zutalk.audio.{session_id}")));
             let encrypted_files = std::fs::read_dir(tmp.path())
                 .unwrap()
                 .filter_map(Result::ok)
@@ -618,7 +618,7 @@ mod tests {
     #[test]
     fn test_list_tasks_via_task_queue() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         // These assertions cover the queue read model, not the background worker.
         // Stop the worker so its 200 ms polling loop cannot race the pending state.
         core.worker_cancel.cancel();
@@ -650,7 +650,7 @@ mod tests {
     #[test]
     fn test_get_task_status_found() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         // Keep this test focused on lookup semantics instead of racing the worker.
         core.worker_cancel.cancel();
 
@@ -674,7 +674,7 @@ mod tests {
     #[test]
     fn test_get_task_status_exposes_claimed_lease_metadata() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
 
         use vt_pipeline::TaskPayload;
         let task_id = core
@@ -703,7 +703,7 @@ mod tests {
     #[test]
     fn test_get_task_status_not_found() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let result = core.get_task_status("nonexistent".to_string());
         assert!(result.is_err());
     }
@@ -711,7 +711,7 @@ mod tests {
     #[test]
     fn test_get_audio_segment_validation() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
 
         // Invalid range
         let result = core.get_audio_segment("s1".to_string(), 2000, 1000);
@@ -726,7 +726,7 @@ mod tests {
     #[test]
     fn test_get_audio_segment_reads_across_physical_chunks() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let key = vt_crypto::SessionKey::generate();
         core.key_store.store_key("chunk-key", &key).unwrap();
         core.session_meta
@@ -797,7 +797,7 @@ mod tests {
     #[test]
     fn destruction_report_verifies_destroy_and_flags_leftovers() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
 
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../vt-audio/tests/fixtures/test_16k_mono.wav");
@@ -857,7 +857,7 @@ mod tests {
     #[test]
     fn test_import_then_get_audio_segment_roundtrip() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
 
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../vt-audio/tests/fixtures/test_16k_mono.wav");

@@ -11,7 +11,7 @@ use vt_ffi::notebook_capture_api::{
     FfiNotebookCaptureCallback, FfiNotebookCaptureEvent, FfiNotebookCaptureLivePreview,
 };
 use vt_ffi::settings_api::ExportZipOptions;
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
 struct NoopCaptureCallback;
 
@@ -20,12 +20,12 @@ impl FfiNotebookCaptureCallback for NoopCaptureCallback {
     fn on_live_preview(&self, _preview: FfiNotebookCaptureLivePreview) {}
 }
 
-fn make_core(dir: &TempDir) -> ZulangueCore {
-    ZulangueCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
+fn make_core(dir: &TempDir) -> ZuTalkCore {
+    ZuTalkCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
 }
 
 /// 本机采集一小段(无 provider,所以只有音频、没有转录文本)。
-fn capture_a_little_audio(core: &ZulangueCore) -> String {
+fn capture_a_little_audio(core: &ZuTalkCore) -> String {
     let notebook = core.create_notebook(Some("导出".into())).unwrap();
     let profile = core
         .get_notebook_capture_profile(notebook.id.clone())

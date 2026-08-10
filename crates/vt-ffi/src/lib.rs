@@ -1,4 +1,4 @@
-//! Zulangue FFI 层
+//! ZuTalk FFI 层
 //!
 //! UniFFI 绑定（Rust ↔ Swift 唯一通道）。proc-macro 模式。
 //! 分层职责与「改完跨语言接口要重新生成绑定」见
@@ -75,7 +75,7 @@ impl ProcessTestKeyStore {
 impl KeyProvider for ProcessTestKeyStore {
     fn create_session_key(&self, session_id: &uuid::Uuid) -> Result<String, CryptoError> {
         let key = SessionKey::generate();
-        let key_ref = format!("zulangue.audio.{session_id}");
+        let key_ref = format!("zutalk.audio.{session_id}");
         self.store_key(&key_ref, &key)?;
         Ok(key_ref)
     }
@@ -137,7 +137,7 @@ fn secret_material_namespace(path: &Path) -> String {
 fn acquire_data_dir_lock(path: &Path) -> Result<File, CoreError> {
     use std::io::{Seek, SeekFrom, Write};
 
-    let lock_path = path.join(".zulangue-core.lock");
+    let lock_path = path.join(".zutalk-core.lock");
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .read(true)
@@ -151,7 +151,7 @@ fn acquire_data_dir_lock(path: &Path) -> Result<File, CoreError> {
     let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
     if result != 0 {
         return Err(CoreError::InitFailed {
-            message: "Zulangue data directory is already owned by another app process".to_string(),
+            message: "ZuTalk data directory is already owned by another app process".to_string(),
         });
     }
     file.set_len(0).map_err(|error| CoreError::InitFailed {
@@ -180,7 +180,7 @@ use vt_store::{
 /// 原文、看不到 recv_handle 是否在跑)。文件日志则 `tail -f` 就能实时跟。
 /// 打不开文件时兜底 stderr(tests / 命令行情况)。
 ///
-/// 重复调用安全(tests 会多次 new ZulangueCore)。
+/// 重复调用安全(tests 会多次 new ZuTalkCore)。
 fn init_tracing_once(data_dir: &std::path::Path) {
     use std::sync::Once;
     static INIT: Once = Once::new();
@@ -314,9 +314,9 @@ fn provider_connection_check(
     }
 }
 
-/// Zulangue 核心入口
+/// ZuTalk 核心入口
 #[derive(uniffi::Object)]
-pub struct ZulangueCore {
+pub struct ZuTalkCore {
     /// Held for the full lifetime of the core. It must be acquired before any
     /// startup recovery so a second app process cannot steal capture/task
     /// ownership from the first.
@@ -394,7 +394,7 @@ pub struct ZulangueCore {
     default_privacy_level: Mutex<String>,
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     pub(crate) fn ensure_capture_ownership_available(&self) -> Result<(), CoreError> {
         if let Some((session_id, notebook_id)) = self
             .active_notebook_capture
@@ -456,7 +456,7 @@ impl ZulangueCore {
     fn build_production_secret_material_stores(
         path: &std::path::Path,
     ) -> Result<Arc<dyn KeyProvider>, CoreError> {
-        // Zulangue treats the signed-in Mac as the local trust boundary. Keep
+        // ZuTalk treats the signed-in Mac as the local trust boundary. Keep
         // durable capture/Context keys in the app-private Secrets directory.
         let secrets_dir = path.join("Secrets");
         let key_store = Arc::new(
@@ -521,7 +521,7 @@ impl ZulangueCore {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// Production macOS constructor.  The durable task worker remains behind a
     /// one-shot gate until Swift has restored provider credentials into the
     /// process-local Rust store and calls `complete_provider_credential_bootstrap`.
@@ -536,7 +536,7 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 初始化核心
     pub fn new(data_dir: String) -> Result<Self, CoreError> {
         let path = PathBuf::from(&data_dir);
@@ -562,7 +562,7 @@ impl ZulangueCore {
             })?;
 
         // 初始化所有 SQLite stores（共用 data_dir）
-        let db_path = path.join("zulangue.db");
+        let db_path = path.join("zutalk.db");
 
         // Validate/install the single supported schema before any store gets a
         // chance to create an auxiliary table. Unsupported pre-v22 databases
@@ -778,13 +778,13 @@ impl ZulangueCore {
             core.worker_cancel.clone(),
         );
 
-        tracing::info!("Zulangue Core initialized at {data_dir}");
+        tracing::info!("ZuTalk Core initialized at {data_dir}");
         Ok(core)
     }
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// Opens the one-shot durable task-worker gate after provider credentials
     /// have either been restored successfully or cleared fail-closed.  This is
     /// idempotent; it never exposes credential values.
@@ -799,7 +799,7 @@ impl ZulangueCore {
     /// `applicationWillTerminate` 漏调的情况。flush 自身失败不阻止 shutdown
     /// (I/O 异常时 fs::write 只 log 不 propagate)。
     pub fn shutdown(&self) -> Result<(), CoreError> {
-        tracing::info!("Zulangue Core shutting down");
+        tracing::info!("ZuTalk Core shutting down");
         let _ = self.flush_all_editors_sync();
         self.worker_cancel.cancel();
         Ok(())
@@ -1389,7 +1389,7 @@ fn persist_recovered_capture_indexes(
     Ok(())
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 删除一族动词的共同前置:名单里不许有正在录的那一条。
     ///
     /// 放在没有 `#[uniffi::export]` 的 impl 里 —— 它是内部守卫,不是给
@@ -1682,7 +1682,7 @@ pub(crate) fn capture_utterance_search_content(
     out
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// Test seam for rebuilding the disposable FTS projection from durable
     /// realtime facts.
     #[cfg(test)]
@@ -1852,14 +1852,14 @@ mod tests {
     #[test]
     fn production_content_key_store_reopens_from_secrets_directory() {
         let tmp = TempDir::new().unwrap();
-        let key_ref = "zulangue.audio.current";
+        let key_ref = "zutalk.audio.current";
         let key = SessionKey::from_bytes([0x42; KEY_SIZE]);
 
-        let first = ZulangueCore::build_production_secret_material_stores(tmp.path()).unwrap();
+        let first = ZuTalkCore::build_production_secret_material_stores(tmp.path()).unwrap();
         first.store_key(key_ref, &key).unwrap();
         drop(first);
 
-        let reopened = ZulangueCore::build_production_secret_material_stores(tmp.path()).unwrap();
+        let reopened = ZuTalkCore::build_production_secret_material_stores(tmp.path()).unwrap();
         assert_eq!(
             reopened.load_key(key_ref).unwrap().as_bytes(),
             key.as_bytes()
@@ -1870,7 +1870,7 @@ mod tests {
     #[test]
     fn test_core_init_and_shutdown() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string());
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string());
         assert!(core.is_ok());
         assert!(core.unwrap().shutdown().is_ok());
     }
@@ -1878,7 +1878,7 @@ mod tests {
     #[test]
     fn failed_capture_run_insert_rolls_back_session_link_journal_and_key() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new_for_test(tmp.path().to_string_lossy().to_string()).unwrap();
+        let core = ZuTalkCore::new_for_test(tmp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core
             .create_notebook(Some("Rollback injection".into()))
             .unwrap();
@@ -1886,7 +1886,7 @@ mod tests {
             .get_notebook_capture_profile(notebook.id.clone())
             .unwrap();
         let keys_before = process_test_key_refs(tmp.path());
-        let connection = rusqlite::Connection::open(tmp.path().join("zulangue.db")).unwrap();
+        let connection = rusqlite::Connection::open(tmp.path().join("zutalk.db")).unwrap();
         connection
             .execute_batch(
                 "CREATE TRIGGER fail_notebook_capture_run
@@ -1956,7 +1956,7 @@ mod tests {
     #[test]
     fn test_api_version() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let version = core.api_version();
         assert!(version.starts_with("0."));
     }
@@ -1966,7 +1966,7 @@ mod tests {
     #[test]
     fn test_set_has_clear_api_key_roundtrip() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         assert!(!core.has_api_key("soniox".to_string()));
         core.set_api_key("soniox".to_string(), "sk-xyz".to_string())
             .unwrap();
@@ -1978,7 +1978,7 @@ mod tests {
     #[test]
     fn test_set_api_key_rejects_invalid_scope() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let err = core
             .set_api_key("random_scope".to_string(), "v".to_string())
             .unwrap_err();
@@ -1988,7 +1988,7 @@ mod tests {
     #[test]
     fn test_set_api_key_empty_value_clears() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         core.set_api_key("soniox".to_string(), "v".to_string())
             .unwrap();
         core.set_api_key("soniox".to_string(), "".to_string())
@@ -1999,7 +1999,7 @@ mod tests {
     #[test]
     fn test_all_valid_scopes_accepted() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         core.set_api_key("soniox".to_string(), "k".to_string())
             .unwrap();
         assert!(core.has_api_key("soniox".to_string()));
@@ -2008,7 +2008,7 @@ mod tests {
     #[test]
     fn test_verify_api_key_rejects_invalid_scope_without_network_access() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let result = core.runtime.block_on(
             core.verify_api_key("unsupported".to_string(), Some("candidate".to_string())),
         );
@@ -2018,7 +2018,7 @@ mod tests {
     #[test]
     fn test_verify_api_key_requires_candidate_or_active_credential() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let result = core
             .runtime
             .block_on(core.verify_api_key("soniox".to_string(), None));
@@ -2068,7 +2068,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let data_dir = tmp.path().to_str().unwrap().to_string();
         let (session_id, created_at) = {
-            let core = ZulangueCore::new(data_dir.clone()).unwrap();
+            let core = ZuTalkCore::new(data_dir.clone()).unwrap();
             let notebook = core.create_notebook(Some("Recovery".into())).unwrap();
             let profile = core
                 .notebook_capture_store
@@ -2080,7 +2080,7 @@ mod tests {
                 .get_session(&session.id)
                 .unwrap()
                 .created_at;
-            let key_ref = format!("zulangue.audio.{}", session.id);
+            let key_ref = format!("zutalk.audio.{}", session.id);
             let key = SessionKey::generate();
             core.key_store.store_key(&key_ref, &key).unwrap();
             let journal = vt_pipeline::CaptureAudioJournal::start(
@@ -2113,7 +2113,7 @@ mod tests {
             (session.id, created_at)
         };
 
-        let recovered = ZulangueCore::new(data_dir).unwrap();
+        let recovered = ZuTalkCore::new(data_dir).unwrap();
         let session = recovered.session_store.get_session(&session_id).unwrap();
         assert_eq!(session.status, "interrupted");
         assert_eq!(session.duration_ms, 1_000);
@@ -2133,18 +2133,18 @@ mod tests {
     #[test]
     fn test_privacy_default_persists_across_restart() {
         let tmp = TempDir::new().unwrap();
-        let first = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let first = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         first.set_privacy_default("high".to_string()).unwrap();
         drop(first);
 
-        let second = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let second = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         assert_eq!(second.get_privacy_default(), "high");
     }
 
     #[test]
     fn session_remote_authorization_never_falls_back_to_global_privacy_default() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         core.set_privacy_default("standard".to_string()).unwrap();
 
         let missing = core
@@ -2187,7 +2187,7 @@ mod tests {
     #[test]
     fn deferred_provider_bootstrap_prevents_pending_remote_task_claims() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new_deferred(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new_deferred(tmp.path().to_str().unwrap().to_string()).unwrap();
         let session = core.create_notebook_capture_session().unwrap();
         core.session_meta
             .set_privacy_level(&session.id, "standard")
@@ -2246,7 +2246,7 @@ mod tests {
 
         core.shutdown().unwrap();
         drop(core);
-        let reopened = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let reopened = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
         let durable = reopened.get_task_status(task_id).unwrap();
         assert_eq!(durable.status, "failed");
         assert_eq!(durable.retry_count, 0);
@@ -2259,7 +2259,7 @@ mod tests {
         // previous "/System/..." assumption was macOS-SIP-specific.
         let tmp = tempfile::NamedTempFile::new().unwrap();
         let path = tmp.path().to_str().unwrap().to_string();
-        let result = ZulangueCore::new(path);
+        let result = ZuTalkCore::new(path);
         assert!(result.is_err());
     }
 
@@ -2267,16 +2267,16 @@ mod tests {
     fn test_double_init_same_dir() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().to_str().unwrap().to_string();
-        let core1 = ZulangueCore::new(path.clone());
+        let core1 = ZuTalkCore::new(path.clone());
         assert!(core1.is_ok());
-        let core2 = ZulangueCore::new(path);
+        let core2 = ZuTalkCore::new(path);
         assert!(core2.is_err());
     }
 
     #[test]
     fn test_create_session_persists() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
 
         let session = core.create_notebook_capture_session().unwrap();
         assert!(!session.id.is_empty());
@@ -2294,7 +2294,7 @@ mod tests {
     #[test]
     fn test_search_sessions() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
 
         // Index some content
         core.search_store
@@ -2314,7 +2314,7 @@ mod tests {
     #[test]
     fn test_get_session_not_found_returns_error() {
         let tmp = TempDir::new().unwrap();
-        let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
 
         // get_session 对未知 id 返回 NotFound，而不是默认值。
         // 否则 Library UI 会显示假的会话条目。

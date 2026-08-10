@@ -13,7 +13,7 @@ use tempfile::TempDir;
 use vt_ffi::notebook_capture_api::{
     FfiNotebookCaptureCallback, FfiNotebookCaptureEvent, FfiNotebookCaptureLivePreview,
 };
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
 struct NoopCaptureCallback;
 
@@ -22,12 +22,12 @@ impl FfiNotebookCaptureCallback for NoopCaptureCallback {
     fn on_live_preview(&self, _preview: FfiNotebookCaptureLivePreview) {}
 }
 
-fn make_core(dir: &TempDir) -> ZulangueCore {
-    ZulangueCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
+fn make_core(dir: &TempDir) -> ZuTalkCore {
+    ZuTalkCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
 }
 
 /// 录一小段并停下,返回 session_id —— 说话人要挂在一场真实的录音上。
-fn a_finished_recording(core: &ZulangueCore, title: &str) -> String {
+fn a_finished_recording(core: &ZuTalkCore, title: &str) -> String {
     let notebook = core.create_notebook(Some(title.to_string())).unwrap();
     let profile = core
         .get_notebook_capture_profile(notebook.id.clone())

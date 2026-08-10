@@ -1,6 +1,6 @@
 //! Deterministic conversion from stored interleaved PCM to Soniox wire PCM.
 //!
-//! Zulangue keeps imported audio in its source sample rate and channel layout
+//! ZuTalk keeps imported audio in its source sample rate and channel layout
 //! so local playback/export remains lossless with respect to the decoded
 //! source. Provider upload has a different contract: Soniox receives 16 kHz
 //! mono PCM. Keeping this conversion in Rust gives every upload path the same

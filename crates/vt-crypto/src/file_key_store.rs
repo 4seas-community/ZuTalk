@@ -100,7 +100,7 @@ impl FileKeyStore {
 impl KeyProvider for FileKeyStore {
     fn create_session_key(&self, session_id: &Uuid) -> Result<String, CryptoError> {
         let key = SessionKey::generate();
-        let key_ref = format!("zulangue.audio.{session_id}");
+        let key_ref = format!("zutalk.audio.{session_id}");
         self.store_key(&key_ref, &key)?;
         Ok(key_ref)
     }
@@ -166,10 +166,10 @@ mod tests {
         let store = FileKeyStore::new(tmp.path().join("Secrets/content-keys.json")).unwrap();
         let key = SessionKey::from_bytes([7; KEY_SIZE]);
 
-        store.store_key("zulangue.audio.current", &key).unwrap();
+        store.store_key("zutalk.audio.current", &key).unwrap();
 
         assert_eq!(
-            store.load_key("zulangue.audio.current").unwrap().as_bytes(),
+            store.load_key("zutalk.audio.current").unwrap().as_bytes(),
             key.as_bytes()
         );
     }
@@ -182,15 +182,12 @@ mod tests {
 
         FileKeyStore::new(&path)
             .unwrap()
-            .store_key("zulangue.audio.reopen", &key)
+            .store_key("zutalk.audio.reopen", &key)
             .unwrap();
 
         let reopened = FileKeyStore::new(&path).unwrap();
         assert_eq!(
-            reopened
-                .load_key("zulangue.audio.reopen")
-                .unwrap()
-                .as_bytes(),
+            reopened.load_key("zutalk.audio.reopen").unwrap().as_bytes(),
             key.as_bytes()
         );
     }
@@ -202,18 +199,18 @@ mod tests {
         let store = FileKeyStore::new(&path).unwrap();
         store
             .store_key(
-                "zulangue.audio.deleted",
+                "zutalk.audio.deleted",
                 &SessionKey::from_bytes([13; KEY_SIZE]),
             )
             .unwrap();
 
-        store.delete_key("zulangue.audio.deleted").unwrap();
-        store.delete_key("zulangue.audio.deleted").unwrap();
+        store.delete_key("zutalk.audio.deleted").unwrap();
+        store.delete_key("zutalk.audio.deleted").unwrap();
 
         let reopened = FileKeyStore::new(&path).unwrap();
-        assert!(!reopened.key_exists("zulangue.audio.deleted"));
+        assert!(!reopened.key_exists("zutalk.audio.deleted"));
         assert!(matches!(
-            reopened.load_key("zulangue.audio.deleted"),
+            reopened.load_key("zutalk.audio.deleted"),
             Err(CryptoError::KeyNotFound { .. })
         ));
     }
@@ -223,9 +220,9 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let store = FileKeyStore::new(tmp.path().join("Secrets/content-keys.json")).unwrap();
         for (key_ref, byte) in [
-            ("zulangue.audio.z", 3),
-            ("zulangue.audio.a", 1),
-            ("zulangue.audio.m", 2),
+            ("zutalk.audio.z", 3),
+            ("zutalk.audio.a", 1),
+            ("zutalk.audio.m", 2),
         ] {
             store
                 .store_key(key_ref, &SessionKey::from_bytes([byte; KEY_SIZE]))
@@ -234,7 +231,7 @@ mod tests {
 
         assert_eq!(
             store.list_key_refs().unwrap(),
-            vec!["zulangue.audio.a", "zulangue.audio.m", "zulangue.audio.z"]
+            vec!["zutalk.audio.a", "zutalk.audio.m", "zutalk.audio.z"]
         );
     }
 
@@ -249,7 +246,7 @@ mod tests {
         let store = FileKeyStore::new(&path).unwrap();
         store
             .store_key(
-                "zulangue.audio.permissions",
+                "zutalk.audio.permissions",
                 &SessionKey::from_bytes([17; KEY_SIZE]),
             )
             .unwrap();
@@ -305,7 +302,7 @@ mod tests {
         for contents in [
             Vec::new(),
             b"not-json".to_vec(),
-            br#"{"version":1,"keys":{"zulangue.audio.bad":"00"}}"#.to_vec(),
+            br#"{"version":1,"keys":{"zutalk.audio.bad":"00"}}"#.to_vec(),
             br#"{"version":1,"keys":{},"unexpected":true}"#.to_vec(),
             br#"{"version":99,"keys":{}}"#.to_vec(),
         ] {
@@ -420,7 +417,7 @@ mod tests {
                     barrier.wait();
                     store
                         .store_key(
-                            &format!("zulangue.audio.concurrent-{index}"),
+                            &format!("zutalk.audio.concurrent-{index}"),
                             &SessionKey::from_bytes([index as u8; KEY_SIZE]),
                         )
                         .unwrap();
@@ -433,7 +430,7 @@ mod tests {
         for index in 0..WRITERS {
             assert_eq!(
                 reopened
-                    .load_key(&format!("zulangue.audio.concurrent-{index}"))
+                    .load_key(&format!("zutalk.audio.concurrent-{index}"))
                     .unwrap()
                     .as_bytes(),
                 &[index as u8; KEY_SIZE]
@@ -469,7 +466,7 @@ mod tests {
 
         store
             .store_key(
-                &format!("zulangue.audio.process-{index}"),
+                &format!("zutalk.audio.process-{index}"),
                 &SessionKey::from_bytes([index as u8 + 31; KEY_SIZE]),
             )
             .unwrap();
@@ -516,7 +513,7 @@ mod tests {
         for index in 0..WRITERS {
             assert_eq!(
                 reopened
-                    .load_key(&format!("zulangue.audio.process-{index}"))
+                    .load_key(&format!("zutalk.audio.process-{index}"))
                     .unwrap()
                     .as_bytes(),
                 &[index as u8 + 31; KEY_SIZE]
@@ -531,22 +528,19 @@ mod tests {
         let first = FileKeyStore::new(&path).unwrap();
         let second = FileKeyStore::new(&path).unwrap();
         first
-            .store_key(
-                "zulangue.audio.first",
-                &SessionKey::from_bytes([1; KEY_SIZE]),
-            )
+            .store_key("zutalk.audio.first", &SessionKey::from_bytes([1; KEY_SIZE]))
             .unwrap();
         second
             .store_key(
-                "zulangue.audio.second",
+                "zutalk.audio.second",
                 &SessionKey::from_bytes([2; KEY_SIZE]),
             )
             .unwrap();
 
-        first.delete_key("zulangue.audio.first").unwrap();
+        first.delete_key("zutalk.audio.first").unwrap();
 
-        assert!(!second.key_exists("zulangue.audio.first"));
-        assert!(second.key_exists("zulangue.audio.second"));
+        assert!(!second.key_exists("zutalk.audio.first"));
+        assert!(second.key_exists("zutalk.audio.second"));
     }
 
     #[test]
@@ -556,7 +550,7 @@ mod tests {
         let store = FileKeyStore::new(secrets.join("content-keys.json")).unwrap();
         store
             .store_key(
-                "zulangue.audio.clean",
+                "zutalk.audio.clean",
                 &SessionKey::from_bytes([23; KEY_SIZE]),
             )
             .unwrap();

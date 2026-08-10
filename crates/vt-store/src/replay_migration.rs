@@ -31,7 +31,7 @@ use loro::{Frontiers, LoroDoc, LoroList, LoroMap, LoroText, LoroValue, ID};
 use crate::document_schema::{
     document_kind, new_block_document, DocumentKind, TRANSCRIPT_UTTERANCES,
 };
-const PURGE_RECEIPTS: &str = "zulangue_session_purge_receipts";
+const PURGE_RECEIPTS: &str = "zutalk_session_purge_receipts";
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ReplayMigrationError {

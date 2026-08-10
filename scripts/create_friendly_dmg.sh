@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -ne 3 ]]; then
-  echo "usage: $0 <Zulangue.app> <version> <output.dmg>" >&2
+  echo "usage: $0 <ZuTalk.app> <version> <output.dmg>" >&2
   exit 2
 fi
 
@@ -11,12 +11,12 @@ VERSION="$2"
 OUTPUT_DMG="$3"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 BACKGROUND="$ROOT_DIR/packaging/dmg-background.png"
-VOLUME_NAME="Zulangue $VERSION"
-WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zulangue-dmg.XXXXXX")"
+VOLUME_NAME="ZuTalk $VERSION"
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zutalk-dmg.XXXXXX")"
 STAGING_DIR="$WORK_DIR/staging"
 MOUNT_DIR="$WORK_DIR/mount"
 VERIFY_MOUNT_DIR="$WORK_DIR/verify"
-WRITABLE_DMG="$WORK_DIR/Zulangue-writable.dmg"
+WRITABLE_DMG="$WORK_DIR/ZuTalk-writable.dmg"
 DEVICE=""
 VERIFY_DEVICE=""
 
@@ -43,7 +43,7 @@ cleanup() {
     hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1 || true
   fi
   case "$WORK_DIR" in
-    "${TMPDIR:-/tmp}"/zulangue-dmg.*)
+    "${TMPDIR:-/tmp}"/zutalk-dmg.*)
       find "$WORK_DIR" -depth -delete 2>/dev/null || true
       ;;
   esac
@@ -68,7 +68,7 @@ trap cleanup EXIT
 }
 
 mkdir -p "$STAGING_DIR/.background"
-ditto "$APP_PATH" "$STAGING_DIR/Zulangue.app"
+ditto "$APP_PATH" "$STAGING_DIR/ZuTalk.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 ditto "$BACKGROUND" "$STAGING_DIR/.background/background.png"
 
@@ -117,7 +117,7 @@ tell application "Finder"
     set icon size of theView to 112
     set text size of theView to 14
     set background picture of theView to file ".background:background.png"
-    set position of item "Zulangue.app" of container window to {200, 225}
+    set position of item "ZuTalk.app" of container window to {200, 225}
     set position of item "Applications" of container window to {520, 225}
     update without registering applications
     delay 2
@@ -157,8 +157,8 @@ VERIFY_MOUNT_DIR="$(
   echo "FAIL: unable to mount finished DMG" >&2
   exit 1
 }
-[[ -d "$VERIFY_MOUNT_DIR/Zulangue.app" ]] || {
-  echo "FAIL: finished DMG is missing Zulangue.app" >&2
+[[ -d "$VERIFY_MOUNT_DIR/ZuTalk.app" ]] || {
+  echo "FAIL: finished DMG is missing ZuTalk.app" >&2
   exit 1
 }
 [[ -L "$VERIFY_MOUNT_DIR/Applications" ]] || {

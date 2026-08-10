@@ -70,7 +70,7 @@ iroh + Loro 协同 demo，**只支持 2 个 peer、单个纯文本文件**，不
 `TopicId` 由房间密钥派生，不直接用 `notebook_id`：
 
 ```
-TopicId = BLAKE3("zulangue/room/v1" || scope_id || room_secret)
+TopicId = BLAKE3("zutalk/room/v1" || scope_id || room_secret)
 ```
 
 `room_secret` 随机生成、随分享码一起交出。这样 topic 不可猜测，并且**轮换
@@ -110,7 +110,7 @@ Endpoint::builder(presets::Minimal)
 | 文档协同（Loro update 字节） | 成对直连 QUIC bi-stream | 必达，可乱序 | 是 |
 | 文件（封闭清单，无音频） | `iroh-blobs` | 必达 | — |
 
-ALPN 取 `zulangue/live-caption/1` 与 `zulangue/doc-sync/1`，与 `iroh-gossip` 的
+ALPN 取 `zutalk/live-caption/1` 与 `zutalk/doc-sync/1`，与 `iroh-gossip` 的
 ALPN 一同注册在同一个 `Router` 上。
 
 ### 3.0 两条尺寸红线，决定了上面的通道选择
@@ -360,11 +360,11 @@ Wi-Fi、蜂窝、以太网、局域网在 iroh 下不是四种传输——都是
    （macOS/iOS/Android/Linux，GATT 起连、可用时升级 L2CAP）。带宽只够跑字幕，
    传文件不可用。列为可选后期项，需要 `NSBluetoothAlwaysUsageDescription`。
 
-App Sandbox 当前是关的（`macos/Zulangue.entitlements`），不涉及网络 entitlement。
+App Sandbox 当前是关的（`macos/ZuTalk.entitlements`），不涉及网络 entitlement。
 
 ## 8. UI
 
-`MainTab` 加 `case share`（`ZulangueApp.swift:290`），sidebar 加一项
+`MainTab` 加 `case share`（`ZuTalkApp.swift:290`），sidebar 加一项
 （`MainShellView.swift:84`），新增 `Pages/SharePage.swift`。
 
 - 文案走 `String(localized: "sidebar.share")`，补齐七语

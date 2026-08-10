@@ -28,7 +28,7 @@ use vt_store::document_schema::{document_kind, new_block_document, DocumentKind}
 use vt_store::transcript_projection::TranscriptProjection;
 
 use crate::notebook_capture_api::{store_error, t2_insert_anchor, t2_machine_block_write};
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 
 fn internal(message: impl std::fmt::Display) -> CoreError {
     CoreError::InternalError {
@@ -248,7 +248,7 @@ pub(crate) fn refresh_shared_session_from_facts(
     Ok(changed)
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 宿主:物化共享范围内全部 session 的共享文档。`enable_document_sync`
     /// 时调用一次;之后活跃采集经 [`Self::refresh_shared_session_document`]
     /// 增量刷新。
@@ -568,7 +568,7 @@ pub struct FfiSharedSessionInfo {
 }
 
 #[uniffi::export]
-impl ZulangueCore {
+impl ZuTalkCore {
     /// shared/ 目录台账:收到过与共享过的全部 session 文档。
     pub fn list_shared_sessions(&self) -> Vec<FfiSharedSessionInfo> {
         let dir = shared_documents_dir(&self.data_dir);
@@ -689,7 +689,7 @@ impl ZulangueCore {
     }
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// 编辑流水线:动词 → 落盘 → 推送。写入策略的裁决在接收端(HostOnly
     /// 房间宿主会拒收观看端的推送);本地文档先行是乐观编辑,与房间收敛
     /// 由 CRDT 保证——被拒的编辑不会回流,只存在于本机副本里,UI 按

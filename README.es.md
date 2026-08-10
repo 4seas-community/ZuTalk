@@ -1,19 +1,19 @@
-# Zulangue
+# ZuTalk
 
 [ไทย](README.th.md) | [English](README.md) | [Français](README.fr.md) | **Español** | [Deutsch](README.de.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-Hans.md)
 
-Zulangue es una app nativa de notas de voz para macOS: graba, transcribe y
+ZuTalk es una app nativa de notas de voz para macOS: graba, transcribe y
 organiza tu contenido, con subtítulos flotantes que siguen conversaciones
 multilingües.
 
 ## Descarga
 
-[Descargar la última versión de Zulangue](https://github.com/4seas-community/zulangue/releases/latest)
+[Descargar la última versión de ZuTalk](https://github.com/4seas-community/ZuTalk/releases/latest)
 
 Compatible con Mac Apple Silicon e Intel. Requiere macOS 15.5 o posterior.
 
 El instalador aún no está notarizado por Apple. Si macOS bloquea la primera
-apertura, haz clic en Zulangue en el Finder manteniendo pulsada la tecla
+apertura, haz clic en ZuTalk en el Finder manteniendo pulsada la tecla
 Control y elige «Abrir», o autorízalo en Configuración del Sistema →
 Privacidad y seguridad.
 

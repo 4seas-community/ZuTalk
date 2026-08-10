@@ -1,5 +1,5 @@
 [Unit]
-Description=Report Zulangue relay counters every 15 minutes
+Description=Report ZuTalk relay counters every 15 minutes
 
 [Timer]
 # 十五分钟一次。更密没有意义 —— 存的是按天聚合;更疏则中继重启会多丢一段,

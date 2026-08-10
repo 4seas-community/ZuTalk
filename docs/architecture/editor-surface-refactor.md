@@ -10,7 +10,7 @@
 
 ## 1. 已完成的最小修复（现状）
 
-- `macos/Zulangue/Zulangue/Pages/DocumentEditorPage.swift` 的 `documentEditorContent`：
+- `macos/ZuTalk/ZuTalk/Pages/DocumentEditorPage.swift` 的 `documentEditorContent`：
   原本非 manualNote 且非 pending/failed 时兜底返回 `Color.clear`，现在对
   `displayType == .asyncTranscript` 增加了一个 `EmptyState` 分支，
   文案引导用户去「资源」页选择录音。

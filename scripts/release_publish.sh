@@ -2,7 +2,7 @@
 # 把本机签好的发布产物发到 GitHub Release,并逐条复核发出去的东西。
 #
 # 这一步之前是手打的 `gh release create`,附件名还带构建号
-# (`Zulangue19-18.delta`)。漏传一个 delta 不会有任何提示:appcast 是
+# (`ZuTalk19-18.delta`)。漏传一个 delta 不会有任何提示:appcast 是
 # 签过名的,用户侧签名验证照样通过,下载 404。所以这里的规矩是
 # **以 appcast 为准** —— 它点名了哪些文件,就传哪些文件,传完再挨个
 # 回头确认拿得到。
@@ -88,17 +88,17 @@ while IFS= read -r url; do
   echo "· $name"
 done <<<"$APPCAST_URL_LIST"
 
-DMG="$DMG_DIR/Zulangue-$VERSION.dmg"
-SHA_FILE="$DMG_DIR/Zulangue-macOS.sha256"
+DMG="$DMG_DIR/ZuTalk-$VERSION.dmg"
+SHA_FILE="$DMG_DIR/ZuTalk-macOS.sha256"
 [[ -f "$DMG" ]] || fail "release DMG for $VERSION is missing"
-[[ -f "$SHA_FILE" ]] || fail "Zulangue-macOS.sha256 is missing"
+[[ -f "$SHA_FILE" ]] || fail "ZuTalk-macOS.sha256 is missing"
 # 校验和文件名不带版本号,最容易发出上一版的那份。当场重算一次。
-grep -Fq "Zulangue-$VERSION.dmg" "$SHA_FILE" \
-  || fail "Zulangue-macOS.sha256 is not about Zulangue-$VERSION.dmg"
-( cd "$DMG_DIR" && shasum -a 256 --check --status Zulangue-macOS.sha256 ) \
-  || fail "Zulangue-macOS.sha256 does not describe the DMG being published"
+grep -Fq "ZuTalk-$VERSION.dmg" "$SHA_FILE" \
+  || fail "ZuTalk-macOS.sha256 is not about ZuTalk-$VERSION.dmg"
+( cd "$DMG_DIR" && shasum -a 256 --check --status ZuTalk-macOS.sha256 ) \
+  || fail "ZuTalk-macOS.sha256 does not describe the DMG being published"
 ASSETS+=("$SHA_FILE" "$APPCAST")
-echo "· Zulangue-macOS.sha256"
+echo "· ZuTalk-macOS.sha256"
 echo "· appcast.xml"
 
 # ── 4. delta 的基线必须真的是已发布过的版本 ─────────────────────────
@@ -116,10 +116,10 @@ if ! PUBLISHED="$(
   PUBLISHED=""
 fi
 BASE_COUNT=0
-for base_dmg in "$UPDATE_DIR"/Zulangue-*.dmg; do
+for base_dmg in "$UPDATE_DIR"/ZuTalk-*.dmg; do
   [[ -f "$base_dmg" ]] || continue
   base_version="$(basename "$base_dmg" .dmg)"
-  base_version="${base_version#Zulangue-}"
+  base_version="${base_version#ZuTalk-}"
   [[ "$base_version" != "$VERSION" ]] || continue
   BASE_COUNT=$((BASE_COUNT + 1))
   if [[ -n "$PUBLISHED" ]]; then
@@ -180,7 +180,7 @@ echo "✓ mirrored tag matches the signed tag"
 step "发布 $GITHUB_REF_NAME"
 gh release create "$GITHUB_REF_NAME" \
   --repo "$GITHUB_REPOSITORY" \
-  --title "Zulangue $VERSION" \
+  --title "ZuTalk $VERSION" \
   --notes-file "$ROOT_DIR/packaging/release-notes.md" \
   --verify-tag \
   "${ASSETS[@]}"

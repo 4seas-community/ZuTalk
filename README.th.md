@@ -1,18 +1,18 @@
-# Zulangue
+# ZuTalk
 
 **ไทย** | [English](README.md) | [Français](README.fr.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-Hans.md)
 
-Zulangue คือแอปจดบันทึกเสียงแบบเนทีฟสำหรับ macOS ช่วยให้คุณอัดเสียง ถอดเสียงเป็นข้อความ
+ZuTalk คือแอปจดบันทึกเสียงแบบเนทีฟสำหรับ macOS ช่วยให้คุณอัดเสียง ถอดเสียงเป็นข้อความ
 และจัดระเบียบเนื้อหา พร้อมคำบรรยายแบบลอยที่ติดตามบทสนทนาหลายภาษา
 
 ## ดาวน์โหลด
 
-[ดาวน์โหลด Zulangue เวอร์ชันล่าสุด](https://github.com/4seas-community/zulangue/releases/latest)
+[ดาวน์โหลด ZuTalk เวอร์ชันล่าสุด](https://github.com/4seas-community/ZuTalk/releases/latest)
 
 รองรับ Mac ทั้ง Apple Silicon และ Intel ต้องใช้ macOS 15.5 ขึ้นไป
 
 ตัวติดตั้งยังไม่ผ่านการรับรอง (notarization) จาก Apple หาก macOS ปิดกั้นการเปิดครั้งแรก
-ให้กด Control ค้างไว้แล้วคลิก Zulangue ใน Finder เลือก "เปิด"
+ให้กด Control ค้างไว้แล้วคลิก ZuTalk ใน Finder เลือก "เปิด"
 หรือไปที่ การตั้งค่าระบบ → ความเป็นส่วนตัวและความปลอดภัย เพื่ออนุญาต
 
 ## คุณสมบัติหลัก

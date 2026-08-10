@@ -1,4 +1,4 @@
-//! Zulangue STT 层
+//! ZuTalk STT 层
 //!
 //! Fixed Notebook capture engine contract + Soniox v5 WebSocket clients.
 //! 分层职责见 docs/architecture/ARCHITECTURE.md「代码边界」。

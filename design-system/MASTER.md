@@ -1,6 +1,6 @@
-# Zulangue Design System
+# ZuTalk Design System
 
-Zulangue 的界面应当克制、清晰，并让录音、转录和保存状态容易确认。
+ZuTalk 的界面应当克制、清晰，并让录音、转录和保存状态容易确认。
 
 ## 核心原则
 

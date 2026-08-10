@@ -10,10 +10,10 @@
 use std::path::PathBuf;
 use tempfile::TempDir;
 use vt_ffi::block_document_api::{FfiDocumentKind, FfiOutlineKind, FfiOutlineRow};
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
-fn make_core(dir: &TempDir) -> ZulangueCore {
-    ZulangueCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
+fn make_core(dir: &TempDir) -> ZuTalkCore {
+    ZuTalkCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
 }
 
 fn row(id: &str, depth: u32, text: &str, kind: FfiOutlineKind) -> FfiOutlineRow {
@@ -27,7 +27,7 @@ fn row(id: &str, depth: u32, text: &str, kind: FfiOutlineKind) -> FfiOutlineRow 
 }
 
 /// 建一个 Notebook,返回它的笔记 tab id。
-fn note_tab(core: &ZulangueCore) -> (String, String) {
+fn note_tab(core: &ZuTalkCore) -> (String, String) {
     let notebook = core.create_notebook(Some("笔记".into())).unwrap();
     let tabs = core.list_notebook_tabs(notebook.id.clone()).unwrap();
     let tab = tabs

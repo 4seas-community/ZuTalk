@@ -1,9 +1,9 @@
 use tempfile::TempDir;
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
-fn make_core() -> (TempDir, ZulangueCore) {
+fn make_core() -> (TempDir, ZuTalkCore) {
     let tmp = TempDir::new().unwrap();
-    let core = ZulangueCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
+    let core = ZuTalkCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
     (tmp, core)
 }
 
@@ -12,7 +12,7 @@ fn a_fresh_core_ships_with_default_and_share_notebooks() {
     let tmp = TempDir::new().unwrap();
     let data_dir = tmp.path().to_str().unwrap().to_string();
 
-    let core = ZulangueCore::new_for_test(data_dir.clone()).unwrap();
+    let core = ZuTalkCore::new_for_test(data_dir.clone()).unwrap();
     let titles: Vec<String> = core
         .list_notebooks()
         .unwrap()
@@ -24,7 +24,7 @@ fn a_fresh_core_ships_with_default_and_share_notebooks() {
 
     // 重开核心不重复建。
     drop(core);
-    let core = ZulangueCore::new_for_test(data_dir).unwrap();
+    let core = ZuTalkCore::new_for_test(data_dir).unwrap();
     let titles: Vec<String> = core
         .list_notebooks()
         .unwrap()
@@ -112,7 +112,7 @@ fn renaming_manual_note_only_changes_its_optional_title() {
 }
 
 /// Imports the shared fixture into `notebook_id` and returns the session id.
-fn import_session(core: &ZulangueCore, notebook_id: &str) -> String {
+fn import_session(core: &ZuTalkCore, notebook_id: &str) -> String {
     let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../vt-audio/tests/fixtures/test_16k_mono.wav");
     core.import_audio_into_notebook(
@@ -123,7 +123,7 @@ fn import_session(core: &ZulangueCore, notebook_id: &str) -> String {
     .session_id
 }
 
-fn manual_note_tab(core: &ZulangueCore, notebook_id: &str) -> String {
+fn manual_note_tab(core: &ZuTalkCore, notebook_id: &str) -> String {
     core.list_notebook_tabs(notebook_id.to_string())
         .unwrap()
         .into_iter()
@@ -132,7 +132,7 @@ fn manual_note_tab(core: &ZulangueCore, notebook_id: &str) -> String {
         .id
 }
 
-fn session_ids_in(core: &ZulangueCore, notebook_id: &str) -> Vec<String> {
+fn session_ids_in(core: &ZuTalkCore, notebook_id: &str) -> Vec<String> {
     let mut ids: Vec<String> = core
         .list_notebook_sessions(notebook_id.to_string())
         .unwrap()
@@ -179,7 +179,7 @@ fn moving_a_session_relinks_it_and_rebuilds_every_tab_projection_in_the_target()
 /// Writes a note into `tab_id` marked as owned by `session_id` — what the app
 /// does when the user types into that session's section of the note tab.
 fn write_owned_note(
-    core: &ZulangueCore,
+    core: &ZuTalkCore,
     notebook_id: &str,
     tab_id: &str,
     session_id: &str,
@@ -317,7 +317,7 @@ fn a_moved_session_survives_a_core_restart_in_its_new_notebook() {
     let tmp = TempDir::new().unwrap();
     let data_dir = tmp.path().to_str().unwrap().to_string();
     let (session_id, target_id) = {
-        let core = ZulangueCore::new_for_test(data_dir.clone()).unwrap();
+        let core = ZuTalkCore::new_for_test(data_dir.clone()).unwrap();
         let source = core.create_notebook(Some("Source".into())).unwrap();
         let target = core.create_notebook(Some("Target".into())).unwrap();
         let session_id = import_session(&core, &source.id);
@@ -327,7 +327,7 @@ fn a_moved_session_survives_a_core_restart_in_its_new_notebook() {
         (session_id, target.id)
     };
 
-    let reopened = ZulangueCore::new_for_test(data_dir).unwrap();
+    let reopened = ZuTalkCore::new_for_test(data_dir).unwrap();
 
     assert_eq!(session_ids_in(&reopened, &target_id), vec![session_id]);
 }
@@ -344,7 +344,7 @@ fn a_refused_move_leaves_nothing_of_the_session_in_the_target() {
 
     // A capture claims the session after the plan is built but before the
     // pointer flip, which is exactly what commit_session_move refuses.
-    let connection = rusqlite::Connection::open(tmp.path().join("zulangue.db")).unwrap();
+    let connection = rusqlite::Connection::open(tmp.path().join("zutalk.db")).unwrap();
     connection
         .execute_batch(
             "CREATE TRIGGER refuse_session_relink

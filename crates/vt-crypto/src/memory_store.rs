@@ -23,7 +23,7 @@ impl MemoryKeyStore {
 
     pub fn create_session_key(&self, session_id: &Uuid) -> Result<String, CryptoError> {
         let key = SessionKey::generate();
-        let key_ref = format!("zulangue.audio.{session_id}");
+        let key_ref = format!("zutalk.audio.{session_id}");
         let mut store = self.store.lock().unwrap();
         store.insert(key_ref.clone(), key.as_bytes().to_vec());
         Ok(key_ref)

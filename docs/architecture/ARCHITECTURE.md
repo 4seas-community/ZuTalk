@@ -1,6 +1,6 @@
-# Zulangue 架构
+# ZuTalk 架构
 
-Zulangue 采用 Rust 核心与原生 macOS 界面分层结构。
+ZuTalk 采用 Rust 核心与原生 macOS 界面分层结构。
 
 ```mermaid
 flowchart TB
@@ -82,6 +82,6 @@ macOS 音频适配器把采集到的音频交给 Rust 会话。Rust 负责会话
 - `crates/vt-store` 负责持久化。
 - `crates/vt-stt` 负责转录服务协议。
 - `crates/vt-audio` 负责音频处理。
-- `macos/Zulangue/Zulangue` 负责 macOS 应用。
+- `macos/ZuTalk/ZuTalk` 负责 macOS 应用。
 
 修改跨语言接口后，应重新生成 UniFFI 绑定并运行完整本地门禁。

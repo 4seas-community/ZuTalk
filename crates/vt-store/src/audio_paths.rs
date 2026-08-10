@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn every_recorded_path_of_a_session_is_rewritten_together() {
         let temp = TempDir::new().unwrap();
-        let db_path = temp.path().join("zulangue.db");
+        let db_path = temp.path().join("zutalk.db");
         seed(&db_path, "session-a", "/data/session-a.chunk.00000.enc");
 
         let rewritten = repair_recorded_audio_paths(&db_path, |session_id, recorded| {
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn declining_a_row_leaves_it_untouched() {
         let temp = TempDir::new().unwrap();
-        let db_path = temp.path().join("zulangue.db");
+        let db_path = temp.path().join("zutalk.db");
         seed(&db_path, "session-b", "/data/already/canonical.enc");
 
         let rewritten = repair_recorded_audio_paths(&db_path, |_, _| None).unwrap();

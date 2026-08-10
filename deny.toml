@@ -1,4 +1,4 @@
-# cargo-deny 配置 — Zulangue 依赖合规检查
+# cargo-deny 配置 — ZuTalk 依赖合规检查
 # https://embarkstudios.github.io/cargo-deny/
 
 [graph]

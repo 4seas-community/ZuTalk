@@ -7,19 +7,19 @@
 use std::path::PathBuf;
 use tempfile::TempDir;
 use vt_ffi::session_audio_api::ImportResultInfo;
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
 fn fixture_wav() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vt-audio/tests/fixtures/test_16k_mono.wav")
 }
 
-fn make_core() -> (TempDir, ZulangueCore) {
+fn make_core() -> (TempDir, ZuTalkCore) {
     let tmp = TempDir::new().unwrap();
-    let core = ZulangueCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
+    let core = ZuTalkCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
     (tmp, core)
 }
 
-fn import_fixture(core: &ZulangueCore) -> ImportResultInfo {
+fn import_fixture(core: &ZuTalkCore) -> ImportResultInfo {
     let notebook = core
         .create_notebook(Some("Import tests".to_string()))
         .unwrap();

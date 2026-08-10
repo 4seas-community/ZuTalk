@@ -6,7 +6,7 @@ SCRIPT="$ROOT_DIR/scripts/check_gatekeeper_status.sh"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-APP="$TMP_DIR/Zulangue.app"
+APP="$TMP_DIR/ZuTalk.app"
 FAKE_BIN="$TMP_DIR/bin"
 mkdir -p "$APP" "$FAKE_BIN"
 

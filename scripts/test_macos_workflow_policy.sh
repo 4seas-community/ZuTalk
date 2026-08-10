@@ -31,7 +31,7 @@ require_literal 'for attempt in $(seq 1 60); do'
 require_literal 'sleep 15'
 require_literal "run: just version-check"
 require_literal "just release-adhoc"
-require_literal "bash scripts/check_release_version.sh build/app/Zulangue.app"
+require_literal "bash scripts/check_release_version.sh build/app/ZuTalk.app"
 require_literal "just local-gate-rust-core"
 require_literal "just local-gate-rust-macos"
 require_literal "just swift-test"

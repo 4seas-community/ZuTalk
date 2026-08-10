@@ -3,7 +3,7 @@ set -euo pipefail
 
 MODE="warn"
 ASSESS_TYPE="execute"
-TARGET="/Applications/Zulangue.app"
+TARGET="/Applications/ZuTalk.app"
 
 usage() {
   echo "Usage: $0 [--warn|--report|--strict] [--type execute|open|install] [target]" >&2
@@ -66,7 +66,7 @@ else
   printf '%s\n' "$SPCTL_OUTPUT"
   echo ""
   echo "Gatekeeper rejects this target."
-  echo "For app bundles, this can prevent TCC from listing Zulangue in Accessibility permissions."
+  echo "For app bundles, this can prevent TCC from listing ZuTalk in Accessibility permissions."
   echo "Try:"
   echo "  sudo xattr -rc $TARGET"
   echo "  sudo spctl --add $TARGET"

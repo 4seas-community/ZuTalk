@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex};
 use crate::document_schema::{DocumentKind, NOTE_ROOT, TRANSCRIPT_UTTERANCES};
 use crate::editor_bridge::DOCUMENT_META;
 
-const PURGE_RECEIPTS: &str = "zulangue_session_purge_receipts";
+const PURGE_RECEIPTS: &str = "zutalk_session_purge_receipts";
 /// 批注块的所有者标记。其余(`capture:<session>`)都是机器块。
 const USER_OWNER: &str = "user";
 

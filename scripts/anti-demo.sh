@@ -99,7 +99,7 @@ run_check() {
     fi
 }
 
-echo "=== anti-demo.sh — Zulangue 静态守门 ==="
+echo "=== anti-demo.sh — ZuTalk 静态守门 ==="
 echo "ROOT: $ROOT"
 echo
 
@@ -207,22 +207,22 @@ set +e
 set +o pipefail
 
 echo "─ Notification wiring check ─"
-notif_names=$(grep -rEoh "zulangue[A-Z][a-zA-Z]*" \
-    "$ROOT/macos/Zulangue/Zulangue" \
+notif_names=$(grep -rEoh "zutalk[A-Z][a-zA-Z]*" \
+    "$ROOT/macos/ZuTalk/ZuTalk" \
     --include='*.swift' 2>/dev/null | sort -u)
 
 if [ -z "$notif_names" ]; then
-    echo -e "${YELLOW}  no zulangue notifications found (skipped)${NC}"
+    echo -e "${YELLOW}  no zutalk notifications found (skipped)${NC}"
 else
     notif_failed=false
     for name in $notif_names; do
         post_count=$(grep -rE "post\\(name: \\.${name}|object: \\.${name}" \
-            "$ROOT/macos/Zulangue/Zulangue" \
+            "$ROOT/macos/ZuTalk/ZuTalk" \
             --include='*.swift' \
             --exclude-dir='Bridge' 2>/dev/null | wc -l | tr -d ' ')
 
         observe_count=$(grep -rE "publisher\\(for: \\.${name}|name: \\.${name}|forName: \\.${name}|selector\\(for: \\.${name}" \
-            "$ROOT/macos/Zulangue/Zulangue" \
+            "$ROOT/macos/ZuTalk/ZuTalk" \
             --include='*.swift' \
             --exclude-dir='Bridge' 2>/dev/null | wc -l | tr -d ' ')
 
@@ -239,7 +239,7 @@ else
     TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
     if [ "$notif_failed" = false ]; then
         notif_count=$(echo "$notif_names" | wc -l | tr -d ' ')
-        echo -e "${GREEN}✓${NC} [notification] all $notif_count zulangue notifications have listeners"
+        echo -e "${GREEN}✓${NC} [notification] all $notif_count zutalk notifications have listeners"
     fi
 fi
 

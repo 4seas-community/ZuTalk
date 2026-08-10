@@ -102,7 +102,7 @@ async fn soniox_v5_two_way_real_smoke_redacts_content() {
         .expect("SONIOX_API_KEY must be supplied through the environment or ignored local .env");
 
     let client_reference_id = format!(
-        "zulangue-bilingual-smoke-{}",
+        "zutalk-bilingual-smoke-{}",
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock")

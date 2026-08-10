@@ -26,9 +26,9 @@ use crate::sharecode::ShareCode;
 use crate::wire::{read_message, write_message};
 
 /// 实时字幕通道。每帧一条 uni-stream。
-pub const LIVE_CAPTION_ALPN: &[u8] = b"zulangue/live-caption/1";
+pub const LIVE_CAPTION_ALPN: &[u8] = b"zutalk/live-caption/1";
 /// 文档协同通道。成对直连,承载签名信封。
-pub const DOC_SYNC_ALPN: &[u8] = b"zulangue/doc-sync/1";
+pub const DOC_SYNC_ALPN: &[u8] = b"zutalk/doc-sync/1";
 
 /// 文档同步的接线:一次把三个端口交齐。
 ///
@@ -388,7 +388,7 @@ impl ShareEndpoint {
         *self.display_name.lock().await = sanitize_display_name(name);
     }
 
-    /// 同一网络里看到的 Zulangue。
+    /// 同一网络里看到的 ZuTalk。
     ///
     /// 局域网上只看得到不透明公钥 —— 对方是谁、在共享什么,都要连上去问。
     /// 没开局域网发现时返回空。
@@ -1197,8 +1197,8 @@ mod tests {
     /// ALPN 是协议身份的一部分,改动即破坏兼容。这条测试把它钉住。
     #[test]
     fn alpns_are_stable() {
-        assert_eq!(LIVE_CAPTION_ALPN, b"zulangue/live-caption/1");
-        assert_eq!(DOC_SYNC_ALPN, b"zulangue/doc-sync/1");
+        assert_eq!(LIVE_CAPTION_ALPN, b"zutalk/live-caption/1");
+        assert_eq!(DOC_SYNC_ALPN, b"zutalk/doc-sync/1");
         assert_ne!(LIVE_CAPTION_ALPN, DOC_SYNC_ALPN);
     }
 

@@ -1,6 +1,24 @@
-# Zulangue 0.3.5
+# ZuTalk 0.3.6
 
-Web share, refined by watching a real meeting through it.
+Zulangue is now ZuTalk — same app, same recordings, new name. Plus web
+share, refined by watching a real meeting through it.
+
+## The new name
+
+- **Your recordings, notes, and settings come across by themselves.**
+  The first time ZuTalk opens it moves the data folder and your
+  preferences over: recording history, editor documents, window and
+  subtitle layout, and a redeemed invite code all carry over. Nothing to
+  export or re-import.
+- **Drag the old Zulangue app to the trash.** macOS treats ZuTalk as a
+  different app, so the old one stays in /Applications and will not
+  receive updates again. Open ZuTalk first, check your recordings are
+  there, then delete it.
+- **Sharing needs both Macs on 0.3.6.** The rename goes all the way down
+  into the connection and document formats, so a ZuTalk Mac and a
+  Zulangue Mac cannot see each other at all. Update together.
+
+## Web share
 
 - **Recording breaks are visible.** Pausing draws a line on the web page
   and stops the captions there; resuming draws a line stamped with the
@@ -40,4 +58,4 @@ column you couldn't remove; host notes now span the columns instead of
 being repeated in each; and scanning the code mid-meeting now shows
 every recording shared so far, not only the one still running.
 
-Zulangue requires macOS 15.5 or later.
+ZuTalk requires macOS 15.5 or later.

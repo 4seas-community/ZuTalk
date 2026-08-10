@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-PROJECT_FILE="$ROOT_DIR/macos/Zulangue/Zulangue.xcodeproj/project.pbxproj"
+PROJECT_FILE="$ROOT_DIR/macos/ZuTalk/ZuTalk.xcodeproj/project.pbxproj"
 APP_PATH="${1:-}"
 
 fail() {

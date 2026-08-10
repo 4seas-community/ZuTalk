@@ -8,19 +8,19 @@
 
 use std::path::PathBuf;
 use tempfile::TempDir;
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
-fn make_core(dir: &TempDir) -> ZulangueCore {
-    ZulangueCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
+fn make_core(dir: &TempDir) -> ZuTalkCore {
+    ZuTalkCore::new_for_test(dir.path().to_str().unwrap().to_string()).unwrap()
 }
 
-fn notebook(core: &ZulangueCore, title: &str) -> String {
+fn notebook(core: &ZuTalkCore, title: &str) -> String {
     core.create_notebook(Some(title.to_string())).unwrap().id
 }
 
 /// 这个 Notebook 的私有包。
 fn private_pack(
-    core: &ZulangueCore,
+    core: &ZuTalkCore,
     notebook_id: &str,
 ) -> vt_ffi::notebook_capture_api::FfiContextPackInfo {
     core.list_notebook_context_packs(notebook_id.to_string())

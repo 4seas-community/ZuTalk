@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal community-invite service for Zulangue.
+"""Minimal community-invite service for ZuTalk.
 
 The public contract is deliberately about time, not money:
 - one invite grants 30 hours;
@@ -57,13 +57,13 @@ REALTIME_USD_PER_LANE_HOUR = 0.12
 # Every temporary key this service mints carries this prefix in its
 # client_reference_id, which is how billed usage is attributed back to a
 # reservation. Usage that lands outside it is this account's other traffic.
-USAGE_REFERENCE_PREFIX = "zulangue-community:"
+USAGE_REFERENCE_PREFIX = "zutalk-community:"
 # Soniox keeps usage logs for 91 days and serves at most a 31-day window.
 USAGE_MAX_WINDOW_DAYS = 31
 USAGE_PAGE_LIMIT = 1000
 # Admin panel session: long enough for a working session, short enough that a
 # forgotten browser tab stops being a live door into quota and invitations.
-ADMIN_COOKIE_NAME = "zulangue_admin"
+ADMIN_COOKIE_NAME = "zutalk_admin"
 ADMIN_SESSION_TTL_SECONDS = 8 * 60 * 60
 # The panel is reachable from the public internet and its only door is a
 # shared token, so guessing must be made slow. These bound an attacker to a
@@ -789,7 +789,7 @@ def create_soniox_temporary_key(
     payload: dict = {
         "usage_type": "transcribe_websocket",
         "expires_in_seconds": expires_in_seconds,
-        "client_reference_id": f"zulangue-community:{session_id}",
+        "client_reference_id": f"zutalk-community:{session_id}",
         "max_session_duration_seconds": duration_seconds,
     }
     if single_use:
@@ -840,7 +840,7 @@ def admin_document(body: str) -> str:
         "<!doctype html><html lang='en'><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<meta name='robots' content='noindex,nofollow'>"
-        "<title>Zulangue invites</title>"
+        "<title>ZuTalk invites</title>"
         f"<style>{ADMIN_STYLE}</style><body>{body}</body></html>"
     )
 
@@ -894,7 +894,7 @@ def reconcile_usage(store: Store, master_key: str, hours: int) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ZulangueCommunityInvite/1"
+    server_version = "ZuTalkCommunityInvite/1"
 
     @property
     def store(self) -> Store:
@@ -1010,7 +1010,7 @@ class Handler(BaseHTTPRequestHandler):
         # The token belongs to the operator's server config, not to a browser
         # keychain, so nothing here should be offered up for storage.
         body = (
-            "<h1>Zulangue invites</h1>"
+            "<h1>ZuTalk invites</h1>"
             + (f"<p class='warn'>{html.escape(message)}</p>" if message else "")
             + "<p class='dim'>Operator console for issuing invitation codes. "
             "Sign in with the <code>ZULANGUE_ADMIN_TOKEN</code> set on this "
@@ -1097,7 +1097,7 @@ class Handler(BaseHTTPRequestHandler):
 
         unattributed = usage["unattributed"]
         body = (
-            "<h1>Zulangue invites</h1>"
+            "<h1>ZuTalk invites</h1>"
             + banner
             + "<section class='create'><h2>Generate an invitation</h2>"
             "<form method='post' action='/admin/create' class='inline'>"
@@ -1479,7 +1479,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", default=os.environ.get("ZULANGUE_INVITE_DB", "data/invites.db"))
+    parser.add_argument("--db", default=os.environ.get("ZUTALK_INVITE_DB", "data/invites.db"))
     sub = parser.add_subparsers(dest="command", required=True)
     serve = sub.add_parser("serve")
     serve.add_argument("--host", default="127.0.0.1")

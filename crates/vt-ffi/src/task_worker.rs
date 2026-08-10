@@ -1,6 +1,6 @@
 //! Task worker loop
 //!
-//! `ZulangueCore` 构造时 spawn 一个后台 worker；macOS 生产构造器先把它
+//! `ZuTalkCore` 构造时 spawn 一个后台 worker；macOS 生产构造器先把它
 //! 挡在 provider credential bootstrap gate 后，凭据恢复完成后才允许从
 //! `TaskQueue` 拿任务执行。普通 Rust 构造器保持立即启动语义。
 //! Durable task queue、retry 与崩溃恢复都由这里统一执行。
@@ -1231,7 +1231,7 @@ impl RemoteArtifactInventory {
 /// `provider_remote_artifacts` 的行是"远端可能还留着这次录音"的唯一权威，
 /// 所以 worker 必须先把它们收敛，才允许派发新的 provider 任务。
 ///
-/// 只处理本机日志过的工件——按落库的 id 删，或按 `zulangue-{task_id}` 标签
+/// 只处理本机日志过的工件——按落库的 id 删，或按 `zutalk-{task_id}` 标签
 /// 在远端清单里找回"id 未及落库"的孤儿。同账号其他设备正在跑的工件不属于
 /// 本机 claim，不会被碰到。
 ///
@@ -2507,7 +2507,7 @@ mod tests {
     #[test]
     fn worker_privacy_lookup_fails_closed_for_missing_and_invalid_state() {
         let temp = tempfile::tempdir().unwrap();
-        let db_path = temp.path().join("zulangue.db");
+        let db_path = temp.path().join("zutalk.db");
         let meta = SessionMetaStore::new(&db_path).unwrap();
         let sessions = vt_store::SessionQueryStore::new(&db_path).unwrap();
         for session_id in ["no-level", "invalid", "standard", "high", "maximum"] {
@@ -4366,7 +4366,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let store = NotebookCaptureStore::new(&tmp.path().join("capture.db")).unwrap();
         store
-            .open_provider_remote_artifact_claim("task-1", "session-1", "zulangue-task-1")
+            .open_provider_remote_artifact_claim("task-1", "session-1", "zutalk-task-1")
             .unwrap();
         store
             .record_provider_remote_file("task-1", "file-1")
@@ -4397,18 +4397,18 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let store = NotebookCaptureStore::new(&tmp.path().join("capture.db")).unwrap();
         store
-            .open_provider_remote_artifact_claim("task-2", "session-2", "zulangue-task-2")
+            .open_provider_remote_artifact_claim("task-2", "session-2", "zutalk-task-2")
             .unwrap();
 
         let mock = start_sweep_mock(SweepMockPlan {
             files_body: r#"{"files":[
-                {"id":"file-2","filename":"zulangue-task-2.wav"},
-                {"id":"other-file","filename":"zulangue-task-999.wav"}
+                {"id":"file-2","filename":"zutalk-task-2.wav"},
+                {"id":"other-file","filename":"zutalk-task-999.wav"}
             ]}"#
             .to_string(),
             transcriptions_body: r#"{"transcriptions":[
-                {"id":"tr-2","client_reference_id":"zulangue-task-2"},
-                {"id":"other-tr","client_reference_id":"zulangue-task-999"}
+                {"id":"tr-2","client_reference_id":"zutalk-task-2"},
+                {"id":"other-tr","client_reference_id":"zutalk-task-999"}
             ]}"#
             .to_string(),
             ..SweepMockPlan::default()
@@ -4433,7 +4433,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let store = NotebookCaptureStore::new(&tmp.path().join("capture.db")).unwrap();
         store
-            .open_provider_remote_artifact_claim("task-3", "session-3", "zulangue-task-3")
+            .open_provider_remote_artifact_claim("task-3", "session-3", "zutalk-task-3")
             .unwrap();
 
         let mock = start_sweep_mock(SweepMockPlan {
@@ -4455,7 +4455,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let store = NotebookCaptureStore::new(&tmp.path().join("capture.db")).unwrap();
         store
-            .open_provider_remote_artifact_claim("task-4", "session-4", "zulangue-task-4")
+            .open_provider_remote_artifact_claim("task-4", "session-4", "zutalk-task-4")
             .unwrap();
         store
             .record_provider_remote_file("task-4", "file-4")

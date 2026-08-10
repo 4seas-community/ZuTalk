@@ -115,7 +115,7 @@ pub const CURRENT_SCHEMA_EPOCH: u64 = 1;
 /// `CURRENT_SCHEMA_EPOCH` 演进 —— 「字段缺失」的含义在字段引入那一刻就
 /// 冻结了。
 const PRE_EPOCH_FIELD: u64 = 1;
-pub(crate) const DOCUMENT_META: &str = "zulangue_document_meta";
+pub(crate) const DOCUMENT_META: &str = "zutalk_document_meta";
 pub(crate) const SCHEMA_EPOCH_KEY: &str = "schema_epoch";
 
 /// 读一份文档声明的纪元。缺失或损坏都按 [`PRE_EPOCH_FIELD`] 读 —— 判定必须
@@ -337,7 +337,7 @@ impl EditorBridge {
             .ok_or(EditorBridgeError::SessionNotOpen)?;
         session
             .doc
-            .get_map("zulangue_session_purge_receipts")
+            .get_map("zutalk_session_purge_receipts")
             .insert(session_id, true)
             .map_err(|error| EditorBridgeError::LoroError(error.to_string()))
     }
@@ -353,7 +353,7 @@ impl EditorBridge {
             .ok_or(EditorBridgeError::SessionNotOpen)?;
         Ok(session
             .doc
-            .get_map("zulangue_session_purge_receipts")
+            .get_map("zutalk_session_purge_receipts")
             .get(session_id)
             .is_some_and(|value| value.get_deep_value() == LoroValue::Bool(true)))
     }
@@ -369,7 +369,7 @@ impl EditorBridge {
             .ok_or(EditorBridgeError::SessionNotOpen)?;
         session
             .doc
-            .get_map("zulangue_session_purge_receipts")
+            .get_map("zutalk_session_purge_receipts")
             .delete(session_id)
             .map_err(|error| EditorBridgeError::LoroError(error.to_string()))
     }

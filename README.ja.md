@@ -1,19 +1,19 @@
-# Zulangue
+# ZuTalk
 
 [ไทย](README.th.md) | [English](README.md) | [Français](README.fr.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [한국어](README.ko.md) | **日本語** | [简体中文](README.zh-Hans.md)
 
-Zulangue は macOS ネイティブのボイスノートアプリです。録音・文字起こし・
+ZuTalk は macOS ネイティブのボイスノートアプリです。録音・文字起こし・
 コンテンツの整理を支援し、フローティング字幕で多言語の会話を追いかけられます。
 
 ## ダウンロード
 
-[最新版の Zulangue をダウンロード](https://github.com/4seas-community/zulangue/releases/latest)
+[最新版の ZuTalk をダウンロード](https://github.com/4seas-community/ZuTalk/releases/latest)
 
 Apple Silicon と Intel の両方の Mac に対応。macOS 15.5 以降が必要です。
 
 現在のインストーラは Apple の公証(ノータリゼーション)を受けていません。
 初回起動時に macOS にブロックされた場合は、Finder で Control キーを押しながら
-Zulangue をクリックして「開く」を選ぶか、「システム設定 → プライバシーと
+ZuTalk をクリックして「開く」を選ぶか、「システム設定 → プライバシーと
 セキュリティ」から許可してください。
 
 ## 主な機能

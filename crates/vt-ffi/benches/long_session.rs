@@ -14,13 +14,13 @@ use std::time::Instant;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use tempfile::TempDir;
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 use vt_model::{Token, TranslationStatus};
 
 /// 用于 mock 的"典型 token 数"：每 200ms 一个 token ≈ 90,000 个
 const TYPICAL_TOKENS_PER_5H: usize = 90_000;
 
-fn create_imported_session(core: &ZulangueCore) -> String {
+fn create_imported_session(core: &ZuTalkCore) -> String {
     let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../vt-audio/tests/fixtures/test_16k_mono.wav");
     let notebook = core
@@ -31,9 +31,9 @@ fn create_imported_session(core: &ZulangueCore) -> String {
         .session_id
 }
 
-fn make_core_with_session() -> (TempDir, ZulangueCore, String) {
+fn make_core_with_session() -> (TempDir, ZuTalkCore, String) {
     let tmp = TempDir::new().unwrap();
-    let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+    let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
     let session_id = create_imported_session(&core);
     (tmp, core, session_id)
 }
@@ -84,7 +84,7 @@ fn bench_5h_size_check(c: &mut Criterion) {
             let mut total = std::time::Duration::ZERO;
             for _ in 0..iters {
                 let tmp = TempDir::new().unwrap();
-                let core = ZulangueCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+                let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
                 let session_id = create_imported_session(&core);
                 let tokens: Vec<Token> = (0..TYPICAL_TOKENS_PER_5H)
                     .map(|i| make_token(i as u64))
@@ -97,7 +97,7 @@ fn bench_5h_size_check(c: &mut Criterion) {
                 total += start.elapsed();
 
                 // 检查 SQLite 文件大小（应该 < 50MB）
-                let db_size = std::fs::metadata(tmp.path().join("zulangue.db"))
+                let db_size = std::fs::metadata(tmp.path().join("zutalk.db"))
                     .map(|m| m.len())
                     .unwrap_or(0);
                 assert!(

@@ -71,7 +71,7 @@ jobs:
           {
             echo "RUSTC_WRAPPER=sccache"
             echo "SCCACHE_GHA_ENABLED=true"
-            echo "SCCACHE_GHA_VERSION=zulangue-rust-v1"
+            echo "SCCACHE_GHA_VERSION=zutalk-rust-v1"
           } >> "$GITHUB_ENV"
 
       - name: Check source for secrets
@@ -152,7 +152,7 @@ jobs:
           {
             echo "RUSTC_WRAPPER=sccache"
             echo "SCCACHE_GHA_ENABLED=true"
-            echo "SCCACHE_GHA_VERSION=zulangue-rust-v1"
+            echo "SCCACHE_GHA_VERSION=zutalk-rust-v1"
           } >> "$GITHUB_ENV"
 
       - name: Check tagged version
@@ -161,15 +161,15 @@ jobs:
       - name: Build Ad Hoc Universal DMG
         run: |
           just release-adhoc
-          bash scripts/check_release_version.sh build/app/Zulangue.app
-          shasum -a 256 build/dmg/Zulangue-*.dmg > build/dmg/Zulangue-macOS.sha256
+          bash scripts/check_release_version.sh build/app/ZuTalk.app
+          shasum -a 256 build/dmg/ZuTalk-*.dmg > build/dmg/ZuTalk-macOS.sha256
 
       - name: Upload CI verification artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Zulangue-macOS-universal-adhoc
+          name: ZuTalk-macOS-universal-adhoc
           path: |
-            build/dmg/Zulangue-*.dmg
-            build/dmg/Zulangue-macOS.sha256
+            build/dmg/ZuTalk-*.dmg
+            build/dmg/ZuTalk-macOS.sha256
           if-no-files-found: error
           retention-days: 14

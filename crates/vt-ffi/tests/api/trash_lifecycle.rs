@@ -10,26 +10,26 @@
 
 use std::path::PathBuf;
 use tempfile::TempDir;
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
 fn fixture_wav() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vt-audio/tests/fixtures/test_16k_mono.wav")
 }
 
-fn make_core() -> (TempDir, ZulangueCore) {
+fn make_core() -> (TempDir, ZuTalkCore) {
     let tmp = TempDir::new().unwrap();
-    let core = ZulangueCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
+    let core = ZuTalkCore::new_for_test(tmp.path().to_str().unwrap().to_string()).unwrap();
     (tmp, core)
 }
 
-fn import_one(core: &ZulangueCore, title: &str) -> String {
+fn import_one(core: &ZuTalkCore, title: &str) -> String {
     let notebook = core.create_notebook(Some(title.to_string())).unwrap();
     core.import_audio_into_notebook(fixture_wav().to_str().unwrap().to_string(), notebook.id)
         .unwrap()
         .session_id
 }
 
-fn active_ids(core: &ZulangueCore) -> Vec<String> {
+fn active_ids(core: &ZuTalkCore) -> Vec<String> {
     core.query_sessions(None, None, None, Some(100), None)
         .unwrap()
         .sessions
@@ -38,7 +38,7 @@ fn active_ids(core: &ZulangueCore) -> Vec<String> {
         .collect()
 }
 
-fn trashed_ids(core: &ZulangueCore) -> Vec<String> {
+fn trashed_ids(core: &ZuTalkCore) -> Vec<String> {
     core.list_trashed_sessions()
         .unwrap()
         .into_iter()

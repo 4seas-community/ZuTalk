@@ -1,4 +1,4 @@
-# Zulangue caption-web
+# ZuTalk caption-web
 
 扫码看实时字幕稿。主持人在分享页开启「网页分享」后,App 把字幕帧与稿的块
 快照推到这里,浏览器扫二维码打开 `/r/<房间id>` 就能看,多语言可切换。
@@ -33,12 +33,12 @@
 TLS 由 exe.dev 边缘终结,VM 只讲 HTTP。
 
 exe.dev 的边缘代理**固定转发到 `:8000`**、每台 VM 只有一个代理端口,所以
-caption-web 独占一台 VM(`zulangue-caption`),与 relay 不合并的理由相同。
+caption-web 独占一台 VM(`zutalk-caption`),与 relay 不合并的理由相同。
 
 ```bash
 # exe.dev 控制台
-ssh exe.dev new --name zulangue-caption --cpu 1 --memory 1GB
-ssh exe.dev tag zulangue-caption seas4
+ssh exe.dev new --name zutalk-caption --cpu 1 --memory 1GB
+ssh exe.dev tag zutalk-caption seas4
 
 # VM 上(服务目录按 zulangue-caption-web.service 里的 WorkingDirectory)
 scp server.py zulangue-caption.exe.xyz:zulangue-caption-web/
@@ -48,8 +48,8 @@ ssh zulangue-caption.exe.xyz 'sudo install -m644 zulangue-caption-web.service \
     sudo systemctl enable --now zulangue-caption-web'
 
 # 放开登录墙(不放开的话,扫码的人会先被要求登录 exe.dev)
-ssh exe.dev share port zulangue-caption 8000
-ssh exe.dev share set-public zulangue-caption
+ssh exe.dev share port zutalk-caption 8000
+ssh exe.dev share set-public zutalk-caption
 
 curl -s https://zulangue-caption.exe.xyz/healthz
 ```

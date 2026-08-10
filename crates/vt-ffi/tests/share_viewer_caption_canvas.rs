@@ -9,7 +9,7 @@
 //!
 //! 1. 这个测试:两个真实 core、真实端点、真实分享码,主播按真实 tap
 //!    路径广播一帧,观看端收下来。断言画布依赖的字段逐个过了网,再把
-//!    **收到的那一帧**原样写成 `ZulangueTests/Golden/shared-live-preview.json`。
+//!    **收到的那一帧**原样写成 `ZuTalkTests/Golden/shared-live-preview.json`。
 //! 2. `WindowSystemTests.testSharedRoomOverlayDrawsColumnsFromTheWireGolden`:
 //!    读同一份 golden,喂给 `SubtitleOverlayView.sharedAudienceInput`,
 //!    断言三栏、各栏内容、飘走的那句不占栏。
@@ -21,7 +21,7 @@
 //! golden 的残余缝隙,说在前面:两边各自按字段名读写 JSON,所以给
 //! `FfiNotebookCaptureLivePreview` 新加一个字段时,两边都不会自己报错。
 //! 加字段的人得记得这份 golden —— 下面的字段清单就是提醒。
-//! 重新生成:`ZULANGUE_REGENERATE_CAPTION_GOLDEN=1 cargo test -p vt-ffi
+//! 重新生成:`ZUTALK_REGENERATE_CAPTION_GOLDEN=1 cargo test -p vt-ffi
 //! --test share_viewer_caption_canvas`。
 
 use std::time::Duration;
@@ -30,10 +30,10 @@ use vt_ffi::notebook_capture_api::{
     FfiNotebookCaptureLaneHealth, FfiNotebookCaptureLivePreview, FfiNotebookCaptureTranslationCue,
     FfiNotebookCaptureUtterance,
 };
-use vt_ffi::ZulangueCore;
+use vt_ffi::ZuTalkCore;
 
-fn core(dir: &tempfile::TempDir) -> ZulangueCore {
-    ZulangueCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap()
+fn core(dir: &tempfile::TempDir) -> ZuTalkCore {
+    ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap()
 }
 
 fn wait_until(seconds: u64, mut check: impl FnMut() -> bool) -> bool {
@@ -157,7 +157,7 @@ fn trilingual_preview() -> FfiNotebookCaptureLivePreview {
 
 fn golden_path() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../macos/Zulangue/ZulangueTests/Golden/shared-live-preview.json")
+        .join("../../macos/ZuTalk/ZuTalkTests/Golden/shared-live-preview.json")
 }
 
 /// 观看端收到的那一帧 → JSON。字段名与 FFI 记录一一对应,Swift 侧按同样
@@ -284,7 +284,7 @@ fn a_trilingual_frame_reaches_the_viewer_with_everything_the_canvas_needs() {
     // ── 把收到的这一帧交给下半场。
     let actual = to_golden_json(&received);
     let path = golden_path();
-    if std::env::var("ZULANGUE_REGENERATE_CAPTION_GOLDEN").as_deref() == Ok("1") || !path.exists() {
+    if std::env::var("ZUTALK_REGENERATE_CAPTION_GOLDEN").as_deref() == Ok("1") || !path.exists() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, &actual).unwrap();
         panic!("golden 已写入 {},重跑一次以验证", path.display());
@@ -293,7 +293,7 @@ fn a_trilingual_frame_reaches_the_viewer_with_everything_the_canvas_needs() {
     assert_eq!(
         actual, expected,
         "过网之后的帧变了形。要么是真坏了,要么是记录该更新 —— \
-         用 ZULANGUE_REGENERATE_CAPTION_GOLDEN=1 重新生成,并去看 Swift 侧那半场"
+         用 ZUTALK_REGENERATE_CAPTION_GOLDEN=1 重新生成,并去看 Swift 侧那半场"
     );
 
     host.stop_sharing().unwrap();

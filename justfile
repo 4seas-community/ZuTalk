@@ -1,11 +1,11 @@
-# Zulangue 构建系统
+# ZuTalk 构建系统
 
 # 变量
 project_dir     := justfile_directory()
-macos_dir       := project_dir / "macos" / "Zulangue"
-bridge_dir      := macos_dir / "Zulangue" / "Bridge" / "Generated"
+macos_dir       := project_dir / "macos" / "ZuTalk"
+bridge_dir      := macos_dir / "ZuTalk" / "Bridge" / "Generated"
 uniffi_out      := project_dir / "target" / "uniffi-generated"
-app_bundle_id   := "xyz.voice.zulangue"
+app_bundle_id   := "xyz.voice.zutalk"
 # 所有构建产物统一写入根级 build/。
 build_dir       := project_dir / "build"
 app_build_dir   := build_dir / "app"
@@ -28,7 +28,7 @@ default:
 setup:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "=== Zulangue 开发环境初始化 ==="
+    echo "=== ZuTalk 开发环境初始化 ==="
     xcode-select -p &>/dev/null || { echo "错误: 未安装 Xcode CLI Tools"; exit 1; }
     command -v rustc &>/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; }
     rustup target add {{ target_arm64 }} {{ target_x86_64 }} 2>/dev/null || true
@@ -63,11 +63,11 @@ clean-test-residue:
 # 清理 workspace 之外的 Xcode 与 fuzz 构建缓存。
 clean-all: clean
     @rm -rf {{ macos_dir }}/build
-    @echo "  ✓ macos/Zulangue/build 已清"
+    @echo "  ✓ macos/ZuTalk/build 已清"
     @rm -rf {{ project_dir }}/fuzz/target
     @echo "  ✓ fuzz/target 已清"
-    @rm -rf ~/Library/Developer/Xcode/DerivedData/Zulangue-*
-    @echo "  ✓ Xcode DerivedData (所有 Zulangue-* hash) 已清"
+    @rm -rf ~/Library/Developer/Xcode/DerivedData/ZuTalk-*
+    @echo "  ✓ Xcode DerivedData (所有 ZuTalk-* hash) 已清"
     @echo "✓ 彻底清理完成"
 
 # 修剪长期未使用的 Cargo 构建缓存。
@@ -78,7 +78,7 @@ sweep days="30":
     cargo sweep --time {{ days }} {{ project_dir }}/fuzz 2>/dev/null || true
     @echo "✓ 已修剪 {{ days }} 天以上未使用的 fingerprint"
 
-# 只读查看项目构建目录、Zulangue DerivedData 与共享 sccache 状态。
+# 只读查看项目构建目录、ZuTalk DerivedData 与共享 sccache 状态。
 build-cache-status:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -92,10 +92,10 @@ build-cache-status:
     done
 
     echo ""
-    echo "=== Zulangue Xcode DerivedData ==="
+    echo "=== ZuTalk Xcode DerivedData ==="
     DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData"
     if [[ -d "$DERIVED_DATA" ]]; then
-        find "$DERIVED_DATA" -mindepth 1 -maxdepth 1 -type d -name 'Zulangue-*' \
+        find "$DERIVED_DATA" -mindepth 1 -maxdepth 1 -type d -name 'ZuTalk-*' \
             -exec du -sh {} + | sort -h
     else
         echo "0B  $DERIVED_DATA (missing)"
@@ -281,8 +281,8 @@ swift-test: dev clean-test-residue
     mkdir -p {{ swift_derived_data }} {{ xcode_cloned_source_packages }}
     HOST_ARCH=$(uname -m)
     xcodebuild test \
-        -project {{ macos_dir }}/Zulangue.xcodeproj \
-        -scheme ZulangueTests \
+        -project {{ macos_dir }}/ZuTalk.xcodeproj \
+        -scheme ZuTalkTests \
         -destination "platform=macOS,arch=$HOST_ARCH" \
         -derivedDataPath {{ swift_derived_data }} \
         -clonedSourcePackagesDirPath {{ xcode_cloned_source_packages }} \
@@ -298,8 +298,8 @@ swift-coverage: dev clean-test-residue
     mkdir -p build {{ swift_derived_data }} {{ xcode_cloned_source_packages }}
     HOST_ARCH=$(uname -m)
     xcodebuild test \
-        -project {{ macos_dir }}/Zulangue.xcodeproj \
-        -scheme ZulangueTests \
+        -project {{ macos_dir }}/ZuTalk.xcodeproj \
+        -scheme ZuTalkTests \
         -destination "platform=macOS,arch=$HOST_ARCH" \
         -derivedDataPath {{ swift_derived_data }} \
         -clonedSourcePackagesDirPath {{ xcode_cloned_source_packages }} \
@@ -314,8 +314,8 @@ swift-coverage: dev clean-test-residue
     xcrun xccov view --report --only-targets build/swift-test-result.xcresult
 
     echo ""
-    echo "=== Per-file Coverage (Zulangue.app) ==="
-    xcrun xccov view --report --files-for-target Zulangue.app \
+    echo "=== Per-file Coverage (ZuTalk.app) ==="
+    xcrun xccov view --report --files-for-target ZuTalk.app \
         build/swift-test-result.xcresult | head -50
 
 # 运行所有测试（Rust + Swift）
@@ -332,7 +332,7 @@ verify:
     test -f "{{ bridge_dir }}/vt_ffiFFI.h" || { echo "FAIL: C 头文件不存在"; exit 1; }
     test -f "{{ bridge_dir }}/vt_ffiFFI.modulemap" || { echo "FAIL: modulemap 不存在"; exit 1; }
     file "{{ bridge_dir }}/libvt_ffi.a" | grep -q "archive" || { echo "FAIL: 不是有效归档"; exit 1; }
-    grep -q "ZulangueCore" "{{ bridge_dir }}/vt_ffi.swift" || { echo "FAIL: Swift 绑定不含 ZulangueCore"; exit 1; }
+    grep -q "ZuTalkCore" "{{ bridge_dir }}/vt_ffi.swift" || { echo "FAIL: Swift 绑定不含 ZuTalkCore"; exit 1; }
     echo "=== 全部通过 ==="
 
 # Xcode build → .app 输出到 build/app/（用于打包 / 本地直接运行）
@@ -344,15 +344,15 @@ xcode-build:
     set -euo pipefail
     OUT="{{ app_build_dir }}"
     mkdir -p "$OUT" "{{ xcode_cloned_source_packages }}"
-    if [ -e "$OUT/Zulangue.app" ]; then
-        find "$OUT/Zulangue.app" -depth -delete
+    if [ -e "$OUT/ZuTalk.app" ]; then
+        find "$OUT/ZuTalk.app" -depth -delete
     fi
     HOST_ARCH=$(uname -m)
     LOG="$OUT/xcodebuild.log"
     echo "Building for host arch: $HOST_ARCH"
     if ! xcodebuild build \
-        -project "{{ macos_dir }}/Zulangue.xcodeproj" \
-        -scheme Zulangue \
+        -project "{{ macos_dir }}/ZuTalk.xcodeproj" \
+        -scheme ZuTalk \
         -configuration Release \
         -derivedDataPath "$OUT/.derived" \
         -clonedSourcePackagesDirPath "{{ xcode_cloned_source_packages }}" \
@@ -370,10 +370,10 @@ xcode-build:
         exit 1
     fi
     grep -E "error:|warning:|BUILD|✓|libvt_ffi" "$LOG" | tail -30 || true
-    test -d "$OUT/Zulangue.app" || { echo "FAIL: Zulangue.app 未生成"; exit 1; }
-    echo "✓ Xcode build → $OUT/Zulangue.app"
+    test -d "$OUT/ZuTalk.app" || { echo "FAIL: ZuTalk.app 未生成"; exit 1; }
+    echo "✓ Xcode build → $OUT/ZuTalk.app"
     # 保留 Xcode 自动签名结果；未配置签名身份时，本地构建使用 ad-hoc 签名。
-    AUTH=$(codesign -dv "$OUT/Zulangue.app" 2>&1 | grep "Authority" | head -1 | sed 's/.*=//' || echo "")
+    AUTH=$(codesign -dv "$OUT/ZuTalk.app" 2>&1 | grep "Authority" | head -1 | sed 's/.*=//' || echo "")
     if [ -z "$AUTH" ]; then
         echo "⚠ adhoc 签名 (team=None) · 需 'just approve' 让 Gatekeeper 接受"
     else
@@ -387,10 +387,10 @@ xcode-build-universal:
     OUT="{{ app_build_dir }}"
     mkdir -p "$OUT" "{{ xcode_cloned_source_packages }}"
     # 产物目录与 host 版 `just xcode-build` 共用,而 host 构建会在这里留下
-    # 一个**只有本机架构**的 libZulangueFFI.a(它是工程内静态库目标的产物,
+    # 一个**只有本机架构**的 libZuTalkFFI.a(它是工程内静态库目标的产物,
     # 不是 Rust 侧的 lipo 产物)。universal 构建把它当成链接输入,x86_64
     # 那一半就会 ld 失败 —— 表现为「刚跑过 xcode-build 的机器发不了版」。
-    # 只删 Zulangue.app 挡不住,整个产物目录都要从干净开始。两样东西留下:
+    # 只删 ZuTalk.app 挡不住,整个产物目录都要从干净开始。两样东西留下:
     # 日志(失败时要读它)与 .gitkeep(被跟踪的占位文件,删了工作树就脏,
     # 而脏工作树会让紧随其后的打标签步骤整个停下)。
     find "$OUT" -mindepth 1 -maxdepth 1 ! -name '*.log' ! -name '.gitkeep' \
@@ -398,8 +398,8 @@ xcode-build-universal:
     LOG="$OUT/xcodebuild-universal.log"
     echo "Building universal release app: arm64 x86_64"
     if ! xcodebuild build \
-        -project "{{ macos_dir }}/Zulangue.xcodeproj" \
-        -scheme Zulangue \
+        -project "{{ macos_dir }}/ZuTalk.xcodeproj" \
+        -scheme ZuTalk \
         -configuration Release \
         -derivedDataPath "$OUT/.derived-universal" \
         -clonedSourcePackagesDirPath "{{ xcode_cloned_source_packages }}" \
@@ -421,10 +421,10 @@ xcode-build-universal:
         exit 1
     fi
     grep -E "error:|warning:|BUILD|ARCHS|ONLY_ACTIVE_ARCH|libvt_ffi" "$LOG" | tail -40 || true
-    test -d "$OUT/Zulangue.app" || { echo "FAIL: Zulangue.app 未生成"; exit 1; }
+    test -d "$OUT/ZuTalk.app" || { echo "FAIL: ZuTalk.app 未生成"; exit 1; }
     just assert-universal-app
-    bash "{{ project_dir }}/scripts/check_release_version.sh" "$OUT/Zulangue.app"
-    echo "✓ Universal Xcode build → $OUT/Zulangue.app"
+    bash "{{ project_dir }}/scripts/check_release_version.sh" "$OUT/ZuTalk.app"
+    echo "✓ Universal Xcode build → $OUT/ZuTalk.app"
 
 # Developer ID distribution build. Xcode signs Sparkle.framework and its
 # helpers as part of the archive, so the finished bundle keeps one stable code
@@ -434,7 +434,7 @@ xcode-build-universal-signed:
     set -euo pipefail
     : "${DEVELOPER_ID:?DEVELOPER_ID is required for a signed release}"
     OUT="{{ app_build_dir }}"
-    ARCHIVE="{{ build_dir }}/archive/Zulangue.xcarchive"
+    ARCHIVE="{{ build_dir }}/archive/ZuTalk.xcarchive"
     LOG="$OUT/xcodebuild-distribution.log"
     mkdir -p "$OUT" "$(dirname "$ARCHIVE")" "{{ xcode_cloned_source_packages }}"
     if [ -e "$ARCHIVE" ]; then
@@ -442,8 +442,8 @@ xcode-build-universal-signed:
     fi
     echo "Archiving universal Developer ID release: arm64 x86_64"
     if ! xcodebuild archive \
-        -project "{{ macos_dir }}/Zulangue.xcodeproj" \
-        -scheme Zulangue \
+        -project "{{ macos_dir }}/ZuTalk.xcodeproj" \
+        -scheme ZuTalk \
         -configuration Release \
         -archivePath "$ARCHIVE" \
         -clonedSourcePackagesDirPath "{{ xcode_cloned_source_packages }}" \
@@ -459,23 +459,23 @@ xcode-build-universal-signed:
         grep -E "error:|warning:|ARCHIVE|CodeSign|Sparkle" "$LOG" | tail -120 || tail -120 "$LOG"
         exit 1
     fi
-    APP="$ARCHIVE/Products/Applications/Zulangue.app"
-    test -d "$APP" || { echo "FAIL: signed archive does not contain Zulangue.app"; exit 1; }
-    if [ -e "$OUT/Zulangue.app" ]; then
-        find "$OUT/Zulangue.app" -depth -delete
+    APP="$ARCHIVE/Products/Applications/ZuTalk.app"
+    test -d "$APP" || { echo "FAIL: signed archive does not contain ZuTalk.app"; exit 1; }
+    if [ -e "$OUT/ZuTalk.app" ]; then
+        find "$OUT/ZuTalk.app" -depth -delete
     fi
-    ditto "$APP" "$OUT/Zulangue.app"
+    ditto "$APP" "$OUT/ZuTalk.app"
     just assert-universal-app
     just assert-release-app-signature
     just assert-sparkle-configured-app
-    bash "{{ project_dir }}/scripts/check_release_version.sh" "$OUT/Zulangue.app"
-    echo "✓ Signed universal archive → $OUT/Zulangue.app"
+    bash "{{ project_dir }}/scripts/check_release_version.sh" "$OUT/ZuTalk.app"
+    echo "✓ Signed universal archive → $OUT/ZuTalk.app"
 
 assert-universal-app:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="{{ app_build_dir }}/Zulangue.app"
-    BIN="$APP/Contents/MacOS/Zulangue"
+    APP="{{ app_build_dir }}/ZuTalk.app"
+    BIN="$APP/Contents/MacOS/ZuTalk"
     if [ ! -x "$BIN" ]; then
         echo "FAIL: $BIN 不存在或不可执行 — 先运行 'just xcode-build-universal'"
         exit 1
@@ -492,7 +492,7 @@ assert-universal-app:
 assert-release-app-signature:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="{{ app_build_dir }}/Zulangue.app"
+    APP="{{ app_build_dir }}/ZuTalk.app"
     test -d "$APP" || { echo "FAIL: $APP does not exist"; exit 1; }
     codesign --verify --deep --strict --verbose=2 "$APP"
     DETAILS="$(codesign -dv --verbose=4 "$APP" 2>&1)"
@@ -509,7 +509,7 @@ assert-release-app-signature:
 assert-sparkle-configured-app:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="{{ app_build_dir }}/Zulangue.app"
+    APP="{{ app_build_dir }}/ZuTalk.app"
     PLIST="$APP/Contents/Info.plist"
     FRAMEWORK="$APP/Contents/Frameworks/Sparkle.framework"
     test -f "$PLIST" || { echo "FAIL: release Info.plist is missing"; exit 1; }
@@ -524,25 +524,25 @@ assert-sparkle-configured-app:
         || { echo "FAIL: signed appcast enforcement is disabled"; exit 1; }
     [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUVerifyUpdateBeforeExtraction' "$PLIST")" == "true" ]] \
         || { echo "FAIL: pre-extraction update verification is disabled"; exit 1; }
-    otool -L "$APP/Contents/MacOS/Zulangue" | grep -Fq "Sparkle.framework" \
-        || { echo "FAIL: Zulangue executable is not linked to Sparkle"; exit 1; }
+    otool -L "$APP/Contents/MacOS/ZuTalk" | grep -Fq "Sparkle.framework" \
+        || { echo "FAIL: ZuTalk executable is not linked to Sparkle"; exit 1; }
     echo "✓ Sparkle feed, public key, framework, and strict verification are configured"
 
 assert-adhoc-app:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="{{ app_build_dir }}/Zulangue.app"
+    APP="{{ app_build_dir }}/ZuTalk.app"
     test -d "$APP" || { echo "FAIL: $APP 不存在"; exit 1; }
     codesign --verify --deep --strict "$APP"
     DETAILS="$(codesign -dv --verbose=4 "$APP" 2>&1)"
     grep -Fq "Signature=adhoc" <<<"$DETAILS" \
-        || { echo "FAIL: Zulangue.app 不是 Ad Hoc 签名"; exit 1; }
+        || { echo "FAIL: ZuTalk.app 不是 Ad Hoc 签名"; exit 1; }
     echo "✓ Ad Hoc signature verified"
 
 assert-public-app-privacy:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="{{ app_build_dir }}/Zulangue.app"
+    APP="{{ app_build_dir }}/ZuTalk.app"
     test -d "$APP" || { echo "FAIL: $APP 不存在"; exit 1; }
     # 二进制安全地直接扫文件,不经 strings —— macOS 的 strings 对这个
     # 147MB 的胖二进制一个字符串都吐不出来(试过 -a、-arch all,全是 0),
@@ -567,7 +567,7 @@ assert-public-app-privacy:
     fi
     # 旧身份检查走同一条路:连上下文一起抠出来,再把那条必须存在的
     # 更新源地址排除掉(它本身就带着现在的 GitHub 组织名)。
-    ALLOWED_CONTEXT='github.com/4seas-community/zulangue'
+    ALLOWED_CONTEXT='github.com/4seas-community/ZuTalk'
     prior_identity_pattern='4[[:space:]_-]*S''EAS|Four''Seas|Voice''Tool|Gi''tea'
     IDENTITY="$(mktemp)"
     scan_all ".{0,40}(${prior_identity_pattern}).{0,40}" \
@@ -585,37 +585,37 @@ assert-public-app-privacy:
 
 # 本地 app bundle 构建，只写 workspace 内 build/app。
 build-local-app: dev xcode-build
-    @echo "✓ Local app bundle ready at {{ app_build_dir }}/Zulangue.app"
+    @echo "✓ Local app bundle ready at {{ app_build_dir }}/ZuTalk.app"
 
 # 安装已构建 app 到 /Applications。
 install-local-app:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="{{ app_build_dir }}/Zulangue.app"
+    APP="{{ app_build_dir }}/ZuTalk.app"
     if [ ! -d "$APP" ]; then
         echo "✗ $APP 不存在,先运行 'just build-local-app'"
         exit 1
     fi
-    killall Zulangue 2>/dev/null || true
+    killall ZuTalk 2>/dev/null || true
     sleep 1
-    rm -rf /Applications/Zulangue.app
-    ditto "$APP" /Applications/Zulangue.app
-    echo "✓ Deployed to /Applications/Zulangue.app"
+    rm -rf /Applications/ZuTalk.app
+    ditto "$APP" /Applications/ZuTalk.app
+    echo "✓ Deployed to /Applications/ZuTalk.app"
     # 清理构建产物可能继承的 quarantine/provenance xattr。
-    xattr -rc /Applications/Zulangue.app 2>/dev/null || true
+    xattr -rc /Applications/ZuTalk.app 2>/dev/null || true
     # 检查 Gatekeeper 状态。
-    bash "{{ project_dir }}/scripts/check_gatekeeper_status.sh" --warn --type execute /Applications/Zulangue.app
-    codesign -dv /Applications/Zulangue.app 2>&1 | grep -E "Signature|Authority" | head -2 || true
+    bash "{{ project_dir }}/scripts/check_gatekeeper_status.sh" --warn --type execute /Applications/ZuTalk.app
+    codesign -dv /Applications/ZuTalk.app 2>&1 | grep -E "Signature|Authority" | head -2 || true
 
-assert-gatekeeper-accepted target="/Applications/Zulangue.app" assess_type="execute":
+assert-gatekeeper-accepted target="/Applications/ZuTalk.app" assess_type="execute":
     bash "{{ project_dir }}/scripts/check_gatekeeper_status.sh" --strict --type "{{ assess_type }}" "{{ target }}"
 
 assert-release-dmg-gatekeeper-accepted:
     #!/usr/bin/env bash
     set -euo pipefail
-    DMG=$(ls -t {{ dmg_dir }}/Zulangue-*.dmg 2>/dev/null | head -1)
+    DMG=$(ls -t {{ dmg_dir }}/ZuTalk-*.dmg 2>/dev/null | head -1)
     if [ -z "$DMG" ] || [ ! -f "$DMG" ]; then
-        echo "FAIL: {{ dmg_dir }}/Zulangue-*.dmg 不存在 — 先运行 'just dmg'"
+        echo "FAIL: {{ dmg_dir }}/ZuTalk-*.dmg 不存在 — 先运行 'just dmg'"
         exit 1
     fi
     just assert-gatekeeper-accepted "$DMG" open
@@ -627,16 +627,16 @@ deploy-local: build-local-app install-local-app
 # 从 build/ 直接启动开发构建。
 launch-dev: xcode-build
     #!/usr/bin/env bash
-    killall Zulangue 2>/dev/null || true
+    killall ZuTalk 2>/dev/null || true
     sleep 1
-    open {{ app_build_dir }}/Zulangue.app
+    open {{ app_build_dir }}/ZuTalk.app
     echo "✓ Launched build/ app directly (bypass Gatekeeper)"
 
 # 清理 xattr，并重置 /Applications 中应用的 TCC 与 onboarding 状态。
 approve:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="/Applications/Zulangue.app"
+    APP="/Applications/ZuTalk.app"
     if [ ! -d "$APP" ]; then
         echo "✗ $APP 不存在,先 'just deploy-local'"
         exit 1
@@ -646,18 +646,18 @@ approve:
     # 重置当前 bundle identifier 的 TCC 记录。
     tccutil reset Accessibility {{ app_bundle_id }} 2>/dev/null | tail -1 || true
     tccutil reset Microphone {{ app_bundle_id }} 2>/dev/null | tail -1 || true
-    defaults delete {{ app_bundle_id }} zulangue.onboarding.completed 2>/dev/null || true
-    killall Zulangue 2>/dev/null || true
+    defaults delete {{ app_bundle_id }} zutalk.onboarding.completed 2>/dev/null || true
+    killall ZuTalk 2>/dev/null || true
     sleep 1
     echo "✓ TCC 清空 + onboarding 重置"
     echo ""
-    echo "现在运行 'open /Applications/Zulangue.app' 并重新完成授权。"
+    echo "现在运行 'open /Applications/ZuTalk.app' 并重新完成授权。"
 
 # 代码签名（缺 DEVELOPER_ID 时回退到 ad-hoc，仅用于本地开发）
 sign:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="{{ app_build_dir }}/Zulangue.app"
+    APP="{{ app_build_dir }}/ZuTalk.app"
     if [ ! -d "$APP" ]; then
         echo "FAIL: $APP 不存在 — 先运行 'just xcode-build'"
         exit 1
@@ -666,13 +666,13 @@ sign:
         echo "⚠ DEVELOPER_ID 未设置，使用 ad-hoc 签名（不可分发，仅本地运行）"
         codesign --force --deep --sign - \
             --options runtime \
-            --entitlements {{ project_dir }}/macos/Zulangue.entitlements \
+            --entitlements {{ project_dir }}/macos/ZuTalk.entitlements \
             "$APP"
     else
         echo "签名: $APP (id=$DEVELOPER_ID)"
         codesign --force --deep --options runtime \
             --sign "$DEVELOPER_ID" \
-            --entitlements {{ project_dir }}/macos/Zulangue.entitlements \
+            --entitlements {{ project_dir }}/macos/ZuTalk.entitlements \
             --timestamp \
             "$APP"
     fi
@@ -684,7 +684,7 @@ sign-release:
     #!/usr/bin/env bash
     set -euo pipefail
     : "${DEVELOPER_ID:?DEVELOPER_ID is required for release signing}"
-    APP="{{ app_build_dir }}/Zulangue.app"
+    APP="{{ app_build_dir }}/ZuTalk.app"
     if [ ! -d "$APP" ]; then
         echo "FAIL: $APP 不存在 — 先运行 'just xcode-build-universal'"
         exit 1
@@ -692,20 +692,20 @@ sign-release:
     echo "发布签名: $APP (id=$DEVELOPER_ID)"
     codesign --force --deep --options runtime \
         --sign "$DEVELOPER_ID" \
-        --entitlements {{ project_dir }}/macos/Zulangue.entitlements \
+        --entitlements {{ project_dir }}/macos/ZuTalk.entitlements \
         --timestamp \
         "$APP"
     codesign --verify --strict "$APP"
     echo "✓ 发布签名完成"
 
-# 公证（需要 keychain profile "zulangue-notary"，由 'xcrun notarytool store-credentials' 创建）
+# 公证（需要 keychain profile "zutalk-notary"，由 'xcrun notarytool store-credentials' 创建）
 notarize:
     #!/usr/bin/env bash
     set -euo pipefail
     # 公证最新 dmg(不依赖版本号)
-    DMG=$(ls -t {{ dmg_dir }}/Zulangue-*.dmg 2>/dev/null | head -1)
+    DMG=$(ls -t {{ dmg_dir }}/ZuTalk-*.dmg 2>/dev/null | head -1)
     if [ -z "$DMG" ] || [ ! -f "$DMG" ]; then
-        echo "FAIL: {{ dmg_dir }}/Zulangue-*.dmg 不存在 — 先运行 'just dmg'"
+        echo "FAIL: {{ dmg_dir }}/ZuTalk-*.dmg 不存在 — 先运行 'just dmg'"
         exit 1
     fi
     if [ -n "${NOTARY_KEY_PATH:-}" ] \
@@ -718,7 +718,7 @@ notarize:
             --wait
     else
         xcrun notarytool submit "$DMG" \
-            --keychain-profile "zulangue-notary" \
+            --keychain-profile "zutalk-notary" \
             --wait
     fi
     xcrun stapler staple "$DMG"
@@ -740,32 +740,32 @@ notarize-release:
     else
         command -v security >/dev/null 2>&1 \
             || { echo "FAIL: security is unavailable"; exit 1; }
-        if ! security find-generic-password -a "zulangue-notary" -s "com.apple.gk.ticket-delivery" >/dev/null 2>&1; then
-            echo "FAIL: configure the zulangue-notary profile or CI notary API credentials"
+        if ! security find-generic-password -a "zutalk-notary" -s "com.apple.gk.ticket-delivery" >/dev/null 2>&1; then
+            echo "FAIL: configure the zutalk-notary profile or CI notary API credentials"
             exit 1
         fi
     fi
     just notarize
 
 # DMG 打包；应用本身必须先完成所选签名流程。
-# 输出到 build/dmg/Zulangue-{version}.dmg
+# 输出到 build/dmg/ZuTalk-{version}.dmg
 dmg:
     #!/usr/bin/env bash
     set -euo pipefail
-    APP="{{ app_build_dir }}/Zulangue.app"
+    APP="{{ app_build_dir }}/ZuTalk.app"
     if [ ! -d "$APP" ]; then
         echo "FAIL: $APP 不存在 — 先运行 'just xcode-build'"
         exit 1
     fi
     VERSION=$(cargo metadata --no-deps --format-version 1 2>/dev/null | python3 -c "import sys,json; pkgs=json.load(sys.stdin)['packages']; print([p['version'] for p in pkgs if p['name']=='vt-ffi'][0])")
-    DMG="{{ dmg_dir }}/Zulangue-${VERSION}.dmg"
+    DMG="{{ dmg_dir }}/ZuTalk-${VERSION}.dmg"
     bash "{{ project_dir }}/scripts/create_friendly_dmg.sh" "$APP" "$VERSION" "$DMG"
 
 sign-release-dmg:
     #!/usr/bin/env bash
     set -euo pipefail
     : "${DEVELOPER_ID:?DEVELOPER_ID is required for DMG signing}"
-    DMG=$(ls -t {{ dmg_dir }}/Zulangue-*.dmg 2>/dev/null | head -1)
+    DMG=$(ls -t {{ dmg_dir }}/ZuTalk-*.dmg 2>/dev/null | head -1)
     test -f "$DMG" || { echo "FAIL: release DMG is missing"; exit 1; }
     codesign --force --sign "$DEVELOPER_ID" --timestamp "$DMG"
     codesign --verify --strict --verbose=2 "$DMG"
@@ -783,7 +783,7 @@ sparkle-appcast:
     mkdir -p "$UPDATE_DIR"
     find "$UPDATE_DIR" -mindepth 1 -depth -delete
     VERSION="${GITHUB_REF_NAME#v}"
-    DMG="{{ dmg_dir }}/Zulangue-${VERSION}.dmg"
+    DMG="{{ dmg_dir }}/ZuTalk-${VERSION}.dmg"
     # 按名字取,不按 mtime:重建过一次旧版本就能让 "最新的那个文件"
     # 指向别人。
     test -f "$DMG" || { echo "FAIL: release DMG for $VERSION is missing"; exit 1; }
@@ -795,12 +795,12 @@ sparkle-appcast:
     # 那边表现为 delta 校验失败、白下一遍全量。挑不满两个不算失败:
     # 全量下载对所有人始终可用。
     for OLD_VERSION in $(
-        ls {{ dmg_dir }}/Zulangue-*.dmg 2>/dev/null |
-            sed 's|.*/Zulangue-||; s|\.dmg$||' |
+        ls {{ dmg_dir }}/ZuTalk-*.dmg 2>/dev/null |
+            sed 's|.*/ZuTalk-||; s|\.dmg$||' |
             grep -vFx "$VERSION" |
             sort -V | tail -2
     ); do
-        cp "{{ dmg_dir }}/Zulangue-${OLD_VERSION}.dmg" "$UPDATE_DIR/"
+        cp "{{ dmg_dir }}/ZuTalk-${OLD_VERSION}.dmg" "$UPDATE_DIR/"
         echo "· delta 基线: $OLD_VERSION"
     done
 
@@ -818,6 +818,9 @@ sparkle-appcast:
 
     # Release signing is deliberately local-only: the private key remains in
     # the login Keychain and is never stored as a GitHub Actions secret.
+    # --account 是登录 Keychain 里那对密钥的查找名,不是产品名。密钥在改名
+    # 之前就生成了,账户名永远停在 Zulangue —— 跟着产品改名会找不到私钥,
+    # 而 App 里内置的公钥仍是这一把,换一把签出来的更新会被全部拒收。
     "$TOOL_DIR/bin/generate_appcast" \
         --account Zulangue \
         --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
@@ -836,16 +839,17 @@ sparkle-appcast:
     cp "$UPDATE_DIR/appcast.xml" "{{ dmg_dir }}/appcast.xml"
     # 校验和跟着这一次的 DMG 生成。文件名不带版本号,手工生成就会漏 ——
     # 用一句「记得重新生成」代替一步自动化,总有一次会忘。
-    ( cd "{{ dmg_dir }}" && shasum -a 256 "Zulangue-${VERSION}.dmg" > Zulangue-macOS.sha256 )
+    ( cd "{{ dmg_dir }}" && shasum -a 256 "ZuTalk-${VERSION}.dmg" > ZuTalk-macOS.sha256 )
     echo "✓ Signed Sparkle appcast generated"
-    echo "✓ SHA-256 written for Zulangue-${VERSION}.dmg"
+    echo "✓ SHA-256 written for ZuTalk-${VERSION}.dmg"
 
 # 单一社区发布包：Universal app + Ad Hoc 签名 + Sparkle 配置 + DMG。
 release-adhoc: release xcode-build-universal assert-universal-app assert-adhoc-app assert-sparkle-configured-app assert-public-app-privacy dmg
-    @echo "✓ Ad Hoc Universal release 完成: build/dmg/Zulangue-*.dmg"
+    @echo "✓ Ad Hoc Universal release 完成: build/dmg/ZuTalk-*.dmg"
 
 # 本机正式发布包：先构建 Ad Hoc DMG，再使用登录 Keychain 中的 Zulangue
-# Sparkle 私钥签署更新包和 appcast。CI 不运行此 recipe。
+# Sparkle 私钥签署更新包和 appcast（账户名是改名前生成的，见 sparkle-appcast
+# 里的说明）。CI 不运行此 recipe。
 release-sparkle-adhoc: release-adhoc sparkle-appcast
     @echo "✓ Ad Hoc + Sparkle 本机发布产物完成: build/dmg/"
 
@@ -861,8 +865,8 @@ release-tag:
         || { echo "FAIL: 工作树不干净,标签描述不了发出去的东西"; exit 1; }
     VERSION="${GITHUB_REF_NAME#v}"
     BUILD="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \([0-9]*\);.*/\1/p' \
-        "{{ macos_dir }}/Zulangue.xcodeproj/project.pbxproj" | sort -u)"
-    git tag -s "$GITHUB_REF_NAME" -m "Zulangue ${VERSION} (build ${BUILD})"
+        "{{ macos_dir }}/ZuTalk.xcodeproj/project.pbxproj" | sort -u)"
+    git tag -s "$GITHUB_REF_NAME" -m "ZuTalk ${VERSION} (build ${BUILD})"
     git tag -v "$GITHUB_REF_NAME" >/dev/null
     git push origin HEAD
     git push origin "$GITHUB_REF_NAME"
@@ -878,7 +882,7 @@ release-ship: release-sparkle-adhoc release-tag release-publish
 
 # 完整签名发布（需要 Developer ID、公证凭据和源码中固定的 Sparkle 公钥）
 release-full: release xcode-build-universal-signed assert-universal-app assert-release-app-signature assert-sparkle-configured-app assert-public-app-privacy dmg sign-release-dmg notarize-release assert-release-dmg-gatekeeper-accepted
-    @echo "✓ 完整签名 + 公证 release 完成: build/dmg/Zulangue-*.dmg"
+    @echo "✓ 完整签名 + 公证 release 完成: build/dmg/ZuTalk-*.dmg"
 
 # --- 内部 recipes ---
 
@@ -924,7 +928,7 @@ _uniffi-generate library:
     TMP_DIR=$(mktemp -d "{{ uniffi_out }}.tmp.XXXXXX")
     trap 'find "$TMP_DIR" -depth -delete 2>/dev/null || true' EXIT
 
-    cargo run -p zulangue-uniffi-bindgen -- generate \
+    cargo run -p zutalk-uniffi-bindgen -- generate \
         --library "$LIBRARY" \
         --language swift \
         --out-dir "$TMP_DIR"

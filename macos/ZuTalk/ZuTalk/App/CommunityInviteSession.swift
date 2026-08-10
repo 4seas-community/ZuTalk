@@ -1,0 +1,544 @@
+import Foundation
+import Combine
+import Security
+
+/// How a capture start resolved its provider credential.
+enum CommunityInvitePreparation: Equatable {
+    /// Invite mode is off or no invitation is redeemed; the runtime keeps
+    /// whatever credential the user configured.
+    case notUsed
+    /// Invite time was reserved and the temporary key is active.
+    case invite
+    /// The invite service was unavailable; the user's own saved key was
+    /// restored so the recording can still proceed.
+    case personalKeyFallback
+}
+
+@MainActor
+final class CommunityInviteSession: ObservableObject {
+    static let shared = CommunityInviteSession()
+
+    @Published private(set) var remainingSeconds: Int?
+    @Published private(set) var isWorking = false
+    @Published private(set) var errorMessage: String?
+    @Published private(set) var isEnabled = UserDefaults.standard.bool(
+        forKey: "zutalk.community-invite.enabled"
+    )
+    /// 中继登记状态。
+    ///
+    /// 中继只放行登记过的 endpoint。这件事以前是「试一次，失败就算了」——
+    /// 于是失败之后中继会一直拒绝这台 Mac，而且是安静地拒绝：局域网直连照常，
+    /// 只有跨网络时才连不上，用户无从判断。所以它必须有状态、能重试、能被看见。
+    @Published private(set) var relayEnrollment: RelayEnrollment = .unknown
+
+    enum RelayEnrollment: Equatable {
+        /// 没有邀请码 —— 中继门禁建立在邀请之上，这台 Mac 用不了中继回落。
+        case noInvitation
+        case unknown
+        case working
+        case enrolled
+        case failed
+
+        var canUseRelay: Bool { self == .enrolled }
+    }
+
+    /// Lane count of the capture selection currently on screen. The sidebar
+    /// divides shared invite seconds by this to show wall-clock recordable
+    /// time instead of raw lane-seconds.
+    @Published private(set) var plannedLaneCount = 1
+
+    private let baseURL = URL(string: "https://zulangue-invite.exe.xyz")!
+    /// 邀请 token 存在 app 私有目录的 0600 文件里，而不是钥匙串。发布构建
+    /// 是 ad-hoc 签名，每个构建的签名身份都不同，钥匙串条目的 ACL 会在每次
+    /// 更新后拒认新二进制，向用户索要登录钥匙串密码。token 泄露的最坏后果
+    /// 只是烧掉共享额度，配不上这个代价。
+    private let tokenFileURL: URL
+    private var accessToken: String?
+    private var activeRealtimeSessionID: String?
+    /// Realtime capture streams the same audio once per Soniox lane, so invite
+    /// time must be charged per lane, not per wall-clock second.
+    private var activeRealtimeLaneCount = 1
+    /// Installed for the duration of an invite capture. While it is present
+    /// the core asks it for a single-use key per connection, so no invite key
+    /// is ever written into the shared credential runtime.
+    private var laneCredentialProvider: CommunityInviteLaneCredentialProvider?
+
+    private init() {
+        tokenFileURL = Self.defaultTokenFileURL()
+        accessToken = Self.loadToken(from: tokenFileURL)
+        Self.purgeLegacyKeychainItem()
+    }
+
+    var isActive: Bool { accessToken != nil }
+
+    func setEnabled(_ enabled: Bool) {
+        isEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: "zutalk.community-invite.enabled")
+    }
+
+    func redeem(_ code: String) async {
+        let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.isEmpty == false else { return }
+        isWorking = true
+        errorMessage = nil
+        defer { isWorking = false }
+        do {
+            let response: RedeemResponse = try await request(
+                path: "/v1/redeem",
+                method: "POST",
+                body: ["code": normalized],
+                token: nil
+            )
+            try saveAccessToken(response.accessToken)
+            remainingSeconds = response.remainingSeconds
+            setEnabled(true)
+            // 兑换成功就是「这台 Mac 归属于这个邀请」成立的那一刻，
+            // 中继登记应当在这里发生，而不是等用户第一次想共享时才补。
+            await enrollCurrentShareEndpoint()
+        } catch {
+            errorMessage = String(localized: "community_invite.invalid")
+        }
+    }
+
+    /// 确保本机的分享身份已登记到邀请码服务，好让中继肯放行。
+    ///
+    /// 每一个持有邀请码的用户都应该能用中继，所以这个方法在三个时刻都会被调用：
+    /// 兑换邀请码之后、每次启动、以及开始或加入共享时。三个入口都指向同一次
+    /// 幂等的登记 —— 早期版本兑换过但没登记的 Mac，靠「每次启动」补上。
+    ///
+    /// `force` 用于用户手动重试：平时登记成功过就不再打扰服务器。
+    @discardableResult
+    func ensureShareEndpointEnrolled(_ endpointID: String, force: Bool = false) async -> Bool {
+        guard endpointID.isEmpty == false else { return false }
+        guard isEnabled, let token = accessToken else {
+            relayEnrollment = .noInvitation
+            return false
+        }
+        // 登记是按 endpoint 记的：身份换了就得重登。
+        let marker = "zutalk.share.enrolled-endpoint"
+        if !force, UserDefaults.standard.string(forKey: marker) == endpointID {
+            relayEnrollment = .enrolled
+            return true
+        }
+
+        relayEnrollment = .working
+        do {
+            let _: EnrollResponse = try await request(
+                path: "/v1/share-endpoint",
+                method: "POST",
+                body: ["endpoint_id": endpointID],
+                token: token
+            )
+            UserDefaults.standard.set(endpointID, forKey: marker)
+            relayEnrollment = .enrolled
+            return true
+        } catch {
+            // 登记不上只失去中继回落 —— 直连和分享码都不依赖它，所以不弹窗打断。
+            // 但状态要留下，设置页据此显示「未登记」并提供重试。
+            relayEnrollment = .failed
+            return false
+        }
+    }
+
+    /// 取本机分享身份并登记。身份由核心懒创建，取不到就说明还没到时候。
+    func enrollCurrentShareEndpoint(force: Bool = false) async {
+        guard let core = CoreClient.shared.core,
+              let identity = try? core.shareIdentity()
+        else { return }
+        await ensureShareEndpointEnrolled(identity.endpointId, force: force)
+    }
+
+    func refreshQuota() async {
+        guard isEnabled, let token = accessToken else { return }
+        do {
+            let response: QuotaResponse = try await request(
+                path: "/v1/quota",
+                method: "GET",
+                body: nil,
+                token: token
+            )
+            remainingSeconds = response.remainingSeconds
+        } catch {
+            errorMessage = String(localized: "community_invite.unavailable")
+        }
+    }
+
+    /// Reserves invite time for a realtime capture. When the invite service
+    /// is unreachable or out of quota and the user has their own saved key,
+    /// the saved key is restored and the start continues on it instead of
+    /// failing the recording.
+    func prepareRealtimeCredential(laneCount: Int) async throws -> CommunityInvitePreparation {
+        let lanes = max(1, laneCount)
+        updatePlannedLaneCount(lanes)
+        guard isEnabled, accessToken != nil else { return .notUsed }
+        do {
+            activeRealtimeSessionID = try await prepareCredential(
+                requestedSeconds: 3 * 60 * 60 * lanes,
+                laneCount: lanes
+            )
+            activeRealtimeLaneCount = lanes
+            // No renewal loop: every connection fetches its own key, so there
+            // is no long-lived credential left to expire mid-recording.
+            return .invite
+        } catch {
+            guard restorePersonalKeyIfSaved() else { throw error }
+            errorMessage = String(localized: "community_invite.unavailable")
+            return .personalKeyFallback
+        }
+    }
+
+    func updatePlannedLaneCount(_ laneCount: Int) {
+        let lanes = max(1, laneCount)
+        guard plannedLaneCount != lanes else { return }
+        plannedLaneCount = lanes
+    }
+
+    /// Shared invite seconds burn once per lane, so the wall-clock time the
+    /// user can actually record is the remainder divided by the lane count.
+    static func wallClockRecordableSeconds(remainingSeconds: Int, laneCount: Int) -> Int {
+        max(0, remainingSeconds) / max(1, laneCount)
+    }
+
+    /// After-stop transcription never runs on invite time: Soniox temporary
+    /// keys are WebSocket-scoped and the async file REST API rejects them.
+    /// Uploading the recording also happens under whichever account owns the
+    /// key, so it stays off until the user saves their own.
+    var asyncTranscriptionNeedsPersonalKey: Bool {
+        guard isEnabled, isActive else { return false }
+        return hasSavedPersonalKey == false
+    }
+
+    /// Puts the user's own saved key into the runtime before an after-stop
+    /// transcription while invite mode is on. Refuses while an invite
+    /// realtime capture is running so its temporary key is not replaced
+    /// mid-recording.
+    func preparePersonalKeyForAsyncTranscription() throws {
+        guard isEnabled, accessToken != nil else { return }
+        guard activeRealtimeSessionID == nil else {
+            throw CommunityInviteError.realtimeCaptureActive
+        }
+        guard restorePersonalKeyIfSaved() else {
+            throw CommunityInviteError.personalKeyRequired
+        }
+    }
+
+    private func prepareCredential(
+        requestedSeconds: Int,
+        laneCount: Int
+    ) async throws -> String? {
+        guard isEnabled, let token = accessToken else { return nil }
+        // The reservation is counted in lane-seconds. The server needs the
+        // lane count to divide it back into the wall-clock ceiling it hands
+        // Soniox, otherwise every lane may run the full reservation alone.
+        let response: RealtimeSessionResponse = try await request(
+            path: "/v1/realtime-session",
+            method: "POST",
+            body: [
+                "requested_seconds": requestedSeconds,
+                "lane_count": laneCount,
+            ],
+            token: token
+        )
+        // Invite keys are single-use and short-lived, so they are served per
+        // connection through the core instead of being written into the
+        // shared credential runtime, where they would outlive their use and
+        // shadow the user's own saved key.
+        let provider = makeLaneCredentialProvider(
+            sessionID: response.sessionID,
+            token: token
+        )
+        laneCredentialProvider = provider
+        CoreClient.shared.core?.setLaneCredentialRequester(requester: provider)
+        await provider.prime(laneCount: laneCount)
+        remainingSeconds = max(0, (remainingSeconds ?? 0) - response.reservedSeconds)
+        return response.sessionID
+    }
+
+    private func makeLaneCredentialProvider(
+        sessionID: String,
+        token: String
+    ) -> CommunityInviteLaneCredentialProvider {
+        let baseURL = self.baseURL
+        return CommunityInviteLaneCredentialProvider(
+            sessionID: sessionID,
+            accessToken: token,
+            fetch: { sessionID, token, count in
+                try await CommunityInviteSession.fetchLaneKeys(
+                    baseURL: baseURL,
+                    sessionID: sessionID,
+                    token: token,
+                    count: count
+                )
+            },
+            deliver: { requestID, result in
+                Task { @MainActor in
+                    guard let core = CoreClient.shared.core else { return }
+                    switch result {
+                    case .success(let key):
+                        core.fulfillLaneCredential(requestId: requestID, apiKey: key)
+                    case .failure(let failure):
+                        core.failLaneCredential(
+                            requestId: requestID,
+                            message: failure.message,
+                            terminal: failure.terminal
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    /// One request covers a whole multi-language start; reconnects ask for a
+    /// single key. Status codes the invite service uses for refusals become
+    /// terminal failures so a lane stops instead of retrying a spent budget.
+    nonisolated static func fetchLaneKeys(
+        baseURL: URL,
+        sessionID: String,
+        token: String,
+        count: Int
+    ) async throws -> [String] {
+        var request = URLRequest(url: baseURL.appending(path: "/v1/realtime-session/key"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 12
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: ["session_id": sessionID, "count": count]
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw LaneCredentialFailure(message: "no HTTP response", terminal: false)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw LaneCredentialFailure.fromStatusCode(http.statusCode)
+        }
+        let decoded = try JSONDecoder().decode(LaneKeyResponse.self, from: data)
+        return decoded.keys.map { $0.apiKey }
+    }
+
+    func settleRealtimeSession(usedSeconds: Int) async {
+        // Unused single-use keys are dropped rather than kept: they are only
+        // redeemable for minutes, and holding them widens the window in which
+        // a leaked one still opens a stream.
+        laneCredentialProvider?.discardPooledKeys()
+        laneCredentialProvider = nil
+        CoreClient.shared.core?.setLaneCredentialRequester(requester: nil)
+        let sessionID = activeRealtimeSessionID
+        activeRealtimeSessionID = nil
+        let lanes = activeRealtimeLaneCount
+        activeRealtimeLaneCount = 1
+        await settle(sessionID: sessionID, usedSeconds: usedSeconds * lanes)
+        // The session's temporary key is spent; put the user's own saved key
+        // back so post-recording features never run on a dead credential.
+        restorePersonalKeyIfSaved()
+    }
+
+    /// Deletes the redeemed invitation from this Mac and returns the app to
+    /// its normal credential state (the user's own saved key, if any).
+    func removeInvite() {
+        try? FileManager.default.removeItem(at: tokenFileURL)
+        accessToken = nil
+        laneCredentialProvider?.discardPooledKeys()
+        laneCredentialProvider = nil
+        CoreClient.shared.core?.setLaneCredentialRequester(requester: nil)
+        remainingSeconds = nil
+        errorMessage = nil
+        activeRealtimeSessionID = nil
+        activeRealtimeLaneCount = 1
+        setEnabled(false)
+        // With no saved key this clears any leftover temporary key from the
+        // runtime; with one it reactivates the user's own credential.
+        try? ProviderCredentialSession.shared.activateSavedCredentials()
+    }
+
+    private var hasSavedPersonalKey: Bool {
+        ProviderCredentialSession.shared.snapshot()
+            .contains { $0.account == .soniox && $0.isSaved }
+    }
+
+    @discardableResult
+    private func restorePersonalKeyIfSaved() -> Bool {
+        guard hasSavedPersonalKey else { return false }
+        do {
+            try ProviderCredentialSession.shared.activateSavedCredentials()
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func settle(sessionID: String?, usedSeconds: Int) async {
+        guard let token = accessToken,
+              let sessionID
+        else { return }
+        do {
+            let response: QuotaResponse = try await request(
+                path: "/v1/realtime-session/settle",
+                method: "POST",
+                body: [
+                    "session_id": sessionID,
+                    "used_seconds": max(0, usedSeconds),
+                ],
+                token: token
+            )
+            remainingSeconds = response.remainingSeconds
+        } catch {
+            errorMessage = String(localized: "community_invite.unavailable")
+        }
+    }
+
+    /// 和 provider 凭据同一个 Secrets 目录，跟随同一套测试隔离。
+    static func defaultTokenFileURL() -> URL {
+        ProviderCredentialFileStore.defaultFileURL()
+            .deletingLastPathComponent()
+            .appendingPathComponent("community-invite.json", isDirectory: false)
+    }
+
+    static func loadToken(from url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url),
+              data.count <= 64 * 1024,
+              let document = try? JSONDecoder().decode(InviteTokenDocument.self, from: data),
+              document.version == 1
+        else { return nil }
+        let token = document.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+
+    private func saveAccessToken(_ token: String) throws {
+        do {
+            let data = try JSONEncoder().encode(
+                InviteTokenDocument(version: 1, accessToken: token)
+            )
+            let directoryURL = tokenFileURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(
+                at: directoryURL,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try data.write(to: tokenFileURL, options: [.atomic])
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: tokenFileURL.path
+            )
+        } catch {
+            throw CommunityInviteError.secureStorageFailed
+        }
+        accessToken = token
+    }
+
+    /// 旧版本把 token 存在钥匙串。只删不读：读取会触发钥匙串密码框——
+    /// 正是这次要消灭的弹窗——而删除不碰密文，所以是安静的。token 就此
+    /// 丢弃，持有邀请的用户重新兑换一次邀请码。
+    private static func purgeLegacyKeychainItem() {
+        guard TestEnvironment.isAnyTestMode == false else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            // 老名字，不能跟着产品改名走：要删的条目是 Zulangue 时期的构建
+            // 写下的，它们的 service 属性永远停在旧 bundle ID 上。
+            kSecAttrService as String: "xyz.voice.zulangue.community-invite",
+            kSecAttrAccount as String: "access-token",
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    private func request<Response: Decodable>(
+        path: String,
+        method: String,
+        body: [String: Any]?,
+        token: String?
+    ) async throws -> Response {
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.httpMethod = method
+        request.timeoutInterval = 20
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        if let token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let body {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode)
+        else { throw CommunityInviteError.requestFailed }
+        return try JSONDecoder().decode(Response.self, from: data)
+    }
+}
+
+private struct InviteTokenDocument: Codable {
+    let version: Int
+    let accessToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case version
+        case accessToken = "access_token"
+    }
+}
+
+private struct EnrollResponse: Decodable {
+    let status: String
+}
+
+private struct RedeemResponse: Decodable {
+    let accessToken: String
+    let remainingSeconds: Int
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case remainingSeconds = "remaining_seconds"
+    }
+}
+
+private struct QuotaResponse: Decodable {
+    let remainingSeconds: Int
+
+    enum CodingKeys: String, CodingKey {
+        case remainingSeconds = "remaining_seconds"
+    }
+}
+
+private struct RealtimeSessionResponse: Decodable {
+    let sessionID: String
+    let reservedSeconds: Int
+    let apiKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case reservedSeconds = "reserved_seconds"
+        case apiKey = "api_key"
+    }
+}
+
+/// One batch of single-use lane keys. The service also mirrors a single key
+/// into flat fields for the legacy path; only the array is read here.
+private struct LaneKeyResponse: Decodable {
+    struct Key: Decodable {
+        let apiKey: String
+
+        enum CodingKeys: String, CodingKey {
+            case apiKey = "api_key"
+        }
+    }
+
+    let keys: [Key]
+}
+
+private enum CommunityInviteError: Error, LocalizedError {
+    case requestFailed
+    case secureStorageFailed
+    case personalKeyRequired
+    case realtimeCaptureActive
+
+    var errorDescription: String? {
+        switch self {
+        case .requestFailed, .secureStorageFailed:
+            return nil
+        case .personalKeyRequired:
+            return String(localized: "community_invite.async.needs_personal_key")
+        case .realtimeCaptureActive:
+            return String(localized: "community_invite.async.wait_for_recording")
+        }
+    }
+}

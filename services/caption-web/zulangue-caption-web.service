@@ -1,5 +1,5 @@
 [Unit]
-Description=Zulangue caption-web service (scan-to-view live captions)
+Description=ZuTalk caption-web service (scan-to-view live captions)
 After=network-online.target
 
 [Service]

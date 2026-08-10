@@ -24,7 +24,7 @@ use vt_store::{BuiltinNotebookTab, EditOp, SessionMovePlan, SessionMoveTarget};
 
 use crate::editor_api::TextRange;
 use crate::notebook_capture_api::{legacy_session_section_range, store_error};
-use crate::{CoreError, ZulangueCore};
+use crate::{CoreError, ZuTalkCore};
 
 /// A flat-text section lifted out of a document: its characters plus the marks
 /// that make it a section — session ownership, heading, any user styling.
@@ -41,7 +41,7 @@ struct FlatMark {
     value_json: String,
 }
 
-impl ZulangueCore {
+impl ZuTalkCore {
     /// Moves `session_id` into `target_notebook_id`, carrying its transcripts,
     /// its note, and the annotations the user wrote alongside them.
     pub(crate) fn move_session_to_notebook_inner(

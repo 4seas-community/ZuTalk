@@ -79,7 +79,7 @@ impl ShareCode {
 }
 
 impl Ticket for ShareCode {
-    const KIND: &'static str = "zulangueshare";
+    const KIND: &'static str = "zutalkshare";
 
     fn encode_bytes(&self) -> Vec<u8> {
         postcard::to_stdvec(&self.to_wire()).expect("ShareCode 必须可序列化")
@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn tolerance_does_not_accept_nonsense() {
         assert!(ShareCode::from_str("hello world").is_err());
-        assert!(ShareCode::from_str("zulangueshare").is_err());
+        assert!(ShareCode::from_str("zutalkshare").is_err());
         assert!(ShareCode::from_str("").is_err());
     }
 
@@ -194,8 +194,8 @@ mod tests {
     #[test]
     fn garbage_is_refused() {
         assert!(ShareCode::from_str("").is_err());
-        assert!(ShareCode::from_str("zulangueshare").is_err());
-        assert!(ShareCode::from_str("zulangueshare!!!not-base32!!!").is_err());
+        assert!(ShareCode::from_str("zutalkshare").is_err());
+        assert!(ShareCode::from_str("zutalkshare!!!not-base32!!!").is_err());
     }
 
     /// 分享码决定房间,而房间由 secret 与 scope 共同派生。

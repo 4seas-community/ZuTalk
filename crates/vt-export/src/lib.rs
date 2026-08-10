@@ -1,4 +1,4 @@
-//! Zulangue 导出层
+//! ZuTalk 导出层
 //!
 //! md/txt/srt/vtt/zip 格式导出。
 

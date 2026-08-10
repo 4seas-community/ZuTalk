@@ -38,7 +38,7 @@ pub struct SonioxAsyncRequest<'a> {
     /// serialized form avoids recompiling mutable knowledge-base contents for
     /// a later asynchronous transcription.
     pub context_json: Option<&'a str>,
-    /// 稳定的工件标签(如 `zulangue-{task_id}`):作为上传文件名与转录任务的
+    /// 稳定的工件标签(如 `zutalk-{task_id}`):作为上传文件名与转录任务的
     /// client_reference_id,启动扫尾据此识别崩溃遗留的远端工件。
     pub client_reference_id: Option<String>,
     /// 整体截止时间（上传 + 排队 + 处理 + 拉取）。在客户端内部执行，
