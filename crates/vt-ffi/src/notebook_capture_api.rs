@@ -1516,6 +1516,23 @@ struct PendingTranslationVariant {
     /// durably pending and is re-examined on every flush, so without this
     /// flag the observation log would drown in repeats of one fact.
     reverse_conflict_warned: bool,
+    /// Canonical rows SQLite has already refused this fact for.
+    ///
+    /// A rejected bind used to drop only the cached correlation, and the next
+    /// flush re-derived the identical top-ranked row from the same unchanged
+    /// word evidence — so the same fact re-attempted the same impossible bind
+    /// on every capture event for the rest of the session. Observed in the
+    /// field at ~13 failed write transactions per second for the whole tail of
+    /// a recording, one WARN each, never converging.
+    ///
+    /// Remembering the refusal is what makes "stays pending for a later
+    /// better-evidenced pass" true rather than aspirational: the fact remains
+    /// durable in the inbox and still reachable through the store-authoritative
+    /// unique matcher, but the cached correlation that SQLite already answered
+    /// is not asked again. Rows are never *promoted* on a refusal — a lane the
+    /// store refuses says nothing about the second-ranked row being right, and
+    /// an unbound translation is recoverable where a mis-bound one is not.
+    rejected_sequences: Vec<u64>,
 }
 
 fn pending_translation_from_inbox(
@@ -1537,6 +1554,7 @@ fn pending_translation_from_inbox(
         target_language: normalize_language(&item.key.target_language),
         completion,
         reverse_conflict_warned: false,
+        rejected_sequences: Vec::new(),
     })
 }
 
@@ -2471,7 +2489,17 @@ fn persist_stream_lane_updates(
                 );
                 persisted.push(updated);
             }
-        } else if let Some(pending) = pending_translation_from_inbox(&persistence.item) {
+        } else if let Some(mut pending) = pending_translation_from_inbox(&persistence.item) {
+            // A provider revision of the same fact does not give back the rows
+            // SQLite already refused it: those lanes are refused because they
+            // are final, and finality is not a property of this fact's text.
+            // Dropping the refusals here would hand the retry loop a fresh
+            // start on every revision, which is the same loop by another route.
+            if let Some(previous) = pending_variants.get(&pending_key) {
+                pending
+                    .rejected_sequences
+                    .clone_from(&previous.rejected_sequences);
+            }
             pending_variants.insert(pending_key, pending);
         } else {
             pending_variants.remove(&pending_key);
@@ -2726,13 +2754,26 @@ fn flush_pending_translation_variants(
                     // fact is already durable in the inbox, so it stays
                     // pending for a later better-evidenced pass instead of
                     // interrupting the live capture.
-                    tracing::warn!(
-                        session_id = %pending.session_id,
-                        sequence,
-                        target_language = %pending.target_language,
-                        conflict = %conflict,
-                        "cached translation inbox binding rejected; fact remains unbound"
-                    );
+                    //
+                    // Recording the refusal is what keeps "a later pass" from
+                    // meaning "this same pass, forever": the ranking that chose
+                    // this row is a pure function of word evidence that a
+                    // refusal does not change, so without the record the next
+                    // flush re-derives the same row and re-attempts the same
+                    // impossible write — once per capture event, for the rest
+                    // of the session.
+                    if let Some(pending) = pending_variants.get_mut(&pending_key) {
+                        if !pending.rejected_sequences.contains(&sequence) {
+                            pending.rejected_sequences.push(sequence);
+                            tracing::warn!(
+                                session_id = %pending.session_id,
+                                sequence,
+                                target_language = %pending.target_language,
+                                conflict = %conflict,
+                                "cached translation inbox binding rejected; fact remains unbound"
+                            );
+                        }
+                    }
                     variant_bindings.remove(&pending_key);
                     let reverse_key = (
                         pending.group_epoch,
@@ -2815,6 +2856,7 @@ fn resolve_canonical_sequence(
     let existing_binding = variant_bindings
         .get(&pending_key)
         .copied()
+        .filter(|sequence| !pending.rejected_sequences.contains(sequence))
         .filter(|sequence| {
             canonical_matches
                 .get(&(pending.group_epoch, *sequence))
@@ -2838,9 +2880,17 @@ fn resolve_canonical_sequence(
     // A row already holding a sibling segment of this language is not a
     // blocker: the store concatenates the segments into one lane, so the best
     // row by evidence is still the right answer.
+    //
+    // A row the store has already refused is a different matter, and the one
+    // case where re-deriving the same answer is not idempotent but pathological
+    // — the word evidence has not moved, so the ranking cannot move either, and
+    // the retry repeats forever. Yield nothing instead: the store-authoritative
+    // unique matcher is the caller's next step, and it is the only thing
+    // entitled to place this fact on a row the cache mispredicted.
     ranked_canonical_sequences(pending, canonical_matches.values())
         .into_iter()
         .next()
+        .filter(|sequence| !pending.rejected_sequences.contains(sequence))
 }
 
 #[cfg(test)]
@@ -13734,6 +13784,93 @@ mod tests {
         assert!(!outage_is_continuous(15_001));
     }
 
+    /// A refused row must not be re-derived from the same unchanged evidence.
+    ///
+    /// Field observation (2026-08-11, one tri-language recording): the same
+    /// `sequence=79 target_language=th` bind was refused and retried 2048 times
+    /// in 158 seconds — roughly one failed SQLite write transaction per capture
+    /// event, from the moment of the first refusal to the end of the session.
+    /// The cache dropped only the correlation, and `ranked_canonical_sequences`
+    /// is a pure function of word evidence that a refusal does not move, so the
+    /// next flush chose the identical row.
+    #[test]
+    fn refused_canonical_row_is_not_re_derived_from_unchanged_evidence() {
+        let candidate = |sequence, start_ms, end_ms| {
+            let mut utterance = projected_utterance();
+            utterance.sequence = sequence;
+            utterance.source_language = "zh".into();
+            utterance.source_start_ms = start_ms;
+            utterance.source_end_ms = end_ms;
+            CanonicalUtteranceMatch {
+                group_epoch: 0,
+                utterance,
+            }
+        };
+        let mut pending = PendingTranslationVariant {
+            session_id: "refused-session".into(),
+            group_epoch: 0,
+            source_sequence: 79,
+            source_language: "zh".into(),
+            source_text: "早上好".into(),
+            source_start_ms: Some(120),
+            source_end_ms: Some(220),
+            target_language: "th".into(),
+            completion: UtteranceCompletion::Complete,
+            reverse_conflict_warned: false,
+            rejected_sequences: Vec::new(),
+        };
+        let candidates = std::collections::HashMap::from([
+            ((0, 79), candidate(79, Some(110), Some(230))),
+            ((0, 80), candidate(80, Some(240), Some(360))),
+        ]);
+        let pending_key = (1, 0, 181);
+        let mut variant_bindings = std::collections::HashMap::new();
+        let mut reverse_variant_bindings = std::collections::HashMap::new();
+
+        assert_eq!(
+            resolve_canonical_sequence(
+                pending_key,
+                &pending,
+                &candidates,
+                &mut variant_bindings,
+                &mut reverse_variant_bindings,
+            ),
+            Some(79),
+            "the overlapping row is the correct first answer"
+        );
+
+        // SQLite refuses row 79: its th lane is already final and immutable.
+        pending.rejected_sequences.push(79);
+
+        assert_eq!(
+            resolve_canonical_sequence(
+                pending_key,
+                &pending,
+                &candidates,
+                &mut variant_bindings,
+                &mut reverse_variant_bindings,
+            ),
+            None,
+            "a refused row is neither retried nor silently swapped for the \
+             next-ranked one; the store-authoritative unique matcher decides"
+        );
+
+        // A stale cached correlation pointing at the refused row is no way back
+        // in either — that is the entry the refusal invalidated.
+        variant_bindings.insert(pending_key, 79);
+        assert_eq!(
+            resolve_canonical_sequence(
+                pending_key,
+                &pending,
+                &candidates,
+                &mut variant_bindings,
+                &mut reverse_variant_bindings,
+            ),
+            None,
+            "a cached binding cannot resurrect a refused row"
+        );
+    }
+
     #[test]
     fn cross_stream_pairing_uses_authoritative_time_before_language_or_column_order() {
         let candidate = |sequence, group_epoch, start_ms, end_ms| {
@@ -13758,6 +13895,7 @@ mod tests {
             target_language: "zh".into(),
             completion: UtteranceCompletion::Partial,
             reverse_conflict_warned: false,
+            rejected_sequences: Vec::new(),
         };
         let candidates = [
             candidate(0, 0, Some(0), Some(100)),
@@ -13896,6 +14034,7 @@ mod tests {
             target_language: "th".into(),
             completion: UtteranceCompletion::Complete,
             reverse_conflict_warned: false,
+            rejected_sequences: Vec::new(),
         };
         let rows = [
             candidate(0, 0, Some(600), Some(5_160)),
@@ -13953,6 +14092,7 @@ mod tests {
             target_language: "th".into(),
             completion: UtteranceCompletion::Complete,
             reverse_conflict_warned: false,
+            rejected_sequences: Vec::new(),
         };
         let mut pending_variants = std::collections::HashMap::from([(pending_key, pending)]);
 
@@ -14064,6 +14204,7 @@ mod tests {
             target_language: "en".into(),
             completion: UtteranceCompletion::Partial,
             reverse_conflict_warned: false,
+            rejected_sequences: Vec::new(),
         };
         let unique = [candidate(6)];
         assert_eq!(
@@ -14101,6 +14242,7 @@ mod tests {
             target_language: "zh".into(),
             completion: UtteranceCompletion::Partial,
             reverse_conflict_warned: false,
+            rejected_sequences: Vec::new(),
         };
         let mut utterance = projected_utterance();
         utterance.sequence = 4;
