@@ -1153,6 +1153,22 @@ struct SubtitleOverlayView: View {
     @State private var isFollowingLive = true
     @State private var liveFollowTask: Task<Void, Never>?
     @State private var liveFollowGeneration: UInt64 = 0
+    // The strip of canvas that re-summons the operator chrome once the panel
+    // fills a display. It has to cover the chrome itself: a band shorter than
+    // the controls means hovering the lower half of the bar reads as "pointer
+    // left the strip" and the bar dismisses itself under the pointer. That
+    // used to be a literal 52, sized by eye against a one-row bar, and it went
+    // wrong the moment the bar became two rows. Measured from the chrome, so
+    // it cannot drift from it again.
+    @State private var measuredControlBarHeight: CGFloat?
+
+    /// Before the chrome has ever been laid out there is nothing to measure,
+    /// and the band still has to be big enough to summon it.
+    private static let minimumControlBarHoverBand: CGFloat = 96
+
+    private var controlBarHoverBand: CGFloat {
+        max(measuredControlBarHeight ?? 0, Self.minimumControlBarHoverBand)
+    }
 
     // Deliberately unanimated, unlike the main transcript page's equivalent:
     // an animated catch-up would still be travelling when the next revision
@@ -1179,7 +1195,23 @@ struct SubtitleOverlayView: View {
                             )
                     )
             )
-            .overlay(alignment: .top) { hoverControlBar }
+            .overlay(alignment: .topTrailing) {
+                // The leading inset is transparent and belongs to the layout,
+                // not to the chrome: it is what guarantees the controls can
+                // never slide under the maximize affordance at the opposite
+                // corner, however wide the operator's window is.
+                hoverControlBar
+                    .padding(.leading, 50)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .onAppear { measuredControlBarHeight = proxy.size.height }
+                                .onChange(of: proxy.size.height) { _, height in
+                                    measuredControlBarHeight = height
+                                }
+                        }
+                    )
+            }
             .overlay(alignment: .topLeading) {
                 maximizeButton
                     .padding(8)
@@ -1193,7 +1225,9 @@ struct SubtitleOverlayView: View {
                     // control strip so subtitles return to a clean canvas as
                     // soon as the pointer moves back into the content.
                     updateControlBarVisibility(
-                        coordinator.isMaximized ? location.y <= 52 : true
+                        coordinator.isMaximized
+                            ? location.y <= controlBarHoverBand
+                            : true
                     )
                 case .ended:
                     updateControlBarVisibility(false)
@@ -1226,15 +1260,35 @@ struct SubtitleOverlayView: View {
     /// watched rather than operated, the operator chrome stays off-screen
     /// entirely and returns only under the pointer. The window itself remains
     /// movable by its background.
+    /// Operator chrome sized to the controls, not to the window.
+    ///
+    /// It used to be a full-width band: a stretching spacer pushed the status
+    /// to one edge and the controls to the other, an opaque background filled
+    /// everything between them, and a divider ran the whole width underneath.
+    /// On a desk that reads as a toolbar. Projected onto a wall at 1100 points
+    /// it reads as a banner across the top of the slide, and most of it is the
+    /// empty middle — the room is shown a stripe that carries nothing.
+    ///
+    /// A pill in the corner is the same controls at the same size, occupying
+    /// only what they need, and it matches the treatment the maximize
+    /// affordance opposite it already uses.
     @ViewBuilder
     private var hoverControlBar: some View {
         if isHoveringOverlay {
-            VStack(spacing: 0) {
-                controlBar
-                Divider().overlay(SubtitleOverlayPalette.hairline)
-            }
-            .background(SubtitleOverlayPalette.surface.opacity(controlsOpacity))
-            .transition(.opacity)
+            controlBar
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(SubtitleOverlayPalette.surface.opacity(controlsOpacity))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .strokeBorder(
+                                    SubtitleOverlayPalette.hairline,
+                                    lineWidth: 0.5
+                                )
+                        )
+                )
+                .padding(8)
+                .transition(.opacity)
         }
     }
 
@@ -1258,49 +1312,53 @@ struct SubtitleOverlayView: View {
         )
     }
 
+    /// Two compact rows, always, sized to what they carry.
+    ///
+    /// Everything in here has a fixed width — a 144 pt mode picker, a 110 pt
+    /// font slider, a 72 pt opacity slider, five 28 pt buttons — so one row
+    /// comes to roughly 970 points before any spacing. On a desk that is a
+    /// toolbar. On a projector it is a banner nearly as wide as the canvas,
+    /// and the room reads it as part of the slide.
+    ///
+    /// Two rows cut the width to whichever row is wider, about half. A
+    /// `ViewThatFits` used to offer this shape only as a fallback for windows
+    /// too narrow for one row, which meant the wide venues that need it most
+    /// never got it — and it could not have helped anyway, because each row
+    /// carried a `Spacer` and the whole thing sat on a full-width band, so it
+    /// stretched to the window either way. Both are gone; the rows now hug.
+    ///
+    /// The window title goes with them. It named the window to a room that is
+    /// already looking at it.
+    /// Always two rows; the only thing that degrades on a genuinely small
+    /// window is the status prose, which is the one item here the operator can
+    /// read somewhere else. Every control stays.
     private var controlBar: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                captureStatus
+            controlRows(includesStatus: true)
+            controlRows(includesStatus: false)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .help(String(localized: "subtitle.overlay.move_resize_hint"))
+    }
 
-                Text(String(localized: "subtitle.overlay.title"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
-
-                Spacer(minLength: 16)
-
-                modePicker
-                fontControls
+    private func controlRows(includesStatus: Bool) -> some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            HStack(spacing: 8) {
+                if includesStatus {
+                    captureStatus
+                }
                 backdropOpacityControl
                 themeButton
                 pinButton
                 closeButton
             }
-
-            VStack(spacing: 6) {
-                HStack(spacing: 8) {
-                    captureStatus
-                    Spacer(minLength: 8)
-                    backdropOpacityControl
-                    themeButton
-                    pinButton
-                    closeButton
-                }
-                HStack(spacing: 8) {
-                    modePicker
-                    Spacer(minLength: 8)
-                    fontControls
-                }
+            HStack(spacing: 8) {
+                modePicker
+                fontControls
             }
         }
-        // The maximize affordance is always visible at top-left, including
-        // when the rest of the operator chrome has faded out. Reserve its
-        // footprint so the hover controls never slide underneath it.
-        .padding(.leading, 50)
-        .padding(.trailing, 10)
-        .padding(.vertical, 8)
-        .contentShape(Rectangle())
-        .help(String(localized: "subtitle.overlay.move_resize_hint"))
     }
 
     private var maximizeButton: some View {
