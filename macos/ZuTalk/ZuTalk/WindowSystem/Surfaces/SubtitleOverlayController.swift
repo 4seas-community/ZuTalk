@@ -224,6 +224,67 @@ enum SubtitleOverlayLayoutPolicy {
     }
 }
 
+/// What the overlay's scrolling modes watch to decide "the tail moved".
+///
+/// Row identity alone is not enough: one Soniox utterance grows hundreds of
+/// times before a new row id appears, and each growth is what pushes the live
+/// edge below the fold. Row *count* is not enough either — the overlay renders
+/// a canvas-sized suffix, so a new row arriving and an old one aging out leaves
+/// the count unchanged.
+struct SubtitleOverlayFollowSignal: Equatable {
+    let tailID: String
+    let rowCount: Int
+    let textExtent: Int
+}
+
+/// Whether the overlay's transcript is still tracking the live edge.
+///
+/// This is the same question `NotebookRealtimeFollowPolicy` answers for the
+/// main transcript page, but the overlay cannot reuse that answer: the main
+/// page renders the whole run, so its content only ever grows, and it reads a
+/// shrinking offset as "the operator dragged up". The overlay renders a
+/// canvas-sized suffix, so rows age off the top constantly and the scroll view
+/// clamps the offset down on its own. Under the main page's policy that clamp
+/// reads as an operator gesture, following stops, and the canvas parks itself
+/// mid-transcript — which is the failure this policy exists to prevent.
+///
+/// Content height therefore participates in the decision: an offset that falls
+/// while the content also shrank is the scroll view catching up to its own
+/// trimmed content, not a person reaching for the scrollbar.
+enum SubtitleOverlayFollowPolicy {
+    /// Generous next to the main page's 72 pt: overlay rows are audience-sized,
+    /// so a single row can be taller than the whole desk-strip viewport and
+    /// landing "at the bottom" still leaves a large residual.
+    static let liveEdgeDistance = 120.0
+
+    static func reconciledFollowing(
+        wasFollowing: Bool,
+        previous: SubtitleOverlayScrollMetrics,
+        current: SubtitleOverlayScrollMetrics
+    ) -> Bool {
+        if current.distanceFromBottom <= liveEdgeDistance {
+            return true
+        }
+        // The suffix dropped a row: whatever the offset did, it was the scroll
+        // view reacting to content it no longer has, not an operator gesture.
+        if current.contentHeight < previous.contentHeight - 1 {
+            return wasFollowing
+        }
+        if current.offsetY < previous.offsetY - 1 {
+            return false
+        }
+        // Content growth increases distance from the bottom without moving the
+        // viewport. Keep following so the throttled tail scroll can catch up.
+        return wasFollowing
+    }
+}
+
+struct SubtitleOverlayScrollMetrics: Equatable {
+    let offsetY: Double
+    let distanceFromBottom: Double
+    let contentHeight: Double
+}
+
 /// The multilingual audience canvas as per-language tracks on one shared
 /// capture timeline — the caption-format shape (WebVTT/TTML: one track per
 /// language, cues anchored to time, no cross-track binding).
@@ -836,31 +897,30 @@ private struct AudiencePacedText: View {
     }
 }
 
-/// Coalesces high-frequency canonical hypotheses without animating the whole
-/// text block. A 180 ms opacity transition restarted by every Chinese partial
-/// produced overlapping snapshots — the visible ghosting reported by users.
-private struct AudienceStableSourceText: View {
+/// Coalesces high-frequency hypotheses onto a trailing-edge budget without
+/// animating the whole text block. A 180 ms opacity transition restarted by
+/// every Chinese partial produced overlapping snapshots — the visible ghosting
+/// reported by users.
+///
+/// Styling belongs to the caller: this view owns *when* the words change, never
+/// how they look, so the audience cards and the conversation lanes can share
+/// one budget while keeping their own type.
+private struct StableRefreshText: View {
     let update: SubtitleAudienceSourceRefresh.Update
-    let fontSize: Double
 
     @State private var refresh: SubtitleAudienceSourceRefresh.State
     @State private var scheduledFlush: Task<Void, Never>?
 
-    init(text: String, isComplete: Bool, fontSize: Double) {
+    init(text: String, isComplete: Bool) {
         update = SubtitleAudienceSourceRefresh.Update(
             text: text,
             isComplete: isComplete
         )
-        self.fontSize = fontSize
         _refresh = State(initialValue: SubtitleAudienceSourceRefresh.State(text: text))
     }
 
     var body: some View {
         Text(refresh.displayedText)
-            .font(.system(size: CGFloat(fontSize), weight: .semibold))
-            .foregroundColor(.primary)
-            .textSelection(.enabled)
-            .multilineTextAlignment(.leading)
             .transaction { transaction in
                 transaction.animation = nil
             }
@@ -887,10 +947,30 @@ private struct AudienceStableSourceText: View {
         guard scheduledFlush == nil else { return }
         scheduledFlush = Task { @MainActor in
             try? await Task.sleep(for: SubtitleAudienceSourceRefresh.interval)
-            guard Task.isCancelled == false else { return }
+            // Clearing the handle on the cancelled path too: a handle left
+            // behind reads as "a flush is already scheduled" and would retire
+            // the budget for the rest of this view's life.
+            guard Task.isCancelled == false else {
+                scheduledFlush = nil
+                return
+            }
             refresh.flush()
             scheduledFlush = nil
         }
+    }
+}
+
+private struct AudienceStableSourceText: View {
+    let text: String
+    let isComplete: Bool
+    let fontSize: Double
+
+    var body: some View {
+        StableRefreshText(text: text, isComplete: isComplete)
+            .font(.system(size: CGFloat(fontSize), weight: .semibold))
+            .foregroundColor(.primary)
+            .textSelection(.enabled)
+            .multilineTextAlignment(.leading)
     }
 }
 
@@ -1063,6 +1143,22 @@ struct SubtitleOverlayView: View {
     // @State; the class is deliberately not observable — each card's own
     // @State drives its rendering, this is only where progress survives.
     @State private var revealMemory = AudienceRevealMemory()
+    // The scrolling modes follow the live edge. `defaultScrollAnchor(.bottom)`
+    // alone only places the *initial* offset, so a transcript whose content
+    // height moves — a long language wrapping to four lines, then aging out of
+    // the canvas-sized suffix — left the viewport parked over a stale offset:
+    // frozen mid-transcript, and blank once the content shrank out from under
+    // it. Reopening the overlay rebuilt the scroll view, which is why closing
+    // and reopening "fixed" it.
+    @State private var isFollowingLive = true
+    @State private var liveFollowTask: Task<Void, Never>?
+    @State private var liveFollowGeneration: UInt64 = 0
+
+    // Deliberately unanimated, unlike the main transcript page's equivalent:
+    // an animated catch-up would still be travelling when the next revision
+    // lands, and a caption wall that is permanently mid-glide is harder to
+    // read than one that simply is where the words are.
+    private static let liveTailAnchorID = "zutalk.subtitleOverlay.live-tail"
 
     init(store: ActiveBilingualTranscriptStore) {
         self.store = store
@@ -1494,6 +1590,85 @@ struct SubtitleOverlayView: View {
         store.isCaptureActive == false && shareActivity.isViewing
     }
 
+    /// A scroll view that keeps the live edge on screen.
+    ///
+    /// The tail anchor is a one-point spacer rather than the last row: rows are
+    /// replaced in place as the provider revises them, and scrolling to a row
+    /// that is about to change height lands short of where that row ends up.
+    private func liveFollowingScroll<Content: View>(
+        signal: SubtitleOverlayFollowSignal,
+        indicators: ScrollIndicatorVisibility = .visible,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    content()
+                    Color.clear
+                        .frame(height: 1)
+                        .id(Self.liveTailAnchorID)
+                }
+            }
+            .defaultScrollAnchor(.bottom)
+            .scrollIndicators(indicators)
+            .onScrollGeometryChange(for: SubtitleOverlayScrollMetrics.self) { geometry in
+                let visibleBottom = geometry.contentOffset.y + geometry.containerSize.height
+                let contentBottom = geometry.contentSize.height + geometry.contentInsets.bottom
+                return SubtitleOverlayScrollMetrics(
+                    offsetY: Double(geometry.contentOffset.y),
+                    distanceFromBottom: Double(max(0, contentBottom - visibleBottom)),
+                    contentHeight: Double(geometry.contentSize.height)
+                )
+            } action: { previous, current in
+                isFollowingLive = SubtitleOverlayFollowPolicy.reconciledFollowing(
+                    wasFollowing: isFollowingLive,
+                    previous: previous,
+                    current: current
+                )
+                if isFollowingLive == false {
+                    cancelLiveFollow()
+                }
+            }
+            .onChange(of: signal) { _, _ in
+                scheduleLiveFollow(using: proxy)
+            }
+            .onAppear {
+                isFollowingLive = true
+                proxy.scrollTo(Self.liveTailAnchorID, anchor: .bottom)
+            }
+            .onDisappear { cancelLiveFollow() }
+        }
+    }
+
+    /// A provider may publish ten or more revisions each second. Scroll at most
+    /// four times per second and never animate in-place growth; animating every
+    /// partial competes with the text layout that just changed the row height.
+    private func scheduleLiveFollow(using proxy: ScrollViewProxy) {
+        guard liveFollowTask == nil, isFollowingLive else { return }
+        liveFollowGeneration &+= 1
+        let generation = liveFollowGeneration
+        liveFollowTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard Task.isCancelled == false,
+                  generation == liveFollowGeneration,
+                  isFollowingLive
+            else {
+                if generation == liveFollowGeneration {
+                    liveFollowTask = nil
+                }
+                return
+            }
+            proxy.scrollTo(Self.liveTailAnchorID, anchor: .bottom)
+            liveFollowTask = nil
+        }
+    }
+
+    private func cancelLiveFollow() {
+        liveFollowGeneration &+= 1
+        liveFollowTask?.cancel()
+        liveFollowTask = nil
+    }
+
     private var subtitleBody: some View {
         GeometryReader { geometry in
             Group {
@@ -1656,7 +1831,15 @@ struct SubtitleOverlayView: View {
     }
 
     private func sharedFeedLegacyLines(_ lines: [FfiSharedCaptionLine]) -> some View {
-        ScrollView {
+        liveFollowingScroll(
+            signal: SubtitleOverlayFollowSignal(
+                tailID: lines.last?.sourceText ?? "",
+                rowCount: lines.count,
+                textExtent: (lines.last?.sourceText.count ?? 0)
+                    + (lines.last?.targetText?.count ?? 0)
+            ),
+            indicators: .hidden
+        ) {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     VStack(alignment: .leading, spacing: 4) {
@@ -1678,8 +1861,6 @@ struct SubtitleOverlayView: View {
             }
             .padding(16)
         }
-        .defaultScrollAnchor(.bottom)
-        .scrollIndicators(.hidden)
     }
 
     private func conversationBody(geometry: GeometryProxy) -> some View {
@@ -1728,17 +1909,31 @@ struct SubtitleOverlayView: View {
                 systemImage: "waveform"
             )
         } else {
-            ScrollView {
+            let rows = Array(utterances.suffix(rowBudget))
+            liveFollowingScroll(signal: Self.followSignal(rows: rows)) {
                 LazyVStack(spacing: 10) {
-                    ForEach(utterances.suffix(rowBudget)) { utterance in
+                    ForEach(rows) { utterance in
                         conversationRow(utterance, layout: layout)
                     }
                 }
                 .padding(12)
             }
-            .defaultScrollAnchor(.bottom)
-            .scrollIndicators(.visible)
         }
+    }
+
+    /// The tail row is the only one that revises, so its extent is the whole
+    /// growth signal; row count carries the rest.
+    private static func followSignal(
+        rows: [NotebookCaptureUtteranceDTO]
+    ) -> SubtitleOverlayFollowSignal {
+        let tail = rows.last
+        return SubtitleOverlayFollowSignal(
+            tailID: tail?.id ?? "",
+            rowCount: rows.count,
+            textExtent: (tail?.sourceText.count ?? 0)
+                + (tail?.translatedText?.count ?? 0)
+                + (tail?.languageVariants.reduce(0) { $0 + ($1.text?.count ?? 0) } ?? 0)
+        )
     }
 
     @ViewBuilder
@@ -1747,11 +1942,20 @@ struct SubtitleOverlayView: View {
         rowBudget: Int,
         utterances: [NotebookCaptureUtteranceDTO]
     ) -> some View {
+        // One snapshot for the whole pass, grouped once — the same discipline
+        // `localAudienceInput` already applies. Asking the store per language
+        // re-sorted the entire cue set once for every column, on every
+        // provider revision, to answer three questions about one unchanged
+        // set. Grouping also drops the per-language linear filter.
+        let cuesByLanguage = Dictionary(
+            grouping: store.presentedTranslationCueSnapshot,
+            by: { normalizedLanguageCode($0.targetLanguage) }
+        )
         let timeline = SubtitleConversationTimeline.projection(
             languages: displayLanguages,
             utterances: utterances,
-            placement: { store.audienceSourcePlacement(for: $0) },
-            cues: { store.presentedTranslationCues(for: $0) },
+            placement: store.makeAudienceSourcePlacement(),
+            cues: { cuesByLanguage[normalizedLanguageCode($0)] ?? [] },
             failedLanguages: store.failedTranslationLanguages
         )
         let liveRowCount = timeline.hasLiveWords ? 1 : 0
@@ -1769,9 +1973,21 @@ struct SubtitleOverlayView: View {
                 systemImage: "waveform"
             )
         } else {
-            ScrollView {
+            let history = Array(timeline.historicalUtterances.suffix(historyBudget))
+            // The live edge is not a row in `history`: it is rebuilt from the
+            // independent lane heads on every provider revision, so its text
+            // extent is what actually moves the tail here.
+            let signal = SubtitleOverlayFollowSignal(
+                tailID: timeline.unroutedLiveUtterance?.id
+                    ?? history.last?.id
+                    ?? "",
+                rowCount: history.count + liveRowCount + unroutedRowCount,
+                textExtent: timeline.liveLanes.reduce(0) { $0 + ($1.text?.count ?? 0) }
+                    + (timeline.unroutedLiveUtterance?.sourceText.count ?? 0)
+            )
+            liveFollowingScroll(signal: signal) {
                 LazyVStack(spacing: 10) {
-                    ForEach(timeline.historicalUtterances.suffix(historyBudget)) { utterance in
+                    ForEach(history) { utterance in
                         conversationRow(utterance, layout: layout)
                     }
                     if let unrouted = timeline.unroutedLiveUtterance {
@@ -1783,8 +1999,6 @@ struct SubtitleOverlayView: View {
                 }
                 .padding(12)
             }
-            .defaultScrollAnchor(.bottom)
-            .scrollIndicators(.visible)
         }
     }
 
@@ -2181,7 +2395,7 @@ struct SubtitleOverlayView: View {
         if layout == .columns {
             HStack(alignment: .bottom, spacing: 0) {
                 ForEach(Array(lanes.enumerated()), id: \.offset) { index, lane in
-                    conversationLane(lane)
+                    conversationLane(lane, coalescesRevisions: true)
                     if index < lanes.count - 1 {
                         Divider().overlay(SubtitleOverlayPalette.hairline)
                     }
@@ -2191,7 +2405,7 @@ struct SubtitleOverlayView: View {
         } else {
             VStack(spacing: 0) {
                 ForEach(Array(lanes.enumerated()), id: \.offset) { index, lane in
-                    conversationLane(lane)
+                    conversationLane(lane, coalescesRevisions: true)
                     if index < lanes.count - 1 {
                         Divider().overlay(SubtitleOverlayPalette.hairline)
                     }
@@ -2270,9 +2484,12 @@ struct SubtitleOverlayView: View {
             .background(subtitleCardBackground)
     }
 
-    private func conversationLane(_ lane: NotebookCaptureLanguageLane) -> some View {
+    private func conversationLane(
+        _ lane: NotebookCaptureLanguageLane,
+        coalescesRevisions: Bool = false
+    ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            laneContent(lane)
+            laneContent(lane, coalescesRevisions: coalescesRevisions)
                 .font(.system(size: CGFloat(fontSize), weight: .medium))
                 .textSelection(.enabled)
         }
@@ -2340,10 +2557,25 @@ struct SubtitleOverlayView: View {
     }
 
     @ViewBuilder
-    private func laneContent(_ lane: NotebookCaptureLanguageLane) -> some View {
+    private func laneContent(
+        _ lane: NotebookCaptureLanguageLane,
+        coalescesRevisions: Bool = false
+    ) -> some View {
         if let text = lane.text, text.isEmpty == false {
-            Text(text)
-                .foregroundColor(.primary)
+            if coalescesRevisions {
+                // Measured on a 107-minute recording: the Chinese lane
+                // delivered 27,367 revisions carrying 32,738 characters — one
+                // full row re-layout per 1.2 characters, against 40 characters
+                // per revision on the English lane. The budget is a ceiling on
+                // that, not a delay: a row leaves the live edge the moment a
+                // newer source row appears and re-renders as ordinary history,
+                // so no settled text is ever held back by it.
+                StableRefreshText(text: text, isComplete: false)
+                    .foregroundColor(.primary)
+            } else {
+                Text(text)
+                    .foregroundColor(.primary)
+            }
         } else if lane.missingLaneState == .waiting {
             Label(
                 String(

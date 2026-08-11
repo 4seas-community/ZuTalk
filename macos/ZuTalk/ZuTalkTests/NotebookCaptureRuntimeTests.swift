@@ -4153,6 +4153,56 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         ))
     }
 
+    /// The overlay renders a canvas-sized suffix, so rows age off the top and
+    /// the scroll view clamps its own offset down. The main page's policy reads
+    /// that clamp as a manual scroll and stops following — which parks the
+    /// canvas mid-transcript and, once the content shrinks past the stale
+    /// offset, shows blank canvas. Content height is what tells the two apart.
+    func testSubtitleOverlayFollowSurvivesRowsAgingOffTheTop() {
+        let liveEdge = SubtitleOverlayScrollMetrics(
+            offsetY: 900,
+            distanceFromBottom: 20,
+            contentHeight: 1_400
+        )
+        let contentGrowth = SubtitleOverlayScrollMetrics(
+            offsetY: 900,
+            distanceFromBottom: 300,
+            contentHeight: 1_680
+        )
+        // A long row left the suffix: content and offset both fell.
+        let suffixTrimmed = SubtitleOverlayScrollMetrics(
+            offsetY: 640,
+            distanceFromBottom: 300,
+            contentHeight: 1_120
+        )
+        let manualScroll = SubtitleOverlayScrollMetrics(
+            offsetY: 620,
+            distanceFromBottom: 600,
+            contentHeight: 1_680
+        )
+
+        XCTAssertTrue(SubtitleOverlayFollowPolicy.reconciledFollowing(
+            wasFollowing: true,
+            previous: liveEdge,
+            current: contentGrowth
+        ))
+        XCTAssertTrue(SubtitleOverlayFollowPolicy.reconciledFollowing(
+            wasFollowing: true,
+            previous: contentGrowth,
+            current: suffixTrimmed
+        ))
+        XCTAssertFalse(SubtitleOverlayFollowPolicy.reconciledFollowing(
+            wasFollowing: true,
+            previous: contentGrowth,
+            current: manualScroll
+        ))
+        XCTAssertTrue(SubtitleOverlayFollowPolicy.reconciledFollowing(
+            wasFollowing: false,
+            previous: manualScroll,
+            current: liveEdge
+        ))
+    }
+
     @MainActor
     func testEmptyFullSnapshotClearsRecentTranscriptPresentation() async throws {
         MenuBarRuntimeStore.shared.resetForTesting()
