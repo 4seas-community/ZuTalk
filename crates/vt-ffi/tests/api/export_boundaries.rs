@@ -70,10 +70,10 @@ fn an_export_without_audio_carries_no_audio() {
     let session = capture_a_little_audio(&core);
 
     let out = dir.path().join("no-audio.zip");
-    let size = core
+    let outcome = core
         .export_session_zip(session, out.to_string_lossy().into_owned(), options(false))
         .unwrap();
-    assert!(size > 0 && out.exists());
+    assert!(outcome.bytes_written > 0 && out.exists());
     assert!(zip_mentions(&out, "transcript.md"), "该有的文稿还是要有");
     assert!(
         !zip_mentions(&out, "audio.wav"),
