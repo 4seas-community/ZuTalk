@@ -1,30 +1,37 @@
-# ZuTalk 0.4.2
+# ZuTalk 0.4.3
 
-Imported stereo recordings are transcribed as what they actually sound like,
-and subtitle exports now say how many lines they had to leave out.
+The floating subtitle canvas stays on the words being spoken.
 
 ZuTalk requires macOS 15.5 or later.
 
-- **Stereo .m4a and .mp4 imports are transcribed correctly.** An AAC track
-  keeps its channel count inside the audio, not in the file header, and ZuTalk
-  read the header. Stereo recordings were treated as mono: a 93-minute lecture
-  showed up as 186 minutes, and the audio sent for transcription was the
-  recording at half speed with the left and right channels braided together.
-  What came back was not a poor transcript, it was a transcript of a different
-  sound. Nothing warned about it, because nothing failed. Re-import any stereo
-  file you transcribed before this version.
-- **Subtitle exports tell you what could not be written.** A line whose words
-  arrived without a usable time range cannot become a subtitle cue, so it was
-  dropped — silently, and if that happened to every line you got an empty
-  `transcript.srt`, usually discovered long afterwards. The export now finishes
-  with a warning carrying the count, and says the saved transcript still holds
-  those lines. They are not lost; they just have nowhere to sit on a timeline.
-- **Updates are checked against the identity your copy is looking for.**
-  Sparkle finds the app to replace by the names the installed copy holds. When
-  a release changes both the app's file name and its bundle identifier, no
-  installed copy can find it any more, and the failure is reported as a signing
-  error even though every signature is valid. Releases are now blocked before
-  packaging if the app inside would be unreachable that way.
+- **Subtitles follow the live edge instead of stopping mid-transcript.** The
+  canvas placed itself at the bottom when it opened and then stayed at that
+  offset. As rows grew and older ones aged off the top, the view drifted: it
+  parked partway up the transcript while speech carried on below it, and once a
+  long line left the visible window it showed blank canvas — the viewport was
+  looking at a place the text no longer occupied. Closing and reopening the
+  overlay appeared to fix it because that built a new scroll view. The canvas
+  now tracks the newest words, and still lets you scroll back and rejoin the
+  live edge on your own.
+- **Three languages no longer cost three times the work per revision.** In
+  conversation mode every incoming revision re-sorted the whole set of
+  translation cues once per language, to answer three questions about a set that
+  had not changed. It is sorted once now.
+- **A dense-script lane no longer re-lays out the whole row per character.**
+  Chinese and Thai arrive a token at a time, so the live row was being rebuilt
+  for roughly every character — measured at 27,367 revisions carrying 32,738
+  characters across one 107-minute recording, against 40 characters per revision
+  on the English lane beside it. The live row now refreshes on the same reading
+  budget the audience canvas has always used. Nothing is delayed: a line stops
+  being the live edge the moment the next one begins, and settles immediately.
+- **A translation that cannot be filed stops trying forever.** When a
+  translation segment was matched to a line whose lane had already been settled,
+  the match was refused and then recomputed identically on the next audio event,
+  because nothing about the refusal changed the evidence that produced it. One
+  recording retried the same impossible write 2,048 times in 158 seconds, and
+  would have continued until the recording stopped. Refusals are remembered now.
+  The translation itself is not lost — it stays on file and can still be placed
+  later.
 
 Still on 0.3.x? Those installs cannot be updated automatically — 0.4.0 renamed
 the app and its bundle identifier together, so Sparkle no longer recognises the
