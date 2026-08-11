@@ -59,15 +59,18 @@ pub fn decode_file(path: impl AsRef<Path>) -> Result<DecodedAudio, AudioError> {
         .default_track()
         .ok_or_else(|| AudioError::UnsupportedFormat("no audio track".into()))?;
 
-    let sample_rate = track
+    let declared_sample_rate = track
         .codec_params
         .sample_rate
         .ok_or_else(|| AudioError::UnsupportedFormat("unknown sample rate".into()))?;
-    let channels = track
-        .codec_params
-        .channels
-        .map(|c| c.count() as u16)
-        .unwrap_or(1);
+    // AAC carries its channel configuration inside the decoder-specific
+    // config, so an MP4 track header can leave `codec_params.channels` unset.
+    // Guessing mono there would be silently destructive: interleaved stereo
+    // read as mono doubles the reported duration and turns every downstream
+    // resample into alternating L/R samples at half speed. The container hint
+    // is only a starting point; the decoded signal specification below is
+    // authoritative.
+    let declared_channels = track.codec_params.channels.map(|c| c.count() as u16);
     let track_id = track.id;
 
     let mut decoder = symphonia::default::get_codecs()
@@ -75,6 +78,8 @@ pub fn decode_file(path: impl AsRef<Path>) -> Result<DecodedAudio, AudioError> {
         .map_err(|e| AudioError::DecodeFailed(e.to_string()))?;
 
     let mut all_samples = Vec::new();
+    let mut decoded_channels: Option<u16> = None;
+    let mut decoded_sample_rate: Option<u32> = None;
 
     loop {
         let packet = match format.next_packet() {
@@ -95,6 +100,17 @@ pub fn decode_file(path: impl AsRef<Path>) -> Result<DecodedAudio, AudioError> {
         match decoder.decode(&packet) {
             Ok(decoded) => {
                 let spec = *decoded.spec();
+                let spec_channels = spec.channels.count() as u16;
+                match decoded_channels {
+                    None => decoded_channels = Some(spec_channels),
+                    Some(previous) if previous != spec_channels => {
+                        return Err(AudioError::DecodeFailed(format!(
+                            "channel count changed mid-stream from {previous} to {spec_channels}"
+                        )));
+                    }
+                    Some(_) => {}
+                }
+                decoded_sample_rate.get_or_insert(spec.rate);
                 let mut sample_buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
                 sample_buf.copy_interleaved_ref(decoded);
                 all_samples.extend_from_slice(sample_buf.samples());
@@ -106,6 +122,25 @@ pub fn decode_file(path: impl AsRef<Path>) -> Result<DecodedAudio, AudioError> {
 
     if all_samples.is_empty() {
         return Err(AudioError::DecodeFailed("no audio samples decoded".into()));
+    }
+
+    let sample_rate = decoded_sample_rate
+        .filter(|rate| *rate > 0)
+        .unwrap_or(declared_sample_rate);
+    let channels = match (decoded_channels, declared_channels) {
+        (Some(decoded), _) => decoded,
+        (None, Some(declared)) => declared,
+        (None, None) => {
+            return Err(AudioError::UnsupportedFormat(
+                "unknown channel count".into(),
+            ))
+        }
+    };
+    if !all_samples.len().is_multiple_of(channels as usize) {
+        return Err(AudioError::DecodeFailed(format!(
+            "decoded {} interleaved samples are not aligned to {channels} channels",
+            all_samples.len()
+        )));
     }
 
     Ok(DecodedAudio {
@@ -151,6 +186,22 @@ mod tests {
         let result = decode_file(fixture("test_48k_mono.m4a")).unwrap();
         assert_eq!(result.sample_rate, 48000);
         assert_eq!(result.channels, 1);
+    }
+
+    /// An MP4 track header can omit the AAC channel configuration. Trusting it
+    /// used to report stereo as mono, which doubled the duration and made the
+    /// canonical 16 kHz conversion read interleaved L/R as consecutive mono
+    /// samples — a half-speed, garbled upload.
+    #[test]
+    fn test_decode_m4a_aac_stereo_channel_count_comes_from_the_decoder() {
+        let result = decode_file(fixture("test_44k_stereo.m4a")).unwrap();
+        assert_eq!(result.sample_rate, 44100);
+        assert_eq!(result.channels, 2);
+        let duration = result.duration_secs();
+        assert!(
+            (duration - 3.0).abs() < 0.2,
+            "expected ~3s, got {duration}s"
+        );
     }
 
     #[test]
