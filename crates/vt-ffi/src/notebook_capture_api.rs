@@ -5096,6 +5096,58 @@ pub(crate) struct ActiveNotebookCapture {
     /// handle on the capture prevents a late writer from crossing stop,
     /// interrupt, push-failure teardown, or final projection.
     pub(crate) remote_cleanup: Option<tokio::task::JoinHandle<Option<ProviderFailure>>>,
+    /// What the audio thread has been experiencing. Read only when a capture
+    /// dies of a full local queue, which is the one moment it explains.
+    pub(crate) push_cadence: PushCadence,
+}
+
+/// Timing of the audio thread's own calls into the core.
+///
+/// The Swift side hands audio to a bounded queue and terminates the recording
+/// when it fills — that is a deliberate refusal to drop frames, and it is
+/// recorded as `local_audio_overflow`. What was never recorded is why the
+/// queue filled: whether pushes were uniformly slow, whether one of them
+/// stalled for seconds, or whether the wait was for the capture lock rather
+/// than for any work. Six of ten recordings on one machine ended this way with
+/// nothing to distinguish those cases.
+///
+/// Kept as running counters rather than a history buffer: this sits on the
+/// audio thread, and a diagnostic that costs allocations per block would be
+/// paying for itself in the currency it is trying to measure.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct PushCadence {
+    pushes: u64,
+    total_us: u64,
+    slowest_us: u64,
+    slowest_at_frame: u64,
+    /// Longest wait for the capture lock alone. A large value here means the
+    /// audio thread was blocked behind another command — stop, pause, a state
+    /// read — not behind its own journal or provider work.
+    slowest_lock_wait_us: u64,
+    total_lock_wait_us: u64,
+}
+
+impl PushCadence {
+    fn record(&mut self, elapsed_us: u64, lock_wait_us: u64, frames: u64) {
+        self.pushes = self.pushes.saturating_add(1);
+        self.total_us = self.total_us.saturating_add(elapsed_us);
+        self.total_lock_wait_us = self.total_lock_wait_us.saturating_add(lock_wait_us);
+        if elapsed_us > self.slowest_us {
+            self.slowest_us = elapsed_us;
+            self.slowest_at_frame = frames;
+        }
+        self.slowest_lock_wait_us = self.slowest_lock_wait_us.max(lock_wait_us);
+    }
+
+    fn mean_us(&self) -> u64 {
+        self.total_us.checked_div(self.pushes).unwrap_or(0)
+    }
+
+    fn mean_lock_wait_us(&self) -> u64 {
+        self.total_lock_wait_us
+            .checked_div(self.pushes)
+            .unwrap_or(0)
+    }
 }
 
 /// Injectable boundary around construction and PCM delivery for the Notebook
@@ -6172,6 +6224,7 @@ impl ZuTalkCore {
             captured_frames,
             remote,
             remote_cleanup: None,
+            push_cadence: PushCadence::default(),
         };
         *self.active_notebook_capture.lock().unwrap() = Some(active);
 
@@ -6200,7 +6253,9 @@ impl ZuTalkCore {
         session_id: String,
         audio_data: Vec<u8>,
     ) -> Result<(), CoreError> {
+        let entered = std::time::Instant::now();
         let mut active_guard = self.active_notebook_capture.lock().unwrap();
+        let lock_wait_us = entered.elapsed().as_micros() as u64;
         {
             let active = active_guard
                 .as_ref()
@@ -6358,6 +6413,11 @@ impl ZuTalkCore {
                         .remote = Some(remote);
                 }
             }
+        }
+        if let Some(active) = active_guard.as_mut() {
+            active
+                .push_cadence
+                .record(entered.elapsed().as_micros() as u64, lock_wait_us, frames);
         }
         Ok(())
     }
@@ -6834,6 +6894,26 @@ impl ZuTalkCore {
             guard.take().expect("active capture checked above")
         };
         let mut active = active;
+        if matches!(
+            reason,
+            FfiNotebookCaptureInterruptReason::LocalAudioOverflow
+        ) {
+            // The one moment the audio thread's cadence explains something.
+            // Without these numbers a full queue is indistinguishable from a
+            // single multi-second stall, and both look like "it crashed".
+            let cadence = active.push_cadence;
+            tracing::warn!(
+                session_id,
+                pushes = cadence.pushes,
+                mean_us = cadence.mean_us(),
+                slowest_us = cadence.slowest_us,
+                slowest_at_frame = cadence.slowest_at_frame,
+                mean_lock_wait_us = cadence.mean_lock_wait_us(),
+                slowest_lock_wait_us = cadence.slowest_lock_wait_us,
+                captured_frames = active.captured_frames.load(Ordering::Acquire),
+                "local audio queue overflowed; audio-thread cadence for this capture"
+            );
+        }
         let mut failure = match reason {
             FfiNotebookCaptureInterruptReason::LocalAudioOverflow => ProviderFailure {
                 error_type: "local_audio_overflow".to_string(),
@@ -12174,6 +12254,36 @@ mod tests {
     /// budget is what stops a permanently unreachable lane from reconnecting
     /// for the rest of a recording, billing the provider for a column nobody
     /// can read.
+    /// The cadence is only worth keeping if it can tell two failures apart
+    /// that fill the queue identically: pushes that were uniformly slow, and
+    /// pushes that were fine until one of them stalled. They can arrive at the
+    /// same average, so the average alone is not a diagnosis.
+    #[test]
+    fn push_cadence_separates_a_slow_average_from_a_single_stall() {
+        let mut uniform = PushCadence::default();
+        for frame in 0..100 {
+            uniform.record(40_000, 40, frame * 1_600);
+        }
+
+        let mut stalled = PushCadence::default();
+        for frame in 0..99 {
+            stalled.record(300, 40, frame * 1_600);
+        }
+        stalled.record(4_000_000, 3_900_000, 158_400);
+
+        // Within one percent of each other.
+        assert!(uniform.mean_us().abs_diff(stalled.mean_us()) * 100 < uniform.mean_us());
+        // Two orders of magnitude apart, which is the whole difference.
+        assert_eq!(uniform.slowest_us, 40_000);
+        assert_eq!(stalled.slowest_us, 4_000_000);
+        assert_eq!(stalled.slowest_at_frame, 158_400);
+
+        // Nearly all of that stall was spent waiting for the capture lock, so
+        // the next question is which command held it, not what push does.
+        assert_eq!(stalled.slowest_lock_wait_us, 3_900_000);
+        assert_eq!(uniform.slowest_lock_wait_us, 40);
+    }
+
     #[tokio::test]
     async fn a_translation_lane_stops_being_reopened_after_its_budget() {
         let factory = Arc::new(RecordingFanoutFactory {
