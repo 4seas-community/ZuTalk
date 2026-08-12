@@ -1,39 +1,32 @@
-# ZuTalk 0.4.5
+# ZuTalk 0.4.6
 
-A translation column that stops now starts again, says so if it cannot, and the
-subtitle window can be a strip across the top of the screen.
+Translations in a three-language recording stop far less often, and recover
+when they do.
 
 ZuTalk requires macOS 15.5 or later.
 
-- **A translation that stops now comes back.** When local audio cannot reach a
-  translation stream without a gap, that stream is stopped rather than
-  continued on a timeline it no longer matches. Until now it stayed stopped:
-  transcription carried on, the translation column simply never grew again, and
-  nothing said why. A replacement stream is now opened at the live edge, so the
-  column resumes. The words spoken during the gap are not recovered — that part
-  is genuinely lost — but the rest of the recording is translated.
-- **If it cannot come back, the app says which language stopped.** After a few
-  failed attempts a stream is left alone rather than reconnected forever. The
-  notebook page and the menu-bar popover now name the languages that ended, and
-  say that restarting the recording is what brings them back.
-- **Subtitle rows no longer run for minutes.** A row was closed only when the
-  speaker paused long enough for the transcription service to notice, and
-  continuous delivery does not reliably give it one. In a 93-minute lecture the
-  longest row held 5,377 characters. Rows are now closed after 25 seconds of
-  speech regardless, which also lets translations find the line they belong to:
-  in that same recording, 1,691 translated segments were transcribed, returned,
-  and then dropped for want of a row the right size to sit in.
-- **The subtitle window can be a strip across the top of the screen.** The
-  existing control fills the whole display, which covers the slide. The new one
-  puts the captions in a band along the top at the full width of the display,
-  with the slide visible underneath. Drag its lower edge to the height you
-  want; that height is remembered. Both placements now follow the window when
-  you drag it onto a projector, instead of staying sized for the laptop.
-- **Settings shows whether this Mac is allowed through the relay.** Sharing
-  across networks needs the relay, the relay admits only Macs enrolled against
-  an invitation, and a Mac it refuses is refused silently — sharing keeps
-  working on the same network and simply never connects to anyone elsewhere.
-  The invitation card now shows that state and can retry the enrolment.
+- **A recording with three or more languages keeps its translations.** Every
+  connection to the transcription service needs its own key, and a community
+  invitation issues a limited number per recording. A brief network hiccup
+  retries the connection three times, and each retry was taking another key —
+  even the attempts that never reached the service and so never used the key
+  they were given. Four hiccups could exhaust a whole recording's supply, after
+  which the next translation stream to reconnect was refused and stayed dark
+  for the rest of the session. In a 49-minute recording, translation coverage
+  held steady for twelve minutes and then went to zero. A retry now reuses the
+  key its failed attempt never spent, so a hiccup costs one key instead of
+  three. Recordings with one or two languages were never affected: they open a
+  single connection.
+- **A translation stream that is reopened now gets time to come back.** 0.4.5
+  began reopening a stream that had been stopped, but allowed three attempts
+  with no delay between them — all three were spent in a third of a second,
+  before the replacement had finished connecting. Attempts are now spaced out,
+  so a stream that fails once an hour is reopened every time, while one failing
+  every fraction of a second is left alone within seconds instead of being
+  hammered.
+- **Diagnostics say which failure happened.** A stream that ended and a stream
+  running fifty seconds behind are opposite problems, and the log recorded both
+  with the same sentence. They now say which.
 
 Still on 0.3.x? Those installs cannot be updated automatically — 0.4.0 renamed
 the app and its bundle identifier together, so Sparkle no longer recognises the
