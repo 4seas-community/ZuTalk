@@ -62,7 +62,10 @@ final class SubtitleOverlayCoordinator: ObservableObject {
     static let shared = SubtitleOverlayCoordinator()
 
     @Published private(set) var isPresented = false
-    @Published private(set) var isMaximized = false
+    @Published private(set) var placement: SubtitleOverlayPlacement = .restored
+
+    /// Both presentation placements hide the operator chrome the same way.
+    var isMaximized: Bool { placement != .restored }
 
     private let capture = ActiveBilingualTranscriptStore.shared
 
@@ -90,21 +93,33 @@ final class SubtitleOverlayCoordinator: ObservableObject {
     func dismiss() {
         WindowCoordinator.shared.dismissSubtitleOverlay()
         isPresented = false
-        isMaximized = false
+        placement = .restored
     }
 
     func toggleMaximized() {
-        isMaximized = WindowCoordinator.shared.setSubtitleOverlayMaximized(!isMaximized)
+        setPlacement(placement == .filled ? .restored : .filled)
+    }
+
+    /// A strip across the top of the display: the caption is readable from the
+    /// back of the room and the slide underneath is still visible. Leaving it
+    /// returns to the operator's own window, not to the other presentation
+    /// placement, so one control always means "give me my window back".
+    func toggleBanner() {
+        setPlacement(placement == .banner ? .restored : .banner)
     }
 
     func restoreWindow() {
-        guard isMaximized else { return }
-        isMaximized = WindowCoordinator.shared.setSubtitleOverlayMaximized(false)
+        guard placement != .restored else { return }
+        setPlacement(.restored)
+    }
+
+    private func setPlacement(_ target: SubtitleOverlayPlacement) {
+        placement = WindowCoordinator.shared.setSubtitleOverlayPlacement(target)
     }
 
     func surfaceDidClose() {
         isPresented = false
-        isMaximized = false
+        placement = .restored
     }
 
     func resetForTesting() {

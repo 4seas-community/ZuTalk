@@ -90,6 +90,62 @@ enum SubtitleOverlayDisplayMode: String, CaseIterable {
     }
 }
 
+/// Where the overlay window sits on its display.
+///
+/// `filled` and `banner` are both presentation placements: the operator has
+/// handed the window to a room, so it stops behaving like a window the
+/// operator drags around. They differ in what the room is looking at —
+/// `filled` is the whole display, `banner` is a strip across the top with the
+/// slide still visible underneath.
+enum SubtitleOverlayPlacement: Equatable {
+    /// Operator-sized, movable and resizable.
+    case restored
+    /// Full display width, anchored to the top edge, height chosen by the
+    /// operator and remembered.
+    case banner
+    /// The display's whole usable frame.
+    case filled
+}
+
+/// Geometry for the banner placement.
+///
+/// Width is never the operator's problem: projecting onto a second display
+/// used to mean dragging both edges to the screen every time. Height is,
+/// because how much of the slide a caption strip may cover is a judgement
+/// about the room. So the width is taken and the height is remembered.
+enum SubtitleOverlayBannerMetrics {
+    static let heightKey = "zutalk.subtitleOverlay.bannerHeight"
+
+    /// Enough for two audience rows at the default type size.
+    static let minimumHeight: CGFloat = 120
+    static let defaultHeightFraction: CGFloat = 0.25
+    /// A caption strip that covers more than half the slide is not a strip.
+    static let maximumHeightFraction: CGFloat = 0.5
+
+    static func height(in visibleFrame: NSRect, defaults: UserDefaults = .standard) -> CGFloat {
+        let stored = defaults.object(forKey: heightKey) as? Double
+        let preferred = stored.map { CGFloat($0) }
+            ?? visibleFrame.height * defaultHeightFraction
+        let ceiling = max(minimumHeight, visibleFrame.height * maximumHeightFraction)
+        return min(max(preferred, minimumHeight), ceiling)
+    }
+
+    static func frame(in visibleFrame: NSRect, defaults: UserDefaults = .standard) -> NSRect {
+        let height = height(in: visibleFrame, defaults: defaults)
+        return NSRect(
+            x: visibleFrame.minX,
+            y: visibleFrame.maxY - height,
+            width: visibleFrame.width,
+            height: height
+        ).integral
+    }
+
+    static func persistHeight(_ height: CGFloat, defaults: UserDefaults = .standard) {
+        guard height.isFinite, height >= minimumHeight else { return }
+        defaults.set(Double(height), forKey: heightKey)
+    }
+}
+
 enum SubtitleOverlayConversationLayout: Equatable {
     case columns
     case stacked
@@ -1213,8 +1269,14 @@ struct SubtitleOverlayView: View {
                     )
             }
             .overlay(alignment: .topLeading) {
-                maximizeButton
-                    .padding(8)
+                // The two placement controls stay together in the corner the
+                // hover bar deliberately leaves free, so neither depends on
+                // the operator finding the hover strip first.
+                HStack(spacing: 6) {
+                    maximizeButton
+                    bannerButton
+                }
+                .padding(8)
             }
             .clipShape(RoundedRectangle(cornerRadius: canvasCornerRadius, style: .continuous))
             .onContinuousHover { phase in
@@ -1361,11 +1423,46 @@ struct SubtitleOverlayView: View {
         }
     }
 
+    /// Puts the canvas across the top of the display at full width, leaving
+    /// the slide underneath visible. Separate from the fill control rather
+    /// than a third stop on it: an operator reaching for one of these in front
+    /// of a room should not have to cycle through the other.
+    private var bannerButton: some View {
+        Button {
+            coordinator.toggleBanner()
+        } label: {
+            Image(systemName: coordinator.placement == .banner
+                ? "rectangle.topthird.inset.filled"
+                : "rectangle.tophalf.inset.filled")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.secondary)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(SubtitleOverlayPalette.surface.opacity(controlsOpacity))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(SubtitleOverlayPalette.hairline, lineWidth: 0.5)
+                )
+        )
+        .help(String(localized: coordinator.placement == .banner
+            ? "subtitle.overlay.restore"
+            : "subtitle.overlay.banner"))
+        .accessibilityLabel(Text(String(localized: coordinator.placement == .banner
+            ? "subtitle.overlay.restore"
+            : "subtitle.overlay.banner")))
+        .accessibilityIdentifier(AccessibilityID.floatingSubtitleBanner)
+        .keyboardShortcut("b", modifiers: [.control, .command])
+    }
+
     private var maximizeButton: some View {
         Button {
             coordinator.toggleMaximized()
         } label: {
-            Image(systemName: coordinator.isMaximized
+            Image(systemName: coordinator.placement == .filled
                 ? "arrow.down.right.and.arrow.up.left"
                 : "arrow.up.left.and.arrow.down.right")
                 .font(.system(size: 11, weight: .semibold))
@@ -2781,8 +2878,15 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
     private var presentationSettingsCancellable: AnyCancellable?
     private var themeCancellable: AnyCancellable?
     private var restoredWindowFrame: NSRect?
+    private var restoredContentMinSize: NSSize?
+    private var restoredContentMaxSize: NSSize?
     private var isApplyingMaximizedTransition = false
-    private(set) var isMaximized = false
+    private(set) var placement: SubtitleOverlayPlacement = .restored
+
+    /// Both presentation placements share the window treatment — no shadow, no
+    /// dragging, above full-screen apps — and every existing call site asks
+    /// this question rather than which of the two it is.
+    var isMaximized: Bool { placement != .restored }
 
     var windowSurfaceID: WindowSurfaceID { .subtitleOverlay }
     var managedWindow: NSWindow {
@@ -2824,16 +2928,46 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
     }
 
     func windowDidResize(_ notification: Notification) {
+        // A banner resize is the operator choosing how much of the slide the
+        // strip may cover. That is the one thing about this placement worth
+        // remembering, and it is remembered per operator, not per display.
+        if placement == .banner, isApplyingMaximizedTransition == false {
+            SubtitleOverlayBannerMetrics.persistHeight(managedWindow.frame.height)
+            return
+        }
         persistFrame()
     }
 
+    /// Presentation placements follow the window to whatever display it lands
+    /// on. Dragging the overlay onto the projector is the ordinary way to set
+    /// one up, and a strip still sized for the laptop would have to be fixed
+    /// by hand — the thing this placement exists to avoid.
     func windowDidChangeScreen(_ notification: Notification) {
-        guard isMaximized,
-              isApplyingMaximizedTransition == false,
+        guard isApplyingMaximizedTransition == false,
               let visibleFrame = managedWindow.screen?.visibleFrame
         else { return }
+        let frame: NSRect
+        switch placement {
+        case .restored:
+            return
+        case .filled:
+            frame = visibleFrame.integral
+        case .banner:
+            frame = SubtitleOverlayBannerMetrics.frame(in: visibleFrame)
+            managedWindow.contentMinSize = NSSize(
+                width: frame.width,
+                height: SubtitleOverlayBannerMetrics.minimumHeight
+            )
+            managedWindow.contentMaxSize = NSSize(
+                width: frame.width,
+                height: max(
+                    SubtitleOverlayBannerMetrics.minimumHeight,
+                    visibleFrame.height * SubtitleOverlayBannerMetrics.maximumHeightFraction
+                )
+            )
+        }
         _ = WindowCoordinator.shared.applyFrame(
-            visibleFrame.integral,
+            frame,
             to: .subtitleOverlay,
             animated: false,
             reason: "window.subtitle-overlay.display-change"
@@ -2860,51 +2994,105 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
         targetFrame: NSRect? = nil,
         applyFrame: (NSRect) -> Bool
     ) -> Bool {
-        guard shouldMaximize != isMaximized else {
-            return isMaximized
+        setPlacement(
+            shouldMaximize ? .filled : .restored,
+            targetFrame: targetFrame,
+            applyFrame: applyFrame
+        ) != .restored
+    }
+
+    /// Moves the overlay between its operator placement and the two
+    /// presentation placements, restoring the exact operator-sized window on
+    /// the way back out.
+    ///
+    /// `targetFrame` names the display to present on; for `banner` the strip
+    /// is derived from it rather than used as-is, so a caller cannot ask for a
+    /// banner that is not the width of its display.
+    @discardableResult
+    func setPlacement(
+        _ target: SubtitleOverlayPlacement,
+        targetFrame: NSRect? = nil,
+        applyFrame: (NSRect) -> Bool
+    ) -> SubtitleOverlayPlacement {
+        guard target != placement else { return placement }
+
+        guard target != .restored else {
+            let frame = restoredWindowFrame ?? managedWindowSpec.initialContentRect
+            isApplyingMaximizedTransition = true
+            placement = .restored
+            restoreWindowChrome()
+            let didApplyFrame = applyFrame(frame)
+            restoredWindowFrame = nil
+            isApplyingMaximizedTransition = false
+            guard didApplyFrame else { return placement }
+            persistFrame()
+            return placement
         }
 
-        if shouldMaximize {
-            guard let frame = targetFrame
-                ?? managedWindow.screen?.visibleFrame
-                ?? NSScreen.main?.visibleFrame
-                ?? NSScreen.screens.first?.visibleFrame
-            else { return false }
+        guard let visibleFrame = targetFrame
+            ?? managedWindow.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? NSScreen.screens.first?.visibleFrame
+        else { return placement }
 
+        // Going straight from one presentation placement to the other must not
+        // record the presentation frame as the window to come back to.
+        let previous = placement
+        if previous == .restored {
             restoredWindowFrame = managedWindow.frame
-            isApplyingMaximizedTransition = true
-            isMaximized = true
+            restoredContentMinSize = managedWindow.contentMinSize
+            restoredContentMaxSize = managedWindow.contentMaxSize
+        }
+
+        isApplyingMaximizedTransition = true
+        placement = target
+        managedWindow.isMovable = false
+        managedWindow.isMovableByWindowBackground = false
+        managedWindow.hasShadow = false
+        managedWindow.collectionBehavior =
+            SubtitleOverlayWindowPolicy.maximizedCollectionBehavior
+
+        let frame: NSRect
+        switch target {
+        case .restored:
+            preconditionFailure("the restored placement returned above")
+        case .filled:
             managedWindow.contentMaxSize = NSSize(
                 width: CGFloat.greatestFiniteMagnitude,
                 height: CGFloat.greatestFiniteMagnitude
             )
             managedWindow.styleMask = managedWindow.styleMask.subtracting(.resizable)
-            managedWindow.isMovable = false
-            managedWindow.isMovableByWindowBackground = false
-            managedWindow.hasShadow = false
-            managedWindow.collectionBehavior =
-                SubtitleOverlayWindowPolicy.maximizedCollectionBehavior
-            let didApplyFrame = applyFrame(frame.integral)
-            isApplyingMaximizedTransition = false
-            if didApplyFrame == false {
-                isMaximized = false
+            frame = visibleFrame.integral
+        case .banner:
+            // Width is locked to the display by pinning both content bounds to
+            // it, which leaves AppKit's own resize handles working vertically.
+            // The operator drags the height they want and never touches width.
+            let banner = SubtitleOverlayBannerMetrics.frame(in: visibleFrame)
+            managedWindow.styleMask = managedWindow.styleMask.union(.resizable)
+            managedWindow.contentMinSize = NSSize(
+                width: banner.width,
+                height: SubtitleOverlayBannerMetrics.minimumHeight
+            )
+            managedWindow.contentMaxSize = NSSize(
+                width: banner.width,
+                height: max(
+                    SubtitleOverlayBannerMetrics.minimumHeight,
+                    visibleFrame.height * SubtitleOverlayBannerMetrics.maximumHeightFraction
+                )
+            )
+            frame = banner
+        }
+
+        let didApplyFrame = applyFrame(frame)
+        isApplyingMaximizedTransition = false
+        if didApplyFrame == false {
+            placement = previous
+            if previous == .restored {
                 restoredWindowFrame = nil
                 restoreWindowChrome()
             }
-            guard didApplyFrame else { return false }
-            return true
         }
-
-        let frame = restoredWindowFrame ?? managedWindowSpec.initialContentRect
-        isApplyingMaximizedTransition = true
-        isMaximized = false
-        restoreWindowChrome()
-        let didApplyFrame = applyFrame(frame)
-        restoredWindowFrame = nil
-        isApplyingMaximizedTransition = false
-        guard didApplyFrame else { return false }
-        persistFrame()
-        return false
+        return placement
     }
 
     private func configurePanel() {
@@ -2960,6 +3148,18 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
 
     private func restoreWindowChrome() {
         managedWindow.styleMask = managedWindow.styleMask.union(.resizable)
+        // The banner locks both content bounds to its display's width. Putting
+        // the spec's bounds back is not enough: whichever of the two the spec
+        // leaves unset would keep the display width and the restored window
+        // could then only ever be that wide.
+        if let restoredContentMinSize {
+            managedWindow.contentMinSize = restoredContentMinSize
+        }
+        if let restoredContentMaxSize {
+            managedWindow.contentMaxSize = restoredContentMaxSize
+        }
+        restoredContentMinSize = nil
+        restoredContentMaxSize = nil
         managedWindow.hasShadow = managedWindowSpec.chrome.hasShadow
         if let isMovable = managedWindowSpec.chrome.isMovable {
             managedWindow.isMovable = isMovable

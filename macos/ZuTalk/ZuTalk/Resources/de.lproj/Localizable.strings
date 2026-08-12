@@ -627,6 +627,7 @@
 "subtitle.overlay.font_auto.off" = "Untertitelgröße manuell eingestellt";
 "subtitle.overlay.move_resize_hint" = "Bewege das Fenster durch Ziehen. Ziehe an einer Kante oder Ecke, um die Größe zu ändern.";
 "subtitle.overlay.maximize" = "Aktuellen Bildschirm ausfüllen";
+"subtitle.overlay.banner" = "Einen Untertitelstreifen am oberen Bildschirmrand anheften";
 "subtitle.overlay.restore" = "Untertitelfenster wiederherstellen";
 "subtitle.overlay.pin" = "Untertitel im Vordergrund behalten";
 "subtitle.overlay.unpin" = "Untertitel nicht mehr im Vordergrund behalten";

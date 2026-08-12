@@ -170,15 +170,30 @@ final class WindowCoordinator {
         _ isMaximized: Bool,
         targetFrame: NSRect? = nil
     ) -> Bool {
-        guard let controller = subtitleOverlayController else { return false }
-        return controller.setMaximized(isMaximized, targetFrame: targetFrame) { [weak self] frame in
+        setSubtitleOverlayPlacement(
+            isMaximized ? .filled : .restored,
+            targetFrame: targetFrame
+        ) != .restored
+    }
+
+    @discardableResult
+    func setSubtitleOverlayPlacement(
+        _ placement: SubtitleOverlayPlacement,
+        targetFrame: NSRect? = nil
+    ) -> SubtitleOverlayPlacement {
+        guard let controller = subtitleOverlayController else { return .restored }
+        let reason: String
+        switch placement {
+        case .restored: reason = "window.subtitle-overlay.restore"
+        case .banner: reason = "window.subtitle-overlay.banner"
+        case .filled: reason = "window.subtitle-overlay.maximize"
+        }
+        return controller.setPlacement(placement, targetFrame: targetFrame) { [weak self] frame in
             self?.applyFrame(
                 frame,
                 to: .subtitleOverlay,
                 animated: false,
-                reason: isMaximized
-                    ? "window.subtitle-overlay.maximize"
-                    : "window.subtitle-overlay.restore"
+                reason: reason
             ) ?? false
         }
     }

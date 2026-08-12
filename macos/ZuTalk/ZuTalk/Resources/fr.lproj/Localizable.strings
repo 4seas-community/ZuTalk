@@ -628,6 +628,7 @@
 "subtitle.overlay.font_auto.off" = "Taille des sous-titres réglée manuellement";
 "subtitle.overlay.move_resize_hint" = "Faites glisser la fenêtre pour la déplacer. Faites glisser un bord ou un coin pour la redimensionner.";
 "subtitle.overlay.maximize" = "Remplir l’écran actuel";
+"subtitle.overlay.banner" = "Épingler un bandeau de sous-titres en haut de l'écran";
 "subtitle.overlay.restore" = "Restaurer la fenêtre de sous-titres";
 "subtitle.overlay.pin" = "Garder les sous-titres au premier plan";
 "subtitle.overlay.unpin" = "Ne plus garder les sous-titres au premier plan";

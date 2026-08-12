@@ -627,6 +627,7 @@
 "subtitle.overlay.font_auto.off" = "Tamaño de los subtítulos fijado manualmente";
 "subtitle.overlay.move_resize_hint" = "Arrastre la ventana para moverla. Arrastre cualquier borde o esquina para cambiar su tamaño.";
 "subtitle.overlay.maximize" = "Llenar la pantalla actual";
+"subtitle.overlay.banner" = "Fijar una franja de subtítulos en la parte superior de la pantalla";
 "subtitle.overlay.restore" = "Restaurar la ventana de subtítulos";
 "subtitle.overlay.pin" = "Mantener los subtítulos delante";
 "subtitle.overlay.unpin" = "Dejar de mantener los subtítulos delante";

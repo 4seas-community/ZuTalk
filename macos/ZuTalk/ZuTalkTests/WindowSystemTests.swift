@@ -817,6 +817,126 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    /// The placement exists so projecting never means dragging both edges to
+    /// the screen: the width is the display's, and only the height is the
+    /// operator's to choose.
+    func testSubtitleOverlayBannerTakesTheDisplayWidthAndPinsToTheTop() throws {
+        let store = ActiveBilingualTranscriptStore()
+        let controller = SubtitleOverlayController(store: store)
+        defer { controller.close() }
+        let display = NSRect(x: 1920, y: 0, width: 3840, height: 2160)
+        var appliedFrames: [NSRect] = []
+
+        let placement = controller.setPlacement(.banner, targetFrame: display) { frame in
+            appliedFrames.append(frame)
+            return true
+        }
+
+        XCTAssertEqual(placement, .banner)
+        XCTAssertTrue(controller.isMaximized)
+        let banner = try XCTUnwrap(appliedFrames.first)
+        XCTAssertEqual(banner.width, display.width)
+        XCTAssertEqual(banner.minX, display.minX)
+        XCTAssertEqual(banner.maxY, display.maxY, "the strip hangs from the top edge")
+        XCTAssertLessThan(banner.height, display.height / 2)
+
+        // Width locked, height free: this is what stops AppKit offering a
+        // horizontal resize the placement would immediately undo.
+        let window = controller.managedWindow
+        XCTAssertTrue(window.styleMask.contains(.resizable))
+        XCTAssertEqual(window.contentMinSize.width, banner.width)
+        XCTAssertEqual(window.contentMaxSize.width, banner.width)
+        XCTAssertGreaterThan(window.contentMaxSize.height, window.contentMinSize.height)
+    }
+
+    func testSubtitleOverlayBannerRestoresTheOperatorWindowBounds() throws {
+        let store = ActiveBilingualTranscriptStore()
+        let controller = SubtitleOverlayController(store: store)
+        defer { controller.close() }
+        let window = controller.managedWindow
+        let normalFrame = window.frame
+        let normalMinSize = window.contentMinSize
+        let normalMaxSize = window.contentMaxSize
+        let display = NSRect(x: 0, y: 0, width: 2560, height: 1440)
+
+        _ = controller.setPlacement(.banner, targetFrame: display) { frame in
+            window.setFrame(frame, display: false)
+            return true
+        }
+        let restored = controller.setPlacement(.restored) { frame in
+            window.setFrame(frame, display: false)
+            return true
+        }
+
+        XCTAssertEqual(restored, .restored)
+        XCTAssertFalse(controller.isMaximized)
+        XCTAssertEqual(window.frame, normalFrame)
+        // The banner pins both content bounds to the display width. Leaving
+        // either behind would cap the operator's own window at that width.
+        XCTAssertEqual(window.contentMinSize, normalMinSize)
+        XCTAssertEqual(window.contentMaxSize, normalMaxSize)
+        XCTAssertTrue(window.isMovable)
+        XCTAssertTrue(window.hasShadow)
+    }
+
+    /// Swapping presentation placements must not record a presentation frame
+    /// as the window to come back to.
+    func testSubtitleOverlaySwitchingPresentationPlacementsKeepsTheOperatorFrame() throws {
+        let store = ActiveBilingualTranscriptStore()
+        let controller = SubtitleOverlayController(store: store)
+        defer { controller.close() }
+        let window = controller.managedWindow
+        let normalFrame = window.frame
+        let display = NSRect(x: 0, y: 0, width: 2560, height: 1440)
+        let apply: (NSRect) -> Bool = { frame in
+            window.setFrame(frame, display: false)
+            return true
+        }
+
+        _ = controller.setPlacement(.banner, targetFrame: display, applyFrame: apply)
+        _ = controller.setPlacement(.filled, targetFrame: display, applyFrame: apply)
+        XCTAssertEqual(controller.placement, .filled)
+        XCTAssertEqual(window.frame, display.integral)
+
+        _ = controller.setPlacement(.restored, applyFrame: apply)
+        XCTAssertEqual(window.frame, normalFrame)
+    }
+
+    func testSubtitleOverlayBannerHeightIsClampedToTheDisplay() {
+        let defaults = UserDefaults.standard
+        let previous = defaults.object(forKey: SubtitleOverlayBannerMetrics.heightKey)
+        defer {
+            if let previous {
+                defaults.set(previous, forKey: SubtitleOverlayBannerMetrics.heightKey)
+            } else {
+                defaults.removeObject(forKey: SubtitleOverlayBannerMetrics.heightKey)
+            }
+        }
+        let small = NSRect(x: 0, y: 0, width: 1440, height: 900)
+
+        defaults.removeObject(forKey: SubtitleOverlayBannerMetrics.heightKey)
+        XCTAssertEqual(
+            SubtitleOverlayBannerMetrics.height(in: small),
+            small.height * SubtitleOverlayBannerMetrics.defaultHeightFraction,
+            accuracy: 0.5,
+            "with nothing remembered the strip takes its share of the display"
+        )
+
+        SubtitleOverlayBannerMetrics.persistHeight(10_000)
+        XCTAssertEqual(
+            SubtitleOverlayBannerMetrics.height(in: small),
+            small.height * SubtitleOverlayBannerMetrics.maximumHeightFraction,
+            "a height remembered from a projector must not swallow a laptop screen"
+        )
+
+        // A refused height leaves the last good one in place; it does not
+        // reset to the default, which would silently discard the operator's
+        // choice on one stray resize event.
+        SubtitleOverlayBannerMetrics.persistHeight(300)
+        SubtitleOverlayBannerMetrics.persistHeight(1)
+        XCTAssertEqual(SubtitleOverlayBannerMetrics.height(in: small), 300)
+    }
+
     func testSubtitleOverlayMaximizeAcceptsA4KDisplayFrameBeyondNormalWindowCap() {
         let store = ActiveBilingualTranscriptStore()
         let controller = SubtitleOverlayController(store: store)
