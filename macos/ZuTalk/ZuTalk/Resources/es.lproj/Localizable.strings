@@ -611,7 +611,6 @@
 "session.route.unavailable_detail" = "La grabación permanece sin cambios. Inténtelo de nuevo.";
 "capture.open_notebook" = "Abrir Notebook";
 "capture.open_notebook_hint" = "Los controles de captura solo están disponibles dentro del Notebook propietario.";
-"subtitle.overlay.title" = "Subtítulos en vivo";
 "subtitle.overlay.read_only" = "Subtítulos en vivo · Solo lectura";
 "subtitle.overlay.accessibility_label" = "Ventana de subtítulos multilingües en vivo";
 "subtitle.overlay.language_count" = "%lld idiomas";

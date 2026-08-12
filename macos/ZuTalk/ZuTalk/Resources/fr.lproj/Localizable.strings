@@ -612,7 +612,6 @@
 "session.route.unavailable_detail" = "L’enregistrement reste inchangé. Réessayez.";
 "capture.open_notebook" = "Ouvrir le Notebook";
 "capture.open_notebook_hint" = "Les commandes de capture ne sont disponibles que dans le Notebook propriétaire.";
-"subtitle.overlay.title" = "Sous-titres en direct";
 "subtitle.overlay.read_only" = "Sous-titres en direct · Lecture seule";
 "subtitle.overlay.accessibility_label" = "Fenêtre de sous-titres multilingues en direct";
 "subtitle.overlay.language_count" = "%lld langues";

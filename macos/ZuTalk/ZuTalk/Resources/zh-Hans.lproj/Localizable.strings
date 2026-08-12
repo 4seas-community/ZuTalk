@@ -612,7 +612,6 @@
 "session.route.unavailable_detail" = "录音内容没有被更改，请重试。";
 "capture.open_notebook" = "打开 Notebook";
 "capture.open_notebook_hint" = "录音控制仅在所属 Notebook 内提供。";
-"subtitle.overlay.title" = "实时字幕";
 "subtitle.overlay.read_only" = "实时字幕 · 只读";
 "subtitle.overlay.accessibility_label" = "多语言实时字幕悬浮窗";
 "subtitle.overlay.language_count" = "%lld 种语言";

@@ -612,7 +612,6 @@
 "session.route.unavailable_detail" = "The recording remains unchanged. Try again.";
 "capture.open_notebook" = "Open Notebook";
 "capture.open_notebook_hint" = "Capture controls are available only inside the owning Notebook.";
-"subtitle.overlay.title" = "Live subtitles";
 "subtitle.overlay.read_only" = "Live subtitles · Read-only";
 "subtitle.overlay.accessibility_label" = "Live multilingual subtitle window";
 "subtitle.overlay.language_count" = "%lld languages";

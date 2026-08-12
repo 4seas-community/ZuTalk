@@ -611,7 +611,6 @@
 "session.route.unavailable_detail" = "Die Aufnahme bleibt unverändert. Versuche es erneut.";
 "capture.open_notebook" = "Notebook öffnen";
 "capture.open_notebook_hint" = "Die Aufnahmesteuerung ist nur im zugehörigen Notebook verfügbar.";
-"subtitle.overlay.title" = "Live-Untertitel";
 "subtitle.overlay.read_only" = "Live-Untertitel · Schreibgeschützt";
 "subtitle.overlay.accessibility_label" = "Mehrsprachiges Live-Untertitelfenster";
 "subtitle.overlay.language_count" = "%lld Sprachen";

@@ -7485,7 +7485,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 "capture.transcript.copy_success_live_detail",
                 "capture.transcript.copy_failed",
                 "capture.transcript.copy_clipboard_failed",
-                "subtitle.overlay.title",
                 "subtitle.overlay.accessibility_label",
                 "subtitle.overlay.language_count",
                 "subtitle.overlay.background_opacity",

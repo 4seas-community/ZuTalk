@@ -612,7 +612,6 @@
 "session.route.unavailable_detail" = "녹음 내용은 변경되지 않습니다. 다시 시도해 보세요.";
 "capture.open_notebook" = "노트북 열기";
 "capture.open_notebook_hint" = "캡처 제어는 소유하는 노트북 내부에서만 사용할 수 있습니다.";
-"subtitle.overlay.title" = "라이브 자막";
 "subtitle.overlay.read_only" = "실시간 자막 · 읽기 전용";
 "subtitle.overlay.accessibility_label" = "라이브 다국어 자막 창";
 "subtitle.overlay.language_count" = "%lld개 언어";

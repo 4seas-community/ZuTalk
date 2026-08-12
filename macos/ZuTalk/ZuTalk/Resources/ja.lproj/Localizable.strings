@@ -600,7 +600,6 @@
 "session.route.unavailable_detail" = "録音は変更されていません。もう一度お試しください。";
 "capture.open_notebook" = "Notebook を開く";
 "capture.open_notebook_hint" = "録音操作は所有する Notebook 内でのみ行えます。";
-"subtitle.overlay.title" = "ライブ字幕";
 "subtitle.overlay.read_only" = "ライブ字幕 · 読み取り専用";
 "subtitle.overlay.accessibility_label" = "多言語ライブ字幕ウィンドウ";
 "subtitle.overlay.language_count" = "%lld 言語";

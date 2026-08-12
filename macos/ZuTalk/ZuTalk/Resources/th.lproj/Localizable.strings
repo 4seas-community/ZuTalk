@@ -612,7 +612,6 @@
 "session.route.unavailable_detail" = "การบันทึกไม่มีการเปลี่ยนแปลง ลองอีกครั้ง";
 "capture.open_notebook" = "เปิด Notebook";
 "capture.open_notebook_hint" = "ตัวควบคุมการบันทึกใช้ได้เฉพาะภายใน Notebook ที่เป็นเจ้าของเท่านั้น";
-"subtitle.overlay.title" = "คำบรรยายสด";
 "subtitle.overlay.read_only" = "คำบรรยายสด · อ่านอย่างเดียว";
 "subtitle.overlay.accessibility_label" = "หน้าต่างคำบรรยายสดหลายภาษา";
 "subtitle.overlay.language_count" = "%lld ภาษา";
