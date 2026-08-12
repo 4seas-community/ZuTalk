@@ -429,6 +429,18 @@ struct StreamRecoveryState {
 }
 
 impl StreamRecoveryState {
+    /// A stream that begins partway through a recording. Every position this
+    /// type reports is on the capture timeline, so all three clocks start
+    /// where the stream does rather than at zero.
+    fn starting_at(capture_origin_ms: u64) -> Self {
+        Self {
+            next_audio_ms: capture_origin_ms,
+            acknowledged_ms: capture_origin_ms,
+            connection_origin_ms: capture_origin_ms,
+            sent_frames: VecDeque::new(),
+        }
+    }
+
     fn record_sent(&mut self, pcm: Vec<u8>) {
         let duration_ms = (pcm.len() as u64)
             .div_ceil(PCM_BYTES_PER_MILLISECOND)
@@ -616,6 +628,34 @@ impl SonioxStreamClient {
             credential,
             config,
             cancel,
+            0,
+            StreamTimeouts::default(),
+        )
+    }
+
+    /// Starts a stream whose provider timeline is already `capture_origin_ms`
+    /// into the recording.
+    ///
+    /// A stream's own reconnects keep the capture timeline because the client
+    /// remembers where the current connection began. A *replacement* stream is
+    /// a different object with no such memory, and one started at zero would
+    /// report every token as if the recording had just begun — a translation
+    /// lane replaced forty minutes in would file its cues against the opening
+    /// minute. Telling it where it starts is what makes replacing a lane
+    /// possible at all.
+    pub fn start_at_capture_position(
+        endpoint: impl Into<String>,
+        credential: Arc<dyn LaneCredentialSource>,
+        config: SttConfig,
+        cancel: CancellationToken,
+        capture_origin_ms: u64,
+    ) -> SonioxStreamRuntime {
+        Self::start_with_timeouts(
+            endpoint,
+            credential,
+            config,
+            cancel,
+            capture_origin_ms,
             StreamTimeouts::default(),
         )
     }
@@ -625,6 +665,7 @@ impl SonioxStreamClient {
         credential: Arc<dyn LaneCredentialSource>,
         config: SttConfig,
         cancel: CancellationToken,
+        capture_origin_ms: u64,
         timeouts: StreamTimeouts,
     ) -> SonioxStreamRuntime {
         let (audio_tx, audio_rx) = mpsc::channel(AUDIO_CHANNEL_CAPACITY);
@@ -640,6 +681,7 @@ impl SonioxStreamClient {
                 control_rx,
                 &event_tx,
                 cancel,
+                capture_origin_ms,
                 timeouts,
             )
             .await
@@ -671,12 +713,13 @@ async fn run_stream(
     mut control_rx: mpsc::Receiver<SttStreamControl>,
     event_tx: &mpsc::Sender<SttStreamEvent>,
     cancel: CancellationToken,
+    capture_origin_ms: u64,
     timeouts: StreamTimeouts,
 ) -> Result<(), StreamFailure> {
     let mut paused = false;
     let mut reconnect_attempt = 0_u8;
     let mut disconnected_at = None::<Instant>;
-    let mut recovery = StreamRecoveryState::default();
+    let mut recovery = StreamRecoveryState::starting_at(capture_origin_ms);
     loop {
         let mut session_connected = false;
         let reconnect_outage = disconnected_at.map(|started| started.elapsed());
@@ -1336,6 +1379,7 @@ mod tests {
             StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
+            0,
             short_timeouts(),
         );
         assert_eq!(
@@ -1407,6 +1451,7 @@ mod tests {
             StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
+            0,
             timeouts,
         );
         assert_eq!(
@@ -1451,6 +1496,7 @@ mod tests {
             StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
+            0,
             short_timeouts(),
         );
         assert_eq!(
@@ -1532,6 +1578,7 @@ mod tests {
             StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
+            0,
             short_timeouts(),
         );
         assert_eq!(
@@ -1677,6 +1724,7 @@ mod tests {
             StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
+            0,
             short_timeouts(),
         );
         for _ in 0..50 {
@@ -1731,6 +1779,7 @@ mod tests {
             StaticLaneCredential::new("key"),
             SttConfig::default(),
             CancellationToken::new(),
+            0,
             short_timeouts(),
         );
         assert_eq!(
@@ -1851,6 +1900,32 @@ mod tests {
         // cost the recovery anything it was using.
         let replay = recovery.prepare_replay(Duration::from_secs(1));
         assert!(!replay.is_empty(), "短暂断线仍要能回放");
+    }
+
+    /// A replacement lane is a new stream object opened partway through a
+    /// recording. Every position it reports is on the capture timeline, so its
+    /// clocks start where it does — a lane replaced forty minutes in must not
+    /// file its first token against the opening minute.
+    #[test]
+    fn a_stream_started_partway_reports_positions_on_the_capture_timeline() {
+        let origin_ms = 40 * 60 * 1_000;
+        let mut recovery = StreamRecoveryState::starting_at(origin_ms);
+
+        assert_eq!(recovery.connection_origin_ms, origin_ms);
+        assert_eq!(recovery.acknowledged_ms, origin_ms);
+        assert_eq!(recovery.next_audio_ms, origin_ms);
+
+        // One second of audio advances the capture clock by one second, not to
+        // one second.
+        for _ in 0..10 {
+            recovery.record_sent(vec![0; 3_200]);
+        }
+        assert_eq!(recovery.next_audio_ms, origin_ms + 1_000);
+
+        // The provider counts from zero within its own connection; the origin
+        // is what turns that back into a capture position.
+        let (acknowledged_ms, _lag_ms) = recovery.acknowledge(600);
+        assert_eq!(acknowledged_ms, origin_ms + 600);
     }
 
     #[test]
