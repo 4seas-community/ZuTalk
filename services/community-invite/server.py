@@ -57,10 +57,25 @@ MAX_OPEN_SESSIONS_PER_INVITE = 2
 # into one canonical lane plus one translation lane per language. Everything
 # the server derives per lane is bounded by this.
 MAX_LANES_PER_SESSION = 4
-# Per-session key budget: a full four-lane start, one complete retry of it,
-# and renewal headroom for a five-hour recording. Key issuance is the
-# server's stream-count lever, so the budget is deliberately finite.
-SESSION_KEY_BUDGET = 16
+# Per-lane key budget: a lane's own start, one complete retry of it, and
+# reconnect headroom for a five-hour recording. Key issuance is the server's
+# stream-count lever, so it stays finite — but the demand is per lane, and
+# expressing the budget per session was the bug. Sixteen flat meant a
+# four-lane capture spent five before a word was spoken and had eleven for
+# everything after; four ordinary blips ended translation for the rest of the
+# recording. Soniox itself caps key creation by rate (100/minute), not by
+# total, so this ceiling is entirely ours to size.
+KEYS_PER_LANE = 8
+# Never below the old flat budget: a one-lane capture must not lose headroom
+# it has always had.
+SESSION_KEY_FLOOR = 16
+# Soniox admits 100 concurrent realtime WebSockets for the whole account, and
+# a three-language capture holds four of them. Nothing used to bound the total
+# across invitations, so enough simultaneous captures would have Soniox
+# refusing connections mid-recording — indistinguishable, from the client, to
+# the lane failures this file's key budget was already producing. Refuse the
+# reservation instead, which is a sentence someone can act on.
+GLOBAL_CONCURRENT_LANE_CEILING = 80
 # One batch request covers a full multi-language capture start: canonical
 # plus every translation lane.
 MAX_KEYS_PER_REQUEST = MAX_LANES_PER_SESSION
@@ -487,6 +502,23 @@ class Store:
                 (session_id, invite_id),
             ).fetchone()
 
+    def open_lane_total(self) -> int:
+        """Lanes held by every unsettled reservation, across all invitations.
+
+        Soniox admits a fixed number of concurrent realtime WebSockets for the
+        whole account. Per-invite limits cannot see that ceiling: ten polite
+        invitations recording at once exceed it without any of them
+        misbehaving, and the account-wide refusal that follows arrives as
+        lanes dying mid-recording."""
+        with self.connect() as db:
+            return db.execute(
+                """
+                SELECT COALESCE(SUM(MAX(1, MIN(lane_count, ?))), 0) AS n
+                FROM sessions WHERE settled_seconds IS NULL
+                """,
+                (MAX_LANES_PER_SESSION,),
+            ).fetchone()["n"]
+
     def count_open_sessions(self, invite_id: int) -> int:
         with self.connect() as db:
             return db.execute(
@@ -505,7 +537,7 @@ class Store:
         with self.connect() as db:
             session = db.execute(
                 """
-                SELECT id FROM sessions
+                SELECT id, lane_count FROM sessions
                 WHERE id = ? AND invite_id = ? AND settled_seconds IS NULL
                 """,
                 (session_id, invite_id),
@@ -516,7 +548,8 @@ class Store:
                 "SELECT COUNT(*) AS n FROM session_keys WHERE session_id = ?",
                 (session_id,),
             ).fetchone()["n"]
-            return max(0, SESSION_KEY_BUDGET - issued)
+            lanes = max(1, min(int(session["lane_count"] or 1), MAX_LANES_PER_SESSION))
+            return max(0, session_key_budget(lanes) - issued)
 
     def reserve_session_keys(
         self, invite_id: int, session_id: str, count: int
@@ -533,7 +566,7 @@ class Store:
             db.execute("BEGIN IMMEDIATE")
             session = db.execute(
                 """
-                SELECT id FROM sessions
+                SELECT id, lane_count FROM sessions
                 WHERE id = ? AND invite_id = ? AND settled_seconds IS NULL
                 """,
                 (session_id, invite_id),
@@ -544,9 +577,10 @@ class Store:
                 "SELECT COUNT(*) AS n FROM session_keys WHERE session_id = ?",
                 (session_id,),
             ).fetchone()["n"]
+            lanes = max(1, min(int(session["lane_count"] or 1), MAX_LANES_PER_SESSION))
             # All-or-nothing: a partially granted batch would leave the
             # client with fewer keys than it has lanes to open.
-            if issued + count > SESSION_KEY_BUDGET:
+            if issued + count > session_key_budget(lanes):
                 return None
             stamp = now_iso()
             db.executemany(
@@ -784,6 +818,17 @@ def quota_payload(invite: sqlite3.Row) -> dict:
         "used_seconds": invite["used_seconds"],
         "remaining_seconds": remaining,
     }
+
+
+def session_key_budget(lane_count: int) -> int:
+    """Keys one session may be issued, given how many lanes it opens.
+
+    Per lane, because that is what drives demand: every WebSocket needs its
+    own key to open, and every reconnect needs another. A flat per-session
+    number was right when a capture was one socket and wrong the moment it
+    became four."""
+    lanes = max(1, min(int(lane_count or 1), MAX_LANES_PER_SESSION))
+    return max(SESSION_KEY_FLOOR, KEYS_PER_LANE * lanes)
 
 
 def stream_duration_seconds(session: sqlite3.Row | dict) -> int:
@@ -1357,9 +1402,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(409, {"error": "too_many_open_sessions"})
                 return
             requested = int(body.get("requested_seconds", MAX_SESSION_SECONDS))
-            session = self.store.reserve_session(
-                invite["id"], requested, int(body.get("lane_count", 1))
-            )
+            lanes = max(1, min(int(body.get("lane_count", 1)), MAX_LANES_PER_SESSION))
+            # Refuse here rather than let Soniox refuse the WebSockets later:
+            # a reservation that cannot get its lanes is a sentence the client
+            # can show, while lanes failing twenty minutes in is the failure
+            # this service spent a day being blamed for.
+            if self.store.open_lane_total() + lanes > GLOBAL_CONCURRENT_LANE_CEILING:
+                self.send_json(503, {"error": "capacity_reached"})
+                return
+            session = self.store.reserve_session(invite["id"], requested, lanes)
             if session is None:
                 self.send_json(409, {"error": "quota_exhausted"})
                 return

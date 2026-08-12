@@ -13,7 +13,7 @@ from server import (
     DEFAULT_QUOTA_SECONDS,
     MAX_LANES_PER_SESSION,
     RESERVATION_TTL_SECONDS,
-    SESSION_KEY_BUDGET,
+    session_key_budget,
     Store,
     secret_equals,
     stream_duration_seconds,
@@ -131,7 +131,7 @@ class StoreTests(unittest.TestCase):
         invite = self.store.invite_for_token(token)
         session = self.store.reserve_session(invite["id"], 3600)
 
-        for expected in range(1, SESSION_KEY_BUDGET + 1):
+        for expected in range(1, session_key_budget(1) + 1):
             self.assertEqual(
                 self.store.issue_session_key(invite["id"], session["session_id"]),
                 expected,
@@ -149,6 +149,57 @@ class StoreTests(unittest.TestCase):
         )
         self.assertIsNone(self.store.issue_session_key(invite["id"], "missing"))
 
+    def test_key_budget_scales_with_lanes_and_never_drops_below_the_floor(self):
+        """A four-lane capture spends four keys before a word is spoken and
+        needs one more per reconnect. A flat per-session budget gave it the
+        same allowance as a single socket, and four ordinary blips ended
+        translation for the rest of the recording."""
+        self.assertEqual(session_key_budget(1), 16, "one lane keeps its old floor")
+        self.assertEqual(session_key_budget(2), 16, "the floor still applies")
+        self.assertEqual(session_key_budget(MAX_LANES_PER_SESSION), 32)
+        # Out-of-range lane counts are clamped, not trusted.
+        self.assertEqual(session_key_budget(0), 16)
+        self.assertEqual(session_key_budget(99), session_key_budget(MAX_LANES_PER_SESSION))
+
+    def test_a_four_lane_session_is_issued_its_larger_budget(self):
+        code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
+        token = self.store.redeem(code)["access_token"]
+        invite = self.store.invite_for_token(token)
+        session = self.store.reserve_session(invite["id"], 3600, MAX_LANES_PER_SESSION)
+
+        self.assertEqual(
+            self.store.session_key_headroom(invite["id"], session["session_id"]),
+            session_key_budget(MAX_LANES_PER_SESSION),
+        )
+        # The whole budget is claimable, and then it is a hard stop.
+        self.assertIsNotNone(
+            self.store.reserve_session_keys(
+                invite["id"],
+                session["session_id"],
+                session_key_budget(MAX_LANES_PER_SESSION),
+            )
+        )
+        self.assertIsNone(
+            self.store.issue_session_key(invite["id"], session["session_id"])
+        )
+
+    def test_open_lane_total_counts_every_invitation(self):
+        """Soniox caps concurrent realtime sockets for the whole account, so
+        the number that matters is not per invitation."""
+        first_code = self.store.create_invite("a", DEFAULT_QUOTA_SECONDS)
+        second_code = self.store.create_invite("b", DEFAULT_QUOTA_SECONDS)
+        first = self.store.invite_for_token(self.store.redeem(first_code)["access_token"])
+        second = self.store.invite_for_token(self.store.redeem(second_code)["access_token"])
+
+        self.assertEqual(self.store.open_lane_total(), 0)
+        a = self.store.reserve_session(first["id"], 3600, MAX_LANES_PER_SESSION)
+        self.store.reserve_session(second["id"], 3600, 2)
+        self.assertEqual(self.store.open_lane_total(), MAX_LANES_PER_SESSION + 2)
+
+        # Settling gives the lanes back.
+        self.store.settle_session(first["id"], a["session_id"], 60)
+        self.assertEqual(self.store.open_lane_total(), 2)
+
     def test_session_key_headroom_shrinks_per_issue_and_gates_batches(self):
         code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
         token = self.store.redeem(code)["access_token"]
@@ -157,14 +208,14 @@ class StoreTests(unittest.TestCase):
 
         self.assertEqual(
             self.store.session_key_headroom(invite["id"], session["session_id"]),
-            SESSION_KEY_BUDGET,
+            session_key_budget(1),
         )
         # A full 8-lane batch fits, and so does one complete retry of it.
         for _ in range(8):
             self.store.issue_session_key(invite["id"], session["session_id"])
         self.assertEqual(
             self.store.session_key_headroom(invite["id"], session["session_id"]),
-            SESSION_KEY_BUDGET - 8,
+            session_key_budget(1) - 8,
         )
         self.assertIsNone(self.store.session_key_headroom(invite["id"], "missing"))
         self.store.settle_session(invite["id"], session["session_id"], 0)
@@ -200,7 +251,7 @@ class StoreTests(unittest.TestCase):
 
         self.assertEqual(self.store.reserve_session_keys(invite["id"], sid, 4), 4)
         # Leave room for exactly three more.
-        self.store.reserve_session_keys(invite["id"], sid, SESSION_KEY_BUDGET - 7)
+        self.store.reserve_session_keys(invite["id"], sid, session_key_budget(1) - 7)
         self.assertEqual(
             self.store.session_key_headroom(invite["id"], sid), 3
         )
@@ -210,7 +261,7 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.store.session_key_headroom(invite["id"], sid), 3)
         self.assertEqual(
             self.store.reserve_session_keys(invite["id"], sid, 3),
-            SESSION_KEY_BUDGET,
+            session_key_budget(1),
         )
         self.assertIsNone(self.store.reserve_session_keys(invite["id"], sid, 1))
 
@@ -221,7 +272,7 @@ class StoreTests(unittest.TestCase):
         session = self.store.reserve_session(invite["id"], 3600)
         sid = session["session_id"]
         # Only one full four-lane batch still fits.
-        self.store.reserve_session_keys(invite["id"], sid, SESSION_KEY_BUDGET - 4)
+        self.store.reserve_session_keys(invite["id"], sid, session_key_budget(1) - 4)
 
         granted: list[int | None] = []
         lock = threading.Lock()
@@ -255,12 +306,12 @@ class StoreTests(unittest.TestCase):
         self.store.reserve_session_keys(invite["id"], sid, 4)
         self.assertEqual(
             self.store.session_key_headroom(invite["id"], sid),
-            SESSION_KEY_BUDGET - 4,
+            session_key_budget(1) - 4,
         )
         # An upstream failure delivers nothing, so the whole claim comes back.
         self.store.release_session_keys(sid, 4)
         self.assertEqual(
-            self.store.session_key_headroom(invite["id"], sid), SESSION_KEY_BUDGET
+            self.store.session_key_headroom(invite["id"], sid), session_key_budget(1)
         )
 
     def test_stream_duration_divides_lane_seconds_back_to_wall_clock(self):
