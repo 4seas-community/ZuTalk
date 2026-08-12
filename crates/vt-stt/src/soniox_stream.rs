@@ -420,6 +420,40 @@ struct ReplayAudioFrame {
     pcm: Vec<u8>,
 }
 
+/// A minted credential that never reached the provider.
+///
+/// A single-use key is spent when a connection presents it — which happens in
+/// the configuration message, after the socket is up. A dial that fails never
+/// gets that far, so its key is still redeemable and the next attempt must
+/// reuse it rather than mint another.
+///
+/// This matters because the community invite service bounds a session by the
+/// number of keys it issues. `RECONNECT_MAX_ATTEMPTS` dials per outage, each
+/// minting before it dials, spends three keys on one blip and can open zero
+/// streams — charging a budget meant to bound streams for attempts that were
+/// never streams.
+struct UnpresentedCredential {
+    api_key: String,
+    minted_at: Instant,
+}
+
+/// Shorter than the service's own 300-second expiry on a single-use key, so a
+/// reused one is never a key the provider has already forgotten.
+const UNPRESENTED_CREDENTIAL_REUSE_WINDOW: Duration = Duration::from_secs(240);
+
+impl UnpresentedCredential {
+    fn new(api_key: String) -> Self {
+        Self {
+            api_key,
+            minted_at: Instant::now(),
+        }
+    }
+
+    fn into_still_redeemable(self) -> Option<String> {
+        (self.minted_at.elapsed() < UNPRESENTED_CREDENTIAL_REUSE_WINDOW).then_some(self.api_key)
+    }
+}
+
 #[derive(Debug, Default)]
 struct StreamRecoveryState {
     next_audio_ms: u64,
@@ -720,6 +754,7 @@ async fn run_stream(
     let mut reconnect_attempt = 0_u8;
     let mut disconnected_at = None::<Instant>;
     let mut recovery = StreamRecoveryState::starting_at(capture_origin_ms);
+    let mut unpresented_credential: Option<UnpresentedCredential> = None;
     loop {
         let mut session_connected = false;
         let reconnect_outage = disconnected_at.map(|started| started.elapsed());
@@ -736,6 +771,7 @@ async fn run_stream(
             &mut session_connected,
             &mut recovery,
             reconnect_outage,
+            &mut unpresented_credential,
         )
         .await
         {
@@ -786,19 +822,46 @@ async fn run_stream_session(
     session_connected: &mut bool,
     recovery: &mut StreamRecoveryState,
     reconnect_outage: Option<Duration>,
+    unpresented_credential: &mut Option<UnpresentedCredential>,
 ) -> Result<(), StreamFailure> {
     // Resolved before dialing: a single-use credential is spent the moment a
     // connection presents it, so a socket opened without one in hand would
     // burn a key on a connection that may never be configured.
-    let api_key = credential
-        .credential_for_connection()
-        .await
-        .map_err(StreamFailure::credential)?;
+    //
+    // The converse is the reason for the carry-over: a dial that never
+    // connects never presents its key, so that key is still redeemable and
+    // the retry reuses it instead of minting a second one.
+    let api_key = match unpresented_credential
+        .take()
+        .and_then(UnpresentedCredential::into_still_redeemable)
+    {
+        Some(api_key) => api_key,
+        None => credential
+            .credential_for_connection()
+            .await
+            .map_err(StreamFailure::credential)?,
+    };
 
-    let connect = time::timeout(timeouts.connect, connect_async(endpoint))
-        .await
-        .map_err(|_| StreamFailure::timeout("Soniox stream connect", timeouts.connect))?
-        .map_err(|error| StreamFailure::transport("Soniox stream connect", error.to_string()))?;
+    let connect = match time::timeout(timeouts.connect, connect_async(endpoint)).await {
+        Err(_) => {
+            *unpresented_credential = Some(UnpresentedCredential::new(api_key));
+            return Err(StreamFailure::timeout(
+                "Soniox stream connect",
+                timeouts.connect,
+            ));
+        }
+        Ok(Err(error)) => {
+            *unpresented_credential = Some(UnpresentedCredential::new(api_key));
+            return Err(StreamFailure::transport(
+                "Soniox stream connect",
+                error.to_string(),
+            ));
+        }
+        Ok(Ok(connect)) => connect,
+    };
+    // Past this point the key either reaches the provider in the
+    // configuration message or is lost with a socket that already opened.
+    // Both count as spent; only an unopened socket returns a key to the pool.
     let (ws_stream, _) = connect;
     let (mut write, mut read) = ws_stream.split();
 
@@ -1332,6 +1395,54 @@ mod tests {
     use serde_json::{json, Value};
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
+
+    /// Counts how many times a lane asked for a credential.
+    struct CountingCredential {
+        issued: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl LaneCredentialSource for CountingCredential {
+        fn credential_for_connection(&self) -> BoxedCredentialFuture<'_> {
+            let issued = self.issued.clone();
+            Box::pin(async move {
+                issued.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                Ok("minted-key".to_string())
+            })
+        }
+    }
+
+    /// A dial that never connects never presents its key, so the retry must
+    /// reuse it.
+    ///
+    /// The community invite service bounds a session by keys issued, and a key
+    /// is claimed the moment it is minted. Minting once per dial spent three
+    /// of a sixteen-key budget on a single blip while opening zero streams —
+    /// four such blips ended translation for the rest of a recording.
+    #[tokio::test]
+    async fn an_unconnected_dial_reuses_its_key_instead_of_minting_another() {
+        let issued = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let credential = Arc::new(CountingCredential {
+            issued: issued.clone(),
+        });
+        let cancel = CancellationToken::new();
+        // Port 1 refuses immediately: every attempt fails before the socket
+        // is up, which is exactly the case whose key is still redeemable.
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            "ws://127.0.0.1:1",
+            credential,
+            SttConfig::default(),
+            cancel.clone(),
+            0,
+            short_timeouts(),
+        );
+        let _ = time::timeout(Duration::from_secs(5), &mut runtime.task).await;
+
+        assert_eq!(
+            issued.load(std::sync::atomic::Ordering::Acquire),
+            1,
+            "one blip must cost one key, not one per reconnect attempt"
+        );
+    }
 
     fn short_timeouts() -> StreamTimeouts {
         StreamTimeouts {

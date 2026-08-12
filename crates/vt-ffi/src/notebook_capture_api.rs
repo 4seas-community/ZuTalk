@@ -5231,13 +5231,34 @@ pub(crate) struct ActiveRemoteStream {
     input_discontinuity_reported: std::sync::atomic::AtomicBool,
 }
 
-/// How many times one auxiliary lane may be reopened within a recording.
+/// Audio a lane may fall behind before its channel refuses more. The stream
+/// client buffers 512 blocks of 100 ms, so a full channel is a lane that has
+/// not drained for this long — worth naming in the message, because it is the
+/// one number that says "slow" rather than "dead".
+const SONIOX_LANE_AUDIO_BACKLOG_SECONDS: u64 = 51;
+
+/// How long to leave a translation lane alone before reopening it again,
+/// indexed by how many times it has already been reopened.
 ///
-/// A lane that keeps dying is not being rescued by another attempt; it is
-/// telling us the audio cannot reach it. Reconnecting forever would bill the
-/// provider for a column nobody is reading and hide the real fault behind a
-/// stream of new connections.
-const MAX_AUXILIARY_LANE_RESTARTS: u8 = 3;
+/// A count on its own is not a budget. Shipped without these delays, three
+/// attempts were spent in 310 milliseconds — the replacement died before the
+/// next audio block arrived, three times, and the lane was retired a third of
+/// a second after its first failure. That is one attempt wearing three hats.
+///
+/// Growing delays separate the two cases the count cannot: a lane that fails
+/// once an hour is reopened every time, and a lane failing every hundred
+/// milliseconds is left alone within seconds.
+const AUXILIARY_LANE_RESTART_COOLDOWNS: [std::time::Duration; 4] = [
+    std::time::Duration::ZERO,
+    std::time::Duration::from_secs(15),
+    std::time::Duration::from_secs(60),
+    std::time::Duration::from_secs(300),
+];
+
+/// After this many reopenings the lane is left alone for good. Generous
+/// because the cooldowns above already bound the rate; this only stops an
+/// all-day recording from reconnecting indefinitely.
+const MAX_AUXILIARY_LANE_RESTARTS: u8 = 8;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 struct PcmFanoutReport {
@@ -5267,6 +5288,9 @@ pub(crate) struct ActiveRemoteCapture {
     /// Replacements opened so far, so a lane that cannot stay up stops being
     /// retried instead of reconnecting for the rest of the recording.
     lane_restarts: Vec<u8>,
+    /// When each lane was last reopened, so the cooldown is measured from the
+    /// attempt rather than from the failure it was answering.
+    lane_restarted_at: Vec<Option<std::time::Instant>>,
     /// The audio thread calls into fan-out straight from Swift's tap, with no
     /// runtime context of its own. Opening a replacement lane spawns tasks, so
     /// it has to borrow one — a bare spawn there panics across the FFI
@@ -5289,14 +5313,24 @@ impl ActiveRemoteCapture {
         }
         let mut report = PcmFanoutReport::default();
         let mut canonical_failure = None;
-        let mut replace_lanes: Vec<usize> = Vec::new();
         for (lane_index, stream) in self.streams.iter().enumerate() {
             if stream.lane_cancel.is_cancelled() {
                 continue;
             }
-            let unusable = stream.audio_tx.is_closed() || stream.audio_tx.capacity() == 0;
-            let send_failure = if unusable {
-                Some("Soniox stream audio channel unavailable".to_string())
+            // Two opposite faults used to share one sentence. A closed
+            // channel means the lane's own task ended — a provider or
+            // credential failure. A full one means the lane is still alive but
+            // more than fifty seconds behind. Telling them apart is the
+            // difference between "why did that stream die" and "why is that
+            // stream slow", and working it out from the old message took a
+            // database, a week of logs and three files of code.
+            let send_failure = if stream.audio_tx.is_closed() {
+                Some("Soniox stream ended: its audio channel is closed".to_string())
+            } else if stream.audio_tx.capacity() == 0 {
+                Some(format!(
+                    "Soniox stream is {}s behind: its audio channel is full",
+                    SONIOX_LANE_AUDIO_BACKLOG_SECONDS
+                ))
             } else {
                 self.stream_factory
                     .try_send_pcm(&stream.audio_tx, audio_data.to_vec())
@@ -5321,7 +5355,6 @@ impl ActiveRemoteCapture {
                         error = %send_failure,
                         "auxiliary PCM lane became discontinuous and was stopped at the live edge"
                     );
-                    replace_lanes.push(lane_index);
                 }
                 Ok(None) => {}
                 Err(error) => {
@@ -5330,7 +5363,12 @@ impl ActiveRemoteCapture {
             }
         }
         if canonical_failure.is_none() {
-            for lane_index in replace_lanes {
+            // Driven by "this lane is dead and its cooldown has elapsed", so a
+            // lane isolated minutes ago is reconsidered here too. A cooldown
+            // that only ran at the moment of failure would never fire again:
+            // a cancelled lane is skipped by the send loop above, so nothing
+            // else would ever look at it.
+            for lane_index in 0..self.streams.len() {
                 if let Some(target_language) = self.replace_auxiliary_lane(lane_index) {
                     report.auxiliary_restarts.push(target_language);
                 }
@@ -5354,12 +5392,21 @@ impl ActiveRemoteCapture {
     ///
     /// Returns the target language when a replacement was opened.
     fn replace_auxiliary_lane(&mut self, lane_index: usize) -> Option<String> {
+        let stream = self.streams.get(lane_index)?;
+        if stream.descriptor.canonical || !stream.lane_cancel.is_cancelled() {
+            return None;
+        }
         let attempts = *self.lane_restarts.get(lane_index)?;
         if attempts >= MAX_AUXILIARY_LANE_RESTARTS {
             return None;
         }
-        let stream = self.streams.get(lane_index)?;
-        debug_assert!(!stream.descriptor.canonical);
+        let cooldown = AUXILIARY_LANE_RESTART_COOLDOWNS
+            [(attempts as usize).min(AUXILIARY_LANE_RESTART_COOLDOWNS.len() - 1)];
+        if let Some(last) = self.lane_restarted_at.get(lane_index).copied().flatten() {
+            if last.elapsed() < cooldown {
+                return None;
+            }
+        }
         let descriptor = stream.descriptor.clone();
         let config = stream.config.clone();
         let target_language = descriptor.target_language.clone()?;
@@ -5412,6 +5459,7 @@ impl ActiveRemoteCapture {
         previous.stream_task.abort();
         previous.forward_task.abort();
         self.lane_restarts[lane_index] = attempts.saturating_add(1);
+        self.lane_restarted_at[lane_index] = Some(std::time::Instant::now());
         tracing::warn!(
             target_language,
             capture_origin_ms,
@@ -8511,6 +8559,7 @@ impl ZuTalkCore {
         Ok(ActiveRemoteCapture {
             stream_factory,
             lane_restarts: vec![0; streams.len()],
+            lane_restarted_at: vec![None; streams.len()],
             runtime: self.runtime.handle().clone(),
             streams,
             cancel,
@@ -12185,6 +12234,7 @@ mod tests {
             tagged_tx: tokio::sync::mpsc::channel(8).0,
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
+            lane_restarted_at: vec![None; 8],
             runtime: tokio::runtime::Handle::current(),
         };
         let report = capture
@@ -12231,6 +12281,7 @@ mod tests {
             tagged_tx: tokio::sync::mpsc::channel(8).0,
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
+            lane_restarted_at: vec![None; 8],
             runtime: tokio::runtime::Handle::current(),
         };
         assert!(canonical_down.try_fanout_pcm(&[7u8; 64]).is_err());
@@ -12258,6 +12309,7 @@ mod tests {
             tagged_tx: tokio::sync::mpsc::channel(8).0,
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
+            lane_restarted_at: vec![None; 8],
             runtime: tokio::runtime::Handle::current(),
         };
         canceled_group.cancel();
@@ -12333,6 +12385,7 @@ mod tests {
                 tagged_tx: tokio::sync::mpsc::channel(8).0,
                 captured_frames: Arc::new(AtomicU64::new(16_000)),
                 lane_restarts: vec![0; 2],
+                lane_restarted_at: vec![None; 2],
                 runtime: runtime.handle().clone(),
             }
         });
@@ -12344,6 +12397,91 @@ mod tests {
             .expect("a dead auxiliary lane must not stop capture audio");
         assert_eq!(report.auxiliary_restarts, ["en"]);
         assert_eq!(factory.restarted_at_ms.lock().unwrap().as_slice(), [1_000]);
+    }
+
+    /// A lane that keeps dying is not being rescued by another attempt.
+    ///
+    /// Shipped as a bare count, the budget was spent in 310 milliseconds: the
+    /// replacement died before the next audio block arrived, three times over.
+    /// The cooldown is what makes three attempts mean three occasions.
+    #[tokio::test]
+    async fn a_translation_lane_is_not_reopened_again_inside_its_cooldown() {
+        let factory = Arc::new(RecordingFanoutFactory {
+            sent: std::sync::Mutex::new(Vec::new()),
+            restarted_at_ms: std::sync::Mutex::new(Vec::new()),
+        });
+        let dead_lane = || {
+            let (audio_tx, audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+            drop(audio_rx);
+            ActiveRemoteStream {
+                descriptor: RemoteStreamLane {
+                    target_language: Some("en".to_string()),
+                    canonical: false,
+                },
+                config: SttConfig::default(),
+                audio_tx,
+                control_tx: tokio::sync::mpsc::channel(4).0,
+                stream_task: tokio::spawn(async { Ok(()) }),
+                forward_task: tokio::spawn(async {}),
+                lane_cancel: tokio_util::sync::CancellationToken::new(),
+                input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+            }
+        };
+        let (canonical_tx, canonical_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+        std::mem::forget(canonical_rx);
+        let (discontinuity_tx, _discontinuity_rx) = tokio::sync::mpsc::unbounded_channel();
+        std::mem::forget(_discontinuity_rx);
+        // 16 kHz mono: one minute of audio, which is where a replacement
+        // opened now would start.
+        let mut capture = ActiveRemoteCapture {
+            stream_factory: factory.clone(),
+            streams: vec![
+                ActiveRemoteStream {
+                    descriptor: RemoteStreamLane {
+                        target_language: None,
+                        canonical: true,
+                    },
+                    config: SttConfig::default(),
+                    audio_tx: canonical_tx,
+                    control_tx: tokio::sync::mpsc::channel(4).0,
+                    stream_task: tokio::spawn(async { Ok(()) }),
+                    forward_task: tokio::spawn(async {}),
+                    lane_cancel: tokio_util::sync::CancellationToken::new(),
+                    input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                },
+                dead_lane(),
+            ],
+            cancel: tokio_util::sync::CancellationToken::new(),
+            event_task: tokio::spawn(async { Ok(()) }),
+            discontinuity_tx,
+            endpoint: "wss://stream.invalid".to_string(),
+            credential: vt_stt::StaticLaneCredential::new("test-key"),
+            tagged_tx: tokio::sync::mpsc::channel(8).0,
+            captured_frames: Arc::new(AtomicU64::new(960_000)),
+            lane_restarts: vec![0; 2],
+            lane_restarted_at: vec![None; 2],
+            runtime: tokio::runtime::Handle::current(),
+        };
+
+        // Every replacement here is dead on arrival, so the lane fails again
+        // on the very next block — the shape that burned the whole budget.
+        for _ in 0..12 {
+            capture.streams[1] = dead_lane();
+            let _ = capture.try_fanout_pcm(&[3u8; 3_200]);
+        }
+
+        let origins = factory.restarted_at_ms.lock().unwrap().clone();
+        assert_eq!(
+            origins.len(),
+            1,
+            "a lane failing back-to-back is reopened once and then left alone \
+             until its cooldown elapses, not three times in a third of a second"
+        );
+        assert_eq!(
+            origins[0], 60_000,
+            "a replacement starts where the recording is now, not at zero"
+        );
+        assert_eq!(capture.lane_restarts[1], 1);
     }
 
     /// A lane that keeps dying is not being rescued by another attempt. The
@@ -12378,84 +12516,6 @@ mod tests {
         // the next question is which command held it, not what push does.
         assert_eq!(stalled.slowest_lock_wait_us, 3_900_000);
         assert_eq!(uniform.slowest_lock_wait_us, 40);
-    }
-
-    #[tokio::test]
-    async fn a_translation_lane_stops_being_reopened_after_its_budget() {
-        let factory = Arc::new(RecordingFanoutFactory {
-            sent: std::sync::Mutex::new(Vec::new()),
-            restarted_at_ms: std::sync::Mutex::new(Vec::new()),
-        });
-        let dead_lane = || {
-            let (audio_tx, audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
-            let (control_tx, _control_rx) = tokio::sync::mpsc::channel(4);
-            drop(audio_rx);
-            ActiveRemoteStream {
-                descriptor: RemoteStreamLane {
-                    target_language: Some("en".to_string()),
-                    canonical: false,
-                },
-                config: SttConfig::default(),
-                audio_tx,
-                control_tx,
-                stream_task: tokio::spawn(async { Ok(()) }),
-                forward_task: tokio::spawn(async {}),
-                lane_cancel: tokio_util::sync::CancellationToken::new(),
-                input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
-            }
-        };
-        let (canonical_tx, canonical_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
-        std::mem::forget(canonical_rx);
-        let (discontinuity_tx, _discontinuity_rx) = tokio::sync::mpsc::unbounded_channel();
-        // 16 kHz mono: this many frames is one minute of audio, which is where
-        // a replacement opened now would start.
-        let captured_frames = Arc::new(AtomicU64::new(960_000));
-        let mut capture = ActiveRemoteCapture {
-            stream_factory: factory.clone(),
-            streams: vec![
-                ActiveRemoteStream {
-                    descriptor: RemoteStreamLane {
-                        target_language: None,
-                        canonical: true,
-                    },
-                    config: SttConfig::default(),
-                    audio_tx: canonical_tx,
-                    control_tx: tokio::sync::mpsc::channel(4).0,
-                    stream_task: tokio::spawn(async { Ok(()) }),
-                    forward_task: tokio::spawn(async {}),
-                    lane_cancel: tokio_util::sync::CancellationToken::new(),
-                    input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
-                },
-                dead_lane(),
-            ],
-            cancel: tokio_util::sync::CancellationToken::new(),
-            event_task: tokio::spawn(async { Ok(()) }),
-            discontinuity_tx,
-            endpoint: "wss://stream.invalid".to_string(),
-            credential: vt_stt::StaticLaneCredential::new("test-key"),
-            tagged_tx: tokio::sync::mpsc::channel(8).0,
-            captured_frames,
-            lane_restarts: vec![0; 2],
-            runtime: tokio::runtime::Handle::current(),
-        };
-
-        // Every replacement is itself dead on arrival here, so the lane fails
-        // again on the next block. The budget must retire it.
-        for _ in 0..(MAX_AUXILIARY_LANE_RESTARTS as usize + 3) {
-            capture.streams[1] = dead_lane();
-            let _ = capture.try_fanout_pcm(&[3u8; 3_200]);
-        }
-
-        let origins = factory.restarted_at_ms.lock().unwrap().clone();
-        assert_eq!(
-            origins.len(),
-            MAX_AUXILIARY_LANE_RESTARTS as usize,
-            "the lane is reopened up to its budget and then left alone"
-        );
-        assert!(
-            origins.iter().all(|origin| *origin == 60_000),
-            "a replacement starts where the recording is now, not at zero: {origins:?}"
-        );
     }
 
     #[tokio::test]
@@ -12497,6 +12557,7 @@ mod tests {
             tagged_tx: tokio::sync::mpsc::channel(8).0,
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
+            lane_restarted_at: vec![None; 8],
             runtime: tokio::runtime::Handle::current(),
         };
 
