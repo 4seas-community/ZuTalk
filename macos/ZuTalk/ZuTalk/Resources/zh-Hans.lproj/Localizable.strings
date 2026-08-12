@@ -47,6 +47,15 @@
 "community_invite.resources.remaining" = "剩余时间";
 "community_invite.remaining_detail_format" = "%1$lld 小时 %2$lld 分钟";
 "community_invite.refresh" = "刷新剩余时间";
+"community_invite.relay.title" = "中继放行";
+"community_invite.relay.enrolled" = "已放行";
+"community_invite.relay.working" = "检查中…";
+"community_invite.relay.failed" = "被拒绝";
+"community_invite.relay.no_invitation" = "无邀请码";
+"community_invite.relay.unknown" = "尚未检查";
+"community_invite.relay.retry" = "重新登记这台 Mac";
+"community_invite.relay.detail_enrolled" = "这台 Mac 可以走中继，分享能连到其他网络上的人。";
+"community_invite.relay.detail_blocked" = "中继只放行登记过邀请码的 Mac。在登记成功之前，同一个网络内分享照常，跨网络永远连不上——而且屏幕上不会有任何提示。";
 "community_invite.replace" = "更换邀请码";
 "community_invite.inactive" = "未启用社区邀请";
 "community_invite.use_toggle" = "用社区邀请进行转录";

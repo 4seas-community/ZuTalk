@@ -47,6 +47,15 @@
 "community_invite.resources.remaining" = "Time remaining";
 "community_invite.remaining_detail_format" = "%1$lld h %2$lld min";
 "community_invite.refresh" = "Refresh remaining time";
+"community_invite.relay.title" = "Relay access";
+"community_invite.relay.enrolled" = "Admitted";
+"community_invite.relay.working" = "Checking…";
+"community_invite.relay.failed" = "Refused";
+"community_invite.relay.no_invitation" = "No invitation";
+"community_invite.relay.unknown" = "Not checked yet";
+"community_invite.relay.retry" = "Enrol this Mac with the relay again";
+"community_invite.relay.detail_enrolled" = "This Mac may use the relay, so sharing reaches people on other networks.";
+"community_invite.relay.detail_blocked" = "The relay only admits Macs enrolled against an invitation. Until this one is, sharing works on the same network and never connects across networks — with nothing on screen to say so.";
 "community_invite.replace" = "Use a new code";
 "community_invite.inactive" = "No community invitation active";
 "community_invite.use_toggle" = "Transcribe with community invite";

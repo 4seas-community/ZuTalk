@@ -47,6 +47,15 @@
 "community_invite.resources.remaining" = "เวลาที่เหลือ";
 "community_invite.remaining_detail_format" = "%1$lld ชม. %2$lld นาที";
 "community_invite.refresh" = "รีเฟรชเวลาที่เหลือ";
+"community_invite.relay.title" = "สิทธิ์ใช้รีเลย์";
+"community_invite.relay.enrolled" = "ผ่านแล้ว";
+"community_invite.relay.working" = "กำลังตรวจสอบ…";
+"community_invite.relay.failed" = "ถูกปฏิเสธ";
+"community_invite.relay.no_invitation" = "ไม่มีรหัสเชิญ";
+"community_invite.relay.unknown" = "ยังไม่ได้ตรวจสอบ";
+"community_invite.relay.retry" = "ลงทะเบียน Mac เครื่องนี้กับรีเลย์อีกครั้ง";
+"community_invite.relay.detail_enrolled" = "Mac เครื่องนี้ใช้รีเลย์ได้ การแชร์จึงไปถึงคนที่อยู่คนละเครือข่าย";
+"community_invite.relay.detail_blocked" = "รีเลย์ปล่อยผ่านเฉพาะ Mac ที่ลงทะเบียนด้วยรหัสเชิญ ก่อนจะลงทะเบียนสำเร็จ การแชร์ในเครือข่ายเดียวกันยังทำงาน แต่ข้ามเครือข่ายจะไม่เชื่อมต่อเลย โดยไม่มีอะไรบอกบนหน้าจอ";
 "community_invite.replace" = "ใช้รหัสใหม่";
 "community_invite.inactive" = "ไม่มีคำเชิญชุมชนที่ใช้งานอยู่";
 "community_invite.use_toggle" = "ถอดเสียงด้วยคำเชิญชุมชน";

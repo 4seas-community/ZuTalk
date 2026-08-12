@@ -47,6 +47,15 @@
 "community_invite.resources.remaining" = "Tiempo restante";
 "community_invite.remaining_detail_format" = "%1$lld h %2$lld min";
 "community_invite.refresh" = "Actualizar tiempo restante";
+"community_invite.relay.title" = "Acceso al relé";
+"community_invite.relay.enrolled" = "Admitido";
+"community_invite.relay.working" = "Comprobando…";
+"community_invite.relay.failed" = "Rechazado";
+"community_invite.relay.no_invitation" = "Sin invitación";
+"community_invite.relay.unknown" = "Aún sin comprobar";
+"community_invite.relay.retry" = "Volver a registrar este Mac en el relé";
+"community_invite.relay.detail_enrolled" = "Este Mac puede usar el relé, así que el uso compartido llega a personas en otras redes.";
+"community_invite.relay.detail_blocked" = "El relé solo admite Macs registrados con una invitación. Hasta que lo esté, compartir funciona en la misma red y nunca conecta entre redes, sin nada en pantalla que lo indique.";
 "community_invite.replace" = "Usar un código nuevo";
 "community_invite.inactive" = "Ninguna invitación de la comunidad activa";
 "community_invite.use_toggle" = "Transcribir con la invitación de la comunidad";

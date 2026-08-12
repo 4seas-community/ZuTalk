@@ -47,6 +47,15 @@
 "community_invite.resources.remaining" = "Verbleibende Zeit";
 "community_invite.remaining_detail_format" = "%1$lld Std. %2$lld Min.";
 "community_invite.refresh" = "Verbleibende Zeit aktualisieren";
+"community_invite.relay.title" = "Relay-Zugang";
+"community_invite.relay.enrolled" = "Zugelassen";
+"community_invite.relay.working" = "Wird geprüft…";
+"community_invite.relay.failed" = "Abgewiesen";
+"community_invite.relay.no_invitation" = "Keine Einladung";
+"community_invite.relay.unknown" = "Noch nicht geprüft";
+"community_invite.relay.retry" = "Diesen Mac erneut beim Relay anmelden";
+"community_invite.relay.detail_enrolled" = "Dieser Mac darf das Relay nutzen, Freigaben erreichen also auch Leute in anderen Netzwerken.";
+"community_invite.relay.detail_blocked" = "Das Relay lässt nur Macs zu, die mit einer Einladung angemeldet sind. Bis dahin funktioniert die Freigabe im selben Netzwerk und kommt über Netzwerkgrenzen nie zustande — ohne jeden Hinweis auf dem Bildschirm.";
 "community_invite.replace" = "Neuen Code verwenden";
 "community_invite.inactive" = "Keine Community-Einladung aktiv";
 "community_invite.use_toggle" = "Mit Community-Einladung transkribieren";

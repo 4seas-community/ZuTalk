@@ -47,6 +47,15 @@
 "community_invite.resources.remaining" = "残り時間";
 "community_invite.remaining_detail_format" = "%1$lld 時間 %2$lld 分";
 "community_invite.refresh" = "残り時間を更新";
+"community_invite.relay.title" = "リレー許可";
+"community_invite.relay.enrolled" = "許可済み";
+"community_invite.relay.working" = "確認中…";
+"community_invite.relay.failed" = "拒否";
+"community_invite.relay.no_invitation" = "招待コードなし";
+"community_invite.relay.unknown" = "未確認";
+"community_invite.relay.retry" = "この Mac を登録し直す";
+"community_invite.relay.detail_enrolled" = "この Mac はリレーを使えます。別のネットワークの相手にも共有が届きます。";
+"community_invite.relay.detail_blocked" = "リレーは招待コードで登録された Mac だけを通します。登録できるまで、同じネットワーク内の共有は動きますが、ネットワークをまたぐと決してつながりません。画面には何も表示されません。";
 "community_invite.replace" = "新しい招待コードを使う";
 "community_invite.inactive" = "コミュニティ招待は未使用です";
 "community_invite.use_toggle" = "コミュニティ招待で文字起こし";

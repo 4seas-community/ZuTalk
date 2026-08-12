@@ -18,6 +18,8 @@ struct CommunityInviteSettingsCard: View {
             if invite.isActive {
                 remainingRow
                 SettingsRowDivider()
+                relayEnrollmentRow
+                SettingsRowDivider()
                 sourceToggleRow
                 SettingsRowDivider()
                 if isReplacing {
@@ -74,6 +76,67 @@ struct CommunityInviteSettingsCard: View {
                 .accessibilityLabel(String(localized: "community_invite.refresh"))
             }
         }
+    }
+
+    /// Whether this Mac is allowed through the relay.
+    ///
+    /// The relay only admits endpoints enrolled against an invitation, and a
+    /// Mac it refuses is refused quietly: sharing still works on the same
+    /// network and simply never connects across networks. One machine's log
+    /// carried 4,092 rejections over a week with nothing on screen. The state
+    /// machine behind this has always existed and no view has ever read it.
+    private var relayEnrollmentRow: some View {
+        SettingsRow(
+            String(localized: "community_invite.relay.title"),
+            description: String(localized: relayDescriptionKey)
+        ) {
+            HStack(spacing: Spacing.sm) {
+                Label(relayStatusText, systemImage: relayStatusIcon)
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+                    .accessibilityIdentifier("settings.community-invite.relay")
+
+                if invite.relayEnrollment != .enrolled {
+                    Button {
+                        Task { await invite.enrollCurrentShareEndpoint(force: true) }
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(invite.relayEnrollment == .working)
+                    .help(String(localized: "community_invite.relay.retry"))
+                    .accessibilityLabel(String(localized: "community_invite.relay.retry"))
+                }
+            }
+        }
+    }
+
+    private var relayStatusText: String {
+        switch invite.relayEnrollment {
+        case .enrolled: return String(localized: "community_invite.relay.enrolled")
+        case .working: return String(localized: "community_invite.relay.working")
+        case .failed: return String(localized: "community_invite.relay.failed")
+        case .noInvitation: return String(localized: "community_invite.relay.no_invitation")
+        case .unknown: return String(localized: "community_invite.relay.unknown")
+        }
+    }
+
+    private var relayStatusIcon: String {
+        switch invite.relayEnrollment {
+        case .enrolled: return "checkmark.shield.fill"
+        case .working: return "arrow.triangle.2.circlepath"
+        case .failed: return "exclamationmark.shield.fill"
+        case .noInvitation: return "shield.slash"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+
+    private var relayDescriptionKey: String.LocalizationValue {
+        invite.relayEnrollment == .enrolled
+            ? "community_invite.relay.detail_enrolled"
+            : "community_invite.relay.detail_blocked"
     }
 
     private var sourceToggleRow: some View {

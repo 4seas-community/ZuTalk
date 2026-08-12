@@ -47,6 +47,15 @@
 "community_invite.resources.remaining" = "남은 시간";
 "community_invite.remaining_detail_format" = "%1$lld시간 %2$lld분";
 "community_invite.refresh" = "남은 시간 새로 고침";
+"community_invite.relay.title" = "릴레이 허용";
+"community_invite.relay.enrolled" = "허용됨";
+"community_invite.relay.working" = "확인 중…";
+"community_invite.relay.failed" = "거부됨";
+"community_invite.relay.no_invitation" = "초대 코드 없음";
+"community_invite.relay.unknown" = "아직 확인 안 함";
+"community_invite.relay.retry" = "이 Mac 다시 등록";
+"community_invite.relay.detail_enrolled" = "이 Mac은 릴레이를 쓸 수 있어, 다른 네트워크에 있는 사람에게도 공유가 닿습니다.";
+"community_invite.relay.detail_blocked" = "릴레이는 초대 코드로 등록된 Mac만 통과시킵니다. 등록되기 전까지 같은 네트워크에서는 공유가 되지만 네트워크를 넘어가면 절대 연결되지 않으며, 화면에는 아무 표시도 없습니다.";
 "community_invite.replace" = "새로운 코드를 사용하세요";
 "community_invite.inactive" = "활성화된 커뮤니티 초대가 없습니다.";
 "community_invite.use_toggle" = "커뮤니티 초대로 스크립트 작성";

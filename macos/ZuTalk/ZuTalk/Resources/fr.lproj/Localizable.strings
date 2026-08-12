@@ -47,6 +47,15 @@
 "community_invite.resources.remaining" = "Temps restant";
 "community_invite.remaining_detail_format" = "%1$lld h %2$lld min";
 "community_invite.refresh" = "Actualiser le temps restant";
+"community_invite.relay.title" = "Accès au relais";
+"community_invite.relay.enrolled" = "Admis";
+"community_invite.relay.working" = "Vérification…";
+"community_invite.relay.failed" = "Refusé";
+"community_invite.relay.no_invitation" = "Aucune invitation";
+"community_invite.relay.unknown" = "Pas encore vérifié";
+"community_invite.relay.retry" = "Réinscrire ce Mac auprès du relais";
+"community_invite.relay.detail_enrolled" = "Ce Mac peut utiliser le relais : le partage atteint les personnes sur d'autres réseaux.";
+"community_invite.relay.detail_blocked" = "Le relais n'admet que les Mac inscrits avec une invitation. Tant que ce n'est pas fait, le partage fonctionne sur le même réseau et ne se connecte jamais entre réseaux — sans rien à l'écran pour le dire.";
 "community_invite.replace" = "Utiliser un nouveau code";
 "community_invite.inactive" = "Aucune invitation communautaire active";
 "community_invite.use_toggle" = "Transcrire avec l’invitation communautaire";
