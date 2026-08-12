@@ -720,6 +720,8 @@
 "capture.remote.catching_up" = "Les sous-titres rattrapent leur retard, %d secondes de décalage";
 "capture.remote.live" = "Distant en direct";
 "capture.remote.degraded" = "Distant dégradé";
+"capture.translation.halted" = "Traduction « %@ » interrompue";
+"capture.translation.halted.detail" = "L'audio local ne pouvait plus être transmis sans coupure à ce flux de traduction ; il a été arrêté plutôt que poursuivi sur une chronologie devenue fausse. La transcription n'est pas affectée. Relancez l'enregistrement pour retraduire.";
 "capture.remote.unavailable" = "Distant indisponible";
 "capture.projection.pending" = "Projection en attente";
 "capture.projection.projecting" = "Projection en cours";

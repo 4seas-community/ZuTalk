@@ -720,6 +720,8 @@
 "capture.remote.catching_up" = "캡션이 따라잡았습니다. %d초 늦었습니다.";
 "capture.remote.live" = "원격 라이브";
 "capture.remote.degraded" = "원격 성능 저하";
+"capture.translation.halted" = "\"%@\" 번역이 중단되었습니다";
+"capture.translation.halted.detail" = "이 번역 스트림으로 오디오를 끊김 없이 보낼 수 없어, 더 이상 맞지 않는 타임라인에 이어 붙이지 않고 중단했습니다. 전사에는 영향이 없습니다. 녹음을 다시 시작하면 번역이 재개됩니다.";
 "capture.remote.unavailable" = "원격 사용 불가";
 "capture.projection.pending" = "투영 보류 중";
 "capture.projection.projecting" = "투사 중";

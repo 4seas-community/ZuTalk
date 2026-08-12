@@ -719,6 +719,8 @@
 "capture.remote.catching_up" = "Untertitel holen auf, %d Sekunden Rückstand";
 "capture.remote.live" = "Remote live";
 "capture.remote.degraded" = "Remote beeinträchtigt";
+"capture.translation.halted" = "Übersetzung „%@“ gestoppt";
+"capture.translation.halted.detail" = "Der lokale Ton ließ sich nicht mehr lückenlos an diesen Übersetzungsstrom senden, deshalb wurde er gestoppt statt auf einer nicht mehr passenden Zeitachse fortgeführt. Die Transkription bleibt unberührt. Aufnahme neu starten, um wieder zu übersetzen.";
 "capture.remote.unavailable" = "Remote nicht verfügbar";
 "capture.projection.pending" = "Projektion ausstehend";
 "capture.projection.projecting" = "Projektion läuft";

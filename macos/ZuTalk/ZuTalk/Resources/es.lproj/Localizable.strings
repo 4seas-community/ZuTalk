@@ -719,6 +719,8 @@
 "capture.remote.catching_up" = "Los subtítulos se están poniendo al día, %d segundos de retraso";
 "capture.remote.live" = "Remoto en vivo";
 "capture.remote.degraded" = "Remoto degradado";
+"capture.translation.halted" = "Traducción «%@» detenida";
+"capture.translation.halted.detail" = "El audio local ya no podía enviarse sin cortes a este flujo de traducción, así que se detuvo en lugar de continuar sobre una línea de tiempo que ya no coincide. La transcripción no se ve afectada. Vuelve a iniciar la grabación para traducir de nuevo.";
 "capture.remote.unavailable" = "Remoto no disponible";
 "capture.projection.pending" = "Proyección pendiente";
 "capture.projection.projecting" = "Proyectando";

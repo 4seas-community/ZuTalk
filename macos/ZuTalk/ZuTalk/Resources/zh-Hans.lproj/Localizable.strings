@@ -720,6 +720,8 @@
 "capture.remote.catching_up" = "字幕正在追赶，落后 %d 秒";
 "capture.remote.live" = "远端实时";
 "capture.remote.degraded" = "远端降级";
+"capture.translation.halted" = "“%@”翻译已中断";
+"capture.translation.halted.detail" = "本机音频无法连续送进这条翻译流，因此它被停在了当前位置，而不是接到一条已经对不上的时间线上。转录不受影响。重新开始录音即可恢复翻译。";
 "capture.remote.unavailable" = "远端不可用";
 "capture.projection.pending" = "等待投影";
 "capture.projection.projecting" = "投影中";

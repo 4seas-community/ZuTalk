@@ -720,6 +720,8 @@
 "capture.remote.catching_up" = "คำบรรยายกำลังตามให้ทัน ช้าอยู่ %d วินาที";
 "capture.remote.live" = "รีโมตทำงานสด";
 "capture.remote.degraded" = "รีโมตคุณภาพลดลง";
+"capture.translation.halted" = "การแปล \"%@\" หยุดแล้ว";
+"capture.translation.halted.detail" = "ส่งเสียงในเครื่องเข้าสตรีมการแปลนี้ต่อเนื่องไม่ได้ จึงหยุดไว้แทนที่จะต่อบนไทม์ไลน์ที่ไม่ตรงกันแล้ว การถอดเสียงไม่ได้รับผลกระทบ เริ่มบันทึกใหม่เพื่อแปลอีกครั้ง";
 "capture.remote.unavailable" = "รีโมตไม่พร้อมใช้งาน";
 "capture.projection.pending" = "รอเขียนผลลัพธ์";
 "capture.projection.projecting" = "กำลังเขียนผลลัพธ์";

@@ -708,6 +708,8 @@
 "capture.remote.catching_up" = "字幕を追跡中、%d 秒遅延";
 "capture.remote.live" = "リモートライブ";
 "capture.remote.degraded" = "リモート低下";
+"capture.translation.halted" = "「%@」の翻訳が停止しました";
+"capture.translation.halted.detail" = "この翻訳ストリームに音声を途切れなく送れなくなったため、合わなくなった時間軸に続けず停止しました。文字起こしには影響しません。録音を開始し直すと翻訳が再開します。";
 "capture.remote.unavailable" = "リモート利用不可";
 "capture.projection.pending" = "投影待ち";
 "capture.projection.projecting" = "投影中";

@@ -3694,6 +3694,23 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
     /// The canonical transcription lane has no target language of its own.
     static let canonicalLaneHealthKey = "#canonical"
+
+    /// Target languages whose translation lane was stopped at the live edge
+    /// because local audio could no longer be appended to it contiguously.
+    ///
+    /// Transcription carries on, so nothing about the screen says translation
+    /// ended — the column simply stops growing, minutes before anyone notices.
+    /// The lane cannot rejoin the recording either: resuming it would place
+    /// new audio on a provider timeline that no longer matches. So the only
+    /// honest thing to do is say which languages stopped and when.
+    var haltedTranslationLanguages: [String] {
+        laneTelemetry
+            .filter { key, lane in
+                key != Self.canonicalLaneHealthKey && lane.inputDiscontinuous
+            }
+            .keys
+            .sorted()
+    }
     @Published private(set) var contextPreview: NotebookCaptureContextPreviewDTO?
     @Published private(set) var contextPacks: [NotebookContextPackDTO] = []
     @Published private(set) var contextSources: [NotebookContextPackSourceDTO] = []

@@ -720,6 +720,8 @@
 "capture.remote.catching_up" = "Captions catching up, %d seconds behind";
 "capture.remote.live" = "Remote live";
 "capture.remote.degraded" = "Remote degraded";
+"capture.translation.halted" = "\"%@\" translation stopped";
+"capture.translation.halted.detail" = "Local audio could not be sent to this translation stream without a gap, so it was stopped rather than continued on a timeline that no longer matches. Transcription is unaffected. Stop and start the recording to translate again.";
 "capture.remote.unavailable" = "Remote unavailable";
 "capture.projection.pending" = "Projection pending";
 "capture.projection.projecting" = "Projecting";

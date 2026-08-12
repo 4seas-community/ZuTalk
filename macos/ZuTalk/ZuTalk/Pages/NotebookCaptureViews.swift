@@ -633,7 +633,8 @@ struct NotebookCaptureToolbar: View {
         CaptureStateLabel(
             captureState: capture.presentationCaptureState,
             remoteHealth: capture.remoteHealth,
-            projectionState: capture.projectionState
+            projectionState: capture.projectionState,
+            haltedTranslationLanguages: capture.haltedTranslationLanguages
         )
     }
 
@@ -4469,6 +4470,10 @@ struct CaptureStateLabel: View {
     let remoteHealth: NotebookRemoteHealth
     let projectionState: NotebookProjectionState
     var showsRemoteHealthWhenInactive = true
+    /// Languages whose translation lane stopped mid-recording. Remote health
+    /// cannot carry this: the capture is still live and its transcription is
+    /// still healthy, which is exactly why the loss goes unnoticed.
+    var haltedTranslationLanguages: [String] = []
 
     var body: some View {
         HStack(spacing: Spacing.sm) {
@@ -4481,11 +4486,32 @@ struct CaptureStateLabel: View {
                 Text("·").accessibilityHidden(true)
                 Label(projectionText, systemImage: projectionIcon)
             }
+            if haltedTranslationLanguages.isEmpty == false {
+                Text("·").accessibilityHidden(true)
+                // Gold, not the activity orange: orange belongs to recording
+                // itself, and this notice appears while recording is healthy.
+                Label(haltedTranslationText, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundColor(.accentGold)
+            }
         }
         .font(.captionMedium)
         .foregroundColor(.textSecondary)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityStatus))
+        .help(haltedTranslationLanguages.isEmpty ? "" : haltedTranslationHelp)
+    }
+
+    private var haltedTranslationText: String {
+        let names = haltedTranslationLanguages
+            .map { code in
+                Locale.current.localizedString(forLanguageCode: code) ?? code.uppercased()
+            }
+            .joined(separator: ", ")
+        return String(format: String(localized: "capture.translation.halted"), names)
+    }
+
+    private var haltedTranslationHelp: String {
+        String(localized: "capture.translation.halted.detail")
     }
 
     private var accessibilityStatus: String {
@@ -4495,6 +4521,9 @@ struct CaptureStateLabel: View {
         }
         if captureState.isActive == false {
             parts.append(projectionText)
+        }
+        if haltedTranslationLanguages.isEmpty == false {
+            parts.append(haltedTranslationText)
         }
         return parts.joined(separator: ", ")
     }

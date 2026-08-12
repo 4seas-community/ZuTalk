@@ -1515,8 +1515,14 @@ struct SubtitleOverlayView: View {
             )
             .font(.system(size: 11, weight: .medium))
             .foregroundColor(.secondary)
-            .help(String(localized: "subtitle.overlay.degraded_lanes"))
-            .accessibilityLabel(Text(String(localized: "subtitle.overlay.degraded_lanes")))
+            // A lane that is merely behind will catch up; one stopped for a
+            // gap in its audio will not, and the two need different advice.
+            .help(String(localized: store.haltedTranslationLanguages.isEmpty
+                ? "subtitle.overlay.degraded_lanes"
+                : "capture.translation.halted.detail"))
+            .accessibilityLabel(Text(String(localized: store.haltedTranslationLanguages.isEmpty
+                ? "subtitle.overlay.degraded_lanes"
+                : "capture.translation.halted.detail")))
         }
     }
 
