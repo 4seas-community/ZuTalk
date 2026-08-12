@@ -1573,6 +1573,93 @@ const SEGMENT_BOUNDARY_BROADCAST_MIN_INTERVAL: std::time::Duration =
 /// and whole-segment binding is degrading into cross-row content.
 const CROSS_ROW_OVERLAP_WARN_PER_MILLE: u16 = 500;
 
+/// How much speech one canonical row may hold before the client closes it
+/// itself.
+///
+/// Semantic endpointing needs a pause to fire, and continuous lecture delivery
+/// does not reliably give it one. Measured on a 93-minute Chinese lecture:
+/// rows ran to a median of 49s and a maximum of 352s, one of them holding
+/// 5,377 characters. Two things break at that length. A caption row minutes
+/// long is not a caption. And cross-lane binding matches an auxiliary segment
+/// to the canonical row whose words contain it — against a row that spans
+/// minutes, the auxiliary lane's own normal-length segments have nothing
+/// comparable to attach to. The same recording logged 1,691 translation
+/// segments that found no canonical row at all, every one of them with zero
+/// candidates.
+///
+/// The provider already accepts a client finalize; the auxiliary lanes have
+/// been sent one at every canonical endpoint since multi-language capture
+/// existed. This applies the same control to the canonical lane on a length
+/// rule instead of on a sibling's boundary.
+///
+/// 25 seconds sits above the natural conversational segment (measured 25th
+/// percentile 8.4s) so ordinary speech still segments on meaning, and far
+/// below the runaway rows this exists to cut.
+const MAX_CANONICAL_SEGMENT_MS: u64 = 25_000;
+
+/// Closes a canonical row that provider endpointing has left open too long.
+///
+/// Positions are provider-confirmed audio milliseconds, not wall clock: a lane
+/// that is behind must not have its rows cut on the operator's clock, and a
+/// replay faster than realtime must still cut at the same audio positions.
+#[derive(Default)]
+struct CanonicalSegmentWatchdog {
+    /// Audio position where the currently open canonical row began. `None`
+    /// until the first progress report anchors it.
+    opened_at_ms: Option<u64>,
+    /// A finalize is already in flight; the boundary it produces has not come
+    /// back yet. Without this the watchdog re-asks on every progress report
+    /// for as long as the provider takes to answer.
+    finalize_in_flight: bool,
+}
+
+impl CanonicalSegmentWatchdog {
+    /// A boundary landed — from provider endpointing or from our own finalize.
+    fn boundary_reached(&mut self, audio_position_ms: Option<u64>) {
+        self.opened_at_ms = audio_position_ms;
+        self.finalize_in_flight = false;
+    }
+
+    /// Returns true when the row open at `audio_position_ms` has run past the
+    /// cap and a finalize should be sent.
+    fn should_finalize(&mut self, audio_position_ms: u64) -> bool {
+        let Some(opened_at_ms) = self.opened_at_ms else {
+            self.opened_at_ms = Some(audio_position_ms);
+            return false;
+        };
+        if self.finalize_in_flight {
+            return false;
+        }
+        if audio_position_ms.saturating_sub(opened_at_ms) < MAX_CANONICAL_SEGMENT_MS {
+            return false;
+        }
+        self.finalize_in_flight = true;
+        true
+    }
+}
+
+/// Sends the length-rule finalize to the canonical lane. Best-effort for the
+/// same reason the auxiliary barrier is: a full control channel means the lane
+/// is busy, and the next progress report asks again.
+fn finalize_overlong_canonical_segment(
+    control: Option<&tokio::sync::mpsc::Sender<SttStreamControl>>,
+    watchdog: &mut CanonicalSegmentWatchdog,
+    audio_position_ms: u64,
+) {
+    let Some(control) = control else { return };
+    match control.try_send(SttStreamControl::Finalize) {
+        Ok(()) => tracing::debug!(
+            audio_position_ms,
+            "closed an overlong canonical segment on the length rule"
+        ),
+        Err(error) => {
+            // The request never left, so it is not in flight.
+            watchdog.finalize_in_flight = false;
+            tracing::debug!(%error, "canonical segment finalize skipped");
+        }
+    }
+}
+
 /// The canonical stream is the segmentation authority. Its semantic endpoint
 /// closes the current row, so every connected auxiliary stream is told to
 /// finalize at the same audio position; auxiliary endpoint detection stays
@@ -1765,6 +1852,7 @@ async fn collect_stream_events(
     }
 
     let mut last_boundary_broadcast: Option<tokio::time::Instant> = None;
+    let mut canonical_segment = CanonicalSegmentWatchdog::default();
     let fair_pending_limit = lanes.len().saturating_mul(64).clamp(64, 512);
     let mut fair_events = FairTaggedEventQueue::new(lanes.len(), fair_pending_limit);
     while let Some(tagged) = fair_events.recv(&mut event_rx, &mut discontinuity_rx).await {
@@ -1826,12 +1914,35 @@ async fn collect_stream_events(
             }
         }
         let lane_index = tagged.lane_index;
-        if lane_index == canonical_lane_index && matches!(&tagged.event, SttStreamEvent::Endpoint) {
-            broadcast_segment_boundary_to_auxiliary_lanes(
-                &lanes,
-                &lane_controls,
-                &mut last_boundary_broadcast,
-            );
+        if lane_index == canonical_lane_index {
+            match &tagged.event {
+                // A client finalize produces `Finalized` rather than
+                // `Endpoint`, and the auxiliary lanes need the barrier either
+                // way — the row closed, so their rows must close with it.
+                SttStreamEvent::Endpoint | SttStreamEvent::Finalized => {
+                    canonical_segment.boundary_reached(lanes[lane_index].total_audio_proc_ms);
+                    broadcast_segment_boundary_to_auxiliary_lanes(
+                        &lanes,
+                        &lane_controls,
+                        &mut last_boundary_broadcast,
+                    );
+                }
+                SttStreamEvent::AudioProgress {
+                    total_audio_proc_ms,
+                    ..
+                } => {
+                    if canonical_segment.should_finalize(*total_audio_proc_ms) {
+                        finalize_overlong_canonical_segment(
+                            lane_controls
+                                .get(canonical_lane_index)
+                                .and_then(Option::as_ref),
+                            &mut canonical_segment,
+                            *total_audio_proc_ms,
+                        );
+                    }
+                }
+                _ => {}
+            }
         }
         let publishes_canonical_preview = lane_index == canonical_lane_index
             && matches!(
@@ -8120,9 +8231,13 @@ impl ZuTalkCore {
             .iter()
             .map(|stream| stream.descriptor.clone())
             .collect::<Vec<_>>();
+        // Every lane's control, canonical included: the length rule closes the
+        // canonical row itself. The auxiliary barrier skips canonical on the
+        // lane descriptor rather than on a missing sender, so carrying it here
+        // cannot reach that path.
         let lane_controls = streams
             .iter()
-            .map(|stream| (!stream.descriptor.canonical).then(|| stream.control_tx.clone()))
+            .map(|stream| Some(stream.control_tx.clone()))
             .collect::<Vec<_>>();
         let store = (*self.notebook_capture_store).clone();
         let context_store = self.context_pack_store.clone();
@@ -14148,8 +14263,8 @@ mod tests {
         let (en_tx, mut en_rx) = tokio::sync::mpsc::channel(4);
         let (th_tx, mut th_rx) = tokio::sync::mpsc::channel(4);
         let (ja_tx, mut ja_rx) = tokio::sync::mpsc::channel(4);
-        // The canonical lane keeps `None` in production; a live sender here
-        // proves the guard on the descriptor, not just on the caller.
+        // Production carries a live canonical sender too, because the length
+        // rule finalizes that lane. The barrier must skip it on the descriptor.
         let controls = vec![Some(canonical_tx), Some(en_tx), Some(th_tx), Some(ja_tx)];
 
         let mut last_broadcast = None;
@@ -14169,7 +14284,7 @@ mod tests {
         );
         assert!(
             canonical_rx.try_recv().is_err(),
-            "the segmentation authority never finalizes itself"
+            "the segmentation authority never finalizes itself at a sibling's boundary"
         );
         assert!(last_broadcast.is_some());
 
@@ -14178,6 +14293,63 @@ mod tests {
             en_rx.try_recv().is_err(),
             "a second endpoint inside the debounce window must not repeat the barrier"
         );
+    }
+
+    #[test]
+    fn canonical_segment_watchdog_cuts_only_rows_that_outran_the_cap() {
+        let mut watchdog = CanonicalSegmentWatchdog::default();
+
+        // The first progress report anchors the open row rather than
+        // measuring it against a start that was never recorded.
+        assert!(!watchdog.should_finalize(400_000));
+        assert!(!watchdog.should_finalize(400_000 + MAX_CANONICAL_SEGMENT_MS - 1));
+
+        assert!(
+            watchdog.should_finalize(400_000 + MAX_CANONICAL_SEGMENT_MS),
+            "a row that reached the cap is closed by the client"
+        );
+        assert!(
+            !watchdog.should_finalize(400_000 + MAX_CANONICAL_SEGMENT_MS * 4),
+            "one finalize is in flight; progress reports must not pile on more"
+        );
+
+        // The boundary that finalize produced restarts the measurement from
+        // where it landed, not from zero.
+        watchdog.boundary_reached(Some(430_000));
+        assert!(!watchdog.should_finalize(430_000 + MAX_CANONICAL_SEGMENT_MS - 1));
+        assert!(watchdog.should_finalize(430_000 + MAX_CANONICAL_SEGMENT_MS));
+    }
+
+    #[test]
+    fn canonical_segment_watchdog_retries_when_the_control_channel_refused() {
+        let mut watchdog = CanonicalSegmentWatchdog::default();
+        assert!(!watchdog.should_finalize(0));
+        assert!(watchdog.should_finalize(MAX_CANONICAL_SEGMENT_MS));
+
+        // A full control channel means the request never left. Leaving it
+        // marked in flight would retire the length rule for the rest of the
+        // recording — exactly the row this exists to cut.
+        let (tx, rx) = tokio::sync::mpsc::channel::<SttStreamControl>(1);
+        drop(rx);
+        finalize_overlong_canonical_segment(Some(&tx), &mut watchdog, MAX_CANONICAL_SEGMENT_MS);
+        assert!(!watchdog.finalize_in_flight);
+        assert!(
+            watchdog.should_finalize(MAX_CANONICAL_SEGMENT_MS + 1),
+            "the next progress report asks again"
+        );
+    }
+
+    #[test]
+    fn canonical_segment_watchdog_sends_one_finalize_to_the_canonical_lane() {
+        let mut watchdog = CanonicalSegmentWatchdog::default();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<SttStreamControl>(4);
+        assert!(!watchdog.should_finalize(0));
+        assert!(watchdog.should_finalize(MAX_CANONICAL_SEGMENT_MS));
+
+        finalize_overlong_canonical_segment(Some(&tx), &mut watchdog, MAX_CANONICAL_SEGMENT_MS);
+
+        assert_eq!(rx.try_recv(), Ok(SttStreamControl::Finalize));
+        assert!(watchdog.finalize_in_flight);
     }
 
     #[test]
