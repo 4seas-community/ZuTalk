@@ -3052,23 +3052,51 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
 
         isApplyingMaximizedTransition = true
         placement = target
+        let frame = applyPresentationChrome(for: target, in: visibleFrame)
+
+        let didApplyFrame = applyFrame(frame)
+        isApplyingMaximizedTransition = false
+        if didApplyFrame == false {
+            placement = previous
+            // The chrome for `target` is already on the window. Leaving it
+            // there would strand the panel in one placement's bounds while it
+            // reports another — a banner that reports as filled would be stuck
+            // at the display width with no way to resize out of it.
+            if previous == .restored {
+                restoredWindowFrame = nil
+                restoreWindowChrome()
+            } else {
+                _ = applyPresentationChrome(for: previous, in: visibleFrame)
+            }
+        }
+        return placement
+    }
+
+    /// Applies the window treatment a presentation placement needs and returns
+    /// the frame it wants. Bounds are widened before the frame is applied
+    /// because a frame larger than the current maximum content size would
+    /// otherwise be clamped on the way in.
+    @discardableResult
+    private func applyPresentationChrome(
+        for placement: SubtitleOverlayPlacement,
+        in visibleFrame: NSRect
+    ) -> NSRect {
         managedWindow.isMovable = false
         managedWindow.isMovableByWindowBackground = false
         managedWindow.hasShadow = false
         managedWindow.collectionBehavior =
             SubtitleOverlayWindowPolicy.maximizedCollectionBehavior
 
-        let frame: NSRect
-        switch target {
+        switch placement {
         case .restored:
-            preconditionFailure("the restored placement returned above")
+            preconditionFailure("restored is not a presentation placement")
         case .filled:
             managedWindow.contentMaxSize = NSSize(
                 width: CGFloat.greatestFiniteMagnitude,
                 height: CGFloat.greatestFiniteMagnitude
             )
             managedWindow.styleMask = managedWindow.styleMask.subtracting(.resizable)
-            frame = visibleFrame.integral
+            return visibleFrame.integral
         case .banner:
             // Width is locked to the display by pinning both content bounds to
             // it, which leaves AppKit's own resize handles working vertically.
@@ -3086,19 +3114,8 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
                     visibleFrame.height * SubtitleOverlayBannerMetrics.maximumHeightFraction
                 )
             )
-            frame = banner
+            return banner
         }
-
-        let didApplyFrame = applyFrame(frame)
-        isApplyingMaximizedTransition = false
-        if didApplyFrame == false {
-            placement = previous
-            if previous == .restored {
-                restoredWindowFrame = nil
-                restoreWindowChrome()
-            }
-        }
-        return placement
     }
 
     private func configurePanel() {

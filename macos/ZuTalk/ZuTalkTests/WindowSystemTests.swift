@@ -846,6 +846,15 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertTrue(window.styleMask.contains(.resizable))
         XCTAssertEqual(window.contentMinSize.width, banner.width)
         XCTAssertEqual(window.contentMaxSize.width, banner.width)
+        // The width lock is expressed in content coordinates while the frame
+        // is applied in window coordinates. This panel is fullSizeContentView,
+        // so the two agree — asserted rather than assumed, because if they
+        // ever diverge the lock would be off by the chrome and the strip would
+        // stop being exactly the display's width.
+        XCTAssertEqual(
+            window.contentRect(forFrameRect: banner).width,
+            banner.width
+        )
         XCTAssertGreaterThan(window.contentMaxSize.height, window.contentMinSize.height)
     }
 

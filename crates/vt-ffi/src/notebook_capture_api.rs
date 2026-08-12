@@ -1607,17 +1607,23 @@ struct CanonicalSegmentWatchdog {
     /// Audio position where the currently open canonical row began. `None`
     /// until the first progress report anchors it.
     opened_at_ms: Option<u64>,
-    /// A finalize is already in flight; the boundary it produces has not come
-    /// back yet. Without this the watchdog re-asks on every progress report
-    /// for as long as the provider takes to answer.
-    finalize_in_flight: bool,
+    /// Audio position where a finalize was last asked for, while its boundary
+    /// has not come back. Without it the watchdog would re-ask on every
+    /// progress report for as long as the provider takes to answer.
+    ///
+    /// A position rather than a flag, because "asked and never answered" has
+    /// to expire. A finalize can be lost to a reconnect, an error, or a
+    /// provider that simply emits no boundary, and a flag would leave the
+    /// length rule retired for the rest of the recording — the same permanent
+    /// retirement the refused-send path is careful to avoid.
+    finalize_requested_at_ms: Option<u64>,
 }
 
 impl CanonicalSegmentWatchdog {
     /// A boundary landed — from provider endpointing or from our own finalize.
     fn boundary_reached(&mut self, audio_position_ms: Option<u64>) {
         self.opened_at_ms = audio_position_ms;
-        self.finalize_in_flight = false;
+        self.finalize_requested_at_ms = None;
     }
 
     /// Returns true when the row open at `audio_position_ms` has run past the
@@ -1627,13 +1633,14 @@ impl CanonicalSegmentWatchdog {
             self.opened_at_ms = Some(audio_position_ms);
             return false;
         };
-        if self.finalize_in_flight {
+        // An unanswered finalize is re-asked once the row has run another full
+        // cap past the request, so a lost one costs one extra long row rather
+        // than every row for the rest of the recording.
+        let measured_from = self.finalize_requested_at_ms.unwrap_or(opened_at_ms);
+        if audio_position_ms.saturating_sub(measured_from) < MAX_CANONICAL_SEGMENT_MS {
             return false;
         }
-        if audio_position_ms.saturating_sub(opened_at_ms) < MAX_CANONICAL_SEGMENT_MS {
-            return false;
-        }
-        self.finalize_in_flight = true;
+        self.finalize_requested_at_ms = Some(audio_position_ms);
         true
     }
 }
@@ -1653,8 +1660,8 @@ fn finalize_overlong_canonical_segment(
             "closed an overlong canonical segment on the length rule"
         ),
         Err(error) => {
-            // The request never left, so it is not in flight.
-            watchdog.finalize_in_flight = false;
+            // The request never left, so nothing is pending.
+            watchdog.finalize_requested_at_ms = None;
             tracing::debug!(%error, "canonical segment finalize skipped");
         }
     }
@@ -5260,6 +5267,11 @@ pub(crate) struct ActiveRemoteCapture {
     /// Replacements opened so far, so a lane that cannot stay up stops being
     /// retried instead of reconnecting for the rest of the recording.
     lane_restarts: Vec<u8>,
+    /// The audio thread calls into fan-out straight from Swift's tap, with no
+    /// runtime context of its own. Opening a replacement lane spawns tasks, so
+    /// it has to borrow one — a bare spawn there panics across the FFI
+    /// boundary and takes the app with it.
+    runtime: tokio::runtime::Handle,
 }
 
 impl ActiveRemoteCapture {
@@ -5362,6 +5374,7 @@ impl ActiveRemoteCapture {
             / u64::from(CURRENT_NOTEBOOK_CAPTURE_ENGINE.sample_rate.max(1));
 
         let lane_cancel = self.cancel.child_token();
+        let _runtime_guard = self.runtime.enter();
         let runtime = self.stream_factory.start(
             &self.endpoint,
             self.credential.clone(),
@@ -8498,6 +8511,7 @@ impl ZuTalkCore {
         Ok(ActiveRemoteCapture {
             stream_factory,
             lane_restarts: vec![0; streams.len()],
+            runtime: self.runtime.handle().clone(),
             streams,
             cancel,
             event_task,
@@ -12171,6 +12185,7 @@ mod tests {
             tagged_tx: tokio::sync::mpsc::channel(8).0,
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
+            runtime: tokio::runtime::Handle::current(),
         };
         let report = capture
             .try_fanout_pcm(&[7u8; 64])
@@ -12216,6 +12231,7 @@ mod tests {
             tagged_tx: tokio::sync::mpsc::channel(8).0,
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
+            runtime: tokio::runtime::Handle::current(),
         };
         assert!(canonical_down.try_fanout_pcm(&[7u8; 64]).is_err());
         assert!(canonical_down
@@ -12242,12 +12258,92 @@ mod tests {
             tagged_tx: tokio::sync::mpsc::channel(8).0,
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
+            runtime: tokio::runtime::Handle::current(),
         };
         canceled_group.cancel();
         assert!(canceled_capture.try_fanout_pcm(&[7u8; 64]).is_err());
         assert!(canceled_capture
             .try_fanout_control(SttStreamControl::Keepalive)
             .is_err());
+    }
+
+    /// The audio thread is not inside the tokio runtime.
+    ///
+    /// `push_notebook_capture_session` is called straight from Swift's audio
+    /// tap and never enters the runtime — the only `runtime.enter()` in this
+    /// file is on the capture-start path. Anything on the fan-out path that
+    /// spawns a task therefore panics across the FFI boundary, which would
+    /// turn "one translation column stopped" into "the app died".
+    ///
+    /// Every other fan-out test is a `#[tokio::test]` and so runs inside a
+    /// runtime context that production does not have.
+    #[test]
+    fn reopening_a_lane_works_off_the_runtime_thread() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        let factory = Arc::new(RecordingFanoutFactory {
+            sent: std::sync::Mutex::new(Vec::new()),
+            restarted_at_ms: std::sync::Mutex::new(Vec::new()),
+        });
+        let mut capture = runtime.block_on(async {
+            let (canonical_tx, canonical_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+            std::mem::forget(canonical_rx);
+            let (dead_tx, dead_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(4);
+            drop(dead_rx);
+            let (discontinuity_tx, _discontinuity_rx) = tokio::sync::mpsc::unbounded_channel();
+            std::mem::forget(_discontinuity_rx);
+            ActiveRemoteCapture {
+                stream_factory: factory.clone(),
+                streams: vec![
+                    ActiveRemoteStream {
+                        descriptor: RemoteStreamLane {
+                            target_language: None,
+                            canonical: true,
+                        },
+                        config: SttConfig::default(),
+                        audio_tx: canonical_tx,
+                        control_tx: tokio::sync::mpsc::channel(4).0,
+                        stream_task: tokio::spawn(async { Ok(()) }),
+                        forward_task: tokio::spawn(async {}),
+                        lane_cancel: tokio_util::sync::CancellationToken::new(),
+                        input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                    },
+                    ActiveRemoteStream {
+                        descriptor: RemoteStreamLane {
+                            target_language: Some("en".to_string()),
+                            canonical: false,
+                        },
+                        config: SttConfig::default(),
+                        audio_tx: dead_tx,
+                        control_tx: tokio::sync::mpsc::channel(4).0,
+                        stream_task: tokio::spawn(async { Ok(()) }),
+                        forward_task: tokio::spawn(async {}),
+                        lane_cancel: tokio_util::sync::CancellationToken::new(),
+                        input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                    },
+                ],
+                cancel: tokio_util::sync::CancellationToken::new(),
+                event_task: tokio::spawn(async { Ok(()) }),
+                discontinuity_tx,
+                endpoint: "wss://stream.invalid".to_string(),
+                credential: vt_stt::StaticLaneCredential::new("test-key"),
+                tagged_tx: tokio::sync::mpsc::channel(8).0,
+                captured_frames: Arc::new(AtomicU64::new(16_000)),
+                lane_restarts: vec![0; 2],
+                runtime: runtime.handle().clone(),
+            }
+        });
+
+        // Deliberately outside `block_on` and outside any `enter()` guard:
+        // this is the audio thread.
+        let report = capture
+            .try_fanout_pcm(&[5u8; 3_200])
+            .expect("a dead auxiliary lane must not stop capture audio");
+        assert_eq!(report.auxiliary_restarts, ["en"]);
+        assert_eq!(factory.restarted_at_ms.lock().unwrap().as_slice(), [1_000]);
     }
 
     /// A lane that keeps dying is not being rescued by another attempt. The
@@ -12340,6 +12436,7 @@ mod tests {
             tagged_tx: tokio::sync::mpsc::channel(8).0,
             captured_frames,
             lane_restarts: vec![0; 2],
+            runtime: tokio::runtime::Handle::current(),
         };
 
         // Every replacement is itself dead on arrival here, so the lane fails
@@ -12400,6 +12497,7 @@ mod tests {
             tagged_tx: tokio::sync::mpsc::channel(8).0,
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
+            runtime: tokio::runtime::Handle::current(),
         };
 
         let block = vec![9_u8; 64];
@@ -14723,8 +14821,15 @@ mod tests {
             "a row that reached the cap is closed by the client"
         );
         assert!(
-            !watchdog.should_finalize(400_000 + MAX_CANONICAL_SEGMENT_MS * 4),
-            "one finalize is in flight; progress reports must not pile on more"
+            !watchdog.should_finalize(400_000 + MAX_CANONICAL_SEGMENT_MS + 1),
+            "a finalize is pending; progress reports must not pile on more"
+        );
+        // But a finalize the provider never answers must not retire the rule.
+        // One more capful of audio with no boundary and the watchdog asks
+        // again, so a lost request costs one long row, not all of them.
+        assert!(
+            watchdog.should_finalize(400_000 + MAX_CANONICAL_SEGMENT_MS * 2),
+            "an unanswered finalize is re-asked rather than abandoned"
         );
 
         // The boundary that finalize produced restarts the measurement from
@@ -14746,7 +14851,7 @@ mod tests {
         let (tx, rx) = tokio::sync::mpsc::channel::<SttStreamControl>(1);
         drop(rx);
         finalize_overlong_canonical_segment(Some(&tx), &mut watchdog, MAX_CANONICAL_SEGMENT_MS);
-        assert!(!watchdog.finalize_in_flight);
+        assert!(watchdog.finalize_requested_at_ms.is_none());
         assert!(
             watchdog.should_finalize(MAX_CANONICAL_SEGMENT_MS + 1),
             "the next progress report asks again"
@@ -14763,7 +14868,7 @@ mod tests {
         finalize_overlong_canonical_segment(Some(&tx), &mut watchdog, MAX_CANONICAL_SEGMENT_MS);
 
         assert_eq!(rx.try_recv(), Ok(SttStreamControl::Finalize));
-        assert!(watchdog.finalize_in_flight);
+        assert!(watchdog.finalize_requested_at_ms.is_some());
     }
 
     #[test]
