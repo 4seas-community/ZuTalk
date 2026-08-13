@@ -14,6 +14,8 @@ from server import (
     MAX_LANES_PER_SESSION,
     RESERVATION_TTL_SECONDS,
     session_key_budget,
+    KEYS_PER_LANE,
+    SESSION_KEY_FLOOR,
     Store,
     secret_equals,
     stream_duration_seconds,
@@ -153,12 +155,24 @@ class StoreTests(unittest.TestCase):
         """A four-lane capture spends four keys before a word is spoken and
         needs one more per reconnect. A flat per-session budget gave it the
         same allowance as a single socket, and four ordinary blips ended
-        translation for the rest of the recording."""
-        self.assertEqual(session_key_budget(1), 16, "one lane keeps its old floor")
-        self.assertEqual(session_key_budget(2), 16, "the floor still applies")
-        self.assertEqual(session_key_budget(MAX_LANES_PER_SESSION), 32)
+        translation for the rest of the recording.
+
+        The budget is a ceiling, not an allocation: keys are minted on demand,
+        so a capture on a healthy network uses a couple of dozen and the rest
+        is headroom that costs nothing."""
+        self.assertEqual(session_key_budget(1), max(SESSION_KEY_FLOOR, KEYS_PER_LANE))
+        self.assertEqual(
+            session_key_budget(MAX_LANES_PER_SESSION),
+            KEYS_PER_LANE * MAX_LANES_PER_SESSION,
+        )
+        self.assertGreater(
+            session_key_budget(MAX_LANES_PER_SESSION),
+            session_key_budget(1),
+            "more lanes must mean more headroom, not the same",
+        )
+        self.assertGreaterEqual(session_key_budget(1), SESSION_KEY_FLOOR)
         # Out-of-range lane counts are clamped, not trusted.
-        self.assertEqual(session_key_budget(0), 16)
+        self.assertEqual(session_key_budget(0), session_key_budget(1))
         self.assertEqual(session_key_budget(99), session_key_budget(MAX_LANES_PER_SESSION))
 
     def test_a_four_lane_session_is_issued_its_larger_budget(self):

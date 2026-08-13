@@ -57,15 +57,27 @@ MAX_OPEN_SESSIONS_PER_INVITE = 2
 # into one canonical lane plus one translation lane per language. Everything
 # the server derives per lane is bounded by this.
 MAX_LANES_PER_SESSION = 4
-# Per-lane key budget: a lane's own start, one complete retry of it, and
-# reconnect headroom for a five-hour recording. Key issuance is the server's
+# Per-lane key budget: a lane's own start plus reconnect headroom for the
+# longest recording this service allows. Key issuance is the server's
 # stream-count lever, so it stays finite — but the demand is per lane, and
-# expressing the budget per session was the bug. Sixteen flat meant a
+# expressing the budget per session was the original bug. Sixteen flat meant a
 # four-lane capture spent five before a word was spoken and had eleven for
 # everything after; four ordinary blips ended translation for the rest of the
-# recording. Soniox itself caps key creation by rate (100/minute), not by
-# total, so this ceiling is entirely ours to size.
-KEYS_PER_LANE = 8
+# recording.
+#
+# Sized against the worst network a five-hour capture can survive rather than
+# the typical one. A client that reconnects once a minute for five hours needs
+# about 300 keys on that lane; 256 covers a reconnect every seventy seconds,
+# which is far past the point where the user has other problems. Being
+# generous here is cheap: Soniox caps key creation by rate (400/minute), not
+# by total, and a four-lane group reconnecting in unison asks for four.
+#
+# What still bounds a leaked token is not this number. Every stream it opens
+# bills against the reservation's audio seconds, the reservation is bounded by
+# the invitation's quota, and MAX_OPEN_SESSIONS_PER_INVITE bounds how many
+# reservations can be open at once. This budget only stops a runaway client
+# from opening streams without limit inside one reservation.
+KEYS_PER_LANE = 256
 # Never below the old flat budget: a one-lane capture must not lose headroom
 # it has always had.
 SESSION_KEY_FLOOR = 16
