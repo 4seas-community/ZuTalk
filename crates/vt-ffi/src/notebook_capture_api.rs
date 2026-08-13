@@ -5176,10 +5176,11 @@ pub(crate) struct ActiveNotebookCapture {
 /// than for any work. Six of ten recordings on one machine ended this way with
 /// nothing to distinguish those cases.
 ///
-/// Kept as running counters rather than a history buffer: this sits on the
-/// audio thread, and a diagnostic that costs allocations per block would be
-/// paying for itself in the currency it is trying to measure.
-#[derive(Debug, Default, Clone, Copy)]
+/// Kept as running counters plus a small fixed window rather than a full
+/// history: this sits on the audio thread, and a diagnostic that costs
+/// allocations per block would be paying for itself in the currency it is
+/// trying to measure.
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct PushCadence {
     pushes: u64,
     total_us: u64,
@@ -5190,6 +5191,52 @@ pub(crate) struct PushCadence {
     /// read — not behind its own journal or provider work.
     slowest_lock_wait_us: u64,
     total_lock_wait_us: u64,
+    /// The last [`PUSH_CADENCE_WINDOW`] pushes, oldest overwritten first.
+    recent: [PushSample; PUSH_CADENCE_WINDOW],
+    recent_cursor: usize,
+}
+
+/// How many recent pushes the window keeps.
+///
+/// The lifetime counters answer "was this recording slow", which is not the
+/// question a full queue asks. Swift accepts eight blocks of 100 ms before it
+/// declares overflow, so the burst that fills the queue is under a second
+/// long — averaged against an hour of healthy pushes it disappears entirely,
+/// and the recordings that ended this way looked identical to healthy ones in
+/// every number reported. Thirty-two blocks is that burst plus the run-up to
+/// it, and 256 bytes of it lives on the capture rather than on the audio
+/// thread's stack.
+const PUSH_CADENCE_WINDOW: usize = 32;
+
+#[derive(Debug, Default, Clone, Copy)]
+struct PushSample {
+    elapsed_us: u32,
+    lock_wait_us: u32,
+}
+
+/// What the audio thread was experiencing over the last
+/// [`PUSH_CADENCE_WINDOW`] pushes.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct PushCadenceWindow {
+    pushes: u64,
+    mean_us: u64,
+    slowest_us: u64,
+    slowest_lock_wait_us: u64,
+}
+
+impl Default for PushCadence {
+    fn default() -> Self {
+        Self {
+            pushes: 0,
+            total_us: 0,
+            slowest_us: 0,
+            slowest_at_frame: 0,
+            slowest_lock_wait_us: 0,
+            total_lock_wait_us: 0,
+            recent: [PushSample::default(); PUSH_CADENCE_WINDOW],
+            recent_cursor: 0,
+        }
+    }
 }
 
 impl PushCadence {
@@ -5202,6 +5249,11 @@ impl PushCadence {
             self.slowest_at_frame = frames;
         }
         self.slowest_lock_wait_us = self.slowest_lock_wait_us.max(lock_wait_us);
+        self.recent[self.recent_cursor] = PushSample {
+            elapsed_us: u32::try_from(elapsed_us).unwrap_or(u32::MAX),
+            lock_wait_us: u32::try_from(lock_wait_us).unwrap_or(u32::MAX),
+        };
+        self.recent_cursor = (self.recent_cursor + 1) % PUSH_CADENCE_WINDOW;
     }
 
     fn mean_us(&self) -> u64 {
@@ -5212,6 +5264,33 @@ impl PushCadence {
         self.total_lock_wait_us
             .checked_div(self.pushes)
             .unwrap_or(0)
+    }
+
+    /// Ring order does not matter to a count, a mean, or a maximum, so the
+    /// window is read as a flat prefix of however many slots have been filled.
+    fn window(&self) -> PushCadenceWindow {
+        let filled = usize::try_from(self.pushes)
+            .unwrap_or(PUSH_CADENCE_WINDOW)
+            .min(PUSH_CADENCE_WINDOW);
+        let samples = &self.recent[..filled];
+        let total_us: u64 = samples
+            .iter()
+            .map(|sample| u64::from(sample.elapsed_us))
+            .sum();
+        PushCadenceWindow {
+            pushes: filled as u64,
+            mean_us: total_us.checked_div(filled as u64).unwrap_or(0),
+            slowest_us: samples
+                .iter()
+                .map(|sample| u64::from(sample.elapsed_us))
+                .max()
+                .unwrap_or(0),
+            slowest_lock_wait_us: samples
+                .iter()
+                .map(|sample| u64::from(sample.lock_wait_us))
+                .max()
+                .unwrap_or(0),
+        }
     }
 }
 
@@ -7021,6 +7100,9 @@ impl ZuTalkCore {
             // Without these numbers a full queue is indistinguishable from a
             // single multi-second stall, and both look like "it crashed".
             let cadence = active.push_cadence;
+            // The window is the tail the queue actually died in; the lifetime
+            // numbers beside it are what that tail has to be read against.
+            let window = cadence.window();
             tracing::warn!(
                 session_id,
                 pushes = cadence.pushes,
@@ -7029,6 +7111,10 @@ impl ZuTalkCore {
                 slowest_at_frame = cadence.slowest_at_frame,
                 mean_lock_wait_us = cadence.mean_lock_wait_us(),
                 slowest_lock_wait_us = cadence.slowest_lock_wait_us,
+                window_pushes = window.pushes,
+                window_mean_us = window.mean_us,
+                window_slowest_us = window.slowest_us,
+                window_slowest_lock_wait_us = window.slowest_lock_wait_us,
                 captured_frames = active.captured_frames.load(Ordering::Acquire),
                 "local audio queue overflowed; audio-thread cadence for this capture"
             );
@@ -12574,6 +12660,50 @@ mod tests {
         // the next question is which command held it, not what push does.
         assert_eq!(stalled.slowest_lock_wait_us, 3_900_000);
         assert_eq!(uniform.slowest_lock_wait_us, 40);
+    }
+
+    /// The failure the lifetime counters cannot see. A recording that was
+    /// healthy for an hour and then degraded for the last three seconds is
+    /// how a bounded eight-block queue actually overflows, and against 36,000
+    /// good pushes the bad ones move the average by nothing.
+    #[test]
+    fn push_cadence_window_sees_a_tail_the_lifetime_average_cannot() {
+        let mut cadence = PushCadence::default();
+        for frame in 0..36_000u64 {
+            cadence.record(300, 40, frame * 1_600);
+        }
+        for step in 0..8u64 {
+            cadence.record(900_000, 850_000, (36_000 + step) * 1_600);
+        }
+
+        // Eight stalled pushes against thirty-six thousand healthy ones: the
+        // lifetime mean stays under a millisecond and reports a fine session.
+        assert!(cadence.mean_us() < 1_000, "{}", cadence.mean_us());
+
+        let window = cadence.window();
+        assert_eq!(window.pushes, PUSH_CADENCE_WINDOW as u64);
+        // Eight of the last thirty-two pushes took 0.9s each, so the window
+        // mean is three orders of magnitude above the lifetime mean.
+        assert_eq!(window.mean_us, (8 * 900_000 + 24 * 300) / 32);
+        assert_eq!(window.slowest_us, 900_000);
+        assert_eq!(window.slowest_lock_wait_us, 850_000);
+    }
+
+    /// A window that reported thirty-two pushes when only three had happened
+    /// would divide by slots that were never written, and the mean of a short
+    /// recording would read as artificially healthy.
+    #[test]
+    fn push_cadence_window_counts_only_the_pushes_that_happened() {
+        let mut cadence = PushCadence::default();
+        assert_eq!(cadence.window(), PushCadenceWindow::default());
+
+        for step in 0..3u64 {
+            cadence.record(600_000, 500_000, step * 1_600);
+        }
+        let window = cadence.window();
+        assert_eq!(window.pushes, 3);
+        assert_eq!(window.mean_us, 600_000);
+        assert_eq!(window.slowest_lock_wait_us, 500_000);
     }
 
     #[tokio::test]
