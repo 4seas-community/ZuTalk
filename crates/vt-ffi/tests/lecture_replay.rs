@@ -110,14 +110,23 @@ fn max_provider_lag_ms() -> u64 {
         .unwrap_or(30_000)
 }
 
-/// Selected capture language. Language identification stays on regardless, so
-/// this only biases the decoder toward the expected language.
-fn replay_language() -> String {
-    std::env::var("ZULANGUE_REPLAY_LANGUAGE")
-        .ok()
+/// Selected capture languages, comma separated. One language opens a single
+/// transcription stream; three open a canonical stream plus one translation
+/// stream per language, which is the configuration whose lanes fall behind.
+/// Comparing the two on the same audio is how the cost of a lane is measured
+/// rather than argued about.
+fn replay_languages() -> Vec<String> {
+    let raw = std::env::var("ZULANGUE_REPLAY_LANGUAGE").unwrap_or_else(|_| "en".to_string());
+    let languages = raw
+        .split(',')
         .map(|value| value.trim().to_lowercase())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "en".to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        !languages.is_empty() && languages.len() <= 3,
+        "ZULANGUE_REPLAY_LANGUAGE takes 1..=3 comma-separated languages"
+    );
+    languages
 }
 
 #[derive(Deserialize)]
@@ -587,6 +596,15 @@ impl Samples {
 // Capture callback recorder
 // ============================================================================
 
+/// One provider progress report for one lane.
+#[derive(Clone)]
+struct LaneProgressSample {
+    at_wall_ms: f64,
+    total_audio_proc_ms: u64,
+    lag_ms: u64,
+    state: String,
+}
+
 #[derive(Default)]
 struct RecorderState {
     capture_events: u64,
@@ -621,6 +639,8 @@ struct RecorderState {
     last_event_at_ms: f64,
     remote_health: Vec<(f64, String)>,
     capture_states: Vec<(f64, String)>,
+    /// Provider-confirmed progress per lane, sampled on every live frame.
+    lane_progress: HashMap<String, Vec<LaneProgressSample>>,
     /// Longest gap between two consecutive live-preview callbacks — the
     /// caption canvas is redrawn from these, so a gap is a visible freeze.
     last_preview_at: Option<f64>,
@@ -739,6 +759,24 @@ impl FfiNotebookCaptureCallback for RecordingCallback {
         let _ = preview.preview_revision;
         let mut state = self.0.state.lock().unwrap();
         state.preview_events += 1;
+        // Provider-confirmed progress, per lane. This is the only honest
+        // measure of whether a translation lane is keeping up: a lane's own
+        // utterance timestamps advance when it emits a segment, so a lane that
+        // has processed the audio but not yet segmented looks identical to one
+        // that is minutes behind.
+        for lane in &preview.lane_health {
+            let key = lane
+                .target_language
+                .clone()
+                .unwrap_or_else(|| "canonical".to_string());
+            let sample = LaneProgressSample {
+                at_wall_ms: now_ms,
+                total_audio_proc_ms: lane.total_audio_proc_ms.unwrap_or(0),
+                lag_ms: lane.lag_ms.unwrap_or(0),
+                state: lane.state.clone(),
+            };
+            state.lane_progress.entry(key).or_default().push(sample);
+        }
         if let Some(previous) = state.last_preview_at {
             state.preview_gap_ms.push(now_ms - previous);
         }
@@ -760,9 +798,16 @@ fn replay_lecture_realtime_accelerated() {
     let media = media_path();
     let out_dir = output_dir();
     let speed = replay_speed();
-    let language = replay_language();
-    // A single selected language is one canonical lane and no translation.
-    let invite = InviteLane::from_env(1).map(Arc::new);
+    let languages = replay_languages();
+    let language = languages[0].clone();
+    // One lane per selected language, plus the canonical lane when there is
+    // more than one — the same plan the core derives.
+    let lane_count = if languages.len() >= 3 {
+        languages.len() as u32 + 1
+    } else {
+        1
+    };
+    let invite = InviteLane::from_env(lane_count).map(Arc::new);
     let api_key = if invite.is_none() {
         Some(soniox_api_key())
     } else {
@@ -794,9 +839,12 @@ fn replay_lecture_realtime_accelerated() {
         .get_notebook_capture_profile(notebook.id.clone())
         .expect("read capture profile");
     profile.remote_realtime_enabled = true;
-    profile.selected_languages = vec![language.clone()];
-    profile.language_a = language.clone();
-    profile.language_b = if language == "en" { "zh" } else { "en" }.to_string();
+    profile.selected_languages = languages.clone();
+    profile.language_a = languages[0].clone();
+    profile.language_b = languages
+        .get(1)
+        .cloned()
+        .unwrap_or_else(|| if language == "en" { "zh" } else { "en" }.to_string());
     profile.left_language = profile.language_a.clone();
     profile.right_language = profile.language_b.clone();
     profile.common_caption_language = None;
@@ -1166,6 +1214,35 @@ fn replay_lecture_realtime_accelerated() {
         "provider-reported lag:        {}",
         state.realtime_lag_ms.summary("ms")
     ));
+    // The measurement this run exists for. A lane's utterance timestamps only
+    // advance when it emits a segment, so they cannot tell a lane that is
+    // behind from one that has not segmented yet. This is the provider's own
+    // statement of how much audio it has processed on each connection.
+    line("per-lane provider throughput (from AudioProgress):".to_string());
+    let mut lanes = state.lane_progress.iter().collect::<Vec<_>>();
+    lanes.sort_by(|left, right| left.0.cmp(right.0));
+    for (name, samples) in lanes {
+        let Some(first) = samples.first() else {
+            continue;
+        };
+        let Some(last) = samples.last() else { continue };
+        let wall_s = (last.at_wall_ms - first.at_wall_ms) / 1_000.0;
+        let audio_s = last
+            .total_audio_proc_ms
+            .saturating_sub(first.total_audio_proc_ms) as f64
+            / 1_000.0;
+        let mut lag = Samples::default();
+        for sample in samples {
+            lag.push(sample.lag_ms as f64);
+        }
+        line(format!(
+            "  {name:<10} processed {audio_s:>7.1}s of audio in {wall_s:>7.1}s wall = {:>5.2}x |              final lag {:>6.1}s | lag {} | state {}",
+            if wall_s > 0.0 { audio_s / wall_s } else { 0.0 },
+            last.lag_ms as f64 / 1_000.0,
+            lag.summary("ms"),
+            last.state
+        ));
+    }
     line(format!(
         "events {} ({} full snapshots, {} revision gaps, {} withdrawals) | previews {}",
         state.capture_events,
@@ -1360,7 +1437,8 @@ fn measure_local_import_cost() {
 fn transcribe_lecture_async_file_api() {
     let media = media_path();
     let out_dir = output_dir();
-    let language = replay_language();
+    let languages = replay_languages();
+    let language = languages[0].clone();
     let api_key = soniox_api_key();
 
     let tmp = TempDir::new().expect("create transcription data directory");
