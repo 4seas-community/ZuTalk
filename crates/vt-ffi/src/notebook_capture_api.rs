@@ -4227,7 +4227,43 @@ impl CaptureCallbackSink {
     where
         C: FnOnce() -> Result<RealtimeLoroProjectionAck, CoreError>,
     {
+        let pending = self.mailbox.pending.lock().unwrap();
+        self.commit_projection_ack_holding(pending, session_id, commit_ack)
+    }
+
+    /// Queues `queued` and commits the ACK without releasing the mailbox lock
+    /// in between.
+    ///
+    /// Only tests need this. Production reaches the same interleaving through
+    /// a pause or resume that the dispatcher has not drained yet, which is a
+    /// state a test cannot ask for: planting the event under its own lock and
+    /// then calling [`Self::commit_projection_ack`] leaves a window in which
+    /// the dispatcher — which may not have parked on the condvar yet — takes
+    /// the event and delivers it with the pre-ACK watermark.
+    #[cfg(test)]
+    fn queue_event_then_commit_projection_ack<C>(
+        &self,
+        session_id: &str,
+        queued: FfiNotebookCaptureEvent,
+        commit_ack: C,
+    ) -> Result<RealtimeLoroProjectionAck, CoreError>
+    where
+        C: FnOnce() -> Result<RealtimeLoroProjectionAck, CoreError>,
+    {
         let mut pending = self.mailbox.pending.lock().unwrap();
+        pending.event = Some(queued);
+        self.commit_projection_ack_holding(pending, session_id, commit_ack)
+    }
+
+    fn commit_projection_ack_holding<C>(
+        &self,
+        mut pending: std::sync::MutexGuard<'_, PendingCaptureCallbacks>,
+        session_id: &str,
+        commit_ack: C,
+    ) -> Result<RealtimeLoroProjectionAck, CoreError>
+    where
+        C: FnOnce() -> Result<RealtimeLoroProjectionAck, CoreError>,
+    {
         if let Some(event) = pending.event.as_ref() {
             if event.session_id != session_id {
                 return Err(CoreError::InternalError {
@@ -16523,17 +16559,14 @@ mod tests {
             None,
         )
         .unwrap();
-        {
-            // Install the already-queued pause without waking the worker until
-            // the ACK merge completes, making the critical ordering exact.
-            let mut pending = callback.mailbox.pending.lock().unwrap();
-            let mut event = event_from_run(paused, Vec::new(), false);
-            event.event_revision = 41;
-            pending.event = Some(event);
-        }
-
+        let mut queued = event_from_run(paused, Vec::new(), false);
+        queued.event_revision = 41;
+        // Queued and acknowledged under one lock. The dispatcher thread is
+        // running by now and is not guaranteed to have parked yet, so a plant
+        // that releases the lock first can be drained before the ACK merges
+        // into it — the assertion below would then read the pre-ACK watermark.
         let receipt = callback
-            .commit_projection_ack("ack-order-session", || {
+            .queue_event_then_commit_projection_ack("ack-order-session", queued, || {
                 Ok(RealtimeLoroProjectionAck {
                     session_id: "ack-order-session".into(),
                     desired_revision: 7,
