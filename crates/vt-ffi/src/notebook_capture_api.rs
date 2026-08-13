@@ -4913,10 +4913,11 @@ impl RealtimeUtteranceAssembler {
                 {
                     return None;
                 }
-                let has_publishable_source = !segment
-                    .source
-                    .text(segment.pending_source_matches_committed_identity())
-                    .is_empty();
+                let has_publishable_source = is_publishable_text(
+                    &segment
+                        .source
+                        .text(segment.pending_source_matches_committed_identity()),
+                );
                 if !has_publishable_source
                     && segment.revision.is_none()
                     && segment.persisted_translation_language.is_none()
@@ -4971,8 +4972,25 @@ impl RealtimeUtteranceAssembler {
                     false,
                 )
             })
+            // A segment holding only the separator token is not empty by the
+            // assembler's reckoning but has nothing to caption.
+            .filter(|assembled| !assembled.utterance.source_text.is_empty())
             .collect()
     }
+}
+
+/// Whether this text is worth a transcript row of its own.
+///
+/// Soniox sends the word separator as a token in its own right, so a segment
+/// can come into existence holding nothing but a space and be frozen that way
+/// at the next boundary. On this machine that produced 264 rows across twenty
+/// recordings whose entire source was one space — ten of them carrying a
+/// translation of it — each occupying a line in the transcript and on screen.
+/// Emptiness is already the withdrawal signal everywhere downstream, so a row
+/// that trims away is routed into it: never persisted, and removed if an
+/// earlier revision already put it in the store.
+fn is_publishable_text(text: &str) -> bool {
+    !text.trim().is_empty()
 }
 
 fn assemble_segment(
@@ -4986,6 +5004,11 @@ fn assemble_segment(
 ) -> AssembledRealtimeUtterance {
     let include_pending_source = segment.pending_source_matches_committed_identity();
     let source_text = segment.source.text(include_pending_source);
+    let source_text = if is_publishable_text(&source_text) {
+        source_text
+    } else {
+        String::new()
+    };
     let source_language = segment.source_language();
     let source_is_unknown = source_language == "und";
     // Identity commitment stays strict: the durable language remains `und`
@@ -5029,7 +5052,7 @@ fn assemble_segment(
     // transaction. Independent auxiliary lanes live outside this assembler.
     let translated_text = (!source_text.is_empty() && translation_is_pairable)
         .then(|| segment.translated.text(include_pending_translation))
-        .filter(|text| !text.is_empty());
+        .filter(|text| is_publishable_text(text));
     let translated_language = translated_text
         .as_ref()
         .and(translated_language_candidate)
@@ -11677,6 +11700,146 @@ mod tests {
             source_language: source_language.map(str::to_string),
             speaker: speaker.map(str::to_string),
         }
+    }
+
+    /// A row whose whole source is the word separator is not a row. Field
+    /// data: 264 such rows across twenty recordings, each holding one line in
+    /// the transcript, ten of them carrying a translation of a space.
+    #[test]
+    fn a_segment_holding_only_the_separator_token_never_becomes_a_row() {
+        let mut assembler = RealtimeUtteranceAssembler::new("separator-session".into(), &profile());
+
+        assert!(
+            assembler
+                .apply_tokens(&[token(
+                    " ",
+                    SttStreamTranslationStatus::Original,
+                    "zh",
+                    Some(9_300),
+                    Some(9_360),
+                    true,
+                )])
+                .is_empty(),
+            "a lone separator has nothing to publish"
+        );
+        assert!(assembler.live_previews().is_empty());
+        assert!(assembler
+            .finalize(FinalizeBoundary::ConnectionClosing)
+            .is_empty());
+        assembler.advance();
+
+        // The same separator followed by speech is the ordinary case, and the
+        // row that results keeps the provider's spacing verbatim.
+        let spoken = assembler.apply_tokens(&[
+            token(
+                " ",
+                SttStreamTranslationStatus::Original,
+                "zh",
+                Some(9_300),
+                Some(9_360),
+                true,
+            ),
+            token(
+                "它给你讲了三个案例。",
+                SttStreamTranslationStatus::Original,
+                "zh",
+                Some(9_360),
+                Some(12_000),
+                true,
+            ),
+        ]);
+        assert_eq!(only_utterance(spoken).source_text, " 它给你讲了三个案例。");
+    }
+
+    /// The truncated row directly above its own completion. Measured on this
+    /// machine: 172 of 222 speculative rows are followed immediately by a
+    /// complete row starting at the same millisecond, holding the same
+    /// sentence with more of it heard.
+    #[test]
+    fn a_provider_boundary_does_not_freeze_speech_it_has_not_committed() {
+        let mut assembler = RealtimeUtteranceAssembler::new("boundary-session".into(), &profile());
+        assembler.apply_tokens(&[token(
+            " 什么？这三个案例",
+            SttStreamTranslationStatus::Original,
+            "zh",
+            Some(1_125_720),
+            Some(1_126_560),
+            false,
+        )]);
+        // On screen while it is being spoken — that part is unchanged.
+        assert_eq!(assembler.live_previews().len(), 1);
+
+        let frozen = assembler.finalize(FinalizeBoundary::ProviderBoundary);
+        assert!(
+            frozen.is_empty(),
+            "the provider is still talking; these words belong to the row after the boundary: {frozen:#?}"
+        );
+        assembler.advance();
+
+        // Which the provider then sends, whole, as that row.
+        let completed = assembler.apply_tokens(&[token(
+            " 什么？这三个案例有什么区别？它是三个。",
+            SttStreamTranslationStatus::Original,
+            "zh",
+            Some(1_125_720),
+            Some(1_127_880),
+            true,
+        )]);
+        let completed = only_utterance(completed);
+        assert_eq!(completed.source_start_ms, Some(1_125_720));
+        assert_eq!(
+            completed.source_text,
+            " 什么？这三个案例有什么区别？它是三个。"
+        );
+    }
+
+    /// The other half of the same rule. Nothing follows a closing connection,
+    /// so the speculative tail is the only record that this speech happened
+    /// and it is kept exactly as before.
+    #[test]
+    fn a_closing_connection_still_keeps_the_speech_it_never_committed() {
+        let mut assembler = RealtimeUtteranceAssembler::new("closing-session".into(), &profile());
+        assembler.apply_tokens(&[token(
+            " 什么？这三个案例",
+            SttStreamTranslationStatus::Original,
+            "zh",
+            Some(1_125_720),
+            Some(1_126_560),
+            false,
+        )]);
+
+        let kept = only_utterance(assembler.finalize(FinalizeBoundary::ConnectionClosing));
+        assert_eq!(kept.source_text, " 什么？这三个案例");
+        assert_eq!(kept.completion, UtteranceCompletion::Partial);
+    }
+
+    /// A boundary must not take back words the provider already committed —
+    /// only the speculation sitting past it.
+    #[test]
+    fn a_provider_boundary_keeps_the_committed_head_and_drops_only_the_tail() {
+        let mut assembler = RealtimeUtteranceAssembler::new("mixed-session".into(), &profile());
+        assembler.apply_tokens(&[
+            token(
+                " 它给你讲了三个案例。",
+                SttStreamTranslationStatus::Original,
+                "zh",
+                Some(9_360),
+                Some(12_000),
+                true,
+            ),
+            token(
+                "你那个",
+                SttStreamTranslationStatus::Original,
+                "zh",
+                Some(12_000),
+                Some(12_600),
+                false,
+            ),
+        ]);
+
+        let closed = only_utterance(assembler.finalize(FinalizeBoundary::ProviderBoundary));
+        assert_eq!(closed.source_text, " 它给你讲了三个案例。你那个");
+        assert_eq!(closed.completion, UtteranceCompletion::Partial);
     }
 
     fn only_utterance(mut updates: Vec<AssembledRealtimeUtterance>) -> NewRealtimeUtterance {
