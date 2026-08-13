@@ -3058,9 +3058,31 @@ fn ranked_canonical_sequences<'a>(
     pending: &PendingTranslationVariant,
     candidates: impl Iterator<Item = &'a CanonicalUtteranceMatch>,
 ) -> Vec<u64> {
+    // Words decide which row a translation belongs to. Timestamps rank and
+    // veto; they never elect.
+    //
+    // Sibling streams transcribe the same audio on separate connections and
+    // their clocks drift apart — measured on one recording at a median of
+    // 0.6s in the first minute and 1.9s by the third. Conversational rows sit
+    // about two seconds apart, so a drifting interval overlaps the neighbour
+    // as convincingly as the right row. The tie guard below cannot help:
+    // drift does not produce a tie, it produces a confident wrong winner. In
+    // that recording two thirds of the bound translations sat on a row whose
+    // words they had nothing to do with, a third of them exactly one row late.
+    //
+    // An unbound translation is recoverable — it stays durably pending and a
+    // later revision can still place it. A mis-bound one is not: it is on
+    // screen, attributed to words nobody said. So a row with no word evidence
+    // is not a candidate here, however well its clock happens to line up.
+    //
+    // Only this path is restricted. The overlap diagnostics keep scoring
+    // everything, because "which rows did this segment run across" is a
+    // question about time and has to stay answerable.
     let mut ranked = candidates
         .filter_map(|candidate| {
-            timeline_alignment_score(pending, candidate).map(|score| (score, candidate))
+            timeline_alignment_score(pending, candidate)
+                .filter(|score| score.exact_source_text || score.contained_source_text)
+                .map(|score| (score, candidate))
         })
         .collect::<Vec<_>>();
     ranked.sort_by(|(left_score, _), (right_score, _)| {
@@ -14499,7 +14521,10 @@ mod tests {
             group_epoch: 0,
             source_sequence: 79,
             source_language: "zh".into(),
-            source_text: "早上好".into(),
+            // Same words as the candidate rows: this test is about a
+            // refusal not being retried, not about how a row is chosen, and
+            // binding now requires word evidence to choose one at all.
+            source_text: "good morning 🌏".into(),
             source_start_ms: Some(120),
             source_end_ms: Some(220),
             target_language: "th".into(),
@@ -14559,8 +14584,75 @@ mod tests {
         );
     }
 
+    /// The shape that put two thirds of one recording's translations on the
+    /// wrong line.
+    ///
+    /// Sibling streams drift: the auxiliary lane reports the same speech a
+    /// second or two later than the canonical lane does. Conversational rows
+    /// are about that far apart, so the drifted interval lands squarely on the
+    /// next row while the words still belong to the previous one. Ranked on
+    /// time, the neighbour wins outright — no tie for the ambiguity guard to
+    /// catch — and the translation appears against a sentence nobody matched
+    /// it to.
     #[test]
-    fn cross_stream_pairing_uses_authoritative_time_before_language_or_column_order() {
+    fn a_drifted_segment_does_not_land_on_the_neighbour_it_merely_overlaps() {
+        let row = |sequence, text: &str, start_ms, end_ms| {
+            let mut utterance = projected_utterance();
+            utterance.sequence = sequence;
+            utterance.source_language = "zh".into();
+            utterance.source_text = text.into();
+            utterance.source_start_ms = Some(start_ms);
+            utterance.source_end_ms = Some(end_ms);
+            CanonicalUtteranceMatch {
+                group_epoch: 0,
+                utterance,
+            }
+        };
+        // Canonical rows two seconds apart, as conversation runs.
+        let spoken = row(41, "好讨厌", 10_000, 11_000);
+        let next = row(42, "我这里还有那个明确的线", 12_000, 15_000);
+
+        // The auxiliary lane heard the same words but reports them 2.2s late,
+        // which is inside the drift measured in the field.
+        let drifted = PendingTranslationVariant {
+            session_id: "drift-session".into(),
+            group_epoch: 0,
+            source_sequence: 12,
+            source_language: "zh".into(),
+            source_text: "好讨厌".into(),
+            source_start_ms: Some(12_200),
+            source_end_ms: Some(13_200),
+            target_language: "en".into(),
+            completion: UtteranceCompletion::Complete,
+            reverse_conflict_warned: false,
+            rejected_sequences: Vec::new(),
+        };
+
+        assert_eq!(
+            match_canonical_sequence(&drifted, [spoken.clone(), next.clone()].iter()),
+            None,
+            "the neighbour it overlaps is not the row whose words these are, \
+             and the row whose words these are no longer overlaps — so the \
+             fact stays pending instead of being attributed to either"
+        );
+
+        // Same lane, same drift, but the provider revision brings the words
+        // back into the window they were spoken in: now it binds, to the row
+        // that actually said them.
+        let settled = PendingTranslationVariant {
+            source_start_ms: Some(10_100),
+            source_end_ms: Some(11_100),
+            ..drifted
+        };
+        assert_eq!(
+            match_canonical_sequence(&settled, [spoken, next].iter()),
+            Some(41),
+            "words and time agreeing is what a binding is"
+        );
+    }
+
+    #[test]
+    fn cross_stream_pairing_needs_words_and_uses_time_only_to_rank_and_veto() {
         let candidate = |sequence, group_epoch, start_ms, end_ms| {
             let mut utterance = projected_utterance();
             utterance.sequence = sequence;
@@ -14658,12 +14750,30 @@ mod tests {
             None,
             "positive-duration intervals that only touch at an endpoint share no audio"
         );
+        // A row that covers the moment but transcribed something else is not
+        // this segment's row. Binding it would put a translation beside words
+        // it does not translate, which is what a drifting clock talks the
+        // matcher into doing — and a mis-binding cannot be taken back, while
+        // staying unbound can still be resolved by a later revision.
         let mut current_window = candidate(8, 0, Some(4_250), Some(4_450));
         current_window.utterance.source_text = "different partial words".into();
         assert_eq!(
-            match_canonical_sequence(&repeated_filler, [stale_filler, current_window].iter()),
+            match_canonical_sequence(
+                &repeated_filler,
+                [stale_filler.clone(), current_window].iter()
+            ),
+            None,
+            "overlapping in time is not evidence of being the right row"
+        );
+
+        // With the words there, time does its job: it ranks the overlapping
+        // row above the disjoint one carrying the same text.
+        let mut current_with_words = candidate(8, 0, Some(4_250), Some(4_450));
+        current_with_words.utterance.source_text = "okay".into();
+        assert_eq!(
+            match_canonical_sequence(&repeated_filler, [stale_filler, current_with_words].iter()),
             Some(8),
-            "an overlapping current row outranks an exact but stale repeated filler"
+            "among rows whose words match, the overlapping one wins"
         );
 
         let mut missing_time = pending.clone();
