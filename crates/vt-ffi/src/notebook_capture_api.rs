@@ -1969,6 +1969,19 @@ async fn collect_stream_events(
                 | SttStreamEvent::Error(_)
         );
         let publishes_lane_progress = matches!(&tagged.event, SttStreamEvent::AudioProgress { .. });
+        // `Finished` is the stream ending, so whatever speculation is still
+        // open on it is the last record of that speech. An endpoint or an
+        // answered finalize is a boundary the provider draws while it carries
+        // on talking, and text it has not committed at that point belongs to
+        // the utterance after the boundary.
+        let finalize_boundary = if matches!(
+            &tagged.event,
+            SttStreamEvent::Endpoint | SttStreamEvent::Finalized
+        ) {
+            FinalizeBoundary::ProviderBoundary
+        } else {
+            FinalizeBoundary::ConnectionClosing
+        };
         let persisted = match tagged.event {
             SttStreamEvent::Connected => {
                 {
@@ -2064,7 +2077,9 @@ async fn collect_stream_events(
                 lanes[lane_index]
                     .disconnected_at_frame
                     .get_or_insert_with(|| captured_frames.load(Ordering::Acquire));
-                let finalized = lanes[lane_index].assembler.finalize();
+                let finalized = lanes[lane_index]
+                    .assembler
+                    .finalize(FinalizeBoundary::ConnectionClosing);
                 let persisted = persist_stream_lane_updates(
                     &store,
                     &mut lanes,
@@ -2137,7 +2152,7 @@ async fn collect_stream_events(
                 PersistedCaptureChanges::default()
             }
             SttStreamEvent::Endpoint | SttStreamEvent::Finalized | SttStreamEvent::Finished => {
-                let finalized = lanes[lane_index].assembler.finalize();
+                let finalized = lanes[lane_index].assembler.finalize(finalize_boundary);
                 let persisted = persist_stream_lane_updates(
                     &store,
                     &mut lanes,
@@ -2162,7 +2177,9 @@ async fn collect_stream_events(
                     // contiguous prefix and may be finalized. This lane is
                     // then a terminal tombstone; no future PCM is appended to
                     // its old provider timeline.
-                    let finalized = lanes[lane_index].assembler.finalize();
+                    let finalized = lanes[lane_index]
+                        .assembler
+                        .finalize(FinalizeBoundary::ConnectionClosing);
                     let persisted = persist_stream_lane_updates(
                         &store,
                         &mut lanes,
@@ -2206,7 +2223,9 @@ async fn collect_stream_events(
                 // `Error` is terminal for this stream runtime. Preserve any
                 // source text held behind the provisional publication gate
                 // before the event channel closes.
-                let finalized = lanes[lane_index].assembler.finalize();
+                let finalized = lanes[lane_index]
+                    .assembler
+                    .finalize(FinalizeBoundary::ConnectionClosing);
                 let persisted = persist_stream_lane_updates(
                     &store,
                     &mut lanes,
@@ -4417,6 +4436,18 @@ fn sanitize_provider_metadata(value: &str, fallback: &str) -> String {
     }
 }
 
+/// Why the assembler is being closed out, which decides what happens to text
+/// the provider has not committed yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FinalizeBoundary {
+    /// The provider drew this boundary — an endpoint, or the answer to a
+    /// finalize we asked for — and the connection carries on past it.
+    ProviderBoundary,
+    /// This connection is over: reconnect, error, input discontinuity, or the
+    /// end of the stream. Nothing more will arrive on it.
+    ConnectionClosing,
+}
+
 impl RealtimeUtteranceAssembler {
     fn new(session_id: String, profile: &NotebookCaptureProfile) -> Self {
         Self {
@@ -4663,7 +4694,10 @@ impl RealtimeUtteranceAssembler {
         self.segments.len() - 1
     }
 
-    fn finalize(&mut self) -> Vec<AssembledRealtimeUtterance> {
+    fn finalize(&mut self, boundary: FinalizeBoundary) -> Vec<AssembledRealtimeUtterance> {
+        if boundary == FinalizeBoundary::ProviderBoundary {
+            self.discard_speculation_past_the_boundary();
+        }
         if self.unattached_translation_tokens > 0 {
             tracing::warn!(
                 count = self.unattached_translation_tokens,
@@ -4725,6 +4759,47 @@ impl RealtimeUtteranceAssembler {
         let updates = self.take_dirty_updates();
         self.report_source_timestamp_generation();
         updates
+    }
+
+    /// Drops segments that hold nothing the provider has committed.
+    ///
+    /// A segment with no final tokens at all, at the moment the provider draws
+    /// a boundary, is speculation about audio on the far side of that
+    /// boundary — the opening of the next utterance, not an utterance of its
+    /// own. Freezing it is what put a truncated row directly above its own
+    /// completion: `什么？这三个案例` at 1125720ms as one row, and
+    /// `什么？这三个案例有什么区别？它是三个。` at the same 1125720ms as the
+    /// next. 172 of the 222 speculative rows in this machine's twenty
+    /// recordings are that pair, differing only in how much of the sentence
+    /// they had heard.
+    ///
+    /// The connection is still live here, so those words are not lost by
+    /// dropping them: the next response sends them again as part of the row
+    /// they belong to. That is exactly why this is refused at a boundary the
+    /// provider did not draw — a reconnect, an error, a discontinuity, or the
+    /// end of the recording leaves no next response, and there the frozen row
+    /// is the only record that speech happened.
+    fn discard_speculation_past_the_boundary(&mut self) {
+        for segment in &mut self.segments {
+            if !segment.source.committed.is_empty() || segment.source.pending.is_empty() {
+                continue;
+            }
+            segment.source.take_pending();
+            segment.translated.take_pending();
+            segment.pending_source_start_ms = None;
+            segment.pending_source_end_ms = None;
+            segment.pending_provider_speaker = None;
+            segment.pending_provider_speaker_ambiguous = false;
+            segment.pending_source_language_hint = None;
+            segment.pending_provider_speaker_hint = None;
+            // Emptied rather than skipped. The provisional gate normally keeps
+            // a segment with no committed source out of the store entirely, so
+            // there is usually nothing to take back — but a segment that has
+            // already been given a translation lane is published through that
+            // gate, and for those an empty source is the withdrawal signal.
+            segment.source_dirty = true;
+            segment.translation_dirty = true;
+        }
     }
 
     /// One line per finalization boundary, and only when something was
@@ -11695,6 +11770,124 @@ mod tests {
         Ok(persisted)
     }
 
+    /// End to end through the store, because that is where the duplicates
+    /// were found. Speculation never reaches SQLite while it is merely being
+    /// spoken — the provisional gate holds it in the live preview — so the
+    /// freeze at a boundary is the whole reason those 172 rows exist. Removing
+    /// the freeze at a provider boundary means the row is never written at
+    /// all, and the same speech arrives once, whole, on the row that owns it.
+    #[test]
+    fn a_provider_boundary_writes_no_row_where_a_closing_connection_writes_one() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core.create_notebook(Some("Withdraw".into())).unwrap();
+        let stored_profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let session = vt_store::SessionRecord {
+            id: "withdraw-speculative-session".into(),
+            title: "Withdraw".into(),
+            session_type: "recording".into(),
+            status: "recording".into(),
+            duration_ms: 0,
+            created_at: "2001-01-03T00:00:00Z".into(),
+            deleted_at: None,
+        };
+        core.notebook_capture_store
+            .create_session_and_run(
+                &session,
+                &vt_store::notebook_capture_store::NewNotebookCaptureRun {
+                    id: "withdraw-speculative-run".into(),
+                    notebook_id: notebook.id,
+                    session_id: session.id.clone(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "/private/withdraw-speculative.journal".into(),
+                    audio_key_ref: "withdraw-speculative-key".into(),
+                    sample_rate: 16_000,
+                    channels: 1,
+                },
+                &stored_profile,
+            )
+            .unwrap();
+        claim_current_realtime_provider(&core.notebook_capture_store, &session.id);
+
+        let half_sentence = || {
+            token(
+                " 什么？这三个案例",
+                SttStreamTranslationStatus::Original,
+                "zh",
+                Some(1_125_720),
+                Some(1_126_560),
+                false,
+            )
+        };
+
+        let mut assembler = RealtimeUtteranceAssembler::new(session.id.clone(), &profile());
+        let live = assembler.apply_tokens(&[half_sentence()]);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, live, 0)
+            .unwrap();
+        assert!(
+            core.notebook_capture_store
+                .list_utterances(&session.id)
+                .unwrap()
+                .is_empty(),
+            "the provisional gate keeps speculation out of the store while it is spoken"
+        );
+
+        let frozen = assembler.finalize(FinalizeBoundary::ProviderBoundary);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, frozen, 0)
+            .unwrap();
+        assembler.advance();
+        assert!(
+            core.notebook_capture_store
+                .list_utterances(&session.id)
+                .unwrap()
+                .is_empty(),
+            "and the boundary no longer writes it either"
+        );
+
+        // Then the provider sends the sentence it was the beginning of. One
+        // row, at the same start, holding the whole thing.
+        let completed = assembler.apply_tokens(&[token(
+            " 什么？这三个案例有什么区别？它是三个。",
+            SttStreamTranslationStatus::Original,
+            "zh",
+            Some(1_125_720),
+            Some(1_127_880),
+            true,
+        )]);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, completed, 0)
+            .unwrap();
+        let rows = core
+            .notebook_capture_store
+            .list_utterances(&session.id)
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].source_start_ms, Some(1_125_720));
+        assert_eq!(
+            rows[0].source_text,
+            " 什么？这三个案例有什么区别？它是三个。"
+        );
+
+        // A closing connection has no next response to carry those words, so
+        // there the same speculation is still written down.
+        assembler.advance();
+        let last_words = assembler.apply_tokens(&[half_sentence()]);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, last_words, 0)
+            .unwrap();
+        let kept = assembler.finalize(FinalizeBoundary::ConnectionClosing);
+        persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, kept, 0)
+            .unwrap();
+        let rows = core
+            .notebook_capture_store
+            .list_utterances(&session.id)
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[1].source_text, " 什么？这三个案例");
+        assert_eq!(rows[1].completion, UtteranceCompletion::Partial);
+    }
+
     #[test]
     fn assembler_publication_shapes_upsert_without_local_persistence_failure() {
         let temp = tempfile::tempdir().unwrap();
@@ -11757,7 +11950,7 @@ mod tests {
                 .unwrap();
         assert_eq!(persisted.len(), 1);
         assert_eq!(persisted[0].alignment, UtteranceAlignment::Paired);
-        let completed = assembler.finalize();
+        let completed = assembler.finalize(FinalizeBoundary::ConnectionClosing);
         persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, completed, 0)
             .unwrap();
         assembler.advance();
@@ -11772,7 +11965,7 @@ mod tests {
                 false,
             )])
             .is_empty());
-        let forced_neutral = assembler.finalize();
+        let forced_neutral = assembler.finalize(FinalizeBoundary::ConnectionClosing);
         assert_eq!(forced_neutral.len(), 1);
         assert_eq!(forced_neutral[0].utterance.source_language, "und");
         persist_assembled_utterances(
@@ -11845,7 +12038,7 @@ mod tests {
             .all(|update| update.utterance.translated_text.is_none()));
         persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, overlap, 0)
             .unwrap();
-        let overlap_finalized = assembler.finalize();
+        let overlap_finalized = assembler.finalize(FinalizeBoundary::ConnectionClosing);
         assert_eq!(overlap_finalized.len(), 1);
         assert_eq!(
             overlap_finalized[0].utterance.alignment,
@@ -11898,7 +12091,7 @@ mod tests {
         persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, initial, 0)
             .unwrap();
 
-        let closed = assembler.finalize();
+        let closed = assembler.finalize(FinalizeBoundary::ConnectionClosing);
         assert_eq!(closed.len(), 1);
         assert_eq!(
             closed[0].utterance.completion,
@@ -11998,7 +12191,7 @@ mod tests {
         persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, initial, 0)
             .unwrap();
 
-        let closed = assembler.finalize();
+        let closed = assembler.finalize(FinalizeBoundary::ConnectionClosing);
         assert_eq!(closed.len(), 1);
         assert_eq!(closed[0].utterance.completion, UtteranceCompletion::Partial);
         assert_eq!(
@@ -12040,7 +12233,7 @@ mod tests {
             Some(1_500),
             true,
         )]);
-        let timed = assembler.finalize();
+        let timed = assembler.finalize(FinalizeBoundary::ConnectionClosing);
         assert_eq!(timed.len(), 1);
         assert_eq!(timed[0].utterance.source_start_ms, Some(1_000));
         assembler.advance();
@@ -12068,7 +12261,7 @@ mod tests {
             None,
             true,
         )]);
-        let untimed = assembler.finalize();
+        let untimed = assembler.finalize(FinalizeBoundary::ConnectionClosing);
         assert_eq!(untimed.len(), 1);
         assert_eq!(untimed[0].utterance.source_start_ms, None);
         assembler.advance();
@@ -12110,7 +12303,7 @@ mod tests {
         )]);
         persist_assembled_utterances(&core.notebook_capture_store, &mut assembler, translation, 0)
             .unwrap();
-        assembler.finalize();
+        assembler.finalize(FinalizeBoundary::ConnectionClosing);
 
         let census = assembler.session_source_timestamps();
         assert_eq!(census.final_tokens, 1, "translation tokens are not source");
@@ -13412,7 +13605,7 @@ mod tests {
                     && variant.completion == Some(UtteranceCompletion::Complete)
             }));
 
-            let finalized = assembler.finalize();
+            let finalized = assembler.finalize(FinalizeBoundary::ConnectionClosing);
             assert!(!finalized.is_empty());
             assert!(finalized
                 .iter()
@@ -13624,7 +13817,7 @@ mod tests {
                 None
             );
 
-            let finalized = assembler.finalize();
+            let finalized = assembler.finalize(FinalizeBoundary::ConnectionClosing);
             assert_eq!(finalized.len(), 1);
             assert_eq!(finalized[0].translation_clear_language, None);
             let finalized = persist_assembled_utterances(
@@ -14063,7 +14256,7 @@ mod tests {
         assert_eq!(revised[0].utterance.id, "session-preview:0");
         assert_eq!(revised[0].utterance.source_text, "hello");
 
-        let finalized = assembler.finalize();
+        let finalized = assembler.finalize(FinalizeBoundary::ConnectionClosing);
         assert_eq!(finalized.len(), 1);
         assert_eq!(
             finalized[0].utterance.completion,
@@ -14198,7 +14391,8 @@ mod tests {
                 ),
             ])
             .is_empty());
-        let neutral = only_utterance(provisional_only.finalize());
+        let neutral =
+            only_utterance(provisional_only.finalize(FinalizeBoundary::ConnectionClosing));
         assert_eq!(neutral.source_language, "und");
         assert_eq!(neutral.source_text, "你好 hello");
         assert_eq!(neutral.completion, UtteranceCompletion::Partial);
@@ -14231,7 +14425,7 @@ mod tests {
             assert_eq!(stable.len(), 1);
             assert_eq!(stable[0].utterance.source_text, "hello");
 
-            let finalized = assembler.finalize();
+            let finalized = assembler.finalize(FinalizeBoundary::ConnectionClosing);
             assert_eq!(finalized.len(), 2);
             assert_eq!(finalized[0].utterance.source_language, "en");
             assert_eq!(finalized[0].utterance.source_text, "hello");
@@ -14394,7 +14588,7 @@ mod tests {
         for update in &updates {
             assert_store_valid_alignment_shape(&update.utterance);
         }
-        let finalized = assembler.finalize();
+        let finalized = assembler.finalize(FinalizeBoundary::ConnectionClosing);
         assert_eq!(finalized.len(), 1);
         assert_eq!(finalized[0].utterance.source_text, "再见");
         assert_eq!(finalized[0].utterance.alignment, UtteranceAlignment::Paired);
@@ -14584,7 +14778,7 @@ mod tests {
         for update in &updates {
             assert_store_valid_alignment_shape(&update.utterance);
         }
-        let finalized = assembler.finalize();
+        let finalized = assembler.finalize(FinalizeBoundary::ConnectionClosing);
         assert_eq!(finalized.len(), 1);
         assert_eq!(finalized[0].utterance.source_text, "second");
         assert_eq!(
@@ -14628,7 +14822,7 @@ mod tests {
                 ),
             ])
             .is_empty());
-        let utterance = only_utterance(assembler.finalize());
+        let utterance = only_utterance(assembler.finalize(FinalizeBoundary::ConnectionClosing));
         assert_eq!(utterance.source_language, "und");
         assert_eq!(utterance.translated_language, None);
         assert_eq!(utterance.translated_text, None);
