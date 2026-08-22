@@ -2088,12 +2088,15 @@ struct SubtitleOverlayView: View {
         rows: [NotebookCaptureUtteranceDTO]
     ) -> SubtitleOverlayFollowSignal {
         let tail = rows.last
+        let sourceExtent = tail?.sourceText.count ?? 0
+        let translatedExtent = tail?.translatedText?.count ?? 0
+        let variantExtent = tail?.languageVariants.reduce(into: 0) { extent, variant in
+            extent += variant.text?.count ?? 0
+        } ?? 0
         return SubtitleOverlayFollowSignal(
             tailID: tail?.id ?? "",
             rowCount: rows.count,
-            textExtent: (tail?.sourceText.count ?? 0)
-                + (tail?.translatedText?.count ?? 0)
-                + (tail?.languageVariants.reduce(0) { $0 + ($1.text?.count ?? 0) } ?? 0)
+            textExtent: sourceExtent + translatedExtent + variantExtent
         )
     }
 
