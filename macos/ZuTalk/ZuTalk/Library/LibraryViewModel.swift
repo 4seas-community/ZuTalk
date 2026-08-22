@@ -159,6 +159,7 @@ class LibraryViewModel: ObservableObject {
 
     /// 正在录的选不进来:批量删除里混进一条正在录的,Core 会整批拒绝
     /// (删一半更糟),所以根本不让它进名单。
+    @MainActor
     func toggleSelected(_ id: String) {
         if selectedIds.contains(id) {
             selectedIds.remove(id)
