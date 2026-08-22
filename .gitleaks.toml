@@ -12,3 +12,15 @@ regexes = [
 paths = [
   '''macos/ZuTalk/ZuTalk\.xcodeproj/project\.pbxproj$''',
 ]
+
+[[allowlists]]
+description = "Intentional invalid Bearer token in caption-web negative-auth smoke test"
+targetRules = ["curl-auth-header"]
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''Authorization: Bearer wrong-token''',
+]
+paths = [
+  '''^scripts/caption_web_prod_smoke\.sh$''',
+]

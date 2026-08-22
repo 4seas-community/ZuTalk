@@ -147,28 +147,35 @@ final class EditorSurfaceTests: XCTestCase {
 
     // MARK: - Async
 
-    func testAsyncPendingAndFailedAreNamedEvenWithASession() {
+    func testAsyncPendingAndFailedKeepTheSelectedRecordingSurfaceMounted() {
         XCTAssertEqual(
             resolve(route: route(session: "s1"), tab: tab(.asyncTranscript, status: .pending)),
-            .asyncPending(notebookId: "nb", tabId: "tab")
+            .asyncTranscript(
+                notebookId: "nb",
+                sessionId: "s1",
+                tabId: "tab",
+                status: .pending
+            )
         )
         XCTAssertEqual(
             resolve(route: route(session: "s1"), tab: tab(.asyncTranscript, status: .failed)),
-            .asyncFailed(notebookId: "nb", tabId: "tab")
+            .asyncTranscript(
+                notebookId: "nb",
+                sessionId: "s1",
+                tabId: "tab",
+                status: .failed
+            )
         )
     }
 
-    func testAsyncPendingAndFailedOutrankTheMissingSession() {
-        // Status is the more useful thing to say: the session will arrive when
-        // the task finishes, so "still transcribing" beats "pick a recording".
-        XCTAssertEqual(
-            resolve(route: route(session: nil), tab: tab(.asyncTranscript, status: .pending)),
-            .asyncPending(notebookId: "nb", tabId: "tab")
-        )
-        XCTAssertEqual(
-            resolve(route: route(session: nil), tab: tab(.asyncTranscript, status: .failed)),
-            .asyncFailed(notebookId: "nb", tabId: "tab")
-        )
+    func testEveryAsyncStatusWithoutASessionAsksForARecording() {
+        for status in [NotebookTabStatus.ready, .pending, .failed, .live] {
+            XCTAssertEqual(
+                resolve(route: route(session: nil), tab: tab(.asyncTranscript, status: status)),
+                .asyncNeedsSession(notebookId: "nb"),
+                "\(status)"
+            )
+        }
     }
 
     func testAsyncReadyWithSessionShowsTranscript() {
@@ -235,14 +242,111 @@ final class EditorSurfaceTests: XCTestCase {
                 .resources(notebookId: "nb"),
                 .realtime(notebookId: "nb", sessionId: nil),
                 .realtime(notebookId: "nb", sessionId: "s1"),
-                .asyncPending(notebookId: "nb", tabId: "tab"),
-                .asyncFailed(notebookId: "nb", tabId: "tab"),
                 .asyncNeedsSession(notebookId: "nb"),
                 .asyncTranscript(notebookId: "nb", sessionId: "s1", tabId: "tab", status: .ready),
+                .asyncTranscript(notebookId: "nb", sessionId: "s1", tabId: "tab", status: .pending),
+                .asyncTranscript(notebookId: "nb", sessionId: "s1", tabId: "tab", status: .failed),
                 .asyncTranscript(notebookId: "nb", sessionId: "s1", tabId: "tab", status: .live),
                 .manualTimeline(notebookId: "nb", tabId: "tab"),
                 .manualNote(notebookId: "nb", tabId: "tab"),
             ]
         )
+    }
+
+    func testAsyncTranscriptPresentationNeverHidesASelectedRecordingByStatus() {
+        for status in [NotebookTabStatus.ready, .pending, .failed, .live] {
+            XCTAssertTrue(
+                NotebookTranscriptPresentationPolicy.shouldShow(
+                    displayType: .asyncTranscript,
+                    status: status,
+                    selectedSessionId: "s1"
+                ),
+                "\(status)"
+            )
+        }
+        XCTAssertFalse(
+            NotebookTranscriptPresentationPolicy.shouldShow(
+                displayType: .asyncTranscript,
+                status: .ready,
+                selectedSessionId: nil
+            )
+        )
+    }
+
+    func testResourceDestinationsMapToTheirExactNotebookTabs() {
+        XCTAssertNil(NotebookResourceDestination.audio.displayType)
+        XCTAssertEqual(
+            NotebookResourceDestination.realtimeTranscript.displayType,
+            .realtimeTranscript
+        )
+        XCTAssertEqual(
+            NotebookResourceDestination.asyncTranscript.displayType,
+            .asyncTranscript
+        )
+        XCTAssertEqual(
+            NotebookResourceDestination.manualNote.displayType,
+            .manualNote
+        )
+    }
+
+    func testAsyncPrimaryActionKeepsCredentialRecoveryVisibleWithoutReuploadingFailures() {
+        XCTAssertEqual(
+            AsyncTranscriptActionPolicy.primaryAction(
+                projectionState: NotebookAsyncProjectionState.none,
+                providerState: "none",
+                hasReadyPersonalKey: true
+            ),
+            .start
+        )
+        XCTAssertEqual(
+            AsyncTranscriptActionPolicy.primaryAction(
+                projectionState: NotebookAsyncProjectionState.none,
+                providerState: "none",
+                hasReadyPersonalKey: false
+            ),
+            .addPersonalKey
+        )
+        XCTAssertEqual(
+            AsyncTranscriptActionPolicy.primaryAction(
+                projectionState: NotebookAsyncProjectionState.none,
+                providerState: "pending",
+                hasReadyPersonalKey: false
+            ),
+            .addPersonalKey
+        )
+        XCTAssertEqual(
+            AsyncTranscriptActionPolicy.primaryAction(
+                projectionState: NotebookAsyncProjectionState.none,
+                providerState: "failed",
+                hasReadyPersonalKey: true
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            AsyncTranscriptActionPolicy.primaryAction(
+                projectionState: .failed,
+                providerState: "completed",
+                hasReadyPersonalKey: true
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            AsyncTranscriptActionPolicy.primaryAction(
+                projectionState: nil,
+                providerState: nil,
+                hasReadyPersonalKey: true
+            ),
+            .none
+        )
+    }
+
+    func testAsyncProviderPendingPolicyCoversEveryDurableQueueState() {
+        for state in ["pending", "reserved", "enqueued", "PENDING"] {
+            XCTAssertTrue(AsyncTranscriptActionPolicy.isProviderPending(state), state)
+        }
+        for state in ["none", "completed", "failed"] {
+            XCTAssertFalse(AsyncTranscriptActionPolicy.isProviderPending(state), state)
+        }
+        XCTAssertFalse(AsyncTranscriptActionPolicy.isProviderPending(nil))
     }
 }

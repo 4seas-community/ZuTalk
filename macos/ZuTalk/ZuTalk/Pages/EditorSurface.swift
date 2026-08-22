@@ -30,15 +30,14 @@ enum EditorSurface: Equatable, Hashable {
     /// which is why the session id is optional here and nowhere else.
     case realtime(notebookId: String, sessionId: String?)
 
-    /// A finished post-stop transcript.
+    /// One recording's complete post-stop transcript lifecycle. Pending and
+    /// failed remain on this surface so recovery actions never disappear.
     case asyncTranscript(
         notebookId: String,
         sessionId: String,
         tabId: String,
         status: NotebookTabStatus
     )
-    case asyncPending(notebookId: String, tabId: String)
-    case asyncFailed(notebookId: String, tabId: String)
 
     /// The async tab reached without a session. The transcript layer is
     /// session-scoped, so before this case existed nothing claimed the state
@@ -57,7 +56,7 @@ extension EditorSurface {
         case .realtime, .asyncTranscript:
             return true
         case .missingDocument, .tabsLoading, .captureSettings,
-             .resources, .asyncPending, .asyncFailed, .asyncNeedsSession,
+             .resources, .asyncNeedsSession,
              .manualTimeline, .manualNote:
             return false
         }
@@ -69,7 +68,7 @@ extension EditorSurface {
         case .captureSettings, .resources:
             return true
         case .missingDocument, .tabsLoading, .realtime,
-             .asyncTranscript, .asyncPending, .asyncFailed, .asyncNeedsSession,
+             .asyncTranscript, .asyncNeedsSession,
              .manualTimeline, .manualNote:
             return false
         }
@@ -111,22 +110,18 @@ enum EditorSurfacePolicy {
             return .realtime(notebookId: notebookId, sessionId: sessionId)
 
         case .asyncTranscript:
-            switch activeTab.status {
-            case .pending:
-                return .asyncPending(notebookId: notebookId, tabId: activeTab.tabId)
-            case .failed:
-                return .asyncFailed(notebookId: notebookId, tabId: activeTab.tabId)
-            case .ready, .live:
-                guard let sessionId else {
-                    return .asyncNeedsSession(notebookId: notebookId)
-                }
-                return .asyncTranscript(
-                    notebookId: notebookId,
-                    sessionId: sessionId,
-                    tabId: activeTab.tabId,
-                    status: activeTab.status
-                )
+            guard let sessionId else {
+                return .asyncNeedsSession(notebookId: notebookId)
             }
+            // Pending and failed are states of this recording, not different
+            // pages. Keeping one surface mounted preserves the status bar,
+            // credential recovery action, and the selected recording.
+            return .asyncTranscript(
+                notebookId: notebookId,
+                sessionId: sessionId,
+                tabId: activeTab.tabId,
+                status: activeTab.status
+            )
 
         case .manualNote:
             return sessionId == nil

@@ -778,6 +778,7 @@ struct NotebookRealtimeTranscriptPage: View {
     let sessionId: String?
     @ObservedObject var editor: NotebookCaptureProfileEditorModel
     let onOpenAdvancedSettings: () -> Void
+    let onSelectHistorySession: (String) -> Void
     @StateObject private var history = NotebookCaptureHistoryStore()
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var subtitleOverlay = SubtitleOverlayCoordinator.shared
@@ -813,7 +814,8 @@ struct NotebookRealtimeTranscriptPage: View {
             NotebookRealtimeHistoryView(
                 notebookId: notebookId,
                 focusSessionId: sessionId,
-                history: history
+                history: history,
+                onSelectSession: onSelectHistorySession
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2574,6 +2576,7 @@ private struct NotebookRealtimeHistoryView: View {
     let notebookId: String
     let focusSessionId: String?
     @ObservedObject var history: NotebookCaptureHistoryStore
+    let onSelectSession: (String) -> Void
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPresentationControlHovered = false
@@ -2719,6 +2722,7 @@ private struct NotebookRealtimeHistoryView: View {
                         activeSessionID: activeSessionID,
                         onSelect: { sessionID in
                             selectRun(sessionID, using: proxy, animated: true)
+                            onSelectSession(sessionID)
                         }
                     )
                     Divider().background(Color.borderGhost.opacity(0.24))
@@ -2799,6 +2803,7 @@ private struct NotebookRealtimeHistoryView: View {
         if selectedSessionID != run.sessionId {
             NotebookRealtimeRunSummaryView(run: run) {
                 selectRun(run.sessionId, using: proxy, animated: true)
+                onSelectSession(run.sessionId)
             }
         } else if activeSessionID == run.sessionId
                     || history.transcriptLoadState(sessionId: run.sessionId) == .loaded {

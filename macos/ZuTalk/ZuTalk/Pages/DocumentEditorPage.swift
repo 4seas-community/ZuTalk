@@ -48,7 +48,7 @@ enum NotebookCaptureSettingsRoutePolicy {
 enum NotebookTranscriptPresentationPolicy {
     static func shouldShow(
         displayType: NotebookTabDisplayType?,
-        status: NotebookTabStatus?,
+        status _: NotebookTabStatus?,
         selectedSessionId: String?
     ) -> Bool {
         switch displayType {
@@ -59,10 +59,42 @@ enum NotebookTranscriptPresentationPolicy {
             // still be configured and started here.
             return true
         case .asyncTranscript:
-            return status != .pending && status != .failed && selectedSessionId != nil
+            // The async status bar owns pending/failed presentation. Hiding the
+            // whole transcript surface also hid credential recovery and made a
+            // selected recording appear to have no available action.
+            return selectedSessionId != nil
         case .manualNote, .none:
             return false
         }
+    }
+}
+
+enum AsyncTranscriptPrimaryAction: Equatable {
+    case none
+    case addPersonalKey
+    case start
+}
+
+enum AsyncTranscriptActionPolicy {
+    static func isProviderPending(_ providerState: String?) -> Bool {
+        guard let normalized = providerState?.lowercased() else { return false }
+        return ["pending", "reserved", "enqueued"].contains(normalized)
+    }
+
+    static func primaryAction(
+        projectionState: NotebookAsyncProjectionState?,
+        providerState: String?,
+        hasReadyPersonalKey: Bool
+    ) -> AsyncTranscriptPrimaryAction {
+        guard projectionState == NotebookAsyncProjectionState.none else { return .none }
+        let normalizedProviderState = providerState?.lowercased()
+        if normalizedProviderState == nil || normalizedProviderState == "none" {
+            return hasReadyPersonalKey ? .start : .addPersonalKey
+        }
+        if isProviderPending(normalizedProviderState), hasReadyPersonalKey == false {
+            return .addPersonalKey
+        }
+        return .none
     }
 }
 
@@ -185,7 +217,8 @@ struct DocumentEditorPage: View {
                         notebookId: transcriptTab.notebookId,
                         sessionId: effectiveSessionId,
                         editor: captureProfileEditor,
-                        onOpenAdvancedSettings: showCaptureSettings
+                        onOpenAdvancedSettings: showCaptureSettings,
+                        onSelectHistorySession: focusRealtimeHistorySession
                     )
                         .id("realtime:\(transcriptTab.notebookId)")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -200,7 +233,8 @@ struct DocumentEditorPage: View {
                         sessionId: sid,
                         tabId: transcriptTab.tabId,
                         displayType: transcriptTab.displayType,
-                        status: transcriptTab.status
+                        status: transcriptTab.status,
+                        taskErrorMessage: selectedTranscriptionTask?.errorMessage
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .opacity(surface.showsTranscriptLayer ? 1 : 0)
@@ -229,8 +263,8 @@ struct DocumentEditorPage: View {
                 if isShowingResources, let notebookId = route?.notebookID {
                     NotebookResourcesView(
                         notebookId: notebookId,
-                        onOpenSession: { sessionId in
-                            WindowCommandRouter.shared.requestOpenSession(sessionId)
+                        onOpenResource: { sessionId, destination in
+                            openResource(sessionId: sessionId, destination: destination)
                         }
                     )
                     .id("resources:\(notebookId)")
@@ -282,6 +316,7 @@ struct DocumentEditorPage: View {
                 current: currentRoute
             ) {
                 presentedCaptureSettingsNotebookId = nil
+                isShowingResources = false
             }
         }
         // 停录后的异步转录物化完成后重新加载关联文档。
@@ -368,12 +403,6 @@ struct DocumentEditorPage: View {
     @ViewBuilder
     private func documentEditorContent(notebookId: String, tabId: String) -> some View {
         switch surface {
-        case .asyncPending:
-            PendingDocumentState()
-
-        case .asyncFailed:
-            FailedDocumentState(errorMessage: selectedTranscriptionTask?.errorMessage)
-
         case .manualNote:
             // 大纲编辑器自管 open/close 与加载失败态(EmptyState + 重试)。
             BlockNoteEditorView(notebookId: notebookId, tabId: tabId)
@@ -385,7 +414,11 @@ struct DocumentEditorPage: View {
             EmptyState(
                 illustration: { Arcanum003WaveformRuler() },
                 title: String(localized: "editor.transcript.async.no_session_title"),
-                description: String(localized: "editor.transcript.async.no_session_desc")
+                description: String(localized: "editor.transcript.async.no_session_desc"),
+                action: (
+                    label: String(localized: "resources.tab"),
+                    handler: showResources
+                )
             )
 
         case .tabsLoading:
@@ -566,6 +599,39 @@ struct DocumentEditorPage: View {
         isShowingResources = true
     }
 
+    private func focusRealtimeHistorySession(_ sessionId: String) {
+        guard selectedSessionId != sessionId,
+              let realtimeTab = notebookTabs.first(where: {
+                  $0.displayType == .realtimeTranscript
+              }) else { return }
+        WindowCommandRouter.shared.requestOpenNotebookTab(
+            notebookID: realtimeTab.notebookId,
+            tabID: realtimeTab.tabId,
+            documentID: realtimeTab.documentId,
+            selectedSessionID: sessionId
+        )
+    }
+
+    private func openResource(
+        sessionId: String,
+        destination: NotebookResourceDestination
+    ) {
+        isShowingResources = false
+        guard let displayType = destination.displayType,
+              let targetTab = notebookTabs.first(where: {
+                  $0.displayType == displayType
+              }) else {
+            WindowCommandRouter.shared.requestOpenSession(sessionId)
+            return
+        }
+        WindowCommandRouter.shared.requestOpenNotebookTab(
+            notebookID: targetTab.notebookId,
+            tabID: targetTab.tabId,
+            documentID: targetTab.documentId,
+            selectedSessionID: sessionId
+        )
+    }
+
     private func openRealtimeControls() {
         guard let realtimeTab = notebookTabs.first(where: {
             $0.displayType == .realtimeTranscript
@@ -582,65 +648,6 @@ struct DocumentEditorPage: View {
         )
     }
 
-}
-
-// MARK: - Pending / Failed document states (Plan A UX)
-
-/// status=pending 时覆盖 editor area 的占位面板。
-private struct PendingDocumentState: View {
-    var body: some View {
-        VStack(spacing: Spacing.md) {
-            ProgressView()
-                .controlSize(.small)
-            Text(title)
-                .font(.bodyMedium)
-                .foregroundColor(.textSecondary)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundColor(.textTertiary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var title: String {
-        String(localized: "editor.pending.transcribing")
-    }
-    private var subtitle: String {
-        String(localized: "editor.pending.subtitle")
-    }
-}
-
-/// status=failed 时的 editor area — 显示"重新转录"按钮。
-private struct FailedDocumentState: View {
-    let errorMessage: String?
-
-    var body: some View {
-        VStack(spacing: Spacing.md) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 28))
-                .foregroundColor(.signalAmber)
-            Text(title)
-                .font(.bodyMedium)
-                .foregroundColor(.textSecondary)
-            Text(String(localized: "editor.failed.subtitle"))
-                .font(.caption)
-                .foregroundColor(.textTertiary)
-                .multilineTextAlignment(.center)
-            if let errorMessage, !errorMessage.isEmpty {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundColor(.signalRed)
-                    .multilineTextAlignment(.center)
-                    .textSelection(.enabled)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var title: String {
-        String(localized: "editor.failed.transcribing")
-    }
 }
 
 // MARK: - NoteTopChrome (简化:只剩 back 按钮,document 切换移到下方 DocumentTabBar)
@@ -1133,9 +1140,9 @@ private struct AsyncTranscriptView: View {
     let tabId: String
     let displayType: NotebookTabDisplayType
     let status: NotebookTabStatus
+    let taskErrorMessage: String?
 
     @ObservedObject private var projectionStore = NotebookTranscriptProjectionStore.shared
-    @ObservedObject private var communityInvite = CommunityInviteSession.shared
     // Observed for statusRevision so the key-required gate below reacts when
     // the user saves or removes their own key in Settings.
     @ObservedObject private var providerCredentials = ProviderCredentialSession.shared
@@ -1225,7 +1232,7 @@ private struct AsyncTranscriptView: View {
 
     private var asyncStatusBar: some View {
         HStack(spacing: Spacing.sm) {
-            if asyncProjectionState == .projecting || isRetryingProjection {
+            if asyncProjectionState == .projecting || isRetryingProjection || isProviderPending {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityHidden(true)
@@ -1238,40 +1245,43 @@ private struct AsyncTranscriptView: View {
                 .font(.captionMedium)
                 .foregroundColor(.textSecondary)
             Spacer(minLength: Spacing.md)
-            if canRequestAsyncTranscription {
-                if communityInvite.asyncTranscriptionNeedsPersonalKey {
-                    // Invite time covers realtime only; the upload-based
-                    // after-stop pass stays off until the user brings their
-                    // own key, so recordings never leave the Mac unrequested.
-                    Button {
-                        MainNavigationStore.shared.openSettings()
-                    } label: {
-                        Label(
-                            String(localized: "editor.transcript.async.invite_add_key"),
-                            systemImage: "key"
-                        )
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .frame(minHeight: 44)
-                    .help(String(localized: "editor.transcript.async.invite_add_key_hint"))
-                    .accessibilityHint(Text(String(
-                        localized: "editor.transcript.async.invite_add_key_hint"
-                    )))
-                } else {
-                    Button {
-                        requestAsyncTranscription()
-                    } label: {
-                        Label(
-                            String(localized: "editor.transcript.async.start"),
-                            systemImage: "waveform.badge.plus"
-                        )
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .frame(minHeight: 44)
-                    .disabled(isRequestingAsyncTranscription)
+            switch primaryAction {
+            case .addPersonalKey:
+                // Post-stop upload requires a saved personal key. Keep the
+                // setup action visible for an already queued task too: the
+                // worker will continue once that key becomes available.
+                Button {
+                    MainNavigationStore.shared.openSettings()
+                } label: {
+                    Label(
+                        String(localized: "editor.transcript.async.invite_add_key"),
+                        systemImage: "key"
+                    )
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .frame(minHeight: 44)
+                .help(String(localized: "community_invite.async.needs_personal_key"))
+                .accessibilityHint(Text(String(
+                    localized: "community_invite.async.needs_personal_key"
+                )))
+                .accessibilityIdentifier("async.transcription.add-key.\(sessionId)")
+            case .start:
+                Button {
+                    requestAsyncTranscription()
+                } label: {
+                    Label(
+                        String(localized: "editor.transcript.async.start"),
+                        systemImage: "waveform.badge.plus"
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .frame(minHeight: 44)
+                .disabled(isRequestingAsyncTranscription)
+                .accessibilityIdentifier("async.transcription.start.\(sessionId)")
+            case .none:
+                EmptyView()
             }
             if asyncProjectionState == .failed {
                 Button {
@@ -1290,6 +1300,7 @@ private struct AsyncTranscriptView: View {
                 .accessibilityHint(Text(String(
                     localized: "editor.transcript.async.retry_projection_hint"
                 )))
+                .accessibilityIdentifier("async.transcription.retry-projection.\(sessionId)")
             }
         }
         .padding(.horizontal, Spacing.xl + Spacing.lg)
@@ -1302,9 +1313,18 @@ private struct AsyncTranscriptView: View {
         projectionStore.requestingAsyncTranscriptionSessions.contains(sessionId)
     }
 
-    private var canRequestAsyncTranscription: Bool {
-        asyncProjectionState == NotebookAsyncProjectionState.none
-            && (asyncProviderState == nil || asyncProviderState == "none")
+    private var hasReadyPersonalSonioxKey: Bool {
+        providerCredentials.snapshot().contains {
+            $0.account == .soniox && $0.isSaved && $0.isActive
+        }
+    }
+
+    private var primaryAction: AsyncTranscriptPrimaryAction {
+        AsyncTranscriptActionPolicy.primaryAction(
+            projectionState: asyncProjectionState,
+            providerState: asyncProviderState,
+            hasReadyPersonalKey: hasReadyPersonalSonioxKey
+        )
     }
 
     private func requestAsyncTranscription() {
@@ -1406,14 +1426,22 @@ private struct AsyncTranscriptView: View {
         case .some(.none) where status == .pending || isProviderPending:
             return String(localized: "editor.transcript.async.pending_desc")
         case .some(.none) where status == .failed || asyncProviderState == "failed":
-            return String(localized: "editor.transcript.async.failed_desc")
+            return providerFailureDescription
         default:
             return String(localized: "editor.transcript.async.empty_desc")
         }
     }
 
     private var isProviderPending: Bool {
-        ["pending", "reserved", "enqueued"].contains(asyncProviderState)
+        AsyncTranscriptActionPolicy.isProviderPending(asyncProviderState)
+    }
+
+    private var providerFailureDescription: String {
+        let summary = String(localized: "editor.transcript.async.failed_desc")
+        guard let detail = taskErrorMessage?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), detail.isEmpty == false else { return summary }
+        return "\(summary)\n\n\(detail)"
     }
 }
 /// 单个转录段落的渲染。click 切换编辑模式。

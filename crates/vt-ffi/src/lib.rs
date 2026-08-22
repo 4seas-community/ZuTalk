@@ -753,7 +753,7 @@ impl ZuTalkCore {
         core.resume_pending_session_purges()?;
         core.resume_pending_notebook_projection_mutations()?;
         core.resume_pending_async_search_projections()?;
-        core.compensate_completed_notebook_async_tasks()?;
+        core.compensate_post_stop_notebook_async_tasks()?;
         core.resume_pending_notebook_async_projections()?;
 
         // 启动 task worker 循环 —— 持久队列真正"通电"

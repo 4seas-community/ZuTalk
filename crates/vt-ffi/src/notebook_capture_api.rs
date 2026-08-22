@@ -9148,10 +9148,10 @@ impl ZuTalkCore {
         }
     }
 
-    pub(crate) fn compensate_completed_notebook_async_tasks(&self) -> Result<(), CoreError> {
+    pub(crate) fn compensate_post_stop_notebook_async_tasks(&self) -> Result<(), CoreError> {
         for run in self
             .notebook_capture_store
-            .list_completed_runs_requiring_async_compensation()
+            .list_post_stop_runs_requiring_async_compensation()
             .map_err(store_error)?
         {
             self.ensure_post_stop_async_task_for_run(&run)?;
@@ -17806,7 +17806,7 @@ mod tests {
     }
 
     #[test]
-    fn controlled_audio_interrupt_preserves_audio_and_skips_async_projection() {
+    fn controlled_audio_interrupt_preserves_audio_and_allows_explicit_async_request() {
         let temp = tempfile::tempdir().unwrap();
         let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let notebook = core.create_notebook(Some("Interrupt test".into())).unwrap();
@@ -17885,6 +17885,40 @@ mod tests {
             .block_on(core.task_queue.list_tasks(None))
             .unwrap()
             .is_empty());
+
+        let requested = core
+            .request_notebook_async_transcription(started.session_id.clone())
+            .expect(
+                "retained audio from an interrupted recording must remain explicitly transcribable",
+            );
+        assert_eq!(
+            requested.capture_state,
+            FfiNotebookCaptureState::Interrupted
+        );
+        assert_eq!(requested.post_stop_async_state, "enqueued");
+        let queued = core
+            .runtime
+            .block_on(core.task_queue.list_tasks(None))
+            .unwrap();
+        assert_eq!(queued.len(), 1);
+        assert_eq!(
+            queued[0].id,
+            format!("capture-async-{}", run.id),
+            "the public request path must create exactly the stable task for this retained recording"
+        );
+        let repeated = core
+            .request_notebook_async_transcription(started.session_id.clone())
+            .expect("repeating the explicit request must be idempotent");
+        assert_eq!(repeated.capture_state, FfiNotebookCaptureState::Interrupted);
+        assert_eq!(repeated.post_stop_async_state, "enqueued");
+        assert_eq!(
+            core.runtime
+                .block_on(core.task_queue.list_tasks(None))
+                .unwrap()
+                .len(),
+            1,
+            "repeating the request must not create another upload task"
+        );
         let recovered_event = core
             .get_notebook_capture_session_event(started.session_id.clone())
             .unwrap();

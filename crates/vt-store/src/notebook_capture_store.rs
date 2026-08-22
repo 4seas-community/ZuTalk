@@ -76,6 +76,13 @@ impl CaptureState {
         !self.is_active()
     }
 
+    /// A clean stop and a recovered/interrupted stop are both immutable local
+    /// audio boundaries. `Failed` is excluded because it may represent a
+    /// local durability failure whose retained bytes cannot be trusted.
+    fn allows_post_stop_async(self) -> bool {
+        matches!(self, Self::Completed | Self::Interrupted)
+    }
+
     fn as_str(self) -> &'static str {
         match self {
             Self::Recording => "recording",
@@ -1665,7 +1672,7 @@ impl NotebookCaptureStore {
             CaptureProviderRole::PostStop => (
                 run.post_stop_provider_id.as_deref(),
                 run.post_stop_model_id.as_deref(),
-                run.capture_state == CaptureState::Completed,
+                run.capture_state.allows_post_stop_async(),
             ),
         };
         if !state_is_eligible {
@@ -1707,7 +1714,8 @@ impl NotebookCaptureStore {
             CaptureProviderRole::PostStop => tx.execute(
                 "UPDATE notebook_capture_runs
                  SET post_stop_provider_id = ?1, post_stop_model_id = ?2, updated_at = ?3
-                 WHERE session_id = ?4 AND capture_state = 'completed'
+                 WHERE session_id = ?4
+                   AND capture_state IN ('completed', 'interrupted')
                    AND post_stop_provider_id IS NULL AND post_stop_model_id IS NULL",
                 params![provider_id, model_id, now, session_id],
             )?,
@@ -1752,9 +1760,11 @@ impl NotebookCaptureStore {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// Completed captures are replay candidates for explicit post-stop
+    /// Cleanly completed captures are replay candidates for explicit post-stop
     /// compensation (for example, restoring a missing async task after a
-    /// process crash). The store does not infer or enqueue any remote work.
+    /// process crash). Interrupted runs are handled separately because only
+    /// ones with retained audio are eligible for explicit authorization. The
+    /// store does not infer or enqueue any remote work.
     pub fn list_completed_runs(
         &self,
     ) -> Result<Vec<NotebookCaptureRun>, NotebookCaptureStoreError> {
@@ -1767,15 +1777,15 @@ impl NotebookCaptureStore {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// Startup compensation only needs completed runs whose durable async
-    /// receipt has not reached a terminal state. Filtering in SQLite avoids
-    /// decoding every historical capture profile on every app launch.
-    pub fn list_completed_runs_requiring_async_compensation(
+    /// Startup compensation only needs post-stop-eligible runs whose durable
+    /// async receipt has not reached a terminal state. Filtering in SQLite
+    /// avoids decoding every historical capture profile on every app launch.
+    pub fn list_post_stop_runs_requiring_async_compensation(
         &self,
     ) -> Result<Vec<NotebookCaptureRun>, NotebookCaptureStoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(&format!(
-            "{RUN_SELECT} WHERE capture_state = 'completed'
+            "{RUN_SELECT} WHERE capture_state IN ('completed', 'interrupted')
              AND async_task_state IN ('pending', 'reserved', 'enqueued')
              ORDER BY COALESCE(completed_at, updated_at) ASC, id ASC"
         ))?;
@@ -1830,9 +1840,9 @@ impl NotebookCaptureStore {
             tx.commit()?;
             return Ok(run);
         }
-        if run.capture_state != CaptureState::Completed {
+        if !run.capture_state.allows_post_stop_async() {
             return Err(NotebookCaptureStoreError::Conflict(format!(
-                "session {session_id} must be completed before async transcription"
+                "session {session_id} must be completed or interrupted before async transcription"
             )));
         }
         let has_retained_audio: bool = tx.query_row(
@@ -1864,7 +1874,8 @@ impl NotebookCaptureStore {
             "UPDATE notebook_capture_runs
              SET async_task_state = 'pending', async_authorized_at_ms = ?1,
                  async_language_hint = ?2, updated_at = ?3
-             WHERE session_id = ?4 AND capture_state = 'completed'
+             WHERE session_id = ?4
+               AND capture_state IN ('completed', 'interrupted')
                AND async_task_state = 'none'
                AND async_authorized_at_ms IS NULL
                AND async_language_hint IS NULL
@@ -1950,9 +1961,9 @@ impl NotebookCaptureStore {
                 run.session_id
             )));
         }
-        if run.capture_state != CaptureState::Completed {
+        if !run.capture_state.allows_post_stop_async() {
             return Err(NotebookCaptureStoreError::Conflict(format!(
-                "run {run_id} must be completed before reserving async transcription"
+                "run {run_id} must be completed or interrupted before reserving async transcription"
             )));
         }
 
@@ -1978,7 +1989,7 @@ impl NotebookCaptureStore {
             "UPDATE notebook_capture_runs
              SET async_task_state = 'reserved', async_task_id = ?1,
                  async_task_payload_sha256 = ?2, updated_at = ?3
-             WHERE id = ?4 AND capture_state = 'completed'
+             WHERE id = ?4 AND capture_state IN ('completed', 'interrupted')
                AND async_task_state = 'pending'
                AND async_task_id IS NULL AND async_task_payload_sha256 IS NULL",
             params![stable_task_id, payload_sha256, now, run_id],
@@ -2900,7 +2911,8 @@ impl NotebookCaptureStore {
             "UPDATE notebook_capture_runs
              SET async_projection_state = ?1, updated_at = ?2
              WHERE id = ?3 AND async_projection_state = ?4
-               AND async_task_state = 'completed' AND capture_state = 'completed'",
+               AND async_task_state = 'completed'
+               AND capture_state IN ('completed', 'interrupted')",
             params![next.as_str(), now, run_id, expected.as_str()],
         )?;
         if updated == 0 {
@@ -2928,7 +2940,7 @@ impl NotebookCaptureStore {
     ) -> Result<Vec<NotebookCaptureRun>, NotebookCaptureStoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(&format!(
-            "{RUN_SELECT} WHERE capture_state = 'completed'
+            "{RUN_SELECT} WHERE capture_state IN ('completed', 'interrupted')
              AND async_task_state = 'completed' AND async_projection_state = 'pending'
              ORDER BY COALESCE(completed_at, updated_at) ASC, id ASC"
         ))?;
@@ -2963,7 +2975,8 @@ impl NotebookCaptureStore {
             "UPDATE notebook_capture_runs
              SET async_projection_state = 'ready', updated_at = ?1
              WHERE id = ?2 AND async_projection_state = 'projecting'
-               AND async_task_state = 'completed' AND capture_state = 'completed'",
+               AND async_task_state = 'completed'
+               AND capture_state IN ('completed', 'interrupted')",
             params![now, run_id],
         )?;
         if updated == 0 {
@@ -9748,13 +9761,208 @@ mod tests {
             .unwrap();
         assert_eq!(completed.async_task_state, AsyncTaskState::Completed);
 
+        create_run(&store, &new_run(&notebook_id, "async-interrupted")).unwrap();
+        store
+            .transition_capture(
+                "run-async-interrupted",
+                CaptureState::Recording,
+                CaptureState::Draining,
+            )
+            .unwrap();
+        store
+            .finalize_audio(
+                "run-async-interrupted",
+                "/tmp/async-interrupted.chunk.00000.enc",
+                16_000,
+            )
+            .unwrap();
+        store
+            .interrupt_local_persistence(
+                "run-async-interrupted",
+                CaptureState::Draining,
+                &ProviderFailure {
+                    error_type: "local_persistence".into(),
+                    request_id: None,
+                },
+            )
+            .unwrap();
+        authorize_async_transcription(&store, "async-interrupted");
+
         let candidates = store
-            .list_completed_runs_requiring_async_compensation()
+            .list_post_stop_runs_requiring_async_compensation()
             .unwrap()
             .into_iter()
             .map(|run| run.id)
             .collect::<Vec<_>>();
-        assert_eq!(candidates, vec!["run-async-pending"]);
+        assert_eq!(
+            candidates,
+            vec!["run-async-pending", "run-async-interrupted"]
+        );
+    }
+
+    #[test]
+    fn interrupted_retained_audio_supports_explicit_async_lifecycle() {
+        let (_temp, store, notebook_id) = fixture();
+        create_run(&store, &new_run(&notebook_id, "interrupted-async")).unwrap();
+        store
+            .transition_capture(
+                "run-interrupted-async",
+                CaptureState::Recording,
+                CaptureState::Draining,
+            )
+            .unwrap();
+        store
+            .finalize_audio(
+                "run-interrupted-async",
+                "/tmp/interrupted-async.chunk.00000.enc",
+                16_000,
+            )
+            .unwrap();
+        let interrupted = store
+            .interrupt_local_persistence(
+                "run-interrupted-async",
+                CaptureState::Draining,
+                &ProviderFailure {
+                    error_type: "local_persistence".into(),
+                    request_id: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(interrupted.capture_state, CaptureState::Interrupted);
+        assert!(interrupted.audio_path.is_some());
+
+        let pending = authorize_async_transcription(&store, "interrupted-async");
+        assert_eq!(pending.async_task_state, AsyncTaskState::Pending);
+        claim_post_stop(&store, "session-interrupted-async");
+        let digest = "e".repeat(64);
+        store
+            .reserve_async_task("run-interrupted-async", "interrupted-task", &digest)
+            .unwrap();
+        store
+            .mark_async_task_enqueued("run-interrupted-async", "interrupted-task")
+            .unwrap();
+        let token = Token {
+            text: "saved recording".into(),
+            start_ms: 0,
+            end_ms: 500,
+            is_final: true,
+            language: "en".into(),
+            speaker: None,
+            confidence: 1.0,
+            translation_status: vt_model::TranslationStatus::None,
+        };
+        let result_json = serde_json::json!({
+            "session_id": "session-interrupted-async",
+            "token_count": 1,
+            "full_text": "saved recording",
+            "duration_ms": 500,
+        })
+        .to_string();
+        let receipt = store
+            .commit_async_provider_success(
+                "session-interrupted-async",
+                "interrupted-task",
+                &[token],
+                &result_json,
+            )
+            .unwrap();
+        assert_eq!(
+            receipt.search_projection_state,
+            AsyncSearchProjectionState::Pending
+        );
+        let completed = store
+            .mark_async_task_terminal_for_session(
+                "session-interrupted-async",
+                "interrupted-task",
+                true,
+            )
+            .unwrap();
+        assert_eq!(completed.async_task_state, AsyncTaskState::Completed);
+        assert_eq!(
+            completed.async_projection_state,
+            AsyncProjectionState::Pending
+        );
+        assert_eq!(
+            store
+                .list_pending_async_projections()
+                .unwrap()
+                .into_iter()
+                .map(|run| run.id)
+                .collect::<Vec<_>>(),
+            vec!["run-interrupted-async"]
+        );
+        store
+            .set_async_projection_state(
+                "run-interrupted-async",
+                AsyncProjectionState::Pending,
+                AsyncProjectionState::Projecting,
+            )
+            .unwrap();
+        store
+            .complete_async_projection_unless_purging("run-interrupted-async")
+            .unwrap();
+        let ready = store.get_run("run-interrupted-async").unwrap().unwrap();
+        assert_eq!(ready.capture_state, CaptureState::Interrupted);
+        assert_eq!(ready.async_projection_state, AsyncProjectionState::Ready);
+    }
+
+    #[test]
+    fn interrupted_async_authorization_requires_trusted_retained_audio() {
+        let (_temp, store, notebook_id) = fixture();
+
+        create_run(&store, &new_run(&notebook_id, "interrupted-no-audio")).unwrap();
+        let interrupted = store
+            .interrupt_capture(
+                "run-interrupted-no-audio",
+                CaptureState::Recording,
+                &ProviderFailure {
+                    error_type: "local_audio_unavailable".into(),
+                    request_id: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(interrupted.capture_state, CaptureState::Interrupted);
+        assert!(matches!(
+            store.authorize_async_transcription(
+                "session-interrupted-no-audio",
+                1_700_000_000_000,
+                Some("en"),
+            ),
+            Err(NotebookCaptureStoreError::Conflict(message))
+                if message.contains("no retained audio")
+        ));
+
+        create_run(&store, &new_run(&notebook_id, "failed-with-audio")).unwrap();
+        store
+            .transition_capture(
+                "run-failed-with-audio",
+                CaptureState::Recording,
+                CaptureState::Draining,
+            )
+            .unwrap();
+        store
+            .finalize_audio(
+                "run-failed-with-audio",
+                "/tmp/failed-with-audio.chunk.00000.enc",
+                16_000,
+            )
+            .unwrap();
+        store
+            .transition_capture(
+                "run-failed-with-audio",
+                CaptureState::Draining,
+                CaptureState::Failed,
+            )
+            .unwrap();
+        assert!(matches!(
+            store.authorize_async_transcription(
+                "session-failed-with-audio",
+                1_700_000_000_000,
+                Some("en"),
+            ),
+            Err(NotebookCaptureStoreError::Conflict(message))
+                if message.contains("completed or interrupted")
+        ));
     }
 
     #[test]

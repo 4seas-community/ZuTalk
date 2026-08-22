@@ -155,6 +155,8 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertTrue(resources.contains("listNotebookSessions"))
         XCTAssertTrue(resources.contains("listNotebookSessionProjections"))
         XCTAssertTrue(resources.contains("TranscriptionTaskIndex.load"))
+        XCTAssertTrue(resources.contains("onOpen(.asyncTranscript)"))
+        XCTAssertTrue(editor.contains("openResource(sessionId: sessionId, destination: destination)"))
         XCTAssertFalse(resources.contains("createNotebook"))
     }
 

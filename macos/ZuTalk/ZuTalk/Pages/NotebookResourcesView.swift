@@ -12,6 +12,22 @@ enum NotebookResourceStatus: Equatable {
     case destroyed
 }
 
+enum NotebookResourceDestination: Equatable {
+    case audio
+    case realtimeTranscript
+    case asyncTranscript
+    case manualNote
+
+    var displayType: NotebookTabDisplayType? {
+        switch self {
+        case .audio: nil
+        case .realtimeTranscript: .realtimeTranscript
+        case .asyncTranscript: .asyncTranscript
+        case .manualNote: .manualNote
+        }
+    }
+}
+
 struct NotebookResourceItem: Identifiable, Equatable {
     let id: String
     let title: String
@@ -198,7 +214,7 @@ final class NotebookResourcesViewModel: ObservableObject {
 
 struct NotebookResourcesView: View {
     let notebookId: String
-    let onOpenSession: (String) -> Void
+    let onOpenResource: (String, NotebookResourceDestination) -> Void
     @StateObject private var viewModel = NotebookResourcesViewModel()
     @State private var movingSession: NotebookResourceItem?
 
@@ -232,7 +248,9 @@ struct NotebookResourcesView: View {
                         ForEach(viewModel.items) { item in
                             NotebookResourceBlock(
                                 item: item,
-                                onOpen: { onOpenSession(item.id) },
+                                onOpen: { destination in
+                                    onOpenResource(item.id, destination)
+                                },
                                 onDestroyAudio: {
                                     if viewModel.destroyAudio(sessionId: item.id) == false {
                                         ToastCenter.shared.error(
@@ -346,7 +364,7 @@ struct NotebookResourcesView: View {
 
 private struct NotebookResourceBlock: View {
     let item: NotebookResourceItem
-    let onOpen: () -> Void
+    let onOpen: (NotebookResourceDestination) -> Void
     let onDestroyAudio: () -> Void
     let onVerifyAudioDestruction: () -> Void
     let onMove: () -> Void
@@ -358,7 +376,7 @@ private struct NotebookResourceBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
-                Button(action: onOpen) {
+                Button(action: { onOpen(.audio) }) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(displayTitle)
                             .font(.bodyMedium)
@@ -418,7 +436,8 @@ private struct NotebookResourceBlock: View {
                     title: String(localized: "resources.audio"),
                     icon: "waveform",
                     status: item.audio,
-                    detail: audioDetail
+                    detail: audioDetail,
+                    onOpen: { onOpen(.audio) }
                 ) {
                     if item.audio == .ready {
                         Button {
@@ -446,17 +465,20 @@ private struct NotebookResourceBlock: View {
                 resourceBar(
                     title: String(localized: "resources.realtime"),
                     icon: "captions.bubble",
-                    status: item.realtimeTranscript
+                    status: item.realtimeTranscript,
+                    onOpen: { onOpen(.realtimeTranscript) }
                 )
                 resourceBar(
                     title: String(localized: "resources.async"),
                     icon: "text.document",
-                    status: item.asyncTranscript
+                    status: item.asyncTranscript,
+                    onOpen: { onOpen(.asyncTranscript) }
                 )
                 resourceBar(
                     title: String(localized: "resources.note"),
                     icon: "note.text",
-                    status: item.manualNote
+                    status: item.manualNote,
+                    onOpen: { onOpen(.manualNote) }
                 )
             }
         }
@@ -504,6 +526,7 @@ private struct NotebookResourceBlock: View {
         icon: String,
         status: NotebookResourceStatus,
         detail: String? = nil,
+        onOpen: @escaping () -> Void,
         @ViewBuilder actions: () -> some View = { EmptyView() }
     ) -> some View {
         HStack(spacing: Spacing.sm) {
