@@ -1476,7 +1476,7 @@ private struct TranscriptSegmentView: View {
                     TextEditor(text: $draft)
                         .font(.system(size: 15))
                         .foregroundColor(.textPrimary)
-                        .scrollContentBackground(.hidden)
+                        .montereyScrollContentBackground(hidden: true)
                         .background(Color.bgSunken)
                         .overlay(
                             RoundedRectangle(cornerRadius: Radius.sm)

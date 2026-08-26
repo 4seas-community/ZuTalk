@@ -242,7 +242,7 @@ private struct HomeNotebookHero: View {
                     Spacer(minLength: Spacing.lg)
                     notebookActions
                 }
-
+            } fallback: {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
                     notebookSummary
                     notebookActions

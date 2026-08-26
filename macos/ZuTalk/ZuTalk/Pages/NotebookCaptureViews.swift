@@ -680,13 +680,15 @@ struct ShareBroadcastIndicator: View {
                     .foregroundColor(.signalAmber)
                     .help(String(localized: "share.capture.live_hint"))
 
-                    Button(String(localized: "share.capture.mute")) {
+                    Button {
                         setMuted(true)
+                    } label: {
+                        Text(String(localized: "share.capture.mute"))
+                            .underline()
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.textSecondary)
-                    .underline()
                     .help(String(localized: "share.capture.mute_hint"))
                     .accessibilityIdentifier("capture.share_mute")
                 }
@@ -701,13 +703,15 @@ struct ShareBroadcastIndicator: View {
                     .foregroundColor(.textTertiary)
                     .help(String(localized: "share.capture.muted_hint"))
 
-                    Button(String(localized: "share.capture.unmute")) {
+                    Button {
                         setMuted(false)
+                    } label: {
+                        Text(String(localized: "share.capture.unmute"))
+                            .underline()
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.textSecondary)
-                    .underline()
                 }
                 .accessibilityIdentifier("capture.share_muted")
             }
@@ -1705,6 +1709,7 @@ struct NotebookCaptureSettingsView: View {
                 Spacer()
                 settingsActions
             }
+        } fallback: {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 headerCopy
                 settingsActions
@@ -2737,13 +2742,8 @@ private struct NotebookRealtimeHistoryView: View {
                                         contentBottom - visibleBottom
                                     ))
                                 )
-                                .font(.captionMedium)
-                                .foregroundColor(.bgSunken)
-                                .padding(.horizontal, Spacing.md)
-                                .frame(minHeight: 30)
-                                .background(Color.textPrimary)
-                                .clipShape(Capsule())
-                                .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+                            } action: { previous, current in
+                                reconcileLiveFollowing(previous: previous, current: current)
                             }
                     } else {
                         // Monterey has no public scroll-geometry callback.
@@ -2769,20 +2769,49 @@ private struct NotebookRealtimeHistoryView: View {
                             .clipShape(Capsule())
                             .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
                         }
+                        .buttonStyle(.plain)
+                        .padding(Spacing.lg)
                     }
                 }
                 .onAppear {
                     reconcileSelection(using: proxy, animated: false)
                 }
-                .montereyOnChange(of: focusSessionId) { _, _ in
+                .montereyOnChange(of: focusSessionId) { _, sessionID in
+                    guard let sessionID else { return }
+                    selectRun(sessionID, using: proxy, animated: true)
+                }
+                .montereyOnChange(of: presentedRuns.map(\.sessionId)) { _, _ in
                     reconcileSelection(using: proxy, animated: false)
                 }
-                .montereyOnChange(of: availableRuns.map(\.sessionId)) { _, _ in
-                    reconcileSelection(using: proxy, animated: false)
+                .montereyOnChange(of: activeSessionID) { _, sessionID in
+                    guard let sessionID else { return }
+                    selectRun(sessionID, using: proxy, animated: true)
                 }
-                .montereyOnChange(of: activeSessionID) { _, _ in
-                    reconcileSelection(using: proxy, animated: false)
+            }
+        }
+    }
+
+    private func historyScroll(using proxy: ScrollViewProxy) -> some View {
+        HStack(spacing: 0) {
+            NotebookRealtimeRunNavigator(
+                runs: presentedRuns,
+                selectedSessionID: selectedSessionID,
+                activeSessionID: activeSessionID,
+                onSelect: { sessionID in
+                    selectRun(sessionID, using: proxy, animated: true)
+                    onSelectSession(sessionID)
                 }
+            )
+            Divider().background(Color.borderGhost.opacity(0.24))
+            ScrollView {
+                LazyVStack(spacing: Spacing.lg) {
+                    ForEach(presentedRuns) { run in
+                        runView(run, using: proxy)
+                            .id(runAnchor(run.sessionId))
+                    }
+                }
+                .padding(.horizontal, Spacing.xl)
+                .padding(.vertical, Spacing.lg)
             }
         }
     }
@@ -3088,7 +3117,7 @@ private struct NotebookRealtimeRunNavigator: View {
             }
             .padding(.vertical, Spacing.lg)
         }
-        .scrollIndicators(.never)
+        .montereyScrollIndicators(false)
         .frame(width: 52)
         .background(Color.bgSunken.opacity(0.18))
         .accessibilityElement(children: .contain)
@@ -3334,7 +3363,7 @@ struct NotebookRealtimeUtteranceView: View {
                 captureStateLabel
                 statusActions
             }
-
+        } fallback: {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 runIdentity
                 HStack(spacing: Spacing.md) {
@@ -4341,7 +4370,6 @@ private struct BilingualLaneText: View {
                     // The page owns vertical scrolling. Let a continuous
                     // utterance grow the row instead of hiding its tail in a
                     // ten-line nested editor.
-                    .lineLimit(2...)
                     .focused($isFocused)
                     .disabled(isCommitInFlight)
                     .onSubmit { isFocused = false }
