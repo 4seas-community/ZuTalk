@@ -233,8 +233,12 @@ pub struct FfiNotebookCaptureUtterance {
 
 /// One immutable recording block in a Notebook's chronological transcript.
 ///
-/// The record intentionally exposes only `has_audio`; encrypted paths, journal
-/// paths, key references, and task receipts never cross the FFI boundary.
+/// Audio is represented only by `has_audio`; encrypted paths, journal paths,
+/// key references, and task receipts never cross the FFI boundary. The capture
+/// run schema does not persist an audio-input device identity, so history must
+/// leave that setting unknown instead of borrowing the Mac's current device.
+/// Context application receipts remain active-event evidence and are not
+/// synthesized for historical runs.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiNotebookCaptureHistoryRun {
     pub run_id: String,
@@ -257,6 +261,11 @@ pub struct FfiNotebookCaptureHistoryRun {
     pub right_language: Option<String>,
     pub selected_languages: Vec<String>,
     pub common_caption_language: Option<String>,
+    /// Immutable remote-processing switches from this run's profile snapshot.
+    /// `None` means the snapshot is corrupt; callers must not substitute the
+    /// Notebook's current defaults for historical truth.
+    pub remote_realtime_enabled: Option<bool>,
+    pub send_context_to_soniox: Option<bool>,
     pub privacy_level: Option<String>,
     pub post_stop_async_state: String,
     pub post_stop_async_projection_state: FfiNotebookAsyncProjectionState,
@@ -671,6 +680,8 @@ impl From<NotebookCaptureHistoryRun> for FfiNotebookCaptureHistoryRun {
             right_language,
             selected_languages,
             common_caption_language,
+            remote_realtime_enabled,
+            send_context_to_soniox,
             privacy_level,
             profile_error,
         ) = match profile {
@@ -682,6 +693,8 @@ impl From<NotebookCaptureHistoryRun> for FfiNotebookCaptureHistoryRun {
                 Some(profile.right_language),
                 profile.selected_languages,
                 profile.common_caption_language,
+                Some(profile.remote_realtime_enabled),
+                Some(profile.send_context_to_soniox),
                 Some(profile.privacy_level),
                 None,
             ),
@@ -698,6 +711,8 @@ impl From<NotebookCaptureHistoryRun> for FfiNotebookCaptureHistoryRun {
                     None,
                     None,
                     Vec::new(),
+                    None,
+                    None,
                     None,
                     None,
                     Some("profile_snapshot_corrupt".to_string()),
@@ -723,6 +738,8 @@ impl From<NotebookCaptureHistoryRun> for FfiNotebookCaptureHistoryRun {
             right_language,
             selected_languages,
             common_caption_language,
+            remote_realtime_enabled,
+            send_context_to_soniox,
             privacy_level,
             post_stop_async_state: match value.async_task_state {
                 AsyncTaskState::None => "none",
@@ -10642,6 +10659,114 @@ mod tests {
             .list_notebook_capture_history_utterances(notebook.id.clone(), session.id.clone())
             .unwrap();
         assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn notebook_capture_history_ffi_keeps_immutable_remote_switches() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("History switch snapshot".into()))
+            .unwrap();
+        let initial = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let captured_profile = core
+            .notebook_capture_store
+            .update_profile(
+                &notebook.id,
+                initial.revision,
+                &NotebookCaptureProfileUpdate {
+                    remote_realtime_enabled: true,
+                    capture_mode: CaptureMode::TwoWay,
+                    language_a: "en".into(),
+                    language_b: "zh".into(),
+                    left_language: "en".into(),
+                    right_language: "zh".into(),
+                    selected_languages: vec!["en".into(), "zh".into()],
+                    common_caption_language: None,
+                    privacy_level: "standard".into(),
+                    send_context_to_soniox: true,
+                },
+            )
+            .unwrap();
+        let session = vt_store::SessionRecord {
+            id: "history-switch-session".into(),
+            title: "Remote recording".into(),
+            session_type: "recording".into(),
+            status: "recording".into(),
+            duration_ms: 0,
+            created_at: "2001-01-02T12:00:00Z".into(),
+            deleted_at: None,
+        };
+        core.notebook_capture_store
+            .create_session_and_run(
+                &session,
+                &vt_store::NewNotebookCaptureRun {
+                    id: "history-switch-run".into(),
+                    notebook_id: notebook.id.clone(),
+                    session_id: session.id.clone(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "/private/history-switch.journal".into(),
+                    audio_key_ref: "private-history-switch-key".into(),
+                    sample_rate: 16_000,
+                    channels: 1,
+                },
+                &captured_profile,
+            )
+            .unwrap();
+
+        // Changing the Topic defaults after capture must not rewrite the
+        // immutable Session snapshot returned by history.
+        core.notebook_capture_store
+            .update_profile(
+                &notebook.id,
+                captured_profile.revision,
+                &NotebookCaptureProfileUpdate {
+                    remote_realtime_enabled: false,
+                    capture_mode: CaptureMode::TranscriptionOnly,
+                    language_a: "en".into(),
+                    language_b: "zh".into(),
+                    left_language: "en".into(),
+                    right_language: "zh".into(),
+                    selected_languages: vec!["en".into(), "zh".into()],
+                    common_caption_language: None,
+                    privacy_level: "high".into(),
+                    send_context_to_soniox: false,
+                },
+            )
+            .unwrap();
+
+        let history = core
+            .list_notebook_capture_history_summaries(notebook.id.clone())
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].run_id, "history-switch-run");
+        assert_eq!(history[0].remote_realtime_enabled, Some(true));
+        assert_eq!(history[0].send_context_to_soniox, Some(true));
+        assert_eq!(history[0].privacy_level.as_deref(), Some("standard"));
+
+        // A damaged legacy snapshot must remain visibly unknown. Falling back
+        // to today's Topic profile here would fabricate historical settings.
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
+        db.execute(
+            "UPDATE notebook_capture_runs
+             SET profile_snapshot_json = 'not-json'
+             WHERE id = 'history-switch-run'",
+            [],
+        )
+        .unwrap();
+        let corrupt = core
+            .list_notebook_capture_history_summaries(notebook.id)
+            .unwrap();
+        assert_eq!(corrupt.len(), 1);
+        assert_eq!(corrupt[0].remote_realtime_enabled, None);
+        assert_eq!(corrupt[0].send_context_to_soniox, None);
+        assert_eq!(
+            corrupt[0].provider_error_type.as_deref(),
+            Some("profile_snapshot_corrupt")
+        );
     }
 
     struct CaptureEventSender(std::sync::mpsc::Sender<FfiNotebookCaptureEvent>);
