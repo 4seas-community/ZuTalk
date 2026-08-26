@@ -184,15 +184,21 @@ impl SearchStore {
         });
 
         if has_cjk {
-            let pattern = format!("%{query}%");
+            // Never bridge the whole transcript for a hit. A common CJK word
+            // can match thousands of multi-hour Sessions; returning `content`
+            // here previously turned one search into hundreds of MB or more.
+            // SQLite `substr` counts Unicode characters, so the result stays
+            // bounded before it crosses Rust/Swift FFI.
             let mut stmt = conn.prepare(
-                "SELECT session_id, content, 0.0
+                "SELECT session_id,
+                        substr(content, max(instr(content, ?1) - 80, 1), 240),
+                        0.0
                  FROM search_index
-                 WHERE content LIKE ?1
+                 WHERE instr(content, ?1) > 0
                  LIMIT ?2",
             )?;
             let results = stmt
-                .query_map(rusqlite::params![pattern, limit as i64], |row| {
+                .query_map(rusqlite::params![query, limit as i64], |row| {
                     Ok(SearchResult {
                         session_id: row.get(0)?,
                         snippet: row.get(1)?,
@@ -297,6 +303,19 @@ mod tests {
         let results = store.search("产品", 10).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].session_id, "s1");
+    }
+
+    #[test]
+    fn cjk_search_returns_a_bounded_nearby_snippet() {
+        let (_tmp, store) = setup();
+        let content = format!("{}圆明园{}", "前".repeat(2_000), "后".repeat(2_000));
+        store.index_session("long-cjk", &content).unwrap();
+
+        let results = store.search("圆明园", 10).unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].snippet.contains("圆明园"));
+        assert!(results[0].snippet.chars().count() <= 240);
     }
 
     #[test]
