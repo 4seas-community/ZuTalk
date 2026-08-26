@@ -39,7 +39,7 @@ struct SharedInboxPage: View {
         .task {
             refreshSessions()
             while Task.isCancelled == false {
-                try? await Task.sleep(for: .seconds(1))
+                try? await MontereyTaskSleep.seconds(1)
                 refreshSessions()
             }
         }

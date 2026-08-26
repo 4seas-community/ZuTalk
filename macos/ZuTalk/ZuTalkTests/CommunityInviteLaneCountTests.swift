@@ -367,7 +367,7 @@ private final class LockedAnswers: @unchecked Sendable {
     func waitForAnswer(to requestID: String) async throws {
         for _ in 0..<200 {
             if result(for: requestID) != nil { return }
-            try await Task.sleep(for: .milliseconds(10))
+            try await Task.sleep(nanoseconds: 10_000_000)
         }
         XCTFail("no answer delivered for \(requestID)")
     }

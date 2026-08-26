@@ -1,7 +1,6 @@
 import AVFoundation
 import Combine
 import Foundation
-import Synchronization
 
 // MARK: - Capture contracts
 
@@ -3273,8 +3272,8 @@ final class NotebookCaptureAudioPushGate: @unchecked Sendable {
     private let push: @Sendable (Data) -> String?
     private let onTerminal: @Sendable (String) -> Void
     private let capacity: Int
-    private let state = Atomic<Int>(State.accepting.rawValue)
-    private let pendingCount = Atomic<Int>(0)
+    private let state = CaptureAtomicInt(State.accepting.rawValue)
+    private let pendingCount = CaptureAtomicInt(0)
     private let fenceLock = NSLock()
     nonisolated(unsafe) private var fenceWaiters: [CheckedContinuation<Void, Never>] = []
     private let failureLock = NSLock()
@@ -3298,36 +3297,34 @@ final class NotebookCaptureAudioPushGate: @unchecked Sendable {
         guard audioData.isEmpty == false else { return .closed }
 
         while true {
-            let currentState = state.load(ordering: .acquiring)
+            let currentState = state.loadAcquire()
             guard currentState == State.accepting.rawValue else {
                 return currentState == State.closed.rawValue ? .closed : .overflow
             }
 
-            let currentPending = pendingCount.load(ordering: .relaxed)
+            let currentPending = pendingCount.loadRelaxed()
             if currentPending >= capacity {
-                let transition = state.compareExchange(
+                let transitioned = state.compareExchangeAcquiringAndReleasing(
                     expected: State.accepting.rawValue,
-                    desired: State.overflow.rawValue,
-                    ordering: .acquiringAndReleasing
+                    desired: State.overflow.rawValue
                 )
-                if transition.exchanged {
+                if transitioned {
                     onTerminal(NotebookCaptureInterruptReason.localAudioOverflow.rawValue)
                     return .overflow
                 }
                 continue
             }
 
-            let reservation = pendingCount.compareExchange(
+            let reserved = pendingCount.compareExchangeAcquiringAndReleasing(
                 expected: currentPending,
-                desired: currentPending + 1,
-                ordering: .acquiringAndReleasing
+                desired: currentPending + 1
             )
-            guard reservation.exchanged else { continue }
+            guard reserved else { continue }
 
             // Close may race between the first state load and reservation.
             // Frames reserved after close are rejected; frames whose second
             // check wins are accepted and therefore covered by `fence()`.
-            let reservedState = state.load(ordering: .acquiring)
+            let reservedState = state.loadAcquire()
             guard reservedState == State.accepting.rawValue else {
                 rejectReservationFromTap()
                 return reservedState == State.closed.rawValue ? .closed : .overflow
@@ -3339,32 +3336,30 @@ final class NotebookCaptureAudioPushGate: @unchecked Sendable {
     }
 
     nonisolated func close() {
-        _ = state.compareExchange(
+        _ = state.compareExchangeAcquiringAndReleasing(
             expected: State.accepting.rawValue,
-            desired: State.closed.rawValue,
-            ordering: .acquiringAndReleasing
+            desired: State.closed.rawValue
         )
     }
 
     @discardableResult
     nonisolated func reopen() -> Bool {
-        guard pendingCount.load(ordering: .acquiring) == 0 else { return false }
-        return state.compareExchange(
+        guard pendingCount.loadAcquire() == 0 else { return false }
+        return state.compareExchangeAcquiringAndReleasing(
             expected: State.closed.rawValue,
-            desired: State.accepting.rawValue,
-            ordering: .acquiringAndReleasing
-        ).exchanged
+            desired: State.accepting.rawValue
+        )
     }
 
     nonisolated func abort() {
-        state.store(State.aborted.rawValue, ordering: .releasing)
+        state.storeRelease(State.aborted.rawValue)
         resumeFenceWaitersIfDrained()
     }
 
     nonisolated func fence() async {
         await withCheckedContinuation { continuation in
             fenceLock.lock()
-            if pendingCount.load(ordering: .acquiring) == 0 {
+            if pendingCount.loadAcquire() == 0 {
                 fenceLock.unlock()
                 continuation.resume()
             } else {
@@ -3375,14 +3370,14 @@ final class NotebookCaptureAudioPushGate: @unchecked Sendable {
     }
 
     nonisolated var pendingCountForTesting: Int {
-        pendingCount.load(ordering: .acquiring)
+        pendingCount.loadAcquire()
     }
 
     /// Available after `fence()` for deterministic pause/stop decisions. A
     /// persistence failure upgrades an earlier overflow because Rust has
     /// already durably interrupted the run in that case.
     nonisolated var terminalMessage: String? {
-        switch state.load(ordering: .acquiring) {
+        switch state.loadAcquire() {
         case State.overflow.rawValue:
             return NotebookCaptureInterruptReason.localAudioOverflow.rawValue
         case State.pushFailure.rawValue:
@@ -3395,7 +3390,7 @@ final class NotebookCaptureAudioPushGate: @unchecked Sendable {
     }
 
     private nonisolated func pushAcceptedFrame(_ audioData: Data) {
-        let currentState = state.load(ordering: .acquiring)
+        let currentState = state.loadAcquire()
         guard currentState != State.aborted.rawValue,
               currentState != State.pushFailure.rawValue
         else {
@@ -3409,15 +3404,14 @@ final class NotebookCaptureAudioPushGate: @unchecked Sendable {
             failureLock.unlock()
 
             while true {
-                let observed = state.load(ordering: .acquiring)
+                let observed = state.loadAcquire()
                 guard observed != State.aborted.rawValue,
                       observed != State.pushFailure.rawValue
                 else { break }
-                if state.compareExchange(
+                if state.compareExchangeAcquiringAndReleasing(
                     expected: observed,
-                    desired: State.pushFailure.rawValue,
-                    ordering: .acquiringAndReleasing
-                ).exchanged {
+                    desired: State.pushFailure.rawValue
+                ) {
                     onTerminal(message)
                     break
                 }
@@ -3427,7 +3421,7 @@ final class NotebookCaptureAudioPushGate: @unchecked Sendable {
     }
 
     private nonisolated func finishAcceptedFrame() {
-        let previous = pendingCount.wrappingSubtract(1, ordering: .acquiringAndReleasing).oldValue
+        let previous = pendingCount.fetchAddAcquiringAndReleasing(-1)
         precondition(previous > 0, "audio gate pending count underflow")
         if previous == 1 {
             resumeFenceWaitersIfDrained()
@@ -3438,7 +3432,7 @@ final class NotebookCaptureAudioPushGate: @unchecked Sendable {
     /// bookkeeping is deferred to the bounded serial queue so the tap never
     /// acquires `fenceLock`.
     private nonisolated func rejectReservationFromTap() {
-        let previous = pendingCount.wrappingSubtract(1, ordering: .acquiringAndReleasing).oldValue
+        let previous = pendingCount.fetchAddAcquiringAndReleasing(-1)
         precondition(previous > 0, "audio gate pending count underflow")
         if previous == 1 {
             queue.async { [self] in resumeFenceWaitersIfDrained() }
@@ -3446,9 +3440,9 @@ final class NotebookCaptureAudioPushGate: @unchecked Sendable {
     }
 
     private nonisolated func resumeFenceWaitersIfDrained() {
-        guard pendingCount.load(ordering: .acquiring) == 0 else { return }
+        guard pendingCount.loadAcquire() == 0 else { return }
         fenceLock.lock()
-        guard pendingCount.load(ordering: .acquiring) == 0 else {
+        guard pendingCount.loadAcquire() == 0 else {
             fenceLock.unlock()
             return
         }
@@ -5657,7 +5651,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         // stand is what keeps a burst to one publish per window.
         guard livePreviewFlushTask == nil else { return }
         livePreviewFlushTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            try? await MontereyTaskSleep.seconds(delay)
             guard Task.isCancelled == false else { return }
             self?.flushHeldLivePreview()
         }

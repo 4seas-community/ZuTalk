@@ -15,6 +15,8 @@ import Foundation
 
 @MainActor
 final class BlockNoteStore: ObservableObject {
+    private let coreProvider: @MainActor () -> ZuTalkCore?
+
     /// 大纲行(先序)。UI 直接渲染这份镜像。
     @Published private(set) var rows: [FfiOutlineRow] = []
 
@@ -38,16 +40,36 @@ final class BlockNoteStore: ObservableObject {
     /// noteBlockDocumentOpen 返回的 doc_id。nil 表示尚未打开或已关闭。
     private(set) var docId: String?
 
+    init(
+        coreProvider: @escaping @MainActor () -> ZuTalkCore? = { CoreClient.shared.core }
+    ) {
+        self.coreProvider = coreProvider
+    }
+
     /// 打开(必要时从第 1 纪元平文本迁移)并载入大纲行。
     /// 幂等:重复调用会先释放旧文档再打开目标文档。
     func open(notebookId: String, tabId: String) {
+        openDocument { core in
+            try core.noteBlockDocumentOpen(notebookId: notebookId, tabId: tabId)
+        }
+    }
+
+    /// 打开单个 Session 自己的笔记。doc_id 由 Rust 从 session id 单点
+    /// 派生并返回，Swift 不复制文件名或哈希约定。
+    func openSession(sessionId: String) {
+        openDocument { core in
+            try core.sessionNoteBlockDocumentOpen(sessionId: sessionId)
+        }
+    }
+
+    private func openDocument(_ resolveDocument: (ZuTalkCore) throws -> String) {
         close()
-        guard let core = CoreClient.shared.core else {
+        guard let core = coreProvider() else {
             loadError = CoreClient.shared.initError ?? "core init failed"
             return
         }
         do {
-            let id = try core.noteBlockDocumentOpen(notebookId: notebookId, tabId: tabId)
+            let id = try resolveDocument(core)
             var loaded = try core.noteOutlineRows(docId: id)
             // 空文档给一行空 row 起步:光标有落点,首次输入即成第一行。
             // 只是本地占位,不立即落盘;第一次编辑手势会连内容一起 apply。
@@ -65,15 +87,50 @@ final class BlockNoteStore: ObservableObject {
         }
     }
 
-    /// 释放 Rust 侧文档句柄。视图消失时必须调用,与 open 配对。
+    /// 把所有行视图上报但尚未失焦提交的草稿同步写入块文档。
+    ///
+    /// 标签切换时父视图可能先 disappear/close，TextField 的失焦回调才
+    /// 随后到达。草稿每个键击都已经进入 `drafts`，因此这里在驱逐句柄
+    /// 前一次性合并并同步 apply，失焦回调晚到也只会成为 no-op。
+    @discardableResult
+    func flushDrafts() -> Bool {
+        guard docId != nil else {
+            drafts = [:]
+            return true
+        }
+
+        var next = rows
+        var changed = false
+        for (rowId, draft) in drafts {
+            guard let index = next.firstIndex(where: { $0.id == rowId }),
+                  next[index].text != draft
+            else { continue }
+            next[index].text = draft
+            changed = true
+        }
+        guard changed else {
+            drafts = [:]
+            return true
+        }
+
+        let succeeded = apply(next)
+        if succeeded {
+            drafts = [:]
+        }
+        return succeeded
+    }
+
+    /// 先同步提交聚焦草稿，再释放 Rust 侧文档句柄。视图消失时必须调用，
+    /// 与 open 配对。
     func close() {
         guard let docId else { return }
+        flushDrafts()
         self.docId = nil
         rows = []
         drafts = [:]
         canUndo = false
         canRedo = false
-        try? CoreClient.shared.core?.blockDocumentClose(docId: docId)
+        try? coreProvider()?.blockDocumentClose(docId: docId)
     }
 
     // MARK: - 撤销 / 重做
@@ -111,7 +168,7 @@ final class BlockNoteStore: ObservableObject {
     private func performUndoRedo(
         _ op: (ZuTalkCore, String) throws -> FfiNoteUndoState
     ) {
-        guard let docId, let core = CoreClient.shared.core else { return }
+        guard let docId, let core = coreProvider() else { return }
         do {
             let state = try op(core, docId)
             canUndo = state.canUndo
@@ -132,7 +189,7 @@ final class BlockNoteStore: ObservableObject {
     }
 
     private func refreshUndoState() {
-        guard let docId, let core = CoreClient.shared.core,
+        guard let docId, let core = coreProvider(),
               let state = try? core.noteUndoState(docId: docId)
         else { return }
         canUndo = state.canUndo
@@ -387,7 +444,7 @@ final class BlockNoteStore: ObservableObject {
     /// 保证 UI 永远与 Rust 落盘状态收敛。
     @discardableResult
     private func apply(_ next: [FfiOutlineRow]) -> Bool {
-        guard let docId, let core = CoreClient.shared.core else { return false }
+        guard let docId, let core = coreProvider() else { return false }
         let previous = rows
         rows = next
         do {

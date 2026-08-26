@@ -833,7 +833,7 @@ enum SubtitlePacedReveal {
 /// needs the newest words, not every intermediate hypothesis: partials share
 /// one trailing-edge refresh while a Final bypasses the budget immediately.
 enum SubtitleAudienceSourceRefresh {
-    static let interval: Duration = .milliseconds(250)
+    static let intervalMilliseconds: UInt64 = 250
 
     struct Update: Equatable {
         let text: String
@@ -939,7 +939,7 @@ private struct AudiencePacedText: View {
                 revealedText = reveal.revealedPrefix(of: text)
                 memory.store(id, state: reveal, text: text)
                 while !Task.isCancelled, Int(reveal.revealedChars) < text.count {
-                    try? await Task.sleep(for: .milliseconds(33))
+                    try? await MontereyTaskSleep.milliseconds(33)
                     if Task.isCancelled { return }
                     reveal = SubtitlePacedReveal.advance(
                         state: reveal,
@@ -980,7 +980,7 @@ private struct StableRefreshText: View {
             .transaction { transaction in
                 transaction.animation = nil
             }
-            .onChange(of: update) { _, value in
+            .montereyOnChange(of: update) { _, value in
                 receive(value)
             }
             .onDisappear {
@@ -1002,7 +1002,9 @@ private struct StableRefreshText: View {
     private func scheduleFlushIfNeeded() {
         guard scheduledFlush == nil else { return }
         scheduledFlush = Task { @MainActor in
-            try? await Task.sleep(for: SubtitleAudienceSourceRefresh.interval)
+            try? await MontereyTaskSleep.milliseconds(
+                SubtitleAudienceSourceRefresh.intervalMilliseconds
+            )
             // Clearing the handle on the cancelled path too: a handle left
             // behind reads as "a flush is already scheduled" and would retire
             // the budget for the rest of this view's life.
@@ -1262,7 +1264,7 @@ struct SubtitleOverlayView: View {
                         GeometryReader { proxy in
                             Color.clear
                                 .onAppear { measuredControlBarHeight = proxy.size.height }
-                                .onChange(of: proxy.size.height) { _, height in
+                                .montereyOnChange(of: proxy.size.height) { _, height in
                                     measuredControlBarHeight = height
                                 }
                         }
@@ -1279,19 +1281,21 @@ struct SubtitleOverlayView: View {
                 .padding(8)
             }
             .clipShape(RoundedRectangle(cornerRadius: canvasCornerRadius, style: .continuous))
-            .onContinuousHover { phase in
-                switch phase {
-                case .active(let location):
+            .montereyContinuousHover { isActive, location in
+                if isActive {
                     // Once the panel fills a display, the pointer is almost
                     // always inside it. Limit chrome activation to the top
                     // control strip so subtitles return to a clean canvas as
                     // soon as the pointer moves back into the content.
-                    updateControlBarVisibility(
-                        coordinator.isMaximized
-                            ? location.y <= controlBarHoverBand
-                            : true
-                    )
-                case .ended:
+                    let shouldShowControls: Bool
+                    if coordinator.isMaximized, let location {
+                        shouldShowControls = location.y <= controlBarHoverBand
+                    } else {
+                        // Monterey reports enter/exit without coordinates.
+                        shouldShowControls = true
+                    }
+                    updateControlBarVisibility(shouldShowControls)
+                } else {
                     updateControlBarVisibility(false)
                 }
             }
@@ -1395,8 +1399,9 @@ struct SubtitleOverlayView: View {
     /// window is the status prose, which is the one item here the operator can
     /// read somewhere else. Every control stays.
     private var controlBar: some View {
-        ViewThatFits(in: .horizontal) {
+        MontereyHorizontalViewThatFits {
             controlRows(includesStatus: true)
+        } fallback: {
             controlRows(includesStatus: false)
         }
         .padding(.horizontal, 10)
@@ -1758,39 +1763,53 @@ struct SubtitleOverlayView: View {
     /// that is about to change height lands short of where that row ends up.
     private func liveFollowingScroll<Content: View>(
         signal: SubtitleOverlayFollowSignal,
-        indicators: ScrollIndicatorVisibility = .visible,
+        showsIndicators: Bool = true,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    content()
-                    Color.clear
-                        .frame(height: 1)
-                        .id(Self.liveTailAnchorID)
+            Group {
+                if #available(macOS 15.0, *) {
+                    liveScrollContent(
+                        showsIndicators: showsIndicators,
+                        content: content
+                    )
+                        .defaultScrollAnchor(.bottom)
+                        .onScrollGeometryChange(
+                            for: SubtitleOverlayScrollMetrics.self
+                        ) { geometry in
+                            let visibleBottom = geometry.contentOffset.y
+                                + geometry.containerSize.height
+                            let contentBottom = geometry.contentSize.height
+                                + geometry.contentInsets.bottom
+                            return SubtitleOverlayScrollMetrics(
+                                offsetY: Double(geometry.contentOffset.y),
+                                distanceFromBottom: Double(max(
+                                    0,
+                                    contentBottom - visibleBottom
+                                )),
+                                contentHeight: Double(geometry.contentSize.height)
+                            )
+                        } action: { previous, current in
+                            isFollowingLive = SubtitleOverlayFollowPolicy.reconciledFollowing(
+                                wasFollowing: isFollowingLive,
+                                previous: previous,
+                                current: current
+                            )
+                            if isFollowingLive == false {
+                                cancelLiveFollow()
+                            }
+                        }
+                } else {
+                    // Monterey cannot observe public scroll geometry. Keep the
+                    // live edge attached; manual scroll suspension remains a
+                    // modern-system enhancement.
+                    liveScrollContent(
+                        showsIndicators: showsIndicators,
+                        content: content
+                    )
                 }
             }
-            .defaultScrollAnchor(.bottom)
-            .scrollIndicators(indicators)
-            .onScrollGeometryChange(for: SubtitleOverlayScrollMetrics.self) { geometry in
-                let visibleBottom = geometry.contentOffset.y + geometry.containerSize.height
-                let contentBottom = geometry.contentSize.height + geometry.contentInsets.bottom
-                return SubtitleOverlayScrollMetrics(
-                    offsetY: Double(geometry.contentOffset.y),
-                    distanceFromBottom: Double(max(0, contentBottom - visibleBottom)),
-                    contentHeight: Double(geometry.contentSize.height)
-                )
-            } action: { previous, current in
-                isFollowingLive = SubtitleOverlayFollowPolicy.reconciledFollowing(
-                    wasFollowing: isFollowingLive,
-                    previous: previous,
-                    current: current
-                )
-                if isFollowingLive == false {
-                    cancelLiveFollow()
-                }
-            }
-            .onChange(of: signal) { _, _ in
+            .montereyOnChange(of: signal) { _, _ in
                 scheduleLiveFollow(using: proxy)
             }
             .onAppear {
@@ -1798,6 +1817,20 @@ struct SubtitleOverlayView: View {
                 proxy.scrollTo(Self.liveTailAnchorID, anchor: .bottom)
             }
             .onDisappear { cancelLiveFollow() }
+        }
+    }
+
+    private func liveScrollContent<Content: View>(
+        showsIndicators: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        ScrollView(showsIndicators: showsIndicators) {
+            VStack(spacing: 0) {
+                content()
+                Color.clear
+                    .frame(height: 1)
+                    .id(Self.liveTailAnchorID)
+            }
         }
     }
 
@@ -1809,7 +1842,7 @@ struct SubtitleOverlayView: View {
         liveFollowGeneration &+= 1
         let generation = liveFollowGeneration
         liveFollowTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(250))
+            try? await MontereyTaskSleep.milliseconds(250)
             guard Task.isCancelled == false,
                   generation == liveFollowGeneration,
                   isFollowingLive
@@ -1845,7 +1878,7 @@ struct SubtitleOverlayView: View {
                 }
             }
             .onAppear { canvasSize = geometry.size }
-            .onChange(of: geometry.size) { _, size in canvasSize = size }
+            .montereyOnChange(of: geometry.size) { _, size in canvasSize = size }
         }
     }
 
@@ -1999,7 +2032,7 @@ struct SubtitleOverlayView: View {
                 textExtent: (lines.last?.sourceText.count ?? 0)
                     + (lines.last?.targetText?.count ?? 0)
             ),
-            indicators: .hidden
+            showsIndicators: false
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
@@ -2335,7 +2368,7 @@ struct SubtitleOverlayView: View {
                 alignment: .bottom
             )
             .clipped()
-            .onChange(of: visibleCueIds) { _, visible in
+            .montereyOnChange(of: visibleCueIds) { _, visible in
                 revealMemory.prune(keeping: visible)
             }
         } else {
@@ -2883,7 +2916,7 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
     static let savedFrameKey = "zutalk.subtitleOverlay.frame"
 
     private let store: ActiveBilingualTranscriptStore
-    private var hostingView: NSHostingView<SubtitleOverlayView>?
+    private var hostingView: NSHostingView<AnyView>?
     private var presentationSettingsCancellable: AnyCancellable?
     private var themeCancellable: AnyCancellable?
     private var restoredWindowFrame: NSRect?

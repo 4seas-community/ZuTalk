@@ -1,8 +1,93 @@
 import AVFoundation
 import AudioToolbox
+import Darwin
 import Foundation
-import Synchronization
 import os
+
+/// Lock-free capture atomics for the macOS 12.5 runtime floor.
+///
+/// `Synchronization.Atomic` is only available on newer macOS releases. These
+/// legacy OSAtomic entry points have existed since macOS 10.4 and map to native
+/// atomic read/modify/write instructions. Barrier variants are stronger than
+/// the acquire/release operations required by the capture queues. Storage is
+/// allocated once and naturally aligned before any realtime callback runs.
+final class CaptureAtomicInt: @unchecked Sendable {
+    nonisolated(unsafe) private let storage: UnsafeMutablePointer<Int64>
+
+    nonisolated init(_ initialValue: Int) {
+        storage = .allocate(capacity: 1)
+        storage.initialize(to: Int64(initialValue))
+    }
+
+    deinit {
+        storage.deinitialize(count: 1)
+        storage.deallocate()
+    }
+
+    @inline(__always)
+    nonisolated func loadRelaxed() -> Int {
+        Int(OSAtomicAdd64(0, storage))
+    }
+
+    @inline(__always)
+    nonisolated func loadAcquire() -> Int {
+        Int(OSAtomicAdd64Barrier(0, storage))
+    }
+
+    @inline(__always)
+    nonisolated func storeRelease(_ desired: Int) {
+        let desired = Int64(desired)
+        var observed = OSAtomicAdd64(0, storage)
+        while OSAtomicCompareAndSwap64Barrier(observed, desired, storage) == false {
+            observed = OSAtomicAdd64(0, storage)
+        }
+    }
+
+    @inline(__always)
+    nonisolated func compareExchangeAcquiringAndReleasing(
+        expected: Int,
+        desired: Int
+    ) -> Bool {
+        OSAtomicCompareAndSwap64Barrier(Int64(expected), Int64(desired), storage)
+    }
+
+    /// Returns the value before addition, matching an atomic fetch-add.
+    @inline(__always)
+    nonisolated func fetchAddAcquiringAndReleasing(_ operand: Int) -> Int {
+        let operand = Int64(operand)
+        let updated = OSAtomicAdd64Barrier(operand, storage)
+        return Int(updated &- operand)
+    }
+}
+
+final class CaptureAtomicBool: @unchecked Sendable {
+    private let storage: CaptureAtomicInt
+
+    nonisolated init(_ initialValue: Bool) {
+        storage = CaptureAtomicInt(initialValue ? 1 : 0)
+    }
+
+    @inline(__always)
+    nonisolated func loadAcquire() -> Bool {
+        storage.loadAcquire() != 0
+    }
+
+    @inline(__always)
+    nonisolated func storeRelease(_ desired: Bool) {
+        storage.storeRelease(desired ? 1 : 0)
+    }
+
+    @inline(__always)
+    nonisolated func compareExchangeAcquiringAndReleasing(
+        expected: Bool,
+        desired: Bool
+    ) -> Bool {
+        storage.compareExchangeAcquiringAndReleasing(
+            expected: expected ? 1 : 0,
+            desired: desired ? 1 : 0
+        )
+    }
+}
 
 /// Stateful mono PCM resampler used by the microphone tap.
 ///
@@ -131,12 +216,12 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
     private let sampleStorage: UnsafeMutablePointer<Float>
     private let frameCounts: UnsafeMutablePointer<Int>
     private let sampleTimes: UnsafeMutablePointer<Int64>
-    private let writeSequence = Atomic<Int>(0)
-    private let readSequence = Atomic<Int>(0)
-    private let producerInFlight = Atomic<Int>(0)
-    private let accepting = Atomic<Bool>(true)
-    private let overflowNotificationPending = Atomic<Bool>(false)
-    private let overflowDetected = Atomic<Bool>(false)
+    private let writeSequence = CaptureAtomicInt(0)
+    private let readSequence = CaptureAtomicInt(0)
+    private let producerInFlight = CaptureAtomicInt(0)
+    private let accepting = CaptureAtomicBool(true)
+    private let overflowNotificationPending = CaptureAtomicBool(false)
+    private let overflowDetected = CaptureAtomicBool(false)
 
     init(capacity: Int, maximumFramesPerSlot: Int) {
         precondition(capacity > 0)
@@ -181,22 +266,20 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
         stride: Int,
         sampleTime: Int64
     ) -> EnqueueResult {
-        _ = producerInFlight.wrappingAdd(1, ordering: .acquiringAndReleasing)
+        _ = producerInFlight.fetchAddAcquiringAndReleasing(1)
         defer {
-            let previous = producerInFlight
-                .wrappingSubtract(1, ordering: .acquiringAndReleasing)
-                .oldValue
+            let previous = producerInFlight.fetchAddAcquiringAndReleasing(-1)
             precondition(previous > 0, "microphone ring producer count underflow")
         }
 
-        guard accepting.load(ordering: .acquiring) else { return .closed }
+        guard accepting.loadAcquire() else { return .closed }
         guard frameCount > 0, stride > 0 else { return .closed }
         guard frameCount <= maximumFramesPerSlot else {
             return closeForOverflow()
         }
 
-        let write = writeSequence.load(ordering: .relaxed)
-        let read = readSequence.load(ordering: .acquiring)
+        let write = writeSequence.loadRelaxed()
+        let read = readSequence.loadAcquire()
         guard write - read < capacity else {
             return closeForOverflow()
         }
@@ -212,7 +295,7 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
         }
         frameCounts[slot] = frameCount
         sampleTimes[slot] = sampleTime
-        writeSequence.store(write + 1, ordering: .releasing)
+        writeSequence.storeRelease(write + 1)
         return .accepted
     }
 
@@ -222,8 +305,8 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
     func consume(
         _ body: (UnsafeBufferPointer<Float>, Int64) -> Void
     ) -> Bool {
-        let read = readSequence.load(ordering: .relaxed)
-        let write = writeSequence.load(ordering: .acquiring)
+        let read = readSequence.loadRelaxed()
+        let write = writeSequence.loadAcquire()
         guard read < write else { return false }
 
         let slot = read % capacity
@@ -233,50 +316,46 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
             count: count
         )
         body(samples, sampleTimes[slot])
-        readSequence.store(read + 1, ordering: .releasing)
+        readSequence.storeRelease(read + 1)
         return true
     }
 
     func close() {
-        accepting.store(false, ordering: .releasing)
+        accepting.storeRelease(false)
     }
 
     /// Claimed by the worker, never by the realtime producer. The compare and
     /// exchange makes the overflow callback exactly-once.
     func claimOverflowNotification() -> Bool {
-        overflowNotificationPending.compareExchange(
+        overflowNotificationPending.compareExchangeAcquiringAndReleasing(
             expected: true,
-            desired: false,
-            ordering: .acquiringAndReleasing
-        ).exchanged
+            desired: false
+        )
     }
 
     var isClosedAndDrained: Bool {
-        guard accepting.load(ordering: .acquiring) == false,
-              producerInFlight.load(ordering: .acquiring) == 0
+        guard accepting.loadAcquire() == false,
+              producerInFlight.loadAcquire() == 0
         else { return false }
-        return readSequence.load(ordering: .acquiring)
-            == writeSequence.load(ordering: .acquiring)
+        return readSequence.loadAcquire() == writeSequence.loadAcquire()
     }
 
     var pendingCountForTesting: Int {
-        writeSequence.load(ordering: .acquiring)
-            - readSequence.load(ordering: .acquiring)
+        writeSequence.loadAcquire() - readSequence.loadAcquire()
     }
 
     var didOverflow: Bool {
-        overflowDetected.load(ordering: .acquiring)
+        overflowDetected.loadAcquire()
     }
 
     private func closeForOverflow() -> EnqueueResult {
-        let transition = accepting.compareExchange(
+        let transitioned = accepting.compareExchangeAcquiringAndReleasing(
             expected: true,
-            desired: false,
-            ordering: .acquiringAndReleasing
+            desired: false
         )
-        guard transition.exchanged else { return .closed }
-        overflowDetected.store(true, ordering: .releasing)
-        overflowNotificationPending.store(true, ordering: .releasing)
+        guard transitioned else { return .closed }
+        overflowDetected.storeRelease(true)
+        overflowNotificationPending.storeRelease(true)
         return .overflow
     }
 }
@@ -296,7 +375,7 @@ final class MicrophoneCaptureWorker: @unchecked Sendable {
     private let resampler: StreamingS16Resampler
     private let onAudio: @Sendable (UInt64, Data, UInt64) -> Void
     private let onOverflow: @Sendable (UInt64) -> Void
-    private let started = Atomic<Bool>(false)
+    private let started = CaptureAtomicBool(false)
     private let completion = DispatchGroup()
     private var thread: Thread?
 
@@ -321,12 +400,11 @@ final class MicrophoneCaptureWorker: @unchecked Sendable {
     }
 
     func start() {
-        let transition = started.compareExchange(
+        let transitioned = started.compareExchangeAcquiringAndReleasing(
             expected: false,
-            desired: true,
-            ordering: .acquiringAndReleasing
+            desired: true
         )
-        guard transition.exchanged else { return }
+        guard transitioned else { return }
 
         completion.enter()
         let thread = Thread { [self] in
@@ -365,7 +443,7 @@ final class MicrophoneCaptureWorker: @unchecked Sendable {
     @discardableResult
     func closeAndWait() -> MicrophoneCaptureTerminalReason? {
         ring.close()
-        if started.load(ordering: .acquiring) {
+        if started.loadAcquire() {
             completion.wait()
             thread = nil
         }

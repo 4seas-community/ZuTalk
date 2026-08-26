@@ -142,4 +142,127 @@ final class BlockNoteGestureTests: XCTestCase {
         XCTAssertEqual(next.map(\.id), ["a", "b1", "a1", "b"])
         XCTAssertEqual(next[1].depth, 1)
     }
+
+    func testBothNotebookAndSessionEditorEntryPointsRemainAvailable() {
+        _ = BlockNoteEditorView(notebookId: "topic", tabId: "manual-note")
+        _ = BlockNoteEditorView(sessionId: "session")
+    }
+
+    func testNoteRowsKeepNativeWritableAccessibilityAndAnEmptyStateTarget() throws {
+        let source = try Self.loadBlockNoteEditorView()
+
+        XCTAssertTrue(source.contains("editor.outline.placeholder"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"note.row.\\(row.id)\")"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
+        XCTAssertTrue(source.contains(".contentShape(Rectangle())"))
+        XCTAssertTrue(source.contains("focusedRowId = store.rows.last?.id"))
+        XCTAssertFalse(source.contains(".accessibilityValue(Text(draft))"))
+    }
+
+    func testSessionNotesStayIsolatedAcrossCloseReopenAndPurge() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("zutalk-session-notes-\(UUID().uuidString)", isDirectory: true)
+        let core = try ZuTalkCore.newDeferred(dataDir: tempDir.path)
+        defer {
+            try? core.shutdown()
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("crates/vt-audio/tests/fixtures/test_16k_mono.wav")
+
+        func importSession(_ title: String) throws -> String {
+            let notebook = try core.createNotebook(title: title)
+            return try core.importAudioIntoNotebook(
+                path: fixture.path,
+                notebookId: notebook.id
+            ).sessionId
+        }
+
+        let firstSession = try importSession("Swift 访谈一")
+        let secondSession = try importSession("Swift 访谈二")
+        let firstDoc = try core.sessionNoteBlockDocumentOpen(sessionId: firstSession)
+        try core.noteApplyOutline(
+            docId: firstDoc,
+            rows: [row("first", 0, "第一场独有")]
+        )
+        try core.blockDocumentClose(docId: firstDoc)
+
+        let secondDoc = try core.sessionNoteBlockDocumentOpen(sessionId: secondSession)
+        XCTAssertNotEqual(firstDoc, secondDoc)
+        XCTAssertTrue(
+            try core.noteOutlineRows(docId: secondDoc).isEmpty,
+            "第二场第一次打开不能看见第一场内容"
+        )
+        try core.noteApplyOutline(
+            docId: secondDoc,
+            rows: [row("second", 0, "第二场独有")]
+        )
+        try core.blockDocumentClose(docId: secondDoc)
+
+        XCTAssertEqual(
+            try core.sessionNoteBlockDocumentOpen(sessionId: firstSession),
+            firstDoc,
+            "同一个 Session 重开必须返回稳定 doc_id"
+        )
+        XCTAssertEqual(
+            try core.noteOutlineRows(docId: firstDoc).map(\.text),
+            ["第一场独有"],
+            "关闭再打开必须从磁盘恢复第一场内容"
+        )
+        try core.blockDocumentClose(docId: firstDoc)
+
+        // 模拟切换标签时 onDisappear 先于 TextField 失焦回调：最后一笔只
+        // 进入 Store 的草稿缓冲，没有调用 replaceText。close 必须先同步
+        // flush，再驱逐 Rust 句柄。
+        let store = BlockNoteStore(coreProvider: { core })
+        store.openSession(sessionId: firstSession)
+        let focusedRow = try XCTUnwrap(store.rows.first)
+        store.noteDraftChanged(rowId: focusedRow.id, draft: "第一场切换前最后输入")
+        store.close()
+
+        _ = try core.sessionNoteBlockDocumentOpen(sessionId: firstSession)
+        XCTAssertEqual(
+            try core.noteOutlineRows(docId: firstDoc).map(\.text),
+            ["第一场切换前最后输入"],
+            "close 必须保存尚未来得及触发失焦提交的聚焦草稿"
+        )
+        try core.blockDocumentClose(docId: firstDoc)
+
+        _ = try core.sessionNoteBlockDocumentOpen(sessionId: secondSession)
+        XCTAssertEqual(
+            try core.noteOutlineRows(docId: secondDoc).map(\.text),
+            ["第二场独有"]
+        )
+        let secondPath = tempDir
+            .appendingPathComponent("block-documents", isDirectory: true)
+            .appendingPathComponent("\(secondDoc).loro")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: secondPath.path))
+
+        try core.purgeSession(sessionId: secondSession)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: secondPath.path))
+        XCTAssertThrowsError(try core.noteOutlineRows(docId: secondDoc))
+        XCTAssertNoThrow(try core.blockDocumentClose(docId: secondDoc))
+        XCTAssertThrowsError(
+            try core.sessionNoteBlockDocumentOpen(sessionId: secondSession),
+            "purge 后不能由旧 Session id 重建孤儿笔记"
+        )
+    }
+
+
+    private static func loadBlockNoteEditorView() throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk", isDirectory: true)
+        return try String(
+            contentsOf: root.appendingPathComponent("Pages/BlockNoteEditorView.swift"),
+            encoding: .utf8
+        )
+    }
 }

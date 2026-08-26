@@ -17,7 +17,7 @@ target_arm64    := "aarch64-apple-darwin"
 target_x86_64   := "x86_64-apple-darwin"
 host_debug_ffi  := project_dir / "target" / "debug" / "libvt_ffi.a"
 release_arm64_ffi := project_dir / "target" / target_arm64 / "release" / "libvt_ffi.a"
-macos_deployment_target := "15.5"
+macos_deployment_target := "12.5"
 export SCCACHE_CACHE_SIZE := "5G"
 
 # 默认：列出所有命令
@@ -489,7 +489,22 @@ assert-universal-app:
             exit 1
         fi
     done
+    PLIST_MIN="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' \
+        "$APP/Contents/Info.plist")"
+    [[ "$PLIST_MIN" == "{{ macos_deployment_target }}" ]] \
+        || { echo "FAIL: Info.plist minOS=$PLIST_MIN, expected {{ macos_deployment_target }}"; exit 1; }
+    for arch in arm64 x86_64; do
+        MACHO_MIN="$(vtool -arch "$arch" -show-build "$BIN" \
+            | awk '$1 == "minos" { print $2; exit }')"
+        [[ "$MACHO_MIN" == "{{ macos_deployment_target }}" ]] \
+            || { echo "FAIL: $arch Mach-O minOS=$MACHO_MIN, expected {{ macos_deployment_target }}"; exit 1; }
+    done
+    if otool -L "$BIN" | grep -Fq '/libswiftSynchronization.dylib'; then
+        echo "FAIL: app still links libswiftSynchronization, unavailable on macOS 12.5"
+        exit 1
+    fi
     echo "✓ Universal app executable: $ARCHS"
+    echo "✓ macOS {{ macos_deployment_target }} bundle and Mach-O compatibility"
 
 assert-release-app-signature:
     #!/usr/bin/env bash

@@ -303,14 +303,14 @@ struct DocumentEditorPage: View {
         .task(id: pendingTranscriptionTaskId) {
             guard pendingTranscriptionTaskId != nil else { return }
             while Task.isCancelled == false {
-                try? await Task.sleep(for: .seconds(1))
+                try? await MontereyTaskSleep.seconds(1)
                 guard Task.isCancelled == false else { return }
                 await loadNotebookRoute()
                 guard selectedTranscriptionTask?.tabStatus == .pending else { return }
             }
         }
-        .onChange(of: initialView) { _, _ in syncPresentedRoute() }
-        .onChange(of: route) { previousRoute, currentRoute in
+        .montereyOnChange(of: initialView) { _, _ in syncPresentedRoute() }
+        .montereyOnChange(of: route) { previousRoute, currentRoute in
             if NotebookCaptureSettingsRoutePolicy.shouldDismiss(
                 previous: previousRoute,
                 current: currentRoute
@@ -1043,7 +1043,7 @@ private struct NotebookTabButton: View {
         .accessibilityHint(helpText)
         .accessibilityAddTraits(isActive ? .isSelected : [])
         .onAppear { spin = shouldAnimateIndicator }
-        .onChange(of: tab.status) { _, newStatus in
+        .montereyOnChange(of: tab.status) { _, newStatus in
             spin = Self.shouldAnimate(status: newStatus)
         }
     }
@@ -1715,7 +1715,7 @@ private struct ManualTimeNoteHeader: View {
                 timeIntervalSince1970: TimeInterval(session.createdAtUnixMs) / 1_000
             )
         }
-        .onChange(of: initialTitle) { _, newValue in
+        .montereyOnChange(of: initialTitle) { _, newValue in
             let resolved = newValue ?? ""
             title = resolved
             savedTitle = resolved

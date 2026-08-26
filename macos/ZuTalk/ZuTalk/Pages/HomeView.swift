@@ -236,7 +236,7 @@ private struct HomeNotebookHero: View {
                 .fill(Color.borderGhost.opacity(0.55))
                 .frame(height: Stroke.thin)
 
-            ViewThatFits(in: .horizontal) {
+            MontereyHorizontalViewThatFits {
                 HStack(alignment: .bottom, spacing: Spacing.xl) {
                     notebookSummary
                     Spacer(minLength: Spacing.lg)

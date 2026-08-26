@@ -66,7 +66,7 @@ struct SharePage: View {
             }
             // 新行到达就跟到底 —— 看直播字幕的人不该一直手动往下滚。
             // 帧是 replace-in-full 的,以行数+末行原文作为「有新内容」的信号。
-            .onChange(of: captionFollowKey) { _, _ in
+            .montereyOnChange(of: captionFollowKey) { _, _ in
                 withAnimation(.easeOut(duration: 0.15)) {
                     proxy.scrollTo("share-captions-end", anchor: .bottom)
                 }
@@ -125,7 +125,7 @@ struct SharePage: View {
         .pickerStyle(.segmented)
         .labelsHidden()
         .accessibilityIdentifier("share.mode")
-        .onChange(of: viewModel.idleMode) { _, mode in
+        .montereyOnChange(of: viewModel.idleMode) { _, mode in
             // 切到加入道,光标直接落进粘贴框 —— 拿着码来的人下一步只有粘贴。
             joinFieldFocused = (mode == .join)
             // 附近的人不该要人按按钮才找:进入加入道即扫,持续刷新。

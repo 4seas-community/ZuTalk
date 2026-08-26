@@ -264,7 +264,7 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
 
     private func pollAsyncStateUntilTerminal(sessionId: String) async {
         for _ in 0..<360 {
-            try? await Task.sleep(for: .seconds(5))
+            try? await MontereyTaskSleep.seconds(5)
             guard let event = try? captureClient.getNotebookCaptureSessionEvent(
                 sessionId: sessionId
             ) else { continue }

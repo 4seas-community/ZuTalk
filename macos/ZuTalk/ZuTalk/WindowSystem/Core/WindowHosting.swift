@@ -12,14 +12,17 @@ extension NSHostingView: HostingSizingConfigurable {}
 @available(macOS 13.0, *)
 extension NSHostingController: HostingSizingConfigurable {}
 
-private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+/// Keep the AppKit subclass non-generic. Xcode 26.5's release optimizer crashes
+/// while synthesizing the destructor for a generic `NSHostingView` subclass
+/// when the binary is back-deployed to Monterey.
+private final class FirstMouseHostingView: NSHostingView<AnyView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
     }
 }
 
-private final class FirstMouseHostingController<Content: View>: NSHostingController<Content> {
-    override init(rootView: Content) {
+private final class FirstMouseHostingController: NSHostingController<AnyView> {
+    override init(rootView: AnyView) {
         super.init(rootView: rootView)
         view = FirstMouseHostingView(rootView: rootView)
     }
@@ -44,7 +47,7 @@ enum WindowHosting {
         rootView: Content,
         into window: NSWindow,
         policy: WindowSpec.HostingPolicy = .fixedWindowOwned
-    ) -> NSHostingView<Content> {
+    ) -> NSHostingView<AnyView> {
         let hosting = makeView(rootView: rootView, policy: policy)
         installPinnedView(hosting, into: window)
         return hosting
@@ -53,8 +56,8 @@ enum WindowHosting {
     static func makeView<Content: View>(
         rootView: Content,
         policy: WindowSpec.HostingPolicy = .fixedWindowOwned
-    ) -> NSHostingView<Content> {
-        let hosting = FirstMouseHostingView(rootView: rootView)
+    ) -> NSHostingView<AnyView> {
+        let hosting = FirstMouseHostingView(rootView: AnyView(rootView))
         apply(policy: policy, to: hosting)
         return hosting
     }
@@ -62,10 +65,10 @@ enum WindowHosting {
     static func makeController<Content: View>(
         rootView: Content,
         policy: WindowSpec.HostingPolicy = .fixedWindowOwned
-    ) -> NSHostingController<Content> {
-        let hosting = FirstMouseHostingController(rootView: rootView)
+    ) -> NSHostingController<AnyView> {
+        let hosting = FirstMouseHostingController(rootView: AnyView(rootView))
         apply(policy: policy, to: hosting)
-        guard let hostingView = hosting.view as? NSHostingView<Content> else {
+        guard let hostingView = hosting.view as? NSHostingView<AnyView> else {
             preconditionFailure("FirstMouseHostingController must own an NSHostingView")
         }
         apply(policy: policy, to: hostingView)

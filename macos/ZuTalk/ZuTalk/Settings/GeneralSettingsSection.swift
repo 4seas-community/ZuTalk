@@ -131,7 +131,7 @@ struct GeneralSettingsSection: View {
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
-                    .onChange(of: language) { _, newValue in
+                    .montereyOnChange(of: language) { _, newValue in
                         applyLanguage(newValue)
                     }
 
@@ -162,7 +162,7 @@ struct GeneralSettingsSection: View {
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
-                    .onChange(of: appearance) { _, newValue in
+                    .montereyOnChange(of: appearance) { _, newValue in
                         if let mode = AppearanceMode(rawValue: newValue) {
                             applyAppearance(mode)
                         }
@@ -181,7 +181,7 @@ struct GeneralSettingsSection: View {
                     Toggle("", isOn: $automaticallyChecksForUpdates)
                         .labelsHidden()
                         .disabled(!SoftwareUpdateController.shared.isAvailable)
-                        .onChange(of: automaticallyChecksForUpdates) { _, enabled in
+                        .montereyOnChange(of: automaticallyChecksForUpdates) { _, enabled in
                             SoftwareUpdateController.shared.setAutomaticallyChecksForUpdates(enabled)
                         }
                 }

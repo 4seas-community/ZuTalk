@@ -2368,7 +2368,7 @@ final class WindowSystemTests: XCTestCase {
 
         XCTAssertEqual(state.displayedText, "中")
         XCTAssertEqual(state.pendingText, "中文高速")
-        XCTAssertEqual(SubtitleAudienceSourceRefresh.interval, .milliseconds(250))
+        XCTAssertEqual(SubtitleAudienceSourceRefresh.intervalMilliseconds, 250)
 
         state.flush()
         XCTAssertEqual(state.displayedText, "中文高速")

@@ -305,7 +305,9 @@ final class CommunityInviteSession: ObservableObject {
         token: String,
         count: Int
     ) async throws -> [String] {
-        var request = URLRequest(url: baseURL.appending(path: "/v1/realtime-session/key"))
+        var request = URLRequest(
+            url: baseURL.appendingPathComponent("v1/realtime-session/key")
+        )
         request.httpMethod = "POST"
         request.timeoutInterval = 12
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -456,7 +458,11 @@ final class CommunityInviteSession: ObservableObject {
         body: [String: Any]?,
         token: String?
     ) async throws -> Response {
-        var request = URLRequest(url: baseURL.appending(path: path))
+        var request = URLRequest(
+            url: baseURL.appendingPathComponent(
+                path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            )
+        )
         request.httpMethod = method
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

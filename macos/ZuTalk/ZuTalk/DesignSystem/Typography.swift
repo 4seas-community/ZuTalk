@@ -103,28 +103,50 @@ extension View {
 
     /// Caption UPPERCASE + tracking 0.10em (§06.4)
     /// 用于 §01 TRANSCRIPT, REF-A-12, SONIOX RT-4 类元数据 label
+    @ViewBuilder
     func captionLabel() -> some View {
-        self
-            .font(.caption)
-            .tracking(1.1)   // 0.10em of 11pt
-            .textCase(.uppercase)
+        if #available(macOS 13.0, *) {
+            self
+                .font(.caption)
+                .tracking(1.1)   // 0.10em of 11pt
+                .textCase(.uppercase)
+        } else {
+            self
+                .font(.caption)
+                .textCase(.uppercase)
+        }
     }
 
     /// Caption XS UPPERCASE + tracking (legal footer / build)
+    @ViewBuilder
     func captionXsLabel() -> some View {
-        self
-            .font(.captionXs)
-            .tracking(0.9)
-            .textCase(.uppercase)
+        if #available(macOS 13.0, *) {
+            self
+                .font(.captionXs)
+                .tracking(0.9)
+                .textCase(.uppercase)
+        } else {
+            self
+                .font(.captionXs)
+                .textCase(.uppercase)
+        }
     }
 
     /// v1.0 instrumentLabel alias —— 映射到 captionLabel 语义
+    @ViewBuilder
     func instrumentLabel() -> some View {
-        self
-            .font(.caption)
-            .foregroundColor(Color.line50)
-            .tracking(1.1)
-            .textCase(.uppercase)
+        if #available(macOS 13.0, *) {
+            self
+                .font(.caption)
+                .foregroundColor(Color.line50)
+                .tracking(1.1)
+                .textCase(.uppercase)
+        } else {
+            self
+                .font(.caption)
+                .foregroundColor(Color.line50)
+                .textCase(.uppercase)
+        }
     }
 
     /// v1.0 instrumentValue alias

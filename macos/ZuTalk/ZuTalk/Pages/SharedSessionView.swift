@@ -82,7 +82,7 @@ struct SharedSessionView: View {
             pollTask?.cancel()
             pollTask = Task { @MainActor in
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(700))
+                    try? await MontereyTaskSleep.milliseconds(700)
                     refresh()
                 }
             }
@@ -136,7 +136,7 @@ private struct SharedBlockRow: View {
                     .foregroundColor(.textTertiary)
                     .accessibilityHidden(true)
                 if editable {
-                    TextField("", text: $textDraft, axis: .vertical)
+                    editableTextField
                         .textFieldStyle(.plain)
                         .font(.body)
                         .foregroundColor(.textPrimary)
@@ -155,14 +155,7 @@ private struct SharedBlockRow: View {
                         .foregroundColor(.textTertiary)
                         .frame(width: 24, alignment: .trailing)
                     if editable {
-                        TextField(
-                            "",
-                            text: Binding(
-                                get: { laneDrafts[lane] ?? "" },
-                                set: { laneDrafts[lane] = $0 }
-                            ),
-                            axis: .vertical
-                        )
+                        editableLaneField(lane)
                         .textFieldStyle(.plain)
                         .font(.bodySM)
                         .foregroundColor(.textSecondary)
@@ -177,8 +170,30 @@ private struct SharedBlockRow: View {
             }
         }
         // 权威更新(远端合入)时,跟随最新值;编辑中的行由提交动作收口。
-        .onChange(of: block.text) { _, newValue in textDraft = newValue }
-        .onChange(of: block.lanes) { _, newValue in laneDrafts = newValue }
+        .montereyOnChange(of: block.text) { _, newValue in textDraft = newValue }
+        .montereyOnChange(of: block.lanes) { _, newValue in laneDrafts = newValue }
+    }
+
+    @ViewBuilder
+    private var editableTextField: some View {
+        if #available(macOS 13.0, *) {
+            TextField("", text: $textDraft, axis: .vertical)
+        } else {
+            TextField("", text: $textDraft)
+        }
+    }
+
+    @ViewBuilder
+    private func editableLaneField(_ lane: String) -> some View {
+        let binding = Binding(
+            get: { laneDrafts[lane] ?? "" },
+            set: { laneDrafts[lane] = $0 }
+        )
+        if #available(macOS 13.0, *) {
+            TextField("", text: binding, axis: .vertical)
+        } else {
+            TextField("", text: binding)
+        }
     }
 
     private func commitText() {

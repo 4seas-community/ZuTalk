@@ -23,9 +23,23 @@ import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum BlockNoteDocumentSource: Hashable {
+    case notebook(notebookId: String, tabId: String)
+    case session(sessionId: String)
+
+    @MainActor
+    func open(in store: BlockNoteStore) {
+        switch self {
+        case .notebook(let notebookId, let tabId):
+            store.open(notebookId: notebookId, tabId: tabId)
+        case .session(let sessionId):
+            store.openSession(sessionId: sessionId)
+        }
+    }
+}
+
 struct BlockNoteEditorView: View {
-    let notebookId: String
-    let tabId: String
+    private let source: BlockNoteDocumentSource
 
     @StateObject private var store = BlockNoteStore()
     @StateObject private var dragState = BlockNoteDragState()
@@ -33,6 +47,16 @@ struct BlockNoteEditorView: View {
 
     /// 每级缩进的前导内边距。
     fileprivate static let indentStep: CGFloat = 20
+
+    /// 保留 Notebook ManualNote tab 的既有入口。
+    init(notebookId: String, tabId: String) {
+        source = .notebook(notebookId: notebookId, tabId: tabId)
+    }
+
+    /// Session 页面使用的独立笔记入口。
+    init(sessionId: String) {
+        source = .session(sessionId: sessionId)
+    }
 
     var body: some View {
         Group {
@@ -43,7 +67,7 @@ struct BlockNoteEditorView: View {
                     description: loadError,
                     action: (
                         label: String(localized: "editor.outline.retry"),
-                        handler: { store.open(notebookId: notebookId, tabId: tabId) }
+                        handler: { source.open(in: store) }
                     )
                 )
             } else {
@@ -80,14 +104,39 @@ struct BlockNoteEditorView: View {
                 }
                 // ⌘] / ⌘[ 挂在两个不可见按钮上,作用于当前聚焦行。
                 .background(indentShortcuts)
+                // The document canvas itself is a writing target. When focus
+                // was cleared by a tab transition, clicking the otherwise
+                // empty page returns the caret to the last block instead of
+                // leaving a large surface that looks read-only.
+                .background {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard focusedRowId == nil else { return }
+                            focusedRowId = store.rows.last?.id
+                        }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // 文档随 route 切换时重开;open 内部先 close 旧句柄,不会泄漏。
-        .task(id: "\(notebookId):\(tabId)") {
-            store.open(notebookId: notebookId, tabId: tabId)
+        .task(id: source) {
+            source.open(in: store)
+        }
+        // A brand-new Session note has one local empty row. Give that row the
+        // caret once it arrives so opening the Note tab is immediately a
+        // writing action instead of a hunt for a one-line hit target.
+        .onChange(of: store.rows.map(\.id)) { _ in
+            guard focusedRowId == nil,
+                  store.rows.count == 1,
+                  let row = store.rows.first,
+                  row.text.isEmpty
+            else { return }
+            Task { @MainActor in focusedRowId = row.id }
         }
         .onDisappear {
+            // close 会先同步 flush Store 中逐键上报的聚焦草稿，再驱逐
+            // Rust 句柄；不能只依赖可能晚到一步的 TextField 失焦回调。
             store.close()
         }
     }
@@ -186,9 +235,6 @@ private struct BlockNoteRowView: View {
     /// 本地草稿。提交(Return / 失焦)时才写回 store,与 BilingualLaneText
     /// 的 draft buffer 同一思路,避免每个键击都触发一次整份重放。
     @State private var draft: String
-    /// 光标位置。行首退格的判定依据——退格并块只在「光标折叠于行首」
-    /// 时触发,与 macro 的 offset==0 判定同义。
-    @State private var selection: TextSelection?
     @State private var hovering = false
 
     init(
@@ -224,25 +270,13 @@ private struct BlockNoteRowView: View {
             if row.kind == .divider {
                 dividerRule
             } else {
-                TextField("", text: $draft, selection: $selection, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(Self.font(for: row.kind))
-                    .foregroundColor(row.checked ? .textTertiary : .textPrimary)
-                    .strikethrough(row.checked)
-                    .italic(row.kind == .quote)
-                    .lineLimit(1...)
-                    .focused($focusedRowId, equals: row.id)
-                    .onSubmit(submitRow)
-                    .onKeyPress(.delete) { handleBackspace() }
-                    .accessibilityLabel(Text(String(
-                        format: String(localized: "editor.outline.row_label"),
-                        Int64(row.depth)
-                    )))
-                    .accessibilityValue(Text(draft))
+                rowTextField
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
+        .onTapGesture { focusedRowId = row.id }
         .onHover { hovering = $0 }
         // 落点指示:上半区画在行顶,下半区画在行底。
         .overlay(alignment: .top) {
@@ -292,7 +326,7 @@ private struct BlockNoteRowView: View {
             }
         }
         // 权威文本变化(比如 apply 失败回滚)时,未聚焦的行跟随权威值。
-        .onChange(of: row.text) { _, newValue in
+        .onChange(of: row.text) { newValue in
             if focusedRowId != row.id {
                 draft = newValue
             }
@@ -300,10 +334,14 @@ private struct BlockNoteRowView: View {
         // 草稿上报:两段式撤销靠它判断「聚焦行还有没提交的字」。
         // 行首 Markdown 记号当场变身,只从段落出发 —— 否则标题里想打
         // 一个真的 `# ` 都打不出来。
-        .onChange(of: draft) { _, newValue in
+        .onChange(of: draft) { newValue in
             if row.kind == .paragraph,
                let hit = BlockNoteStore.markdownPrefix(newValue) {
                 draft = hit.rest
+                // `draft =` 的下一轮 onChange 可能晚于父视图 disappear；
+                // 先同步更新 Store 缓冲，close/flush 就不会把旧记号文本
+                // 覆盖回刚完成的 Markdown 转换。
+                store.noteDraftChanged(rowId: row.id, draft: hit.rest)
                 store.applyMarkdownPrefix(
                     rowId: row.id,
                     kind: hit.kind,
@@ -316,12 +354,12 @@ private struct BlockNoteRowView: View {
         }
         // 撤销/重做换掉权威状态时,草稿无条件刷回权威文本——聚焦中的
         // 行也不例外,否则失焦时旧草稿会把撤销结果又写回去。
-        .onChange(of: store.authorityEpoch) { _, _ in
+        .onChange(of: store.authorityEpoch) { _ in
             draft = row.text
         }
         // 失焦提交:与 BilingualLaneText 的失焦提交同一手感。
-        .onChange(of: focusedRowId) { previous, current in
-            if previous == row.id, current != row.id {
+        .onChange(of: focusedRowId == row.id) { isFocused in
+            if !isFocused {
                 store.replaceText(rowId: row.id, text: draft)
             }
         }
@@ -383,9 +421,62 @@ private struct BlockNoteRowView: View {
         .padding(.leading, CGFloat(row.depth) * BlockNoteEditorView.indentStep)
     }
 
-    /// 分隔线:没有文本可编辑,但仍是一行 —— 可聚焦、可退格删掉,否则
-    /// 键盘用户会被一条删不掉的线卡住。
+    /// macOS 15 保留可选区多行 TextField 与精确的行首退格语义。
+    /// Monterey 使用单行 TextField 降级:仍保留逐键草稿、Return 提交、
+    /// 失焦保存与原生可写 AXValue，但不提供多行扩展及行首退格并块。
+    @ViewBuilder
+    private var rowTextField: some View {
+        if #available(macOS 15.0, *) {
+            ModernTextField(
+                row: row,
+                draft: $draft,
+                focusedRowId: $focusedRowId,
+                onSubmit: submitRow,
+                onBackspaceAtStart: handleBackspaceAtStart
+            )
+        } else {
+            TextField(
+                "",
+                text: $draft,
+                prompt: Text(String(localized: "editor.outline.placeholder"))
+            )
+            .textFieldStyle(.plain)
+            .font(Self.font(for: row.kind))
+            .foregroundColor(row.checked ? .textTertiary : .textPrimary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .focused($focusedRowId, equals: row.id)
+            .onSubmit(submitRow)
+            .accessibilityLabel(rowAccessibilityLabel)
+            // Preserve the TextField's native writable AXValue. A custom
+            // accessibilityValue would make it display-only to AX clients.
+            .accessibilityIdentifier("note.row.\(row.id)")
+        }
+    }
+
+    private var rowAccessibilityLabel: Text {
+        Text(String(
+            format: String(localized: "editor.outline.row_label"),
+            Int64(row.depth)
+        ))
+    }
+
+    /// 分隔线:没有文本可编辑,但仍是一行。macOS 14+ 保留 Delete 快捷
+    /// 删除；Monterey 仍可聚焦并从右键菜单删除。
+    @ViewBuilder
     private var dividerRule: some View {
+        if #available(macOS 14.0, *) {
+            dividerRuleBase
+                .onKeyPress(.delete) {
+                    store.deleteRow(rowId: row.id)
+                    return .handled
+                }
+        } else {
+            dividerRuleBase
+        }
+    }
+
+    private var dividerRuleBase: some View {
         Rectangle()
             .fill(Color.borderSubtle)
             .frame(height: 1)
@@ -394,10 +485,6 @@ private struct BlockNoteRowView: View {
             .contentShape(Rectangle())
             .focusable()
             .focused($focusedRowId, equals: row.id)
-            .onKeyPress(.delete) {
-                store.deleteRow(rowId: row.id)
-                return .handled
-            }
             .accessibilityLabel(Text(String(localized: "editor.outline.kind.divider")))
     }
 
@@ -425,28 +512,70 @@ private struct BlockNoteRowView: View {
     ///
     /// 非段落行先降回段落:一下退格就把标题并进上一行是最容易误伤的
     /// 手势,给它加一格 —— 与 macro 的「先卸格式,再并块」同一决策。
-    private func handleBackspace() -> KeyPress.Result {
-        guard caretIsAtStart else { return .ignored }
+    private func handleBackspaceAtStart() -> Bool {
         if row.kind != .paragraph {
             store.setKind(rowId: row.id, kind: .paragraph)
-            return .handled
+            return true
         }
         guard let previousId = store.mergeWithPreviousRow(rowId: row.id, draftText: draft) else {
             // 首行行首:没有可并入的上一行,吞掉退格避免系统再删一个字。
-            return draft.isEmpty ? .handled : .ignored
+            return draft.isEmpty
         }
         Task { @MainActor in
             focusedRowId = previousId
         }
-        return .handled
+        return true
     }
 
-    /// 光标折叠于行首。空行永远算行首;拿不到 selection(聚焦竞态)时
-    /// 保守放行,绝不误吞用户的删字。
-    private var caretIsAtStart: Bool {
-        if draft.isEmpty { return true }
-        guard case .selection(let range) = selection?.indices else { return false }
-        return range.isEmpty && range.lowerBound == draft.startIndex
+    /// 新版 SwiftUI 编辑器被整段隔离在 macOS 15 availability 内，避免
+    /// TextSelection、vertical axis 与 onKeyPress 泄漏到 Monterey 构建。
+    @available(macOS 15.0, *)
+    private struct ModernTextField: View {
+        let row: FfiOutlineRow
+        @Binding var draft: String
+        @FocusState.Binding var focusedRowId: String?
+        let onSubmit: () -> Void
+        let onBackspaceAtStart: () -> Bool
+
+        @State private var selection: TextSelection?
+
+        var body: some View {
+            TextField(
+                "",
+                text: $draft,
+                selection: $selection,
+                prompt: Text(String(localized: "editor.outline.placeholder")),
+                axis: .vertical
+            )
+            .textFieldStyle(.plain)
+            .font(BlockNoteRowView.font(for: row.kind))
+            .foregroundColor(row.checked ? .textTertiary : .textPrimary)
+            .strikethrough(row.checked)
+            .italic(row.kind == .quote)
+            .lineLimit(1...)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .focused($focusedRowId, equals: row.id)
+            .onSubmit(onSubmit)
+            .onKeyPress(.delete) {
+                guard caretIsAtStart else { return .ignored }
+                return onBackspaceAtStart() ? .handled : .ignored
+            }
+            .accessibilityLabel(Text(String(
+                format: String(localized: "editor.outline.row_label"),
+                Int64(row.depth)
+            )))
+            // Preserve the TextField's native writable AXValue. A custom
+            // accessibilityValue would make it display-only to AX clients.
+            .accessibilityIdentifier("note.row.\(row.id)")
+        }
+
+        /// 光标折叠于行首。空行永远算行首;拿不到 selection(聚焦竞态)时
+        /// 保守放行,绝不误吞用户的删字。
+        private var caretIsAtStart: Bool {
+            if draft.isEmpty { return true }
+            guard case .selection(let range) = selection?.indices else { return false }
+            return range.isEmpty && range.lowerBound == draft.startIndex
+        }
     }
 }
 

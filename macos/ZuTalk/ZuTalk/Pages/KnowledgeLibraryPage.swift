@@ -885,7 +885,7 @@ private struct KnowledgeProfilePage: View {
             .padding(Spacing.xl)
             .frame(maxWidth: .infinity, alignment: .top)
         }
-        .onChange(of: draft) { _, _ in scheduleSave() }
+        .montereyOnChange(of: draft) { _, _ in scheduleSave() }
         .onDisappear { _ = saveNow() }
     }
 
@@ -971,7 +971,7 @@ private struct KnowledgeProfilePage: View {
         section(String(localized: "knowledge.background.title"), subtitle: String(localized: "knowledge.background.subtitle")) {
             TextEditor(text: $draft.backgroundText)
                 .font(.body)
-                .scrollContentBackground(.hidden)
+                .montereyScrollContentBackground(hidden: true)
                 .padding(Spacing.sm)
                 .frame(minHeight: 180)
                 .background(Color.bgElevated.opacity(0.28))
@@ -1079,7 +1079,7 @@ private struct KnowledgeProfilePage: View {
     private func scheduleSave() {
         saveTask?.cancel()
         saveTask = Task {
-            try? await Task.sleep(for: .milliseconds(450))
+            try? await MontereyTaskSleep.milliseconds(450)
             guard Task.isCancelled == false else { return }
             _ = saveNow()
         }

@@ -243,7 +243,7 @@ private struct ManualTimeNoteCard: View {
             border: Color.borderGhost.opacity(0.55),
             borderWidth: Stroke.thin
         )
-        .onChange(of: note.title) { _, newValue in
+        .montereyOnChange(of: note.title) { _, newValue in
             title = newValue
             savedTitle = newValue
         }

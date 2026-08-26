@@ -1713,7 +1713,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         // that is already on screen.
         emit("recognised", revision: 3)
 
-        try await Task.sleep(for: .milliseconds(300))
+        try await Task.sleep(nanoseconds: 300_000_000)
 
         XCTAssertEqual(
             store.presentedUtterances.map(\.sourceText),
@@ -1995,7 +1995,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             eventRevision: 1,
             isFullSnapshot: false
         ))
-        try await Task.sleep(for: .milliseconds(300))
+        try await Task.sleep(nanoseconds: 300_000_000)
 
         XCTAssertEqual(store.captureState, .completed)
         XCTAssertTrue(store.livePreviewUtterances.isEmpty)
@@ -3336,7 +3336,9 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         let tap = String(source[start.lowerBound..<end.lowerBound])
 
-        XCTAssertTrue(source.contains("import Synchronization"))
+        XCTAssertFalse(source.contains("import Synchronization"))
+        XCTAssertTrue(source.contains("OSAtomicCompareAndSwap64Barrier"))
+        XCTAssertTrue(source.contains("final class CaptureAtomicInt"))
         XCTAssertTrue(tap.contains("worker.enqueue("))
         XCTAssertTrue(tap.contains("channelData[0]"))
         XCTAssertTrue(tap.contains("stride: buffer.stride"))
@@ -3483,6 +3485,35 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(client.pauseCount, 1)
         XCTAssertEqual(audio.unsubscribeCount, 1)
         XCTAssertFalse(store.hasAudioSubscription)
+    @MainActor
+    func testCaptureAtomicCompatibilityPreservesCASAndConcurrentFetchAdd() {
+        let counter = CaptureAtomicInt(0)
+        XCTAssertEqual(counter.loadRelaxed(), 0)
+        XCTAssertTrue(
+            counter.compareExchangeAcquiringAndReleasing(expected: 0, desired: 1)
+        )
+        XCTAssertFalse(
+            counter.compareExchangeAcquiringAndReleasing(expected: 0, desired: 2)
+        )
+        counter.storeRelease(0)
+
+        DispatchQueue.concurrentPerform(iterations: 2_048) { _ in
+            _ = counter.fetchAddAcquiringAndReleasing(1)
+        }
+        XCTAssertEqual(counter.loadAcquire(), 2_048)
+
+        let flag = CaptureAtomicBool(false)
+        XCTAssertFalse(flag.loadAcquire())
+        XCTAssertTrue(
+            flag.compareExchangeAcquiringAndReleasing(expected: false, desired: true)
+        )
+        XCTAssertFalse(
+            flag.compareExchangeAcquiringAndReleasing(expected: false, desired: true)
+        )
+        flag.storeRelease(false)
+        XCTAssertFalse(flag.loadAcquire())
+    }
+
 
         try await store.setPaused(false)
 
@@ -3544,6 +3575,31 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(client.sessionEventCount, 1)
         XCTAssertEqual(store.captureState, .paused)
         XCTAssertEqual(audio.unsubscribeCount, 1)
+    func testAudioPushGateTapAdmissionDoesNotAcquireALock() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/Capture/ActiveBilingualTranscriptStore.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(
+            source.range(of: "nonisolated func submit(_ audioData: Data)")
+        )
+        let end = try XCTUnwrap(
+            source.range(of: "nonisolated func close()", range: start.upperBound..<source.endIndex)
+        )
+        let submission = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(submission.contains("compareExchangeAcquiringAndReleasing"))
+        for forbidden in ["NSLock", ".lock()", ".wait()", "DispatchSemaphore"] {
+            XCTAssertFalse(
+                submission.contains(forbidden),
+                "audio callback admission must not contain \(forbidden)"
+            )
+        }
+    }
+
         XCTAssertEqual(audio.subscribeCount, 1, "a committed pause must not reopen the microphone")
         XCTAssertFalse(store.hasAudioSubscription)
     }
@@ -7302,7 +7358,9 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             "hidden editor and transcript layers must leave the accessibility tree"
         )
         XCTAssertGreaterThanOrEqual(
-            captureViews.components(separatedBy: "ViewThatFits(in: .horizontal)").count - 1,
+            captureViews.components(
+                separatedBy: "MontereyHorizontalViewThatFits"
+            ).count - 1,
             2,
             "Context Pack controls and recording history headers must degrade for narrow windows"
         )
@@ -7321,7 +7379,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertFalse(activeCapture.contains("DispatchSemaphore"))
         XCTAssertFalse(activeCapture.contains(".wait()"))
         XCTAssertFalse(activeCapture.contains("stateLock.try"))
-        XCTAssertTrue(activeCapture.contains("import Synchronization"))
+        XCTAssertFalse(activeCapture.contains("import Synchronization"))
+        XCTAssertTrue(activeCapture.contains("CaptureAtomicInt"))
         XCTAssertTrue(activeCapture.contains("capture.error.profile_snapshot_unavailable"))
         XCTAssertFalse(activeCapture.contains("Capture profile snapshot is unavailable."))
         XCTAssertTrue(overlayViews.contains("if store.isCaptureActive == false"))

@@ -417,8 +417,12 @@ struct NotebookCaptureToolbar: View {
             }
         }
         .onAppear { publishPlannedLaneCount() }
-        .onChange(of: profileEditor.draft.selectedLanguages) { publishPlannedLaneCount() }
-        .onChange(of: profileEditor.draft.remoteRealtimeEnabled) { publishPlannedLaneCount() }
+        .montereyOnChange(of: profileEditor.draft.selectedLanguages) { _, _ in
+            publishPlannedLaneCount()
+        }
+        .montereyOnChange(of: profileEditor.draft.remoteRealtimeEnabled) { _, _ in
+            publishPlannedLaneCount()
+        }
     }
 
     /// Keeps the sidebar's invite-time display honest: it divides shared
@@ -823,16 +827,16 @@ struct NotebookRealtimeTranscriptPage: View {
         .task(id: notebookId) {
             await reloadHistory()
         }
-        .onChange(of: capture.sessionId) { _, _ in
+        .montereyOnChange(of: capture.sessionId) { _, _ in
             guard capture.notebookId == notebookId else { return }
             Task { await reloadHistory() }
         }
-        .onChange(of: capture.captureState) { _, state in
+        .montereyOnChange(of: capture.captureState) { _, state in
             guard capture.notebookId == notebookId,
                   state.isActive == false else { return }
             Task { await reloadHistory() }
         }
-        .onChange(of: activeSessionSpeakerIds) { _, speakerIds in
+        .montereyOnChange(of: activeSessionSpeakerIds) { _, speakerIds in
             refreshActiveSessionSpeakers(speakerIds)
         }
     }
@@ -944,6 +948,7 @@ struct NotebookRealtimeControlLayoutPolicy {
     }
 }
 
+@available(macOS 13.0, *)
 private struct NotebookAdaptiveSingleMountLayout: Layout {
     enum StackedAlignment: Equatable {
         case leading
@@ -1249,7 +1254,7 @@ private struct NotebookRealtimeCaptureConsole: View {
                     }
                 }
             }
-            .scrollIndicators(.visible)
+            .montereyScrollIndicators(true)
 
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "magnifyingglass")
@@ -1369,7 +1374,7 @@ private struct NotebookRealtimeCaptureConsole: View {
                 }
             }
         }
-        .scrollIndicators(.visible)
+        .montereyScrollIndicators(true)
     }
 
     private func selectedLanguageChip(language: String, index: Int) -> some View {
@@ -1694,7 +1699,7 @@ struct NotebookCaptureSettingsView: View {
     private var draft: NotebookCaptureProfileDTO { editor.draft }
 
     private var header: some View {
-        ViewThatFits(in: .horizontal) {
+        MontereyHorizontalViewThatFits {
             HStack(alignment: .top, spacing: Spacing.md) {
                 headerCopy
                 Spacer()
@@ -2715,47 +2720,22 @@ private struct NotebookRealtimeHistoryView: View {
             )
         } else {
             ScrollViewReader { proxy in
-                HStack(spacing: 0) {
-                    NotebookRealtimeRunNavigator(
-                        runs: presentedRuns,
-                        selectedSessionID: selectedSessionID,
-                        activeSessionID: activeSessionID,
-                        onSelect: { sessionID in
-                            selectRun(sessionID, using: proxy, animated: true)
-                            onSelectSession(sessionID)
-                        }
-                    )
-                    Divider().background(Color.borderGhost.opacity(0.24))
-                    ScrollView {
-                        LazyVStack(spacing: Spacing.lg) {
-                            ForEach(presentedRuns) { run in
-                                runView(run, using: proxy)
-                                    .id(runAnchor(run.sessionId))
-                            }
-                        }
-                        .padding(.horizontal, Spacing.xl)
-                        .padding(.vertical, Spacing.lg)
-                    }
-                    .onScrollGeometryChange(for: NotebookRealtimeScrollMetrics.self) { geometry in
-                        let visibleBottom = geometry.contentOffset.y
-                            + geometry.containerSize.height
-                        let contentBottom = geometry.contentSize.height
-                            + geometry.contentInsets.bottom
-                        return NotebookRealtimeScrollMetrics(
-                            offsetY: Double(geometry.contentOffset.y),
-                            distanceFromBottom: Double(max(0, contentBottom - visibleBottom))
-                        )
-                    } action: { previous, current in
-                        reconcileLiveFollowing(previous: previous, current: current)
-                    }
-                    .overlay(alignment: .bottomTrailing) {
-                        if selectedSessionID == activeSessionID, isFollowingLive == false {
-                            Button {
-                                resumeLiveFollow(using: proxy)
-                            } label: {
-                                Label(
-                                    String(localized: "capture.transcript.back_to_live"),
-                                    systemImage: "arrow.down.to.line"
+                Group {
+                    if #available(macOS 15.0, *) {
+                        historyScroll(using: proxy)
+                            .onScrollGeometryChange(
+                                for: NotebookRealtimeScrollMetrics.self
+                            ) { geometry in
+                                let visibleBottom = geometry.contentOffset.y
+                                    + geometry.containerSize.height
+                                let contentBottom = geometry.contentSize.height
+                                    + geometry.contentInsets.bottom
+                                return NotebookRealtimeScrollMetrics(
+                                    offsetY: Double(geometry.contentOffset.y),
+                                    distanceFromBottom: Double(max(
+                                        0,
+                                        contentBottom - visibleBottom
+                                    ))
                                 )
                                 .font(.captionMedium)
                                 .foregroundColor(.bgSunken)
@@ -2765,24 +2745,43 @@ private struct NotebookRealtimeHistoryView: View {
                                 .clipShape(Capsule())
                                 .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
                             }
-                            .buttonStyle(.plain)
-                            .padding(Spacing.lg)
+                    } else {
+                        // Monterey has no public scroll-geometry callback.
+                        // Keep following the live edge instead of guessing at
+                        // user intent from private AppKit implementation state.
+                        historyScroll(using: proxy)
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if selectedSessionID == activeSessionID, isFollowingLive == false {
+                        Button {
+                            resumeLiveFollow(using: proxy)
+                        } label: {
+                            Label(
+                                String(localized: "capture.transcript.back_to_live"),
+                                systemImage: "arrow.down.to.line"
+                            )
+                            .font(.captionMedium)
+                            .foregroundColor(.bgSunken)
+                            .padding(.horizontal, Spacing.md)
+                            .frame(minHeight: 30)
+                            .background(Color.textPrimary)
+                            .clipShape(Capsule())
+                            .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
                         }
                     }
                 }
                 .onAppear {
                     reconcileSelection(using: proxy, animated: false)
                 }
-                .onChange(of: focusSessionId) { _, sessionID in
-                    guard let sessionID else { return }
-                    selectRun(sessionID, using: proxy, animated: true)
-                }
-                .onChange(of: presentedRuns.map(\.sessionId)) { _, _ in
+                .montereyOnChange(of: focusSessionId) { _, _ in
                     reconcileSelection(using: proxy, animated: false)
                 }
-                .onChange(of: activeSessionID) { _, sessionID in
-                    guard let sessionID else { return }
-                    selectRun(sessionID, using: proxy, animated: true)
+                .montereyOnChange(of: availableRuns.map(\.sessionId)) { _, _ in
+                    reconcileSelection(using: proxy, animated: false)
+                }
+                .montereyOnChange(of: activeSessionID) { _, _ in
+                    reconcileSelection(using: proxy, animated: false)
                 }
             }
         }
@@ -2953,7 +2952,7 @@ private struct NotebookRealtimeHistoryView: View {
         liveFollowGeneration &+= 1
         let generation = liveFollowGeneration
         liveFollowTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(250))
+            try? await MontereyTaskSleep.milliseconds(250)
             guard Task.isCancelled == false,
                   generation == liveFollowGeneration,
                   isFollowingLive,
@@ -3038,7 +3037,7 @@ private struct NotebookRealtimeActiveRunView: View {
                 .frame(height: 1)
                 .id(liveTailAnchorID)
         }
-        .onChange(of: liveAutoscrollSignal) { _, signal in
+        .montereyOnChange(of: liveAutoscrollSignal) { _, signal in
             guard signal != nil else { return }
             onLiveAutoscrollSignal()
         }
@@ -3279,7 +3278,7 @@ struct NotebookRealtimeUtteranceView: View {
                             languageCount: displayLanguages.count
                         ))
                 }
-                .scrollIndicators(.visible)
+                .montereyScrollIndicators(true)
             } else {
                 languageColumnContent
             }
@@ -3327,7 +3326,7 @@ struct NotebookRealtimeUtteranceView: View {
     }
 
     private var runHeader: some View {
-        ViewThatFits(in: .horizontal) {
+        MontereyHorizontalViewThatFits {
             HStack(spacing: Spacing.md) {
                 runIdentity
                 Spacer(minLength: Spacing.md)
@@ -4328,7 +4327,14 @@ private struct BilingualLaneText: View {
     var body: some View {
         Group {
             if isEditable, let text {
-                TextField("", text: $buffer.draft, axis: .vertical)
+                Group {
+                    if #available(macOS 13.0, *) {
+                        TextField("", text: $buffer.draft, axis: .vertical)
+                            .lineLimit(2...)
+                    } else {
+                        TextField("", text: $buffer.draft)
+                    }
+                }
                     .textFieldStyle(.plain)
                     .font(.body)
                     .foregroundColor(.textPrimary)
@@ -4339,7 +4345,7 @@ private struct BilingualLaneText: View {
                     .focused($isFocused)
                     .disabled(isCommitInFlight)
                     .onSubmit { isFocused = false }
-                    .onChange(of: isFocused) { wasFocused, focused in
+                    .montereyOnChange(of: isFocused) { wasFocused, focused in
                         scheduleFocusChange(wasFocused: wasFocused, focused: focused)
                     }
                     .accessibilityLabel(Text(String(
@@ -4354,7 +4360,7 @@ private struct BilingualLaneText: View {
                         // editable appearance without overwriting a user draft.
                         scheduleTextSync(text)
                     }
-                    .onChange(of: text) { _, value in
+                    .montereyOnChange(of: text) { _, value in
                         scheduleTextSync(value)
                     }
             } else if let text, text.isEmpty == false {

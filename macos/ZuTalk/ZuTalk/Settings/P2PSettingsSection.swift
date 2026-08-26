@@ -74,7 +74,7 @@ struct P2PSettingsSection: View {
                     .font(.bodyMedium)
                     .foregroundColor(.textPrimary)
             }
-            .onChange(of: viewModel.localDiscovery) { _, _ in viewModel.save() }
+            .montereyOnChange(of: viewModel.localDiscovery) { _, _ in viewModel.save() }
             .accessibilityIdentifier("settings.p2p.local_discovery")
 
             Text(String(localized: "settings.p2p.local_discovery_note"))

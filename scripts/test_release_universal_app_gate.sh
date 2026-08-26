@@ -46,8 +46,8 @@ grep -Eq 'CODE_SIGN_IDENTITY="-"' <<<"$universal_body" \
 grep -Eq 'DEVELOPMENT_TEAM=""' <<<"$universal_body" \
   || fail "xcode-build-universal must not require a private Apple team"
 
-grep -Eq '^macos_deployment_target[[:space:]]*:=[[:space:]]*"15\.5"' "$JUSTFILE" \
-  || fail "Rust and Xcode release builds must share the macOS 15.5 deployment target"
+grep -Eq '^macos_deployment_target[[:space:]]*:=[[:space:]]*"12\.5"' "$JUSTFILE" \
+  || fail "Rust and Xcode release builds must share the macOS 12.5 deployment target"
 for recipe in _rust-build-release-arm64 _rust-build-release-x86_64; do
   recipe_text="$(recipe_body "$recipe")"
   grep -Fq 'MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }}' <<<"$recipe_text" \
@@ -68,6 +68,12 @@ grep -Eq 'lipo[[:space:]]+"\$BIN"[[:space:]]+-verify_arch' <<<"$assert_body" \
   || fail "assert-universal-app must verify architectures with lipo <binary> -verify_arch"
 grep -Eq 'arm64' <<<"$assert_body" \
   || fail "assert-universal-app must require arm64"
+grep -Fq 'LSMinimumSystemVersion' <<<"$assert_body" \
+  || fail "assert-universal-app must verify the bundle deployment target"
+grep -Fq 'vtool -arch' <<<"$assert_body" \
+  || fail "assert-universal-app must verify each Mach-O architecture deployment target"
+grep -Fq 'libswiftSynchronization.dylib' <<<"$assert_body" \
+  || fail "assert-universal-app must reject the macOS 15-only Synchronization runtime"
 grep -Eq 'x86_64' <<<"$assert_body" \
   || fail "assert-universal-app must require x86_64"
 grep -Eq 'exit[[:space:]]+1' <<<"$assert_body" \

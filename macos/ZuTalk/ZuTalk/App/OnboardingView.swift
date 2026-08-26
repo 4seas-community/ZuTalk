@@ -1123,7 +1123,7 @@ private struct ReadyPulseModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .scaleEffect(scale)
-            .onChange(of: active) { _, newValue in
+            .montereyOnChange(of: active) { _, newValue in
                 guard newValue else {
                     scale = 1.0
                     pulseCount = 0
