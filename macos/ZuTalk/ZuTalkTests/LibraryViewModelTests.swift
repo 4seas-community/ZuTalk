@@ -23,6 +23,11 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.groupedSessions.count, 0)
         XCTAssertEqual(viewModel.searchText, "")
         XCTAssertNil(viewModel.selectedId)
+        XCTAssertNil(viewModel.selectedTopicFilterId)
+        XCTAssertTrue(viewModel.topicIdBySessionId.isEmpty)
+        XCTAssertFalse(viewModel.hasLoadedTopicMemberships)
+        XCTAssertFalse(viewModel.isLoadingSessions)
+        XCTAssertNil(viewModel.sessionLoadError)
         XCTAssertEqual(viewModel.totalCount, 0)
     }
 
@@ -70,7 +75,72 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(viewModel.sessions.count, 0)
     }
 
-    func testHomeViewIsNotebookLibraryAndHidesInternalDiagnostics() throws {
+    func testCatalogPaginationCollectsEverySessionAcrossPages() throws {
+        let source = (0..<201).map { makeSessionInfo(id: "session-\($0)") }
+        var requestedOffsets: [UInt32] = []
+
+        let snapshot = try LibraryViewModel.loadCompleteSessionCatalog(
+            pageSize: 200
+        ) { limit, offset in
+            requestedOffsets.append(offset)
+            let start = Int(offset)
+            let end = min(start + Int(limit), source.count)
+            let page = start < end ? Array(source[start..<end]) : []
+            return SessionQueryResultInfo(
+                sessions: page,
+                totalCount: UInt64(source.count)
+            )
+        }
+
+        XCTAssertEqual(snapshot.sessions.map(\.id), source.map(\.id))
+        XCTAssertEqual(snapshot.totalCount, 201)
+        XCTAssertEqual(requestedOffsets, [0, 200])
+    }
+
+    func testCatalogPaginationRejectsANonProgressingPage() {
+        let first = makeSessionInfo(id: "session-a")
+        let second = makeSessionInfo(id: "session-b")
+
+        XCTAssertThrowsError(
+            try LibraryViewModel.loadCompleteSessionCatalog(pageSize: 2) { _, _ in
+                SessionQueryResultInfo(
+                    sessions: [first, second],
+                    totalCount: 3
+                )
+            }
+        ) { error in
+            XCTAssertEqual(
+                error as? SessionCatalogLoadError,
+                .stalled(offset: 2)
+            )
+        }
+    }
+
+    func testCatalogPaginationRejectsATotalThatChangesMidSnapshot() {
+        let source = (0..<3).map { makeSessionInfo(id: "session-\($0)") }
+
+        XCTAssertThrowsError(
+            try LibraryViewModel.loadCompleteSessionCatalog(pageSize: 2) { _, offset in
+                if offset == 0 {
+                    return SessionQueryResultInfo(
+                        sessions: Array(source[0..<2]),
+                        totalCount: 3
+                    )
+                }
+                return SessionQueryResultInfo(
+                    sessions: [source[2]],
+                    totalCount: 4
+                )
+            }
+        ) { error in
+            XCTAssertEqual(
+                error as? SessionCatalogLoadError,
+                .snapshotChanged(expected: 3, actual: 4)
+            )
+        }
+    }
+
+    func testHomeOwnsSessionLedgerAndTopicsOwnTheWorkspaceLibrary() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -80,23 +150,207 @@ final class LibraryViewModelTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(contents.contains("HomeNotebookLibrary"))
-        XCTAssertTrue(contents.contains("HomeNotebookCard"))
-        XCTAssertTrue(contents.contains("HomeCreateNotebookSheet"))
+        let homeStart = try XCTUnwrap(contents.range(of: "struct HomeView: View"))
+        let topicsStart = try XCTUnwrap(contents.range(of: "struct TopicsView: View"))
+        let home = String(contents[homeStart.lowerBound..<topicsStart.lowerBound])
+        let topics = String(contents[topicsStart.lowerBound...])
+
+        XCTAssertTrue(home.contains("HomeSessionCatalog("))
+        XCTAssertTrue(home.contains("if shouldShowSessionCatalog"))
+        XCTAssertTrue(contents.contains("viewModel.isLoadingSessions"))
+        XCTAssertTrue(contents.contains("viewModel.sessionLoadError != nil"))
+        XCTAssertTrue(contents.contains("viewModel.sessions.isEmpty == false"))
+        XCTAssertTrue(contents.contains("viewModel.notebooks.isEmpty == false"))
+        XCTAssertTrue(contents.contains("HomeTopicFilterBar"))
+        XCTAssertTrue(contents.contains("viewModel.catalogGroupedSessions"))
+        XCTAssertTrue(contents.contains("MainNavigationStore.shared.openSession(sessionId)"))
+        XCTAssertTrue(contents.contains("onOpenTopic: openNotebook"))
+        XCTAssertTrue(contents.contains("home.topic.open_selected"))
+        XCTAssertTrue(contents.contains("HomeCatalogLoadFailureState"))
+        XCTAssertTrue(contents.contains("HomeCatalogRefreshWarning"))
+        XCTAssertTrue(contents.contains("home.catalog.load_failure"))
+        XCTAssertFalse(home.contains("HomeNotebookCard("))
+        XCTAssertFalse(home.contains("HomeNoNotebookView"))
+        XCTAssertTrue(topics.contains("HomeNotebookCard("))
+        XCTAssertTrue(topics.contains("HomeCreateNotebookSheet"))
+        XCTAssertTrue(topics.contains("topics.search"))
+        XCTAssertTrue(topics.contains("topics.create"))
+        XCTAssertTrue(topics.contains("topics.page"))
         XCTAssertTrue(contents.contains("viewModel.notebooks"))
-        XCTAssertTrue(contents.contains("MainNavigationStore.shared.openActiveNotebookForCapture()"))
+        XCTAssertTrue(contents.contains("MainNavigationStore.shared.openTopicWorkspace(notebookID: notebookId)"))
+        XCTAssertFalse(home.contains("onImportAudio"))
+        XCTAssertFalse(contents.contains("HomeImportAudioSheet"))
+        XCTAssertFalse(contents.contains("home.catalog.import"))
+        XCTAssertFalse(contents.contains("home.notebook.import"))
+        XCTAssertTrue(contents.contains("ActiveBilingualTranscriptStore.shared"))
+        XCTAssertTrue(contents.contains("HomeRecordingEntryPolicy.activeDestination"))
+        XCTAssertTrue(contents.contains("home.record.return_active_format"))
+        XCTAssertTrue(contents.contains("onReturnToActiveCapture: returnToActiveCapture"))
+        XCTAssertTrue(contents.contains("onStartRecording: startQuickRecording"))
+        XCTAssertTrue(contents.contains("NotebookCaptureStartCoordinator("))
+        XCTAssertTrue(contents.contains("viewModel.canStartQuickCapture"))
+        XCTAssertTrue(contents.contains(
+            "NotebookCaptureStartPreparationWorkflow.prepare("
+        ))
+        XCTAssertTrue(contents.contains(
+            ".shouldEnableRealtimeForQuickCapture("
+        ))
+        XCTAssertTrue(contents.contains(
+            "prepareForHomeQuickCaptureStart("
+        ))
+        XCTAssertFalse(contents.contains("prepareForCaptureStart(enableRealtimeIfNeeded: false)"))
+        XCTAssertTrue(contents.contains("home.record.start"))
+        XCTAssertTrue(contents.contains("home.row.topic.unknown"))
+        XCTAssertTrue(contents.contains("home.workspace.membership_unavailable"))
+        XCTAssertFalse(contents.contains("onRecordInTopic"))
         XCTAssertTrue(contents.contains("HomeWorkspaceFailureView"))
         XCTAssertTrue(contents.contains("HomeWorkspaceRefreshWarning"))
-        XCTAssertFalse(contents.contains("HomeNotebookLibrary(\n                        viewModel: viewModel,\n                        capture:"))
-        XCTAssertFalse(contents.contains("chooseAudioForActiveNotebook"))
-        XCTAssertFalse(contents.contains("HomeRecentRecordingsSection(\n                        viewModel: viewModel"))
+        XCTAssertFalse(contents.contains("allowedContentTypes = [.audio]"))
+        XCTAssertFalse(contents.contains("HomeRecentRecordingsSection"))
         XCTAssertFalse(contents.contains("HomeActivityHeatmap"))
         XCTAssertFalse(contents.contains("notebookEvents"))
         XCTAssertFalse(contents.contains("event.eventType"))
         XCTAssertFalse(contents.contains("tab.builtinKind"))
         XCTAssertFalse(contents.contains("home.workspace.error_format"))
-        XCTAssertFalse(contents.contains("error.localizedDescription"))
+        let quickCaptureRecovery = try XCTUnwrap(home.range(
+            of: "await CommunityInviteSession.shared.settleRealtimeSession(usedSeconds: 0)"
+        ))
+        let quickCaptureErrorDetail = try XCTUnwrap(home.range(
+            of: "detail: error.localizedDescription"
+        ))
+        XCTAssertLessThan(
+            quickCaptureRecovery.lowerBound,
+            quickCaptureErrorDetail.lowerBound,
+            "an invite reservation must be recovered before presenting the specific start failure"
+        )
+        XCTAssertFalse(home.contains(
+            "detail: String(localized: \"capture.route.unavailable_detail\")"
+        ))
         XCTAssertFalse(contents.contains("detail: \"\\(error)\""))
+    }
+
+    func testTopicNamingUsesCanonicalTopicNounAcrossAllLocales() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk/Resources", isDirectory: true)
+        let forbiddenByLocale: [String: [String]] = [
+            "de": ["Forschungsthem"],
+            "en": ["research topic"],
+            "es": ["tema de investigación", "temas de investigación"],
+            "fr": ["sujet de recherche", "sujets de recherche"],
+            "ja": ["研究テーマ"],
+            "ko": ["연구 주제"],
+            "th": ["หัวข้อวิจัย"],
+            "zh-Hans": ["研究主题"],
+        ]
+
+        for (locale, forbiddenTerms) in forbiddenByLocale {
+            let contents = try String(
+                contentsOf: root
+                    .appendingPathComponent("\(locale).lproj", isDirectory: true)
+                    .appendingPathComponent("Localizable.strings"),
+                encoding: .utf8
+            )
+            for forbiddenTerm in forbiddenTerms {
+                XCTAssertNil(
+                    contents.range(of: forbiddenTerm, options: .caseInsensitive),
+                    "\(locale) should call the product object Topic without a research qualifier"
+                )
+            }
+        }
+    }
+
+    func testHomeRecordingEntryReturnsToTheAuthoritativeActiveCaptureTopic() {
+        let topics = [
+            makeNotebook(id: "nb-active", title: "Oral History"),
+            makeNotebook(id: "nb-browsed", title: "Team Meetings"),
+        ]
+
+        XCTAssertEqual(
+            HomeRecordingEntryPolicy.activeDestination(
+                isCaptureActive: true,
+                captureNotebookId: "nb-active",
+                notebooks: topics
+            ),
+            HomeActiveCaptureDestination(
+                notebookId: "nb-active",
+                topicTitle: "Oral History"
+            )
+        )
+        XCTAssertNil(
+            HomeRecordingEntryPolicy.activeDestination(
+                isCaptureActive: false,
+                captureNotebookId: "nb-active",
+                notebooks: topics
+            ),
+            "without active capture, Home must expose the one-click recording action"
+        )
+    }
+
+    func testHomeRecordingEntryStillReturnsWhenTheActiveTopicTitleHasNotLoaded() {
+        XCTAssertEqual(
+            HomeRecordingEntryPolicy.activeDestination(
+                isCaptureActive: true,
+                captureNotebookId: "nb-active",
+                notebooks: []
+            ),
+            HomeActiveCaptureDestination(
+                notebookId: "nb-active",
+                topicTitle: nil
+            ),
+            "a workspace refresh failure must not hide the route back to an active capture"
+        )
+        XCTAssertNil(
+            HomeRecordingEntryPolicy.activeDestination(
+                isCaptureActive: true,
+                captureNotebookId: "  \n",
+                notebooks: []
+            )
+        )
+    }
+
+    func testHomeQuickCaptureEnablesRealtimeOnlyForAnEnabledActiveInvite() {
+        XCTAssertTrue(
+            HomeRecordingEntryPolicy.shouldEnableRealtimeForQuickCapture(
+                inviteIsEnabled: true,
+                inviteIsActive: true
+            )
+        )
+        XCTAssertFalse(
+            HomeRecordingEntryPolicy.shouldEnableRealtimeForQuickCapture(
+                inviteIsEnabled: false,
+                inviteIsActive: true
+            )
+        )
+        XCTAssertFalse(
+            HomeRecordingEntryPolicy.shouldEnableRealtimeForQuickCapture(
+                inviteIsEnabled: true,
+                inviteIsActive: false
+            )
+        )
+    }
+
+    func testQuickCaptureMembershipIsPresentedAsUnfiledUntilMovedToAResearchTopic() {
+        let storageMemberships = [
+            "quick-recording": "capture-inbox",
+            "filed-interview": "topic-research",
+        ]
+
+        XCTAssertEqual(
+            LibraryViewModel.visibleTopicMemberships(
+                storageMemberships: storageMemberships,
+                quickCaptureNotebookId: "capture-inbox"
+            ),
+            ["filed-interview": "topic-research"]
+        )
+        XCTAssertEqual(
+            LibraryViewModel.visibleTopicMemberships(
+                storageMemberships: storageMemberships,
+                quickCaptureNotebookId: nil
+            ),
+            storageMemberships
+        )
     }
 
     func testHomeTranscriptStatusUsesTaskQueueWithoutLegacyPlaceholder() throws {
@@ -132,6 +386,8 @@ final class LibraryViewModelTests: XCTestCase {
 
         XCTAssertTrue(viewModel.contains("TranscriptionTaskIndex.load(core: core)"))
         XCTAssertFalse(viewModel.contains("templateId == \"transcript-hd\""))
+        XCTAssertFalse(viewModel.contains("guard item.preview.isEmpty"))
+        XCTAssertFalse(viewModel.contains("guard item.rawStatus.lowercased() == \"completed\""))
     }
 
     func testNotebookEditorIncludesResourcesAsAUiOnlyStatusTab() throws {
@@ -153,14 +409,275 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertTrue(editor.contains("isShowingResources"))
         XCTAssertTrue(resources.contains("NotebookResourceItem"))
         XCTAssertTrue(resources.contains("listNotebookSessions"))
-        XCTAssertTrue(resources.contains("listNotebookSessionProjections"))
-        XCTAssertTrue(resources.contains("TranscriptionTaskIndex.load"))
+        XCTAssertTrue(resources.contains("getSessionTranscriptAvailability"))
+        XCTAssertFalse(resources.contains("repairSessionTranscriptProjection"))
+        XCTAssertTrue(editor.contains("repairSessionTranscriptProjection"))
+        XCTAssertTrue(resources.contains("TranscriptionTaskIndex.makeIndex"))
+        XCTAssertTrue(resources.contains("getSession(id:"))
+        XCTAssertFalse(resources.contains("limit: 500"))
+        XCTAssertTrue(resources.contains("topic.research.copy"))
+        XCTAssertTrue(resources.contains("Button(action: chooseAudioFile)"))
+        XCTAssertTrue(resources.contains(".accessibilityIdentifier(\"topic.import\")"))
+        XCTAssertTrue(resources.contains(
+            "viewModel.importAudio(at: url, notebookId: notebookId)"
+        ))
+        XCTAssertTrue(resources.contains("panel.allowedContentTypes = [.audio]"))
         XCTAssertTrue(resources.contains("onOpen(.asyncTranscript)"))
         XCTAssertTrue(editor.contains("openResource(sessionId: sessionId, destination: destination)"))
         XCTAssertFalse(resources.contains("createNotebook"))
     }
 
+    func testTranscriptResourceStatusUsesContentAvailabilityInsteadOfProjectionShells() {
+        let noContentRun = SessionTranscriptAvailabilityInfo(
+            hasRealtimeRun: true,
+            hasRealtimeContent: false,
+            hasAsyncContent: false
+        )
+        let asyncContent = SessionTranscriptAvailabilityInfo(
+            hasRealtimeRun: false,
+            hasRealtimeContent: false,
+            hasAsyncContent: true
+        )
+        let completedTask = TranscriptionTaskSnapshot(
+            taskId: "completed",
+            status: "completed",
+            errorMessage: nil
+        )
+        let pendingTask = TranscriptionTaskSnapshot(
+            taskId: "pending",
+            status: "running",
+            errorMessage: nil
+        )
+        let failedTask = TranscriptionTaskSnapshot(
+            taskId: "failed",
+            status: "failed",
+            errorMessage: "provider unavailable"
+        )
+
+        XCTAssertEqual(
+            NotebookTranscriptResourceStatusPolicy.realtime(
+                sessionStatus: "completed",
+                availability: noContentRun
+            ),
+            .empty
+        )
+        XCTAssertEqual(
+            NotebookTranscriptResourceStatusPolicy.realtime(
+                sessionStatus: "recording",
+                availability: nil
+            ),
+            .pending
+        )
+        XCTAssertEqual(
+            NotebookTranscriptResourceStatusPolicy.realtime(
+                sessionStatus: "completed",
+                availability: nil
+            ),
+            .unknown
+        )
+        XCTAssertEqual(
+            NotebookTranscriptResourceStatusPolicy.async(
+                task: completedTask,
+                availability: noContentRun
+            ),
+            .empty
+        )
+        XCTAssertEqual(
+            NotebookTranscriptResourceStatusPolicy.async(
+                task: nil,
+                availability: asyncContent
+            ),
+            .ready
+        )
+        XCTAssertEqual(
+            NotebookTranscriptResourceStatusPolicy.async(
+                task: pendingTask,
+                availability: nil
+            ),
+            .pending
+        )
+        XCTAssertEqual(
+            NotebookTranscriptResourceStatusPolicy.async(
+                task: failedTask,
+                availability: asyncContent
+            ),
+            .failed
+        )
+    }
+
+    func testAudioResourceStatusDistinguishesReadyDestroyedMissingAndContradictoryState() {
+        let retained = AudioDestructionReportInfo(
+            chunkTotal: 2,
+            chunksDeleted: 0,
+            filesRemaining: 2,
+            keyDeleted: false,
+            encryptedPathCleared: false,
+            destroyedAtMs: nil,
+            deleteErrors: []
+        )
+        let destroyed = AudioDestructionReportInfo(
+            chunkTotal: 2,
+            chunksDeleted: 2,
+            filesRemaining: 0,
+            keyDeleted: true,
+            encryptedPathCleared: true,
+            destroyedAtMs: 1_700_000_000_000,
+            deleteErrors: []
+        )
+        let neverGenerated = AudioDestructionReportInfo(
+            chunkTotal: 0,
+            chunksDeleted: 0,
+            filesRemaining: 0,
+            keyDeleted: true,
+            encryptedPathCleared: true,
+            destroyedAtMs: nil,
+            deleteErrors: []
+        )
+        let contradictory = AudioDestructionReportInfo(
+            chunkTotal: 2,
+            chunksDeleted: 2,
+            filesRemaining: 1,
+            keyDeleted: true,
+            encryptedPathCleared: true,
+            destroyedAtMs: 1_700_000_000_000,
+            deleteErrors: []
+        )
+
+        XCTAssertEqual(
+            NotebookAudioResourceStatusPolicy.resolve(
+                sessionStatus: "recording",
+                hasEncryptedAudio: true,
+                destructionReport: retained
+            ).status,
+            .pending
+        )
+        XCTAssertEqual(
+            NotebookAudioResourceStatusPolicy.resolve(
+                sessionStatus: "completed",
+                hasEncryptedAudio: true,
+                destructionReport: retained
+            ).status,
+            .ready
+        )
+        let destroyedState = NotebookAudioResourceStatusPolicy.resolve(
+            sessionStatus: "completed",
+            hasEncryptedAudio: false,
+            destructionReport: destroyed
+        )
+        XCTAssertEqual(destroyedState.status, .destroyed)
+        XCTAssertEqual(
+            destroyedState.destroyedAt,
+            Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        XCTAssertEqual(
+            NotebookAudioResourceStatusPolicy.resolve(
+                sessionStatus: "completed",
+                hasEncryptedAudio: false,
+                destructionReport: neverGenerated
+            ).status,
+            .missing
+        )
+        XCTAssertEqual(
+            NotebookAudioResourceStatusPolicy.resolve(
+                sessionStatus: "completed",
+                hasEncryptedAudio: true,
+                destructionReport: nil
+            ).status,
+            .unknown
+        )
+        XCTAssertEqual(
+            NotebookAudioResourceStatusPolicy.resolve(
+                sessionStatus: "completed",
+                hasEncryptedAudio: false,
+                destructionReport: contradictory
+            ).status,
+            .failed
+        )
+    }
+
+    func testResearchBundleKeepsAvailableTranscriptsAndNamesOmittedSessions() throws {
+        enum MissingTranscript: Error { case unavailable }
+        let items = [
+            makeNotebookResourceItem(id: "session-ready", title: "First interview", offset: 0),
+            makeNotebookResourceItem(id: "session-empty", title: "Second interview", offset: 60),
+        ]
+
+        let result = try XCTUnwrap(
+            NotebookResourcesViewModel.composeResearchBundle(
+                selectedItems: items,
+                recordedLabel: "Recorded",
+                sourceSessionLabel: "Source session",
+                omittedHeading: "Omitted sessions",
+                noTranscriptLabel: "No transcript available",
+                transcriptForSession: { sessionId in
+                    guard sessionId == "session-ready" else {
+                        throw MissingTranscript.unavailable
+                    }
+                    return "Quoted answer"
+                }
+            )
+        )
+
+        XCTAssertEqual(result.copiedCount, 1)
+        XCTAssertEqual(result.omittedCount, 1)
+        XCTAssertTrue(result.text.contains("## First interview"))
+        XCTAssertTrue(result.text.contains("Source session: session-ready"))
+        XCTAssertTrue(result.text.contains("Quoted answer"))
+        XCTAssertTrue(result.text.contains("## Omitted sessions"))
+        XCTAssertTrue(result.text.contains("Source session: session-empty"))
+    }
+
+    func testResearchBundleReturnsNilWhenEverySelectedTranscriptIsUnavailable() {
+        let items = [
+            makeNotebookResourceItem(id: "session-empty", title: "Empty", offset: 0)
+        ]
+
+        XCTAssertNil(
+            NotebookResourcesViewModel.composeResearchBundle(
+                selectedItems: items,
+                recordedLabel: "Recorded",
+                sourceSessionLabel: "Source session",
+                omittedHeading: "Omitted sessions",
+                noTranscriptLabel: "No transcript available",
+                transcriptForSession: { _ in "   \n" }
+            )
+        )
+    }
+
+    private func makeNotebookResourceItem(
+        id: String,
+        title: String,
+        offset: TimeInterval
+    ) -> NotebookResourceItem {
+        NotebookResourceItem(
+            id: id,
+            title: title,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000 + offset),
+            durationMs: 60_000,
+            sessionType: "recording",
+            rawStatus: "completed",
+            preview: "",
+            languagePair: "EN",
+            audio: .ready,
+            audioDestroyedAt: nil,
+            realtimeTranscript: .missing,
+            asyncTranscript: .ready
+        )
+    }
+
     // MARK: - Search
+
+    func testFullTextSnippetRemovesSearchMarkupAndBoundsLength() {
+        let longTail = String(repeating: "词 ", count: 180)
+        let sanitized = LibraryViewModel.sanitizedSearchSnippet(
+            "<b>关键</b>   内容 &amp; 证据 \(longTail)"
+        )
+
+        XCTAssertTrue(sanitized.hasPrefix("关键 内容 & 证据"))
+        XCTAssertFalse(sanitized.contains("<b>"))
+        XCTAssertFalse(sanitized.contains("</b>"))
+        XCTAssertLessThanOrEqual(sanitized.count, 240)
+    }
 
     func testSearchEmptyShowsAll() {
         viewModel.sessions = makeMockSessions()
@@ -216,8 +733,11 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.notebookTabs.map(\.id), ["tab-notes", "tab-transcript"])
         XCTAssertEqual(viewModel.notebookSessionProjections.map(\.sessionId), ["session-a"])
         XCTAssertEqual(viewModel.activeNotebookSessions.map(\.id), ["session-a"])
+        XCTAssertEqual(viewModel.topicIdBySessionId["session-a"], "nb-research")
+        XCTAssertEqual(viewModel.notebookSessionCounts["nb-research"], 1)
+        XCTAssertEqual(viewModel.notebookSessionCounts["nb-meetings"], 0)
         XCTAssertEqual(viewModel.sessions, sessions)
-        XCTAssertFalse(viewModel.requiresNotebookBeforeRecording)
+        XCTAssertFalse(viewModel.hasNoResearchTopics)
     }
 
     func testLoadNotebookWorkspaceRestoresCurrentNotebookContext() {
@@ -284,7 +804,7 @@ final class LibraryViewModelTests: XCTestCase {
             viewModel.notebookWorkspaceError,
             String(localized: "home.workspace.load_failed")
         )
-        XCTAssertTrue(viewModel.requiresNotebookBeforeRecording)
+        XCTAssertTrue(viewModel.hasNoResearchTopics)
     }
 
     func testWorkspaceDetailFailureRetainsNotebookListAndShowsRefreshState() {
@@ -301,7 +821,7 @@ final class LibraryViewModelTests: XCTestCase {
             viewModel.notebookWorkspaceError,
             String(localized: "home.workspace.load_failed")
         )
-        XCTAssertFalse(viewModel.requiresNotebookBeforeRecording)
+        XCTAssertFalse(viewModel.hasNoResearchTopics)
     }
 
     func testHomeGroupsOnlySelectedNotebookSessionsAndFiltersImmediately() {
@@ -350,6 +870,274 @@ final class LibraryViewModelTests: XCTestCase {
             viewModel.activeNotebookGroupedSessions.isEmpty,
             "Search must not escape the current Notebook even if a global session matches"
         )
+    }
+
+    func testCatalogShowsAllSessionsAndTopicFilterDoesNotChangeCaptureNotebook() {
+        let client = StubNotebookWorkspaceClient()
+        client.notebooks = [
+            makeNotebook(id: "nb-research", title: "AI History"),
+            makeNotebook(id: "nb-meetings", title: "Community Governance")
+        ]
+        client.sessionLinksByNotebook["nb-research"] = [
+            FfiNotebookSessionLink(
+                notebookId: "nb-research",
+                sessionId: "session-a",
+                createdAt: "2001-01-04T00:00:00Z"
+            )
+        ]
+        client.sessionLinksByNotebook["nb-meetings"] = [
+            FfiNotebookSessionLink(
+                notebookId: "nb-meetings",
+                sessionId: "session-b",
+                createdAt: "2001-01-04T00:00:00Z"
+            )
+        ]
+        viewModel.sessions = [
+            SessionListItem(
+                id: "session-a",
+                title: "Oral history interview",
+                timeString: "10:00",
+                durationString: "00:12",
+                languagePair: "EN ↔ 中",
+                createdAt: Date(timeIntervalSince1970: 2),
+                preview: "Early community memory"
+            ),
+            SessionListItem(
+                id: "session-b",
+                title: "Governance meeting",
+                timeString: "09:00",
+                durationString: "00:08",
+                languagePair: "中",
+                createdAt: Date(timeIntervalSince1970: 1),
+                preview: "Decision and follow-up"
+            )
+        ]
+
+        viewModel.loadNotebookWorkspace(client: client)
+
+        XCTAssertEqual(viewModel.catalogSessions.map(\.id), ["session-a", "session-b"])
+        XCTAssertEqual(viewModel.activeNotebookId, "nb-research")
+        XCTAssertEqual(viewModel.topicTitle(forSessionId: "session-b"), "Community Governance")
+
+        viewModel.selectTopicFilter("nb-meetings")
+
+        XCTAssertEqual(viewModel.catalogSessions.map(\.id), ["session-b"])
+        XCTAssertEqual(
+            viewModel.activeNotebookId,
+            "nb-research",
+            "Browsing a Topic must not silently change the capture destination"
+        )
+    }
+
+    func testCatalogSearchIntersectsTopicAndMatchesTranscriptPreview() {
+        let client = StubNotebookWorkspaceClient()
+        client.notebooks = [
+            makeNotebook(id: "nb-a", title: "Field Research"),
+            makeNotebook(id: "nb-b", title: "Team Meetings")
+        ]
+        client.sessionLinksByNotebook["nb-a"] = [
+            FfiNotebookSessionLink(
+                notebookId: "nb-a",
+                sessionId: "session-a",
+                createdAt: "2001-01-04T00:00:00Z"
+            )
+        ]
+        client.sessionLinksByNotebook["nb-b"] = [
+            FfiNotebookSessionLink(
+                notebookId: "nb-b",
+                sessionId: "session-b",
+                createdAt: "2001-01-04T00:00:00Z"
+            )
+        ]
+        viewModel.sessions = [
+            SessionListItem(
+                id: "session-a",
+                title: "Interview",
+                timeString: "10:00",
+                durationString: "00:12",
+                languagePair: "EN",
+                preview: "The migration story begins here"
+            ),
+            SessionListItem(
+                id: "session-b",
+                title: "Migration planning",
+                timeString: "11:00",
+                durationString: "00:08",
+                languagePair: "中",
+                preview: "A stronger title match outside the selected Topic"
+            )
+        ]
+        viewModel.loadNotebookWorkspace(client: client)
+        viewModel.selectTopicFilter("nb-a")
+
+        viewModel.searchText = "migration"
+
+        XCTAssertEqual(viewModel.catalogSessions.map(\.id), ["session-a"])
+
+        viewModel.searchText = "field research"
+        XCTAssertEqual(
+            viewModel.catalogSessions.map(\.id),
+            ["session-a"],
+            "A Topic name is part of the catalogue's searchable context"
+        )
+
+        viewModel.searchText = String(localized: "home.row.kind.recording")
+        XCTAssertEqual(
+            viewModel.catalogSessions.map(\.id),
+            ["session-a"],
+            "The visible localized Session kind should also be searchable"
+        )
+    }
+
+    func testUnknownTopicFilterFallsBackToAllSessions() {
+        viewModel.sessions = makeMockSessions()
+
+        viewModel.selectTopicFilter("missing-topic")
+
+        XCTAssertNil(viewModel.selectedTopicFilterId)
+        XCTAssertEqual(viewModel.catalogSessions.map(\.id), ["1", "2"])
+    }
+
+    func testCatalogTreatsWhitespaceOnlySearchAsEmpty() {
+        viewModel.sessions = makeMockSessions()
+        viewModel.searchText = "  \n "
+
+        XCTAssertFalse(viewModel.hasCatalogSearchText)
+        XCTAssertEqual(viewModel.catalogSessions.map(\.id), ["1", "2"])
+    }
+
+    func testWorkspaceReloadClearsADeletedTopicFilter() {
+        let client = StubNotebookWorkspaceClient()
+        client.notebooks = [
+            makeNotebook(id: "nb-a", title: "Topic A"),
+            makeNotebook(id: "nb-b", title: "Topic B")
+        ]
+        viewModel.loadNotebookWorkspace(client: client)
+        viewModel.selectTopicFilter("nb-b")
+        XCTAssertEqual(viewModel.selectedTopicFilterId, "nb-b")
+
+        client.notebooks = [makeNotebook(id: "nb-a", title: "Topic A")]
+        viewModel.loadNotebookWorkspace(client: client)
+
+        XCTAssertNil(viewModel.selectedTopicFilterId)
+    }
+
+    func testTopicMembershipFailurePreservesLastKnownSnapshot() {
+        let client = StubNotebookWorkspaceClient()
+        client.notebooks = [makeNotebook(id: "nb-a", title: "Topic A")]
+        client.sessionLinksByNotebook["nb-a"] = [
+            FfiNotebookSessionLink(
+                notebookId: "nb-a",
+                sessionId: "session-a",
+                createdAt: "2001-01-04T00:00:00Z"
+            )
+        ]
+        viewModel.loadNotebookWorkspace(client: client)
+        XCTAssertTrue(viewModel.hasLoadedTopicMemberships)
+        XCTAssertEqual(viewModel.topicIdBySessionId["session-a"], "nb-a")
+        XCTAssertEqual(viewModel.notebookSessionCounts["nb-a"], 1)
+
+        client.listSessionsErrorByNotebook["nb-a"] = .databaseUnavailable
+        viewModel.loadNotebookWorkspace(client: client)
+
+        XCTAssertEqual(viewModel.topicIdBySessionId["session-a"], "nb-a")
+        XCTAssertEqual(viewModel.notebookSessionCounts["nb-a"], 1)
+        XCTAssertTrue(viewModel.hasLoadedTopicMemberships)
+        XCTAssertEqual(
+            viewModel.notebookWorkspaceError,
+            String(localized: "home.workspace.load_failed")
+        )
+    }
+
+    func testInitialTopicMembershipFailureDoesNotPretendSessionsAreUnfiled() {
+        let client = StubNotebookWorkspaceClient()
+        client.notebooks = [makeNotebook(id: "nb-a", title: "Topic A")]
+        client.listSessionsErrorByNotebook["nb-a"] = .databaseUnavailable
+        viewModel.sessions = [
+            SessionListItem(
+                id: "session-a",
+                title: "Interview",
+                timeString: "10:00",
+                durationString: "00:12",
+                languagePair: "EN"
+            )
+        ]
+
+        viewModel.loadNotebookWorkspace(client: client)
+        viewModel.selectUnfiledFilter()
+
+        XCTAssertFalse(viewModel.hasLoadedTopicMemberships)
+        XCTAssertNil(viewModel.selectedTopicFilterId)
+        XCTAssertEqual(viewModel.unfiledSessionCount, 0)
+        XCTAssertNil(viewModel.topicTitle(forSessionId: "session-a"))
+        XCTAssertFalse(viewModel.canOpenCatalogSession("session-a"))
+    }
+
+    func testSuccessfulEmptyMembershipSnapshotMakesSessionsGenuinelyUnfiled() {
+        let client = StubNotebookWorkspaceClient()
+        client.notebooks = [makeNotebook(id: "nb-a", title: "Topic A")]
+        viewModel.sessions = [
+            SessionListItem(
+                id: "session-a",
+                title: "Interview",
+                timeString: "10:00",
+                durationString: "00:12",
+                languagePair: "EN"
+            )
+        ]
+
+        viewModel.loadNotebookWorkspace(client: client)
+        viewModel.selectUnfiledFilter()
+
+        XCTAssertTrue(viewModel.hasLoadedTopicMemberships)
+        XCTAssertEqual(viewModel.selectedTopicFilterId, LibraryViewModel.unfiledTopicFilterId)
+        XCTAssertEqual(viewModel.unfiledSessionCount, 1)
+        XCTAssertEqual(viewModel.catalogSessions.map(\.id), ["session-a"])
+    }
+
+    func testTopicMembershipRemainsKnownWhenOnlyActiveTopicDetailsFail() {
+        let client = StubNotebookWorkspaceClient()
+        client.notebooks = [makeNotebook(id: "nb-a", title: "Topic A")]
+        client.sessionLinksByNotebook["nb-a"] = [
+            FfiNotebookSessionLink(
+                notebookId: "nb-a",
+                sessionId: "session-a",
+                createdAt: "2001-01-04T00:00:00Z"
+            )
+        ]
+        client.listTabsError = .databaseUnavailable
+
+        viewModel.loadNotebookWorkspace(client: client)
+
+        XCTAssertTrue(viewModel.hasLoadedTopicMemberships)
+        XCTAssertEqual(viewModel.topicIdBySessionId["session-a"], "nb-a")
+        XCTAssertEqual(
+            viewModel.notebookWorkspaceError,
+            String(localized: "home.workspace.load_failed")
+        )
+    }
+
+    func testProjectionAloneDoesNotInventTopicOwnership() {
+        let client = StubNotebookWorkspaceClient()
+        client.notebooks = [makeNotebook(id: "nb-a", title: "Topic A")]
+        client.tabsByNotebook["nb-a"] = [
+            makeNotebookTab(id: "tab-a", notebookId: "nb-a", title: "Transcript")
+        ]
+        client.sessionProjectionsByTab["tab-a"] = [
+            makeNotebookSessionProjection(
+                id: "projection-a",
+                notebookId: "nb-a",
+                tabId: "tab-a",
+                sessionId: "session-a",
+                sectionTitle: nil
+            )
+        ]
+
+        viewModel.loadNotebookWorkspace(client: client)
+
+        XCTAssertNil(viewModel.topicIdBySessionId["session-a"])
+        XCTAssertNil(viewModel.topicTitle(forSessionId: "session-a"))
+        XCTAssertEqual(viewModel.notebookSessionCounts["nb-a"], 0)
     }
 
     func testSelectNotebookContainingSessionUsesLoadedLinksAndProjections() {
@@ -404,13 +1192,13 @@ final class LibraryViewModelTests: XCTestCase {
         let client = StubNotebookWorkspaceClient()
 
         viewModel.loadNotebookWorkspace(client: client)
-        XCTAssertTrue(viewModel.requiresNotebookBeforeRecording)
+        XCTAssertTrue(viewModel.hasNoResearchTopics)
 
         viewModel.createNotebook(title: "Field Notes", client: client)
 
         XCTAssertEqual(viewModel.notebooks.map(\.title), ["Field Notes"])
         XCTAssertEqual(viewModel.activeNotebook?.title, "Field Notes")
-        XCTAssertFalse(viewModel.requiresNotebookBeforeRecording)
+        XCTAssertFalse(viewModel.hasNoResearchTopics)
     }
 
     func testCreateNotebookRejectsBlankTitleWithoutWriting() {
@@ -526,6 +1314,22 @@ final class LibraryViewModelTests: XCTestCase {
         ]
     }
 
+    private func makeSessionInfo(id: String) -> SessionInfo {
+        SessionInfo(
+            id: id,
+            sessionType: "recording",
+            status: "completed",
+            title: id,
+            durationMs: 1_000,
+            sourceLanguage: "en",
+            targetLanguages: [],
+            createdAtUnixMs: 1_700_000_000_000,
+            hasEncryptedAudio: true,
+            preview: "",
+            isTrashed: false
+        )
+    }
+
     private func makeNotebook(id: String, title: String) -> FfiNotebook {
         FfiNotebook(
             id: id,
@@ -586,6 +1390,7 @@ private final class StubNotebookWorkspaceClient: NotebookWorkspaceClienting {
     var sessionProjectionsByTab: [String: [FfiNotebookSessionProjection]] = [:]
     var listNotebooksError: StubNotebookWorkspaceError?
     var listTabsError: StubNotebookWorkspaceError?
+    var listSessionsErrorByNotebook: [String: StubNotebookWorkspaceError] = [:]
 
     func listNotebooks() throws -> [FfiNotebook] {
         if let listNotebooksError { throw listNotebooksError }
@@ -611,7 +1416,8 @@ private final class StubNotebookWorkspaceClient: NotebookWorkspaceClienting {
     }
 
     func listNotebookSessions(notebookId: String) throws -> [FfiNotebookSessionLink] {
-        sessionLinksByNotebook[notebookId] ?? []
+        if let error = listSessionsErrorByNotebook[notebookId] { throw error }
+        return sessionLinksByNotebook[notebookId] ?? []
     }
 
     func listNotebookSessionProjections(tabId: String) throws -> [FfiNotebookSessionProjection] {
@@ -836,7 +1642,7 @@ final class LibraryViewModelHelpersTests: XCTestCase {
         XCTAssertEqual(item.sessionType, "import")
     }
 
-    func testMakeListItemFallbackTitleForEmptyTitle() {
+    func testMakeListItemPreservesEmptyTitleForLocalizedPresentation() {
         let info = SessionInfo(
             id: "deadbeef-1234",
             sessionType: "recording",
@@ -853,7 +1659,7 @@ final class LibraryViewModelHelpersTests: XCTestCase {
 
         let item = LibraryViewModel.makeListItem(info)
 
-        XCTAssertEqual(item.title, "Session deadbeef")
+        XCTAssertEqual(item.title, "")
         XCTAssertEqual(item.durationString, "00:00")
         XCTAssertEqual(item.languagePair, "—")
     }
@@ -948,6 +1754,61 @@ final class LibraryViewModelHelpersTests: XCTestCase {
         )
 
         XCTAssertEqual(imported.homeStatusState, .imported)
+    }
+
+    func testHomeSessionStatusIncludesInterruptedAndPersistedImportedStates() {
+        let interrupted = SessionListItem(
+            id: "interrupted",
+            title: "Interview",
+            timeString: "10:00",
+            durationString: "00:00",
+            languagePair: "EN",
+            rawStatus: "interrupted"
+        )
+        let imported = SessionListItem(
+            id: "imported-status",
+            title: "Archive tape",
+            timeString: "09:00",
+            durationString: "00:00",
+            languagePair: "中",
+            sessionType: "import",
+            rawStatus: "imported"
+        )
+        let interruptedRetry = SessionListItem(
+            id: "interrupted-retry",
+            title: "Recovered interview",
+            timeString: "08:00",
+            durationString: "00:12",
+            languagePair: "EN",
+            preview: "Durable local transcript preview",
+            rawStatus: "interrupted",
+            transcriptDocumentStatus: "pending"
+        )
+        let importedFailure = SessionListItem(
+            id: "imported-failure",
+            title: "Archive tape",
+            timeString: "07:00",
+            durationString: "00:12",
+            languagePair: "EN",
+            sessionType: "import",
+            rawStatus: "imported",
+            transcriptDocumentStatus: "failed"
+        )
+        let failedCaptureWithStaleTask = SessionListItem(
+            id: "failed-capture",
+            title: "Failed capture",
+            timeString: "06:00",
+            durationString: "00:00",
+            languagePair: "EN",
+            rawStatus: "failed",
+            transcriptDocumentStatus: "pending"
+        )
+
+        XCTAssertEqual(interrupted.homeStatusState, .interrupted)
+        XCTAssertEqual(imported.homeStatusState, .imported)
+        XCTAssertEqual(interruptedRetry.homeStatusState, .transcribing)
+        XCTAssertEqual(importedFailure.homeStatusState, .failed)
+        XCTAssertEqual(failedCaptureWithStaleTask.homeStatusState, .failed)
     }
 
     func testPreviewPlaceholderStateRecordingWins() {

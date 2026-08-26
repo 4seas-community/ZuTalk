@@ -7,6 +7,175 @@ import XCTest
 /// combination nobody had written a branch for.
 final class EditorSurfaceTests: XCTestCase {
 
+    @MainActor
+    func testAsyncTranscriptContentPrefersDurableLinesOverTransientState() {
+        XCTAssertEqual(
+            AsyncTranscriptContentPolicy.phase(
+                hasLines: true,
+                projectionState: nil,
+                providerState: "pending",
+                tabStatus: .pending,
+                hasOperationInFlight: true
+            ),
+            .transcript
+        )
+    }
+
+    @MainActor
+    func testAsyncTranscriptContentUsesLoadingOnlyForNonterminalWork() {
+        XCTAssertEqual(
+            AsyncTranscriptContentPolicy.phase(
+                hasLines: false,
+                projectionState: nil,
+                providerState: nil,
+                tabStatus: .ready,
+                hasOperationInFlight: false,
+                hasLoadFailure: true
+            ),
+            .empty
+        )
+        XCTAssertEqual(
+            AsyncTranscriptContentPolicy.phase(
+                hasLines: false,
+                projectionState: nil,
+                providerState: nil,
+                tabStatus: .ready,
+                hasOperationInFlight: false
+            ),
+            .loading
+        )
+        XCTAssertEqual(
+            AsyncTranscriptContentPolicy.phase(
+                hasLines: false,
+                projectionState: .projecting,
+                providerState: "completed",
+                tabStatus: .ready,
+                hasOperationInFlight: false
+            ),
+            .loading
+        )
+        XCTAssertEqual(
+            AsyncTranscriptContentPolicy.phase(
+                hasLines: false,
+                projectionState: NotebookAsyncProjectionState.none,
+                providerState: "reserved",
+                tabStatus: .pending,
+                hasOperationInFlight: false
+            ),
+            .loading
+        )
+        XCTAssertEqual(
+            AsyncTranscriptContentPolicy.phase(
+                hasLines: false,
+                projectionState: .failed,
+                providerState: "failed",
+                tabStatus: .failed,
+                hasOperationInFlight: false
+            ),
+            .empty
+        )
+        XCTAssertEqual(
+            AsyncTranscriptContentPolicy.phase(
+                hasLines: false,
+                projectionState: NotebookAsyncProjectionState.none,
+                providerState: "failed",
+                tabStatus: .pending,
+                hasOperationInFlight: false
+            ),
+            .empty,
+            "a stale tab status must not turn a terminal provider failure into a spinner"
+        )
+        XCTAssertEqual(
+            AsyncTranscriptContentPolicy.phase(
+                hasLines: false,
+                projectionState: NotebookAsyncProjectionState.none,
+                providerState: "none",
+                tabStatus: .ready,
+                hasOperationInFlight: false
+            ),
+            .empty
+        )
+    }
+
+    @MainActor
+    func testAsyncTranscriptTimestampMatchesRealtimeTimelineFormat() {
+        XCTAssertEqual(TranscriptTimestampPresentation.text(milliseconds: 3_999), "00:03")
+        XCTAssertEqual(
+            TranscriptTimestampPresentation.text(milliseconds: 3_661_000),
+            "01:01:01"
+        )
+    }
+
+    func testAsyncTranscriptMetadataNoticeRequiresTranscriptContent() {
+        XCTAssertFalse(AsyncTranscriptMetadataNoticePolicy.shouldShow(for: []))
+        XCTAssertFalse(
+            AsyncTranscriptMetadataNoticePolicy.shouldShow(
+                for: [asyncTranscriptLine(text: " \n ")]
+            )
+        )
+    }
+
+    func testAsyncTranscriptMetadataNoticeShowsWhenEveryRowLacksProviderMetadata() {
+        XCTAssertTrue(
+            AsyncTranscriptMetadataNoticePolicy.shouldShow(
+                for: [
+                    asyncTranscriptLine(id: "one", text: "First segment"),
+                    asyncTranscriptLine(
+                        id: "two",
+                        text: "Second segment",
+                        sourceLanguage: " und-Latn ",
+                        providerSpeakerLabel: "  "
+                    )
+                ]
+            )
+        )
+    }
+
+    func testAsyncTranscriptMetadataNoticeHidesWhenAnyRowHasProviderMetadata() {
+        let legacyLine = asyncTranscriptLine(id: "legacy", text: "Legacy segment")
+
+        XCTAssertFalse(
+            AsyncTranscriptMetadataNoticePolicy.shouldShow(
+                for: [
+                    legacyLine,
+                    asyncTranscriptLine(
+                        id: "speaker",
+                        text: "Speaker segment",
+                        providerSpeakerLabel: "spk_0"
+                    )
+                ]
+            )
+        )
+        XCTAssertFalse(
+            AsyncTranscriptMetadataNoticePolicy.shouldShow(
+                for: [
+                    legacyLine,
+                    asyncTranscriptLine(
+                        id: "language",
+                        text: "Language segment",
+                        sourceLanguage: "en-US"
+                    )
+                ]
+            )
+        )
+    }
+
+    private func asyncTranscriptLine(
+        id: String = "line",
+        text: String,
+        sourceLanguage: String? = nil,
+        providerSpeakerLabel: String? = nil
+    ) -> NotebookTranscriptLine {
+        NotebookTranscriptLine(
+            id: id,
+            startMs: nil,
+            endMs: nil,
+            sourceLanguage: sourceLanguage,
+            providerSpeakerLabel: providerSpeakerLabel,
+            text: text
+        )
+    }
+
     private func route(
         notebook: String = "nb",
         tab: String = "tab",
@@ -43,13 +212,15 @@ final class EditorSurfaceTests: XCTestCase {
         route: EditorRoute?,
         tab: NotebookTabViewModel?,
         captureSettings: String? = nil,
-        resources: Bool = false
+        resources: Bool = false,
+        sessionSupplementarySurface: SessionSupplementarySurface? = nil
     ) -> EditorSurface {
         EditorSurfacePolicy.resolve(
             route: route,
             activeTab: tab,
             presentedCaptureSettingsNotebookId: captureSettings,
-            isShowingResources: resources
+            isShowingResources: resources,
+            sessionSupplementarySurface: sessionSupplementarySurface
         )
     }
 
@@ -193,13 +364,56 @@ final class EditorSurfaceTests: XCTestCase {
 
     // MARK: - Manual notes
 
-    func testManualNoteSplitsOnSession() {
+    func testManualNoteIsOneHonestTopicDocumentWithOrWithoutSessionContext() {
         XCTAssertEqual(
             resolve(route: route(session: nil), tab: tab(.manualNote)),
-            .manualTimeline(notebookId: "nb", tabId: "tab")
+            .manualNote(notebookId: "nb", tabId: "tab")
         )
         let opened = resolve(route: route(session: "s1"), tab: tab(.manualNote))
         XCTAssertEqual(opened, .manualNote(notebookId: "nb", tabId: "tab"))
+    }
+
+    func testSessionNoteAndSettingsAreIndependentNamedSurfaces() {
+        XCTAssertEqual(
+            resolve(
+                route: route(session: "s1"),
+                tab: tab(.realtimeTranscript),
+                sessionSupplementarySurface: .note
+            ),
+            .sessionNote(notebookId: "nb", sessionId: "s1")
+        )
+        XCTAssertEqual(
+            resolve(
+                route: route(session: "s1"),
+                tab: tab(.asyncTranscript),
+                sessionSupplementarySurface: .settings
+            ),
+            .sessionSettings(notebookId: "nb", sessionId: "s1")
+        )
+    }
+
+    func testSessionSupplementaryTabsRequireAConcreteSession() {
+        XCTAssertEqual(
+            resolve(
+                route: route(session: nil),
+                tab: tab(.realtimeTranscript),
+                sessionSupplementarySurface: .note
+            ),
+            .realtime(notebookId: "nb", sessionId: nil)
+        )
+    }
+
+    func testSessionSupplementarySurfaceOutranksStaleTopicOverlayState() {
+        XCTAssertEqual(
+            resolve(
+                route: route(session: "s1"),
+                tab: tab(.realtimeTranscript),
+                captureSettings: "nb",
+                resources: true,
+                sessionSupplementarySurface: .settings
+            ),
+            .sessionSettings(notebookId: "nb", sessionId: "s1")
+        )
     }
 
     // MARK: - Totality
@@ -213,25 +427,29 @@ final class EditorSurfaceTests: XCTestCase {
         let statuses: [NotebookTabStatus] = [.ready, .pending, .failed, .live]
         let sessions: [String?] = [nil, "s1"]
         let overlays: [(String?, Bool)] = [(nil, false), ("nb", false), (nil, true), ("nb", true)]
+        let sessionSurfaces: [SessionSupplementarySurface?] = [nil, .note, .settings]
 
         var seen: Set<EditorSurface> = []
         for displayType in displayTypes {
             for status in statuses {
                 for session in sessions {
                     for (settings, resources) in overlays {
-                        let surface = resolve(
-                            route: route(session: session),
-                            tab: tab(displayType, status: status),
-                            captureSettings: settings,
-                            resources: resources
-                        )
-                        seen.insert(surface)
+                        for sessionSurface in sessionSurfaces {
+                            let surface = resolve(
+                                route: route(session: session),
+                                tab: tab(displayType, status: status),
+                                captureSettings: settings,
+                                resources: resources,
+                                sessionSupplementarySurface: sessionSurface
+                            )
+                            seen.insert(surface)
+                        }
                     }
                 }
             }
         }
 
-        // 96 combinations collapse onto exactly these eleven named surfaces.
+        // 96 combinations collapse onto these named surfaces.
         // Listing them is the point: the old model could not say what the
         // content area was capable of showing. (documentUnavailable left with
         // the Loro text bridge: the outline editor owns its own failure state.)
@@ -247,7 +465,8 @@ final class EditorSurfaceTests: XCTestCase {
                 .asyncTranscript(notebookId: "nb", sessionId: "s1", tabId: "tab", status: .pending),
                 .asyncTranscript(notebookId: "nb", sessionId: "s1", tabId: "tab", status: .failed),
                 .asyncTranscript(notebookId: "nb", sessionId: "s1", tabId: "tab", status: .live),
-                .manualTimeline(notebookId: "nb", tabId: "tab"),
+                .sessionNote(notebookId: "nb", sessionId: "s1"),
+                .sessionSettings(notebookId: "nb", sessionId: "s1"),
                 .manualNote(notebookId: "nb", tabId: "tab"),
             ]
         )

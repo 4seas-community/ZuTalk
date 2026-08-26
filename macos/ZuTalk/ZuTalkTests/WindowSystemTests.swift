@@ -31,6 +31,37 @@ private final class NotebookCoreAvailability {
 }
 
 @MainActor
+private final class NavigationTestAudioSource: NotebookCaptureAudioSourcing {
+    private(set) var selectedInputDeviceUID: String?
+    private(set) var preparedInputDevice: AudioInputDevice?
+
+    func prepare() async throws {
+        preparedInputDevice = try resolveInputDevice(uid: selectedInputDeviceUID)
+    }
+
+    func resolveInputDevice(uid: String?) throws -> AudioInputDevice {
+        AudioInputDevice(deviceID: 1, uid: uid ?? "navigation-test", name: "Navigation Test")
+    }
+
+    func commitInputDeviceSelection(uid: String?, device: AudioInputDevice) {
+        selectedInputDeviceUID = uid
+        preparedInputDevice = device
+    }
+
+    func subscribe(
+        inputDevice: AudioInputDevice,
+        onAudio: @escaping @Sendable (Data) -> Void,
+        onOverflow: @escaping @Sendable () -> Void
+    ) throws -> NotebookCaptureAudioToken {
+        NotebookCaptureAudioToken(id: UUID())
+    }
+
+    func unsubscribe(_ token: NotebookCaptureAudioToken) -> NotebookCaptureInterruptReason? {
+        nil
+    }
+}
+
+@MainActor
 private final class ApplicationQuitRequestingSpy: ApplicationQuitRequesting {
     private(set) var requestCount = 0
 
@@ -353,9 +384,70 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(store.activeDocID, "doc-live")
         XCTAssertEqual(store.selectedSessionID, "session-1")
         XCTAssertEqual(store.pendingEditorView, .notes)
+        XCTAssertEqual(store.activePrimaryTab, .home)
+        XCTAssertFalse(store.activeEditorRoute?.opensTopicWorkspace ?? true)
     }
 
-    func testMainNavigationStore_restoresLastNotebookOnceOnLaunch() throws {
+    func testSessionDefaultTabPolicyUsesTaskAndCaptureFactsInsteadOfProjectionPresence() {
+        XCTAssertEqual(
+            SessionDefaultTabPolicy.builtinKind(
+                sessionType: "overlay",
+                hasAsyncTask: false,
+                isActiveCapture: false
+            ),
+            "realtime_transcript"
+        )
+        XCTAssertEqual(
+            SessionDefaultTabPolicy.builtinKind(
+                sessionType: "import",
+                hasAsyncTask: false,
+                isActiveCapture: false
+            ),
+            "async_transcript"
+        )
+        XCTAssertEqual(
+            SessionDefaultTabPolicy.builtinKind(
+                sessionType: "overlay",
+                hasAsyncTask: true,
+                isActiveCapture: false
+            ),
+            "async_transcript"
+        )
+        XCTAssertEqual(
+            SessionDefaultTabPolicy.builtinKind(
+                sessionType: "import",
+                hasAsyncTask: true,
+                isActiveCapture: true
+            ),
+            "realtime_transcript"
+        )
+    }
+
+    func testOpenTopicWorkspaceLandsOnSessionWorkspaceWithoutStartingCapture() throws {
+        let tempDir = NSTemporaryDirectory()
+            .appending("zutalk-topic-route-\(UUID().uuidString)")
+        let core = try ZuTalkCore.newDeferred(dataDir: tempDir)
+        defer {
+            try? core.shutdown()
+            try? FileManager.default.removeItem(atPath: tempDir)
+        }
+        let notebook = try core.createNotebook(title: "Field Study")
+        let store = MainNavigationStore(
+            captureRouteContextProvider: { (nil, nil, false) },
+            coreProvider: { core },
+            notebookContext: NotebookSessionContextStore()
+        )
+
+        store.openTopicWorkspace(notebookID: notebook.id)
+
+        XCTAssertEqual(store.activeTab, .editor)
+        XCTAssertEqual(store.activePrimaryTab, .topics)
+        XCTAssertEqual(store.activeNotebookID, notebook.id)
+        XCTAssertTrue(store.activeEditorRoute?.opensTopicWorkspace == true)
+        XCTAssertNil(store.selectedSessionID)
+    }
+
+    func testMainNavigationStore_coldLaunchKeepsGlobalSessionHome() throws {
         let tempDir = NSTemporaryDirectory()
             .appending("zutalk-launch-notebook-\(UUID().uuidString)")
         let core = try ZuTalkCore.newDeferred(dataDir: tempDir)
@@ -379,18 +471,12 @@ final class WindowSystemTests: XCTestCase {
 
         store.restoreLastNotebookOnLaunch()
 
-        XCTAssertEqual(store.activeTab, .editor)
-        XCTAssertEqual(store.activeNotebookID, notebookB.id)
-        XCTAssertEqual(
-            store.activeNotebookTabID,
-            try core.listNotebookTabs(notebookId: notebookB.id)
-                .first(where: { $0.builtinKind == "realtime_transcript" })?.id
-        )
-        XCTAssertEqual(store.activeNotebookTitle, notebookB.title)
+        XCTAssertEqual(store.activeTab, .home)
+        XCTAssertNil(store.activeNotebookID)
+        XCTAssertEqual(notebookContext.activeNotebookId, notebookB.id)
 
-        store.navigateHome()
         store.restoreLastNotebookOnLaunch()
-        XCTAssertEqual(store.activeTab, .home, "launch restoration must not trap later Home navigation")
+        XCTAssertEqual(store.activeTab, .home, "remembered Topic context must not bypass the ledger")
     }
 
     func testMainNavigationStore_retriesLaunchRestoreAfterCoreBecomesAvailable() throws {
@@ -409,7 +495,7 @@ final class WindowSystemTests: XCTestCase {
         let availability = NotebookCoreAvailability()
         let store = MainNavigationStore(
             activeNotebookIDProvider: { notebookContext.activeNotebookId },
-            captureRouteContextProvider: { (nil, nil, false) },
+            captureRouteContextProvider: { (notebook.id, "session-live", true) },
             coreProvider: { availability.core },
             notebookContext: notebookContext
         )
@@ -422,6 +508,7 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertTrue(store.restoreLastNotebookOnLaunch())
         XCTAssertEqual(store.activeTab, .editor)
         XCTAssertEqual(store.activeNotebookID, notebook.id)
+        XCTAssertEqual(store.selectedSessionID, "session-live")
     }
 
     func testMainNavigationStore_staleNotebookFallsBackToAnAvailableNotebook() throws {
@@ -489,6 +576,65 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    func testActiveQuickCaptureRoutesThroughTheHiddenTechnicalNotebook() throws {
+        let tempDir = NSTemporaryDirectory()
+            .appending("zutalk-hidden-quick-route-\(UUID().uuidString)")
+        let core = try ZuTalkCore.newDeferred(dataDir: tempDir)
+        defer {
+            try? core.shutdown()
+            try? FileManager.default.removeItem(atPath: tempDir)
+        }
+        let quick = try core.getQuickCaptureNotebook()
+        XCTAssertFalse(try core.listNotebooks().contains { $0.id == quick.id })
+        let context = NotebookSessionContextStore()
+        let store = MainNavigationStore(
+            activeNotebookIDProvider: { nil },
+            captureRouteContextProvider: { (quick.id, "quick-live", true) },
+            coreProvider: { core },
+            notebookContext: context
+        )
+
+        store.openActiveNotebookForCapture()
+
+        XCTAssertEqual(store.activeNotebookID, quick.id)
+        XCTAssertEqual(store.selectedSessionID, "quick-live")
+        XCTAssertEqual(store.activeNotebookTitle, String(localized: "home.record.unfiled"))
+        XCTAssertEqual(
+            store.activeNotebookTabID,
+            try core.listNotebookTabs(notebookId: quick.id)
+                .first(where: { $0.builtinKind == "realtime_transcript" })?.id
+        )
+    }
+
+    func testStoppedQuickCaptureSessionRemainsRoutableWhileItsOwnerIsHidden() async throws {
+        let tempDir = NSTemporaryDirectory()
+            .appending("zutalk-hidden-quick-session-\(UUID().uuidString)")
+        let core = try ZuTalkCore.newDeferred(dataDir: tempDir)
+        defer {
+            try? core.shutdown()
+            try? FileManager.default.removeItem(atPath: tempDir)
+        }
+        let quick = try core.getQuickCaptureNotebook()
+        let capture = ActiveBilingualTranscriptStore(
+            client: RustNotebookCaptureClient(coreProvider: { core }),
+            audioSource: NavigationTestAudioSource()
+        )
+        try await capture.start(notebookId: quick.id)
+        let sessionId = try XCTUnwrap(capture.sessionId)
+        try await capture.stop()
+
+        let store = MainNavigationStore(
+            activeNotebookIDProvider: { nil },
+            captureRouteContextProvider: { (nil, nil, false) },
+            coreProvider: { core }
+        )
+        store.openSession(sessionId)
+
+        XCTAssertEqual(store.activeNotebookID, quick.id)
+        XCTAssertEqual(store.selectedSessionID, sessionId)
+        XCTAssertEqual(store.activeNotebookTitle, String(localized: "home.record.unfiled"))
+    }
+
     func testMainShellView_exposesOnlyMinimalMVPNavigation() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -507,6 +653,7 @@ final class WindowSystemTests: XCTestCase {
 
         for destination in [
             "sidebar.home",
+            "sidebar.topics",
             "sidebar.knowledge",
             "sidebar.trash",
             "sidebar.tab.settings"
@@ -586,20 +733,24 @@ final class WindowSystemTests: XCTestCase {
             contents[historyStart.upperBound...]
                 .range(of: "private struct NotebookRealtimeActiveRunView: View")
         )
-        let navigatorStart = try XCTUnwrap(
+        let transcriptLoadStart = try XCTUnwrap(
             contents[activeRunStart.upperBound...]
-                .range(of: "private struct NotebookRealtimeRunNavigator: View")
+                .range(of: "private struct NotebookRealtimeTranscriptLoadView: View")
         )
         let historyView = String(
             contents[historyStart.lowerBound..<activeRunStart.lowerBound]
         )
         let activeRunView = String(
-            contents[activeRunStart.lowerBound..<navigatorStart.lowerBound]
+            contents[activeRunStart.lowerBound..<transcriptLoadStart.lowerBound]
         )
 
         XCTAssertFalse(historyView.contains("@ObservedObject private var livePresentation"))
         XCTAssertFalse(historyView.contains("capture.livePreviewUtterances"))
         XCTAssertFalse(historyView.contains("capture.presentedTranslationCueSnapshot"))
+        XCTAssertFalse(historyView.contains("NotebookRealtimeRunNavigator"))
+        XCTAssertFalse(historyView.contains("NotebookRealtimeRunSummaryView"))
+        XCTAssertFalse(historyView.contains("ForEach(availableRuns)"))
+        XCTAssertTrue(historyView.contains("presentedRun"))
         XCTAssertTrue(historyView.contains("NotebookRealtimeActiveRunView("))
         XCTAssertTrue(
             activeRunView.contains(

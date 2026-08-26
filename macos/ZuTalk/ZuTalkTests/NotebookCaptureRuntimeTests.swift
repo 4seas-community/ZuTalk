@@ -214,6 +214,144 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testHomeCaptureWithoutInviteCommitsQueuedProfileWithoutImplicitRealtimeAuthorization() async throws {
+        let client = FakeNotebookCaptureClient(
+            profile: .localDefault(notebookId: "quick-capture")
+        )
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        let editor = NotebookCaptureProfileEditorModel(
+            notebookId: "quick-capture",
+            persistence: store
+        )
+        editor.load()
+
+        _ = editor.scheduleUpdate(.addLanguage("th"))
+        try await editor.prepareForHomeQuickCaptureStart(
+            inviteRealtimeAuthorized: false
+        )
+        try await store.start(notebookId: "quick-capture")
+
+        XCTAssertEqual(client.profile.selectedLanguages, ["en", "zh", "th"])
+        XCTAssertFalse(client.profile.remoteRealtimeEnabled)
+        XCTAssertEqual(client.profileUpdateCount, 1)
+        XCTAssertEqual(client.startCount, 1)
+        XCTAssertEqual(audio.prepareCount, 1)
+        try await store.stop()
+    }
+
+    @MainActor
+    func testFreshHomeInviteCommitsRealtimeProfileBeforePreparingCredential() async throws {
+        let persistence = FakeNotebookCaptureProfilePersistence(
+            profile: .localDefault(notebookId: "quick-capture")
+        )
+        let editor = NotebookCaptureProfileEditorModel(
+            notebookId: "quick-capture",
+            persistence: persistence
+        )
+        editor.load()
+        var steps: [String] = []
+
+        let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
+            enableRealtimeIfNeeded: HomeRecordingEntryPolicy
+                .shouldEnableRealtimeForQuickCapture(
+                    inviteIsEnabled: true,
+                    inviteIsActive: true
+                ),
+            prepareProfile: { inviteRealtimeAuthorized in
+                steps.append("profile.begin")
+                XCTAssertTrue(inviteRealtimeAuthorized)
+                try await editor.prepareForHomeQuickCaptureStart(
+                    inviteRealtimeAuthorized: inviteRealtimeAuthorized
+                )
+                steps.append("profile.committed")
+                return editor.draft
+            },
+            prepareRealtimeCredential: { laneCount in
+                steps.append("credential")
+                XCTAssertTrue(editor.draft.remoteRealtimeEnabled)
+                XCTAssertTrue(persistence.profile.remoteRealtimeEnabled)
+                XCTAssertEqual(persistence.saveRequests.count, 1)
+                XCTAssertEqual(laneCount, 1)
+                return .invite
+            }
+        )
+
+        XCTAssertEqual(preparation, .invite)
+        XCTAssertEqual(steps, ["profile.begin", "profile.committed", "credential"])
+        XCTAssertEqual(editor.draft.mode, .twoWay)
+    }
+
+    @MainActor
+    func testHomeDisabledOrInactiveInviteCommitsQuickCaptureBackToLocalOnly() async throws {
+        let unavailableInviteStates: [(enabled: Bool, active: Bool)] = [
+            (false, true),
+            (true, false),
+        ]
+
+        for inviteState in unavailableInviteStates {
+            var previouslyInvitedProfile = NotebookCaptureProfileDTO.twoWay(
+                notebookId: "quick-capture"
+            )
+            previouslyInvitedProfile.remoteRealtimeEnabled = true
+            let persistence = FakeNotebookCaptureProfilePersistence(
+                profile: previouslyInvitedProfile
+            )
+            let editor = NotebookCaptureProfileEditorModel(
+                notebookId: "quick-capture",
+                persistence: persistence
+            )
+            editor.load()
+            var credentialPreparationCount = 0
+
+            let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
+                enableRealtimeIfNeeded: HomeRecordingEntryPolicy
+                    .shouldEnableRealtimeForQuickCapture(
+                        inviteIsEnabled: inviteState.enabled,
+                        inviteIsActive: inviteState.active
+                    ),
+                prepareProfile: { inviteRealtimeAuthorized in
+                    try await editor.prepareForHomeQuickCaptureStart(
+                        inviteRealtimeAuthorized: inviteRealtimeAuthorized
+                    )
+                    return editor.draft
+                },
+                prepareRealtimeCredential: { _ in
+                    credentialPreparationCount += 1
+                    return .invite
+                }
+            )
+
+            XCTAssertEqual(preparation, .notUsed)
+            XCTAssertFalse(editor.draft.remoteRealtimeEnabled)
+            XCTAssertFalse(persistence.profile.remoteRealtimeEnabled)
+            XCTAssertEqual(editor.draft.mode, .transcriptionOnly)
+            XCTAssertEqual(persistence.saveRequests.count, 1)
+            XCTAssertEqual(credentialPreparationCount, 0)
+        }
+    }
+
+    @MainActor
+    func testStartPreparationDoesNotReserveCredentialForFinalLocalProfile() async throws {
+        var credentialPreparationCount = 0
+
+        let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
+            enableRealtimeIfNeeded: false,
+            prepareProfile: { enableRealtimeIfNeeded in
+                XCTAssertFalse(enableRealtimeIfNeeded)
+                return .localDefault(notebookId: "quick-capture")
+            },
+            prepareRealtimeCredential: { _ in
+                credentialPreparationCount += 1
+                return .invite
+            }
+        )
+
+        XCTAssertEqual(preparation, .notUsed)
+        XCTAssertEqual(credentialPreparationCount, 0)
+    }
+
+    @MainActor
     func testMenuBarShowsOrderedSessionLanguagesWithoutTranslationArrows() async throws {
         MenuBarRuntimeStore.shared.resetForTesting()
         defer { MenuBarRuntimeStore.shared.resetForTesting() }
@@ -679,6 +817,39 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(audio.unsubscribeCount, 2)
         XCTAssertFalse(store.hasAudioSubscription)
         XCTAssertEqual(store.captureState, .completed)
+    }
+
+    @MainActor
+    func testConcurrentStartWhileAudioPreparationIsSuspendedIsSingleFlight() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let audio = FakeNotebookCaptureAudioSource()
+        audio.suspendNextPrepare = true
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+
+        let firstStart = Task { @MainActor in
+            try await store.start(notebookId: "notebook-a")
+        }
+        while audio.prepareCount == 0 {
+            await Task.yield()
+        }
+
+        do {
+            try await store.start(notebookId: "notebook-b")
+            XCTFail("a second start must be rejected before it can replace callbacks")
+        } catch {
+            XCTAssertEqual(error as? NotebookCaptureClientError, .captureAlreadyActive)
+        }
+        XCTAssertEqual(client.startCount, 0)
+        XCTAssertEqual(audio.prepareCount, 1)
+
+        audio.resumeSuspendedPrepare()
+        try await firstStart.value
+
+        XCTAssertEqual(client.startCount, 1)
+        XCTAssertEqual(audio.subscribeCount, 1)
+        XCTAssertEqual(store.notebookId, "notebook-a")
+        XCTAssertEqual(store.captureState, .recording)
+        try await store.stop()
     }
 
     @MainActor
@@ -2952,7 +3123,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testRealtimeRoutePrefersTheMatchingActiveCaptureSession() {
+    func testRealtimeRoutePreservesExplicitSessionAndUsesLiveSessionWithoutOne() {
         XCTAssertEqual(
             NotebookCaptureRouteSessionPolicy.resolve(
                 requestedSessionId: "historical-session",
@@ -2962,7 +3133,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 activeCaptureSessionId: "live-session",
                 isCaptureActive: true
             ),
-            "live-session"
+            "historical-session"
         )
         XCTAssertEqual(
             NotebookCaptureRouteSessionPolicy.resolve(
@@ -2985,6 +3156,31 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 isCaptureActive: true
             )
         )
+        XCTAssertEqual(
+            NotebookCaptureRouteSessionPolicy.resolve(
+                requestedSessionId: nil,
+                targetNotebookId: "notebook-a",
+                isRealtimeTab: true,
+                activeCaptureNotebookId: "notebook-a",
+                activeCaptureSessionId: "live-session",
+                isCaptureActive: true
+            ),
+            "live-session"
+        )
+    }
+
+    @MainActor
+    func testCaptureStartWorkflowGateIsSingleFlightAcrossViewLifetimes() {
+        let gate = NotebookCaptureStartWorkflowGate()
+        let first = gate.acquire()
+
+        XCTAssertNotNil(first)
+        XCTAssertNil(gate.acquire())
+
+        gate.release(first!)
+        let second = gate.acquire()
+        XCTAssertNotNil(second)
+        gate.release(second!)
     }
 
     @MainActor
@@ -3288,6 +3484,35 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testCaptureAtomicCompatibilityPreservesCASAndConcurrentFetchAdd() {
+        let counter = CaptureAtomicInt(0)
+        XCTAssertEqual(counter.loadRelaxed(), 0)
+        XCTAssertTrue(
+            counter.compareExchangeAcquiringAndReleasing(expected: 0, desired: 1)
+        )
+        XCTAssertFalse(
+            counter.compareExchangeAcquiringAndReleasing(expected: 0, desired: 2)
+        )
+        counter.storeRelease(0)
+
+        DispatchQueue.concurrentPerform(iterations: 2_048) { _ in
+            _ = counter.fetchAddAcquiringAndReleasing(1)
+        }
+        XCTAssertEqual(counter.loadAcquire(), 2_048)
+
+        let flag = CaptureAtomicBool(false)
+        XCTAssertFalse(flag.loadAcquire())
+        XCTAssertTrue(
+            flag.compareExchangeAcquiringAndReleasing(expected: false, desired: true)
+        )
+        XCTAssertFalse(
+            flag.compareExchangeAcquiringAndReleasing(expected: false, desired: true)
+        )
+        flag.storeRelease(false)
+        XCTAssertFalse(flag.loadAcquire())
+    }
+
+    @MainActor
     func testMicrophoneTapRingIsAtomicBoundedAndReportsOverflowOnce() {
         let ring = MicrophoneCaptureSPSCRing(capacity: 2, maximumFramesPerSlot: 4)
         let first: [Float] = [0.1, 0.2, 0.3, 0.4]
@@ -3347,6 +3572,31 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             ".async", "Data(", "StreamingS16Resampler", ".process(", "Array(",
         ] {
             XCTAssertFalse(tap.contains(forbidden), "tap must not contain \(forbidden)")
+        }
+    }
+
+    func testAudioPushGateTapAdmissionDoesNotAcquireALock() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/Capture/ActiveBilingualTranscriptStore.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(
+            source.range(of: "nonisolated func submit(_ audioData: Data)")
+        )
+        let end = try XCTUnwrap(
+            source.range(of: "nonisolated func close()", range: start.upperBound..<source.endIndex)
+        )
+        let submission = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(submission.contains("compareExchangeAcquiringAndReleasing"))
+        for forbidden in ["NSLock", ".lock()", ".wait()", "DispatchSemaphore"] {
+            XCTAssertFalse(
+                submission.contains(forbidden),
+                "audio callback admission must not contain \(forbidden)"
+            )
         }
     }
 
@@ -3485,35 +3735,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(client.pauseCount, 1)
         XCTAssertEqual(audio.unsubscribeCount, 1)
         XCTAssertFalse(store.hasAudioSubscription)
-    @MainActor
-    func testCaptureAtomicCompatibilityPreservesCASAndConcurrentFetchAdd() {
-        let counter = CaptureAtomicInt(0)
-        XCTAssertEqual(counter.loadRelaxed(), 0)
-        XCTAssertTrue(
-            counter.compareExchangeAcquiringAndReleasing(expected: 0, desired: 1)
-        )
-        XCTAssertFalse(
-            counter.compareExchangeAcquiringAndReleasing(expected: 0, desired: 2)
-        )
-        counter.storeRelease(0)
-
-        DispatchQueue.concurrentPerform(iterations: 2_048) { _ in
-            _ = counter.fetchAddAcquiringAndReleasing(1)
-        }
-        XCTAssertEqual(counter.loadAcquire(), 2_048)
-
-        let flag = CaptureAtomicBool(false)
-        XCTAssertFalse(flag.loadAcquire())
-        XCTAssertTrue(
-            flag.compareExchangeAcquiringAndReleasing(expected: false, desired: true)
-        )
-        XCTAssertFalse(
-            flag.compareExchangeAcquiringAndReleasing(expected: false, desired: true)
-        )
-        flag.storeRelease(false)
-        XCTAssertFalse(flag.loadAcquire())
-    }
-
 
         try await store.setPaused(false)
 
@@ -3575,31 +3796,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(client.sessionEventCount, 1)
         XCTAssertEqual(store.captureState, .paused)
         XCTAssertEqual(audio.unsubscribeCount, 1)
-    func testAudioPushGateTapAdmissionDoesNotAcquireALock() throws {
-        let source = try String(
-            contentsOf: URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("ZuTalk/Capture/ActiveBilingualTranscriptStore.swift"),
-            encoding: .utf8
-        )
-        let start = try XCTUnwrap(
-            source.range(of: "nonisolated func submit(_ audioData: Data)")
-        )
-        let end = try XCTUnwrap(
-            source.range(of: "nonisolated func close()", range: start.upperBound..<source.endIndex)
-        )
-        let submission = String(source[start.lowerBound..<end.lowerBound])
-
-        XCTAssertTrue(submission.contains("compareExchangeAcquiringAndReleasing"))
-        for forbidden in ["NSLock", ".lock()", ".wait()", "DispatchSemaphore"] {
-            XCTAssertFalse(
-                submission.contains(forbidden),
-                "audio callback admission must not contain \(forbidden)"
-            )
-        }
-    }
-
         XCTAssertEqual(audio.subscribeCount, 1, "a committed pause must not reopen the microphone")
         XCTAssertFalse(store.hasAudioSubscription)
     }
@@ -4355,7 +4551,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         store.resetForTesting()
     }
 
-    func testRealtimeRunSelectionPrefersFocusThenActiveThenLatestAndPreservesClicks() {
+    func testRealtimeSectionTargetsOnlyRequestedOrActiveSessionWithoutLatestFallback() {
         let first = NotebookCaptureHistoryRunDTO.fixture(
             sessionId: "session-a",
             createdAt: "2001-01-02T08:00:00Z"
@@ -4367,38 +4563,35 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let runs = [first, latest]
 
         XCTAssertEqual(
-            NotebookRealtimeRunSelectionPolicy.initialSessionID(
+            NotebookRealtimeSectionPolicy.targetRun(
                 runs: runs,
                 requestedSessionID: "session-a",
                 activeSessionID: "session-b"
-            ),
+            )?.sessionId,
             "session-a"
         )
         XCTAssertEqual(
-            NotebookRealtimeRunSelectionPolicy.initialSessionID(
+            NotebookRealtimeSectionPolicy.targetRun(
                 runs: runs,
                 requestedSessionID: nil,
                 activeSessionID: "session-b"
-            ),
+            )?.sessionId,
             "session-b"
         )
-        XCTAssertEqual(
-            NotebookRealtimeRunSelectionPolicy.initialSessionID(
+        XCTAssertNil(
+            NotebookRealtimeSectionPolicy.targetRun(
                 runs: runs,
                 requestedSessionID: nil,
                 activeSessionID: nil
-            ),
-            "session-b"
+            )
         )
-        XCTAssertEqual(
-            NotebookRealtimeRunSelectionPolicy.reconciledSessionID(
-                currentSessionID: "session-a",
+        XCTAssertNil(
+            NotebookRealtimeSectionPolicy.targetRun(
                 runs: runs,
-                requestedSessionID: nil,
+                requestedSessionID: "missing-session",
                 activeSessionID: "session-b"
             ),
-            "session-a",
-            "a rail click remains selected while that run is still visible"
+            "an explicit Session route must never fall back to an active sibling"
         )
     }
 
@@ -5895,6 +6088,362 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
+    func testTranscriptAttachmentWaitsForDisappearCommitBeforeClosingEditor() throws {
+        let captureClient = FakeNotebookCaptureClient(
+            profile: .localDefault(notebookId: "notebook-a")
+        )
+        let editorClient = FakeNotebookTranscriptEditorClient()
+        editorClient.delta = try transcriptDelta([
+            (id: "segment-a", text: "Alpha"),
+        ])
+        let store = NotebookTranscriptProjectionStore(
+            captureClient: captureClient,
+            editorClient: editorClient
+        )
+        let coordinator = NotebookTranscriptProjectionAttachmentCoordinator(store: store)
+
+        XCTAssertTrue(coordinator.attach(
+            sessionId: "session-a",
+            notebookId: "notebook-a",
+            tabId: "async-tab"
+        ))
+        coordinator.setEditPending(segmentId: "segment-a", pending: true)
+        coordinator.requestDetach()
+
+        XCTAssertEqual(editorClient.closeCount, 0)
+        try store.replaceSegment(
+            sessionId: "session-a",
+            segmentId: "segment-a",
+            text: "Committed while leaving"
+        )
+        XCTAssertEqual(editorClient.lastReplacementText, "Committed while leaving")
+
+        coordinator.setEditPending(segmentId: "segment-a", pending: false)
+        XCTAssertEqual(editorClient.unregisterCount, 1)
+        XCTAssertEqual(editorClient.closeCount, 1)
+    }
+
+    @MainActor
+    func testTranscriptDocumentReadFailureIsPublishedPreservesContentAndRetries() async throws {
+        let captureClient = FakeNotebookCaptureClient(
+            profile: .localDefault(notebookId: "notebook-a")
+        )
+        let editorClient = FakeNotebookTranscriptEditorClient()
+        editorClient.delta = try transcriptDelta([
+            (id: "segment-a", text: "Last good content"),
+        ])
+        let store = NotebookTranscriptProjectionStore(
+            captureClient: captureClient,
+            editorClient: editorClient
+        )
+        let first = try XCTUnwrap(store.attachIfNeeded(
+            sessionId: "session-a",
+            notebookId: "notebook-a",
+            tabId: "async-tab"
+        ))
+        let callback = try XCTUnwrap(editorClient.registeredCallback)
+        XCTAssertEqual(store.linesBySession["session-a"]?.first?.text, "Last good content")
+
+        editorClient.deltaReadError = NotebookTranscriptProjectionEditError.unavailable
+        callback.onDocChanged(docId: "async-doc", generation: 2)
+        await Task.yield()
+
+        XCTAssertNotNil(store.documentReadErrorBySession["session-a"])
+        XCTAssertEqual(
+            store.linesBySession["session-a"]?.first?.text,
+            "Last good content",
+            "a transient document read must not erase the last good transcript"
+        )
+        XCTAssertEqual(store.editableBySession["session-a"], false)
+
+        XCTAssertThrowsError(try store.retryDocumentRead(sessionId: "session-a"))
+        XCTAssertEqual(
+            store.linesBySession["session-a"]?.first?.text,
+            "Last good content"
+        )
+
+        editorClient.deltaReadError = nil
+        try store.retryDocumentRead(sessionId: "session-a")
+        XCTAssertNil(store.documentReadErrorBySession["session-a"])
+        XCTAssertEqual(store.editableBySession["session-a"], true)
+        XCTAssertEqual(editorClient.openCount, 1)
+        XCTAssertEqual(editorClient.registerCount, 1)
+
+        store.detach(first)
+    }
+
+    @MainActor
+    func testTranscriptEditFindsStableSegmentAfterProjectionReorders() throws {
+        let captureClient = FakeNotebookCaptureClient(
+            profile: .localDefault(notebookId: "notebook-a")
+        )
+        let editorClient = FakeNotebookTranscriptEditorClient()
+        editorClient.delta = try transcriptDelta([
+            (id: "segment-a", text: "Alpha"),
+            (id: "segment-b", text: "Beta"),
+        ])
+        let store = NotebookTranscriptProjectionStore(
+            captureClient: captureClient,
+            editorClient: editorClient
+        )
+        let attachment = try XCTUnwrap(store.attachIfNeeded(
+            sessionId: "session-a",
+            notebookId: "notebook-a",
+            tabId: "async-tab"
+        ))
+        defer { store.detach(attachment) }
+
+        XCTAssertEqual(store.linesBySession["session-a"]?.map(\.id), ["segment-a", "segment-b"])
+
+        editorClient.delta = try transcriptDelta([
+            (id: "segment-b", text: "Beta"),
+            (id: "segment-a", text: "Alpha"),
+        ])
+        try store.replaceSegment(
+            sessionId: "session-a",
+            segmentId: "segment-a",
+            text: "Updated"
+        )
+
+        XCTAssertEqual(editorClient.lastReplacementPosition, 5)
+        XCTAssertEqual(editorClient.lastReplacementLength, 5)
+        XCTAssertEqual(editorClient.lastReplacementText, "Updated")
+    }
+
+    @MainActor
+    func testProcessedTranscriptParserExposesProviderMetadataWithoutSpeakerIdentity() throws {
+        let captureClient = FakeNotebookCaptureClient(
+            profile: .localDefault(notebookId: "notebook-a")
+        )
+        let editorClient = FakeNotebookTranscriptEditorClient()
+        editorClient.delta = try markedTranscriptDelta(
+            text: "Provider result",
+            attributes: [
+                "segment_id": "segment-provider",
+                "session_id": "session-a",
+                "timestamp_ms": 1_250,
+                "end_ms": 2_750,
+                "source_language": "en",
+                "provider_speaker_label": "spk-2",
+            ]
+        )
+        let store = NotebookTranscriptProjectionStore(
+            captureClient: captureClient,
+            editorClient: editorClient
+        )
+        let attachment = try XCTUnwrap(store.attachIfNeeded(
+            sessionId: "session-a",
+            notebookId: "notebook-a",
+            tabId: "async-tab"
+        ))
+        defer { store.detach(attachment) }
+
+        let line = try XCTUnwrap(store.linesBySession["session-a"]?.first)
+        XCTAssertEqual(line.id, "segment-provider")
+        XCTAssertEqual(line.startMs, 1_250)
+        XCTAssertEqual(line.endMs, 2_750)
+        XCTAssertEqual(line.sourceLanguage, "en")
+        XCTAssertEqual(line.providerSpeakerLabel, "spk-2")
+        XCTAssertEqual(line.text, "Provider result")
+    }
+
+    @MainActor
+    func testProcessedTranscriptParserKeepsLegacyMissingMetadataOptional() throws {
+        let captureClient = FakeNotebookCaptureClient(
+            profile: .localDefault(notebookId: "notebook-a")
+        )
+        let editorClient = FakeNotebookTranscriptEditorClient()
+        editorClient.delta = try markedTranscriptDelta(
+            text: "Legacy result",
+            attributes: [
+                "segment_id": "segment-legacy",
+                "session_id": "session-a",
+            ]
+        )
+        let store = NotebookTranscriptProjectionStore(
+            captureClient: captureClient,
+            editorClient: editorClient
+        )
+        let attachment = try XCTUnwrap(store.attachIfNeeded(
+            sessionId: "session-a",
+            notebookId: "notebook-a",
+            tabId: "async-tab"
+        ))
+        defer { store.detach(attachment) }
+
+        let line = try XCTUnwrap(store.linesBySession["session-a"]?.first)
+        XCTAssertNil(line.startMs, "legacy marks must not fabricate a 00:00 timestamp")
+        XCTAssertNil(line.endMs)
+        XCTAssertNil(line.sourceLanguage)
+        XCTAssertNil(line.providerSpeakerLabel)
+        XCTAssertEqual(line.text, "Legacy result")
+    }
+
+    @MainActor
+    func testProcessedTranscriptParserStripsOnlyMatchingLegacyRenderedTimestampPrefix() throws {
+        let captureClient = FakeNotebookCaptureClient(
+            profile: .localDefault(notebookId: "notebook-a")
+        )
+        let editorClient = FakeNotebookTranscriptEditorClient()
+        let operations: [[String: Any]] = [
+            [
+                "insert": "[00:01]\nMinute body",
+                "attributes": [
+                    "segment_id": "segment-minute",
+                    "session_id": "session-a",
+                    "timestamp_ms": 1_250,
+                ],
+            ],
+            ["insert": "\n"],
+            [
+                "insert": "[01:02:03]\nHour body",
+                "attributes": [
+                    "segment_id": "segment-hour",
+                    "session_id": "session-a",
+                    "timestamp_ms": 3_723_000,
+                ],
+            ],
+            ["insert": "\n"],
+            [
+                "insert": "[99:99]\nOrdinary body",
+                "attributes": [
+                    "segment_id": "segment-user-text",
+                    "session_id": "session-a",
+                    "timestamp_ms": 1_250,
+                ],
+            ],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: operations, options: [.sortedKeys])
+        editorClient.delta = String(decoding: data, as: UTF8.self)
+        let store = NotebookTranscriptProjectionStore(
+            captureClient: captureClient,
+            editorClient: editorClient
+        )
+        let attachment = try XCTUnwrap(store.attachIfNeeded(
+            sessionId: "session-a",
+            notebookId: "notebook-a",
+            tabId: "async-tab"
+        ))
+        defer { store.detach(attachment) }
+
+        let lines = try XCTUnwrap(store.linesBySession["session-a"])
+        XCTAssertEqual(lines.map(\.text), [
+            "Minute body",
+            "Hour body",
+            "[99:99]\nOrdinary body",
+        ])
+    }
+
+    @MainActor
+    func testTranscriptEditPreservesLegacyRenderedTimestampPrefix() throws {
+        let prefix = "[00:01]\n"
+        let body = "Provider result"
+        let captureClient = FakeNotebookCaptureClient(
+            profile: .localDefault(notebookId: "notebook-a")
+        )
+        let editorClient = FakeNotebookTranscriptEditorClient()
+        editorClient.delta = try markedTranscriptDelta(
+            text: prefix + body,
+            attributes: [
+                "segment_id": "segment-provider",
+                "session_id": "session-a",
+                "timestamp_ms": 1_250,
+            ]
+        )
+        let store = NotebookTranscriptProjectionStore(
+            captureClient: captureClient,
+            editorClient: editorClient
+        )
+        let attachment = try XCTUnwrap(store.attachIfNeeded(
+            sessionId: "session-a",
+            notebookId: "notebook-a",
+            tabId: "async-tab"
+        ))
+        defer { store.detach(attachment) }
+
+        try store.replaceSegment(
+            sessionId: "session-a",
+            segmentId: "segment-provider",
+            text: "Updated"
+        )
+
+        XCTAssertEqual(
+            editorClient.lastReplacementPosition,
+            UInt64(prefix.unicodeScalars.count)
+        )
+        XCTAssertEqual(
+            editorClient.lastReplacementLength,
+            UInt64(body.unicodeScalars.count)
+        )
+        XCTAssertEqual(editorClient.lastReplacementText, "Updated")
+    }
+
+    @MainActor
+    func testTranscriptEditRejectsSegmentThatDisappearedFromLatestProjection() throws {
+        let captureClient = FakeNotebookCaptureClient(
+            profile: .localDefault(notebookId: "notebook-a")
+        )
+        let editorClient = FakeNotebookTranscriptEditorClient()
+        editorClient.delta = try transcriptDelta([
+            (id: "segment-a", text: "Alpha"),
+            (id: "segment-b", text: "Beta"),
+        ])
+        let store = NotebookTranscriptProjectionStore(
+            captureClient: captureClient,
+            editorClient: editorClient
+        )
+        let attachment = try XCTUnwrap(store.attachIfNeeded(
+            sessionId: "session-a",
+            notebookId: "notebook-a",
+            tabId: "async-tab"
+        ))
+        defer { store.detach(attachment) }
+
+        editorClient.delta = try transcriptDelta([
+            (id: "segment-b", text: "Beta"),
+        ])
+
+        XCTAssertThrowsError(try store.replaceSegment(
+            sessionId: "session-a",
+            segmentId: "segment-a",
+            text: "Updated"
+        )) { error in
+            XCTAssertEqual(error as? NotebookTranscriptProjectionEditError, .staleSegment)
+        }
+        XCTAssertEqual(editorClient.replacementCount, 0)
+    }
+
+    private func transcriptDelta(_ segments: [(id: String, text: String)]) throws -> String {
+        let operations: [[String: Any]] = segments.enumerated().flatMap { index, segment in
+            var result: [[String: Any]] = [[
+                "insert": segment.text,
+                "attributes": [
+                    "segment_id": segment.id,
+                    "session_id": "session-a",
+                    "timestamp_ms": index * 1_000,
+                ],
+            ]]
+            if index < segments.count - 1 {
+                result.append(["insert": "\n"])
+            }
+            return result
+        }
+        let data = try JSONSerialization.data(withJSONObject: operations, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private func markedTranscriptDelta(
+        text: String,
+        attributes: [String: Any]
+    ) throws -> String {
+        let data = try JSONSerialization.data(
+            withJSONObject: [["insert": text, "attributes": attributes]],
+            options: [.sortedKeys]
+        )
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    @MainActor
     func testTranscriptProjectionReattachCreatesOneFreshCallbackOwner() async throws {
         let captureClient = FakeNotebookCaptureClient(
             profile: .localDefault(notebookId: "notebook-a")
@@ -7041,7 +7590,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             captureViews[realtimeTranscriptStart.lowerBound..<realtimeTranscriptEnd.lowerBound]
         )
         let laneTextStart = try XCTUnwrap(
-            captureViews.range(of: "private struct BilingualLaneText: View")
+            captureViews.range(of: "struct BilingualLaneText: View")
         )
         let laneTextEnd = try XCTUnwrap(
             captureViews[laneTextStart.upperBound...]
@@ -7095,9 +7644,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(captureViews.contains("capture.settings.context.selected"))
         XCTAssertTrue(captureViews.contains("capture.settings.context.not_selected"))
         XCTAssertTrue(captureViews.contains("NotebookCaptureProfileEditorModel"))
-        XCTAssertTrue(captureViews.contains("func prepareForCaptureStart() async throws"))
         XCTAssertTrue(captureViews.contains(
-            "try await profileEditor.prepareForCaptureStart()"
+            "func prepareForCaptureStart(enableRealtimeIfNeeded: Bool = true) async throws"
+        ))
+        XCTAssertTrue(captureViews.contains(
+            "try await profileEditor.prepareForCaptureStart("
         ))
         let startButtonStart = try XCTUnwrap(
             captureViews.range(of: "private var startButton: some View")
@@ -7109,16 +7660,16 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let startButtonSource = String(
             captureViews[startButtonStart.lowerBound..<startButtonEnd.lowerBound]
         )
-        let profilePreparation = try XCTUnwrap(
-            startButtonSource.range(of: "try await profileEditor.prepareForCaptureStart()")
+        let workflowPreparation = try XCTUnwrap(
+            startButtonSource.range(of: "NotebookCaptureStartPreparationWorkflow.prepare(")
         )
         let captureStart = try XCTUnwrap(
             startButtonSource.range(of: "NotebookCaptureStartCoordinator(")
         )
         XCTAssertLessThan(
-            profilePreparation.lowerBound,
+            workflowPreparation.lowerBound,
             captureStart.lowerBound,
-            "Start must durably authorize the latest language profile before preparing audio"
+            "Profile and credential preparation must complete before preparing audio"
         )
         XCTAssertFalse(documentEditor.contains("NotebookCaptureToolbar("))
         XCTAssertEqual(
@@ -7141,8 +7692,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         XCTAssertEqual(
             documentEditor.components(separatedBy: "editor: captureProfileEditor").count - 1,
-            2,
-            "Realtime and Settings must observe the same profile editor instance"
+            3,
+            "Realtime, Topic Settings, and Session Settings must observe the same profile editor instance"
         )
         XCTAssertTrue(documentEditor.contains(".id(notebookId)"))
         XCTAssertTrue(mainShell.contains(".id(activeEditorRoute?.notebookID ?? \"no-notebook-route\")"))
@@ -7305,6 +7856,27 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             "the first editable lane appearance must seed the latest authoritative provider text"
         )
         XCTAssertTrue(laneTextView.contains("scheduleDisappear"))
+        let focusChangeStart = try XCTUnwrap(
+            laneTextView.range(of: "private func scheduleFocusChange")
+        )
+        let focusChangeEnd = try XCTUnwrap(
+            laneTextView[focusChangeStart.upperBound...]
+                .range(of: "private func scheduleTextSync")
+        )
+        let focusChange = String(
+            laneTextView[focusChangeStart.lowerBound..<focusChangeEnd.lowerBound]
+        )
+        let synchronousEditRegistration = try XCTUnwrap(
+            focusChange.range(of: "onEditingChanged(editTarget, true)")
+        )
+        let deferredCommit = try XCTUnwrap(
+            focusChange.range(of: "Task { @MainActor in")
+        )
+        XCTAssertLessThan(
+            synchronousEditRegistration.lowerBound,
+            deferredCommit.lowerBound,
+            "focus must retain the document attachment before a parent tab can disappear"
+        )
         XCTAssertTrue(
             laneTextView.contains(".lineLimit(2...)"),
             "editable language-column rows must grow with their complete text"
@@ -7362,7 +7934,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 separatedBy: "MontereyHorizontalViewThatFits"
             ).count - 1,
             2,
-            "Context Pack controls and recording history headers must degrade for narrow windows"
+            "Context Pack controls and recording history headers must keep a Monterey fallback"
         )
         XCTAssertTrue(captureViews.contains(".textSelection(.enabled)"))
         XCTAssertTrue(captureViews.contains(".help(message)"))
@@ -7483,7 +8055,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertFalse(overlayViews.contains("isCommonCaption"))
         XCTAssertFalse(overlayViews.contains("index == 0"))
         XCTAssertFalse(overlayViews.contains("【超出当前语言对】"))
-        XCTAssertTrue(overlayViews.contains("ScrollView {"))
+        XCTAssertTrue(overlayViews.contains("ScrollView(showsIndicators: showsIndicators) {"))
         XCTAssertTrue(overlayViews.contains("LazyVStack(spacing: 10)"))
         XCTAssertTrue(overlayViews.contains(".defaultScrollAnchor(.bottom)"))
         XCTAssertTrue(overlayViews.contains("SubtitleOverlayFontPolicy"))
@@ -7636,8 +8208,13 @@ private final class FakeNotebookTranscriptEditorClient: NotebookTranscriptEditor
     private(set) var registerCount = 0
     private(set) var unregisterCount = 0
     private(set) var deltaReadCount = 0
+    private(set) var replacementCount = 0
+    private(set) var lastReplacementPosition: UInt64?
+    private(set) var lastReplacementLength: UInt64?
+    private(set) var lastReplacementText: String?
     private(set) var registeredCallback: (any FfiEditorCallback)?
     var delta = "[]"
+    var deltaReadError: Error?
     var writable = true
 
     func openEditor(notebookId: String, tabId: String) throws {
@@ -7674,6 +8251,7 @@ private final class FakeNotebookTranscriptEditorClient: NotebookTranscriptEditor
         _ = notebookId
         _ = tabId
         deltaReadCount += 1
+        if let deltaReadError { throw deltaReadError }
         return delta
     }
 
@@ -7692,9 +8270,10 @@ private final class FakeNotebookTranscriptEditorClient: NotebookTranscriptEditor
     ) throws {
         _ = notebookId
         _ = tabId
-        _ = position
-        _ = length
-        _ = text
+        replacementCount += 1
+        lastReplacementPosition = position
+        lastReplacementLength = length
+        lastReplacementText = text
     }
 }
 
@@ -7982,6 +8561,8 @@ private final class FakeNotebookCaptureAudioSource: NotebookCaptureAudioSourcing
     private(set) var subscribedInputDeviceUIDs: [String] = []
     private(set) var subscribedInputDeviceIDs: [AudioDeviceID] = []
     private(set) var committedInputDeviceUIDs: [String?] = []
+    var suspendNextPrepare = false
+    private var suspendedPrepareContinuation: CheckedContinuation<Void, Never>?
     private var handler: (@Sendable (Data) -> Void)?
     private var overflowHandler: (@Sendable () -> Void)?
     var emitOnUnsubscribe: Data?
@@ -7992,9 +8573,21 @@ private final class FakeNotebookCaptureAudioSource: NotebookCaptureAudioSourcing
 
     func prepare() async throws {
         prepareCount += 1
+        if suspendNextPrepare {
+            suspendNextPrepare = false
+            await withCheckedContinuation { continuation in
+                suspendedPrepareContinuation = continuation
+            }
+        }
         if preparedInputDevice == nil {
             preparedInputDevice = makeDevice(uid: selectedInputDeviceUID ?? defaultInputDeviceUID)
         }
+    }
+
+    func resumeSuspendedPrepare() {
+        let continuation = suspendedPrepareContinuation
+        suspendedPrepareContinuation = nil
+        continuation?.resume()
     }
 
     func resolveInputDevice(uid: String?) throws -> AudioInputDevice {
