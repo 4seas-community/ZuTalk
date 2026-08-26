@@ -8245,6 +8245,13 @@ impl ZuTalkCore {
                     error,
                 ));
             }
+            if let Err(error) = self.purge_session_note_block_document(session_id) {
+                return Err(self.persist_session_purge_error(
+                    session_id,
+                    "task_handlers_stopped",
+                    error,
+                ));
+            }
             self.notebook_capture_store
                 .update_session_purge_job(session_id, "loro_removed", None)
                 .map_err(store_error)?;

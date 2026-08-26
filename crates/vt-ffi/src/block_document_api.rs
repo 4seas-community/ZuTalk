@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use loro::{LoroDoc, UndoManager};
+use sha2::{Digest, Sha256};
 use vt_mirror::mirror::{Mirror, MirrorOptions, SetStateOptions};
 use vt_mirror::value::Value;
 use vt_store::document_schema::{
@@ -179,6 +180,23 @@ fn block_document_path(data_dir: &Path, doc_id: &str) -> Result<PathBuf, CoreErr
         return Err(internal(format!("非法块文档 id: {doc_id:?}")));
     }
     Ok(block_documents_dir(data_dir).join(format!("{doc_id}.loro")))
+}
+
+/// Session 笔记的稳定文档命名空间。
+///
+/// Session id 来自持久化数据，历史版本并不保证它永远只含 UUID 字符；
+/// 因此不能直接把它拼进文件名。由 Rust 单点派生并把结果返回给 Swift，
+/// 两端无需复制转义/哈希约定，也不会引入路径穿越字符。
+pub(crate) fn session_note_document_id(session_id: &str) -> Result<String, CoreError> {
+    if session_id.is_empty() {
+        return Err(CoreError::ValidationFailed {
+            message: "session id must not be empty".to_string(),
+        });
+    }
+    Ok(format!(
+        "session-note-v1-{}",
+        hex::encode(Sha256::digest(session_id.as_bytes()))
+    ))
 }
 
 #[uniffi::export]
@@ -493,9 +511,63 @@ impl ZuTalkCore {
         self.block_document_open(doc_id.clone(), FfiDocumentKind::Note)?;
         Ok(doc_id)
     }
+
+    /// 打开一份只属于单个 Session 的笔记块文档并返回稳定 doc_id。
+    ///
+    /// 与 Notebook 的 ManualNote tab 不同，这里没有第 1 纪元平文本迁移：
+    /// Session 笔记是新增命名空间。打开与永久删除共用 ownership gate，
+    /// purge tombstone 建立后就不能再创建或重新打开该文档。
+    pub fn session_note_block_document_open(
+        &self,
+        session_id: String,
+    ) -> Result<String, CoreError> {
+        let _ownership_guard = self.capture_ownership_gate.lock().unwrap();
+        if self
+            .notebook_capture_store
+            .has_session_purge_job(&session_id)
+            .map_err(internal)?
+        {
+            return Err(CoreError::ValidationFailed {
+                message: format!("session is being permanently deleted: {session_id}"),
+            });
+        }
+        // 不允许凭一个任意字符串造出脱离 Session 目录的孤儿文档。
+        self.get_session(session_id.clone())?;
+
+        let doc_id = session_note_document_id(&session_id)?;
+        self.block_document_open(doc_id.clone(), FfiDocumentKind::Note)?;
+        Ok(doc_id)
+    }
 }
 
 impl ZuTalkCore {
+    /// 永久删除 Session 专属笔记的内存句柄与磁盘快照。
+    ///
+    /// purge saga 可能在任意写阶段崩溃并重放，所以「句柄不存在」和
+    /// 「文件不存在」都必须是成功。这里刻意不保存被移除的句柄：调用者
+    /// 已经要求销毁，保存只会让旧内容短暂复活。
+    pub(crate) fn purge_session_note_block_document(
+        &self,
+        session_id: &str,
+    ) -> Result<(), CoreError> {
+        let doc_id = session_note_document_id(session_id)?;
+        let handle = self.block_documents.lock().unwrap().remove(&doc_id);
+        drop(handle);
+        // Session Note 正常不会挂到 EditorBridge；无条件驱逐可让异常的
+        // 旧句柄也服从相同销毁边界。
+        self.editor_bridge.evict(&doc_id);
+
+        let path = block_document_path(&self.data_dir, &doc_id)?;
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(internal(format!(
+                "删除 Session 笔记块文档 {}: {error}",
+                path.display()
+            ))),
+        }
+    }
+
     /// 转录稿产线的块文档入口:打开(必要时**从第 1 纪元严格迁移**),
     /// 并把同一份 LoroDoc 挂进 EditorBridge。
     ///
@@ -787,6 +859,41 @@ mod tests {
         let blocks = core.transcript_blocks("t1".into()).unwrap();
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].text, "一");
+    }
+
+    #[test]
+    fn session_note_ids_are_stable_distinct_and_path_safe() {
+        let first = session_note_document_id("session/a ..\\b").unwrap();
+        assert_eq!(first, session_note_document_id("session/a ..\\b").unwrap());
+        assert_ne!(first, session_note_document_id("session-b").unwrap());
+        assert!(first.starts_with("session-note-v1-"));
+        assert!(!first.contains(['/', '\\', '.']));
+        assert!(session_note_document_id("").is_err());
+    }
+
+    #[test]
+    fn purging_a_session_note_is_idempotent_and_evicts_its_open_handle() {
+        let (dir, core) = core();
+        let session = core.create_notebook_capture_session().unwrap();
+        let doc_id = core
+            .session_note_block_document_open(session.id.clone())
+            .unwrap();
+        core.note_apply_outline(doc_id.clone(), vec![outline_row("a", "待销毁")])
+            .unwrap();
+        let path = block_documents_dir(dir.path()).join(format!("{doc_id}.loro"));
+        assert!(path.exists());
+
+        core.purge_session_note_block_document(&session.id).unwrap();
+        core.purge_session_note_block_document(&session.id)
+            .expect("crash replay must make deletion idempotent");
+
+        assert!(!path.exists());
+        assert!(
+            core.note_outline_rows(doc_id.clone()).is_err(),
+            "the open handle must be removed with the file"
+        );
+        core.block_document_close(doc_id)
+            .expect("closing a handle already evicted by purge is idempotent");
     }
 
     #[test]

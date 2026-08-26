@@ -37,6 +37,116 @@ fn note_tab(core: &ZuTalkCore) -> (String, String) {
     (notebook.id, tab.id)
 }
 
+fn fixture_wav() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vt-audio/tests/fixtures/test_16k_mono.wav")
+}
+
+fn imported_session(core: &ZuTalkCore, notebook_title: &str) -> String {
+    let notebook = core
+        .create_notebook(Some(notebook_title.to_string()))
+        .unwrap();
+    core.import_audio_into_notebook(fixture_wav().to_string_lossy().to_string(), notebook.id)
+        .unwrap()
+        .session_id
+}
+
+#[test]
+fn two_session_notes_are_isolated_and_survive_a_whole_app_restart() {
+    let dir = TempDir::new().unwrap();
+    let (first_session, second_session, first_doc, second_doc) = {
+        let core = make_core(&dir);
+        let first_session = imported_session(&core, "访谈一");
+        let second_session = imported_session(&core, "访谈二");
+
+        let first_doc = core
+            .session_note_block_document_open(first_session.clone())
+            .unwrap();
+        core.note_apply_outline(
+            first_doc.clone(),
+            vec![row("first", 0, "只属于第一场", FfiOutlineKind::Paragraph)],
+        )
+        .unwrap();
+        core.block_document_close(first_doc.clone()).unwrap();
+
+        let second_doc = core
+            .session_note_block_document_open(second_session.clone())
+            .unwrap();
+        assert_ne!(first_doc, second_doc, "两个 Session 不能共享 doc_id");
+        assert!(
+            core.note_outline_rows(second_doc.clone())
+                .unwrap()
+                .is_empty(),
+            "第二场第一次打开时不能读到第一场内容"
+        );
+        core.note_apply_outline(
+            second_doc.clone(),
+            vec![row("second", 0, "只属于第二场", FfiOutlineKind::Quote)],
+        )
+        .unwrap();
+        core.block_document_close(second_doc.clone()).unwrap();
+
+        (first_session, second_session, first_doc, second_doc)
+    };
+
+    let reopened_core = make_core(&dir);
+    assert_eq!(
+        reopened_core
+            .session_note_block_document_open(first_session)
+            .unwrap(),
+        first_doc
+    );
+    assert_eq!(
+        reopened_core.note_outline_rows(first_doc.clone()).unwrap()[0].text,
+        "只属于第一场"
+    );
+    reopened_core.block_document_close(first_doc).unwrap();
+
+    assert_eq!(
+        reopened_core
+            .session_note_block_document_open(second_session)
+            .unwrap(),
+        second_doc
+    );
+    let second_rows = reopened_core.note_outline_rows(second_doc).unwrap();
+    assert_eq!(second_rows.len(), 1);
+    assert_eq!(second_rows[0].text, "只属于第二场");
+    assert_eq!(second_rows[0].kind, FfiOutlineKind::Quote);
+}
+
+#[test]
+fn permanent_session_purge_removes_the_note_file_and_open_handle() {
+    let dir = TempDir::new().unwrap();
+    let core = make_core(&dir);
+    let session = imported_session(&core, "待彻底删除");
+    let doc_id = core
+        .session_note_block_document_open(session.clone())
+        .unwrap();
+    core.note_apply_outline(
+        doc_id.clone(),
+        vec![row("private", 0, "不应残留", FfiOutlineKind::Paragraph)],
+    )
+    .unwrap();
+    let path = dir
+        .path()
+        .join("block-documents")
+        .join(format!("{doc_id}.loro"));
+    assert!(path.exists());
+
+    core.purge_session(session.clone()).unwrap();
+
+    assert!(!path.exists(), "永久删除必须移除 Session 笔记快照");
+    assert!(
+        core.note_outline_rows(doc_id.clone()).is_err(),
+        "永久删除必须同时驱逐打开中的块文档句柄"
+    );
+    core.block_document_close(doc_id)
+        .expect("purge 后视图再 close 应保持幂等");
+    assert!(
+        core.session_note_block_document_open(session).is_err(),
+        "Session 已不存在时不能凭旧 id 重建孤儿笔记"
+    );
+}
+
 #[test]
 fn an_outline_survives_closing_the_document_and_reopening_it() {
     let dir = TempDir::new().unwrap();
