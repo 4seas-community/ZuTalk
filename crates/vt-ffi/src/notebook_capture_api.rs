@@ -6463,23 +6463,6 @@ impl ZuTalkCore {
                 return Err(store_error(error));
             }
         }
-        if let Err(error) = self.attach_session_to_notebook(notebook_id.clone(), session_id.clone())
-        {
-            let _ = self.notebook_capture_store.transition_capture(
-                &run_id,
-                CaptureState::Recording,
-                CaptureState::Failed,
-            );
-            // Keep direct fallbacks even though the durable run normally owns
-            // these refs. If the rollback plan itself cannot be loaded, start
-            // failure must still delete the just-created journal and key.
-            self.rollback_failed_capture_start(
-                &session_id,
-                &[journal.journal_path().to_path_buf()],
-                std::slice::from_ref(&key_ref),
-            );
-            return Err(error);
-        }
         let captured_frames = Arc::new(AtomicU64::new(0));
         let remote = if requested_remote {
             match self.start_soniox_capture_runtime(
@@ -9505,7 +9488,10 @@ impl ZuTalkCore {
         }
     }
 
-    fn ensure_capture_projection_not_purging(&self, session_id: &str) -> Result<(), CoreError> {
+    pub(crate) fn ensure_capture_projection_not_purging(
+        &self,
+        session_id: &str,
+    ) -> Result<(), CoreError> {
         if self
             .notebook_capture_store
             .has_session_purge_job(session_id)

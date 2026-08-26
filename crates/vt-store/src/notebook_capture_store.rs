@@ -13,12 +13,70 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use vt_model::Token;
 
-use crate::session_query::SessionRecord;
+use crate::{notebook_store::BuiltinNotebookTab, session_query::SessionRecord};
 
 pub const SONIOX_PROVIDER_ID: &str = "soniox";
 pub const SONIOX_STT_RT_V5_MODEL_ID: &str = "stt-rt-v5";
 pub const SONIOX_STT_ASYNC_V5_MODEL_ID: &str = "stt-async-v5";
 pub const MAX_CAPTURE_LANGUAGES: usize = 3;
+
+fn attach_new_capture_membership_tx(
+    tx: &rusqlite::Transaction<'_>,
+    notebook_id: &str,
+    session_id: &str,
+    now: &str,
+) -> Result<(), NotebookCaptureStoreError> {
+    let tabs = {
+        let mut stmt = tx.prepare(
+            "SELECT id, builtin_kind
+             FROM notebook_tabs
+             WHERE notebook_id = ?1 AND deleted_at IS NULL
+             ORDER BY position ASC, created_at ASC, id ASC",
+        )?;
+        let rows = stmt
+            .query_map([notebook_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+    let expected = [
+        BuiltinNotebookTab::RealtimeTranscript.as_str(),
+        BuiltinNotebookTab::AsyncTranscript.as_str(),
+        BuiltinNotebookTab::ManualNote.as_str(),
+    ];
+    if tabs.len() != expected.len()
+        || expected
+            .iter()
+            .any(|kind| tabs.iter().filter(|(_, raw_kind)| raw_kind == kind).count() != 1)
+    {
+        return Err(NotebookCaptureStoreError::CorruptData(format!(
+            "notebook {notebook_id} must contain exactly three builtin tabs"
+        )));
+    }
+
+    tx.execute(
+        "INSERT INTO notebook_sessions (notebook_id, session_id, created_at)
+         VALUES (?1, ?2, ?3)",
+        params![notebook_id, session_id, now],
+    )?;
+    for (tab_id, _) in tabs {
+        tx.execute(
+            "INSERT INTO notebook_session_projections
+             (id, notebook_id, tab_id, session_id, section_title,
+              created_at, updated_at, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?5, NULL)",
+            params![
+                uuid::Uuid::new_v4().to_string(),
+                notebook_id,
+                tab_id,
+                session_id,
+                now,
+            ],
+        )?;
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1367,6 +1425,26 @@ impl NotebookCaptureStore {
             .ok_or_else(|| NotebookCaptureStoreError::NotFound(format!("capture run {}", input.id)))
     }
 
+    /// Finds capture rows written by older builds that crashed after run
+    /// creation but before Notebook attachment. The run's notebook_id remains
+    /// the authoritative recovery destination.
+    pub fn list_runs_missing_notebook_membership(
+        &self,
+    ) -> Result<Vec<(String, String)>, NotebookCaptureStoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT r.notebook_id, r.session_id
+             FROM notebook_capture_runs r
+             LEFT JOIN notebook_sessions link ON link.session_id = r.session_id
+             WHERE link.session_id IS NULL
+             ORDER BY r.created_at ASC, r.session_id ASC",
+        )?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Atomically creates the catalogue row, immutable privacy snapshot, and
     /// capture run that owns all deterministic external refs. No key or audio
     /// file should be created before this transaction commits.
@@ -1472,6 +1550,7 @@ impl NotebookCaptureStore {
                 )))
             };
         }
+        attach_new_capture_membership_tx(&tx, &input.notebook_id, &input.session_id, &now)?;
         tx.commit()?;
         drop(conn);
         self.get_run(&input.id)?
@@ -9046,6 +9125,100 @@ mod tests {
             .unwrap();
         assert_eq!((catalogue_count, privacy_count), (0, 0));
         assert!(store.get_run(&input.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn atomic_session_and_run_creation_includes_notebook_membership_and_projections() {
+        let (temp, store, notebook_id) = fixture();
+        let profile = store.get_or_create_profile(&notebook_id).unwrap();
+        let input = new_run(&notebook_id, "atomic-membership");
+        let session = SessionRecord {
+            id: input.session_id.clone(),
+            title: String::new(),
+            session_type: "recording".into(),
+            status: "recording".into(),
+            duration_ms: 0,
+            created_at: "2001-01-01 12:00:00".into(),
+            deleted_at: None,
+        };
+
+        store
+            .create_session_and_run(&session, &input, &profile)
+            .unwrap();
+
+        let conn = rusqlite::Connection::open(temp.path().join("capture.db")).unwrap();
+        let owner: String = conn
+            .query_row(
+                "SELECT notebook_id FROM notebook_sessions WHERE session_id = ?1",
+                [&session.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let projection_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM notebook_session_projections
+                 WHERE session_id = ?1 AND notebook_id = ?2 AND deleted_at IS NULL",
+                [&session.id, &notebook_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(owner, notebook_id);
+        assert_eq!(projection_count, 3);
+        assert!(store
+            .list_runs_missing_notebook_membership()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn atomic_session_and_run_creation_rolls_back_when_a_projection_insert_fails() {
+        let (temp, store, notebook_id) = fixture();
+        let profile = store.get_or_create_profile(&notebook_id).unwrap();
+        let input = new_run(&notebook_id, "atomic-projection-failure");
+        let session = SessionRecord {
+            id: input.session_id.clone(),
+            title: String::new(),
+            session_type: "recording".into(),
+            status: "recording".into(),
+            duration_ms: 0,
+            created_at: "2001-01-01 12:00:00".into(),
+            deleted_at: None,
+        };
+        let conn = rusqlite::Connection::open(temp.path().join("capture.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_second_atomic_projection
+             BEFORE INSERT ON notebook_session_projections
+             WHEN NEW.session_id = 'session-atomic-projection-failure'
+              AND (SELECT COUNT(*) FROM notebook_session_projections
+                   WHERE session_id = NEW.session_id) = 1
+             BEGIN
+               SELECT RAISE(ABORT, 'forced atomic projection failure');
+             END;",
+        )
+        .unwrap();
+
+        assert!(store
+            .create_session_and_run(&session, &input, &profile)
+            .is_err());
+
+        for (table, column, value) in [
+            ("session_records", "id", session.id.as_str()),
+            ("session_meta", "session_id", session.id.as_str()),
+            ("notebook_capture_runs", "id", input.id.as_str()),
+            ("notebook_sessions", "session_id", session.id.as_str()),
+            (
+                "notebook_session_projections",
+                "session_id",
+                session.id.as_str(),
+            ),
+        ] {
+            let sql = format!("SELECT COUNT(*) FROM {table} WHERE {column} = ?1");
+            let count: i64 = conn.query_row(&sql, [value], |row| row.get(0)).unwrap();
+            assert_eq!(
+                count, 0,
+                "{table} must roll back with the capture transaction"
+            );
+        }
     }
 
     #[test]

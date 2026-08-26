@@ -68,6 +68,7 @@ impl vt_share::CaptureBoundaryGuard for LoroCaptureBoundaryGuard {
 /// 别人的内容不该混进你自己的 Notebook —— 收进来的东西和你自己录的东西,
 /// 保留策略、编辑权、归属都不一样。给它一个固定的家,用户一眼能分清。
 pub const SHARED_INBOX_NOTEBOOK_TITLE: &str = "分享";
+pub(crate) const SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE: &str = "__zutalk_internal_shared_inbox__";
 
 /// 官方中继。用户可以在设置里改掉或清空。
 ///
@@ -398,26 +399,18 @@ impl ZuTalkCore {
 
     /// 收到的共享内容该落进哪个 Notebook,没有就建一个。
     pub fn shared_inbox_notebook(&self) -> Result<crate::notebook_api::FfiNotebook, CoreError> {
-        let existing = self
+        let record = self
             .notebook_store
-            .list_notebooks()
+            .ensure_internal_notebook(
+                SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE,
+                SHARED_INBOX_NOTEBOOK_TITLE,
+            )
             .map_err(|error| CoreError::InternalError {
-                message: format!("列出 Notebook 失败: {error}"),
-            })?
-            .into_iter()
-            .find(|n| n.title == SHARED_INBOX_NOTEBOOK_TITLE);
-        let record = match existing {
-            Some(record) => record,
-            None => self
-                .notebook_store
-                .create_notebook(Some(SHARED_INBOX_NOTEBOOK_TITLE))
-                .map_err(|error| CoreError::InternalError {
-                    message: format!("创建分享 Notebook 失败: {error}"),
-                })?,
-        };
+                message: format!("准备分享 Notebook 失败: {error}"),
+            })?;
         Ok(crate::notebook_api::FfiNotebook {
             id: record.id,
-            title: record.title,
+            title: SHARED_INBOX_NOTEBOOK_TITLE.to_string(),
             created_at: record.created_at,
             updated_at: record.updated_at,
             deleted_at: record.deleted_at,

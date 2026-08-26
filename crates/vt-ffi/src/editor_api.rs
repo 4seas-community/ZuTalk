@@ -20,7 +20,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use loro::{ExpandType, StyleConfig, StyleConfigMap};
 use vt_store::{
-    AsyncTaskState, BuiltinNotebookTab, EditOp, EditorBridge, NotebookTabRecord, ProjectionState,
+    AsyncProjectionState, AsyncTaskState, BuiltinNotebookTab, EditOp, EditorBridge,
+    NotebookTabRecord, ProjectionState,
 };
 
 use crate::{CoreError, ZuTalkCore};
@@ -95,24 +96,30 @@ pub(crate) fn voice_tool_style_config() -> StyleConfigMap {
             expand: ExpandType::None,
         },
     );
-    // Loro-backed transcript 用的两个 segment 级 mark:
-    //   - segment_id:数字, 同段内相邻 run 靠它合并
-    //   - timestamp_ms: u64 毫秒, 段首时间戳
+    // Loro-backed transcript 的 segment 级 marks。provider_speaker_label
+    // 只是异步供应商在一次任务内给出的匿名标签，绝不能当作 realtime
+    // SessionSpeaker 身份使用或写入 speaker identity 表。
+    //   - segment_id:稳定段 id,同段内相邻 run 靠它合并
+    //   - timestamp_ms / end_ms:可选的供应商时间范围
+    //   - source_language:可选的供应商源语言
+    //   - provider_speaker_label:可选的匿名供应商说话人标签
     // expand=After:AI 持续往段末追加 token 时,新 char 应继承当前段属性。
     // 用户在段内插字也是同一段。只有"新 utterance 起始"时 Swift 侧
     // 才手动 Insert 一个 `\n\n` + 换 segment_id(无 mark 的 \n 分隔符)。
-    map.insert(
-        "segment_id".into(),
-        StyleConfig {
-            expand: ExpandType::After,
-        },
-    );
-    map.insert(
-        "timestamp_ms".into(),
-        StyleConfig {
-            expand: ExpandType::After,
-        },
-    );
+    for key in [
+        "segment_id",
+        "timestamp_ms",
+        "end_ms",
+        "source_language",
+        "provider_speaker_label",
+    ] {
+        map.insert(
+            key.into(),
+            StyleConfig {
+                expand: ExpandType::After,
+            },
+        );
+    }
     // Ownership marks must never expand into adjacent user-authored text.
     // Projection code explicitly marks every owned range after insert/replace.
     for key in [
@@ -122,6 +129,7 @@ pub(crate) fn voice_tool_style_config() -> StyleConfigMap {
         "source_timestamp_ms",
         "utterance_revision",
         "content_owner",
+        "async_projection_schema_version",
     ] {
         map.insert(
             key.into(),
@@ -420,6 +428,7 @@ impl ZuTalkCore {
                         .collect::<std::collections::HashSet<_>>();
                     async_runs.iter().all(|run| {
                         run.async_task_state == AsyncTaskState::Completed
+                            && run.async_projection_state == AsyncProjectionState::Ready
                             && projected_sessions.contains(&run.session_id)
                     })
                 }
@@ -1044,6 +1053,87 @@ mod tests {
         .unwrap();
     }
 
+    #[test]
+    fn async_transcript_is_writable_only_after_local_projection_is_ready() {
+        let tmp = TempDir::new().unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let target = builtin_target(&core, "Async capture", BuiltinNotebookTab::AsyncTranscript);
+        open(&core, &target);
+
+        let profile = core
+            .get_notebook_capture_profile(target.notebook_id.clone())
+            .unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                target.notebook_id.clone(),
+                profile.revision,
+                None,
+                Box::new(NoopCaptureCallback),
+            )
+            .unwrap();
+        core.push_notebook_capture_session(started.session_id.clone(), vec![0_u8; 3_200])
+            .unwrap();
+        core.stop_notebook_capture_session(started.session_id.clone())
+            .unwrap();
+        let run = core
+            .notebook_capture_store
+            .get_run_for_session(&started.session_id)
+            .unwrap()
+            .unwrap();
+        core.notebook_capture_store
+            .authorize_async_transcription(&started.session_id, 1_700_000_000_000, Some("en"))
+            .unwrap();
+        let task_id = "editor-writable-provider-task";
+        core.notebook_capture_store
+            .reserve_async_task(&run.id, task_id, &"a".repeat(64))
+            .unwrap();
+        core.notebook_capture_store
+            .mark_async_task_enqueued(&run.id, task_id)
+            .unwrap();
+        core.notebook_capture_store
+            .mark_async_task_terminal_for_session(&started.session_id, task_id, true)
+            .unwrap();
+
+        core.notebook_capture_store
+            .set_async_projection_state(
+                &run.id,
+                AsyncProjectionState::Pending,
+                AsyncProjectionState::Projecting,
+            )
+            .unwrap();
+        assert!(!core
+            .is_editor_writable(target.notebook_id.clone(), target.tab_id.clone())
+            .unwrap());
+
+        core.notebook_capture_store
+            .set_async_projection_state(
+                &run.id,
+                AsyncProjectionState::Projecting,
+                AsyncProjectionState::Failed,
+            )
+            .unwrap();
+        assert!(!core
+            .is_editor_writable(target.notebook_id.clone(), target.tab_id.clone())
+            .unwrap());
+
+        core.notebook_capture_store
+            .retry_async_projection(&run.id)
+            .unwrap();
+        core.notebook_capture_store
+            .set_async_projection_state(
+                &run.id,
+                AsyncProjectionState::Pending,
+                AsyncProjectionState::Projecting,
+            )
+            .unwrap();
+        core.notebook_capture_store
+            .complete_async_projection_unless_purging(&run.id)
+            .unwrap();
+        assert!(core
+            .is_editor_writable(target.notebook_id, target.tab_id)
+            .unwrap());
+    }
+
     // ========== flush_all_editors_sync ==========
 
     #[test]
@@ -1633,6 +1723,52 @@ mod tests {
             "bold should be gone after unmark, got: {delta_after}"
         );
 
+        close(&core, &target);
+    }
+
+    #[test]
+    fn processed_transcript_metadata_marks_roundtrip() {
+        let tmp = TempDir::new().unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        let target = manual_target(&core, "Processed metadata");
+        open(&core, &target);
+        apply(
+            &core,
+            &target,
+            FfiEditOp::Insert {
+                pos: 0,
+                text: "Provider result".to_string(),
+            },
+        );
+
+        for (key, value_json) in [
+            ("end_ms", "2750"),
+            ("source_language", "\"en\""),
+            ("provider_speaker_label", "\"spk-2\""),
+        ] {
+            apply(
+                &core,
+                &target,
+                FfiEditOp::Mark {
+                    pos: 0,
+                    len: "Provider result".chars().count() as u64,
+                    key: key.to_string(),
+                    value_json: value_json.to_string(),
+                },
+            );
+        }
+
+        let delta_json = delta(&core, &target);
+        assert!(delta_json.contains("\"end_ms\":2750"), "{delta_json}");
+        assert!(
+            delta_json.contains("\"source_language\":\"en\""),
+            "{delta_json}"
+        );
+        assert!(
+            delta_json.contains("\"provider_speaker_label\":\"spk-2\""),
+            "{delta_json}"
+        );
+        assert!(!delta_json.contains("session_speaker_id"), "{delta_json}");
         close(&core, &target);
     }
 

@@ -571,27 +571,21 @@ impl ZuTalkCore {
             message: format!("main database schema: {e}"),
         })?;
 
-        // 内置 Notebook 随核心启动就位:「默认」让第一段录音不必先新建
-        // Notebook,「分享」是收到的共享内容唯一的落点(share-p2p.md §11)。
-        // 按标题幂等;Notebook 没有删除通路,查活着的列表就够了。
-        // 「分享」先建 —— 列表按时间倒序,后建的「默认」排在最前。
-        match notebook_store.list_notebooks() {
-            Ok(existing) => {
-                for title in [
-                    crate::share_api::SHARED_INBOX_NOTEBOOK_TITLE,
-                    crate::notebook_api::DEFAULT_NOTEBOOK_TITLE,
-                ] {
-                    if existing.iter().any(|n| n.title == title) {
-                        continue;
-                    }
-                    if let Err(e) = notebook_store.create_notebook(Some(title)) {
-                        tracing::warn!("startup builtin notebook \"{title}\" (non-fatal): {e}");
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::warn!("startup builtin notebooks skipped (non-fatal): {e}");
-            }
+        // 内置 Notebook 随核心启动就位。快速录音使用全新的保留内部身份，
+        // 绝不把旧版可见的「默认」Topic 隐藏起来：整本 Notes、Context Pack
+        // 等 Notebook 级资料未必能随 Session 搬迁，原位保留才不会造成数据
+        // 不可达。「分享」仍是收到的共享内容唯一落点(share-p2p.md §11)。
+        if let Err(error) = notebook_store.ensure_internal_notebook(
+            crate::share_api::SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE,
+            crate::share_api::SHARED_INBOX_NOTEBOOK_TITLE,
+        ) {
+            tracing::warn!("startup shared-inbox notebook (non-fatal): {error}");
+        }
+        if let Err(error) = notebook_store.ensure_internal_notebook(
+            crate::notebook_api::QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE,
+            "",
+        ) {
+            tracing::warn!("startup quick-capture notebook (non-fatal): {error}");
         }
 
         let session_store =
@@ -632,6 +626,25 @@ impl ZuTalkCore {
             .map_err(|e| CoreError::InitFailed {
                 message: format!("notebook capture recovery: {e}"),
             })?;
+        for (notebook_id, session_id) in notebook_capture_store
+            .list_runs_missing_notebook_membership()
+            .map_err(|error| CoreError::InitFailed {
+                message: format!("capture membership recovery scan: {error}"),
+            })?
+        {
+            notebook_store
+                .attach_session_with_builtin_projections(&notebook_id, &session_id)
+                .map_err(|error| CoreError::InitFailed {
+                    message: format!(
+                        "capture membership recovery for session {session_id}: {error}"
+                    ),
+                })?;
+            tracing::warn!(
+                session_id,
+                notebook_id,
+                "repaired missing capture membership"
+            );
+        }
         let task_db_path = path.join("tasks.db");
         let task_queue = runtime
             .block_on(TaskQueue::new(&task_db_path))
@@ -2105,6 +2118,73 @@ mod tests {
             .expect("failed start must release capture ownership");
         core.stop_notebook_capture_session(capture.session_id)
             .unwrap();
+    }
+
+    #[test]
+    fn startup_repairs_a_legacy_capture_run_missing_its_notebook_membership() {
+        let tmp = TempDir::new().unwrap();
+        let data_dir = tmp.path().to_string_lossy().to_string();
+        let (notebook_id, session_id) = {
+            let core = ZuTalkCore::new_for_test(data_dir.clone()).unwrap();
+            let notebook = core
+                .create_notebook(Some("Legacy membership".into()))
+                .unwrap();
+            let profile = core
+                .get_notebook_capture_profile(notebook.id.clone())
+                .unwrap();
+            let capture = core
+                .start_notebook_capture_session(
+                    notebook.id.clone(),
+                    profile.revision,
+                    None,
+                    Box::new(NoopNotebookCaptureCallback),
+                )
+                .unwrap();
+            core.stop_notebook_capture_session(capture.session_id.clone())
+                .unwrap();
+            core.shutdown().unwrap();
+            (notebook.id, capture.session_id)
+        };
+        let connection = rusqlite::Connection::open(tmp.path().join("zutalk.db")).unwrap();
+        connection
+            .execute(
+                "DELETE FROM notebook_session_projections WHERE session_id = ?1",
+                [&session_id],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "DELETE FROM notebook_sessions WHERE session_id = ?1",
+                [&session_id],
+            )
+            .unwrap();
+        drop(connection);
+
+        for _ in 0..2 {
+            let reopened = ZuTalkCore::new_for_test(data_dir.clone()).unwrap();
+            let links = reopened
+                .list_notebook_sessions(notebook_id.clone())
+                .unwrap();
+            assert_eq!(
+                links
+                    .iter()
+                    .filter(|link| link.session_id == session_id)
+                    .count(),
+                1
+            );
+            for tab in reopened.list_notebook_tabs(notebook_id.clone()).unwrap() {
+                assert_eq!(
+                    reopened
+                        .list_notebook_session_projections(tab.id)
+                        .unwrap()
+                        .iter()
+                        .filter(|projection| projection.session_id == session_id)
+                        .count(),
+                    1
+                );
+            }
+            reopened.shutdown().unwrap();
+        }
     }
 
     #[test]

@@ -180,6 +180,96 @@ impl NotebookStore {
         Ok(notebook)
     }
 
+    /// Returns a stable system-owned Notebook, migrating the oldest legacy
+    /// title match exactly once when necessary.
+    ///
+    /// A product role must not be rediscovered from a user-editable title on
+    /// every launch: users are allowed to create Topics with the same visible
+    /// name, and `updated_at` ordering would otherwise make ownership switch.
+    /// The reserved internal title is never presented by the FFI layer. The
+    /// legacy lookup exists only to retain the original built-in Notebook and
+    /// every Session already owned by it.
+    pub fn ensure_internal_notebook(
+        &self,
+        internal_title: &str,
+        legacy_title: &str,
+    ) -> Result<NotebookRecord, NotebookStoreError> {
+        let internal_title = internal_title.trim();
+        let legacy_title = legacy_title.trim();
+        if internal_title.is_empty() {
+            return Err(NotebookStoreError::Validation(
+                "internal notebook title cannot be empty".into(),
+            ));
+        }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        if let Some(existing) = tx
+            .query_row(
+                "SELECT id, title, created_at, updated_at, deleted_at
+                 FROM notebooks
+                 WHERE title = ?1 AND deleted_at IS NULL
+                 ORDER BY created_at ASC, id ASC
+                 LIMIT 1",
+                params![internal_title],
+                Self::row_to_notebook,
+            )
+            .optional()?
+        {
+            tx.commit()?;
+            return Ok(existing);
+        }
+
+        if !legacy_title.is_empty() {
+            if let Some(mut legacy) = tx
+                .query_row(
+                    "SELECT id, title, created_at, updated_at, deleted_at
+                     FROM notebooks
+                     WHERE title = ?1 AND deleted_at IS NULL
+                     ORDER BY created_at ASC, id ASC
+                     LIMIT 1",
+                    params![legacy_title],
+                    Self::row_to_notebook,
+                )
+                .optional()?
+            {
+                tx.execute(
+                    "UPDATE notebooks
+                     SET title = ?1, updated_at = ?2
+                     WHERE id = ?3 AND deleted_at IS NULL",
+                    params![internal_title, now, legacy.id],
+                )?;
+                legacy.title = internal_title.to_string();
+                legacy.updated_at = now;
+                tx.commit()?;
+                return Ok(legacy);
+            }
+        }
+
+        let notebook = NotebookRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: internal_title.to_string(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            deleted_at: None,
+        };
+        tx.execute(
+            "INSERT INTO notebooks (id, title, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?3)",
+            params![notebook.id, notebook.title, notebook.created_at],
+        )?;
+        for (position, builtin) in BuiltinNotebookTab::bootstrap_order()
+            .into_iter()
+            .enumerate()
+        {
+            self.insert_builtin_tab_tx(&tx, &notebook.id, builtin, position as i64, &now)?;
+        }
+        tx.commit()?;
+        Ok(notebook)
+    }
+
     pub fn get_notebook(
         &self,
         notebook_id: &str,
@@ -356,6 +446,43 @@ impl NotebookStore {
         self.touch_notebook_tx(&tx, notebook_id, &now)?;
         tx.commit()?;
         Ok(projection)
+    }
+
+    /// Resolves an already-declared projection intent without creating or
+    /// restoring any ownership rows. Local document repair must fail closed if
+    /// the Session link or builtin projection was removed by move/purge.
+    pub fn require_session_projection(
+        &self,
+        notebook_id: &str,
+        builtin_kind: BuiltinNotebookTab,
+        session_id: &str,
+    ) -> Result<NotebookSessionProjectionRecord, NotebookStoreError> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT p.id, p.notebook_id, p.tab_id, p.session_id,
+                    p.section_title, p.created_at, p.updated_at, p.deleted_at
+             FROM notebook_session_projections p
+             JOIN notebook_tabs t ON t.id = p.tab_id
+             JOIN notebook_sessions s
+               ON s.notebook_id = p.notebook_id
+              AND s.session_id = p.session_id
+             JOIN notebooks n ON n.id = p.notebook_id
+             WHERE p.notebook_id = ?1
+               AND p.session_id = ?2
+               AND t.builtin_kind = ?3
+               AND p.deleted_at IS NULL
+               AND t.deleted_at IS NULL
+               AND n.deleted_at IS NULL",
+            params![notebook_id, session_id, builtin_kind.as_str()],
+            Self::row_to_session_projection,
+        )
+        .optional()?
+        .ok_or_else(|| {
+            NotebookStoreError::NotFound(format!(
+                "{} projection for session {session_id} in notebook {notebook_id}",
+                builtin_kind.as_str()
+            ))
+        })
     }
 
     pub fn list_session_projections(
@@ -990,6 +1117,28 @@ mod tests {
     }
 
     #[test]
+    fn internal_notebook_is_idempotent_without_consuming_a_visible_legacy_topic() {
+        let temp = TempDir::new().unwrap();
+        let store = NotebookStore::new(&temp.path().join("notebook.db")).unwrap();
+        let visible = store.create_notebook(Some("默认")).unwrap();
+
+        let internal = store
+            .ensure_internal_notebook("__internal_quick__", "")
+            .unwrap();
+        let reopened = store
+            .ensure_internal_notebook("__internal_quick__", "")
+            .unwrap();
+
+        assert_ne!(visible.id, internal.id);
+        assert_eq!(internal.id, reopened.id);
+        assert_eq!(
+            store.get_notebook(&visible.id).unwrap().unwrap().title,
+            "默认"
+        );
+        assert_eq!(store.list_tabs(&internal.id).unwrap().len(), 3);
+    }
+
+    #[test]
     fn builtin_tab_resolution_is_scoped_to_its_notebook() {
         let temp = TempDir::new().unwrap();
         let store = NotebookStore::new(&temp.path().join("notebook.db")).unwrap();
@@ -1038,6 +1187,39 @@ mod tests {
         for tab in store.list_tabs(&notebook.id).unwrap() {
             assert!(store.list_session_projections(&tab.id).unwrap().is_empty());
         }
+    }
+
+    #[test]
+    fn requiring_a_projection_never_creates_session_ownership() {
+        let temp = TempDir::new().unwrap();
+        let store = NotebookStore::new(&temp.path().join("notebook.db")).unwrap();
+        let notebook = store.create_notebook(Some("Research")).unwrap();
+
+        assert!(matches!(
+            store.require_session_projection(
+                &notebook.id,
+                BuiltinNotebookTab::AsyncTranscript,
+                "missing-session",
+            ),
+            Err(NotebookStoreError::NotFound(_))
+        ));
+        assert_eq!(
+            store.get_linked_notebook_id("missing-session").unwrap(),
+            None
+        );
+
+        store
+            .attach_session_with_builtin_projections(&notebook.id, "filed-session")
+            .unwrap();
+        let projection = store
+            .require_session_projection(
+                &notebook.id,
+                BuiltinNotebookTab::AsyncTranscript,
+                "filed-session",
+            )
+            .unwrap();
+        assert_eq!(projection.session_id, "filed-session");
+        assert_eq!(projection.notebook_id, notebook.id);
     }
 
     /// Seeds a session that exists as a real catalogue row and capture run, so
