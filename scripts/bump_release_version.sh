@@ -88,7 +88,7 @@ cat > "$NOTES" <<EOF
 <!-- 一句话说清这一版对用户意味着什么,然后逐条列出他们看得见的变化。
      这份文件会被嵌进 appcast,用户在更新提示里读到的就是它。 -->
 
-ZuTalk requires macOS 15.5 or later.
+ZuTalk requires macOS 12.5 or later.
 EOF
 
 # Cargo.lock 跟着走,免得发布时才发现版本对不上。
