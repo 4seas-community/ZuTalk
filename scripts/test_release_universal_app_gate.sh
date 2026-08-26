@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 JUSTFILE="$ROOT_DIR/justfile"
 WORKFLOW="$ROOT_DIR/.github/workflows/macos-build.yaml"
+CARGO_CONFIG="$ROOT_DIR/.cargo/config.toml"
+ARCHIVE_TARGET_GATE="$ROOT_DIR/scripts/check_macos_archive_deployment_target.sh"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -21,6 +23,8 @@ recipe_body() {
 
 [[ -f "$WORKFLOW" ]] \
   || fail "GitHub macOS workflow must exist"
+[[ -x "$ARCHIVE_TARGET_GATE" ]] \
+  || fail "macOS archive deployment-target gate must exist and be executable"
 
 grep -Fq 'runs-on: macos-15' "$WORKFLOW" \
   || fail "GitHub macOS workflow must use the pinned macOS 15 runner"
@@ -48,10 +52,35 @@ grep -Eq 'DEVELOPMENT_TEAM=""' <<<"$universal_body" \
 
 grep -Eq '^macos_deployment_target[[:space:]]*:=[[:space:]]*"12\.5"' "$JUSTFILE" \
   || fail "Rust and Xcode release builds must share the macOS 12.5 deployment target"
-for recipe in _rust-build-release-arm64 _rust-build-release-x86_64; do
+grep -Eq '^MACOSX_DEPLOYMENT_TARGET[[:space:]]*=[[:space:]]*"12\.5"' "$CARGO_CONFIG" \
+  || fail "direct Cargo builds must default to the macOS 12.5 deployment target"
+grep -Fq 'macos_rust_target_dir := project_dir / "target" / ("macos-" + macos_deployment_target)' "$JUSTFILE" \
+  || fail "macOS Rust artifacts must be isolated by deployment target"
+for artifact_var in host_debug_ffi release_arm64_ffi release_x86_64_ffi release_universal_ffi; do
+  grep -Eq "^${artifact_var}[[:space:]]*:=[[:space:]]*macos_rust_target_dir[[:space:]]*/" "$JUSTFILE" \
+    || fail "$artifact_var must live under the deployment-target-specific Cargo directory"
+done
+for recipe in _rust-build-debug _rust-build-release-arm64 _rust-build-release-x86_64; do
   recipe_text="$(recipe_body "$recipe")"
+  grep -Fq 'CARGO_TARGET_DIR="{{ macos_rust_target_dir }}"' <<<"$recipe_text" \
+    || fail "$recipe must use the deployment-target-specific Cargo directory"
   grep -Fq 'MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }}' <<<"$recipe_text" \
     || fail "$recipe must pin the Rust deployment target"
+done
+
+lipo_body="$(recipe_body _lipo)"
+for artifact_var in release_arm64_ffi release_x86_64_ffi release_universal_ffi; do
+  grep -Fq "{{ ${artifact_var} }}" <<<"$lipo_body" \
+    || fail "_lipo must use $artifact_var"
+done
+grep -Fq 'scripts/check_macos_archive_deployment_target.sh' <<<"$lipo_body" \
+  || fail "_lipo must verify release archive deployment targets"
+for artifact_var in release_arm64_ffi release_x86_64_ffi; do
+  grep -Fq "{{ ${artifact_var} }}\" \"{{ macos_deployment_target }}" <<<"$lipo_body" \
+    || fail "_lipo must reject $artifact_var members built for a newer macOS"
+done
+for recipe in _rust-build-release-arm64 _rust-build-release-x86_64; do
+  recipe_text="$(recipe_body "$recipe")"
   grep -Fq -- '--remap-path-prefix={{ project_dir }}=.' <<<"$recipe_text" \
     || fail "$recipe must remove the local project path from release binaries"
   grep -Fq -- '--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=.cargo' <<<"$recipe_text" \
@@ -79,8 +108,13 @@ grep -Eq 'x86_64' <<<"$assert_body" \
 grep -Eq 'exit[[:space:]]+1' <<<"$assert_body" \
   || fail "assert-universal-app must fail when an architecture is missing"
 
+copy_debug_body="$(recipe_body _copy-artifacts)"
+grep -Fq '{{ host_debug_ffi }}' <<<"$copy_debug_body" \
+  || fail "debug artifact copy must stage the deployment-target-specific libvt_ffi.a"
+grep -Fq 'scripts/check_macos_archive_deployment_target.sh' <<<"$copy_debug_body" \
+  || fail "debug artifact copy must verify archive deployment targets"
 copy_release_body="$(recipe_body _copy-artifacts-release)"
-grep -Fq 'target/universal/release/libvt_ffi.a' <<<"$copy_release_body" \
+grep -Fq '{{ release_universal_ffi }}' <<<"$copy_release_body" \
   || fail "release artifact copy must stage the universal libvt_ffi.a"
 
 grep -Eq '^release-adhoc:.*release.*xcode-build-universal.*assert-universal-app.*assert-adhoc-app.*assert-sparkle-configured-app.*assert-public-app-privacy.*dmg' "$JUSTFILE" \

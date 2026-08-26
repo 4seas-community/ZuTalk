@@ -15,9 +15,12 @@ swift_derived_data := xcode_cache_dir / "DerivedData"
 xcode_cloned_source_packages := xcode_cache_dir / "SourcePackages"
 target_arm64    := "aarch64-apple-darwin"
 target_x86_64   := "x86_64-apple-darwin"
-host_debug_ffi  := project_dir / "target" / "debug" / "libvt_ffi.a"
-release_arm64_ffi := project_dir / "target" / target_arm64 / "release" / "libvt_ffi.a"
 macos_deployment_target := "12.5"
+macos_rust_target_dir := project_dir / "target" / ("macos-" + macos_deployment_target)
+host_debug_ffi  := macos_rust_target_dir / "debug" / "libvt_ffi.a"
+release_arm64_ffi := macos_rust_target_dir / target_arm64 / "release" / "libvt_ffi.a"
+release_x86_64_ffi := macos_rust_target_dir / target_x86_64 / "release" / "libvt_ffi.a"
+release_universal_ffi := macos_rust_target_dir / "universal" / "release" / "libvt_ffi.a"
 export SCCACHE_CACHE_SIZE := "5G"
 
 # 默认：列出所有命令
@@ -912,29 +915,36 @@ release-full: release xcode-build-universal-signed assert-universal-app assert-r
 # --- 内部 recipes ---
 
 _rust-build-debug:
-    MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }} \
+    CARGO_TARGET_DIR="{{ macos_rust_target_dir }}" \
+        MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }} \
         cargo build -p vt-ffi --lib
 
 _rust-build-release-arm64:
     RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix={{ project_dir }}=. --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=.cargo" \
+        CARGO_TARGET_DIR="{{ macos_rust_target_dir }}" \
         MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }} \
         cargo build -p vt-ffi --lib --release --target {{ target_arm64 }}
 
 _rust-build-release-x86_64:
     RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix={{ project_dir }}=. --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=.cargo" \
+        CARGO_TARGET_DIR="{{ macos_rust_target_dir }}" \
         MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }} \
         cargo build -p vt-ffi --lib --release --target {{ target_x86_64 }}
 
 _lipo:
     #!/usr/bin/env bash
     set -euo pipefail
-    OUT="target/universal/release/libvt_ffi.a"
+    bash "{{ project_dir }}/scripts/check_macos_archive_deployment_target.sh" \
+        "{{ release_arm64_ffi }}" "{{ macos_deployment_target }}"
+    bash "{{ project_dir }}/scripts/check_macos_archive_deployment_target.sh" \
+        "{{ release_x86_64_ffi }}" "{{ macos_deployment_target }}"
+    OUT="{{ release_universal_ffi }}"
     TMP="${OUT}.tmp.$$"
     mkdir -p "$(dirname "$OUT")"
     trap 'rm -f "$TMP"' EXIT
     lipo -create \
-        target/{{ target_arm64 }}/release/libvt_ffi.a \
-        target/{{ target_x86_64 }}/release/libvt_ffi.a \
+        "{{ release_arm64_ffi }}" \
+        "{{ release_x86_64_ffi }}" \
         -output "$TMP"
     lipo "$TMP" -verify_arch arm64 x86_64
     if [[ -f "$OUT" ]] && cmp -s "$TMP" "$OUT"; then
@@ -980,6 +990,8 @@ _uniffi-generate library:
 _copy-artifacts:
     #!/usr/bin/env bash
     set -euo pipefail
+    bash "{{ project_dir }}/scripts/check_macos_archive_deployment_target.sh" \
+        "{{ host_debug_ffi }}" "{{ macos_deployment_target }}"
     mkdir -p {{ bridge_dir }}
     TEMP_PATHS=()
     cleanup() {
@@ -1005,7 +1017,7 @@ _copy-artifacts:
         echo "  → $(basename "$destination") updated"
     }
 
-    replace_if_changed target/debug/libvt_ffi.a {{ bridge_dir }}/libvt_ffi.a
+    replace_if_changed {{ host_debug_ffi }} {{ bridge_dir }}/libvt_ffi.a
     replace_if_changed {{ uniffi_out }}/vt_ffi.swift {{ bridge_dir }}/vt_ffi.swift
     replace_if_changed {{ uniffi_out }}/vt_ffiFFI.h {{ bridge_dir }}/vt_ffiFFI.h
     replace_if_changed {{ uniffi_out }}/vt_ffiFFI.modulemap {{ bridge_dir }}/vt_ffiFFI.modulemap
@@ -1038,7 +1050,7 @@ _copy-artifacts-release:
         echo "  → $(basename "$destination") updated"
     }
 
-    replace_if_changed target/universal/release/libvt_ffi.a {{ bridge_dir }}/libvt_ffi.a
+    replace_if_changed {{ release_universal_ffi }} {{ bridge_dir }}/libvt_ffi.a
     replace_if_changed {{ uniffi_out }}/vt_ffi.swift {{ bridge_dir }}/vt_ffi.swift
     replace_if_changed {{ uniffi_out }}/vt_ffiFFI.h {{ bridge_dir }}/vt_ffiFFI.h
     replace_if_changed {{ uniffi_out }}/vt_ffiFFI.modulemap {{ bridge_dir }}/vt_ffiFFI.modulemap
