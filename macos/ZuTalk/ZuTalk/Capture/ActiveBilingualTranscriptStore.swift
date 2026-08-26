@@ -3775,6 +3775,11 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private var terminalTransitionDrainPending = false
     private var pendingTerminalTransitionEvent: NotebookCaptureEventDTO?
     private var audioDrainWatchdogTask: Task<Void, Never>?
+    /// Store-wide single flight. A view-local loading flag disappears when
+    /// navigation rebuilds Home, while microphone permission and device
+    /// preparation can still be suspended. Keeping the lease here prevents a
+    /// second Start from replacing the callback generation of the first.
+    private var captureStartInFlight = false
     private var lifecycleOperationCount = 0
     private var lifecycleOperationWaiters: [CheckedContinuation<Void, Never>] = []
 
@@ -4289,15 +4294,20 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     func start(notebookId: String) async throws {
+        guard captureStartInFlight == false,
+              isCaptureActive == false,
+              terminalTransitionLease == nil
+        else { throw NotebookCaptureClientError.captureAlreadyActive }
+        captureStartInFlight = true
         beginLifecycleOperation()
-        defer { endLifecycleOperation() }
+        defer {
+            captureStartInFlight = false
+            endLifecycleOperation()
+        }
         // The durable owner may still be completing an older run after Swift
         // has already removed its microphone. Reject before even reading the
         // next profile or preparing audio so a second capture cannot overlap
         // that terminal transition.
-        guard isCaptureActive == false,
-              terminalTransitionLease == nil
-        else { throw NotebookCaptureClientError.captureAlreadyActive }
         // Always resolve the current persisted profile. `profile` also carries
         // an immutable historical run snapshot while reopening transcripts and
         // must never be reused as configuration for a new capture.
@@ -4308,6 +4318,12 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             : nil
 
         try await audioSource.prepare()
+        // MainActor methods can interleave at the permission/device await.
+        // Re-prove the durable owner is still idle before allocating a callback
+        // generation or asking Rust to create a capture run.
+        guard isCaptureActive == false,
+              terminalTransitionLease == nil
+        else { throw NotebookCaptureClientError.captureAlreadyActive }
         callbackGeneration &+= 1
         let generation = callbackGeneration
         acceptedCallbackGeneration = generation
