@@ -21,6 +21,56 @@ struct NotebookCaptureStartCoordinator {
     }
 }
 
+/// Process-wide lease for the complete start workflow, including invite
+/// credential preparation before the capture store takes its microphone lease.
+@MainActor
+final class NotebookCaptureStartWorkflowGate {
+    struct Lease: Equatable {
+        fileprivate let id: UUID
+    }
+
+    static let shared = NotebookCaptureStartWorkflowGate()
+    private var activeLeaseID: UUID?
+
+    func acquire() -> Lease? {
+        guard activeLeaseID == nil else { return nil }
+        let lease = Lease(id: UUID())
+        activeLeaseID = lease.id
+        return lease
+    }
+
+    func release(_ lease: Lease) {
+        guard activeLeaseID == lease.id else { return }
+        activeLeaseID = nil
+    }
+}
+
+/// Orders the durable profile commit and any remote credential reservation for
+/// every capture entry point. The returned preparation must complete before
+/// the caller starts audio capture.
+@MainActor
+enum NotebookCaptureStartPreparationWorkflow {
+    static func prepare(
+        enableRealtimeIfNeeded: Bool,
+        prepareProfile: @MainActor (Bool) async throws -> NotebookCaptureProfileDTO,
+        prepareRealtimeCredential: @MainActor (Int) async throws -> CommunityInvitePreparation
+    ) async throws -> CommunityInvitePreparation {
+        let finalProfile = try await prepareProfile(enableRealtimeIfNeeded)
+        guard finalProfile.remoteRealtimeEnabled else { return .notUsed }
+
+        return try await prepareRealtimeCredential(
+            remoteLaneCount(selectedLanguages: finalProfile.selectedLanguages)
+        )
+    }
+
+    /// Mirrors the Rust core's `remote_stream_plan`: one or two languages run
+    /// on a single WebSocket, three or more open one canonical lane plus one
+    /// translation lane per language. Invite billing charges per lane.
+    static func remoteLaneCount(selectedLanguages: [String]) -> Int {
+        selectedLanguages.count <= 2 ? 1 : selectedLanguages.count + 1
+    }
+}
+
 enum NotebookCaptureSettingsPersistenceState: Equatable {
     case loading
     case saving
@@ -197,13 +247,35 @@ final class NotebookCaptureProfileEditorModel: ObservableObject {
     /// the explicit authorization for this recording's Soniox realtime lane.
     /// Persist that authorization before audio preparation so there is one
     /// user decision, one durable profile snapshot, and no pre-start egress.
-    func prepareForCaptureStart() async throws {
+    func prepareForCaptureStart(enableRealtimeIfNeeded: Bool = true) async throws {
+        await drainScheduledViewActionsBeforeCaptureStart()
+        if enableRealtimeIfNeeded, draft.remoteRealtimeEnabled == false {
+            update { $0.remoteRealtimeEnabled = true }
+        }
+        try validateCaptureStartIsReady()
+    }
+
+    /// Home's internal quick-capture profile follows the invitation that
+    /// authorizes that one-click entry. An earlier invited recording may have
+    /// persisted realtime=true; when the invitation is later disabled or
+    /// removed, commit realtime=false before starting so the hidden profile
+    /// cannot keep opening an unauthorized remote lane. Notebook profiles do
+    /// not use this entry point and retain their normal capture configuration.
+    func prepareForHomeQuickCaptureStart(inviteRealtimeAuthorized: Bool) async throws {
+        await drainScheduledViewActionsBeforeCaptureStart()
+        if draft.remoteRealtimeEnabled != inviteRealtimeAuthorized {
+            update { $0.remoteRealtimeEnabled = inviteRealtimeAuthorized }
+        }
+        try validateCaptureStartIsReady()
+    }
+
+    private func drainScheduledViewActionsBeforeCaptureStart() async {
         while let scheduledViewActionDrain {
             await scheduledViewActionDrain.value
         }
-        if draft.remoteRealtimeEnabled == false {
-            update { $0.remoteRealtimeEnabled = true }
-        }
+    }
+
+    private func validateCaptureStartIsReady() throws {
         if let reason = captureStartDisabledReason {
             throw NotebookCaptureProfileStartBlockedError(reason: reason)
         }
@@ -442,7 +514,9 @@ struct NotebookCaptureToolbar: View {
     /// on a single WebSocket, three or more open one canonical lane plus one
     /// translation lane per language. Invite billing charges per lane.
     static func remoteLaneCount(selectedLanguages: [String]) -> Int {
-        selectedLanguages.count <= 2 ? 1 : selectedLanguages.count + 1
+        NotebookCaptureStartPreparationWorkflow.remoteLaneCount(
+            selectedLanguages: selectedLanguages
+        )
     }
 
     /// 「加入房间中」:占据录音按钮的位置,点它去分享页(离开房间的出口
@@ -476,26 +550,35 @@ struct NotebookCaptureToolbar: View {
             guard isStarting == false,
                   profileEditor.captureStartDisabledReason == nil
             else { return }
+            guard let startLease = NotebookCaptureStartWorkflowGate.shared.acquire() else {
+                ToastCenter.shared.warning(String(localized: "capture.toast.start_failed"))
+                return
+            }
             isStarting = true
             Task { @MainActor in
-                defer { isStarting = false }
+                defer {
+                    NotebookCaptureStartWorkflowGate.shared.release(startLease)
+                    isStarting = false
+                }
                 do {
-                    // Local-only recordings open no Soniox lanes; reserving
-                    // invite time for them would silently burn shared quota.
-                    if profileEditor.draft.remoteRealtimeEnabled {
-                        let preparation = try await CommunityInviteSession.shared
-                            .prepareRealtimeCredential(
-                                laneCount: Self.remoteLaneCount(
-                                    selectedLanguages: profileEditor.draft.selectedLanguages
-                                )
+                    let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
+                        enableRealtimeIfNeeded: true,
+                        prepareProfile: { enableRealtimeIfNeeded in
+                            try await profileEditor.prepareForCaptureStart(
+                                enableRealtimeIfNeeded: enableRealtimeIfNeeded
                             )
-                        if preparation == .personalKeyFallback {
-                            ToastCenter.shared.info(
-                                String(localized: "community_invite.fallback_personal_key")
-                            )
+                            return profileEditor.draft
+                        },
+                        prepareRealtimeCredential: { laneCount in
+                            try await CommunityInviteSession.shared
+                                .prepareRealtimeCredential(laneCount: laneCount)
                         }
+                    )
+                    if preparation == .personalKeyFallback {
+                        ToastCenter.shared.info(
+                            String(localized: "community_invite.fallback_personal_key")
+                        )
                     }
-                    try await profileEditor.prepareForCaptureStart()
                     try await NotebookCaptureStartCoordinator(
                         capture: capture,
                         navigation: MainNavigationStore.shared
