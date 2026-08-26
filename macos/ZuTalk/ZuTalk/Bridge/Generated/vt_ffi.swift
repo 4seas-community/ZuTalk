@@ -801,6 +801,15 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func noteUndoState(docId: String) throws  -> FfiNoteUndoState
 
     /**
+     * 打开一份只属于单个 Session 的笔记块文档并返回稳定 doc_id。
+     *
+     * 与 Notebook 的 ManualNote tab 不同，这里没有第 1 纪元平文本迁移：
+     * Session 笔记是新增命名空间。打开与永久删除共用 ownership gate，
+     * purge tombstone 建立后就不能再创建或重新打开该文档。
+     */
+    func sessionNoteBlockDocumentOpen(sessionId: String) throws  -> String
+
+    /**
      * 当前句块序列(文档序)。
      */
     func transcriptBlocks(docId: String) throws  -> [FfiUtteranceBlock]
@@ -896,7 +905,25 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      */
     func unregisterEditorCallback(notebookId: String, tabId: String) throws
 
+    /**
+     * Files one legacy/unassigned Session into a Topic without pretending it
+     * is a move. The store creates the ownership link and all three builtin
+     * projections in one transaction and refuses an existing owner.
+     *
+     * Active and trashed Sessions are deliberately excluded: capture routing
+     * owns the former, while restore/purge owns the latter.
+     */
+    func assignOrphanSessionToNotebook(sessionId: String, notebookId: String) throws  -> FfiSessionFilingResult
+
     func createNotebook(title: String?) throws  -> FfiNotebook
+
+    /**
+     * Returns the durable technical owner used by Home's one-click capture.
+     * Product UI presents Sessions in this Notebook as unfiled; the hidden
+     * owner keeps capture profiles, encrypted audio, and crash recovery on the
+     * same proven Notebook pipeline until the user files a Session elsewhere.
+     */
+    func getQuickCaptureNotebook() throws  -> FfiNotebook
 
     func importAudioIntoNotebook(path: String, notebookId: String) throws  -> ImportResultInfo
 
@@ -941,6 +968,18 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      * session ownership, or the session timestamp.
      */
     func renameNotebookManualNote(notebookId: String, sessionId: String, title: String?) throws  -> FfiNotebookSessionProjection
+
+    /**
+     * Repairs the split-store async transcript projection after a Session has
+     * already been filed. Returns false when the Session has no persisted
+     * async transcript tokens, which is a valid audio-only state.
+     *
+     * Existing current, edited, unknown, or malformed sections are untouched.
+     * Only canonical older output (including legacy output missing derived
+     * technical marks) is eligible for migration, making this safe to run on
+     * every Resources refresh.
+     */
+    func repairSessionTranscriptProjection(sessionId: String) throws  -> Bool
 
     func copyNotebookPrivateContextToLibrary(notebookId: String, title: String) throws  -> FfiContextPackInfo
 
@@ -1126,12 +1165,16 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      */
     func exportSessionZip(sessionId: String, outputPath: String, options: ExportZipOptions) throws  -> ExportZipOutcome
 
+    func getSessionTranscriptAvailability(sessionId: String) throws  -> SessionTranscriptAvailabilityInfo
+
     /**
-     * Format one durable capture session for the local macOS clipboard.
+     * Format one durable Session transcript for the local macOS clipboard.
      *
-     * Rust owns transcript selection, speaker-name precedence, and language
-     * ordering. The Swift boundary only publishes this returned string to the
-     * system pasteboard after an explicit user action.
+     * Realtime utterances remain authoritative when they exist. Imported and
+     * post-stop-only Sessions fall back to persisted async tokens, matching
+     * ZIP export's fact-source selection. Rust owns that choice, speaker-name
+     * precedence, and language ordering; Swift only publishes the result after
+     * an explicit user action.
      */
     func getSessionTranscriptClipboardText(sessionId: String) throws  -> String
 
@@ -1808,6 +1851,22 @@ open func noteUndoState(docId: String)throws  -> FfiNoteUndoState  {
 }
 
     /**
+     * 打开一份只属于单个 Session 的笔记块文档并返回稳定 doc_id。
+     *
+     * 与 Notebook 的 ManualNote tab 不同，这里没有第 1 纪元平文本迁移：
+     * Session 笔记是新增命名空间。打开与永久删除共用 ownership gate，
+     * purge tombstone 建立后就不能再创建或重新打开该文档。
+     */
+open func sessionNoteBlockDocumentOpen(sessionId: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_session_note_block_document_open(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
      * 当前句块序列(文档序)。
      */
 open func transcriptBlocks(docId: String)throws  -> [FfiUtteranceBlock]  {
@@ -2010,11 +2069,43 @@ open func unregisterEditorCallback(notebookId: String, tabId: String)throws   {t
 }
 }
 
+    /**
+     * Files one legacy/unassigned Session into a Topic without pretending it
+     * is a move. The store creates the ownership link and all three builtin
+     * projections in one transaction and refuses an existing owner.
+     *
+     * Active and trashed Sessions are deliberately excluded: capture routing
+     * owns the former, while restore/purge owns the latter.
+     */
+open func assignOrphanSessionToNotebook(sessionId: String, notebookId: String)throws  -> FfiSessionFilingResult  {
+    return try  FfiConverterTypeFfiSessionFilingResult_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_assign_orphan_session_to_notebook(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterString.lower(notebookId),$0
+    )
+})
+}
+
 open func createNotebook(title: String?)throws  -> FfiNotebook  {
     return try  FfiConverterTypeFfiNotebook_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zutalkcore_create_notebook(
             self.uniffiCloneHandle(),
         FfiConverterOptionString.lower(title),$0
+    )
+})
+}
+
+    /**
+     * Returns the durable technical owner used by Home's one-click capture.
+     * Product UI presents Sessions in this Notebook as unfiled; the hidden
+     * owner keeps capture profiles, encrypted audio, and crash recovery on the
+     * same proven Notebook pipeline until the user files a Session elsewhere.
+     */
+open func getQuickCaptureNotebook()throws  -> FfiNotebook  {
+    return try  FfiConverterTypeFfiNotebook_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_get_quick_capture_notebook(
+            self.uniffiCloneHandle(),$0
     )
 })
 }
@@ -2110,6 +2201,25 @@ open func renameNotebookManualNote(notebookId: String, sessionId: String, title:
         FfiConverterString.lower(notebookId),
         FfiConverterString.lower(sessionId),
         FfiConverterOptionString.lower(title),$0
+    )
+})
+}
+
+    /**
+     * Repairs the split-store async transcript projection after a Session has
+     * already been filed. Returns false when the Session has no persisted
+     * async transcript tokens, which is a valid audio-only state.
+     *
+     * Existing current, edited, unknown, or malformed sections are untouched.
+     * Only canonical older output (including legacy output missing derived
+     * technical marks) is eligible for migration, making this safe to run on
+     * every Resources refresh.
+     */
+open func repairSessionTranscriptProjection(sessionId: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_repair_session_transcript_projection(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
     )
 })
 }
@@ -2602,12 +2712,23 @@ open func exportSessionZip(sessionId: String, outputPath: String, options: Expor
 })
 }
 
+open func getSessionTranscriptAvailability(sessionId: String)throws  -> SessionTranscriptAvailabilityInfo  {
+    return try  FfiConverterTypeSessionTranscriptAvailabilityInfo_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_get_session_transcript_availability(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
     /**
-     * Format one durable capture session for the local macOS clipboard.
+     * Format one durable Session transcript for the local macOS clipboard.
      *
-     * Rust owns transcript selection, speaker-name precedence, and language
-     * ordering. The Swift boundary only publishes this returned string to the
-     * system pasteboard after an explicit user action.
+     * Realtime utterances remain authoritative when they exist. Imported and
+     * post-stop-only Sessions fall back to persisted async tokens, matching
+     * ZIP export's fact-source selection. Rust owns that choice, speaker-name
+     * precedence, and language ordering; Swift only publishes the result after
+     * an explicit user action.
      */
 open func getSessionTranscriptClipboardText(sessionId: String)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
@@ -4444,8 +4565,12 @@ public func FfiConverterTypeFfiNotebookCaptureEvent_lower(_ value: FfiNotebookCa
 /**
  * One immutable recording block in a Notebook's chronological transcript.
  *
- * The record intentionally exposes only `has_audio`; encrypted paths, journal
- * paths, key references, and task receipts never cross the FFI boundary.
+ * Audio is represented only by `has_audio`; encrypted paths, journal paths,
+ * key references, and task receipts never cross the FFI boundary. The capture
+ * run schema does not persist an audio-input device identity, so history must
+ * leave that setting unknown instead of borrowing the Mac's current device.
+ * Context application receipts remain active-event evidence and are not
+ * synthesized for historical runs.
  */
 public struct FfiNotebookCaptureHistoryRun: Equatable, Hashable {
     public var runId: String
@@ -4470,6 +4595,13 @@ public struct FfiNotebookCaptureHistoryRun: Equatable, Hashable {
     public var rightLanguage: String?
     public var selectedLanguages: [String]
     public var commonCaptionLanguage: String?
+    /**
+     * Immutable remote-processing switches from this run's profile snapshot.
+     * `None` means the snapshot is corrupt; callers must not substitute the
+     * Notebook's current defaults for historical truth.
+     */
+    public var remoteRealtimeEnabled: Bool?
+    public var sendContextToSoniox: Bool?
     public var privacyLevel: String?
     public var postStopAsyncState: String
     public var postStopAsyncProjectionState: FfiNotebookAsyncProjectionState
@@ -4491,7 +4623,12 @@ public struct FfiNotebookCaptureHistoryRun: Equatable, Hashable {
         /**
          * Highest session Final watermark whose receipt-bearing Loro snapshot is
          * durably fsynced and acknowledged.
-         */realtimeLoroAppliedRevision: UInt64, mode: FfiNotebookCaptureMode?, languageA: String?, languageB: String?, leftLanguage: String?, rightLanguage: String?, selectedLanguages: [String], commonCaptionLanguage: String?, privacyLevel: String?, postStopAsyncState: String, postStopAsyncProjectionState: FfiNotebookAsyncProjectionState, realtimeProviderId: String?, realtimeModelId: String?, postStopProviderId: String?, postStopModelId: String?, providerErrorType: String?, providerRequestId: String?, sampleRate: UInt32?, channels: UInt16?, capturedFrames: UInt64, hasAudio: Bool, utterances: [FfiNotebookCaptureUtterance]) {
+         */realtimeLoroAppliedRevision: UInt64, mode: FfiNotebookCaptureMode?, languageA: String?, languageB: String?, leftLanguage: String?, rightLanguage: String?, selectedLanguages: [String], commonCaptionLanguage: String?,
+        /**
+         * Immutable remote-processing switches from this run's profile snapshot.
+         * `None` means the snapshot is corrupt; callers must not substitute the
+         * Notebook's current defaults for historical truth.
+         */remoteRealtimeEnabled: Bool?, sendContextToSoniox: Bool?, privacyLevel: String?, postStopAsyncState: String, postStopAsyncProjectionState: FfiNotebookAsyncProjectionState, realtimeProviderId: String?, realtimeModelId: String?, postStopProviderId: String?, postStopModelId: String?, providerErrorType: String?, providerRequestId: String?, sampleRate: UInt32?, channels: UInt16?, capturedFrames: UInt64, hasAudio: Bool, utterances: [FfiNotebookCaptureUtterance]) {
         self.runId = runId
         self.notebookId = notebookId
         self.sessionId = sessionId
@@ -4510,6 +4647,8 @@ public struct FfiNotebookCaptureHistoryRun: Equatable, Hashable {
         self.rightLanguage = rightLanguage
         self.selectedLanguages = selectedLanguages
         self.commonCaptionLanguage = commonCaptionLanguage
+        self.remoteRealtimeEnabled = remoteRealtimeEnabled
+        self.sendContextToSoniox = sendContextToSoniox
         self.privacyLevel = privacyLevel
         self.postStopAsyncState = postStopAsyncState
         self.postStopAsyncProjectionState = postStopAsyncProjectionState
@@ -4560,6 +4699,8 @@ public struct FfiConverterTypeFfiNotebookCaptureHistoryRun: FfiConverterRustBuff
                 rightLanguage: FfiConverterOptionString.read(from: &buf),
                 selectedLanguages: FfiConverterSequenceString.read(from: &buf),
                 commonCaptionLanguage: FfiConverterOptionString.read(from: &buf),
+                remoteRealtimeEnabled: FfiConverterOptionBool.read(from: &buf),
+                sendContextToSoniox: FfiConverterOptionBool.read(from: &buf),
                 privacyLevel: FfiConverterOptionString.read(from: &buf),
                 postStopAsyncState: FfiConverterString.read(from: &buf),
                 postStopAsyncProjectionState: FfiConverterTypeFfiNotebookAsyncProjectionState.read(from: &buf),
@@ -4596,6 +4737,8 @@ public struct FfiConverterTypeFfiNotebookCaptureHistoryRun: FfiConverterRustBuff
         FfiConverterOptionString.write(value.rightLanguage, into: &buf)
         FfiConverterSequenceString.write(value.selectedLanguages, into: &buf)
         FfiConverterOptionString.write(value.commonCaptionLanguage, into: &buf)
+        FfiConverterOptionBool.write(value.remoteRealtimeEnabled, into: &buf)
+        FfiConverterOptionBool.write(value.sendContextToSoniox, into: &buf)
         FfiConverterOptionString.write(value.privacyLevel, into: &buf)
         FfiConverterString.write(value.postStopAsyncState, into: &buf)
         FfiConverterTypeFfiNotebookAsyncProjectionState.write(value.postStopAsyncProjectionState, into: &buf)
@@ -5790,6 +5933,63 @@ public func FfiConverterTypeFfiRoomMember_lower(_ value: FfiRoomMember) -> RustB
 }
 
 
+/**
+ * Result of filing a previously unassigned Session into a research Topic.
+ *
+ * Ownership is the primary transaction. Transcript materialization happens
+ * after that commit because the Loro document is a separate durable store.
+ * A deferred projection therefore never means the filing itself failed.
+ */
+public struct FfiSessionFilingResult: Equatable, Hashable {
+    public var transcriptProjectionDeferred: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(transcriptProjectionDeferred: Bool) {
+        self.transcriptProjectionDeferred = transcriptProjectionDeferred
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSessionFilingResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSessionFilingResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSessionFilingResult {
+        return
+            try FfiSessionFilingResult(
+                transcriptProjectionDeferred: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiSessionFilingResult, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.transcriptProjectionDeferred, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSessionFilingResult_lift(_ buf: RustBuffer) throws -> FfiSessionFilingResult {
+    return try FfiConverterTypeFfiSessionFilingResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSessionFilingResult_lower(_ value: FfiSessionFilingResult) -> RustBuffer {
+    return FfiConverterTypeFfiSessionFilingResult.lower(value)
+}
+
+
 public struct FfiSessionSpeaker: Equatable, Hashable {
     public var id: String
     public var sessionId: String
@@ -6830,6 +7030,69 @@ public func FfiConverterTypeSessionQueryResultInfo_lift(_ buf: RustBuffer) throw
 #endif
 public func FfiConverterTypeSessionQueryResultInfo_lower(_ value: SessionQueryResultInfo) -> RustBuffer {
     return FfiConverterTypeSessionQueryResultInfo.lower(value)
+}
+
+
+/**
+ * Content availability for one Session's two transcript fact sources.
+ * Projection rows are intentionally excluded: every attached Session owns
+ * those rows even when no transcript content was ever produced.
+ */
+public struct SessionTranscriptAvailabilityInfo: Equatable, Hashable {
+    public var hasRealtimeRun: Bool
+    public var hasRealtimeContent: Bool
+    public var hasAsyncContent: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(hasRealtimeRun: Bool, hasRealtimeContent: Bool, hasAsyncContent: Bool) {
+        self.hasRealtimeRun = hasRealtimeRun
+        self.hasRealtimeContent = hasRealtimeContent
+        self.hasAsyncContent = hasAsyncContent
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SessionTranscriptAvailabilityInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSessionTranscriptAvailabilityInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SessionTranscriptAvailabilityInfo {
+        return
+            try SessionTranscriptAvailabilityInfo(
+                hasRealtimeRun: FfiConverterBool.read(from: &buf),
+                hasRealtimeContent: FfiConverterBool.read(from: &buf),
+                hasAsyncContent: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SessionTranscriptAvailabilityInfo, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.hasRealtimeRun, into: &buf)
+        FfiConverterBool.write(value.hasRealtimeContent, into: &buf)
+        FfiConverterBool.write(value.hasAsyncContent, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSessionTranscriptAvailabilityInfo_lift(_ buf: RustBuffer) throws -> SessionTranscriptAvailabilityInfo {
+    return try FfiConverterTypeSessionTranscriptAvailabilityInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSessionTranscriptAvailabilityInfo_lower(_ value: SessionTranscriptAvailabilityInfo) -> RustBuffer {
+    return FfiConverterTypeSessionTranscriptAvailabilityInfo.lower(value)
 }
 
 
@@ -8774,6 +9037,30 @@ fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionBool: FfiConverterRustBuffer {
+    typealias SwiftType = Bool?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterBool.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterBool.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
     typealias SwiftType = String?
 
@@ -9765,6 +10052,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_note_undo_state() != 46186) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_session_note_block_document_open() != 34538) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_transcript_blocks() != 14764) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9807,7 +10097,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_unregister_editor_callback() != 10320) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_assign_orphan_session_to_notebook() != 57331) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_create_notebook() != 60493) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_get_quick_capture_notebook() != 33216) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_import_audio_into_notebook() != 17995) {
@@ -9829,6 +10125,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_rename_notebook_manual_note() != 21086) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_repair_session_transcript_projection() != 11301) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_copy_notebook_private_context_to_library() != 58149) {
@@ -9951,7 +10250,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_export_session_zip() != 39759) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_get_session_transcript_clipboard_text() != 13456) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_get_session_transcript_availability() != 57811) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_get_session_transcript_clipboard_text() != 62083) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_approve_join_request() != 24230) {
