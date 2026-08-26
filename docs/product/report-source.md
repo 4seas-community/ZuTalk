@@ -372,7 +372,7 @@ Notebook
 | Topic 多选研究集合 | 可复制按时间排序、带 `session_id` 的本地转录包；实时内容不存在时回退到处理后转录；单条为空不阻塞其他条目 | 是确定性导出，不是联合 AI 分析；资料包会列出被略过的来源 ID |
 | Audio 入口 | Session Settings 中按真实可用性打开 ExportSheet，不再假装播放器 | 播放器仍需音频格式/seek 状态契约 |
 | 并发与崩溃一致性 | 已实现跨视图录音启动 single-flight；新 Session/run/owner/三个 projections 原子提交；启动幂等修旧 membership 缺口 | 本轮验证本地状态机与存储边界，不声称已完成 provider 端到端验收 |
-| 自动化与本机门禁 | 标准 Swift 全量测试通过；`vt-store` 与 `vt-ffi` 全量/集成测试通过；8 语言键值保持同批更新；macOS 12.5 deployment target 的无 Git archive App 构建与 release 静态门禁通过 | 本地链接仍提示当前调试 `libvt_ffi.a` 由 15.5 构建，正式兼容产物必须用 12.5 target 重建并在 Monterey 真机验收；测试也不等同于真实 provider、麦克风和超长录音压测 |
+| 自动化与本机门禁 | 标准 Swift 全量测试通过；`vt-store` 与 `vt-ffi` 全量/集成测试通过；8 语言键值保持同批更新；Rust FFI 按 macOS 12.5 隔离缓存，静态库成员门禁、host App 与 arm64/x86_64 Universal App 构建均通过 | 仍需在 Monterey 真机完成启动、录音和转写验收；自动化测试也不等同于真实 provider、麦克风和超长录音压测 |
 | Evidence/Tag/Insight/截图锚定 | 未实现 | 当前无稳定的一等数据模型，禁止 UI 假装完成 |
 
 ## 8. 限制与待验证问题
