@@ -236,6 +236,11 @@ final class CommunityInviteSession: ObservableObject {
             body: [
                 "requested_seconds": requestedSeconds,
                 "lane_count": laneCount,
+                // New services return the opening single-use lane keys with
+                // the reservation. Old services ignore this field and return
+                // their legacy shared key, which is deliberately not used;
+                // the missing `keys` array triggers the /key fallback below.
+                "initial_key_mode": "single_use_batch",
             ],
             token: token
         )
@@ -249,7 +254,10 @@ final class CommunityInviteSession: ObservableObject {
         )
         laneCredentialProvider = provider
         CoreClient.shared.core?.setLaneCredentialRequester(requester: provider)
-        await provider.prime(laneCount: laneCount)
+        await provider.prepareInitialKeys(
+            response.initialKeys?.map(\.apiKey) ?? [],
+            laneCount: laneCount
+        )
         remainingSeconds = max(0, (remainingSeconds ?? 0) - response.reservedSeconds)
         return response.sessionID
     }
@@ -499,14 +507,26 @@ private struct QuotaResponse: Decodable {
     }
 }
 
-private struct RealtimeSessionResponse: Decodable {
+struct RealtimeSessionResponse: Decodable {
     let sessionID: String
     let reservedSeconds: Int
-    let apiKey: String
+    // Present on old services. It is a reusable shared key, so the new
+    // single-use lane provider must never put it into its opening-key pool.
+    let legacyAPIKey: String?
+    let initialKeys: [RealtimeLaneKey]?
 
     enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
         case reservedSeconds = "reserved_seconds"
+        case legacyAPIKey = "api_key"
+        case initialKeys = "keys"
+    }
+}
+
+struct RealtimeLaneKey: Decodable {
+    let apiKey: String
+
+    enum CodingKeys: String, CodingKey {
         case apiKey = "api_key"
     }
 }
@@ -514,15 +534,7 @@ private struct RealtimeSessionResponse: Decodable {
 /// One batch of single-use lane keys. The service also mirrors a single key
 /// into flat fields for the legacy path; only the array is read here.
 private struct LaneKeyResponse: Decodable {
-    struct Key: Decodable {
-        let apiKey: String
-
-        enum CodingKeys: String, CodingKey {
-            case apiKey = "api_key"
-        }
-    }
-
-    let keys: [Key]
+    let keys: [RealtimeLaneKey]
 }
 
 private enum CommunityInviteError: Error, LocalizedError {
@@ -533,7 +545,9 @@ private enum CommunityInviteError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .requestFailed, .secureStorageFailed:
+        case .requestFailed:
+            return String(localized: "community_invite.unavailable")
+        case .secureStorageFailed:
             return nil
         case .personalKeyRequired:
             return String(localized: "community_invite.async.needs_personal_key")

@@ -33,11 +33,23 @@ final class CommunityInviteLaneCredentialProvider: FfiLaneCredentialRequester, @
         self.deliver = deliver
     }
 
-    /// Fetches the opening batch. A failure here is not fatal: every lane can
-    /// still fetch its own key, it just pays a round trip first.
-    func prime(laneCount: Int) async {
-        guard let keys = try? await fetch(sessionID, accessToken, max(1, laneCount)) else { return }
+    /// Seeds keys returned with a new reservation, fetching only the missing
+    /// opening lanes when talking to an older service (which returns no batch)
+    /// or to a service that returned a partial batch. A failure here is not
+    /// fatal: every lane can still fetch its own key on demand.
+    func prepareInitialKeys(_ initialKeys: [String], laneCount: Int) async {
+        deposit(initialKeys)
+        let missingCount = max(0, max(1, laneCount) - pooledKeyCount)
+        guard missingCount > 0,
+              let keys = try? await fetch(sessionID, accessToken, missingCount)
+        else { return }
         deposit(keys)
+    }
+
+    /// Compatibility entry point for callers that do not receive keys with
+    /// the reservation response.
+    func prime(laneCount: Int) async {
+        await prepareInitialKeys([], laneCount: laneCount)
     }
 
     private func deposit(_ keys: [String]) {

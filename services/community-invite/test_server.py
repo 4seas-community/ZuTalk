@@ -1,10 +1,16 @@
+import io
+import json
 import os
 import pathlib
 import tempfile
 import threading
+import time
 import unittest
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 import server
 from server import (
@@ -359,6 +365,621 @@ class StoreTests(unittest.TestCase):
         reopened = self.store.open_session(invite["id"], session["session_id"])
         self.assertEqual(reopened["lane_count"], 4)
         self.assertEqual(stream_duration_seconds(reopened), 4_500)
+
+
+class TemporaryKeyResponseTests(unittest.TestCase):
+    def create_key_with_response(self, body: bytes):
+        with mock.patch.object(
+            server.urllib.request, "urlopen", return_value=io.BytesIO(body)
+        ):
+            return server.create_soniox_temporary_key(
+                "test-master-key", "session-1", 60, single_use=True
+            )
+
+    def test_valid_object_with_nonempty_api_key_is_accepted(self):
+        with mock.patch.object(
+            server.urllib.request,
+            "urlopen",
+            return_value=io.BytesIO(
+                b'{"api_key":"temporary-test-key","expires_at":"future"}'
+            ),
+        ) as open_request:
+            result = server.create_soniox_temporary_key(
+                "test-master-key", "session-1", 60, single_use=True
+            )
+        self.assertEqual(result["api_key"], "temporary-test-key")
+        self.assertEqual(
+            open_request.call_args.kwargs["timeout"],
+            server.SONIOX_KEY_CREATE_TIMEOUT_SECONDS,
+        )
+        self.assertLessEqual(
+            server.SONIOX_KEY_MINT_ADMISSION_TIMEOUT_SECONDS
+            + server.SONIOX_KEY_CREATE_TIMEOUT_SECONDS,
+            10,
+            "service-side admission + socket timeout must fit the 12s reconnect request",
+        )
+
+    def test_malformed_or_missing_api_key_responses_are_rejected(self):
+        for body in (
+            b"not-json",
+            b"[]",
+            b"{}",
+            b'{"api_key":""}',
+            b'{"api_key":"   "}',
+            b'{"api_key":123}',
+        ):
+            with self.subTest(body=body):
+                with self.assertRaisesRegex(
+                    ValueError, "invalid temporary key response"
+                ):
+                    self.create_key_with_response(body)
+
+
+class SonioxKeyMintBatchTests(unittest.TestCase):
+    def test_batch_admission_claims_all_permits_or_none(self):
+        admission = server.SonioxKeyMintAdmission(MAX_LANES_PER_SESSION)
+
+        self.assertTrue(admission.acquire(3, 0))
+        self.assertEqual(admission.available, 1)
+        self.assertFalse(
+            admission.acquire(2, 0),
+            "a batch must not retain a partial permit while waiting",
+        )
+        self.assertEqual(admission.available, 1)
+        self.assertTrue(admission.acquire(1, 0))
+        self.assertEqual(admission.available, 0)
+
+        admission.release(1)
+        admission.release(3)
+        self.assertEqual(admission.available, MAX_LANES_PER_SESSION)
+
+    def test_mints_overlap_and_results_keep_submission_order(self):
+        barrier = threading.Barrier(3)
+        lock = threading.Lock()
+        active = 0
+        maximum_active = 0
+
+        def mint(index):
+            nonlocal active, maximum_active
+            with lock:
+                active += 1
+                maximum_active = max(maximum_active, active)
+            barrier.wait(timeout=1)
+            # Finish in reverse order; the response must still follow the
+            # submission indexes rather than completion timing.
+            time.sleep((2 - index) * 0.01)
+            with lock:
+                active -= 1
+            return {"api_key": f"key-{index}"}
+
+        keys = server._run_soniox_key_mint_batch(3, mint)
+
+        self.assertEqual(maximum_active, 3, "lane mints must actually overlap")
+        self.assertEqual(
+            [key["api_key"] for key in keys],
+            ["key-0", "key-1", "key-2"],
+        )
+        self.assertEqual(
+            server.SONIOX_KEY_MINT_MAX_CONCURRENCY,
+            MAX_LANES_PER_SESSION,
+        )
+
+    def test_process_wide_mint_concurrency_never_exceeds_max_lanes(self):
+        wave = threading.Barrier(MAX_LANES_PER_SESSION)
+        lock = threading.Lock()
+        active = 0
+        maximum_active = 0
+
+        def mint(index):
+            nonlocal active, maximum_active
+            with lock:
+                active += 1
+                maximum_active = max(maximum_active, active)
+            wave.wait(timeout=1)
+            time.sleep(0.01)
+            with lock:
+                active -= 1
+            return {"api_key": f"key-{index}"}
+
+        keys = server._run_soniox_key_mint_batch(
+            MAX_LANES_PER_SESSION * 2, mint
+        )
+
+        self.assertEqual(len(keys), MAX_LANES_PER_SESSION * 2)
+        self.assertEqual(maximum_active, MAX_LANES_PER_SESSION)
+
+
+class RealtimeSessionInitialKeyModeTests(unittest.TestCase):
+    """The reservation endpoint negotiates the new key shape explicitly.
+
+    This keeps all four upgrade combinations working: new clients get their
+    opening single-use batch from a new server, while a request without the
+    opt-in field still receives the shared flat key expected by old clients.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "invites.db")
+        code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
+        self.access_token = self.store.redeem(code)["access_token"]
+        self.saved_master_key = os.environ.get("SONIOX_API_KEY")
+        os.environ["SONIOX_API_KEY"] = "test-master-key"
+
+        self.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        self.httpd.store = self.store
+        self.httpd.admin_sessions = {}
+        self.httpd.admin_login_failures = {}
+        self.httpd.daemon_threads = True
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.thread.join(timeout=2)
+        if self.saved_master_key is None:
+            os.environ.pop("SONIOX_API_KEY", None)
+        else:
+            os.environ["SONIOX_API_KEY"] = self.saved_master_key
+        self.tmp.cleanup()
+
+    def post(self, path, body):
+        host, port = self.httpd.server_address
+        request = urllib.request.Request(
+            f"http://{host}:{port}{path}",
+            data=json.dumps(body).encode(),
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status, json.load(response)
+
+    def post_session(self, body):
+        return self.post("/v1/realtime-session", body)
+
+    def test_opt_in_returns_single_use_opening_batch_without_legacy_mint(self):
+        def temporary_key(
+            _master_key,
+            _session_id,
+            _duration_seconds,
+            *,
+            single_use=False,
+            expires_in_seconds=3_600,
+        ):
+            self.assertTrue(single_use)
+            self.assertEqual(expires_in_seconds, server.SINGLE_USE_KEY_EXPIRES_SECONDS)
+            return {"api_key": f"lane-key-{mint.call_count}"}
+
+        with mock.patch.object(
+            server, "create_soniox_temporary_key", side_effect=temporary_key
+        ) as mint:
+            status, payload = self.post_session(
+                {
+                    "requested_seconds": 3_600,
+                    "lane_count": 3,
+                    "initial_key_mode": server.INITIAL_KEY_MODE_SINGLE_USE_BATCH,
+                }
+            )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["initial_key_mode"], "single_use_batch")
+        self.assertEqual(len(payload["keys"]), 3)
+        self.assertEqual(payload["keys_issued"], 3)
+        self.assertNotIn(
+            "api_key", payload, "the unused legacy shared key must not be minted"
+        )
+        self.assertEqual(
+            mint.call_count, 3, "only the three opening lane keys are minted"
+        )
+        invite = self.store.invite_for_token(self.access_token)
+        self.assertEqual(
+            self.store.session_key_headroom(invite["id"], payload["session_id"]),
+            session_key_budget(3) - 3,
+        )
+
+    def test_request_without_opt_in_keeps_the_legacy_flat_key_contract(self):
+        with mock.patch.object(
+            server,
+            "create_soniox_temporary_key",
+            return_value={"api_key": "legacy-shared-key"},
+        ) as mint:
+            status, payload = self.post_session(
+                {"requested_seconds": 3_600, "lane_count": 3}
+            )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["api_key"], "legacy-shared-key")
+        self.assertNotIn("keys", payload)
+        self.assertEqual(mint.call_count, 1)
+        self.assertNotIn("single_use", mint.call_args.kwargs)
+
+    def test_full_batch_makes_second_start_fail_fast_without_database_claims(self):
+        self.assertLessEqual(
+            server.SONIOX_KEY_MINT_ADMISSION_TIMEOUT_SECONDS,
+            2,
+            "production admission must fail well before the 20s client timeout",
+        )
+        all_mints_started = threading.Event()
+        release_mints = threading.Event()
+        calls_lock = threading.Lock()
+        calls = 0
+        first_result = []
+        first_errors = []
+
+        def temporary_key(*_args, **_kwargs):
+            nonlocal calls
+            with calls_lock:
+                index = calls
+                calls += 1
+                if calls == MAX_LANES_PER_SESSION:
+                    all_mints_started.set()
+            if not release_mints.wait(timeout=3):
+                raise TimeoutError("test did not release occupied mint permits")
+            return {"api_key": f"first-batch-key-{index}"}
+
+        def start_first_batch():
+            try:
+                first_result.append(
+                    self.post_session(
+                        {
+                            "requested_seconds": 3_600,
+                            "lane_count": MAX_LANES_PER_SESSION,
+                            "initial_key_mode": (
+                                server.INITIAL_KEY_MODE_SINGLE_USE_BATCH
+                            ),
+                        }
+                    )
+                )
+            except BaseException as error:
+                first_errors.append(error)
+
+        with mock.patch.object(
+            server, "create_soniox_temporary_key", side_effect=temporary_key
+        ), mock.patch.object(
+            server, "SONIOX_KEY_MINT_ADMISSION_TIMEOUT_SECONDS", 0.05
+        ):
+            first_thread = threading.Thread(target=start_first_batch)
+            first_thread.start()
+            try:
+                self.assertTrue(
+                    all_mints_started.wait(timeout=1),
+                    "the first request must occupy all four mint permits",
+                )
+                db = self.store.connect()
+                try:
+                    before = tuple(
+                        db.execute(
+                            "SELECT "
+                            "(SELECT COUNT(*) FROM sessions), "
+                            "(SELECT COUNT(*) FROM session_keys)"
+                        ).fetchone()
+                    )
+                finally:
+                    db.close()
+                self.assertEqual(before, (1, MAX_LANES_PER_SESSION))
+
+                started_at = time.monotonic()
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    self.post_session(
+                        {
+                            "requested_seconds": 3_600,
+                            "lane_count": MAX_LANES_PER_SESSION,
+                            "initial_key_mode": (
+                                server.INITIAL_KEY_MODE_SINGLE_USE_BATCH
+                            ),
+                        }
+                    )
+                elapsed = time.monotonic() - started_at
+                response_error = raised.exception
+                try:
+                    self.assertEqual(response_error.code, 503)
+                    self.assertEqual(
+                        json.load(response_error), {"error": "key_mint_busy"}
+                    )
+                finally:
+                    response_error.close()
+                self.assertLess(
+                    elapsed,
+                    1,
+                    "busy admission must beat the 20s client timeout",
+                )
+
+                db = self.store.connect()
+                try:
+                    after = tuple(
+                        db.execute(
+                            "SELECT "
+                            "(SELECT COUNT(*) FROM sessions), "
+                            "(SELECT COUNT(*) FROM session_keys)"
+                        ).fetchone()
+                    )
+                finally:
+                    db.close()
+                self.assertEqual(
+                    after,
+                    before,
+                    (
+                        "a rejected start must create neither a reservation "
+                        "nor key claims"
+                    ),
+                )
+            finally:
+                release_mints.set()
+                first_thread.join(timeout=2)
+
+        self.assertFalse(first_thread.is_alive())
+        self.assertEqual(first_errors, [])
+        self.assertEqual(first_result[0][0], 200)
+
+    def test_busy_legacy_start_does_not_create_a_reservation_or_key_claim(self):
+        with server.soniox_key_mint_admission(
+            MAX_LANES_PER_SESSION, timeout_seconds=0
+        ) as occupied:
+            self.assertTrue(occupied)
+            with mock.patch.object(
+                server, "SONIOX_KEY_MINT_ADMISSION_TIMEOUT_SECONDS", 0.01
+            ), mock.patch.object(server, "create_soniox_temporary_key") as mint:
+                with self.assertRaises(urllib.error.HTTPError) as raised:
+                    self.post_session(
+                        {"requested_seconds": 3_600, "lane_count": 1}
+                    )
+
+        response_error = raised.exception
+        try:
+            self.assertEqual(response_error.code, 503)
+            self.assertEqual(
+                json.load(response_error), {"error": "key_mint_busy"}
+            )
+        finally:
+            response_error.close()
+        mint.assert_not_called()
+        db = self.store.connect()
+        try:
+            counts = tuple(
+                db.execute(
+                    "SELECT "
+                    "(SELECT COUNT(*) FROM sessions), "
+                    "(SELECT COUNT(*) FROM session_keys)"
+                ).fetchone()
+            )
+        finally:
+            db.close()
+        self.assertEqual(counts, (0, 0))
+
+    def test_busy_key_and_renew_requests_do_not_burn_key_budget(self):
+        invite = self.store.invite_for_token(self.access_token)
+        session = self.store.reserve_session(invite["id"], 3_600, 3)
+        initial_headroom = self.store.session_key_headroom(
+            invite["id"], session["session_id"]
+        )
+
+        with server.soniox_key_mint_admission(
+            MAX_LANES_PER_SESSION, timeout_seconds=0
+        ) as occupied:
+            self.assertTrue(occupied)
+            with mock.patch.object(
+                server, "SONIOX_KEY_MINT_ADMISSION_TIMEOUT_SECONDS", 0.01
+            ), mock.patch.object(server, "create_soniox_temporary_key") as mint:
+                for path, body in (
+                    (
+                        "/v1/realtime-session/key",
+                        {"session_id": session["session_id"], "count": 3},
+                    ),
+                    (
+                        "/v1/realtime-session/renew-key",
+                        {"session_id": session["session_id"]},
+                    ),
+                ):
+                    with self.subTest(path=path):
+                        with self.assertRaises(urllib.error.HTTPError) as raised:
+                            self.post(path, body)
+                        response_error = raised.exception
+                        try:
+                            self.assertEqual(response_error.code, 503)
+                            self.assertEqual(
+                                json.load(response_error),
+                                {"error": "key_mint_busy"},
+                            )
+                        finally:
+                            response_error.close()
+
+        mint.assert_not_called()
+        self.assertEqual(
+            self.store.session_key_headroom(invite["id"], session["session_id"]),
+            initial_headroom,
+        )
+        self.assertIsNotNone(
+            self.store.open_session(invite["id"], session["session_id"])
+        )
+
+    def test_legacy_bad_response_releases_key_claim_and_reservation(self):
+        with mock.patch.object(
+            server,
+            "create_soniox_temporary_key",
+            side_effect=ValueError("invalid temporary key response"),
+        ):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                self.post_session({"requested_seconds": 3_600, "lane_count": 1})
+
+        response_error = raised.exception
+        try:
+            self.assertEqual(response_error.code, 502)
+            self.assertEqual(
+                json.load(response_error), {"error": "upstream_unavailable"}
+            )
+        finally:
+            response_error.close()
+        invite = self.store.invite_for_token(self.access_token)
+        self.assertEqual(invite["reserved_seconds"], 0)
+        db = self.store.connect()
+        try:
+            session = db.execute(
+                "SELECT settled_seconds FROM sessions"
+            ).fetchone()
+            key_count = db.execute(
+                "SELECT COUNT(*) AS n FROM session_keys"
+            ).fetchone()["n"]
+        finally:
+            db.close()
+        self.assertEqual(session["settled_seconds"], 0)
+        self.assertEqual(key_count, 0)
+
+    def test_key_endpoint_bad_response_releases_claim_but_keeps_session(self):
+        invite = self.store.invite_for_token(self.access_token)
+        session = self.store.reserve_session(invite["id"], 3_600, 3)
+        initial_headroom = self.store.session_key_headroom(
+            invite["id"], session["session_id"]
+        )
+        with mock.patch.object(
+            server,
+            "create_soniox_temporary_key",
+            side_effect=ValueError("invalid temporary key response"),
+        ):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                self.post(
+                    "/v1/realtime-session/key",
+                    {"session_id": session["session_id"], "count": 3},
+                )
+
+        response_error = raised.exception
+        try:
+            self.assertEqual(response_error.code, 502)
+            self.assertEqual(
+                json.load(response_error), {"error": "upstream_unavailable"}
+            )
+        finally:
+            response_error.close()
+        self.assertEqual(
+            self.store.session_key_headroom(invite["id"], session["session_id"]),
+            initial_headroom,
+        )
+        self.assertIsNotNone(
+            self.store.open_session(invite["id"], session["session_id"]),
+            "a reconnect-key outage must not settle an active recording",
+        )
+
+    def test_key_batch_and_legacy_renewal_response_shapes_stay_unchanged(self):
+        invite = self.store.invite_for_token(self.access_token)
+        session = self.store.reserve_session(invite["id"], 3_600, 3)
+        with mock.patch.object(
+            server,
+            "create_soniox_temporary_key",
+            side_effect=[
+                {"api_key": "lane-0"},
+                {"api_key": "lane-1"},
+                {"api_key": "lane-2"},
+            ],
+        ) as batch_mint:
+            status, payload = self.post(
+                "/v1/realtime-session/key",
+                {"session_id": session["session_id"], "count": 3},
+            )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["session_id"], session["session_id"])
+        self.assertEqual(payload["keys_issued"], 3)
+        self.assertEqual(len(payload["keys"]), 3)
+        self.assertNotIn("api_key", payload)
+        self.assertEqual(batch_mint.call_count, 3)
+        self.assertTrue(
+            all(call.kwargs["single_use"] for call in batch_mint.call_args_list)
+        )
+
+        with mock.patch.object(
+            server,
+            "create_soniox_temporary_key",
+            return_value={"api_key": "renewed-shared-key"},
+        ) as renew_mint:
+            status, renewed = self.post(
+                "/v1/realtime-session/renew-key",
+                {"session_id": session["session_id"]},
+            )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(renewed["api_key"], "renewed-shared-key")
+        self.assertEqual(renewed["keys"], [{"api_key": "renewed-shared-key"}])
+        self.assertEqual(renewed["keys_issued"], 4)
+        self.assertEqual(renew_mint.call_count, 1)
+        self.assertFalse(renew_mint.call_args.kwargs["single_use"])
+
+    def test_mid_batch_bad_response_waits_then_rolls_back_and_releases(self):
+        calls = 0
+        calls_lock = threading.Lock()
+        all_started = threading.Barrier(3)
+        slow_sibling_finished = threading.Event()
+        claim_was_visible_until_siblings_finished = threading.Event()
+
+        def temporary_key(*_args, **_kwargs):
+            nonlocal calls
+            with calls_lock:
+                index = calls
+                calls += 1
+            # This barrier both proves the endpoint is using concurrent mints
+            # and makes the failure happen while another task is still alive.
+            all_started.wait(timeout=1)
+            if index == 1:
+                raise ValueError("invalid temporary key response")
+            if index == 2:
+                time.sleep(0.05)
+                db = self.store.connect()
+                try:
+                    claimed = db.execute(
+                        "SELECT COUNT(*) AS n FROM session_keys"
+                    ).fetchone()["n"]
+                finally:
+                    db.close()
+                if claimed == 3:
+                    claim_was_visible_until_siblings_finished.set()
+                slow_sibling_finished.set()
+            return {"api_key": f"never-delivered-key-{index}"}
+
+        with mock.patch.object(
+            server, "create_soniox_temporary_key", side_effect=temporary_key
+        ):
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                self.post_session(
+                    {
+                        "requested_seconds": 3_600,
+                        "lane_count": 3,
+                        "initial_key_mode": server.INITIAL_KEY_MODE_SINGLE_USE_BATCH,
+                    }
+                )
+
+        response_error = raised.exception
+        try:
+            self.assertEqual(response_error.code, 502)
+            self.assertEqual(
+                json.load(response_error), {"error": "upstream_unavailable"}
+            )
+        finally:
+            response_error.close()
+        self.assertEqual(calls, 3)
+        self.assertTrue(
+            slow_sibling_finished.is_set(),
+            "the handler must join every mint before returning 502",
+        )
+        self.assertTrue(
+            claim_was_visible_until_siblings_finished.is_set(),
+            "rollback must happen after the last sibling settles",
+        )
+        db = self.store.connect()
+        try:
+            session = db.execute(
+                "SELECT id, settled_seconds FROM sessions"
+            ).fetchone()
+            key_count = db.execute(
+                "SELECT COUNT(*) AS n FROM session_keys WHERE session_id = ?",
+                (session["id"],),
+            ).fetchone()["n"]
+        finally:
+            db.close()
+        self.assertEqual(key_count, 0, "the full batch budget claim must be returned")
+        self.assertEqual(session["settled_seconds"], 0)
+        invite = self.store.invite_for_token(self.access_token)
+        self.assertEqual(invite["reserved_seconds"], 0)
 
 
 class UsageReconciliationTests(unittest.TestCase):

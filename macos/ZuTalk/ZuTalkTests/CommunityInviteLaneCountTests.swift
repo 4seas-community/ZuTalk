@@ -53,6 +53,41 @@ final class CommunityInviteLaneCountTests: XCTestCase {
     }
 }
 
+@MainActor
+final class CommunityInviteRealtimeSessionResponseTests: XCTestCase {
+    func testLegacyReservationResponseDecodesWithoutInitialKeys() throws {
+        let data = Data(
+            #"{"session_id":"session-1","reserved_seconds":3600,"api_key":"legacy-key"}"#.utf8
+        )
+
+        let response = try JSONDecoder().decode(
+            RealtimeSessionResponse.self,
+            from: data
+        )
+
+        XCTAssertEqual(response.sessionID, "session-1")
+        XCTAssertEqual(response.reservedSeconds, 3_600)
+        XCTAssertEqual(response.legacyAPIKey, "legacy-key")
+        XCTAssertNil(response.initialKeys)
+    }
+
+    func testBatchReservationResponseDecodesWithoutLegacyKey() throws {
+        let data = Data(
+            #"{"session_id":"session-2","reserved_seconds":7200,"keys":[{"api_key":"lane-0"},{"api_key":"lane-1"}]}"#.utf8
+        )
+
+        let response = try JSONDecoder().decode(
+            RealtimeSessionResponse.self,
+            from: data
+        )
+
+        XCTAssertEqual(response.sessionID, "session-2")
+        XCTAssertEqual(response.reservedSeconds, 7_200)
+        XCTAssertNil(response.legacyAPIKey)
+        XCTAssertEqual(response.initialKeys?.map(\.apiKey), ["lane-0", "lane-1"])
+    }
+}
+
 /// The invite access token lives in an app-private file, not the Keychain:
 /// releases are ad-hoc signed, so a Keychain item would demand the login
 /// keychain password after every update.
@@ -147,6 +182,65 @@ final class CommunityInviteLaneCredentialTests: XCTestCase {
         XCTAssertEqual(answers.key(for: "r3"), "batch-key-2")
     }
 
+    func testReservationBatchAvoidsTheLegacyPrimeRequest() async {
+        let fetchCount = LockedCounter()
+        let answers = LockedAnswers()
+        let subject = provider(
+            fetch: { _, _, _ in
+                fetchCount.increment()
+                return ["unexpected-fallback-key"]
+            },
+            deliver: { requestID, result in answers.record(requestID, result) }
+        )
+
+        await subject.prepareInitialKeys(
+            ["reservation-key-0", "reservation-key-1", "reservation-key-2"],
+            laneCount: 3
+        )
+        XCTAssertEqual(fetchCount.value, 0)
+        XCTAssertEqual(subject.pooledKeyCount, 3)
+
+        subject.onLaneCredentialRequested(requestId: "r1")
+        subject.onLaneCredentialRequested(requestId: "r2")
+        subject.onLaneCredentialRequested(requestId: "r3")
+        XCTAssertEqual(fetchCount.value, 0)
+        XCTAssertEqual(answers.key(for: "r1"), "reservation-key-0")
+        XCTAssertEqual(answers.key(for: "r2"), "reservation-key-1")
+        XCTAssertEqual(answers.key(for: "r3"), "reservation-key-2")
+    }
+
+    func testMissingReservationBatchFallsBackToOneLegacyPrimeRequest() async {
+        let fetchCount = LockedCounter()
+        let subject = provider(
+            fetch: { _, _, count in
+                fetchCount.increment()
+                XCTAssertEqual(count, 3)
+                return (0..<count).map { "fallback-key-\($0)" }
+            },
+            deliver: { _, _ in }
+        )
+
+        // An old service ignores initial_key_mode and returns no keys array.
+        await subject.prepareInitialKeys([], laneCount: 3)
+        XCTAssertEqual(fetchCount.value, 1)
+        XCTAssertEqual(subject.pooledKeyCount, 3)
+    }
+
+    func testPartialReservationBatchFetchesOnlyTheMissingKeys() async {
+        let requestedCounts = LockedValues<Int>()
+        let subject = provider(
+            fetch: { _, _, count in
+                requestedCounts.append(count)
+                return (0..<count).map { "fallback-key-\($0)" }
+            },
+            deliver: { _, _ in }
+        )
+
+        await subject.prepareInitialKeys(["reservation-key"], laneCount: 3)
+        XCTAssertEqual(requestedCounts.values, [2])
+        XCTAssertEqual(subject.pooledKeyCount, 3)
+    }
+
     func testAReconnectFetchesItsOwnKeyOnceThePoolIsEmpty() async throws {
         let fetchCount = LockedCounter()
         let answers = LockedAnswers()
@@ -224,6 +318,23 @@ private final class LockedCounter: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return count
+    }
+}
+
+private final class LockedValues<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Value] = []
+
+    func append(_ value: Value) {
+        lock.lock()
+        storage.append(value)
+        lock.unlock()
+    }
+
+    var values: [Value] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
     }
 }
 

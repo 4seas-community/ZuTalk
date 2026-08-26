@@ -10,6 +10,7 @@ The public contract is deliberately about time, not money:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import hmac
 import html
@@ -18,9 +19,13 @@ import os
 import secrets
 import sqlite3
 import sys
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -95,6 +100,79 @@ MAX_KEYS_PER_REQUEST = MAX_LANES_PER_SESSION
 # need to stay redeemable for a moment. A short expiry keeps a leaked but
 # unused key nearly worthless.
 SINGLE_USE_KEY_EXPIRES_SECONDS = 300
+# Opt-in contract for clients that can consume one single-use key per opening
+# lane from the reservation response itself. Old clients omit this field and
+# keep receiving the legacy shared key; old servers ignore the new request
+# field, which lets new clients detect the missing `keys` array and fall back
+# to /v1/realtime-session/key.
+INITIAL_KEY_MODE_SINGLE_USE_BATCH = "single_use_batch"
+# Temporary keys are independent REST resources, so lanes in one opening
+# batch can be minted together. Keep one process-wide executor, rather than a
+# pool per HTTP handler, so simultaneous reservations can never multiply the
+# upstream burst beyond the same four-lane ceiling.
+SONIOX_KEY_MINT_MAX_CONCURRENCY = MAX_LANES_PER_SESSION
+SONIOX_KEY_MINT_ADMISSION_TIMEOUT_SECONDS = 2.0
+# The reconnect client gives this service 12 seconds total. Leave room for
+# admission, JSON handling, and the response instead of letting one upstream
+# socket consume the service's old 15-second timeout by itself.
+SONIOX_KEY_CREATE_TIMEOUT_SECONDS = 8
+_SONIOX_KEY_MINT_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=SONIOX_KEY_MINT_MAX_CONCURRENCY,
+    thread_name_prefix="soniox-key-mint",
+)
+
+
+class SonioxKeyMintAdmission:
+    """Atomically leases capacity for a whole key batch.
+
+    A semaphore acquired once per key can partially occupy the pool while a
+    batch waits for its remaining lanes, deadlocking two starts against each
+    other. The condition claims the requested count all at once or not at all.
+    """
+
+    def __init__(self, capacity: int):
+        self.capacity = capacity
+        self.available = capacity
+        self.condition = threading.Condition()
+
+    def acquire(self, count: int, timeout_seconds: float) -> bool:
+        if count < 1 or count > self.capacity:
+            return False
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        with self.condition:
+            while self.available < count:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self.condition.wait(timeout=remaining)
+            self.available -= count
+            return True
+
+    def release(self, count: int) -> None:
+        with self.condition:
+            if self.available + count > self.capacity:
+                raise RuntimeError("Soniox key-mint admission released twice")
+            self.available += count
+            self.condition.notify_all()
+
+
+_SONIOX_KEY_MINT_ADMISSION = SonioxKeyMintAdmission(
+    SONIOX_KEY_MINT_MAX_CONCURRENCY
+)
+
+
+@contextmanager
+def soniox_key_mint_admission(
+    count: int, *, timeout_seconds: float
+):
+    admitted = _SONIOX_KEY_MINT_ADMISSION.acquire(count, timeout_seconds)
+    try:
+        yield admitted
+    finally:
+        if admitted:
+            _SONIOX_KEY_MINT_ADMISSION.release(count)
+
+
 # Soniox realtime list price per lane-hour; used only for the admin page's
 # local cost estimate. Ground truth is GET /v1/usage-logs.
 REALTIME_USD_PER_LANE_HOUR = 0.12
@@ -887,8 +965,67 @@ def create_soniox_temporary_key(
             "Content-Type": "application/json",
         },
     )
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return json.load(response)
+    with urllib.request.urlopen(
+        request, timeout=SONIOX_KEY_CREATE_TIMEOUT_SECONDS
+    ) as response:
+        try:
+            temporary = json.load(response)
+        except (json.JSONDecodeError, UnicodeDecodeError) as error:
+            # Do not include the upstream body: a malformed response may still
+            # contain credential material that must never reach logs/UI.
+            raise ValueError("invalid temporary key response") from error
+    if not isinstance(temporary, dict):
+        raise ValueError("invalid temporary key response")
+    api_key = temporary.get("api_key")
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise ValueError("invalid temporary key response")
+    return temporary
+
+
+def _run_soniox_key_mint_batch(
+    count: int, mint_key: Callable[[int], dict]
+) -> list[dict]:
+    """Runs independent mints concurrently and returns submission order.
+
+    Admission is deliberately owned by the HTTP workflow: production callers
+    hold one whole-batch lease across the database claim and this runner, so
+    this helper must not acquire permits a second time.
+
+    `wait` is deliberate: if one future fails, every sibling has already
+    settled before `result` re-raises. Callers can therefore roll back the
+    entire database claim without a late successful mint still in flight.
+    """
+    if count < 1:
+        return []
+    futures = [
+        _SONIOX_KEY_MINT_EXECUTOR.submit(mint_key, index)
+        for index in range(count)
+    ]
+    concurrent.futures.wait(
+        futures, return_when=concurrent.futures.ALL_COMPLETED
+    )
+    return [future.result() for future in futures]
+
+
+def create_soniox_temporary_key_batch(
+    master_key: str,
+    session_id: str,
+    duration_seconds: int,
+    count: int,
+    *,
+    single_use: bool,
+    expires_in_seconds: int,
+) -> list[dict]:
+    return _run_soniox_key_mint_batch(
+        count,
+        lambda _index: create_soniox_temporary_key(
+            master_key,
+            session_id,
+            duration_seconds,
+            single_use=single_use,
+            expires_in_seconds=expires_in_seconds,
+        ),
+    )
 
 
 ADMIN_STYLE = """
@@ -1422,30 +1559,94 @@ class Handler(BaseHTTPRequestHandler):
             if self.store.open_lane_total() + lanes > GLOBAL_CONCURRENT_LANE_CEILING:
                 self.send_json(503, {"error": "capacity_reached"})
                 return
-            session = self.store.reserve_session(invite["id"], requested, lanes)
-            if session is None:
-                self.send_json(409, {"error": "quota_exhausted"})
-                return
             master_key = os.environ.get("SONIOX_API_KEY", "")
             if not master_key:
-                self.store.settle_session(invite["id"], session["session_id"], 0)
                 self.send_json(503, {"error": "service_not_configured"})
                 return
-            # The initial shared key draws from the same budget as renewals
-            # and per-connection keys; a fresh session can never be over it.
-            self.store.issue_session_key(invite["id"], session["session_id"])
-            try:
-                temporary = create_soniox_temporary_key(
-                    master_key,
-                    session["session_id"],
-                    stream_duration_seconds(session),
+            initial_batch = (
+                body.get("initial_key_mode")
+                == INITIAL_KEY_MODE_SINGLE_USE_BATCH
+            )
+            mint_count = lanes if initial_batch else 1
+            # Lease the entire opening batch before creating a reservation.
+            # This keeps executor work bounded and, when Soniox is already
+            # saturated, leaves no session or key claim for a timed-out client
+            # to discover later. Legacy shared-key starts also consume one
+            # permit because they compete for the same upstream capacity.
+            with soniox_key_mint_admission(
+                mint_count,
+                timeout_seconds=SONIOX_KEY_MINT_ADMISSION_TIMEOUT_SECONDS,
+            ) as admitted:
+                if not admitted:
+                    self.send_json(503, {"error": "key_mint_busy"})
+                    return
+                session = self.store.reserve_session(
+                    invite["id"], requested, lanes
                 )
-            except (urllib.error.URLError, TimeoutError):
-                self.store.settle_session(invite["id"], session["session_id"], 0)
-                self.send_json(502, {"error": "upstream_unavailable"})
+                if session is None:
+                    self.send_json(409, {"error": "quota_exhausted"})
+                    return
+                if initial_batch:
+                    # New clients open each lane with a distinct single-use key.
+                    # Mint that complete opening batch as part of the reservation
+                    # response so there is no unused legacy shared-key mint and no
+                    # second client/server round trip to prime the lanes.
+                    issued = self.store.reserve_session_keys(
+                        invite["id"], session["session_id"], lanes
+                    )
+                    if issued is None:
+                        self.store.settle_session(
+                            invite["id"], session["session_id"], 0
+                        )
+                        self.send_json(429, {"error": "key_budget_exhausted"})
+                        return
+                    try:
+                        keys = create_soniox_temporary_key_batch(
+                            master_key,
+                            session["session_id"],
+                            stream_duration_seconds(session),
+                            lanes,
+                            single_use=True,
+                            expires_in_seconds=SINGLE_USE_KEY_EXPIRES_SECONDS,
+                        )
+                    except (urllib.error.URLError, TimeoutError, ValueError):
+                        # The batch runner waits for every sibling before raising.
+                        # No key reached the client, so the whole database claim
+                        # and reservation can now be released without a late mint.
+                        self.store.release_session_keys(
+                            session["session_id"], lanes
+                        )
+                        self.store.settle_session(
+                            invite["id"], session["session_id"], 0
+                        )
+                        self.send_json(502, {"error": "upstream_unavailable"})
+                        return
+                    self.send_json(
+                        200,
+                        {
+                            **session,
+                            "initial_key_mode": INITIAL_KEY_MODE_SINGLE_USE_BATCH,
+                            "keys_issued": issued,
+                            "keys": keys,
+                        },
+                    )
+                    return
+                # The initial shared key draws from the same budget as renewals
+                # and per-connection keys; a fresh session can never be over it.
+                self.store.issue_session_key(invite["id"], session["session_id"])
+                try:
+                    temporary = create_soniox_temporary_key(
+                        master_key,
+                        session["session_id"],
+                        stream_duration_seconds(session),
+                    )
+                except (urllib.error.URLError, TimeoutError, ValueError):
+                    self.store.release_session_keys(session["session_id"], 1)
+                    self.store.settle_session(invite["id"], session["session_id"], 0)
+                    self.send_json(502, {"error": "upstream_unavailable"})
+                    return
+                self.send_json(200, {**session, **temporary})
                 return
-            self.send_json(200, {**session, **temporary})
-            return
 
         if self.path == "/v1/realtime-session/renew-key":
             # Soniox temporary keys expire after at most one hour, which is
@@ -1498,43 +1699,52 @@ class Handler(BaseHTTPRequestHandler):
         count = 1
         if single_use:
             count = max(1, min(int(body.get("count", 1)), MAX_KEYS_PER_REQUEST))
-        # Claim the whole batch before minting anything. Checking headroom
-        # and counting afterwards lets two concurrent requests both pass the
-        # check and hand out keys the budget never covered.
-        issued = self.store.reserve_session_keys(invite["id"], session["id"], count)
-        if issued is None:
-            self.send_json(429, {"error": "key_budget_exhausted"})
-            return
-        keys: list[dict] = []
-        for _ in range(count):
+        # Lease before claiming key budget. Busy upstream capacity is
+        # transient, so it must not consume the finite reconnect allowance.
+        with soniox_key_mint_admission(
+            count,
+            timeout_seconds=SONIOX_KEY_MINT_ADMISSION_TIMEOUT_SECONDS,
+        ) as admitted:
+            if not admitted:
+                self.send_json(503, {"error": "key_mint_busy"})
+                return
+            # Claim the whole batch before minting anything. Checking headroom
+            # and counting afterwards lets two concurrent requests both pass the
+            # check and hand out keys the budget never covered.
+            issued = self.store.reserve_session_keys(
+                invite["id"], session["id"], count
+            )
+            if issued is None:
+                self.send_json(429, {"error": "key_budget_exhausted"})
+                return
             try:
-                temporary = create_soniox_temporary_key(
+                keys = create_soniox_temporary_key_batch(
                     master_key,
                     session["id"],
                     stream_duration_seconds(session),
+                    count,
                     single_use=single_use,
                     expires_in_seconds=(
                         SINGLE_USE_KEY_EXPIRES_SECONDS if single_use else 3_600
                     ),
                 )
-            except (urllib.error.URLError, TimeoutError):
-                # The client sees no keys at all, so nothing minted in this
-                # batch can ever be redeemed. Give the whole claim back
-                # instead of burning budget on dead credentials.
+            except (urllib.error.URLError, TimeoutError, ValueError):
+                # The batch runner has joined every mint. Nothing reached the
+                # client, so the complete budget claim is safe to give back while
+                # leaving this already-open reservation available for a retry.
                 self.store.release_session_keys(session["id"], count)
                 self.send_json(502, {"error": "upstream_unavailable"})
                 return
-            keys.append(temporary)
-        response = {
-            "session_id": session["id"],
-            "reserved_seconds": session["reserved_seconds"],
-            "keys_issued": issued,
-            "keys": keys,
-        }
-        if count == 1:
-            # Single-key callers (the renew path today) read flat fields.
-            response.update(keys[0])
-        self.send_json(200, response)
+            response = {
+                "session_id": session["id"],
+                "reserved_seconds": session["reserved_seconds"],
+                "keys_issued": issued,
+                "keys": keys,
+            }
+            if count == 1:
+                # Single-key callers (the renew path today) read flat fields.
+                response.update(keys[0])
+            self.send_json(200, response)
 
     def authorized_invite(self) -> sqlite3.Row | None:
         value = self.headers.get("Authorization", "")
