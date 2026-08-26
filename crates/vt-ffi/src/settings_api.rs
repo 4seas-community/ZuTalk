@@ -40,15 +40,89 @@ pub struct ExportZipOutcome {
     pub subtitle_rows_omitted: u64,
 }
 
+/// Content availability for one Session's two transcript fact sources.
+/// Projection rows are intentionally excluded: every attached Session owns
+/// those rows even when no transcript content was ever produced.
+#[derive(uniffi::Record)]
+pub struct SessionTranscriptAvailabilityInfo {
+    pub has_realtime_run: bool,
+    pub has_realtime_content: bool,
+    pub has_async_content: bool,
+}
+
 // MARK: - ZuTalkCore impls
 
 #[uniffi::export]
 impl ZuTalkCore {
-    /// Format one durable capture session for the local macOS clipboard.
+    pub fn get_session_transcript_availability(
+        &self,
+        session_id: String,
+    ) -> Result<SessionTranscriptAvailabilityInfo, CoreError> {
+        self.session_store
+            .get_session(&session_id)
+            .map_err(|error| match error {
+                vt_store::SessionQueryError::NotFound(_) => CoreError::NotFound {
+                    message: format!("session not found: {session_id}"),
+                },
+                other => CoreError::InternalError {
+                    message: other.to_string(),
+                },
+            })?;
+        let has_realtime_run = self
+            .notebook_capture_store
+            .get_run_for_session(&session_id)
+            .map_err(|error| CoreError::InternalError {
+                message: format!("load capture run availability: {error}"),
+            })?
+            .is_some();
+        let has_realtime_content = self
+            .notebook_capture_store
+            .list_utterances(&session_id)
+            .map_err(|error| CoreError::InternalError {
+                message: format!("load realtime transcript availability: {error}"),
+            })?
+            .iter()
+            .any(|utterance| {
+                !utterance.source_text.trim().is_empty()
+                    || utterance
+                        .translated_text
+                        .as_deref()
+                        .is_some_and(|text| !text.trim().is_empty())
+                    || utterance.variants.iter().any(|variant| {
+                        variant.state == UtteranceVariantState::Ready
+                            && variant
+                                .text
+                                .as_deref()
+                                .is_some_and(|text| !text.trim().is_empty())
+                    })
+            });
+        let async_tokens = match self.session_meta.get_tokens(&session_id) {
+            Ok(tokens) => tokens,
+            Err(vt_store::SessionMetaError::NotFound(_)) => Vec::new(),
+            Err(error) => {
+                return Err(CoreError::InternalError {
+                    message: format!("load async transcript availability: {error}"),
+                });
+            }
+        };
+        let has_async_content = async_tokens
+            .iter()
+            .any(|token| !token.text.trim().is_empty());
+
+        Ok(SessionTranscriptAvailabilityInfo {
+            has_realtime_run,
+            has_realtime_content,
+            has_async_content,
+        })
+    }
+
+    /// Format one durable Session transcript for the local macOS clipboard.
     ///
-    /// Rust owns transcript selection, speaker-name precedence, and language
-    /// ordering. The Swift boundary only publishes this returned string to the
-    /// system pasteboard after an explicit user action.
+    /// Realtime utterances remain authoritative when they exist. Imported and
+    /// post-stop-only Sessions fall back to persisted async tokens, matching
+    /// ZIP export's fact-source selection. Rust owns that choice, speaker-name
+    /// precedence, and language ordering; Swift only publishes the result after
+    /// an explicit user action.
     pub fn get_session_transcript_clipboard_text(
         &self,
         session_id: String,
@@ -64,19 +138,85 @@ impl ZuTalkCore {
             .get_run_for_session(&session_id)
             .map_err(|error| CoreError::InternalError {
                 message: format!("load capture run for clipboard: {error}"),
-            })?
-            .ok_or_else(|| CoreError::NotFound {
-                message: format!("capture transcript not found: {session_id}"),
             })?;
+        let realtime_utterances = if run.is_some() {
+            self.notebook_capture_store
+                .list_utterances(&session_id)
+                .map_err(|error| CoreError::InternalError {
+                    message: format!("load realtime utterances for clipboard: {error}"),
+                })?
+        } else {
+            Vec::new()
+        };
+
+        let has_realtime_content = realtime_utterances.iter().any(|utterance| {
+            !utterance.source_text.trim().is_empty()
+                || utterance
+                    .translated_text
+                    .as_deref()
+                    .is_some_and(|text| !text.trim().is_empty())
+                || utterance.variants.iter().any(|variant| {
+                    variant.state == UtteranceVariantState::Ready
+                        && variant
+                            .text
+                            .as_deref()
+                            .is_some_and(|text| !text.trim().is_empty())
+                })
+        });
+
+        if !has_realtime_content {
+            let tokens = match self.session_meta.get_tokens(&session_id) {
+                Ok(tokens) => tokens,
+                Err(vt_store::SessionMetaError::NotFound(_)) => Vec::new(),
+                Err(error) => {
+                    return Err(CoreError::InternalError {
+                        message: format!("load async tokens for clipboard: {error}"),
+                    });
+                }
+            };
+            let mut language_columns = Vec::new();
+            let utterances = tokens
+                .into_iter()
+                .filter(|token| !token.text.trim().is_empty())
+                .map(|token| {
+                    if !token.language.trim().is_empty()
+                        && !language_columns
+                            .iter()
+                            .any(|language: &String| language.eq_ignore_ascii_case(&token.language))
+                    {
+                        language_columns.push(token.language.clone());
+                    }
+                    ClipboardUtterance {
+                        start_ms: Some(token.start_ms),
+                        speaker_name: token
+                            .speaker
+                            .as_deref()
+                            .and_then(normalized_owned)
+                            .map(|label| format!("Speaker {label}")),
+                        source_language: token.language,
+                        source_text: token.text,
+                        translated_language: None,
+                        translated_text: None,
+                        language_variants: Vec::new(),
+                    }
+                })
+                .collect::<Vec<_>>();
+            if utterances.is_empty() {
+                return Err(CoreError::NotFound {
+                    message: format!("transcript content not found: {session_id}"),
+                });
+            }
+            return Ok(export_clipboard_text(&ClipboardTranscript {
+                title: normalized_owned(&record.title),
+                language_columns,
+                utterances,
+            }));
+        }
+
+        let run = run.expect("realtime content requires a capture run");
         let profile: NotebookCaptureProfile = serde_json::from_str(&run.profile_snapshot_json)
             .map_err(|error| CoreError::InternalError {
                 message: format!("invalid immutable capture profile snapshot: {error}"),
-            })?;
-        let utterances = self
-            .notebook_capture_store
-            .list_utterances(&session_id)
-            .map_err(|error| CoreError::InternalError {
-                message: format!("load realtime utterances for clipboard: {error}"),
             })?;
 
         let participant_names = self
@@ -117,7 +257,7 @@ impl ZuTalkCore {
             })
             .collect::<HashMap<_, _>>();
 
-        let utterances = utterances
+        let utterances = realtime_utterances
             .into_iter()
             .map(|utterance| ClipboardUtterance {
                 start_ms: utterance.source_start_ms,
@@ -134,18 +274,6 @@ impl ZuTalkCore {
                 language_variants: ready_translation_variants(utterance.variants),
             })
             .collect::<Vec<_>>();
-        if !utterances.iter().any(|utterance| {
-            !utterance.source_text.trim().is_empty()
-                || utterance
-                    .translated_text
-                    .as_deref()
-                    .is_some_and(|text| !text.trim().is_empty())
-        }) {
-            return Err(CoreError::NotFound {
-                message: format!("transcript content not found: {session_id}"),
-            });
-        }
-
         Ok(export_clipboard_text(&ClipboardTranscript {
             title: normalized_owned(&record.title),
             language_columns: clipboard_language_columns(&profile),
@@ -506,6 +634,82 @@ mod tests {
             core.get_session_transcript_clipboard_text("nonexistent".into()),
             Err(CoreError::NotFound { .. })
         ));
+    }
+
+    #[test]
+    fn clipboard_transcript_falls_back_to_persisted_async_tokens() {
+        use vt_model::{Token, TranslationStatus};
+
+        let (_tmp, core) = make_core();
+        seed_session_with_tokens(
+            &core,
+            "async-clipboard",
+            &[
+                Token {
+                    text: "Imported interview opening".into(),
+                    start_ms: 1_000,
+                    end_ms: 2_000,
+                    is_final: true,
+                    language: "en".into(),
+                    speaker: Some("1".into()),
+                    confidence: 1.0,
+                    translation_status: TranslationStatus::None,
+                },
+                Token {
+                    text: "Second answer".into(),
+                    start_ms: 2_500,
+                    end_ms: 3_000,
+                    is_final: true,
+                    language: "en".into(),
+                    speaker: None,
+                    confidence: 1.0,
+                    translation_status: TranslationStatus::None,
+                },
+            ],
+        );
+
+        let text = core
+            .get_session_transcript_clipboard_text("async-clipboard".into())
+            .unwrap();
+        assert!(
+            text.starts_with("seeded\n\n[00:00:01.000] Speaker 1\nen: Imported interview opening")
+        );
+        assert!(text.contains("[00:00:02.500]\nen: Second answer"));
+        let availability = core
+            .get_session_transcript_availability("async-clipboard".into())
+            .unwrap();
+        assert!(!availability.has_realtime_run);
+        assert!(!availability.has_realtime_content);
+        assert!(availability.has_async_content);
+    }
+
+    #[test]
+    fn clipboard_empty_session_returns_not_found() {
+        use vt_store::SessionRecord;
+
+        let (_tmp, core) = make_core();
+        core.session_store
+            .insert_session(&SessionRecord {
+                id: "empty-clipboard".into(),
+                title: "Empty interview".into(),
+                session_type: "recording".into(),
+                status: "completed".into(),
+                duration_ms: 0,
+                created_at: "2026-08-26 00:00:00".into(),
+                deleted_at: None,
+            })
+            .unwrap();
+
+        assert!(matches!(
+            core.get_session_transcript_clipboard_text("empty-clipboard".into()),
+            Err(CoreError::NotFound { .. })
+        ));
+        let availability = core
+            .get_session_transcript_availability("empty-clipboard".into())
+            .unwrap();
+        assert!(!availability.has_realtime_run);
+        assert!(!availability.has_realtime_content);
+        assert!(!availability.has_async_content);
     }
 
     #[test]
