@@ -477,6 +477,20 @@ impl ZuTalkCore {
             .map(|chunk| PathBuf::from(&chunk.local_path))
             .filter(|path| path.exists())
             .collect::<std::collections::HashSet<_>>();
+        let meta = self.session_meta.get_meta(&session_id).ok();
+        // Legacy and interrupted captures may still point at an encrypted
+        // payload that predates the retention ledger. The metadata owner is
+        // part of the destruction boundary, so include its live path instead
+        // of relying only on chunk rows and the defensive filename scan.
+        if let Some(path) = meta
+            .as_ref()
+            .and_then(|value| value.encrypted_path.as_deref())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .filter(|path| path.exists())
+        {
+            remaining_paths.insert(path);
+        }
         // 防御性扫描:凡是叫 <session_id>.*.enc 的文件都算残留,即使 ledger 没记。
         if let Ok(entries) = std::fs::read_dir(&self.data_dir) {
             let prefix = format!("{session_id}.");
@@ -489,7 +503,6 @@ impl ZuTalkCore {
             }
         }
 
-        let meta = self.session_meta.get_meta(&session_id).ok();
         let meta_key_id = meta.as_ref().and_then(|m| m.key_id.clone());
         let canonical_key_ref = format!("zutalk.audio.{session_id}");
         let key_deleted = meta_key_id

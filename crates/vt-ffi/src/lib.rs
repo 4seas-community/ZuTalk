@@ -881,7 +881,38 @@ impl ZuTalkCore {
     /// 2. 删除 session 的密钥
     /// 3. 清除 session_meta.encrypted_path
     pub fn destroy_session_audio_and_key(&self, session_id: String) -> Result<(), CoreError> {
-        self.enforce_destroy(&session_id)
+        let _ownership_guard = self.capture_ownership_gate.lock().unwrap();
+        // Audio destruction is just as terminal as moving the whole Session
+        // to Trash. Refuse it while capture still owns the Session so a
+        // writer can never recreate chunks after the key has been destroyed.
+        self.reject_deleting_a_live_recording(std::slice::from_ref(&session_id))?;
+        self.reject_destroying_audio_used_by_active_task(&session_id)?;
+        self.enforce_destroy(&session_id)?;
+
+        // A successful return is a storage postcondition, not merely "the
+        // delete loop ran". Sessions that never retained audio remain an
+        // idempotent success; otherwise every chunk, file, key, and metadata
+        // reference must be gone before the UI may claim `destroyed`.
+        let report = self.get_audio_destruction_report(session_id.clone())?;
+        let fully_destroyed = report.chunks_deleted == report.chunk_total
+            && report.files_remaining == 0
+            && report.key_deleted
+            && report.encrypted_path_cleared
+            && report.delete_errors.is_empty();
+        if !fully_destroyed {
+            return Err(CoreError::InternalError {
+                message: format!(
+                    "audio destruction incomplete for {session_id}: deleted {}/{}, files_remaining={}, key_deleted={}, encrypted_path_cleared={}, errors={}",
+                    report.chunks_deleted,
+                    report.chunk_total,
+                    report.files_remaining,
+                    report.key_deleted,
+                    report.encrypted_path_cleared,
+                    report.delete_errors.len()
+                ),
+            });
+        }
+        Ok(())
     }
 
     // ─────────────────────────────────────────────────
@@ -1390,6 +1421,62 @@ impl ZuTalkCore {
         Ok(())
     }
 
+    /// The post-recording worker reads retained audio. Deleting it underneath
+    /// a pending/running task would turn a deliberate privacy action into an
+    /// unrelated transcription failure. The shared capture ownership gate is
+    /// held by the caller, closing the race with task authorization/enqueue.
+    fn reject_destroying_audio_used_by_active_task(
+        &self,
+        session_id: &str,
+    ) -> Result<(), CoreError> {
+        if let Some(run) = self
+            .notebook_capture_store
+            .get_run_for_session(session_id)
+            .map_err(|error| CoreError::InternalError {
+                message: format!("load capture task state: {error}"),
+            })?
+        {
+            if matches!(
+                run.async_task_state,
+                vt_store::notebook_capture_store::AsyncTaskState::Pending
+                    | vt_store::notebook_capture_store::AsyncTaskState::Reserved
+                    | vt_store::notebook_capture_store::AsyncTaskState::Enqueued
+            ) {
+                return Err(CoreError::ValidationFailed {
+                    message: format!(
+                        "cannot delete audio for session {session_id} while async transcription is active"
+                    ),
+                });
+            }
+        }
+
+        let task_ids = self
+            .runtime
+            .block_on(self.task_queue.list_session_task_ids(session_id))
+            .map_err(|error| CoreError::InternalError {
+                message: format!("list session transcription tasks: {error}"),
+            })?;
+        for task_id in task_ids {
+            let status = self
+                .runtime
+                .block_on(self.task_queue.get_status(&task_id))
+                .map_err(|error| CoreError::InternalError {
+                    message: format!("read transcription task {task_id}: {error}"),
+                })?;
+            if matches!(
+                status,
+                vt_pipeline::TaskStatus::Pending | vt_pipeline::TaskStatus::Running
+            ) {
+                return Err(CoreError::ValidationFailed {
+                    message: format!(
+                        "cannot delete audio for session {session_id} while async transcription is active"
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// 集成测试 helper：暴露 SessionMetaStore 引用以便注入 token / 元数据。
     /// 仅供 vt-ffi/tests 使用，UniFFI 不会导出。
     #[doc(hidden)]
@@ -1451,7 +1538,9 @@ impl ZuTalkCore {
         let chunks = self
             .session_meta
             .list_audio_retention_chunks(session_id)
-            .unwrap_or_default();
+            .map_err(|error| CoreError::InternalError {
+                message: format!("list audio retention chunks: {error}"),
+            })?;
         for chunk in chunks.iter().filter(|chunk| !chunk.deleted) {
             let path = std::path::PathBuf::from(&chunk.local_path);
             if path.exists() {
@@ -1478,12 +1567,34 @@ impl ZuTalkCore {
         //    它保护的数据活得更久。
         if let Some(key_id) = meta.key_id.as_deref() {
             if !key_id.is_empty() {
-                let _ = self.key_store.delete_key(key_id);
+                self.key_store
+                    .delete_key(key_id)
+                    .map_err(|error| CoreError::InternalError {
+                        message: format!("delete session audio key: {error}"),
+                    })?;
             }
         }
 
         // 3. 清空 session_meta 里的引用
-        let _ = self.session_meta.clear_encrypted_path(session_id);
+        self.session_meta
+            .clear_encrypted_path(session_id)
+            .map_err(|error| CoreError::InternalError {
+                message: format!("clear encrypted audio metadata: {error}"),
+            })?;
+        if self
+            .notebook_capture_store
+            .get_run_for_session(session_id)
+            .map_err(|error| CoreError::InternalError {
+                message: format!("load capture audio references: {error}"),
+            })?
+            .is_some()
+        {
+            self.notebook_capture_store
+                .clear_retained_audio_references(session_id)
+                .map_err(|error| CoreError::InternalError {
+                    message: format!("clear capture audio references: {error}"),
+                })?;
+        }
         Ok(())
     }
 
@@ -1858,6 +1969,64 @@ mod tests {
         let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string());
         assert!(core.is_ok());
         assert!(core.unwrap().shutdown().is_ok());
+    }
+
+    #[test]
+    fn active_capture_refuses_audio_destruction_until_stopped() {
+        let tmp = TempDir::new().unwrap();
+        let core = ZuTalkCore::new_for_test(tmp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Live audio guard".into()))
+            .unwrap();
+        let profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        let capture = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(NoopNotebookCaptureCallback),
+            )
+            .unwrap();
+
+        let error = core
+            .destroy_session_audio_and_key(capture.session_id.clone())
+            .expect_err("an active capture must retain its audio key");
+        assert!(error.to_string().contains("while it is recording"));
+        assert!(core.is_capturing_session(&capture.session_id));
+
+        core.stop_notebook_capture_session(capture.session_id.clone())
+            .unwrap();
+        core.destroy_session_audio_and_key(capture.session_id)
+            .expect("audio destruction is allowed after capture stops");
+    }
+
+    #[test]
+    fn pending_transcription_refuses_audio_destruction() {
+        let tmp = TempDir::new().unwrap();
+        let core = ZuTalkCore::new_deferred(tmp.path().to_string_lossy().to_string()).unwrap();
+        let session = core.create_notebook_capture_session().unwrap();
+        let task_id = core
+            .runtime
+            .block_on(
+                core.task_queue
+                    .enqueue(vt_pipeline::TaskPayload::Transcribe {
+                        session_id: session.id.clone(),
+                        language_hint: Some("en".into()),
+                        remote_authorization: Some(
+                            vt_pipeline::RemoteTaskAuthorization::soniox_post_recording(),
+                        ),
+                    }),
+            )
+            .unwrap();
+
+        let error = core
+            .destroy_session_audio_and_key(session.id.clone())
+            .expect_err("pending transcription still owns the retained audio");
+        assert!(error.to_string().contains("async transcription is active"));
+        assert_eq!(core.get_task_status(task_id).unwrap().status, "pending");
+        assert!(core.get_session(session.id).is_ok());
     }
 
     #[test]
