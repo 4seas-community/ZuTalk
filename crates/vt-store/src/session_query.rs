@@ -338,7 +338,7 @@ impl SessionQueryStore {
         let select_sql = format!(
             "SELECT id, title, session_type, status, duration_ms, created_at, deleted_at
              FROM session_records {where_sql}
-             ORDER BY {order_col} {order_dir}
+             ORDER BY {order_col} {order_dir}, id ASC
              LIMIT {limit} OFFSET {offset}"
         );
 
@@ -510,6 +510,39 @@ mod tests {
             .unwrap();
         assert_eq!(result.sessions.len(), 3);
         assert_eq!(result.total_count, 10);
+    }
+
+    #[test]
+    fn test_query_pagination_is_stable_when_created_at_ties() {
+        let (_tmp, store) = setup();
+        for id in ["s1", "s2", "s3", "s4", "s5", "s6", "s7"] {
+            store
+                .insert_session(&SessionRecord {
+                    id: id.to_string(),
+                    title: id.to_string(),
+                    session_type: "recording".to_string(),
+                    status: "completed".to_string(),
+                    duration_ms: 1_000,
+                    created_at: "2000-04-01 10:00:00".to_string(),
+                    deleted_at: None,
+                })
+                .unwrap();
+        }
+
+        let mut ids = Vec::new();
+        for offset in [0, 3, 6] {
+            let page = store
+                .query_sessions(&SessionQuery {
+                    limit: Some(3),
+                    offset: Some(offset),
+                    ..Default::default()
+                })
+                .unwrap();
+            ids.extend(page.sessions.into_iter().map(|session| session.id));
+        }
+
+        assert_eq!(ids, ["s1", "s2", "s3", "s4", "s5", "s6", "s7"]);
+        assert_eq!(ids.iter().collect::<HashSet<_>>().len(), 7);
     }
 
     #[test]
