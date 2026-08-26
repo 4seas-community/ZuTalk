@@ -837,33 +837,18 @@ impl ZuTalkCore {
 
     /// 获取会话信息（从 SQLite 查询）
     pub fn get_session(&self, id: String) -> Result<SessionInfo, CoreError> {
-        let query = vt_store::SessionQuery {
-            search_text: None,
-            session_type: None,
-            status: None,
-            limit: Some(500),
-            offset: None,
-            sort_field: Default::default(),
-            sort_order: Default::default(),
-            // get_session 无视垃圾箱 — 删了也能 read(比如 undo 路径)
-            trash_filter: vt_store::TrashFilter::All,
-        };
-        let result =
-            self.session_store
-                .query_sessions(&query)
-                .map_err(|e| CoreError::InternalError {
-                    message: e.to_string(),
-                })?;
-
-        for s in &result.sessions {
-            if s.id == id {
-                return Ok(self.build_session_info(s));
-            }
+        // An ID lookup must not depend on a catalogue page. The previous
+        // implementation searched only the newest 500 rows, so older Sessions
+        // were visible in the paginated Home ledger but impossible to open.
+        match self.session_store.get_session(&id) {
+            Ok(record) => Ok(self.build_session_info(&record)),
+            Err(vt_store::SessionQueryError::NotFound(_)) => Err(CoreError::NotFound {
+                message: format!("session not found: {id}"),
+            }),
+            Err(error) => Err(CoreError::InternalError {
+                message: error.to_string(),
+            }),
         }
-
-        Err(CoreError::NotFound {
-            message: format!("session not found: {id}"),
-        })
     }
 
     /// 设置默认隐私等级。
@@ -2320,5 +2305,38 @@ mod tests {
         // 否则 Library UI 会显示假的会话条目。
         let result = core.get_session("nonexistent".to_string());
         assert!(matches!(result, Err(CoreError::NotFound { .. })));
+    }
+
+    #[test]
+    fn get_session_reads_by_id_beyond_the_first_catalogue_page() {
+        let tmp = TempDir::new().unwrap();
+        let core = ZuTalkCore::new(tmp.path().to_str().unwrap().to_string()).unwrap();
+        core.session_store
+            .insert_session(&vt_store::SessionRecord {
+                id: "older-than-page".into(),
+                title: "Older interview".into(),
+                session_type: "recording".into(),
+                status: "completed".into(),
+                duration_ms: 1,
+                created_at: "2000-01-01 00:00:00".into(),
+                deleted_at: None,
+            })
+            .unwrap();
+        for index in 0..500 {
+            core.session_store
+                .insert_session(&vt_store::SessionRecord {
+                    id: format!("newer-{index:03}"),
+                    title: String::new(),
+                    session_type: "recording".into(),
+                    status: "completed".into(),
+                    duration_ms: 1,
+                    created_at: "2026-01-01 00:00:00".into(),
+                    deleted_at: None,
+                })
+                .unwrap();
+        }
+
+        let session = core.get_session("older-than-page".into()).unwrap();
+        assert_eq!(session.title, "Older interview");
     }
 }
