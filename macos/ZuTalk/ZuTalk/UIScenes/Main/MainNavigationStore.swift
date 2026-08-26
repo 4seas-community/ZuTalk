@@ -12,6 +12,11 @@ enum NotebookCaptureRouteSessionPolicy {
         activeCaptureSessionId: String?,
         isCaptureActive: Bool
     ) -> String? {
+        // An explicit Session selection is user intent. A live capture in the
+        // same Topic must not silently replace a historical row the user chose.
+        if let requestedSessionId, requestedSessionId.isEmpty == false {
+            return requestedSessionId
+        }
         guard isRealtimeTab,
               isCaptureActive,
               activeCaptureNotebookId == targetNotebookId,
@@ -19,6 +24,20 @@ enum NotebookCaptureRouteSessionPolicy {
               activeCaptureSessionId.isEmpty == false
         else { return requestedSessionId }
         return activeCaptureSessionId
+    }
+}
+
+enum SessionDefaultTabPolicy {
+    static func builtinKind(
+        sessionType: String,
+        hasAsyncTask: Bool,
+        isActiveCapture: Bool
+    ) -> String {
+        if isActiveCapture { return "realtime_transcript" }
+        if hasAsyncTask || sessionType.lowercased() == "import" {
+            return "async_transcript"
+        }
+        return "realtime_transcript"
     }
 }
 
@@ -37,6 +56,9 @@ final class MainNavigationStore: ObservableObject {
     )
 
     @Published private(set) var activeTab: MainTab = .home
+    /// Keeps the first-level information architecture selected while an
+    /// editor route is open beneath it (for example Topic -> Session).
+    @Published private(set) var activePrimaryTab: MainTab = .home
     @Published private(set) var activeRoute: MainRoute = .home
     @Published private(set) var needsOnboarding: Bool = OnboardingController.shouldShowOnboarding
     @Published private(set) var activeEditorRoute: EditorRoute?
@@ -47,7 +69,6 @@ final class MainNavigationStore: ObservableObject {
     private let captureRouteContextProvider: @MainActor () -> CaptureRouteContext
     private let coreProvider: @MainActor () -> (any ZuTalkCoreProtocol)?
     private let notebookContext: NotebookSessionContextStore
-    private let launchNotebookID: String?
     private var didAttemptLaunchNotebookRestore = false
 
     var activeDocID: String? { activeEditorRoute?.documentID }
@@ -73,7 +94,6 @@ final class MainNavigationStore: ObservableObject {
         self.coreProvider = coreProvider
         let resolvedNotebookContext = notebookContext ?? NotebookSessionContextStore.shared
         self.notebookContext = resolvedNotebookContext
-        self.launchNotebookID = resolvedNotebookContext.activeNotebookId
         recordSnapshot()
     }
 
@@ -89,6 +109,9 @@ final class MainNavigationStore: ObservableObject {
 
     func select(tab: MainTab) {
         let route = route(for: tab)
+        if tab != .editor {
+            activePrimaryTab = tab
+        }
         activeTab = route.tab
         activeRoute = route
         recordSnapshot()
@@ -102,9 +125,12 @@ final class MainNavigationStore: ObservableObject {
         select(tab: .home)
     }
 
-    /// Restores the Notebook that was last opened in the previous app process.
-    /// This is deliberately one-shot: choosing Home later in the same process
-    /// must leave the user on Home instead of immediately reopening a Notebook.
+    func navigateTopics() {
+        select(tab: .topics)
+    }
+
+    /// One-shot launch reconciliation. A remembered Topic does not navigate;
+    /// only an actually active capture returns to its realtime workspace.
     @discardableResult
     func restoreLastNotebookOnLaunch() -> Bool {
         guard needsOnboarding == false,
@@ -116,17 +142,21 @@ final class MainNavigationStore: ObservableObject {
             didAttemptLaunchNotebookRestore = true
             return true
         }
-        guard let launchNotebookID,
-              launchNotebookID.isEmpty == false
-        else {
+        // A remembered Topic is context, not a reason to bypass the global
+        // Session ledger on every cold launch. Only an actually active capture
+        // earns an automatic return to the recording surface.
+        let captureContext = captureRouteContextProvider()
+        guard captureContext.isActive,
+              let captureNotebookID = captureContext.notebookID,
+              captureNotebookID.isEmpty == false else {
             didAttemptLaunchNotebookRestore = true
             return true
         }
 
         let completed = openNotebookForCapture(
-            preferredNotebookID: launchNotebookID,
-            selectedSessionID: nil,
-            allowsFallback: true,
+            preferredNotebookID: captureNotebookID,
+            selectedSessionID: captureContext.sessionID,
+            allowsFallback: false,
             showsErrors: false
         )
         if completed {
@@ -160,6 +190,53 @@ final class MainNavigationStore: ObservableObject {
             allowsFallback: captureContext.isActive == false,
             showsErrors: true
         )
+    }
+
+    /// Opens a Topic as a research workspace. This is deliberately separate
+    /// from capture routing: browsing a Topic must not drop the user directly
+    /// into microphone controls or imply that recording has started.
+    func openTopicWorkspace(notebookID: String) {
+        guard notebookID.isEmpty == false,
+              let core = coreProvider()
+        else {
+            ToastCenter.shared.error(
+                String(localized: "topic.route.unavailable"),
+                detail: String(localized: "topic.route.unavailable_detail")
+            )
+            return
+        }
+
+        do {
+            guard let notebook = try core.listNotebooks().first(where: {
+                $0.deletedAt == nil && $0.id == notebookID
+            }),
+            let tab = try core.listNotebookTabs(notebookId: notebookID)
+                .first(where: {
+                    $0.deletedAt == nil && $0.builtinKind == "realtime_transcript"
+                })
+            else { throw NotebookSessionLifecycleError.notebookRequired }
+
+            activeEditorRoute = EditorRoute(
+                notebookID: notebookID,
+                tabID: tab.id,
+                documentID: tab.docId,
+                selectedSessionID: nil,
+                opensTopicWorkspace: true
+            )
+            activeNotebookTitle = notebook.title
+            notebookContext.updateActiveNotebook(id: notebookID, title: notebook.title)
+            pendingEditorView = .notes
+            activePrimaryTab = .topics
+            select(tab: .editor)
+        } catch {
+            Self.logger.error(
+                "Open Topic workspace failed: \(String(describing: error), privacy: .private)"
+            )
+            ToastCenter.shared.error(
+                String(localized: "topic.route.unavailable"),
+                detail: String(localized: "topic.route.unavailable_detail")
+            )
+        }
     }
 
     func openNotebookTab(
@@ -315,6 +392,7 @@ final class MainNavigationStore: ObservableObject {
 
     func resetForTesting() {
         activeTab = .home
+        activePrimaryTab = .home
         activeRoute = .home
         needsOnboarding = false
         activeEditorRoute = nil
@@ -345,8 +423,15 @@ final class MainNavigationStore: ObservableObject {
             let notebooks = try core.listNotebooks()
             let normalizedPreferredID = preferredNotebookID?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let preferredNotebook = normalizedPreferredID.flatMap { notebookID in
+            var preferredNotebook = normalizedPreferredID.flatMap { notebookID in
                 notebooks.first(where: { $0.id == notebookID })
+            }
+            if preferredNotebook == nil, let normalizedPreferredID {
+                let systemNotebooks = [
+                    try? core.getQuickCaptureNotebook(),
+                    try? core.sharedInboxNotebook(),
+                ].compactMap { $0 }
+                preferredNotebook = systemNotebooks.first { $0.id == normalizedPreferredID }
             }
             let targetNotebook = preferredNotebook ?? (allowsFallback ? notebooks.first : nil)
 
@@ -361,7 +446,7 @@ final class MainNavigationStore: ObservableObject {
                         detail: String(localized: "capture.route.no_notebook_detail")
                     )
                 }
-                return true
+                return false
             }
 
             guard let tab = try core.listNotebookTabs(notebookId: targetNotebook.id)
@@ -392,10 +477,15 @@ final class MainNavigationStore: ObservableObject {
     }
 
     private func resolveNotebookTitle(notebookID: String) -> String? {
-        if let core = coreProvider(),
-           let notebooks = try? core.listNotebooks(),
-           let title = notebooks.first(where: { $0.id == notebookID })?.title {
-            return title
+        if let core = coreProvider() {
+            if let quickCaptureNotebook = try? core.getQuickCaptureNotebook(),
+               quickCaptureNotebook.id == notebookID {
+                return String(localized: "home.record.unfiled")
+            }
+            if let notebooks = try? core.listNotebooks(),
+               let title = notebooks.first(where: { $0.id == notebookID })?.title {
+                return title
+            }
         }
         guard notebookContext.activeNotebookId == notebookID else { return nil }
         return notebookContext.activeNotebookTitle
@@ -405,6 +495,8 @@ final class MainNavigationStore: ObservableObject {
         switch tab {
         case .home:
             return .home
+        case .topics:
+            return .topics
         case .knowledge:
             return .knowledge
         case .trash:
@@ -426,7 +518,25 @@ final class MainNavigationStore: ObservableObject {
         for sessionID: String,
         core: any ZuTalkCoreProtocol
     ) throws -> EditorRoute? {
-        for notebook in try core.listNotebooks() {
+        let session = try core.getSession(id: sessionID)
+        let captureContext = captureRouteContextProvider()
+        let preferredKind = SessionDefaultTabPolicy.builtinKind(
+            sessionType: session.sessionType,
+            hasAsyncTask: TranscriptionTaskIndex.load(core: core)[sessionID] != nil,
+            isActiveCapture: captureContext.isActive
+                && captureContext.sessionID == sessionID
+        )
+
+        var routableNotebooks = try core.listNotebooks()
+        for systemNotebook in [
+            try? core.getQuickCaptureNotebook(),
+            try? core.sharedInboxNotebook(),
+        ].compactMap({ $0 })
+        where routableNotebooks.contains(where: { $0.id == systemNotebook.id }) == false {
+            routableNotebooks.append(systemNotebook)
+        }
+
+        for notebook in routableNotebooks {
             let tabs = try core.listNotebookTabs(notebookId: notebook.id)
                 .filter { $0.deletedAt == nil }
             let linkedDirectly = try core.listNotebookSessions(notebookId: notebook.id)
@@ -441,9 +551,7 @@ final class MainNavigationStore: ObservableObject {
 
             guard linkedDirectly || projectedTabIDs.isEmpty == false else { continue }
             let preferred = tabs.first {
-                $0.builtinKind == "async_transcript" && projectedTabIDs.contains($0.id)
-            } ?? tabs.first {
-                $0.builtinKind == "realtime_transcript" && projectedTabIDs.contains($0.id)
+                $0.builtinKind == preferredKind
             } ?? tabs.first {
                 $0.builtinKind == "realtime_transcript"
             } ?? tabs.first

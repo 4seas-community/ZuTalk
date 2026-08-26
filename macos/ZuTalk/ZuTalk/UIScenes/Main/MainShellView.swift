@@ -90,10 +90,19 @@ struct MainShellView: View {
                 sidebarItem(
                     icon: "house.fill",
                     label: String(localized: "sidebar.home"),
-                    active: activeTab == .home,
+                    active: store.activePrimaryTab == .home,
                     accId: AccessibilityID.mainTabHome
                 ) {
                     store.select(tab: .home)
+                }
+
+                sidebarItem(
+                    icon: "folder.fill",
+                    label: String(localized: "sidebar.topics"),
+                    active: store.activePrimaryTab == .topics,
+                    accId: AccessibilityID.mainTabTopics
+                ) {
+                    store.select(tab: .topics)
                 }
 
                 sidebarItem(
@@ -405,6 +414,8 @@ struct MainShellView: View {
                     switch activeTab {
                     case .home:
                         HomeView()
+                    case .topics:
+                        TopicsView()
                     case .knowledge:
                         KnowledgeLibraryPage()
                     case .trash:
@@ -469,6 +480,8 @@ struct MainShellView: View {
         switch tab {
         case .home:
             return "house.fill"
+        case .topics:
+            return "folder.fill"
         case .knowledge:
             return "books.vertical.fill"
         case .trash:
@@ -488,6 +501,8 @@ struct MainShellView: View {
         switch tab {
         case .home:
             return String(localized: "sidebar.home")
+        case .topics:
+            return String(localized: "sidebar.topics")
         case .knowledge:
             return String(localized: "sidebar.knowledge")
         case .trash:

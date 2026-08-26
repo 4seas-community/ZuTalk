@@ -7,6 +7,13 @@ import SwiftUI
 import Combine
 import OSLog
 
+enum SessionCatalogLoadError: Error, Equatable {
+    case invalidPageSize
+    case snapshotChanged(expected: UInt64, actual: UInt64)
+    case stalled(offset: UInt32)
+    case incomplete(expected: UInt64, actual: UInt64)
+}
+
 // MARK: - Models
 
 struct SessionListItem: Identifiable, Equatable {
@@ -48,6 +55,16 @@ private enum NotebookAudioImportOutcome: Sendable {
     case failure
 }
 
+private enum SessionCatalogQueryOutcome: @unchecked Sendable {
+    case success(sessions: [SessionInfo], totalCount: UInt64)
+    case failure(message: String)
+}
+
+private enum SessionFullTextSearchOutcome: @unchecked Sendable {
+    case success([SearchResultInfo])
+    case failure(String)
+}
+
 enum SessionPreviewPlaceholderState: Equatable {
     case recording
     case transcribing
@@ -59,9 +76,50 @@ enum SessionPreviewPlaceholderState: Equatable {
 enum HomeSessionStatusState: Equatable {
     case recording
     case transcribing
+    case interrupted
     case failed
     case completed
     case imported
+}
+
+/// Home's recording affordance has two materially different jobs. When a
+/// capture is already active it must return to that capture's Topic; otherwise
+/// it lets the user choose where a new recording should live.
+struct HomeActiveCaptureDestination: Equatable {
+    let notebookId: String
+    let topicTitle: String?
+}
+
+enum HomeRecordingEntryPolicy {
+    /// A redeemed, enabled community invitation is an explicit authorization
+    /// for Home's one-click capture to use realtime transcription. Without it,
+    /// a fresh quick-capture profile remains local-only.
+    static func shouldEnableRealtimeForQuickCapture(
+        inviteIsEnabled: Bool,
+        inviteIsActive: Bool
+    ) -> Bool {
+        inviteIsEnabled && inviteIsActive
+    }
+
+    static func activeDestination(
+        isCaptureActive: Bool,
+        captureNotebookId: String?,
+        notebooks: [FfiNotebook]
+    ) -> HomeActiveCaptureDestination? {
+        guard isCaptureActive,
+              let captureNotebookId,
+              captureNotebookId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        else { return nil }
+
+        let topicTitle = notebooks
+            .first(where: { $0.id == captureNotebookId })?
+            .title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return HomeActiveCaptureDestination(
+            notebookId: captureNotebookId,
+            topicTitle: topicTitle?.isEmpty == false ? topicTitle : nil
+        )
+    }
 }
 
 extension SessionListItem {
@@ -77,13 +135,22 @@ extension SessionListItem {
         if normalizedStatus == "recording" {
             return .recording
         }
-        if normalizedStatus == "failed" || transcriptDocumentStatus == "failed" {
+        if transcriptDocumentStatus == "failed" {
+            return .failed
+        }
+        if normalizedStatus == "failed" {
             return .failed
         }
         if transcriptDocumentStatus == "pending" {
             return .transcribing
         }
-        if normalizedStatus == "completed", durationMs > 0 {
+        if normalizedStatus == "interrupted" {
+            return .interrupted
+        }
+        if normalizedStatus == "imported" {
+            return .imported
+        }
+        if normalizedStatus == "completed" {
             return sessionType == "import" ? .imported : .completed
         }
         return nil
@@ -115,6 +182,7 @@ extension SessionListItem {
 // MARK: - View Model
 
 class LibraryViewModel: ObservableObject {
+    static let unfiledTopicFilterId = "__zutalk_ui_unfiled__"
     static let notebookTitleMaxLength = 120
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "xyz.voice.zutalk",
@@ -132,11 +200,39 @@ class LibraryViewModel: ObservableObject {
     @Published var notebookSessionLinks: [FfiNotebookSessionLink] = []
     @Published var notebookSessionProjections: [FfiNotebookSessionProjection] = []
     @Published private(set) var notebookSessionCounts: [String: Int] = [:]
+    /// UI-level Topic projection. Storage still calls this entity Notebook and
+    /// preserves its single-owner invariant; Home only uses it as a filter and
+    /// display lookup for the global Session catalogue.
+    @Published private(set) var topicIdBySessionId: [String: String] = [:]
+    /// False only before Core has produced the first complete ownership
+    /// snapshot. An empty map is otherwise meaningful: it means the Sessions
+    /// are genuinely unfiled, not that membership failed to load.
+    @Published private(set) var hasLoadedTopicMemberships = false
+    /// Core's technical capture owner is hidden from the product Topic
+    /// taxonomy. Sessions stored there appear as unfiled until the user chooses
+    /// a research Topic.
+    @Published private(set) var quickCaptureNotebookId: String?
+    private var storageNotebookIdBySessionId: [String: String] = [:]
+    @Published var selectedTopicFilterId: String?
     @Published var notebookWorkspaceError: String?
+    @Published private(set) var isLoadingSessions = false
+    @Published private(set) var sessionLoadError: String?
+    @Published private(set) var isSearchingTranscripts = false
+    @Published private(set) var transcriptSearchError: String?
+    @Published private(set) var transcriptSearchSnippets: [String: String] = [:]
     @Published private(set) var isImportingAudio = false
     @Published private(set) var audioImportError: String?
 
     private let notebookContext: NotebookSessionContextStore
+    private var sessionLoadGeneration: UInt = 0
+    private var transcriptSearchGeneration: UInt = 0
+    private var transcriptSearchTask: Task<Void, Never>?
+    private var isTranscriptSearchRequestInFlight = false
+    private var pendingTranscriptSearch: (
+        query: String,
+        generation: UInt,
+        core: any ZuTalkCoreProtocol
+    )?
 
     @MainActor
     init(notebookContext: NotebookSessionContextStore? = nil) {
@@ -186,7 +282,9 @@ class LibraryViewModel: ObservableObject {
         }
         do {
             try core.softDeleteSession(sessionId: id)
+            cancelPendingSessionLoad()
             sessions.removeAll { $0.id == id }
+            removeSessionsFromTopicCatalog([id])
             rebuildGroups()
             if selectedId == id { selectedId = sessions.first?.id }
             ToastCenter.shared.info(String(localized: "library.toast.moved_to_trash"))
@@ -209,7 +307,9 @@ class LibraryViewModel: ObservableObject {
         }
         do {
             try core.softDeleteSessions(sessionIds: ids)
+            cancelPendingSessionLoad()
             sessions.removeAll { selectedIds.contains($0.id) }
+            removeSessionsFromTopicCatalog(Set(ids))
             rebuildGroups()
             ToastCenter.shared.info(
                 String(format: String(localized: "library.toast.bulk_moved_to_trash"), ids.count)
@@ -232,7 +332,19 @@ class LibraryViewModel: ObservableObject {
         return notebooks.first { $0.id == activeNotebookId }
     }
 
-    var requiresNotebookBeforeRecording: Bool {
+    var researchNotebooks: [FfiNotebook] {
+        notebooks
+    }
+
+    var canStartQuickCapture: Bool {
+        quickCaptureNotebookId != nil
+    }
+
+    func canOpenCatalogSession(_ sessionId: String) -> Bool {
+        storageNotebookIdBySessionId[sessionId] != nil
+    }
+
+    var hasNoResearchTopics: Bool {
         notebooks.isEmpty
     }
 
@@ -242,8 +354,280 @@ class LibraryViewModel: ObservableObject {
         return sessions.filter { sessionIds.contains($0.id) }
     }
 
-    /// Home is scoped to the selected Notebook. Search must never make the
-    /// current-Notebook header control a global session list by accident.
+    /// The research ledger is global by default. A Topic filter narrows that
+    /// ledger without changing the active Notebook/capture destination.
+    var catalogSessions: [SessionListItem] {
+        let topicScoped: [SessionListItem]
+        if let selectedTopicFilterId {
+            if selectedTopicFilterId == Self.unfiledTopicFilterId {
+                topicScoped = hasLoadedTopicMemberships
+                    ? sessions.filter { topicIdBySessionId[$0.id] == nil }
+                    : []
+            } else {
+                topicScoped = sessions.filter {
+                    topicIdBySessionId[$0.id] == selectedTopicFilterId
+                }
+            }
+        } else {
+            topicScoped = sessions
+        }
+
+        let normalizedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered: [SessionListItem]
+        if normalizedSearch.isEmpty {
+            filtered = topicScoped
+        } else {
+            filtered = topicScoped.compactMap { item in
+                let kindLabel = item.sessionType == "import"
+                    ? String(localized: "home.row.kind.import")
+                    : String(localized: "home.row.kind.recording")
+                let localMatch = item.title.localizedCaseInsensitiveContains(normalizedSearch)
+                    || item.preview.localizedCaseInsensitiveContains(normalizedSearch)
+                    || item.languagePair.localizedCaseInsensitiveContains(normalizedSearch)
+                    || item.sessionType.localizedCaseInsensitiveContains(normalizedSearch)
+                    || kindLabel.localizedCaseInsensitiveContains(normalizedSearch)
+                    || (topicTitle(forSessionId: item.id)?
+                        .localizedCaseInsensitiveContains(normalizedSearch) ?? false)
+                    || (hasLoadedTopicMemberships
+                        && topicIdBySessionId[item.id] == nil
+                        && String(localized: "home.row.topic.unassigned")
+                            .localizedCaseInsensitiveContains(normalizedSearch))
+                guard localMatch || transcriptSearchSnippets[item.id] != nil else {
+                    return nil
+                }
+                guard let snippet = transcriptSearchSnippets[item.id],
+                      snippet.isEmpty == false else { return item }
+                var updated = item
+                updated.preview = snippet
+                return updated
+            }
+        }
+
+        return filtered.sorted { lhs, rhs in
+            if lhs.createdAt == rhs.createdAt {
+                return lhs.id < rhs.id
+            }
+            return lhs.createdAt > rhs.createdAt
+        }
+    }
+
+    var catalogGroupedSessions: [SessionGroup] {
+        Self.groupSessions(catalogSessions)
+    }
+
+    var hasCatalogSearchText: Bool {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    @MainActor
+    func updateTranscriptSearch() {
+        transcriptSearchTask?.cancel()
+        pendingTranscriptSearch = nil
+        transcriptSearchGeneration &+= 1
+        let generation = transcriptSearchGeneration
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard query.isEmpty == false else {
+            transcriptSearchSnippets = [:]
+            transcriptSearchError = nil
+            isSearchingTranscripts = false
+            return
+        }
+        guard let core = CoreClient.shared.core else {
+            transcriptSearchSnippets = [:]
+            transcriptSearchError = String(localized: "home.catalog.search_failed")
+            isSearchingTranscripts = false
+            return
+        }
+
+        transcriptSearchSnippets = [:]
+        isSearchingTranscripts = true
+        transcriptSearchError = nil
+        transcriptSearchTask = Task { @MainActor [weak self, core] in
+            do {
+                try await MontereyTaskSleep.milliseconds(250)
+            } catch {
+                return
+            }
+            guard Task.isCancelled == false else { return }
+            self?.startTranscriptSearch(
+                query: query,
+                generation: generation,
+                core: core
+            )
+        }
+    }
+
+    @MainActor
+    private func startTranscriptSearch(
+        query: String,
+        generation: UInt,
+        core: any ZuTalkCoreProtocol
+    ) {
+        guard generation == transcriptSearchGeneration,
+              query == searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { return }
+        if isTranscriptSearchRequestInFlight {
+            // FFI reads are synchronous and cannot be cancelled once started.
+            // Keep only the newest debounced request instead of queueing every
+            // intermediate query behind SearchStore's connection mutex.
+            pendingTranscriptSearch = (query, generation, core)
+            return
+        }
+        isTranscriptSearchRequestInFlight = true
+        Task { @MainActor [weak self, core] in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                do {
+                    return SessionFullTextSearchOutcome.success(
+                        try core.searchSessions(query: query, limit: 5_000)
+                    )
+                } catch {
+                    return SessionFullTextSearchOutcome.failure(String(describing: error))
+                }
+            }.value
+            guard let self else { return }
+            self.isTranscriptSearchRequestInFlight = false
+            if self.transcriptSearchGeneration == generation,
+               query == self.searchText.trimmingCharacters(in: .whitespacesAndNewlines) {
+                self.isSearchingTranscripts = false
+                switch outcome {
+                case .success(let results):
+                    var snippets: [String: String] = [:]
+                    for result in results where snippets[result.sessionId] == nil {
+                        snippets[result.sessionId] = Self.sanitizedSearchSnippet(result.snippet)
+                    }
+                    self.transcriptSearchSnippets = snippets
+                    self.transcriptSearchError = nil
+                case .failure:
+                    // Metadata matching remains usable; do not turn a search
+                    // backend failure into a false "no results" state.
+                    self.transcriptSearchSnippets = [:]
+                    self.transcriptSearchError = String(localized: "home.catalog.search_failed")
+                }
+            }
+            if let pending = self.pendingTranscriptSearch {
+                self.pendingTranscriptSearch = nil
+                self.startTranscriptSearch(
+                    query: pending.query,
+                    generation: pending.generation,
+                    core: pending.core
+                )
+            }
+        }
+    }
+
+    nonisolated static func sanitizedSearchSnippet(_ raw: String) -> String {
+        let withoutMarkup = raw
+            .replacingOccurrences(of: "<b>", with: "")
+            .replacingOccurrences(of: "</b>", with: "")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+        let collapsed = withoutMarkup
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        return String(collapsed.prefix(240))
+    }
+
+    nonisolated static func visibleTopicMemberships(
+        storageMemberships: [String: String],
+        quickCaptureNotebookId: String?
+    ) -> [String: String] {
+        guard let quickCaptureNotebookId else { return storageMemberships }
+        return storageMemberships.filter { $0.value != quickCaptureNotebookId }
+    }
+
+    func topicTitle(forSessionId sessionId: String) -> String? {
+        guard let topicId = topicIdBySessionId[sessionId] else { return nil }
+        return notebooks.first(where: { $0.id == topicId })?.title
+    }
+
+    func selectTopicFilter(_ topicId: String?) {
+        guard let topicId else {
+            selectedTopicFilterId = nil
+            return
+        }
+        selectedTopicFilterId = researchNotebooks.contains(where: { $0.id == topicId })
+            ? topicId
+            : nil
+    }
+
+    func selectUnfiledFilter() {
+        guard hasLoadedTopicMemberships else { return }
+        selectedTopicFilterId = Self.unfiledTopicFilterId
+    }
+
+    var unfiledSessionCount: Int {
+        guard hasLoadedTopicMemberships else { return 0 }
+        return sessions.lazy.filter { self.topicIdBySessionId[$0.id] == nil }.count
+    }
+
+    /// Files an unassigned Session. Home quick recordings already have a
+    /// hidden technical owner, so they use the full resource-preserving move;
+    /// truly legacy orphans use Core's atomic first-attachment contract.
+    @discardableResult
+    @MainActor
+    func assignOrphanSession(
+        _ sessionId: String,
+        to notebookId: String,
+        core: (any ZuTalkCoreProtocol)? = nil
+    ) -> Bool {
+        let storageOwner = storageNotebookIdBySessionId[sessionId]
+        guard hasLoadedTopicMemberships,
+              topicIdBySessionId[sessionId] == nil,
+              storageOwner == nil || storageOwner == quickCaptureNotebookId,
+              let target = researchNotebooks.first(where: { $0.id == notebookId }),
+              let core = core ?? CoreClient.shared.core else {
+            return false
+        }
+        guard isRecording(sessionId) == false else {
+            ToastCenter.shared.info(String(localized: "home.recording.delete_while_recording"))
+            return false
+        }
+
+        do {
+            var transcriptProjectionDeferred = false
+            if let storageOwner {
+                try core.moveSessionToNotebook(
+                    sessionId: sessionId,
+                    targetNotebookId: notebookId
+                )
+                notebookSessionCounts[storageOwner] = max(
+                    0,
+                    (notebookSessionCounts[storageOwner] ?? 0) - 1
+                )
+            } else {
+                let result = try core.assignOrphanSessionToNotebook(
+                    sessionId: sessionId,
+                    notebookId: notebookId
+                )
+                transcriptProjectionDeferred = result.transcriptProjectionDeferred
+            }
+            storageNotebookIdBySessionId[sessionId] = notebookId
+            topicIdBySessionId[sessionId] = notebookId
+            notebookSessionCounts[notebookId, default: 0] += 1
+            NotificationCenter.default.post(name: .zutalkSessionUpdated, object: sessionId)
+            ToastCenter.shared.success(
+                String(localized: "home.row.assign.done"),
+                detail: target.title
+            )
+            if transcriptProjectionDeferred {
+                ToastCenter.shared.warning(
+                    String(localized: "home.row.assign.projection_pending")
+                )
+            }
+            return true
+        } catch {
+            Self.logger.error(
+                "File orphan Session into Topic failed: \(String(describing: error), privacy: .private)"
+            )
+            ToastCenter.shared.error(String(localized: "home.row.assign.failed"))
+            return false
+        }
+    }
+
+    /// Notebook editor/history still needs its own scoped projection. Home's
+    /// primary ledger uses `catalogGroupedSessions` instead.
     var activeNotebookGroupedSessions: [SessionGroup] {
         let filtered = searchText.isEmpty
             ? activeNotebookSessions
@@ -261,19 +645,62 @@ class LibraryViewModel: ObservableObject {
 
     @MainActor
     func loadNotebookWorkspace(client: (any NotebookWorkspaceClienting)? = nil) {
+        let usesLiveCore = client == nil
         let client = client ?? LiveNotebookWorkspaceClient()
         var didLoadNotebookList = false
         do {
             let loadedNotebooks = try client.listNotebooks()
                 .filter { $0.deletedAt == nil }
-            didLoadNotebookList = true
-            notebooks = loadedNotebooks
-            notebookSessionCounts = Dictionary(
-                uniqueKeysWithValues: loadedNotebooks.map { notebook in
-                    let links = (try? client.listNotebookSessions(notebookId: notebook.id)) ?? []
-                    return (notebook.id, Set(links.map(\.sessionId)).count)
+            let systemNotebooks: [FfiNotebook]
+            if usesLiveCore {
+                guard let core = CoreClient.shared.core else {
+                    throw NotebookCaptureClientError.ffiUnavailable
                 }
+                systemNotebooks = [
+                    try core.getQuickCaptureNotebook(),
+                    try core.sharedInboxNotebook(),
+                ].filter { $0.deletedAt == nil }
+            } else {
+                systemNotebooks = []
+            }
+            let discoveredQuickCaptureNotebookId = systemNotebooks.first?.id
+            let loadedQuickCaptureNotebookId = discoveredQuickCaptureNotebookId
+                ?? quickCaptureNotebookId
+            didLoadNotebookList = true
+            var loadedCounts: [String: Int] = [:]
+            var loadedStorageNotebookIdBySessionId: [String: String] = [:]
+            var storageNotebooks = loadedNotebooks
+            for notebook in systemNotebooks
+            where storageNotebooks.contains(where: { $0.id == notebook.id }) == false {
+                storageNotebooks.append(notebook)
+            }
+            for notebook in storageNotebooks {
+                // Membership links are the ownership fact. Tab projections are
+                // rendered views and must not silently create a Topic relation.
+                let links = try client.listNotebookSessions(notebookId: notebook.id)
+                let sessionIds = Set(links.map(\.sessionId))
+                loadedCounts[notebook.id] = sessionIds.count
+                for sessionId in sessionIds {
+                    loadedStorageNotebookIdBySessionId[sessionId] = notebook.id
+                }
+            }
+            let loadedTopicIdBySessionId = Self.visibleTopicMemberships(
+                storageMemberships: loadedStorageNotebookIdBySessionId,
+                quickCaptureNotebookId: loadedQuickCaptureNotebookId
             )
+            // Publish one coherent Topic snapshot. A failed membership read
+            // keeps the last known catalogue instead of turning unknown into 0.
+            notebooks = loadedNotebooks
+            notebookSessionCounts = loadedCounts
+            topicIdBySessionId = loadedTopicIdBySessionId
+            storageNotebookIdBySessionId = loadedStorageNotebookIdBySessionId
+            quickCaptureNotebookId = loadedQuickCaptureNotebookId
+            hasLoadedTopicMemberships = true
+            if let selectedTopicFilterId,
+               selectedTopicFilterId != Self.unfiledTopicFilterId,
+               researchNotebooks.contains(where: { $0.id == selectedTopicFilterId }) == false {
+                self.selectedTopicFilterId = nil
+            }
             let preferredNotebookId = activeNotebookId
                 ?? notebookContext.activeNotebookId
             if let preferredNotebookId,
@@ -416,37 +843,122 @@ class LibraryViewModel: ObservableObject {
 
     @MainActor
     func loadSessions() {
+        sessionLoadGeneration &+= 1
+        let generation = sessionLoadGeneration
+        sessionLoadError = nil
+
         guard let core = CoreClient.shared.core else {
-            ToastCenter.shared.error(String(localized: "home.recordings.load_failed"))
-            sessions = []
-            rebuildGroups()
+            isLoadingSessions = false
+            let message = String(localized: "home.recordings.load_failed")
+            sessionLoadError = message
+            ToastCenter.shared.error(message)
             return
         }
 
-        do {
-            let result = try core.querySessions(
-                sessionType: nil,
-                status: nil,
-                searchText: searchText.isEmpty ? nil : searchText,
-                limit: 200,
-                offset: 0
-            )
-            sessions = Self.attachTranscriptDocumentStatus(
-                to: result.sessions.map(Self.makeListItem),
-                core: core
-            )
-            rebuildGroups()
-            if selectedId == nil {
-                selectedId = sessions.first?.id
+        isLoadingSessions = true
+        Task { @MainActor [weak self, core] in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                do {
+                    let snapshot = try Self.loadCompleteSessionCatalog { limit, offset in
+                        try core.querySessions(
+                            sessionType: nil,
+                            status: nil,
+                            searchText: nil,
+                            limit: limit,
+                            offset: offset
+                        )
+                    }
+                    return SessionCatalogQueryOutcome.success(
+                        sessions: snapshot.sessions,
+                        totalCount: snapshot.totalCount
+                    )
+                } catch {
+                    return SessionCatalogQueryOutcome.failure(
+                        message: String(describing: error)
+                    )
+                }
+            }.value
+
+            guard let self, self.sessionLoadGeneration == generation else { return }
+            self.isLoadingSessions = false
+
+            switch outcome {
+            case .success(let loadedSessions, let loadedTotalCount):
+                self.sessionLoadError = nil
+                self.sessions = Self.attachTranscriptDocumentStatus(
+                    to: loadedSessions.map(Self.makeListItem),
+                    core: core
+                )
+                self.rebuildGroups()
+                self.totalCount = Int(clamping: loadedTotalCount)
+                if self.selectedId == nil {
+                    self.selectedId = self.sessions.first?.id
+                }
+            case .failure(let message):
+                Self.logger.error(
+                    "Load Home recordings failed: \(message, privacy: .private)"
+                )
+                let displayMessage = String(localized: "home.recordings.load_failed")
+                self.sessionLoadError = displayMessage
+                ToastCenter.shared.error(displayMessage)
             }
-        } catch {
-            Self.logger.error(
-                "Load Home recordings failed: \(String(describing: error), privacy: .private)"
-            )
-            ToastCenter.shared.error(String(localized: "home.recordings.load_failed"))
-            sessions = []
-            rebuildGroups()
         }
+    }
+
+    /// Loads one coherent catalogue snapshot in bounded pages. The store uses
+    /// a deterministic `(sort field, id)` order; this layer still rejects
+    /// duplicate/no-progress pages and a total that changes mid-read rather
+    /// than publishing a partial ledger as complete.
+    nonisolated static func loadCompleteSessionCatalog(
+        pageSize: UInt32 = 200,
+        queryPage: (UInt32, UInt32) throws -> SessionQueryResultInfo
+    ) throws -> (sessions: [SessionInfo], totalCount: UInt64) {
+        guard pageSize > 0 else { throw SessionCatalogLoadError.invalidPageSize }
+
+        var offset: UInt32 = 0
+        var loadedSessions: [SessionInfo] = []
+        var seenSessionIds: Set<String> = []
+        var expectedTotal: UInt64?
+
+        repeat {
+            let page = try queryPage(pageSize, offset)
+            if let expectedTotal {
+                guard page.totalCount == expectedTotal else {
+                    throw SessionCatalogLoadError.snapshotChanged(
+                        expected: expectedTotal,
+                        actual: page.totalCount
+                    )
+                }
+            } else {
+                expectedTotal = page.totalCount
+            }
+
+            let uniquePage = page.sessions.filter {
+                seenSessionIds.insert($0.id).inserted
+            }
+            loadedSessions.append(contentsOf: uniquePage)
+
+            let expected = expectedTotal ?? 0
+            let actual = UInt64(loadedSessions.count)
+            guard actual <= expected else {
+                throw SessionCatalogLoadError.incomplete(expected: expected, actual: actual)
+            }
+            if actual == expected { break }
+            guard page.sessions.isEmpty == false else {
+                throw SessionCatalogLoadError.incomplete(expected: expected, actual: actual)
+            }
+            guard uniquePage.isEmpty == false else {
+                throw SessionCatalogLoadError.stalled(offset: offset)
+            }
+
+            let increment = UInt32(page.sessions.count)
+            guard UInt32.max - offset >= increment else {
+                throw SessionCatalogLoadError.incomplete(expected: expected, actual: actual)
+            }
+            offset += increment
+        } while true
+
+        return (loadedSessions, expectedTotal ?? 0)
     }
 
     @MainActor
@@ -456,9 +968,6 @@ class LibraryViewModel: ObservableObject {
     ) -> [SessionListItem] {
         let transcriptionTasksBySessionId = TranscriptionTaskIndex.load(core: core)
         return items.map { item in
-            guard item.preview.isEmpty else { return item }
-            guard item.rawStatus.lowercased() == "completed" else { return item }
-
             var updated = item
             updated.transcriptDocumentStatus = homeTranscriptStatus(
                 from: transcriptionTasksBySessionId[item.id]
@@ -516,6 +1025,27 @@ class LibraryViewModel: ObservableObject {
         notebookTabs = []
         notebookSessionLinks = []
         notebookSessionProjections = []
+    }
+
+    private func removeSessionsFromTopicCatalog(_ sessionIds: Set<String>) {
+        for sessionId in sessionIds {
+            topicIdBySessionId.removeValue(forKey: sessionId)
+            guard let topicId = storageNotebookIdBySessionId.removeValue(
+                forKey: sessionId
+            ) else {
+                continue
+            }
+            notebookSessionCounts[topicId] = max(
+                0,
+                (notebookSessionCounts[topicId] ?? 0) - 1
+            )
+        }
+    }
+
+    @MainActor
+    private func cancelPendingSessionLoad() {
+        sessionLoadGeneration &+= 1
+        isLoadingSessions = false
     }
 
     /// Import an audio file into the active Notebook while preserving Notebook
@@ -612,6 +1142,7 @@ class LibraryViewModel: ObservableObject {
                     String(localized: "home.import.completed"),
                     detail: "\(result.sourceFormat) · \(result.durationMs / 1000)s"
                 )
+                MainNavigationStore.shared.openSession(result.sessionId)
             case .failure:
                 let message = String(localized: "home.import.failed.detail")
                 self.audioImportError = message
@@ -624,15 +1155,16 @@ class LibraryViewModel: ObservableObject {
     }
 
     @MainActor
-    func search() { loadSessions() }
+    func search() { updateTranscriptSearch() }
 
     /// 把 FFI 层的 SessionInfo 映射为 UI 用的 SessionListItem
     @MainActor
     static func makeListItem(_ info: SessionInfo) -> SessionListItem {
         let createdAt = Date(timeIntervalSince1970: TimeInterval(info.createdAtUnixMs) / 1000)
-        let displayTitle = info.title.isEmpty
-            ? "Session \(info.id.prefix(8))"
-            : info.title
+        // Keep the persisted title truthful. Presentation decides how an
+        // untitled Session is named; exposing an ID here made internal storage
+        // details compete with the timestamp, which is the primary identifier.
+        let displayTitle = info.title
 
         var badges: [SessionBadge] = []
         switch info.sessionType {

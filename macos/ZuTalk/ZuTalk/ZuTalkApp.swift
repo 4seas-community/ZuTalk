@@ -300,6 +300,7 @@ extension Notification.Name {
 /// Minimal MVP 主窗口：Home、Trash、Notebook editor 与 Settings。
 enum MainTab: String, CaseIterable {
     case home
+    case topics
     case knowledge
     case trash
     case share
@@ -309,6 +310,7 @@ enum MainTab: String, CaseIterable {
     var label: String {
         switch self {
         case .home:       return "HOME"
+        case .topics:     return "TOPICS"
         case .knowledge:  return "KNOWLEDGE"
         case .trash:      return "TRASH"
         case .share:      return "SHARE"

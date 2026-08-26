@@ -1,33 +1,29 @@
 // HomeView.swift
-// Notebook-first home for the local ZuTalk MVP.
+// Research-led Home: the global Session ledger. Topic organization has its
+// own first-level destination in `TopicsView`.
 
 import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = LibraryViewModel()
+    @ObservedObject private var activeCapture = ActiveBilingualTranscriptStore.shared
     @State private var isCreatingNotebook = false
+    @State private var isStartingQuickCapture = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.xl) {
-                if viewModel.requiresNotebookBeforeRecording {
-                    if viewModel.notebookWorkspaceError == nil {
-                        HomeNoNotebookView {
-                            isCreatingNotebook = true
-                        }
-                    } else {
-                        HomeWorkspaceFailureView(onRetry: reloadWorkspace)
-                    }
-                } else {
-                    HomeNotebookLibrary(
+                if shouldShowSessionCatalog {
+                    HomeSessionCatalog(
                         viewModel: viewModel,
-                        onOpenNotebook: openNotebook,
-                        onCreateNotebook: { isCreatingNotebook = true }
+                        onOpenSession: openSession,
+                        onOpenTopic: openNotebook,
+                        onStartRecording: startQuickRecording,
+                        isStartingQuickCapture: isStartingQuickCapture,
+                        activeCaptureDestination: activeCaptureDestination,
+                        onReturnToActiveCapture: returnToActiveCapture,
+                        onCreateTopic: { isCreatingNotebook = true }
                     )
-
-                    if viewModel.notebookWorkspaceError != nil {
-                        HomeWorkspaceRefreshWarning(onRetry: reloadWorkspace)
-                    }
                 }
             }
             .frame(maxWidth: 1_080, alignment: .leading)
@@ -40,9 +36,8 @@ struct HomeView: View {
             HomeCreateNotebookSheet { title in
                 let created = viewModel.createNotebook(title: title)
                 if created, let notebookId = viewModel.activeNotebookId {
-                    // The first successful action should lead straight to the
-                    // recording surface instead of asking a novice to find and
-                    // reopen the Notebook they just created.
+                    // Enter the new Topic's Session workspace. Starting the
+                    // microphone remains a separate, explicit action there.
                     DispatchQueue.main.async {
                         openNotebook(notebookId)
                     }
@@ -58,10 +53,103 @@ struct HomeView: View {
             viewModel.loadSessions()
             viewModel.loadNotebookWorkspace()
         }
+        .montereyOnChange(of: viewModel.searchText) { _, _ in
+            viewModel.updateTranscriptSearch()
+        }
+    }
+
+    private var shouldShowSessionCatalog: Bool {
+        viewModel.isLoadingSessions
+            || viewModel.sessionLoadError != nil
+            || viewModel.sessions.isEmpty == false
+            || viewModel.notebooks.isEmpty == false
+            || viewModel.canStartQuickCapture
+    }
+
+    private var activeCaptureDestination: HomeActiveCaptureDestination? {
+        HomeRecordingEntryPolicy.activeDestination(
+            isCaptureActive: activeCapture.isCaptureActive,
+            captureNotebookId: activeCapture.notebookId,
+            notebooks: viewModel.researchNotebooks
+        )
     }
 
     private func openNotebook(_ notebookId: String) {
         viewModel.selectNotebook(notebookId)
+        MainNavigationStore.shared.openTopicWorkspace(notebookID: notebookId)
+    }
+
+    private func openSession(_ sessionId: String) {
+        viewModel.selectedId = sessionId
+        MainNavigationStore.shared.openSession(sessionId)
+    }
+
+    private func startQuickRecording() {
+        guard isStartingQuickCapture == false,
+              activeCapture.isCaptureActive == false,
+              let notebookId = viewModel.quickCaptureNotebookId else {
+            if activeCapture.isCaptureActive {
+                returnToActiveCapture()
+            } else {
+                ToastCenter.shared.error(String(localized: "capture.route.unavailable"))
+            }
+            return
+        }
+        guard let startLease = NotebookCaptureStartWorkflowGate.shared.acquire() else {
+            ToastCenter.shared.warning(String(localized: "capture.toast.start_failed"))
+            return
+        }
+        isStartingQuickCapture = true
+        Task { @MainActor in
+            defer {
+                NotebookCaptureStartWorkflowGate.shared.release(startLease)
+                isStartingQuickCapture = false
+            }
+            let profileEditor = NotebookCaptureProfileEditorModel(notebookId: notebookId)
+            profileEditor.load()
+            do {
+                let inviteSession = CommunityInviteSession.shared
+                let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
+                    enableRealtimeIfNeeded: HomeRecordingEntryPolicy
+                        .shouldEnableRealtimeForQuickCapture(
+                            inviteIsEnabled: inviteSession.isEnabled,
+                            inviteIsActive: inviteSession.isActive
+                        ),
+                    prepareProfile: { inviteRealtimeAuthorized in
+                        try await profileEditor.prepareForHomeQuickCaptureStart(
+                            inviteRealtimeAuthorized: inviteRealtimeAuthorized
+                        )
+                        return profileEditor.draft
+                    },
+                    prepareRealtimeCredential: { laneCount in
+                        try await inviteSession.prepareRealtimeCredential(laneCount: laneCount)
+                    }
+                )
+                if preparation == .personalKeyFallback {
+                    ToastCenter.shared.info(
+                        String(localized: "community_invite.fallback_personal_key")
+                    )
+                }
+                try await NotebookCaptureStartCoordinator(
+                    capture: activeCapture,
+                    navigation: MainNavigationStore.shared
+                ).start(notebookId: notebookId)
+            } catch {
+                // Return any invite reservation made during preparation before
+                // surfacing the stage-specific, localized failure to the user.
+                await CommunityInviteSession.shared.settleRealtimeSession(usedSeconds: 0)
+                ToastCenter.shared.error(
+                    String(localized: "capture.toast.start_failed"),
+                    detail: error.localizedDescription
+                )
+            }
+        }
+    }
+
+    private func returnToActiveCapture() {
+        // Do not select the currently browsed Topic here. Capture routing owns
+        // the authoritative active Topic and Session and must win over Home's
+        // filter or last-browsed context.
         MainNavigationStore.shared.openActiveNotebookForCapture()
     }
 
@@ -71,52 +159,132 @@ struct HomeView: View {
     }
 }
 
-// MARK: - Notebook library
+// MARK: - Topics
 
-private struct HomeNotebookLibrary: View {
-    @ObservedObject var viewModel: LibraryViewModel
-    let onOpenNotebook: (String) -> Void
-    let onCreateNotebook: () -> Void
+struct TopicsView: View {
+    @StateObject private var viewModel = LibraryViewModel()
+    @State private var searchText = ""
+    @State private var isCreatingNotebook = false
 
     private let columns = [
         GridItem(.adaptive(minimum: 250, maximum: 340), spacing: Spacing.md)
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.lg) {
-            HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
-                VStack(alignment: .leading, spacing: Spacing.xs) {
-                    Text(String(localized: "home.library.title"))
-                        .font(.titleLG)
-                        .foregroundColor(.textPrimary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.xl) {
+                HStack(alignment: .top, spacing: Spacing.lg) {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(String(localized: "home.library.title"))
+                            .font(.titleLG)
+                            .foregroundColor(.textPrimary)
+                            .accessibilityAddTraits(.isHeader)
 
-                    Text(String(localized: "home.library.subtitle"))
-                        .font(.bodySM)
-                        .foregroundColor(.textSecondary)
+                        Text(String(localized: "home.library.subtitle"))
+                            .font(.bodySM)
+                            .foregroundColor(.textSecondary)
+                    }
+
+                    Spacer(minLength: Spacing.md)
+
+                    Button {
+                        isCreatingNotebook = true
+                    } label: {
+                        Label(String(localized: "home.notebook.new"), systemImage: "plus")
+                            .font(.bodyMedium)
+                            .padding(.horizontal, Spacing.md)
+                            .frame(minHeight: 40)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.bgSunken)
+                    .background(Color.textPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                    .accessibilityIdentifier("topics.create")
                 }
 
-                Spacer()
+                TextField(
+                    String(localized: "topics.search.placeholder"),
+                    text: $searchText
+                )
+                .textFieldStyle(.plain)
+                .font(.body)
+                .padding(.horizontal, Spacing.md)
+                .frame(minHeight: 44)
+                .background(Color.bgSunken.opacity(0.42))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius.sm)
+                        .strokeBorder(Color.borderGhost.opacity(0.65), lineWidth: Stroke.thin)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                .accessibilityIdentifier("topics.search")
 
-                Button(action: onCreateNotebook) {
-                    Label(String(localized: "home.notebook.new"), systemImage: "plus")
-                        .font(.bodyMedium)
-                        .frame(minHeight: 44)
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.textPrimary)
-                .accessibilityIdentifier("home.notebook.new")
-            }
-
-            LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.md) {
-                ForEach(viewModel.notebooks, id: \.id) { notebook in
-                    HomeNotebookCard(
-                        notebook: notebook,
-                        sessionCount: viewModel.notebookSessionCounts[notebook.id] ?? 0,
-                        onOpen: { onOpenNotebook(notebook.id) }
+                if viewModel.notebookWorkspaceError != nil,
+                   viewModel.hasNoResearchTopics {
+                    HomeWorkspaceFailureView(onRetry: reload)
+                } else if viewModel.hasNoResearchTopics {
+                    HomeNoNotebookView {
+                        isCreatingNotebook = true
+                    }
+                } else if filteredTopics.isEmpty {
+                    EmptyState(
+                        icon: "magnifyingglass",
+                        title: String(localized: "topics.search.empty.title"),
+                        description: String(localized: "topics.search.empty.description")
                     )
+                } else {
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.md) {
+                        ForEach(filteredTopics, id: \.id) { notebook in
+                            HomeNotebookCard(
+                                notebook: notebook,
+                                sessionCount: viewModel.notebookSessionCounts[notebook.id] ?? 0,
+                                onOpen: { openTopic(notebook.id) }
+                            )
+                        }
+                    }
+
+                    if viewModel.notebookWorkspaceError != nil {
+                        HomeWorkspaceRefreshWarning(onRetry: reload)
+                    }
                 }
+            }
+            .frame(maxWidth: 1_080, alignment: .leading)
+            .padding(.horizontal, Spacing.xl)
+            .padding(.vertical, Spacing.lg)
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+        .background(Color.bgRoot)
+        .accessibilityIdentifier("topics.page")
+        .sheet(isPresented: $isCreatingNotebook) {
+            HomeCreateNotebookSheet { title in
+                let created = viewModel.createNotebook(title: title)
+                if created, let notebookId = viewModel.activeNotebookId {
+                    DispatchQueue.main.async { openTopic(notebookId) }
+                }
+                return created
             }
         }
+        .onAppear(perform: reload)
+        .onReceive(NotificationCenter.default.publisher(for: .zutalkSessionUpdated)) { _ in
+            reload()
+        }
+    }
+
+    private var filteredTopics: [FfiNotebook] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else { return viewModel.researchNotebooks }
+        return viewModel.researchNotebooks.filter {
+            $0.title.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private func reload() {
+        viewModel.loadSessions()
+        viewModel.loadNotebookWorkspace()
+    }
+
+    private func openTopic(_ notebookId: String) {
+        viewModel.selectNotebook(notebookId)
+        MainNavigationStore.shared.openTopicWorkspace(notebookID: notebookId)
     }
 }
 
@@ -130,7 +298,7 @@ private struct HomeNotebookCard: View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: Spacing.lg) {
                 HStack(alignment: .top) {
-                    Image(systemName: "book.closed.fill")
+                    Image(systemName: "folder.fill")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundColor(.brandAccent)
                         .frame(width: 36, height: 36)
@@ -156,6 +324,11 @@ private struct HomeNotebookCard: View {
                         .foregroundColor(.textSecondary)
                 }
 
+                Text(String(localized: "home.topic.workspace_contents"))
+                    .font(.caption)
+                    .foregroundColor(.textTertiary)
+                    .lineLimit(1)
+
                 Label(
                     String(localized: "home.notebook.local_first"),
                     systemImage: "lock.fill"
@@ -164,7 +337,7 @@ private struct HomeNotebookCard: View {
                 .foregroundColor(.textTertiary)
             }
             .padding(Spacing.lg)
-            .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 176, alignment: .topLeading)
             .surfaceCard(
                 fill: isHovering ? Color.bgElevated.opacity(0.58) : Color.bgElevated.opacity(0.3),
                 cornerRadius: Radius.md,
@@ -177,7 +350,7 @@ private struct HomeNotebookCard: View {
         .onHover { isHovering = $0 }
         .accessibilityLabel(notebook.title)
         .accessibilityHint(String(localized: "home.library.open_hint"))
-        .accessibilityIdentifier("home.notebook.card.\(notebook.id)")
+        .accessibilityIdentifier("topics.card.\(notebook.id)")
     }
 
     private var metadata: String {
@@ -194,7 +367,6 @@ private struct HomeNotebookHero: View {
     @ObservedObject var viewModel: LibraryViewModel
     @ObservedObject var capture: ActiveBilingualTranscriptStore
     let onOpenNotebook: () -> Void
-    let onImportAudio: () -> Void
     let onCreateNotebook: () -> Void
 
     private var activeNotebook: FfiNotebook? { viewModel.activeNotebook }
@@ -331,27 +503,13 @@ private struct HomeNotebookHero: View {
     }
 
     private var notebookActions: some View {
-        HStack(spacing: Spacing.sm) {
-            HomeActionButton(
-                title: openActionTitle,
-                icon: capture.isCaptureActive ? captureStateIcon : "arrow.right",
-                style: .primary,
-                action: onOpenNotebook
-            )
-            .accessibilityIdentifier("home.notebook.open")
-
-            HomeActionButton(
-                title: viewModel.isImportingAudio
-                    ? String(localized: "home.import.in_progress")
-                    : String(localized: "home.import.action"),
-                icon: "square.and.arrow.down",
-                style: .secondary,
-                isLoading: viewModel.isImportingAudio,
-                isEnabled: viewModel.isImportingAudio == false,
-                action: onImportAudio
-            )
-            .accessibilityIdentifier("home.notebook.import")
-        }
+        HomeActionButton(
+            title: openActionTitle,
+            icon: capture.isCaptureActive ? captureStateIcon : "arrow.right",
+            style: .primary,
+            action: onOpenNotebook
+        )
+        .accessibilityIdentifier("home.notebook.open")
     }
 
     private var openActionTitle: String {
@@ -442,7 +600,7 @@ private struct HomeNoNotebookView: View {
     var body: some View {
         VStack(spacing: Spacing.lg) {
             Image(systemName: "book.closed")
-                .font(.system(size: 38, weight: .light))
+                .font(.system(size: 30, weight: .light))
                 .foregroundColor(.textSecondary)
                 .accessibilityHidden(true)
 
@@ -457,25 +615,6 @@ private struct HomeNoNotebookView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 460)
             }
-
-            HStack(alignment: .top, spacing: Spacing.md) {
-                firstUseStep(
-                    number: "1",
-                    title: String(localized: "home.first_use.step1.title"),
-                    detail: String(localized: "home.first_use.step1.detail")
-                )
-                firstUseStep(
-                    number: "2",
-                    title: String(localized: "home.first_use.step2.title"),
-                    detail: String(localized: "home.first_use.step2.detail")
-                )
-                firstUseStep(
-                    number: "3",
-                    title: String(localized: "home.first_use.step3.title"),
-                    detail: String(localized: "home.first_use.step3.detail")
-                )
-            }
-            .frame(maxWidth: 720)
 
             HomeActionButton(
                 title: String(localized: "home.first_use.action"),
@@ -492,36 +631,13 @@ private struct HomeNoNotebookView: View {
             .font(.bodySM)
             .foregroundColor(.textSecondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 420)
+        .frame(maxWidth: .infinity, minHeight: 240)
         .padding(Spacing.xl)
-    }
-
-    private func firstUseStep(number: String, title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text(number)
-                .font(.captionMedium)
-                .foregroundColor(.brandAccentForeground)
-                .frame(width: 24, height: 24)
-                .background(Color.brandAccent)
-                .clipShape(Circle())
-
-            Text(title)
-                .font(.bodyMedium)
-                .foregroundColor(.textPrimary)
-
-            Text(detail)
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(Spacing.md)
-        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
-        .background(Color.bgElevated.opacity(0.3))
         .overlay(
-            RoundedRectangle(cornerRadius: Radius.sm)
-                .strokeBorder(Color.borderGhost.opacity(0.55), lineWidth: Stroke.thin)
+            RoundedRectangle(cornerRadius: Radius.md)
+                .strokeBorder(Color.borderGhost.opacity(0.45), lineWidth: Stroke.thin)
         )
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
 }
 
@@ -586,62 +702,278 @@ private struct HomeWorkspaceRefreshWarning: View {
     }
 }
 
-// MARK: - Recent recordings
+// MARK: - Global Session catalogue
 
-private struct HomeRecentRecordingsSection: View {
+private struct HomeSessionCatalog: View {
     @ObservedObject var viewModel: LibraryViewModel
     let onOpenSession: (String) -> Void
+    let onOpenTopic: (String) -> Void
+    let onStartRecording: () -> Void
+    let isStartingQuickCapture: Bool
+    let activeCaptureDestination: HomeActiveCaptureDestination?
+    let onReturnToActiveCapture: () -> Void
+    let onCreateTopic: () -> Void
     @FocusState private var isSearchFocused: Bool
 
-    private var groups: [SessionGroup] { viewModel.activeNotebookGroupedSessions }
-    private var sessions: [SessionListItem] { viewModel.activeNotebookSessions }
+    private var groups: [SessionGroup] { viewModel.catalogGroupedSessions }
+    private var sessions: [SessionListItem] { viewModel.catalogSessions }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
-            HStack(alignment: .center, spacing: Spacing.md) {
-                VStack(alignment: .leading, spacing: Spacing.xs) {
-                    Text(String(localized: "home.recent.title"))
-                        .font(.titleMD)
-                        .foregroundColor(.textPrimary)
+            catalogHeader
 
-                    Text(
-                        String(
-                            format: String(localized: "home.recent.count_format"),
-                            Int64(sessions.count)
-                        )
-                    )
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-                }
-
-                Spacer(minLength: Spacing.md)
-
-                if sessions.count >= 5 || viewModel.searchText.isEmpty == false {
+            MontereyHorizontalViewThatFits {
+                HStack(spacing: Spacing.md) {
                     compactSearch
+                    Spacer(minLength: Spacing.sm)
+                    catalogMetrics
+                }
+            } fallback: {
+                VStack(alignment: .leading, spacing: Spacing.sm) {
+                    compactSearch
+                    HStack(spacing: Spacing.md) {
+                        catalogMetrics
+                        Spacer(minLength: 0)
+                    }
                 }
             }
 
-            if groups.isEmpty {
-                if viewModel.searchText.isEmpty {
-                    HomeRecentEmptyState()
-                } else {
+            HomeTopicFilterBar(viewModel: viewModel)
+
+            if viewModel.hasLoadedTopicMemberships == false,
+               viewModel.notebookWorkspaceError != nil {
+                HomeCatalogRefreshWarning(
+                    message: String(localized: "home.workspace.membership_unavailable"),
+                    onRetry: { viewModel.loadNotebookWorkspace() }
+                )
+            }
+
+            if let message = viewModel.sessionLoadError,
+               viewModel.sessions.isEmpty == false {
+                HomeCatalogRefreshWarning(
+                    message: message,
+                    onRetry: viewModel.loadSessions
+                )
+            }
+
+            if let message = viewModel.transcriptSearchError,
+               viewModel.hasCatalogSearchText {
+                HomeCatalogRefreshWarning(
+                    message: message,
+                    onRetry: viewModel.updateTranscriptSearch
+                )
+            }
+
+            if viewModel.isLoadingSessions, viewModel.sessions.isEmpty {
+                HomeCatalogLoadingState()
+            } else if let message = viewModel.sessionLoadError,
+                      viewModel.sessions.isEmpty {
+                HomeCatalogLoadFailureState(
+                    message: message,
+                    onRetry: viewModel.loadSessions
+                )
+            } else if groups.isEmpty {
+                if viewModel.hasCatalogSearchText,
+                   viewModel.isSearchingTranscripts {
+                    HomeCatalogSearchingState()
+                } else if viewModel.hasCatalogSearchText {
                     HomeNoSearchResults {
                         viewModel.searchText = ""
                         isSearchFocused = true
                     }
+                } else if viewModel.selectedTopicFilterId
+                    == LibraryViewModel.unfiledTopicFilterId {
+                    HomeCatalogEmptyState(
+                        title: String(localized: "home.catalog.unfiled_empty.title"),
+                        description: String(localized: "home.catalog.unfiled_empty.description"),
+                        icon: "tray"
+                    )
+                } else if viewModel.selectedTopicFilterId != nil {
+                    HomeCatalogEmptyState(
+                        title: String(localized: "home.catalog.topic_empty.title"),
+                        description: String(localized: "home.catalog.topic_empty.description"),
+                        icon: "folder"
+                    )
+                } else {
+                    HomeCatalogEmptyState(
+                        title: String(localized: "home.catalog.empty.title"),
+                        description: String(localized: "home.catalog.empty.description"),
+                        icon: "waveform"
+                    )
                 }
             } else {
                 LazyVStack(alignment: .leading, spacing: Spacing.lg) {
                     ForEach(groups, id: \.label) { group in
                         HomeGroupSection(
                             group: group,
+                            topics: viewModel.researchNotebooks,
                             onOpen: onOpenSession,
-                            onDelete: viewModel.softDelete
+                            onDelete: viewModel.softDelete,
+                            onAssign: { sessionId, topicId in
+                                viewModel.assignOrphanSession(sessionId, to: topicId)
+                            },
+                            membershipKnown: viewModel.hasLoadedTopicMemberships,
+                            canOpen: { viewModel.canOpenCatalogSession($0) },
+                            topicTitle: { viewModel.topicTitle(forSessionId: $0) }
                         )
                     }
                 }
             }
         }
+        .accessibilityIdentifier("home.session.catalog")
+    }
+
+    private var catalogHeader: some View {
+        MontereyHorizontalViewThatFits {
+            HStack(alignment: .top, spacing: Spacing.md) {
+                catalogIdentity
+                    .layoutPriority(1)
+                Spacer(minLength: Spacing.md)
+                catalogActions
+                    .fixedSize()
+            }
+
+        } fallback: {
+            VStack(alignment: .leading, spacing: Spacing.md) {
+                catalogIdentity
+                catalogActions
+            }
+        }
+    }
+
+    private var catalogIdentity: some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(String(localized: "home.catalog.title"))
+                .font(.titleLG)
+                .foregroundColor(.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+
+            Text(String(localized: "home.catalog.subtitle"))
+                .font(.bodySM)
+                .foregroundColor(.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var catalogActions: some View {
+        MontereyHorizontalViewThatFits {
+            HStack(spacing: Spacing.sm) {
+                recordingAction
+                secondaryCatalogActions
+            }
+        } fallback: {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                recordingAction
+                secondaryCatalogActions
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var recordingAction: some View {
+            if let activeCaptureDestination {
+                Button(action: onReturnToActiveCapture) {
+                    Label(
+                        activeCaptureButtonTitle(activeCaptureDestination),
+                        systemImage: "record.circle.fill"
+                    )
+                    .font(.bodyMedium)
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.signalGreen)
+                .padding(.horizontal, Spacing.md)
+                .background(Color.signalGreen.opacity(0.1))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.signalGreen.opacity(0.28), lineWidth: Stroke.thin)
+                )
+                .clipShape(Capsule())
+                .help(activeCaptureButtonTitle(activeCaptureDestination))
+                .accessibilityIdentifier("home.catalog.record")
+            } else {
+                Button(action: onStartRecording) {
+                    Label(
+                        isStartingQuickCapture
+                            ? String(localized: "home.record.starting")
+                            : String(localized: "home.record.start"),
+                        systemImage: isStartingQuickCapture ? "ellipsis" : "record.circle"
+                    )
+                    .font(.bodyMedium)
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.signalRed)
+                .padding(.horizontal, Spacing.md)
+                .background(Color.signalRed.opacity(0.1))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.signalRed.opacity(0.3), lineWidth: Stroke.thin)
+                )
+                .clipShape(Capsule())
+                .disabled(isStartingQuickCapture || viewModel.canStartQuickCapture == false)
+                .help(String(localized: viewModel.canStartQuickCapture
+                    ? "home.record.start_hint"
+                    : "home.record.unavailable_hint"))
+                .accessibilityHint(Text(String(localized: viewModel.canStartQuickCapture
+                    ? "home.record.start_hint"
+                    : "home.record.unavailable_hint")))
+                .accessibilityIdentifier("home.catalog.record")
+            }
+    }
+
+    private var secondaryCatalogActions: some View {
+        Button(action: onCreateTopic) {
+            Label(String(localized: "home.notebook.new"), systemImage: "plus")
+                .font(.bodyMedium)
+                .frame(minHeight: 44)
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.textPrimary)
+        .accessibilityIdentifier("home.notebook.new")
+    }
+
+    @ViewBuilder
+    private var catalogMetrics: some View {
+        Text(
+            String(
+                format: String(localized: "home.catalog.count_format"),
+                Int64(sessions.count)
+            )
+        )
+        .font(.bodySM)
+        .foregroundColor(.textSecondary)
+        .monospacedDigit()
+
+        if viewModel.isSearchingTranscripts {
+            ProgressView()
+                .controlSize(.small)
+                .help(String(localized: "home.catalog.searching_transcripts"))
+                .accessibilityLabel(String(localized: "home.catalog.searching_transcripts"))
+        }
+
+        if let topicId = viewModel.selectedTopicFilterId,
+           topicId != LibraryViewModel.unfiledTopicFilterId {
+            Button {
+                onOpenTopic(topicId)
+            } label: {
+                Label(String(localized: "home.library.open_hint"), systemImage: "arrow.up.right")
+                    .font(.bodyMedium)
+                    .frame(minHeight: 36)
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.textPrimary)
+            .accessibilityIdentifier("home.topic.open_selected")
+        }
+    }
+
+    private func activeCaptureButtonTitle(
+        _ destination: HomeActiveCaptureDestination
+    ) -> String {
+        String(
+            format: String(localized: "home.record.return_active_format"),
+            destination.topicTitle ?? String(localized: "home.record.unfiled")
+        )
     }
 
     private var compactSearch: some View {
@@ -651,16 +983,16 @@ private struct HomeRecentRecordingsSection: View {
                 .foregroundColor(.textSecondary)
 
             TextField(
-                String(localized: "home.recent.search_placeholder"),
+                String(localized: "home.catalog.search_placeholder"),
                 text: $viewModel.searchText
             )
             .textFieldStyle(.plain)
             .font(.body)
             .foregroundColor(.textPrimary)
             .focused($isSearchFocused)
-            .accessibilityIdentifier("home.recent.search")
+            .accessibilityIdentifier("home.catalog.search")
 
-            if viewModel.searchText.isEmpty == false {
+            if viewModel.hasCatalogSearchText {
                 Button {
                     viewModel.searchText = ""
                 } label: {
@@ -668,11 +1000,11 @@ private struct HomeRecentRecordingsSection: View {
                         .foregroundColor(.textSecondary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "home.recent.search.clear"))
+                .accessibilityLabel(String(localized: "home.catalog.search.clear"))
             }
         }
         .padding(.horizontal, Spacing.md)
-        .frame(width: 260)
+        .frame(maxWidth: 420)
         .frame(minHeight: 36)
         .background(Color.bgElevated.opacity(0.42))
         .overlay(
@@ -684,10 +1016,179 @@ private struct HomeRecentRecordingsSection: View {
     }
 }
 
-private struct HomeRecentEmptyState: View {
+private struct HomeCatalogSearchingState: View {
     var body: some View {
         HStack(spacing: Spacing.md) {
-            Image(systemName: "waveform")
+            ProgressView()
+                .controlSize(.small)
+            Text(String(localized: "home.catalog.searching_transcripts"))
+                .font(.bodySM)
+                .foregroundColor(.textSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(Spacing.lg)
+        .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+        .background(Color.bgElevated.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct HomeCatalogLoadFailureState: View {
+    let message: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.bodySM)
+                .foregroundColor(.signalAmber)
+
+            HomeActionButton(
+                title: String(localized: "home.workspace.retry"),
+                icon: "arrow.clockwise",
+                style: .secondary,
+                action: onRetry
+            )
+        }
+        .padding(Spacing.lg)
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+        .background(Color.bgElevated.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        .accessibilityIdentifier("home.catalog.load_failure")
+    }
+}
+
+private struct HomeCatalogRefreshWarning: View {
+    let message: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: Spacing.md) {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.bodySM)
+                .foregroundColor(.signalAmber)
+
+            Spacer(minLength: 0)
+
+            Button(String(localized: "home.workspace.retry"), action: onRetry)
+                .buttonStyle(.plain)
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+                .frame(minHeight: 36)
+        }
+        .padding(.horizontal, Spacing.md)
+        .background(Color.bgElevated.opacity(0.25))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        .accessibilityIdentifier("home.catalog.refresh_warning")
+    }
+}
+
+private struct HomeCatalogLoadingState: View {
+    var body: some View {
+        HStack(spacing: Spacing.md) {
+            ProgressView()
+                .controlSize(.small)
+
+            Text(String(localized: "home.catalog.loading"))
+                .font(.bodySM)
+                .foregroundColor(.textSecondary)
+
+            Spacer(minLength: 0)
+        }
+        .padding(Spacing.lg)
+        .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+        .background(Color.bgElevated.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct HomeTopicFilterBar: View {
+    @ObservedObject var viewModel: LibraryViewModel
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Spacing.sm) {
+                HomeTopicFilterChip(
+                    title: String(localized: "home.catalog.filter.all"),
+                    count: viewModel.sessions.count,
+                    isSelected: viewModel.selectedTopicFilterId == nil,
+                    action: { viewModel.selectTopicFilter(nil) }
+                )
+                .accessibilityIdentifier("home.topic.filter.all")
+
+                if viewModel.hasLoadedTopicMemberships {
+                    HomeTopicFilterChip(
+                        title: String(localized: "home.row.topic.unassigned"),
+                        count: viewModel.unfiledSessionCount,
+                        isSelected: viewModel.selectedTopicFilterId
+                            == LibraryViewModel.unfiledTopicFilterId,
+                        action: viewModel.selectUnfiledFilter
+                    )
+                    .accessibilityIdentifier("home.topic.filter.unfiled")
+                }
+
+                ForEach(viewModel.researchNotebooks, id: \.id) { notebook in
+                    HomeTopicFilterChip(
+                        title: notebook.title,
+                        count: viewModel.notebookSessionCounts[notebook.id] ?? 0,
+                        isSelected: viewModel.selectedTopicFilterId == notebook.id,
+                        action: { viewModel.selectTopicFilter(notebook.id) }
+                    )
+                    .accessibilityIdentifier("home.topic.filter.\(notebook.id)")
+                }
+            }
+        }
+        .accessibilityIdentifier("home.topic.filters")
+    }
+}
+
+private struct HomeTopicFilterChip: View {
+    let title: String
+    let count: Int
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Spacing.xs) {
+                Text(title)
+                    .lineLimit(1)
+
+                Text("\(count)")
+                    .monospacedDigit()
+                    .foregroundColor(isSelected ? .brandAccentForeground.opacity(0.82) : .textTertiary)
+            }
+            .font(.bodySM)
+            .foregroundColor(isSelected ? .brandAccentForeground : .textSecondary)
+            .padding(.horizontal, Spacing.md)
+            .frame(minHeight: 34)
+            .background(isSelected ? Color.brandAccent : Color.bgElevated.opacity(0.32))
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        isSelected ? Color.brandAccent : Color.borderGhost.opacity(0.55),
+                        lineWidth: Stroke.thin
+                    )
+            )
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct HomeCatalogEmptyState: View {
+    let title: String
+    let description: String
+    let icon: String
+
+    var body: some View {
+        HStack(spacing: Spacing.md) {
+            Image(systemName: icon)
                 .font(.system(size: 22, weight: .regular))
                 .foregroundColor(.textSecondary)
                 .frame(width: 40, height: 40)
@@ -696,11 +1197,11 @@ private struct HomeRecentEmptyState: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(String(localized: "home.recent.empty.title"))
+                Text(title)
                     .font(.bodyMedium)
                     .foregroundColor(.textPrimary)
 
-                Text(String(localized: "home.recent.empty.description"))
+                Text(description)
                     .font(.bodySM)
                     .foregroundColor(.textSecondary)
             }
@@ -723,10 +1224,10 @@ private struct HomeNoSearchResults: View {
     var body: some View {
         HStack(spacing: Spacing.md) {
             VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(String(localized: "home.recent.no_match.title"))
+                Text(String(localized: "home.catalog.no_match.title"))
                     .font(.bodyMedium)
                     .foregroundColor(.textPrimary)
-                Text(String(localized: "home.recent.no_match.description"))
+                Text(String(localized: "home.catalog.no_match.description"))
                     .font(.bodySM)
                     .foregroundColor(.textSecondary)
             }
@@ -734,7 +1235,7 @@ private struct HomeNoSearchResults: View {
             Spacer()
 
             HomeActionButton(
-                title: String(localized: "home.recent.search.clear"),
+                title: String(localized: "home.catalog.search.clear"),
                 icon: "xmark",
                 style: .secondary,
                 action: onClear
@@ -748,8 +1249,13 @@ private struct HomeNoSearchResults: View {
 
 private struct HomeGroupSection: View {
     let group: SessionGroup
+    let topics: [FfiNotebook]
     let onOpen: (String) -> Void
     let onDelete: (String) -> Void
+    let onAssign: (String, String) -> Void
+    let membershipKnown: Bool
+    let canOpen: (String) -> Bool
+    let topicTitle: (String) -> String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
@@ -757,13 +1263,20 @@ private struct HomeGroupSection: View {
                 .font(.captionMedium)
                 .tracking(0.8)
                 .foregroundColor(.textSecondary)
+                .accessibilityAddTraits(.isHeader)
 
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 ForEach(group.sessions) { session in
+                    let resolvedTopicTitle = topicTitle(session.id)
                     HomeSessionRow(
                         session: session,
+                        topicTitle: resolvedTopicTitle,
+                        topics: topics,
+                        membershipKnown: membershipKnown,
+                        canOpen: canOpen(session.id),
                         onOpen: { onOpen(session.id) },
-                        onDelete: { onDelete(session.id) }
+                        onDelete: { onDelete(session.id) },
+                        onAssign: { onAssign(session.id, $0) }
                     )
                 }
             }
@@ -773,8 +1286,13 @@ private struct HomeGroupSection: View {
 
 private struct HomeSessionRow: View {
     let session: SessionListItem
+    let topicTitle: String?
+    let topics: [FfiNotebook]
+    let membershipKnown: Bool
+    let canOpen: Bool
     let onOpen: () -> Void
     let onDelete: () -> Void
+    let onAssign: (String) -> Void
     @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
@@ -782,11 +1300,18 @@ private struct HomeSessionRow: View {
         HStack(spacing: Spacing.sm) {
             Button(action: onOpen) {
                 HStack(alignment: .top, spacing: Spacing.md) {
-                    Image(systemName: rowIcon)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(rowIconColor)
-                        .frame(width: 24, height: 24)
-                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(session.timeString)
+                            .font(.bodyMedium)
+                            .foregroundColor(.textPrimary)
+                            .monospacedDigit()
+
+                        Image(systemName: rowIcon)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(rowIconColor)
+                            .accessibilityHidden(true)
+                    }
+                    .frame(width: 58, alignment: .leading)
 
                     VStack(alignment: .leading, spacing: Spacing.xs) {
                         HStack(spacing: Spacing.sm) {
@@ -832,12 +1357,44 @@ private struct HomeSessionRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .disabled(canOpen == false)
             .focusable()
             .focused($isFocused)
             .focusRing(isFocused, cornerRadius: Radius.sm)
             .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint(String(localized: "home.recent.row.open_hint"))
+            .accessibilityHint(
+                String(localized: membershipKnown == false
+                    ? "home.catalog.row.membership_unknown_hint"
+                    : topicTitle == nil && canOpen
+                        ? "home.catalog.row.open_unfiled_hint"
+                        : canOpen ? "home.catalog.row.open_hint" : "home.catalog.row.unfiled_hint")
+            )
             .accessibilityIdentifier("home.session.\(session.id)")
+
+            if membershipKnown,
+               topicTitle == nil,
+               session.isRecording == false,
+               topics.isEmpty == false {
+                Menu {
+                    ForEach(topics, id: \.id) { topic in
+                        Button {
+                            onAssign(topic.id)
+                        } label: {
+                            Label(topic.title, systemImage: "folder")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.brandAccent)
+                        .frame(width: 36, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help(String(localized: "home.row.assign_to_topic"))
+                .accessibilityLabel(String(localized: "home.row.assign_to_topic"))
+            }
 
             Menu {
                 // 正在录的删不了(Core 软删与彻底删除都拒绝)。禁用而不是
@@ -861,7 +1418,7 @@ private struct HomeSessionRow: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .accessibilityLabel(
-                String(format: String(localized: "home.recent.row.actions_format"), titleForDisplay)
+                String(format: String(localized: "home.catalog.row.actions_format"), titleForDisplay)
             )
         }
         .padding(.trailing, Spacing.sm)
@@ -882,7 +1439,12 @@ private struct HomeSessionRow: View {
 
     private var metadata: some View {
         HStack(spacing: Spacing.sm) {
-            Text(session.timeString)
+            Label(
+                membershipLabel,
+                systemImage: "folder"
+            )
+            .lineLimit(1)
+            .frame(maxWidth: 180, alignment: .leading)
 
             if session.durationString.isEmpty == false,
                session.durationString != "00:00" {
@@ -896,15 +1458,35 @@ private struct HomeSessionRow: View {
                 Text(session.languagePair)
             }
 
+            Text("·")
+
+            Label(sessionKindLabel, systemImage: sessionKindIcon)
         }
         .font(.captionMedium)
         .foregroundColor(.textSecondary)
     }
 
+    private var sessionKindLabel: String {
+        session.sessionType == "import"
+            ? String(localized: "home.row.kind.import")
+            : String(localized: "home.row.kind.recording")
+    }
+
+    private var membershipLabel: String {
+        guard membershipKnown else {
+            return String(localized: "home.row.topic.unknown")
+        }
+        return topicTitle ?? String(localized: "home.row.topic.unassigned")
+    }
+
+    private var sessionKindIcon: String {
+        session.sessionType == "import" ? "square.and.arrow.down" : "mic.fill"
+    }
+
     private var titleForDisplay: String {
         let trimmed = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty
-            ? String(localized: "home.recent.row.untitled")
+            ? String(localized: "home.catalog.row.untitled")
             : trimmed
     }
 
@@ -925,7 +1507,7 @@ private struct HomeSessionRow: View {
         case .recording:
             return (
                 String(localized: "home.row.preview.recording"),
-                .textPrimary,
+                .accentOrange,
                 "record.circle.fill"
             )
         case .transcribing:
@@ -933,6 +1515,12 @@ private struct HomeSessionRow: View {
                 String(localized: "home.row.preview.pending"),
                 .signalAmber,
                 "hourglass"
+            )
+        case .interrupted:
+            return (
+                String(localized: "home.row.status.interrupted"),
+                .signalAmber,
+                "exclamationmark.circle.fill"
             )
         case .failed:
             return (
@@ -943,7 +1531,7 @@ private struct HomeSessionRow: View {
         case .completed:
             return (
                 String(localized: "home.row.status.completed"),
-                .textPrimary,
+                .signalGreen,
                 "checkmark.circle.fill"
             )
         case .imported:
@@ -975,12 +1563,22 @@ private struct HomeSessionRow: View {
     }
 
     private var accessibilityLabel: String {
-        var parts = [titleForDisplay, session.timeString]
+        // Time is the primary Session identity in both the visual hierarchy and
+        // VoiceOver order; title remains secondary and may be absent.
+        var parts = [session.timeString, titleForDisplay]
+        parts.append(membershipLabel)
+        parts.append(sessionKindLabel)
         if session.durationString.isEmpty == false {
             parts.append(session.durationString)
         }
+        if session.languagePair.isEmpty == false, session.languagePair != "—" {
+            parts.append(session.languagePair)
+        }
         if let statusLabel {
             parts.append(statusLabel.text)
+        }
+        if session.preview.isEmpty == false {
+            parts.append(session.preview)
         }
         return parts.joined(separator: ", ")
     }

@@ -51,6 +51,7 @@ enum AccessibilityID {
     /// HOME 主入口。
     static let mainTabLibrary = "main.tab.library"
     static let mainTabHome    = "main.tab.library"
+    static let mainTabTopics  = "main.tab.topics"
 
     /// Knowledge profiles used to prepare transcription context.
     static let mainTabKnowledge = "main.tab.knowledge"
