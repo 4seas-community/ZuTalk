@@ -1450,8 +1450,14 @@ impl FairTaggedEventQueue {
                 biased;
                 tagged = discontinuities.recv(), if !discontinuities.is_closed() => tagged,
                 tagged = receiver.recv(), if !receiver.is_closed() => tagged,
-                else => None,
-            }?;
+                else => return None,
+            };
+            // One producer can close while the other is still forwarding its
+            // tail. A `None` from that single branch is not group EOF; loop so
+            // the select disables the closed branch and drains the survivor.
+            let Some(tagged) = tagged else {
+                continue;
+            };
             if let Err(invalid) = self.enqueue(tagged) {
                 return Some(invalid);
             }
@@ -5513,9 +5519,9 @@ pub(crate) struct ActiveRemoteCapture {
     /// settings say by the time a lane fails.
     endpoint: String,
     credential: Arc<dyn vt_stt::LaneCredentialSource>,
-    /// A live sender for the collector's event channel. Dropped with this
-    /// struct, which is what still lets the collector see the channel close
-    /// and finish at teardown.
+    /// A live sender for the collector's event channel. Teardown releases this
+    /// owner before joining the collector; each forward task keeps its own
+    /// clone until every provider tail event has been forwarded.
     tagged_tx: tokio::sync::mpsc::Sender<TaggedStreamEvent>,
     /// Frames the journal has accepted, which is where a replacement lane
     /// starts on the capture timeline.
@@ -7942,8 +7948,16 @@ impl ZuTalkCore {
                 cancel,
                 streams,
                 event_task,
+                discontinuity_tx,
+                tagged_tx,
                 ..
             } = remote;
+            // `remote` is only partially moved here, so fields hidden by `..`
+            // otherwise live until the async block returns. Release the owner
+            // senders now; forward tasks retain their tagged sender clones long
+            // enough to flush any provider tail before the collector sees EOF.
+            drop(tagged_tx);
+            drop(discontinuity_tx);
             cancel.cancel();
             join_cancelled_remote_group(streams, event_task, std::time::Duration::from_secs(1))
                 .await
@@ -8810,8 +8824,8 @@ impl ZuTalkCore {
             endpoint: engine.realtime_endpoint.to_string(),
             credential: lane_credential,
             // Retained so a replacement lane has somewhere to forward events.
-            // The collector still learns that the group is finished when this
-            // struct is dropped at teardown and takes the last sender with it.
+            // Teardown releases this owner before joining the collector; each
+            // forward task keeps its clone until its provider tail is drained.
             tagged_tx,
             captured_frames: captured_frames_for_restart,
         })
@@ -8823,8 +8837,17 @@ impl ZuTalkCore {
                 cancel,
                 mut streams,
                 mut event_task,
+                discontinuity_tx,
+                tagged_tx,
                 ..
             } = remote;
+            // A partial move does not drop fields covered by `..` until this
+            // async block returns. If these owner senders stay there, the event
+            // collector cannot observe channel closure and every healthy stop
+            // consumes its full drain timeout. Forward tasks own clones, so
+            // releasing only these owners cannot truncate the provider tail.
+            drop(tagged_tx);
+            drop(discontinuity_tx);
             let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
             let finish_senders = streams
                 .iter()
@@ -10660,6 +10683,68 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct GracefulFinishNotebookSonioxStreamFactory {
+        constructor_count: AtomicUsize,
+        finish_count: Arc<AtomicUsize>,
+    }
+
+    impl NotebookSonioxStreamFactory for GracefulFinishNotebookSonioxStreamFactory {
+        fn start(
+            &self,
+            _endpoint: &str,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
+            _config: SttConfig,
+            _cancel: tokio_util::sync::CancellationToken,
+            _capture_origin_ms: u64,
+        ) -> SonioxStreamRuntime {
+            self.constructor_count.fetch_add(1, Ordering::SeqCst);
+            let (audio_tx, audio_rx) = tokio::sync::mpsc::channel(4);
+            let (control_tx, mut control_rx) = tokio::sync::mpsc::channel(4);
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(4);
+            let finish_count = self.finish_count.clone();
+            let task = tokio::spawn(async move {
+                let _audio_rx = audio_rx;
+                let _ = event_tx.send(SttStreamEvent::Connected).await;
+                while let Some(control) = control_rx.recv().await {
+                    if control != SttStreamControl::Finish {
+                        continue;
+                    }
+                    let _ = event_tx
+                        .send(SttStreamEvent::Tokens(vec![token(
+                            "forwarded stop tail",
+                            SttStreamTranslationStatus::Original,
+                            "en",
+                            Some(0),
+                            Some(100),
+                            true,
+                        )]))
+                        .await;
+                    let _ = event_tx.send(SttStreamEvent::Finished).await;
+                    finish_count.fetch_add(1, Ordering::SeqCst);
+                    break;
+                }
+                Ok(())
+            });
+            SonioxStreamRuntime {
+                audio_tx,
+                control_tx,
+                event_rx,
+                task,
+            }
+        }
+
+        fn try_send_pcm(
+            &self,
+            audio_tx: &tokio::sync::mpsc::Sender<Vec<u8>>,
+            audio_data: Vec<u8>,
+        ) -> Result<(), String> {
+            audio_tx
+                .try_send(audio_data)
+                .map_err(|error| error.to_string())
+        }
+    }
+
     struct RemoteLifetimeGuard(Arc<AtomicUsize>);
 
     impl Drop for RemoteLifetimeGuard {
@@ -10773,6 +10858,183 @@ mod tests {
             .unwrap();
         assert_eq!(factory.pcm_send_count.load(Ordering::SeqCst), 0);
         assert_eq!(factory.constructor_count.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn graceful_stop_does_not_persist_event_drain_timeout() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let factory = Arc::new(GracefulFinishNotebookSonioxStreamFactory::default());
+        core.notebook_soniox_stream_factory = factory.clone();
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core
+            .create_notebook(Some("Graceful remote stop".into()))
+            .unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        core.push_notebook_capture_session(started.session_id.clone(), vec![0_u8; 3_200])
+            .unwrap();
+
+        let stopped = core
+            .stop_notebook_capture_session(started.session_id.clone())
+            .unwrap();
+        let durable = core
+            .notebook_capture_store
+            .get_run_for_session(&started.session_id)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(factory.constructor_count.load(Ordering::SeqCst), 1);
+        assert_eq!(factory.finish_count.load(Ordering::SeqCst), 1);
+        assert_eq!(stopped.capture_state, FfiNotebookCaptureState::Completed);
+        assert_eq!(stopped.provider_error_type, None);
+        assert_eq!(durable.provider_error_type, None);
+        assert!(
+            stopped
+                .utterances
+                .iter()
+                .any(|utterance| utterance.source_text == "forwarded stop tail"),
+            "the forwarded provider tail must be durable before Stop returns: {:#?}",
+            stopped.utterances
+        );
+    }
+
+    #[test]
+    fn finish_remote_capture_drains_forwarded_tail_and_closes_collector() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let lane_cancel = cancel.child_token();
+        let (audio_tx, audio_rx) = tokio::sync::mpsc::channel(4);
+        let (control_tx, mut control_rx) = tokio::sync::mpsc::channel(4);
+        let (provider_event_tx, provider_event_rx) = tokio::sync::mpsc::channel(4);
+        let (tagged_tx, mut tagged_rx) = tokio::sync::mpsc::channel(4);
+        let (discontinuity_tx, mut discontinuity_rx) = tokio::sync::mpsc::unbounded_channel();
+        let provider_tail_sent = Arc::new(AtomicBool::new(false));
+        let provider_tail_sent_by_stream = provider_tail_sent.clone();
+        let stream_task = core.runtime.spawn(async move {
+            let _audio_rx = audio_rx;
+            while let Some(control) = control_rx.recv().await {
+                if control == SttStreamControl::Finish {
+                    if provider_event_tx
+                        .send(SttStreamEvent::Finished)
+                        .await
+                        .is_ok()
+                    {
+                        provider_tail_sent_by_stream.store(true, Ordering::SeqCst);
+                    }
+                    break;
+                }
+            }
+            Ok(())
+        });
+        let forward_task = core.runtime.spawn(forward_stream_events(
+            0,
+            provider_event_rx,
+            tagged_tx.clone(),
+        ));
+        let tail_seen = Arc::new(AtomicBool::new(false));
+        let tail_seen_by_collector = tail_seen.clone();
+        let event_task = core.runtime.spawn(async move {
+            let mut queue = FairTaggedEventQueue::new(1, 8);
+            while let Some(tagged) = queue.recv(&mut tagged_rx, &mut discontinuity_rx).await {
+                if matches!(tagged.event, SttStreamEvent::Finished) {
+                    tail_seen_by_collector.store(true, Ordering::SeqCst);
+                }
+            }
+            Ok(())
+        });
+        let remote = ActiveRemoteCapture {
+            stream_factory: Arc::new(RealNotebookSonioxStreamFactory),
+            streams: vec![ActiveRemoteStream {
+                descriptor: RemoteStreamLane {
+                    target_language: None,
+                    canonical: true,
+                },
+                config: SttConfig::default(),
+                audio_tx,
+                control_tx,
+                stream_task,
+                forward_task,
+                lane_cancel,
+                input_discontinuity_reported: AtomicBool::new(false),
+            }],
+            cancel,
+            event_task,
+            discontinuity_tx,
+            endpoint: "wss://stream.invalid".to_string(),
+            credential: vt_stt::StaticLaneCredential::new("test-key"),
+            tagged_tx,
+            captured_frames: Arc::new(AtomicU64::new(0)),
+            lane_restarts: vec![0],
+            lane_restarted_at: vec![None],
+            runtime: core.runtime.handle().clone(),
+        };
+
+        let failure = core.finish_remote_capture(remote);
+
+        assert!(
+            failure.is_none(),
+            "healthy forward/collector teardown must not report {failure:?}"
+        );
+        assert!(
+            provider_tail_sent.load(Ordering::SeqCst),
+            "the provider stream must accept Finish and emit its tail"
+        );
+        assert!(
+            tail_seen.load(Ordering::SeqCst),
+            "the forward sender clone must outlive the owner sender long enough to deliver the tail"
+        );
+    }
+
+    #[test]
+    fn failed_remote_shutdown_releases_owner_senders_before_collector_join() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let (tagged_tx, mut tagged_rx) = tokio::sync::mpsc::channel(4);
+        let (discontinuity_tx, mut discontinuity_rx) = tokio::sync::mpsc::unbounded_channel();
+        let event_task = core.runtime.spawn(async move {
+            let mut queue = FairTaggedEventQueue::new(1, 8);
+            while queue
+                .recv(&mut tagged_rx, &mut discontinuity_rx)
+                .await
+                .is_some()
+            {}
+            Ok(())
+        });
+        let remote = ActiveRemoteCapture {
+            stream_factory: Arc::new(RealNotebookSonioxStreamFactory),
+            streams: Vec::new(),
+            cancel: tokio_util::sync::CancellationToken::new(),
+            event_task,
+            discontinuity_tx,
+            endpoint: "wss://stream.invalid".to_string(),
+            credential: vt_stt::StaticLaneCredential::new("test-key"),
+            tagged_tx,
+            captured_frames: Arc::new(AtomicU64::new(0)),
+            lane_restarts: Vec::new(),
+            lane_restarted_at: Vec::new(),
+            runtime: core.runtime.handle().clone(),
+        };
+
+        let failure = core.shutdown_failed_remote_capture(remote);
+
+        assert!(
+            failure.is_none(),
+            "closed teardown channels must end naturally, not report {failure:?}"
+        );
     }
 
     #[test]
