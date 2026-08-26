@@ -861,57 +861,57 @@ struct ShareBroadcastGlyph: View {
 
 // MARK: - Realtime capture command center
 
-/// Realtime exists before the first session. The profile editor represents the
-/// next capture; a loaded run remains an immutable source snapshot below it.
+/// Realtime exists before the first Session as a capture entry. Once a Session
+/// is supplied, this page becomes that Session's one transcript Section.
 struct NotebookRealtimeTranscriptPage: View {
     let notebookId: String
-    /// Optional navigation focus only. History is always queried by Notebook.
+    /// A non-nil id is a hard presentation boundary, never a timeline focus.
     let sessionId: String?
     @ObservedObject var editor: NotebookCaptureProfileEditorModel
     let onOpenAdvancedSettings: () -> Void
-    let onSelectHistorySession: (String) -> Void
     @StateObject private var history = NotebookCaptureHistoryStore()
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var subtitleOverlay = SubtitleOverlayCoordinator.shared
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: Spacing.md) {
-                Label(
-                    String(localized: "capture.realtime.controls.profile_group"),
-                    systemImage: "waveform.and.mic"
-                )
+            if showsCaptureSetup {
+                HStack(spacing: Spacing.md) {
+                    Label(
+                        String(localized: "capture.realtime.controls.profile_group"),
+                        systemImage: "waveform.and.mic"
+                    )
                     .font(.captionMedium)
                     .foregroundColor(.textSecondary)
-                Spacer(minLength: Spacing.md)
-                NotebookCaptureToolbar(
+                    Spacer(minLength: Spacing.md)
+                    advancedSettingsButton
+                    NotebookCaptureToolbar(
+                        notebookId: notebookId,
+                        profileEditor: editor
+                    )
+                    floatingSubtitleButton
+                }
+                .padding(.horizontal, Spacing.xl)
+                .padding(.vertical, Spacing.sm)
+                .background(Color.bgSunken.opacity(0.42))
+
+                NotebookRealtimeCaptureConsole(
                     notebookId: notebookId,
-                    profileEditor: editor
+                    editor: editor
                 )
-                floatingSubtitleButton
+
+                Divider().background(Color.borderGhost.opacity(0.3))
             }
-            .padding(.horizontal, Spacing.xl)
-            .padding(.vertical, Spacing.sm)
-            .background(Color.bgSunken.opacity(0.42))
-
-            NotebookRealtimeCaptureConsole(
-                notebookId: notebookId,
-                editor: editor,
-                onOpenAdvancedSettings: onOpenAdvancedSettings
-            )
-
-            Divider().background(Color.borderGhost.opacity(0.3))
 
             NotebookRealtimeHistoryView(
                 notebookId: notebookId,
                 focusSessionId: sessionId,
-                history: history,
-                onSelectSession: onSelectHistorySession
+                history: history
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
-        .task(id: notebookId) {
+        .task(id: "\(notebookId):\(sessionId ?? "new")") {
             await reloadHistory()
         }
         .montereyOnChange(of: capture.sessionId) { _, _ in
@@ -936,11 +936,19 @@ struct NotebookRealtimeTranscriptPage: View {
         refreshActiveSessionSpeakers(activeSessionSpeakerIds)
     }
 
+    private var showsCaptureSetup: Bool {
+        guard let sessionId else { return true }
+        return capture.notebookId == notebookId
+            && capture.sessionId == sessionId
+            && capture.isCaptureActive
+    }
+
     private func refreshActiveSessionSpeakers(_ speakerIds: [String]) {
         guard speakerIds.isEmpty == false,
               capture.notebookId == notebookId,
-              let sessionId = capture.sessionId else { return }
-        history.refreshSessionSpeakers(sessionId: sessionId)
+              let activeSessionId = capture.sessionId,
+              sessionId == nil || sessionId == activeSessionId else { return }
+        history.refreshSessionSpeakers(sessionId: activeSessionId)
     }
 
     private var activeSessionSpeakerIds: [String] {
@@ -990,6 +998,23 @@ struct NotebookRealtimeTranscriptPage: View {
                 : String(localized: "capture.toolbar.subtitle_window.unavailable_hint")
         ))
         .accessibilityIdentifier(AccessibilityID.floatingSubtitleButton)
+    }
+
+    private var advancedSettingsButton: some View {
+        Button(action: onOpenAdvancedSettings) {
+            Label(
+                String(localized: "topic.capture_setup.tab"),
+                systemImage: "slider.horizontal.3"
+            )
+            .font(.captionMedium)
+            .foregroundColor(.textSecondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "topic.capture_setup.tab.hint"))
+        .accessibilityLabel(Text(String(localized: "topic.capture_setup.tab")))
+        .accessibilityHint(Text(String(localized: "capture.settings.tab_hint")))
+        .accessibilityIdentifier("capture.realtime.advanced_settings")
     }
 }
 
@@ -1187,7 +1212,6 @@ enum NotebookCaptureSupportedLanguages {
 private struct NotebookRealtimeCaptureConsole: View {
     let notebookId: String
     @ObservedObject var editor: NotebookCaptureProfileEditorModel
-    let onOpenAdvancedSettings: () -> Void
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var credentialSession = ProviderCredentialSession.shared
     @State private var languageSearch = ""
@@ -1714,13 +1738,53 @@ private struct NotebookRealtimeCaptureConsole: View {
 
 // MARK: - Notebook capture settings
 
+/// User-facing destination of the editable recording defaults. This identity
+/// comes from the backend quick-capture Notebook id; it must never be inferred
+/// from a localized or user-editable title.
+enum NotebookCaptureSettingsScope: Equatable {
+    case topic
+    case quickCapture
+
+    var settingsDescription: String {
+        switch self {
+        case .topic:
+            String(localized: "capture.settings.subtitle.topic")
+        case .quickCapture:
+            String(localized: "capture.settings.subtitle.quick_capture")
+        }
+    }
+
+    var sessionWorkspaceDescription: String {
+        switch self {
+        case .topic:
+            String(localized: "session.settings.workspace.scope.topic")
+        case .quickCapture:
+            String(localized: "session.settings.workspace.scope.quick_capture")
+        }
+    }
+
+    var privateContextTitle: String {
+        switch self {
+        case .topic:
+            String(localized: "capture.settings.context.current_topic")
+        case .quickCapture:
+            String(localized: "capture.settings.context.current_quick_capture")
+        }
+    }
+}
+
 struct NotebookCaptureSettingsView: View {
     let notebookId: String
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var editor: NotebookCaptureProfileEditorModel
     @ObservedObject private var engineStore = NotebookCaptureEnginePresentationStore.shared
     @ObservedObject private var inputDevices = AudioInputDeviceStore.shared
+    let scope: NotebookCaptureSettingsScope
     let onOpenRealtimeControls: () -> Void
+    /// Session Settings owns the page-level scroller so its resources,
+    /// editable defaults, and immutable snapshot remain one continuous page.
+    /// Topic/quick-capture settings still use their standalone scroller.
+    private let embeddedInParentScrollView: Bool
     @State private var isReviewingContext = false
     @State private var isLoadingContextPacks = true
     @State private var contextLoadError: String?
@@ -1728,48 +1792,28 @@ struct NotebookCaptureSettingsView: View {
     init(
         notebookId: String,
         editor: NotebookCaptureProfileEditorModel,
+        scope: NotebookCaptureSettingsScope = .topic,
+        embeddedInParentScrollView: Bool = false,
         onOpenRealtimeControls: @escaping () -> Void
     ) {
         self.notebookId = notebookId
         _editor = ObservedObject(wrappedValue: editor)
+        self.scope = scope
+        self.embeddedInParentScrollView = embeddedInParentScrollView
         self.onOpenRealtimeControls = onOpenRealtimeControls
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.lg) {
-                header
-
-                if capture.isCaptureActive {
-                    Label(
-                        String(localized: "capture.settings.active_locked"),
-                        systemImage: "exclamationmark.circle.fill"
-                    )
-                    .font(.captionMedium)
-                    .foregroundColor(.signalAmber)
-                    .padding(Spacing.md)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.signalAmber.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        Group {
+            if embeddedInParentScrollView {
+                settingsContent
+            } else {
+                ScrollView {
+                    settingsContent
                 }
-
-                audioInputSection
-
-                VStack(alignment: .leading, spacing: Spacing.lg) {
-                    contextBrowserSection
-                    postStopRemoteProcessingSection
-                    retentionSection
-                }
-                .disabled(editor.canEdit == false)
-                .opacity(editor.canEdit ? 1 : 0.62)
-
-                realtimeFooterLink
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: 820, alignment: .leading)
-            .padding(Spacing.xl)
-            .frame(maxWidth: .infinity, alignment: .top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
         .task(id: notebookId) {
             inputDevices.refresh()
@@ -1781,6 +1825,40 @@ struct NotebookCaptureSettingsView: View {
         )) { _ in
             inputDevices.refresh()
         }
+    }
+
+    private var settingsContent: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            header
+
+            if capture.isCaptureActive {
+                Label(
+                    String(localized: "capture.settings.active_locked"),
+                    systemImage: "exclamationmark.circle.fill"
+                )
+                .font(.captionMedium)
+                .foregroundColor(.signalAmber)
+                .padding(Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.signalAmber.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            }
+
+            audioInputSection
+
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                contextBrowserSection
+                postStopRemoteProcessingSection
+                retentionSection
+            }
+            .disabled(editor.canEdit == false)
+            .opacity(editor.canEdit ? 1 : 0.62)
+
+            realtimeFooterLink
+        }
+        .frame(maxWidth: 820, alignment: .leading)
+        .padding(Spacing.xl)
+        .frame(maxWidth: .infinity, alignment: .top)
     }
 
     private var draft: NotebookCaptureProfileDTO { editor.draft }
@@ -1809,7 +1887,7 @@ struct NotebookCaptureSettingsView: View {
             Text(String(localized: "capture.settings.title"))
                 .font(.headline)
                 .foregroundColor(.textPrimary)
-            Text(String(localized: "capture.settings.subtitle"))
+            Text(scope.settingsDescription)
                 .font(.caption)
                 .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -2241,7 +2319,7 @@ struct NotebookCaptureSettingsView: View {
 
     private func contextPackDisplayTitle(_ pack: NotebookContextPackDTO) -> String {
         pack.isPrivate
-            ? String(localized: "capture.settings.context.private_pack")
+            ? scope.privateContextTitle
             : pack.title
     }
 
@@ -2498,37 +2576,19 @@ enum NotebookRealtimeAutoscrollPolicy {
     }
 }
 
-enum NotebookRealtimeRunSelectionPolicy {
-    static func initialSessionID(
+enum NotebookRealtimeSectionPolicy {
+    static func targetRun(
         runs: [NotebookCaptureHistoryRunDTO],
         requestedSessionID: String?,
         activeSessionID: String?
-    ) -> String? {
-        let sessionIDs = Set(runs.map(\.sessionId))
-        if let requestedSessionID, sessionIDs.contains(requestedSessionID) {
-            return requestedSessionID
+    ) -> NotebookCaptureHistoryRunDTO? {
+        if let requestedSessionID,
+           requestedSessionID.isEmpty == false {
+            return runs.first { $0.sessionId == requestedSessionID }
         }
-        if let activeSessionID, sessionIDs.contains(activeSessionID) {
-            return activeSessionID
-        }
-        return runs.last?.sessionId
-    }
-
-    static func reconciledSessionID(
-        currentSessionID: String?,
-        runs: [NotebookCaptureHistoryRunDTO],
-        requestedSessionID: String?,
-        activeSessionID: String?
-    ) -> String? {
-        let sessionIDs = Set(runs.map(\.sessionId))
-        if let currentSessionID, sessionIDs.contains(currentSessionID) {
-            return currentSessionID
-        }
-        return initialSessionID(
-            runs: runs,
-            requestedSessionID: requestedSessionID,
-            activeSessionID: activeSessionID
-        )
+        guard let activeSessionID,
+              activeSessionID.isEmpty == false else { return nil }
+        return runs.first { $0.sessionId == activeSessionID }
     }
 }
 
@@ -2663,13 +2723,12 @@ enum NotebookLanguageColumnCueOverlay {
     }
 }
 
-/// A Notebook timeline owns every durable capture run. The rail keeps every run
-/// addressable, while only the selected transcript is hydrated and mounted.
+/// Presents exactly one Session Section. The Topic may own many durable runs,
+/// but sibling summaries and navigation belong to the Topic resources page.
 private struct NotebookRealtimeHistoryView: View {
     let notebookId: String
     let focusSessionId: String?
     @ObservedObject var history: NotebookCaptureHistoryStore
-    let onSelectSession: (String) -> Void
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPresentationControlHovered = false
@@ -2690,7 +2749,7 @@ private struct NotebookRealtimeHistoryView: View {
         .onDisappear(perform: cancelLiveFollow)
     }
 
-    private var presentedRuns: [NotebookCaptureHistoryRunDTO] {
+    private var availableRuns: [NotebookCaptureHistoryRunDTO] {
         NotebookCaptureHistoryPolicy.overlayActiveRun(
             history.runs,
             requestedNotebookId: notebookId,
@@ -2703,6 +2762,14 @@ private struct NotebookRealtimeHistoryView: View {
             realtimeLoroAppliedRevision: capture.realtimeLoroAppliedRevision,
             profile: capture.profile,
             utterances: capture.utterances
+        )
+    }
+
+    private var presentedRun: NotebookCaptureHistoryRunDTO? {
+        NotebookRealtimeSectionPolicy.targetRun(
+            runs: availableRuns,
+            requestedSessionID: focusSessionId,
+            activeSessionID: activeSessionID
         )
     }
 
@@ -2785,7 +2852,7 @@ private struct NotebookRealtimeHistoryView: View {
 
     @ViewBuilder
     private var historyBody: some View {
-        if history.isLoading, history.runs.isEmpty {
+        if history.isLoading, presentedRun == nil {
             ProgressView()
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2800,7 +2867,7 @@ private struct NotebookRealtimeHistoryView: View {
                     handler: { Task { await reloadHistory() } }
                 )
             )
-        } else if presentedRuns.isEmpty {
+        } else if presentedRun == nil {
             EmptyState(
                 illustration: { Arcanum003WaveformRuler() },
                 title: String(localized: "editor.transcript.realtime.empty_title"),
@@ -2859,42 +2926,26 @@ private struct NotebookRealtimeHistoryView: View {
                 .onAppear {
                     reconcileSelection(using: proxy, animated: false)
                 }
-                .montereyOnChange(of: focusSessionId) { _, sessionID in
-                    guard let sessionID else { return }
-                    selectRun(sessionID, using: proxy, animated: true)
-                }
-                .montereyOnChange(of: presentedRuns.map(\.sessionId)) { _, _ in
+                .montereyOnChange(of: focusSessionId) { _, _ in
                     reconcileSelection(using: proxy, animated: false)
                 }
-                .montereyOnChange(of: activeSessionID) { _, sessionID in
-                    guard let sessionID else { return }
-                    selectRun(sessionID, using: proxy, animated: true)
+                .montereyOnChange(of: availableRuns.map(\.sessionId)) { _, _ in
+                    reconcileSelection(using: proxy, animated: false)
+                }
+                .montereyOnChange(of: activeSessionID) { _, _ in
+                    reconcileSelection(using: proxy, animated: false)
                 }
             }
         }
     }
 
     private func historyScroll(using proxy: ScrollViewProxy) -> some View {
-        HStack(spacing: 0) {
-            NotebookRealtimeRunNavigator(
-                runs: presentedRuns,
-                selectedSessionID: selectedSessionID,
-                activeSessionID: activeSessionID,
-                onSelect: { sessionID in
-                    selectRun(sessionID, using: proxy, animated: true)
-                    onSelectSession(sessionID)
-                }
-            )
-            Divider().background(Color.borderGhost.opacity(0.24))
-            ScrollView {
-                LazyVStack(spacing: Spacing.lg) {
-                    ForEach(presentedRuns) { run in
-                        runView(run, using: proxy)
-                            .id(runAnchor(run.sessionId))
-                    }
-                }
-                .padding(.horizontal, Spacing.xl)
-                .padding(.vertical, Spacing.lg)
+        ScrollView {
+            if let run = presentedRun {
+                runView(run, using: proxy)
+                    .id(runAnchor(run.sessionId))
+                    .padding(.horizontal, Spacing.xl)
+                    .padding(.vertical, Spacing.lg)
             }
         }
     }
@@ -2911,12 +2962,7 @@ private struct NotebookRealtimeHistoryView: View {
         _ run: NotebookCaptureHistoryRunDTO,
         using proxy: ScrollViewProxy
     ) -> some View {
-        if selectedSessionID != run.sessionId {
-            NotebookRealtimeRunSummaryView(run: run) {
-                selectRun(run.sessionId, using: proxy, animated: true)
-                onSelectSession(run.sessionId)
-            }
-        } else if activeSessionID == run.sessionId
+        if activeSessionID == run.sessionId
                     || history.transcriptLoadState(sessionId: run.sessionId) == .loaded {
             if run.sessionId == activeSessionID {
                 NotebookRealtimeActiveRunView(
@@ -2976,16 +3022,12 @@ private struct NotebookRealtimeHistoryView: View {
     }
 
     private func reconcileSelection(using proxy: ScrollViewProxy, animated: Bool) {
-        guard let sessionID = NotebookRealtimeRunSelectionPolicy.reconciledSessionID(
-            currentSessionID: selectedSessionID,
-            runs: presentedRuns,
-            requestedSessionID: focusSessionId,
-            activeSessionID: activeSessionID
-        ) else {
+        guard let run = presentedRun else {
             selectedSessionID = nil
             history.retainOnlyTranscript(sessionId: nil)
             return
         }
+        let sessionID = run.sessionId
         if selectedSessionID == sessionID {
             history.retainOnlyTranscript(
                 sessionId: sessionID == activeSessionID ? nil : sessionID
@@ -3000,7 +3042,7 @@ private struct NotebookRealtimeHistoryView: View {
         using proxy: ScrollViewProxy,
         animated: Bool
     ) {
-        guard presentedRuns.contains(where: { $0.sessionId == sessionID }) else { return }
+        guard presentedRun?.sessionId == sessionID else { return }
         cancelLiveFollow()
         let isLive = sessionID == activeSessionID
         selectedSessionID = sessionID
@@ -3087,10 +3129,9 @@ private struct NotebookRealtimeHistoryView: View {
     }
 }
 
-/// Owns the provider-rate observation for the one mounted live run. Keeping
-/// this boundary below the history timeline means a speculative preview frame
-/// updates live text and follow-at-edge behavior without rebuilding the
-/// durable run projection or its navigator.
+/// Owns the provider-rate observation for the one mounted live run. A
+/// speculative preview frame updates live text and follow-at-edge behavior
+/// without rebuilding the durable Session Section.
 private struct NotebookRealtimeActiveRunView: View {
     let run: NotebookCaptureHistoryRunDTO
     let presentationMode: NotebookTranscriptPresentationMode
@@ -3165,108 +3206,6 @@ private struct NotebookRealtimeActiveRunView: View {
             ),
             cues: capture.presentedTranslationCueSnapshot
         )
-    }
-}
-
-private struct NotebookRealtimeRunNavigator: View {
-    let runs: [NotebookCaptureHistoryRunDTO]
-    let selectedSessionID: String?
-    let activeSessionID: String?
-    let onSelect: (String) -> Void
-
-    var body: some View {
-        ScrollView(.vertical) {
-            LazyVStack(spacing: 2) {
-                ForEach(runs) { run in
-                    let isSelected = run.sessionId == selectedSessionID
-                    let isActive = run.sessionId == activeSessionID
-                    Button {
-                        onSelect(run.sessionId)
-                    } label: {
-                        Capsule()
-                            .fill(barColor(isSelected: isSelected, isActive: isActive))
-                            .frame(
-                                width: isSelected ? 26 : (isActive ? 20 : 11),
-                                height: isSelected ? 4 : 3
-                            )
-                            .frame(width: 44, height: 26)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help(helpText(for: run))
-                    .accessibilityLabel(Text(helpText(for: run)))
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                }
-            }
-            .padding(.vertical, Spacing.lg)
-        }
-        .montereyScrollIndicators(false)
-        .frame(width: 52)
-        .background(Color.bgSunken.opacity(0.18))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(String(localized: "capture.transcript.run_navigator")))
-    }
-
-    private func barColor(isSelected: Bool, isActive: Bool) -> Color {
-        if isSelected { return .textPrimary }
-        if isActive { return .signalGreen }
-        return .textTertiary.opacity(0.58)
-    }
-
-    private func helpText(for run: NotebookCaptureHistoryRunDTO) -> String {
-        "\(NotebookRealtimeRunPresentation.createdAtText(for: run)) · "
-            + NotebookRealtimeRunPresentation.durationText(for: run)
-    }
-}
-
-private struct NotebookRealtimeRunSummaryView: View {
-    let run: NotebookCaptureHistoryRunDTO
-    let onOpen: () -> Void
-
-    var body: some View {
-        Button(action: onOpen) {
-            HStack(spacing: Spacing.lg) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Label(
-                        NotebookRealtimeRunPresentation.createdAtText(for: run),
-                        systemImage: "clock"
-                    )
-                        .font(.captionMedium)
-                        .foregroundColor(.textPrimary)
-                    Text(String(run.sessionId.prefix(12)))
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(.textTertiary)
-                }
-                Spacer(minLength: Spacing.md)
-                Label(
-                    NotebookRealtimeRunPresentation.durationText(for: run),
-                    systemImage: run.hasAudio ? "waveform" : "waveform.slash"
-                )
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                CaptureStateLabel(
-                    captureState: run.captureState,
-                    remoteHealth: run.remoteHealth,
-                    projectionState: run.projectionState,
-                    showsRemoteHealthWhenInactive: false
-                )
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.textTertiary)
-            }
-            .padding(.horizontal, Spacing.lg)
-            .frame(minHeight: 58)
-            .background(Color.bgSunken.opacity(0.2))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.sm)
-                    .strokeBorder(Color.borderGhost.opacity(0.24), lineWidth: 0.5)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-            .contentShape(RoundedRectangle(cornerRadius: Radius.sm))
-        }
-        .buttonStyle(.plain)
-        .help(String(localized: "capture.transcript.open_recording"))
-        .accessibilityHint(Text(String(localized: "capture.transcript.open_recording")))
     }
 }
 
@@ -4131,13 +4070,7 @@ private struct TranscriptionUtteranceRow: View {
 
     private var timestampText: String? {
         guard let milliseconds = utterance.sourceStartMs else { return nil }
-        let totalSeconds = Int(milliseconds / 1_000)
-        let hours = totalSeconds / 3_600
-        let minutes = (totalSeconds % 3_600) / 60
-        let seconds = totalSeconds % 60
-        return hours > 0
-            ? String(format: "%02d:%02d:%02d", hours, minutes, seconds)
-            : String(format: "%02d:%02d", minutes, seconds)
+        return TranscriptTimestampPresentation.text(milliseconds: milliseconds)
     }
 }
 
@@ -4304,13 +4237,7 @@ private struct MultilingualUtteranceRow: View {
 
     private var timestampText: String? {
         guard let milliseconds = utterance.sourceStartMs else { return nil }
-        let totalSeconds = Int(milliseconds / 1_000)
-        let hours = totalSeconds / 3_600
-        let minutes = (totalSeconds % 3_600) / 60
-        let seconds = totalSeconds % 60
-        return hours > 0
-            ? String(format: "%02d:%02d:%02d", hours, minutes, seconds)
-            : String(format: "%02d:%02d", minutes, seconds)
+        return TranscriptTimestampPresentation.text(milliseconds: milliseconds)
     }
 
     private var normalizedSourceLanguage: String {
@@ -4405,11 +4332,25 @@ struct BilingualLaneDraftBuffer {
     }
 }
 
-private struct BilingualLaneText: View {
+enum TranscriptTimestampPresentation {
+    static func text(milliseconds: UInt64) -> String {
+        let totalSeconds = Int(milliseconds / 1_000)
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        return hours > 0
+            ? String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+            : String(format: "%02d:%02d", minutes, seconds)
+    }
+}
+
+struct BilingualLaneText: View {
     let target: BilingualLaneEditTarget
     let text: String?
     let missingLaneState: NotebookCaptureMissingLaneState
     let isEditable: Bool
+    let editAccessibilityLabel: String?
+    let commitFailureMessage: String?
     let onCommit: (BilingualLaneEditTarget, String) async throws -> Void
     let onEditingChanged: (BilingualLaneEditTarget, Bool) -> Void
     @State private var buffer: BilingualLaneDraftBuffer
@@ -4421,6 +4362,8 @@ private struct BilingualLaneText: View {
         text: String?,
         missingLaneState: NotebookCaptureMissingLaneState = .unavailable,
         isEditable: Bool,
+        editAccessibilityLabel: String? = nil,
+        commitFailureMessage: String? = nil,
         onCommit: @escaping (BilingualLaneEditTarget, String) async throws -> Void,
         onEditingChanged: @escaping (BilingualLaneEditTarget, Bool) -> Void
     ) {
@@ -4428,6 +4371,8 @@ private struct BilingualLaneText: View {
         self.text = text
         self.missingLaneState = missingLaneState
         self.isEditable = isEditable
+        self.editAccessibilityLabel = editAccessibilityLabel
+        self.commitFailureMessage = commitFailureMessage
         self.onCommit = onCommit
         self.onEditingChanged = onEditingChanged
         _buffer = State(initialValue: BilingualLaneDraftBuffer(
@@ -4459,10 +4404,12 @@ private struct BilingualLaneText: View {
                     .montereyOnChange(of: isFocused) { wasFocused, focused in
                         scheduleFocusChange(wasFocused: wasFocused, focused: focused)
                     }
-                    .accessibilityLabel(Text(String(
-                        format: String(localized: "capture.transcript.edit_lane"),
-                        target.laneLanguage.uppercased()
-                    )))
+                    .accessibilityLabel(Text(
+                        editAccessibilityLabel ?? String(
+                            format: String(localized: "capture.transcript.edit_lane"),
+                            target.laneLanguage.uppercased()
+                        )
+                    ))
                     .accessibilityHint(Text(String(localized: "capture.transcript.edit_hint")))
                     .onAppear {
                         // A lane can receive many read-only provider revisions
@@ -4523,13 +4470,18 @@ private struct BilingualLaneText: View {
 
     private func scheduleFocusChange(wasFocused: Bool, focused: Bool) {
         let editTarget = buffer.target
-        let request = focused ? nil : buffer.pendingCommit()
+        if focused {
+            // Register the edit synchronously. A parent transcript page may
+            // disappear in the same update cycle, and its attachment must not
+            // be released before this lane's deferred commit runs.
+            onEditingChanged(editTarget, true)
+            return
+        }
+        let request = buffer.pendingCommit()
         Task { @MainActor in
             await Task.yield()
             guard isFocused == focused else { return }
-            if focused {
-                onEditingChanged(editTarget, true)
-            } else if wasFocused {
+            if wasFocused {
                 if await commit(request) {
                     onEditingChanged(editTarget, false)
                 } else {
@@ -4579,7 +4531,7 @@ private struct BilingualLaneText: View {
             return true
         } catch {
             ToastCenter.shared.error(
-                String(localized: "capture.toast.edit_failed"),
+                commitFailureMessage ?? String(localized: "capture.toast.edit_failed"),
                 detail: error.localizedDescription
             )
             return false

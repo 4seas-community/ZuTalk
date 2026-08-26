@@ -6,8 +6,20 @@ import Foundation
 /// into stable SwiftUI rows for the selected session.
 struct NotebookTranscriptLine: Identifiable, Equatable {
     let id: String
-    let startMs: UInt64
+    /// Provider timing is optional because legacy marked documents may only
+    /// carry segment/session ownership. Missing timing must not become 00:00.
+    let startMs: UInt64?
+    let endMs: UInt64?
+    let sourceLanguage: String?
+    /// Anonymous label scoped to the async provider result. It is display-only
+    /// and is never a realtime SessionSpeaker identity.
+    let providerSpeakerLabel: String?
     let text: String
+}
+
+enum NotebookTranscriptProjectionEditError: Error, Equatable {
+    case unavailable
+    case staleSegment
 }
 
 @MainActor
@@ -94,6 +106,7 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
     @Published private(set) var asyncProviderStateBySession: [String: String] = [:]
     @Published private(set) var asyncProjectionStateBySession: [String: NotebookAsyncProjectionState] = [:]
     @Published private(set) var asyncProjectionErrorBySession: [String: String] = [:]
+    @Published private(set) var documentReadErrorBySession: [String: String] = [:]
     @Published private(set) var retryingAsyncProjectionSessions: Set<String> = []
     @Published private(set) var requestingAsyncTranscriptionSessions: Set<String> = []
 
@@ -275,25 +288,53 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
         }
     }
 
-    func replaceSegment(sessionId: String, segmentIndex: Int, text: String) {
+    func replaceSegment(sessionId: String, segmentId: String, text: String) throws {
         guard let targetKey = targetKeyBySessionId[sessionId],
-              let target = registrationsByTargetKey[targetKey]?.target,
-              let delta = try? editorClient.editorDelta(
-                  notebookId: target.notebookId,
-                  tabId: target.tabId
-              )
-        else { return }
+              let target = registrationsByTargetKey[targetKey]?.target else {
+            throw NotebookTranscriptProjectionEditError.unavailable
+        }
 
-        let segments = Self.parse(delta).filter { $0.sessionId == sessionId }
-        guard segments.indices.contains(segmentIndex) else { return }
-        let segment = segments[segmentIndex]
-        try? editorClient.replaceEditorText(
+        let delta: String
+        do {
+            delta = try editorClient.editorDelta(
+                notebookId: target.notebookId,
+                tabId: target.tabId
+            )
+            documentReadErrorBySession[sessionId] = nil
+        } catch {
+            documentReadErrorBySession[sessionId] = error.localizedDescription
+            editableBySession[sessionId] = false
+            throw error
+        }
+
+        guard let segment = Self.parse(delta).first(where: {
+            $0.sessionId == sessionId && $0.segmentId == segmentId
+        }) else {
+            throw NotebookTranscriptProjectionEditError.staleSegment
+        }
+        try editorClient.replaceEditorText(
             notebookId: target.notebookId,
             tabId: target.tabId,
             position: UInt64(segment.scalarStart),
             length: UInt64(segment.scalarEnd - segment.scalarStart),
             text: text
         )
+    }
+
+    /// Re-reads the currently attached transcript document without releasing
+    /// its editor lease. A failed retry therefore keeps the last good rows on
+    /// screen and can be attempted again without rebuilding view identity.
+    func retryDocumentRead(sessionId: String) throws {
+        guard let targetKey = targetKeyBySessionId[sessionId],
+              let target = registrationsByTargetKey[targetKey]?.target else {
+            throw NotebookTranscriptProjectionEditError.unavailable
+        }
+        do {
+            try loadDocument(target: target, sessionId: sessionId)
+        } catch {
+            publishDocumentReadFailure(error, sessionId: sessionId)
+            throw error
+        }
     }
 
     fileprivate func documentDidChange(
@@ -327,6 +368,7 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
         asyncProviderStateBySession.removeValue(forKey: sessionId)
         asyncProjectionStateBySession.removeValue(forKey: sessionId)
         asyncProjectionErrorBySession.removeValue(forKey: sessionId)
+        documentReadErrorBySession.removeValue(forKey: sessionId)
         retryingAsyncProjectionSessions.remove(sessionId)
     }
 
@@ -345,19 +387,32 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
     }
 
     private func refresh(target: EditorTarget) {
-        guard let sessionId = registrationsByTargetKey[target.key]?.sessionId,
-              let delta = try? editorClient.editorDelta(
-                  notebookId: target.notebookId,
-                  tabId: target.tabId
-              )
-        else { return }
+        guard let sessionId = registrationsByTargetKey[target.key]?.sessionId else { return }
+        do {
+            try loadDocument(target: target, sessionId: sessionId)
+        } catch {
+            // Keep the last good projection visible, but make it read-only and
+            // publish the failure so the page can offer an explicit retry.
+            publishDocumentReadFailure(error, sessionId: sessionId)
+        }
+    }
+
+    private func loadDocument(target: EditorTarget, sessionId: String) throws {
+        let delta = try editorClient.editorDelta(
+            notebookId: target.notebookId,
+            tabId: target.tabId
+        )
+        documentReadErrorBySession[sessionId] = nil
 
         linesBySession[sessionId] = Self.parse(delta)
             .filter { $0.sessionId == sessionId }
             .map {
                 NotebookTranscriptLine(
                     id: $0.segmentId,
-                    startMs: $0.timestampMs,
+                    startMs: $0.startMs,
+                    endMs: $0.endMs,
+                    sourceLanguage: $0.sourceLanguage,
+                    providerSpeakerLabel: $0.providerSpeakerLabel,
                     text: $0.text
                 )
             }
@@ -367,12 +422,20 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
         )) ?? false
     }
 
+    private func publishDocumentReadFailure(_ error: Error, sessionId: String) {
+        documentReadErrorBySession[sessionId] = error.localizedDescription
+        editableBySession[sessionId] = false
+    }
+
     private struct ParsedSegment {
         let sessionId: String
         let segmentId: String
-        let timestampMs: UInt64
+        var startMs: UInt64?
+        var endMs: UInt64?
+        var sourceLanguage: String?
+        var providerSpeakerLabel: String?
         var text: String
-        let scalarStart: Int
+        var scalarStart: Int
         var scalarEnd: Int
     }
 
@@ -395,7 +458,13 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
             }
 
             let sessionId = attributes["session_id"] as? String ?? ""
-            let timestampMs = (attributes["timestamp_ms"] as? NSNumber)?.uint64Value ?? 0
+            let startMs = uint64Attribute(attributes, keys: ["timestamp_ms", "start_ms"])
+            let endMs = uint64Attribute(attributes, keys: ["end_ms"])
+            let sourceLanguage = stringAttribute(attributes, key: "source_language")
+            let providerSpeakerLabel = stringAttribute(
+                attributes,
+                key: "provider_speaker_label"
+            )
 
             if let last = result.last,
                last.sessionId == sessionId,
@@ -404,13 +473,23 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
                 var updated = last
                 updated.text += operation.insert
                 updated.scalarEnd = scalarPosition + runLength
+                updated.startMs = updated.startMs ?? startMs
+                if let endMs {
+                    updated.endMs = max(updated.endMs ?? endMs, endMs)
+                }
+                updated.sourceLanguage = updated.sourceLanguage ?? sourceLanguage
+                updated.providerSpeakerLabel = updated.providerSpeakerLabel
+                    ?? providerSpeakerLabel
                 result[result.count - 1] = updated
             } else {
                 result.append(
                     ParsedSegment(
                         sessionId: sessionId,
                         segmentId: segmentId,
-                        timestampMs: timestampMs,
+                        startMs: startMs,
+                        endMs: endMs,
+                        sourceLanguage: sourceLanguage,
+                        providerSpeakerLabel: providerSpeakerLabel,
                         text: operation.insert,
                         scalarStart: scalarPosition,
                         scalarEnd: scalarPosition + runLength
@@ -418,7 +497,124 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
                 )
             }
         }
-        return result
+        return result.map(strippingRenderedTimestampPrefix)
+    }
+
+    /// Older Rust projections marked the rendered timestamp header and body as
+    /// one segment. Strip only the exact header implied by that segment's
+    /// timestamp metadata, so user-authored bracketed text is left untouched.
+    private static func strippingRenderedTimestampPrefix(
+        _ segment: ParsedSegment
+    ) -> ParsedSegment {
+        guard let startMs = segment.startMs else { return segment }
+
+        let totalSeconds = startMs / 1_000
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        let prefix: String
+        if hours > 0 {
+            prefix = String(format: "[%02llu:%02llu:%02llu]\n", hours, minutes, seconds)
+        } else {
+            prefix = String(format: "[%02llu:%02llu]\n", minutes, seconds)
+        }
+
+        guard segment.text.hasPrefix(prefix) else { return segment }
+        var stripped = segment
+        stripped.text.removeFirst(prefix.count)
+        stripped.scalarStart += prefix.unicodeScalars.count
+        return stripped
+    }
+
+    private static func uint64Attribute(
+        _ attributes: [String: Any],
+        keys: [String]
+    ) -> UInt64? {
+        for key in keys {
+            if let value = attributes[key] as? NSNumber {
+                return value.uint64Value
+            }
+            if let value = attributes[key] as? String,
+               let parsed = UInt64(value) {
+                return parsed
+            }
+        }
+        return nil
+    }
+
+    private static func stringAttribute(
+        _ attributes: [String: Any],
+        key: String
+    ) -> String? {
+        guard let value = attributes[key] as? String else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
+    }
+}
+
+/// Owns one view lease and releases it only after every focused transcript row
+/// has finished its blur/disappear commit. This keeps the Rust editor target
+/// alive across a tab switch without making the projection store retain views.
+@MainActor
+final class NotebookTranscriptProjectionAttachmentCoordinator: ObservableObject {
+    @Published private(set) var attachmentFailed = false
+
+    private let store: NotebookTranscriptProjectionStore
+    private var attachment: NotebookTranscriptProjectionStore.Attachment?
+    private var pendingEditSegmentIds: Set<String> = []
+    private var detachRequested = false
+
+    init(store: NotebookTranscriptProjectionStore) {
+        self.store = store
+    }
+
+    @discardableResult
+    func attach(
+        sessionId: String,
+        notebookId: String,
+        tabId: String
+    ) -> Bool {
+        // The view may become visible again before its disappearance commit
+        // finishes. Renewing ownership cancels the queued detach.
+        detachRequested = false
+        // A retry button cannot safely replace the editor target while a row
+        // is still flushing. The pending edit completion will leave the
+        // existing attachment intact, after which the user can retry again.
+        guard pendingEditSegmentIds.isEmpty else { return attachment != nil }
+        detachNow()
+        let next = store.attachIfNeeded(
+            sessionId: sessionId,
+            notebookId: notebookId,
+            tabId: tabId
+        )
+        attachment = next
+        attachmentFailed = next == nil
+        return next != nil
+    }
+
+    func setEditPending(segmentId: String, pending: Bool) {
+        if pending {
+            pendingEditSegmentIds.insert(segmentId)
+        } else {
+            pendingEditSegmentIds.remove(segmentId)
+        }
+        detachIfReady()
+    }
+
+    func requestDetach() {
+        detachRequested = true
+        detachIfReady()
+    }
+
+    private func detachIfReady() {
+        guard detachRequested, pendingEditSegmentIds.isEmpty else { return }
+        detachNow()
+    }
+
+    private func detachNow() {
+        guard let attachment else { return }
+        store.detach(attachment)
+        self.attachment = nil
     }
 }
 

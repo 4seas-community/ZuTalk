@@ -44,7 +44,14 @@ enum EditorSurface: Equatable, Hashable {
     /// and the page rendered empty.
     case asyncNeedsSession(notebookId: String)
 
-    /// Personal notes: the whole Notebook's timeline, or one note open.
+    /// Session-owned working surfaces. Unlike the Topic's shared note and
+    /// capture defaults, these belong to exactly one recording. Settings is a
+    /// read-only snapshot of what that recording actually used.
+    case sessionNote(notebookId: String, sessionId: String)
+    case sessionSettings(notebookId: String, sessionId: String)
+
+    /// Legacy timeline case retained for migration tests; current product
+    /// language exposes the durable document honestly as one Topic Note.
     case manualTimeline(notebookId: String, tabId: String)
     case manualNote(notebookId: String, tabId: String)
 }
@@ -57,6 +64,7 @@ extension EditorSurface {
             return true
         case .missingDocument, .tabsLoading, .captureSettings,
              .resources, .asyncNeedsSession,
+             .sessionNote, .sessionSettings,
              .manualTimeline, .manualNote:
             return false
         }
@@ -69,10 +77,19 @@ extension EditorSurface {
             return true
         case .missingDocument, .tabsLoading, .realtime,
              .asyncTranscript, .asyncNeedsSession,
+             .sessionNote, .sessionSettings,
              .manualTimeline, .manualNote:
             return false
         }
     }
+}
+
+/// The two UI-only tabs completing a Session's four-part workspace. Transcript
+/// tabs remain backed by the Topic's builtin documents; these are deliberately
+/// session-scoped and therefore never receive a synthetic Notebook tab id.
+enum SessionSupplementarySurface: Equatable, Hashable {
+    case note
+    case settings
 }
 
 /// Resolves the visible surface from route, tab and overlay state.
@@ -84,12 +101,26 @@ enum EditorSurfacePolicy {
         route: EditorRoute?,
         activeTab: NotebookTabViewModel?,
         presentedCaptureSettingsNotebookId: String?,
-        isShowingResources: Bool
+        isShowingResources: Bool,
+        sessionSupplementarySurface: SessionSupplementarySurface? = nil
     ) -> EditorSurface {
         guard let route, route.documentID.isEmpty == false else {
             return .missingDocument
         }
         let notebookId = route.notebookID
+
+        // Session-owned tabs take precedence over stale Topic overlay state
+        // during route transitions. They are valid only with a concrete
+        // Session id, so a Topic route can never accidentally create one.
+        if let sessionId = route.selectedSessionID,
+           let sessionSupplementarySurface {
+            switch sessionSupplementarySurface {
+            case .note:
+                return .sessionNote(notebookId: notebookId, sessionId: sessionId)
+            case .settings:
+                return .sessionSettings(notebookId: notebookId, sessionId: sessionId)
+            }
+        }
 
         // Overlays win over tab content: both are opened explicitly and both
         // restore the tab underneath when dismissed.
@@ -124,9 +155,11 @@ enum EditorSurfacePolicy {
             )
 
         case .manualNote:
-            return sessionId == nil
-                ? .manualTimeline(notebookId: notebookId, tabId: activeTab.tabId)
-                : .manualNote(notebookId: notebookId, tabId: activeTab.tabId)
+            // The storage contract is one durable manual-note document per
+            // Topic tab. Session projections carry context metadata but do not
+            // create separate note bodies, so the UI must never present them
+            // as independent per-Session documents.
+            return .manualNote(notebookId: notebookId, tabId: activeTab.tabId)
         }
     }
 }

@@ -24,6 +24,22 @@ private enum DocumentEditorSidePanel: Equatable {
     case tasks
 }
 
+private struct NotebookRouteLoadSnapshot: Sendable {
+    let notebookTabs: [NotebookTabViewModel]
+    let notebook: FfiNotebook?
+    let session: SessionInfo?
+    let transcriptionTasksBySessionId: [String: TranscriptionTaskSnapshot]
+    /// The quick-capture Notebook is a backend identity, not a display-name
+    /// convention. Keep it explicit so an ordinary Topic named "Unfiled"
+    /// never receives the homepage-recording settings scope by accident.
+    let isQuickCaptureNotebook: Bool
+}
+
+private enum NotebookRouteLoadOutcome: Sendable {
+    case success(NotebookRouteLoadSnapshot)
+    case failure(String)
+}
+
 enum NotebookCaptureSettingsRoutePolicy {
     static func notebookId(for route: EditorRoute?) -> String? {
         route?.notebookID
@@ -98,6 +114,71 @@ enum AsyncTranscriptActionPolicy {
     }
 }
 
+enum AsyncTranscriptContentPhase: Equatable {
+    case loading
+    case transcript
+    case empty
+}
+
+enum AsyncTranscriptContentPolicy {
+    static func phase(
+        hasLines: Bool,
+        projectionState: NotebookAsyncProjectionState?,
+        providerState: String?,
+        tabStatus: NotebookTabStatus,
+        hasOperationInFlight: Bool,
+        hasLoadFailure: Bool = false
+    ) -> AsyncTranscriptContentPhase {
+        // Durable content stays usable while a status callback or repair is
+        // still reconciling. Never replace a real transcript with a spinner.
+        if hasLines { return .transcript }
+        if hasOperationInFlight { return .loading }
+        if hasLoadFailure { return .empty }
+        if projectionState == .pending || projectionState == .projecting {
+            return .loading
+        }
+        if projectionState == .failed { return .empty }
+        if AsyncTranscriptActionPolicy.isProviderPending(providerState) {
+            return .loading
+        }
+        if providerState?.lowercased() == "failed" { return .empty }
+        if tabStatus == .pending { return .loading }
+        if tabStatus == .failed { return .empty }
+        if projectionState == nil { return .loading }
+        return .empty
+    }
+}
+
+enum AsyncTranscriptMetadataNoticePolicy {
+    static func shouldShow(for lines: [NotebookTranscriptLine]) -> Bool {
+        let hasTranscriptContent = lines.contains { line in
+            line.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        guard hasTranscriptContent else { return false }
+
+        return lines.contains { line in
+            hasProviderSpeaker(line.providerSpeakerLabel)
+                || hasSourceLanguage(line.sourceLanguage)
+        } == false
+    }
+
+    private static func hasProviderSpeaker(_ label: String?) -> Bool {
+        guard let label else { return false }
+        return label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private static func hasSourceLanguage(_ language: String?) -> Bool {
+        guard let language = language?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .split(separator: "-")
+            .first,
+            language.isEmpty == false
+        else { return false }
+        return language != "und"
+    }
+}
+
 struct DocumentEditorPage: View {
     /// Notebook builtin document + optional session filter. The document is
     /// authoritative; selectedSessionID only scopes contextual UI/export.
@@ -112,19 +193,26 @@ struct DocumentEditorPage: View {
     private var selectedSessionId: String? { route?.selectedSessionID }
 
     private var isShowingManualNotesTimeline: Bool {
-        activeNotebookTab?.displayType == .manualNote && selectedSessionId == nil
+        false
     }
 
     @State private var activeSidePanel: DocumentEditorSidePanel?
     @State private var isShowingExportSheet = false
+    @State private var exportingSessionId: String?
     @State private var presentedCaptureSettingsNotebookId: String?
-    @State private var isShowingResources = false
+    @State private var isShowingResources: Bool
+    @State private var sessionSupplementarySurface: SessionSupplementarySurface?
+    @ObservedObject private var navigation = MainNavigationStore.shared
     /// 「分享」收件 Notebook 的判定源。观察它,id 迟到时页面能换对视图。
     @ObservedObject private var shareActivity = ShareActivityStore.shared
 
     /// Notebook-scoped unified tab surface, including realtime transcript.
     @State private var notebookTabs: [NotebookTabViewModel] = []
     @State private var editorNotebook: FfiNotebook?
+    @State private var editorSession: SessionInfo?
+    @State private var isQuickCaptureNotebook = false
+    @State private var routeLoadError: String?
+    @State private var routeLoadGeneration: UInt = 0
     @StateObject private var notebookTasks = NotebookTasksViewModel()
     @StateObject private var captureProfileEditor: NotebookCaptureProfileEditorModel
 
@@ -142,6 +230,10 @@ struct DocumentEditorPage: View {
         _showTranscript = State(
             initialValue: route?.notebookID == nil && initialView == .transcript
         )
+        _isShowingResources = State(
+            initialValue: route?.opensTopicWorkspace == true
+        )
+        _sessionSupplementarySurface = State(initialValue: nil)
     }
 
     var body: some View {
@@ -150,7 +242,13 @@ struct DocumentEditorPage: View {
             // remain mounted while Notebook metadata refreshes.
             if docId != nil {
                 NoteTopChrome(
-                    onBack: { WindowCommandRouter.shared.requestNavigateHome() }
+                    notebookTitle: editorNotebook?.title,
+                    session: chromeSession,
+                    isTopicWorkspace: isTopicContext,
+                    backLabel: String(localized: navigation.activePrimaryTab == .topics
+                        ? "sidebar.topics"
+                        : "sidebar.home"),
+                    onBack: navigateBack
                 )
 
                 DocumentTabBar(
@@ -159,29 +257,37 @@ struct DocumentEditorPage: View {
                     captureSettingsNotebookId: captureSettingsNotebookId,
                     isCaptureSettingsSelected: isShowingCaptureSettings,
                     isResourcesSelected: isShowingResources,
+                    isTopicContext: isTopicContext,
                     sessionId: effectiveSessionId,
+                    sessionSupplementarySurface: sessionSupplementarySurface,
                     onSelect: selectNotebookTab,
                     onSelectResources: showResources,
                     onSelectCaptureSettings: showCaptureSettings,
-                    onExport: { isShowingExportSheet = true }
+                    onSelectSessionNote: showSessionNote,
+                    onSelectSessionSettings: showSessionSettings,
+                    onExport: {
+                        exportingSessionId = effectiveSessionId
+                        isShowingExportSheet = true
+                    }
                 )
+
+                if routeLoadError != nil {
+                    EditorRouteLoadWarning {
+                        Task { await loadNotebookRoute() }
+                    }
+                }
 
                 if isShowingCaptureSettings {
                     NotebookSettingsNotebookHeader(title: editorNotebook?.title)
                 } else if isShowingResources == false {
-                    NotebookBuiltinTabTitle(title: activeNotebookTab?.title)
-                    if activeNotebookTab?.displayType == .manualNote,
-                       let notebookId = route?.notebookID,
-                       let sessionId = effectiveSessionId {
-                        ManualTimeNoteHeader(
-                            notebookId: notebookId,
-                            sessionId: sessionId,
-                            initialTitle: activeNotebookTab?.sessionLink?.sectionTitle,
-                            onRenamed: {
-                                Task { await loadNotebookRoute() }
-                            }
-                        )
-                    } else {
+                    NotebookBuiltinTabTitle(title: visibleSurfaceTitle)
+                    if sessionSupplementarySurface == .note,
+                       effectiveSessionId != nil {
+                        SessionNotesContextHeader()
+                    } else if sessionSupplementarySurface == nil,
+                              activeNotebookTab?.displayType == .manualNote {
+                        TopicNotesContextHeader()
+                    } else if sessionSupplementarySurface != .settings {
                         NoteMetadataBar(sessionId: effectiveSessionId)
                     }
                 }
@@ -217,10 +323,9 @@ struct DocumentEditorPage: View {
                         notebookId: transcriptTab.notebookId,
                         sessionId: effectiveSessionId,
                         editor: captureProfileEditor,
-                        onOpenAdvancedSettings: showCaptureSettings,
-                        onSelectHistorySession: focusRealtimeHistorySession
+                        onOpenAdvancedSettings: openAdvancedSettingsForCurrentContext
                     )
-                        .id("realtime:\(transcriptTab.notebookId)")
+                        .id("realtime:\(transcriptTab.notebookId):\(effectiveSessionId ?? "new")")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .opacity(surface.showsTranscriptLayer ? 1 : 0)
                         .allowsHitTesting(surface.showsTranscriptLayer)
@@ -236,6 +341,7 @@ struct DocumentEditorPage: View {
                         status: transcriptTab.status,
                         taskErrorMessage: selectedTranscriptionTask?.errorMessage
                     )
+                    .id("async:\(transcriptTab.notebookId):\(sid):\(transcriptTab.tabId)")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .opacity(surface.showsTranscriptLayer ? 1 : 0)
                     .allowsHitTesting(surface.showsTranscriptLayer)
@@ -254,6 +360,7 @@ struct DocumentEditorPage: View {
                     NotebookCaptureSettingsView(
                         notebookId: notebookId,
                         editor: captureProfileEditor,
+                        scope: captureSettingsScope,
                         onOpenRealtimeControls: openRealtimeControls
                     )
                         .id(notebookId)
@@ -263,6 +370,8 @@ struct DocumentEditorPage: View {
                 if isShowingResources, let notebookId = route?.notebookID {
                     NotebookResourcesView(
                         notebookId: notebookId,
+                        notebookTitle: editorNotebook?.title,
+                        onStartCapture: openRealtimeControls,
                         onOpenResource: { sessionId, destination in
                             openResource(sessionId: sessionId, destination: destination)
                         }
@@ -274,8 +383,10 @@ struct DocumentEditorPage: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color.bgRoot)
-        .sheet(isPresented: $isShowingExportSheet) {
-            if let sessionId = effectiveSessionId {
+        .sheet(isPresented: $isShowingExportSheet, onDismiss: {
+            exportingSessionId = nil
+        }) {
+            if let sessionId = exportingSessionId ?? effectiveSessionId {
                 ExportSheet(sessionId: sessionId)
             } else {
                 VStack(spacing: Spacing.md) {
@@ -316,7 +427,8 @@ struct DocumentEditorPage: View {
                 current: currentRoute
             ) {
                 presentedCaptureSettingsNotebookId = nil
-                isShowingResources = false
+                isShowingResources = currentRoute?.opensTopicWorkspace == true
+                sessionSupplementarySurface = nil
             }
         }
         // 停录后的异步转录物化完成后重新加载关联文档。
@@ -408,6 +520,45 @@ struct DocumentEditorPage: View {
             BlockNoteEditorView(notebookId: notebookId, tabId: tabId)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+        case .sessionNote(_, let sessionId):
+            // A Session note is a separate block document. It never reuses the
+            // Topic's shared Manual Note document or its outline rows.
+            BlockNoteEditorView(sessionId: sessionId)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .sessionSettings(let notebookId, let sessionId):
+            if let editorSession, editorSession.id == sessionId {
+                SessionSettingsView(
+                    notebookId: notebookId,
+                    session: editorSession,
+                    editor: captureProfileEditor,
+                    captureSettingsScope: captureSettingsScope,
+                    onOpenRealtimeControls: openRealtimeControls,
+                    onOpenResource: { destination in
+                        if destination == .manualNote {
+                            showSessionNote()
+                        } else {
+                            openResource(sessionId: sessionId, destination: destination)
+                        }
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if routeLoadError != nil {
+                EmptyState(
+                    icon: "exclamationmark.triangle",
+                    title: String(localized: "editor.route.load_failed"),
+                    description: String(localized: "session.settings.load_failed"),
+                    action: (
+                        label: String(localized: "session.settings.retry"),
+                        handler: { Task { await loadNotebookRoute() } }
+                    )
+                )
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
         case .asyncNeedsSession:
             // The transcript layer is session-scoped, so the editor layer owns
             // this state rather than falling through to a blank surface.
@@ -460,7 +611,8 @@ struct DocumentEditorPage: View {
             route: route,
             activeTab: activeNotebookTab,
             presentedCaptureSettingsNotebookId: presentedCaptureSettingsNotebookId,
-            isShowingResources: isShowingResources
+            isShowingResources: isShowingResources,
+            sessionSupplementarySurface: sessionSupplementarySurface
         )
     }
 
@@ -480,8 +632,39 @@ struct DocumentEditorPage: View {
         NotebookCaptureSettingsRoutePolicy.notebookId(for: route)
     }
 
+    private var captureSettingsScope: NotebookCaptureSettingsScope {
+        isQuickCaptureNotebook ? .quickCapture : .topic
+    }
+
     private var effectiveSessionId: String? {
         selectedSessionId
+    }
+
+    private var chromeSession: SessionInfo? {
+        // Topic Notes is one Topic-owned document. Session Notes, by contrast,
+        // are intentionally session-owned and keep the recording breadcrumb.
+        if sessionSupplementarySurface == nil,
+           activeNotebookTab?.displayType == .manualNote {
+            return nil
+        }
+        return editorSession
+    }
+
+    private var visibleSurfaceTitle: String? {
+        switch sessionSupplementarySurface {
+        case .note:
+            return String(localized: "session.notes.title")
+        case .settings:
+            return String(localized: "session.settings.title")
+        case nil:
+            return activeNotebookTab?.title
+        }
+    }
+
+    /// Topic workspaces own resources, shared notes and capture defaults.
+    /// Supplying a Session id crosses into a single-transcript detail route.
+    private var isTopicContext: Bool {
+        selectedSessionId == nil && navigation.activePrimaryTab == .topics
     }
 
     private var selectedTranscriptionTask: TranscriptionTaskSnapshot? {
@@ -497,51 +680,132 @@ struct DocumentEditorPage: View {
     @State private var transcriptionTasksBySessionId: [String: TranscriptionTaskSnapshot] = [:]
 
     private var routeTaskId: String {
-        [route?.notebookID, route?.tabID, route?.documentID, selectedSessionId]
+        [
+            route?.notebookID,
+            route?.tabID,
+            route?.documentID,
+            selectedSessionId,
+            route?.opensTopicWorkspace == true ? "topic" : "content",
+        ]
             .compactMap { $0 }
             .joined(separator: ":")
     }
 
     // MARK: - Loading
 
+    @MainActor
     private func loadNotebookRoute() async {
-        guard let route, let core = CoreClient.shared.core else {
+        routeLoadGeneration &+= 1
+        let generation = routeLoadGeneration
+        guard let requestedRoute = route else {
             notebookTabs = []
             editorNotebook = nil
+            editorSession = nil
+            isQuickCaptureNotebook = false
             transcriptionTasksBySessionId = [:]
+            routeLoadError = nil
             return
         }
-        do {
-            let loadedTranscriptionTasks = TranscriptionTaskIndex.load(core: core)
-            let loadedNotebook = try core.listNotebooks().first { $0.id == route.notebookID }
-            let activeCapture = ActiveBilingualTranscriptStore.shared
-            let realtimeSessionId = selectedSessionId
-                ?? (activeCapture.notebookId == route.notebookID ? activeCapture.sessionId : nil)
-            let loadedTabs = try loadNotebookTabModels(
-                notebookId: route.notebookID,
-                realtimeSessionId: realtimeSessionId,
-                transcriptionTasksBySessionId: loadedTranscriptionTasks,
-                core: core
-            )
-            await MainActor.run {
-                self.notebookTabs = loadedTabs
-                self.editorNotebook = loadedNotebook
-                self.transcriptionTasksBySessionId = loadedTranscriptionTasks
-                let selectedTab = loadedTabs.first { $0.id == route.tabID }
-                self.showTranscript = NotebookTranscriptPresentationPolicy.shouldShow(
-                    displayType: selectedTab?.displayType,
-                    status: selectedTab?.status,
-                    selectedSessionId: self.selectedSessionId
+        guard let core = CoreClient.shared.core else {
+            notebookTabs = []
+            editorNotebook = nil
+            editorSession = nil
+            isQuickCaptureNotebook = false
+            transcriptionTasksBySessionId = [:]
+            routeLoadError = String(localized: "editor.route.load_failed")
+            return
+        }
+
+        let activeCapture = ActiveBilingualTranscriptStore.shared
+        let activeCaptureNotebookId = activeCapture.notebookId
+        let activeCaptureSessionId = activeCapture.sessionId
+        let quickCaptureDisplayTitle = String(localized: "home.record.unfiled")
+        let outcome = await Task.detached(priority: .userInitiated) {
+            do {
+                let loadedTranscriptionTasks = TranscriptionTaskIndex.makeIndex(
+                    tasks: try core.listTasks(statusFilter: nil)
                 )
+                var loadedNotebook = try core.listNotebooks().first {
+                    $0.id == requestedRoute.notebookID
+                }
+                let quickCaptureNotebook = try? core.getQuickCaptureNotebook()
+                if let quickCaptureNotebook,
+                   quickCaptureNotebook.id == requestedRoute.notebookID {
+                    loadedNotebook = quickCaptureNotebook
+                    loadedNotebook?.title = quickCaptureDisplayTitle
+                } else if loadedNotebook == nil,
+                          let sharedInboxNotebook = try? core.sharedInboxNotebook(),
+                          sharedInboxNotebook.id == requestedRoute.notebookID {
+                    loadedNotebook = sharedInboxNotebook
+                }
+                let loadedSession: SessionInfo?
+                if let sessionId = requestedRoute.selectedSessionID {
+                    // A selected Session is part of route identity. Failure
+                    // must surface instead of silently showing the Topic name.
+                    loadedSession = try core.getSession(id: sessionId)
+                } else {
+                    loadedSession = nil
+                }
+                let realtimeSessionId = requestedRoute.selectedSessionID
+                    ?? (activeCaptureNotebookId == requestedRoute.notebookID
+                        ? activeCaptureSessionId
+                        : nil)
+                let loadedTabs = try Self.loadNotebookTabModels(
+                    notebookId: requestedRoute.notebookID,
+                    realtimeSessionId: realtimeSessionId,
+                    selectedSessionId: requestedRoute.selectedSessionID,
+                    transcriptionTasksBySessionId: loadedTranscriptionTasks,
+                    core: core
+                )
+                let presentedTabs = quickCaptureNotebook?.id == requestedRoute.notebookID
+                    ? loadedTabs.filter { tab in
+                        switch tab.displayType {
+                        case .manualNote: false
+                        case .realtimeTranscript, .asyncTranscript: true
+                        }
+                    }
+                    : loadedTabs
+                return NotebookRouteLoadOutcome.success(
+                    NotebookRouteLoadSnapshot(
+                        notebookTabs: presentedTabs,
+                        notebook: loadedNotebook,
+                        session: loadedSession,
+                        transcriptionTasksBySessionId: loadedTranscriptionTasks,
+                        isQuickCaptureNotebook: quickCaptureNotebook?.id
+                            == requestedRoute.notebookID
+                    )
+                )
+            } catch {
+                return NotebookRouteLoadOutcome.failure(String(describing: error))
             }
-        } catch {
-            DebugLog.warn("load notebook route failed", detail: "\(error)")
+        }.value
+
+        guard routeLoadGeneration == generation, route == requestedRoute else { return }
+        switch outcome {
+        case .success(let snapshot):
+            notebookTabs = snapshot.notebookTabs
+            editorNotebook = snapshot.notebook
+            editorSession = snapshot.session
+            isQuickCaptureNotebook = snapshot.isQuickCaptureNotebook
+            transcriptionTasksBySessionId = snapshot.transcriptionTasksBySessionId
+            routeLoadError = nil
+            let selectedTab = snapshot.notebookTabs.first { $0.id == requestedRoute.tabID }
+            showTranscript = NotebookTranscriptPresentationPolicy.shouldShow(
+                displayType: selectedTab?.displayType,
+                status: selectedTab?.status,
+                selectedSessionId: requestedRoute.selectedSessionID
+            )
+        case .failure(let detail):
+            DebugLog.warn("load notebook route failed", detail: detail)
+            isQuickCaptureNotebook = false
+            routeLoadError = String(localized: "editor.route.load_failed")
         }
     }
 
-    private func loadNotebookTabModels(
+    nonisolated private static func loadNotebookTabModels(
         notebookId: String,
         realtimeSessionId: String?,
+        selectedSessionId: String?,
         transcriptionTasksBySessionId: [String: TranscriptionTaskSnapshot],
         core: any ZuTalkCoreProtocol
     ) throws -> [NotebookTabViewModel] {
@@ -549,7 +813,7 @@ struct DocumentEditorPage: View {
         var projectionsByTabId: [String: [FfiNotebookSessionProjection]] = [:]
 
         for tab in backendTabs {
-            projectionsByTabId[tab.id] = (try? core.listNotebookSessionProjections(tabId: tab.id)) ?? []
+            projectionsByTabId[tab.id] = try core.listNotebookSessionProjections(tabId: tab.id)
         }
 
         return NotebookTabViewModel.makeTabs(
@@ -563,13 +827,26 @@ struct DocumentEditorPage: View {
     }
 
     private func selectNotebookTab(_ tab: NotebookTabViewModel) {
+        let targetSessionId = tab.displayType == .manualNote
+            ? nil
+            : selectedSessionId
         let reusesCurrentRoute = NotebookCaptureSettingsRoutePolicy.reusesCurrentRoute(
             selectedTabId: tab.id,
             activeTabId: activeNotebookTabId
         )
         presentedCaptureSettingsNotebookId = nil
         isShowingResources = false
+        sessionSupplementarySurface = nil
         if reusesCurrentRoute {
+            if targetSessionId != selectedSessionId {
+                WindowCommandRouter.shared.requestOpenNotebookTab(
+                    notebookID: tab.notebookId,
+                    tabID: tab.tabId,
+                    documentID: tab.documentId,
+                    selectedSessionID: targetSessionId
+                )
+                return
+            }
             syncPresentedRoute()
             return
         }
@@ -578,44 +855,71 @@ struct DocumentEditorPage: View {
             notebookID: tab.notebookId,
             tabID: tab.tabId,
             documentID: tab.documentId,
-            selectedSessionID: selectedSessionId
+            selectedSessionID: targetSessionId
         )
     }
 
     private func showCaptureSettings() {
-        guard let notebookId = captureSettingsNotebookId else { return }
+        guard effectiveSessionId == nil,
+              let notebookId = captureSettingsNotebookId else { return }
         activeSidePanel = nil
         // 覆盖层出现前收回键盘焦点,行内 TextField 不得在被盖住时继续吃键击。
         NSApp.keyWindow?.makeFirstResponder(nil)
         isShowingResources = false
+        sessionSupplementarySurface = nil
         presentedCaptureSettingsNotebookId = notebookId
+    }
+
+    /// The same control appears on both the Topic's pre-recording surface and
+    /// a concrete Session's realtime surface, but those routes own different
+    /// settings workspaces. Never cover a Session with the Topic overlay: its
+    /// Settings tab also carries the immutable snapshot for that recording.
+    private func openAdvancedSettingsForCurrentContext() {
+        if effectiveSessionId != nil {
+            showSessionSettings()
+        } else {
+            showCaptureSettings()
+        }
     }
 
     private func showResources() {
         activeSidePanel = nil
         NSApp.keyWindow?.makeFirstResponder(nil)
         presentedCaptureSettingsNotebookId = nil
+        sessionSupplementarySurface = nil
         showTranscript = false
         isShowingResources = true
     }
 
-    private func focusRealtimeHistorySession(_ sessionId: String) {
-        guard selectedSessionId != sessionId,
-              let realtimeTab = notebookTabs.first(where: {
-                  $0.displayType == .realtimeTranscript
-              }) else { return }
-        WindowCommandRouter.shared.requestOpenNotebookTab(
-            notebookID: realtimeTab.notebookId,
-            tabID: realtimeTab.tabId,
-            documentID: realtimeTab.documentId,
-            selectedSessionID: sessionId
-        )
+    private func showSessionNote() {
+        guard effectiveSessionId != nil else { return }
+        activeSidePanel = nil
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        presentedCaptureSettingsNotebookId = nil
+        isShowingResources = false
+        showTranscript = false
+        sessionSupplementarySurface = .note
+    }
+
+    private func showSessionSettings() {
+        guard effectiveSessionId != nil else { return }
+        activeSidePanel = nil
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        presentedCaptureSettingsNotebookId = nil
+        isShowingResources = false
+        showTranscript = false
+        sessionSupplementarySurface = .settings
     }
 
     private func openResource(
         sessionId: String,
         destination: NotebookResourceDestination
     ) {
+        if destination == .audio {
+            exportingSessionId = sessionId
+            isShowingExportSheet = true
+            return
+        }
         isShowingResources = false
         guard let displayType = destination.displayType,
               let targetTab = notebookTabs.first(where: {
@@ -628,7 +932,7 @@ struct DocumentEditorPage: View {
             notebookID: targetTab.notebookId,
             tabID: targetTab.tabId,
             documentID: targetTab.documentId,
-            selectedSessionID: sessionId
+            selectedSessionID: displayType == .manualNote ? nil : sessionId
         )
     }
 
@@ -637,6 +941,17 @@ struct DocumentEditorPage: View {
             $0.displayType == .realtimeTranscript
         }) else { return }
         selectNotebookTab(realtimeTab)
+    }
+
+    private func navigateBack() {
+        if isTopicContext {
+            navigation.navigateTopics()
+        } else if navigation.activePrimaryTab == .topics,
+                  let notebookId = route?.notebookID {
+            navigation.openTopicWorkspace(notebookID: notebookId)
+        } else {
+            WindowCommandRouter.shared.requestNavigateHome()
+        }
     }
 
     private func syncPresentedRoute() {
@@ -650,9 +965,36 @@ struct DocumentEditorPage: View {
 
 }
 
+private struct EditorRouteLoadWarning: View {
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: Spacing.md) {
+            Label(
+                String(localized: "editor.route.load_failed"),
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .font(.bodySM)
+            .foregroundColor(.signalAmber)
+            Spacer(minLength: 0)
+            Button(String(localized: "home.workspace.retry"), action: onRetry)
+                .buttonStyle(.plain)
+                .font(.bodyMedium)
+                .frame(minHeight: 36)
+        }
+        .padding(.horizontal, Spacing.lg)
+        .background(Color.bgElevated.opacity(0.24))
+        .accessibilityIdentifier("editor.route.load_failure")
+    }
+}
+
 // MARK: - NoteTopChrome (简化:只剩 back 按钮,document 切换移到下方 DocumentTabBar)
 
 private struct NoteTopChrome: View {
+    let notebookTitle: String?
+    let session: SessionInfo?
+    let isTopicWorkspace: Bool
+    let backLabel: String
     let onBack: () -> Void
 
     var body: some View {
@@ -661,20 +1003,125 @@ private struct NoteTopChrome: View {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("sidebar.home")
+                    Text(backLabel)
                         .font(.captionMedium)
                 }
                 .foregroundColor(.textSecondary)
             }
             .buttonStyle(.plain)
-            .help(String(localized: "sidebar.back_to_home"))
+            .help(backLabel)
 
-            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(.textTertiary)
+                .accessibilityHidden(true)
+
+            if isTopicWorkspace {
+                Label(
+                    notebookTitle ?? String(localized: "topic.workspace.breadcrumb"),
+                    systemImage: "list.bullet.rectangle"
+                )
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+            } else if let session {
+                HStack(spacing: Spacing.sm) {
+                    if let notebookTitle, notebookTitle.isEmpty == false {
+                        Text(notebookTitle)
+                            .font(.bodyMedium)
+                            .foregroundColor(.textSecondary)
+                            .lineLimit(1)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.textTertiary)
+                            .accessibilityHidden(true)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(sessionDate(session))
+                            .font(.bodyMedium)
+                            .foregroundColor(.textPrimary)
+                            .monospacedDigit()
+
+                        if session.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                            Text(session.title)
+                                .font(.caption)
+                                .foregroundColor(.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    SessionStatusPill(status: session.status, sessionType: session.sessionType)
+                }
+                .accessibilityElement(children: .combine)
+            } else {
+                Text(notebookTitle ?? String(localized: "topic.workspace.breadcrumb"))
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, Spacing.lg)
         .padding(.vertical, Spacing.sm)
+        .frame(minHeight: 52)
     }
 
+    private func sessionDate(_ session: SessionInfo) -> String {
+        Date(timeIntervalSince1970: TimeInterval(session.createdAtUnixMs) / 1_000)
+            .formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+private struct SessionStatusPill: View {
+    let status: String
+    let sessionType: String
+
+    var body: some View {
+        Label(label, systemImage: icon)
+            .font(.captionMedium)
+            .foregroundColor(color)
+            .padding(.horizontal, Spacing.sm)
+            .frame(minHeight: 24)
+            .background(color.opacity(0.1))
+            .clipShape(Capsule())
+    }
+
+    private var normalizedStatus: String { status.lowercased() }
+
+    private var label: String {
+        switch normalizedStatus {
+        case "recording": return String(localized: "home.status.recording")
+        case "failed": return String(localized: "home.status.failed")
+        case "interrupted": return String(localized: "home.status.interrupted")
+        case "imported": return String(localized: "home.status.imported")
+        default:
+            return sessionType.lowercased() == "import"
+                ? String(localized: "home.status.imported")
+                : String(localized: "home.status.completed")
+        }
+    }
+
+    private var icon: String {
+        switch normalizedStatus {
+        case "recording": return "record.circle.fill"
+        case "failed": return "xmark.octagon.fill"
+        case "interrupted": return "exclamationmark.triangle.fill"
+        case "imported": return "square.and.arrow.down"
+        default: return sessionType.lowercased() == "import"
+            ? "square.and.arrow.down"
+            : "checkmark.circle.fill"
+        }
+    }
+
+    private var color: Color {
+        switch normalizedStatus {
+        case "recording": return .signalRed
+        case "failed", "interrupted": return .signalAmber
+        default: return .textSecondary
+        }
+    }
 }
 
 // MARK: - Notebook Tasks
@@ -860,10 +1307,14 @@ private struct DocumentTabBar: View {
     let captureSettingsNotebookId: String?
     let isCaptureSettingsSelected: Bool
     let isResourcesSelected: Bool
+    let isTopicContext: Bool
     let sessionId: String?
+    let sessionSupplementarySurface: SessionSupplementarySurface?
     let onSelect: (NotebookTabViewModel) -> Void
     let onSelectResources: () -> Void
     let onSelectCaptureSettings: () -> Void
+    let onSelectSessionNote: () -> Void
+    let onSelectSessionSettings: () -> Void
     let onExport: () -> Void
     @ObservedObject private var captureStore = ActiveBilingualTranscriptStore.shared
 
@@ -871,22 +1322,45 @@ private struct DocumentTabBar: View {
         HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
-                    ForEach(tabs) { tab in
+                    if isTopicContext {
+                        ResourcesTabButton(
+                            isActive: isResourcesSelected,
+                            action: onSelectResources
+                        )
+                    }
+
+                    ForEach(visibleTabs) { tab in
                         NotebookTabButton(
                             tab: effectiveTab(tab),
                             isActive: isCaptureSettingsSelected == false
                                 && isResourcesSelected == false
+                                && sessionSupplementarySurface == nil
                                 && tab.id == activeTabId,
                             action: { onSelect(tab) }
                         )
                     }
 
-                    ResourcesTabButton(
-                        isActive: isResourcesSelected,
-                        action: onSelectResources
-                    )
+                    if isTopicContext == false, sessionId != nil {
+                        SessionSupplementaryTabButton(
+                            title: String(localized: "session.tab.notes"),
+                            systemImage: "square.and.pencil",
+                            accessibilityIdentifier: "session.tab.notes",
+                            isActive: sessionSupplementarySurface == .note,
+                            action: onSelectSessionNote
+                        )
+                        SessionSupplementaryTabButton(
+                            title: String(localized: "session.tab.settings"),
+                            systemImage: "slider.horizontal.3",
+                            accessibilityIdentifier: "session.tab.settings",
+                            isActive: sessionSupplementarySurface == .settings,
+                            action: onSelectSessionSettings
+                        )
+                    }
 
-                    if captureSettingsNotebookId != nil {
+                    // A Topic needs a settings entry before its first Session
+                    // exists. Session routes use their own Settings tab above,
+                    // which embeds this exact same settings implementation.
+                    if isTopicContext, captureSettingsNotebookId != nil {
                         CaptureSettingsTabButton(
                             isActive: isCaptureSettingsSelected,
                             action: onSelectCaptureSettings
@@ -897,7 +1371,9 @@ private struct DocumentTabBar: View {
 
             Spacer(minLength: Spacing.md)
 
-            if isCaptureSettingsSelected == false && isResourcesSelected == false {
+            if isTopicContext == false,
+               isCaptureSettingsSelected == false,
+               isResourcesSelected == false {
                 Button(action: onExport) {
                     Image(systemName: "tray.and.arrow.up")
                         .font(.system(size: 12, weight: .semibold))
@@ -921,6 +1397,15 @@ private struct DocumentTabBar: View {
         )
     }
 
+    private var visibleTabs: [NotebookTabViewModel] {
+        tabs.filter { tab in
+            if isTopicContext {
+                return tab.displayType != .asyncTranscript
+            }
+            return tab.displayType != .manualNote
+        }
+    }
+
     private func effectiveTab(_ tab: NotebookTabViewModel) -> NotebookTabViewModel {
         let resolvedStatus = NotebookRealtimeTabStatusPolicy.resolve(
             displayType: tab.displayType,
@@ -930,7 +1415,10 @@ private struct DocumentTabBar: View {
             activeSessionId: captureStore.sessionId,
             captureIsActive: captureStore.captureState.isActive
         )
-        guard resolvedStatus != tab.status else { return tab }
+        let resolvedTitle = isTopicContext && tab.displayType == .realtimeTranscript
+            ? String(localized: "topic.workspace.record")
+            : tab.title
+        guard resolvedStatus != tab.status || resolvedTitle != tab.title else { return tab }
         return NotebookTabViewModel(
             id: tab.id,
             notebookId: tab.notebookId,
@@ -938,10 +1426,41 @@ private struct DocumentTabBar: View {
             displayType: tab.displayType,
             documentId: tab.documentId,
             sessionLink: tab.sessionLink,
-            title: tab.title,
+            title: resolvedTitle,
             status: resolvedStatus,
             position: tab.position
         )
+    }
+}
+
+private struct SessionSupplementaryTabButton: View {
+    let title: String
+    let systemImage: String
+    let accessibilityIdentifier: String
+    let isActive: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 0) {
+                Label(title, systemImage: systemImage)
+                    .font(.bodyMedium)
+                    .lineLimit(1)
+                    .foregroundColor(isActive || isHovering ? .textPrimary : .textSecondary)
+                    .padding(.horizontal, Spacing.md)
+                    .padding(.vertical, 8)
+
+                Rectangle()
+                    .fill(isActive ? Color.brandAccent : Color.clear)
+                    .frame(height: 2)
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
 
@@ -954,8 +1473,8 @@ private struct ResourcesTabButton: View {
         Button(action: action) {
             VStack(spacing: 0) {
                 Label(
-                    String(localized: "resources.tab"),
-                    systemImage: "tray.full"
+                    String(localized: "topic.sessions.tab"),
+                    systemImage: "list.bullet.rectangle"
                 )
                 .font(.bodyMedium)
                 .lineLimit(1)
@@ -970,7 +1489,7 @@ private struct ResourcesTabButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .help(String(localized: "resources.tab.hint"))
+        .help(String(localized: "topic.sessions.tab.hint"))
         .accessibilityAddTraits(isActive ? .isSelected : [])
         .accessibilityIdentifier("notebook.tab.resources")
     }
@@ -985,7 +1504,7 @@ private struct CaptureSettingsTabButton: View {
         Button(action: action) {
             VStack(spacing: 0) {
                 Label(
-                    String(localized: "capture.settings.tab"),
+                    String(localized: "topic.capture_setup.tab"),
                     systemImage: "slider.horizontal.3"
                 )
                 .font(.bodyMedium)
@@ -1001,10 +1520,11 @@ private struct CaptureSettingsTabButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .help(String(localized: "capture.settings.tab_hint"))
-        .accessibilityLabel(Text(String(localized: "capture.settings.tab")))
+        .help(String(localized: "topic.capture_setup.tab.hint"))
+        .accessibilityLabel(Text(String(localized: "topic.capture_setup.tab")))
         .accessibilityHint(Text(String(localized: "capture.settings.tab_hint")))
         .accessibilityAddTraits(isActive ? .isSelected : [])
+        .accessibilityIdentifier("notebook.tab.capture_settings")
     }
 }
 
@@ -1119,14 +1639,14 @@ private struct NotebookTabButton: View {
     }
 
     private var accessibilityValue: String {
-        let state: String
+        let key: String
         switch tab.status {
-        case .ready: state = "Ready"
-        case .pending: state = "Transcription pending"
-        case .failed: state = "Transcription failed"
-        case .live: state = "Live transcription"
+        case .ready: key = "resources.status.ready"
+        case .pending: key = "resources.status.pending"
+        case .failed: key = "resources.status.failed"
+        case .live: key = "home.status.recording"
         }
-        return isActive ? "Selected, \(state)" : state
+        return String(localized: String.LocalizationValue(key))
     }
 }
 
@@ -1146,9 +1666,12 @@ private struct AsyncTranscriptView: View {
     // Observed for statusRevision so the key-required gate below reacts when
     // the user saves or removes their own key in Settings.
     @ObservedObject private var providerCredentials = ProviderCredentialSession.shared
-    @State private var editingIndex: Int?
-    @State private var editingDraft = ""
-    @State private var projectionAttachment: NotebookTranscriptProjectionStore.Attachment?
+    @StateObject private var projectionAttachment =
+        NotebookTranscriptProjectionAttachmentCoordinator(
+            store: NotebookTranscriptProjectionStore.shared
+        )
+    @State private var isRepairingStoredProjection = false
+    @State private var storedProjectionRepairFailed = false
 
     private var lines: [NotebookTranscriptLine] {
         projectionStore.linesBySession[sessionId] ?? []
@@ -1157,43 +1680,46 @@ private struct AsyncTranscriptView: View {
     var body: some View {
         VStack(spacing: 0) {
             asyncStatusBar
+            if AsyncTranscriptMetadataNoticePolicy.shouldShow(for: lines) {
+                AsyncTranscriptMetadataNotice()
+            }
             Divider().background(Color.borderGhost.opacity(0.25))
             Group {
-                if lines.isEmpty {
+                switch contentPhase {
+                case .loading:
+                    AsyncTranscriptLoadingView(statusText: asyncStatusText)
+                case .empty:
                     EmptyState(
                         illustration: { Arcanum003WaveformRuler() },
                         title: emptyStateTitle,
                         description: emptyStateDescription
                     )
-                } else {
+                case .transcript:
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: Spacing.xl) {
-                            ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                                TranscriptSegmentView(
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(lines) { line in
+                                AsyncTranscriptRow(
                                     line: line,
-                                    isEditing: editingIndex == index,
-                                    isEditable: projectionStore.editableBySession[sessionId] == true,
-                                    draft: $editingDraft,
-                                    onStartEdit: {
-                                        editingDraft = line.text
-                                        editingIndex = index
-                                    },
-                                    onCommit: {
-                                        projectionStore.replaceSegment(
+                                    isEditable: isTranscriptEditable,
+                                    onReplace: { text in
+                                        try projectionStore.replaceSegment(
                                             sessionId: sessionId,
-                                            segmentIndex: index,
-                                            text: editingDraft
+                                            segmentId: line.id,
+                                            text: text
                                         )
-                                        editingIndex = nil
                                     },
-                                    onCancel: {
-                                        editingIndex = nil
+                                    onEditingChanged: { target, focused in
+                                        projectionAttachment.setEditPending(
+                                            segmentId: target.utteranceId,
+                                            pending: focused
+                                        )
                                     }
                                 )
+                                .id(line.id)
+                                Divider().background(Color.borderGhost.opacity(0.22))
                             }
                         }
-                        .padding(.horizontal, Spacing.xl + Spacing.lg)
-                        .padding(.vertical, Spacing.xl)
+                        .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset)
                     }
                 }
             }
@@ -1201,20 +1727,11 @@ private struct AsyncTranscriptView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
         .task(id: "\(sessionId):\(tabId)") {
-            if let projectionAttachment {
-                projectionStore.detach(projectionAttachment)
-            }
-            projectionAttachment = projectionStore.attachIfNeeded(
-                sessionId: sessionId,
-                notebookId: notebookId,
-                tabId: tabId
-            )
+            await repairStoredProjection(showFailureToast: false)
+            attachProjection()
         }
         .onDisappear {
-            if let projectionAttachment {
-                projectionStore.detach(projectionAttachment)
-                self.projectionAttachment = nil
-            }
+            projectionAttachment.requestDetach()
         }
     }
 
@@ -1230,9 +1747,40 @@ private struct AsyncTranscriptView: View {
         projectionStore.retryingAsyncProjectionSessions.contains(sessionId)
     }
 
+    private var isTranscriptEditable: Bool {
+        projectionStore.editableBySession[sessionId] == true
+    }
+
+    private var contentPhase: AsyncTranscriptContentPhase {
+        AsyncTranscriptContentPolicy.phase(
+            hasLines: lines.isEmpty == false,
+            projectionState: asyncProjectionState,
+            providerState: asyncProviderState,
+            tabStatus: status,
+            hasOperationInFlight: isRetryingProjection
+                || isRepairingStoredProjection
+                || isRequestingAsyncTranscription,
+            hasLoadFailure: hasProjectionLoadFailure
+        )
+    }
+
+    private var hasProjectionLoadFailure: Bool {
+        projectionAttachment.attachmentFailed
+            || documentReadError != nil
+            || (asyncProjectionState == nil
+                && projectionStore.asyncProjectionErrorBySession[sessionId] != nil)
+    }
+
+    private var documentReadError: String? {
+        projectionStore.documentReadErrorBySession[sessionId]
+    }
+
     private var asyncStatusBar: some View {
         HStack(spacing: Spacing.sm) {
-            if asyncProjectionState == .projecting || isRetryingProjection || isProviderPending {
+            if isRetryingProjection
+                || isRepairingStoredProjection
+                || (hasProjectionLoadFailure == false
+                    && (asyncProjectionState == .projecting || isProviderPending)) {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityHidden(true)
@@ -1245,6 +1793,14 @@ private struct AsyncTranscriptView: View {
                 .font(.captionMedium)
                 .foregroundColor(.textSecondary)
             Spacer(minLength: Spacing.md)
+            if lines.isEmpty == false, isTranscriptEditable == false {
+                Label(
+                    String(localized: "capture.transcript.read_only"),
+                    systemImage: "lock.fill"
+                )
+                .font(.caption)
+                .foregroundColor(.textSecondary)
+            }
             switch primaryAction {
             case .addPersonalKey:
                 // Post-stop upload requires a saved personal key. Keep the
@@ -1283,23 +1839,23 @@ private struct AsyncTranscriptView: View {
             case .none:
                 EmptyView()
             }
-            if asyncProjectionState == .failed {
+            if asyncProjectionState == .failed
+                || storedProjectionRepairFailed
+                || hasProjectionLoadFailure {
                 Button {
-                    retryLocalProjection()
+                    retryProjection()
                 } label: {
                     Label(
-                        String(localized: "editor.transcript.async.retry_projection"),
+                        retryActionLabel,
                         systemImage: "arrow.clockwise"
                     )
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .frame(minHeight: 44)
-                .disabled(isRetryingProjection)
-                .help(String(localized: "editor.transcript.async.retry_projection_hint"))
-                .accessibilityHint(Text(String(
-                    localized: "editor.transcript.async.retry_projection_hint"
-                )))
+                .disabled(isRetryingProjection || isRepairingStoredProjection)
+                .help(retryActionHint)
+                .accessibilityHint(Text(retryActionHint))
                 .accessibilityIdentifier("async.transcription.retry-projection.\(sessionId)")
             }
         }
@@ -1320,7 +1876,8 @@ private struct AsyncTranscriptView: View {
     }
 
     private var primaryAction: AsyncTranscriptPrimaryAction {
-        AsyncTranscriptActionPolicy.primaryAction(
+        guard hasProjectionLoadFailure == false else { return .none }
+        return AsyncTranscriptActionPolicy.primaryAction(
             projectionState: asyncProjectionState,
             providerState: asyncProviderState,
             hasReadyPersonalKey: hasReadyPersonalSonioxKey
@@ -1343,8 +1900,17 @@ private struct AsyncTranscriptView: View {
     }
 
     private var asyncStatusText: String {
-        if isRetryingProjection {
+        if isRetryingProjection || isRepairingStoredProjection {
             return String(localized: "editor.transcript.async.status.projecting")
+        }
+        if documentReadError != nil {
+            return String(localized: "editor.route.load_failed")
+        }
+        if storedProjectionRepairFailed || hasProjectionLoadFailure {
+            return String(localized: "editor.transcript.async.status.projection_failed")
+        }
+        if lines.isEmpty == false {
+            return String(localized: "editor.transcript.async.status.ready")
         }
         switch asyncProjectionState {
         case .some(.pending):
@@ -1370,6 +1936,10 @@ private struct AsyncTranscriptView: View {
     }
 
     private var asyncStatusIcon: String {
+        if storedProjectionRepairFailed || hasProjectionLoadFailure {
+            return "exclamationmark.triangle.fill"
+        }
+        if lines.isEmpty == false { return "checkmark.circle.fill" }
         switch asyncProjectionState {
         case .some(.ready): return "checkmark.circle.fill"
         case .some(.failed): return "exclamationmark.triangle.fill"
@@ -1382,11 +1952,58 @@ private struct AsyncTranscriptView: View {
     }
 
     private var asyncStatusColor: Color {
+        if storedProjectionRepairFailed || hasProjectionLoadFailure { return .signalAmber }
+        if lines.isEmpty == false { return .signalGreen }
         switch asyncProjectionState {
         case .some(.ready): return .signalGreen
         case .some(.failed): return .signalAmber
         default: return .textTertiary
         }
+    }
+
+    private func retryProjection() {
+        if documentReadError != nil {
+            do {
+                try projectionStore.retryDocumentRead(sessionId: sessionId)
+            } catch {
+                ToastCenter.shared.error(
+                    String(localized: "editor.route.load_failed"),
+                    detail: error.localizedDescription
+                )
+            }
+            return
+        }
+        if storedProjectionRepairFailed {
+            Task { @MainActor in
+                await repairStoredProjection(showFailureToast: true)
+            }
+            return
+        }
+        if hasProjectionLoadFailure {
+            attachProjection()
+            if hasProjectionLoadFailure {
+                if let documentReadError {
+                    ToastCenter.shared.error(
+                        String(localized: "editor.route.load_failed"),
+                        detail: documentReadError
+                    )
+                } else {
+                    ToastCenter.shared.error(
+                        String(localized: "editor.transcript.async.retry_failed")
+                    )
+                }
+            }
+            return
+        }
+        retryLocalProjection()
+    }
+
+    private func attachProjection() {
+        projectionAttachment.attach(
+            sessionId: sessionId,
+            notebookId: notebookId,
+            tabId: tabId
+        )
     }
 
     private func retryLocalProjection() {
@@ -1402,7 +2019,38 @@ private struct AsyncTranscriptView: View {
         }
     }
 
+    /// Legacy/imported Sessions can have durable async tokens but no capture
+    /// run state machine. Repair their missing marked section lazily when this
+    /// exact Session is opened, avoiding an O(n²) scan of a large Topic.
+    private func repairStoredProjection(showFailureToast: Bool) async {
+        guard isRepairingStoredProjection == false,
+              let core = CoreClient.shared.core else { return }
+        isRepairingStoredProjection = true
+        let targetSessionId = sessionId
+        let succeeded = await Task.detached(priority: .userInitiated) {
+            do {
+                _ = try core.repairSessionTranscriptProjection(sessionId: targetSessionId)
+                return true
+            } catch {
+                return false
+            }
+        }.value
+        isRepairingStoredProjection = false
+        storedProjectionRepairFailed = !succeeded
+        if !succeeded, showFailureToast {
+            ToastCenter.shared.error(
+                String(localized: "editor.transcript.async.retry_failed")
+            )
+        }
+    }
+
     private var emptyStateTitle: String {
+        if documentReadError != nil {
+            return String(localized: "editor.route.load_failed")
+        }
+        if storedProjectionRepairFailed || hasProjectionLoadFailure {
+            return String(localized: "editor.transcript.async.projection_failed_title")
+        }
         switch asyncProjectionState {
         case .some(.pending), .some(.projecting):
             return String(localized: "editor.transcript.async.pending_title")
@@ -1418,6 +2066,10 @@ private struct AsyncTranscriptView: View {
     }
 
     private var emptyStateDescription: String {
+        if let documentReadError { return documentReadError }
+        if storedProjectionRepairFailed || hasProjectionLoadFailure {
+            return String(localized: "editor.transcript.async.projection_failed_desc")
+        }
         switch asyncProjectionState {
         case .some(.pending), .some(.projecting):
             return String(localized: "editor.transcript.async.projection_pending_desc")
@@ -1436,6 +2088,17 @@ private struct AsyncTranscriptView: View {
         AsyncTranscriptActionPolicy.isProviderPending(asyncProviderState)
     }
 
+    private var retryActionLabel: String {
+        documentReadError == nil
+            ? String(localized: "editor.transcript.async.retry_projection")
+            : String(localized: "capture.settings.autosave.retry")
+    }
+
+    private var retryActionHint: String {
+        documentReadError
+            ?? String(localized: "editor.transcript.async.retry_projection_hint")
+    }
+
     private var providerFailureDescription: String {
         let summary = String(localized: "editor.transcript.async.failed_desc")
         guard let detail = taskErrorMessage?.trimmingCharacters(
@@ -1444,94 +2107,152 @@ private struct AsyncTranscriptView: View {
         return "\(summary)\n\n\(detail)"
     }
 }
-/// 单个转录段落的渲染。click 切换编辑模式。
-private struct TranscriptSegmentView: View {
-    let line: NotebookTranscriptLine
-    let isEditing: Bool
-    let isEditable: Bool
-    @Binding var draft: String
-    let onStartEdit: () -> Void
-    let onCommit: () -> Void
-    let onCancel: () -> Void
 
-    @State private var isHovering = false
+private struct AsyncTranscriptMetadataNotice: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: Spacing.sm) {
+            Image(systemName: "info.circle")
+                .accessibilityHidden(true)
+            Text(String(localized: "editor.transcript.async.metadata_missing_notice"))
+                .font(.caption)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .foregroundColor(.textSecondary)
+        .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset)
+        .padding(.vertical, Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bgSunken.opacity(0.12))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("async.transcript.metadata-missing")
+    }
+}
+
+/// One after-stop transcript row. New projections preserve the async
+/// provider's anonymous speaker, language, and timing metadata; legacy rows
+/// remain valid and simply omit metadata they never recorded.
+private struct AsyncTranscriptRow: View {
+    let line: NotebookTranscriptLine
+    let isEditable: Bool
+    let onReplace: (String) async throws -> Void
+    let onEditingChanged: (BilingualLaneEditTarget, Bool) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // 时间戳 — 小字灰色
-            HStack(spacing: Spacing.md) {
-                Text(formatTs(line.startMs))
-                    .font(.captionMedium.monospacedDigit())
-                    .foregroundColor(.textTertiary)
-                Spacer()
-                if isHovering && !isEditing && isEditable {
-                    Text("Edit")
-                        .font(.captionMedium)
-                        .foregroundColor(.textTertiary.opacity(0.8))
-                }
-            }
-
-            if isEditing {
-                VStack(alignment: .leading, spacing: Spacing.sm) {
-                    TextEditor(text: $draft)
-                        .font(.system(size: 15))
-                        .foregroundColor(.textPrimary)
-                        .montereyScrollContentBackground(hidden: true)
-                        .background(Color.bgSunken)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Radius.sm)
-                                .strokeBorder(Color.brandAccent.opacity(0.6), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-                        .frame(minHeight: 80)
-
-                    HStack(spacing: Spacing.sm) {
-                        Button("Save") { onCommit() }
-                            .keyboardShortcut(.return, modifiers: .command)
-                        Button("Cancel") { onCancel() }
-                            .keyboardShortcut(.cancelAction)
-                        Spacer()
-                        Text("⌘↵ save · esc cancel")
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            if hasMetadataHeader {
+                HStack(spacing: Spacing.sm) {
+                    if let speakerDisplayName {
+                        Label(speakerDisplayName, systemImage: "person.crop.circle")
                             .font(.captionMedium)
-                            .foregroundColor(.textTertiary)
+                            .foregroundColor(.textPrimary)
+                            .padding(.horizontal, Spacing.sm)
+                            .frame(minHeight: 28)
+                            .background(Color.bgElevated.opacity(0.48))
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule().strokeBorder(
+                                    Color.borderGhost.opacity(0.35),
+                                    lineWidth: 0.5
+                                )
+                            )
+                    }
+
+                    if let timestampText {
+                        Label(timestampText, systemImage: "waveform")
+                            .accessibilityLabel(Text(String(
+                                format: String(localized: "capture.transcript.source_timestamp"),
+                                timestampText
+                            )))
+                    }
+
+                    if let sourceLanguageLabel {
+                        Text(sourceLanguageLabel)
                     }
                 }
-            } else {
-                Button(action: onStartEdit) {
-                    Text(line.text)
-                        .font(.system(size: 15))
-                        .foregroundColor(.textPrimary)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, Spacing.sm)
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: Radius.sm)
-                                .fill(
-                                    (isHovering && isEditable)
-                                        ? Color.bgElevated.opacity(0.35)
-                                        : Color.clear
-                                )
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(!isEditable)
-                .accessibilityLabel(Text("Transcript segment at \(formatTs(line.startMs))"))
-                .accessibilityValue(Text(line.text))
-                .accessibilityHint(Text(isEditable ? "Edit transcript segment" : "Available after transcription completes"))
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(.textTertiary)
             }
+
+            BilingualLaneText(
+                target: editTarget,
+                text: line.text,
+                isEditable: isEditable,
+                editAccessibilityLabel: String(localized: "editor.tab.transcript.hint"),
+                commitFailureMessage: String(localized: "editor.transcript.edit_failed"),
+                onCommit: { _, text in
+                    try await onReplace(text)
+                },
+                onEditingChanged: onEditingChanged
+            )
+            .id(editTarget)
+            .accessibilityIdentifier("async.transcript.segment.\(line.id)")
         }
-        .onHover { isHovering = $0 }
+        .padding(.horizontal, Spacing.md)
+        .padding(.vertical, Spacing.lg)
+        .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
     }
 
-    private func formatTs(_ ms: UInt64) -> String {
-        let total = Int(ms / 1000)
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        if h > 0 { return String(format: "%02d:%02d:%02d", h, m, s) }
-        return String(format: "%02d:%02d", m, s)
+    private var editTarget: BilingualLaneEditTarget {
+        BilingualLaneEditTarget(
+            utteranceId: line.id,
+            laneLanguage: normalizedSourceLanguage ?? "und"
+        )
+    }
+
+    private var hasMetadataHeader: Bool {
+        speakerDisplayName != nil || timestampText != nil || sourceLanguageLabel != nil
+    }
+
+    private var speakerDisplayName: String? {
+        guard let label = line.providerSpeakerLabel?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            label.isEmpty == false
+        else { return nil }
+        return String(
+            format: String(localized: "editor.transcript.async.speaker_format"),
+            label
+        )
+    }
+
+    private var normalizedSourceLanguage: String? {
+        guard let language = line.sourceLanguage?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .split(separator: "-")
+            .first
+            .map(String.init),
+            language.isEmpty == false,
+            language != "und"
+        else { return nil }
+        return language
+    }
+
+    private var sourceLanguageLabel: String? {
+        normalizedSourceLanguage?.uppercased()
+    }
+
+    private var timestampText: String? {
+        guard let milliseconds = line.startMs else { return nil }
+        return TranscriptTimestampPresentation.text(milliseconds: milliseconds)
+    }
+}
+
+private struct AsyncTranscriptLoadingView: View {
+    let statusText: String
+
+    var body: some View {
+        VStack(spacing: Spacing.md) {
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityHidden(true)
+            Text(statusText)
+                .font(.caption)
+                .foregroundColor(.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(statusText))
     }
 }
 
@@ -1565,6 +2286,515 @@ private struct NotebookBuiltinTabTitle: View {
             .padding(.bottom, Spacing.xs)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct TopicNotesContextHeader: View {
+    var body: some View {
+        HStack(spacing: Spacing.sm) {
+                Image(systemName: "folder.fill")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.textSecondary)
+            Text(String(localized: "topic.notes.shared_document"))
+                .font(.caption)
+                .foregroundColor(.textSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Spacing.xl)
+        .padding(.vertical, Spacing.sm)
+        .background(Color.bgSunken.opacity(0.18))
+    }
+}
+
+private struct SessionNotesContextHeader: View {
+    var body: some View {
+        HStack(spacing: Spacing.sm) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.brandAccent)
+            Text(String(localized: "session.notes.context"))
+                .font(.caption)
+                .foregroundColor(.textSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Spacing.xl)
+        .padding(.vertical, Spacing.sm)
+        .background(Color.bgSunken.opacity(0.18))
+        .accessibilityIdentifier("session.notes.context")
+    }
+}
+
+/// Session Settings is the complete recording-settings workspace, not merely
+/// a metadata card. Resource state belongs at the top, editable defaults stay
+/// in the middle, and the immutable run snapshot closes the same page. Keeping
+/// the three areas in one reading flow avoids making provenance look like an
+/// alternative mode of the settings workspace.
+private struct SessionSettingsView: View {
+    let notebookId: String
+    let session: SessionInfo
+    @ObservedObject var editor: NotebookCaptureProfileEditorModel
+    let captureSettingsScope: NotebookCaptureSettingsScope
+    let onOpenRealtimeControls: () -> Void
+    let onOpenResource: (NotebookResourceDestination) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                sessionResourceSection
+
+                NotebookCaptureSettingsView(
+                    notebookId: notebookId,
+                    editor: editor,
+                    scope: captureSettingsScope,
+                    embeddedInParentScrollView: true,
+                    onOpenRealtimeControls: onOpenRealtimeControls
+                )
+                .id("session-recording-settings:\(notebookId)")
+                .frame(maxWidth: .infinity, alignment: .top)
+
+                Divider()
+                    .padding(.horizontal, Spacing.xl)
+                    .background(Color.borderGhost.opacity(0.45))
+
+                Text(String(localized: "session.settings.workspace.snapshot"))
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
+                    .padding(.horizontal, Spacing.xl)
+                    .padding(.top, Spacing.xl)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                SessionSettingsSnapshotView(
+                    notebookId: notebookId,
+                    session: session,
+                    isEmbedded: true
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.bgRoot)
+        .accessibilityIdentifier("session.settings.\(session.id)")
+    }
+
+    @ViewBuilder
+    private var sessionResourceSection: some View {
+        SessionResourceSettingsView(
+            sessionId: session.id,
+            sessionTitle: session.title,
+            onOpen: onOpenResource
+        )
+    }
+}
+
+private struct SessionSettingsSnapshotView: View {
+    let notebookId: String
+    let session: SessionInfo
+    var isEmbedded = false
+
+    @State private var captureRun: FfiNotebookCaptureHistoryRun?
+    @State private var isLoading = true
+    @State private var loadError: String?
+
+    var body: some View {
+        Group {
+            if isEmbedded {
+                snapshotContent
+            } else {
+                ScrollView {
+                    snapshotContent
+                }
+            }
+        }
+        .background(Color.bgRoot)
+        .task(id: "\(notebookId):\(session.id)") { await load() }
+        .accessibilityIdentifier("session.settings.snapshot.\(session.id)")
+    }
+
+    private var snapshotContent: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(String(localized: "session.settings.subtitle"))
+                    .font(.bodySM)
+                    .foregroundColor(.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            settingsSection(
+                title: String(localized: "session.settings.section.session"),
+                rows: sessionRows
+            )
+
+            if isLoading {
+                HStack(spacing: Spacing.sm) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(String(localized: "editor.transcript.async.status.loading"))
+                        .font(.bodySM)
+                        .foregroundColor(.textSecondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 80)
+            } else if let loadError {
+                VStack(alignment: .leading, spacing: Spacing.sm) {
+                    Label(
+                        String(localized: "session.settings.load_failed"),
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.bodyMedium)
+                    .foregroundColor(.signalAmber)
+                    Text(loadError)
+                        .font(.caption)
+                        .foregroundColor(.textSecondary)
+                        .textSelection(.enabled)
+                    Button(String(localized: "session.settings.retry")) {
+                        Task { await load() }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.bgElevated.opacity(0.32))
+                .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+            } else {
+                if captureRun == nil {
+                    snapshotNotice(
+                        key: session.sessionType.lowercased() == "import"
+                            ? "session.settings.snapshot.imported_missing"
+                            : "session.settings.snapshot.missing",
+                        systemImage: "questionmark.circle",
+                        color: .textSecondary
+                    )
+                } else if captureRun?.providerErrorType == "profile_snapshot_corrupt" {
+                    snapshotNotice(
+                        key: "session.settings.snapshot.corrupt",
+                        systemImage: "exclamationmark.triangle.fill",
+                        color: .signalAmber
+                    )
+                }
+
+                settingsSection(
+                    title: String(localized: "session.settings.section.capture"),
+                    rows: captureRows
+                )
+            }
+
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "number")
+                    .foregroundColor(.textTertiary)
+                Text(session.id)
+                    .font(.caption.monospaced())
+                    .foregroundColor(.textTertiary)
+                    .textSelection(.enabled)
+                Spacer(minLength: 0)
+            }
+            .padding(.top, Spacing.sm)
+        }
+        .padding(.horizontal, Spacing.xl)
+        .padding(.vertical, Spacing.lg)
+        .frame(maxWidth: 860, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    private var sessionRows: [SessionSettingsRowModel] {
+        [
+            SessionSettingsRowModel(
+                icon: "calendar",
+                label: String(localized: "session.settings.field.created"),
+                value: createdAtText
+            ),
+            SessionSettingsRowModel(
+                icon: "clock",
+                label: String(localized: "session.settings.field.duration"),
+                value: durationText(session.durationMs)
+            ),
+            SessionSettingsRowModel(
+                icon: session.sessionType == "import" ? "square.and.arrow.down" : "mic",
+                label: String(localized: "session.settings.field.type"),
+                value: String(localized: session.sessionType == "import"
+                    ? "home.row.kind.import"
+                    : "home.row.kind.recording")
+            ),
+            SessionSettingsRowModel(
+                icon: "circle.dotted",
+                label: String(localized: "session.settings.field.status"),
+                value: statusText
+            ),
+            SessionSettingsRowModel(
+                icon: "character.bubble",
+                label: String(localized: "session.settings.field.languages"),
+                value: languageText
+            ),
+            SessionSettingsRowModel(
+                icon: "waveform",
+                label: String(localized: "session.settings.field.audio"),
+                value: String(localized: session.hasEncryptedAudio
+                    ? "session.settings.value.available"
+                    : "session.settings.value.unavailable")
+            ),
+        ]
+    }
+
+    private var captureRows: [SessionSettingsRowModel] {
+        guard let captureRun else {
+            return [
+                SessionSettingsRowModel(
+                    icon: "archivebox",
+                    label: String(localized: "session.settings.section.capture"),
+                    value: String(localized: "session.settings.value.unknown")
+                ),
+            ]
+        }
+        var rows = [
+            SessionSettingsRowModel(
+                icon: "rectangle.split.2x1",
+                label: String(localized: "session.settings.field.mode"),
+                value: modeText(captureRun.mode)
+            ),
+            SessionSettingsRowModel(
+                icon: "lock.shield",
+                label: String(localized: "session.settings.field.privacy"),
+                value: privacyText(captureRun.privacyLevel)
+            ),
+            SessionSettingsRowModel(
+                icon: "network",
+                label: String(localized: "session.settings.field.remote_realtime"),
+                value: booleanSnapshotText(captureRun.remoteRealtimeEnabled)
+            ),
+            SessionSettingsRowModel(
+                icon: "books.vertical",
+                label: String(localized: "session.settings.field.context_sharing"),
+                value: booleanSnapshotText(captureRun.sendContextToSoniox)
+            ),
+            SessionSettingsRowModel(
+                icon: "bolt.horizontal.circle",
+                label: String(localized: "session.settings.field.realtime_engine"),
+                value: engineText(
+                    provider: captureRun.realtimeProviderId,
+                    model: captureRun.realtimeModelId
+                )
+            ),
+            SessionSettingsRowModel(
+                icon: "waveform.badge.plus",
+                label: String(localized: "session.settings.field.processed_engine"),
+                value: engineText(
+                    provider: captureRun.postStopProviderId,
+                    model: captureRun.postStopModelId
+                )
+            ),
+            SessionSettingsRowModel(
+                icon: "slider.horizontal.3",
+                label: String(localized: "session.settings.field.format"),
+                value: audioFormatText(captureRun)
+            ),
+            SessionSettingsRowModel(
+                icon: "mic",
+                label: String(localized: "session.settings.field.audio_input"),
+                value: String(localized: "session.settings.value.not_recorded")
+            ),
+        ]
+        if captureRun.sendContextToSoniox == true {
+            rows.append(
+                SessionSettingsRowModel(
+                    icon: "doc.text.magnifyingglass",
+                    label: String(localized: "session.settings.field.context_source"),
+                    value: String(localized: "session.settings.value.not_recorded")
+                )
+            )
+        }
+        return rows
+    }
+
+    private func settingsSection(
+        title: String,
+        rows: [SessionSettingsRowModel]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+                .padding(.horizontal, Spacing.md)
+                .padding(.vertical, Spacing.sm)
+
+            Divider()
+                .background(Color.borderGhost.opacity(0.45))
+
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                SessionSettingsRow(row: row)
+                if index < rows.count - 1 {
+                    Divider()
+                        .padding(.leading, 48)
+                        .background(Color.borderGhost.opacity(0.35))
+                }
+            }
+        }
+        .background(Color.bgElevated.opacity(0.3))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.md)
+                .strokeBorder(Color.borderGhost.opacity(0.55), lineWidth: Stroke.thin)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+    }
+
+    private func snapshotNotice(
+        key: String.LocalizationValue,
+        systemImage: String,
+        color: Color
+    ) -> some View {
+        Label(String(localized: key), systemImage: systemImage)
+            .font(.bodySM)
+            .foregroundColor(color)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.bgElevated.opacity(0.28))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.md)
+                    .strokeBorder(color.opacity(0.3), lineWidth: Stroke.thin)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+    }
+
+    @MainActor
+    private func load() async {
+        isLoading = true
+        loadError = nil
+        guard let core = CoreClient.shared.core else {
+            isLoading = false
+            loadError = CoreClient.shared.initError ?? String(localized: "session.settings.load_failed")
+            return
+        }
+        do {
+            let requestedNotebookId = notebookId
+            let requestedSessionId = session.id
+            let runs = try await Task.detached(priority: .userInitiated) {
+                try core.listNotebookCaptureHistorySummaries(notebookId: requestedNotebookId)
+            }.value
+            captureRun = runs.first { $0.sessionId == requestedSessionId }
+            isLoading = false
+        } catch {
+            captureRun = nil
+            isLoading = false
+            loadError = error.localizedDescription
+        }
+    }
+
+    private var createdAtText: String {
+        Date(timeIntervalSince1970: TimeInterval(session.createdAtUnixMs) / 1_000)
+            .formatted(date: .long, time: .shortened)
+    }
+
+    private var languageText: String {
+        let codes = ([session.sourceLanguage] + session.targetLanguages)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
+            .filter { $0.isEmpty == false }
+        return codes.isEmpty
+            ? String(localized: "session.settings.value.unknown")
+            : codes.joined(separator: " · ")
+    }
+
+    private var statusText: String {
+        let key: String
+        switch session.status.lowercased() {
+        case "completed": key = "home.status.completed"
+        case "failed": key = "home.status.failed"
+        case "imported": key = "home.status.imported"
+        case "interrupted": key = "home.status.interrupted"
+        case "recording": key = "home.status.recording"
+        case "transcribing": key = "home.status.transcribing"
+        default: return session.status.isEmpty
+            ? String(localized: "session.settings.value.unknown")
+            : session.status
+        }
+        return String(localized: String.LocalizationValue(key))
+    }
+
+    private func durationText(_ ms: UInt64) -> String {
+        let total = Int(ms / 1_000)
+        let hours = total / 3_600
+        let minutes = (total % 3_600) / 60
+        let seconds = total % 60
+        if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, seconds) }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func modeText(_ mode: FfiNotebookCaptureMode?) -> String {
+        let key: String
+        switch mode {
+        case .transcriptionOnly: key = "session.settings.mode.transcription_only"
+        case .twoWay: key = "session.settings.mode.two_way"
+        case .multilingualOneWay: key = "session.settings.mode.multilingual_one_way"
+        case nil: return String(localized: "session.settings.value.unknown")
+        }
+        return String(localized: String.LocalizationValue(key))
+    }
+
+    private func privacyText(_ rawValue: String?) -> String {
+        guard let rawValue,
+              let level = NotebookAudioRetentionLevel(rawValue: rawValue) else {
+            return String(localized: "session.settings.value.unknown")
+        }
+        return AudioPrivacyOptionSummary(level: level).title
+    }
+
+    private func booleanSnapshotText(_ value: Bool?) -> String {
+        guard let value else {
+            return String(localized: "session.settings.value.unknown")
+        }
+        return String(localized: value
+            ? "session.settings.value.enabled"
+            : "session.settings.value.disabled")
+    }
+
+    private func engineText(provider: String?, model: String?) -> String {
+        let values = [provider, model]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+        return values.isEmpty
+            ? String(localized: "session.settings.value.unknown")
+            : values.joined(separator: " · ")
+    }
+
+    private func audioFormatText(_ run: FfiNotebookCaptureHistoryRun) -> String {
+        guard let sampleRate = run.sampleRate, let channels = run.channels else {
+            return String(localized: "session.settings.value.unknown")
+        }
+        return String(
+            format: String(localized: "session.settings.value.audio_format"),
+            UInt64(sampleRate).formatted(),
+            UInt64(channels).formatted()
+        )
+    }
+}
+
+private struct SessionSettingsRowModel: Identifiable {
+    let icon: String
+    let label: String
+    let value: String
+    var id: String { label }
+}
+
+private struct SessionSettingsRow: View {
+    let row: SessionSettingsRowModel
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
+            Image(systemName: row.icon)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.textTertiary)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+            Text(row.label)
+                .font(.bodySM)
+                .foregroundColor(.textSecondary)
+                .frame(width: 150, alignment: .leading)
+            Text(row.value)
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, Spacing.md)
+        .padding(.vertical, Spacing.sm + 2)
+        .accessibilityElement(children: .combine)
     }
 }
 

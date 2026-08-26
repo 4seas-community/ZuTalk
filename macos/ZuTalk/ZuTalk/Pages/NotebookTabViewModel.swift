@@ -1,18 +1,18 @@
 import Foundation
 
-enum NotebookTabDisplayType: Equatable {
+enum NotebookTabDisplayType: Equatable, Sendable {
     case realtimeTranscript
     case asyncTranscript
     case manualNote
 }
 
-enum NotebookTabStatus: Equatable {
+enum NotebookTabStatus: Equatable, Sendable {
     case ready
     case pending
     case failed
     case live
 
-    init(taskStatus: String) {
+    nonisolated init(taskStatus: String) {
         switch taskStatus {
         case "pending", "running":
             self = .pending
@@ -48,12 +48,12 @@ enum NotebookRealtimeTabStatusPolicy {
 /// Persistent task-queue state for the most recent explicit asynchronous
 /// transcription of one recording session. The task queue is authoritative;
 /// no placeholder document is created for pending/failed state.
-struct TranscriptionTaskSnapshot: Equatable {
+struct TranscriptionTaskSnapshot: Equatable, Sendable {
     let taskId: String
     let status: String
     let errorMessage: String?
 
-    var tabStatus: NotebookTabStatus { NotebookTabStatus(taskStatus: status) }
+    nonisolated var tabStatus: NotebookTabStatus { NotebookTabStatus(taskStatus: status) }
 }
 
 enum TranscriptionTaskIndex {
@@ -64,7 +64,7 @@ enum TranscriptionTaskIndex {
 
     /// `listTasks` is ordered newest-first by the Rust queue. The persisted task
     /// payload is authoritative for its session.
-    static func makeIndex(tasks: [TaskInfoDto]) -> [String: TranscriptionTaskSnapshot] {
+    nonisolated static func makeIndex(tasks: [TaskInfoDto]) -> [String: TranscriptionTaskSnapshot] {
         var result: [String: TranscriptionTaskSnapshot] = [:]
 
         for task in tasks {
@@ -73,7 +73,7 @@ enum TranscriptionTaskIndex {
             }
             // The first task for a session is the newest one because listTasks is
             // stable newest-first (created_at, rowid). Older retries cannot replace it.
-            guard result[sessionId] == nil else { continue }
+            guard result.keys.contains(sessionId) == false else { continue }
             let snapshot = TranscriptionTaskSnapshot(
                 taskId: task.id,
                 status: task.status,
@@ -84,7 +84,7 @@ enum TranscriptionTaskIndex {
         return result
     }
 
-    static func transcribeSessionId(from payloadJson: String) -> String? {
+    nonisolated static func transcribeSessionId(from payloadJson: String) -> String? {
         guard let data = payloadJson.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
@@ -106,13 +106,13 @@ enum TranscriptionTaskIndex {
     }
 }
 
-struct NotebookTabSessionLink: Equatable {
+struct NotebookTabSessionLink: Equatable, Sendable {
     let notebookId: String
     let sessionId: String
     let sectionTitle: String?
 }
 
-struct NotebookTabViewModel: Identifiable, Equatable {
+struct NotebookTabViewModel: Identifiable, Equatable, Sendable {
     let id: String
     let notebookId: String
     let tabId: String
@@ -123,7 +123,7 @@ struct NotebookTabViewModel: Identifiable, Equatable {
     let status: NotebookTabStatus
     let position: Int64
 
-    static func makeTabs(
+    nonisolated static func makeTabs(
         notebookId: String,
         backendTabs: [FfiNotebookTab],
         projectionsByTabId: [String: [FfiNotebookSessionProjection]],
@@ -164,19 +164,25 @@ struct NotebookTabViewModel: Identifiable, Equatable {
             }
     }
 
-    private static func from(
+    nonisolated private static func from(
         tab: FfiNotebookTab,
         displayType: NotebookTabDisplayType,
         projections: [FfiNotebookSessionProjection],
         selectedSessionId: String?,
         transcriptionTask: TranscriptionTaskSnapshot?
     ) -> NotebookTabViewModel {
-        let selectedProjection = selectedSessionId.flatMap { sessionId in
-            projections.first { $0.sessionId == sessionId }
-        } ?? projections.first
+        // A Session route is a hard read boundary. If its projection has not
+        // materialized yet, present the honest empty/pending state instead of
+        // borrowing a sibling Session's transcript from the same Topic.
+        let selectedProjection: FfiNotebookSessionProjection?
+        if let selectedSessionId {
+            selectedProjection = projections.first { $0.sessionId == selectedSessionId }
+        } else {
+            selectedProjection = projections.first
+        }
         let sessionLink = sessionLink(projection: selectedProjection)
         let status: NotebookTabStatus
-        if displayType == .asyncTranscript, let transcriptionTask {
+        if case .asyncTranscript = displayType, let transcriptionTask {
             status = transcriptionTask.tabStatus
         } else {
             status = .ready
@@ -194,7 +200,9 @@ struct NotebookTabViewModel: Identifiable, Equatable {
         )
     }
 
-    private static func displayType(for tab: FfiNotebookTab) -> NotebookTabDisplayType? {
+    nonisolated private static func displayType(
+        for tab: FfiNotebookTab
+    ) -> NotebookTabDisplayType? {
         switch tab.builtinKind {
         case "realtime_transcript": return .realtimeTranscript
         case "async_transcript": return .asyncTranscript
@@ -203,18 +211,20 @@ struct NotebookTabViewModel: Identifiable, Equatable {
         }
     }
 
-    private static func displayTitle(displayType: NotebookTabDisplayType) -> String {
+    nonisolated private static func displayTitle(
+        displayType: NotebookTabDisplayType
+    ) -> String {
         switch displayType {
         case .realtimeTranscript:
-            return String(localized: "editor.tab.transcript")
+            return String(localized: "topic.session.tab.live")
         case .asyncTranscript:
-            return String(localized: "doc.transcript_hd")
+            return String(localized: "topic.session.tab.processed")
         case .manualNote:
-            return String(localized: "doc.scratchpad")
+            return String(localized: "topic.notes.tab")
         }
     }
 
-    private static func sessionLink(
+    nonisolated private static func sessionLink(
         projection: FfiNotebookSessionProjection?
     ) -> NotebookTabSessionLink? {
         if let projection {
