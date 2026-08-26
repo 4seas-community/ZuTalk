@@ -23,6 +23,27 @@ struct AudioInputDeviceSnapshot: Equatable {
 
 protocol AudioInputDeviceCataloging {
     func snapshot() throws -> AudioInputDeviceSnapshot
+    /// Resolves only the device needed by the next capture. Implementations may
+    /// use `cachedDevice` to avoid rebuilding presentation metadata, but must
+    /// validate current hardware identity before returning it.
+    func resolveCaptureDevice(
+        uid: String?,
+        cachedDevice: AudioInputDevice?
+    ) throws -> AudioInputDevice?
+}
+
+extension AudioInputDeviceCataloging {
+    /// Safe fallback for test catalogs and alternate implementations. The live
+    /// CoreAudio catalog overrides this with a one-device lookup so Start does
+    /// not enumerate every audio device.
+    func resolveCaptureDevice(
+        uid: String?,
+        cachedDevice _: AudioInputDevice?
+    ) throws -> AudioInputDevice? {
+        let snapshot = try snapshot()
+        guard let uid else { return snapshot.defaultInputDevice }
+        return snapshot.devices.first { $0.uid == uid }
+    }
 }
 
 enum AudioInputDeviceError: Error, Equatable, LocalizedError {
@@ -94,6 +115,81 @@ struct CoreAudioInputDeviceCatalog: AudioInputDeviceCataloging {
             devices: devices,
             defaultInputDeviceID: try readDefaultInputDeviceID()
         )
+    }
+
+    /// Resolve and validate one capture device without walking the process-wide
+    /// CoreAudio device catalog. A stable explicit UID is translated to its
+    /// current AudioDeviceID; System Default re-reads the current default ID on
+    /// every Start. This keeps unplug/replug and default-device changes safe.
+    func resolveCaptureDevice(
+        uid: String?,
+        cachedDevice: AudioInputDevice?
+    ) throws -> AudioInputDevice? {
+        let deviceID: AudioDeviceID
+        if let uid {
+            guard let resolved = try readDeviceID(forUID: uid) else { return nil }
+            deviceID = resolved
+        } else {
+            guard let resolved = try readDefaultInputDeviceID() else { return nil }
+            deviceID = resolved
+        }
+
+        guard try isAlive(deviceID),
+              try inputChannelCount(deviceID) > 0
+        else { return nil }
+
+        let resolvedUID = try readString(
+            objectID: deviceID,
+            selector: kAudioDevicePropertyDeviceUID,
+            operation: "device UID"
+        )
+        if let uid, resolvedUID != uid {
+            // Device IDs can be recycled. Never let a stale cached descriptor
+            // bind a different microphone after unplug/replug.
+            return nil
+        }
+
+        let name: String
+        if let cachedDevice,
+           cachedDevice.deviceID == deviceID,
+           cachedDevice.uid == resolvedUID {
+            name = cachedDevice.name
+        } else {
+            name = (try? readString(
+                objectID: deviceID,
+                selector: kAudioObjectPropertyName,
+                operation: "device name"
+            )) ?? resolvedUID
+        }
+        return AudioInputDevice(deviceID: deviceID, uid: resolvedUID, name: name)
+    }
+
+    private func readDeviceID(forUID uid: String) throws -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var qualifier = uid as CFString
+        var deviceID = AudioDeviceID(kAudioObjectUnknown)
+        var byteCount = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = withUnsafePointer(to: &qualifier) { qualifierPointer in
+            AudioObjectGetPropertyData(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                UInt32(MemoryLayout<CFString>.size),
+                qualifierPointer,
+                &byteCount,
+                &deviceID
+            )
+        }
+        guard status == noErr else {
+            throw AudioInputDeviceError.queryFailed(
+                operation: "device UID lookup",
+                status: status
+            )
+        }
+        return deviceID == kAudioObjectUnknown ? nil : deviceID
     }
 
     private func readDeviceIDs() throws -> [AudioDeviceID] {
@@ -264,6 +360,10 @@ final class AudioInputDeviceStore: ObservableObject {
 
     private let catalog: any AudioInputDeviceCataloging
     private let defaults: UserDefaults
+    /// Resolution caches are distinct from the full UI snapshot. They may be
+    /// populated by a cold Start without claiming the device picker is loaded.
+    private var resolvedDevicesByUID: [String: AudioInputDevice] = [:]
+    private var resolvedDefaultInputDevice: AudioInputDevice?
 
     init(
         catalog: (any AudioInputDeviceCataloging)? = nil,
@@ -331,33 +431,56 @@ final class AudioInputDeviceStore: ObservableObject {
     /// Resolves a requested preference without committing it. This lets an
     /// active capture validate a new device before it tears down the old tap.
     func resolveDevice(uid: String?) throws -> AudioInputDevice {
-        let snapshot = try catalog.snapshot()
-        apply(snapshot)
-        refreshError = nil
-
         let trimmedUID = uid?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedUID = trimmedUID?.isEmpty == false ? trimmedUID : nil
+        let cachedDevice: AudioInputDevice?
         if let normalizedUID {
-            guard let selected = snapshot.devices.first(where: { $0.uid == normalizedUID }) else {
+            cachedDevice = devices.first { $0.uid == normalizedUID }
+                ?? resolvedDevicesByUID[normalizedUID]
+        } else {
+            cachedDevice = defaultInputDevice ?? resolvedDefaultInputDevice
+        }
+
+        let resolved = try catalog.resolveCaptureDevice(
+            uid: normalizedUID,
+            cachedDevice: cachedDevice
+        )
+        if let normalizedUID {
+            guard let resolved else {
                 throw AudioInputDeviceError.selectedDeviceUnavailable(
                     name: normalizedUID == selectedUID
                         ? (selectedDeviceLastKnownName ?? normalizedUID)
                         : normalizedUID
                 )
             }
-            return selected
+            resolvedDevicesByUID[normalizedUID] = resolved
+            // `resolveDevice(uid:)` is also used to preflight a proposed
+            // device switch. Do not rewrite the persisted last-known name
+            // until that UID is actually the selected capture preference.
+            if normalizedUID == selectedUID {
+                rememberName(resolved.name)
+            }
+            refreshError = nil
+            return resolved
         }
 
-        guard let selected = snapshot.defaultInputDevice else {
+        guard let resolved else {
             throw AudioInputDeviceError.noInputDevice
         }
-        return selected
+        resolvedDefaultInputDevice = resolved
+        resolvedDevicesByUID[resolved.uid] = resolved
+        refreshError = nil
+        return resolved
     }
 
     private func apply(_ snapshot: AudioInputDeviceSnapshot) {
         devices = snapshot.devices
         defaultInputDeviceID = snapshot.defaultInputDeviceID
         hasLoadedSnapshot = true
+        for device in snapshot.devices {
+            resolvedDevicesByUID[device.uid] = device
+        }
+        resolvedDefaultInputDevice = snapshot.defaultInputDevice
         if let selectedUID,
            let name = snapshot.devices.first(where: { $0.uid == selectedUID })?.name {
             rememberName(name)

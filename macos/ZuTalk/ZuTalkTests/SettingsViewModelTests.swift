@@ -543,7 +543,8 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
 @MainActor
 final class AudioInputDeviceTests: XCTestCase {
     func testLiveCoreAudioCatalogProducesStableNonemptyDescriptors() throws {
-        let snapshot = try CoreAudioInputDeviceCatalog().snapshot()
+        let catalog = CoreAudioInputDeviceCatalog()
+        let snapshot = try catalog.snapshot()
 
         for device in snapshot.devices {
             XCTAssertFalse(device.uid.isEmpty)
@@ -552,6 +553,22 @@ final class AudioInputDeviceTests: XCTestCase {
         }
         if let defaultInputDeviceID = snapshot.defaultInputDeviceID {
             XCTAssertNotEqual(defaultInputDeviceID, kAudioObjectUnknown)
+        }
+        if let defaultInputDevice = snapshot.defaultInputDevice {
+            XCTAssertEqual(
+                try catalog.resolveCaptureDevice(
+                    uid: nil,
+                    cachedDevice: defaultInputDevice
+                ),
+                defaultInputDevice
+            )
+            XCTAssertEqual(
+                try catalog.resolveCaptureDevice(
+                    uid: defaultInputDevice.uid,
+                    cachedDevice: defaultInputDevice
+                ),
+                defaultInputDevice
+            )
         }
     }
 
@@ -575,6 +592,160 @@ final class AudioInputDeviceTests: XCTestCase {
         XCTAssertEqual(restored.selectedUID, mixer.uid)
         XCTAssertEqual(try restored.resolveDeviceForCapture(), mixer)
         XCTAssertEqual(restored.selectedDeviceLastKnownName, mixer.name)
+    }
+
+    func testColdCaptureResolutionUsesOneDeviceLookupWithoutLoadingFullPickerSnapshot() throws {
+        let suiteName = "AudioInputDeviceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let builtIn = AudioInputDevice(deviceID: 7, uid: "built-in", name: "Mac Microphone")
+        let catalog = FakeAudioInputDeviceCatalog(
+            snapshot: AudioInputDeviceSnapshot(
+                devices: [builtIn],
+                defaultInputDeviceID: builtIn.deviceID
+            )
+        )
+        let store = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+
+        XCTAssertEqual(try store.resolveDeviceForCapture(), builtIn)
+        XCTAssertEqual(catalog.snapshotCallCount, 0)
+        XCTAssertEqual(catalog.captureResolutionCallCount, 1)
+        XCTAssertFalse(store.hasLoadedSnapshot)
+        XCTAssertTrue(store.devices.isEmpty)
+    }
+
+    func testLoadedPickerSnapshotIsReusedWithoutRescanningEveryCaptureStart() throws {
+        let suiteName = "AudioInputDeviceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let mixer = AudioInputDevice(deviceID: 41, uid: "usb-mixer", name: "USB Mixer")
+        let catalog = FakeAudioInputDeviceCatalog(
+            snapshot: AudioInputDeviceSnapshot(
+                devices: [mixer],
+                defaultInputDeviceID: mixer.deviceID
+            )
+        )
+        let store = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+        store.refresh()
+        store.select(uid: mixer.uid)
+
+        XCTAssertEqual(try store.resolveDeviceForCapture(), mixer)
+        XCTAssertEqual(try store.resolveDeviceForCapture(), mixer)
+        XCTAssertEqual(catalog.snapshotCallCount, 1)
+        XCTAssertEqual(catalog.captureResolutionCallCount, 2)
+        XCTAssertEqual(catalog.cachedDeviceUIDs, [mixer.uid, mixer.uid])
+    }
+
+    func testExplicitDeviceReplugResolvesItsNewDeviceIDWithoutDefaultFallback() throws {
+        let suiteName = "AudioInputDeviceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let original = AudioInputDevice(deviceID: 41, uid: "usb-mixer", name: "USB Mixer")
+        let replugged = AudioInputDevice(deviceID: 84, uid: "usb-mixer", name: "USB Mixer")
+        let builtIn = AudioInputDevice(deviceID: 7, uid: "built-in", name: "Mac Microphone")
+        let catalog = FakeAudioInputDeviceCatalog(
+            snapshot: AudioInputDeviceSnapshot(
+                devices: [original, builtIn],
+                defaultInputDeviceID: builtIn.deviceID
+            )
+        )
+        let store = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+        store.refresh()
+        store.select(uid: original.uid)
+        catalog.currentSnapshot = AudioInputDeviceSnapshot(
+            devices: [replugged, builtIn],
+            defaultInputDeviceID: builtIn.deviceID
+        )
+
+        XCTAssertEqual(try store.resolveDeviceForCapture(), replugged)
+        XCTAssertEqual(store.selectedUID, original.uid)
+        XCTAssertNotEqual(try store.resolveDeviceForCapture(), builtIn)
+        XCTAssertEqual(catalog.snapshotCallCount, 1)
+    }
+
+    func testPreflightingAnotherDeviceDoesNotRewriteSelectedDeviceLastKnownName() throws {
+        let suiteName = "AudioInputDeviceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = AudioInputDevice(deviceID: 41, uid: "usb-mixer", name: "USB Mixer")
+        let proposed = AudioInputDevice(deviceID: 84, uid: "desk-mic", name: "Desk Mic")
+        let catalog = FakeAudioInputDeviceCatalog(
+            snapshot: AudioInputDeviceSnapshot(
+                devices: [selected, proposed],
+                defaultInputDeviceID: selected.deviceID
+            )
+        )
+        let store = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+        store.refresh()
+        store.select(uid: selected.uid)
+
+        XCTAssertEqual(try store.resolveDevice(uid: proposed.uid), proposed)
+        XCTAssertEqual(store.selectedUID, selected.uid)
+        XCTAssertEqual(store.selectedDeviceLastKnownName, selected.name)
+    }
+
+    func testExplicitDeviceUnplugAfterSnapshotFailsWithoutUsingSystemDefault() throws {
+        let suiteName = "AudioInputDeviceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let mixer = AudioInputDevice(deviceID: 41, uid: "usb-mixer", name: "USB Mixer")
+        let builtIn = AudioInputDevice(deviceID: 7, uid: "built-in", name: "Mac Microphone")
+        let catalog = FakeAudioInputDeviceCatalog(
+            snapshot: AudioInputDeviceSnapshot(
+                devices: [mixer, builtIn],
+                defaultInputDeviceID: builtIn.deviceID
+            )
+        )
+        let store = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+        store.refresh()
+        store.select(uid: mixer.uid)
+        catalog.currentSnapshot = AudioInputDeviceSnapshot(
+            devices: [builtIn],
+            defaultInputDeviceID: builtIn.deviceID
+        )
+
+        XCTAssertThrowsError(try store.resolveDeviceForCapture()) { error in
+            XCTAssertEqual(
+                error as? AudioInputDeviceError,
+                .selectedDeviceUnavailable(name: mixer.name)
+            )
+        }
+        XCTAssertEqual(store.selectedUID, mixer.uid)
+        XCTAssertEqual(catalog.snapshotCallCount, 1)
+        XCTAssertEqual(catalog.captureResolutionCallCount, 1)
+        XCTAssertEqual(catalog.cachedDeviceUIDs, [mixer.uid])
+    }
+
+    func testLightweightValidationFailureNeverUsesStaleCachedDevice() throws {
+        let suiteName = "AudioInputDeviceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let mixer = AudioInputDevice(deviceID: 41, uid: "usb-mixer", name: "USB Mixer")
+        let catalog = FakeAudioInputDeviceCatalog(
+            snapshot: AudioInputDeviceSnapshot(
+                devices: [mixer],
+                defaultInputDeviceID: mixer.deviceID
+            )
+        )
+        let store = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+        store.refresh()
+        store.select(uid: mixer.uid)
+        catalog.captureResolutionError = .queryFailed(
+            operation: "device UID lookup",
+            status: kAudioHardwareUnspecifiedError
+        )
+
+        XCTAssertThrowsError(try store.resolveDeviceForCapture()) { error in
+            XCTAssertEqual(error as? AudioInputDeviceError, catalog.captureResolutionError)
+        }
+        XCTAssertEqual(catalog.snapshotCallCount, 1)
+        XCTAssertEqual(catalog.captureResolutionCallCount, 1)
     }
 
     func testMissingExplicitSelectionNeverFallsBackToSystemDefault() throws {
@@ -634,6 +805,8 @@ final class AudioInputDeviceTests: XCTestCase {
             defaultInputDeviceID: mixer.deviceID
         )
         XCTAssertEqual(try store.resolveDeviceForCapture(), mixer)
+        XCTAssertEqual(catalog.snapshotCallCount, 0)
+        XCTAssertEqual(catalog.captureResolutionCallCount, 2)
     }
 
     func testInterleavedInputCopiesOnlyTheFirstChannelWithItsStride() throws {
@@ -675,6 +848,8 @@ final class AudioInputDeviceTests: XCTestCase {
         XCTAssertLessThan(tap.lowerBound, prepare.lowerBound)
         XCTAssertTrue(source.contains("stride: buffer.stride"))
         XCTAssertTrue(source.contains("channelData[0]"))
+        XCTAssertTrue(source.contains("actualDeviceID == requestedDeviceID"))
+        XCTAssertTrue(source.contains("uidValue.takeRetainedValue() as String == inputDevice.uid"))
     }
 
     func testAudioInputCopyIsLocalizedForEverySupportedInterfaceLanguage() throws {
@@ -725,13 +900,29 @@ final class AudioInputDeviceTests: XCTestCase {
 
 private final class FakeAudioInputDeviceCatalog: AudioInputDeviceCataloging {
     var currentSnapshot: AudioInputDeviceSnapshot
+    var captureResolutionError: AudioInputDeviceError?
+    private(set) var snapshotCallCount = 0
+    private(set) var captureResolutionCallCount = 0
+    private(set) var cachedDeviceUIDs: [String?] = []
 
     init(snapshot: AudioInputDeviceSnapshot) {
         currentSnapshot = snapshot
     }
 
     func snapshot() throws -> AudioInputDeviceSnapshot {
-        currentSnapshot
+        snapshotCallCount += 1
+        return currentSnapshot
+    }
+
+    func resolveCaptureDevice(
+        uid: String?,
+        cachedDevice: AudioInputDevice?
+    ) throws -> AudioInputDevice? {
+        captureResolutionCallCount += 1
+        cachedDeviceUIDs.append(cachedDevice?.uid)
+        if let captureResolutionError { throw captureResolutionError }
+        guard let uid else { return currentSnapshot.defaultInputDevice }
+        return currentSnapshot.devices.first { $0.uid == uid }
     }
 }
 
