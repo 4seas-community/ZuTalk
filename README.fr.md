@@ -10,7 +10,7 @@ conversations multilingues.
 
 [Télécharger la dernière version de ZuTalk](https://github.com/4seas-community/ZuTalk/releases/latest)
 
-Compatible avec les Mac Apple Silicon et Intel. Nécessite macOS 15.5 ou
+Compatible avec les Mac Apple Silicon et Intel. Nécessite macOS 12.5 ou
 ultérieur.
 
 L'installateur n'est pas encore notarié par Apple. Si macOS bloque la

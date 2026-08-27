@@ -9,7 +9,7 @@ ZuTalk は macOS ネイティブのボイスノートアプリです。録音・
 
 [最新版の ZuTalk をダウンロード](https://github.com/4seas-community/ZuTalk/releases/latest)
 
-Apple Silicon と Intel の両方の Mac に対応。macOS 15.5 以降が必要です。
+Apple Silicon と Intel の両方の Mac に対応。macOS 12.5 以降が必要です。
 
 現在のインストーラは Apple の公証(ノータリゼーション)を受けていません。
 初回起動時に macOS にブロックされた場合は、Finder で Control キーを押しながら

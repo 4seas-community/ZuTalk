@@ -10,7 +10,7 @@ conversations.
 
 [Download the latest ZuTalk](https://github.com/4seas-community/ZuTalk/releases/latest)
 
-Supports Apple Silicon and Intel Macs. Requires macOS 15.5 or later.
+Supports Apple Silicon and Intel Macs. Requires macOS 12.5 or later.
 
 The installer is not yet notarized by Apple. If macOS blocks the first
 launch, Control-click ZuTalk in Finder and choose "Open", or go to

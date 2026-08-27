@@ -9,7 +9,7 @@ ZuTalk คือแอปจดบันทึกเสียงแบบเน�
 
 [ดาวน์โหลด ZuTalk เวอร์ชันล่าสุด](https://github.com/4seas-community/ZuTalk/releases/latest)
 
-รองรับ Mac ทั้ง Apple Silicon และ Intel ต้องใช้ macOS 15.5 ขึ้นไป
+รองรับ Mac ทั้ง Apple Silicon และ Intel ต้องใช้ macOS 12.5 ขึ้นไป
 
 ตัวติดตั้งยังไม่ผ่านการรับรอง (notarization) จาก Apple หาก macOS ปิดกั้นการเปิดครั้งแรก
 ให้กด Control ค้างไว้แล้วคลิก ZuTalk ใน Finder เลือก "เปิด"

@@ -10,7 +10,7 @@ Gesprächen folgen.
 
 [Neueste Version von ZuTalk laden](https://github.com/4seas-community/ZuTalk/releases/latest)
 
-Unterstützt Macs mit Apple Silicon und Intel. Erfordert macOS 15.5 oder neuer.
+Unterstützt Macs mit Apple Silicon und Intel. Erfordert macOS 12.5 oder neuer.
 
 Das Installationspaket ist noch nicht von Apple notariell beglaubigt
 (Notarisierung). Falls macOS den ersten Start blockiert: ZuTalk im Finder

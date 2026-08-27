@@ -9,7 +9,7 @@ ZuTalk 是一款原生 macOS 语音笔记应用，帮助你录音、转录、整
 
 [下载最新版 ZuTalk](https://github.com/4seas-community/ZuTalk/releases/latest)
 
-支持 Apple Silicon 和 Intel Mac，需要 macOS 15.5 或更高版本。
+支持 Apple Silicon 和 Intel Mac，需要 macOS 12.5 或更高版本。
 
 当前安装包尚未经过 Apple 公证。如果 macOS 阻止首次打开，请在 Finder 中
 按住 Control 键点按 ZuTalk，选择“打开”；也可以前往“系统设置 → 隐私与安全性”

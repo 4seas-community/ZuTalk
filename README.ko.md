@@ -8,7 +8,7 @@ ZuTalk는 음성을 녹음하고 전사하며 정리할 수 있도록 돕는 네
 
 [최신 ZuTalk 다운로드](https://github.com/4seas-community/ZuTalk/releases/latest)
 
-Apple Silicon 및 Intel Mac을 지원하며 macOS 15.5 이상이 필요합니다.
+Apple Silicon 및 Intel Mac을 지원하며 macOS 12.5 이상이 필요합니다.
 
 설치 프로그램은 아직 Apple의 공증을 받지 않았습니다. macOS가 첫 실행을 차단하면 Finder에서 ZuTalk를 Control-클릭한 뒤 “열기”를 선택하거나, 시스템 설정 → 개인정보 보호 및 보안에서 실행을 허용하세요.
 
