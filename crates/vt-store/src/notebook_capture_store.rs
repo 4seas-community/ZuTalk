@@ -2862,6 +2862,41 @@ impl NotebookCaptureStore {
         .map_err(Into::into)
     }
 
+    /// Every recorded transcript gap of one session, in capture order. The
+    /// transcript view draws these as time-labeled dividers, so the reader
+    /// can see where captured audio went untranscribed instead of the text
+    /// silently jumping across the outage.
+    pub fn list_transcript_gaps(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<RealtimeTranscriptGap>, NotebookCaptureStoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut statement = conn.prepare(
+            "SELECT id, session_id, start_frame, end_frame, reason, repair_state,
+                    created_at, updated_at
+             FROM realtime_transcript_gaps
+             WHERE session_id = ?1
+             ORDER BY start_frame ASC",
+        )?;
+        let gaps = statement
+            .query_map([session_id], |row| {
+                Ok(RealtimeTranscriptGap {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    start_frame: i64_to_u64(row.get(2)?, "start_frame")
+                        .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(2, -1))?,
+                    end_frame: i64_to_u64(row.get(3)?, "end_frame")
+                        .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(3, -1))?,
+                    reason: row.get(4)?,
+                    repair_state: row.get(5)?,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(gaps)
+    }
+
     pub fn has_unrepaired_transcript_gaps(
         &self,
         session_id: &str,

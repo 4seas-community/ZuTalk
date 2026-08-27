@@ -30,16 +30,22 @@ const RECEIVE_IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const RECONNECT_BASE_DELAY: Duration = Duration::from_secs(1);
-const RECONNECT_MAX_ATTEMPTS: u8 = 3;
+/// Exponential backoff stops doubling here: 1s, 2s, 4s, then 8s forever.
+/// Retries are bounded by the outage budget (or unbounded in production),
+/// not by attempt count, so the ceiling is what keeps a long outage from
+/// backing off into minutes-long silences once the network returns.
+const RECONNECT_MAX_DELAY_EXPONENT: u32 = 3;
 const CONTINUITY_WINDOW: Duration = Duration::from_secs(15);
 const FAST_RECONNECT_WINDOW: Duration = Duration::from_secs(5);
 const REPLAY_OVERLAP: Duration = Duration::from_secs(2);
 const PCM_BYTES_PER_MILLISECOND: u64 = 32;
 
 // The macOS capture tap forwards approximately one 100 ms, 3,200-byte PCM
-// block at a time. Keep enough bounded queue space for all three production
-// reconnect attempts (1s + 2s + 4s backoff plus connect time) without turning
-// a transient network loss into FFI audio backpressure.
+// block at a time. This queue rides out the short-outage window whose audio
+// is still worth sending to the replacement connection; once an outage
+// outlives CONTINUITY_WINDOW the reconnect wait sheds incoming PCM instead
+// (the local encrypted journal stays authoritative), so an arbitrarily long
+// outage can never fill this channel into FFI audio backpressure.
 const AUDIO_CHANNEL_CAPACITY: usize = 512;
 const CONTROL_CHANNEL_CAPACITY: usize = 8;
 const EVENT_CHANNEL_CAPACITY: usize = 64;
@@ -187,7 +193,14 @@ struct StreamTimeouts {
     keepalive: Duration,
     drain: Duration,
     reconnect_base_delay: Duration,
-    reconnect_max_attempts: u8,
+    /// How long one outage may keep retrying before the lane fails.
+    ///
+    /// `None` — production — never gives up on a retryable failure: local
+    /// capture owns the recording's lifetime, so the remote lane's only jobs
+    /// are to come back when the network does and to stop when told. Terminal
+    /// refusals (auth, spent invite, protocol) still fail immediately; a
+    /// credential source that keeps refusing is an ending, not an outage.
+    reconnect_outage_budget: Option<Duration>,
 }
 
 impl Default for StreamTimeouts {
@@ -199,7 +212,7 @@ impl Default for StreamTimeouts {
             keepalive: KEEPALIVE_INTERVAL,
             drain: DRAIN_TIMEOUT,
             reconnect_base_delay: RECONNECT_BASE_DELAY,
-            reconnect_max_attempts: RECONNECT_MAX_ATTEMPTS,
+            reconnect_outage_budget: None,
         }
     }
 }
@@ -239,6 +252,23 @@ impl StreamFailure {
                 operation: operation.to_string(),
                 elapsed_ms: elapsed.as_millis().try_into().unwrap_or(u64::MAX),
             },
+        }
+    }
+
+    /// Soniox sent `finished: true` while no local Finish was pending.
+    ///
+    /// The provider ends a session this way on its own wall-clock limits —
+    /// most concretely the `max_session_duration_seconds` a community
+    /// temporary key carries, which is the remaining invite reservation
+    /// divided by the lane count and can land at any arbitrary minute. The
+    /// capture is still live, so this is a rollover boundary, not an ending:
+    /// retryable, so the reconnect loop continues the same capture timeline
+    /// on a fresh connection and credential.
+    fn finished_midstream() -> Self {
+        let reason = "provider finished the session while capture was live".to_string();
+        Self {
+            task_error: SttError::ConnectionFailed(reason.clone()),
+            event_error: SttStreamError::Closed { code: None, reason },
         }
     }
 
@@ -428,9 +458,10 @@ struct ReplayAudioFrame {
 /// reuse it rather than mint another.
 ///
 /// This matters because the community invite service bounds a session by the
-/// number of keys it issues. `RECONNECT_MAX_ATTEMPTS` dials per outage, each
-/// minting before it dials, spends three keys on one blip and can open zero
-/// streams — charging a budget meant to bound streams for attempts that were
+/// number of keys it issues. An outage is retried until it ends — dials at
+/// up to one per backoff step, each minting before it dials — so minting per
+/// dial would spend the whole key budget on one long blip while opening zero
+/// streams: charging a budget meant to bound streams for attempts that were
 /// never streams.
 struct UnpresentedCredential {
     api_key: String,
@@ -783,11 +814,28 @@ async fn run_stream(
                 } else {
                     disconnected_at.get_or_insert_with(Instant::now);
                 }
-                if reconnect_attempt >= timeouts.reconnect_max_attempts {
+                let outage_so_far = disconnected_at
+                    .map(|started| started.elapsed())
+                    .unwrap_or_default();
+                if timeouts
+                    .reconnect_outage_budget
+                    .is_some_and(|budget| outage_so_far >= budget)
+                {
+                    tracing::error!(
+                        outage_s = outage_so_far.as_secs(),
+                        "Soniox lane gave up: outage outlived the reconnect budget"
+                    );
                     return Err(failure);
                 }
-                reconnect_attempt += 1;
+                reconnect_attempt = reconnect_attempt.saturating_add(1);
                 let delay = reconnect_delay(timeouts.reconnect_base_delay, reconnect_attempt);
+                tracing::warn!(
+                    attempt = reconnect_attempt,
+                    outage_s = outage_so_far.as_secs(),
+                    delay_ms = delay.as_millis() as u64,
+                    error = ?failure.event_error,
+                    "Soniox lane disconnected; retrying"
+                );
                 send_event(
                     event_tx,
                     SttStreamEvent::Reconnecting {
@@ -796,7 +844,22 @@ async fn run_stream(
                     },
                 )
                 .await?;
-                match wait_for_reconnect(delay, &mut control_rx, cancel.clone(), &mut paused).await
+                // Once the outage has outlived the replay window the queued
+                // PCM can never be sent (a burst past CONTINUITY_WINDOW is
+                // abandoned on reconnect anyway), so shed it while waiting:
+                // otherwise a long outage fills the bounded audio channel and
+                // turns into FFI backpressure, which tombstones the lane the
+                // moment this loop was finally about to save it.
+                let shed_audio = outage_so_far > CONTINUITY_WINDOW;
+                match wait_for_reconnect(
+                    delay,
+                    &mut audio_rx,
+                    shed_audio,
+                    &mut control_rx,
+                    cancel.clone(),
+                    &mut paused,
+                )
+                .await
                 {
                     ReconnectWait::Retry => {}
                     ReconnectWait::Cancelled => return Ok(()),
@@ -1104,8 +1167,18 @@ async fn run_stream_session(
                         )
                         .await?;
                         if response.finished {
-                            send_event(event_tx, SttStreamEvent::Finished).await?;
-                            return Ok(());
+                            if draining {
+                                send_event(event_tx, SttStreamEvent::Finished).await?;
+                                return Ok(());
+                            }
+                            // Tail tokens in this same response were already
+                            // emitted above, so nothing said is lost across
+                            // the rollover.
+                            tracing::warn!(
+                                "Soniox finished the session while capture was live; \
+                                 rolling over to a replacement connection"
+                            );
+                            return Err(StreamFailure::finished_midstream());
                         }
                     }
                     Some(Ok(Message::Close(frame))) => {
@@ -1136,31 +1209,59 @@ enum ReconnectWait {
 
 async fn wait_for_reconnect(
     delay: Duration,
+    audio_rx: &mut mpsc::Receiver<Vec<u8>>,
+    shed_audio: bool,
     control_rx: &mut mpsc::Receiver<SttStreamControl>,
     cancel: CancellationToken,
     paused: &mut bool,
 ) -> ReconnectWait {
     let sleep = time::sleep(delay);
     tokio::pin!(sleep);
-    loop {
+    let mut shed_ms = 0_u64;
+    let mut audio_open = true;
+    let result = loop {
         tokio::select! {
             biased;
-            _ = cancel.cancelled() => return ReconnectWait::Cancelled,
+            _ = cancel.cancelled() => break ReconnectWait::Cancelled,
             control = control_rx.recv() => {
                 match control {
                     Some(SttStreamControl::Pause) => *paused = true,
                     Some(SttStreamControl::Resume) => *paused = false,
-                    Some(SttStreamControl::Finish) | None => return ReconnectWait::Finish,
+                    Some(SttStreamControl::Finish) | None => break ReconnectWait::Finish,
                     Some(SttStreamControl::Finalize | SttStreamControl::Keepalive) => {}
                 }
             }
-            _ = &mut sleep => return ReconnectWait::Retry,
+            audio = audio_rx.recv(), if shed_audio && audio_open => {
+                match audio {
+                    // Discarded, not sent later and not counted onto the
+                    // provider timeline — the same treatment reconnect gives
+                    // audio queued across an outage longer than
+                    // CONTINUITY_WINDOW. The local journal keeps the interval;
+                    // the durable transcript gap is recorded by the capture
+                    // layer from its own frame counter.
+                    Some(pcm) => {
+                        shed_ms += (pcm.len() as u64)
+                            .div_ceil(PCM_BYTES_PER_MILLISECOND)
+                            .max(1);
+                    }
+                    None => audio_open = false,
+                }
+            }
+            _ = &mut sleep => break ReconnectWait::Retry,
         }
+    };
+    if shed_ms > 0 {
+        tracing::warn!(
+            shed_ms,
+            "Soniox lane shed queued audio while reconnecting past the replay window"
+        );
     }
+    result
 }
 
 fn reconnect_delay(base: Duration, attempt: u8) -> Duration {
-    base.saturating_mul(1_u32 << u32::from(attempt.saturating_sub(1)))
+    let exponent = u32::from(attempt.saturating_sub(1)).min(RECONNECT_MAX_DELAY_EXPONENT);
+    base.saturating_mul(1_u32 << exponent)
 }
 
 fn build_stream_config(api_key: &str, config: &SttConfig) -> SonioxStreamConfig {
@@ -1452,7 +1553,9 @@ mod tests {
             keepalive: Duration::from_millis(25),
             drain: Duration::from_millis(40),
             reconnect_base_delay: Duration::from_millis(10),
-            reconnect_max_attempts: 3,
+            // Tests bound outages by time where production never gives up:
+            // a permanently dead endpoint must end the task, not the runner.
+            reconnect_outage_budget: Some(Duration::from_millis(500)),
         }
     }
 
@@ -1860,6 +1963,117 @@ mod tests {
             "the replacement session's 2_500 ms token must be reported at \
              connection_origin_ms (3_000) + 2_500 on the capture timeline"
         );
+    }
+
+    /// Soniox ends a session on its own when a temporary key's wall-clock cap
+    /// runs out (`max_session_duration_seconds` on a community invite key):
+    /// tail tokens, then `finished: true` — with no local Finish pending.
+    /// That is a rollover boundary. Treating it as a clean ending is how a
+    /// recording died silently at minute 27 with nothing in the logs.
+    #[tokio::test]
+    async fn unsolicited_finished_rolls_over_to_a_replacement_connection() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            let (first_stream, _) = listener.accept().await.unwrap();
+            let mut first_ws = accept_async(first_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = first_ws.next().await else {
+                panic!("first session configuration missing");
+            };
+            // The provider finishes on its own: final tail token plus
+            // `finished: true`, no empty text frame was ever received.
+            first_ws
+                .send(Message::Text(
+                    json!({
+                        "tokens": [{
+                            "text": "上半场",
+                            "is_final": true,
+                            "language": "zh"
+                        }],
+                        "finished": true
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+
+            let (second_stream, _) = listener.accept().await.unwrap();
+            let mut second_ws = accept_async(second_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = second_ws.next().await else {
+                panic!("replacement session configuration missing");
+            };
+            while let Some(Ok(message)) = second_ws.next().await {
+                if matches!(&message, Message::Text(text) if text.is_empty()) {
+                    second_ws
+                        .send(Message::Text(
+                            json!({"tokens": [], "finished": true}).to_string().into(),
+                        ))
+                        .await
+                        .unwrap();
+                    break;
+                }
+            }
+        });
+
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            short_timeouts(),
+        );
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Connected)
+        );
+        let Some(SttStreamEvent::Tokens(tokens)) = runtime.event_rx.recv().await else {
+            panic!("tail tokens sent with the provider's finish must be delivered");
+        };
+        assert_eq!(tokens[0].text, "上半场");
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Reconnecting {
+                attempt: 1,
+                delay_ms: 10,
+            }),
+            "an unsolicited finish must reconnect, not end the stream"
+        );
+        assert!(matches!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::RecoveryStarted { .. })
+        ));
+        assert!(matches!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::AudioProgress { .. })
+        ));
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Connected)
+        );
+
+        // A finish the capture actually asked for still ends the stream.
+        runtime
+            .send_control(SttStreamControl::Finish)
+            .await
+            .unwrap();
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Finished)
+        );
+        assert!(runtime.task.await.unwrap().is_ok());
+    }
+
+    #[test]
+    fn reconnect_delay_stops_doubling_at_eight_times_base() {
+        let base = Duration::from_secs(1);
+        assert_eq!(reconnect_delay(base, 1), Duration::from_secs(1));
+        assert_eq!(reconnect_delay(base, 2), Duration::from_secs(2));
+        assert_eq!(reconnect_delay(base, 3), Duration::from_secs(4));
+        assert_eq!(reconnect_delay(base, 4), Duration::from_secs(8));
+        assert_eq!(reconnect_delay(base, 40), Duration::from_secs(8));
+        assert_eq!(reconnect_delay(base, u8::MAX), Duration::from_secs(8));
     }
 
     #[tokio::test]

@@ -1071,6 +1071,15 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      */
     func listNotebookContextPacks(notebookId: String) throws  -> [FfiContextPackInfo]
 
+    /**
+     * Lists the recorded transcript gaps of one session in capture order,
+     * with frame positions projected onto the capture timeline in
+     * milliseconds. The transcript view renders each unrepaired gap as a
+     * time-labeled divider, so an outage reads as "audio here is not
+     * transcribed yet" instead of the text silently jumping across it.
+     */
+    func listNotebookSessionTranscriptGaps(sessionId: String) throws  -> [FfiNotebookTranscriptGap]
+
     func pauseNotebookCaptureSession(sessionId: String, paused: Bool) throws  -> FfiNotebookCaptureEvent
 
     func previewNotebookCaptureContext(notebookId: String) throws  -> FfiNotebookCaptureContextPreview
@@ -2462,6 +2471,22 @@ open func listNotebookContextPacks(notebookId: String)throws  -> [FfiContextPack
     uniffi_vt_ffi_fn_method_zutalkcore_list_notebook_context_packs(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(notebookId),$0
+    )
+})
+}
+
+    /**
+     * Lists the recorded transcript gaps of one session in capture order,
+     * with frame positions projected onto the capture timeline in
+     * milliseconds. The transcript view renders each unrepaired gap as a
+     * time-labeled divider, so an outage reads as "audio here is not
+     * transcribed yet" instead of the text silently jumping across it.
+     */
+open func listNotebookSessionTranscriptGaps(sessionId: String)throws  -> [FfiNotebookTranscriptGap]  {
+    return try  FfiConverterSequenceTypeFfiNotebookTranscriptGap.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_list_notebook_session_transcript_gaps(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
     )
 })
 }
@@ -5653,6 +5678,86 @@ public func FfiConverterTypeFfiNotebookTab_lift(_ buf: RustBuffer) throws -> Ffi
 #endif
 public func FfiConverterTypeFfiNotebookTab_lower(_ value: FfiNotebookTab) -> RustBuffer {
     return FfiConverterTypeFfiNotebookTab.lower(value)
+}
+
+
+/**
+ * One stretch of captured audio that went untranscribed in realtime — a
+ * network outage the reconnect loop rode out by skipping ahead to the live
+ * edge. Positions are on the capture timeline so the transcript view can
+ * draw the gap as a time-labeled divider between the rows around it.
+ */
+public struct FfiNotebookTranscriptGap: Equatable, Hashable {
+    public var id: String
+    public var sessionId: String
+    public var startMs: UInt64
+    public var endMs: UInt64
+    /**
+     * `repaired` means post-stop transcription has already filled this
+     * stretch with durable rows; clients hide or soften such dividers.
+     */
+    public var repairState: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, sessionId: String, startMs: UInt64, endMs: UInt64,
+        /**
+         * `repaired` means post-stop transcription has already filled this
+         * stretch with durable rows; clients hide or soften such dividers.
+         */repairState: String) {
+        self.id = id
+        self.sessionId = sessionId
+        self.startMs = startMs
+        self.endMs = endMs
+        self.repairState = repairState
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNotebookTranscriptGap: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNotebookTranscriptGap: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNotebookTranscriptGap {
+        return
+            try FfiNotebookTranscriptGap(
+                id: FfiConverterString.read(from: &buf),
+                sessionId: FfiConverterString.read(from: &buf),
+                startMs: FfiConverterUInt64.read(from: &buf),
+                endMs: FfiConverterUInt64.read(from: &buf),
+                repairState: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNotebookTranscriptGap, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.sessionId, into: &buf)
+        FfiConverterUInt64.write(value.startMs, into: &buf)
+        FfiConverterUInt64.write(value.endMs, into: &buf)
+        FfiConverterString.write(value.repairState, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNotebookTranscriptGap_lift(_ buf: RustBuffer) throws -> FfiNotebookTranscriptGap {
+    return try FfiConverterTypeFfiNotebookTranscriptGap.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNotebookTranscriptGap_lower(_ value: FfiNotebookTranscriptGap) -> RustBuffer {
+    return FfiConverterTypeFfiNotebookTranscriptGap.lower(value)
 }
 
 
@@ -9629,6 +9734,31 @@ fileprivate struct FfiConverterSequenceTypeFfiNotebookTab: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiNotebookTranscriptGap: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiNotebookTranscriptGap]
+
+    public static func write(_ value: [FfiNotebookTranscriptGap], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiNotebookTranscriptGap.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiNotebookTranscriptGap] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiNotebookTranscriptGap]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiNotebookTranscriptGap.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiOutlineRow: FfiConverterRustBuffer {
     typealias SwiftType = [FfiOutlineRow]
 
@@ -10188,6 +10318,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_list_notebook_context_packs() != 61561) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_list_notebook_session_transcript_gaps() != 38333) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_pause_notebook_capture_session() != 4514) {

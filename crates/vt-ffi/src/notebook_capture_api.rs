@@ -282,6 +282,21 @@ pub struct FfiNotebookCaptureHistoryRun {
     pub utterances: Vec<FfiNotebookCaptureUtterance>,
 }
 
+/// One stretch of captured audio that went untranscribed in realtime — a
+/// network outage the reconnect loop rode out by skipping ahead to the live
+/// edge. Positions are on the capture timeline so the transcript view can
+/// draw the gap as a time-labeled divider between the rows around it.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiNotebookTranscriptGap {
+    pub id: String,
+    pub session_id: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+    /// `repaired` means post-stop transcription has already filled this
+    /// stretch with durable rows; clients hide or soften such dividers.
+    pub repair_state: String,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiNotebookCaptureEvent {
     pub session_id: String,
@@ -7346,6 +7361,39 @@ impl ZuTalkCore {
             .map_err(store_error)
     }
 
+    /// Lists the recorded transcript gaps of one session in capture order,
+    /// with frame positions projected onto the capture timeline in
+    /// milliseconds. The transcript view renders each unrepaired gap as a
+    /// time-labeled divider, so an outage reads as "audio here is not
+    /// transcribed yet" instead of the text silently jumping across it.
+    pub fn list_notebook_session_transcript_gaps(
+        &self,
+        session_id: String,
+    ) -> Result<Vec<FfiNotebookTranscriptGap>, CoreError> {
+        let sample_rate = self
+            .notebook_capture_store
+            .get_run_for_session(&session_id)
+            .map_err(store_error)?
+            .and_then(|run| run.sample_rate)
+            .unwrap_or(CURRENT_NOTEBOOK_CAPTURE_ENGINE.sample_rate)
+            .max(1);
+        let frames_to_ms = |frames: u64| frames.saturating_mul(1_000) / u64::from(sample_rate);
+        self.notebook_capture_store
+            .list_transcript_gaps(&session_id)
+            .map(|gaps| {
+                gaps.into_iter()
+                    .map(|gap| FfiNotebookTranscriptGap {
+                        id: gap.id,
+                        session_id: gap.session_id,
+                        start_ms: frames_to_ms(gap.start_frame),
+                        end_ms: frames_to_ms(gap.end_frame),
+                        repair_state: gap.repair_state,
+                    })
+                    .collect()
+            })
+            .map_err(store_error)
+    }
+
     /// Explicitly authorizes one stopped/imported local recording for remote
     /// post-recording transcription. The first click freezes the authorization
     /// time and language hint; repeats are idempotent and a provider failure is
@@ -10590,6 +10638,69 @@ mod tests {
         let after_rejection: ContextPackDocument =
             serde_json::from_str(&core.read_library_context_pack(pack.id).unwrap()).unwrap();
         assert_eq!(after_rejection, document);
+    }
+
+    #[test]
+    fn session_transcript_gaps_ffi_projects_frames_onto_the_capture_timeline() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core.create_notebook(Some("Gap FFI".into())).unwrap();
+        let profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let session = vt_store::SessionRecord {
+            id: "gap-ffi-session".into(),
+            title: "Gapped recording".into(),
+            session_type: "recording".into(),
+            status: "recording".into(),
+            duration_ms: 0,
+            created_at: "2001-01-02T12:00:00Z".into(),
+            deleted_at: None,
+        };
+        core.notebook_capture_store
+            .create_session_and_run(
+                &session,
+                &vt_store::notebook_capture_store::NewNotebookCaptureRun {
+                    id: "gap-ffi-run".into(),
+                    notebook_id: notebook.id.clone(),
+                    session_id: session.id.clone(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "/private/gap-ffi.journal".into(),
+                    audio_key_ref: "private-gap-ffi-key".into(),
+                    sample_rate: 16_000,
+                    channels: 1,
+                },
+                &profile,
+            )
+            .unwrap();
+
+        // Recorded out of order; the listing must come back in capture order.
+        core.notebook_capture_store
+            .preserve_network_transcript_gap(&session.id, 480_000, 640_000)
+            .unwrap();
+        core.notebook_capture_store
+            .preserve_network_transcript_gap(&session.id, 16_000, 48_000)
+            .unwrap();
+
+        let gaps = core
+            .list_notebook_session_transcript_gaps(session.id.clone())
+            .unwrap();
+        assert_eq!(gaps.len(), 2);
+        // 16 kHz: frames divide by 16 to reach milliseconds.
+        assert_eq!(gaps[0].start_ms, 1_000);
+        assert_eq!(gaps[0].end_ms, 3_000);
+        assert_eq!(gaps[1].start_ms, 30_000);
+        assert_eq!(gaps[1].end_ms, 40_000);
+        assert!(gaps.iter().all(|gap| gap.repair_state == "preserved"));
+        assert!(gaps.iter().all(|gap| gap.session_id == session.id));
+
+        // A session with no gaps answers empty rather than erroring, so the
+        // transcript view can ask unconditionally.
+        assert!(core
+            .list_notebook_session_transcript_gaps("no-such-session".into())
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
