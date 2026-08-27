@@ -24,3 +24,15 @@ regexes = [
 paths = [
   '''^scripts/caption_web_prod_smoke\.sh$''',
 ]
+
+[[allowlists]]
+description = "Synthetic lane credentials in batch reservation tests"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "match"
+regexes = [
+  '''reservation-key-[0-2]''',
+]
+paths = [
+  '''^macos/ZuTalk/ZuTalkTests/CommunityInviteLaneCountTests\.swift$''',
+]
