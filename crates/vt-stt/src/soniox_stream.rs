@@ -2065,6 +2065,95 @@ mod tests {
         assert!(runtime.task.await.unwrap().is_ok());
     }
 
+    /// A community invite key is single-use: presenting it spends it. The
+    /// rollover therefore has to mint a replacement, and the assertion has to
+    /// be about the credential source rather than about text arriving —
+    /// a lane that re-presented the spent key would be refused with an auth
+    /// error, and auth is terminal, so the recording would lose realtime
+    /// transcription for good at the provider's first wall-clock limit.
+    #[tokio::test]
+    async fn a_rollover_mints_a_replacement_key_rather_than_reusing_the_spent_one() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            let (first_stream, _) = listener.accept().await.unwrap();
+            let mut first_ws = accept_async(first_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = first_ws.next().await else {
+                panic!("first session configuration missing");
+            };
+            // The provider's own wall-clock limit, mid-capture.
+            first_ws
+                .send(Message::Text(
+                    json!({"tokens": [], "finished": true}).to_string().into(),
+                ))
+                .await
+                .unwrap();
+
+            let (second_stream, _) = listener.accept().await.unwrap();
+            let mut second_ws = accept_async(second_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = second_ws.next().await else {
+                panic!("replacement session configuration missing");
+            };
+            while let Some(Ok(message)) = second_ws.next().await {
+                if matches!(&message, Message::Text(text) if text.is_empty()) {
+                    second_ws
+                        .send(Message::Text(
+                            json!({"tokens": [], "finished": true}).to_string().into(),
+                        ))
+                        .await
+                        .unwrap();
+                    break;
+                }
+            }
+        });
+
+        let issued = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            Arc::new(CountingCredential {
+                issued: issued.clone(),
+            }),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            short_timeouts(),
+        );
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Connected)
+        );
+        let Some(SttStreamEvent::Reconnecting { .. }) = runtime.event_rx.recv().await else {
+            panic!("an unsolicited finish must roll over, not end the lane");
+        };
+        assert!(matches!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::RecoveryStarted { .. })
+        ));
+        assert!(matches!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::AudioProgress { .. })
+        ));
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Connected)
+        );
+        assert_eq!(
+            issued.load(std::sync::atomic::Ordering::Acquire),
+            2,
+            "the replacement connection must carry a freshly minted key"
+        );
+
+        runtime
+            .send_control(SttStreamControl::Finish)
+            .await
+            .unwrap();
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Finished)
+        );
+        assert!(runtime.task.await.unwrap().is_ok());
+    }
+
     #[test]
     fn reconnect_delay_stops_doubling_at_eight_times_base() {
         let base = Duration::from_secs(1);
