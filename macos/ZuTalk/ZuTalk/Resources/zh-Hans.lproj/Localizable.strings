@@ -777,6 +777,7 @@
 "capture.transcript.run_navigator" = "录音导航";
 "capture.transcript.open_recording" = "打开这次录音";
 "capture.transcript.loading_recording" = "正在加载这次录音的转录…";
+"capture.transcript.gap_range_format" = "转写中断 · %@";
 "capture.transcript.load_recording_failed" = "无法加载这次录音";
 "capture.transcript.back_to_live" = "返回实时";
 "capture.transcript.transcription_heading" = "转录时间线";
@@ -1064,6 +1065,8 @@
 "home.record.unfiled" = "未归入主题";
 "home.record.start_hint" = "立即开始一段未归入主题的录音，之后可再归档。";
 "home.record.unavailable_hint" = "录音入口尚未就绪；请重试加载工作区。";
+"home.record.languages.picker" = "录音语言";
+"home.record.languages.picker_hint_format" = "录音语言：%@。点击调整，每场最多三种。";
 "home.catalog.unfiled_empty.title" = "没有未归档会话";
 "home.catalog.unfiled_empty.description" = "从首页开始的新录音会先显示在这里。";
 "home.catalog.row.open_unfiled_hint" = "打开这条未归入主题的会话";

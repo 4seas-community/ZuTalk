@@ -207,14 +207,7 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
     }
 
     private static func loadNotebookCaptureViews() throws -> String {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("ZuTalk", isDirectory: true)
-        return try String(
-            contentsOf: root.appendingPathComponent("Pages/NotebookCaptureViews.swift"),
-            encoding: .utf8
-        )
+        try CaptureSourceCorpus.captureViews()
     }
 }
 
@@ -308,10 +301,7 @@ final class DocumentEditorMinimalMVPSmokeTests: XCTestCase {
             contentsOf: root.appendingPathComponent("Pages/DocumentEditorPage.swift"),
             encoding: .utf8
         )
-        let captureViews = try String(
-            contentsOf: root.appendingPathComponent("Pages/NotebookCaptureViews.swift"),
-            encoding: .utf8
-        )
+        let captureViews = try CaptureSourceCorpus.captureViews()
 
         XCTAssertTrue(page.contains("NotebookRealtimeTranscriptPage("))
         XCTAssertTrue(page.contains("AsyncTranscriptView("))

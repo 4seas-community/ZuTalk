@@ -777,6 +777,7 @@
 "capture.transcript.run_navigator" = "녹음 탐색기";
 "capture.transcript.open_recording" = "이 녹음 열기";
 "capture.transcript.loading_recording" = "이 녹음의 대화 기록을 불러오는 중…";
+"capture.transcript.gap_range_format" = "전사 중단 구간 · %@";
 "capture.transcript.load_recording_failed" = "이 녹음을 불러오지 못했습니다";
 "capture.transcript.back_to_live" = "실시간으로 돌아가기";
 "capture.transcript.transcription_heading" = "전사 타임라인";
@@ -1064,6 +1065,8 @@
 "home.record.unfiled" = "미분류 녹음";
 "home.record.start_hint" = "미분류 녹음을 바로 시작하고 나중에 정리합니다.";
 "home.record.unavailable_hint" = "녹음을 아직 시작할 수 없습니다. 작업 공간을 다시 불러오세요.";
+"home.record.languages.picker" = "녹음 언어";
+"home.record.languages.picker_hint_format" = "녹음 언어: %@. 클릭해 조정할 수 있어요(세션당 최대 3개).";
 "home.catalog.unfiled_empty.title" = "미분류 세션 없음";
 "home.catalog.unfiled_empty.description" = "홈에서 시작한 새 녹음은 먼저 여기에 표시됩니다.";
 "home.catalog.row.open_unfiled_hint" = "이 미분류 세션 열기";

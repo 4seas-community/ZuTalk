@@ -776,6 +776,7 @@
 "capture.transcript.run_navigator" = "Aufnahmennavigation";
 "capture.transcript.open_recording" = "Diese Aufnahme öffnen";
 "capture.transcript.loading_recording" = "Transkript dieser Aufnahme wird geladen…";
+"capture.transcript.gap_range_format" = "Transkriptionslücke · %@";
 "capture.transcript.load_recording_failed" = "Diese Aufnahme konnte nicht geladen werden";
 "capture.transcript.back_to_live" = "Zur Live-Ansicht";
 "capture.transcript.transcription_heading" = "Transkriptionszeitleiste";
@@ -1063,6 +1064,8 @@
 "home.record.unfiled" = "Nicht zugeordnete Aufnahme";
 "home.record.start_hint" = "Jetzt eine nicht zugeordnete Aufnahme starten und später einordnen.";
 "home.record.unavailable_hint" = "Die Aufnahme ist noch nicht bereit; Arbeitsbereich neu laden und erneut versuchen.";
+"home.record.languages.picker" = "Aufnahmesprachen";
+"home.record.languages.picker_hint_format" = "Aufnahmesprachen: %@. Zum Anpassen klicken – höchstens drei pro Sitzung.";
 "home.catalog.unfiled_empty.title" = "Keine nicht zugeordneten Sessions";
 "home.catalog.unfiled_empty.description" = "Neue Aufnahmen von der Startseite erscheinen zuerst hier.";
 "home.catalog.row.open_unfiled_hint" = "Diese nicht zugeordnete Session öffnen";

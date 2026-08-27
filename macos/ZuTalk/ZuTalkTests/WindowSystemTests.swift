@@ -719,12 +719,7 @@ final class WindowSystemTests: XCTestCase {
     }
 
     func testNotebookRealtimeHistoryScopesLivePreviewObservationToActiveRun() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("ZuTalk", isDirectory: true)
-        let source = root.appendingPathComponent("Pages/NotebookCaptureViews.swift")
-        let contents = try String(contentsOf: source, encoding: .utf8)
+        let contents = try CaptureSourceCorpus.captureViews()
 
         let historyStart = try XCTUnwrap(
             contents.range(of: "private struct NotebookRealtimeHistoryView: View")

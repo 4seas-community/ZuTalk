@@ -777,6 +777,7 @@
 "capture.transcript.run_navigator" = "Navigation des enregistrements";
 "capture.transcript.open_recording" = "Ouvrir cet enregistrement";
 "capture.transcript.loading_recording" = "Chargement de la transcription…";
+"capture.transcript.gap_range_format" = "Interruption de transcription · %@";
 "capture.transcript.load_recording_failed" = "Impossible de charger cet enregistrement";
 "capture.transcript.back_to_live" = "Revenir au direct";
 "capture.transcript.transcription_heading" = "Chronologie de transcription";
@@ -1064,6 +1065,8 @@
 "home.record.unfiled" = "Enregistrement non classé";
 "home.record.start_hint" = "Démarrer un enregistrement non classé et l’organiser plus tard.";
 "home.record.unavailable_hint" = "L’enregistrement n’est pas encore prêt ; rechargez l’espace puis réessayez.";
+"home.record.languages.picker" = "Langues d'enregistrement";
+"home.record.languages.picker_hint_format" = "Langues d'enregistrement : %@. Cliquez pour ajuster — trois au maximum par session.";
 "home.catalog.unfiled_empty.title" = "Aucune session non classée";
 "home.catalog.unfiled_empty.description" = "Les nouveaux enregistrements lancés depuis l’accueil apparaîtront d’abord ici.";
 "home.catalog.row.open_unfiled_hint" = "Ouvrir cette session non classée";

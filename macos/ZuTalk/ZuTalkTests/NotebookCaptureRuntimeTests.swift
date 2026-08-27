@@ -3576,13 +3576,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     func testAudioPushGateTapAdmissionDoesNotAcquireALock() throws {
-        let source = try String(
-            contentsOf: URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("ZuTalk/Capture/ActiveBilingualTranscriptStore.swift"),
-            encoding: .utf8
-        )
+        let source = try CaptureSourceCorpus.captureStore()
         let start = try XCTUnwrap(
             source.range(of: "nonisolated func submit(_ audioData: Data)")
         )
@@ -6977,10 +6971,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             contentsOf: root.appendingPathComponent("Pages/KnowledgeLibraryPage.swift"),
             encoding: .utf8
         )
-        let captureSettings = try String(
-            contentsOf: root.appendingPathComponent("Pages/NotebookCaptureViews.swift"),
-            encoding: .utf8
-        )
+        let captureSettings = try CaptureSourceCorpus.captureViews()
 
         XCTAssertTrue(knowledge.contains("knowledge.import_json"))
         XCTAssertTrue(knowledge.contains("NSOpenPanel()"))
@@ -7462,14 +7453,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     /// store that owns the rows, and the caret must respect the capture
     /// store's own editing gate.
     func testActiveRunLaneEditsCommitAgainstTheCaptureStore() throws {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("ZuTalk", isDirectory: true)
-        let captureViews = try String(
-            contentsOf: root.appendingPathComponent("Pages/NotebookCaptureViews.swift"),
-            encoding: .utf8
-        )
+        let captureViews = try CaptureSourceCorpus.captureViews()
 
         let activeRunStart = try XCTUnwrap(
             captureViews.range(of: "private struct NotebookRealtimeActiveRunView: View")
@@ -7503,10 +7487,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("ZuTalk", isDirectory: true)
-        let captureViews = try String(
-            contentsOf: root.appendingPathComponent("Pages/NotebookCaptureViews.swift"),
-            encoding: .utf8
-        )
+        let captureViews = try CaptureSourceCorpus.captureViews()
         let menu = try String(
             contentsOf: root.appendingPathComponent("MenuBar/MenuBarRecordingView.swift"),
             encoding: .utf8
@@ -7515,10 +7496,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             contentsOf: root.appendingPathComponent("App/SubtitleOverlayCoordinator.swift"),
             encoding: .utf8
         )
-        let activeCapture = try String(
-            contentsOf: root.appendingPathComponent("Capture/ActiveBilingualTranscriptStore.swift"),
-            encoding: .utf8
-        )
+        let activeCapture = try CaptureSourceCorpus.captureStore()
         let overlayViews = try String(
             contentsOf: root.appendingPathComponent("WindowSystem/Surfaces/SubtitleOverlayController.swift"),
             encoding: .utf8
@@ -9372,6 +9350,94 @@ private extension NotebookCaptureProfileDTO {
             revision: 2,
             selectedLanguages: ["en", "zh"],
             commonCaptionLanguage: nil
+        )
+    }
+}
+
+extension NotebookCaptureRuntimeTests {
+    // MARK: - Transcript gap dividers
+
+    private func gapFixture(
+        id: String,
+        startMs: UInt64,
+        endMs: UInt64,
+        repairState: String = "preserved"
+    ) -> NotebookTranscriptGapDTO {
+        NotebookTranscriptGapDTO(
+            id: id,
+            sessionId: "gap-session",
+            startMs: startMs,
+            endMs: endMs,
+            repairState: repairState
+        )
+    }
+
+    private func timedUtterance(id: String, startMs: UInt64?) -> NotebookCaptureUtteranceDTO {
+        NotebookCaptureUtteranceDTO(
+            id: id,
+            sessionId: "gap-session",
+            sequence: UInt64(id.hashValue.magnitude % 1_000),
+            revision: 1,
+            sourceLanguage: "en",
+            sourceText: id,
+            sourceStartMs: startMs,
+            sourceEndMs: startMs.map { $0 + 500 },
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "complete",
+            alignment: "response_order"
+        )
+    }
+
+    func testTranscriptGapAnchorsBeforeTheFirstRowThatBeginsAfterIt() {
+        let rows = [
+            timedUtterance(id: "before", startMs: 1_000),
+            timedUtterance(id: "untimed", startMs: nil),
+            timedUtterance(id: "after", startMs: 90_000),
+        ]
+        let anchored = NotebookTranscriptGapPresentation.anchoredGaps(
+            utterances: rows,
+            gaps: [gapFixture(id: "gap", startMs: 30_000, endMs: 60_000)]
+        )
+        XCTAssertEqual(anchored.leading["after"]?.map(\.id), ["gap"])
+        XCTAssertNil(anchored.leading["before"])
+        XCTAssertNil(anchored.leading["untimed"])
+        XCTAssertTrue(anchored.trailing.isEmpty)
+    }
+
+    func testTranscriptGapPastEveryTimedRowTrailsTheTranscript() {
+        let rows = [timedUtterance(id: "only", startMs: 1_000)]
+        let anchored = NotebookTranscriptGapPresentation.anchoredGaps(
+            utterances: rows,
+            gaps: [gapFixture(id: "live-edge", startMs: 30_000, endMs: 60_000)]
+        )
+        XCTAssertTrue(anchored.leading.isEmpty)
+        XCTAssertEqual(anchored.trailing.map(\.id), ["live-edge"])
+    }
+
+    func testRepairedTranscriptGapEarnsNoDivider() {
+        let rows = [timedUtterance(id: "row", startMs: 90_000)]
+        let anchored = NotebookTranscriptGapPresentation.anchoredGaps(
+            utterances: rows,
+            gaps: [
+                gapFixture(id: "open", startMs: 10_000, endMs: 20_000),
+                gapFixture(id: "healed", startMs: 30_000, endMs: 40_000, repairState: "repaired"),
+            ]
+        )
+        XCTAssertEqual(anchored.leading["row"]?.map(\.id), ["open"])
+        XCTAssertTrue(anchored.trailing.isEmpty)
+    }
+
+    func testTranscriptGapPositionsReadAsRecordingTimecodes() {
+        XCTAssertEqual(
+            NotebookTranscriptGapPresentation.rangeText(
+                for: gapFixture(id: "g", startMs: 754_000, endMs: 785_000)
+            ),
+            "12:34 – 13:05"
+        )
+        XCTAssertEqual(
+            NotebookTranscriptGapPresentation.positionText(ms: 3_725_000),
+            "1:02:05"
         )
     }
 }

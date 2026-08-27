@@ -9,6 +9,12 @@ struct HomeView: View {
     @ObservedObject private var activeCapture = ActiveBilingualTranscriptStore.shared
     @State private var isCreatingNotebook = false
     @State private var isStartingQuickCapture = false
+    /// One editor instance serves both the Record button's language picker and
+    /// the start flow. Sharing it means a language chosen in the picker is the
+    /// language the recording starts with — the start path drains any queued
+    /// picker edits before it snapshots the profile — and the persisted
+    /// quick-capture profile is what makes the last selection the default.
+    @State private var quickCaptureProfileEditor: NotebookCaptureProfileEditorModel?
 
     var body: some View {
         ScrollView {
@@ -22,7 +28,8 @@ struct HomeView: View {
                         isStartingQuickCapture: isStartingQuickCapture,
                         activeCaptureDestination: activeCaptureDestination,
                         onReturnToActiveCapture: returnToActiveCapture,
-                        onCreateTopic: { isCreatingNotebook = true }
+                        onCreateTopic: { isCreatingNotebook = true },
+                        quickCaptureLanguageEditor: quickCaptureProfileEditor
                     )
                 }
             }
@@ -48,6 +55,7 @@ struct HomeView: View {
         .onAppear {
             viewModel.loadSessions()
             viewModel.loadNotebookWorkspace()
+            syncQuickCaptureProfileEditor()
         }
         .onReceive(NotificationCenter.default.publisher(for: .zutalkSessionUpdated)) { _ in
             viewModel.loadSessions()
@@ -55,6 +63,18 @@ struct HomeView: View {
         }
         .montereyOnChange(of: viewModel.searchText) { _, _ in
             viewModel.updateTranscriptSearch()
+        }
+        .montereyOnChange(of: viewModel.quickCaptureNotebookId) { _, _ in
+            syncQuickCaptureProfileEditor()
+        }
+        .montereyOnChange(of: activeCapture.isCaptureActive) { _, isActive in
+            // A finished run may have advanced the profile revision (the start
+            // itself commits the realtime authorization). Editing was locked
+            // throughout, so reloading loses nothing and rebases the picker's
+            // CAS revision onto whatever the run left behind.
+            if isActive == false {
+                quickCaptureProfileEditor?.load()
+            }
         }
     }
 
@@ -84,6 +104,17 @@ struct HomeView: View {
         MainNavigationStore.shared.openSession(sessionId)
     }
 
+    private func syncQuickCaptureProfileEditor() {
+        guard let notebookId = viewModel.quickCaptureNotebookId else {
+            quickCaptureProfileEditor = nil
+            return
+        }
+        guard quickCaptureProfileEditor?.notebookId != notebookId else { return }
+        let editor = NotebookCaptureProfileEditorModel(notebookId: notebookId)
+        editor.load()
+        quickCaptureProfileEditor = editor
+    }
+
     private func startQuickRecording() {
         guard isStartingQuickCapture == false,
               activeCapture.isCaptureActive == false,
@@ -105,8 +136,19 @@ struct HomeView: View {
                 NotebookCaptureStartWorkflowGate.shared.release(startLease)
                 isStartingQuickCapture = false
             }
-            let profileEditor = NotebookCaptureProfileEditorModel(notebookId: notebookId)
-            profileEditor.load()
+            // Start on the same editor the language picker edits, so queued
+            // picker changes are committed by the start's own drain instead of
+            // being lost to a second, freshly loaded instance.
+            let profileEditor: NotebookCaptureProfileEditorModel
+            if let shared = quickCaptureProfileEditor, shared.notebookId == notebookId {
+                profileEditor = shared
+                // A load or save that failed transiently would otherwise block
+                // the start; retry is a no-op in the healthy states.
+                profileEditor.retry()
+            } else {
+                profileEditor = NotebookCaptureProfileEditorModel(notebookId: notebookId)
+                profileEditor.load()
+            }
             do {
                 let inviteSession = CommunityInviteSession.shared
                 let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
@@ -713,6 +755,7 @@ private struct HomeSessionCatalog: View {
     let activeCaptureDestination: HomeActiveCaptureDestination?
     let onReturnToActiveCapture: () -> Void
     let onCreateTopic: () -> Void
+    let quickCaptureLanguageEditor: NotebookCaptureProfileEditorModel?
     @FocusState private var isSearchFocused: Bool
 
     private var groups: [SessionGroup] { viewModel.catalogGroupedSessions }
@@ -858,14 +901,27 @@ private struct HomeSessionCatalog: View {
     private var catalogActions: some View {
         MontereyHorizontalViewThatFits {
             HStack(spacing: Spacing.sm) {
+                quickCaptureLanguageAction
                 recordingAction
                 secondaryCatalogActions
             }
         } fallback: {
             VStack(alignment: .leading, spacing: Spacing.sm) {
+                quickCaptureLanguageAction
                 recordingAction
                 secondaryCatalogActions
             }
+        }
+    }
+
+    /// The capture languages, surfaced beside Record so a multi-language
+    /// session starts in one click. Hidden while a capture is active: the
+    /// button next door is then "return to recording" and the profile is
+    /// locked anyway.
+    @ViewBuilder
+    private var quickCaptureLanguageAction: some View {
+        if activeCaptureDestination == nil, let editor = quickCaptureLanguageEditor {
+            HomeQuickCaptureLanguagePicker(editor: editor)
         }
     }
 
@@ -1581,6 +1637,278 @@ private struct HomeSessionRow: View {
             parts.append(session.preview)
         }
         return parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - Quick-capture language picker
+
+/// Exposes the capture languages on Home, beside Record. It edits the same
+/// persisted quick-capture profile the start flow reads, so the previous
+/// selection is the default and a change here is what the next one-click
+/// recording uses — including two- and three-language sessions.
+private struct HomeQuickCaptureLanguagePicker: View {
+    @ObservedObject var editor: NotebookCaptureProfileEditorModel
+    @State private var isPresentingEditor = false
+    @State private var languageSearch = ""
+
+    private var languages: [(code: String, label: String)] {
+        NotebookCaptureSupportedLanguages.options()
+    }
+
+    private var selectedLanguages: [String] { editor.draft.selectedLanguages }
+
+    var body: some View {
+        Button {
+            isPresentingEditor = true
+        } label: {
+            Label(compactSelectionTitle, systemImage: "character.bubble")
+                .font(.bodyMedium)
+                .frame(minHeight: 44)
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.textPrimary)
+        .padding(.horizontal, Spacing.md)
+        .background(Color.bgElevated.opacity(0.42))
+        .overlay(
+            Capsule()
+                .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: Stroke.thin)
+        )
+        .clipShape(Capsule())
+        .disabled(editor.canEdit == false)
+        .opacity(editor.canEdit ? 1 : 0.58)
+        .help(pickerHelp)
+        .accessibilityLabel(Text(String(localized: "home.record.languages.picker")))
+        .accessibilityValue(Text(fullSelectionNames))
+        .accessibilityIdentifier("home.record.languages")
+        .popover(isPresented: $isPresentingEditor, arrowEdge: .bottom) {
+            editorPopover
+        }
+    }
+
+    /// Short codes keep the control one glance wide in every UI language;
+    /// the full localized names live in the tooltip and the popover.
+    private var compactSelectionTitle: String {
+        selectedLanguages.map { $0.uppercased() }.joined(separator: " · ")
+    }
+
+    private var fullSelectionNames: String {
+        selectedLanguages.map(languageLabel).joined(separator: " · ")
+    }
+
+    private var pickerHelp: String {
+        String(
+            format: String(localized: "home.record.languages.picker_hint_format"),
+            fullSelectionNames
+        )
+    }
+
+    private var editorPopover: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text(String(localized: "capture.settings.languages.question"))
+                .font(.captionMedium)
+                .foregroundColor(.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+            Text(String(localized: "capture.settings.languages.ordered_detail"))
+                .font(.system(size: 10))
+                .foregroundColor(.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ScrollView(.horizontal) {
+                HStack(spacing: Spacing.sm) {
+                    ForEach(Array(selectedLanguages.enumerated()), id: \.element) { index, language in
+                        selectedLanguageChip(language: language, index: index)
+                    }
+                }
+            }
+            .montereyScrollIndicators(true)
+
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.textTertiary)
+                    .accessibilityHidden(true)
+                TextField(
+                    String(localized: "capture.settings.languages.search"),
+                    text: $languageSearch
+                )
+                .textFieldStyle(.plain)
+                .accessibilityLabel(Text(String(localized: "capture.settings.languages.search")))
+            }
+            .padding(.horizontal, Spacing.sm)
+            .frame(minHeight: 36)
+            .background(Color.bgSunken.opacity(0.5))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.xs)
+                    .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Radius.xs))
+
+            if languageSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                suggestedLanguageResults
+            } else {
+                languageSearchResults
+            }
+        }
+        .padding(Spacing.md)
+        .frame(width: 360)
+        .disabled(editor.canEdit == false)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var suggestedLanguageResults: some View {
+        let selected = Set(selectedLanguages)
+        let suggestions = NotebookCaptureSupportedLanguages.suggestedCodes()
+            .filter { selected.contains($0) == false }
+            .compactMap { code in languages.first { $0.code == code } }
+
+        if selectedLanguages.count < NotebookCaptureSupportedLanguages.maximumSelectedCount,
+           suggestions.isEmpty == false {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(String(localized: "capture.settings.languages.suggested"))
+                    .font(.system(size: 10))
+                    .foregroundColor(.textTertiary)
+                addLanguageChipRow(suggestions)
+            }
+        }
+    }
+
+    private var languageSearchResults: some View {
+        let query = languageSearch
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let selected = Set(selectedLanguages)
+        let matches = languages.filter { language in
+            selected.contains(language.code) == false
+                && (language.code.localizedCaseInsensitiveContains(query)
+                    || language.label.localizedCaseInsensitiveContains(query))
+        }
+
+        return Group {
+            if selectedLanguages.count >= NotebookCaptureSupportedLanguages.maximumSelectedCount {
+                Text(String(localized: "capture.settings.languages.maximum_reached"))
+                    .font(.caption)
+                    .foregroundColor(.textTertiary)
+                    .padding(.vertical, Spacing.xs)
+            } else if matches.isEmpty {
+                Text(String(localized: "capture.settings.languages.no_results"))
+                    .font(.caption)
+                    .foregroundColor(.textTertiary)
+                    .padding(.vertical, Spacing.xs)
+            } else {
+                addLanguageChipRow(matches)
+            }
+        }
+    }
+
+    private func addLanguageChipRow(
+        _ options: [(code: String, label: String)]
+    ) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: Spacing.xs) {
+                ForEach(options, id: \.code) { language in
+                    Button {
+                        addLanguage(language.code)
+                    } label: {
+                        Label(language.label, systemImage: "plus")
+                            .font(.caption)
+                            .padding(.horizontal, Spacing.sm)
+                            .frame(minHeight: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.textPrimary)
+                    .background(Color.bgElevated.opacity(0.42))
+                    .clipShape(Capsule())
+                    .accessibilityLabel(Text(String(
+                        format: String(localized: "capture.settings.languages.add_format"),
+                        language.label
+                    )))
+                }
+            }
+        }
+        .montereyScrollIndicators(true)
+    }
+
+    private func selectedLanguageChip(language: String, index: Int) -> some View {
+        HStack(spacing: 2) {
+            Text(languageLabel(language))
+                .font(.captionMedium)
+                .foregroundColor(.textPrimary)
+                .padding(.leading, Spacing.sm)
+                .padding(.trailing, Spacing.xs)
+
+            languageChipButton(
+                systemImage: "chevron.left",
+                label: String(localized: "capture.settings.languages.move_earlier"),
+                disabled: index == 0,
+                action: { moveLanguage(at: index, offset: -1) }
+            )
+            languageChipButton(
+                systemImage: "chevron.right",
+                label: String(localized: "capture.settings.languages.move_later"),
+                disabled: index == selectedLanguages.count - 1,
+                action: { moveLanguage(at: index, offset: 1) }
+            )
+            languageChipButton(
+                systemImage: "xmark",
+                label: String(localized: "capture.settings.languages.remove"),
+                disabled: selectedLanguages.count <= 1,
+                action: { removeLanguage(at: index) }
+            )
+        }
+        .frame(minHeight: 36)
+        .background(Color.bgElevated.opacity(0.42))
+        .overlay(
+            Capsule()
+                .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
+        )
+        .clipShape(Capsule())
+        .accessibilityElement(children: .contain)
+    }
+
+    private func languageChipButton(
+        systemImage: String,
+        label: String,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 9, weight: .semibold))
+                .frame(width: 28, height: 32)
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.textSecondary)
+        .contentShape(Rectangle())
+        .disabled(disabled)
+        .accessibilityLabel(Text(label))
+    }
+
+    private func addLanguage(_ language: String) {
+        guard selectedLanguages.count
+                < NotebookCaptureSupportedLanguages.maximumSelectedCount,
+              selectedLanguages.contains(language) == false
+        else { return }
+        editor.scheduleUpdate(.addLanguage(language))
+        languageSearch = ""
+    }
+
+    private func removeLanguage(at index: Int) {
+        guard selectedLanguages.count > 1,
+              selectedLanguages.indices.contains(index)
+        else { return }
+        editor.scheduleUpdate(.removeLanguage(selectedLanguages[index]))
+    }
+
+    private func moveLanguage(at index: Int, offset: Int) {
+        let destination = index + offset
+        guard selectedLanguages.indices.contains(index),
+              selectedLanguages.indices.contains(destination)
+        else { return }
+        editor.scheduleUpdate(.moveLanguage(selectedLanguages[index], offset: offset))
+    }
+
+    private func languageLabel(_ code: String) -> String {
+        languages.first(where: { $0.code == code })?.label ?? code.uppercased()
     }
 }
 

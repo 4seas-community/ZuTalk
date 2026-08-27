@@ -160,11 +160,14 @@ final class DesignSystemTests: XCTestCase {
             "UIScenes/Main/MainShellView.swift",
             "App/OnboardingView.swift",
             "Pages/DocumentEditorPage.swift",
-            "Pages/NotebookCaptureViews.swift",
-            "Pages/TrashPage.swift",
-            "MenuBar/MenuBarIdleView.swift",
-            "DesignSystem/FocusRing.swift",
-        ] {
+        ]
+            + CaptureSourceCorpus.captureViewFiles
+            + [
+                "Pages/TrashPage.swift",
+                "MenuBar/MenuBarIdleView.swift",
+                "DesignSystem/FocusRing.swift",
+            ]
+        {
             let source = try String(
                 contentsOf: sourceRoot.appendingPathComponent(relativePath),
                 encoding: .utf8

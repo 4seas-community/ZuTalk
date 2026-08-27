@@ -777,6 +777,7 @@
 "capture.transcript.run_navigator" = "ตัวนำทางการบันทึก";
 "capture.transcript.open_recording" = "เปิดการบันทึกนี้";
 "capture.transcript.loading_recording" = "กำลังโหลดบทถอดเสียงของการบันทึกนี้…";
+"capture.transcript.gap_range_format" = "ช่วงที่ไม่ได้ถอดความ · %@";
 "capture.transcript.load_recording_failed" = "ไม่สามารถโหลดการบันทึกนี้ได้";
 "capture.transcript.back_to_live" = "กลับไปยังถ่ายทอดสด";
 "capture.transcript.transcription_heading" = "ไทม์ไลน์การถอดเสียง";
@@ -1064,6 +1065,8 @@
 "home.record.unfiled" = "การบันทึกที่ยังไม่จัดหัวข้อ";
 "home.record.start_hint" = "เริ่มการบันทึกที่ยังไม่จัดหัวข้อทันที แล้วจัดภายหลัง";
 "home.record.unavailable_hint" = "การบันทึกยังไม่พร้อม โปรดโหลดพื้นที่ทำงานใหม่แล้วลองอีกครั้ง";
+"home.record.languages.picker" = "ภาษาที่ใช้บันทึก";
+"home.record.languages.picker_hint_format" = "ภาษาที่ใช้บันทึก: %@ คลิกเพื่อปรับ เลือกได้สูงสุดสามภาษาต่อครั้ง";
 "home.catalog.unfiled_empty.title" = "ไม่มีเซสชันที่ยังไม่จัดหัวข้อ";
 "home.catalog.unfiled_empty.description" = "การบันทึกใหม่จากหน้าหลักจะแสดงที่นี่ก่อน";
 "home.catalog.row.open_unfiled_hint" = "เปิดเซสชันที่ยังไม่จัดหัวข้อนี้";

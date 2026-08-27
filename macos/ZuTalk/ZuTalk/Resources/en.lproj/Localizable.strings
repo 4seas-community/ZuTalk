@@ -777,6 +777,7 @@
 "capture.transcript.run_navigator" = "Recording navigator";
 "capture.transcript.open_recording" = "Open this recording";
 "capture.transcript.loading_recording" = "Loading this recording’s transcript…";
+"capture.transcript.gap_range_format" = "Transcription gap · %@";
 "capture.transcript.load_recording_failed" = "Could not load this recording";
 "capture.transcript.back_to_live" = "Back to live";
 "capture.transcript.transcription_heading" = "Transcription timeline";
@@ -1064,6 +1065,8 @@
 "home.record.unfiled" = "Unfiled recording";
 "home.record.start_hint" = "Start an unfiled recording now and organize it later.";
 "home.record.unavailable_hint" = "Recording is not ready yet; reload the workspace and try again.";
+"home.record.languages.picker" = "Recording languages";
+"home.record.languages.picker_hint_format" = "Recording languages: %@. Click to adjust — up to three per session.";
 "home.catalog.unfiled_empty.title" = "No unfiled sessions";
 "home.catalog.unfiled_empty.description" = "New recordings started from Home will appear here first.";
 "home.catalog.row.open_unfiled_hint" = "Open this unfiled session";
