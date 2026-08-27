@@ -1,28 +1,23 @@
-# ZuTalk 0.5.1
+# ZuTalk 0.5.2
 
-A recording no longer ends because the network did.
+Live captions stay at the live edge, even when the provider cannot keep up.
 
 ZuTalk requires macOS 12.5 or later.
 
-- **Realtime transcription survives an outage instead of ending at it.**
-  ZuTalk used to give up after three quick reconnect attempts, so losing the
-  network for more than a few seconds ended transcription for the rest of the
-  recording — usually without saying so. It now keeps reconnecting for as long
-  as the recording runs, and picks the same transcript back up when the network
-  returns. Refusals that cannot be retried, such as an expired invitation,
-  still stop the lane immediately and say why.
+- **A multi-language recording no longer loses transcription partway
+  through.** With three recording languages, the realtime provider can fall
+  behind the room and never catch up; captions drifted further and further
+  behind and then stopped entirely, usually ten to fifteen minutes in, while
+  the recording kept going. A lane that falls too far behind now skips ahead
+  and rejoins at the live edge. Replaying a real 31-minute three-language
+  session that had lost half its transcript: 99.8% transcribed, end to end.
 
-- **A recording no longer ends at an arbitrary minute.** Realtime providers end
-  a session on their own clock — a community invitation's shared time budget
-  most often. ZuTalk now treats that as a handover: the last words of the
-  finished session are kept, and the recording continues on a fresh connection.
+- **What a skip misses is shown honestly.** Each skip leaves a time-labeled
+  gap divider in the transcript covering exactly the untranscribed stretch —
+  starting from the last transcribed words, not from where the connection
+  was cut. The audio itself is still recorded, and transcribing after
+  stopping fills the gap in.
 
-- **Untranscribed stretches are shown, not silently skipped.** When realtime
-  transcription misses audio during an outage, the transcript shows a
-  time-labeled gap between the surrounding lines instead of running the
-  neighbouring lines together. The audio itself is still recorded, and
-  transcribing after stopping fills the gap in.
-
-- **The Record button chooses its own languages.** Recording languages can be
-  set from Home before starting an unfiled recording, up to three per session,
-  and the last choice becomes the default for the next one.
+- **Subtitle timing no longer drifts after an outage.** Audio dropped while
+  skipping ahead now advances the transcript clock, so the words after a
+  recovery land at the moment they were said instead of a few seconds early.
