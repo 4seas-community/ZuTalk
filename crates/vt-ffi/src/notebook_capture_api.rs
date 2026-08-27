@@ -2112,9 +2112,22 @@ async fn collect_stream_events(
                 PersistedCaptureChanges::default()
             }
             SttStreamEvent::Reconnecting { .. } => {
+                // The untranscribed stretch starts where durable rows stop,
+                // not where the socket died. A lane that cut itself for
+                // outrunning its provider was fifteen or more seconds past
+                // its last final when it disconnected; a gap anchored at the
+                // disconnect instant would claim that stretch was covered.
+                let capture_now = captured_frames.load(Ordering::Acquire);
+                let finalized_frame = lanes[lane_index].final_audio_proc_ms.map(|ms| {
+                    ms.saturating_mul(u64::from(CURRENT_NOTEBOOK_CAPTURE_ENGINE.sample_rate))
+                        / 1_000
+                });
+                let gap_starts_at = finalized_frame
+                    .map(|frame| frame.min(capture_now))
+                    .unwrap_or(capture_now);
                 lanes[lane_index]
                     .disconnected_at_frame
-                    .get_or_insert_with(|| captured_frames.load(Ordering::Acquire));
+                    .get_or_insert(gap_starts_at);
                 let finalized = lanes[lane_index]
                     .assembler
                     .finalize(FinalizeBoundary::ConnectionClosing);
@@ -5533,28 +5546,10 @@ const AUXILIARY_LANE_RESTART_COOLDOWNS: [std::time::Duration; 4] = [
 /// all-day recording from reconnecting indefinitely.
 const MAX_AUXILIARY_LANE_RESTARTS: u8 = 8;
 
-/// How long a lane may stay at its full audio backlog before the group stops
-/// treating it as merely behind.
-///
-/// A full channel means the lane's task is alive and slow, not dead, so the
-/// block is shed and the lane keeps its socket: a provider that falls behind
-/// works through its backlog and catches up, and only the audio shed while it
-/// did so is missing. Killing the lane instead is what ended realtime
-/// transcription for the rest of a recording — the canonical lane is never
-/// replaced, so half a session went untranscribed with the recording still
-/// running. The grace is longer than the backlog itself, so a lane has to
-/// stay pinned for two full backlog windows before it is called dead.
-const SONIOX_LANE_BACKPRESSURE_GRACE: std::time::Duration =
-    std::time::Duration::from_secs(2 * SONIOX_LANE_AUDIO_BACKLOG_SECONDS);
-
 #[derive(Debug, Default, PartialEq, Eq)]
 struct PcmFanoutReport {
     auxiliary_discontinuities: Vec<String>,
     auxiliary_restarts: Vec<String>,
-    /// Lanes that shed this block because they were still working through
-    /// their backlog. Presentation only: the audio journal keeps the interval
-    /// and the transcript records it as a gap.
-    backlogged_lanes: Vec<String>,
 }
 
 pub(crate) struct ActiveRemoteCapture {
@@ -5582,10 +5577,6 @@ pub(crate) struct ActiveRemoteCapture {
     /// When each lane was last reopened, so the cooldown is measured from the
     /// attempt rather than from the failure it was answering.
     lane_restarted_at: Vec<Option<std::time::Instant>>,
-    /// When each lane's audio backlog first went full, so a lane that is
-    /// merely behind can be told from one that is pinned. Cleared the moment
-    /// a block is accepted again.
-    lane_backlogged_since: Vec<Option<std::time::Instant>>,
     /// The audio thread calls into fan-out straight from Swift's tap, with no
     /// runtime context of its own. Opening a replacement lane spawns tasks, so
     /// it has to borrow one — a bare spawn there panics across the FFI
@@ -5608,8 +5599,6 @@ impl ActiveRemoteCapture {
         }
         let mut report = PcmFanoutReport::default();
         let mut canonical_failure = None;
-        let mut backlog_cleared: Vec<usize> = Vec::new();
-        let mut backlog_started: Vec<usize> = Vec::new();
         for (lane_index, stream) in self.streams.iter().enumerate() {
             if stream.lane_cancel.is_cancelled() {
                 continue;
@@ -5622,40 +5611,19 @@ impl ActiveRemoteCapture {
             // stream slow", and working it out from the old message took a
             // database, a week of logs and three files of code.
             //
-            // They also deserve opposite answers. A lane that is behind keeps
-            // its socket and sheds the block: the provider works through its
-            // backlog and comes back, and only the shed audio is missing from
-            // the transcript. Failing it instead is fatal for the canonical
-            // lane, which nothing replaces — every recording that hit this
-            // lost realtime transcription for the rest of the session while
-            // still recording, an average of half the session.
+            // A full channel is also expected to be unreachable now: the
+            // lane's own stream cuts itself and rejoins at the live edge once
+            // its sent backlog outgrows the replay window, draining this
+            // channel as it goes. A lane observed pinned here is therefore a
+            // wedged task, not a slow provider, and fails as one.
             let send_failure = if stream.audio_tx.is_closed() {
                 Some("Soniox stream ended: its audio channel is closed".to_string())
             } else if stream.audio_tx.capacity() == 0 {
-                let since = self.lane_backlogged_since[lane_index];
-                if since.is_none() {
-                    backlog_started.push(lane_index);
-                }
-                let pinned_for = since.map(|at| at.elapsed()).unwrap_or_default();
-                if pinned_for < SONIOX_LANE_BACKPRESSURE_GRACE {
-                    report.backlogged_lanes.push(
-                        stream
-                            .descriptor
-                            .target_language
-                            .clone()
-                            .unwrap_or_else(|| "canonical".to_string()),
-                    );
-                    continue;
-                }
                 Some(format!(
-                    "Soniox stream stayed {}s behind for {}s: its audio channel is pinned full",
-                    SONIOX_LANE_AUDIO_BACKLOG_SECONDS,
-                    pinned_for.as_secs()
+                    "Soniox stream is {}s behind: its audio channel is full",
+                    SONIOX_LANE_AUDIO_BACKLOG_SECONDS
                 ))
             } else {
-                if self.lane_backlogged_since[lane_index].is_some() {
-                    backlog_cleared.push(lane_index);
-                }
                 self.stream_factory
                     .try_send_pcm(&stream.audio_tx, audio_data.to_vec())
                     .err()
@@ -5685,17 +5653,6 @@ impl ActiveRemoteCapture {
                     canonical_failure.get_or_insert(error);
                 }
             }
-        }
-        // Applied after the fan-out because the loop above holds the lane
-        // list. A lane that took this block is no longer behind; one whose
-        // backlog just went full starts its grace here, so the clock measures
-        // the backlog rather than the moment it was noticed.
-        let now = std::time::Instant::now();
-        for lane_index in backlog_started {
-            self.lane_backlogged_since[lane_index] = Some(now);
-        }
-        for lane_index in backlog_cleared {
-            self.lane_backlogged_since[lane_index] = None;
         }
         if canonical_failure.is_none() {
             // Driven by "this lane is dead and its cooldown has elapsed", so a
@@ -6784,13 +6741,6 @@ impl ZuTalkCore {
                             languages = ?report.auxiliary_discontinuities,
                             reopened = ?report.auxiliary_restarts,
                             "capture remains live after isolating discontinuous translation lanes"
-                        );
-                    }
-                    if !report.backlogged_lanes.is_empty() {
-                        tracing::warn!(
-                            lanes = ?report.backlogged_lanes,
-                            backlog_s = SONIOX_LANE_AUDIO_BACKLOG_SECONDS,
-                            "lane is behind and shed this audio block; it keeps its stream"
                         );
                     }
                     active_guard
@@ -8940,7 +8890,6 @@ impl ZuTalkCore {
             stream_factory,
             lane_restarts: vec![0; streams.len()],
             lane_restarted_at: vec![None; streams.len()],
-            lane_backlogged_since: vec![None; streams.len()],
             runtime: self.runtime.handle().clone(),
             streams,
             cancel,
@@ -11210,6 +11159,130 @@ mod tests {
         );
     }
 
+    /// A canonical lane that skips to the live edge announces the skip as a
+    /// non-continuous recovery, and the durable gap must start where durable
+    /// rows stop — the last provider-finalized position — not at the wall
+    /// instant the socket was cut. The lane was fifteen or more seconds past
+    /// its last final when it cut itself; a gap anchored at the disconnect
+    /// would claim that stretch was transcribed.
+    struct LiveEdgeSkipNotebookSonioxStreamFactory;
+
+    impl NotebookSonioxStreamFactory for LiveEdgeSkipNotebookSonioxStreamFactory {
+        fn start(
+            &self,
+            _endpoint: &str,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
+            _config: SttConfig,
+            _cancel: tokio_util::sync::CancellationToken,
+            _capture_origin_ms: u64,
+        ) -> SonioxStreamRuntime {
+            let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
+            let (control_tx, mut control_rx) = tokio::sync::mpsc::channel(4);
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(16);
+            let task = tokio::spawn(async move {
+                let _ = event_tx.send(SttStreamEvent::Connected).await;
+                // Two seconds of the recording are provider-final.
+                let _ = event_tx
+                    .send(SttStreamEvent::AudioProgress {
+                        final_audio_proc_ms: 2_000,
+                        total_audio_proc_ms: 2_000,
+                        lag_ms: 0,
+                    })
+                    .await;
+                // Fall behind for the rest of the fed audio, then cut to the
+                // live edge exactly the way the stream client does it.
+                let mut received = 0_usize;
+                while received < 100 {
+                    match audio_rx.recv().await {
+                        Some(_) => received += 1,
+                        None => break,
+                    }
+                }
+                let _ = event_tx
+                    .send(SttStreamEvent::Reconnecting {
+                        attempt: 1,
+                        delay_ms: 0,
+                    })
+                    .await;
+                let _ = event_tx
+                    .send(SttStreamEvent::RecoveryStarted { outage_ms: 20_000 })
+                    .await;
+                let _ = event_tx.send(SttStreamEvent::Connected).await;
+                while let Some(control) = control_rx.recv().await {
+                    if control == SttStreamControl::Finish {
+                        let _ = event_tx.send(SttStreamEvent::Finished).await;
+                        break;
+                    }
+                }
+                Ok(())
+            });
+            SonioxStreamRuntime {
+                audio_tx,
+                control_tx,
+                event_rx,
+                task,
+            }
+        }
+
+        fn try_send_pcm(
+            &self,
+            audio_tx: &tokio::sync::mpsc::Sender<Vec<u8>>,
+            audio_data: Vec<u8>,
+        ) -> Result<(), String> {
+            audio_tx
+                .try_send(audio_data)
+                .map_err(|error| error.to_string())
+        }
+    }
+
+    #[test]
+    fn a_live_edge_skip_records_a_gap_anchored_at_the_last_final() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        core.notebook_soniox_stream_factory = Arc::new(LiveEdgeSkipNotebookSonioxStreamFactory);
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core.create_notebook(Some("Live edge skip".into())).unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+
+        // Ten seconds of captured audio; the scripted lane cuts after it has
+        // drained all of it, well past its two provider-final seconds.
+        for _ in 0..100 {
+            core.push_notebook_capture_session(started.session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+        }
+        let stopped = core
+            .stop_notebook_capture_session(started.session_id.clone())
+            .unwrap();
+        assert_eq!(stopped.capture_state, FfiNotebookCaptureState::Completed);
+
+        let gaps = core
+            .list_notebook_session_transcript_gaps(started.session_id.clone())
+            .unwrap();
+        assert_eq!(gaps.len(), 1, "one skip must record exactly one gap");
+        assert_eq!(
+            gaps[0].start_ms, 2_000,
+            "the gap starts where durable rows stop, not where the socket died"
+        );
+        assert!(
+            gaps[0].end_ms >= 10_000,
+            "the gap must reach the live edge the lane rejoined at, got {}ms",
+            gaps[0].end_ms
+        );
+    }
+
     #[test]
     fn finish_remote_capture_drains_forwarded_tail_and_closes_collector() {
         let temp = tempfile::tempdir().unwrap();
@@ -11279,7 +11352,6 @@ mod tests {
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0],
             lane_restarted_at: vec![None],
-            lane_backlogged_since: vec![None],
             runtime: core.runtime.handle().clone(),
         };
 
@@ -11326,7 +11398,6 @@ mod tests {
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: Vec::new(),
             lane_restarted_at: Vec::new(),
-            lane_backlogged_since: Vec::new(),
             runtime: core.runtime.handle().clone(),
         };
 
@@ -13298,7 +13369,6 @@ mod tests {
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
             lane_restarted_at: vec![None; 8],
-            lane_backlogged_since: vec![None; 8],
             runtime: tokio::runtime::Handle::current(),
         };
         let report = capture
@@ -13346,7 +13416,6 @@ mod tests {
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
             lane_restarted_at: vec![None; 8],
-            lane_backlogged_since: vec![None; 8],
             runtime: tokio::runtime::Handle::current(),
         };
         assert!(canonical_down.try_fanout_pcm(&[7u8; 64]).is_err());
@@ -13375,7 +13444,6 @@ mod tests {
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
             lane_restarted_at: vec![None; 8],
-            lane_backlogged_since: vec![None; 8],
             runtime: tokio::runtime::Handle::current(),
         };
         canceled_group.cancel();
@@ -13383,89 +13451,6 @@ mod tests {
         assert!(canceled_capture
             .try_fanout_control(SttStreamControl::Keepalive)
             .is_err());
-    }
-
-    /// A lane whose audio channel is full is slow, not dead.
-    ///
-    /// This is the failure that ended realtime transcription mid-recording:
-    /// every long capture that recorded `audio_backpressure` stopped
-    /// transcribing while the recording ran on, an average of half the
-    /// session. Nothing replaces a canonical lane, so failing it there is
-    /// permanent. The lane now sheds the block and keeps its socket, and only
-    /// a lane that stays pinned past the grace is finally called dead.
-    #[tokio::test]
-    async fn a_backlogged_lane_sheds_its_block_instead_of_ending_transcription() {
-        let factory = Arc::new(RecordingFanoutFactory {
-            sent: std::sync::Mutex::new(Vec::new()),
-            restarted_at_ms: std::sync::Mutex::new(Vec::new()),
-        });
-        // Capacity one, then filled: the next block finds no permit, which is
-        // exactly the state `audio_tx.capacity() == 0` reports in production.
-        let make_full_stream = |canonical: bool, target: Option<&str>| {
-            let (audio_tx, audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1);
-            let (control_tx, control_rx) = tokio::sync::mpsc::channel(4);
-            audio_tx.try_send(vec![0u8; 8]).unwrap();
-            std::mem::forget(audio_rx);
-            std::mem::forget(control_rx);
-            ActiveRemoteStream {
-                descriptor: RemoteStreamLane {
-                    target_language: target.map(str::to_string),
-                    canonical,
-                },
-                config: SttConfig::default(),
-                audio_tx,
-                control_tx,
-                stream_task: tokio::spawn(async { Ok(()) }),
-                forward_task: tokio::spawn(async {}),
-                lane_cancel: tokio_util::sync::CancellationToken::new(),
-                input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
-            }
-        };
-
-        let (discontinuity_tx, _discontinuity_rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut capture = ActiveRemoteCapture {
-            stream_factory: factory,
-            streams: vec![make_full_stream(true, None)],
-            cancel: tokio_util::sync::CancellationToken::new(),
-            event_task: tokio::spawn(async { Ok(()) }),
-            discontinuity_tx,
-            endpoint: "wss://stream.invalid".to_string(),
-            credential: vt_stt::StaticLaneCredential::new("test-key"),
-            tagged_tx: tokio::sync::mpsc::channel(8).0,
-            captured_frames: Arc::new(AtomicU64::new(0)),
-            lane_restarts: vec![0; 8],
-            lane_restarted_at: vec![None; 8],
-            lane_backlogged_since: vec![None; 8],
-            runtime: tokio::runtime::Handle::current(),
-        };
-
-        let report = capture
-            .try_fanout_pcm(&[7u8; 64])
-            .expect("a lane that is merely behind must not fail the capture");
-        assert_eq!(
-            report.backlogged_lanes,
-            vec!["canonical".to_string()],
-            "the shed block must be reported, not silently dropped"
-        );
-        assert!(
-            capture.lane_backlogged_since[0].is_some(),
-            "the grace clock starts at the backlog, not at the moment it is noticed"
-        );
-
-        // Still behind, still inside the grace: still not a failure.
-        let report = capture.try_fanout_pcm(&[8u8; 64]).unwrap();
-        assert_eq!(report.backlogged_lanes, vec!["canonical".to_string()]);
-
-        // Pinned past the grace, the lane is finally called dead — a wedged
-        // lane must not shed forever while reporting a healthy capture.
-        capture.lane_backlogged_since[0] = Some(
-            std::time::Instant::now()
-                - (SONIOX_LANE_BACKPRESSURE_GRACE + std::time::Duration::from_secs(1)),
-        );
-        assert!(
-            capture.try_fanout_pcm(&[9u8; 64]).is_err(),
-            "a lane pinned past the grace is dead, not behind"
-        );
     }
 
     /// The audio thread is not inside the tokio runtime.
@@ -13535,7 +13520,6 @@ mod tests {
                 captured_frames: Arc::new(AtomicU64::new(16_000)),
                 lane_restarts: vec![0; 2],
                 lane_restarted_at: vec![None; 2],
-                lane_backlogged_since: vec![None; 2],
                 runtime: runtime.handle().clone(),
             }
         });
@@ -13610,7 +13594,6 @@ mod tests {
             captured_frames: Arc::new(AtomicU64::new(960_000)),
             lane_restarts: vec![0; 2],
             lane_restarted_at: vec![None; 2],
-            lane_backlogged_since: vec![None; 2],
             runtime: tokio::runtime::Handle::current(),
         };
 
@@ -13753,7 +13736,6 @@ mod tests {
             captured_frames: Arc::new(AtomicU64::new(0)),
             lane_restarts: vec![0; 8],
             lane_restarted_at: vec![None; 8],
-            lane_backlogged_since: vec![None; 8],
             runtime: tokio::runtime::Handle::current(),
         };
 

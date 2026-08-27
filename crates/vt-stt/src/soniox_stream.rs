@@ -201,6 +201,16 @@ struct StreamTimeouts {
     /// refusals (auth, spent invite, protocol) still fail immediately; a
     /// credential source that keeps refusing is an ending, not an outage.
     reconnect_outage_budget: Option<Duration>,
+    /// How far the provider may fall behind the audio this lane has sent
+    /// before the lane cuts the connection and rejoins at the live edge.
+    ///
+    /// Once the backlog passes the continuity window a reconnect could not
+    /// replay it anyway, so the stream is by definition no longer
+    /// continuable; waiting longer only turns a bounded skip into a dead
+    /// lane once the bounded audio channel behind it fills. Subtitles that
+    /// are a minute late are not live captions — a hole drawn as a hole
+    /// beats text that silently trails the room.
+    live_edge_max_backlog: Duration,
 }
 
 impl Default for StreamTimeouts {
@@ -213,6 +223,7 @@ impl Default for StreamTimeouts {
             drain: DRAIN_TIMEOUT,
             reconnect_base_delay: RECONNECT_BASE_DELAY,
             reconnect_outage_budget: None,
+            live_edge_max_backlog: CONTINUITY_WINDOW,
         }
     }
 }
@@ -220,6 +231,11 @@ impl Default for StreamTimeouts {
 struct StreamFailure {
     task_error: SttError,
     event_error: SttStreamError,
+    /// The retryable ending was chosen by this lane on purpose: it had
+    /// outrun its provider past the replay window, so the reconnect must
+    /// rejoin at the live edge instead of replaying, whatever the wall
+    /// clock says about the outage.
+    skips_to_live_edge: bool,
 }
 
 impl StreamFailure {
@@ -227,6 +243,7 @@ impl StreamFailure {
         let message = message.into();
         Self {
             task_error: SttError::ConnectionFailed(format!("{operation}: {message}")),
+            skips_to_live_edge: false,
             event_error: SttStreamError::Transport {
                 operation: operation.to_string(),
                 message,
@@ -238,6 +255,7 @@ impl StreamFailure {
         let message = message.into();
         Self {
             task_error: SttError::ParseError(message.clone()),
+            skips_to_live_edge: false,
             event_error: SttStreamError::Protocol { message },
         }
     }
@@ -248,6 +266,7 @@ impl StreamFailure {
                 operation: operation.to_string(),
                 elapsed,
             },
+            skips_to_live_edge: false,
             event_error: SttStreamError::Timeout {
                 operation: operation.to_string(),
                 elapsed_ms: elapsed.as_millis().try_into().unwrap_or(u64::MAX),
@@ -268,6 +287,7 @@ impl StreamFailure {
         let reason = "provider finished the session while capture was live".to_string();
         Self {
             task_error: SttError::ConnectionFailed(reason.clone()),
+            skips_to_live_edge: false,
             event_error: SttStreamError::Closed { code: None, reason },
         }
     }
@@ -290,6 +310,7 @@ impl StreamFailure {
         };
         Self {
             task_error,
+            skips_to_live_edge: false,
             event_error: SttStreamError::Closed { code, reason },
         }
     }
@@ -298,6 +319,7 @@ impl StreamFailure {
         let task_error = provider_task_error(&error);
         Self {
             task_error,
+            skips_to_live_edge: false,
             event_error: SttStreamError::Provider(error),
         }
     }
@@ -311,6 +333,7 @@ impl StreamFailure {
         if error.is_auth_error() {
             return Self {
                 task_error: error,
+                skips_to_live_edge: false,
                 event_error: SttStreamError::Provider(SttStreamProviderError {
                     error_code: 401,
                     error_type: "unauthenticated".to_string(),
@@ -321,8 +344,28 @@ impl StreamFailure {
         }
         Self {
             task_error: error,
+            skips_to_live_edge: false,
             event_error: SttStreamError::Transport {
                 operation: "Soniox lane credential".to_string(),
+                message,
+            },
+        }
+    }
+
+    /// This lane sent more audio than the provider has processed, past the
+    /// point a reconnect could replay. Retryable — the lane is healthy, the
+    /// provider is slow — but the reconnect must skip to the live edge: the
+    /// backlog is unplayable by the same rule that bounds every replay.
+    fn behind_live_edge(backlog: Duration) -> Self {
+        let message = format!(
+            "provider fell {}s behind the audio this lane sent",
+            backlog.as_secs()
+        );
+        Self {
+            task_error: SttError::ConnectionFailed(message.clone()),
+            skips_to_live_edge: true,
+            event_error: SttStreamError::Transport {
+                operation: "Soniox live-edge backlog".to_string(),
                 message,
             },
         }
@@ -590,6 +633,28 @@ impl StreamRecoveryState {
         self.acknowledged_ms
             .saturating_sub(self.connection_origin_ms)
     }
+
+    /// Audio dropped without ever reaching a provider still happened: its
+    /// duration must advance the timeline, or every token after the drop is
+    /// projected early by exactly the dropped span — the transcript would
+    /// silently compress time and the recorded gap would read as covered.
+    fn note_discarded(&mut self, pcm_len: usize) {
+        let duration_ms = (pcm_len as u64).div_ceil(PCM_BYTES_PER_MILLISECOND).max(1);
+        self.next_audio_ms = self.next_audio_ms.saturating_add(duration_ms);
+    }
+
+    /// Forgets everything unsent and unacknowledged and restarts the
+    /// projection at the current live edge. Call after the queue has been
+    /// drained and counted, so the edge includes what was just discarded.
+    fn re_anchor_to_live_edge(&mut self) {
+        self.sent_frames.clear();
+        self.acknowledged_ms = self.next_audio_ms;
+        self.connection_origin_ms = self.next_audio_ms;
+    }
+
+    fn sent_backlog(&self) -> Duration {
+        Duration::from_millis(self.next_audio_ms.saturating_sub(self.acknowledged_ms))
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -786,9 +851,11 @@ async fn run_stream(
     let mut disconnected_at = None::<Instant>;
     let mut recovery = StreamRecoveryState::starting_at(capture_origin_ms);
     let mut unpresented_credential: Option<UnpresentedCredential> = None;
+    let mut skip_to_live_edge = false;
     loop {
         let mut session_connected = false;
         let reconnect_outage = disconnected_at.map(|started| started.elapsed());
+        let reconnect_skips = std::mem::take(&mut skip_to_live_edge);
         match run_stream_session(
             endpoint,
             credential,
@@ -802,12 +869,14 @@ async fn run_stream(
             &mut session_connected,
             &mut recovery,
             reconnect_outage,
+            reconnect_skips,
             &mut unpresented_credential,
         )
         .await
         {
             Ok(()) => return Ok(()),
             Err(failure) if failure.is_retryable() => {
+                skip_to_live_edge = failure.skips_to_live_edge;
                 if session_connected {
                     disconnected_at = Some(Instant::now());
                     reconnect_attempt = 0;
@@ -850,11 +919,12 @@ async fn run_stream(
                 // otherwise a long outage fills the bounded audio channel and
                 // turns into FFI backpressure, which tombstones the lane the
                 // moment this loop was finally about to save it.
-                let shed_audio = outage_so_far > CONTINUITY_WINDOW;
+                let shed_audio = outage_so_far > CONTINUITY_WINDOW || skip_to_live_edge;
                 match wait_for_reconnect(
                     delay,
                     &mut audio_rx,
                     shed_audio,
+                    &mut recovery,
                     &mut control_rx,
                     cancel.clone(),
                     &mut paused,
@@ -885,6 +955,7 @@ async fn run_stream_session(
     session_connected: &mut bool,
     recovery: &mut StreamRecoveryState,
     reconnect_outage: Option<Duration>,
+    reconnect_skips_to_live_edge: bool,
     unpresented_credential: &mut Option<UnpresentedCredential>,
 ) -> Result<(), StreamFailure> {
     // Resolved before dialing: a single-use credential is spent the moment a
@@ -942,6 +1013,18 @@ async fn run_stream_session(
 
     let mut suppress_replay_until_provider_ms = 0_u64;
     if let Some(outage) = reconnect_outage {
+        // A lane that cut itself for outrunning the provider skips whatever
+        // the wall clock says: the backlog it is skipping is the outage, and
+        // it is over the continuity window by the rule that triggered the
+        // cut. The reported span classifies the recovery as non-continuous
+        // downstream, which is what makes the durable gap record appear.
+        let outage = if reconnect_skips_to_live_edge {
+            outage
+                .max(recovery.sent_backlog())
+                .max(CONTINUITY_WINDOW + Duration::from_millis(1))
+        } else {
+            outage
+        };
         send_event(
             event_tx,
             SttStreamEvent::RecoveryStarted {
@@ -993,8 +1076,15 @@ async fn run_stream_session(
         } else if outage > CONTINUITY_WINDOW {
             // The local encrypted journal remains authoritative for this
             // interval. Do not burst stale remote audio into the new,
-            // explicitly non-contiguous realtime epoch.
-            while audio_rx.try_recv().is_ok() {}
+            // explicitly non-contiguous realtime epoch — but every dropped
+            // frame still advances the timeline, and the projection is
+            // re-anchored only after the drain so the new origin is the true
+            // live edge rather than a point the discarded audio's duration
+            // short of it.
+            while let Ok(pcm) = audio_rx.try_recv() {
+                recovery.note_discarded(pcm.len());
+            }
+            recovery.re_anchor_to_live_edge();
         }
     } else {
         recovery.connection_origin_ms = recovery.next_audio_ms;
@@ -1065,6 +1155,22 @@ async fn run_stream_session(
                             timeouts.write,
                         ).await?;
                         recovery.record_sent(retained_pcm);
+                        // The provider accepting bytes is not the provider
+                        // keeping up. Once it is further behind than any
+                        // reconnect could replay, this stream can no longer
+                        // be continued — cut it now and rejoin at the live
+                        // edge while the lane is still healthy, rather than
+                        // waiting for the bounded channel behind it to fill
+                        // and take the lane down for good.
+                        let backlog = recovery.sent_backlog();
+                        if backlog > timeouts.live_edge_max_backlog {
+                            tracing::warn!(
+                                backlog_s = backlog.as_secs(),
+                                "Soniox lane outran its provider past the replay window; \
+                                 skipping to the live edge"
+                            );
+                            return Err(StreamFailure::behind_live_edge(backlog));
+                        }
                     }
                     Some(_) => {
                         // Paused audio is deliberately not buffered or sent remotely.
@@ -1211,6 +1317,7 @@ async fn wait_for_reconnect(
     delay: Duration,
     audio_rx: &mut mpsc::Receiver<Vec<u8>>,
     shed_audio: bool,
+    recovery: &mut StreamRecoveryState,
     control_rx: &mut mpsc::Receiver<SttStreamControl>,
     cancel: CancellationToken,
     paused: &mut bool,
@@ -1243,6 +1350,8 @@ async fn wait_for_reconnect(
                         shed_ms += (pcm.len() as u64)
                             .div_ceil(PCM_BYTES_PER_MILLISECOND)
                             .max(1);
+                        // Shed audio still happened; see `note_discarded`.
+                        recovery.note_discarded(pcm.len());
                     }
                     None => audio_open = false,
                 }
@@ -1401,6 +1510,7 @@ async fn send_event(
 ) -> Result<(), StreamFailure> {
     event_tx.send(event).await.map_err(|_| StreamFailure {
         task_error: SttError::Cancelled,
+        skips_to_live_edge: false,
         event_error: SttStreamError::Transport {
             operation: "Soniox stream event delivery".to_string(),
             message: "event receiver closed".to_string(),
@@ -1556,6 +1666,9 @@ mod tests {
             // Tests bound outages by time where production never gives up:
             // a permanently dead endpoint must end the task, not the runner.
             reconnect_outage_budget: Some(Duration::from_millis(500)),
+            // Far above anything a test sends, so the live-edge cut only
+            // fires in the tests that ask for it with a tighter bound.
+            live_edge_max_backlog: Duration::from_secs(3_600),
         }
     }
 
@@ -2152,6 +2265,135 @@ mod tests {
             Some(SttStreamEvent::Finished)
         );
         assert!(runtime.task.await.unwrap().is_ok());
+    }
+
+    /// The provider accepting bytes is not the provider keeping up. A lane
+    /// whose sent-but-unprocessed backlog outgrows the replay window must cut
+    /// itself and rejoin at the live edge — the alternative observed in
+    /// production was the bounded channel behind it filling and the lane
+    /// being killed for the rest of the recording. The skip must classify as
+    /// non-continuous (outage past the continuity window) so the durable gap
+    /// record appears downstream.
+    #[tokio::test]
+    async fn a_lane_that_outruns_its_provider_skips_to_the_live_edge() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            let (first_stream, _) = listener.accept().await.unwrap();
+            let mut first_ws = accept_async(first_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = first_ws.next().await else {
+                panic!("first session configuration missing");
+            };
+            // Accept audio but never acknowledge any progress: the lane's
+            // sent backlog grows with every frame while acknowledged stays
+            // at the origin.
+            let mut sink_open = true;
+            while sink_open {
+                match first_ws.next().await {
+                    Some(Ok(_)) => {}
+                    _ => sink_open = false,
+                }
+            }
+
+            let (second_stream, _) = listener.accept().await.unwrap();
+            let mut second_ws = accept_async(second_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = second_ws.next().await else {
+                panic!("replacement session configuration missing");
+            };
+            while let Some(Ok(message)) = second_ws.next().await {
+                if matches!(&message, Message::Text(text) if text.is_empty()) {
+                    second_ws
+                        .send(Message::Text(
+                            json!({"tokens": [], "finished": true}).to_string().into(),
+                        ))
+                        .await
+                        .unwrap();
+                    break;
+                }
+            }
+        });
+
+        let mut timeouts = short_timeouts();
+        timeouts.live_edge_max_backlog = Duration::from_millis(250);
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            timeouts,
+        );
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Connected)
+        );
+        // 100 ms of canonical PCM per frame; four frames exceed the 250 ms
+        // backlog bound while the server acknowledges nothing.
+        for _ in 0..4 {
+            runtime.audio_tx.send(vec![0u8; 3_200]).await.unwrap();
+        }
+
+        let Some(SttStreamEvent::Reconnecting { .. }) = runtime.event_rx.recv().await else {
+            panic!("an outrun lane must cut itself, not wait for its channel to fill");
+        };
+        let Some(SttStreamEvent::RecoveryStarted { outage_ms }) = runtime.event_rx.recv().await
+        else {
+            panic!("the replacement connection must announce its recovery");
+        };
+        assert!(
+            outage_ms > CONTINUITY_WINDOW.as_millis() as u64,
+            "a live-edge skip must classify as non-continuous so the gap is recorded, got {outage_ms}ms"
+        );
+        assert!(matches!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::AudioProgress { .. })
+        ));
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Connected)
+        );
+
+        runtime
+            .send_control(SttStreamControl::Finish)
+            .await
+            .unwrap();
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Finished)
+        );
+        assert!(runtime.task.await.unwrap().is_ok());
+    }
+
+    /// Audio discarded on a skip never reached any provider, but it happened:
+    /// the projection origin after the skip must sit past the discarded
+    /// span, or every later token lands early by exactly that span — time
+    /// silently compresses and the recorded gap reads as covered.
+    #[test]
+    fn discarded_audio_still_advances_the_projection_origin() {
+        let mut recovery = StreamRecoveryState::starting_at(10_000);
+        // 2s sent and acknowledged, then the provider stalls for 20s of sends.
+        for _ in 0..20 {
+            recovery.record_sent(vec![0u8; 3_200]);
+        }
+        recovery.acknowledge(2_000);
+        assert_eq!(recovery.sent_backlog(), Duration::from_millis(0));
+        for _ in 0..200 {
+            recovery.record_sent(vec![0u8; 3_200]);
+        }
+        assert_eq!(recovery.sent_backlog(), Duration::from_secs(20));
+
+        // The cut: replay abandoned, then 5s of queued audio discarded.
+        let replay = recovery.prepare_replay(CONTINUITY_WINDOW + Duration::from_secs(5));
+        assert!(replay.is_empty(), "a skip must not replay the backlog");
+        for _ in 0..50 {
+            recovery.note_discarded(3_200);
+        }
+        recovery.re_anchor_to_live_edge();
+
+        // Origin = 10s start + 22s sent + 5s discarded.
+        assert_eq!(recovery.connection_origin_ms, 10_000 + 22_000 + 5_000);
+        assert_eq!(recovery.acknowledged_ms, recovery.connection_origin_ms);
+        assert_eq!(recovery.sent_backlog(), Duration::ZERO);
     }
 
     #[test]
