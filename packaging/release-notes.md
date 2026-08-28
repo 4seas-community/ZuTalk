@@ -1,33 +1,20 @@
-# ZuTalk 0.5.4
+# ZuTalk 0.5.5
 
-Session notes are an editor now.
+Fixes note corruption when typing Chinese, Japanese, or Korean.
 
 ZuTalk requires macOS 12.5 or later.
 
-- **You can select across lines.** Selecting a passage that spans several
-  lines and copying it was previously impossible — every line was its own
-  input field, and a selection could not leave one. The notes surface is now
-  a single text view, which also brings back cut, drag-to-move text, spell
-  checking, input-method candidates, and Find (⌘F).
+- **Typing with an input method no longer duplicates what you wrote.** In
+  0.5.4, composing a word — the moment between typing the sounds and the
+  characters appearing — could be interrupted by the editor, and the input
+  method would then commit the same word repeatedly. Every intermediate
+  state was saved, so reopening the note showed the same mess. The editor
+  now stays completely out of the way until composition finishes.
 
-- **Return splits a line where the cursor is.** It used to commit the whole
-  line and add an empty one below, wherever the cursor happened to be. Text
-  after the cursor now moves to the new line, and the cursor lands there.
+- **Notes damaged by 0.5.4 still hold their content.** The repeated lines
+  were added, not written over what you had. Select across them and delete
+  in one go.
 
-- **Typing right after Return or a merge no longer loses characters.** Focus
-  used to arrive a beat late, and anything typed in that gap went to the
-  previous line — which is what made fast typing feel unreliable.
-
-- **Pasting a list gives you a list.** Multi-line text used to land in one
-  line as a single run with newline characters in it. Each pasted line now
-  becomes its own line, headings and checkboxes included.
-
-- **Up and down arrows move between lines** instead of stopping at the edge
-  of one.
-
-- **Bold, italic, inline code, links, and @mentions render inside a line**,
-  and a line can be a code block. Links open only for http and https.
-
-- **Undo, redo, and indent are visible buttons** above the notes, with their
-  keyboard shortcuts in the tooltips. They existed before, reachable only if
-  you already knew the shortcut.
+- **Typing is lighter.** Keystrokes are gathered for a moment before being
+  saved, instead of each key making its own round trip and its own undo
+  step. Anything still pending is saved before a note closes.
