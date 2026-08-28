@@ -39,7 +39,8 @@ enum BlockNoteDocument {
             result.append(attributedParagraph(for: row, isLast: index == rows.count - 1))
             // 内联标记(粗体/斜体/代码/链接/提及)叠在块属性之上。记号
             // 字符留在文本里,只被压暗 —— 字符流与存储文本严格 1:1。
-            if row.kind != .divider, !row.text.isEmpty {
+            // 代码块整行就是代码,行内记号在里面是字面量不是标记。
+            if row.kind != .divider, row.kind != .code, !row.text.isEmpty {
                 BlockNoteInline.apply(
                     to: result,
                     lineText: row.text,
@@ -80,6 +81,14 @@ enum BlockNoteDocument {
         if row.kind == .divider {
             attributes[.foregroundColor] = NSColor.separatorColor
         }
+        if row.kind == .code {
+            // 代码块靠底色成块。用混色而不是 macOS 14 才有的
+            // quaternarySystemFill —— 这条路要跑在 12.5 上。
+            attributes[.backgroundColor] = NSColor.textBackgroundColor.blended(
+                withFraction: 0.06,
+                of: NSColor.labelColor
+            ) ?? NSColor.textBackgroundColor
+        }
         return attributes
     }
 
@@ -101,6 +110,7 @@ enum BlockNoteDocument {
         case .heading1: 16
         case .heading2, .heading3: 12
         case .divider: 8
+        case .code: 6
         default: 2
         }
     }
@@ -109,6 +119,7 @@ enum BlockNoteDocument {
         switch kind {
         case .heading1, .heading2, .heading3: 6
         case .divider: 8
+        case .code: 6
         default: 2
         }
     }
@@ -119,6 +130,7 @@ enum BlockNoteDocument {
         case .heading2: .systemFont(ofSize: 18, weight: .semibold)
         case .heading3: .systemFont(ofSize: 15, weight: .semibold)
         case .quote: .systemFont(ofSize: 13).withItalic()
+        case .code: .monospacedSystemFont(ofSize: 12.5, weight: .regular)
         default: .systemFont(ofSize: 13)
         }
     }
@@ -219,6 +231,7 @@ enum BlockNoteDocument {
             case .quote: return indent + "> " + row.text
             case .task: return indent + (row.checked ? "- [x] " : "- [ ] ") + row.text
             case .divider: return indent + "---"
+            case .code: return indent + "```" + row.text
             }
         }
         .joined(separator: "\n")
@@ -238,6 +251,7 @@ enum BlockNoteDocument {
         case .quote: 4
         case .task: 5
         case .divider: 6
+        case .code: 7
         }
     }
 
@@ -250,6 +264,7 @@ enum BlockNoteDocument {
         case 4: .quote
         case 5: .task
         case 6: .divider
+        case 7: .code
         default: nil
         }
     }

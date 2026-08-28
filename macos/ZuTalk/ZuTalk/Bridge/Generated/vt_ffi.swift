@@ -8251,6 +8251,7 @@ public enum FfiOutlineKind: Equatable, Hashable {
     case quote
     case task
     case divider
+    case code
 
 
 
@@ -8286,6 +8287,8 @@ public struct FfiConverterTypeFfiOutlineKind: FfiConverterRustBuffer {
 
         case 7: return .divider
 
+        case 8: return .code
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -8320,6 +8323,10 @@ public struct FfiConverterTypeFfiOutlineKind: FfiConverterRustBuffer {
 
         case .divider:
             writeInt(&buf, Int32(7))
+
+
+        case .code:
+            writeInt(&buf, Int32(8))
 
         }
     }

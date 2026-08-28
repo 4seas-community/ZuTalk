@@ -90,9 +90,27 @@ final class BlockNoteDocumentTests: XCTestCase {
         )
     }
 
+    func testCodeBlockRoundTripsAndKeepsMarkersLiteral() {
+        let rows = [row("c", 0, "let x = **not bold**", .code)]
+        let derived = BlockNoteDocument.rows(from: BlockNoteDocument.attributedString(rows: rows))
+        XCTAssertEqual(derived[0].kind, .code)
+        XCTAssertEqual(
+            derived[0].text,
+            "let x = **not bold**",
+            "代码块里的记号是字面量,不是内联标记"
+        )
+    }
+
+    func testCodeBlockSerializesWithAFence() {
+        XCTAssertEqual(
+            BlockNoteDocument.markdownText(for: [row("c", 0, "print(1)", .code)]),
+            "```print(1)"
+        )
+    }
+
     func testKindEncodingIsStableInBothDirections() {
         let kinds: [FfiOutlineKind] = [
-            .paragraph, .heading1, .heading2, .heading3, .quote, .task, .divider,
+            .paragraph, .heading1, .heading2, .heading3, .quote, .task, .divider, .code,
         ]
         for kind in kinds {
             let raw = BlockNoteDocument.kindRawValue(kind)

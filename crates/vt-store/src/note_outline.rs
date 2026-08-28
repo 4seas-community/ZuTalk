@@ -36,6 +36,9 @@ pub enum OutlineKind {
     Quote,
     Task,
     Divider,
+    /// 等宽代码块。一行一块 —— 与其余类型同构,不引入"多行块"这种
+    /// 需要另一套光标语义的结构。
+    Code,
 }
 
 impl OutlineKind {
@@ -49,6 +52,7 @@ impl OutlineKind {
             Self::Quote => Some("quote"),
             Self::Task => Some("task"),
             Self::Divider => Some("divider"),
+            Self::Code => Some("code"),
         }
     }
 
@@ -62,6 +66,7 @@ impl OutlineKind {
             Some("quote") => Self::Quote,
             Some("task") => Self::Task,
             Some("divider") => Self::Divider,
+            Some("code") => Self::Code,
             _ => Self::Paragraph,
         }
     }
@@ -282,6 +287,7 @@ mod tests {
             OutlineKind::Quote,
             OutlineKind::Task,
             OutlineKind::Divider,
+            OutlineKind::Code,
         ];
         prop::collection::vec(
             (

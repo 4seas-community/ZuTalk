@@ -78,6 +78,13 @@ final class BlockNoteGestureTests: XCTestCase {
         XCTAssertNil(BlockNoteStore.splitRows([row("a", 0)], rowId: "ghost", head: "x", tail: "y"))
     }
 
+    func testBacktickFenceTurnsARowIntoACodeBlock() {
+        let hit = BlockNoteStore.markdownPrefix("```let x = 1")
+        XCTAssertEqual(hit?.kind, .code)
+        XCTAssertEqual(hit?.rest, "let x = 1", "记号被吃掉,余文进入代码块")
+        XCTAssertEqual(BlockNoteStore.continuationKind(after: .code), .code, "代码块顺着写下去")
+    }
+
     func testEmptySubmitExitsListOnlyForListKinds() {
         XCTAssertTrue(BlockNoteStore.emptySubmitExitsList(kind: .task))
         XCTAssertTrue(BlockNoteStore.emptySubmitExitsList(kind: .quote))

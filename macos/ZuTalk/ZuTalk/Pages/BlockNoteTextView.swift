@@ -97,6 +97,10 @@ final class BlockNoteNSTextView: NSTextView {
             NSRect(x: x + 6, y: lineRect.minY + 1, width: 2, height: lineRect.height - 2).fill()
         case .heading1, .heading2, .heading3, .divider:
             break
+        case .code:
+            // 代码块靠底色成块(见 BlockNoteDocument.attributes),记号栏
+            // 留空 —— 再画一个圆点会让它读起来像一条清单项。
+            break
         }
     }
 

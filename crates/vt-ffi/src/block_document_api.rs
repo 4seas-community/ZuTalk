@@ -85,6 +85,7 @@ pub enum FfiOutlineKind {
     Quote,
     Task,
     Divider,
+    Code,
 }
 
 impl From<FfiOutlineKind> for OutlineKind {
@@ -97,6 +98,7 @@ impl From<FfiOutlineKind> for OutlineKind {
             FfiOutlineKind::Quote => Self::Quote,
             FfiOutlineKind::Task => Self::Task,
             FfiOutlineKind::Divider => Self::Divider,
+            FfiOutlineKind::Code => Self::Code,
         }
     }
 }
@@ -111,6 +113,7 @@ impl From<OutlineKind> for FfiOutlineKind {
             OutlineKind::Quote => Self::Quote,
             OutlineKind::Task => Self::Task,
             OutlineKind::Divider => Self::Divider,
+            OutlineKind::Code => Self::Code,
         }
     }
 }

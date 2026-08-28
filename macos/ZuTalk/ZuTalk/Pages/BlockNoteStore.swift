@@ -281,6 +281,8 @@ final class BlockNoteStore: ObservableObject {
             ("- [x] ", .task, true),
             ("- [ ] ", .task, false),
             ("--- ", .divider, false),
+            ("``` ", .code, false),
+            ("```", .code, false),
             ("> ", .quote, false),
         ]
         for rule in rules where text.hasPrefix(rule.prefix) {
@@ -319,7 +321,7 @@ final class BlockNoteStore: ObservableObject {
     /// 回到段落 —— 标题下面接着写的是正文,不是又一个标题。
     static func continuationKind(after kind: FfiOutlineKind) -> FfiOutlineKind {
         switch kind {
-        case .task, .quote: kind
+        case .task, .quote, .code: kind
         default: .paragraph
         }
     }
