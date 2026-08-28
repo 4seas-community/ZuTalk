@@ -1,19 +1,33 @@
-# ZuTalk 0.5.3
+# ZuTalk 0.5.4
 
-Recordings take half the disk space they used to.
+Session notes are an editor now.
 
 ZuTalk requires macOS 12.5 or later.
 
-- **New recordings are stored at half the previous size.** ZuTalk's encrypted
-  audio store kept every 16-bit microphone sample widened to 32 bits — twice
-  the bytes for the same sound. Recordings made from this version on are
-  stored at the microphone's own width: about 115 MB per hour instead of 230.
+- **You can select across lines.** Selecting a passage that spans several
+  lines and copying it was previously impossible — every line was its own
+  input field, and a selection could not leave one. The notes surface is now
+  a single text view, which also brings back cut, drag-to-move text, spell
+  checking, input-method candidates, and Find (⌘F).
 
-- **Existing recordings are untouched.** Everything recorded before this
-  version stays exactly as it is on disk and remains fully readable —
-  playback, export, and after-stop transcription all handle both the old and
-  the new storage width, chosen per recording.
+- **Return splits a line where the cursor is.** It used to commit the whole
+  line and add an empty one below, wherever the cursor happened to be. Text
+  after the cursor now moves to the new line, and the cursor lands there.
 
-- **Nothing else changes.** Transcription quality, exports, and the audio
-  itself are identical; the removed 32-bit widening carried no information —
-  the microphone is a 16-bit source.
+- **Typing right after Return or a merge no longer loses characters.** Focus
+  used to arrive a beat late, and anything typed in that gap went to the
+  previous line — which is what made fast typing feel unreliable.
+
+- **Pasting a list gives you a list.** Multi-line text used to land in one
+  line as a single run with newline characters in it. Each pasted line now
+  becomes its own line, headings and checkboxes included.
+
+- **Up and down arrows move between lines** instead of stopping at the edge
+  of one.
+
+- **Bold, italic, inline code, links, and @mentions render inside a line**,
+  and a line can be a code block. Links open only for http and https.
+
+- **Undo, redo, and indent are visible buttons** above the notes, with their
+  keyboard shortcuts in the tooltips. They existed before, reachable only if
+  you already knew the shortcut.
