@@ -2235,6 +2235,7 @@ async fn dispatch_task(
                 aes_key,
                 audio_format.sample_rate,
                 audio_format.channels,
+                audio_format.sample_format,
                 audio_format.captured_frames,
                 db_path.to_path_buf(),
                 cb,
@@ -2297,6 +2298,7 @@ fn verify_post_stop_provider_receipt(
 struct ImmutableCaptureAudioFormat {
     sample_rate: u32,
     channels: u16,
+    sample_format: vt_pipeline::StoredSampleFormat,
     captured_frames: u64,
 }
 
@@ -2358,10 +2360,30 @@ fn immutable_capture_audio_format(
             format!("capture run {} has no captured frames", run.id),
         ));
     }
+    if run.sample_format != session_meta.sample_format {
+        return Err((
+            "capture_audio_format_mismatch".to_string(),
+            format!(
+                "capture run {} sample format {:?} does not match session format {:?}",
+                run.id, run.sample_format, session_meta.sample_format
+            ),
+        ));
+    }
+    let sample_format =
+        vt_pipeline::StoredSampleFormat::parse(&run.sample_format).ok_or_else(|| {
+            (
+                "capture_audio_format_missing".to_string(),
+                format!(
+                    "capture run {} has unknown sample format {:?}",
+                    run.id, run.sample_format
+                ),
+            )
+        })?;
 
     Ok(ImmutableCaptureAudioFormat {
         sample_rate: run_sample_rate,
         channels: run_channels,
+        sample_format,
         captured_frames: run.captured_frames,
     })
 }
@@ -2645,6 +2667,7 @@ mod tests {
                     audio_path: temp.path().join("audio.enc").to_string_lossy().into_owned(),
                     audio_key_ref: "key-48k-stereo".into(),
                     sample_rate: 48_000,
+                    sample_format: "s16".to_string(),
                     channels: 2,
                     captured_frames: 48_000,
                 },
@@ -2653,7 +2676,7 @@ mod tests {
             .unwrap();
         let meta_store = SessionMetaStore::new(&main_db).unwrap();
         meta_store
-            .set_audio_format("session-48k-stereo", 48_000, 2)
+            .set_audio_format("session-48k-stereo", 48_000, 2, "s16")
             .unwrap();
         let meta = meta_store.get_meta("session-48k-stereo").unwrap();
 
@@ -2662,12 +2685,13 @@ mod tests {
             ImmutableCaptureAudioFormat {
                 sample_rate: 48_000,
                 channels: 2,
+                sample_format: vt_pipeline::StoredSampleFormat::S16,
                 captured_frames: 48_000,
             }
         );
 
         meta_store
-            .set_audio_format("session-48k-stereo", 44_100, 2)
+            .set_audio_format("session-48k-stereo", 44_100, 2, "s16")
             .unwrap();
         let mismatched = meta_store.get_meta("session-48k-stereo").unwrap();
         let error =
@@ -2728,6 +2752,7 @@ mod tests {
                         .into_owned(),
                     audio_key_ref: format!("audio-key-{run_id}"),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -2930,6 +2955,7 @@ mod tests {
                         .into_owned(),
                     audio_key_ref: format!("audio-key-{suffix}"),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -3373,6 +3399,7 @@ mod tests {
                     audio_path: audio_path.to_string_lossy().into_owned(),
                     audio_key_ref: key_ref.into(),
                     sample_rate: 16_000,
+                    sample_format: "f32".to_string(),
                     channels: 1,
                     captured_frames: 1_600,
                 },
@@ -3392,7 +3419,7 @@ mod tests {
         let meta = SessionMetaStore::new(&db_path).unwrap();
         meta.set_encrypted_path(session_id, audio_path.to_str().unwrap(), key_ref)
             .unwrap();
-        meta.set_audio_format(session_id, 16_000, 1).unwrap();
+        meta.set_audio_format(session_id, 16_000, 1, "f32").unwrap();
         meta.set_privacy_level(session_id, "standard").unwrap();
         meta.upsert_audio_retention_chunk(&AudioChunkRetentionRecord {
             session_id: session_id.into(),

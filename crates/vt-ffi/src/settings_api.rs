@@ -503,6 +503,12 @@ fn decrypt_session_audio(core: &ZuTalkCore, session_id: &str) -> Result<Vec<u8>,
             .ok_or_else(|| CoreError::InternalError {
                 message: format!("capture audio channel count is missing: {session_id}"),
             })?;
+    let sample_format =
+        vt_pipeline::StoredSampleFormat::parse(&run.sample_format).ok_or_else(|| {
+            CoreError::InternalError {
+                message: format!("unknown stored sample format {:?}", run.sample_format),
+            }
+        })?;
     if run.captured_frames == 0 {
         return Err(CoreError::NotFound {
             message: format!("capture audio is empty: {session_id}"),
@@ -534,7 +540,7 @@ fn decrypt_session_audio(core: &ZuTalkCore, session_id: &str) -> Result<Vec<u8>,
 
     use std::io::Read;
     let mut pcm_bytes = Vec::new();
-    let bytes_per_frame = usize::from(channels).saturating_mul(4);
+    let bytes_per_frame = usize::from(channels).saturating_mul(sample_format.bytes_per_sample());
     for (index, chunk) in chunks.iter().enumerate() {
         let start_frame = (index as u64).saturating_mul(frames_per_chunk);
         let end_frame = run
@@ -590,7 +596,11 @@ fn decrypt_session_audio(core: &ZuTalkCore, session_id: &str) -> Result<Vec<u8>,
         pcm_bytes.extend_from_slice(&plaintext);
     }
 
-    let samples = vt_pipeline::recording::bytes_to_f32_samples(&pcm_bytes);
+    let pcm_f32 = match sample_format {
+        vt_pipeline::StoredSampleFormat::S16 => vt_pipeline::s16le_bytes_to_f32le(&pcm_bytes),
+        vt_pipeline::StoredSampleFormat::F32 => pcm_bytes,
+    };
+    let samples = vt_pipeline::recording::bytes_to_f32_samples(&pcm_f32);
     vt_audio::encode::encode_wav_bytes(&samples, sample_rate, channels).map_err(|error| {
         CoreError::InternalError {
             message: format!("encode capture audio WAV: {error}"),
@@ -886,6 +896,7 @@ mod tests {
                     audio_journal_path: format!("/{sid}.journal"),
                     audio_key_ref: format!("key-{sid}"),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -978,6 +989,7 @@ mod tests {
                     audio_journal_path: format!("/{sid}.journal"),
                     audio_key_ref: format!("key-{sid}"),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -1102,6 +1114,7 @@ mod tests {
                     audio_journal_path: format!("/{sid}.journal"),
                     audio_key_ref: format!("key-{sid}"),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,

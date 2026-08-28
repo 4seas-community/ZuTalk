@@ -6405,6 +6405,7 @@ impl ZuTalkCore {
                 id: run_id.clone(),
                 notebook_id: notebook_id.clone(),
                 session_id: session_id.clone(),
+                sample_format: vt_pipeline::StoredSampleFormat::S16.as_str().to_string(),
                 remote_health: if requested_remote {
                     RemoteHealth::Connecting
                 } else {
@@ -7075,7 +7076,12 @@ impl ZuTalkCore {
                 )
                 .map_err(store_error)?;
             self.session_meta
-                .set_audio_format(&session_id, result.sample_rate, result.channels)
+                .set_audio_format(
+                    &session_id,
+                    result.sample_rate,
+                    result.channels,
+                    result.sample_format.as_str(),
+                )
                 .map_err(store_error)?;
             self.record_source_audio_retention_chunks_strict(&session_id, &result.audio_chunks)?;
             let current = self
@@ -8056,7 +8062,12 @@ impl ZuTalkCore {
             )
             .map_err(store_error)?;
         self.session_meta
-            .set_audio_format(session_id, result.sample_rate, result.channels)
+            .set_audio_format(
+                session_id,
+                result.sample_rate,
+                result.channels,
+                result.sample_format.as_str(),
+            )
             .map_err(store_error)?;
         self.record_source_audio_retention_chunks_strict(session_id, &result.audio_chunks)?;
         let current = self
@@ -10688,6 +10699,7 @@ mod tests {
                     audio_journal_path: "/private/gap-ffi.journal".into(),
                     audio_key_ref: "private-gap-ffi-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -10751,6 +10763,7 @@ mod tests {
                     audio_journal_path: "/private/history-ffi.journal".into(),
                     audio_key_ref: "private-history-ffi-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -10834,6 +10847,7 @@ mod tests {
                     audio_journal_path: "/private/history-switch.journal".into(),
                     audio_key_ref: "private-history-switch-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &captured_profile,
@@ -12524,6 +12538,7 @@ mod tests {
                     audio_journal_path: format!("/private/{session_id}.journal"),
                     audio_key_ref: format!("{session_id}-key"),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &stored_profile,
@@ -12602,6 +12617,7 @@ mod tests {
                     audio_journal_path: "/private/withdraw-speculative.journal".into(),
                     audio_key_ref: "withdraw-speculative-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &stored_profile,
@@ -12716,6 +12732,7 @@ mod tests {
                     audio_journal_path: "/private/assembler-store-shape.journal".into(),
                     audio_key_ref: "assembler-store-shape-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &stored_profile,
@@ -16448,6 +16465,7 @@ mod tests {
                     audio_journal_path: "/private/aux-before-canonical.journal".into(),
                     audio_key_ref: "aux-before-canonical-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &stored_profile,
@@ -17278,6 +17296,7 @@ mod tests {
                     audio_journal_path: "incremental.journal".into(),
                     audio_key_ref: "incremental-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -17415,6 +17434,7 @@ mod tests {
                     audio_journal_path: "callback-order.journal".into(),
                     audio_key_ref: "callback-order-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -17469,6 +17489,7 @@ mod tests {
                     audio_journal_path: "remote-overlay.journal".into(),
                     audio_key_ref: "remote-overlay-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -17541,6 +17562,7 @@ mod tests {
                     audio_journal_path: "linearized-pause.journal".into(),
                     audio_key_ref: "linearized-pause-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -17610,6 +17632,7 @@ mod tests {
                     audio_journal_path: "direct-pause.journal".into(),
                     audio_key_ref: "direct-pause-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -17663,6 +17686,7 @@ mod tests {
                     audio_journal_path: "ack-order.journal".into(),
                     audio_key_ref: "ack-order-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -17778,6 +17802,7 @@ mod tests {
                     audio_journal_path: "capture-a.journal".into(),
                     audio_key_ref: "capture-key-a".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,
@@ -18051,7 +18076,8 @@ mod tests {
             vt_crypto::DecryptReader::new(&recovered.audio_chunks[0].path, &key).unwrap();
         let mut plaintext = Vec::new();
         std::io::Read::read_to_end(&mut reader, &mut plaintext).unwrap();
-        assert_eq!(plaintext.len(), 1_600 * 4);
+        // s16 storage: two bytes per sample, half the former f32 footprint.
+        assert_eq!(plaintext.len(), 1_600 * 2);
     }
 
     #[test]
@@ -19311,6 +19337,7 @@ mod tests {
                         .into_owned(),
                     audio_key_ref: "intentionally-missing-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                     captured_frames: 16_000,
                 },
@@ -19498,6 +19525,7 @@ mod tests {
                         .into_owned(),
                     audio_key_ref: "missing-after-provider-success-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                     captured_frames: 16_000,
                 },
@@ -19691,6 +19719,7 @@ mod tests {
                         .into_owned(),
                     audio_key_ref: "purge-race-missing-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                     captured_frames: 16_000,
                 },
@@ -19933,6 +19962,7 @@ mod tests {
                     audio_journal_path: "capture-async-local-retry.journal".into(),
                     audio_key_ref: "capture-key-async-local-retry".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,

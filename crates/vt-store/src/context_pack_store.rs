@@ -2696,6 +2696,7 @@ mod tests {
                     audio_journal_path: "/tmp/context.journal".into(),
                     audio_key_ref: "audio-key".into(),
                     sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
                     channels: 1,
                 },
                 &profile,

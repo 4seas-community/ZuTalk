@@ -563,6 +563,7 @@ pub struct NewNotebookCaptureRun {
     pub audio_key_ref: String,
     pub sample_rate: u32,
     pub channels: u16,
+    pub sample_format: String,
 }
 
 /// Finalized local audio imported directly into a Notebook.
@@ -580,6 +581,7 @@ pub struct NewCompletedNotebookImportRun {
     pub sample_rate: u32,
     pub channels: u16,
     pub captured_frames: u64,
+    pub sample_format: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -611,6 +613,7 @@ pub struct NotebookCaptureRun {
     pub audio_key_ref: Option<String>,
     pub sample_rate: Option<u32>,
     pub channels: Option<u16>,
+    pub sample_format: String,
     pub captured_frames: u64,
     pub created_at: String,
     pub updated_at: String,
@@ -1359,9 +1362,9 @@ impl NotebookCaptureStore {
             "INSERT INTO notebook_capture_runs
              (id, notebook_id, session_id, profile_revision, profile_snapshot_json,
               capture_state, remote_health, projection_state, audio_journal_path,
-              audio_key_ref, sample_rate, channels, captured_frames, created_at, updated_at,
-              async_task_state)
-             SELECT ?1, ?2, ?3, ?4, ?5, 'recording', ?6, 'pending', ?7, ?8, ?9, ?10,
+              audio_key_ref, sample_rate, channels, sample_format, captured_frames,
+              created_at, updated_at, async_task_state)
+             SELECT ?1, ?2, ?3, ?4, ?5, 'recording', ?6, 'pending', ?7, ?8, ?9, ?10, ?24,
                     0, ?11, ?11, 'none'
              FROM notebook_capture_profiles
              WHERE notebook_id = ?2 AND revision = ?4
@@ -1397,6 +1400,7 @@ impl NotebookCaptureStore {
                 profile_snapshot.send_context_to_soniox,
                 profile_snapshot.created_at,
                 profile_snapshot.updated_at,
+                input.sample_format,
             ],
         )?;
         if inserted == 0 {
@@ -1490,9 +1494,9 @@ impl NotebookCaptureStore {
             "INSERT INTO notebook_capture_runs
              (id, notebook_id, session_id, profile_revision, profile_snapshot_json,
               capture_state, remote_health, projection_state, audio_journal_path,
-              audio_key_ref, sample_rate, channels, captured_frames, created_at, updated_at,
-              async_task_state)
-             SELECT ?1, ?2, ?3, ?4, ?5, 'recording', ?6, 'pending', ?7, ?8, ?9, ?10,
+              audio_key_ref, sample_rate, channels, sample_format, captured_frames,
+              created_at, updated_at, async_task_state)
+             SELECT ?1, ?2, ?3, ?4, ?5, 'recording', ?6, 'pending', ?7, ?8, ?9, ?10, ?24,
                     0, ?11, ?11, 'none'
              FROM notebook_capture_profiles
              WHERE notebook_id = ?2 AND revision = ?4
@@ -1528,6 +1532,7 @@ impl NotebookCaptureStore {
                 profile_snapshot.send_context_to_soniox,
                 profile_snapshot.created_at,
                 profile_snapshot.updated_at,
+                input.sample_format,
             ],
         )?;
         if inserted == 0 {
@@ -1597,9 +1602,9 @@ impl NotebookCaptureStore {
             "INSERT INTO notebook_capture_runs
              (id, notebook_id, session_id, profile_revision, profile_snapshot_json,
               capture_state, remote_health, projection_state, audio_path, audio_key_ref,
-              sample_rate, channels, captured_frames, created_at, updated_at, completed_at,
-              async_task_state)
-             SELECT ?1, ?2, ?3, ?4, ?5, 'completed', 'off', 'ready', ?6, ?7, ?8, ?9,
+              sample_rate, channels, sample_format, captured_frames, created_at,
+              updated_at, completed_at, async_task_state)
+             SELECT ?1, ?2, ?3, ?4, ?5, 'completed', 'off', 'ready', ?6, ?7, ?8, ?9, ?24,
                     ?10, ?11, ?11, ?11, 'none'
              FROM notebook_capture_profiles
              WHERE notebook_id = ?2 AND revision = ?4
@@ -1635,6 +1640,7 @@ impl NotebookCaptureStore {
                 profile_snapshot.send_context_to_soniox,
                 profile_snapshot.created_at,
                 profile_snapshot.updated_at,
+                input.sample_format,
             ],
         )?;
         if inserted == 0 {
@@ -4779,6 +4785,7 @@ impl NotebookCaptureStore {
                         r.async_projection_state,
                         r.realtime_loro_desired_revision,
                         r.realtime_loro_applied_revision,
+                        r.sample_format,
                         CASE
                             WHEN EXISTS (
                                 SELECT 1 FROM audio_retention_chunks retained
@@ -4809,7 +4816,7 @@ impl NotebookCaptureStore {
                  ORDER BY r.created_at ASC, r.id ASC",
             )?;
             let rows = stmt.query_map([notebook_id], |row| {
-                Ok((capture_run_from_row(row)?, row.get::<_, bool>(33)?))
+                Ok((capture_run_from_row(row)?, row.get::<_, bool>(34)?))
             })?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
@@ -5165,7 +5172,8 @@ const RUN_SELECT: &str =
             async_task_state, async_authorized_at_ms, async_language_hint,
             async_task_id, async_task_payload_sha256,
             async_projection_state,
-            realtime_loro_desired_revision, realtime_loro_applied_revision
+            realtime_loro_desired_revision, realtime_loro_applied_revision,
+            sample_format
      FROM notebook_capture_runs";
 
 const UTTERANCE_SELECT: &str =
@@ -6743,6 +6751,7 @@ fn capture_run_from_row(row: &Row<'_>) -> rusqlite::Result<NotebookCaptureRun> {
             .map_err(to_sql_conversion_error)?,
         realtime_loro_applied_revision: i64_to_u64(row.get(32)?, "realtime Loro applied revision")
             .map_err(to_sql_conversion_error)?,
+        sample_format: row.get(33)?,
     })
 }
 
@@ -8301,6 +8310,7 @@ mod tests {
             audio_journal_path: format!("/tmp/{suffix}.journal"),
             audio_key_ref: format!("audio-key-{suffix}"),
             sample_rate: 16_000,
+            sample_format: "s16".to_string(),
             channels: 1,
         }
     }
@@ -8313,6 +8323,7 @@ mod tests {
             audio_path: format!("/tmp/{suffix}.chunk.00000.enc"),
             audio_key_ref: format!("import-audio-key-{suffix}"),
             sample_rate: 48_000,
+            sample_format: "s16".to_string(),
             channels: 2,
             captured_frames: 96_000,
         }

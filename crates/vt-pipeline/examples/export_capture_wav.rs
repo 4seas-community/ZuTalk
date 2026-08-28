@@ -18,6 +18,10 @@ fn main() {
         .unwrap_or_else(|_| "16000".into())
         .parse()
         .unwrap();
+    // Chunk sample width, from the session's run row (`sample_format`):
+    // "f32" for recordings made before the s16 storage change, "s16" after.
+    let format = env::var("ZT_SAMPLE_FORMAT").unwrap_or_else(|_| "f32".into());
+    let format = format.as_str();
 
     let store = FileKeyStore::new(data_dir.join("Secrets/content-keys.json")).expect("key store");
     let key = store
@@ -57,9 +61,18 @@ fn main() {
             }
             let plain = decrypt_chunk(&raw[offset..offset + len], &key).expect("decrypt");
             offset += len;
-            for frame in plain.chunks_exact(4) {
-                let value = f32::from_le_bytes([frame[0], frame[1], frame[2], frame[3]]);
-                samples.push((value.clamp(-1.0, 1.0) * 32767.0) as i16);
+            match format {
+                "s16" => {
+                    for frame in plain.chunks_exact(2) {
+                        samples.push(i16::from_le_bytes([frame[0], frame[1]]));
+                    }
+                }
+                _ => {
+                    for frame in plain.chunks_exact(4) {
+                        let value = f32::from_le_bytes([frame[0], frame[1], frame[2], frame[3]]);
+                        samples.push((value.clamp(-1.0, 1.0) * 32767.0) as i16);
+                    }
+                }
             }
         }
     }

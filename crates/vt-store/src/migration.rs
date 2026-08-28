@@ -1,7 +1,7 @@
-//! ZuTalk SQLite v31 schema.
+//! ZuTalk SQLite v32 schema.
 //!
-//! Fresh databases are installed directly at v31. The eight immediately
-//! preceding Notebook schemas (v23 through v30) are migrated in place so
+//! Fresh databases are installed directly at v32. The nine immediately
+//! preceding Notebook schemas (v23 through v31) are migrated in place so
 //! existing capture data remains available; older retired product schemas are
 //! still rejected.
 //!
@@ -20,7 +20,8 @@ const REALTIME_LORO_VERSION: i32 = 27;
 const TRANSLATION_INBOX_VERSION: i32 = 28;
 const TRANSCRIPT_GAPS_VERSION: i32 = 29;
 const REMOTE_ARTIFACTS_VERSION: i32 = 30;
-const CURRENT_VERSION: i32 = 31;
+const INBOX_MULTI_SEGMENT_VERSION: i32 = 31;
+const CURRENT_VERSION: i32 = 32;
 
 const V23_TABLES: &[&str] = &[
     "audio_retention_chunks",
@@ -422,7 +423,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v29_to_v30(conn)?;
             validate_v30_baseline(conn)?;
             migrate_v30_to_v31(conn)?;
-            validate_v31_baseline(conn)
+            validate_v31_baseline(conn)?;
+            migrate_v31_to_v32(conn)?;
+            validate_v32_baseline(conn)
         }
         SPEAKER_VERSION => {
             validate_v24_baseline(conn)?;
@@ -439,7 +442,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v29_to_v30(conn)?;
             validate_v30_baseline(conn)?;
             migrate_v30_to_v31(conn)?;
-            validate_v31_baseline(conn)
+            validate_v31_baseline(conn)?;
+            migrate_v31_to_v32(conn)?;
+            validate_v32_baseline(conn)
         }
         SELECTED_LANGUAGES_VERSION => {
             validate_v25_baseline(conn)?;
@@ -454,7 +459,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v29_to_v30(conn)?;
             validate_v30_baseline(conn)?;
             migrate_v30_to_v31(conn)?;
-            validate_v31_baseline(conn)
+            validate_v31_baseline(conn)?;
+            migrate_v31_to_v32(conn)?;
+            validate_v32_baseline(conn)
         }
         MULTILINGUAL_VERSION => {
             validate_v26_baseline(conn)?;
@@ -467,7 +474,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v29_to_v30(conn)?;
             validate_v30_baseline(conn)?;
             migrate_v30_to_v31(conn)?;
-            validate_v31_baseline(conn)
+            validate_v31_baseline(conn)?;
+            migrate_v31_to_v32(conn)?;
+            validate_v32_baseline(conn)
         }
         REALTIME_LORO_VERSION => {
             validate_v27_baseline(conn)?;
@@ -478,7 +487,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v29_to_v30(conn)?;
             validate_v30_baseline(conn)?;
             migrate_v30_to_v31(conn)?;
-            validate_v31_baseline(conn)
+            validate_v31_baseline(conn)?;
+            migrate_v31_to_v32(conn)?;
+            validate_v32_baseline(conn)
         }
         TRANSLATION_INBOX_VERSION => {
             validate_v28_baseline(conn)?;
@@ -487,16 +498,25 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v29_to_v30(conn)?;
             validate_v30_baseline(conn)?;
             migrate_v30_to_v31(conn)?;
-            validate_v31_baseline(conn)
+            validate_v31_baseline(conn)?;
+            migrate_v31_to_v32(conn)?;
+            validate_v32_baseline(conn)
         }
         TRANSCRIPT_GAPS_VERSION => {
             validate_v29_baseline(conn)?;
             migrate_v29_to_v30(conn)?;
             validate_v30_baseline(conn)?;
             migrate_v30_to_v31(conn)?;
-            validate_v31_baseline(conn)
+            validate_v31_baseline(conn)?;
+            migrate_v31_to_v32(conn)?;
+            validate_v32_baseline(conn)
         }
-        CURRENT_VERSION => validate_v31_baseline(conn),
+        INBOX_MULTI_SEGMENT_VERSION => {
+            validate_v31_baseline(conn)?;
+            migrate_v31_to_v32(conn)?;
+            validate_v32_baseline(conn)
+        }
+        CURRENT_VERSION => validate_v32_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
     }?;
 
@@ -530,7 +550,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, schema {INBOX_MULTI_SEGMENT_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -646,9 +666,32 @@ fn validate_v30_baseline(conn: &Connection) -> SqlResult<()> {
 }
 
 fn validate_v31_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v30_baseline_objects(conn, CURRENT_VERSION)?;
+    validate_v30_baseline_objects(conn, INBOX_MULTI_SEGMENT_VERSION)?;
     // v31 的实质变化只在索引唯一性里:一条 canonical 语言车道可以持有多个
     // 辅助分段,所以绑定索引不再是 UNIQUE。
+    let index_sql = schema_object_sql(conn, "index", "idx_realtime_translation_inbox_bound_lane")?
+        .to_ascii_lowercase();
+    if index_sql.contains("unique") {
+        return Err(schema_reset_required(INBOX_MULTI_SEGMENT_VERSION));
+    }
+    Ok(())
+}
+
+fn validate_v32_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v31_baseline_objects(conn)?;
+    for table in ["session_meta", "notebook_capture_runs"] {
+        let table_sql = schema_object_sql(conn, "table", table)?.to_ascii_lowercase();
+        if !table_sql.contains("sample_format") {
+            return Err(schema_reset_required(CURRENT_VERSION));
+        }
+    }
+    Ok(())
+}
+
+/// v31's own object checks, callable from the v32 validator without asserting
+/// the v31 version number in its error.
+fn validate_v31_baseline_objects(conn: &Connection) -> SqlResult<()> {
+    validate_v30_baseline_objects(conn, CURRENT_VERSION)?;
     let index_sql = schema_object_sql(conn, "index", "idx_realtime_translation_inbox_bound_lane")?
         .to_ascii_lowercase();
     if index_sql.contains("unique") {
@@ -676,8 +719,11 @@ fn validate_v24_or_later_baseline(conn: &Connection, claimed_version: i32) -> Sq
     let has_transcript_gaps = claimed_version >= TRANSCRIPT_GAPS_VERSION;
     let has_remote_artifact_journal = claimed_version >= REMOTE_ARTIFACTS_VERSION;
     let (tables, indexes, triggers) = match claimed_version {
-        // v31 changed one index's uniqueness, not the object set.
-        CURRENT_VERSION | REMOTE_ARTIFACTS_VERSION => (V30_TABLES, V29_INDEXES, V29_TRIGGERS),
+        // v31 changed one index's uniqueness and v32 added columns; neither
+        // changed the object set.
+        CURRENT_VERSION | INBOX_MULTI_SEGMENT_VERSION | REMOTE_ARTIFACTS_VERSION => {
+            (V30_TABLES, V29_INDEXES, V29_TRIGGERS)
+        }
         TRANSCRIPT_GAPS_VERSION => (V29_TABLES, V29_INDEXES, V29_TRIGGERS),
         TRANSLATION_INBOX_VERSION => (V28_TABLES, V28_INDEXES, V28_TRIGGERS),
         REALTIME_LORO_VERSION => (V27_TABLES, V27_INDEXES, V27_TRIGGERS),
@@ -1478,6 +1524,8 @@ fn install_current_baseline(conn: &Connection) -> SqlResult<()> {
             privacy_level         TEXT,
             sample_rate           INTEGER CHECK(sample_rate IS NULL OR sample_rate > 0),
             channels              INTEGER CHECK(channels IS NULL OR channels > 0),
+            sample_format         TEXT NOT NULL DEFAULT 'f32'
+                                       CHECK(sample_format IN ('f32', 's16')),
             CHECK((encrypted_path IS NULL) = (key_id IS NULL))
         );
 
@@ -2020,6 +2068,8 @@ fn notebook_capture_runs_schema() -> &'static str {
             audio_path                  TEXT,
             audio_key_ref               TEXT,
             sample_rate                 INTEGER CHECK(sample_rate IS NULL OR sample_rate > 0),
+            sample_format               TEXT NOT NULL DEFAULT 'f32'
+                                             CHECK(sample_format IN ('f32', 's16')),
             channels                    INTEGER CHECK(channels IS NULL OR channels > 0),
             captured_frames             INTEGER NOT NULL DEFAULT 0 CHECK(captured_frames >= 0),
             created_at                  TEXT NOT NULL,
@@ -2369,9 +2419,38 @@ fn migrate_v30_to_v31(conn: &Connection) -> SqlResult<()> {
             WHERE bound_utterance_id IS NOT NULL;
         "#,
     )?;
+    tx.pragma_update(None, "user_version", INBOX_MULTI_SEGMENT_VERSION)?;
+    tx.commit()?;
+    tracing::info!(
+        "migrated ZuTalk schema v{REMOTE_ARTIFACTS_VERSION} to v{INBOX_MULTI_SEGMENT_VERSION}"
+    );
+    Ok(())
+}
+
+/// v32: stored audio records its sample width. Every earlier session stored
+/// f32; the column's default states that, so existing rows need no rewrite
+/// and every reader picks the right frame width from the same snapshot that
+/// gives it the sample rate.
+fn migrate_v31_to_v32(conn: &Connection) -> SqlResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    // Column-guarded so the migration is resumable and tolerant of a table
+    // that already carries the column (a run interrupted between the two
+    // ALTERs, or a test fixture downgraded from a newer baseline).
+    for table in ["session_meta", "notebook_capture_runs"] {
+        if tx
+            .prepare(&format!("SELECT sample_format FROM {table} LIMIT 0"))
+            .is_ok()
+        {
+            continue;
+        }
+        tx.execute_batch(&format!(
+            "ALTER TABLE {table} ADD COLUMN sample_format TEXT NOT NULL DEFAULT 'f32'
+                 CHECK(sample_format IN ('f32', 's16'));"
+        ))?;
+    }
     tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated ZuTalk schema v{REMOTE_ARTIFACTS_VERSION} to v{CURRENT_VERSION}");
+    tracing::info!("migrated ZuTalk schema v{INBOX_MULTI_SEGMENT_VERSION} to v{CURRENT_VERSION}");
     Ok(())
 }
 
@@ -2469,6 +2548,51 @@ mod tests {
         )
         .unwrap();
         validate_v26_baseline(conn).unwrap();
+    }
+
+    /// The upgrade every existing installation runs: a v31 database whose
+    /// audio predates the s16 change. The new column arrives with 'f32' as
+    /// the recorded truth for every existing row — those bytes really are
+    /// f32 — and the migration is resumable past a column that already
+    /// exists.
+    #[test]
+    fn migration_v31_to_v32_records_existing_audio_as_f32() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE session_meta DROP COLUMN sample_format;
+             ALTER TABLE notebook_capture_runs DROP COLUMN sample_format;
+             PRAGMA user_version = 31;",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO session_meta (session_id, sample_rate, channels)
+             VALUES ('legacy-session', 16000, 1)",
+            [],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        assert_eq!(
+            conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
+                .unwrap(),
+            CURRENT_VERSION
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT sample_format FROM session_meta WHERE session_id = 'legacy-session'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap(),
+            "f32",
+            "audio stored before the change is f32 and must be recorded as such"
+        );
+        // Resumable: running the migration again over the migrated schema is
+        // a no-op rather than a duplicate-column failure.
+        conn.pragma_update(None, "user_version", 31).unwrap();
+        run_migrations(&conn).unwrap();
     }
 
     #[test]
@@ -2635,6 +2759,7 @@ mod tests {
                 "audio_path",
                 "audio_key_ref",
                 "sample_rate",
+                "sample_format",
                 "channels",
                 "captured_frames",
                 "created_at",

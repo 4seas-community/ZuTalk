@@ -19,6 +19,9 @@ pub struct SessionMeta {
     pub sample_rate: Option<u32>,
     /// 加密音频 PCM 的声道数。
     pub channels: Option<u16>,
+    /// 加密音频 PCM 的样本宽度: "f32"(历史) 或 "s16"(现行)。
+    /// 字节本身是密文,读取端必须从这里拿帧宽,和采样率同一快照。
+    pub sample_format: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,13 +95,15 @@ impl SessionMetaStore {
         session_id: &str,
         sample_rate: u32,
         channels: u16,
+        sample_format: &str,
     ) -> Result<(), SessionMetaError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO session_meta (session_id, sample_rate, channels)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(session_id) DO UPDATE SET sample_rate=?2, channels=?3",
-            rusqlite::params![session_id, sample_rate, channels],
+            "INSERT INTO session_meta (session_id, sample_rate, channels, sample_format)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(session_id) DO UPDATE
+                 SET sample_rate=?2, channels=?3, sample_format=?4",
+            rusqlite::params![session_id, sample_rate, channels, sample_format],
         )?;
         Ok(())
     }
@@ -284,7 +289,7 @@ impl SessionMetaStore {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
             "SELECT session_id, encrypted_path, key_id, tokens_json,
-                    privacy_level, sample_rate, channels
+                    privacy_level, sample_rate, channels, sample_format
              FROM session_meta WHERE session_id = ?1",
             [session_id],
             |row| {
@@ -301,6 +306,7 @@ impl SessionMetaStore {
                     privacy_level: row.get(4)?,
                     sample_rate,
                     channels,
+                    sample_format: row.get(7)?,
                 })
             },
         )

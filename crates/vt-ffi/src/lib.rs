@@ -1259,7 +1259,7 @@ pub(crate) fn recover_interrupted_capture_audio_run(
         .channels
         .ok_or_else(|| "interrupted capture channel count is missing".to_string())?;
 
-    let (audio_path, chunks, captured_frames) = if journal_path.exists() {
+    let (audio_path, chunks, captured_frames, sample_format) = if journal_path.exists() {
         let key = key_store
             .load_key(key_ref)
             .map_err(|error| format!("interrupted capture key unavailable: {error}"))?;
@@ -1280,6 +1280,10 @@ pub(crate) fn recover_interrupted_capture_audio_run(
             audio_path,
             recovered.audio_chunks,
             recovered.captured_frames,
+            // The journal magic is the authority: a crash journal written
+            // before the s16 change recovers as the f32 it is, whatever the
+            // run row's default says.
+            recovered.sample_format,
         )
     } else if let Some(audio_path) = run
         .audio_path
@@ -1289,7 +1293,14 @@ pub(crate) fn recover_interrupted_capture_audio_run(
         let chunks =
             indexed_capture_chunks(data_dir, &run.session_id, run.captured_frames, sample_rate)
                 .map_err(|error| format!("rebuild recovered capture chunk index: {error}"))?;
-        (audio_path.to_string(), chunks, run.captured_frames)
+        let sample_format = vt_pipeline::StoredSampleFormat::parse(&run.sample_format)
+            .ok_or_else(|| format!("unknown stored sample format {:?}", run.sample_format))?;
+        (
+            audio_path.to_string(),
+            chunks,
+            run.captured_frames,
+            sample_format,
+        )
     } else {
         return Err("interrupted capture has no recoverable audio".to_string());
     };
@@ -1300,6 +1311,7 @@ pub(crate) fn recover_interrupted_capture_audio_run(
         key_ref,
         sample_rate,
         channels,
+        sample_format,
         captured_frames,
         chunks: &chunks,
     };
@@ -1366,6 +1378,7 @@ struct RecoveredCaptureIndex<'a> {
     key_ref: &'a str,
     sample_rate: u32,
     channels: u16,
+    sample_format: vt_pipeline::StoredSampleFormat,
     captured_frames: u64,
     chunks: &'a [RecordingAudioChunk],
 }
@@ -1387,6 +1400,7 @@ fn persist_recovered_capture_indexes(
             recovered.session_id,
             recovered.sample_rate,
             recovered.channels,
+            recovered.sample_format.as_str(),
         )
         .map_err(|error| format!("set recovered audio format: {error}"))?;
     for chunk in recovered.chunks {
@@ -2338,6 +2352,7 @@ mod tests {
                         audio_journal_path: journal.journal_path().to_string_lossy().into_owned(),
                         audio_key_ref: key_ref,
                         sample_rate: 16_000,
+                        sample_format: "s16".to_string(),
                         channels: 1,
                     },
                     &profile,

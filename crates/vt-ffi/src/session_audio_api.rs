@@ -177,7 +177,12 @@ impl ZuTalkCore {
 
         let materialized = (|| -> Result<ImportedAudioMaterialization, CoreError> {
             // 加密音频 PCM 并存储
-            let pcm_bytes = f32_samples_to_bytes(&decoded.samples);
+            // Imported audio is stored at the same 16-bit width as capture
+            // audio. The decode is f32 interchange, but the upload path
+            // narrows to s16 anyway, so the extra width bought disk and
+            // nothing else.
+            let pcm_bytes =
+                vt_pipeline::f32le_bytes_to_s16le(&f32_samples_to_bytes(&decoded.samples));
             let sid_uuid =
                 uuid::Uuid::parse_str(&session_id).unwrap_or_else(|_| uuid::Uuid::new_v4());
             let key_ref = self.key_store.create_session_key(&sid_uuid).map_err(|e| {
@@ -213,6 +218,7 @@ impl ZuTalkCore {
                 &pcm_bytes,
                 decoded.sample_rate,
                 decoded.channels,
+                vt_pipeline::StoredSampleFormat::S16,
             )
             .map_err(|e| CoreError::InternalError {
                 message: format!("write audio chunks: {e}"),
@@ -233,7 +239,12 @@ impl ZuTalkCore {
             // 记录真实 sample_rate 和 channels，确保导出能重建可播放的 WAV。
             before_metadata_step(ImportMetadataStep::AudioFormat)?;
             self.session_meta
-                .set_audio_format(&session_id, decoded.sample_rate, decoded.channels)
+                .set_audio_format(
+                    &session_id,
+                    decoded.sample_rate,
+                    decoded.channels,
+                    vt_pipeline::StoredSampleFormat::S16.as_str(),
+                )
                 .map_err(|error| CoreError::InternalError {
                     message: format!("record authoritative import audio format: {error}"),
                 })?;
@@ -382,6 +393,10 @@ impl ZuTalkCore {
             })?;
         let sample_rate = meta.sample_rate.unwrap_or(16000);
         let channels = meta.channels.unwrap_or(1);
+        let sample_format = vt_pipeline::StoredSampleFormat::parse(&meta.sample_format)
+            .ok_or_else(|| CoreError::InternalError {
+                message: format!("unknown stored sample format {:?}", meta.sample_format),
+            })?;
 
         let mut chunks = self
             .session_meta
@@ -392,7 +407,7 @@ impl ZuTalkCore {
             .collect::<Vec<_>>();
         chunks.sort_by_key(|chunk| (chunk.start_ms, chunk.chunk_id.clone()));
         if !chunks.is_empty() {
-            let bytes_per_frame = channels.max(1) as usize * 4;
+            let bytes_per_frame = channels.max(1) as usize * sample_format.bytes_per_sample();
             let mut out = Vec::new();
             for chunk in chunks {
                 if chunk.end_ms <= start_ms || chunk.start_ms >= end_ms {
@@ -425,11 +440,16 @@ impl ZuTalkCore {
                 }
             }
             if !out.is_empty() {
-                return Ok(out);
+                // The FFI contract stays f32 interchange; s16-stored sessions
+                // widen on the way out, legacy f32 sessions pass through.
+                return Ok(match sample_format {
+                    vt_pipeline::StoredSampleFormat::S16 => vt_pipeline::s16le_bytes_to_f32le(&out),
+                    vt_pipeline::StoredSampleFormat::F32 => out,
+                });
             }
         }
 
-        // 解密指定时间范围
+        // 解密指定时间范围(单文件 legacy 路径,只有 f32 时代的会话会走到)
         let range = DecryptRange {
             start_ms,
             end_ms,
@@ -746,7 +766,7 @@ mod tests {
             .set_encrypted_path("chunked-session", "compat-first-chunk", "chunk-key")
             .unwrap();
         core.session_meta
-            .set_audio_format("chunked-session", 1000, 1)
+            .set_audio_format("chunked-session", 1000, 1, "f32")
             .unwrap();
 
         let chunk0 = vt_pipeline::session_audio_chunk_path(tmp.path(), "chunked-session", 0);

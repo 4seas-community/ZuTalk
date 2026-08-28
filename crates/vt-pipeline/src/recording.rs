@@ -13,8 +13,71 @@ use vt_crypto::decrypt::encrypt_to_file;
 use vt_crypto::SessionKey;
 use vt_crypto::{decrypt_chunk, encrypt_chunk};
 
-const CAPTURE_JOURNAL_MAGIC: &[u8; 8] = b"VTCAPJ1\0";
+/// Journal whose records are f32le samples — every journal written before
+/// sample storage narrowed to s16. Still fully readable: startup recovery of
+/// a crash that predates the update must not lose the recording.
+const CAPTURE_JOURNAL_MAGIC_F32: &[u8; 8] = b"VTCAPJ1\0";
+/// Journal whose records are s16le samples. The microphone delivers 16-bit
+/// samples; widening them to f32 for storage doubled every recording's disk
+/// footprint while adding no information — the provider upload narrows back
+/// to s16 anyway.
+const CAPTURE_JOURNAL_MAGIC_S16: &[u8; 8] = b"VTCAPJ2\0";
 const CAPTURE_JOURNAL_SYNC_INTERVAL: u64 = 10;
+
+/// How one session's stored PCM encodes a sample. Recorded durably next to
+/// sample rate and channel count: the bytes themselves are opaque ciphertext,
+/// so every reader needs the format from the same snapshot that gave it the
+/// rate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoredSampleFormat {
+    F32,
+    S16,
+}
+
+impl StoredSampleFormat {
+    pub fn bytes_per_sample(self) -> usize {
+        match self {
+            Self::F32 => 4,
+            Self::S16 => 2,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::F32 => "f32",
+            Self::S16 => "s16",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "f32" => Some(Self::F32),
+            "s16" => Some(Self::S16),
+            _ => None,
+        }
+    }
+}
+
+/// Widens stored s16le bytes to the f32le the in-memory pipeline works in.
+pub fn s16le_bytes_to_f32le(pcm_s16le: &[u8]) -> Vec<u8> {
+    let mut f32_bytes = Vec::with_capacity(pcm_s16le.len() * 2);
+    for sample in pcm_s16le.chunks_exact(2) {
+        let value = i16::from_le_bytes([sample[0], sample[1]]) as f32 / 32768.0;
+        f32_bytes.extend_from_slice(&value.to_le_bytes());
+    }
+    f32_bytes
+}
+
+/// Narrows f32le interchange bytes to the s16le the store keeps.
+pub fn f32le_bytes_to_s16le(pcm_f32le: &[u8]) -> Vec<u8> {
+    let mut s16_bytes = Vec::with_capacity(pcm_f32le.len() / 2);
+    for sample in pcm_f32le.chunks_exact(4) {
+        let value = f32::from_le_bytes([sample[0], sample[1], sample[2], sample[3]]);
+        let scaled = (value.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+        s16_bytes.extend_from_slice(&scaled.to_le_bytes());
+    }
+    s16_bytes
+}
 const MAX_CAPTURE_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
 /// Container for every per-session audio directory, relative to the data dir.
@@ -90,6 +153,7 @@ pub struct RecordingResult {
     pub duration_ms: u64,
     pub sample_rate: u32,
     pub channels: u16,
+    pub sample_format: StoredSampleFormat,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,6 +194,10 @@ pub struct RecoveredCaptureAudio {
     pub sample_rate: u32,
     pub channels: u16,
     pub captured_frames: u64,
+    /// The width the journal's records — and therefore the recovered chunks —
+    /// encode a sample in. Comes from the journal magic, so a crash journal
+    /// written before the s16 change recovers as the f32 it is.
+    pub sample_format: StoredSampleFormat,
 }
 
 impl CaptureAudioJournal {
@@ -141,7 +209,7 @@ impl CaptureAudioJournal {
         create_session_audio_dir(&config.data_dir, &session_id)?;
         let journal_path = session_capture_journal_path(&config.data_dir, &session_id);
         let file = create_capture_journal_file(&journal_path, |file| {
-            file.write_all(CAPTURE_JOURNAL_MAGIC)?;
+            file.write_all(CAPTURE_JOURNAL_MAGIC_S16)?;
             file.sync_data()
         })?;
 
@@ -170,30 +238,41 @@ impl CaptureAudioJournal {
     }
 
     /// Push canonical Soniox microphone PCM (s16le, mono, 16 kHz).
+    ///
+    /// Stored as-is: the samples are already the 16-bit width the store
+    /// keeps, so the former widen-to-f32 round trip is gone.
     pub fn push_s16_pcm(&self, pcm_s16le: &[u8]) -> Result<(), RecordingError> {
         if !pcm_s16le.len().is_multiple_of(2) {
             return Err(RecordingError::InvalidAudio {
                 message: "s16le audio must contain complete 2-byte samples".to_string(),
             });
         }
-        let mut f32_bytes = Vec::with_capacity(pcm_s16le.len() * 2);
-        for sample in pcm_s16le.chunks_exact(2) {
-            let value = i16::from_le_bytes([sample[0], sample[1]]) as f32 / 32768.0;
-            f32_bytes.extend_from_slice(&value.to_le_bytes());
-        }
-        self.push_f32_pcm(&f32_bytes)
+        self.push_stored_pcm(pcm_s16le)
     }
+
+    /// Push f32le PCM. Narrowed to the stored s16 width; the microphone is a
+    /// 16-bit source, so nothing real is lost.
     pub fn push_f32_pcm(&self, pcm_f32le: &[u8]) -> Result<(), RecordingError> {
-        let bytes_per_frame = self.config.channels.max(1) as usize * 4;
-        if !pcm_f32le.len().is_multiple_of(bytes_per_frame) {
+        if !pcm_f32le.len().is_multiple_of(4) {
+            return Err(RecordingError::InvalidAudio {
+                message: "f32le audio must contain complete 4-byte samples".to_string(),
+            });
+        }
+        self.push_stored_pcm(&f32le_bytes_to_s16le(pcm_f32le))
+    }
+
+    fn push_stored_pcm(&self, pcm: &[u8]) -> Result<(), RecordingError> {
+        let bytes_per_frame =
+            self.config.channels.max(1) as usize * StoredSampleFormat::S16.bytes_per_sample();
+        if !pcm.len().is_multiple_of(bytes_per_frame) {
             return Err(RecordingError::InvalidAudio {
                 message: format!(
-                    "f32 audio byte count {} is not aligned to {bytes_per_frame}",
-                    pcm_f32le.len()
+                    "audio byte count {} is not aligned to {bytes_per_frame}",
+                    pcm.len()
                 ),
             });
         }
-        if pcm_f32le.len() > MAX_CAPTURE_FRAME_BYTES {
+        if pcm.len() > MAX_CAPTURE_FRAME_BYTES {
             return Err(RecordingError::InvalidAudio {
                 message: format!(
                     "audio callback exceeds {} byte safety limit",
@@ -203,14 +282,14 @@ impl CaptureAudioJournal {
         }
 
         let encrypted =
-            encrypt_chunk(pcm_f32le, &self.key).map_err(|error| RecordingError::WriteFailed {
+            encrypt_chunk(pcm, &self.key).map_err(|error| RecordingError::WriteFailed {
                 message: format!("encrypt capture frame: {error}"),
             })?;
         let encrypted_len =
             u32::try_from(encrypted.len()).map_err(|_| RecordingError::InvalidAudio {
                 message: "encrypted capture frame is too large".to_string(),
             })?;
-        let frame_count = (pcm_f32le.len() / bytes_per_frame) as u64;
+        let frame_count = (pcm.len() / bytes_per_frame) as u64;
 
         let mut state = self.state.lock().map_err(|_| RecordingError::WriteFailed {
             message: "capture journal mutex poisoned".to_string(),
@@ -270,6 +349,7 @@ impl CaptureAudioJournal {
             duration_ms: recovered.duration_ms,
             sample_rate: recovered.sample_rate,
             channels: recovered.channels,
+            sample_format: recovered.sample_format,
         })
     }
 }
@@ -314,18 +394,22 @@ pub fn recover_capture_audio_journal(
     let mut file = File::open(journal_path).map_err(|error| RecordingError::WriteFailed {
         message: error.to_string(),
     })?;
-    let mut magic = [0_u8; CAPTURE_JOURNAL_MAGIC.len()];
+    let mut magic = [0_u8; CAPTURE_JOURNAL_MAGIC_S16.len()];
     file.read_exact(&mut magic)
         .map_err(|error| RecordingError::JournalCorrupt {
             message: format!("capture journal header: {error}"),
         })?;
-    if &magic != CAPTURE_JOURNAL_MAGIC {
+    let sample_format = if &magic == CAPTURE_JOURNAL_MAGIC_S16 {
+        StoredSampleFormat::S16
+    } else if &magic == CAPTURE_JOURNAL_MAGIC_F32 {
+        StoredSampleFormat::F32
+    } else {
         return Err(RecordingError::JournalCorrupt {
             message: "capture journal magic mismatch".to_string(),
         });
-    }
+    };
 
-    let bytes_per_frame = channels.max(1) as usize * 4;
+    let bytes_per_frame = channels.max(1) as usize * sample_format.bytes_per_sample();
     let frames_per_chunk = sample_rate.max(1) as usize * 60;
     let chunk_byte_limit = (frames_per_chunk * bytes_per_frame).max(bytes_per_frame);
     let mut chunk_plaintext = Vec::with_capacity(chunk_byte_limit);
@@ -372,7 +456,7 @@ pub fn recover_capture_audio_journal(
             })?;
         if frame.len() % bytes_per_frame != 0 {
             return Err(RecordingError::JournalCorrupt {
-                message: "recovered f32 audio is not frame-aligned".to_string(),
+                message: "recovered audio is not frame-aligned".to_string(),
             });
         }
         captured_frames = captured_frames.saturating_add((frame.len() / bytes_per_frame) as u64);
@@ -412,6 +496,7 @@ pub fn recover_capture_audio_journal(
         .map(|chunk| chunk.path.clone())
         .unwrap_or_else(|| session_audio_chunk_path(data_dir, session_id, 0));
     Ok(RecoveredCaptureAudio {
+        sample_format,
         session_id: session_id.to_string(),
         encrypted_path,
         audio_chunks,
@@ -490,22 +575,23 @@ pub fn write_encrypted_audio_chunks(
     data_dir: &std::path::Path,
     session_id: &str,
     key: &SessionKey,
-    pcm_f32_bytes: &[u8],
+    pcm_bytes: &[u8],
     sample_rate: u32,
     channels: u16,
+    sample_format: StoredSampleFormat,
 ) -> Result<Vec<RecordingAudioChunk>, RecordingError> {
     create_session_audio_dir(data_dir, session_id)?;
 
-    let bytes_per_frame = channels.max(1) as usize * 4;
+    let bytes_per_frame = channels.max(1) as usize * sample_format.bytes_per_sample();
     let frames_per_chunk = sample_rate.max(1) as usize * 60;
     let chunk_bytes = (frames_per_chunk * bytes_per_frame).max(bytes_per_frame);
     let mut chunks: Vec<RecordingAudioChunk> = Vec::new();
     let mut offset = 0_usize;
     let mut index = 0_usize;
 
-    while offset < pcm_f32_bytes.len() || (pcm_f32_bytes.is_empty() && index == 0) {
-        let end = (offset + chunk_bytes).min(pcm_f32_bytes.len());
-        let chunk_bytes_slice = &pcm_f32_bytes[offset..end];
+    while offset < pcm_bytes.len() || (pcm_bytes.is_empty() && index == 0) {
+        let end = (offset + chunk_bytes).min(pcm_bytes.len());
+        let chunk_bytes_slice = &pcm_bytes[offset..end];
         let start_frame = offset / bytes_per_frame;
         let end_frame = end / bytes_per_frame;
         let start_ms = if sample_rate > 0 {
@@ -538,7 +624,7 @@ pub fn write_encrypted_audio_chunks(
             start_ms,
             end_ms,
         });
-        if end == pcm_f32_bytes.len() {
+        if end == pcm_bytes.len() {
             break;
         }
         offset = end;
@@ -613,7 +699,7 @@ mod tests {
         journal.push_s16_pcm(&s16).unwrap();
         assert_eq!(journal.captured_frames(), 1_600);
         let journal_bytes = std::fs::read(journal.journal_path()).unwrap();
-        assert!(journal_bytes.starts_with(CAPTURE_JOURNAL_MAGIC));
+        assert!(journal_bytes.starts_with(CAPTURE_JOURNAL_MAGIC_S16));
         assert_ne!(
             journal_bytes, s16,
             "journal must never contain raw microphone PCM"
@@ -635,11 +721,48 @@ mod tests {
             DecryptReader::new(&result.encrypted_path, &result.encryption_key).unwrap();
         let mut recovered = Vec::new();
         reader.read_to_end(&mut recovered).unwrap();
-        let expected: Vec<u8> = samples
-            .iter()
-            .flat_map(|sample| ((*sample as f32) / 32768.0).to_le_bytes())
-            .collect();
-        assert_eq!(recovered, expected);
+        assert_eq!(
+            recovered, s16,
+            "stored samples keep the microphone's own 16-bit width"
+        );
+        assert_eq!(result.sample_format, StoredSampleFormat::S16);
+    }
+
+    /// A journal written before the s16 change — f32 records under the V1
+    /// magic — still recovers, as f32, so a crash that straddles the update
+    /// loses nothing.
+    #[test]
+    fn a_legacy_f32_journal_still_recovers_as_f32() {
+        let tmp = TempDir::new().unwrap();
+        let key = SessionKey::generate();
+        let session_dir = session_audio_dir(tmp.path(), "legacy-f32");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        let journal_path = session_capture_journal_path(tmp.path(), "legacy-f32");
+        let samples: Vec<f32> = (0..1_600).map(|index| (index as f32) / 3_200.0).collect();
+        let f32_bytes = f32_samples_to_bytes(&samples);
+        let record = encrypt_chunk(&f32_bytes, &key).unwrap();
+        let mut file = File::create(&journal_path).unwrap();
+        file.write_all(CAPTURE_JOURNAL_MAGIC_F32).unwrap();
+        file.write_all(&(record.len() as u32).to_le_bytes())
+            .unwrap();
+        file.write_all(&record).unwrap();
+        file.sync_all().unwrap();
+        drop(file);
+
+        let recovered =
+            recover_capture_audio_journal(&journal_path, tmp.path(), "legacy-f32", &key, 16_000, 1)
+                .unwrap();
+        assert_eq!(recovered.sample_format, StoredSampleFormat::F32);
+        assert_eq!(recovered.captured_frames, 1_600);
+        assert_eq!(recovered.duration_ms, 100);
+
+        let mut reader = DecryptReader::new(&recovered.encrypted_path, &key).unwrap();
+        let mut chunk_bytes = Vec::new();
+        reader.read_to_end(&mut chunk_bytes).unwrap();
+        assert_eq!(
+            chunk_bytes, f32_bytes,
+            "legacy chunks keep their f32 width end to end"
+        );
     }
 
     #[test]

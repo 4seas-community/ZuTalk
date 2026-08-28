@@ -696,6 +696,7 @@ impl ZuTalkCore {
                     audio_key_ref: import.audio_key_ref,
                     sample_rate: import.result.sample_rate,
                     channels: import.result.channels,
+                    sample_format: vt_pipeline::StoredSampleFormat::S16.as_str().to_string(),
                     captured_frames: import.captured_frames,
                 },
                 &profile,

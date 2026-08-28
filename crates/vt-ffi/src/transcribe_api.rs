@@ -265,6 +265,7 @@ pub(crate) async fn run_transcribe_chunked_task_async(
     key: SessionKey,
     source_sample_rate: u32,
     source_channels: u16,
+    source_sample_format: vt_pipeline::StoredSampleFormat,
     expected_source_frames: u64,
     db_path: PathBuf,
     callback: Arc<dyn FfiTaskCallback>,
@@ -274,7 +275,7 @@ pub(crate) async fn run_transcribe_chunked_task_async(
     ensure_transcription_not_cancelled(&cancel)?;
     callback.on_progress(task_id.to_string(), "decrypting".to_string(), 5.0);
     use std::io::Read;
-    let mut pcm_f32_bytes = Vec::new();
+    let mut stored_pcm = Vec::new();
     for path in chunk_paths {
         ensure_transcription_not_cancelled(&cancel)?;
         let mut reader = vt_crypto::DecryptReader::new(&path, &key).map_err(|e| {
@@ -283,7 +284,7 @@ pub(crate) async fn run_transcribe_chunked_task_async(
                 format!("decrypt chunk reader: {e}"),
             )
         })?;
-        reader.read_to_end(&mut pcm_f32_bytes).map_err(|e| {
+        reader.read_to_end(&mut stored_pcm).map_err(|e| {
             (
                 "internal_error".to_string(),
                 format!("decrypt chunk read: {e}"),
@@ -291,6 +292,12 @@ pub(crate) async fn run_transcribe_chunked_task_async(
         })?;
     }
     ensure_transcription_not_cancelled(&cancel)?;
+    // The canonicalize/upload pipeline works in f32 interchange; s16-stored
+    // sessions widen here, and legacy f32 sessions pass through unchanged.
+    let pcm_f32_bytes = match source_sample_format {
+        vt_pipeline::StoredSampleFormat::S16 => vt_pipeline::s16le_bytes_to_f32le(&stored_pcm),
+        vt_pipeline::StoredSampleFormat::F32 => stored_pcm,
+    };
 
     run_transcribe_pcm_f32_bytes_async(
         task_id,
@@ -966,6 +973,7 @@ mod tests {
                     audio_key_ref: "provider-key".into(),
                     sample_rate: 16_000,
                     channels: 1,
+                    sample_format: "s16".to_string(),
                 },
                 &profile,
             )
