@@ -4,16 +4,34 @@ import Foundation
 
 /// Provider accounts supported by Rust's scoped in-memory credential runtime.
 enum ProviderCredentialAccount: String, CaseIterable, Codable, Identifiable {
+    /// Speech: without it ZuTalk cannot do the thing it is for.
     case soniox
+    /// Language model: optional, and the only credential whose use sends text
+    /// off this machine. Kept a separate account because it is a separate
+    /// vendor, billed separately, and either can be configured alone.
+    case anthropic
 
     var id: String { rawValue }
 
-    var scope: String {
-        "soniox"
-    }
+    var scope: String { rawValue }
 
     var displayName: String {
-        "Soniox"
+        switch self {
+        case .soniox: "Soniox"
+        case .anthropic: "Anthropic"
+        }
+    }
+
+    /// Whether the app can transcribe at all without this credential.
+    ///
+    /// Drives presentation, not storage: the required one belongs with the
+    /// capture settings, and the optional one belongs next to a plain
+    /// statement of what enabling it will send.
+    var isRequiredForCapture: Bool {
+        switch self {
+        case .soniox: true
+        case .anthropic: false
+        }
     }
 
     init?(scope: String?) {
@@ -91,6 +109,46 @@ struct LiveNotebookCaptureEngineDescriptorLoader: NotebookCaptureEngineDescripto
             realtimeModelId: descriptor.realtimeModelId,
             postStopModelId: descriptor.postStopModelId,
             postStopUsesAsyncFileApi: descriptor.postStopExecution == .asyncFileApi
+        )
+    }
+}
+
+/// What Settings says about the language model, sourced from Rust.
+///
+/// Never duplicates provider or model constants in Swift: the same rule the
+/// capture descriptor follows, for the same reason — two copies drift and the
+/// UI ends up naming a model the core does not use.
+struct LanguageModelPresentation: Equatable {
+    let providerDisplayName: String
+    let modelId: String
+    let consoleURL: URL?
+
+    /// Shown when the core is unavailable. Named rather than blank so the row
+    /// reads as "not loaded", not as "no model".
+    static var descriptorUnavailable: Self {
+        Self(
+            providerDisplayName: String(localized: "settings.services.engine.unavailable"),
+            modelId: String(localized: "settings.services.engine.unavailable"),
+            consoleURL: nil
+        )
+    }
+}
+
+@MainActor
+final class LanguageModelPresentationStore: ObservableObject {
+    static let shared = LanguageModelPresentationStore()
+
+    @Published private(set) var engine: LanguageModelPresentation = .descriptorUnavailable
+
+    func refresh() {
+        guard let descriptor = CoreClient.shared.core?.getLanguageModelEngineDescriptor() else {
+            engine = .descriptorUnavailable
+            return
+        }
+        engine = LanguageModelPresentation(
+            providerDisplayName: descriptor.providerDisplayName,
+            modelId: descriptor.modelId,
+            consoleURL: URL(string: descriptor.consoleUrl)
         )
     }
 }

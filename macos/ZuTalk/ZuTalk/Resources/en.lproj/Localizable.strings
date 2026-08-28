@@ -276,6 +276,13 @@
 "settings.services.connection.title" = "Service connection";
 "settings.services.connection.subtitle" = "ZuTalk currently supports Soniox only.";
 "settings.services.no_egress_notice" = "Saving a key does not grant new data sharing. Each Notebook must authorize remote processing separately. Work that a Notebook already authorized and left waiting for a credential may resume only after the key is durably saved and loaded.";
+/* Language model: the optional credential, and what enabling it sends. */
+"settings.services.model.title" = "Language model";
+"settings.services.model.subtitle_format" = "Optional. Cleans up marked passages and writes from them. Uses %@.";
+"settings.services.model.egress_notice" = "Only the passages you mark are sent. Your full transcript stays on this Mac.";
+"settings.services.model.audio_notice" = "Audio is never sent, with a key configured or without one.";
+"settings.services.model.console_link" = "Get an API key";
+
 "settings.services.engine.title" = "Capture engine";
 "settings.services.engine.subtitle" = "Read-only. The Rust core owns this engine selection for the current MVP.";
 "settings.services.engine.service" = "Service";

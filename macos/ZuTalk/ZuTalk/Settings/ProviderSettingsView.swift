@@ -174,6 +174,7 @@ struct ProviderSettingsView: View {
     @StateObject private var viewModel = ProviderConnectionsViewModel()
     @ObservedObject private var engineStore = NotebookCaptureEnginePresentationStore.shared
     @ObservedObject private var verificationStore = ProviderConnectionVerificationStore.shared
+    @ObservedObject private var modelStore = LanguageModelPresentationStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xl) {
@@ -190,24 +191,17 @@ struct ProviderSettingsView: View {
                 title: String(localized: "settings.services.connection.title"),
                 subtitle: String(localized: "settings.services.connection.subtitle")
             ) {
-                ForEach(Array(ProviderCredentialAccount.allCases.enumerated()), id: \.element.id) { index, account in
+                ForEach(Array(captureAccounts.enumerated()), id: \.element.id) { index, account in
                     if index > 0 {
                         SettingsRowDivider()
                     }
-                    ProviderCredentialAutoSaveRow(
-                        account: account,
-                        snapshot: viewModel.snapshot(for: account),
-                        verificationState: verificationStore.state(for: account),
-                        onVerifyAndApply: viewModel.verifyAndApply,
-                        onVerifySaved: viewModel.verifySavedCredential,
-                        onRequestDeletion: {
-                            viewModel.requestDeletion(.account($0))
-                        }
-                    )
+                    credentialRow(account)
                 }
             }
 
             CommunityInviteSettingsCard()
+
+            languageModelCard
 
             Label(
                 String(localized: "settings.credentials.trust_boundary_notice"),
@@ -242,6 +236,7 @@ struct ProviderSettingsView: View {
         .onAppear {
             viewModel.refresh()
             engineStore.refresh()
+            modelStore.refresh()
             guard !TestEnvironment.isAnyTestMode else { return }
             for account in ProviderCredentialAccount.allCases {
                 verificationStore.verifyIfNeeded(
@@ -267,6 +262,87 @@ struct ProviderSettingsView: View {
         } message: {
             Text(deletionMessage)
         }
+    }
+
+    /// Credentials the app needs before it can transcribe anything.
+    private var captureAccounts: [ProviderCredentialAccount] {
+        ProviderCredentialAccount.allCases.filter(\.isRequiredForCapture)
+    }
+
+    private var languageModelAccounts: [ProviderCredentialAccount] {
+        ProviderCredentialAccount.allCases.filter { $0.isRequiredForCapture == false }
+    }
+
+    /// The model credential gets its own card rather than another row beside
+    /// the capture key.
+    ///
+    /// They are not peers. One is required and its traffic is audio the user
+    /// already agreed to send; this one is optional, and configuring it is the
+    /// moment a person decides whether their transcripts may leave the
+    /// machine. That decision deserves the sentence underneath, where it can
+    /// be read before the field is filled rather than after.
+    @ViewBuilder
+    private var languageModelCard: some View {
+        if languageModelAccounts.isEmpty == false {
+            SettingsCard(
+                title: String(localized: "settings.services.model.title"),
+                subtitle: String(
+                    format: String(localized: "settings.services.model.subtitle_format"),
+                    modelStore.engine.modelId
+                )
+            ) {
+                ForEach(Array(languageModelAccounts.enumerated()), id: \.element.id) { index, account in
+                    if index > 0 {
+                        SettingsRowDivider()
+                    }
+                    credentialRow(account)
+                }
+
+                SettingsRowDivider()
+
+                SettingsFullRow {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Label(
+                            String(localized: "settings.services.model.egress_notice"),
+                            systemImage: "paperplane"
+                        )
+                        .font(.caption)
+                        .foregroundColor(.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                        Text(String(localized: "settings.services.model.audio_notice"))
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if let consoleURL = modelStore.engine.consoleURL {
+                            Link(
+                                String(localized: "settings.services.model.console_link"),
+                                destination: consoleURL
+                            )
+                            .font(.caption)
+                            .padding(.top, 2)
+                            .accessibilityIdentifier("settings.services.model.console_link")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .accessibilityIdentifier("settings.services.model")
+        }
+    }
+
+    private func credentialRow(_ account: ProviderCredentialAccount) -> some View {
+        ProviderCredentialAutoSaveRow(
+            account: account,
+            snapshot: viewModel.snapshot(for: account),
+            verificationState: verificationStore.state(for: account),
+            onVerifyAndApply: viewModel.verifyAndApply,
+            onVerifySaved: viewModel.verifySavedCredential,
+            onRequestDeletion: {
+                viewModel.requestDeletion(.account($0))
+            }
+        )
     }
 
     private var engineCard: some View {

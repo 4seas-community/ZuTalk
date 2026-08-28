@@ -634,6 +634,16 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func destroySessionAudioAndKey(sessionId: String) throws
 
     /**
+     * The language model this build talks to, for Settings to describe.
+     *
+     * Read-only, and deliberately not a catalogue: naming one model here
+     * means Settings never has to ask a user to choose one, and the console
+     * URL travels with it so "where do I get a key" has an answer on screen
+     * instead of being a search.
+     */
+    func getLanguageModelEngineDescriptor()  -> FfiLanguageModelEngineDescriptor
+
+    /**
      * 获取默认隐私等级。
      */
     func getPrivacyDefault()  -> String
@@ -681,7 +691,7 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     /**
      * 设置进程内 API Key。
      *
-     * 唯一支持的 scope 是 `soniox`。
+     * 支持的 scope:`soniox`(采集)与 `anthropic`(语言模型)。
      *
      * 空 value 视为 clear。
      */
@@ -731,11 +741,15 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func softDeleteSessions(sessionIds: [String]) throws
 
     /**
-     * Verify a Soniox credential against the fixed realtime endpoint.
+     * Verify a credential against the provider that scope belongs to.
      *
      * A candidate value is verified before Settings or onboarding persists it.
      * Passing `None` verifies the active in-memory credential without exposing
      * that credential back across FFI. Credential material is never logged.
+     *
+     * The model check lists models rather than generating anything: it costs
+     * nothing, and a credential check must never be what first sends user
+     * content off the device.
      */
     func verifyApiKey(scope: String, candidate: String?) async throws  -> FfiProviderConnectionCheck
 
@@ -1561,6 +1575,22 @@ open func destroySessionAudioAndKey(sessionId: String)throws   {try rustCallWith
 }
 
     /**
+     * The language model this build talks to, for Settings to describe.
+     *
+     * Read-only, and deliberately not a catalogue: naming one model here
+     * means Settings never has to ask a user to choose one, and the console
+     * URL travels with it so "where do I get a key" has an answer on screen
+     * instead of being a search.
+     */
+open func getLanguageModelEngineDescriptor() -> FfiLanguageModelEngineDescriptor  {
+    return try!  FfiConverterTypeFfiLanguageModelEngineDescriptor_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_get_language_model_engine_descriptor(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
      * 获取默认隐私等级。
      */
 open func getPrivacyDefault() -> String  {
@@ -1665,7 +1695,7 @@ open func searchSessions(query: String, limit: UInt32)throws  -> [SearchResultIn
     /**
      * 设置进程内 API Key。
      *
-     * 唯一支持的 scope 是 `soniox`。
+     * 支持的 scope:`soniox`(采集)与 `anthropic`(语言模型)。
      *
      * 空 value 视为 clear。
      */
@@ -1751,11 +1781,15 @@ open func softDeleteSessions(sessionIds: [String])throws   {try rustCallWithErro
 }
 
     /**
-     * Verify a Soniox credential against the fixed realtime endpoint.
+     * Verify a credential against the provider that scope belongs to.
      *
      * A candidate value is verified before Settings or onboarding persists it.
      * Passing `None` verifies the active in-memory credential without exposing
      * that credential back across FFI. Credential material is never logged.
+     *
+     * The model check lists models rather than generating anything: it costs
+     * nothing, and a credential check must never be what first sends user
+     * content off the device.
      */
 open func verifyApiKey(scope: String, candidate: String?)async throws  -> FfiProviderConnectionCheck  {
     return
@@ -3853,6 +3887,75 @@ public func FfiConverterTypeFfiJoinRequest_lift(_ buf: RustBuffer) throws -> Ffi
 #endif
 public func FfiConverterTypeFfiJoinRequest_lower(_ value: FfiJoinRequest) -> RustBuffer {
     return FfiConverterTypeFfiJoinRequest.lower(value)
+}
+
+
+/**
+ * What Settings needs to describe the model side, without a key in it.
+ */
+public struct FfiLanguageModelEngineDescriptor: Equatable, Hashable {
+    public var providerId: String
+    public var providerDisplayName: String
+    public var credentialScope: String
+    public var modelId: String
+    public var consoleUrl: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(providerId: String, providerDisplayName: String, credentialScope: String, modelId: String, consoleUrl: String) {
+        self.providerId = providerId
+        self.providerDisplayName = providerDisplayName
+        self.credentialScope = credentialScope
+        self.modelId = modelId
+        self.consoleUrl = consoleUrl
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiLanguageModelEngineDescriptor: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiLanguageModelEngineDescriptor: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLanguageModelEngineDescriptor {
+        return
+            try FfiLanguageModelEngineDescriptor(
+                providerId: FfiConverterString.read(from: &buf),
+                providerDisplayName: FfiConverterString.read(from: &buf),
+                credentialScope: FfiConverterString.read(from: &buf),
+                modelId: FfiConverterString.read(from: &buf),
+                consoleUrl: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiLanguageModelEngineDescriptor, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.providerId, into: &buf)
+        FfiConverterString.write(value.providerDisplayName, into: &buf)
+        FfiConverterString.write(value.credentialScope, into: &buf)
+        FfiConverterString.write(value.modelId, into: &buf)
+        FfiConverterString.write(value.consoleUrl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiLanguageModelEngineDescriptor_lift(_ buf: RustBuffer) throws -> FfiLanguageModelEngineDescriptor {
+    return try FfiConverterTypeFfiLanguageModelEngineDescriptor.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiLanguageModelEngineDescriptor_lower(_ value: FfiLanguageModelEngineDescriptor) -> RustBuffer {
+    return FfiConverterTypeFfiLanguageModelEngineDescriptor.lower(value)
 }
 
 
@@ -10491,6 +10594,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_destroy_session_audio_and_key() != 26381) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_get_language_model_engine_descriptor() != 2205) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_get_privacy_default() != 9804) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10515,7 +10621,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_search_sessions() != 40170) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_api_key() != 18044) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_api_key() != 17118) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_set_locale() != 23155) {
@@ -10533,7 +10639,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_soft_delete_sessions() != 33177) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_verify_api_key() != 39021) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_verify_api_key() != 38547) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_block_document_close() != 28031) {

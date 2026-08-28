@@ -276,6 +276,13 @@
 "settings.services.connection.title" = "การเชื่อมต่อบริการ";
 "settings.services.connection.subtitle" = "ขณะนี้ ZuTalk รองรับเฉพาะ Soniox เท่านั้น";
 "settings.services.no_egress_notice" = "การบันทึกคีย์ไม่ได้ให้สิทธิ์แชร์ข้อมูลใหม่ แต่ละ Notebook ต้องอนุญาตการประมวลผลระยะไกลแยกกัน งานที่ Notebook อนุญาตไว้แล้วและค้างรอข้อมูลรับรองอยู่จะดำเนินต่อได้ก็ต่อเมื่อคีย์ถูกบันทึกอย่างถาวรและโหลดแล้วเท่านั้น";
+/* Language model: the optional credential, and what enabling it sends. */
+"settings.services.model.title" = "โมเดลภาษา";
+"settings.services.model.subtitle_format" = "ไม่บังคับ ใช้เรียบเรียงช่วงที่ทำเครื่องหมายและเขียนต่อจากนั้น ใช้ %@";
+"settings.services.model.egress_notice" = "ส่งเฉพาะช่วงที่คุณทำเครื่องหมาย ถอดความทั้งหมดยังอยู่บน Mac เครื่องนี้";
+"settings.services.model.audio_notice" = "ไม่มีการส่งเสียงออกไป ไม่ว่าจะตั้งค่าคีย์ไว้หรือไม่";
+"settings.services.model.console_link" = "ขอ API key";
+
 "settings.services.engine.title" = "เอนจินบันทึกเสียง";
 "settings.services.engine.subtitle" = "อ่านอย่างเดียว แกนหลัก Rust เป็นผู้กำหนดการเลือกเอนจินนี้สำหรับ MVP ปัจจุบัน";
 "settings.services.engine.service" = "บริการ";

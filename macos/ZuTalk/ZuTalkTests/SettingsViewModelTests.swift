@@ -257,14 +257,29 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
             encoding: .utf8
         )
 
+        // No model catalogue. Choosing a model is a question the product
+        // answers, not one it asks; a picker here would make every user
+        // research context windows before they could use the feature.
         XCTAssertFalse(providerSettings.contains("Picker("))
-        XCTAssertFalse(providerSettings.contains("modelId"))
-        XCTAssertFalse(providerSettings.contains("stt-rt-v5"))
-        for unsupportedProvider in ["OpenRouter", "Anthropic", "DeepSeek", "xAI"] {
+
+        // No model or provider constant written in Swift. Settings may show
+        // these values, but only as they come back from the core — two copies
+        // drift, and the UI ends up naming a model the core does not use.
+        for coreOwnedConstant in [
+            "stt-rt-v5", "stt-async-v5", "claude-", "soniox.com", "anthropic.com",
+        ] {
+            XCTAssertFalse(
+                providerSettings.contains(coreOwnedConstant),
+                "\(coreOwnedConstant) belongs to the core descriptor, not to Swift"
+            )
+        }
+        for unsupportedProvider in ["OpenRouter", "DeepSeek", "xAI"] {
             XCTAssertFalse(providerSettings.contains(unsupportedProvider))
         }
         XCTAssertTrue(credentialSession.contains("getNotebookCaptureEngineDescriptor()"))
+        XCTAssertTrue(credentialSession.contains("getLanguageModelEngineDescriptor()"))
         XCTAssertTrue(providerSettings.contains("engineStore.engine"))
+        XCTAssertTrue(providerSettings.contains("modelStore.engine"))
     }
 
     func testProviderCredentialEditorMeetsMinimumInteractionTarget() throws {

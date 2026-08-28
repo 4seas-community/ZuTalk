@@ -11,13 +11,19 @@ fail() {
   exit 1
 }
 
+# vt-llm came off this list on 2026-08-29. It was cut with the rest of the
+# non-capture subsystems when the product narrowed to Notebook Capture; it is
+# back because marked passages now need cleaning up and writing from, and the
+# owner decided cloud generation is in scope with the privacy stance restated
+# alongside it. Everything below is still out, and adding to this file is how a
+# revival stays a decision instead of a drift.
+
 for removed_path in \
   crates/zutalkd \
   crates/vt-sync \
   crates/vt-template \
   crates/vt-glossary \
   crates/vt-speaker \
-  crates/vt-llm \
   crates/vt-ffi/src/recording_api.rs \
   crates/vt-ffi/src/event.rs \
   crates/vt-ffi/src/sync_api.rs \
@@ -32,11 +38,11 @@ do
     || fail "removed MVP subsystem path returned: $removed_path"
 done
 
-if grep -Eq '"crates/(zutalkd|vt-sync|vt-template|vt-glossary|vt-speaker|vt-llm)"' \
+if grep -Eq '"crates/(zutalkd|vt-sync|vt-template|vt-glossary|vt-speaker)"' \
     "$ROOT_DIR/Cargo.toml"; then
   fail "Cargo workspace must contain only the Notebook Capture MVP crates"
 fi
-if grep -Eq '^name = "(zutalkd|vt-sync|vt-template|vt-glossary|vt-speaker|vt-llm)"$' \
+if grep -Eq '^name = "(zutalkd|vt-sync|vt-template|vt-glossary|vt-speaker)"$' \
     "$ROOT_DIR/Cargo.lock"; then
   fail "Cargo.lock retained a removed MVP package"
 fi

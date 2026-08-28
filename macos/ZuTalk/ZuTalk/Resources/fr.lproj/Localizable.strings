@@ -276,6 +276,13 @@
 "settings.services.connection.title" = "Connexion au service";
 "settings.services.connection.subtitle" = "ZuTalk prend actuellement en charge Soniox uniquement.";
 "settings.services.no_egress_notice" = "Enregistrer une clé n’accorde aucun nouveau partage de données. Chaque Notebook doit autoriser séparément le traitement à distance. Un travail déjà autorisé par un Notebook et laissé en attente d’un identifiant ne peut reprendre qu’une fois la clé durablement enregistrée et chargée.";
+/* Language model: the optional credential, and what enabling it sends. */
+"settings.services.model.title" = "Modèle de langage";
+"settings.services.model.subtitle_format" = "Facultatif. Met au propre les passages marqués et rédige à partir d’eux. Utilise %@.";
+"settings.services.model.egress_notice" = "Seuls les passages que vous marquez sont envoyés. La transcription complète reste sur ce Mac.";
+"settings.services.model.audio_notice" = "L'audio n'est jamais envoyé, avec ou sans clé configurée.";
+"settings.services.model.console_link" = "Obtenir une clé API";
+
 "settings.services.engine.title" = "Moteur de capture";
 "settings.services.engine.subtitle" = "Lecture seule. Le cœur Rust détient ce choix de moteur pour le MVP actuel.";
 "settings.services.engine.service" = "Service";

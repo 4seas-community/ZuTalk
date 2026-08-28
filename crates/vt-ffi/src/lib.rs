@@ -275,13 +275,36 @@ pub struct FfiProviderConnectionCheck {
     pub checked_at_ms: u64,
 }
 
-fn provider_connection_check(
-    result: Result<(), vt_stt::SttError>,
-    checked_at_ms: u64,
-) -> FfiProviderConnectionCheck {
+/// How a language-model credential check reads to the user.
+///
+/// The same vocabulary as the capture check on purpose: Settings shows both
+/// credentials in the same shape, and "your key is wrong" versus "try again
+/// later" is the split that decides what a person does next either way.
+fn language_model_connection_status(
+    result: Result<(), vt_llm::LanguageModelError>,
+) -> FfiProviderConnectionStatus {
+    use vt_llm::LanguageModelError;
+
+    match result {
+        Ok(()) => FfiProviderConnectionStatus::Ready,
+        Err(LanguageModelError::InvalidCredential | LanguageModelError::EmptyCredential) => {
+            FfiProviderConnectionStatus::InvalidCredential
+        }
+        Err(LanguageModelError::QuotaExhausted) => FfiProviderConnectionStatus::QuotaExhausted,
+        Err(LanguageModelError::RateLimited) => FfiProviderConnectionStatus::RateLimited,
+        Err(LanguageModelError::NetworkUnavailable(_)) => {
+            FfiProviderConnectionStatus::NetworkUnavailable
+        }
+        Err(LanguageModelError::ServiceUnavailable { .. }) => {
+            FfiProviderConnectionStatus::ServiceUnavailable
+        }
+    }
+}
+
+fn capture_connection_status(result: Result<(), vt_stt::SttError>) -> FfiProviderConnectionStatus {
     use vt_stt::{SonioxQuotaKind, SttError};
 
-    let status = match result {
+    match result {
         Ok(()) => FfiProviderConnectionStatus::Ready,
         Err(SttError::AuthFailed { .. })
         | Err(SttError::ApiError {
@@ -307,12 +330,17 @@ fn provider_connection_check(
             SttError::ConnectionFailed(_) | SttError::ReadTimeout(_) | SttError::Timeout { .. },
         ) => FfiProviderConnectionStatus::NetworkUnavailable,
         Err(_) => FfiProviderConnectionStatus::ServiceUnavailable,
-    };
-
-    FfiProviderConnectionCheck {
-        status,
-        checked_at_ms,
     }
+}
+
+/// What Settings needs to describe the model side, without a key in it.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiLanguageModelEngineDescriptor {
+    pub provider_id: String,
+    pub provider_display_name: String,
+    pub credential_scope: String,
+    pub model_id: String,
+    pub console_url: String,
 }
 
 /// ZuTalk 核心入口
@@ -1058,7 +1086,7 @@ impl ZuTalkCore {
 
     /// 设置进程内 API Key。
     ///
-    /// 唯一支持的 scope 是 `soniox`。
+    /// 支持的 scope:`soniox`(采集)与 `anthropic`(语言模型)。
     ///
     /// 空 value 视为 clear。
     pub fn set_api_key(&self, scope: String, value: String) -> Result<(), CoreError> {
@@ -1082,6 +1110,23 @@ impl ZuTalkCore {
             })
     }
 
+    /// The language model this build talks to, for Settings to describe.
+    ///
+    /// Read-only, and deliberately not a catalogue: naming one model here
+    /// means Settings never has to ask a user to choose one, and the console
+    /// URL travels with it so "where do I get a key" has an answer on screen
+    /// instead of being a search.
+    pub fn get_language_model_engine_descriptor(&self) -> FfiLanguageModelEngineDescriptor {
+        let engine = vt_llm::CURRENT_LANGUAGE_MODEL_ENGINE;
+        FfiLanguageModelEngineDescriptor {
+            provider_id: engine.provider_id.to_string(),
+            provider_display_name: engine.provider_display_name.to_string(),
+            credential_scope: engine.credential_scope.to_string(),
+            model_id: engine.model_id.to_string(),
+            console_url: engine.console_url.to_string(),
+        }
+    }
+
     /// 检查某 scope 是否有 API Key(供 UI 显示"未配置"标记,不泄露 key 本身)。
     pub fn has_api_key(&self, scope: String) -> bool {
         is_valid_scope(&scope) && self.api_key_store.has(&scope)
@@ -1101,11 +1146,15 @@ impl ZuTalkCore {
             })
     }
 
-    /// Verify a Soniox credential against the fixed realtime endpoint.
+    /// Verify a credential against the provider that scope belongs to.
     ///
     /// A candidate value is verified before Settings or onboarding persists it.
     /// Passing `None` verifies the active in-memory credential without exposing
     /// that credential back across FFI. Credential material is never logged.
+    ///
+    /// The model check lists models rather than generating anything: it costs
+    /// nothing, and a credential check must never be what first sends user
+    /// content off the device.
     pub async fn verify_api_key(
         &self,
         scope: String,
@@ -1134,21 +1183,35 @@ impl ZuTalkCore {
                     message: "No active API key is available to verify".to_string(),
                 })?,
         };
-        let endpoint = vt_stt::CURRENT_NOTEBOOK_CAPTURE_ENGINE.realtime_endpoint;
-        let verification = self
-            .runtime
-            .spawn(async move { vt_stt::SonioxRtClient::test_key(endpoint, &api_key).await });
-
-        let result = verification.await.map_err(|_| CoreError::InternalError {
-            message: "API key verification task did not complete".to_string(),
-        })?;
+        let is_language_model = scope == vt_llm::CURRENT_LANGUAGE_MODEL_ENGINE.credential_scope;
+        let status = if is_language_model {
+            let verification = self.runtime.spawn(async move {
+                vt_llm::verify_credential(vt_llm::CURRENT_LANGUAGE_MODEL_ENGINE, &api_key).await
+            });
+            let result = verification.await.map_err(|_| CoreError::InternalError {
+                message: "API key verification task did not complete".to_string(),
+            })?;
+            language_model_connection_status(result)
+        } else {
+            let endpoint = vt_stt::CURRENT_NOTEBOOK_CAPTURE_ENGINE.realtime_endpoint;
+            let verification = self
+                .runtime
+                .spawn(async move { vt_stt::SonioxRtClient::test_key(endpoint, &api_key).await });
+            let result = verification.await.map_err(|_| CoreError::InternalError {
+                message: "API key verification task did not complete".to_string(),
+            })?;
+            capture_connection_status(result)
+        };
         let checked_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis()
             .try_into()
             .unwrap_or(u64::MAX);
-        Ok(provider_connection_check(result, checked_at_ms))
+        Ok(FfiProviderConnectionCheck {
+            status,
+            checked_at_ms,
+        })
     }
 
     /// 查询会话列表（带过滤/分页）
@@ -1842,8 +1905,16 @@ fn parse_created_at_to_unix_ms(s: &str) -> u64 {
 }
 
 /// API Key scope 白名单(防误传任意字符串污染 provider 命名空间)。
+/// The credential scopes this build knows about.
+///
+/// Two providers, two accounts, billed separately: capture can be configured
+/// without a model key, and a model key alone is useless without capture. The
+/// store is keyed by scope, so an unrecognised one must be refused rather than
+/// silently filed — a typo that landed under its own key would look configured
+/// and never be used.
 pub(crate) fn is_valid_scope(scope: &str) -> bool {
     scope == vt_stt::CURRENT_NOTEBOOK_CAPTURE_ENGINE.credential_scope
+        || scope == vt_llm::CURRENT_LANGUAGE_MODEL_ENGINE.credential_scope
 }
 
 pub(crate) fn validate_frozen_session_privacy_level(
@@ -2261,6 +2332,62 @@ mod tests {
         assert!(core.has_api_key("soniox".to_string()));
     }
 
+    /// Two providers, two accounts. If these ever shared a scope, saving one
+    /// key would silently overwrite the other in the store — a user adding a
+    /// model key would lose transcription and have no way to see why.
+    #[test]
+    fn both_provider_scopes_are_accepted_and_stay_distinct() {
+        let capture = vt_stt::CURRENT_NOTEBOOK_CAPTURE_ENGINE.credential_scope;
+        let model = vt_llm::CURRENT_LANGUAGE_MODEL_ENGINE.credential_scope;
+
+        assert!(is_valid_scope(capture));
+        assert!(is_valid_scope(model));
+        assert_ne!(capture, model);
+        assert!(!is_valid_scope("openai"));
+        assert!(!is_valid_scope(""));
+    }
+
+    /// A model credential failure has to reach Settings as the same vocabulary
+    /// the capture check uses, or the two cards would explain the same
+    /// situation in two different ways.
+    #[test]
+    fn language_model_failures_map_to_actions_the_user_can_take() {
+        use vt_llm::LanguageModelError;
+
+        assert_eq!(
+            language_model_connection_status(Ok(())),
+            FfiProviderConnectionStatus::Ready
+        );
+        assert_eq!(
+            language_model_connection_status(Err(LanguageModelError::InvalidCredential)),
+            FfiProviderConnectionStatus::InvalidCredential
+        );
+        assert_eq!(
+            language_model_connection_status(Err(LanguageModelError::EmptyCredential)),
+            FfiProviderConnectionStatus::InvalidCredential
+        );
+        assert_eq!(
+            language_model_connection_status(Err(LanguageModelError::QuotaExhausted)),
+            FfiProviderConnectionStatus::QuotaExhausted
+        );
+        assert_eq!(
+            language_model_connection_status(Err(LanguageModelError::RateLimited)),
+            FfiProviderConnectionStatus::RateLimited
+        );
+        assert_eq!(
+            language_model_connection_status(Err(LanguageModelError::NetworkUnavailable(
+                "timeout".into()
+            ))),
+            FfiProviderConnectionStatus::NetworkUnavailable
+        );
+        assert_eq!(
+            language_model_connection_status(Err(LanguageModelError::ServiceUnavailable {
+                status: 503
+            })),
+            FfiProviderConnectionStatus::ServiceUnavailable
+        );
+    }
+
     #[test]
     fn test_verify_api_key_rejects_invalid_scope_without_network_access() {
         let tmp = TempDir::new().unwrap();
@@ -2282,37 +2409,28 @@ mod tests {
     }
 
     #[test]
-    fn provider_connection_check_classifies_safe_user_actions() {
+    fn capture_connection_status_classifies_safe_user_actions() {
         use vt_stt::{SonioxQuotaKind, SttError};
 
         assert_eq!(
-            provider_connection_check(Ok(()), 1).status,
+            capture_connection_status(Ok(())),
             FfiProviderConnectionStatus::Ready
         );
         assert_eq!(
-            provider_connection_check(
-                Err(SttError::AuthFailed {
-                    message: "redacted".to_string(),
-                }),
-                2,
-            )
-            .status,
+            capture_connection_status(Err(SttError::AuthFailed {
+                message: "redacted".to_string(),
+            })),
             FfiProviderConnectionStatus::InvalidCredential
         );
         assert_eq!(
-            provider_connection_check(
-                Err(SttError::QuotaExhausted {
-                    kind: SonioxQuotaKind::OrganizationMonthlyBudget,
-                    message: "redacted".to_string(),
-                }),
-                3,
-            )
-            .status,
+            capture_connection_status(Err(SttError::QuotaExhausted {
+                kind: SonioxQuotaKind::OrganizationMonthlyBudget,
+                message: "redacted".to_string(),
+            })),
             FfiProviderConnectionStatus::OrganizationMonthlyBudgetExhausted
         );
         assert_eq!(
-            provider_connection_check(Err(SttError::ConnectionFailed("redacted".to_string())), 4,)
-                .status,
+            capture_connection_status(Err(SttError::ConnectionFailed("redacted".to_string()))),
             FfiProviderConnectionStatus::NetworkUnavailable
         );
     }

@@ -274,6 +274,13 @@
 "settings.services.connection.title" = "サービス接続";
 "settings.services.connection.subtitle" = "現在 ZuTalk が対応するのは Soniox のみです。";
 "settings.services.no_egress_notice" = "キーを保存するだけで新たなデータ送信が許可されることはありません。各 Notebook でリモート処理を個別に許可する必要があります。Notebook がすでに許可し、認証情報待ちになっていたバックグラウンド処理は、キーが永続的に保存され読み込まれた後に再開する場合があります。";
+/* Language model: the optional credential, and what enabling it sends. */
+"settings.services.model.title" = "言語モデル";
+"settings.services.model.subtitle_format" = "任意。マークした箇所を整え、それをもとに文章を作ります。%@ を使用。";
+"settings.services.model.egress_notice" = "送信されるのはマークした箇所だけです。文字起こし全体はこの Mac に残ります。";
+"settings.services.model.audio_notice" = "音声は送信しません。キーの有無にかかわらず同じです。";
+"settings.services.model.console_link" = "API キーを取得";
+
 "settings.services.engine.title" = "キャプチャエンジン";
 "settings.services.engine.subtitle" = "読み取り専用。現在の MVP では Rust コアがエンジン選択を管理します。";
 "settings.services.engine.service" = "サービス";

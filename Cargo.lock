@@ -5792,6 +5792,7 @@ dependencies = [
  "vt-crypto",
  "vt-export",
  "vt-i18n",
+ "vt-llm",
  "vt-mirror",
  "vt-model",
  "vt-pipeline",
@@ -5806,6 +5807,18 @@ name = "vt-i18n"
 version = "0.0.0"
 dependencies = [
  "rust-i18n",
+]
+
+[[package]]
+name = "vt-llm"
+version = "0.0.0"
+dependencies = [
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

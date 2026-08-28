@@ -13,6 +13,7 @@ vt-store = { path = "../vt-store" }
 vt-mirror = { path = "../vt-mirror" }
 vt-crypto = { path = "../vt-crypto" }
 vt-stt = { path = "../vt-stt" }
+vt-llm = { path = "../vt-llm" }
 vt-export = { path = "../vt-export" }
 vt-share = { path = "../vt-share" }
 vt-i18n = { path = "../vt-i18n" }

@@ -275,6 +275,13 @@
 "settings.services.connection.title" = "Dienstverbindung";
 "settings.services.connection.subtitle" = "ZuTalk unterstützt derzeit nur Soniox.";
 "settings.services.no_egress_notice" = "Das Sichern eines Schlüssels erlaubt keine neue Datenfreigabe. Jedes Notebook muss die Remote-Verarbeitung separat autorisieren. Arbeit, die ein Notebook bereits autorisiert hat und die auf Zugangsdaten wartet, darf erst fortgesetzt werden, nachdem der Schlüssel dauerhaft gesichert und geladen wurde.";
+/* Language model: the optional credential, and what enabling it sends. */
+"settings.services.model.title" = "Sprachmodell";
+"settings.services.model.subtitle_format" = "Optional. Bringt markierte Stellen in Form und schreibt daraus. Verwendet %@.";
+"settings.services.model.egress_notice" = "Gesendet wird nur, was du markierst. Das vollständige Transkript bleibt auf diesem Mac.";
+"settings.services.model.audio_notice" = "Audio wird nie gesendet – mit oder ohne konfigurierten Schlüssel.";
+"settings.services.model.console_link" = "API-Schlüssel holen";
+
 "settings.services.engine.title" = "Aufnahme-Engine";
 "settings.services.engine.subtitle" = "Schreibgeschützt. Der Rust-Kern besitzt diese Engine-Auswahl im aktuellen MVP.";
 "settings.services.engine.service" = "Dienst";

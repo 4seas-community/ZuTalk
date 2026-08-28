@@ -276,6 +276,13 @@
 "settings.services.connection.title" = "服务连接";
 "settings.services.connection.subtitle" = "ZuTalk 目前只支持 Soniox。";
 "settings.services.no_egress_notice" = "保存密钥不会授予新的数据外发权限。每个 Notebook 仍须单独授权远端处理；若某项后台任务此前已获该 Notebook 授权，只是在等待凭据，它可能在密钥持久保存并成功加载后继续。";
+/* Language model: the optional credential, and what enabling it sends. */
+"settings.services.model.title" = "语言模型";
+"settings.services.model.subtitle_format" = "可选。把标记的段落整理清楚，并据此成文。使用 %@。";
+"settings.services.model.egress_notice" = "只有你标记的段落会被发送，完整转录留在这台 Mac 上。";
+"settings.services.model.audio_notice" = "录音从不发送——配不配这个 key 都一样。";
+"settings.services.model.console_link" = "获取 API Key";
+
 "settings.services.engine.title" = "录音引擎";
 "settings.services.engine.subtitle" = "只读。当前 MVP 的引擎选择由 Rust 核心统一管理。";
 "settings.services.engine.service" = "服务";

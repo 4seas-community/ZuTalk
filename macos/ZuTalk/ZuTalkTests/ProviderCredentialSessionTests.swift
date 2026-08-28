@@ -199,14 +199,22 @@ final class ProviderCredentialSessionTests: XCTestCase {
         )
     }
 
-    func testAccountScopeMappingAllowsOnlySoniox() {
+    /// Two vendors, two accounts. A shared scope would make saving one key
+    /// overwrite the other in the store: a user adding a model key would lose
+    /// transcription, with nothing on screen to explain it.
+    func testAccountScopesAreDistinctPerVendor() {
         let accounts = ProviderCredentialAccount.allCases
         let scopes = accounts.map(\.scope)
 
-        XCTAssertEqual(accounts.count, 1)
-        XCTAssertEqual(Set(scopes).count, accounts.count)
+        XCTAssertEqual(Set(scopes).count, accounts.count, "scopes key the store")
         XCTAssertEqual(ProviderCredentialAccount.soniox.scope, "soniox")
+        XCTAssertEqual(ProviderCredentialAccount.anthropic.scope, "anthropic")
         XCTAssertNil(ProviderCredentialAccount(scope: "unknown"))
+
+        // Exactly one credential is what the app cannot transcribe without.
+        // The model key is optional, and presentation depends on that split.
+        XCTAssertEqual(accounts.filter(\.isRequiredForCapture), [.soniox])
+        XCTAssertFalse(ProviderCredentialAccount.anthropic.isRequiredForCapture)
     }
 
     func testSavedCredentialLoadPolicyExcludesUnitAndUiTests() {
@@ -607,8 +615,12 @@ final class ProviderCredentialSessionTests: XCTestCase {
 
         try session.apply("replacement-fixture-token", for: .soniox)
 
+        // Replacing an unreadable document clears every scope's runtime
+        // credential first: whatever was in memory came from a file that can
+        // no longer be trusted to say what it was.
         XCTAssertEqual(events, [
             "runtime.clear:soniox",
+            "runtime.clear:anthropic",
             "persistence.commit",
             "runtime.set:soniox:replacement-fixture-token",
             "runtime.complete_bootstrap",
