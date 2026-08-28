@@ -1,7 +1,7 @@
-//! ZuTalk SQLite v33 schema.
+//! ZuTalk SQLite v34 schema.
 //!
-//! Fresh databases are installed directly at v33. The ten immediately
-//! preceding Notebook schemas (v23 through v32) are migrated in place so
+//! Fresh databases are installed directly at v34. The eleven immediately
+//! preceding Notebook schemas (v23 through v33) are migrated in place so
 //! existing capture data remains available; older retired product schemas are
 //! still rejected.
 //!
@@ -22,7 +22,8 @@ const TRANSCRIPT_GAPS_VERSION: i32 = 29;
 const REMOTE_ARTIFACTS_VERSION: i32 = 30;
 const INBOX_MULTI_SEGMENT_VERSION: i32 = 31;
 const SAMPLE_FORMAT_VERSION: i32 = 32;
-const CURRENT_VERSION: i32 = 33;
+const MARKS_VERSION: i32 = 33;
+const CURRENT_VERSION: i32 = 34;
 
 const V23_TABLES: &[&str] = &[
     "audio_retention_chunks",
@@ -431,6 +432,38 @@ const V33_TABLES: &[&str] = &[
     "session_records",
     "session_speakers",
 ];
+const V34_TABLES: &[&str] = &[
+    "audio_retention_chunks",
+    "context_pack_sources",
+    "context_packs",
+    "mark_digests",
+    "notebook_capture_profiles",
+    "notebook_capture_runs",
+    "notebook_context_pack_bindings",
+    "notebook_projection_mutations",
+    "notebook_session_projections",
+    "notebook_sessions",
+    "notebook_tabs",
+    "notebooks",
+    "participants",
+    "provider_remote_artifacts",
+    "realtime_transcript_gaps",
+    "realtime_translation_inbox",
+    "realtime_utterance_overrides",
+    "realtime_utterance_variants",
+    "realtime_utterances",
+    "search_index",
+    "search_index_config",
+    "search_index_content",
+    "search_index_data",
+    "search_index_docsize",
+    "search_index_idx",
+    "session_marks",
+    "session_meta",
+    "session_purge_jobs",
+    "session_records",
+    "session_speakers",
+];
 const V33_INDEXES: &[&str] = &[
     "idx_audio_retention_chunks_due",
     "idx_audio_retention_chunks_session",
@@ -493,7 +526,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v31_to_v32(conn)?;
             validate_v32_baseline(conn)?;
             migrate_v32_to_v33(conn)?;
-            validate_v33_baseline(conn)
+            validate_v33_baseline(conn)?;
+            migrate_v33_to_v34(conn)?;
+            validate_v34_baseline(conn)
         }
         SPEAKER_VERSION => {
             validate_v24_baseline(conn)?;
@@ -514,7 +549,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v31_to_v32(conn)?;
             validate_v32_baseline(conn)?;
             migrate_v32_to_v33(conn)?;
-            validate_v33_baseline(conn)
+            validate_v33_baseline(conn)?;
+            migrate_v33_to_v34(conn)?;
+            validate_v34_baseline(conn)
         }
         SELECTED_LANGUAGES_VERSION => {
             validate_v25_baseline(conn)?;
@@ -533,7 +570,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v31_to_v32(conn)?;
             validate_v32_baseline(conn)?;
             migrate_v32_to_v33(conn)?;
-            validate_v33_baseline(conn)
+            validate_v33_baseline(conn)?;
+            migrate_v33_to_v34(conn)?;
+            validate_v34_baseline(conn)
         }
         MULTILINGUAL_VERSION => {
             validate_v26_baseline(conn)?;
@@ -550,7 +589,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v31_to_v32(conn)?;
             validate_v32_baseline(conn)?;
             migrate_v32_to_v33(conn)?;
-            validate_v33_baseline(conn)
+            validate_v33_baseline(conn)?;
+            migrate_v33_to_v34(conn)?;
+            validate_v34_baseline(conn)
         }
         REALTIME_LORO_VERSION => {
             validate_v27_baseline(conn)?;
@@ -565,7 +606,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v31_to_v32(conn)?;
             validate_v32_baseline(conn)?;
             migrate_v32_to_v33(conn)?;
-            validate_v33_baseline(conn)
+            validate_v33_baseline(conn)?;
+            migrate_v33_to_v34(conn)?;
+            validate_v34_baseline(conn)
         }
         TRANSLATION_INBOX_VERSION => {
             validate_v28_baseline(conn)?;
@@ -578,7 +621,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v31_to_v32(conn)?;
             validate_v32_baseline(conn)?;
             migrate_v32_to_v33(conn)?;
-            validate_v33_baseline(conn)
+            validate_v33_baseline(conn)?;
+            migrate_v33_to_v34(conn)?;
+            validate_v34_baseline(conn)
         }
         TRANSCRIPT_GAPS_VERSION => {
             validate_v29_baseline(conn)?;
@@ -589,21 +634,32 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v31_to_v32(conn)?;
             validate_v32_baseline(conn)?;
             migrate_v32_to_v33(conn)?;
-            validate_v33_baseline(conn)
+            validate_v33_baseline(conn)?;
+            migrate_v33_to_v34(conn)?;
+            validate_v34_baseline(conn)
         }
         INBOX_MULTI_SEGMENT_VERSION => {
             validate_v31_baseline(conn)?;
             migrate_v31_to_v32(conn)?;
             validate_v32_baseline(conn)?;
             migrate_v32_to_v33(conn)?;
-            validate_v33_baseline(conn)
+            validate_v33_baseline(conn)?;
+            migrate_v33_to_v34(conn)?;
+            validate_v34_baseline(conn)
         }
         SAMPLE_FORMAT_VERSION => {
             validate_v32_baseline(conn)?;
             migrate_v32_to_v33(conn)?;
-            validate_v33_baseline(conn)
+            validate_v33_baseline(conn)?;
+            migrate_v33_to_v34(conn)?;
+            validate_v34_baseline(conn)
         }
-        CURRENT_VERSION => validate_v33_baseline(conn),
+        MARKS_VERSION => {
+            validate_v33_baseline(conn)?;
+            migrate_v33_to_v34(conn)?;
+            validate_v34_baseline(conn)
+        }
+        CURRENT_VERSION => validate_v34_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
     }?;
 
@@ -637,7 +693,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, schema {INBOX_MULTI_SEGMENT_VERSION}, schema {SAMPLE_FORMAT_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, schema {INBOX_MULTI_SEGMENT_VERSION}, schema {SAMPLE_FORMAT_VERSION}, schema {MARKS_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -775,11 +831,28 @@ fn validate_v32_baseline(conn: &Connection) -> SqlResult<()> {
 /// not yet know where that sentence ends, and NULL means "resolve it against
 /// the enclosing utterance when read".
 fn validate_v33_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v31_baseline_objects(conn, CURRENT_VERSION)?;
-    validate_v32_baseline_objects(conn, CURRENT_VERSION)?;
+    validate_v33_baseline_objects(conn, MARKS_VERSION)
+}
+
+/// v34: a mark's cleaned-up text is derived, so it lives in its own table with
+/// the fingerprint of the transcript it was built from. When the passage moves
+/// or the transcript improves, that fingerprint stops matching and the row is
+/// known to be stale rather than quietly wrong.
+fn validate_v34_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v33_baseline_objects(conn, CURRENT_VERSION)?;
+    let table_sql = schema_object_sql(conn, "table", "mark_digests")?.to_ascii_lowercase();
+    if !table_sql.contains("source_fingerprint") || !table_sql.contains("state") {
+        return Err(schema_reset_required(CURRENT_VERSION));
+    }
+    Ok(())
+}
+
+fn validate_v33_baseline_objects(conn: &Connection, claimed_version: i32) -> SqlResult<()> {
+    validate_v31_baseline_objects(conn, claimed_version)?;
+    validate_v32_baseline_objects(conn, claimed_version)?;
     let table_sql = schema_object_sql(conn, "table", "session_marks")?.to_ascii_lowercase();
     if !table_sql.contains("at_ms") || !table_sql.contains("note") {
-        return Err(schema_reset_required(CURRENT_VERSION));
+        return Err(schema_reset_required(claimed_version));
     }
     Ok(())
 }
@@ -827,7 +900,8 @@ fn validate_v24_or_later_baseline(conn: &Connection, claimed_version: i32) -> Sq
     let has_transcript_gaps = claimed_version >= TRANSCRIPT_GAPS_VERSION;
     let has_remote_artifact_journal = claimed_version >= REMOTE_ARTIFACTS_VERSION;
     let (tables, indexes, triggers) = match claimed_version {
-        CURRENT_VERSION => (V33_TABLES, V33_INDEXES, V29_TRIGGERS),
+        CURRENT_VERSION => (V34_TABLES, V33_INDEXES, V29_TRIGGERS),
+        MARKS_VERSION => (V33_TABLES, V33_INDEXES, V29_TRIGGERS),
         // v31 changed one index's uniqueness and v32 added columns; neither
         // changed the object set.
         SAMPLE_FORMAT_VERSION | INBOX_MULTI_SEGMENT_VERSION | REMOTE_ARTIFACTS_VERSION => {
@@ -2087,10 +2161,44 @@ fn install_current_baseline(conn: &Connection) -> SqlResult<()> {
     tx.execute_batch(realtime_transcript_gaps_schema())?;
     tx.execute_batch(provider_remote_artifacts_schema())?;
     tx.execute_batch(session_marks_schema())?;
+    tx.execute_batch(mark_digests_schema())?;
     tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
     tx.commit()?;
     tracing::info!("installed clean ZuTalk schema v{CURRENT_VERSION}");
     Ok(())
+}
+
+/// A mark's cleaned-up text: derived, therefore disposable.
+///
+/// Realtime transcript arrives fragmented and half-translated, and a marked
+/// passage is often unreadable as captured. This is that passage made legible.
+/// It is kept apart from `session_marks` because the two have opposite
+/// lifecycles: the mark and its annotation can never be recomputed, while every
+/// row here can be thrown away and rebuilt.
+///
+/// `source_fingerprint` is what makes staleness detectable rather than silent.
+/// The transcript keeps improving after a mark is dropped and the listener can
+/// drag its boundaries, so a digest is only valid for the exact text it was
+/// built from; when that no longer matches, the row is known to be out of date
+/// instead of confidently describing words that changed underneath it.
+///
+/// A failure is recorded rather than dropped: a card that silently shows raw
+/// fragments forever looks like the feature is off, not like something failed.
+fn mark_digests_schema() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS mark_digests (
+        mark_id            TEXT PRIMARY KEY
+                                REFERENCES session_marks(id) ON DELETE CASCADE,
+        language           TEXT NOT NULL,
+        text               TEXT NOT NULL,
+        model_id           TEXT NOT NULL,
+        source_fingerprint TEXT NOT NULL,
+        state              TEXT NOT NULL CHECK(state IN ('ready', 'failed')),
+        error              TEXT,
+        created_at         TEXT NOT NULL,
+        CHECK((state = 'ready') = (length(text) > 0))
+    );
+    "#
 }
 
 /// Marks: the listener's own record of which moments mattered, anchored to
@@ -2606,9 +2714,24 @@ fn migrate_v31_to_v32(conn: &Connection) -> SqlResult<()> {
 fn migrate_v32_to_v33(conn: &Connection) -> SqlResult<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(session_marks_schema())?;
+    tx.pragma_update(None, "user_version", MARKS_VERSION)?;
+    tx.commit()?;
+    tracing::info!("migrated ZuTalk schema v{SAMPLE_FORMAT_VERSION} to v{MARKS_VERSION}");
+    Ok(())
+}
+
+/// v34: cleaned-up passage text gets a table of its own.
+///
+/// One transaction, so a database is either at v33 with no digests or at v34
+/// with the table. Nothing backfills: a digest is regenerated on demand, and
+/// inventing rows for existing marks would mean sending their transcript off
+/// the device without anyone asking for it.
+fn migrate_v33_to_v34(conn: &Connection) -> SqlResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(mark_digests_schema())?;
     tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated ZuTalk schema v{SAMPLE_FORMAT_VERSION} to v{CURRENT_VERSION}");
+    tracing::info!("migrated ZuTalk schema v{MARKS_VERSION} to v{CURRENT_VERSION}");
     Ok(())
 }
 
@@ -2658,12 +2781,13 @@ mod tests {
     /// database is v30" — spelling the version at each one is what went stale
     /// across the last three bumps.
     fn validate_current_baseline(conn: &Connection) -> SqlResult<()> {
-        validate_v33_baseline(conn)
+        validate_v34_baseline(conn)
     }
 
     fn downgrade_v27_to_v26(conn: &Connection) {
         conn.execute_batch(
             r#"
+            DROP TABLE mark_digests;
             DROP INDEX idx_session_marks_session_at;
             DROP TABLE session_marks;
             DROP TABLE provider_remote_artifacts;
@@ -2729,7 +2853,8 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         conn.execute_batch(
-            "DROP INDEX idx_session_marks_session_at;
+            "DROP TABLE mark_digests;
+             DROP INDEX idx_session_marks_session_at;
              DROP TABLE session_marks;
              ALTER TABLE session_meta DROP COLUMN sample_format;
              ALTER TABLE notebook_capture_runs DROP COLUMN sample_format;
@@ -2764,7 +2889,8 @@ mod tests {
         // a no-op rather than a duplicate-column failure. The v33 table goes
         // with the stamp — a database claiming v31 may not carry it.
         conn.execute_batch(
-            "DROP INDEX idx_session_marks_session_at;
+            "DROP TABLE mark_digests;
+             DROP INDEX idx_session_marks_session_at;
              DROP TABLE session_marks;",
         )
         .unwrap();
@@ -2779,7 +2905,8 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         conn.execute_batch(
-            "DROP INDEX idx_session_marks_session_at;
+            "DROP TABLE mark_digests;
+             DROP INDEX idx_session_marks_session_at;
              DROP TABLE session_marks;
              PRAGMA user_version = 32;",
         )
@@ -2790,7 +2917,8 @@ mod tests {
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
                 .unwrap(),
-            CURRENT_VERSION
+            CURRENT_VERSION,
+            "a v32 database is carried all the way to current, not left at v33"
         );
         assert_eq!(
             conn.query_row("SELECT count(*) FROM session_marks", [], |row| row
@@ -2798,6 +2926,13 @@ mod tests {
                 .unwrap(),
             0,
             "the upgrade introduces marks, it does not invent any"
+        );
+        assert_eq!(
+            conn.query_row("SELECT count(*) FROM mark_digests", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0,
+            "and it never fabricates a digest, which would mean sending a transcript nobody asked to send"
         );
 
         assert!(
@@ -2821,6 +2956,7 @@ mod tests {
                 "audio_retention_chunks",
                 "context_pack_sources",
                 "context_packs",
+                "mark_digests",
                 "notebook_capture_profiles",
                 "notebook_capture_runs",
                 "notebook_context_pack_bindings",

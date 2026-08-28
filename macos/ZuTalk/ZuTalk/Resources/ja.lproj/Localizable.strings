@@ -281,6 +281,14 @@
 "settings.services.model.audio_notice" = "音声は送信しません。キーの有無にかかわらず同じです。";
 "settings.services.model.console_link" = "API キーを取得";
 
+/* Cleaning up a marked passage: the switch, and what a card shows. */
+"settings.services.model.enable" = "マークした箇所を整える";
+"settings.services.model.enable_detail" = "マークすると、その箇所が送信され、読みやすくなって返ってきます。オフのとき：何も送信せず、すでに返ってきた文章も削除します。";
+"session.marks.digest.stale" = "このあと内容が変わりました";
+"session.marks.digest.show_original" = "元の文字起こしを表示";
+"session.marks.digest.hide_original" = "元の文字起こしを隠す";
+"session.marks.digest.failed" = "整えられませんでした";
+
 "settings.services.engine.title" = "キャプチャエンジン";
 "settings.services.engine.subtitle" = "読み取り専用。現在の MVP では Rust コアがエンジン選択を管理します。";
 "settings.services.engine.service" = "サービス";

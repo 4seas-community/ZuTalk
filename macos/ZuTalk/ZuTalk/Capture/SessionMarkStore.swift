@@ -18,6 +18,8 @@ struct SessionMarkViewModel: Identifiable, Equatable {
     /// The listener's own words. Nothing regenerates this.
     let note: String
     let lines: [SessionMarkLineViewModel]
+    /// The passage made readable, once it comes back.
+    let digest: SessionMarkDigestViewModel?
 
     var isEmptyExcerpt: Bool { lines.isEmpty }
 
@@ -45,6 +47,23 @@ struct SessionMarkViewModel: Identifiable, Equatable {
         endIsAuto = mark.endIsAuto
         note = mark.note
         lines = mark.excerpt.map(SessionMarkLineViewModel.init)
+        digest = mark.digest.map(SessionMarkDigestViewModel.init)
+    }
+}
+
+/// A cleaned-up passage, and whether it still describes the current one.
+struct SessionMarkDigestViewModel: Equatable {
+    let text: String
+    /// False once the boundaries moved or the transcript improved underneath.
+    let isCurrent: Bool
+    let failed: Bool
+    let error: String?
+
+    init(_ digest: FfiMarkDigest) {
+        text = digest.text
+        isCurrent = digest.isCurrent
+        failed = digest.failed
+        error = digest.error
     }
 }
 

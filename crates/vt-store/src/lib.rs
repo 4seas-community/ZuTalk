@@ -49,8 +49,8 @@ pub use notebook_store::{
 };
 pub use search::{RealtimeSearchProjectionOutcome, SearchResult, SearchStore, SearchStoreError};
 pub use session_marks::{
-    anchor_is_in_mark, resolve_mark_end, resolve_mark_start, MarkAnchor, MarkLookback, SessionMark,
-    SessionMarkError, SessionMarkStore,
+    anchor_is_in_mark, resolve_mark_end, resolve_mark_start, MarkAnchor, MarkDigest,
+    MarkDigestState, MarkLookback, SessionMark, SessionMarkError, SessionMarkStore,
 };
 pub use session_meta::{
     AudioChunkRetentionRecord, AudioRetentionCounts, SessionMeta, SessionMetaError,

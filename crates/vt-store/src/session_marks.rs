@@ -128,6 +128,44 @@ pub fn anchor_is_in_mark(anchor: MarkAnchor, start_ms: u64, end_ms: u64) -> bool
     anchor.start_ms <= end_ms && anchor.end_ms >= start_ms
 }
 
+/// A mark's cleaned-up text. Derived, therefore always replaceable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MarkDigest {
+    pub mark_id: String,
+    pub language: String,
+    /// Empty exactly when `state` is failed; the schema enforces the pairing.
+    pub text: String,
+    pub model_id: String,
+    /// What the digest was built from. A mismatch against the current passage
+    /// means stale, not wrong-looking-but-plausible.
+    pub source_fingerprint: String,
+    pub state: MarkDigestState,
+    pub error: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarkDigestState {
+    Ready,
+    Failed,
+}
+
+impl MarkDigestState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Failed => "failed",
+        }
+    }
+
+    fn from_str(value: &str) -> Self {
+        match value {
+            "ready" => Self::Ready,
+            _ => Self::Failed,
+        }
+    }
+}
+
 pub struct SessionMarkStore {
     conn: Mutex<Connection>,
 }
@@ -260,6 +298,74 @@ impl SessionMarkStore {
             return Err(SessionMarkError::NotFound(id.to_string()));
         }
         Ok(())
+    }
+
+    /// Records a cleaned-up passage, replacing whatever was there.
+    ///
+    /// Replace rather than append: a mark has one current digest, and keeping
+    /// superseded ones would mean storing text derived from a transcript that
+    /// no longer exists.
+    pub fn put_digest(&self, digest: &MarkDigest) -> Result<(), SessionMarkError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO mark_digests
+                 (mark_id, language, text, model_id, source_fingerprint,
+                  state, error, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
+             ON CONFLICT(mark_id) DO UPDATE SET
+                 language = ?2, text = ?3, model_id = ?4,
+                 source_fingerprint = ?5, state = ?6, error = ?7,
+                 created_at = datetime('now')",
+            rusqlite::params![
+                digest.mark_id,
+                digest.language,
+                digest.text,
+                digest.model_id,
+                digest.source_fingerprint,
+                digest.state.as_str(),
+                digest.error,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Digests for one session's marks, keyed by mark.
+    pub fn list_digests(&self, session_id: &str) -> Result<Vec<MarkDigest>, SessionMarkError> {
+        require_nonempty("session_id", session_id)?;
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT d.mark_id, d.language, d.text, d.model_id, d.source_fingerprint,
+                    d.state, d.error, d.created_at
+             FROM mark_digests d
+             JOIN session_marks m ON m.id = d.mark_id
+             WHERE m.session_id = ?1 AND m.deleted_at IS NULL",
+        )?;
+        let rows = stmt
+            .query_map([session_id], |row| {
+                Ok(MarkDigest {
+                    mark_id: row.get(0)?,
+                    language: row.get(1)?,
+                    text: row.get(2)?,
+                    model_id: row.get(3)?,
+                    source_fingerprint: row.get(4)?,
+                    state: MarkDigestState::from_str(&row.get::<_, String>(5)?),
+                    error: row.get(6)?,
+                    created_at: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// Forgets every cleaned-up passage on this machine.
+    ///
+    /// What turning the feature off has to mean: not just "stop sending", but
+    /// "the text that came back is gone too". Marks and annotations are
+    /// untouched — those were never the model's.
+    pub fn clear_all_digests(&self) -> Result<u64, SessionMarkError> {
+        let conn = self.conn.lock().unwrap();
+        let removed = conn.execute("DELETE FROM mark_digests", [])?;
+        Ok(removed as u64)
     }
 
     fn get_locked(&self, conn: &Connection, id: &str) -> Result<SessionMark, SessionMarkError> {

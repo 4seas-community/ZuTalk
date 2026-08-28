@@ -17,7 +17,8 @@ private final class MarkCoreSpy: @unchecked Sendable {
         startMs: UInt64 = 4_000,
         endMs: UInt64 = 12_000,
         note: String = "",
-        excerpt: [FfiSessionMarkLine] = []
+        excerpt: [FfiSessionMarkLine] = [],
+        digest: FfiMarkDigest? = nil
     ) -> FfiSessionMark {
         FfiSessionMark(
             id: id,
@@ -29,7 +30,22 @@ private final class MarkCoreSpy: @unchecked Sendable {
             note: note,
             createdAt: "2026-08-28T12:00:00Z",
             updatedAt: "2026-08-28T12:00:00Z",
-            excerpt: excerpt
+            excerpt: excerpt,
+            digest: digest
+        )
+    }
+
+    func digest(
+        text: String = "这才是问题的核心。",
+        isCurrent: Bool = true,
+        failed: Bool = false
+    ) -> FfiMarkDigest {
+        FfiMarkDigest(
+            text: text,
+            language: "zh-Hans",
+            isCurrent: isCurrent,
+            failed: failed,
+            error: failed ? "service unavailable" : nil
         )
     }
 
@@ -133,6 +149,69 @@ final class SessionMarkStoreTests: XCTestCase {
         )
     }
 
+    /// A card carries the readable passage when one came back, and stays
+    /// perfectly usable when none did — assistance off, nothing run yet, or a
+    /// passage too short to be worth sending all look the same from here, and
+    /// all of them are fine.
+    func testACardWorksWithAndWithoutACleanedUpPassage() {
+        let spy = MarkCoreSpy()
+
+        let bare = SessionMarkViewModel(spy.mark(id: "m1", excerpt: [spy.line()]))
+        XCTAssertNil(bare.digest)
+        XCTAssertFalse(bare.isEmptyExcerpt, "the raw passage is never wrong, only harder to read")
+
+        let cleaned = SessionMarkViewModel(
+            spy.mark(id: "m2", excerpt: [spy.line()], digest: spy.digest())
+        )
+        XCTAssertEqual(cleaned.digest?.text, "这才是问题的核心。")
+        XCTAssertEqual(cleaned.digest?.isCurrent, true)
+        XCTAssertEqual(cleaned.digest?.failed, false)
+    }
+
+    /// Stale text is kept and labelled rather than hidden: it still describes
+    /// most of the passage, and blanking the card would lose something the
+    /// listener could still use.
+    func testStaleAndFailedPassagesStayVisible() {
+        let spy = MarkCoreSpy()
+
+        let stale = SessionMarkViewModel(
+            spy.mark(id: "m1", excerpt: [spy.line()], digest: spy.digest(isCurrent: false))
+        )
+        XCTAssertEqual(stale.digest?.isCurrent, false)
+        XCTAssertFalse(stale.digest!.text.isEmpty, "stale is labelled, not erased")
+
+        let failed = SessionMarkViewModel(
+            spy.mark(
+                id: "m2",
+                excerpt: [spy.line()],
+                digest: spy.digest(text: "", failed: true)
+            )
+        )
+        XCTAssertEqual(failed.digest?.failed, true)
+        XCTAssertNotNil(failed.digest?.error, "a failure the listener can see is one they can retry")
+        XCTAssertFalse(failed.isEmptyExcerpt, "and the raw passage is still there underneath")
+    }
+
+    /// Off has to be the default. A setting that sends content before anyone
+    /// chose it is not a setting anyone consented to.
+    func testAssistanceIsOffUntilItIsTurnedOn() {
+        let defaults = UserDefaults(suiteName: "zutalk.tests.\(UUID().uuidString)")!
+        var pushed: [Bool] = []
+        let store = LanguageModelAssistanceStore(defaults: defaults, coreProvider: { nil })
+
+        XCTAssertFalse(store.isEnabled)
+
+        store.setEnabled(true)
+        XCTAssertTrue(store.isEnabled)
+        XCTAssertTrue(defaults.bool(forKey: "ai.assistance.enabled"))
+
+        // A fresh store on the same defaults remembers, which is what makes
+        // the launch-time push to the core meaningful.
+        let relaunched = LanguageModelAssistanceStore(defaults: defaults, coreProvider: { nil })
+        XCTAssertTrue(relaunched.isEnabled)
+        _ = pushed
+    }
+
     /// Every string the rail shows must exist in the catalog; a missing key
     /// renders as the key itself, which reads as a bug to the user.
     func testMarkStringsAreLocalized() {
@@ -145,6 +224,12 @@ final class SessionMarkStoreTests: XCTestCase {
             "session.marks.excerpt.silent",
             "session.marks.empty.live",
             "session.marks.empty.done",
+            "session.marks.digest.stale",
+            "session.marks.digest.show_original",
+            "session.marks.digest.hide_original",
+            "session.marks.digest.failed",
+            "settings.services.model.enable",
+            "settings.services.model.enable_detail",
         ] {
             let value = Bundle.main.localizedString(forKey: key, value: nil, table: nil)
             XCTAssertNotEqual(value, key, "missing localization for \(key)")

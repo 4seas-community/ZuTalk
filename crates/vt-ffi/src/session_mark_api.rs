@@ -11,9 +11,13 @@
 //! live lane, which is the property that lets the keypress be a global hotkey
 //! the user hammers without thinking.
 
+use std::sync::Arc;
+
+use vt_llm::{PassageDigestRequest, PassageLine};
 use vt_store::notebook_capture_store::RealtimeUtterance;
 use vt_store::{
-    anchor_is_in_mark, resolve_mark_end, resolve_mark_start, MarkAnchor, MarkLookback, SessionMark,
+    anchor_is_in_mark, resolve_mark_end, resolve_mark_start, MarkAnchor, MarkDigest,
+    MarkDigestState, MarkLookback, SessionMark, SessionMarkStore,
 };
 
 use crate::{CoreError, ZuTalkCore};
@@ -43,6 +47,24 @@ pub struct FfiSessionMark {
     pub updated_at: String,
     /// Transcript rows overlapping the passage, in capture order.
     pub excerpt: Vec<FfiSessionMarkLine>,
+    /// The passage made readable, once it comes back.
+    ///
+    /// Absent means one of several honest things — assistance is off, nothing
+    /// has run yet, or the passage was too short to be worth sending — and the
+    /// card shows the raw excerpt, which is never wrong, only harder to read.
+    pub digest: Option<FfiMarkDigest>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiMarkDigest {
+    pub text: String,
+    pub language: String,
+    /// False once the transcript underneath moved on or the listener dragged
+    /// the boundaries. Stale text is shown, not hidden — it still describes
+    /// most of the passage — but it is labelled so nobody quotes it as current.
+    pub is_current: bool,
+    pub failed: bool,
+    pub error: Option<String>,
 }
 
 /// One transcript row inside a marked passage.
@@ -92,7 +114,15 @@ impl ZuTalkCore {
             .session_marks
             .create(&id, &session_id, at_ms, start_ms)
             .map_err(mark_error("create mark"))?;
-        Ok(hydrate(mark, &utterances))
+
+        // Fire and forget. The listener is still listening; the keypress
+        // returns now and the readable version arrives on its own.
+        self.spawn_digest(&mark, &utterances);
+        Ok(hydrate_with(
+            mark,
+            &utterances,
+            self.digests_for(&session_id),
+        ))
     }
 
     /// Every live mark on a session, in capture order, each with its passage.
@@ -102,9 +132,10 @@ impl ZuTalkCore {
             .session_marks
             .list(&session_id)
             .map_err(mark_error("list marks"))?;
+        let digests = self.digests_for(&session_id);
         Ok(marks
             .into_iter()
-            .map(|mark| hydrate(mark, &utterances))
+            .map(|mark| hydrate_with(mark, &utterances, digests.clone()))
             .collect())
     }
 
@@ -119,7 +150,8 @@ impl ZuTalkCore {
             .set_note(&mark_id, &note)
             .map_err(mark_error("set mark note"))?;
         let utterances = self.mark_utterances(&mark.session_id)?;
-        Ok(hydrate(mark, &utterances))
+        let digests = self.digests_for(&mark.session_id);
+        Ok(hydrate_with(mark, &utterances, digests))
     }
 
     /// Moves a mark's passage boundaries after the listener drags them.
@@ -134,7 +166,11 @@ impl ZuTalkCore {
             .set_bounds(&mark_id, start_ms, end_ms)
             .map_err(mark_error("set mark bounds"))?;
         let utterances = self.mark_utterances(&mark.session_id)?;
-        Ok(hydrate(mark, &utterances))
+        // Dragging a boundary changes what the passage is, so whatever was
+        // cleaned up before now describes different words.
+        self.spawn_digest(&mark, &utterances);
+        let digests = self.digests_for(&mark.session_id);
+        Ok(hydrate_with(mark, &utterances, digests))
     }
 
     pub fn session_mark_delete(&self, mark_id: String) -> Result<(), CoreError> {
@@ -145,6 +181,76 @@ impl ZuTalkCore {
 }
 
 impl ZuTalkCore {
+    /// Cleans up a marked passage in the background, if it should happen at all.
+    ///
+    /// Every reason not to send is checked here, in one place, before anything
+    /// is spawned: assistance off, no credential, nothing substantial in the
+    /// passage. The check is deliberately not spread across call sites — a gate
+    /// that decides whether someone's words leave their machine has to be
+    /// somewhere a reader can find all of it.
+    fn spawn_digest(&self, mark: &SessionMark, utterances: &[RealtimeUtterance]) {
+        if !self.is_language_model_enabled() {
+            return;
+        }
+        let engine = vt_llm::CURRENT_LANGUAGE_MODEL_ENGINE;
+        let Ok(api_key) = self.api_key_store.get(engine.credential_scope) else {
+            return;
+        };
+        let request = passage_request(mark, utterances, &vt_i18n::current_locale());
+        if !vt_llm::is_worth_digesting(&request) {
+            return;
+        }
+
+        let fingerprint = vt_llm::source_fingerprint(&request);
+        let store: Arc<SessionMarkStore> = self.session_marks.clone();
+        let mark_id = mark.id.clone();
+        let language = request.target_language.clone();
+        self.runtime.spawn(async move {
+            let outcome = vt_llm::digest_passage(engine, &api_key, &request).await;
+            // A failure is recorded, not swallowed. A card that silently keeps
+            // showing fragments reads as "the feature is off", and the listener
+            // has no way to tell the difference or to ask again.
+            let digest = match outcome {
+                Ok(text) => MarkDigest {
+                    mark_id,
+                    language,
+                    text,
+                    model_id: engine.model_id.to_string(),
+                    source_fingerprint: fingerprint,
+                    state: MarkDigestState::Ready,
+                    error: None,
+                    created_at: String::new(),
+                },
+                Err(error) => {
+                    // The message describes the failure kind only; the crate
+                    // never puts credential material or passage text in it.
+                    tracing::warn!(%error, "cleaning up a marked passage failed");
+                    MarkDigest {
+                        mark_id,
+                        language,
+                        text: String::new(),
+                        model_id: engine.model_id.to_string(),
+                        source_fingerprint: fingerprint,
+                        state: MarkDigestState::Failed,
+                        error: Some(error.to_string()),
+                        created_at: String::new(),
+                    }
+                }
+            };
+            if let Err(error) = store.put_digest(&digest) {
+                tracing::warn!(%error, "storing a cleaned-up passage failed");
+            }
+        });
+    }
+
+    fn digests_for(&self, session_id: &str) -> Arc<Vec<MarkDigest>> {
+        Arc::new(
+            self.session_marks
+                .list_digests(session_id)
+                .unwrap_or_default(),
+        )
+    }
+
     /// Not exported: its signature speaks in store types, and it is a read
     /// helper rather than a verb the app should be able to call.
     /// Where this session's capture clock stands right now.
@@ -223,6 +329,54 @@ fn anchor_of(utterance: &RealtimeUtterance) -> Option<MarkAnchor> {
     Some(MarkAnchor { start_ms, end_ms })
 }
 
+/// The passage as the model will see it: what the listener was reading, with
+/// the original alongside, and nothing that says where it came from.
+fn passage_request(
+    mark: &SessionMark,
+    utterances: &[RealtimeUtterance],
+    target_language: &str,
+) -> PassageDigestRequest {
+    let anchors = mark_anchors(utterances);
+    let end_ms = resolve_mark_end(mark, &anchors);
+    let lines = utterances
+        .iter()
+        .filter_map(|utterance| {
+            let anchor = anchor_of(utterance)?;
+            anchor_is_in_mark(anchor, mark.start_ms, end_ms).then(|| PassageLine {
+                speaker: utterance.session_speaker_id.clone(),
+                source_language: utterance.source_language.clone(),
+                source_text: utterance.source_text.clone(),
+                translated_text: utterance.translated_text.clone(),
+            })
+        })
+        .collect();
+    PassageDigestRequest {
+        lines,
+        target_language: target_language.to_string(),
+    }
+}
+
+fn hydrate_with(
+    mark: SessionMark,
+    utterances: &[RealtimeUtterance],
+    digests: Arc<Vec<MarkDigest>>,
+) -> FfiSessionMark {
+    let stored = digests.iter().find(|digest| digest.mark_id == mark.id);
+    let digest = stored.map(|stored| {
+        let current = passage_request(&mark, utterances, &stored.language);
+        FfiMarkDigest {
+            text: stored.text.clone(),
+            language: stored.language.clone(),
+            is_current: vt_llm::source_fingerprint(&current) == stored.source_fingerprint,
+            failed: stored.state == MarkDigestState::Failed,
+            error: stored.error.clone(),
+        }
+    });
+    let mut hydrated = hydrate(mark, utterances);
+    hydrated.digest = digest;
+    hydrated
+}
+
 fn hydrate(mark: SessionMark, utterances: &[RealtimeUtterance]) -> FfiSessionMark {
     let anchors = mark_anchors(utterances);
     let end_ms = resolve_mark_end(&mark, &anchors);
@@ -254,6 +408,7 @@ fn hydrate(mark: SessionMark, utterances: &[RealtimeUtterance]) -> FfiSessionMar
         created_at: mark.created_at,
         updated_at: mark.updated_at,
         excerpt,
+        digest: None,
     }
 }
 
@@ -556,6 +711,106 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["u4"]
         );
+    }
+
+    /// The gate that decides whether anyone's words leave their machine.
+    ///
+    /// Off must mean no request is made from anywhere in the process, not
+    /// merely that the app refrains from asking — and with no credential there
+    /// is nothing to make a request with either. Both are checked in one place
+    /// so this test can stand over the whole rule.
+    #[test]
+    fn nothing_is_sent_while_assistance_is_off_or_unconfigured() {
+        let (_temp, core, session_id) = core_with_transcript();
+
+        assert!(
+            !core.is_language_model_enabled(),
+            "assistance is off until the listener turns it on"
+        );
+
+        // Off: a mark still lands, with the raw passage and no digest.
+        let mark = core
+            .session_mark_create(session_id.clone(), Some(21_000))
+            .unwrap();
+        assert!(mark.digest.is_none());
+        assert!(!mark.excerpt.is_empty(), "the mark itself is unaffected");
+
+        // On but unconfigured: still nothing to send with.
+        core.set_language_model_enabled(true).unwrap();
+        assert!(core.is_language_model_enabled());
+        let unconfigured = core.session_mark_create(session_id, Some(21_000)).unwrap();
+        assert!(unconfigured.digest.is_none());
+    }
+
+    /// Turning assistance off has to mean "and forget what came back". Leaving
+    /// the returned text on disk would let someone believe they had removed
+    /// something they had not.
+    #[test]
+    fn turning_assistance_off_discards_the_text_it_produced() {
+        let (_temp, core, session_id) = core_with_transcript();
+        let mark = core
+            .session_mark_create(session_id.clone(), Some(21_000))
+            .unwrap();
+
+        // Stand in for a returned passage; the network path cannot run here.
+        core.session_marks
+            .put_digest(&MarkDigest {
+                mark_id: mark.id.clone(),
+                language: "zh-Hans".into(),
+                text: "这才是问题的核心。所以如果我们看数据……".into(),
+                model_id: "test-model".into(),
+                source_fingerprint: "fixture".into(),
+                state: MarkDigestState::Ready,
+                error: None,
+                created_at: String::new(),
+            })
+            .unwrap();
+        assert!(core.session_mark_list(session_id.clone()).unwrap()[0]
+            .digest
+            .is_some());
+
+        core.set_language_model_enabled(false).unwrap();
+
+        let after = core.session_mark_list(session_id).unwrap();
+        assert!(after[0].digest.is_none(), "the returned text is gone");
+        assert_eq!(after.len(), 1, "the mark itself was never the model's");
+    }
+
+    /// A digest describes the exact words it was built from. When the listener
+    /// drags the boundaries or the transcript improves underneath, it is stale
+    /// — shown, because it still describes most of the passage, but labelled,
+    /// so nobody quotes it as current.
+    #[test]
+    fn a_digest_goes_stale_when_the_passage_moves_under_it() {
+        let (_temp, core, session_id) = core_with_transcript();
+        let mark = core
+            .session_mark_create(session_id.clone(), Some(21_000))
+            .unwrap();
+        let request = {
+            let utterances = core.mark_utterances(&session_id).unwrap();
+            let stored = core.session_marks.get(&mark.id).unwrap();
+            passage_request(&stored, &utterances, "zh-Hans")
+        };
+        core.session_marks
+            .put_digest(&MarkDigest {
+                mark_id: mark.id.clone(),
+                language: "zh-Hans".into(),
+                text: "这才是问题的核心。".into(),
+                model_id: "test-model".into(),
+                source_fingerprint: vt_llm::source_fingerprint(&request),
+                state: MarkDigestState::Ready,
+                error: None,
+                created_at: String::new(),
+            })
+            .unwrap();
+
+        let fresh = core.session_mark_list(session_id.clone()).unwrap();
+        assert!(fresh[0].digest.as_ref().unwrap().is_current);
+
+        let widened = core.session_mark_set_bounds(mark.id, 0, 30_000).unwrap();
+        let digest = widened.digest.expect("stale text is kept, not hidden");
+        assert!(!digest.is_current);
+        assert_eq!(digest.text, "这才是问题的核心。");
     }
 
     #[test]

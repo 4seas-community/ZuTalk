@@ -282,6 +282,14 @@
 "settings.services.model.audio_notice" = "Audio wird nie gesendet – mit oder ohne konfigurierten Schlüssel.";
 "settings.services.model.console_link" = "API-Schlüssel holen";
 
+/* Cleaning up a marked passage: the switch, and what a card shows. */
+"settings.services.model.enable" = "Markierte Stellen aufbereiten";
+"settings.services.model.enable_detail" = "Wenn du eine Stelle markierst, wird sie gesendet und kommt lesbar zurück. Aus: Es wird nichts gesendet, und bereits zurückgekommener Text wird gelöscht.";
+"session.marks.digest.stale" = "Die Stelle hat sich seitdem geändert";
+"session.marks.digest.show_original" = "Rohtranskript anzeigen";
+"session.marks.digest.hide_original" = "Rohtranskript ausblenden";
+"session.marks.digest.failed" = "Aufbereiten fehlgeschlagen";
+
 "settings.services.engine.title" = "Aufnahme-Engine";
 "settings.services.engine.subtitle" = "Schreibgeschützt. Der Rust-Kern besitzt diese Engine-Auswahl im aktuellen MVP.";
 "settings.services.engine.service" = "Dienst";

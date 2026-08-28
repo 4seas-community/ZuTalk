@@ -139,6 +139,7 @@ private struct SessionMarkCard: View {
 
     @State private var draft: String
     @State private var isHovering = false
+    @State private var showsRawExcerpt = false
 
     init(
         mark: SessionMarkViewModel,
@@ -239,6 +240,53 @@ private struct SessionMarkCard: View {
                 .font(.bodySM)
                 .foregroundColor(.textTertiary)
                 .italic()
+        } else if let digest = mark.digest, digest.failed == false {
+            // The readable version replaces the fragments rather than sitting
+            // beside them: two copies of the same passage is what the listener
+            // came here to stop reading. The raw lines stay one click away.
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(digest.text)
+                    .font(.bodySM)
+                    .foregroundColor(.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+
+                HStack(spacing: Spacing.xs) {
+                    if digest.isCurrent == false {
+                        Label(
+                            String(localized: "session.marks.digest.stale"),
+                            systemImage: "clock.arrow.circlepath"
+                        )
+                        .font(.caption)
+                        .foregroundColor(.textTertiary)
+                    }
+                    Button(showsRawExcerpt
+                        ? String(localized: "session.marks.digest.hide_original")
+                        : String(localized: "session.marks.digest.show_original")) {
+                        showsRawExcerpt.toggle()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundColor(.textTertiary)
+                    .accessibilityIdentifier("session.marks.digest.toggle.\(mark.id)")
+                }
+
+                if showsRawExcerpt {
+                    rawExcerpt
+                }
+            }
+        } else if let digest = mark.digest, digest.failed {
+            // A failure that silently showed fragments would read as "the
+            // feature is off", and the listener would never know to ask again.
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Label(
+                    String(localized: "session.marks.digest.failed"),
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.caption)
+                .foregroundColor(.signalAmber)
+                rawExcerpt
+            }
         } else {
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(mark.lines) { line in
@@ -258,6 +306,26 @@ private struct SessionMarkCard: View {
             }
             .textSelection(.enabled)
         }
+    }
+
+    private var rawExcerpt: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(mark.lines) { line in
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(line.primaryText)
+                        .font(.bodySM)
+                        .foregroundColor(.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let secondary = line.secondaryText {
+                        Text(secondary)
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .textSelection(.enabled)
     }
 
     private func commit() {

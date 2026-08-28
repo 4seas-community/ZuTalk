@@ -122,6 +122,11 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
             await CommunityInviteSession.shared.enrollCurrentShareEndpoint()
         }
 
+        // The core starts with assistance off. Telling it what the listener
+        // actually chose has to happen every launch, or the feature would
+        // silently stop working after a restart.
+        LanguageModelAssistanceStore.shared.pushToCore()
+
         // Provider credentials now use the app-private local file. Test hosts
         // must never inspect the signed-in user's real credential profile.
         if TestEnvironment.shouldLoadSavedProviderCredentials {

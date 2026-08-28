@@ -283,6 +283,14 @@
 "settings.services.model.audio_notice" = "L'audio n'est jamais envoyé, avec ou sans clé configurée.";
 "settings.services.model.console_link" = "Obtenir une clé API";
 
+/* Cleaning up a marked passage: the switch, and what a card shows. */
+"settings.services.model.enable" = "Mettre au propre les passages marqués";
+"settings.services.model.enable_detail" = "Quand vous marquez un moment, le passage est envoyé et revient lisible. Désactivé : rien n'est envoyé, et le texte déjà reçu est supprimé.";
+"session.marks.digest.stale" = "Le passage a changé depuis";
+"session.marks.digest.show_original" = "Voir la transcription brute";
+"session.marks.digest.hide_original" = "Masquer la transcription brute";
+"session.marks.digest.failed" = "Mise au propre impossible";
+
 "settings.services.engine.title" = "Moteur de capture";
 "settings.services.engine.subtitle" = "Lecture seule. Le cœur Rust détient ce choix de moteur pour le MVP actuel.";
 "settings.services.engine.service" = "Service";

@@ -282,6 +282,14 @@
 "settings.services.model.audio_notice" = "El audio nunca se envía, con clave configurada o sin ella.";
 "settings.services.model.console_link" = "Conseguir una clave API";
 
+/* Cleaning up a marked passage: the switch, and what a card shows. */
+"settings.services.model.enable" = "Ordenar los pasajes marcados";
+"settings.services.model.enable_detail" = "Cuando marcas un momento, el pasaje se envía y vuelve legible. Desactivado: no se envía nada y se borra el texto ya recibido.";
+"session.marks.digest.stale" = "El pasaje cambió desde entonces";
+"session.marks.digest.show_original" = "Ver la transcripción original";
+"session.marks.digest.hide_original" = "Ocultar la transcripción original";
+"session.marks.digest.failed" = "No se pudo ordenar";
+
 "settings.services.engine.title" = "Motor de captura";
 "settings.services.engine.subtitle" = "Solo lectura. El núcleo en Rust controla esta selección de motor en el MVP actual.";
 "settings.services.engine.service" = "Servicio";

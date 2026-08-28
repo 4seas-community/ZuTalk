@@ -175,6 +175,7 @@ struct ProviderSettingsView: View {
     @ObservedObject private var engineStore = NotebookCaptureEnginePresentationStore.shared
     @ObservedObject private var verificationStore = ProviderConnectionVerificationStore.shared
     @ObservedObject private var modelStore = LanguageModelPresentationStore.shared
+    @ObservedObject private var assistance = LanguageModelAssistanceStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xl) {
@@ -237,6 +238,7 @@ struct ProviderSettingsView: View {
             viewModel.refresh()
             engineStore.refresh()
             modelStore.refresh()
+            assistance.pushToCore()
             guard !TestEnvironment.isAnyTestMode else { return }
             for account in ProviderCredentialAccount.allCases {
                 verificationStore.verifyIfNeeded(
@@ -291,6 +293,28 @@ struct ProviderSettingsView: View {
                     modelStore.engine.modelId
                 )
             ) {
+                SettingsFullRow {
+                    Toggle(isOn: Binding(
+                        get: { assistance.isEnabled },
+                        set: { assistance.setEnabled($0) }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(String(localized: "settings.services.model.enable"))
+                                .font(Font.sans12)
+                                .foregroundColor(.textPrimary)
+                            Text(String(localized: "settings.services.model.enable_detail"))
+                                .font(.caption)
+                                .foregroundColor(.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .toggleStyle(.switch)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("settings.services.model.enable")
+                }
+
+                SettingsRowDivider()
+
                 ForEach(Array(languageModelAccounts.enumerated()), id: \.element.id) { index, account in
                     if index > 0 {
                         SettingsRowDivider()

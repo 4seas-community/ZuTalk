@@ -283,6 +283,14 @@
 "settings.services.model.audio_notice" = "ไม่มีการส่งเสียงออกไป ไม่ว่าจะตั้งค่าคีย์ไว้หรือไม่";
 "settings.services.model.console_link" = "ขอ API key";
 
+/* Cleaning up a marked passage: the switch, and what a card shows. */
+"settings.services.model.enable" = "เรียบเรียงช่วงที่ทำเครื่องหมาย";
+"settings.services.model.enable_detail" = "เมื่อคุณทำเครื่องหมาย ช่วงนั้นจะถูกส่งไปและกลับมาในรูปที่อ่านง่าย เมื่อปิด: ไม่ส่งอะไรเลย และข้อความที่เคยได้รับจะถูกลบ";
+"session.marks.digest.stale" = "ช่วงนี้เปลี่ยนไปหลังจากนั้น";
+"session.marks.digest.show_original" = "ดูถอดความต้นฉบับ";
+"session.marks.digest.hide_original" = "ซ่อนถอดความต้นฉบับ";
+"session.marks.digest.failed" = "เรียบเรียงไม่สำเร็จ";
+
 "settings.services.engine.title" = "เอนจินบันทึกเสียง";
 "settings.services.engine.subtitle" = "อ่านอย่างเดียว แกนหลัก Rust เป็นผู้กำหนดการเลือกเอนจินนี้สำหรับ MVP ปัจจุบัน";
 "settings.services.engine.service" = "บริการ";

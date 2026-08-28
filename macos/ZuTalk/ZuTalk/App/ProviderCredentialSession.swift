@@ -134,6 +134,50 @@ struct LanguageModelPresentation: Equatable {
     }
 }
 
+/// Whether model assistance is on.
+///
+/// The app persists the choice; the core enforces it. Two homes for one flag
+/// looks redundant until you ask what "off" has to mean: no request from
+/// anywhere in the process, which only a check at the boundary can promise.
+/// This side remembers, and tells the core on every launch.
+@MainActor
+final class LanguageModelAssistanceStore: ObservableObject {
+    static let shared = LanguageModelAssistanceStore()
+
+    private static let defaultsKey = "ai.assistance.enabled"
+
+    @Published private(set) var isEnabled: Bool
+
+    private let defaults: UserDefaults
+    private let coreProvider: @MainActor () -> (any ZuTalkCoreProtocol)?
+
+    init(
+        defaults: UserDefaults = .standard,
+        coreProvider: @escaping @MainActor () -> (any ZuTalkCoreProtocol)? = {
+            CoreClient.shared.core
+        }
+    ) {
+        self.defaults = defaults
+        self.coreProvider = coreProvider
+        // Off unless the listener said otherwise. A default that sends content
+        // is not a default anyone consented to.
+        self.isEnabled = defaults.bool(forKey: Self.defaultsKey)
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        isEnabled = enabled
+        defaults.set(enabled, forKey: Self.defaultsKey)
+        pushToCore()
+    }
+
+    /// Tells the core what was chosen. Called at launch too: a flag the core
+    /// has not been told about is a flag that is off there, and the feature
+    /// would silently stop working after a restart.
+    func pushToCore() {
+        try? coreProvider()?.setLanguageModelEnabled(enabled: isEnabled)
+    }
+}
+
 @MainActor
 final class LanguageModelPresentationStore: ObservableObject {
     static let shared = LanguageModelPresentationStore()

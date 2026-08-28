@@ -283,6 +283,14 @@
 "settings.services.model.audio_notice" = "录音从不发送——配不配这个 key 都一样。";
 "settings.services.model.console_link" = "获取 API Key";
 
+/* Cleaning up a marked passage: the switch, and what a card shows. */
+"settings.services.model.enable" = "整理标记的段落";
+"settings.services.model.enable_detail" = "你标记一处，那段就会被发送并整理清楚后返回。关闭时：什么都不发，已经拿回来的文字也会删掉。";
+"session.marks.digest.stale" = "这段之后又变过";
+"session.marks.digest.show_original" = "看原始转录";
+"session.marks.digest.hide_original" = "收起原始转录";
+"session.marks.digest.failed" = "整理失败";
+
 "settings.services.engine.title" = "录音引擎";
 "settings.services.engine.subtitle" = "只读。当前 MVP 的引擎选择由 Rust 核心统一管理。";
 "settings.services.engine.service" = "服务";

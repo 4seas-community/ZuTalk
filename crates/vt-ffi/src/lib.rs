@@ -295,7 +295,7 @@ fn language_model_connection_status(
         Err(LanguageModelError::NetworkUnavailable(_)) => {
             FfiProviderConnectionStatus::NetworkUnavailable
         }
-        Err(LanguageModelError::ServiceUnavailable { .. }) => {
+        Err(LanguageModelError::ServiceUnavailable { .. } | LanguageModelError::EmptyResponse) => {
             FfiProviderConnectionStatus::ServiceUnavailable
         }
     }
@@ -357,7 +357,17 @@ pub struct ZuTalkCore {
     search_store: SearchStore,
     pub(crate) session_meta: SessionMetaStore,
     /// Marks live beside the transcript, never inside the capture path.
-    pub(crate) session_marks: SessionMarkStore,
+    ///
+    /// Arc because cleaning up a marked passage happens on a background task
+    /// that outlives the call which started it.
+    pub(crate) session_marks: Arc<SessionMarkStore>,
+    /// Whether the listener has turned on model assistance.
+    ///
+    /// Held here, not merely in the app, because this is the gate that decides
+    /// whether text leaves the machine. A flag the app consults and the core
+    /// does not is a flag some future call site forgets — so the check lives at
+    /// the boundary where the request would actually be made.
+    pub(crate) language_model_enabled: std::sync::atomic::AtomicBool,
     pub(crate) notebook_store: NotebookStore,
     /// Arc 是为了让分享层能持有它去解析「这个 Notebook 下有哪些文档」。
     /// Deref 让既有的调用点原样可用。
@@ -647,9 +657,12 @@ impl ZuTalkCore {
             message: format!("session meta: {e}"),
         })?;
 
-        let session_marks = SessionMarkStore::new(&db_path).map_err(|e| CoreError::InitFailed {
-            message: format!("session marks: {e}"),
-        })?;
+        let session_marks =
+            Arc::new(
+                SessionMarkStore::new(&db_path).map_err(|e| CoreError::InitFailed {
+                    message: format!("session marks: {e}"),
+                })?,
+            );
 
         let notebook_capture_store = Arc::new(NotebookCaptureStore::new(&db_path).map_err(
             |e| CoreError::InitFailed {
@@ -771,6 +784,7 @@ impl ZuTalkCore {
             search_store,
             session_meta,
             session_marks,
+            language_model_enabled: std::sync::atomic::AtomicBool::new(false),
             notebook_store,
             notebook_capture_store,
             context_pack_store,
@@ -1125,6 +1139,42 @@ impl ZuTalkCore {
             model_id: engine.model_id.to_string(),
             console_url: engine.console_url.to_string(),
         }
+    }
+
+    /// Turns model assistance on or off.
+    ///
+    /// The app persists the choice; the core enforces it. Off means no request
+    /// is made from anywhere in this process, regardless of what any caller
+    /// asks for — which is the only version of "off" worth offering when the
+    /// question is whether someone's transcript leaves their machine.
+    ///
+    /// Turning it off also forgets every passage the model already returned.
+    /// "Stop sending" and "and delete what came back" are the same intent, and
+    /// splitting them into two switches would leave text on disk that the user
+    /// believes they removed. Marks and annotations survive: those were never
+    /// the model's.
+    pub fn set_language_model_enabled(&self, enabled: bool) -> Result<(), CoreError> {
+        self.language_model_enabled
+            .store(enabled, std::sync::atomic::Ordering::SeqCst);
+        if enabled {
+            return Ok(());
+        }
+        let removed =
+            self.session_marks
+                .clear_all_digests()
+                .map_err(|e| CoreError::InternalError {
+                    message: format!("clear digests: {e}"),
+                })?;
+        tracing::info!(
+            removed,
+            "model assistance turned off; cleaned-up passages discarded"
+        );
+        Ok(())
+    }
+
+    pub fn is_language_model_enabled(&self) -> bool {
+        self.language_model_enabled
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// 检查某 scope 是否有 API Key(供 UI 显示"未配置"标记,不泄露 key 本身)。

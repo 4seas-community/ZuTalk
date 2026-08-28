@@ -283,6 +283,14 @@
 "settings.services.model.audio_notice" = "녹음은 전송하지 않습니다. 키를 설정하든 안 하든 같습니다.";
 "settings.services.model.console_link" = "API 키 발급받기";
 
+/* Cleaning up a marked passage: the switch, and what a card shows. */
+"settings.services.model.enable" = "표시한 대목 다듬기";
+"settings.services.model.enable_detail" = "표시하면 그 대목이 전송되어 읽기 좋게 돌아옵니다. 끄면: 아무것도 보내지 않고, 이미 받은 글도 삭제합니다.";
+"session.marks.digest.stale" = "이후에 내용이 바뀌었습니다";
+"session.marks.digest.show_original" = "원본 기록 보기";
+"session.marks.digest.hide_original" = "원본 기록 숨기기";
+"session.marks.digest.failed" = "다듬지 못했습니다";
+
 "settings.services.engine.title" = "캡처 엔진";
 "settings.services.engine.subtitle" = "읽기 전용입니다. Rust 코어는 현재 MVP에 대한 이 엔진 선택을 소유합니다.";
 "settings.services.engine.service" = "서비스";

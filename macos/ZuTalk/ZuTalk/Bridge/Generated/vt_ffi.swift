@@ -658,6 +658,8 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      */
     func hasApiKey(scope: String)  -> Bool
 
+    func isLanguageModelEnabled()  -> Bool
+
     /**
      * 列出垃圾箱里的 session。TrashPage 专用。
      */
@@ -696,6 +698,22 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      * 空 value 视为 clear。
      */
     func setApiKey(scope: String, value: String) throws
+
+    /**
+     * Turns model assistance on or off.
+     *
+     * The app persists the choice; the core enforces it. Off means no request
+     * is made from anywhere in this process, regardless of what any caller
+     * asks for — which is the only version of "off" worth offering when the
+     * question is whether someone's transcript leaves their machine.
+     *
+     * Turning it off also forgets every passage the model already returned.
+     * "Stop sending" and "and delete what came back" are the same intent, and
+     * splitting them into two switches would leave text on disk that the user
+     * believes they removed. Marks and annotations survive: those were never
+     * the model's.
+     */
+    func setLanguageModelEnabled(enabled: Bool) throws
 
     /**
      * 切换 Rust 端运行时 locale，影响所有 `CoreError` 文本。
@@ -1625,6 +1643,14 @@ open func hasApiKey(scope: String) -> Bool  {
 })
 }
 
+open func isLanguageModelEnabled() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_is_language_model_enabled(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
     /**
      * 列出垃圾箱里的 session。TrashPage 专用。
      */
@@ -1704,6 +1730,28 @@ open func setApiKey(scope: String, value: String)throws   {try rustCallWithError
             self.uniffiCloneHandle(),
         FfiConverterString.lower(scope),
         FfiConverterString.lower(value),$0
+    )
+}
+}
+
+    /**
+     * Turns model assistance on or off.
+     *
+     * The app persists the choice; the core enforces it. Off means no request
+     * is made from anywhere in this process, regardless of what any caller
+     * asks for — which is the only version of "off" worth offering when the
+     * question is whether someone's transcript leaves their machine.
+     *
+     * Turning it off also forgets every passage the model already returned.
+     * "Stop sending" and "and delete what came back" are the same intent, and
+     * splitting them into two switches would leave text on disk that the user
+     * believes they removed. Marks and annotations survive: those were never
+     * the model's.
+     */
+open func setLanguageModelEnabled(enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_set_language_model_enabled(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(enabled),$0
     )
 }
 }
@@ -4018,6 +4066,82 @@ public func FfiConverterTypeFfiMachineBlockWrite_lift(_ buf: RustBuffer) throws 
 #endif
 public func FfiConverterTypeFfiMachineBlockWrite_lower(_ value: FfiMachineBlockWrite) -> RustBuffer {
     return FfiConverterTypeFfiMachineBlockWrite.lower(value)
+}
+
+
+public struct FfiMarkDigest: Equatable, Hashable {
+    public var text: String
+    public var language: String
+    /**
+     * False once the transcript underneath moved on or the listener dragged
+     * the boundaries. Stale text is shown, not hidden — it still describes
+     * most of the passage — but it is labelled so nobody quotes it as current.
+     */
+    public var isCurrent: Bool
+    public var failed: Bool
+    public var error: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, language: String,
+        /**
+         * False once the transcript underneath moved on or the listener dragged
+         * the boundaries. Stale text is shown, not hidden — it still describes
+         * most of the passage — but it is labelled so nobody quotes it as current.
+         */isCurrent: Bool, failed: Bool, error: String?) {
+        self.text = text
+        self.language = language
+        self.isCurrent = isCurrent
+        self.failed = failed
+        self.error = error
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiMarkDigest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiMarkDigest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMarkDigest {
+        return
+            try FfiMarkDigest(
+                text: FfiConverterString.read(from: &buf),
+                language: FfiConverterString.read(from: &buf),
+                isCurrent: FfiConverterBool.read(from: &buf),
+                failed: FfiConverterBool.read(from: &buf),
+                error: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiMarkDigest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterString.write(value.language, into: &buf)
+        FfiConverterBool.write(value.isCurrent, into: &buf)
+        FfiConverterBool.write(value.failed, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiMarkDigest_lift(_ buf: RustBuffer) throws -> FfiMarkDigest {
+    return try FfiConverterTypeFfiMarkDigest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiMarkDigest_lower(_ value: FfiMarkDigest) -> RustBuffer {
+    return FfiConverterTypeFfiMarkDigest.lower(value)
 }
 
 
@@ -6336,6 +6460,14 @@ public struct FfiSessionMark: Equatable, Hashable {
      * Transcript rows overlapping the passage, in capture order.
      */
     public var excerpt: [FfiSessionMarkLine]
+    /**
+     * The passage made readable, once it comes back.
+     *
+     * Absent means one of several honest things — assistance is off, nothing
+     * has run yet, or the passage was too short to be worth sending — and the
+     * card shows the raw excerpt, which is never wrong, only harder to read.
+     */
+    public var digest: FfiMarkDigest?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -6356,7 +6488,14 @@ public struct FfiSessionMark: Equatable, Hashable {
          */note: String, createdAt: String, updatedAt: String,
         /**
          * Transcript rows overlapping the passage, in capture order.
-         */excerpt: [FfiSessionMarkLine]) {
+         */excerpt: [FfiSessionMarkLine],
+        /**
+         * The passage made readable, once it comes back.
+         *
+         * Absent means one of several honest things — assistance is off, nothing
+         * has run yet, or the passage was too short to be worth sending — and the
+         * card shows the raw excerpt, which is never wrong, only harder to read.
+         */digest: FfiMarkDigest?) {
         self.id = id
         self.sessionId = sessionId
         self.atMs = atMs
@@ -6367,6 +6506,7 @@ public struct FfiSessionMark: Equatable, Hashable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.excerpt = excerpt
+        self.digest = digest
     }
 
 
@@ -6394,7 +6534,8 @@ public struct FfiConverterTypeFfiSessionMark: FfiConverterRustBuffer {
                 note: FfiConverterString.read(from: &buf),
                 createdAt: FfiConverterString.read(from: &buf),
                 updatedAt: FfiConverterString.read(from: &buf),
-                excerpt: FfiConverterSequenceTypeFfiSessionMarkLine.read(from: &buf)
+                excerpt: FfiConverterSequenceTypeFfiSessionMarkLine.read(from: &buf),
+                digest: FfiConverterOptionTypeFfiMarkDigest.read(from: &buf)
         )
     }
 
@@ -6409,6 +6550,7 @@ public struct FfiConverterTypeFfiSessionMark: FfiConverterRustBuffer {
         FfiConverterString.write(value.createdAt, into: &buf)
         FfiConverterString.write(value.updatedAt, into: &buf)
         FfiConverterSequenceTypeFfiSessionMarkLine.write(value.excerpt, into: &buf)
+        FfiConverterOptionTypeFfiMarkDigest.write(value.digest, into: &buf)
     }
 }
 
@@ -9621,6 +9763,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeFfiMarkDigest: FfiConverterRustBuffer {
+    typealias SwiftType = FfiMarkDigest?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiMarkDigest.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiMarkDigest.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureContextReceipt: FfiConverterRustBuffer {
     typealias SwiftType = FfiNotebookCaptureContextReceipt?
 
@@ -10606,6 +10772,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_has_api_key() != 54637) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_is_language_model_enabled() != 60803) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_list_trashed_sessions() != 59329) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10622,6 +10791,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_set_api_key() != 17118) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_language_model_enabled() != 29263) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_set_locale() != 23155) {

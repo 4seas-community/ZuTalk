@@ -12,8 +12,12 @@
 
 use std::time::Duration;
 
+pub mod digest;
 pub mod engine;
 
+pub use digest::{
+    digest_passage, is_worth_digesting, source_fingerprint, PassageDigestRequest, PassageLine,
+};
 pub use engine::{LanguageModelEngine, CURRENT_LANGUAGE_MODEL_ENGINE};
 
 /// Failures a credential check can produce, in the shapes the app can act on.
@@ -40,6 +44,9 @@ pub enum LanguageModelError {
 
     #[error("api key is empty")]
     EmptyCredential,
+
+    #[error("model returned nothing")]
+    EmptyResponse,
 }
 
 /// Checks a credential without spending anything or leaving a trace.
@@ -79,7 +86,7 @@ pub async fn verify_credential(
     classify(response.status().as_u16())
 }
 
-fn classify(status: u16) -> Result<(), LanguageModelError> {
+pub(crate) fn classify(status: u16) -> Result<(), LanguageModelError> {
     match status {
         200..=299 => Ok(()),
         401 | 403 => Err(LanguageModelError::InvalidCredential),
@@ -89,7 +96,7 @@ fn classify(status: u16) -> Result<(), LanguageModelError> {
     }
 }
 
-fn describe_transport_failure(error: &reqwest::Error) -> String {
+pub(crate) fn describe_transport_failure(error: &reqwest::Error) -> String {
     if error.is_timeout() {
         "timeout".to_string()
     } else if error.is_connect() {
