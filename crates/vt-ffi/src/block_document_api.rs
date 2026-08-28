@@ -86,6 +86,7 @@ pub enum FfiOutlineKind {
     Task,
     Divider,
     Code,
+    Bullet,
 }
 
 impl From<FfiOutlineKind> for OutlineKind {
@@ -99,6 +100,7 @@ impl From<FfiOutlineKind> for OutlineKind {
             FfiOutlineKind::Task => Self::Task,
             FfiOutlineKind::Divider => Self::Divider,
             FfiOutlineKind::Code => Self::Code,
+            FfiOutlineKind::Bullet => Self::Bullet,
         }
     }
 }
@@ -114,6 +116,7 @@ impl From<OutlineKind> for FfiOutlineKind {
             OutlineKind::Task => Self::Task,
             OutlineKind::Divider => Self::Divider,
             OutlineKind::Code => Self::Code,
+            OutlineKind::Bullet => Self::Bullet,
         }
     }
 }

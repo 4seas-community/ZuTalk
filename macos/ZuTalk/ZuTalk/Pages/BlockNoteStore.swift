@@ -291,6 +291,10 @@ final class BlockNoteStore: ObservableObject {
             ("# ", .heading1, false),
             ("- [x] ", .task, true),
             ("- [ ] ", .task, false),
+            // 短横加空格 = 无序列表项。必须排在两条任务规则之后:
+            // 否则 `- [ ] ` 会先被这条吃掉,复选框永远打不出来。
+            ("- ", .bullet, false),
+            ("* ", .bullet, false),
             ("--- ", .divider, false),
             ("``` ", .code, false),
             ("```", .code, false),
@@ -332,7 +336,7 @@ final class BlockNoteStore: ObservableObject {
     /// 回到段落 —— 标题下面接着写的是正文,不是又一个标题。
     static func continuationKind(after kind: FfiOutlineKind) -> FfiOutlineKind {
         switch kind {
-        case .task, .quote, .code: kind
+        case .task, .quote, .code, .bullet: kind
         default: .paragraph
         }
     }
@@ -340,7 +344,7 @@ final class BlockNoteStore: ObservableObject {
     /// 空清单行上按 Return:退出清单,而不是再叠一个空清单项。
     /// 这是所有清单编辑器的通用出口手势。
     static func emptySubmitExitsList(kind: FfiOutlineKind) -> Bool {
-        kind == .task || kind == .quote
+        kind == .task || kind == .quote || kind == .bullet
     }
 
     /// 光标处拆分:本行留 head,其后插入携带 tail 的新行,一次 apply

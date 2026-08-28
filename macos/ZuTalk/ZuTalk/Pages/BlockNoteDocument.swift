@@ -95,32 +95,51 @@ enum BlockNoteDocument {
     static func paragraphStyle(for row: FfiOutlineRow) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         let indent = CGFloat(row.depth) * indentStep
+        // 只有真的画记号的类型才留记号栏。段落不留 —— 一段普通文字应当
+        // 从写作栏左缘开始,而不是永远缩在一个空记号位后面。
+        let gutter = drawsMarker(row.kind) ? markerWidth : 0
         // 记号画在缩进之后、文本之前的那一栏;首行与折行同一个内缩,
         // 折行文本才会与首行对齐而不是钻到记号底下。
-        style.firstLineHeadIndent = indent + markerWidth
-        style.headIndent = indent + markerWidth
+        style.firstLineHeadIndent = indent + gutter
+        style.headIndent = indent + gutter
         style.lineSpacing = 2
         style.paragraphSpacing = spacingAfter(row.kind)
         style.paragraphSpacingBefore = spacingBefore(row.kind)
         return style
     }
 
+    /// 段落之间要有真正的空气。蓝本(macro)给段落上下各约 16px,靠间距
+    /// 分隔段落;我们过去只给 2pt,于是只能靠"每行一个圆点"把行分开 ——
+    /// 两个错误互相强化,笔记因此既挤又满是点。
     private static func spacingBefore(_ kind: FfiOutlineKind) -> CGFloat {
         switch kind {
-        case .heading1: 16
-        case .heading2, .heading3: 12
-        case .divider: 8
-        case .code: 6
-        default: 2
+        case .heading1: 20
+        case .heading2, .heading3: 16
+        case .divider: 12
+        case .code: 8
+        // 清单内部各项要紧凑:一份清单是一个整体,不是一串独立段落。
+        case .bullet, .task: 2
+        default: 8
         }
     }
 
     private static func spacingAfter(_ kind: FfiOutlineKind) -> CGFloat {
         switch kind {
-        case .heading1, .heading2, .heading3: 6
-        case .divider: 8
-        case .code: 6
-        default: 2
+        case .heading1, .heading2, .heading3: 8
+        case .divider: 12
+        case .code: 8
+        case .bullet, .task: 2
+        default: 8
+        }
+    }
+
+    /// 这个类型是否在记号栏里画东西。段落、标题、代码、分隔线都不画 ——
+    /// 蓝本的 `paragraph` 主题类里没有任何记号,圆点只属于显式的列表。
+    /// 记号栏的预留与绘制共用这一个判断,两边不会各说各话。
+    static func drawsMarker(_ kind: FfiOutlineKind) -> Bool {
+        switch kind {
+        case .bullet, .task, .quote: true
+        case .paragraph, .heading1, .heading2, .heading3, .divider, .code: false
         }
     }
 
@@ -131,6 +150,7 @@ enum BlockNoteDocument {
         case .heading3: .systemFont(ofSize: 15, weight: .semibold)
         case .quote: .systemFont(ofSize: 13).withItalic()
         case .code: .monospacedSystemFont(ofSize: 12.5, weight: .regular)
+        case .bullet: .systemFont(ofSize: 13)
         default: .systemFont(ofSize: 13)
         }
     }
@@ -232,6 +252,7 @@ enum BlockNoteDocument {
             case .task: return indent + (row.checked ? "- [x] " : "- [ ] ") + row.text
             case .divider: return indent + "---"
             case .code: return indent + "```" + row.text
+            case .bullet: return indent + "- " + row.text
             }
         }
         .joined(separator: "\n")
@@ -252,6 +273,7 @@ enum BlockNoteDocument {
         case .task: 5
         case .divider: 6
         case .code: 7
+        case .bullet: 8
         }
     }
 
@@ -265,6 +287,7 @@ enum BlockNoteDocument {
         case 5: .task
         case 6: .divider
         case 7: .code
+        case 8: .bullet
         default: nil
         }
     }

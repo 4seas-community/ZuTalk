@@ -79,6 +79,7 @@ final class BlockNoteNSTextView: NSTextView {
         lineRect.origin.x += origin.x
         lineRect.origin.y += origin.y
 
+        guard BlockNoteDocument.drawsMarker(kind) else { return }
         let x = origin.x + CGFloat(depth) * BlockNoteDocument.indentStep
         let markerRect = NSRect(
             x: x,
@@ -87,24 +88,28 @@ final class BlockNoteNSTextView: NSTextView {
             height: lineRect.height
         )
 
+        // 空行不画记号 —— 一行还没写字就先给它一个圆点,是纯粹的视觉
+        // 噪音。蓝本的 `:empty` 规则同样只保留行高、不出记号。
+        let isEmptyLine = paragraphRange.length <= 1
         switch kind {
-        case .paragraph:
-            drawBullet(in: markerRect, hollow: depth > 0)
+        case .bullet:
+            // 层级只靠缩进表达,记号形状始终一致 —— 深一层就换个空心圈
+            // 会把一份清单读成两种东西。
+            if !isEmptyLine { drawBullet(in: markerRect) }
         case .task:
             drawCheckbox(in: markerRect, checked: checked)
         case .quote:
             NSColor.tertiaryLabelColor.setFill()
             NSRect(x: x + 6, y: lineRect.minY + 1, width: 2, height: lineRect.height - 2).fill()
-        case .heading1, .heading2, .heading3, .divider:
-            break
-        case .code:
-            // 代码块靠底色成块(见 BlockNoteDocument.attributes),记号栏
-            // 留空 —— 再画一个圆点会让它读起来像一条清单项。
+        case .paragraph, .heading1, .heading2, .heading3, .divider, .code:
+            // 段落不带记号。这是蓝本的默认,也是"笔记"与"大纲"的分界:
+            // 一段普通文字就是一段文字,圆点是用户主动要的(打 `- `),
+            // 不是每敲一行就发给他一个。
             break
         }
     }
 
-    private func drawBullet(in rect: NSRect, hollow: Bool) {
+    private func drawBullet(in rect: NSRect) {
         let size: CGFloat = 5
         let dot = NSRect(
             x: rect.midX - size / 2,
@@ -112,15 +117,8 @@ final class BlockNoteNSTextView: NSTextView {
             width: size,
             height: size
         )
-        let path = NSBezierPath(ovalIn: dot)
-        if hollow {
-            NSColor.tertiaryLabelColor.setStroke()
-            path.lineWidth = 1
-            path.stroke()
-        } else {
-            NSColor.tertiaryLabelColor.setFill()
-            path.fill()
-        }
+        NSColor.tertiaryLabelColor.setFill()
+        NSBezierPath(ovalIn: dot).fill()
     }
 
     private func drawCheckbox(in rect: NSRect, checked: Bool) {

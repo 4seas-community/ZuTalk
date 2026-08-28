@@ -39,6 +39,9 @@ pub enum OutlineKind {
     /// 等宽代码块。一行一块 —— 与其余类型同构,不引入"多行块"这种
     /// 需要另一套光标语义的结构。
     Code,
+    /// 无序列表项。段落与列表项分开是蓝本(macro)的模型:段落不带记号,
+    /// 圆点只属于显式的列表 —— 否则整篇笔记都会挂在项目符号上。
+    Bullet,
 }
 
 impl OutlineKind {
@@ -53,6 +56,7 @@ impl OutlineKind {
             Self::Task => Some("task"),
             Self::Divider => Some("divider"),
             Self::Code => Some("code"),
+            Self::Bullet => Some("bullet"),
         }
     }
 
@@ -67,6 +71,7 @@ impl OutlineKind {
             Some("task") => Self::Task,
             Some("divider") => Self::Divider,
             Some("code") => Self::Code,
+            Some("bullet") => Self::Bullet,
             _ => Self::Paragraph,
         }
     }
@@ -288,6 +293,7 @@ mod tests {
             OutlineKind::Task,
             OutlineKind::Divider,
             OutlineKind::Code,
+            OutlineKind::Bullet,
         ];
         prop::collection::vec(
             (
