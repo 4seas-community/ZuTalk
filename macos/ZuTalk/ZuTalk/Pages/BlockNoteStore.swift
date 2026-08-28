@@ -342,6 +342,66 @@ final class BlockNoteStore: ObservableObject {
         return (next, newRow.id)
     }
 
+    /// 多行粘贴:把一段含换行的文本炸开成多行。首行留在本行,其余各成
+    /// 一行插在其后;每行过一遍 Markdown 前缀,粘贴一份清单进来就是一份
+    /// 清单。一次 apply = 一个撤销步。返回 (首行文本, 末行 id) 供 UI
+    /// 收敛草稿与焦点。
+    @discardableResult
+    func explodeMultilineDraft(rowId: String, text: String) -> (head: String, lastRowId: String)? {
+        guard let (next, head, lastId) = Self.explodedRows(rows, rowId: rowId, text: text)
+        else { return nil }
+        // 文本更新 + 插入,无移动无删除——见文件头的蓝本约束。
+        return apply(next) ? (head, lastId) : nil
+    }
+
+    /// 炸开的纯运算,供直接单测。文本不含换行或行不存在返回 nil。
+    /// CRLF 归一;末尾单个换行不额外造空行(粘贴一行带尾换行的文本
+    /// 不应多出一个空行),中间与连续换行保留为真实空行。
+    static func explodedRows(
+        _ rows: [FfiOutlineRow],
+        rowId: String,
+        text: String
+    ) -> ([FfiOutlineRow], String, String)? {
+        guard let index = rows.firstIndex(where: { $0.id == rowId }) else { return nil }
+        let normalized = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        guard normalized.contains("\n") else { return nil }
+        var lines = normalized.components(separatedBy: "\n")
+        if lines.count > 1, lines.last == "" {
+            lines.removeLast()
+        }
+
+        var next = rows
+        let depth = next[index].depth
+        // 首行走本行既有的类型语义:段落行上的 Markdown 记号照常变身,
+        // 非段落行(标题里粘贴)保持原类型、记号当作字面文本。
+        var head = lines[0]
+        if next[index].kind == .paragraph, let hit = markdownPrefix(head) {
+            next[index].kind = hit.kind
+            next[index].checked = hit.checked
+            head = hit.rest
+        }
+        next[index].text = head
+
+        var lastId = next[index].id
+        var insertAt = index + 1
+        for line in lines.dropFirst() {
+            var row = makeRow(depth: depth)
+            if let hit = markdownPrefix(line) {
+                row.kind = hit.kind
+                row.checked = hit.checked
+                row.text = hit.rest
+            } else {
+                row.text = line
+            }
+            next.insert(row, at: insertAt)
+            lastId = row.id
+            insertAt += 1
+        }
+        return (next, head, lastId)
+    }
+
     /// v1 简单删除:只删这一行,子行不收养、不随删。删空后补一行空 row,
     /// 保住「文档至少一行」的编辑器不变量。
     func deleteRow(rowId: String) {

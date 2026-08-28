@@ -85,6 +85,47 @@ final class BlockNoteGestureTests: XCTestCase {
         XCTAssertFalse(BlockNoteStore.emptySubmitExitsList(kind: .heading2))
     }
 
+    // MARK: - 多行粘贴炸行
+
+    func testExplodeSplitsPastedLinesIntoRowsAtTheAnchorDepth() {
+        let rows = [row("a", 2, ""), row("z", 0, "尾")]
+        let (next, head, lastId) =
+            BlockNoteStore.explodedRows(rows, rowId: "a", text: "一\n二\n三")!
+        XCTAssertEqual(head, "一")
+        XCTAssertEqual(next.map(\.text), ["一", "二", "三", "尾"])
+        XCTAssertEqual(next[1].depth, 2, "新行继承锚点行深度")
+        XCTAssertEqual(next[2].id, lastId, "焦点应落到最后一个新行")
+    }
+
+    func testExplodeRunsEachLineThroughMarkdownPrefixes() {
+        let rows = [row("a", 0, "")]
+        let (next, _, _) = BlockNoteStore.explodedRows(
+            rows,
+            rowId: "a",
+            text: "# 标题\n- [ ] 待办\n正文"
+        )!
+        XCTAssertEqual(next[0].kind, .heading1)
+        XCTAssertEqual(next[0].text, "标题")
+        XCTAssertEqual(next[1].kind, .task)
+        XCTAssertFalse(next[1].checked)
+        XCTAssertEqual(next[2].kind, .paragraph)
+    }
+
+    func testExplodeNormalizesCRLFAndDropsOneTrailingNewline() {
+        let rows = [row("a", 0, "")]
+        let (next, _, _) =
+            BlockNoteStore.explodedRows(rows, rowId: "a", text: "甲\r\n乙\n")!
+        XCTAssertEqual(next.map(\.text), ["甲", "乙"], "末尾单换行不额外造空行")
+        let (blank, _, _) =
+            BlockNoteStore.explodedRows(rows, rowId: "a", text: "甲\n\n乙")!
+        XCTAssertEqual(blank.map(\.text), ["甲", "", "乙"], "连续换行保留为真实空行")
+    }
+
+    func testExplodeRefusesSingleLineText() {
+        XCTAssertNil(BlockNoteStore.explodedRows([row("a", 0)], rowId: "a", text: "无换行"))
+        XCTAssertNil(BlockNoteStore.explodedRows([row("a", 0)], rowId: "ghost", text: "甲\n乙"))
+    }
+
     // MARK: - 子树范围
 
     func testSubtreeRangeSpansContiguousDeeperRows() {

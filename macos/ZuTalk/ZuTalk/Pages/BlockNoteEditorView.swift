@@ -270,6 +270,7 @@ struct BlockNoteEditorView: View {
 final class BlockNoteFocusIntent: ObservableObject {
     enum Caret {
         case start
+        case end
         /// 距行首的字符偏移(并块把光标放在接缝上用)。
         case offset(Int)
     }
@@ -432,6 +433,23 @@ private struct BlockNoteRowView: View {
         // 行首 Markdown 记号当场变身,只从段落出发 —— 否则标题里想打
         // 一个真的 `# ` 都打不出来。
         .onChange(of: draft) { newValue in
+            // 多行粘贴:Return 已被拦截,草稿里出现换行只可能来自粘贴。
+            // 炸开成多行,首行留在本行,焦点落到末行行尾 —— 粘贴一份
+            // 清单进来得到一份清单,而不是一行揉着换行符的长文本。
+            if newValue.contains("\n") || newValue.contains("\r") {
+                if let (head, lastRowId) = store.explodeMultilineDraft(
+                    rowId: row.id,
+                    text: newValue
+                ) {
+                    draft = head
+                    store.noteDraftChanged(rowId: row.id, draft: head)
+                    if lastRowId != row.id {
+                        focusIntent.pending = (lastRowId, .end)
+                        moveFocus(to: lastRowId)
+                    }
+                }
+                return
+            }
             if row.kind == .paragraph,
                let hit = BlockNoteStore.markdownPrefix(newValue) {
                 draft = hit.rest
@@ -530,7 +548,8 @@ private struct BlockNoteRowView: View {
                 focusedRowId: $focusedRowId,
                 focusIntent: focusIntent,
                 onSubmitSplit: submitRow,
-                onBackspaceAtStart: handleBackspaceAtStart
+                onBackspaceAtStart: handleBackspaceAtStart,
+                onNavigate: navigate(_:)
             )
         } else {
             TextField(
@@ -612,6 +631,29 @@ private struct BlockNoteRowView: View {
         moveFocus(to: newRowId)
     }
 
+    /// 上下方向键跨行:行首向上去上一行行尾,行尾向下去下一行行首。
+    /// 只在光标贴着行界时接管 —— 行内的上下移动(折行文本)仍归系统,
+    /// 绝不抢走 TextField 自己能做对的事。
+    enum RowNavigation {
+        case previous
+        case next
+    }
+
+    private func navigate(_ direction: RowNavigation) -> Bool {
+        guard let index = store.rows.firstIndex(where: { $0.id == row.id }) else { return false }
+        let target: FfiOutlineRow?
+        switch direction {
+        case .previous:
+            target = index > 0 ? store.rows[index - 1] : nil
+        case .next:
+            target = index + 1 < store.rows.count ? store.rows[index + 1] : nil
+        }
+        guard let target else { return false }
+        focusIntent.pending = (target.id, direction == .previous ? .end : .start)
+        moveFocus(to: target.id)
+        return true
+    }
+
     /// 立即设焦点,再补一拍兜底。同步设置在多数情况下直接生效(rows 是
     /// 同步更新的,目标行已在数据里);SwiftUI 偶尔因视图未物化而丢弃时,
     /// 下一拍的重申接住。过去只有"推迟一拍"这一条路,点击/回车与焦点
@@ -659,6 +701,7 @@ private struct BlockNoteRowView: View {
         let focusIntent: BlockNoteFocusIntent
         let onSubmitSplit: (_ head: String, _ tail: String) -> Void
         let onBackspaceAtStart: () -> Bool
+        let onNavigate: (BlockNoteRowView.RowNavigation) -> Bool
 
         @State private var selection: TextSelection?
 
@@ -686,6 +729,16 @@ private struct BlockNoteRowView: View {
                 guard caretIsAtStart else { return .ignored }
                 return onBackspaceAtStart() ? .handled : .ignored
             }
+            // 跨行方向键:光标贴着行界时把上下交给相邻行。行内的折行
+            // 移动仍归系统 —— 判定用「贴界」,不是「按了上下」。
+            .onKeyPress(.upArrow) {
+                guard caretIsAtStart else { return .ignored }
+                return onNavigate(.previous) ? .handled : .ignored
+            }
+            .onKeyPress(.downArrow) {
+                guard caretIsAtEnd else { return .ignored }
+                return onNavigate(.next) ? .handled : .ignored
+            }
             // 兑现手势预设的光标落点(拆分 → 新行行首,并块 → 接缝)。
             // 在焦点真正到达本行的那一刻设置;晚一拍重申一次,盖过
             // TextField 自己的默认光标安置。
@@ -711,6 +764,13 @@ private struct BlockNoteRowView: View {
             return range.isEmpty && range.lowerBound == draft.startIndex
         }
 
+        /// 光标折叠于行尾,判定与行首对称。
+        private var caretIsAtEnd: Bool {
+            if draft.isEmpty { return true }
+            guard case .selection(let range) = selection?.indices else { return false }
+            return range.isEmpty && range.upperBound == draft.endIndex
+        }
+
         /// 以当前光标把草稿一分为二。有选区时选区内容随拆分消失(与
         /// 「选中后回车」的通用语义一致);拿不到 selection 时按行尾拆,
         /// 退化为旧的"提交整行 + 插空行",绝不弄丢文本。
@@ -729,6 +789,8 @@ private struct BlockNoteRowView: View {
             switch caret {
             case .start:
                 selection = TextSelection(insertionPoint: draft.startIndex)
+            case .end:
+                selection = TextSelection(insertionPoint: draft.endIndex)
             case .offset(let offset):
                 let index = draft.index(
                     draft.startIndex,
