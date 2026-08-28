@@ -591,6 +591,7 @@
 /* アウトラインノートエディタ(ブロックドキュメント) */
 "editor.outline.load_failed_title" = "ノートを開けませんでした";
 "editor.outline.placeholder" = "書き始める…";
+"editor.outline.canvas_label" = "ノートキャンバス";
 "editor.outline.retry" = "再試行";
 "editor.outline.apply_failed" = "ノートの変更を保存できませんでした";
 "editor.outline.row_label" = "アウトライン行、レベル %lld";

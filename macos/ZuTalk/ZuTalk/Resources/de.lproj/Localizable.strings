@@ -607,6 +607,7 @@
 /* Gliederungs-Notizeditor (Blockdokument) */
 "editor.outline.load_failed_title" = "Notizen konnten nicht geöffnet werden";
 "editor.outline.placeholder" = "Notiz beginnen…";
+"editor.outline.canvas_label" = "Notizfläche";
 "editor.outline.retry" = "Erneut versuchen";
 "editor.outline.apply_failed" = "Die Notizänderung konnte nicht gespeichert werden";
 "editor.outline.row_label" = "Gliederungszeile, Ebene %lld";

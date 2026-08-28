@@ -608,6 +608,7 @@
 /* Éditeur de notes en plan (document par blocs) */
 "editor.outline.load_failed_title" = "Impossible d'ouvrir les notes";
 "editor.outline.placeholder" = "Commencer à écrire…";
+"editor.outline.canvas_label" = "Zone de notes";
 "editor.outline.retry" = "Réessayer";
 "editor.outline.apply_failed" = "La modification de la note n'a pas pu être enregistrée";
 "editor.outline.row_label" = "Ligne de plan, niveau %lld";

@@ -608,6 +608,7 @@
 /* 大纲笔记编辑器(块文档) */
 "editor.outline.load_failed_title" = "笔记暂时打不开";
 "editor.outline.placeholder" = "开始记录…";
+"editor.outline.canvas_label" = "笔记画布";
 "editor.outline.retry" = "重试";
 "editor.outline.apply_failed" = "这次笔记改动没有保存成功";
 "editor.outline.row_label" = "大纲行,第 %lld 级";

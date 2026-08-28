@@ -274,17 +274,24 @@ final class DocumentEditorMinimalMVPSmokeTests: XCTestCase {
             )
         }
 
-        // 本地编辑面从平文本编辑器换成了大纲编辑器(块文档 FFI)。
+        // 本地编辑面从平文本编辑器换成了大纲编辑器(块文档 FFI),编辑面
+        // 本身是一整个 NSTextView —— 手势与落库分居两个文件,所以这里
+        // 一起读。
         let outlineEditor = try String(
             contentsOf: root.appendingPathComponent("Pages/BlockNoteEditorView.swift"),
+            encoding: .utf8
+        )
+        let outlineCanvas = try String(
+            contentsOf: root.appendingPathComponent("Pages/BlockNoteTextCanvas.swift"),
             encoding: .utf8
         )
         XCTAssertTrue(page.contains("BlockNoteEditorView(notebookId: notebookId, tabId: tabId)"))
         XCTAssertFalse(page.contains("DocumentTextView("))
         XCTAssertFalse(page.contains("LoroBackedTextView"))
-        XCTAssertTrue(outlineEditor.contains("store.splitRow(rowId: row.id"))
-        XCTAssertTrue(outlineEditor.contains("store.replaceText(rowId: row.id, text: draft)"))
-        XCTAssertTrue(outlineEditor.contains(".accessibilityLabel(Text(String("))
+        XCTAssertTrue(outlineEditor.contains("BlockNoteTextCanvas("))
+        // 本地编辑仍然真的落库:拆分与整份派生都写回块文档 FFI。
+        XCTAssertTrue(outlineCanvas.contains("store.splitRow(rowId:"))
+        XCTAssertTrue(outlineCanvas.contains("store.applyDerivedRows("))
         XCTAssertFalse(page.contains("NotebookAskPanel("))
         XCTAssertFalse(page.contains("submitNotebookAskTask"))
         XCTAssertFalse(page.contains("editor.toolbar.show_sources"))

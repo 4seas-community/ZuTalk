@@ -608,6 +608,7 @@
 /* Outline note editor (block document) */
 "editor.outline.load_failed_title" = "Notes could not be opened";
 "editor.outline.placeholder" = "Start writing…";
+"editor.outline.canvas_label" = "Note canvas";
 "editor.outline.retry" = "Try again";
 "editor.outline.apply_failed" = "The note change could not be saved";
 "editor.outline.row_label" = "Outline row, level %lld";

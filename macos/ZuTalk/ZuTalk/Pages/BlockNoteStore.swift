@@ -37,6 +37,9 @@ final class BlockNoteStore: ObservableObject {
     /// 草稿还是回退文档」。
     private var drafts: [String: String] = [:]
 
+    /// 光标所在行(文本视图上报)。工具条按钮用它定位作用对象。
+    private var focusedRowIdHint: String?
+
     /// noteBlockDocumentOpen 返回的 doc_id。nil 表示尚未打开或已关闭。
     private(set) var docId: String?
 
@@ -197,6 +200,25 @@ final class BlockNoteStore: ObservableObject {
     }
 
     // MARK: - 编辑手势(改本地 → apply → 失败回滚)
+
+    /// 统一文本编辑面派生回来的整份行。文本视图是编辑期载体,每次
+    /// 输入后把段落派生成行写回这里;结构与文本都可能变,所以整份替换。
+    ///
+    /// 内容没变就不落库:文本视图会因为重绘、属性归一等原因反复派生,
+    /// 把它们全都当成编辑手势会污染撤销栈。
+    func applyDerivedRows(_ derived: [FfiOutlineRow]) {
+        guard docId != nil else { return }
+        var next = derived
+        if next.isEmpty {
+            next = [Self.makeRow(depth: 0)]
+        }
+        let unchanged = next.count == rows.count && zip(next, rows).allSatisfy { lhs, rhs in
+            lhs.text == rhs.text && lhs.depth == rhs.depth
+                && lhs.kind == rhs.kind && lhs.checked == rhs.checked
+        }
+        guard !unchanged else { return }
+        apply(next)
+    }
 
     /// 整行换文本。行内 TextField 失焦或提交时调用。
     func replaceText(rowId: String, text: String) {
@@ -515,6 +537,25 @@ final class BlockNoteStore: ObservableObject {
             }
         }
         return next
+    }
+
+    /// 工具条按钮的缩进入口:文本视图自己知道光标在哪一段,但工具条
+    /// 不知道。没有更好的落点时作用于末行 —— 与"点击空白画布把光标
+    /// 送回末行"同一条兜底。
+    func indentFocused() {
+        guard let rowId = focusedRowIdHint ?? rows.last?.id else { return }
+        indent(rowId: rowId)
+    }
+
+    func outdentFocused() {
+        guard let rowId = focusedRowIdHint ?? rows.last?.id else { return }
+        outdent(rowId: rowId)
+    }
+
+    /// 文本视图每次光标移动都把所在行报到这里,工具条据此作用于正确的
+    /// 行。不发布:与草稿同理,每次移动都发布会白白抖动视图树。
+    func noteFocusedRow(_ rowId: String?) {
+        focusedRowIdHint = rowId
     }
 
     /// 缩进:depth+1,上限为前一行 depth+1(大纲不允许悬空跳级)。

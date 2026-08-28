@@ -229,15 +229,34 @@ final class BlockNoteGestureTests: XCTestCase {
         _ = BlockNoteEditorView(sessionId: "session")
     }
 
-    func testNoteRowsKeepNativeWritableAccessibilityAndAnEmptyStateTarget() throws {
-        let source = try Self.loadBlockNoteEditorView()
+    /// 编辑面从逐行 TextField 换成整篇一个 NSTextView 之后,这三样保证
+    /// 必须跟着搬家而不是消失:空文档有占位提示、对 VoiceOver 是一个
+    /// 有名字的可写文本区、而 AXValue 保持原生可写(自定义 value 会把
+    /// 编辑面变成只读)。
+    func testNoteCanvasKeepsPlaceholderAndNativeWritableAccessibility() throws {
+        let source = try Self.loadBlockNoteTextView()
 
-        XCTAssertTrue(source.contains("editor.outline.placeholder"))
-        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"note.row.\\(row.id)\")"))
-        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
-        XCTAssertTrue(source.contains(".contentShape(Rectangle())"))
-        XCTAssertTrue(source.contains("focusedRowId = store.rows.last?.id"))
-        XCTAssertFalse(source.contains(".accessibilityValue(Text(draft))"))
+        XCTAssertTrue(source.contains("placeholderText"))
+        XCTAssertTrue(source.contains("editor.outline.canvas_label"))
+        XCTAssertTrue(source.contains("\"note.canvas\""))
+        XCTAssertFalse(
+            source.contains("override func accessibilityValue()"),
+            "覆盖 AXValue 会让 VoiceOver 把可写编辑面读成只读"
+        )
+    }
+
+    /// 跨行选择、复制、剪切、拖拽文本、拼写检查、输入法、查找都是文本
+    /// 引擎的能力。编辑面必须是一个真正的 NSTextView,而不是若干个各自
+    /// 为政的输入框 —— 后者的选区跨不过控件边界,这正是"不像编辑器"的
+    /// 根源。
+    func testEditorCanvasIsASingleTextViewRatherThanPerRowFields() throws {
+        let editor = try Self.loadBlockNoteEditorView()
+        XCTAssertTrue(editor.contains("BlockNoteTextCanvas("))
+        XCTAssertFalse(editor.contains("BlockNoteRowView("), "逐行输入框架构已被取代")
+
+        let textView = try Self.loadBlockNoteTextView()
+        XCTAssertTrue(textView.contains("final class BlockNoteNSTextView: NSTextView"))
+        XCTAssertTrue(textView.contains("usesFindBar") || textView.contains("writeSelection"))
     }
 
     func testSessionNotesStayIsolatedAcrossCloseReopenAndPurge() throws {
@@ -335,6 +354,17 @@ final class BlockNoteGestureTests: XCTestCase {
         )
     }
 
+
+    private static func loadBlockNoteTextView() throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk", isDirectory: true)
+        return try String(
+            contentsOf: root.appendingPathComponent("Pages/BlockNoteTextView.swift"),
+            encoding: .utf8
+        )
+    }
 
     private static func loadBlockNoteEditorView() throws -> String {
         let root = URL(fileURLWithPath: #filePath)

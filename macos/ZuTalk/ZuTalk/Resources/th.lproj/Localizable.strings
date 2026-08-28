@@ -608,6 +608,7 @@
 /* ตัวแก้ไขโน้ตแบบเค้าโครง (เอกสารบล็อก) */
 "editor.outline.load_failed_title" = "ไม่สามารถเปิดโน้ตได้";
 "editor.outline.placeholder" = "เริ่มเขียน…";
+"editor.outline.canvas_label" = "พื้นที่บันทึก";
 "editor.outline.retry" = "ลองอีกครั้ง";
 "editor.outline.apply_failed" = "บันทึกการแก้ไขโน้ตไม่สำเร็จ";
 "editor.outline.row_label" = "แถวเค้าโครง ระดับ %lld";

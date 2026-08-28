@@ -607,6 +607,7 @@
 /* Editor de notas en esquema (documento de bloques) */
 "editor.outline.load_failed_title" = "No se pudieron abrir las notas";
 "editor.outline.placeholder" = "Empieza a escribir…";
+"editor.outline.canvas_label" = "Lienzo de notas";
 "editor.outline.retry" = "Reintentar";
 "editor.outline.apply_failed" = "No se pudo guardar el cambio de la nota";
 "editor.outline.row_label" = "Fila del esquema, nivel %lld";
