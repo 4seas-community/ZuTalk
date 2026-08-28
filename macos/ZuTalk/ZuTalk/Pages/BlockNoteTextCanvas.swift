@@ -43,7 +43,12 @@ struct BlockNoteTextCanvas: NSViewRepresentable {
         textView.isContinuousSpellCheckingEnabled = true
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
-        textView.textContainerInset = NSSize(width: 24, height: 20)
+        // 写作栏:蓝本(macro)的笔记视图是 `max-w-3xl mx-auto pt-12` ——
+        // 768pt 上限、水平居中、顶部 48pt 留白。一行文字铺满整个窗口
+        // 宽度时眼睛要横扫很远才能回到行首,读久了就累;而文本贴着左
+        // 边缘、右边一片空白,看起来也不像一份文档。
+        // 横向内缩由 updateNSView 按窗口实际宽度算,这里只定纵向。
+        textView.textContainerInset = NSSize(width: 0, height: 40)
         textView.autoresizingMask = [.width]
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(
@@ -70,6 +75,7 @@ struct BlockNoteTextCanvas: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.store = store
+        context.coordinator.centerWritingColumn(in: scrollView)
         context.coordinator.syncIfNeeded(rows: store.rows, authorityEpoch: authorityEpoch)
     }
 
@@ -92,6 +98,31 @@ struct BlockNoteTextCanvas: NSViewRepresentable {
 
         init(store: BlockNoteStore) {
             self.store = store
+        }
+
+        // MARK: 写作栏
+
+        /// 一栏文字的舒适宽度上限。蓝本用 `max-w-3xl`(768px);超过这个
+        /// 宽度,眼睛从行尾扫回行首的距离就开始伤害阅读。
+        static let writingColumnWidth: CGFloat = 768
+        /// 窗口很窄时保留的左右呼吸位。
+        static let minimumSideInset: CGFloat = 28
+
+        /// 把写作栏水平居中。文本容器本身占满宽度,靠内缩把文字挤到
+        /// 中间那一栏 —— 这样点击空白处仍然落在编辑器里(点哪儿都能
+        /// 写),而不是掉进一个死区。
+        func centerWritingColumn(in scrollView: NSScrollView) {
+            guard let textView else { return }
+            let available = scrollView.contentSize.width
+            guard available > 0 else { return }
+            let column = min(Self.writingColumnWidth, available - Self.minimumSideInset * 2)
+            let inset = max(Self.minimumSideInset, (available - column) / 2)
+            guard abs(textView.textContainerInset.width - inset) > 0.5 else { return }
+            textView.textContainerInset = NSSize(
+                width: inset,
+                height: textView.textContainerInset.height
+            )
+            textView.needsDisplay = true
         }
 
         // MARK: 同步
@@ -363,19 +394,24 @@ struct BlockNoteTextCanvas: NSViewRepresentable {
                 location = next
             }
             guard !rowIds.isEmpty else { return false }
-            for rowId in rowIds {
-                if outdent {
-                    store.outdent(rowId: rowId)
-                } else {
-                    store.indent(rowId: rowId)
-                }
+
+            // 一次手势 = 一次落库 = 一条撤销记录。逐行调用会让一次 Tab
+            // 留下多条记录,撤销时要按同样多下才回得来。
+            guard store.shiftDepth(rowIds: rowIds, outdent: outdent) else {
+                // 一行都动不了(已在最外层,或缩进会造成悬空跳级)。
+                // 交回系统之前先说一声 —— 按了键什么都不发生、也没有
+                // 任何反馈,是"手感怪"最直接的来源。
+                NSSound.beep()
+                return true
             }
-            let caret = textView.selectedRange()
             rebuild(rows: store.rows)
-            textView.setSelectedRange(NSRange(
-                location: min(caret.location, storage.length),
-                length: min(caret.length, storage.length - min(caret.location, storage.length))
-            ))
+            // 选区照原样恢复:缩进不改变任何字符,选中的还是那几行。
+            // 只按位置近似会把多行选区塌成一个光标。
+            let restored = NSRange(
+                location: min(selection.location, storage.length),
+                length: min(selection.length, storage.length - min(selection.location, storage.length))
+            )
+            textView.setSelectedRange(restored)
             return true
         }
 

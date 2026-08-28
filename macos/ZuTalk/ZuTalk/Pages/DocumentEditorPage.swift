@@ -281,9 +281,12 @@ struct DocumentEditorPage: View {
                     NotebookSettingsNotebookHeader(title: editorNotebook?.title)
                 } else if isShowingResources == false {
                     NotebookBuiltinTabTitle(title: visibleSurfaceTitle)
+                    // 笔记面刻意不挂说明横幅:标签页已经写着「笔记」,
+                    // 面包屑已经写着是哪一场会话。写作面前面每多一条
+                    // 装饰,落笔前就多一分打断。
                     if sessionSupplementarySurface == .note,
                        effectiveSessionId != nil {
-                        SessionNotesContextHeader()
+                        EmptyView()
                     } else if sessionSupplementarySurface == nil,
                               activeNotebookTab?.displayType == .manualNote {
                         TopicNotesContextHeader()

@@ -575,6 +575,56 @@ final class BlockNoteStore: ObservableObject {
         focusedRowIdHint = rowId
     }
 
+    /// 一次手势缩进/反缩进一批行,连同它们的子树。
+    ///
+    /// 逐行调用 `indent` 是错的:选中五行按一次 Tab 会走五次落库、留下
+    /// 五条撤销记录,撤销一次只退回一行 —— 用户按一下 Tab,要按五下
+    /// ⌘Z 才能回来。这里合成一次 apply,因此也只占一条撤销记录。
+    ///
+    /// 子树随行移动:缩进一个有子项的行时子项留在原地,层级当场散架。
+    /// 返回是否真的动了 —— 没动时调用方要把按键交回系统,而不是假装
+    /// 成功后让屏幕纹丝不动。
+    @discardableResult
+    func shiftDepth(rowIds: [String], outdent: Bool) -> Bool {
+        guard let next = Self.shiftedRows(rows, rowIds: rowIds, outdent: outdent) else {
+            return false
+        }
+        return apply(next)
+    }
+
+    /// 批量缩进的纯运算,供直接单测。没有任何一行能动时返回 nil。
+    static func shiftedRows(
+        _ rows: [FfiOutlineRow],
+        rowIds: [String],
+        outdent: Bool
+    ) -> [FfiOutlineRow]? {
+        // 选中的行连同各自的子树:选中父行按 Tab,子行必须跟着走。
+        var targets = Set<Int>()
+        for rowId in rowIds {
+            guard let range = subtreeRange(in: rows, of: rowId) else { continue }
+            targets.formUnion(range)
+        }
+        guard !targets.isEmpty else { return nil }
+
+        var next = rows
+        var changed = false
+        for index in targets.sorted() {
+            if outdent {
+                guard next[index].depth > 0 else { continue }
+                next[index].depth -= 1
+                changed = true
+            } else {
+                // 大纲不允许悬空跳级:一行最深只能比它前一行深一级。
+                // 前一行也在这次移动里时,用它移动后的深度算上限。
+                let cap = index > 0 ? next[index - 1].depth + 1 : 0
+                guard next[index].depth < cap else { continue }
+                next[index].depth += 1
+                changed = true
+            }
+        }
+        return changed ? next : nil
+    }
+
     /// 缩进:depth+1,上限为前一行 depth+1(大纲不允许悬空跳级)。
     /// 首行没有前一行,永远缩不进去。
     func indent(rowId: String) {

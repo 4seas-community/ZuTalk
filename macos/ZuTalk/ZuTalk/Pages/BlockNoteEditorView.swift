@@ -42,6 +42,8 @@ struct BlockNoteEditorView: View {
     private let source: BlockNoteDocumentSource
 
     @StateObject private var store = BlockNoteStore()
+    /// 鼠标是否在编辑区内。工具条据此淡入淡出。
+    @State private var isHoveringEditor = false
 
     /// 每级缩进的前导内边距。
     fileprivate static let indentStep: CGFloat = 20
@@ -79,6 +81,7 @@ struct BlockNoteEditorView: View {
                         authorityEpoch: store.authorityEpoch
                     )
                 }
+                .onHover { isHoveringEditor = $0 }
                 // ⌘] / ⌘[ / ⌘Z 仍挂在不可见按钮上,作用于当前段落。
                 .background(indentShortcuts)
             }
@@ -135,8 +138,12 @@ struct BlockNoteEditorView: View {
                 store.indentFocused()
             }
         }
-        .padding(.horizontal, Spacing.xl + Spacing.lg)
-        .padding(.top, Spacing.sm)
+        .padding(.horizontal, Spacing.xl)
+        .padding(.top, Spacing.xs)
+        // 工具条是写作面的附属,不是它的标题。压到接近透明,鼠标移进
+        // 编辑区才浮现 —— 沉浸感来自"页面上除了字什么都没有"。
+        .opacity(isHoveringEditor ? 1 : 0.28)
+        .animation(.easeOut(duration: 0.15), value: isHoveringEditor)
     }
 
     private func stripButton(

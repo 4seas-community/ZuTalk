@@ -102,7 +102,9 @@ enum BlockNoteDocument {
         // 折行文本才会与首行对齐而不是钻到记号底下。
         style.firstLineHeadIndent = indent + gutter
         style.headIndent = indent + gutter
-        style.lineSpacing = 2
+        // 行距按字号走。写作面的行高不足会让整页字挤成一团 ——
+        // 这正是过去只能靠圆点把行分开的另一半原因。
+        style.lineSpacing = 4
         style.paragraphSpacing = spacingAfter(row.kind)
         style.paragraphSpacingBefore = spacingBefore(row.kind)
         return style
@@ -143,15 +145,19 @@ enum BlockNoteDocument {
         }
     }
 
+    /// 正文 15pt。13pt 是列表与检查器的尺寸,不是拿来长时间写作的 ——
+    /// 一份要盯着写半小时的笔记,字要能松弛地读。标题按蓝本的比例
+    /// (1.25em / 1.125em / 1em)从正文推出来,而不是各定一个数。
+    static let bodyPointSize: CGFloat = 15
+
     static func font(for kind: FfiOutlineKind) -> NSFont {
         switch kind {
-        case .heading1: .systemFont(ofSize: 22, weight: .semibold)
-        case .heading2: .systemFont(ofSize: 18, weight: .semibold)
-        case .heading3: .systemFont(ofSize: 15, weight: .semibold)
-        case .quote: .systemFont(ofSize: 13).withItalic()
-        case .code: .monospacedSystemFont(ofSize: 12.5, weight: .regular)
-        case .bullet: .systemFont(ofSize: 13)
-        default: .systemFont(ofSize: 13)
+        case .heading1: .systemFont(ofSize: bodyPointSize * 1.5, weight: .semibold)
+        case .heading2: .systemFont(ofSize: bodyPointSize * 1.25, weight: .semibold)
+        case .heading3: .systemFont(ofSize: bodyPointSize, weight: .bold)
+        case .quote: .systemFont(ofSize: bodyPointSize).withItalic()
+        case .code: .monospacedSystemFont(ofSize: bodyPointSize - 1.5, weight: .regular)
+        case .paragraph, .bullet, .task, .divider: .systemFont(ofSize: bodyPointSize)
         }
     }
 

@@ -441,6 +441,65 @@ final class BlockNoteGestureTests: XCTestCase {
         )
     }
 
+    // MARK: - Tab 缩进
+
+    /// 一次 Tab 是一个手势。逐行落库会让选中五行的一次 Tab 留下五条
+    /// 撤销记录 —— 用户按一下,要按五下 ⌘Z 才回得来。
+    func testShiftingSeveralRowsIsOneGesture() {
+        let rows = [row("a", 0, "一"), row("b", 0, "二"), row("c", 0, "三")]
+        let next = BlockNoteStore.shiftedRows(rows, rowIds: ["b", "c"], outdent: false)!
+        XCTAssertEqual(next.map(\.depth), [0, 1, 1])
+    }
+
+    /// 缩进带走子树。子行留在原地会让层级当场散架。
+    func testShiftingCarriesTheSubtree() {
+        let rows = [row("a", 0, "父"), row("b", 0, "被移"), row("b1", 1, "子"), row("c", 0, "后")]
+        let next = BlockNoteStore.shiftedRows(rows, rowIds: ["b"], outdent: false)!
+        XCTAssertEqual(next.map(\.depth), [0, 1, 2, 0], "子行跟着父行一起深一级")
+    }
+
+    /// 大纲不允许悬空跳级:首行缩不进去,一行最深只能比前一行深一级。
+    /// 动不了时必须回 nil —— 调用方据此给出反馈,而不是静默吞掉按键。
+    func testShiftReportsWhenNothingCanMove() {
+        let rows = [row("a", 0, "首行")]
+        XCTAssertNil(BlockNoteStore.shiftedRows(rows, rowIds: ["a"], outdent: false))
+        XCTAssertNil(BlockNoteStore.shiftedRows(rows, rowIds: ["a"], outdent: true), "已在最外层")
+        XCTAssertNil(BlockNoteStore.shiftedRows(rows, rowIds: ["ghost"], outdent: false))
+    }
+
+    func testOutdentStopsAtTheOutermostLevel() {
+        let rows = [row("a", 0, "外"), row("b", 1, "内")]
+        let next = BlockNoteStore.shiftedRows(rows, rowIds: ["b"], outdent: true)!
+        XCTAssertEqual(next.map(\.depth), [0, 0])
+    }
+
+    /// 写作面的沉浸感靠三件事:一栏有上限且居中的文字、足以久读的字号、
+    /// 安静的工具条。蓝本的笔记视图是 `max-w-3xl mx-auto pt-12`。
+    func testWritingSurfaceIsACenteredColumnRatherThanFullBleedText() throws {
+        let canvas = try Self.loadBlockNoteTextCanvas()
+        XCTAssertTrue(canvas.contains("writingColumnWidth"))
+        XCTAssertTrue(canvas.contains("centerWritingColumn"))
+
+        let editor = try Self.loadBlockNoteEditorView()
+        XCTAssertTrue(editor.contains("isHoveringEditor"), "工具条只在鼠标进入时浮现")
+    }
+
+    /// 写作面前面不挂说明横幅:标签页已经写着「笔记」,面包屑已经写着
+    /// 是哪一场会话。
+    func testNotesSurfaceCarriesNoExplanatoryBanner() throws {
+        let page = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/Pages/DocumentEditorPage.swift"),
+            encoding: .utf8
+        )
+        XCTAssertFalse(
+            page.contains("SessionNotesContextHeader()"),
+            "笔记面不该在写作区之前再插一条横幅"
+        )
+    }
+
     private static func loadBlockNoteTextView() throws -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
