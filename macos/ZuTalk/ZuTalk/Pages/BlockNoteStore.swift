@@ -302,6 +302,46 @@ final class BlockNoteStore: ObservableObject {
         }
     }
 
+    /// 空清单行上按 Return:退出清单,而不是再叠一个空清单项。
+    /// 这是所有清单编辑器的通用出口手势。
+    static func emptySubmitExitsList(kind: FfiOutlineKind) -> Bool {
+        kind == .task || kind == .quote
+    }
+
+    /// 光标处拆分:本行留 head,其后插入携带 tail 的新行,一次 apply
+    /// (= 一个撤销手势)。返回新行 id 供 UI 移焦点。
+    ///
+    /// 行中拆分的新行沿用本行类型(任务拆成两条任务),但勾选态不带过去
+    /// ——半句话不继承"已完成";行尾拆分(tail 为空)等于旧的"插空行",
+    /// 走 continuationKind:标题下面接的是正文。
+    @discardableResult
+    func splitRow(rowId: String, head: String, tail: String) -> String? {
+        guard let (next, newRowId) = Self.splitRows(rows, rowId: rowId, head: head, tail: tail)
+        else { return nil }
+        // 文本更新 + 插入,无移动无删除——见文件头的蓝本约束。
+        return apply(next) ? newRowId : nil
+    }
+
+    /// 拆分的纯运算,供直接单测。行不存在返回 nil。
+    static func splitRows(
+        _ rows: [FfiOutlineRow],
+        rowId: String,
+        head: String,
+        tail: String
+    ) -> ([FfiOutlineRow], String)? {
+        guard let index = rows.firstIndex(where: { $0.id == rowId }) else { return nil }
+        var next = rows
+        next[index].text = head
+        let anchorKind = next[index].kind
+        let newKind: FfiOutlineKind = tail.isEmpty
+            ? continuationKind(after: anchorKind)
+            : (anchorKind == .divider ? .paragraph : anchorKind)
+        var newRow = makeRow(depth: next[index].depth, kind: newKind)
+        newRow.text = tail
+        next.insert(newRow, at: index + 1)
+        return (next, newRow.id)
+    }
+
     /// v1 简单删除:只删这一行,子行不收养、不随删。删空后补一行空 row,
     /// 保住「文档至少一行」的编辑器不变量。
     func deleteRow(rowId: String) {

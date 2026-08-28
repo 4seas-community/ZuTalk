@@ -45,6 +45,46 @@ final class BlockNoteGestureTests: XCTestCase {
         XCTAssertEqual(next[1].depth, 1, "子行深度不动,过继由重建树完成")
     }
 
+    // MARK: - 拆分(光标处回车)
+
+    func testSplitKeepsHeadAndCarriesTailIntoTheNewRow() {
+        let rows = [row("a", 1, "甲乙丙")]
+        let (next, newId) = BlockNoteStore.splitRows(rows, rowId: "a", head: "甲", tail: "乙丙")!
+        XCTAssertEqual(next.count, 2)
+        XCTAssertEqual(next[0].text, "甲")
+        XCTAssertEqual(next[1].id, newId)
+        XCTAssertEqual(next[1].text, "乙丙", "光标后的文本随拆分进入新行")
+        XCTAssertEqual(next[1].depth, 1, "新行继承本行深度")
+    }
+
+    func testSplitWithTailKeepsTheRowKindButNotTheCheckedState() {
+        var task = row("t", 0, "买菜做饭")
+        task.kind = .task
+        task.checked = true
+        let (next, _) = BlockNoteStore.splitRows([task], rowId: "t", head: "买菜", tail: "做饭")!
+        XCTAssertEqual(next[1].kind, .task, "行中拆分延续清单类型")
+        XCTAssertFalse(next[1].checked, "半句话不继承已完成")
+    }
+
+    func testSplitAtEndDegradesToContinuationKind() {
+        var heading = row("h", 0, "标题")
+        heading.kind = .heading1
+        let (next, _) = BlockNoteStore.splitRows([heading], rowId: "h", head: "标题", tail: "")!
+        XCTAssertEqual(next[1].kind, .paragraph, "标题行尾回车接的是正文")
+        XCTAssertEqual(next[1].text, "")
+    }
+
+    func testSplitOnMissingRowIsRefused() {
+        XCTAssertNil(BlockNoteStore.splitRows([row("a", 0)], rowId: "ghost", head: "x", tail: "y"))
+    }
+
+    func testEmptySubmitExitsListOnlyForListKinds() {
+        XCTAssertTrue(BlockNoteStore.emptySubmitExitsList(kind: .task))
+        XCTAssertTrue(BlockNoteStore.emptySubmitExitsList(kind: .quote))
+        XCTAssertFalse(BlockNoteStore.emptySubmitExitsList(kind: .paragraph))
+        XCTAssertFalse(BlockNoteStore.emptySubmitExitsList(kind: .heading2))
+    }
+
     // MARK: - 子树范围
 
     func testSubtreeRangeSpansContiguousDeeperRows() {

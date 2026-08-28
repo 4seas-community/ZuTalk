@@ -282,7 +282,7 @@ final class DocumentEditorMinimalMVPSmokeTests: XCTestCase {
         XCTAssertTrue(page.contains("BlockNoteEditorView(notebookId: notebookId, tabId: tabId)"))
         XCTAssertFalse(page.contains("DocumentTextView("))
         XCTAssertFalse(page.contains("LoroBackedTextView"))
-        XCTAssertTrue(outlineEditor.contains("store.insertRow(after: row.id)"))
+        XCTAssertTrue(outlineEditor.contains("store.splitRow(rowId: row.id"))
         XCTAssertTrue(outlineEditor.contains("store.replaceText(rowId: row.id, text: draft)"))
         XCTAssertTrue(outlineEditor.contains(".accessibilityLabel(Text(String("))
         XCTAssertFalse(page.contains("NotebookAskPanel("))

@@ -43,6 +43,7 @@ struct BlockNoteEditorView: View {
 
     @StateObject private var store = BlockNoteStore()
     @StateObject private var dragState = BlockNoteDragState()
+    @StateObject private var focusIntent = BlockNoteFocusIntent()
     @FocusState private var focusedRowId: String?
 
     /// 每级缩进的前导内边距。
@@ -71,6 +72,8 @@ struct BlockNoteEditorView: View {
                     )
                 )
             } else {
+                VStack(spacing: 0) {
+                editorControlStrip
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(store.rows, id: \.id) { row in
@@ -78,7 +81,8 @@ struct BlockNoteEditorView: View {
                                 row: row,
                                 store: store,
                                 focusedRowId: $focusedRowId,
-                                dragState: dragState
+                                dragState: dragState,
+                                focusIntent: focusIntent
                             )
                         }
                         // 末尾落点:拖到最后一行之后。
@@ -116,6 +120,7 @@ struct BlockNoteEditorView: View {
                             focusedRowId = store.rows.last?.id
                         }
                 }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -139,6 +144,70 @@ struct BlockNoteEditorView: View {
             // Rust 句柄；不能只依赖可能晚到一步的 TextField 失焦回调。
             store.close()
         }
+    }
+
+    /// 可见的编辑工具条。这些操作一直存在,但过去只藏在快捷键和右键
+    /// 菜单里 —— 一个界面上看不见任何按钮的编辑器,对不知道快捷键的人
+    /// 就等于没有这些功能。tooltip 顺带承担快捷键教学。
+    private var editorControlStrip: some View {
+        HStack(spacing: Spacing.md) {
+            Spacer()
+            stripButton(
+                systemImage: "arrow.uturn.backward",
+                label: String(localized: "editor.outline.undo"),
+                shortcutHint: "\u{2318}Z",
+                disabled: false
+            ) {
+                store.undo(focusedRowId: focusedRowId)
+            }
+            stripButton(
+                systemImage: "arrow.uturn.forward",
+                label: String(localized: "editor.outline.redo"),
+                shortcutHint: "\u{21E7}\u{2318}Z",
+                disabled: !store.canRedo
+            ) {
+                store.redo()
+            }
+            Divider().frame(height: 14)
+            stripButton(
+                systemImage: "decrease.indent",
+                label: String(localized: "editor.outline.outdent"),
+                shortcutHint: "\u{21E7}\u{21E5} / \u{2318}[",
+                disabled: focusedRowId == nil
+            ) {
+                if let rowId = focusedRowId { store.outdent(rowId: rowId) }
+            }
+            stripButton(
+                systemImage: "increase.indent",
+                label: String(localized: "editor.outline.indent"),
+                shortcutHint: "\u{21E5} / \u{2318}]",
+                disabled: focusedRowId == nil
+            ) {
+                if let rowId = focusedRowId { store.indent(rowId: rowId) }
+            }
+        }
+        .padding(.horizontal, Spacing.xl + Spacing.lg)
+        .padding(.top, Spacing.sm)
+    }
+
+    private func stripButton(
+        systemImage: String,
+        label: String,
+        shortcutHint: String,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(disabled ? .textTertiary : .textSecondary)
+                .frame(width: 22, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .help("\(label)  \(shortcutHint)")
+        .accessibilityLabel(Text(label))
     }
 
     /// 隐形快捷键宿主。SwiftUI 的 keyboardShortcut 需要一个 Button 载体,
@@ -192,6 +261,31 @@ struct BlockNoteEditorView: View {
     }
 }
 
+// MARK: - 焦点意图
+
+/// 一次手势想把光标落在哪。SwiftUI 的 FocusState 只到"哪一行",不到
+/// "行内哪个位置";拆分要落在新行行首、并块要落在接缝处,都靠这里把
+/// 意图带给目标行的 TextField,由它在获得焦点的那一刻设置 selection。
+@MainActor
+final class BlockNoteFocusIntent: ObservableObject {
+    enum Caret {
+        case start
+        /// 距行首的字符偏移(并块把光标放在接缝上用)。
+        case offset(Int)
+    }
+
+    /// 待兑现的落点。不发布:兑现发生在目标行自己的 onChange 里,
+    /// 不需要重渲染任何视图。
+    var pending: (rowId: String, caret: Caret)?
+
+    /// 目标行拿走属于自己的意图;别人的意图原样留着。
+    func take(for rowId: String) -> Caret? {
+        guard let pending, pending.rowId == rowId else { return nil }
+        self.pending = nil
+        return pending.caret
+    }
+}
+
 // MARK: - 拖拽状态
 
 /// 一次拖拽的进程内共享状态。NSItemProvider 的载荷解码是异步的,而
@@ -231,6 +325,7 @@ private struct BlockNoteRowView: View {
     @ObservedObject var store: BlockNoteStore
     @FocusState.Binding var focusedRowId: String?
     @ObservedObject var dragState: BlockNoteDragState
+    let focusIntent: BlockNoteFocusIntent
 
     /// 本地草稿。提交(Return / 失焦)时才写回 store,与 BilingualLaneText
     /// 的 draft buffer 同一思路,避免每个键击都触发一次整份重放。
@@ -241,12 +336,14 @@ private struct BlockNoteRowView: View {
         row: FfiOutlineRow,
         store: BlockNoteStore,
         focusedRowId: FocusState<String?>.Binding,
-        dragState: BlockNoteDragState
+        dragState: BlockNoteDragState,
+        focusIntent: BlockNoteFocusIntent
     ) {
         self.row = row
         self.store = store
         self._focusedRowId = focusedRowId
         self.dragState = dragState
+        self.focusIntent = focusIntent
         self._draft = State(initialValue: row.text)
     }
 
@@ -431,7 +528,8 @@ private struct BlockNoteRowView: View {
                 row: row,
                 draft: $draft,
                 focusedRowId: $focusedRowId,
-                onSubmit: submitRow,
+                focusIntent: focusIntent,
+                onSubmitSplit: submitRow,
                 onBackspaceAtStart: handleBackspaceAtStart
             )
         } else {
@@ -446,7 +544,7 @@ private struct BlockNoteRowView: View {
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
             .focused($focusedRowId, equals: row.id)
-            .onSubmit(submitRow)
+            .onSubmit { submitRow(head: draft, tail: "") }
             .accessibilityLabel(rowAccessibilityLabel)
             // Preserve the TextField's native writable AXValue. A custom
             // accessibilityValue would make it display-only to AX clients.
@@ -497,13 +595,32 @@ private struct BlockNoteRowView: View {
         }
     }
 
-    /// Return:先提交本行草稿,再在其后插入同深度新行并移焦点。
-    private func submitRow() {
-        store.replaceText(rowId: row.id, text: draft)
-        if let newRowId = store.insertRow(after: row.id) {
-            // 推迟一拍:新行此刻还没进视图树,同步设焦点会被 SwiftUI 丢弃。
-            Task { @MainActor in
-                focusedRowId = newRowId
+    /// Return:在光标处拆分本行。head 留在本行,tail 进新行,光标落在
+    /// 新行行首 —— 与所有编辑器一致;行尾回车 tail 为空,自然退化成
+    /// "插一个空行"。空清单行上的回车是清单的出口:降回段落,不再叠空项。
+    private func submitRow(head: String, tail: String) {
+        if head.isEmpty, tail.isEmpty, BlockNoteStore.emptySubmitExitsList(kind: row.kind) {
+            store.setKind(rowId: row.id, kind: .paragraph)
+            return
+        }
+        // 先把本地草稿降为 head:随后的焦点转移会触发失焦提交,让它
+        // 提交旧的整行文本会把拆分立即冲掉。
+        draft = head
+        store.noteDraftChanged(rowId: row.id, draft: head)
+        guard let newRowId = store.splitRow(rowId: row.id, head: head, tail: tail) else { return }
+        focusIntent.pending = (newRowId, .start)
+        moveFocus(to: newRowId)
+    }
+
+    /// 立即设焦点,再补一拍兜底。同步设置在多数情况下直接生效(rows 是
+    /// 同步更新的,目标行已在数据里);SwiftUI 偶尔因视图未物化而丢弃时,
+    /// 下一拍的重申接住。过去只有"推迟一拍"这一条路,点击/回车与焦点
+    /// 落地之间的空窗会把紧接着的键击丢给旧行 —— 快速打字必中。
+    private func moveFocus(to rowId: String) {
+        focusedRowId = rowId
+        Task { @MainActor in
+            if focusedRowId != rowId {
+                focusedRowId = rowId
             }
         }
     }
@@ -517,13 +634,18 @@ private struct BlockNoteRowView: View {
             store.setKind(rowId: row.id, kind: .paragraph)
             return true
         }
+        // 接缝位置 = 上一行合并前的长度,光标要落在那里 —— 用户按下
+        // 退格想去的正是两行相接的那个点,不是上一行行尾。
+        let joinOffset = store.rows.firstIndex(where: { $0.id == row.id })
+            .flatMap { index in index > 0 ? store.rows[index - 1].text.count : nil }
         guard let previousId = store.mergeWithPreviousRow(rowId: row.id, draftText: draft) else {
             // 首行行首:没有可并入的上一行,吞掉退格避免系统再删一个字。
             return draft.isEmpty
         }
-        Task { @MainActor in
-            focusedRowId = previousId
+        if let joinOffset {
+            focusIntent.pending = (previousId, .offset(joinOffset))
         }
+        moveFocus(to: previousId)
         return true
     }
 
@@ -534,7 +656,8 @@ private struct BlockNoteRowView: View {
         let row: FfiOutlineRow
         @Binding var draft: String
         @FocusState.Binding var focusedRowId: String?
-        let onSubmit: () -> Void
+        let focusIntent: BlockNoteFocusIntent
+        let onSubmitSplit: (_ head: String, _ tail: String) -> Void
         let onBackspaceAtStart: () -> Bool
 
         @State private var selection: TextSelection?
@@ -555,10 +678,21 @@ private struct BlockNoteRowView: View {
             .lineLimit(1...)
             .frame(maxWidth: .infinity, alignment: .leading)
             .focused($focusedRowId, equals: row.id)
-            .onSubmit(onSubmit)
+            .onSubmit {
+                let (head, tail) = splitAtCaret()
+                onSubmitSplit(head, tail)
+            }
             .onKeyPress(.delete) {
                 guard caretIsAtStart else { return .ignored }
                 return onBackspaceAtStart() ? .handled : .ignored
+            }
+            // 兑现手势预设的光标落点(拆分 → 新行行首,并块 → 接缝)。
+            // 在焦点真正到达本行的那一刻设置;晚一拍重申一次,盖过
+            // TextField 自己的默认光标安置。
+            .onChange(of: focusedRowId) { _, newValue in
+                guard newValue == row.id, let caret = focusIntent.take(for: row.id) else { return }
+                applyCaret(caret)
+                Task { @MainActor in applyCaret(caret) }
             }
             .accessibilityLabel(Text(String(
                 format: String(localized: "editor.outline.row_label"),
@@ -575,6 +709,33 @@ private struct BlockNoteRowView: View {
             if draft.isEmpty { return true }
             guard case .selection(let range) = selection?.indices else { return false }
             return range.isEmpty && range.lowerBound == draft.startIndex
+        }
+
+        /// 以当前光标把草稿一分为二。有选区时选区内容随拆分消失(与
+        /// 「选中后回车」的通用语义一致);拿不到 selection 时按行尾拆,
+        /// 退化为旧的"提交整行 + 插空行",绝不弄丢文本。
+        private func splitAtCaret() -> (head: String, tail: String) {
+            guard case .selection(let range) = selection?.indices,
+                  range.lowerBound >= draft.startIndex,
+                  range.upperBound <= draft.endIndex
+            else { return (draft, "") }
+            return (
+                String(draft[..<range.lowerBound]),
+                String(draft[range.upperBound...])
+            )
+        }
+
+        private func applyCaret(_ caret: BlockNoteFocusIntent.Caret) {
+            switch caret {
+            case .start:
+                selection = TextSelection(insertionPoint: draft.startIndex)
+            case .offset(let offset):
+                let index = draft.index(
+                    draft.startIndex,
+                    offsetBy: min(max(offset, 0), draft.count)
+                )
+                selection = TextSelection(insertionPoint: index)
+            }
         }
     }
 }
