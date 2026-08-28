@@ -35,7 +35,18 @@ enum BlockNoteDocument {
     static func attributedString(rows: [FfiOutlineRow]) -> NSAttributedString {
         let result = NSMutableAttributedString()
         for (index, row) in rows.enumerated() {
+            let offset = result.length
             result.append(attributedParagraph(for: row, isLast: index == rows.count - 1))
+            // 内联标记(粗体/斜体/代码/链接/提及)叠在块属性之上。记号
+            // 字符留在文本里,只被压暗 —— 字符流与存储文本严格 1:1。
+            if row.kind != .divider, !row.text.isEmpty {
+                BlockNoteInline.apply(
+                    to: result,
+                    lineText: row.text,
+                    offset: offset,
+                    baseFont: font(for: row.kind)
+                )
+            }
         }
         return result
     }
