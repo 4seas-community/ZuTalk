@@ -1,23 +1,19 @@
-# ZuTalk 0.5.2
+# ZuTalk 0.5.3
 
-Live captions stay at the live edge, even when the provider cannot keep up.
+Recordings take half the disk space they used to.
 
 ZuTalk requires macOS 12.5 or later.
 
-- **A multi-language recording no longer loses transcription partway
-  through.** With three recording languages, the realtime provider can fall
-  behind the room and never catch up; captions drifted further and further
-  behind and then stopped entirely, usually ten to fifteen minutes in, while
-  the recording kept going. A lane that falls too far behind now skips ahead
-  and rejoins at the live edge. Replaying a real 31-minute three-language
-  session that had lost half its transcript: 99.8% transcribed, end to end.
+- **New recordings are stored at half the previous size.** ZuTalk's encrypted
+  audio store kept every 16-bit microphone sample widened to 32 bits — twice
+  the bytes for the same sound. Recordings made from this version on are
+  stored at the microphone's own width: about 115 MB per hour instead of 230.
 
-- **What a skip misses is shown honestly.** Each skip leaves a time-labeled
-  gap divider in the transcript covering exactly the untranscribed stretch —
-  starting from the last transcribed words, not from where the connection
-  was cut. The audio itself is still recorded, and transcribing after
-  stopping fills the gap in.
+- **Existing recordings are untouched.** Everything recorded before this
+  version stays exactly as it is on disk and remains fully readable —
+  playback, export, and after-stop transcription all handle both the old and
+  the new storage width, chosen per recording.
 
-- **Subtitle timing no longer drifts after an outage.** Audio dropped while
-  skipping ahead now advances the transcript clock, so the words after a
-  recovery land at the moment they were said instead of a few seconds early.
+- **Nothing else changes.** Transcription quality, exports, and the audio
+  itself are identical; the removed 32-bit widening carried no information —
+  the microphone is a 16-bit source.
