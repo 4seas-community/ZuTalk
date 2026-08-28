@@ -61,6 +61,10 @@ struct BlockNoteTextCanvas: NSViewRepresentable {
         scrollView.documentView = textView
         context.coordinator.textView = textView
         context.coordinator.rebuild(rows: store.rows)
+        let coordinator = context.coordinator
+        store.installPendingEditFlush { [weak coordinator] in
+            coordinator?.flushPendingEdits()
+        }
         return scrollView
     }
 
@@ -83,6 +87,9 @@ struct BlockNoteTextCanvas: NSViewRepresentable {
         /// 正在由我们自己改文本:此时的 didChangeText 不再派生回写。
         private var isApplyingProgrammatically = false
 
+        /// 待落库的合并任务。打字期间不断被取消重排,停手后才真正跑。
+        private var deriveWorkItem: DispatchWorkItem?
+
         init(store: BlockNoteStore) {
             self.store = store
         }
@@ -90,6 +97,11 @@ struct BlockNoteTextCanvas: NSViewRepresentable {
         // MARK: 同步
 
         func syncIfNeeded(rows: [FfiOutlineRow], authorityEpoch: Int) {
+            // 组字中或还有没落库的击键时,权威落后于屏幕是正常的 ——
+            // 此时重建等于拿旧内容盖掉用户正在打的字。等落库那一拍再说。
+            if let textView, textView.hasMarkedText() { return }
+            if deriveWorkItem != nil { return }
+
             let signature = Self.signature(of: rows)
             guard authorityEpoch != lastAuthorityEpoch || signature != lastRowSignature else {
                 return
@@ -101,6 +113,9 @@ struct BlockNoteTextCanvas: NSViewRepresentable {
 
         func rebuild(rows: [FfiOutlineRow]) {
             guard let textView, let storage = textView.textStorage else { return }
+            // 组字期间整篇替换会打断输入法,让同一段字被重复提交。
+            // 任何路径都不得例外,所以守在这里而不是各个调用点。
+            guard !textView.hasMarkedText() else { return }
             let selected = textView.selectedRange()
             isApplyingProgrammatically = true
             storage.beginEditing()
@@ -142,11 +157,58 @@ struct BlockNoteTextCanvas: NSViewRepresentable {
                 as? String
         }
 
+        /// 文本变了。这里**只登记**,不做任何事。
+        ///
+        /// 早先的版本在这个通知里直接抹平段落属性、派生行、落库,还可能
+        /// 整篇重建。三件事各自都是错的:
+        ///
+        /// 1. 输入法组字期间(拼音还没上屏)文本视图持有一段 marked text。
+        ///    在那期间改动 storage 会让组字状态失效,输入法于是把同一段
+        ///    字重复提交 —— 中文用户打出的每个词都可能变成三四遍,而每个
+        ///    中间态都被写进了文档,关掉重开依旧是乱的。
+        /// 2. 在变更通知里改文本是在文本系统自己的更新过程中间插一脚。
+        /// 3. 每次击键都整篇重建会重置光标,并把击键之间的状态写成一条
+        ///    撤销记录。
+        ///
+        /// 现在改成:组字期间彻底不动,组字结束后延迟合并一次再落库。
         func textDidChange(_ notification: Notification) {
-            guard !isApplyingProgrammatically, let textView, let storage = textView.textStorage
+            guard !isApplyingProgrammatically, let textView else { return }
+            textView.needsDisplay = true
+            // 组字中:一个字都不碰。组字提交时会再来一次 textDidChange,
+            // 那一次才落库。
+            guard !textView.hasMarkedText() else { return }
+            scheduleDerive()
+        }
+
+        /// 合并连续击键:打字时不必每个键都往 Rust 走一趟,也不必每个键
+        /// 都占一条撤销记录。
+        private func scheduleDerive() {
+            deriveWorkItem?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                self?.deriveAndApply()
+            }
+            deriveWorkItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: item)
+        }
+
+        /// 立即落库,不等合并窗口。视图消失、标签切换时必须调用,否则
+        /// 最后一段输入会随窗口一起消失。
+        func flushPendingEdits() {
+            deriveWorkItem?.cancel()
+            deriveWorkItem = nil
+            deriveAndApply()
+        }
+
+        private func deriveAndApply() {
+            deriveWorkItem = nil
+            guard let textView, let storage = textView.textStorage,
+                  !isApplyingProgrammatically,
+                  // 合并窗口结束时用户可能又开始了新一轮组字。
+                  !textView.hasMarkedText()
             else { return }
             // 段落属性只挂在段首字符上,新输入的字符继承的是插入点属性;
-            // 先把每个段落的属性抹平,再派生,避免"半个段落是标题"。
+            // 抹平一遍再派生,避免"半个段落是标题"。放在通知之外做,
+            // 不在文本系统自己的更新过程中间插手。
             normalizeParagraphAttributes(storage)
             let rows = BlockNoteDocument.rows(from: storage)
             lastRowSignature = Self.signature(of: rows)

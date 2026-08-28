@@ -40,6 +40,14 @@ final class BlockNoteStore: ObservableObject {
     /// 光标所在行(文本视图上报)。工具条按钮用它定位作用对象。
     private var focusedRowIdHint: String?
 
+    /// 编辑面装上的"立即落库"回调。合并窗口里可能还压着最后几个键,
+    /// 关文档前必须先把它们写下去 —— 否则关标签时最后一句话会消失。
+    private var pendingEditFlush: (() -> Void)?
+
+    func installPendingEditFlush(_ flush: (() -> Void)?) {
+        pendingEditFlush = flush
+    }
+
     /// noteBlockDocumentOpen 返回的 doc_id。nil 表示尚未打开或已关闭。
     private(set) var docId: String?
 
@@ -127,6 +135,9 @@ final class BlockNoteStore: ObservableObject {
     /// 与 open 配对。
     func close() {
         guard let docId else { return }
+        // 先让编辑面把合并窗口里压着的击键落库,再释放句柄。
+        pendingEditFlush?()
+        pendingEditFlush = nil
         flushDrafts()
         self.docId = nil
         rows = []

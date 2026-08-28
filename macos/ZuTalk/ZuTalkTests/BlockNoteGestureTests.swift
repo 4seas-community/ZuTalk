@@ -362,6 +362,85 @@ final class BlockNoteGestureTests: XCTestCase {
     }
 
 
+    /// 0.5.4 发出去的编辑器会把中文输入打成重复的字,并把每个中间态
+    /// 写进文档 —— 关掉重开依旧是乱的。根因是输入法组字期间(拼音还没
+    /// 上屏、文本视图持有 marked text)代码去改了 storage:组字状态因此
+    /// 失效,输入法把同一段字反复提交。
+    ///
+    /// 这三条守的是"组字期间不碰文本"的每一条通路。任何一条被拿掉,
+    /// 中文和日文用户的笔记就会再次被写坏。
+    func testCompositionIsNeverInterruptedByTheEditor() throws {
+        let canvas = try Self.loadBlockNoteTextCanvas()
+
+        XCTAssertTrue(
+            canvas.contains("guard !textView.hasMarkedText() else { return }"),
+            "textDidChange 必须在组字期间直接返回"
+        )
+        XCTAssertTrue(
+            canvas.contains("if let textView, textView.hasMarkedText() { return }"),
+            "权威回流不得在组字期间重建文本"
+        )
+        XCTAssertEqual(
+            canvas.components(separatedBy: "hasMarkedText()").count - 1, 4,
+            "textDidChange / syncIfNeeded / rebuild / deriveAndApply 四条通路都要守"
+        )
+    }
+
+    /// 变更通知里改文本 = 在文本系统自己的更新过程中间插一脚。属性抹平
+    /// 必须发生在通知之外。
+    func testDerivationHappensOutsideTheChangeNotification() throws {
+        let canvas = try Self.loadBlockNoteTextCanvas()
+        let changeStart = try XCTUnwrap(canvas.range(of: "func textDidChange("))
+        let changeEnd = try XCTUnwrap(
+            canvas.range(of: "private func scheduleDerive", range: changeStart.upperBound..<canvas.endIndex)
+        )
+        let body = String(canvas[changeStart.lowerBound..<changeEnd.lowerBound])
+
+        XCTAssertFalse(body.contains("normalizeParagraphAttributes"), "抹平属性不得在通知里做")
+        XCTAssertFalse(body.contains("applyDerivedRows"), "落库不得在通知里做")
+        XCTAssertFalse(body.contains("rebuild("), "整篇重建不得在通知里做")
+    }
+
+    /// 合并窗口里压着的击键必须在关文档前落库,否则关标签会吞掉最后
+    /// 一句话。
+    func testPendingKeystrokesAreFlushedBeforeTheDocumentCloses() throws {
+        let store = try Self.loadBlockNoteStore()
+        let closeStart = try XCTUnwrap(store.range(of: "func close() {"))
+        let closeEnd = try XCTUnwrap(
+            store.range(of: "blockDocumentClose", range: closeStart.upperBound..<store.endIndex)
+        )
+        let body = String(store[closeStart.lowerBound..<closeEnd.lowerBound])
+
+        XCTAssertTrue(body.contains("pendingEditFlush?()"), "关文档前必须先落库待写的击键")
+        XCTAssertTrue(
+            body.range(of: "pendingEditFlush?()")!.lowerBound
+                < body.range(of: "flushDrafts()")!.lowerBound,
+            "落库要发生在释放句柄之前"
+        )
+    }
+
+    private static func loadBlockNoteTextCanvas() throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk", isDirectory: true)
+        return try String(
+            contentsOf: root.appendingPathComponent("Pages/BlockNoteTextCanvas.swift"),
+            encoding: .utf8
+        )
+    }
+
+    private static func loadBlockNoteStore() throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk", isDirectory: true)
+        return try String(
+            contentsOf: root.appendingPathComponent("Pages/BlockNoteStore.swift"),
+            encoding: .utf8
+        )
+    }
+
     private static func loadBlockNoteTextView() throws -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
