@@ -560,6 +560,10 @@
 "settings.updates.subtitle" = "署名済みアップデートを Sparkle から安全に受信します。";
 "settings.updates.automatic" = "アップデートを自動的に確認";
 "settings.updates.automatic_hint" = "署名済みアップデートフィードを定期的に確認し、新しいバージョンが利用可能になると通知します。";
+"settings.updates.current_version" = "現在のバージョン";
+"settings.updates.version_hint" = "問題を報告する際はこの行を添えてください。";
+"settings.updates.check_now" = "今すぐ更新を確認";
+"settings.updates.check_now_hint" = "新しい署名済みリリースを今すぐ探します。";
 "menubar.recording.live_transcript" = "リアルタイム文字起こし";
 "menubar.recording.open_subtitles" = "ライブ字幕を開く";
 "menubar.recording.close_subtitles" = "ライブ字幕を閉じる";

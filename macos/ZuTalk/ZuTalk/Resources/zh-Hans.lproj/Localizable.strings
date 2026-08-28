@@ -577,6 +577,10 @@
 "settings.updates.subtitle" = "通过 Sparkle 安全接收签名更新。";
 "settings.updates.automatic" = "自动检查更新";
 "settings.updates.automatic_hint" = "ZuTalk 会定期检查经过签名的更新源，并在新版本可用时提醒你。";
+"settings.updates.current_version" = "当前版本";
+"settings.updates.version_hint" = "反馈问题时请附上这一行。";
+"settings.updates.check_now" = "立即检查更新";
+"settings.updates.check_now_hint" = "现在查找更新的签名版本。";
 "menubar.recording.live_transcript" = "实时转录";
 "menubar.recording.open_subtitles" = "打开实时字幕";
 "menubar.recording.close_subtitles" = "关闭实时字幕";

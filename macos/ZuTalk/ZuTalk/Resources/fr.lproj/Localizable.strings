@@ -577,6 +577,10 @@
 "settings.updates.subtitle" = "Les mises à jour signées sont distribuées en toute sécurité via Sparkle.";
 "settings.updates.automatic" = "Rechercher automatiquement les mises à jour";
 "settings.updates.automatic_hint" = "ZuTalk vérifie périodiquement le flux de mises à jour signé et vous avertit lorsqu’une nouvelle version est disponible.";
+"settings.updates.current_version" = "Version actuelle";
+"settings.updates.version_hint" = "À joindre lors d'un signalement de problème.";
+"settings.updates.check_now" = "Rechercher les mises à jour";
+"settings.updates.check_now_hint" = "Chercher maintenant une version signée plus récente.";
 "menubar.recording.live_transcript" = "Transcription en direct";
 "menubar.recording.open_subtitles" = "Ouvrir les sous-titres en direct";
 "menubar.recording.close_subtitles" = "Fermer les sous-titres en direct";

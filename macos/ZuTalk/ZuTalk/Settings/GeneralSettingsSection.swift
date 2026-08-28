@@ -186,7 +186,23 @@ struct GeneralSettingsSection: View {
                         }
                 }
                 SettingsRowDivider()
-                SettingsRow(String(localized: "updates.check")) {
+                // 当前版本要看得见。一个"检查更新"面板不说自己是哪一版,
+                // 用户既判断不了刚装上的是不是新的,报问题时也报不出版本。
+                SettingsRow(
+                    String(localized: "settings.updates.current_version"),
+                    description: String(localized: "settings.updates.version_hint")
+                ) {
+                    Text(Self.versionDisplay)
+                        .font(Font.mono11)
+                        .foregroundColor(Color.textSecondary)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("settings.updates.version")
+                }
+                SettingsRowDivider()
+                SettingsRow(
+                    String(localized: "settings.updates.check_now"),
+                    description: String(localized: "settings.updates.check_now_hint")
+                ) {
                     Button(String(localized: "updates.check")) {
                         SoftwareUpdateController.shared.checkForUpdates()
                     }
@@ -202,6 +218,15 @@ struct GeneralSettingsSection: View {
             automaticallyChecksForUpdates =
                 SoftwareUpdateController.shared.automaticallyChecksForUpdates
         }
+    }
+
+    /// 「0.5.7 (39)」。两个数都要:版本号是用户说的那个,构建号是发布
+    /// 链条与 Sparkle 认的那个,报问题时缺一个就对不上。
+    static var versionDisplay: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = info?["CFBundleVersion"] as? String ?? "—"
+        return "\(short) (\(build))"
     }
 
     private func applyLanguage(_ rawValue: String) {

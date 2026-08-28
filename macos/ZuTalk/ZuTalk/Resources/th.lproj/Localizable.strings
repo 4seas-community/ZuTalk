@@ -577,6 +577,10 @@
 "settings.updates.subtitle" = "อัปเดตที่มีลายเซ็นจะถูกส่งอย่างปลอดภัยผ่าน Sparkle";
 "settings.updates.automatic" = "ตรวจหาอัปเดตโดยอัตโนมัติ";
 "settings.updates.automatic_hint" = "ZuTalk จะตรวจสอบฟีดอัปเดตที่มีลายเซ็นเป็นระยะ และแจ้งให้คุณทราบเมื่อมีเวอร์ชันใหม่";
+"settings.updates.current_version" = "เวอร์ชันปัจจุบัน";
+"settings.updates.version_hint" = "โปรดแนบบรรทัดนี้เมื่อแจ้งปัญหา";
+"settings.updates.check_now" = "ตรวจหาอัปเดต";
+"settings.updates.check_now_hint" = "ค้นหาเวอร์ชันที่ลงนามใหม่กว่าตอนนี้";
 "menubar.recording.live_transcript" = "บทถอดเสียงสด";
 "menubar.recording.open_subtitles" = "เปิดคำบรรยายสด";
 "menubar.recording.close_subtitles" = "ปิดคำบรรยายสด";

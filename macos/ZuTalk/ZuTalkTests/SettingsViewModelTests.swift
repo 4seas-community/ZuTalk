@@ -3,6 +3,38 @@ import XCTest
 @testable import ZuTalk
 
 @MainActor
+final class SoftwareUpdateVersionTests: XCTestCase {
+    /// 一个「检查更新」面板不说自己是哪一版,用户既判断不了刚装上的是不是
+    /// 新的,报问题时也报不出版本 —— 而版本与构建号必须成对出现:版本号是
+    /// 用户嘴里说的那个,构建号是发布链条与 Sparkle 认的那个。
+    func testVersionDisplayCarriesBothMarketingAndBuildNumbers() {
+        let display = GeneralSettingsSection.versionDisplay
+        let info = Bundle.main.infoDictionary
+        let short = try? XCTUnwrap(info?["CFBundleShortVersionString"] as? String)
+        let build = try? XCTUnwrap(info?["CFBundleVersion"] as? String)
+
+        XCTAssertTrue(display.contains(short ?? "—"), "要显示版本号: \(display)")
+        XCTAssertTrue(display.contains(build ?? "—"), "也要显示构建号: \(display)")
+        XCTAssertFalse(display.contains("—"), "两个数都必须取得到")
+    }
+
+    /// 版本行必须真的出现在更新卡片里,而不只是存在于一个没人调用的
+    /// 辅助函数上。
+    func testUpdatesCardShowsTheVersionRow() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/Settings/GeneralSettingsSection.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(source.contains("settings.updates.current_version"))
+        XCTAssertTrue(source.contains("Self.versionDisplay"))
+        XCTAssertTrue(source.contains("settings.updates.version"))
+    }
+}
+
+@MainActor
 final class LocalSystemSettingsViewModelTests: XCTestCase {
     func testServicesSectionNameIsNotAProviderName() {
         let displayName = SettingsSection.services.displayName

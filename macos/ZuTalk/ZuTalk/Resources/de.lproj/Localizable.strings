@@ -576,6 +576,10 @@
 "settings.updates.subtitle" = "Signierte Updates werden sicher über Sparkle bereitgestellt.";
 "settings.updates.automatic" = "Automatisch nach Updates suchen";
 "settings.updates.automatic_hint" = "ZuTalk prüft den signierten Update-Feed regelmäßig und benachrichtigt dich, wenn eine neue Version verfügbar ist.";
+"settings.updates.current_version" = "Aktuelle Version";
+"settings.updates.version_hint" = "Diese Zeile bitte bei Problemmeldungen angeben.";
+"settings.updates.check_now" = "Nach Updates suchen";
+"settings.updates.check_now_hint" = "Jetzt nach einer neueren signierten Version suchen.";
 "menubar.recording.live_transcript" = "Live-Transkript";
 "menubar.recording.open_subtitles" = "Live-Untertitel öffnen";
 "menubar.recording.close_subtitles" = "Live-Untertitel schließen";
