@@ -174,7 +174,10 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
         // Capture controls are Notebook-only. The global shortcut routes to
         // that Notebook instead of mutating capture from outside it.
         HotKeyManager.shared.installDefaults(
-            toggleRecording: { [weak self] in self?.openCaptureNotebook() }
+            toggleRecording: { [weak self] in self?.openCaptureNotebook() },
+            markMoment: {
+                MainActor.assumeIsolated { _ = SessionMarkStore.shared.mark() }
+            }
         )
 
         // 启动初始化:locale 固化。Provider credentials were already restored

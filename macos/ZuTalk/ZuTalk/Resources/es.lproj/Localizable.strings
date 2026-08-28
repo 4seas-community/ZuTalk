@@ -1127,6 +1127,16 @@
 "topic.workspace.title" = "Espacio del tema";
 
 /* Notas y configuración de la sesión */
+/* Marked moments: the listener's own record during a live capture. */
+"session.marks.title" = "Momentos marcados";
+"session.marks.add" = "Marcar";
+"session.marks.add.hint" = "Guardar lo que se acaba de decir (⌃⌥S, desde cualquier app)";
+"session.marks.delete" = "Eliminar esta marca";
+"session.marks.note.placeholder" = "¿Por qué importa esto?";
+"session.marks.excerpt.silent" = "Nadie hablaba en este momento.";
+"session.marks.empty.live" = "Pulsa ⌃⌥S cuando algo importe. Guarda el pasaje que acaba de terminar, así puedes seguir escuchando.";
+"session.marks.empty.done" = "No hay marcas en esta grabación.";
+
 "session.tab.notes" = "Notas";
 "session.tab.settings" = "Configuración";
 "session.notes.title" = "Notas de la sesión";

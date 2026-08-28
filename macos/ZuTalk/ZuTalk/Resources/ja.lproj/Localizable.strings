@@ -1128,6 +1128,16 @@
 "topic.workspace.title" = "テーマのワークスペース";
 
 /* セッションノートと設定 */
+/* Marked moments: the listener's own record during a live capture. */
+"session.marks.title" = "マーク";
+"session.marks.add" = "マーク";
+"session.marks.add.hint" = "今の話を書き留める（⌃⌥S、どのアプリからでも）";
+"session.marks.delete" = "このマークを削除";
+"session.marks.note.placeholder" = "なぜここが大事ですか？";
+"session.marks.excerpt.silent" = "この時点では誰も話していません。";
+"session.marks.empty.live" = "大事だと思ったら ⌃⌥S。今話し終えたところが残るので、そのまま聞き続けられます。";
+"session.marks.empty.done" = "この録音にマークはありません。";
+
 "session.tab.notes" = "ノート";
 "session.tab.settings" = "設定";
 "session.notes.title" = "セッションノート";

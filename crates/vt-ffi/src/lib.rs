@@ -12,6 +12,7 @@ pub mod lane_credential_api;
 pub mod notebook_api;
 pub mod notebook_capture_api;
 pub mod session_audio_api;
+mod session_mark_api;
 pub(crate) mod session_move;
 pub mod settings_api;
 pub(crate) mod share_api;
@@ -169,8 +170,8 @@ fn acquire_data_dir_lock(path: &Path) -> Result<File, CoreError> {
 use vt_store::context_pack_store::ContextPackStore;
 use vt_store::notebook_capture_store::NotebookCaptureStore;
 use vt_store::{
-    EditorBridge, NotebookStore, SearchStore, SessionMeta, SessionMetaStore, SessionQueryStore,
-    SessionRecord,
+    EditorBridge, NotebookStore, SearchStore, SessionMarkStore, SessionMeta, SessionMetaStore,
+    SessionQueryStore, SessionRecord,
 };
 
 /// 初始化 tracing_subscriber,输出到 `<data_dir>/logs/rust.log`。
@@ -327,6 +328,8 @@ pub struct ZuTalkCore {
     pub(crate) session_store: SessionQueryStore,
     search_store: SearchStore,
     pub(crate) session_meta: SessionMetaStore,
+    /// Marks live beside the transcript, never inside the capture path.
+    pub(crate) session_marks: SessionMarkStore,
     pub(crate) notebook_store: NotebookStore,
     /// Arc 是为了让分享层能持有它去解析「这个 Notebook 下有哪些文档」。
     /// Deref 让既有的调用点原样可用。
@@ -616,6 +619,10 @@ impl ZuTalkCore {
             message: format!("session meta: {e}"),
         })?;
 
+        let session_marks = SessionMarkStore::new(&db_path).map_err(|e| CoreError::InitFailed {
+            message: format!("session marks: {e}"),
+        })?;
+
         let notebook_capture_store = Arc::new(NotebookCaptureStore::new(&db_path).map_err(
             |e| CoreError::InitFailed {
                 message: format!("notebook capture store: {e}"),
@@ -735,6 +742,7 @@ impl ZuTalkCore {
             session_store,
             search_store,
             session_meta,
+            session_marks,
             notebook_store,
             notebook_capture_store,
             context_pack_store,

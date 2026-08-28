@@ -1128,6 +1128,16 @@
 "topic.workspace.title" = "พื้นที่ทำงานของหัวข้อ";
 
 /* โน้ตและการตั้งค่าเซสชัน */
+/* Marked moments: the listener's own record during a live capture. */
+"session.marks.title" = "ช่วงที่ทำเครื่องหมาย";
+"session.marks.add" = "ทำเครื่องหมาย";
+"session.marks.add.hint" = "เก็บสิ่งที่เพิ่งพูดไป (⌃⌥S ใช้ได้จากทุกแอป)";
+"session.marks.delete" = "ลบเครื่องหมายนี้";
+"session.marks.note.placeholder" = "ทำไมตรงนี้จึงสำคัญ";
+"session.marks.excerpt.silent" = "ตรงจุดนี้ไม่มีใครพูด";
+"session.marks.empty.live" = "กด ⌃⌥S เมื่อเจอสิ่งสำคัญ ระบบจะเก็บช่วงที่เพิ่งพูดจบไว้ให้ คุณฟังต่อได้เลย";
+"session.marks.empty.done" = "การบันทึกนี้ไม่มีเครื่องหมาย";
+
 "session.tab.notes" = "โน้ต";
 "session.tab.settings" = "การตั้งค่า";
 "session.notes.title" = "โน้ตของเซสชัน";

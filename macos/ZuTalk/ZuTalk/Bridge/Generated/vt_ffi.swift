@@ -1164,6 +1164,38 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func listTasks(statusFilter: String?) throws  -> [TaskInfoDto]
 
     /**
+     * Drops a mark and resolves how far back it reaches.
+     *
+     * `at_ms` is normally omitted: the app's own elapsed timer is a wall
+     * clock, while transcript timestamps come off the capture clock, and a
+     * mark placed by the wrong clock points at the wrong words. Left unset,
+     * the instant is read from the frames this session has actually captured
+     * — the same clock the transcript is stamped in. It is passed explicitly
+     * only to mark a specific past moment, such as when replaying.
+     *
+     * The backward reach is computed here rather than in the app because only
+     * this side knows where the speech actually paused.
+     */
+    func sessionMarkCreate(sessionId: String, atMs: UInt64?) throws  -> FfiSessionMark
+
+    func sessionMarkDelete(markId: String) throws
+
+    /**
+     * Every live mark on a session, in capture order, each with its passage.
+     */
+    func sessionMarkList(sessionId: String) throws  -> [FfiSessionMark]
+
+    /**
+     * Moves a mark's passage boundaries after the listener drags them.
+     */
+    func sessionMarkSetBounds(markId: String, startMs: UInt64, endMs: UInt64) throws  -> FfiSessionMark
+
+    /**
+     * Replaces the listener's own text on a mark.
+     */
+    func sessionMarkSetNote(markId: String, note: String) throws  -> FfiSessionMark
+
+    /**
      * 导出会话为 zip
      *
      * 流程：
@@ -2713,6 +2745,76 @@ open func listTasks(statusFilter: String?)throws  -> [TaskInfoDto]  {
     uniffi_vt_ffi_fn_method_zutalkcore_list_tasks(
             self.uniffiCloneHandle(),
         FfiConverterOptionString.lower(statusFilter),$0
+    )
+})
+}
+
+    /**
+     * Drops a mark and resolves how far back it reaches.
+     *
+     * `at_ms` is normally omitted: the app's own elapsed timer is a wall
+     * clock, while transcript timestamps come off the capture clock, and a
+     * mark placed by the wrong clock points at the wrong words. Left unset,
+     * the instant is read from the frames this session has actually captured
+     * — the same clock the transcript is stamped in. It is passed explicitly
+     * only to mark a specific past moment, such as when replaying.
+     *
+     * The backward reach is computed here rather than in the app because only
+     * this side knows where the speech actually paused.
+     */
+open func sessionMarkCreate(sessionId: String, atMs: UInt64?)throws  -> FfiSessionMark  {
+    return try  FfiConverterTypeFfiSessionMark_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_session_mark_create(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterOptionUInt64.lower(atMs),$0
+    )
+})
+}
+
+open func sessionMarkDelete(markId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_session_mark_delete(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(markId),$0
+    )
+}
+}
+
+    /**
+     * Every live mark on a session, in capture order, each with its passage.
+     */
+open func sessionMarkList(sessionId: String)throws  -> [FfiSessionMark]  {
+    return try  FfiConverterSequenceTypeFfiSessionMark.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_session_mark_list(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
+     * Moves a mark's passage boundaries after the listener drags them.
+     */
+open func sessionMarkSetBounds(markId: String, startMs: UInt64, endMs: UInt64)throws  -> FfiSessionMark  {
+    return try  FfiConverterTypeFfiSessionMark_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_session_mark_set_bounds(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(markId),
+        FfiConverterUInt64.lower(startMs),
+        FfiConverterUInt64.lower(endMs),$0
+    )
+})
+}
+
+    /**
+     * Replaces the listener's own text on a mark.
+     */
+open func sessionMarkSetNote(markId: String, note: String)throws  -> FfiSessionMark  {
+    return try  FfiConverterTypeFfiSessionMark_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_session_mark_set_note(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(markId),
+        FfiConverterString.lower(note),$0
     )
 })
 }
@@ -6092,6 +6194,218 @@ public func FfiConverterTypeFfiSessionFilingResult_lift(_ buf: RustBuffer) throw
 #endif
 public func FfiConverterTypeFfiSessionFilingResult_lower(_ value: FfiSessionFilingResult) -> RustBuffer {
     return FfiConverterTypeFfiSessionFilingResult.lower(value)
+}
+
+
+/**
+ * A mark plus the passage it currently resolves to.
+ *
+ * The excerpt is derived on every read rather than stored: transcript rows
+ * keep improving after a mark is dropped — a partial finalizes, the precision
+ * pass replaces a line, a translation lands — and a stored copy would freeze
+ * the worst version of the text the listener ever saw.
+ */
+public struct FfiSessionMark: Equatable, Hashable {
+    public var id: String
+    public var sessionId: String
+    /**
+     * When the key went down, in capture milliseconds.
+     */
+    public var atMs: UInt64
+    public var startMs: UInt64
+    /**
+     * The resolved trailing edge, never null on the way out: the app should
+     * not have to reimplement "unset means the enclosing utterance".
+     */
+    public var endMs: UInt64
+    /**
+     * Whether that trailing edge is still tracking the enclosing utterance
+     * rather than a boundary the listener chose.
+     */
+    public var endIsAuto: Bool
+    /**
+     * The listener's own words about this moment.
+     */
+    public var note: String
+    public var createdAt: String
+    public var updatedAt: String
+    /**
+     * Transcript rows overlapping the passage, in capture order.
+     */
+    public var excerpt: [FfiSessionMarkLine]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, sessionId: String,
+        /**
+         * When the key went down, in capture milliseconds.
+         */atMs: UInt64, startMs: UInt64,
+        /**
+         * The resolved trailing edge, never null on the way out: the app should
+         * not have to reimplement "unset means the enclosing utterance".
+         */endMs: UInt64,
+        /**
+         * Whether that trailing edge is still tracking the enclosing utterance
+         * rather than a boundary the listener chose.
+         */endIsAuto: Bool,
+        /**
+         * The listener's own words about this moment.
+         */note: String, createdAt: String, updatedAt: String,
+        /**
+         * Transcript rows overlapping the passage, in capture order.
+         */excerpt: [FfiSessionMarkLine]) {
+        self.id = id
+        self.sessionId = sessionId
+        self.atMs = atMs
+        self.startMs = startMs
+        self.endMs = endMs
+        self.endIsAuto = endIsAuto
+        self.note = note
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.excerpt = excerpt
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSessionMark: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSessionMark: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSessionMark {
+        return
+            try FfiSessionMark(
+                id: FfiConverterString.read(from: &buf),
+                sessionId: FfiConverterString.read(from: &buf),
+                atMs: FfiConverterUInt64.read(from: &buf),
+                startMs: FfiConverterUInt64.read(from: &buf),
+                endMs: FfiConverterUInt64.read(from: &buf),
+                endIsAuto: FfiConverterBool.read(from: &buf),
+                note: FfiConverterString.read(from: &buf),
+                createdAt: FfiConverterString.read(from: &buf),
+                updatedAt: FfiConverterString.read(from: &buf),
+                excerpt: FfiConverterSequenceTypeFfiSessionMarkLine.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiSessionMark, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.sessionId, into: &buf)
+        FfiConverterUInt64.write(value.atMs, into: &buf)
+        FfiConverterUInt64.write(value.startMs, into: &buf)
+        FfiConverterUInt64.write(value.endMs, into: &buf)
+        FfiConverterBool.write(value.endIsAuto, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+        FfiConverterString.write(value.createdAt, into: &buf)
+        FfiConverterString.write(value.updatedAt, into: &buf)
+        FfiConverterSequenceTypeFfiSessionMarkLine.write(value.excerpt, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSessionMark_lift(_ buf: RustBuffer) throws -> FfiSessionMark {
+    return try FfiConverterTypeFfiSessionMark.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSessionMark_lower(_ value: FfiSessionMark) -> RustBuffer {
+    return FfiConverterTypeFfiSessionMark.lower(value)
+}
+
+
+/**
+ * One transcript row inside a marked passage.
+ *
+ * Source and translation both travel: in the room the listener was reading
+ * the translation, and afterward they usually want the original next to it.
+ */
+public struct FfiSessionMarkLine: Equatable, Hashable {
+    public var utteranceId: String
+    public var speakerId: String?
+    public var sourceLanguage: String
+    public var sourceText: String
+    public var translatedLanguage: String?
+    public var translatedText: String?
+    public var startMs: UInt64
+    public var endMs: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(utteranceId: String, speakerId: String?, sourceLanguage: String, sourceText: String, translatedLanguage: String?, translatedText: String?, startMs: UInt64, endMs: UInt64) {
+        self.utteranceId = utteranceId
+        self.speakerId = speakerId
+        self.sourceLanguage = sourceLanguage
+        self.sourceText = sourceText
+        self.translatedLanguage = translatedLanguage
+        self.translatedText = translatedText
+        self.startMs = startMs
+        self.endMs = endMs
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSessionMarkLine: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSessionMarkLine: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSessionMarkLine {
+        return
+            try FfiSessionMarkLine(
+                utteranceId: FfiConverterString.read(from: &buf),
+                speakerId: FfiConverterOptionString.read(from: &buf),
+                sourceLanguage: FfiConverterString.read(from: &buf),
+                sourceText: FfiConverterString.read(from: &buf),
+                translatedLanguage: FfiConverterOptionString.read(from: &buf),
+                translatedText: FfiConverterOptionString.read(from: &buf),
+                startMs: FfiConverterUInt64.read(from: &buf),
+                endMs: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiSessionMarkLine, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.utteranceId, into: &buf)
+        FfiConverterOptionString.write(value.speakerId, into: &buf)
+        FfiConverterString.write(value.sourceLanguage, into: &buf)
+        FfiConverterString.write(value.sourceText, into: &buf)
+        FfiConverterOptionString.write(value.translatedLanguage, into: &buf)
+        FfiConverterOptionString.write(value.translatedText, into: &buf)
+        FfiConverterUInt64.write(value.startMs, into: &buf)
+        FfiConverterUInt64.write(value.endMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSessionMarkLine_lift(_ buf: RustBuffer) throws -> FfiSessionMarkLine {
+    return try FfiConverterTypeFfiSessionMarkLine.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSessionMarkLine_lower(_ value: FfiSessionMarkLine) -> RustBuffer {
+    return FfiConverterTypeFfiSessionMarkLine.lower(value)
 }
 
 
@@ -9823,6 +10137,56 @@ fileprivate struct FfiConverterSequenceTypeFfiRoomMember: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiSessionMark: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiSessionMark]
+
+    public static func write(_ value: [FfiSessionMark], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiSessionMark.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiSessionMark] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiSessionMark]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiSessionMark.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiSessionMarkLine: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiSessionMarkLine]
+
+    public static func write(_ value: [FfiSessionMarkLine], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiSessionMarkLine.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiSessionMarkLine] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiSessionMarkLine]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiSessionMarkLine.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiSessionSpeaker: FfiConverterRustBuffer {
     typealias SwiftType = [FfiSessionSpeaker]
 
@@ -10392,6 +10756,21 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_list_tasks() != 25342) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_session_mark_create() != 20026) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_session_mark_delete() != 45889) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_session_mark_list() != 38823) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_session_mark_set_bounds() != 49804) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_session_mark_set_note() != 43231) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_export_session_zip() != 39759) {

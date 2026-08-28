@@ -1128,6 +1128,16 @@
 "topic.workspace.title" = "주제 작업 공간";
 
 /* 세션 메모 및 설정 */
+/* Marked moments: the listener's own record during a live capture. */
+"session.marks.title" = "표시한 순간";
+"session.marks.add" = "표시";
+"session.marks.add.hint" = "방금 한 말을 남기기 (⌃⌥S, 어느 앱에서나)";
+"session.marks.delete" = "이 표시 삭제";
+"session.marks.note.placeholder" = "왜 중요한가요?";
+"session.marks.excerpt.silent" = "이 지점에서는 아무도 말하지 않았습니다.";
+"session.marks.empty.live" = "중요하다 싶으면 ⌃⌥S를 누르세요. 방금 끝난 대목이 남으니 계속 들어도 됩니다.";
+"session.marks.empty.done" = "이 녹음에는 표시가 없습니다.";
+
 "session.tab.notes" = "메모";
 "session.tab.settings" = "설정";
 "session.notes.title" = "세션 메모";

@@ -1128,6 +1128,16 @@
 "topic.workspace.title" = "Topic workspace";
 
 /* Session notes and settings */
+/* Marked moments: the listener's own record during a live capture. */
+"session.marks.title" = "Marked moments";
+"session.marks.add" = "Mark";
+"session.marks.add.hint" = "Mark what was just said (⌃⌥S, works from any app)";
+"session.marks.delete" = "Delete this mark";
+"session.marks.note.placeholder" = "What made this matter?";
+"session.marks.excerpt.silent" = "Nothing was being said here.";
+"session.marks.empty.live" = "Press ⌃⌥S when something matters. It keeps the passage that just finished, so you can go on listening.";
+"session.marks.empty.done" = "Nothing was marked in this recording.";
+
 "session.tab.notes" = "Notes";
 "session.tab.settings" = "Settings";
 "session.notes.title" = "Session notes";

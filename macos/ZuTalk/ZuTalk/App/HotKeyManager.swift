@@ -19,7 +19,13 @@ struct HotKeyBinding {
 /// 全局快捷键管理器
 ///
 /// 用 Carbon RegisterEventHotKey API（macOS 上唯一可靠的全局热键 API）。
-/// 默认绑定：⌃⌥R → 打开录音 Notebook。
+///
+/// 默认绑定：
+/// - ⌃⌥R → 打开录音 Notebook
+/// - ⌃⌥S → 在当前录音上盖一个标记
+///
+/// 标记键必须是全局的：跨语言场景下用户看的是幻灯片或 Zoom，ZuTalk 在后台，
+/// 悬浮字幕浮在最上面。要求他先切回应用再标记，等于要求他错过接下来那句话。
 final class HotKeyManager {
     static let shared = HotKeyManager()
 
@@ -33,7 +39,10 @@ final class HotKeyManager {
     // MARK: - Install
 
     /// 注册默认全局快捷键。
-    func installDefaults(toggleRecording: @escaping () -> Void) {
+    func installDefaults(
+        toggleRecording: @escaping () -> Void,
+        markMoment: @escaping () -> Void
+    ) {
         installEventHandler()
 
         let signature = OSType(0x56544B4B) // 'VTKK'
@@ -46,6 +55,16 @@ final class HotKeyManager {
                 keyCode: UInt32(kVK_ANSI_R),
                 modifiers: modifiers,
                 action: toggleRecording
+            )
+        )
+
+        register(
+            HotKeyBinding(
+                id: 3,
+                signature: signature,
+                keyCode: UInt32(kVK_ANSI_S),
+                modifiers: modifiers,
+                action: markMoment
             )
         )
     }

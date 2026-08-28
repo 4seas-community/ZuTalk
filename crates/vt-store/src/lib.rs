@@ -15,6 +15,7 @@ pub mod notebook_capture_store;
 pub mod notebook_store;
 pub mod replay_migration;
 pub mod search;
+pub mod session_marks;
 pub mod session_meta;
 pub mod session_query;
 pub mod transcript_projection;
@@ -47,6 +48,10 @@ pub use notebook_store::{
     NotebookStore, NotebookStoreError, NotebookTabRecord, SessionMovePlan, SessionMoveTarget,
 };
 pub use search::{RealtimeSearchProjectionOutcome, SearchResult, SearchStore, SearchStoreError};
+pub use session_marks::{
+    anchor_is_in_mark, resolve_mark_end, resolve_mark_start, MarkAnchor, MarkLookback, SessionMark,
+    SessionMarkError, SessionMarkStore,
+};
 pub use session_meta::{
     AudioChunkRetentionRecord, AudioRetentionCounts, SessionMeta, SessionMetaError,
     SessionMetaStore,

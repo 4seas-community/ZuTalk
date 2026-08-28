@@ -46,11 +46,26 @@ struct NotebookRealtimeTranscriptPage: View {
                 Divider().background(Color.borderGhost.opacity(0.3))
             }
 
-            NotebookRealtimeHistoryView(
-                notebookId: notebookId,
-                focusSessionId: sessionId,
-                history: history
-            )
+            HStack(spacing: 0) {
+                NotebookRealtimeHistoryView(
+                    notebookId: notebookId,
+                    focusSessionId: sessionId,
+                    history: history
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // The transcript keeps the floor; the rail is where the
+                // listener's own record accumulates beside it.
+                if let markSessionId {
+                    Divider().background(Color.borderGhost.opacity(0.4))
+                    SessionMarksPanel(
+                        sessionId: markSessionId,
+                        isLive: isMarkingLive,
+                        onMark: { SessionMarkStore.shared.mark() }
+                    )
+                    .frame(width: 300)
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
@@ -65,6 +80,23 @@ struct NotebookRealtimeTranscriptPage: View {
             guard capture.notebookId == notebookId,
                   state.isActive == false else { return }
             Task { await reloadHistory() }
+            // Stopping is when the transcript settles for good, so it is when
+            // every excerpt is worth rebuilding once.
+            SessionMarkStore.shared.refreshExcerpts()
+        }
+        .montereyOnChange(of: markSessionId) { _, session in
+            SessionMarkStore.shared.load(sessionId: session)
+        }
+        .task(id: markSessionId ?? "none") {
+            SessionMarkStore.shared.load(sessionId: markSessionId)
+        }
+        .onReceive(
+            Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+        ) { _ in
+            // Cheap by construction: this only reads when a mark dropped in
+            // the last few seconds could still be waiting on a partial.
+            guard isMarkingLive else { return }
+            SessionMarkStore.shared.refreshSettlingExcerpts()
         }
         .montereyOnChange(of: activeSessionSpeakerIds) { _, speakerIds in
             refreshActiveSessionSpeakers(speakerIds)
@@ -77,6 +109,22 @@ struct NotebookRealtimeTranscriptPage: View {
         // race where an initial speaker refresh could otherwise be cleared by
         // the catalog's notebook-switch/reset prefix or summary filtering.
         refreshActiveSessionSpeakers(activeSessionSpeakerIds)
+    }
+
+    /// The session marks attach to: the route's session, or the live one when
+    /// the page is the capture console rather than a history route.
+    private var markSessionId: String? {
+        if let sessionId { return sessionId }
+        guard capture.notebookId == notebookId else { return nil }
+        return capture.sessionId
+    }
+
+    /// Marking is a live gesture. After the recording ends the rail is still
+    /// there to read and annotate, but a new mark has no instant to attach to.
+    private var isMarkingLive: Bool {
+        capture.isCaptureActive
+            && capture.notebookId == notebookId
+            && capture.sessionId == markSessionId
     }
 
     private var showsCaptureSetup: Bool {
