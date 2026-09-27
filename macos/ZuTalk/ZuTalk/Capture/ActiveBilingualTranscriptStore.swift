@@ -93,6 +93,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     @Published private(set) var notebookId: String?
     @Published private(set) var profile = NotebookCaptureProfileDTO.localDefault(notebookId: "")
     @Published private(set) var captureState: NotebookCaptureState = .completed
+    /// The state of the newest event applied for this session, as Rust
+    /// reported it — before a held lease masked it as draining.
+    private var newestAppliedCaptureState: NotebookCaptureState?
+    private var captureActivity: (any NSObjectProtocol)?
     @Published private(set) var remoteHealth: NotebookRemoteHealth = .off
     @Published private(set) var realtimeLagMs: UInt64?
     @Published private(set) var projectionState: NotebookProjectionState = .ready
@@ -199,6 +203,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// for the durable capture state; this flag only tells the UI that closing
     /// the admitted local-audio backlog has exceeded the watchdog interval.
     @Published private(set) var isAudioDrainDelayed = false
+    @Published private(set) var isRestartingTranscription = false
     @Published private(set) var isAudioInputSwitching = false
     @Published private(set) var activeAudioInputDevice: AudioInputDevice?
 
@@ -827,6 +832,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             frame.utterances = []
         }
         self.lastAppliedEventRevision = nil
+        self.newestAppliedCaptureState = nil
         self.lastAppliedLivePreviewRevision = nil
         self.appliedContextReceipt = nil
         self.appliedContextSessionId = nil
@@ -1208,6 +1214,33 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         MenuBarRuntimeStore.shared.updateRecording { $0.isPaused = false }
     }
 
+    /// A recording that asked for transcription and is not getting it:
+    /// the provider group failed and recording carried on without it.
+    var canRestartTranscription: Bool {
+        sessionId != nil
+            && captureState == .recording
+            && terminalTransitionLease == nil
+            && isRestartingTranscription == false
+            && (remoteHealth == .degraded || remoteHealth == .unavailable)
+    }
+
+    /// Starts a new provider group at the live edge. Recording is untouched;
+    /// the stretch transcription missed is recorded as a gap by Rust.
+    func restartTranscription() async throws {
+        guard let sessionId,
+              captureState == .recording,
+              terminalTransitionLease == nil,
+              isRestartingTranscription == false
+        else {
+            throw NotebookCaptureClientError.captureNotActive
+        }
+        isRestartingTranscription = true
+        defer { isRestartingTranscription = false }
+        let event = try await client.restartNotebookCaptureTranscription(sessionId: sessionId)
+        guard self.sessionId == sessionId else { return }
+        apply(event)
+    }
+
     func stop() async throws {
         beginLifecycleOperation()
         defer { endLifecycleOperation() }
@@ -1580,6 +1613,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         cancelLivePreviewCoalescing()
         livePresentation.resetFrame()
         lastAppliedEventRevision = nil
+        newestAppliedCaptureState = nil
         lastAppliedLivePreviewRevision = nil
         contextPreview = nil
         contextPacks = []
@@ -1745,6 +1779,21 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
            event.eventRevision < lastAppliedEventRevision {
             // A delayed direct result or callback must not regress either the
             // capture state or its utterance view.
+            //
+            // It must not strand it either. Callbacks that arrive while a
+            // pause or resume holds the lease are applied with their state
+            // shown as draining, and a pause makes the provider finalize, so
+            // those callbacks routinely outrun the pause's own result. That
+            // result is then the stale one and returns here — and before this,
+            // nothing ever replaced the masked draining state: Pause, Resume
+            // and Stop all stayed disabled until some later callback, which a
+            // paused capture or a dead provider never sends.
+            if matchingLease == nil,
+               captureState == .draining,
+               let newest = newestAppliedCaptureState,
+               newest.isActive {
+                captureState = newest
+            }
             return
         }
         if let currentSessionId = sessionId,
@@ -1752,6 +1801,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             clearSessionScopedDisplayState()
         }
         sessionId = event.sessionId
+        newestAppliedCaptureState = event.captureState
         captureState = matchingLease != nil && event.captureState.isActive
             ? .draining
             : event.captureState
@@ -1843,8 +1893,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             // An active callback may have been emitted before Rust observed the
             // stop/interrupt request. It can update data and provider health,
             // but cannot reopen local recording while the lease is converging.
+            // The menu bar is left alone: Stop already returned it to idle when
+            // it began, and a pause or resume is still a recording.
             captureState = .draining
-            MenuBarRuntimeStore.shared.returnToIdle()
         } else {
             MenuBarRuntimeStore.shared.updateRecording { info in
                 guard info.sessionId == event.sessionId else { return }
@@ -2642,6 +2693,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         cancelLivePreviewCoalescing()
         livePresentation.resetFrame()
         lastAppliedEventRevision = nil
+        newestAppliedCaptureState = nil
         lastAppliedLivePreviewRevision = nil
         appliedContextReceipt = nil
         appliedContextSessionId = nil
@@ -3019,6 +3071,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
     private func startElapsedTimer() {
         elapsedTimer?.cancel()
+        beginCaptureActivity()
         elapsedRecordingTime = 0
         elapsedTimer = Timer.publish(every: elapsedTimerInterval, on: .main, in: .common)
             .autoconnect()
@@ -3040,6 +3093,31 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private func stopElapsedTimer() {
         elapsedTimer?.cancel()
         elapsedTimer = nil
+        endCaptureActivity()
+    }
+
+    /// Tells macOS a recording is running for as long as the capture lives.
+    ///
+    /// Without it the app is an ordinary background process as soon as the
+    /// user looks at another window or the display sleeps: App Nap coalesces
+    /// its timers and lowers its threads, and idle sleep may take the whole
+    /// machine down mid-meeting. The microphone worker polls its ring on a
+    /// half-millisecond sleep and the provider sockets must be read in real
+    /// time; both fall behind under that treatment, which is how a recording
+    /// that nobody was touching reached the 21st minute and lost its audio
+    /// queue. The display is still allowed to sleep.
+    private func beginCaptureActivity() {
+        guard captureActivity == nil else { return }
+        captureActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical],
+            reason: "Recording and transcribing a live capture"
+        )
+    }
+
+    private func endCaptureActivity() {
+        guard let captureActivity else { return }
+        self.captureActivity = nil
+        ProcessInfo.processInfo.endActivity(captureActivity)
     }
 
     private func beginLifecycleOperation() {

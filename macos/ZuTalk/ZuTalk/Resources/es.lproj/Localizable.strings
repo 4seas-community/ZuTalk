@@ -719,6 +719,9 @@
 "capture.toolbar.subtitle_window.unavailable_hint" = "Inicie la grabación en este Notebook antes de abrir los subtítulos en vivo.";
 "capture.toast.start_failed" = "No se pudo iniciar la grabación";
 "capture.toast.pause_failed" = "No se pudo cambiar el estado de la grabación";
+"capture.toolbar.restart_transcription" = "Reconectar la transcripción";
+"capture.toolbar.restart_transcription_hint" = "La grabación sigue, pero la transcripción se detuvo. Vuelve a conectar la transcripción desde aquí; el tramo perdido queda marcado en la transcripción.";
+"capture.toast.restart_transcription_failed" = "No se pudo reconectar la transcripción";
 "capture.toast.stop_failed" = "No se pudo detener la grabación";
 "capture.toast.context_preview_failed" = "No se pudo revisar el material de referencia";
 "capture.toast.context_load_failed" = "No se pudo cargar el material de referencia";

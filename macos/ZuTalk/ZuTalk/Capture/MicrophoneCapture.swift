@@ -203,19 +203,43 @@ final class StreamingS16Resampler {
 /// Fixed-storage SPSC queue between the AVAudioEngine tap and one capture
 /// worker. The producer path performs only atomic loads/stores and a bounded
 /// copy into memory allocated before the tap is installed.
+///
+/// A full ring drops the incoming buffer and counts it, rather than ending the
+/// recording. The count travels with the next buffer that does fit, so the
+/// worker can put back exactly that much silence in exactly that place and
+/// every later frame keeps its position on the recording's timeline.
+///
+/// Ending the recording was the old policy, and with eight 100 ms slots it
+/// meant any 800 ms stall of the worker thread threw away the rest of a
+/// meeting: fifteen of thirty-four recordings longer than ten minutes on one
+/// machine ended as `local_audio_overflow`, most of them between the 21st and
+/// the 26th minute, in the tail of pushes that were themselves fast. A short
+/// silent hole costs a sentence; the old outcome cost everything after it.
+/// Only a stall longer than `maximumDroppedFrames` is still treated as the
+/// capture being broken.
 final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
     enum EnqueueResult: Equatable, Sendable {
         case accepted
+        /// The ring was full (or the buffer larger than a slot). The frames
+        /// are counted and will be restored as silence before the next
+        /// accepted buffer.
+        case dropped
         case closed
         case overflow
     }
 
     let capacity: Int
     let maximumFramesPerSlot: Int
+    /// Consecutive dropped frames tolerated before the ring gives up.
+    let maximumDroppedFrames: Int
 
     private let sampleStorage: UnsafeMutablePointer<Float>
     private let frameCounts: UnsafeMutablePointer<Int>
     private let sampleTimes: UnsafeMutablePointer<Int64>
+    /// Frames dropped immediately before each slot's buffer.
+    private let droppedBefore: UnsafeMutablePointer<Int>
+    /// Producer-only: frames dropped since the last accepted buffer.
+    nonisolated(unsafe) private var pendingDroppedFrames = 0
     private let writeSequence = CaptureAtomicInt(0)
     private let readSequence = CaptureAtomicInt(0)
     private let producerInFlight = CaptureAtomicInt(0)
@@ -223,26 +247,32 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
     private let overflowNotificationPending = CaptureAtomicBool(false)
     private let overflowDetected = CaptureAtomicBool(false)
 
-    init(capacity: Int, maximumFramesPerSlot: Int) {
+    init(capacity: Int, maximumFramesPerSlot: Int, maximumDroppedFrames: Int = 0) {
         precondition(capacity > 0)
         precondition(maximumFramesPerSlot > 0)
+        precondition(maximumDroppedFrames >= 0)
         self.capacity = capacity
         self.maximumFramesPerSlot = maximumFramesPerSlot
+        self.maximumDroppedFrames = maximumDroppedFrames
         sampleStorage = .allocate(capacity: capacity * maximumFramesPerSlot)
         frameCounts = .allocate(capacity: capacity)
         sampleTimes = .allocate(capacity: capacity)
+        droppedBefore = .allocate(capacity: capacity)
         sampleStorage.initialize(repeating: 0, count: capacity * maximumFramesPerSlot)
         frameCounts.initialize(repeating: 0, count: capacity)
         sampleTimes.initialize(repeating: 0, count: capacity)
+        droppedBefore.initialize(repeating: 0, count: capacity)
     }
 
     deinit {
         sampleStorage.deinitialize(count: capacity * maximumFramesPerSlot)
         frameCounts.deinitialize(count: capacity)
         sampleTimes.deinitialize(count: capacity)
+        droppedBefore.deinitialize(count: capacity)
         sampleStorage.deallocate()
         frameCounts.deallocate()
         sampleTimes.deallocate()
+        droppedBefore.deallocate()
     }
 
     /// Realtime producer entrypoint. There is exactly one AVAudioEngine tap.
@@ -274,14 +304,11 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
 
         guard accepting.loadAcquire() else { return .closed }
         guard frameCount > 0, stride > 0 else { return .closed }
-        guard frameCount <= maximumFramesPerSlot else {
-            return closeForOverflow()
-        }
 
         let write = writeSequence.loadRelaxed()
         let read = readSequence.loadAcquire()
-        guard write - read < capacity else {
-            return closeForOverflow()
+        guard frameCount <= maximumFramesPerSlot, write - read < capacity else {
+            return drop(frameCount)
         }
 
         let slot = write % capacity
@@ -295,8 +322,21 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
         }
         frameCounts[slot] = frameCount
         sampleTimes[slot] = sampleTime
+        droppedBefore[slot] = pendingDroppedFrames
+        pendingDroppedFrames = 0
         writeSequence.storeRelease(write + 1)
         return .accepted
+    }
+
+    /// Producer-only. Counts a buffer that did not fit; gives up only once
+    /// the worker has been gone long enough that silence would be a lie
+    /// about a capture that is no longer running.
+    private func drop(_ frameCount: Int) -> EnqueueResult {
+        pendingDroppedFrames += frameCount
+        guard pendingDroppedFrames <= maximumDroppedFrames else {
+            return closeForOverflow()
+        }
+        return .dropped
     }
 
     /// Single-worker consumer entrypoint. The slot is not released back to the
@@ -304,6 +344,15 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
     @discardableResult
     func consume(
         _ body: (UnsafeBufferPointer<Float>, Int64) -> Void
+    ) -> Bool {
+        consumeWithDroppedFrames { samples, sampleTime, _ in body(samples, sampleTime) }
+    }
+
+    /// Like `consume`, also passing how many frames were dropped immediately
+    /// before this buffer.
+    @discardableResult
+    func consumeWithDroppedFrames(
+        _ body: (UnsafeBufferPointer<Float>, Int64, Int) -> Void
     ) -> Bool {
         let read = readSequence.loadRelaxed()
         let write = writeSequence.loadAcquire()
@@ -315,7 +364,7 @@ final class MicrophoneCaptureSPSCRing: @unchecked Sendable {
             start: sampleStorage.advanced(by: slot * maximumFramesPerSlot),
             count: count
         )
-        body(samples, sampleTimes[slot])
+        body(samples, sampleTimes[slot], droppedBefore[slot])
         readSequence.storeRelease(read + 1)
         return true
     }
@@ -379,11 +428,19 @@ final class MicrophoneCaptureWorker: @unchecked Sendable {
     private let completion = DispatchGroup()
     private var thread: Thread?
 
+    /// Zeros restored in place of dropped frames, at most one slot at a time.
+    private let silence: [Float]
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "xyz.voice.zutalk",
+        category: "MicrophoneCapture"
+    )
+
     init(
         generation: UInt64,
         inputSampleRate: Double,
         ringCapacity: Int,
         maximumFramesPerSlot: Int,
+        maximumDroppedFrames: Int = 0,
         onAudio: @escaping @Sendable (UInt64, Data, UInt64) -> Void,
         onOverflow: @escaping @Sendable (UInt64) -> Void
     ) {
@@ -392,9 +449,11 @@ final class MicrophoneCaptureWorker: @unchecked Sendable {
         self.inputSampleRate = inputSampleRate
         ring = MicrophoneCaptureSPSCRing(
             capacity: ringCapacity,
-            maximumFramesPerSlot: maximumFramesPerSlot
+            maximumFramesPerSlot: maximumFramesPerSlot,
+            maximumDroppedFrames: maximumDroppedFrames
         )
         resampler = StreamingS16Resampler(inputSampleRate: inputSampleRate)
+        silence = Array(repeating: 0, count: maximumFramesPerSlot)
         self.onAudio = onAudio
         self.onOverflow = onOverflow
     }
@@ -453,8 +512,11 @@ final class MicrophoneCaptureWorker: @unchecked Sendable {
     private func run() {
         while true {
             var consumedFrame = false
-            while ring.consume({ [self] samples, sampleTime in
+            while ring.consumeWithDroppedFrames({ [self] samples, sampleTime, droppedFrames in
                 consumedFrame = true
+                if droppedFrames > 0 {
+                    restoreDroppedFrames(droppedFrames, before: sampleTime)
+                }
                 let output = resampler.process(samples)
                 guard output.isEmpty == false else { return }
                 let data = output.withUnsafeBufferPointer { Data(buffer: $0) }
@@ -479,6 +541,32 @@ final class MicrophoneCaptureWorker: @unchecked Sendable {
             if consumedFrame == false {
                 Thread.sleep(forTimeInterval: 0.0005)
             }
+        }
+    }
+
+    /// Puts back, as silence, the frames the ring could not hold, so the
+    /// buffer that follows lands at its true position on the timeline. Fed
+    /// through the resampler like any other input: its phase and history
+    /// carry on exactly as if the frames had been captured.
+    private func restoreDroppedFrames(_ droppedFrames: Int, before sampleTime: Int64) {
+        Self.logger.warning(
+            "microphone worker fell behind; restoring \(droppedFrames) dropped frames as silence"
+        )
+        var remaining = droppedFrames
+        while remaining > 0 {
+            let count = min(remaining, silence.count)
+            remaining -= count
+            let output = silence.withUnsafeBufferPointer { zeros in
+                resampler.process(UnsafeBufferPointer(rebasing: zeros[0..<count]))
+            }
+            guard output.isEmpty == false else { continue }
+            let data = output.withUnsafeBufferPointer { Data(buffer: $0) }
+            let restoredStart = sampleTime - Int64(remaining + count)
+            onAudio(
+                generation,
+                data,
+                Self.timestampNanoseconds(sampleTime: restoredStart, sampleRate: inputSampleRate)
+            )
         }
     }
 
@@ -513,8 +601,13 @@ final class MicrophoneCapture {
     private static let targetSampleRate: Double = 16_000
     private static let tapBufferDuration: Double = 0.1
     private static let maximumTapBufferDuration: Double = 0.4
-    private static let ringCapacity = 8
+    /// Three seconds of 100 ms tap buffers before the ring starts dropping.
+    private static let ringCapacity = 32
     private static let minimumFramesPerSlot = 8_192
+    /// How long the worker may stall before its silence would be covering for
+    /// a capture that has stopped working. Sized so the restored silence plus
+    /// a full ring stays inside the push gate's own backlog.
+    private static let maximumDroppedDuration: Double = 15
 
     private var engine = AVAudioEngine()
     /// Used only by lifecycle callers. The tap and worker never acquire it.
@@ -587,6 +680,7 @@ final class MicrophoneCapture {
             inputSampleRate: inputSampleRate,
             ringCapacity: Self.ringCapacity,
             maximumFramesPerSlot: maximumFramesPerSlot,
+            maximumDroppedFrames: Int(inputSampleRate * Self.maximumDroppedDuration),
             onAudio: { workerGeneration, data, timestampNs in
                 guard workerGeneration == generation else { return }
                 callback(data, timestampNs)

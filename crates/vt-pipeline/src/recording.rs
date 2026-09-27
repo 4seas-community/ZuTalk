@@ -177,12 +177,86 @@ pub struct CaptureAudioJournal {
     journal_path: PathBuf,
     key: SessionKey,
     state: Mutex<CaptureAudioJournalState>,
+    syncer: JournalSyncer,
 }
 
 struct CaptureAudioJournalState {
     file: File,
     captured_frames: u64,
     records_since_sync: u64,
+}
+
+/// Flushes the journal to stable storage on its own thread.
+///
+/// Pushes arrive on the audio path, which has a bounded queue in front of it
+/// and ends the recording when that queue fills. On macOS `sync_data` is
+/// `F_FULLFSYNC`, which waits for the drive's own cache — usually a few
+/// milliseconds, and hundreds when the disk is busy with anything else. It was
+/// issued inline once a second, so every one of those waits was a wait the
+/// audio thread paid for.
+///
+/// Moving it changes nothing a crash can observe. A `write` that returned is
+/// already in the kernel and survives the process dying; the flush only
+/// matters for power loss, and it still runs about once a second. A flush
+/// that fails is reported by the next push, which is the same place and the
+/// same error it surfaced from before.
+struct JournalSyncer {
+    wake: Option<std::sync::mpsc::SyncSender<()>>,
+    failure: std::sync::Arc<Mutex<Option<String>>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl JournalSyncer {
+    fn start(file: File) -> Self {
+        let (wake, woken) = std::sync::mpsc::sync_channel::<()>(1);
+        let failure = std::sync::Arc::new(Mutex::new(None));
+        let thread_failure = failure.clone();
+        let thread = std::thread::Builder::new()
+            .name("zutalk-journal-sync".to_string())
+            .spawn(move || {
+                while woken.recv().is_ok() {
+                    if let Err(error) = file.sync_data() {
+                        if let Ok(mut slot) = thread_failure.lock() {
+                            *slot = Some(error.to_string());
+                        }
+                        break;
+                    }
+                }
+            })
+            .ok();
+        Self {
+            wake: Some(wake),
+            failure,
+            thread,
+        }
+    }
+
+    /// Asks for a flush without waiting for it. One pending request covers
+    /// every write made before it runs, so a full slot means nothing to do.
+    fn request(&self) {
+        if let Some(wake) = &self.wake {
+            let _ = wake.try_send(());
+        }
+    }
+
+    fn failure(&self) -> Option<String> {
+        self.failure.lock().ok().and_then(|slot| slot.clone())
+    }
+
+    fn finish(&mut self) {
+        self.wake.take();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+impl Drop for JournalSyncer {
+    fn drop(&mut self) {
+        // Detach rather than join: dropping the sender ends the thread after
+        // at most one flush already in progress.
+        self.wake.take();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -212,6 +286,11 @@ impl CaptureAudioJournal {
             file.write_all(CAPTURE_JOURNAL_MAGIC_S16)?;
             file.sync_data()
         })?;
+        let sync_handle = file
+            .try_clone()
+            .map_err(|error| RecordingError::WriteFailed {
+                message: format!("clone capture journal for flushing: {error}"),
+            })?;
 
         Ok(Self {
             session_id,
@@ -223,6 +302,7 @@ impl CaptureAudioJournal {
                 captured_frames: 0,
                 records_since_sync: 0,
             }),
+            syncer: JournalSyncer::start(sync_handle),
         })
     }
 
@@ -290,6 +370,9 @@ impl CaptureAudioJournal {
                 message: "encrypted capture frame is too large".to_string(),
             })?;
         let frame_count = (pcm.len() / bytes_per_frame) as u64;
+        if let Some(message) = self.syncer.failure() {
+            return Err(RecordingError::WriteFailed { message });
+        }
 
         let mut state = self.state.lock().map_err(|_| RecordingError::WriteFailed {
             message: "capture journal mutex poisoned".to_string(),
@@ -305,18 +388,14 @@ impl CaptureAudioJournal {
         state.captured_frames = state.captured_frames.saturating_add(frame_count);
         state.records_since_sync += 1;
         if state.records_since_sync >= CAPTURE_JOURNAL_SYNC_INTERVAL {
-            state
-                .file
-                .sync_data()
-                .map_err(|error| RecordingError::WriteFailed {
-                    message: error.to_string(),
-                })?;
+            self.syncer.request();
             state.records_since_sync = 0;
         }
         Ok(())
     }
 
-    pub fn stop(self) -> Result<RecordingResult, RecordingError> {
+    pub fn stop(mut self) -> Result<RecordingResult, RecordingError> {
+        self.syncer.finish();
         {
             let mut state = self
                 .state

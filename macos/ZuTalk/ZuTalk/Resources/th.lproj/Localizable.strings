@@ -720,6 +720,9 @@
 "capture.toolbar.subtitle_window.unavailable_hint" = "เริ่มบันทึกใน Notebook นี้ก่อนเปิดคำบรรยายสด";
 "capture.toast.start_failed" = "ไม่สามารถเริ่มบันทึกได้";
 "capture.toast.pause_failed" = "ไม่สามารถเปลี่ยนสถานะการบันทึกได้";
+"capture.toolbar.restart_transcription" = "เชื่อมต่อการถอดเสียงใหม่";
+"capture.toolbar.restart_transcription_hint" = "การบันทึกยังดำเนินอยู่ แต่การถอดเสียงหยุดไปแล้ว เริ่มการเชื่อมต่อถอดเสียงใหม่จากตรงนี้ ช่วงที่ขาดหายไปจะถูกทำเครื่องหมายไว้ในบันทึกถอดเสียง";
+"capture.toast.restart_transcription_failed" = "ไม่สามารถเชื่อมต่อการถอดเสียงใหม่ได้";
 "capture.toast.stop_failed" = "ไม่สามารถหยุดบันทึกได้";
 "capture.toast.context_preview_failed" = "ไม่สามารถตรวจทานข้อมูลอ้างอิงได้";
 "capture.toast.context_load_failed" = "ไม่สามารถโหลดข้อมูลอ้างอิงได้";

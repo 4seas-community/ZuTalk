@@ -720,6 +720,9 @@
 "capture.toolbar.subtitle_window.unavailable_hint" = "Start recording in this Notebook before opening live subtitles.";
 "capture.toast.start_failed" = "Could not start recording";
 "capture.toast.pause_failed" = "Could not change recording state";
+"capture.toolbar.restart_transcription" = "Reconnect transcription";
+"capture.toolbar.restart_transcription_hint" = "Recording is still running but transcription stopped. Start a new transcription connection from here; the stretch that was missed is marked in the transcript.";
+"capture.toast.restart_transcription_failed" = "Could not reconnect transcription";
 "capture.toast.stop_failed" = "Could not stop recording";
 "capture.toast.context_preview_failed" = "Could not review reference material";
 "capture.toast.context_load_failed" = "Could not load reference material";

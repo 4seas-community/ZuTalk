@@ -64,6 +64,11 @@ protocol NotebookCaptureClienting: AnyObject {
         sessionId: String,
         paused: Bool
     ) async throws -> NotebookCaptureEventDTO
+    /// Starts transcription again for a recording whose provider group has
+    /// stopped. Recording itself is untouched.
+    func restartNotebookCaptureTranscription(
+        sessionId: String
+    ) async throws -> NotebookCaptureEventDTO
     func stopNotebookCaptureSession(sessionId: String) async throws -> NotebookCaptureEventDTO
     func interruptNotebookCaptureSession(
         sessionId: String,
@@ -120,6 +125,12 @@ protocol NotebookCaptureClienting: AnyObject {
 }
 
 extension NotebookCaptureClienting {
+    func restartNotebookCaptureTranscription(
+        sessionId: String
+    ) async throws -> NotebookCaptureEventDTO {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
     /// Gap dividers are advisory presentation; clients without the query
     /// simply draw none.
     func loadNotebookSessionTranscriptGaps(
@@ -594,6 +605,16 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
                 sessionId: sessionId,
                 paused: paused
             )
+        }.value
+        return Self.map(event)
+    }
+
+    func restartNotebookCaptureTranscription(
+        sessionId: String
+    ) async throws -> NotebookCaptureEventDTO {
+        let core = try requireCore()
+        let event = try await Task.detached {
+            try core.restartNotebookCaptureTranscription(sessionId: sessionId)
         }.value
         return Self.map(event)
     }

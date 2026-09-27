@@ -703,6 +703,9 @@
 "capture.toolbar.subtitle_window.unavailable_hint" = "この Notebook で録音を開始してからライブ字幕を開いてください。";
 "capture.toast.start_failed" = "録音を開始できませんでした";
 "capture.toast.pause_failed" = "録音状態を変更できませんでした";
+"capture.toolbar.restart_transcription" = "文字起こしを再接続";
+"capture.toolbar.restart_transcription_hint" = "録音は続いていますが、文字起こしが止まっています。ここから文字起こしの接続をやり直します。抜けた区間はトランスクリプトに表示されます。";
+"capture.toast.restart_transcription_failed" = "文字起こしを再接続できませんでした";
 "capture.toast.stop_failed" = "録音を停止できませんでした";
 "capture.toast.context_preview_failed" = "参考資料を確認できませんでした";
 "capture.toast.context_load_failed" = "参考資料を読み込めませんでした";

@@ -139,6 +139,7 @@ impl NotebookStore {
         conn.busy_timeout(Duration::from_secs(1))
             .map_err(NotebookStoreError::Sqlite)?;
         crate::migration::run_migrations(&conn).map_err(NotebookStoreError::Sqlite)?;
+        crate::migration::use_write_ahead_log(&conn);
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })

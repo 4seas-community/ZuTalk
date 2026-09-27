@@ -3547,6 +3547,82 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(ring.isClosedAndDrained)
     }
 
+    func testMicrophoneRingDropsAFullRingIntoTheNextBufferInsteadOfClosing() {
+        let ring = MicrophoneCaptureSPSCRing(
+            capacity: 2,
+            maximumFramesPerSlot: 4,
+            maximumDroppedFrames: 8
+        )
+        let block: [Float] = [0.1, 0.2, 0.3, 0.4]
+
+        XCTAssertEqual(block.withUnsafeBufferPointer { ring.enqueue($0, sampleTime: 0) }, .accepted)
+        XCTAssertEqual(block.withUnsafeBufferPointer { ring.enqueue($0, sampleTime: 4) }, .accepted)
+        // The worker is behind: two buffers do not fit and are counted.
+        XCTAssertEqual(block.withUnsafeBufferPointer { ring.enqueue($0, sampleTime: 8) }, .dropped)
+        XCTAssertEqual(block.withUnsafeBufferPointer { ring.enqueue($0, sampleTime: 12) }, .dropped)
+        XCTAssertFalse(ring.claimOverflowNotification(), "a dropped buffer is not an overflow")
+
+        var dropped: [Int] = []
+        XCTAssertTrue(ring.consumeWithDroppedFrames { _, _, count in dropped.append(count) })
+        XCTAssertEqual(block.withUnsafeBufferPointer { ring.enqueue($0, sampleTime: 16) }, .accepted)
+        XCTAssertTrue(ring.consumeWithDroppedFrames { _, _, count in dropped.append(count) })
+        XCTAssertTrue(ring.consumeWithDroppedFrames { _, time, count in
+            dropped.append(count)
+            XCTAssertEqual(time, 16)
+        })
+        XCTAssertEqual(dropped, [0, 0, 8], "the gap travels with the buffer after it")
+    }
+
+    func testMicrophoneRingStillGivesUpOnAStallLongerThanItsTolerance() {
+        let ring = MicrophoneCaptureSPSCRing(
+            capacity: 1,
+            maximumFramesPerSlot: 4,
+            maximumDroppedFrames: 4
+        )
+        let block: [Float] = [0.1, 0.2, 0.3, 0.4]
+        XCTAssertEqual(block.withUnsafeBufferPointer { ring.enqueue($0, sampleTime: 0) }, .accepted)
+        XCTAssertEqual(block.withUnsafeBufferPointer { ring.enqueue($0, sampleTime: 4) }, .dropped)
+        XCTAssertEqual(block.withUnsafeBufferPointer { ring.enqueue($0, sampleTime: 8) }, .overflow)
+        XCTAssertTrue(ring.claimOverflowNotification())
+    }
+
+    @MainActor
+    func testMicrophoneWorkerRestoresDroppedFramesAsSilenceInPlace() async {
+        let recorder = MicrophoneWorkerRecorder()
+        let worker = MicrophoneCaptureWorker(
+            generation: 9,
+            // Same rate in and out: one output sample per input frame.
+            inputSampleRate: 16_000,
+            ringCapacity: 2,
+            maximumFramesPerSlot: 32,
+            maximumDroppedFrames: 64,
+            onAudio: { generation, data, _ in
+                recorder.recordAudio(generation: generation, data: data)
+            },
+            onOverflow: { recorder.recordOverflow(generation: $0) }
+        )
+        let samples = Array(repeating: Float(0.5), count: 32)
+        XCTAssertEqual(samples.withUnsafeBufferPointer { worker.enqueue($0, sampleTime: 0) }, .accepted)
+        XCTAssertEqual(samples.withUnsafeBufferPointer { worker.enqueue($0, sampleTime: 32) }, .accepted)
+        XCTAssertEqual(samples.withUnsafeBufferPointer { worker.enqueue($0, sampleTime: 64) }, .dropped)
+
+        worker.start()
+        let deadline = Date().addingTimeInterval(5)
+        while recorder.audioByteCounts.count < 2, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(samples.withUnsafeBufferPointer { worker.enqueue($0, sampleTime: 96) }, .accepted)
+        let terminalReason = worker.closeAndWait()
+
+        XCTAssertNil(terminalReason)
+        XCTAssertTrue(recorder.overflowGenerations.isEmpty)
+        XCTAssertEqual(
+            recorder.audioByteCounts.reduce(0, +),
+            4 * 32 * MemoryLayout<Int16>.size,
+            "the dropped buffer comes back as silence, so the timeline keeps all 128 frames"
+        )
+    }
+
     func testMicrophoneTapClosureOnlyPublishesToPreallocatedRing() throws {
         let source = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
@@ -3769,6 +3845,89 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
 
         XCTAssertEqual(store.captureState, .paused)
         XCTAssertFalse(store.hasAudioSubscription)
+    }
+
+    /// Pausing makes the provider finalize, so callbacks stamped after the
+    /// pause committed routinely arrive before the pause's own result. They
+    /// are applied under the lease as draining; the result then loses to them
+    /// on revision. Before the fix nothing replaced the masked state, and
+    /// Pause, Resume and Stop all stayed disabled.
+    @MainActor
+    func testAPauseResultOutrunByItsOwnCallbacksStillSettlesPaused() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let pauseController = BlockingNotebookPauseController()
+        client.pauseController = pauseController
+        client.pauseResultDeltaRevision = 4
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+        let sessionId = try XCTUnwrap(store.sessionId)
+
+        let pauseTask = Task { @MainActor in
+            try await store.setPaused(true)
+        }
+        let didEnterPauseRequest = await waitUntil { pauseController.isWaiting }
+        XCTAssertTrue(didEnterPauseRequest)
+        client.emitCaptureEvent(captureEvent(
+            sessionId: sessionId,
+            state: .paused,
+            utterances: [],
+            eventRevision: 5,
+            isFullSnapshot: false
+        ))
+        XCTAssertEqual(store.captureState, .draining, "the lease still masks the callback")
+
+        pauseController.release()
+        try await pauseTask.value
+
+        XCTAssertEqual(store.captureState, .paused)
+        // Rust stamps the resume after everything it has already sent.
+        client.pauseResultDeltaRevision = 6
+        try await store.setPaused(false)
+        XCTAssertEqual(store.captureState, .recording)
+    }
+
+    @MainActor
+    func testRestartTranscriptionIsOfferedOnlyWhileRecordingWithoutIt() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+        let sessionId = try XCTUnwrap(store.sessionId)
+        client.emitCaptureEvent(captureEvent(
+            sessionId: sessionId,
+            state: .recording,
+            utterances: [],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        XCTAssertFalse(store.canRestartTranscription, "a live transcription is left alone")
+
+        let degraded = captureEvent(
+            sessionId: sessionId,
+            state: .recording,
+            utterances: [],
+            eventRevision: 2,
+            isFullSnapshot: false
+        )
+        client.emitCaptureEvent(NotebookCaptureEventDTO(
+            sessionId: degraded.sessionId,
+            eventRevision: degraded.eventRevision,
+            isFullSnapshot: false,
+            captureState: .recording,
+            remoteHealth: .degraded,
+            projectionState: degraded.projectionState,
+            utterances: []
+        ))
+        XCTAssertTrue(store.canRestartTranscription)
+
+        try await store.restartTranscription()
+        XCTAssertEqual(client.restartTranscriptionCount, 1)
+        XCTAssertFalse(store.isRestartingTranscription)
     }
 
     @MainActor
@@ -8685,6 +8844,11 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     var interruptError: NotebookCaptureClientError?
     var interruptController: BlockingNotebookInterruptController?
     var pauseController: BlockingNotebookPauseController?
+    /// When set, pause/resume answer with the delta Rust really sends — an
+    /// `event_from_run` stamped with this callback revision — instead of a
+    /// full snapshot.
+    var pauseResultDeltaRevision: UInt64?
+    var restartTranscriptionCount = 0
     var replaceController: BlockingNotebookPauseController?
     var reconcileController: BlockingNotebookReconcileController?
     var reconcileEvents: [NotebookCaptureEventDTO] = []
@@ -9018,10 +9182,32 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
             await pauseController.wait()
         }
         if let pauseError { throw pauseError }
-        return event(
+        let result = event(
             sessionId: sessionId,
             state: paused ? .paused : .recording,
             remote: .live,
+            projection: .pending
+        )
+        guard let pauseResultDeltaRevision else { return result }
+        return NotebookCaptureEventDTO(
+            sessionId: result.sessionId,
+            eventRevision: pauseResultDeltaRevision,
+            isFullSnapshot: false,
+            captureState: result.captureState,
+            remoteHealth: result.remoteHealth,
+            projectionState: result.projectionState,
+            utterances: []
+        )
+    }
+
+    func restartNotebookCaptureTranscription(
+        sessionId: String
+    ) async throws -> NotebookCaptureEventDTO {
+        restartTranscriptionCount += 1
+        return event(
+            sessionId: sessionId,
+            state: .recording,
+            remote: .connecting,
             projection: .pending
         )
     }

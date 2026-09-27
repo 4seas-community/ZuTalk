@@ -720,6 +720,9 @@
 "capture.toolbar.subtitle_window.unavailable_hint" = "请先在当前 Notebook 开始录音，再打开实时字幕。";
 "capture.toast.start_failed" = "无法开始录音";
 "capture.toast.pause_failed" = "无法切换录音状态";
+"capture.toolbar.restart_transcription" = "重新连接转录";
+"capture.toolbar.restart_transcription_hint" = "录音还在继续，但转录已经停止。从这里重新建立转录连接；漏掉的那一段会在转录里标出。";
+"capture.toast.restart_transcription_failed" = "无法重新连接转录";
 "capture.toast.stop_failed" = "无法停止录音";
 "capture.toast.context_preview_failed" = "无法查看参考资料";
 "capture.toast.context_load_failed" = "无法载入参考资料";

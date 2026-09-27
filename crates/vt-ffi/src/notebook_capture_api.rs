@@ -1235,7 +1235,7 @@ impl RealtimeSegmentRevision {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AssembledRealtimeUtterance {
     utterance: NewRealtimeUtterance,
     /// Unambiguous pending provider language while the durable source language
@@ -1363,6 +1363,18 @@ struct RealtimeUtteranceAssembler {
     generation_source_timestamps: SourceTimestampCensus,
     /// Whole lane, whole session. Reported once when the group ends.
     session_source_timestamps: SourceTimestampCensus,
+}
+
+/// Where a provider group starts in its capture. All zero for the group a
+/// recording opens with; a group restarted after the previous one died
+/// continues from the store's [`vt_store::RealtimeResumePoint`] at the live
+/// edge of the audio.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RemoteGroupOrigin {
+    capture_origin_ms: u64,
+    next_sequence: u64,
+    group_epoch: u64,
+    provider_session_epoch: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1757,11 +1769,113 @@ async fn collect_stream_events(
     context_digest: Option<String>,
     lane_descriptors: Vec<RemoteStreamLane>,
     lane_controls: Vec<Option<tokio::sync::mpsc::Sender<SttStreamControl>>>,
+    event_rx: tokio::sync::mpsc::Receiver<TaggedStreamEvent>,
+    discontinuity_rx: tokio::sync::mpsc::UnboundedReceiver<TaggedStreamEvent>,
+    group_cancel: tokio_util::sync::CancellationToken,
+    captured_frames: Arc<AtomicU64>,
+    callback: CaptureCallbackSink,
+    origin: RemoteGroupOrigin,
+) -> Result<(), ProviderFailure> {
+    let lane_targets = lane_descriptors
+        .iter()
+        .map(|lane| lane.target_language.clone())
+        .collect::<Vec<_>>();
+    let settle_store = store.clone();
+    let settle_run_id = run_id.clone();
+    let settle_callback = callback.clone();
+    let result = collect_stream_events_until_closed(
+        store,
+        context_store,
+        run_id,
+        profile,
+        context_digest,
+        lane_descriptors,
+        lane_controls,
+        event_rx,
+        discontinuity_rx,
+        group_cancel,
+        captured_frames,
+        callback,
+        origin,
+    )
+    .await;
+    if result.is_err() {
+        settle_after_failed_group(
+            &settle_store,
+            &settle_run_id,
+            &lane_targets,
+            origin.group_epoch,
+            &settle_callback,
+        );
+    }
+    result
+}
+
+/// What a group that ended on an error still owes the transcript.
+///
+/// The normal end of a group marks every translation still waiting for it
+/// unavailable and reports its lanes. A group that returned early on an
+/// error skipped both, so its rows kept saying "Waiting for Chinese" for the
+/// rest of the recording — about a translation nobody was producing — and its
+/// lanes kept reading live. Best effort: this runs after a failure, and a
+/// failure here only leaves things as they were.
+fn settle_after_failed_group(
+    store: &NotebookCaptureStore,
+    run_id: &str,
+    lane_targets: &[Option<String>],
+    group_epoch: u64,
+    callback: &CaptureCallbackSink,
+) {
+    let Ok(Some(run)) = store.get_run(run_id) else {
+        return;
+    };
+    match store.mark_waiting_translation_variants_unavailable(&run.session_id) {
+        Ok(updates) if !updates.is_empty() => {
+            emit_capture_delta(
+                run.clone(),
+                latest_utterance_revisions(updates),
+                Vec::new(),
+                Vec::new(),
+                callback,
+            );
+        }
+        Ok(_) => {}
+        Err(error) => tracing::warn!(
+            error = %error,
+            "waiting translations of a failed provider group stay waiting"
+        ),
+    }
+    let mut event = event_from_run(run, Vec::new(), false);
+    event.lane_health = lane_targets
+        .iter()
+        .map(|target_language| FfiNotebookCaptureLaneHealth {
+            target_language: target_language.clone(),
+            state: "failed".to_string(),
+            group_epoch,
+            final_audio_proc_ms: None,
+            total_audio_proc_ms: None,
+            lag_ms: None,
+            input_discontinuous: false,
+        })
+        .collect();
+    callback.send(event);
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn collect_stream_events_until_closed(
+    store: NotebookCaptureStore,
+    context_store: ContextPackStore,
+    run_id: String,
+    profile: NotebookCaptureProfile,
+    context_digest: Option<String>,
+    lane_descriptors: Vec<RemoteStreamLane>,
+    lane_controls: Vec<Option<tokio::sync::mpsc::Sender<SttStreamControl>>>,
     mut event_rx: tokio::sync::mpsc::Receiver<TaggedStreamEvent>,
     mut discontinuity_rx: tokio::sync::mpsc::UnboundedReceiver<TaggedStreamEvent>,
     group_cancel: tokio_util::sync::CancellationToken,
     captured_frames: Arc<AtomicU64>,
     callback: CaptureCallbackSink,
+    origin: RemoteGroupOrigin,
 ) -> Result<(), ProviderFailure> {
     // Any persistence/protocol return path must stop every sibling WebSocket;
     // otherwise the central writer could disappear while provider I/O keeps
@@ -1784,10 +1898,11 @@ async fn collect_stream_events(
                 lane_profile.common_caption_language = Some(target_language.clone());
             }
             StreamAggregationLane {
-                assembler: RealtimeUtteranceAssembler::new(session_id.clone(), &lane_profile),
+                assembler: RealtimeUtteranceAssembler::new(session_id.clone(), &lane_profile)
+                    .continuing_at(origin.next_sequence),
                 descriptor,
-                provider_session_epoch: 0,
-                group_epoch: 0,
+                provider_session_epoch: origin.provider_session_epoch,
+                group_epoch: origin.group_epoch,
                 awaiting_reconnect: false,
                 connected: false,
                 ever_connected: false,
@@ -1823,7 +1938,7 @@ async fn collect_stream_events(
         .map(|language| normalize_language(language))
         .collect::<Vec<_>>();
     let mut context_applied = false;
-    let mut next_group_epoch = 0_u64;
+    let mut next_group_epoch = origin.group_epoch;
     let mut canonical_matches =
         std::collections::HashMap::<(u64, u64), CanonicalUtteranceMatch>::new();
     let mut pending_variants =
@@ -3597,24 +3712,49 @@ fn persist_assembled_utterances(
                 update.utterance.translated_text.as_deref(),
                 update.translation_completion,
             ) {
-                persisted = store
-                    .upsert_translation_variant(
-                        &update.utterance.session_id,
-                        update.utterance.sequence,
-                        language,
-                        Some(text),
-                        UtteranceVariantState::Ready,
-                        Some(completion),
-                    )
-                    .map_err(|error| {
-                        local_persistence_failure(
+                persisted = match store.upsert_inline_translation_variant(
+                    &update.utterance.session_id,
+                    update.utterance.sequence,
+                    language,
+                    Some(text),
+                    UtteranceVariantState::Ready,
+                    Some(completion),
+                ) {
+                    Ok(persisted) => persisted,
+                    // The row's translation is Final and this revision would
+                    // change words already shown. The settled lane wins; the
+                    // provider's late rewording is dropped. This used to end
+                    // the whole capture's transcription — every column, for
+                    // the rest of the recording — over one sentence's tail.
+                    Err(vt_store::NotebookCaptureStoreError::Conflict(_)) => {
+                        tracing::warn!(
+                            sequence = update.utterance.sequence,
+                            language,
+                            "late inline translation would rewrite a Final lane; keeping the settled text"
+                        );
+                        store
+                            .get_machine_utterance_by_id(&persisted.id)
+                            .map_err(|error| {
+                                local_persistence_failure(
+                                    "reload utterance after settled translation conflict",
+                                    error,
+                                )
+                            })?
+                            .ok_or_else(|| ProviderFailure {
+                                error_type: "local_persistence".to_string(),
+                                request_id: None,
+                            })?
+                    }
+                    Err(error) => {
+                        return Err(local_persistence_failure(
                             &format!(
                                 "persist ordered Soniox translation {}:{}:{language}",
                                 update.utterance.session_id, update.utterance.sequence
                             ),
                             error,
-                        )
-                    })?;
+                        ));
+                    }
+                };
                 assembler.record_translation_persisted(&persisted.id, Some(language));
             } else if let Some(language) = update.translation_clear_language.as_deref() {
                 persisted = store
@@ -4523,6 +4663,12 @@ impl RealtimeUtteranceAssembler {
         }
     }
 
+    /// Numbers this lane's rows after the ones already in the session.
+    fn continuing_at(mut self, next_sequence: u64) -> Self {
+        self.next_sequence = next_sequence;
+        self
+    }
+
     fn apply_tokens(&mut self, tokens: &[SttStreamToken]) -> Vec<AssembledRealtimeUtterance> {
         // Soniox non-final tokens are a complete revision for the current
         // response, not per-lane deltas. Clear every speculative tail before
@@ -5302,8 +5448,10 @@ pub(crate) struct ActiveNotebookCapture {
     pub(crate) state: CaptureState,
     pub(crate) callback: CaptureCallbackSink,
     pub(crate) journal: vt_pipeline::CaptureAudioJournal,
-    pub(crate) last_persisted_frames: u64,
     pub(crate) captured_frames: Arc<AtomicU64>,
+    /// Keeps the durable frame count current while the capture lives; its
+    /// thread stops when the capture is dropped.
+    pub(crate) _audio_progress: AudioProgressWriter,
     pub(crate) remote: Option<ActiveRemoteCapture>,
     /// Backpressure cancels the provider writer immediately, but the sole
     /// event persistence task may need bounded time to drain. Keeping its join
@@ -5313,6 +5461,61 @@ pub(crate) struct ActiveNotebookCapture {
     /// What the audio thread has been experiencing. Read only when a capture
     /// dies of a full local queue, which is the one moment it explains.
     pub(crate) push_cadence: PushCadence,
+}
+
+/// How often the durable frame count follows the journal.
+const AUDIO_PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Persists a live capture's frame count off the audio thread.
+///
+/// The count is advisory: stop and interrupt read the journal itself, and a
+/// crashed capture is recovered from its journal. It is what history shows
+/// as the duration of a recording still in progress, nothing more.
+///
+/// It used to be written on the push path, once a second, through the
+/// capture store's one connection. That put the audio thread behind whatever
+/// else held the connection — the provider event writer, a projection pass,
+/// a UI read — and behind any other connection holding the database's write
+/// lock. A write that timed out with `database is locked` did worse than
+/// stall: the push path treats every failure as fatal, so an 82-minute
+/// recording on this machine ended as `local_persistence` over a number that
+/// the journal already knew.
+pub(crate) struct AudioProgressWriter {
+    _stop: std::sync::mpsc::Sender<()>,
+}
+
+impl AudioProgressWriter {
+    fn spawn(store: NotebookCaptureStore, run_id: String, captured_frames: Arc<AtomicU64>) -> Self {
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let spawned = std::thread::Builder::new()
+            .name("zutalk-capture-progress".to_string())
+            .spawn(move || {
+                let mut persisted = 0_u64;
+                // Wakes once an interval; dropping the capture ends the loop.
+                while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
+                    stopped.recv_timeout(AUDIO_PROGRESS_INTERVAL)
+                {
+                    let frames = captured_frames.load(Ordering::Acquire);
+                    if frames <= persisted {
+                        continue;
+                    }
+                    match store.update_audio_progress(&run_id, frames) {
+                        Ok(_) => persisted = frames,
+                        // The run has left the writable states: whoever ended
+                        // it wrote the final count from the journal.
+                        Err(vt_store::NotebookCaptureStoreError::Conflict(_)) => break,
+                        Err(error) => tracing::warn!(
+                            error = %error,
+                            "capture audio progress not persisted; retrying next interval"
+                        ),
+                    }
+                }
+            });
+        if let Err(error) = spawned {
+            tracing::warn!(error = %error, "capture audio progress writer did not start");
+        }
+        Self { _stop: stop }
+    }
 }
 
 /// Timing of the audio thread's own calls into the core.
@@ -5348,13 +5551,18 @@ pub(crate) struct PushCadence {
 /// How many recent pushes the window keeps.
 ///
 /// The lifetime counters answer "was this recording slow", which is not the
-/// question a full queue asks. Swift accepts eight blocks of 100 ms before it
-/// declares overflow, so the burst that fills the queue is under a second
-/// long — averaged against an hour of healthy pushes it disappears entirely,
-/// and the recordings that ended this way looked identical to healthy ones in
-/// every number reported. Thirty-two blocks is that burst plus the run-up to
-/// it, and 256 bytes of it lives on the capture rather than on the audio
-/// thread's stack.
+/// question a full queue asks. The burst that fills a queue is short —
+/// averaged against an hour of healthy pushes it disappears entirely, and the
+/// recordings that ended this way looked identical to healthy ones in every
+/// number reported. Thirty-two blocks is that burst plus the run-up to it,
+/// and 256 bytes of it lives on the capture rather than on the audio thread's
+/// stack.
+///
+/// A fast window at the moment of overflow is itself the answer: the push
+/// path kept up, and the queue that filled was the one in front of it. Most
+/// recorded overflows looked like that — the microphone ring (eight 100 ms
+/// slots then) ran out while its worker thread stalled. That ring now drops
+/// and later restores the gap as silence instead of ending the recording.
 const PUSH_CADENCE_WINDOW: usize = 32;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -6507,6 +6715,7 @@ impl ZuTalkCore {
                 context_compilation.as_ref(),
                 captured_frames.clone(),
                 callback.clone(),
+                RemoteGroupOrigin::default(),
             ) {
                 Ok(remote) => Some(remote),
                 Err(error) => {
@@ -6557,7 +6766,11 @@ impl ZuTalkCore {
             state: CaptureState::Recording,
             callback: callback.clone(),
             journal,
-            last_persisted_frames: 0,
+            _audio_progress: AudioProgressWriter::spawn(
+                (*self.notebook_capture_store).clone(),
+                run_id.clone(),
+                captured_frames.clone(),
+            ),
             captured_frames,
             remote,
             remote_cleanup: None,
@@ -6645,37 +6858,8 @@ impl ZuTalkCore {
             .expect("active capture was checked above")
             .captured_frames
             .store(frames, Ordering::Release);
-        let last_persisted_frames = active_guard
-            .as_ref()
-            .expect("active capture was checked above")
-            .last_persisted_frames;
-        if frames.saturating_sub(last_persisted_frames) >= 16_000 {
-            let run_id = active_guard
-                .as_ref()
-                .expect("active capture was checked above")
-                .run_id
-                .clone();
-            if let Err(error) = self
-                .notebook_capture_store
-                .update_audio_progress(&run_id, frames)
-            {
-                let failed = active_guard
-                    .take()
-                    .expect("active capture was checked above");
-                let terminal_error = self.terminate_capture_after_push_error(
-                    &session_id,
-                    failed,
-                    "persist capture audio progress",
-                    error,
-                );
-                drop(active_guard);
-                return Err(terminal_error);
-            }
-            active_guard
-                .as_mut()
-                .expect("active capture was checked above")
-                .last_persisted_frames = frames;
-        }
+        // The durable frame count is written by the capture's
+        // `AudioProgressWriter`, never here. See its documentation.
 
         let remote = active_guard
             .as_mut()
@@ -6976,6 +7160,26 @@ impl ZuTalkCore {
                     .remote = Some(remote);
             }
         }
+        if !paused {
+            // Resume is where a user who watched the captions stop goes to get
+            // them back, so it restarts a group that died while recording.
+            let active = active_guard
+                .as_mut()
+                .expect("active capture was checked above");
+            match self.restart_remote_capture(active) {
+                Ok(true) => {
+                    if let Ok(Some(restarted)) = self.notebook_capture_store.get_run(&run_id) {
+                        run = restarted;
+                    }
+                }
+                Ok(false) => {}
+                Err(error) => tracing::warn!(
+                    session_id,
+                    error = %error,
+                    "resume could not restart transcription; recording continues without it"
+                ),
+            }
+        }
         let (callback, notebook_id) = {
             let active = active_guard
                 .as_ref()
@@ -6992,6 +7196,46 @@ impl ZuTalkCore {
         );
         let event = callback.send(event_from_run(run, Vec::new(), false));
         Ok(event)
+    }
+
+    /// Starts transcription again for a recording whose provider group has
+    /// stopped. A recording that is still being transcribed is left alone;
+    /// a paused one is restarted by resuming it.
+    pub fn restart_notebook_capture_transcription(
+        &self,
+        session_id: String,
+    ) -> Result<FfiNotebookCaptureEvent, CoreError> {
+        let mut active_guard = self.active_notebook_capture.lock().unwrap();
+        let active = active_guard
+            .as_mut()
+            .filter(|active| active.session_id == session_id)
+            .ok_or_else(|| CoreError::ValidationFailed {
+                message: format!("capture_not_active: {session_id}"),
+            })?;
+        if !active.profile.remote_realtime_enabled {
+            return Err(CoreError::ValidationFailed {
+                message: "remote_realtime_disabled".to_string(),
+            });
+        }
+        if active.state != CaptureState::Recording {
+            return Err(CoreError::ValidationFailed {
+                message: format!(
+                    "transcription restarts while recording, found {:?}",
+                    active.state
+                ),
+            });
+        }
+        self.restart_remote_capture(active)?;
+        let run = self
+            .notebook_capture_store
+            .get_run(&active.run_id)
+            .map_err(store_error)?
+            .ok_or_else(|| CoreError::NotFound {
+                message: format!("capture run {}", active.run_id),
+            })?;
+        let callback = active.callback.clone();
+        drop(active_guard);
+        Ok(callback.send(event_from_run(run, Vec::new(), false)))
     }
 
     pub fn stop_notebook_capture_session(
@@ -7729,6 +7973,130 @@ impl ZuTalkCore {
             .update_remote_health(run_id, health, Some(failure))
             .err()
             .map(|error| format!("persist {} capture failure: {error}", failure.error_type))
+    }
+
+    /// Brings transcription back to a recording whose provider group is gone.
+    ///
+    /// A recording outlives its provider group on purpose: a provider or
+    /// local persistence failure ends the group, and the capture keeps
+    /// journaling audio so nothing said is lost. But nothing could bring the
+    /// group back. Pause and resume only toggled a group that no longer
+    /// existed, so the one way to get captions again was to stop and start a
+    /// new recording — in the middle of the meeting the captions were for.
+    ///
+    /// The new group joins at the live edge: it continues the session's row
+    /// numbering, group and speaker epochs where the dead group left them,
+    /// and the audio that went untranscribed between the last settled row
+    /// and now is recorded as a gap, the same record a network outage
+    /// leaves. Returns whether a group was started; a live group is left as
+    /// it is.
+    fn restart_remote_capture(
+        &self,
+        active: &mut ActiveNotebookCapture,
+    ) -> Result<bool, CoreError> {
+        if !active.profile.remote_realtime_enabled {
+            return Ok(false);
+        }
+        if active
+            .remote
+            .as_ref()
+            .is_some_and(|remote| !remote.event_task.is_finished())
+        {
+            return Ok(false);
+        }
+        // A group whose writer already finished but that no push has noticed
+        // yet: tear it down the way a failed push would.
+        if let Some(finished) = active.remote.take() {
+            let cleanup = self.begin_failed_remote_capture_cleanup(finished);
+            if let Some(previous) = active.remote_cleanup.replace(cleanup) {
+                let _ = self.join_pending_remote_capture_cleanup(previous);
+            }
+        }
+        // The dead group's writer must be finished before a new one writes
+        // to the same session.
+        if let Some(cleanup) = active.remote_cleanup.take() {
+            if let Some(failure) = self.join_pending_remote_capture_cleanup(cleanup) {
+                tracing::info!(
+                    error_type = %failure.error_type,
+                    "restarting transcription after the previous provider group failed"
+                );
+            }
+        }
+
+        let resume = self
+            .notebook_capture_store
+            .realtime_resume_point(&active.session_id)
+            .map_err(store_error)?;
+        let sample_rate = u64::from(CURRENT_NOTEBOOK_CAPTURE_ENGINE.sample_rate);
+        let captured_frames = active.captured_frames.load(Ordering::Acquire);
+        let transcribed_through_frame =
+            resume.transcribed_through_ms.saturating_mul(sample_rate) / 1_000;
+        if captured_frames > transcribed_through_frame {
+            if let Err(error) = self.notebook_capture_store.preserve_network_transcript_gap(
+                &active.session_id,
+                transcribed_through_frame,
+                captured_frames,
+            ) {
+                tracing::warn!(
+                    error = %error,
+                    "transcript gap before a restarted provider group was not recorded"
+                );
+            }
+        }
+        let context = if active.profile.send_context_to_soniox {
+            // The Context the user confirmed for this run, not whatever the
+            // Notebook holds now.
+            self.context_pack_store
+                .load_run_snapshot(&active.run_id)
+                .map_err(store_error)?
+        } else {
+            None
+        };
+        let origin = RemoteGroupOrigin {
+            capture_origin_ms: captured_frames.saturating_mul(1_000) / sample_rate,
+            next_sequence: resume.next_sequence,
+            group_epoch: resume.next_group_epoch,
+            provider_session_epoch: resume.next_provider_session_epoch,
+        };
+        self.notebook_capture_store
+            .update_remote_health(&active.run_id, RemoteHealth::Connecting, None)
+            .map_err(store_error)?;
+        active
+            .callback
+            .clear_remote_truth_overlay(&active.session_id);
+        match self.start_soniox_capture_runtime(
+            &active.run_id,
+            &active.session_id,
+            &active.profile,
+            context.as_ref(),
+            active.captured_frames.clone(),
+            active.callback.clone(),
+            origin,
+        ) {
+            Ok(remote) => {
+                tracing::info!(
+                    next_sequence = origin.next_sequence,
+                    group_epoch = origin.group_epoch,
+                    "restarted transcription for a live capture"
+                );
+                active.remote = Some(remote);
+                Ok(true)
+            }
+            Err(error) => {
+                let failure = ProviderFailure {
+                    error_type: "unavailable".to_string(),
+                    request_id: None,
+                };
+                if let Err(persist_error) = self.notebook_capture_store.update_remote_health(
+                    &active.run_id,
+                    RemoteHealth::Unavailable,
+                    Some(&failure),
+                ) {
+                    tracing::warn!(error = %persist_error, "restart failure not persisted");
+                }
+                Err(error)
+            }
+        }
     }
 
     fn begin_failed_remote_capture_cleanup(
@@ -8739,6 +9107,7 @@ impl ZuTalkCore {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn start_soniox_capture_runtime(
         &self,
         run_id: &str,
@@ -8747,6 +9116,7 @@ impl ZuTalkCore {
         context: Option<&ContextCompilation>,
         captured_frames: Arc<AtomicU64>,
         callback: CaptureCallbackSink,
+        origin: RemoteGroupOrigin,
     ) -> Result<ActiveRemoteCapture, CoreError> {
         let engine = CURRENT_NOTEBOOK_CAPTURE_ENGINE;
         self.ensure_remote_provider_allowed_for_session(session_id, engine.provider_id)?;
@@ -8833,13 +9203,14 @@ impl ZuTalkCore {
                     ..Default::default()
                 };
                 let lane_cancel = cancel.child_token();
-                // The lanes a recording opens with all start at its beginning.
+                // The lanes a recording opens with all start at its beginning;
+                // a restarted group starts where the audio is now.
                 let stream = stream_factory.start(
                     engine.realtime_endpoint,
                     lane_credential.clone(),
                     config.clone(),
                     lane_cancel.clone(),
-                    0,
+                    origin.capture_origin_ms,
                 );
                 let vt_stt::SonioxStreamRuntime {
                     audio_tx,
@@ -8894,6 +9265,7 @@ impl ZuTalkCore {
                 event_cancel,
                 captured_frames,
                 callback,
+                origin,
             )
             .await
         });
@@ -11007,6 +11379,283 @@ mod tests {
         }
     }
 
+    /// A provider group that settles one row and then dies for good, and a
+    /// replacement that settles one more. Records where each group was told
+    /// to join the capture timeline.
+    #[derive(Default)]
+    struct DyingThenRestartedStreamFactory {
+        origins: StdMutex<Vec<u64>>,
+    }
+
+    impl NotebookSonioxStreamFactory for DyingThenRestartedStreamFactory {
+        fn start(
+            &self,
+            _endpoint: &str,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
+            _config: SttConfig,
+            _cancel: tokio_util::sync::CancellationToken,
+            capture_origin_ms: u64,
+        ) -> SonioxStreamRuntime {
+            let first_group = {
+                let mut origins = self.origins.lock().unwrap();
+                origins.push(capture_origin_ms);
+                origins.len() == 1
+            };
+            let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
+            let (control_tx, mut control_rx) = tokio::sync::mpsc::channel(4);
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(16);
+            let task = tokio::spawn(async move {
+                let _ = event_tx.send(SttStreamEvent::Connected).await;
+                for _ in 0..5 {
+                    if audio_rx.recv().await.is_none() {
+                        return Ok(());
+                    }
+                }
+                // The real stream projects token times onto the capture
+                // timeline through the connection's origin; so does this one.
+                let (text, end_ms) = if first_group {
+                    ("before the provider died", 500)
+                } else {
+                    ("after transcription restarted", 400)
+                };
+                let _ = event_tx
+                    .send(SttStreamEvent::Tokens(vec![token(
+                        text,
+                        SttStreamTranslationStatus::Original,
+                        "en",
+                        Some(capture_origin_ms),
+                        Some(capture_origin_ms + end_ms),
+                        true,
+                    )]))
+                    .await;
+                let _ = event_tx.send(SttStreamEvent::Endpoint).await;
+                if first_group {
+                    let _ = event_tx
+                        .send(SttStreamEvent::Error(SttStreamError::Transport {
+                            operation: "Soniox stream response receive".into(),
+                            message: "connection lost for good".into(),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+                loop {
+                    tokio::select! {
+                        control = control_rx.recv() => match control {
+                            Some(SttStreamControl::Finish) | None => {
+                                let _ = event_tx.send(SttStreamEvent::Finished).await;
+                                return Ok(());
+                            }
+                            Some(_) => {}
+                        },
+                        audio = audio_rx.recv() => if audio.is_none() {
+                            return Ok(());
+                        },
+                    }
+                }
+            });
+            SonioxStreamRuntime {
+                audio_tx,
+                control_tx,
+                event_rx,
+                task,
+            }
+        }
+
+        fn try_send_pcm(
+            &self,
+            audio_tx: &tokio::sync::mpsc::Sender<Vec<u8>>,
+            audio_data: Vec<u8>,
+        ) -> Result<(), String> {
+            audio_tx
+                .try_send(audio_data)
+                .map_err(|error| error.to_string())
+        }
+    }
+
+    fn wait_for(what: &str, mut ready: impl FnMut() -> bool) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !ready() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting for {what}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    /// Field report: after 30+ minutes the captions disappeared and could not
+    /// be started again. The provider group had died (session 64ae70c7 lost it
+    /// to a persistence error at minute 56 and recorded 41 more minutes with
+    /// no transcript); pause and resume only toggled a group that no longer
+    /// existed. A restart joins a new group at the live edge without touching
+    /// what the dead group settled.
+    #[test]
+    fn transcription_restarts_at_the_live_edge_after_its_provider_group_died() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let factory = Arc::new(DyingThenRestartedStreamFactory::default());
+        core.notebook_soniox_stream_factory = factory.clone();
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core
+            .create_notebook(Some("Restart transcription".into()))
+            .unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        let session_id = started.session_id.clone();
+        let push = |blocks: usize| {
+            for _ in 0..blocks {
+                core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                    .unwrap();
+            }
+        };
+
+        // Two seconds of audio; the first group settles one row and dies.
+        push(20);
+        wait_for("the first group to fail", || {
+            core.notebook_capture_store
+                .get_run_for_session(&session_id)
+                .unwrap()
+                .unwrap()
+                .provider_error_type
+                .is_some()
+        });
+
+        let restarted = core
+            .restart_notebook_capture_transcription(session_id.clone())
+            .expect("a recording whose transcription died can start it again");
+        assert_eq!(restarted.capture_state, FfiNotebookCaptureState::Recording);
+        assert_eq!(*factory.origins.lock().unwrap(), vec![0, 2_000]);
+
+        push(10);
+        wait_for("the restarted group's first row", || {
+            core.notebook_capture_store
+                .list_utterances(&session_id)
+                .unwrap()
+                .len()
+                == 2
+        });
+        let health = core
+            .notebook_capture_store
+            .get_run_for_session(&session_id)
+            .unwrap()
+            .unwrap()
+            .remote_health;
+        assert_eq!(health, RemoteHealth::Live);
+
+        let stopped = core
+            .stop_notebook_capture_session(session_id.clone())
+            .unwrap();
+        assert_eq!(stopped.capture_state, FfiNotebookCaptureState::Completed);
+
+        let rows = core
+            .notebook_capture_store
+            .list_utterances(&session_id)
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].sequence, 0);
+        assert_eq!(rows[0].source_text, "before the provider died");
+        assert_eq!(
+            rows[1].sequence, 1,
+            "the new group numbers after the old one instead of rewriting its Final row"
+        );
+        assert_eq!(rows[1].source_text, "after transcription restarted");
+        assert_eq!(rows[1].source_start_ms, Some(2_000));
+
+        let gaps = core
+            .list_notebook_session_transcript_gaps(session_id)
+            .unwrap();
+        assert_eq!(gaps.len(), 1, "the untranscribed stretch is recorded once");
+        assert_eq!(
+            gaps[0].start_ms, 500,
+            "the gap starts where settled rows stop"
+        );
+        assert_eq!(gaps[0].end_ms, 2_000, "and ends where the new group joined");
+    }
+
+    /// Pause and resume is what a user reaches for when captions stop.
+    #[test]
+    fn resuming_a_recording_whose_transcription_died_restarts_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let factory = Arc::new(DyingThenRestartedStreamFactory::default());
+        core.notebook_soniox_stream_factory = factory.clone();
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core
+            .create_notebook(Some("Resume restarts".into()))
+            .unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        let session_id = started.session_id.clone();
+        for _ in 0..10 {
+            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+        }
+        wait_for("the first group to fail", || {
+            core.notebook_capture_store
+                .get_run_for_session(&session_id)
+                .unwrap()
+                .unwrap()
+                .provider_error_type
+                .is_some()
+        });
+
+        let paused = core
+            .pause_notebook_capture_session(session_id.clone(), true)
+            .unwrap();
+        assert_eq!(paused.capture_state, FfiNotebookCaptureState::Paused);
+        assert_eq!(
+            factory.origins.lock().unwrap().len(),
+            1,
+            "pausing starts nothing"
+        );
+        let resumed = core
+            .pause_notebook_capture_session(session_id.clone(), false)
+            .unwrap();
+        assert_eq!(resumed.capture_state, FfiNotebookCaptureState::Recording);
+        assert_eq!(*factory.origins.lock().unwrap(), vec![0, 1_000]);
+        assert!(matches!(
+            resumed.remote_health,
+            FfiNotebookRemoteHealth::Connecting | FfiNotebookRemoteHealth::Live
+        ));
+
+        for _ in 0..5 {
+            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+        }
+        wait_for("the restarted group's first row", || {
+            core.notebook_capture_store
+                .list_utterances(&session_id)
+                .unwrap()
+                .len()
+                == 2
+        });
+        core.stop_notebook_capture_session(session_id).unwrap();
+    }
+
     struct RemoteLifetimeGuard(Arc<AtomicUsize>);
 
     impl Drop for RemoteLifetimeGuard {
@@ -11026,6 +11675,9 @@ mod tests {
         fail_pcm_send: AtomicBool,
         hold_event_sender: AtomicBool,
         held_event_sender: StdMutex<Option<tokio::sync::mpsc::Sender<SttStreamEvent>>>,
+        /// Streams started while set answer Finish like a healthy provider;
+        /// the rest only end when cancelled.
+        finish_gracefully: AtomicBool,
     }
 
     impl NotebookSonioxStreamFactory for TeardownTrackingNotebookSonioxStreamFactory {
@@ -11050,12 +11702,28 @@ mod tests {
             }
             self.active_stream_count.fetch_add(1, Ordering::SeqCst);
             let lifetime = RemoteLifetimeGuard(self.active_stream_count.clone());
+            let finish_gracefully = self.finish_gracefully.load(Ordering::SeqCst);
             let task = tokio::spawn(async move {
                 let _lifetime = lifetime;
-                let _event_tx = event_tx;
                 let _audio_rx = audio_rx;
-                let _control_rx = control_rx;
-                cancel.cancelled().await;
+                let mut control_rx = control_rx;
+                if finish_gracefully {
+                    tokio::select! {
+                        _ = cancel.cancelled() => {}
+                        _ = async {
+                            while let Some(control) = control_rx.recv().await {
+                                if control == SttStreamControl::Finish {
+                                    let _ = event_tx.send(SttStreamEvent::Finished).await;
+                                    break;
+                                }
+                            }
+                        } => {}
+                    }
+                } else {
+                    let _event_tx = event_tx;
+                    let _control_rx = control_rx;
+                    cancel.cancelled().await;
+                }
                 Ok(())
             });
             SonioxStreamRuntime {
@@ -11935,22 +12603,28 @@ mod tests {
             .unwrap();
         assert_eq!(paused.capture_state, FfiNotebookCaptureState::Paused);
         assert_eq!(paused.remote_health, FfiNotebookRemoteHealth::Degraded);
+        // Only the group that hit backpressure is slow; the one the resume
+        // starts is an ordinary healthy group.
+        factory.fail_pcm_send.store(false, Ordering::SeqCst);
+        factory.hold_event_sender.store(false, Ordering::SeqCst);
+        factory.finish_gracefully.store(true, Ordering::SeqCst);
         let resumed = core
             .pause_notebook_capture_session(started.session_id.clone(), false)
             .unwrap();
         assert_eq!(resumed.capture_state, FfiNotebookCaptureState::Recording);
-        assert_eq!(resumed.remote_health, FfiNotebookRemoteHealth::Degraded);
+        assert_eq!(resumed.remote_health, FfiNotebookRemoteHealth::Connecting);
         let durable_resumed = core
             .notebook_capture_store
             .get_run_for_session(&started.session_id)
             .unwrap()
             .unwrap();
         assert_eq!(durable_resumed.capture_state, CaptureState::Recording);
-        assert_eq!(durable_resumed.remote_health, RemoteHealth::Degraded);
+        assert_eq!(durable_resumed.remote_health, RemoteHealth::Connecting);
         assert_eq!(
             factory.constructor_count.load(Ordering::SeqCst),
-            1,
-            "FFI backpressure teardown must not create a second stream owner"
+            2,
+            "backpressure teardown creates no owner; the resume that follows restarts \
+             the transcription it ended"
         );
         let stop_began = std::time::Instant::now();
         let stopped = core
@@ -12012,15 +12686,18 @@ mod tests {
     }
 
     #[test]
-    fn audio_progress_persistence_failure_cannot_leave_a_silent_recording_owner() {
-        let (temp, core, factory, notebook_id, profile, started) =
+    /// The durable frame count is advisory — stop reads the journal — and a
+    /// failure to write it used to end the recording from the push path.
+    /// Field data: an 82-minute recording ended as `local_persistence` when
+    /// that write met `database is locked`.
+    fn audio_progress_persistence_failure_neither_fails_a_push_nor_ends_the_recording() {
+        let (temp, core, _factory, _notebook_id, _profile, started) =
             start_remote_tracking_capture("Audio progress fault");
         let run = core
             .notebook_capture_store
             .get_run_for_session(&started.session_id)
             .unwrap()
             .unwrap();
-        let journal_path = std::path::PathBuf::from(run.audio_journal_path.as_ref().unwrap());
         let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
         db.execute_batch(
             "CREATE TRIGGER fail_capture_audio_progress
@@ -12032,42 +12709,51 @@ mod tests {
         )
         .unwrap();
 
-        let error = core
-            .push_notebook_capture_session(started.session_id.clone(), vec![0_u8; 32_000])
-            .unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("injected audio progress persistence failure"));
-        assert!(core.active_notebook_capture.lock().unwrap().is_none());
-        assert_eq!(factory.active_stream_count.load(Ordering::SeqCst), 0);
-        let interrupted = core
+        core.push_notebook_capture_session(started.session_id.clone(), vec![0_u8; 32_000])
+            .expect("the push path no longer writes the frame count");
+        // Let the progress writer run into the fault at least once.
+        std::thread::sleep(AUDIO_PROGRESS_INTERVAL + std::time::Duration::from_millis(500));
+        assert!(
+            core.active_notebook_capture
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|active| active.state == CaptureState::Recording),
+            "a failed progress write must not end the recording"
+        );
+        core.push_notebook_capture_session(started.session_id.clone(), vec![0_u8; 32_000])
+            .expect("audio keeps being journaled after a failed progress write");
+
+        db.execute_batch("DROP TRIGGER fail_capture_audio_progress;")
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let durable = core
+                .notebook_capture_store
+                .get_run(&run.id)
+                .unwrap()
+                .unwrap()
+                .captured_frames;
+            if durable == 32_000 {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the durable count must catch up once writes succeed again, stuck at {durable}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        let stopped = core
+            .stop_notebook_capture_session(started.session_id.clone())
+            .unwrap();
+        assert_eq!(stopped.capture_state, FfiNotebookCaptureState::Completed);
+        let completed = core
             .notebook_capture_store
             .get_run(&run.id)
             .unwrap()
             .unwrap();
-        assert_eq!(interrupted.capture_state, CaptureState::Interrupted);
-        assert_eq!(interrupted.remote_health, RemoteHealth::Off);
-        assert!(interrupted
-            .audio_path
-            .as_deref()
-            .is_some_and(|path| std::path::Path::new(path).exists()));
-        assert!(!journal_path.exists());
-
-        db.execute_batch("DROP TRIGGER fail_capture_audio_progress;")
-            .unwrap();
-        let next = core
-            .start_notebook_capture_session(
-                notebook_id,
-                profile.revision,
-                None,
-                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
-            )
-            .expect("post-journal progress failure must release capture ownership");
-        core.interrupt_notebook_capture_session(
-            next.session_id,
-            FfiNotebookCaptureInterruptReason::LocalAudioUnavailable,
-        )
-        .unwrap();
+        assert_eq!(completed.captured_frames, 32_000);
     }
 
     #[test]
@@ -12201,18 +12887,18 @@ mod tests {
             .pause_notebook_capture_session(started.session_id.clone(), false)
             .expect("resume may continue local-only once Degraded is durable");
         assert_eq!(resumed.capture_state, FfiNotebookCaptureState::Recording);
-        assert_eq!(resumed.remote_health, FfiNotebookRemoteHealth::Degraded);
+        assert_eq!(resumed.remote_health, FfiNotebookRemoteHealth::Connecting);
         let durable_resumed = core
             .notebook_capture_store
             .get_run_for_session(&started.session_id)
             .unwrap()
             .unwrap();
         assert_eq!(durable_resumed.capture_state, CaptureState::Recording);
-        assert_eq!(durable_resumed.remote_health, RemoteHealth::Degraded);
+        assert_eq!(durable_resumed.remote_health, RemoteHealth::Connecting);
         assert_eq!(
             factory.constructor_count.load(Ordering::SeqCst),
-            1,
-            "local-only resume must not rebuild an assembler/provider owner"
+            2,
+            "resuming a recording whose provider owner is gone starts a new one"
         );
         core.interrupt_notebook_capture_session(
             started.session_id,
@@ -12699,6 +13385,120 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[1].source_text, " 什么？这三个案例");
         assert_eq!(rows[1].completion, UtteranceCompletion::Partial);
+    }
+
+    /// Field failure, session 64ae70c7 at minute 56: a speaker quoted a
+    /// proverb in Arabic mid-sentence. The first Arabic word closed the
+    /// English row while its Chinese translation was still arriving; the
+    /// row's translation was persisted Final, the tail then tried to extend
+    /// it, and the store's "Final is immutable" refusal was reported as a
+    /// local persistence failure — which ends the remote group. Transcription
+    /// and translation stopped for the remaining 41 minutes of the recording.
+    #[test]
+    fn a_translation_tail_after_the_row_closed_extends_it_instead_of_ending_transcription() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Late translation tail".into()))
+            .unwrap();
+        let stored_profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let session = vt_store::SessionRecord {
+            id: "late-translation-tail-session".into(),
+            title: "Late translation tail".into(),
+            session_type: "recording".into(),
+            status: "recording".into(),
+            duration_ms: 0,
+            created_at: "2001-01-03T00:00:00Z".into(),
+            deleted_at: None,
+        };
+        core.notebook_capture_store
+            .create_session_and_run(
+                &session,
+                &vt_store::notebook_capture_store::NewNotebookCaptureRun {
+                    id: "late-translation-tail-run".into(),
+                    notebook_id: notebook.id,
+                    session_id: session.id.clone(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "/private/late-translation-tail.journal".into(),
+                    audio_key_ref: "late-translation-tail-key".into(),
+                    sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
+                    channels: 1,
+                },
+                &stored_profile,
+            )
+            .unwrap();
+        claim_current_realtime_provider(&core.notebook_capture_store, &session.id);
+        let store = &core.notebook_capture_store;
+        let mut assembler = RealtimeUtteranceAssembler::new(session.id.clone(), &profile());
+
+        let opening = assembler.apply_tokens(&[
+            attributed_token(
+                "Usually we have this saying in Arabic.",
+                SttStreamTranslationStatus::Original,
+                Some("en"),
+                None,
+                Some("1"),
+                true,
+            ),
+            attributed_token(
+                "通常我们有",
+                SttStreamTranslationStatus::Translation,
+                Some("zh"),
+                Some("en"),
+                Some("1"),
+                true,
+            ),
+        ]);
+        persist_assembled_utterances(store, &mut assembler, opening, 0).unwrap();
+
+        // The first Arabic word closes the English row with the translation
+        // it has so far.
+        let switched = assembler.apply_tokens(&[attributed_token(
+            "الحاجة أم الاختراع",
+            SttStreamTranslationStatus::Original,
+            Some("ar"),
+            None,
+            Some("1"),
+            true,
+        )]);
+        persist_assembled_utterances(store, &mut assembler, switched, 0).unwrap();
+        let closed = store.list_utterances(&session.id).unwrap();
+        assert_eq!(closed[0].completion, UtteranceCompletion::Complete);
+        assert_eq!(closed[0].translated_text.as_deref(), Some("通常我们有"));
+
+        // The rest of the English row's translation arrives afterwards.
+        let tail = assembler.apply_tokens(&[attributed_token(
+            "这种阿拉伯语的说法。",
+            SttStreamTranslationStatus::Translation,
+            Some("zh"),
+            Some("en"),
+            Some("1"),
+            true,
+        )]);
+        let mut rewording = tail.clone();
+        persist_assembled_utterances(store, &mut assembler, tail, 0)
+            .expect("a translation tail must not end the capture's transcription");
+        let extended = store.list_utterances(&session.id).unwrap();
+        assert_eq!(
+            extended[0].translated_text.as_deref(),
+            Some("通常我们有这种阿拉伯语的说法。"),
+            "the tail is appended to the closed row"
+        );
+
+        // A revision that would change words a reader already saw is still
+        // refused, but it is not a reason to stop transcribing either.
+        rewording[0].utterance.translated_text = Some("完全不同的译文".into());
+        persist_assembled_utterances(store, &mut assembler, rewording, 0)
+            .expect("a refused rewording keeps the settled lane and the capture");
+        let kept = store.list_utterances(&session.id).unwrap();
+        assert_eq!(
+            kept[0].translated_text.as_deref(),
+            Some("通常我们有这种阿拉伯语的说法。")
+        );
     }
 
     #[test]

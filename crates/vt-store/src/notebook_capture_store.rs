@@ -1121,6 +1121,19 @@ pub enum NotebookCaptureStoreError {
     CorruptData(String),
 }
 
+/// See [`NotebookCaptureStore::realtime_resume_point`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RealtimeResumePoint {
+    pub next_sequence: u64,
+    pub next_group_epoch: u64,
+    pub next_provider_session_epoch: u64,
+    /// The end of the latest source row on the capture timeline.
+    pub transcribed_through_ms: u64,
+}
+
+/// How long a capture write waits for another connection's write to finish.
+const CAPTURE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Clone)]
 pub struct NotebookCaptureStore {
     conn: Arc<Mutex<Connection>>,
@@ -1134,9 +1147,13 @@ impl NotebookCaptureStore {
     /// safely open another connection without interrupting a live capture.
     pub fn new(db_path: &Path) -> Result<Self, NotebookCaptureStoreError> {
         let conn = Connection::open(db_path)?;
-        conn.busy_timeout(Duration::from_secs(1))?;
+        // Longer than the other stores wait. Nothing on the audio path uses
+        // this connection any more, and a capture write that gives up is not
+        // retried: it ends the recording's transcription.
+        conn.busy_timeout(CAPTURE_BUSY_TIMEOUT)?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         crate::migration::run_migrations(&conn)?;
+        crate::migration::use_write_ahead_log(&conn);
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -2868,6 +2885,49 @@ impl NotebookCaptureStore {
         .map_err(Into::into)
     }
 
+    /// Where a replacement provider group has to pick up in a session that
+    /// already has realtime facts, so none of its identities collide with the
+    /// ones a dead group left behind.
+    ///
+    /// Row IDs are `session:sequence`, auxiliary facts are keyed by group
+    /// epoch, and diarized speakers by provider epoch. A new group counting
+    /// from zero would address the first row of the recording — which is
+    /// Final, so the first write fails and the new group dies the way the old
+    /// one did.
+    pub fn realtime_resume_point(
+        &self,
+        session_id: &str,
+    ) -> Result<RealtimeResumePoint, NotebookCaptureStoreError> {
+        let conn = self.conn.lock().unwrap();
+        let (next_sequence, transcribed_through_ms) = conn.query_row(
+            "SELECT COALESCE(MAX(sequence) + 1, 0), COALESCE(MAX(source_end_ms), 0)
+             FROM realtime_utterances WHERE session_id = ?1",
+            [session_id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        )?;
+        let next_group_epoch = conn.query_row(
+            "SELECT COALESCE(MAX(group_epoch) + 1, 0)
+             FROM realtime_translation_inbox WHERE session_id = ?1",
+            [session_id],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let next_provider_session_epoch = conn.query_row(
+            "SELECT COALESCE(MAX(provider_session_epoch) + 1, 0)
+             FROM session_speakers WHERE session_id = ?1",
+            [session_id],
+            |row| row.get::<_, i64>(0),
+        )?;
+        Ok(RealtimeResumePoint {
+            next_sequence: i64_to_u64(next_sequence, "next sequence")?,
+            next_group_epoch: i64_to_u64(next_group_epoch, "next group epoch")?,
+            next_provider_session_epoch: i64_to_u64(
+                next_provider_session_epoch,
+                "next provider session epoch",
+            )?,
+            transcribed_through_ms: i64_to_u64(transcribed_through_ms, "transcribed through")?,
+        })
+    }
+
     /// Every recorded transcript gap of one session, in capture order. The
     /// transcript view draws these as time-labeled dividers, so the reader
     /// can see where captured audio went untranscribed instead of the text
@@ -4307,6 +4367,42 @@ impl NotebookCaptureStore {
             state,
             completion,
             TranslationLaneWrite::FinalIsImmutable,
+        )?;
+        tx.commit()?;
+        Ok(utterance)
+    }
+
+    /// Like [`Self::upsert_translation_variant`], for the translation the
+    /// canonical stream carries inline with its own source.
+    ///
+    /// A Final lane may still grow at the end: the provider closes a row when
+    /// the next word comes from another speaker or language, while the
+    /// translation of the closed row is still arriving. Anything that would
+    /// change text a reader already saw remains a `Conflict`.
+    pub fn upsert_inline_translation_variant(
+        &self,
+        session_id: &str,
+        sequence: u64,
+        language: &str,
+        text: Option<&str>,
+        state: UtteranceVariantState,
+        completion: Option<UtteranceCompletion>,
+    ) -> Result<RealtimeUtterance, NotebookCaptureStoreError> {
+        require_nonempty("session_id", session_id)?;
+        validate_language(language)?;
+        validate_variant_payload(text, state, completion)?;
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_active_realtime_session(&tx, session_id)?;
+        let utterance = upsert_translation_variant_from_conn(
+            &tx,
+            session_id,
+            sequence,
+            language,
+            text,
+            state,
+            completion,
+            TranslationLaneWrite::ExtendInlineTranslation,
         )?;
         tx.commit()?;
         Ok(utterance)
@@ -6510,6 +6606,11 @@ enum TranslationLaneWrite {
     /// already seen is still immutable — an extension that would rewrite any
     /// earlier character is rejected exactly like any other Final mutation.
     ComposeAuxiliarySegments,
+    /// The same-stream translation of a canonical row. A row is closed the
+    /// moment the source changes speaker or language, but the provider keeps
+    /// translating what was already said and its tail arrives afterwards.
+    /// That tail may only append, under the same rule as composition.
+    ExtendInlineTranslation,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6560,8 +6661,11 @@ fn upsert_translation_variant_from_conn(
             }
             let incoming_is_final = state == UtteranceVariantState::Ready
                 && completion == Some(UtteranceCompletion::Complete);
-            let extends_final_lane = lane_write == TranslationLaneWrite::ComposeAuxiliarySegments
-                && incoming_is_final
+            let extends_final_lane = matches!(
+                lane_write,
+                TranslationLaneWrite::ComposeAuxiliarySegments
+                    | TranslationLaneWrite::ExtendInlineTranslation
+            ) && incoming_is_final
                 && existing.text.as_deref().is_some_and(|settled| {
                     text.is_some_and(|incoming| preserves_settled_lane(settled, incoming))
                 });

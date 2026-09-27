@@ -497,6 +497,36 @@ const V33_INDEXES: &[&str] = &[
     "idx_session_speakers_session_epoch",
 ];
 
+/// Puts the database in write-ahead-log mode. Persistent: it is recorded in
+/// the file, so every later connection — including the ones other stores
+/// open — uses it.
+///
+/// The app opens the main database through a connection per store, and in
+/// the default rollback-journal mode a writer excludes every reader and every
+/// other writer for the length of its commit. A live capture writes on every
+/// provider response while projection, search, editor saves and UI reads
+/// run beside it on their own connections, each allowed one second of
+/// waiting before it fails with `database is locked`. Two recordings on this
+/// machine lost their transcription to exactly that. With the log, readers
+/// never wait for a writer and a writer never waits for readers; only two
+/// simultaneous writers still take turns.
+///
+/// Failure is not fatal: the journal mode is a performance property, and a
+/// database that stays in rollback mode is still correct.
+pub fn use_write_ahead_log(conn: &Connection) {
+    match conn.query_row("PRAGMA journal_mode = WAL", [], |row| {
+        row.get::<_, String>(0)
+    }) {
+        Ok(mode) if mode.eq_ignore_ascii_case("wal") => {}
+        // In-memory databases have no log to write ahead of.
+        Ok(mode) if mode.eq_ignore_ascii_case("memory") => {}
+        Ok(mode) => tracing::warn!(mode, "database stayed out of write-ahead-log mode"),
+        Err(error) => {
+            tracing::warn!(%error, "could not switch the database to write-ahead-log mode")
+        }
+    }
+}
+
 /// Install, migrate, or validate the supported main-database schema.
 pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
     conn.pragma_update(None, "foreign_keys", "ON")?;

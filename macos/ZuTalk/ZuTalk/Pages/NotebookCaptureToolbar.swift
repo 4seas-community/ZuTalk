@@ -19,6 +19,9 @@ struct NotebookCaptureToolbar: View {
                 if capture.isCaptureActive {
                     if capture.notebookId == notebookId {
                         captureStatus
+                        if capture.canRestartTranscription || capture.isRestartingTranscription {
+                            restartTranscriptionButton
+                        }
                         pauseButton
                         stopButton
                     } else {
@@ -74,6 +77,11 @@ struct NotebookCaptureToolbar: View {
         }
         .montereyOnChange(of: profileEditor.draft.remoteRealtimeEnabled) { _, _ in
             publishPlannedLaneCount()
+        }
+        .montereyOnChange(of: capture.sessionId) { _, _ in
+            // A pause request that never returned belongs to the recording it
+            // was made for; it must not keep Pause disabled in the next one.
+            isPausing = false
         }
     }
 
@@ -237,6 +245,39 @@ struct NotebookCaptureToolbar: View {
         .accessibilityLabel(Text(isPaused
             ? String(localized: "capture.toolbar.resume")
             : String(localized: "capture.toolbar.pause")))
+    }
+
+    /// Offered only while a recording runs without the transcription it asked
+    /// for. Before this, the way back was to stop and start a new recording.
+    private var restartTranscriptionButton: some View {
+        Button {
+            Task { @MainActor in
+                do {
+                    try await capture.restartTranscription()
+                } catch {
+                    ToastCenter.shared.error(
+                        String(localized: "capture.toast.restart_transcription_failed"),
+                        detail: error.localizedDescription
+                    )
+                }
+            }
+        } label: {
+            Label(
+                String(localized: "capture.toolbar.restart_transcription"),
+                systemImage: capture.isRestartingTranscription ? "hourglass" : "arrow.clockwise"
+            )
+            .font(.captionMedium)
+            .frame(minHeight: 28)
+            .padding(.horizontal, Spacing.sm)
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.signalAmber)
+        .background(Color.signalAmber.opacity(0.12))
+        .clipShape(Capsule())
+        .disabled(capture.isRestartingTranscription)
+        .help(String(localized: "capture.toolbar.restart_transcription_hint"))
+        .accessibilityLabel(Text(String(localized: "capture.toolbar.restart_transcription")))
+        .accessibilityHint(Text(String(localized: "capture.toolbar.restart_transcription_hint")))
     }
 
     private var stopButton: some View {

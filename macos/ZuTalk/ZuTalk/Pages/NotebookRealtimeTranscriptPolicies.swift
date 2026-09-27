@@ -298,10 +298,6 @@ enum NotebookLanguageColumnCueOverlay {
         var result: [String: NotebookCaptureTranslationCueDTO] = [:]
 
         for language in languages {
-            let representedTexts = utterances
-                .compactMap { $0.laneText(language: language) }
-                .map(normalizedText)
-                .filter { $0.isEmpty == false }
             let matchingCues = cues.filter {
                 normalizedLanguage($0.targetLanguage) == language
                     && normalizedLanguage($0.sourceLanguage) != language
@@ -311,15 +307,29 @@ enum NotebookLanguageColumnCueOverlay {
             guard let latest = matchingCues.max(by: cuePrecedes) else { continue }
 
             let cueText = normalizedText(latest.text)
-            let isAlreadyRepresented = representedTexts.contains { text in
-                text == cueText || text.contains(cueText)
-            }
+            let isAlreadyRepresented = utterances
+                .reversed()
+                .prefix(representationWindow)
+                .contains { utterance in
+                    guard let lane = utterance.laneText(language: language) else { return false }
+                    let text = normalizedText(lane)
+                    return text.isEmpty == false && (text == cueText || text.contains(cueText))
+                }
             if isAlreadyRepresented == false {
                 result[language] = latest
             }
         }
         return result
     }
+
+    /// How many of the newest rows can already be showing a live cue.
+    ///
+    /// The cue is the newest translation fact, so the row that absorbed it is
+    /// at the live edge. This runs on every live-preview frame, up to thirty
+    /// times a second, and used to split, lowercase and search the full text
+    /// of every row in the session for every language first — the one cost
+    /// on the main thread that grew with the length of the recording.
+    private static let representationWindow = 64
 
     private static func cuePrecedes(
         _ left: NotebookCaptureTranslationCueDTO,

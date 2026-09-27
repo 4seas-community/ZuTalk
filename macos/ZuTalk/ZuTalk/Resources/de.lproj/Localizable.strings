@@ -719,6 +719,9 @@
 "capture.toolbar.subtitle_window.unavailable_hint" = "Starte eine Aufnahme in diesem Notebook, bevor du die Live-Untertitel öffnest.";
 "capture.toast.start_failed" = "Aufnahme konnte nicht gestartet werden";
 "capture.toast.pause_failed" = "Aufnahmestatus konnte nicht geändert werden";
+"capture.toolbar.restart_transcription" = "Transkription neu verbinden";
+"capture.toolbar.restart_transcription_hint" = "Die Aufnahme läuft weiter, aber die Transkription ist stehen geblieben. Verbindet die Transkription ab hier neu; der verpasste Abschnitt wird im Transkript markiert.";
+"capture.toast.restart_transcription_failed" = "Transkription konnte nicht neu verbunden werden";
 "capture.toast.stop_failed" = "Aufnahme konnte nicht gestoppt werden";
 "capture.toast.context_preview_failed" = "Referenzmaterial konnte nicht geprüft werden";
 "capture.toast.context_load_failed" = "Referenzmaterial konnte nicht geladen werden";

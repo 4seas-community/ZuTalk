@@ -720,6 +720,9 @@
 "capture.toolbar.subtitle_window.unavailable_hint" = "Démarrez un enregistrement dans ce Notebook avant d’ouvrir les sous-titres en direct.";
 "capture.toast.start_failed" = "Impossible de démarrer l’enregistrement";
 "capture.toast.pause_failed" = "Impossible de changer l’état de l’enregistrement";
+"capture.toolbar.restart_transcription" = "Reconnecter la transcription";
+"capture.toolbar.restart_transcription_hint" = "L’enregistrement continue mais la transcription s’est arrêtée. Relancez la transcription à partir d’ici ; le passage manqué est signalé dans la transcription.";
+"capture.toast.restart_transcription_failed" = "Impossible de reconnecter la transcription";
 "capture.toast.stop_failed" = "Impossible d’arrêter l’enregistrement";
 "capture.toast.context_preview_failed" = "Impossible de consulter les documents de référence";
 "capture.toast.context_load_failed" = "Impossible de charger les documents de référence";

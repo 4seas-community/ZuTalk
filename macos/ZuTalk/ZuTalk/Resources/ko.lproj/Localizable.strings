@@ -720,6 +720,9 @@
 "capture.toolbar.subtitle_window.unavailable_hint" = "실시간 자막을 열기 전에 이 노트북에서 녹화를 시작하세요.";
 "capture.toast.start_failed" = "녹음을 시작할 수 없습니다.";
 "capture.toast.pause_failed" = "녹음 상태를 변경할 수 없습니다.";
+"capture.toolbar.restart_transcription" = "전사 다시 연결";
+"capture.toolbar.restart_transcription_hint" = "녹음은 계속되고 있지만 전사가 멈췄습니다. 여기서부터 전사 연결을 새로 시작하며, 빠진 구간은 전사본에 표시됩니다.";
+"capture.toast.restart_transcription_failed" = "전사를 다시 연결할 수 없습니다.";
 "capture.toast.stop_failed" = "녹화를 중지할 수 없습니다.";
 "capture.toast.context_preview_failed" = "참조 자료를 검토할 수 없습니다.";
 "capture.toast.context_load_failed" = "참조 자료를 로드할 수 없습니다.";

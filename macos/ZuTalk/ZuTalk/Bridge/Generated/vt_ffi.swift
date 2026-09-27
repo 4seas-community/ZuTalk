@@ -1148,6 +1148,13 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func requestNotebookAsyncTranscription(sessionId: String) throws  -> FfiNotebookCaptureEvent
 
     /**
+     * Starts transcription again for a recording whose provider group has
+     * stopped. A recording that is still being transcribed is left alone;
+     * a paused one is restarted by resuming it.
+     */
+    func restartNotebookCaptureTranscription(sessionId: String) throws  -> FfiNotebookCaptureEvent
+
+    /**
      * Retries only the local Async Transcript Loro materialization. The
      * provider task must already be durably completed; this path has no
      * credential, audio, TaskQueue, or Soniox access.
@@ -2695,6 +2702,20 @@ open func replaceNotebookUtteranceLane(utteranceId: String, laneLanguage: String
 open func requestNotebookAsyncTranscription(sessionId: String)throws  -> FfiNotebookCaptureEvent  {
     return try  FfiConverterTypeFfiNotebookCaptureEvent_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zutalkcore_request_notebook_async_transcription(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
+     * Starts transcription again for a recording whose provider group has
+     * stopped. A recording that is still being transcribed is left alone;
+     * a paused one is restarted by resuming it.
+     */
+open func restartNotebookCaptureTranscription(sessionId: String)throws  -> FfiNotebookCaptureEvent  {
+    return try  FfiConverterTypeFfiNotebookCaptureEvent_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_restart_notebook_capture_transcription(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(sessionId),$0
     )
@@ -11001,6 +11022,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_request_notebook_async_transcription() != 55992) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_restart_notebook_capture_transcription() != 10878) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_retry_notebook_async_projection() != 40987) {
