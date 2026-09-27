@@ -181,7 +181,7 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
         HotKeyManager.shared.installDefaults(
             toggleRecording: { [weak self] in self?.openCaptureNotebook() },
             markMoment: {
-                MainActor.assumeIsolated { _ = SessionMarkStore.shared.mark() }
+                MainActor.assumeIsolated { _ = SessionMarkStore.shared.markLiveCapture() }
             }
         )
 

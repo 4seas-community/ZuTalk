@@ -19,9 +19,10 @@ struct NotebookCaptureToolbar: View {
                 if capture.isCaptureActive {
                     if capture.notebookId == notebookId {
                         captureStatus
-                        if capture.canRestartTranscription || capture.isRestartingTranscription {
-                            restartTranscriptionButton
-                        }
+                        CaptureHealthControls(
+                            capture: capture,
+                            livePresentation: capture.livePresentation
+                        )
                         pauseButton
                         stopButton
                     } else {
@@ -48,6 +49,16 @@ struct NotebookCaptureToolbar: View {
                     startButton
                 }
 
+            }
+
+            if capture.notebookId == notebookId,
+               let problem = capture.transcriptionProblemText {
+                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.signalAmber)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 420, alignment: .trailing)
             }
 
             if showsPauseBillingNotice {
@@ -247,39 +258,6 @@ struct NotebookCaptureToolbar: View {
             : String(localized: "capture.toolbar.pause")))
     }
 
-    /// Offered only while a recording runs without the transcription it asked
-    /// for. Before this, the way back was to stop and start a new recording.
-    private var restartTranscriptionButton: some View {
-        Button {
-            Task { @MainActor in
-                do {
-                    try await capture.restartTranscription()
-                } catch {
-                    ToastCenter.shared.error(
-                        String(localized: "capture.toast.restart_transcription_failed"),
-                        detail: error.localizedDescription
-                    )
-                }
-            }
-        } label: {
-            Label(
-                String(localized: "capture.toolbar.restart_transcription"),
-                systemImage: capture.isRestartingTranscription ? "hourglass" : "arrow.clockwise"
-            )
-            .font(.captionMedium)
-            .frame(minHeight: 28)
-            .padding(.horizontal, Spacing.sm)
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.signalAmber)
-        .background(Color.signalAmber.opacity(0.12))
-        .clipShape(Capsule())
-        .disabled(capture.isRestartingTranscription)
-        .help(String(localized: "capture.toolbar.restart_transcription_hint"))
-        .accessibilityLabel(Text(String(localized: "capture.toolbar.restart_transcription")))
-        .accessibilityHint(Text(String(localized: "capture.toolbar.restart_transcription_hint")))
-    }
-
     private var stopButton: some View {
         Button {
             guard isStopping == false else { return }
@@ -342,7 +320,13 @@ struct NotebookCaptureToolbar: View {
             captureState: capture.presentationCaptureState,
             remoteHealth: capture.remoteHealth,
             projectionState: capture.projectionState,
-            haltedTranslationLanguages: capture.haltedTranslationLanguages
+            haltedTranslationLanguages: capture.haltedTranslationLanguages,
+            transitionText: capture.pauseTransition.map { transition in
+                switch transition {
+                case .pausing: return String(localized: "capture.state.pausing")
+                case .resuming: return String(localized: "capture.state.resuming")
+                }
+            }
         )
     }
 
@@ -351,6 +335,64 @@ struct NotebookCaptureToolbar: View {
         return capture.remoteHealth == .connecting
             || capture.remoteHealth == .live
             || capture.remoteHealth == .degraded
+    }
+}
+
+/// What the live text is doing right now, beside the recording controls: how
+/// far behind it is, and a way back when part of it has stopped.
+///
+/// Lag used to be visible only as rows piling up on "Waiting", which reads as
+/// translation breaking rather than running late; and the only way back from
+/// a stopped column was to stop and start a new recording. Both depend on
+/// per-lane state, so this observes the live frame by itself instead of
+/// rebuilding the whole toolbar on every telemetry tick.
+private struct CaptureHealthControls: View {
+    @ObservedObject var capture: ActiveBilingualTranscriptStore
+    @ObservedObject var livePresentation: NotebookCaptureLivePresentationStore
+
+    var body: some View {
+        if let lag = capture.liveLagNotice {
+            Label(lag, systemImage: "tortoise.fill")
+                .font(.captionMedium)
+                .foregroundColor(.signalAmber)
+                .lineLimit(1)
+                .help(String(localized: "capture.toolbar.translation_lag_hint"))
+                .accessibilityHint(Text(String(localized: "capture.toolbar.translation_lag_hint")))
+        }
+        if capture.canRestartTranscription || capture.isRestartingTranscription {
+            reconnectButton
+        }
+    }
+
+    private var reconnectButton: some View {
+        Button {
+            Task { @MainActor in
+                do {
+                    try await capture.restartTranscription()
+                } catch {
+                    ToastCenter.shared.error(
+                        String(localized: "capture.toast.restart_transcription_failed"),
+                        detail: error.localizedDescription
+                    )
+                }
+            }
+        } label: {
+            Label(
+                String(localized: "capture.toolbar.restart_transcription"),
+                systemImage: capture.isRestartingTranscription ? "hourglass" : "arrow.clockwise"
+            )
+            .font(.captionMedium)
+            .frame(minHeight: 28)
+            .padding(.horizontal, Spacing.sm)
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.signalAmber)
+        .background(Color.signalAmber.opacity(0.12))
+        .clipShape(Capsule())
+        .disabled(capture.isRestartingTranscription)
+        .help(String(localized: "capture.toolbar.restart_transcription_hint"))
+        .accessibilityLabel(Text(String(localized: "capture.toolbar.restart_transcription")))
+        .accessibilityHint(Text(String(localized: "capture.toolbar.restart_transcription_hint")))
     }
 }
 

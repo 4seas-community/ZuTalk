@@ -172,6 +172,44 @@ final class SessionMarkStore: ObservableObject {
         }
     }
 
+    /// The global shortcut: marks the recording in progress, whatever page
+    /// happens to be open.
+    ///
+    /// `mark()` marks the session this store was pointed at, which is the one
+    /// the transcript page last showed. Pressed from another app while an old
+    /// session was open, the shortcut marked that old session; pressed before
+    /// the page was ever opened, it did nothing. Either way it said nothing.
+    @discardableResult
+    func markLiveCapture() -> Bool {
+        let capture = ActiveBilingualTranscriptStore.shared
+        guard capture.isCaptureActive, let liveSessionId = capture.sessionId else {
+            ToastCenter.shared.info(String(localized: "session.marks.toast.no_recording"))
+            return false
+        }
+        if liveSessionId == sessionId {
+            let marked = mark()
+            if marked == false {
+                ToastCenter.shared.error(
+                    String(localized: "session.marks.toast.failed"),
+                    detail: lastError
+                )
+            }
+            return marked
+        }
+        guard let core = coreProvider() else { return false }
+        do {
+            _ = try core.sessionMarkCreate(sessionId: liveSessionId, atMs: nil)
+            lastMarkAt = Date()
+            return true
+        } catch {
+            ToastCenter.shared.error(
+                String(localized: "session.marks.toast.failed"),
+                detail: error.localizedDescription
+            )
+            return false
+        }
+    }
+
     func setNote(markId: String, note: String) {
         guard let core = coreProvider() else { return }
         do {

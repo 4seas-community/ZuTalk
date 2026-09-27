@@ -3547,6 +3547,47 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(ring.isClosedAndDrained)
     }
 
+    @MainActor
+    func testAWaitingLaneStopsWaitingOnceItsLaneIsPastTheRowOrStopped() {
+        let projection = NotebookCaptureLaneProjection(
+            lanes: [
+                NotebookCaptureLanguageLane(language: "en", text: "Hello", missingLaneState: .unavailable),
+                NotebookCaptureLanguageLane(language: "zh", text: nil, missingLaneState: .waiting),
+                NotebookCaptureLanguageLane(language: "th", text: nil, missingLaneState: .waiting),
+            ],
+            pendingLanguage: nil,
+            unselectedLanguageText: nil
+        )
+        let grace = NotebookTranslationProgress.bindingGraceMs
+
+        // The zh lane is only just past the row: a translation can still bind.
+        var progress = NotebookTranslationProgress(
+            settledThroughMs: ["zh": 10_000 + grace - 1, "th": 10_000 + grace],
+            stoppedLanguages: []
+        )
+        var resolved = projection.resolvingWaits(progress, rowEndMs: 10_000)
+        XCTAssertEqual(resolved.lanes.map(\.missingLaneState), [.unavailable, .waiting, .unavailable])
+
+        // A lane that stopped will never fill the row; it reads the same
+        // dash the row keeps once the recording ends.
+        progress.stoppedLanguages = ["zh"]
+        resolved = projection.resolvingWaits(progress, rowEndMs: 10_000)
+        XCTAssertEqual(resolved.lanes[1].missingLaneState, .unavailable)
+
+        // Text always wins, and no live progress changes nothing.
+        XCTAssertEqual(resolved.lanes[0].text, "Hello")
+        XCTAssertEqual(projection.resolvingWaits(.none, rowEndMs: 10_000), projection)
+        XCTAssertEqual(
+            projection.resolvingWaits(
+                NotebookTranslationProgress(settledThroughMs: ["zh": 99_000], stoppedLanguages: []),
+                rowEndMs: nil
+            ).lanes[1].missingLaneState,
+            .waiting,
+            "a row with no end on the timeline cannot be judged passed"
+        )
+    }
+
+    @MainActor
     func testMicrophoneRingDropsAFullRingIntoTheNextBufferInsteadOfClosing() {
         let ring = MicrophoneCaptureSPSCRing(
             capacity: 2,
@@ -3573,6 +3614,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(dropped, [0, 0, 8], "the gap travels with the buffer after it")
     }
 
+    @MainActor
     func testMicrophoneRingStillGivesUpOnAStallLongerThanItsTolerance() {
         let ring = MicrophoneCaptureSPSCRing(
             capacity: 1,

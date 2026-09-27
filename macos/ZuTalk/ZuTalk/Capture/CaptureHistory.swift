@@ -36,6 +36,81 @@ struct NotebookCaptureLaneProjection: Equatable {
     let lanes: [NotebookCaptureLanguageLane]
     let pendingLanguage: String?
     let unselectedLanguageText: String?
+
+    /// The same projection with every "waiting" lane checked against what the
+    /// live stream group has actually done. See `NotebookTranslationProgress`.
+    func resolvingWaits(
+        _ progress: NotebookTranslationProgress,
+        rowEndMs: UInt64?
+    ) -> Self {
+        guard progress.isEmpty == false,
+              lanes.contains(where: { $0.missingLaneState == .waiting })
+        else { return self }
+        return Self(
+            lanes: lanes.map { lane in
+                NotebookCaptureLanguageLane(
+                    language: lane.language,
+                    text: lane.text,
+                    missingLaneState: progress.resolve(
+                        lane.missingLaneState,
+                        language: lane.language,
+                        rowEndMs: rowEndMs
+                    )
+                )
+            },
+            pendingLanguage: pendingLanguage,
+            unselectedLanguageText: unselectedLanguageText
+        )
+    }
+}
+
+/// How far the live stream group has got with each translation language.
+///
+/// A row's "Waiting for ZH" used to come from the stored lane state alone, and
+/// a lane only leaves that state when a translation binds to it or the whole
+/// group ends. Two common cases never bind: in three-language capture each
+/// translation stream sets its own sentence boundaries, so one translated
+/// segment often spans several rows and binds to one of them; and a stream
+/// that stopped, or a group that died, produces nothing more at all. Those rows
+/// said "Waiting" for the rest of the recording — on this machine 37–52% of
+/// three-language rows, from the first minutes on — which reads exactly like
+/// translation falling further and further behind.
+///
+/// The lane that produces a language knows how far it has settled. Once it is
+/// well past a row, nothing is still on its way for that row; once it has
+/// stopped, nothing is on its way at all.
+struct NotebookTranslationProgress: Equatable {
+    /// Capture-timeline position each language's producing lane has settled.
+    var settledThroughMs: [String: UInt64] = [:]
+    /// Languages whose producing lane has stopped for good.
+    var stoppedLanguages: Set<String> = []
+
+    static let none = Self()
+
+    /// How long after its lane settled past a row a translation can still
+    /// bind to it: auxiliary segments bind once the slower canonical row they
+    /// belong to is final.
+    static let bindingGraceMs: UInt64 = 8_000
+
+    var isEmpty: Bool { settledThroughMs.isEmpty && stoppedLanguages.isEmpty }
+
+    func resolve(
+        _ state: NotebookCaptureMissingLaneState,
+        language: String,
+        rowEndMs: UInt64?
+    ) -> NotebookCaptureMissingLaneState {
+        guard state == .waiting else { return state }
+        // Shown as the same dash the row keeps after the recording ends, so
+        // a reopened lane does not make rows flip between three states. The
+        // stoppage itself is said once, in the capture status.
+        if stoppedLanguages.contains(language) { return .unavailable }
+        if let rowEndMs,
+           let settled = settledThroughMs[language],
+           settled >= rowEndMs + Self.bindingGraceMs {
+            return .unavailable
+        }
+        return .waiting
+    }
 }
 
 enum NotebookCaptureHistoryPolicy {

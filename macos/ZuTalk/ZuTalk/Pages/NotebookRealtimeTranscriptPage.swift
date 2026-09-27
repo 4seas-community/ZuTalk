@@ -1388,7 +1388,8 @@ private struct NotebookRealtimeActiveRunView: View {
                         text: text
                     )
                 },
-                history: history
+                history: history,
+                translationProgress: capture.translationProgress
             )
             Color.clear
                 .frame(height: 1)

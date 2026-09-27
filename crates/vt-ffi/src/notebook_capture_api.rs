@@ -1416,6 +1416,10 @@ fn remote_stream_plan(
 #[derive(Debug)]
 struct TaggedStreamEvent {
     lane_index: usize,
+    /// Which connection of the lane this came from: zero for the one a group
+    /// opens with, one more for each replacement. Lets the collector tell a
+    /// replacement's first event from a dead connection's late one.
+    generation: u64,
     event: SttStreamEvent,
 }
 
@@ -1540,6 +1544,9 @@ struct StreamAggregationLane {
     lag_ms: Option<u64>,
     provider_accepted_configuration: bool,
     disconnected_at_frame: Option<u64>,
+    /// The connection this lane currently listens to; see
+    /// [`TaggedStreamEvent::generation`].
+    generation: u64,
 }
 
 const REALTIME_CONTINUITY_WINDOW_MS: u64 = 15_000;
@@ -1799,10 +1806,11 @@ async fn collect_stream_events(
         origin,
     )
     .await;
-    if result.is_err() {
+    if let Err(failure) = &result {
         settle_after_failed_group(
             &settle_store,
             &settle_run_id,
+            failure,
             &lane_targets,
             origin.group_epoch,
             &settle_callback,
@@ -1822,12 +1830,23 @@ async fn collect_stream_events(
 fn settle_after_failed_group(
     store: &NotebookCaptureStore,
     run_id: &str,
+    failure: &ProviderFailure,
     lane_targets: &[Option<String>],
     group_epoch: u64,
     callback: &CaptureCallbackSink,
 ) {
-    let Ok(Some(run)) = store.get_run(run_id) else {
-        return;
+    // Record why the group ended. Without this a group that died on a local
+    // error could keep reporting the health it last had — "live" — with the
+    // reconnect action hidden behind it.
+    let run = match store.update_remote_health(run_id, RemoteHealth::Degraded, Some(failure)) {
+        Ok(run) => run,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed provider group's health not recorded");
+            match store.get_run(run_id) {
+                Ok(Some(run)) => run,
+                _ => return,
+            }
+        }
     };
     match store.mark_waiting_translation_variants_unavailable(&run.session_id) {
         Ok(updates) if !updates.is_empty() => {
@@ -1913,6 +1932,7 @@ async fn collect_stream_events_until_closed(
                 lag_ms: None,
                 provider_accepted_configuration: false,
                 disconnected_at_frame: None,
+                generation: 0,
             }
         })
         .collect::<Vec<_>>();
@@ -2023,6 +2043,36 @@ async fn collect_stream_events_until_closed(
                 request_id: None,
             });
         };
+        if tagged.generation < lane.generation {
+            // A late event from a connection this lane has already replaced.
+            continue;
+        }
+        if tagged.generation > lane.generation {
+            // The first event of a replacement connection. Only a stopped
+            // lane is replaced — by a gap in its audio or by its provider —
+            // and this is where it comes back. Before the generation was
+            // carried, the replacement's events were indistinguishable from
+            // the dead connection's and all of them fell to the gate below:
+            // a reopened translation column never filled again, while its
+            // connection kept running and billing.
+            //
+            // The replacement is a new provider timeline. Its sequences share
+            // no order with the old connection's, so the correlation epoch
+            // advances with it — matching an auxiliary segment across that
+            // boundary would compare two unrelated counters.
+            lane.generation = tagged.generation;
+            lane.failed = false;
+            lane.input_discontinuous = false;
+            lane.provider_session_epoch = lane.provider_session_epoch.saturating_add(1);
+            next_group_epoch = next_group_epoch.saturating_add(1);
+            lane.group_epoch = next_group_epoch;
+            lane.assembler.advance();
+            tracing::info!(
+                target_language = lane.descriptor.target_language.as_deref().unwrap_or("und"),
+                group_epoch = lane.group_epoch,
+                "a replaced translation lane is live again"
+            );
+        }
         if lane.failed && !matches!(&tagged.event, SttStreamEvent::InputDiscontinuity) {
             // A local PCM discontinuity is terminal for this generation. The
             // provider task may still have responses buffered when its child
@@ -2139,26 +2189,9 @@ async fn collect_stream_events_until_closed(
             SttStreamEvent::Connected => {
                 {
                     let lane = &mut lanes[lane_index];
-                    // A lane that was stopped for a gap in its audio has been
-                    // replaced by a new connection. Its provider sequences
-                    // start over and share no order with the dead lane's, so
-                    // the correlation epoch advances with it — matching an
-                    // auxiliary segment across that boundary would be
-                    // comparing two unrelated counters.
-                    if lane.input_discontinuous {
-                        lane.input_discontinuous = false;
-                        lane.failed = false;
-                        lane.provider_session_epoch = lane.provider_session_epoch.saturating_add(1);
-                        next_group_epoch = next_group_epoch.saturating_add(1);
-                        lane.group_epoch = next_group_epoch;
-                        lane.assembler.advance();
-                        tracing::info!(
-                            target_language =
-                                lane.descriptor.target_language.as_deref().unwrap_or("und"),
-                            group_epoch = lane.group_epoch,
-                            "a replaced translation lane is live again"
-                        );
-                    }
+                    // A replacement connection was already reset onto its own
+                    // epochs when its first event arrived; see the generation
+                    // check at the top of this loop.
                     record_provider_connected(
                         &mut lane.provider_session_epoch,
                         &mut lane.awaiting_reconnect,
@@ -2337,6 +2370,16 @@ async fn collect_stream_events_until_closed(
             }
             SttStreamEvent::InputDiscontinuity => {
                 if lanes[lane_index].failed {
+                    // The lane already ended on a provider error, and the
+                    // fanout has now noticed and stopped feeding it. Marking it
+                    // discontinuous is what lets a replacement connection bring
+                    // the column back: the replacement's `Connected` resets
+                    // only a discontinuous lane, and every event of a lane
+                    // still marked failed is dropped at the top of this loop.
+                    // Without it the replacement ran, and billed, for the rest
+                    // of the recording while nothing it said reached the
+                    // transcript.
+                    lanes[lane_index].input_discontinuous = true;
                     PersistedCaptureChanges::default()
                 } else {
                     // Audio accepted before the failed block is still a
@@ -5723,6 +5766,8 @@ pub(crate) struct ActiveRemoteStream {
     pub(crate) forward_task: tokio::task::JoinHandle<()>,
     lane_cancel: tokio_util::sync::CancellationToken,
     input_discontinuity_reported: std::sync::atomic::AtomicBool,
+    /// See [`TaggedStreamEvent::generation`].
+    generation: u64,
 }
 
 /// Audio a lane may fall behind before its channel refuses more. The stream
@@ -5880,6 +5925,43 @@ impl ActiveRemoteCapture {
         }
     }
 
+    /// Reopens every translation lane that is stopped right now, without
+    /// waiting out its cooldown and with a fresh budget: the user asked for
+    /// it. Returns the languages reopened.
+    ///
+    /// Automatic reopening backs off (up to five minutes) and gives up after
+    /// eight tries, which is right for a lane that keeps failing on its own
+    /// and wrong for a person looking at an empty column who pressed
+    /// Reconnect — that press used to do nothing at all while the group as a
+    /// whole was still transcribing.
+    fn reopen_stopped_auxiliary_lanes_now(&mut self) -> Vec<String> {
+        let mut reopened = Vec::new();
+        for lane_index in 0..self.streams.len() {
+            let stream = &self.streams[lane_index];
+            if stream.descriptor.canonical {
+                continue;
+            }
+            // A lane whose task has ended but that no push has isolated yet.
+            if !stream.lane_cancel.is_cancelled()
+                && (stream.audio_tx.is_closed() || stream.stream_task.is_finished())
+            {
+                if let Err(error) = self.isolate_auxiliary_discontinuity(lane_index, stream) {
+                    tracing::warn!(error = %error, "could not stop a dead translation lane");
+                    continue;
+                }
+            }
+            if !self.streams[lane_index].lane_cancel.is_cancelled() {
+                continue;
+            }
+            self.lane_restarts[lane_index] = 0;
+            self.lane_restarted_at[lane_index] = None;
+            if let Some(target_language) = self.replace_auxiliary_lane(lane_index) {
+                reopened.push(target_language);
+            }
+        }
+        reopened
+    }
+
     /// Opens a fresh connection for an auxiliary lane that was stopped for a
     /// gap in its audio.
     ///
@@ -5909,6 +5991,7 @@ impl ActiveRemoteCapture {
         }
         let descriptor = stream.descriptor.clone();
         let config = stream.config.clone();
+        let generation = stream.generation.saturating_add(1);
         let target_language = descriptor.target_language.clone()?;
 
         // Where the replacement begins. Frames the journal has taken are the
@@ -5937,6 +6020,7 @@ impl ActiveRemoteCapture {
         } = runtime;
         let forward_task = tokio::spawn(forward_stream_events(
             lane_index,
+            generation,
             event_rx,
             self.tagged_tx.clone(),
         ));
@@ -5954,6 +6038,7 @@ impl ActiveRemoteCapture {
                 forward_task,
                 lane_cancel,
                 input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                generation,
             },
         );
         previous.stream_task.abort();
@@ -6041,6 +6126,7 @@ impl ActiveRemoteCapture {
         self.discontinuity_tx
             .send(TaggedStreamEvent {
                 lane_index,
+                generation: stream.generation,
                 event: SttStreamEvent::InputDiscontinuity,
             })
             .map_err(|_| {
@@ -6052,12 +6138,17 @@ impl ActiveRemoteCapture {
 
 async fn forward_stream_events(
     lane_index: usize,
+    generation: u64,
     mut event_rx: tokio::sync::mpsc::Receiver<SttStreamEvent>,
     tagged_tx: tokio::sync::mpsc::Sender<TaggedStreamEvent>,
 ) {
     while let Some(event) = event_rx.recv().await {
         if tagged_tx
-            .send(TaggedStreamEvent { lane_index, event })
+            .send(TaggedStreamEvent {
+                lane_index,
+                generation,
+                event,
+            })
             .await
             .is_err()
         {
@@ -7997,12 +8088,18 @@ impl ZuTalkCore {
         if !active.profile.remote_realtime_enabled {
             return Ok(false);
         }
-        if active
+        if let Some(remote) = active
             .remote
-            .as_ref()
-            .is_some_and(|remote| !remote.event_task.is_finished())
+            .as_mut()
+            .filter(|remote| !remote.event_task.is_finished())
         {
-            return Ok(false);
+            // The group is transcribing; what can still be missing is a
+            // translation column whose lane stopped.
+            let reopened = remote.reopen_stopped_auxiliary_lanes_now();
+            if !reopened.is_empty() {
+                tracing::info!(languages = ?reopened, "reopened stopped translation lanes on request");
+            }
+            return Ok(!reopened.is_empty());
         }
         // A group whose writer already finished but that no push has noticed
         // yet: tear it down the way a failed push would.
@@ -9219,7 +9316,7 @@ impl ZuTalkCore {
                     task: stream_task,
                 } = stream;
                 let forward_task =
-                    tokio::spawn(forward_stream_events(index, event_rx, tagged_tx.clone()));
+                    tokio::spawn(forward_stream_events(index, 0, event_rx, tagged_tx.clone()));
                 streams.push(ActiveRemoteStream {
                     descriptor,
                     config,
@@ -9229,6 +9326,7 @@ impl ZuTalkCore {
                     forward_task,
                     lane_cancel,
                     input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                    generation: 0,
                 });
             }
         }
@@ -11656,6 +11754,205 @@ mod tests {
         core.stop_notebook_capture_session(session_id).unwrap();
     }
 
+    /// A three-language group whose Thai lane fails once with a provider
+    /// error; every later Thai connection, and every other lane, stays up.
+    #[derive(Default)]
+    struct FailingThaiLaneFactory {
+        thai_starts: AtomicUsize,
+        /// How many Thai connections fail before one stays up.
+        failing_thai_starts: AtomicUsize,
+    }
+
+    impl NotebookSonioxStreamFactory for FailingThaiLaneFactory {
+        fn start(
+            &self,
+            _endpoint: &str,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
+            config: SttConfig,
+            cancel: tokio_util::sync::CancellationToken,
+            _capture_origin_ms: u64,
+        ) -> SonioxStreamRuntime {
+            let is_thai = matches!(
+                &config.translation,
+                Some(TranslationConfig::OneWay { target_language }) if target_language == "th"
+            );
+            let fails = is_thai
+                && self.thai_starts.fetch_add(1, Ordering::SeqCst)
+                    < self.failing_thai_starts.load(Ordering::SeqCst);
+            let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
+            let (control_tx, mut control_rx) = tokio::sync::mpsc::channel(4);
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(16);
+            let task = tokio::spawn(async move {
+                let _ = event_tx.send(SttStreamEvent::Connected).await;
+                if fails {
+                    let _ = event_tx
+                        .send(SttStreamEvent::Error(SttStreamError::Transport {
+                            operation: "Soniox stream response receive".into(),
+                            message: "this lane's connection failed".into(),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+                loop {
+                    tokio::select! {
+                        _ = cancel.cancelled() => return Ok(()),
+                        control = control_rx.recv() => match control {
+                            Some(SttStreamControl::Finish) | None => {
+                                let _ = event_tx.send(SttStreamEvent::Finished).await;
+                                return Ok(());
+                            }
+                            Some(_) => {}
+                        },
+                        audio = audio_rx.recv() => if audio.is_none() {
+                            return Ok(());
+                        },
+                    }
+                }
+            });
+            SonioxStreamRuntime {
+                audio_tx,
+                control_tx,
+                event_rx,
+                task,
+            }
+        }
+
+        fn try_send_pcm(
+            &self,
+            audio_tx: &tokio::sync::mpsc::Sender<Vec<u8>>,
+            audio_data: Vec<u8>,
+        ) -> Result<(), String> {
+            audio_tx
+                .try_send(audio_data)
+                .map_err(|error| error.to_string())
+        }
+    }
+
+    /// A translation lane that ended on a provider error is replaced
+    /// automatically. The replacement used to be ignored: the lane stayed
+    /// marked failed, every event from it was dropped, and the column stayed
+    /// dark — and the group Degraded — for the rest of the recording.
+    #[test]
+    fn a_translation_lane_replaced_after_a_provider_error_comes_back() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let factory = Arc::new(FailingThaiLaneFactory::default());
+        factory.failing_thai_starts.store(1, Ordering::SeqCst);
+        core.notebook_soniox_stream_factory = factory.clone();
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core.create_notebook(Some("Thai lane".into())).unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        profile.mode = FfiNotebookCaptureMode::MultilingualOneWay;
+        profile.selected_languages = vec!["en".into(), "zh".into(), "th".into()];
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let (events_tx, events_rx) = std::sync::mpsc::channel();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(events_tx)),
+            )
+            .unwrap();
+        let session_id = started.session_id.clone();
+
+        let thai_state = |event: &FfiNotebookCaptureEvent| {
+            event
+                .lane_health
+                .iter()
+                .find(|lane| lane.target_language.as_deref() == Some("th"))
+                .map(|lane| lane.state.clone())
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut saw_failed = false;
+        let mut back_live = false;
+        while std::time::Instant::now() < deadline && !back_live {
+            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+            while let Ok(event) = events_rx.try_recv() {
+                match thai_state(&event).as_deref() {
+                    Some("failed") => saw_failed = true,
+                    Some("live") if saw_failed => back_live = true,
+                    _ => {}
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(saw_failed, "the Thai lane's provider error is reported");
+        assert!(
+            factory.thai_starts.load(Ordering::SeqCst) >= 2,
+            "the failed lane is replaced"
+        );
+        assert!(back_live, "the replacement's events reach the group again");
+
+        core.stop_notebook_capture_session(session_id).unwrap();
+    }
+
+    /// Automatic reopening backs off. A person pressing Reconnect in front
+    /// of an empty column must not wait out that back-off — the press used to
+    /// do nothing at all while transcription itself was still running.
+    #[test]
+    fn reconnect_reopens_a_stopped_translation_lane_without_waiting_for_its_cooldown() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let factory = Arc::new(FailingThaiLaneFactory::default());
+        // The first connection and its automatic replacement both fail; the
+        // next automatic attempt is fifteen seconds away.
+        factory.failing_thai_starts.store(2, Ordering::SeqCst);
+        core.notebook_soniox_stream_factory = factory.clone();
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core
+            .create_notebook(Some("Manual reconnect".into()))
+            .unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        profile.mode = FfiNotebookCaptureMode::MultilingualOneWay;
+        profile.selected_languages = vec!["en".into(), "zh".into(), "th".into()];
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        let session_id = started.session_id.clone();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while factory.thai_starts.load(Ordering::SeqCst) < 2 {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the automatic retry never ran"
+            );
+            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        // Let the second failure land, well inside the fifteen-second cooldown.
+        for _ in 0..10 {
+            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(factory.thai_starts.load(Ordering::SeqCst), 2);
+
+        core.restart_notebook_capture_transcription(session_id.clone())
+            .unwrap();
+        assert_eq!(
+            factory.thai_starts.load(Ordering::SeqCst),
+            3,
+            "Reconnect opens the lane now, not when the back-off ends"
+        );
+        core.stop_notebook_capture_session(session_id).unwrap();
+    }
+
     struct RemoteLifetimeGuard(Arc<AtomicUsize>);
 
     impl Drop for RemoteLifetimeGuard {
@@ -11996,6 +12293,7 @@ mod tests {
         });
         let forward_task = core.runtime.spawn(forward_stream_events(
             0,
+            0,
             provider_event_rx,
             tagged_tx.clone(),
         ));
@@ -12024,6 +12322,7 @@ mod tests {
                 forward_task,
                 lane_cancel,
                 input_discontinuity_reported: AtomicBool::new(false),
+                generation: 0,
             }],
             cancel,
             event_task,
@@ -14164,6 +14463,7 @@ mod tests {
                 forward_task: tokio::spawn(async {}),
                 lane_cancel: tokio_util::sync::CancellationToken::new(),
                 input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                generation: 0,
             }
         };
 
@@ -14313,6 +14613,7 @@ mod tests {
                         forward_task: tokio::spawn(async {}),
                         lane_cancel: tokio_util::sync::CancellationToken::new(),
                         input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                        generation: 0,
                     },
                     ActiveRemoteStream {
                         descriptor: RemoteStreamLane {
@@ -14326,6 +14627,7 @@ mod tests {
                         forward_task: tokio::spawn(async {}),
                         lane_cancel: tokio_util::sync::CancellationToken::new(),
                         input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                        generation: 0,
                     },
                 ],
                 cancel: tokio_util::sync::CancellationToken::new(),
@@ -14376,6 +14678,7 @@ mod tests {
                 forward_task: tokio::spawn(async {}),
                 lane_cancel: tokio_util::sync::CancellationToken::new(),
                 input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                generation: 0,
             }
         };
         let (canonical_tx, canonical_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
@@ -14399,6 +14702,7 @@ mod tests {
                     forward_task: tokio::spawn(async {}),
                     lane_cancel: tokio_util::sync::CancellationToken::new(),
                     input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                    generation: 0,
                 },
                 dead_lane(),
             ],
@@ -14534,6 +14838,7 @@ mod tests {
                 forward_task: tokio::spawn(async {}),
                 lane_cancel: tokio_util::sync::CancellationToken::new(),
                 input_discontinuity_reported: std::sync::atomic::AtomicBool::new(false),
+                generation: 0,
             };
             (stream, audio_rx, control_rx)
         };
@@ -14575,6 +14880,7 @@ mod tests {
             event_tx
                 .send(TaggedStreamEvent {
                     lane_index: 0,
+                    generation: 0,
                     event: SttStreamEvent::Connected,
                 })
                 .await
@@ -14583,6 +14889,7 @@ mod tests {
         event_tx
             .send(TaggedStreamEvent {
                 lane_index: 1,
+                generation: 0,
                 event: SttStreamEvent::Connected,
             })
             .await
@@ -14649,6 +14956,7 @@ mod tests {
                 lag_ms: None,
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
+                generation: 0,
             },
             StreamAggregationLane {
                 descriptor: RemoteStreamLane {
@@ -14671,6 +14979,7 @@ mod tests {
                 lag_ms: None,
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
+                generation: 0,
             },
         ];
 
@@ -14763,6 +15072,7 @@ mod tests {
                 lag_ms: None,
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
+                generation: 0,
             }
         };
         let mut thai = lane(false, Some("th"), false, true);
@@ -16908,6 +17218,7 @@ mod tests {
                 lag_ms: None,
                 provider_accepted_configuration: connected,
                 disconnected_at_frame: None,
+                generation: 0,
             }
         };
         let lanes = vec![
@@ -17298,6 +17609,7 @@ mod tests {
                 lag_ms: None,
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
+                generation: 0,
             }
         };
         let mut lanes = vec![make_lane("en", true), make_lane("zh", false)];

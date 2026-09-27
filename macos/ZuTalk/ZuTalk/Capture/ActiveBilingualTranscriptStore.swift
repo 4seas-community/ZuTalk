@@ -97,6 +97,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// reported it — before a held lease masked it as draining.
     private var newestAppliedCaptureState: NotebookCaptureState?
     private var captureActivity: (any NSObjectProtocol)?
+    private var announcedUnexpectedEndSessionId: String?
     @Published private(set) var remoteHealth: NotebookRemoteHealth = .off
     @Published private(set) var realtimeLagMs: UInt64?
     @Published private(set) var projectionState: NotebookProjectionState = .ready
@@ -204,6 +205,14 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// the admitted local-audio backlog has exceeded the watchdog interval.
     @Published private(set) var isAudioDrainDelayed = false
     @Published private(set) var isRestartingTranscription = false
+    /// A pause or resume request in flight. Shown as such instead of the
+    /// "Finishing" that Stop uses, which made a pause look like the end.
+    @Published private(set) var pauseTransition: PauseTransition?
+
+    enum PauseTransition: Equatable {
+        case pausing
+        case resuming
+    }
     @Published private(set) var isAudioInputSwitching = false
     @Published private(set) var activeAudioInputDevice: AudioInputDevice?
 
@@ -1013,6 +1022,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     func setPaused(_ paused: Bool) async throws {
         beginLifecycleOperation()
         defer { endLifecycleOperation() }
+        pauseTransition = paused ? .pausing : .resuming
+        defer { pauseTransition = nil }
         guard let sessionId,
               (paused ? captureState == .recording : captureState == .paused),
               terminalTransitionLease == nil
@@ -1216,12 +1227,58 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
     /// A recording that asked for transcription and is not getting it:
     /// the provider group failed and recording carried on without it.
+    ///
+    /// Degraded alone is not enough: one translation lane reconnecting on its
+    /// own also reads Degraded, and offering Reconnect then offered a button
+    /// that had nothing to do. It is offered when the group is gone, the
+    /// transcription lane failed, or a translation lane is stopped.
     var canRestartTranscription: Bool {
-        sessionId != nil
-            && captureState == .recording
-            && terminalTransitionLease == nil
-            && isRestartingTranscription == false
-            && (remoteHealth == .degraded || remoteHealth == .unavailable)
+        guard sessionId != nil,
+              captureState == .recording,
+              terminalTransitionLease == nil,
+              isRestartingTranscription == false
+        else { return false }
+        switch remoteHealth {
+        case .unavailable:
+            return true
+        case .degraded:
+            let lanes = laneTelemetry
+            if lanes.isEmpty { return true }
+            return lanes.values.contains { $0.state == .failed || $0.inputDiscontinuous }
+        case .off, .connecting, .live:
+            return false
+        }
+    }
+
+    /// Why live transcription is not running normally, in words a person can
+    /// act on. The cause was recorded for every failure and shown nowhere,
+    /// so "Remote degraded" was all anyone ever learned.
+    var transcriptionProblemText: String? {
+        guard captureState.isActive,
+              remoteHealth == .degraded || remoteHealth == .unavailable
+        else { return nil }
+        let key: String.LocalizationValue
+        switch providerErrorType {
+        case "authentication_error":
+            key = "capture.problem.credentials"
+        case "quota_exhausted":
+            key = "capture.problem.quota"
+        case "rate_limited":
+            key = "capture.problem.rate_limited"
+        case "transport", "closed", "timeout", "protocol", "unavailable",
+             "remote_runtime_unavailable", "stream_terminated", "control_unavailable":
+            key = "capture.problem.network"
+        case "service_unavailable", "provider_error":
+            key = "capture.problem.service"
+        case "local_persistence", "event_task_failed", "event_forward_task_failed",
+             "stream_task_failed":
+            key = "capture.problem.local"
+        case "audio_backpressure":
+            key = "capture.problem.overloaded"
+        default:
+            key = "capture.problem.generic"
+        }
+        return String(localized: key)
     }
 
     /// Starts a new provider group at the live edge. Recording is untouched;
@@ -1674,6 +1731,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             lastIdentifiedSourceLanguage: lastIdentifiedSourceLanguage
                 ?? selectedLanguages.first
         )
+        .resolvingWaits(translationProgress, rowEndMs: utterance.sourceEndMs)
     }
 
     /// Which audience column a source line joins; nil keeps it a full-width
@@ -2304,6 +2362,60 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
     }
 
+    /// What the running group has done for each translation language, so a
+    /// row stops saying "Waiting" once nothing more is on its way for it.
+    /// Two-way capture translates inside the canonical lane, so its progress
+    /// stands for every language that has no lane of its own. Empty outside a
+    /// live capture.
+    var translationProgress: NotebookTranslationProgress {
+        guard isCaptureActive else { return .none }
+        let telemetry = laneTelemetry
+        let canonical = telemetry[Self.canonicalLaneHealthKey]
+        let groupIsGone = remoteHealth == .unavailable
+        var progress = NotebookTranslationProgress()
+        for language in selectedLanguages.map(normalizedLanguage) {
+            guard let lane = telemetry[language] ?? canonical else {
+                if groupIsGone { progress.stoppedLanguages.insert(language) }
+                continue
+            }
+            if lane.state == .failed || lane.inputDiscontinuous || groupIsGone {
+                progress.stoppedLanguages.insert(language)
+            } else if let settled = lane.finalAudioProcMs {
+                progress.settledThroughMs[language] = settled
+            }
+        }
+        return progress
+    }
+
+    /// Says which part of the live text is behind, and by how much, once it
+    /// is far enough to notice. Nil while everything keeps up.
+    ///
+    /// The transcription lane carries the captions — and in two-language
+    /// capture the translation too — so its lag reads as captions. A lane of
+    /// its own is one language's translation and is named as such.
+    var liveLagNotice: String? {
+        guard isCaptureActive, captureState == .recording else { return nil }
+        guard let (key, lane) = laneTelemetry
+            .filter({ $0.value.state == .live })
+            .max(by: { ($0.value.lagMs ?? 0) < ($1.value.lagMs ?? 0) }),
+            let lag = lane.lagMs,
+            lag >= Self.noticeableLagMs
+        else { return nil }
+        let seconds = Int64((lag + 500) / 1_000)
+        guard key != Self.canonicalLaneHealthKey else {
+            return String(format: String(localized: "capture.toolbar.captions_lag"), seconds)
+        }
+        let language = Locale.current.localizedString(forLanguageCode: key) ?? key.uppercased()
+        return String(
+            format: String(localized: "capture.toolbar.translation_lag"),
+            language,
+            seconds
+        )
+    }
+
+    /// Below this, lag is the provider's normal pace and not worth a word.
+    static let noticeableLagMs: UInt64 = 5_000
+
     /// Languages whose column is dark for good. The canvas uses this to stay
     /// silent instead of promising a translation that will never arrive.
     var failedTranslationLanguages: Set<String> {
@@ -2914,6 +3026,12 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         if callbackSessionId == sessionId {
             invalidateCaptureCallback()
         }
+        if state == .interrupted,
+           stopRecoveryRequired == false,
+           announcedUnexpectedEndSessionId != sessionId {
+            announcedUnexpectedEndSessionId = sessionId
+            announceUnexpectedEnd()
+        }
         terminalSessionId = sessionId
         let gate = audioPushGate
         audioPushGate = nil
@@ -2928,6 +3046,27 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         stopRecoveryRequired = false
         MenuBarRuntimeStore.shared.returnToIdle()
         return gate
+    }
+
+    /// A recording that ended without being stopped used to end in silence:
+    /// the menu bar went idle, the toolbar went back to Start, and the reason
+    /// was recorded where nothing reads it. The person found out later, from
+    /// the session list — often after the rest of the meeting.
+    private func announceUnexpectedEnd() {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = elapsedRecordingTime >= 3_600
+            ? [.hour, .minute, .second]
+            : [.minute, .second]
+        formatter.unitsStyle = .positional
+        formatter.zeroFormattingBehavior = .pad
+        let savedThrough = formatter.string(from: elapsedRecordingTime) ?? "—"
+        ToastCenter.shared.error(
+            String(localized: "capture.toast.interrupted_title"),
+            detail: String(
+                format: String(localized: "capture.toast.interrupted_detail"),
+                savedThrough
+            )
+        )
     }
 
     private func handleAudioTerminal(_ message: String, sessionId: String) async {

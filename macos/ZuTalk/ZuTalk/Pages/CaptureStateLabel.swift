@@ -11,6 +11,9 @@ struct CaptureStateLabel: View {
     /// cannot carry this: the capture is still live and its transcription is
     /// still healthy, which is exactly why the loss goes unnoticed.
     var haltedTranslationLanguages: [String] = []
+    /// A transition in flight that the capture state alone would misname —
+    /// a pause reads "Finishing" otherwise, like Stop.
+    var transitionText: String?
 
     var body: some View {
         HStack(spacing: Spacing.sm) {
@@ -66,6 +69,7 @@ struct CaptureStateLabel: View {
     }
 
     private var captureStateText: String {
+        if let transitionText { return transitionText }
         switch captureState {
         case .recording: return String(localized: "capture.state.recording")
         case .paused: return String(localized: "capture.state.paused")

@@ -22,6 +22,8 @@ struct NotebookRealtimeUtteranceView: View {
     /// store made a live edit fail the very gate this view had just opened.
     let replaceLane: (String, String, String) async throws -> Void
     @ObservedObject var history: NotebookCaptureHistoryStore
+    /// Only the live run has any; a finished run's lanes are already final.
+    var translationProgress: NotebookTranslationProgress = .none
     @State private var laneEditingState = BilingualLaneEditingState()
     @State private var speakerSelection: NotebookSpeakerSelection?
 
@@ -317,7 +319,8 @@ struct NotebookRealtimeUtteranceView: View {
                             for: utterance,
                             selectedLanguages: displayLanguages,
                             commonCaptionLanguage: nil
-                        ),
+                        )
+                        .resolvingWaits(translationProgress, rowEndMs: utterance.sourceEndMs),
                         speakerDisplayName: speakerDisplayName(for: utterance),
                         onManageSpeaker: { selectSpeaker(for: utterance) },
                         isLaneEditingEnabled: isLaneEditingEnabled,
@@ -1133,6 +1136,13 @@ struct BilingualLaneText: View {
     @State private var isCommitInFlight = false
     @FocusState private var isFocused: Bool
 
+    /// "Waiting for Chinese", not "Waiting for ZH": the code is an identifier,
+    /// and the column it stands for already has a name the reader knows.
+    private var laneLanguageName: String {
+        Locale.current.localizedString(forLanguageCode: target.laneLanguage)
+            ?? target.laneLanguage.uppercased()
+    }
+
     init(
         target: BilingualLaneEditTarget,
         text: String?,
@@ -1207,7 +1217,7 @@ struct BilingualLaneText: View {
                 Label(
                     String(
                         format: String(localized: "capture.transcript.waiting_lane"),
-                        target.laneLanguage.uppercased()
+                        laneLanguageName
                     ),
                     systemImage: "ellipsis"
                 )
@@ -1216,13 +1226,13 @@ struct BilingualLaneText: View {
                 .frame(minHeight: 28, alignment: .leading)
                 .accessibilityLabel(Text(String(
                     format: String(localized: "capture.transcript.waiting_lane"),
-                    target.laneLanguage.uppercased()
+                    laneLanguageName
                 )))
             } else if missingLaneState == .failed {
                 Label(
                     String(
                         format: String(localized: "capture.transcript.failed_lane"),
-                        target.laneLanguage.uppercased()
+                        laneLanguageName
                     ),
                     systemImage: "exclamationmark.triangle.fill"
                 )
@@ -1231,7 +1241,7 @@ struct BilingualLaneText: View {
                 .frame(minHeight: 28, alignment: .leading)
                 .accessibilityLabel(Text(String(
                     format: String(localized: "capture.transcript.failed_lane"),
-                    target.laneLanguage.uppercased()
+                    laneLanguageName
                 )))
             } else {
                 Text("—")
