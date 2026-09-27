@@ -1553,7 +1553,6 @@ const REALTIME_CONTINUITY_WINDOW_MS: u64 = 15_000;
 
 #[derive(Debug, Clone)]
 struct CanonicalUtteranceMatch {
-    group_epoch: u64,
     utterance: RealtimeUtterance,
 }
 
@@ -2619,7 +2618,6 @@ fn persist_stream_lane_updates(
             canonical_matches.insert(
                 (group_epoch, utterance.sequence),
                 CanonicalUtteranceMatch {
-                    group_epoch,
                     utterance: utterance.clone(),
                 },
             );
@@ -2684,7 +2682,6 @@ fn persist_stream_lane_updates(
                 canonical_matches.insert(
                     (binding.key.group_epoch, binding.canonical_sequence),
                     CanonicalUtteranceMatch {
-                        group_epoch: binding.key.group_epoch,
                         utterance: updated.clone(),
                     },
                 );
@@ -2849,7 +2846,6 @@ fn persist_stream_lane_updates(
                 canonical_matches.insert(
                     (group_epoch, sequence),
                     CanonicalUtteranceMatch {
-                        group_epoch,
                         utterance: updated.clone(),
                     },
                 );
@@ -2970,7 +2966,6 @@ fn initialize_waiting_translation_variants(
             canonical_matches.insert(
                 (group_epoch, updated.sequence),
                 CanonicalUtteranceMatch {
-                    group_epoch,
                     utterance: updated.clone(),
                 },
             );
@@ -3013,10 +3008,24 @@ fn forget_canonical_sequence(
     initialized_variants: &mut std::collections::HashSet<(u64, String)>,
 ) {
     canonical_matches.remove(&(group_epoch, sequence));
+    // A binding names its row by sequence alone: a translation segment may
+    // come from a later epoch than the row it belongs to.
     initialized_variants.retain(|(candidate_sequence, _)| *candidate_sequence != sequence);
-    variant_bindings.retain(|(_, epoch, _), bound| !(*epoch == group_epoch && *bound == sequence));
-    reverse_variant_bindings
-        .retain(|(epoch, bound, _), _| !(*epoch == group_epoch && *bound == sequence));
+    variant_bindings.retain(|_, bound| *bound != sequence);
+    reverse_variant_bindings.retain(|(_, bound, _), _| *bound != sequence);
+}
+
+/// The cached canonical row with this sequence, whatever epoch produced it.
+/// Sequences are numbered once per session — a restarted group continues the
+/// numbering — so a sequence names exactly one row.
+fn canonical_row_entry(
+    canonical_matches: &std::collections::HashMap<(u64, u64), CanonicalUtteranceMatch>,
+    sequence: u64,
+) -> Option<((u64, u64), &CanonicalUtteranceMatch)> {
+    canonical_matches
+        .iter()
+        .find(|((_, candidate_sequence), _)| *candidate_sequence == sequence)
+        .map(|(key, candidate)| (*key, candidate))
 }
 
 fn prune_resolved_stream_aggregation_history(
@@ -3043,10 +3052,8 @@ fn prune_resolved_stream_aggregation_history(
         .map(|(_, sequence)| *sequence)
         .collect::<std::collections::HashSet<_>>();
     initialized_variants.retain(|(sequence, _)| !recycled_sequences.contains(sequence));
-    variant_bindings
-        .retain(|(_, group_epoch, _), sequence| !recycled.contains(&(*group_epoch, *sequence)));
-    reverse_variant_bindings
-        .retain(|(group_epoch, sequence, _), _| !recycled.contains(&(*group_epoch, *sequence)));
+    variant_bindings.retain(|_, sequence| !recycled_sequences.contains(sequence));
+    reverse_variant_bindings.retain(|(_, sequence, _), _| !recycled_sequences.contains(sequence));
 
     // Unbound provider facts are already durable in SQLite, so the process
     // cache can be bounded independently. A late item outside this window is
@@ -3096,15 +3103,13 @@ fn flush_pending_translation_variants(
             reverse_variant_bindings,
         );
         if cached_sequence.is_some_and(|sequence| {
-            canonical_matches
-                .get(&(pending.group_epoch, sequence))
-                .is_some_and(|candidate| {
-                    candidate.utterance.has_source_lane()
-                        && !candidate.utterance.source_lane_is_complete()
-                        && normalize_language(&candidate.utterance.source_language)
-                            == pending.target_language
-                        && pending.completion != UtteranceCompletion::Complete
-                })
+            canonical_row_entry(canonical_matches, sequence).is_some_and(|(_, candidate)| {
+                candidate.utterance.has_source_lane()
+                    && !candidate.utterance.source_lane_is_complete()
+                    && normalize_language(&candidate.utterance.source_language)
+                        == pending.target_language
+                    && pending.completion != UtteranceCompletion::Complete
+            })
         }) {
             // A provisional source-language guess cannot durably satisfy an
             // independent aux Final. Keep it unbound until the source lane is
@@ -3184,7 +3189,9 @@ fn flush_pending_translation_variants(
             (binding.canonical_sequence, binding.utterance)
         };
         warn_cross_row_translation_span(&pending, sequence, canonical_matches);
-        let candidate_key = (pending.group_epoch, sequence);
+        let candidate_key = canonical_row_entry(canonical_matches, sequence)
+            .map(|(key, _)| key)
+            .unwrap_or((pending.group_epoch, sequence));
         let reverse_key = (
             pending.group_epoch,
             sequence,
@@ -3202,7 +3209,6 @@ fn flush_pending_translation_variants(
             canonical_matches.insert(
                 candidate_key,
                 CanonicalUtteranceMatch {
-                    group_epoch: pending.group_epoch,
                     utterance: updated.clone(),
                 },
             );
@@ -3224,9 +3230,9 @@ fn resolve_canonical_sequence(
         .copied()
         .filter(|sequence| !pending.rejected_sequences.contains(sequence))
         .filter(|sequence| {
-            canonical_matches
-                .get(&(pending.group_epoch, *sequence))
-                .is_some_and(|candidate| pending_matches_candidate_identity(pending, candidate))
+            canonical_row_entry(canonical_matches, *sequence).is_some_and(|(_, candidate)| {
+                pending_matches_candidate_identity(pending, candidate)
+            })
         });
     if let Some(sequence) = existing_binding {
         return Some(sequence);
@@ -3380,9 +3386,16 @@ fn timeline_alignment_score(
     pending: &PendingTranslationVariant,
     candidate: &CanonicalUtteranceMatch,
 ) -> Option<TimelineAlignmentScore> {
-    if candidate.group_epoch != pending.group_epoch {
-        return None;
-    }
+    // No epoch test. Epochs used to gate candidates because a reconnected
+    // connection's timestamps restarted at zero and could not be compared
+    // with its siblings'. Every token is now projected onto the capture-wide
+    // timeline, and a candidate still needs word evidence plus overlap on that
+    // timeline. What the gate still did was make one reconnect of a
+    // translation lane — a network blip, or a skip to the live edge — the end
+    // of that column: every later segment carried the new epoch, every row
+    // carried the old one, and nothing ever bound again. A synthetic lecture
+    // replayed through the full pipeline kept 3 of 17 English rows after one
+    // such skip at minute 1.5.
     let alignment =
         vt_model::align_source_text(&pending.source_text, &candidate.utterance.source_text);
     let exact_source_text = alignment == vt_model::SourceTextAlignment::Exact;
@@ -3453,9 +3466,7 @@ fn cross_row_translation_spans(
     let mut spanning = candidates
         .filter_map(|candidate| {
             let candidate = candidate.borrow();
-            if candidate.group_epoch != pending.group_epoch
-                || candidate.utterance.sequence == bound_sequence
-            {
+            if candidate.utterance.sequence == bound_sequence {
                 return None;
             }
             timeline_alignment_score(pending, candidate)
@@ -11953,6 +11964,182 @@ mod tests {
         core.stop_notebook_capture_session(session_id).unwrap();
     }
 
+    /// Two Chinese sentences, translated by English and Thai lanes. The Thai
+    /// lane loses its connection between the sentences — a network blip, or
+    /// a skip to the live edge — and comes back on a new epoch.
+    #[derive(Default)]
+    struct ReconnectingThaiLaneFactory;
+
+    impl NotebookSonioxStreamFactory for ReconnectingThaiLaneFactory {
+        fn start(
+            &self,
+            _endpoint: &str,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
+            config: SttConfig,
+            _cancel: tokio_util::sync::CancellationToken,
+            _capture_origin_ms: u64,
+        ) -> SonioxStreamRuntime {
+            let target = match &config.translation {
+                Some(TranslationConfig::OneWay { target_language }) => {
+                    Some(target_language.clone())
+                }
+                _ => None,
+            };
+            let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
+            let (control_tx, mut control_rx) = tokio::sync::mpsc::channel(4);
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(64);
+            let task = tokio::spawn(async move {
+                let _ = event_tx.send(SttStreamEvent::Connected).await;
+                let sentences = [
+                    ("第一句话。", 0_u64, 900_u64, "First sentence.", "ประโยคแรก"),
+                    ("第二句话。", 2_000, 2_900, "Second sentence.", "ประโยคที่สอง"),
+                ];
+                let mut blocks = 0_u64;
+                for (index, (source, start, end, english, thai)) in sentences.iter().enumerate() {
+                    let due = end / 100 + 2;
+                    while blocks < due {
+                        match audio_rx.recv().await {
+                            Some(_) => blocks += 1,
+                            None => return Ok(()),
+                        }
+                    }
+                    let mut tokens = vec![token(
+                        source,
+                        match target.as_deref() {
+                            Some("en") | Some("th") => SttStreamTranslationStatus::Original,
+                            _ => SttStreamTranslationStatus::None,
+                        },
+                        "zh",
+                        Some(*start),
+                        Some(*end),
+                        true,
+                    )];
+                    match target.as_deref() {
+                        Some("en") => tokens.push(attributed_token(
+                            english,
+                            SttStreamTranslationStatus::Translation,
+                            Some("en"),
+                            Some("zh"),
+                            None,
+                            true,
+                        )),
+                        Some("th") => tokens.push(attributed_token(
+                            thai,
+                            SttStreamTranslationStatus::Translation,
+                            Some("th"),
+                            Some("zh"),
+                            None,
+                            true,
+                        )),
+                        _ => {}
+                    }
+                    let _ = event_tx.send(SttStreamEvent::Tokens(tokens)).await;
+                    let _ = event_tx.send(SttStreamEvent::Endpoint).await;
+                    if index == 0 && target.as_deref() == Some("th") {
+                        let _ = event_tx
+                            .send(SttStreamEvent::Reconnecting {
+                                attempt: 1,
+                                delay_ms: 0,
+                            })
+                            .await;
+                        let _ = event_tx
+                            .send(SttStreamEvent::RecoveryStarted { outage_ms: 20_000 })
+                            .await;
+                        let _ = event_tx.send(SttStreamEvent::Connected).await;
+                    }
+                }
+                loop {
+                    tokio::select! {
+                        control = control_rx.recv() => match control {
+                            Some(SttStreamControl::Finish) | None => {
+                                let _ = event_tx.send(SttStreamEvent::Finished).await;
+                                return Ok(());
+                            }
+                            Some(_) => {}
+                        },
+                        audio = audio_rx.recv() => if audio.is_none() {
+                            return Ok(());
+                        },
+                    }
+                }
+            });
+            SonioxStreamRuntime {
+                audio_tx,
+                control_tx,
+                event_rx,
+                task,
+            }
+        }
+
+        fn try_send_pcm(
+            &self,
+            audio_tx: &tokio::sync::mpsc::Sender<Vec<u8>>,
+            audio_data: Vec<u8>,
+        ) -> Result<(), String> {
+            audio_tx
+                .try_send(audio_data)
+                .map_err(|error| error.to_string())
+        }
+    }
+
+    /// Replayed through the full pipeline, one skip to the live edge on the
+    /// English lane at minute 1.5 left 3 of 17 English rows translated: every
+    /// later segment carried the lane's new epoch and nothing would bind it to
+    /// rows of the old one.
+    #[test]
+    fn a_translation_lane_keeps_filling_its_column_after_it_reconnects() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        core.notebook_soniox_stream_factory = Arc::new(ReconnectingThaiLaneFactory);
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core.create_notebook(Some("Lane reconnect".into())).unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        profile.mode = FfiNotebookCaptureMode::MultilingualOneWay;
+        profile.selected_languages = vec!["en".into(), "zh".into(), "th".into()];
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        let session_id = started.session_id.clone();
+        let lane_text = |sequence: u64, language: &str| {
+            core.notebook_capture_store
+                .list_utterances(&session_id)
+                .unwrap()
+                .into_iter()
+                .find(|row| row.sequence == sequence)
+                .and_then(|row| {
+                    row.variants
+                        .into_iter()
+                        .find(|variant| variant.language == language)
+                        .filter(|variant| variant.state == UtteranceVariantState::Ready)
+                        .and_then(|variant| variant.text)
+                })
+        };
+        for _ in 0..40 {
+            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+        }
+        wait_for("both sentences translated into English", || {
+            lane_text(1, "en").is_some()
+        });
+        wait_for(
+            "the Thai lane's second sentence after its reconnect",
+            || lane_text(1, "th").is_some(),
+        );
+        assert_eq!(lane_text(0, "th").as_deref(), Some("ประโยคแรก"));
+        assert_eq!(lane_text(1, "th").as_deref(), Some("ประโยคที่สอง"));
+        core.stop_notebook_capture_session(session_id).unwrap();
+    }
+
     struct RemoteLifetimeGuard(Arc<AtomicUsize>);
 
     impl Drop for RemoteLifetimeGuard {
@@ -16795,10 +16982,7 @@ mod tests {
             utterance.source_language = "zh".into();
             utterance.source_start_ms = start_ms;
             utterance.source_end_ms = end_ms;
-            CanonicalUtteranceMatch {
-                group_epoch: 0,
-                utterance,
-            }
+            CanonicalUtteranceMatch { utterance }
         };
         let mut pending = PendingTranslationVariant {
             session_id: "refused-session".into(),
@@ -16887,10 +17071,7 @@ mod tests {
             utterance.source_text = text.into();
             utterance.source_start_ms = Some(start_ms);
             utterance.source_end_ms = Some(end_ms);
-            CanonicalUtteranceMatch {
-                group_epoch: 0,
-                utterance,
-            }
+            CanonicalUtteranceMatch { utterance }
         };
         // Canonical rows two seconds apart, as conversation runs.
         let spoken = row(41, "好讨厌", 10_000, 11_000);
@@ -16937,16 +17118,13 @@ mod tests {
 
     #[test]
     fn cross_stream_pairing_needs_words_and_uses_time_only_to_rank_and_veto() {
-        let candidate = |sequence, group_epoch, start_ms, end_ms| {
+        let candidate = |sequence, start_ms, end_ms| {
             let mut utterance = projected_utterance();
             utterance.sequence = sequence;
             utterance.source_language = "th".into();
             utterance.source_start_ms = start_ms;
             utterance.source_end_ms = end_ms;
-            CanonicalUtteranceMatch {
-                group_epoch,
-                utterance,
-            }
+            CanonicalUtteranceMatch { utterance }
         };
         let pending = PendingTranslationVariant {
             session_id: "matching-session".into(),
@@ -16962,19 +17140,21 @@ mod tests {
             rejected_sequences: Vec::new(),
         };
         let candidates = [
-            candidate(0, 0, Some(0), Some(100)),
-            candidate(1, 0, Some(110), Some(230)),
-            candidate(2, 1, Some(110), Some(230)),
+            candidate(0, Some(0), Some(100)),
+            candidate(1, Some(110), Some(230)),
+            // A row from a later connection: epochs are no longer part of
+            // the evidence, time on the shared capture timeline is.
+            candidate(2, Some(400), Some(500)),
         ];
         assert_eq!(
             match_canonical_sequence(&pending, candidates.iter()),
             Some(1),
-            "group epoch, source language, and a unique overlap identify the canonical row"
+            "source language and a unique overlap identify the canonical row"
         );
 
         let ambiguous = [
-            candidate(1, 0, Some(110), Some(230)),
-            candidate(2, 0, Some(150), Some(260)),
+            candidate(1, Some(110), Some(230)),
+            candidate(2, Some(150), Some(260)),
         ];
         assert_eq!(
             match_canonical_sequence(&pending, ambiguous.iter()),
@@ -16982,24 +17162,24 @@ mod tests {
             "the strongest temporal overlap must win deterministically"
         );
         let equal_evidence = [
-            candidate(98, 0, Some(110), Some(230)),
-            candidate(100, 0, Some(110), Some(230)),
+            candidate(98, Some(110), Some(230)),
+            candidate(100, Some(110), Some(230)),
         ];
         assert_eq!(
             match_canonical_sequence(&pending, equal_evidence.iter()),
             None,
             "canonical sequence is not evidence; equal best rows stay durably unbound"
         );
-        let mut different_text = candidate(1, 0, Some(110), Some(230));
+        let mut different_text = candidate(1, Some(110), Some(230));
         different_text.utterance.source_text = "คนละประโยค".into();
-        let text_disambiguated = [different_text, candidate(2, 0, Some(150), Some(260))];
+        let text_disambiguated = [different_text, candidate(2, Some(150), Some(260))];
         assert_eq!(
             match_canonical_sequence(&pending, text_disambiguated.iter()),
             Some(2),
             "source text may disambiguate otherwise overlapping time windows"
         );
 
-        let mut contradictory = candidate(99, 0, Some(300), Some(400));
+        let mut contradictory = candidate(99, Some(300), Some(400));
         contradictory.utterance.source_text = "คนละประโยค".into();
         assert_eq!(
             match_canonical_sequence(&pending, std::iter::once(&contradictory)),
@@ -17009,7 +17189,7 @@ mod tests {
 
         // A repeated phrase much later in the capture must not bind back to an
         // earlier row just because its normalized text is identical.
-        let disjoint_same_text = [candidate(7, 0, Some(4_300), Some(4_400))];
+        let disjoint_same_text = [candidate(7, Some(4_300), Some(4_400))];
         assert_eq!(
             match_canonical_sequence(&pending, disjoint_same_text.iter()),
             None,
@@ -17021,7 +17201,7 @@ mod tests {
         repeated_filler.source_text = "okay".into();
         repeated_filler.source_start_ms = Some(4_300);
         repeated_filler.source_end_ms = Some(4_400);
-        let mut stale_filler = candidate(7, 0, Some(4_100), Some(4_200));
+        let mut stale_filler = candidate(7, Some(4_100), Some(4_200));
         stale_filler.utterance.source_text = "okay".into();
         assert_eq!(
             match_canonical_sequence(&repeated_filler, std::iter::once(&stale_filler)),
@@ -17039,7 +17219,7 @@ mod tests {
         // it does not translate, which is what a drifting clock talks the
         // matcher into doing — and a mis-binding cannot be taken back, while
         // staying unbound can still be resolved by a later revision.
-        let mut current_window = candidate(8, 0, Some(4_250), Some(4_450));
+        let mut current_window = candidate(8, Some(4_250), Some(4_450));
         current_window.utterance.source_text = "different partial words".into();
         assert_eq!(
             match_canonical_sequence(
@@ -17052,7 +17232,7 @@ mod tests {
 
         // With the words there, time does its job: it ranks the overlapping
         // row above the disjoint one carrying the same text.
-        let mut current_with_words = candidate(8, 0, Some(4_250), Some(4_450));
+        let mut current_with_words = candidate(8, Some(4_250), Some(4_450));
         current_with_words.utterance.source_text = "okay".into();
         assert_eq!(
             match_canonical_sequence(&repeated_filler, [stale_filler, current_with_words].iter()),
@@ -17064,16 +17244,16 @@ mod tests {
         missing_time.source_start_ms = None;
         missing_time.source_end_ms = None;
         missing_time.source_text = "okay".into();
-        let mut first_missing = candidate(98, 0, None, None);
+        let mut first_missing = candidate(98, None, None);
         first_missing.utterance.source_text = "okay".into();
-        let mut second_missing = candidate(100, 0, None, None);
+        let mut second_missing = candidate(100, None, None);
         second_missing.utterance.source_text = "okay".into();
         assert_eq!(
             match_canonical_sequence(&missing_time, [first_missing, second_missing].iter()),
             None,
             "cross-stream sequence distance cannot disambiguate repeated text without time"
         );
-        let mut sequence_only = candidate(99, 0, None, None);
+        let mut sequence_only = candidate(99, None, None);
         sequence_only.utterance.source_text = "different words".into();
         assert_eq!(
             match_canonical_sequence(&missing_time, std::iter::once(&sequence_only)),
@@ -17081,7 +17261,7 @@ mod tests {
             "an equal cross-stream sequence number is not alignment evidence"
         );
 
-        let mut language_drift = candidate(4, 0, Some(110), Some(230));
+        let mut language_drift = candidate(4, Some(110), Some(230));
         language_drift.utterance.source_language = "und".into();
         assert_eq!(
             match_canonical_sequence(&pending, std::iter::once(&language_drift)),
@@ -17091,17 +17271,14 @@ mod tests {
     }
 
     #[test]
-    fn cross_row_spans_flag_only_material_overlap_within_the_bound_epoch() {
-        let candidate = |sequence, group_epoch, start_ms, end_ms| {
+    fn cross_row_spans_flag_only_material_overlap() {
+        let candidate = |sequence, start_ms, end_ms| {
             let mut utterance = projected_utterance();
             utterance.sequence = sequence;
             utterance.source_language = "zh".into();
             utterance.source_start_ms = start_ms;
             utterance.source_end_ms = end_ms;
-            CanonicalUtteranceMatch {
-                group_epoch,
-                utterance,
-            }
+            CanonicalUtteranceMatch { utterance }
         };
         // The observed field failure: one auxiliary segment swallowing the
         // first canonical row plus most of the second.
@@ -17119,15 +17296,13 @@ mod tests {
             rejected_sequences: Vec::new(),
         };
         let rows = [
-            candidate(0, 0, Some(600), Some(5_160)),
-            candidate(1, 0, Some(6_180), Some(56_640)),
-            candidate(2, 1, Some(6_180), Some(56_640)),
+            candidate(0, Some(600), Some(5_160)),
+            candidate(1, Some(6_180), Some(56_640)),
         ];
         assert_eq!(
             cross_row_translation_spans(&pending, 0, rows.iter()),
             vec![1],
-            "a segment covering most of a second row is a divergence signal; \
-             another epoch's identical window is not comparable evidence"
+            "a segment covering most of a second row is a divergence signal"
         );
 
         // Aligned endpointing: the segment matches its own row and only grazes
@@ -17152,13 +17327,7 @@ mod tests {
             utterance.source_language = "zh".into();
             utterance.source_start_ms = Some(start_ms);
             utterance.source_end_ms = Some(end_ms);
-            (
-                (0, sequence),
-                CanonicalUtteranceMatch {
-                    group_epoch: 0,
-                    utterance,
-                },
-            )
+            ((0, sequence), CanonicalUtteranceMatch { utterance })
         };
         let canonical_matches = std::collections::HashMap::from([row(0, 0, 10_000)]);
         let pending_key = (3, 0, 1);
@@ -17335,10 +17504,7 @@ mod tests {
             utterance.source_language = "th".into();
             utterance.source_start_ms = None;
             utterance.source_end_ms = None;
-            CanonicalUtteranceMatch {
-                group_epoch: 4,
-                utterance,
-            }
+            CanonicalUtteranceMatch { utterance }
         };
         let pending = PendingTranslationVariant {
             session_id: "matching-session".into(),
@@ -17397,13 +17563,8 @@ mod tests {
         utterance.source_text = "สวัสดี".into();
         utterance.source_start_ms = Some(90);
         utterance.source_end_ms = Some(310);
-        let mut candidates = std::collections::HashMap::from([(
-            (0, 4),
-            CanonicalUtteranceMatch {
-                group_epoch: 0,
-                utterance,
-            },
-        )]);
+        let mut candidates =
+            std::collections::HashMap::from([((0, 4), CanonicalUtteranceMatch { utterance })]);
         let mut bindings = std::collections::HashMap::from([(pending_key, 4)]);
         let mut reverse =
             std::collections::HashMap::from([((0, 4, "zh".to_string()), pending_key)]);
@@ -17474,10 +17635,7 @@ mod tests {
                     edit_revision: 0,
                 },
             ];
-            CanonicalUtteranceMatch {
-                group_epoch: 0,
-                utterance,
-            }
+            CanonicalUtteranceMatch { utterance }
         };
 
         let resolved_count = STREAM_AGGREGATION_RECENT_UTTERANCE_WINDOW + 12;

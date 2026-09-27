@@ -4228,12 +4228,14 @@ impl NotebookCaptureStore {
         key: &RealtimeTranslationInboxKey,
     ) -> Result<Option<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
         validate_translation_inbox_key(key)?;
-        if key.group_epoch != 0 {
-            // Multi-stream reconnect is fail-closed today. Until canonical
-            // epochs are themselves durable, never guess across a recovered
-            // discontinuity; keep the inbox fact for a future explicit repair.
-            return Ok(None);
-        }
+        // Facts from any epoch are placed. This used to stop at epoch zero,
+        // on the reasoning that a reconnect failed the whole stream group
+        // closed; lanes have long reconnected one at a time instead, and every
+        // segment is timed on the capture-wide timeline. The refusal outlived
+        // its reason and turned each translation lane's first reconnect into
+        // the end of its column. A row whose lane already holds segments of
+        // another epoch still refuses them (see the bind), so one lane is
+        // never composed from two provider orderings.
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_active_realtime_session(&tx, &key.session_id)?;
@@ -4283,7 +4285,7 @@ impl NotebookCaptureStore {
         }
     }
 
-    /// Reconciles every currently unbound epoch-zero auxiliary fact while the
+    /// Reconciles every currently unbound auxiliary fact while the
     /// capture is active. This is the authoritative fallback after bounded
     /// process caches evict an old pending item before its canonical row
     /// arrives.
@@ -5594,9 +5596,10 @@ fn reconcile_translation_inbox_from_conn(
     let items = list_translation_inbox_from_conn(conn, session_id)?;
     let candidates = list_machine_utterances_from_conn(conn, session_id)?;
     let mut bindings = Vec::new();
-    for item in items.into_iter().filter(|item| {
-        !item.withdrawn && item.bound_sequence.is_none() && item.key.group_epoch == 0
-    }) {
+    for item in items
+        .into_iter()
+        .filter(|item| !item.withdrawn && item.bound_sequence.is_none())
+    {
         let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter()) else {
             continue;
         };

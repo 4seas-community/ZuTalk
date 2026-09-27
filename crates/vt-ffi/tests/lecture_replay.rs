@@ -1337,6 +1337,43 @@ fn replay_lecture_realtime_accelerated() {
             .collect::<HashSet<_>>()
     ));
 
+    // Per-language translation coverage: of the rows whose source is another
+    // language, how many ended with this language's translation. This is the
+    // number three-language capture is judged by; a row left on "waiting" or
+    // "unavailable" is a hole in that column.
+    for language in &languages {
+        let needing = utterances
+            .iter()
+            .filter(|utterance| {
+                !utterance.source_text.trim().is_empty()
+                    && utterance.source_language != "und"
+                    && utterance.source_language.to_lowercase() != *language
+            })
+            .collect::<Vec<_>>();
+        let ready = needing
+            .iter()
+            .filter(|utterance| {
+                utterance.language_variants.iter().any(|variant| {
+                    variant.language.to_lowercase() == *language
+                        && variant.state == "ready"
+                        && variant
+                            .text
+                            .as_deref()
+                            .is_some_and(|text| !text.trim().is_empty())
+                })
+            })
+            .count();
+        line(format!(
+            "translation coverage {language}: {ready}/{} rows ({:.0}%)",
+            needing.len(),
+            if needing.is_empty() {
+                100.0
+            } else {
+                ready as f64 * 100.0 / needing.len() as f64
+            }
+        ));
+    }
+
     // The summary above cannot answer "does projection get worse the longer
     // you record" when a session produces few lines. Dump every sample so the
     // question is answerable from any run, not just a long-transcript one.
