@@ -114,14 +114,6 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
         // 用户可在 Settings → General → Appearance 切换 system/light/dark。
         ThemeManager().apply()
 
-        // 补登记中继身份。
-        //
-        // 中继只放行登记过的 endpoint。在旧版本里兑换过邀请码的 Mac 从没登记过，
-        // 靠这一步补上；已经登记过的直接命中本地标记，不打扰服务器。
-        Task { @MainActor in
-            await CommunityInviteSession.shared.enrollCurrentShareEndpoint()
-        }
-
         // The core starts with assistance off. Telling it what the listener
         // actually chose has to happen every launch, or the feature would
         // silently stop working after a restart.
@@ -274,6 +266,8 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
     /// 编辑器并 shutdown Rust，避免关进程时丢掉已接收的音频。
     func applicationWillTerminate(_ notification: Notification) {
         guard let core = CoreClient.shared.core else { return }
+        // 不留稿的直播要当场从服务器上删掉,不能等 24 小时过期。
+        ShareActivityStore.stopLiveBeforeQuit(core: core)
         do {
             try core.flushAllEditorsSync()
             DebugLog.info("applicationWillTerminate: editor snapshots flushed")
@@ -308,7 +302,6 @@ enum MainTab: String, CaseIterable {
     case topics
     case knowledge
     case trash
-    case share
     case editor
     case config
 
@@ -318,7 +311,6 @@ enum MainTab: String, CaseIterable {
         case .topics:     return "TOPICS"
         case .knowledge:  return "KNOWLEDGE"
         case .trash:      return "TRASH"
-        case .share:      return "SHARE"
         case .editor:     return "EDITOR"
         case .config:     return "CONFIG"
         }

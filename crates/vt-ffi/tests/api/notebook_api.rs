@@ -15,17 +15,13 @@ fn a_fresh_core_keeps_system_notebooks_out_of_the_topic_catalogue() {
     let core = ZuTalkCore::new_for_test(data_dir.clone()).unwrap();
     assert!(core.list_notebooks().unwrap().is_empty());
     let quick = core.get_quick_capture_notebook().unwrap();
-    let shared = core.shared_inbox_notebook().unwrap();
     assert_eq!(quick.title, "默认");
-    assert_eq!(shared.title, "分享");
-    assert_ne!(quick.id, shared.id);
 
     // 重开核心不重复建。
     drop(core);
     let core = ZuTalkCore::new_for_test(data_dir).unwrap();
     assert!(core.list_notebooks().unwrap().is_empty());
     assert_eq!(core.get_quick_capture_notebook().unwrap().id, quick.id);
-    assert_eq!(core.shared_inbox_notebook().unwrap().id, shared.id);
 }
 
 #[test]

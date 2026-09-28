@@ -26,6 +26,7 @@ final class WindowCoordinator {
     private var registeredWindows: [WindowSurfaceID: WeakWindowBox] = [:]
     private var mainSurfaceController: MainWindowController?
     private var subtitleOverlayController: SubtitleOverlayController?
+    private var shareCodeController: ShareCodeWindowController?
     private let subtitleDisplaySleepActivity = SubtitleDisplaySleepActivity()
     private var diagnosticAttachments: [WindowSurfaceID: DiagnosticAttachment] = [:]
 
@@ -157,6 +158,21 @@ final class WindowCoordinator {
         return panel
     }
 
+    /// 放大的共享二维码。同一时间只有一扇:再点一次换成新的链接。
+    func presentShareCode(url: String, title: String) {
+        if let shareCodeController {
+            shareCodeController.show(url: url, title: title)
+            _ = presentRegisteredWindow(.shareCode)
+            return
+        }
+        let controller = ShareCodeWindowController()
+        controller.show(url: url, title: title)
+        shareCodeController = controller
+        registerWindow(controller.managedWindow, id: .shareCode)
+        controller.managedWindow.center()
+        _ = presentRegisteredWindow(.shareCode)
+    }
+
     /// Keeps the display awake only while the subtitle window has something
     /// live to show. It used to stay awake — and on top — over an ended
     /// recording's "recording ended" screen until someone closed it.
@@ -212,6 +228,8 @@ final class WindowCoordinator {
         case .subtitleOverlay:
             subtitleDisplaySleepActivity.setActive(false)
             subtitleOverlayController = nil
+        case .shareCode:
+            shareCodeController = nil
         }
         unregisterWindow(id)
     }
@@ -316,9 +334,11 @@ final class WindowCoordinator {
         SubtitleOverlayCoordinator.shared.resetForTesting()
         mainSurfaceController?.window?.orderOut(nil)
         subtitleOverlayController?.window?.orderOut(nil)
+        shareCodeController?.window?.orderOut(nil)
         dismissSubtitleOverlay()
         mainSurfaceController = nil
         subtitleOverlayController = nil
+        shareCodeController = nil
         catalog.removeAll()
         detachAllDiagnostics()
         registeredWindows.removeAll()

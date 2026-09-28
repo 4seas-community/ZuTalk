@@ -47,15 +47,6 @@
 "community_invite.resources.remaining" = "剩余时间";
 "community_invite.remaining_detail_format" = "%1$lld 小时 %2$lld 分钟";
 "community_invite.refresh" = "刷新剩余时间";
-"community_invite.relay.title" = "中继放行";
-"community_invite.relay.enrolled" = "已放行";
-"community_invite.relay.working" = "检查中…";
-"community_invite.relay.failed" = "被拒绝";
-"community_invite.relay.no_invitation" = "无邀请码";
-"community_invite.relay.unknown" = "尚未检查";
-"community_invite.relay.retry" = "重新登记这台 Mac";
-"community_invite.relay.detail_enrolled" = "这台 Mac 可以走中继，分享能连到其他网络上的人。";
-"community_invite.relay.detail_blocked" = "中继只放行登记过邀请码的 Mac。在登记成功之前，同一个网络内分享照常，跨网络永远连不上——而且屏幕上不会有任何提示。";
 "community_invite.replace" = "更换邀请码";
 "community_invite.inactive" = "未启用社区邀请";
 "community_invite.use_toggle" = "用社区邀请进行转录";
@@ -912,74 +903,21 @@
 "knowledge.import_json.failed" = "无法导入知识库";
 
 /* 分享:点对点字幕与文档协同 */
-"share.audio_never" = "他们听不到声音——音频不会离开这台 Mac。";
+"share.audio_never" = "音频从不离开这台 Mac，别人只看得到文字。";
 
 /* 设置:分享(点对点)传输 */
-"settings.section.p2p_name" = "共享";
-"settings.p2p.title" = "共享";
-"settings.p2p.subtitle" = "这台 Mac 用什么方式找到与你共享的人。";
-"settings.p2p.identity" = "这台 Mac 的身份";
-"settings.p2p.copy_identity" = "复制";
-"settings.p2p.identity_note" = "别人靠它认出这台 Mac——名字谁都能随便起，这个仿冒不了。";
-"settings.p2p.relay" = "中继服务器";
-"settings.p2p.relay_note" = "一行一个地址。留空表示只走直连——在同一个 Wi-Fi 下这样就够，完全断网也能用。";
-"settings.p2p.relay_privacy" = "中继只负责转发。流量端到端加密，它读不到经过的内容。";
-"settings.p2p.local_discovery" = "找同一网络里的共享";
-"settings.p2p.local_discovery_note" = "列出同一网络里主持人选择公开的共享；你选择公开时，别人也能找到你的。除此之外，网络上看不到这台 Mac 的任何信息。macOS 首次会询问本地网络权限，拒绝后加入码仍然可用。";
-"settings.p2p.save" = "保存";
-"settings.p2p.restore_default" = "恢复默认";
-"settings.p2p.saved" = "已保存";
 
 /* 分享:状态与提示 */
-"share.core_unavailable" = "分享还在启动，请稍后再试。";
-"share.join_failed" = "用这个加入码进不去。请对方再发一次——从消息里复制容易丢字符；共享结束后码也会失效。";
-"share.status.host_left" = "主持人结束了这次共享";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
-"share.link.direct" = "直连";
-"share.link.relayed" = "经中继";
-"share.link.direct_hint" = "直接连上了对方，中间不经过任何服务器。";
-"share.link.relayed_hint" = "没能直接连上，改由中继服务器转发——仍是端到端加密。有些 Wi-Fi 会把设备彼此隔开，这很常见。";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
-"shared.editor.title" = "收到的转录稿";
-"shared.editor.read_only" = "只读";
-"shared.editor.add_annotation" = "加批注";
-"shared.editor.done" = "完成";
-"shared.editor.empty_title" = "这里还是空的";
-"shared.editor.empty_body" = "主持人的转录稿同步进来后会显示在这里。";
 
 /* 设置:中继准入 */
-"settings.p2p.relay_ready" = "中继可用";
-"settings.p2p.relay_ready_hint" = "这台 Mac 已登记，两台机器直连不通时中继会接手。";
-"settings.p2p.relay_not_registered" = "中继不可用";
-"settings.p2p.relay_not_registered_hint" = "登记没成功。同一网络下共享照常可用，缺的只是跨网络时的兜底。";
-"settings.p2p.relay_needs_invite" = "中继需要邀请码";
-"settings.p2p.relay_needs_invite_hint" = "中继只对受邀的 Mac 开放。没有邀请码时，同一网络下仍可共享，但跨网络没有兜底。";
-"settings.p2p.relay_registering" = "正在登记…";
-"settings.p2p.relay_unknown" = "尚未检查";
-"settings.p2p.relay_unknown_hint" = "启动时和开始共享时都会检查登记。";
-"settings.p2p.relay_retry" = "重试";
 
 /* 分享:同一网络里的人 */
-"share.nearby.not_sharing" = "那一场已经结束，或者不再对附近的人开放。";
-"share.nearby.declined" = "对方拒绝了。";
-"share.nearby.timed_out" = "没有回应，对方可能离开了。";
 
 /* 分享:昵称与成员 */
-
-"share.sidebar.live_label" = "正在看直播";
-"shared_inbox.lane_canonical" = "原文";
-"shared_inbox.lane_connecting" = "这一栏还在连接";
-"shared_inbox.lane_failed" = "这一栏已中断，不会再有新内容";
-
-"share.web.title" = "网页链接";
-"share.web.start" = "给没装 ZuTalk 的人开网页链接…";
-"share.web.hint" = "扫码或打开链接的人都能在浏览器里跟着看，语言可以自己选。";
-"share.web.confirm.title" = "开一个网页链接？";
-"share.web.copy" = "复制链接";
-"share.web.stop" = "关闭链接";
-"share.web.qr_label" = "实时字幕网页的二维码";
 
 /* Topic workspace and session catalog */
 "common.done" = "完成";
@@ -1180,134 +1118,68 @@
 "session.marks.delete.confirm_title" = "删除这个标记和它的笔记？";
 "session.marks.delete.confirm_message" = "你写在这里的内容无法找回；录音本身不受影响。";
 
-"sidebar.received" = "收到的";
-"received.join.title" = "用加入码加入";
-"received.join.placeholder" = "粘贴加入码";
-"received.join.button" = "加入";
-"received.join.joining" = "正在加入…";
-"received.join.note" = "向共享的人要加入码。拿到码的人都能进来，所以只在人与人之间传。";
-"received.nearby.title" = "附近的共享";
-"received.nearby.empty" = "这个网络里现在没有对附近开放的共享。";
-"received.nearby.note" = "只有主持人选择让附近的人找到的共享才会出现，显示的是他们同意公开的名字和标题。每个请求都要主持人同意。";
-"received.nearby.ask" = "请求加入";
-"received.nearby.asking" = "等主持人回应…";
-"received.nearby.abandon" = "不等了";
-"received.open" = "打开转录稿";
-"received.read_only_hint" = "共享期间主持人设为只读。";
-"received.transcripts.title" = "留在这台 Mac 上的转录稿";
-"received.transcripts.empty" = "还没有。别人共享录音给你、或直播时允许观看的人保存转录稿，就会留在这里。";
-"received.from_format" = "来自 %@";
-"received.blocks_format" = "%lld 句";
-"received.delete" = "从这台 Mac 删除";
-"received.delete.confirm_title" = "删除这份转录稿？";
-"received.delete.confirm_body" = "只删除这台 Mac 上的副本，共享给你的人手里的不受影响。";
-"received.watch.waiting" = "还没有人说话。";
-"received.watch.show_subtitles" = "打开字幕窗";
-"received.watch.hide_subtitles" = "关闭字幕窗";
-"received.watch.nothing_kept_note" = "可以边看边听。这台 Mac 不会留下任何内容——离开就没了。";
-"received.watch.ended_nothing_kept_note" = "主持人没有允许观看的人保存转录稿，所以这里什么也没留下。";
-"received.watch.kept_live_note" = "主持人允许保存转录稿：它会留在下面，直播结束后也在。";
-"received.watch.kept_read_only_note" = "转录稿副本会留在这台 Mac 上。共享期间只能看，不能改。";
-"received.watch.kept_editable_note" = "转录稿副本会留在这台 Mac 上。你的订正会同步到这次共享里每个人的副本。";
-"received.watch.removed_note" = "主持人把你移出了这次共享。同一个加入码不能再进来。";
-"share.live.title" = "直播这场录音";
-"share.live.intro" = "你让进来的人会实时看到字幕和译文。";
-"share.live.start" = "开始直播";
-"share.live.stop" = "停止直播";
+"share.live.title" = "共享实时字幕";
+"share.live.intro" = "现场的人扫码或打开链接，就能在手机或电脑的浏览器里看实时字幕和翻译——不用装 App，也不用登录。";
+"share.live.start" = "开始共享";
+"share.live.stop" = "停止共享";
 "share.live.on" = "直播中";
-"share.live.on_count_format" = "直播中 · %lld 人";
-"share.live.bar" = "直播";
-"share.live.bar_hint" = "让别人实时看这场录音的字幕";
-"share.live.bar_on_hint" = "谁在看、加入码、停止直播";
-"share.live.ended_with_recording" = "录音结束，直播也随之结束。";
-"share.live.keep_failed" = "没能允许观看的人保存转录稿";
-"share.keep.toggle" = "允许观看的人保存转录稿";
-"share.keep.off_detail" = "关着：他们只能边看边听，离开后他们的 Mac 上什么也不留。";
-"share.keep.on_detail" = "开着：他们的 ZuTalk 会留一份转录稿。停止直播也收不回。";
-"share.keep.on_locked_detail" = "已允许。已经给出的副本收不回，所以这一场会一直开着。";
+"share.live.on_count_format" = "直播中 · %lld 人在看";
+"share.live.bar" = "共享字幕";
+"share.live.bar_hint" = "让现场的人扫码，在手机上看实时字幕和翻译";
+"share.live.bar_on_hint" = "二维码、观看人数、锁定与停止";
+"share.live.ended_with_recording" = "录音结束了，字幕链接也已关闭，内容已从服务器删除。";
 "share.recording.menu" = "共享…";
-"share.recording.title" = "共享这段录音";
-"share.recording.intro" = "你让进来的人会在他们的 Mac 上得到一份转录稿副本。";
-"share.recording.read_only" = "只能看";
-"share.recording.can_correct" = "可以订正";
-"share.recording.read_only_detail" = "共享期间他们只能看，不能改。";
-"share.recording.can_correct_detail" = "订正会同步到每个人手里的共享副本；要不要写进你自己的录音，由你逐条决定。";
-"share.recording.start" = "开始共享";
-"share.recording.on" = "共享中";
-"share.recording.stop" = "停止共享";
-"share.code.title" = "加入码";
-"share.code.copy" = "复制加入码";
-"share.code.copied" = "已复制加入码";
-"share.code.note" = "停止之前，拿到这个码的人都能进来。只发给你想让看的人。";
-"share.watchers.title" = "谁在看";
-"share.watchers.none" = "还没有人";
-"share.watchers.count_format" = "%lld 人在看";
-"share.watchers.empty" = "还没有人加入。";
-"share.watchers.empty_live" = "还没有人加入。把加入码发给对方，或让同一网络的人找到这场。";
-"share.watchers.remove" = "移出";
-"share.watchers.remove_hint" = "对方会被断开，也不能再用这个码进来。已经留在对方 Mac 上的内容收不回。";
-"share.nearby.toggle" = "让同一网络的人找到";
-"share.nearby.toggle_detail_format" = "开着时，同一 Wi-Fi 里的 ZuTalk 能看到「%1$@ · %2$@」并请求加入，每个人仍要你同意。";
-"share.knock.title_format" = "%@ 想加入";
-"share.knock.approve" = "让对方进来";
-"share.knock.decline" = "拒绝";
-"share.knock.expired" = "这个请求已经过期了。";
-"share.web.starting" = "正在开…";
-"share.web.copied" = "已复制链接";
-"share.web.failed" = "没能开网页链接";
-"share.web.confirm.button" = "开链接";
-"share.web.uploads_captions" = "实时字幕和译文会以明文经过 ZuTalk 的服务器，拿到链接的人都能看；最后一次更新后在链接上保留约 24 小时。";
-"share.web.uploads_transcript" = "字幕、译文和整份转录稿（包括你给说话人起的名字）会以明文经过 ZuTalk 的服务器，拿到链接的人都能看；最后一次更新后在链接上保留约 24 小时。";
-"share.stop.note" = "停止后不再发送新内容，观看的人也就看不到了。";
-"share.stop.note_kept" = "停止后不再发送新内容。已经留在他们 Mac 上的副本收不回。";
-"share.name.shown_as_format" = "别人看到你叫「%@」。";
-"share.name.change" = "更改";
-"share.name.placeholder" = "你的名字";
-"share.name.default" = "这台 Mac 的名字";
-"share.busy.title" = "已经在共享";
-"share.busy.body_format" = "正在共享「%@」。一次只能共享一场，先停止它，才能共享这一场。";
-"share.busy.stop_other" = "停止那一场";
-"share.viewing_blocks_hosting_format" = "你正在看 %@ 的共享。先离开，才能共享你自己的。";
-"share.hosting_format" = "正在共享「%@」";
-"share.hosting_count_format" = "正在共享「%1$@」· %2$lld 人";
-"share.untitled" = "未命名录音";
-"share.unnamed" = "未命名";
-"share.someone" = "对方";
-"share.start_failed" = "没能开始共享";
-"share.join.while_hosting" = "先停止你自己的共享，才能加入别人的。";
-"share.leave_to_record.title_format" = "要离开 %@ 的共享去录音吗？";
-"share.leave_to_record.body" = "看别人的共享和录音不能同时进行。";
-"share.leave_to_record.confirm" = "离开并录音";
-"share.switch.title_format" = "离开 %@ 的共享，加入这一场？";
-"share.switch.confirm" = "离开并加入";
-"share.watch.live_format" = "正在看 %@ 的直播";
-"share.watch.recording_format" = "%1$@ 共享的「%2$@」";
-"share.watch.ended_format" = "%@ 的共享已结束";
-"share.watch.removed_format" = "%@ 把你移出了共享";
-"share.watch.leave" = "离开";
-"share.watch.close" = "关闭";
-"share.watch.subtitle_window" = "字幕窗";
-
-"share.keep.confirm_title" = "让正在看的人都保存转录稿？";
-"share.keep.confirm_button" = "允许";
-
-"received.nearby.searching" = "正在这个网络里找…";
-"received.nearby.discovery_off" = "「设置 › 共享」里关了附近发现，这里找不到附近的共享。仍可以用加入码加入。";
-
-"received.watch.ended_kept_note" = "共享已结束。副本留在下面，现在归你，可以随意订正。";
-
-"share.corrections.title_format" = "%lld 处订正等你处理";
-"share.corrections.note" = "看的人改了这些地方。采纳就写进你的录音；不采纳就把共享副本改回你的版本。";
-"share.corrections.accept" = "采纳";
-"share.corrections.turn_down" = "不采纳";
-"share.corrections.turn_down_hint" = "把共享副本改回你的版本，这次共享里的每个人都会看到";
-"share.corrections.source_format" = "原文 · %@";
-"share.corrections.yours" = "你的";
-"share.corrections.theirs" = "他们的订正";
-"share.corrections.accept_failed" = "没能把订正写进你的录音";
-"share.corrections.count_format" = "%lld 处订正";
-
-"share.knock.notification_body_format" = "请求加入「%1$@」· %2$@";
 
 "capture.speaker.reconnect_twin_format" = "重连后的「说话人 %@」也用这个名字";
 "capture.speaker.reconnect_twin_detail" = "这段录音中途重连过，重连后说话人从头编号——同一个人可能被记成两个「说话人」。如果是两个人，取消勾选。";
+
+"share.live.starting" = "正在生成链接…";
+"share.live.start_failed" = "没能开始共享字幕";
+"share.live.stop_failed" = "没能停止共享";
+"share.live.stop_note" = "停止后链接失效，服务器上的内容当场删除。";
+"share.live.stop_note_kept" = "停止后字幕不再更新，转录稿在链接上保留约 24 小时。";
+"share.encrypted" = "端到端加密：服务器只转发加密内容，看不到字幕。拿到链接的人都能看。";
+"share.live.keep" = "散场后保留转录稿";
+"share.live.keep_on_detail" = "停止后，拿到链接的人还能读完整转录稿并下载，约 24 小时后自动删除。";
+"share.live.keep_off_detail" = "停止后链接立即失效，服务器上的内容当场删除。现场的人能看完整转录稿，但不能下载。";
+"share.live.viewers_none" = "还没有人在看";
+"share.live.viewers_format" = "%lld 人在看";
+"share.live.lock" = "锁定";
+"share.live.lock_off_detail" = "打开后，新的人进不来，已经在看的人不受影响。";
+"share.live.lock_on_detail" = "已锁定：新的人打开链接会看到「已锁定」。已经在看的人不受影响。";
+"share.live.lock_failed" = "没能改变锁定";
+"share.live.replace" = "换个链接…";
+"share.live.replace_detail" = "旧链接和二维码立即失效，正在看的人需要扫新的码。用来请走不该在场的人。";
+"share.live.replace_confirm_title" = "换一个新链接？";
+"share.live.replace_confirm_button" = "换链接";
+"share.live.replace_failed" = "没能换链接";
+"share.live.other_title" = "另一场录音正在共享";
+"share.live.other_body" = "一次只能共享一场录音的实时字幕。停止那一场，再从这里开始。";
+"share.live.default_title_format" = "实时字幕 · %@";
+"share.live.ended_with_recording_kept" = "录音结束了，字幕链接不再更新；转录稿在链接上保留约 24 小时。";
+"share.link.copy" = "复制链接";
+"share.link.copied" = "链接已复制";
+"share.link.created_copied" = "链接已生成并复制";
+"share.link.show_large" = "放大二维码";
+"share.link.qr_label" = "链接的二维码";
+"share.link.large_window_title" = "扫码看字幕";
+"share.link.scan_hint" = "用手机相机扫码，在浏览器里打开";
+"share.recording.title_format" = "共享「%@」";
+"share.copy.title" = "发送副本";
+"share.copy.detail" = "把转录稿作为文件发出去——隔空投送、信息、邮件都可以。对方拿到的是一份独立的副本。";
+"share.copy.markdown" = "转录稿（Markdown）";
+"share.copy.subtitles" = "字幕文件（SRT）";
+"share.copy.failed" = "没能准备文件";
+"share.copy.default_file_name" = "转录稿";
+"share.recording.link_title" = "只读链接";
+"share.recording.link_detail" = "拿到链接的人在浏览器里就能读完整转录稿，也能下载。链接端到端加密，24 小时后自动失效，你也可以随时撤销。";
+"share.recording.create_link" = "生成链接";
+"share.recording.create_another" = "再生成一个";
+"share.recording.link_failed" = "没能生成链接";
+"share.recording.expires_hours_format" = "还剩 %lld 小时";
+"share.recording.expires_minutes_format" = "还剩 %lld 分钟";
+"share.recording.revoke" = "撤销";
+"share.recording.revoke_confirm_title" = "撤销这个链接？";
+"share.recording.revoke_confirm_body" = "链接立即失效，内容从服务器上删除。已经下载的副本收不回。";
+"share.recording.revoke_failed" = "没能撤销链接";
+"share.recording.revoked" = "链接已撤销";

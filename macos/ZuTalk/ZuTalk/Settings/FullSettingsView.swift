@@ -21,7 +21,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case services = "Services"
     case general = "General"
     case shortcuts = "Shortcuts"
-    case p2p = "P2P"
 
     var id: String { rawValue }
 
@@ -30,7 +29,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .services:    return String(localized: "settings.section.services_name")
         case .general:     return String(localized: "settings.section.general_name")
         case .shortcuts:   return String(localized: "settings.section.shortcuts_name")
-        case .p2p:         return String(localized: "settings.section.p2p_name")
         }
     }
 
@@ -39,7 +37,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .services:    return "network"
         case .general:     return "gearshape"
         case .shortcuts:   return "command"
-        case .p2p:         return "person.2.fill"
         }
     }
 }
@@ -53,7 +50,7 @@ private struct SettingsGroup {
 private let settingsGroups: [SettingsGroup] = [
     SettingsGroup(
         titleKey: "settings.group.services",
-        sections: [.services, .p2p]
+        sections: [.services]
     ),
     SettingsGroup(
         titleKey: "settings.group.general",
@@ -163,7 +160,6 @@ struct FullSettingsView: View {
         case .services:    ServiceConnectionsSection()
         case .general:     GeneralSettingsSection()
         case .shortcuts:   ShortcutsSection()
-        case .p2p:         P2PSettingsSection()
         }
     }
 }

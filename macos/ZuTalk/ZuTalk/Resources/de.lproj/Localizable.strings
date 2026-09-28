@@ -47,15 +47,6 @@
 "community_invite.resources.remaining" = "Verbleibende Zeit";
 "community_invite.remaining_detail_format" = "%1$lld Std. %2$lld Min.";
 "community_invite.refresh" = "Verbleibende Zeit aktualisieren";
-"community_invite.relay.title" = "Relay-Zugang";
-"community_invite.relay.enrolled" = "Zugelassen";
-"community_invite.relay.working" = "Wird geprüft…";
-"community_invite.relay.failed" = "Abgewiesen";
-"community_invite.relay.no_invitation" = "Keine Einladung";
-"community_invite.relay.unknown" = "Noch nicht geprüft";
-"community_invite.relay.retry" = "Diesen Mac erneut beim Relay anmelden";
-"community_invite.relay.detail_enrolled" = "Dieser Mac darf das Relay nutzen, Freigaben erreichen also auch Leute in anderen Netzwerken.";
-"community_invite.relay.detail_blocked" = "Das Relay lässt nur Macs zu, die mit einer Einladung angemeldet sind. Bis dahin funktioniert die Freigabe im selben Netzwerk und kommt über Netzwerkgrenzen nie zustande — ohne jeden Hinweis auf dem Bildschirm.";
 "community_invite.replace" = "Neuen Code verwenden";
 "community_invite.inactive" = "Keine Community-Einladung aktiv";
 "community_invite.use_toggle" = "Mit Community-Einladung transkribieren";
@@ -912,74 +903,21 @@
 "knowledge.import_json.failed" = "Wissensdatenbank konnte nicht importiert werden";
 
 /* 分享:点对点字幕与文档协同 */
-"share.audio_never" = "Den Ton hören sie nie – er bleibt auf diesem Mac.";
+"share.audio_never" = "Audio verlässt diesen Mac nie – andere sehen nur Text.";
 
 /* 设置:分享(点对点)传输 */
-"settings.section.p2p_name" = "Teilen";
-"settings.p2p.title" = "Teilen";
-"settings.p2p.subtitle" = "Wie dieser Mac die Personen erreicht, mit denen du teilst.";
-"settings.p2p.identity" = "Kennung dieses Macs";
-"settings.p2p.copy_identity" = "Kopieren";
-"settings.p2p.identity_note" = "Andere erkennen diesen Mac daran – einen Namen kann sich jeder aussuchen, das hier lässt sich nicht fälschen.";
-"settings.p2p.relay" = "Relay-Server";
-"settings.p2p.relay_note" = "Eine Adresse pro Zeile. Leer lassen heißt nur Direktverbindungen — im selben WLAN reicht das und es funktioniert ganz ohne Internet.";
-"settings.p2p.relay_privacy" = "Ein Relay leitet nur weiter. Der Verkehr bleibt Ende-zu-Ende verschlüsselt, es kann nicht mitlesen.";
-"settings.p2p.local_discovery" = "Freigaben in diesem Netzwerk finden";
-"settings.p2p.local_discovery_note" = "Zeigt Freigaben in diesem Netzwerk, deren Host gefunden werden möchte, und lässt andere deine finden, wenn du das willst. Sonst ist von diesem Mac nichts sichtbar. macOS fragt beim ersten Mal nach der Erlaubnis für das lokale Netzwerk; lehnst du ab, funktionieren Beitrittscodes weiterhin.";
-"settings.p2p.save" = "Sichern";
-"settings.p2p.restore_default" = "Standard wiederherstellen";
-"settings.p2p.saved" = "Gesichert";
 
 /* 分享:状态与提示 */
-"share.core_unavailable" = "Teilen startet noch. Versuch es gleich noch einmal.";
-"share.join_failed" = "Beitritt mit diesem Code nicht möglich. Bitte erneut anfordern – beim Kopieren aus Nachrichten gehen Zeichen verloren, und nach dem Ende der Freigabe gilt der Code nicht mehr.";
-"share.status.host_left" = "Der Host hat dieses Teilen beendet";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
-"share.link.direct" = "Direktverbindung";
-"share.link.relayed" = "Über Relay";
-"share.link.direct_hint" = "Direkt verbunden, ohne Server dazwischen.";
-"share.link.relayed_hint" = "Keine Direktverbindung möglich, daher leitet ein Relay-Server die Untertitel weiter – weiterhin Ende-zu-Ende-verschlüsselt. Häufig in WLANs, die Geräte voneinander abschotten.";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
-"shared.editor.title" = "Empfangenes Transkript";
-"shared.editor.read_only" = "Schreibgeschützt";
-"shared.editor.add_annotation" = "Notiz hinzufügen";
-"shared.editor.done" = "Fertig";
-"shared.editor.empty_title" = "Hier ist noch nichts";
-"shared.editor.empty_body" = "Inhalte erscheinen, sobald das Transkript des Gastgebers synchronisiert wird.";
 
 /* 设置:中继准入 */
-"settings.p2p.relay_ready" = "Relay verfügbar";
-"settings.p2p.relay_ready_hint" = "Dieser Mac ist registriert — das Relay übernimmt, wenn zwei Macs sich nicht direkt erreichen.";
-"settings.p2p.relay_not_registered" = "Relay nicht verfügbar";
-"settings.p2p.relay_not_registered_hint" = "Die Registrierung ist nicht durchgegangen. Im selben Netzwerk funktioniert Teilen weiterhin; es fehlt nur der Ausweg zwischen Netzwerken.";
-"settings.p2p.relay_needs_invite" = "Relay braucht eine Einladung";
-"settings.p2p.relay_needs_invite_hint" = "Das Relay lässt eingeladene Macs zu. Ohne Einladung funktioniert Teilen im selben Netzwerk, aber ohne Ausweg über Netzwerke hinweg.";
-"settings.p2p.relay_registering" = "Registrierung…";
-"settings.p2p.relay_unknown" = "Noch nicht geprüft";
-"settings.p2p.relay_unknown_hint" = "Die Registrierung wird beim Start und beim Teilen geprüft.";
-"settings.p2p.relay_retry" = "Erneut versuchen";
 
 /* 分享:同一网络里的人 */
-"share.nearby.not_sharing" = "Diese Freigabe ist beendet oder nicht mehr für Personen in der Nähe offen.";
-"share.nearby.declined" = "Abgelehnt.";
-"share.nearby.timed_out" = "Keine Antwort. Vielleicht gerade nicht am Platz.";
 
 /* 分享:昵称与成员 */
-
-"share.sidebar.live_label" = "Live wird angesehen";
-"shared_inbox.lane_canonical" = "Original";
-"shared_inbox.lane_connecting" = "Diese Spalte verbindet sich noch";
-"shared_inbox.lane_failed" = "Diese Spalte ist beendet – hier kommt nichts mehr an";
-
-"share.web.title" = "Weblink";
-"share.web.start" = "Weblink für Personen ohne ZuTalk…";
-"share.web.hint" = "Wer den Code scannt oder den Link öffnet, kann im Browser mitlesen – in der gewünschten Sprache.";
-"share.web.confirm.title" = "Weblink öffnen?";
-"share.web.copy" = "Link kopieren";
-"share.web.stop" = "Link schließen";
-"share.web.qr_label" = "QR-Code der Live-Untertitelseite";
 
 /* Topic workspace and session catalog */
 "common.done" = "Fertig";
@@ -1180,134 +1118,68 @@
 "session.marks.delete.confirm_title" = "Diese Markierung samt Notiz löschen?";
 "session.marks.delete.confirm_message" = "Was du hier geschrieben hast, lässt sich nicht wiederherstellen. Die Aufnahme bleibt unberührt.";
 
-"sidebar.received" = "Empfangen";
-"received.join.title" = "Mit Code beitreten";
-"received.join.placeholder" = "Beitrittscode einfügen";
-"received.join.button" = "Beitreten";
-"received.join.joining" = "Beitritt…";
-"received.join.note" = "Bitte die teilende Person um ihren Beitrittscode. Wer den Code hat, kann beitreten – er wird also nur direkt weitergegeben.";
-"received.nearby.title" = "Freigaben in der Nähe";
-"received.nearby.empty" = "Gerade ist keine Freigabe für Personen in diesem Netzwerk offen.";
-"received.nearby.note" = "Hier erscheinen nur Freigaben, deren Host gefunden werden möchte – mit dem Namen und Titel, die der Host zeigen will. Jede Anfrage bestätigt der Host.";
-"received.nearby.ask" = "Beitritt anfragen";
-"received.nearby.asking" = "Warten auf den Host…";
-"received.nearby.abandon" = "Nicht mehr warten";
-"received.open" = "Transkript öffnen";
-"received.read_only_hint" = "Der Host hat es während der Freigabe schreibgeschützt.";
-"received.transcripts.title" = "Auf diesem Mac behaltene Transkripte";
-"received.transcripts.empty" = "Noch nichts. Wenn jemand eine Aufnahme mit dir teilt oder bei einem Live das Behalten des Transkripts erlaubt, bleibt es hier.";
-"received.from_format" = "Von %@";
-"received.blocks_format" = "%lld Sätze";
-"received.delete" = "Von diesem Mac löschen";
-"received.delete.confirm_title" = "Dieses Transkript löschen?";
-"received.delete.confirm_body" = "Nur die Kopie auf diesem Mac wird gelöscht. Die teilende Person behält ihre.";
-"received.watch.waiting" = "Noch spricht niemand.";
-"received.watch.show_subtitles" = "Untertitelfenster zeigen";
-"received.watch.hide_subtitles" = "Untertitelfenster ausblenden";
-"received.watch.nothing_kept_note" = "Du kannst mitlesen. Auf diesem Mac bleibt nichts – wenn du gehst, ist es weg.";
-"received.watch.ended_nothing_kept_note" = "Der Host hat das Behalten des Transkripts nicht erlaubt, daher wurde nichts behalten.";
-"received.watch.kept_live_note" = "Der Host erlaubt, das Transkript zu behalten: Es wird unten gespeichert und bleibt nach dem Ende.";
-"received.watch.kept_read_only_note" = "Eine Kopie des Transkripts bleibt auf diesem Mac. Während der Freigabe kannst du sie lesen, aber nicht ändern.";
-"received.watch.kept_editable_note" = "Eine Kopie des Transkripts bleibt auf diesem Mac. Deine Korrekturen erreichen die Kopien aller in dieser Freigabe.";
-"received.watch.removed_note" = "Der Host hat dich aus dieser Freigabe entfernt. Mit demselben Code kommst du nicht wieder hinein.";
-"share.live.title" = "Diese Aufnahme live teilen";
-"share.live.intro" = "Wen du hereinlässt, sieht Untertitel und Übersetzungen, während gesprochen wird.";
-"share.live.start" = "Live gehen";
-"share.live.stop" = "Live beenden";
+"share.live.title" = "Live-Untertitel teilen";
+"share.live.intro" = "Code scannen oder Link öffnen genügt, um Untertitel und Übersetzungen in jedem Browser mitzulesen – ohne App, ohne Anmeldung.";
+"share.live.start" = "Teilen starten";
+"share.live.stop" = "Teilen beenden";
 "share.live.on" = "Live";
-"share.live.on_count_format" = "Live · %lld";
-"share.live.bar" = "Live teilen";
-"share.live.bar_hint" = "Andere die Untertitel dieser Aufnahme live mitlesen lassen";
-"share.live.bar_on_hint" = "Wer zusieht, Beitrittscode, Beenden";
-"share.live.ended_with_recording" = "Das Live endete mit der Aufnahme.";
-"share.live.keep_failed" = "Behalten des Transkripts konnte nicht erlaubt werden";
-"share.keep.toggle" = "Zuschauern das Behalten des Transkripts erlauben";
-"share.keep.off_detail" = "Aus: Sie können mitlesen; auf ihrem Mac bleibt nichts, wenn sie gehen.";
-"share.keep.on_detail" = "An: Ihr ZuTalk behält eine Kopie des Transkripts. Beenden holt sie nicht zurück.";
-"share.keep.on_locked_detail" = "Erlaubt. Bereits weitergegebene Kopien lassen sich nicht zurückholen, daher bleibt es für diese Freigabe an.";
+"share.live.on_count_format" = "Live · %lld sehen zu";
+"share.live.bar" = "Untertitel teilen";
+"share.live.bar_hint" = "Personen scannen einen Code und lesen Untertitel und Übersetzungen auf dem Handy mit";
+"share.live.bar_on_hint" = "QR-Code, Zuschauerzahl, Sperren und Beenden";
+"share.live.ended_with_recording" = "Die Aufnahme ist beendet: Der Untertitel-Link wurde geschlossen und sein Inhalt vom Server gelöscht.";
 "share.recording.menu" = "Teilen…";
-"share.recording.title" = "Diese Aufnahme teilen";
-"share.recording.intro" = "Wen du hereinlässt, bekommt eine Kopie des Transkripts auf den Mac.";
-"share.recording.read_only" = "Nur lesen";
-"share.recording.can_correct" = "Darf korrigieren";
-"share.recording.read_only_detail" = "Während der Freigabe können sie ihre Kopie lesen, aber nicht ändern.";
-"share.recording.can_correct_detail" = "Korrekturen werden in die geteilte Kopie aller übernommen. Welche in deine eigene Aufnahme kommen, entscheidest du einzeln.";
-"share.recording.start" = "Teilen starten";
-"share.recording.on" = "Wird geteilt";
-"share.recording.stop" = "Teilen beenden";
-"share.code.title" = "Beitrittscode";
-"share.code.copy" = "Beitrittscode kopieren";
-"share.code.copied" = "Beitrittscode kopiert";
-"share.code.note" = "Bis du beendest, kann jeder mit diesem Code beitreten. Schick ihn nur an die, die zusehen sollen.";
-"share.watchers.title" = "Wer zusieht";
-"share.watchers.none" = "Noch niemand";
-"share.watchers.count_format" = "%lld sehen zu";
-"share.watchers.empty" = "Noch ist niemand beigetreten.";
-"share.watchers.empty_live" = "Noch ist niemand beigetreten. Schick den Beitrittscode oder lass Personen in diesem Netzwerk es finden.";
-"share.watchers.remove" = "Entfernen";
-"share.watchers.remove_hint" = "Die Person wird getrennt und kommt mit diesem Code nicht wieder hinein. Was schon auf ihrem Mac ist, bleibt dort.";
-"share.nearby.toggle" = "Im selben Netzwerk auffindbar";
-"share.nearby.toggle_detail_format" = "Wenn an, sehen ZuTalk-Geräte im selben WLAN „%1$@ · %2$@“ und können anfragen. Du bestätigst jede Person.";
-"share.knock.title_format" = "%@ möchte beitreten";
-"share.knock.approve" = "Hereinlassen";
-"share.knock.decline" = "Ablehnen";
-"share.knock.expired" = "Diese Anfrage ist bereits abgelaufen.";
-"share.web.starting" = "Wird geöffnet…";
-"share.web.copied" = "Link kopiert";
-"share.web.failed" = "Weblink konnte nicht geöffnet werden";
-"share.web.confirm.button" = "Link öffnen";
-"share.web.uploads_captions" = "Live-Untertitel und Übersetzungen laufen im Klartext über den Server von ZuTalk, und jeder mit dem Link kann sie lesen. Sie bleiben etwa 24 Stunden nach der letzten Aktualisierung unter dem Link.";
-"share.web.uploads_transcript" = "Untertitel, Übersetzungen und das ganze Transkript – samt den Namen, die du Sprechern gegeben hast – laufen im Klartext über den Server von ZuTalk, und jeder mit dem Link kann sie lesen. Sie bleiben etwa 24 Stunden nach der letzten Aktualisierung unter dem Link.";
-"share.stop.note" = "Es wird nichts Neues mehr gesendet. Zuschauer sehen die Untertitel dann nicht mehr.";
-"share.stop.note_kept" = "Es wird nichts Neues mehr gesendet. Kopien auf ihren Macs lassen sich nicht zurückholen.";
-"share.name.shown_as_format" = "Andere sehen dich als „%@“.";
-"share.name.change" = "Ändern";
-"share.name.placeholder" = "Dein Name";
-"share.name.default" = "den Namen dieses Macs";
-"share.busy.title" = "Es wird bereits geteilt";
-"share.busy.body_format" = "„%@“ wird geteilt. Immer nur eine Freigabe – beende sie, um diese zu teilen.";
-"share.busy.stop_other" = "Diese Freigabe beenden";
-"share.viewing_blocks_hosting_format" = "Du siehst die Freigabe von %@. Verlasse sie, bevor du selbst teilst.";
-"share.hosting_format" = "„%@“ wird geteilt";
-"share.hosting_count_format" = "„%1$@“ wird geteilt · %2$lld";
-"share.untitled" = "Aufnahme ohne Titel";
-"share.unnamed" = "Ohne Namen";
-"share.someone" = "Jemand";
-"share.start_failed" = "Teilen konnte nicht gestartet werden";
-"share.join.while_hosting" = "Beende deine eigene Freigabe, bevor du einer anderen beitrittst.";
-"share.leave_to_record.title_format" = "Freigabe von %@ verlassen, um aufzunehmen?";
-"share.leave_to_record.body" = "Eine Freigabe ansehen und gleichzeitig aufnehmen geht nicht.";
-"share.leave_to_record.confirm" = "Verlassen und aufnehmen";
-"share.switch.title_format" = "Freigabe von %@ verlassen und hier beitreten?";
-"share.switch.confirm" = "Verlassen und beitreten";
-"share.watch.live_format" = "Live von %@";
-"share.watch.recording_format" = "„%2$@“, geteilt von %1$@";
-"share.watch.ended_format" = "Die Freigabe von %@ ist beendet";
-"share.watch.removed_format" = "%@ hat dich aus der Freigabe entfernt";
-"share.watch.leave" = "Verlassen";
-"share.watch.close" = "Schließen";
-"share.watch.subtitle_window" = "Untertitel";
-
-"share.keep.confirm_title" = "Allen Zuschauern das Behalten des Transkripts erlauben?";
-"share.keep.confirm_button" = "Erlauben";
-
-"received.nearby.searching" = "Suche in diesem Netzwerk…";
-"received.nearby.discovery_off" = "Die Suche in der Nähe ist unter Einstellungen › Teilen aus. Mit einem Code kannst du weiterhin beitreten.";
-
-"received.watch.ended_kept_note" = "Die Freigabe ist beendet. Deine Kopie bleibt unten, und du kannst sie frei korrigieren.";
-
-"share.corrections.title_format" = "%lld Korrekturen zu prüfen";
-"share.corrections.note" = "Personen, mit denen du teilst, haben das geändert. Übernimm eine Änderung in deine Aufnahme oder lehne sie ab, dann wird ihre Kopie auf deine Fassung zurückgesetzt.";
-"share.corrections.accept" = "Übernehmen";
-"share.corrections.turn_down" = "Ablehnen";
-"share.corrections.turn_down_hint" = "Die geteilte Kopie für alle auf deine Fassung zurücksetzen";
-"share.corrections.source_format" = "Original · %@";
-"share.corrections.yours" = "Deine Fassung";
-"share.corrections.theirs" = "Ihre Korrektur";
-"share.corrections.accept_failed" = "Korrektur konnte nicht in deine Aufnahme übernommen werden";
-"share.corrections.count_format" = "%lld zu prüfen";
-
-"share.knock.notification_body_format" = "Möchte „%1$@“ beitreten · %2$@";
 
 "capture.speaker.reconnect_twin_format" = "Auch „Sprecher %@“ nach der Neuverbindung so benennen";
 "capture.speaker.reconnect_twin_detail" = "Die Live-Untertitel haben sich während dieser Aufnahme neu verbunden, und Sprecher wurden neu nummeriert – eine Person kann so zweimal als „Sprecher“ erscheinen. Abwählen, wenn es verschiedene Personen sind.";
+
+"share.live.starting" = "Link wird erstellt …";
+"share.live.start_failed" = "Untertitel konnten nicht geteilt werden";
+"share.live.stop_failed" = "Teilen konnte nicht beendet werden";
+"share.live.stop_note" = "Beim Beenden wird der Link ungültig und sein Inhalt sofort vom Server gelöscht.";
+"share.live.stop_note_kept" = "Nach dem Beenden werden keine Untertitel mehr aktualisiert; das Transkript bleibt etwa 24 Stunden unter dem Link.";
+"share.encrypted" = "Ende-zu-Ende-verschlüsselt: Der Server leitet nur Inhalte weiter, die er nicht lesen kann. Wer den Link hat, kann mitlesen.";
+"share.live.keep" = "Transkript nach dem Ende behalten";
+"share.live.keep_on_detail" = "Nach dem Beenden können alle mit dem Link das vollständige Transkript noch lesen und herunterladen. Nach etwa 24 Stunden wird es gelöscht.";
+"share.live.keep_off_detail" = "Beim Beenden wird der Link ungültig und alles sofort vom Server gelöscht. Während der Übertragung ist das Transkript lesbar, aber nicht herunterladbar.";
+"share.live.viewers_none" = "Noch sieht niemand zu";
+"share.live.viewers_format" = "%lld sehen zu";
+"share.live.lock" = "Sperren";
+"share.live.lock_off_detail" = "Wenn aktiv, kommt niemand Neues hinein. Wer schon zusieht, bleibt.";
+"share.live.lock_on_detail" = "Gesperrt: Wer den Link neu öffnet, sieht, dass gesperrt ist. Wer schon zusieht, bleibt.";
+"share.live.lock_failed" = "Sperre konnte nicht geändert werden";
+"share.live.replace" = "Link ersetzen …";
+"share.live.replace_detail" = "Der alte Link und QR-Code werden sofort ungültig; Zuschauer müssen den neuen scannen. So entfernen Sie Personen, die nicht zusehen sollen.";
+"share.live.replace_confirm_title" = "Link ersetzen?";
+"share.live.replace_confirm_button" = "Ersetzen";
+"share.live.replace_failed" = "Link konnte nicht ersetzt werden";
+"share.live.other_title" = "Eine andere Aufnahme wird geteilt";
+"share.live.other_body" = "Es kann jeweils nur eine Aufnahme Live-Untertitel teilen. Beenden Sie die andere und starten Sie hier.";
+"share.live.default_title_format" = "Live-Untertitel · %@";
+"share.live.ended_with_recording_kept" = "Die Aufnahme ist beendet: Der Untertitel-Link wird nicht mehr aktualisiert. Das Transkript bleibt etwa 24 Stunden abrufbar.";
+"share.link.copy" = "Link kopieren";
+"share.link.copied" = "Link kopiert";
+"share.link.created_copied" = "Link erstellt und kopiert";
+"share.link.show_large" = "QR-Code groß anzeigen";
+"share.link.qr_label" = "QR-Code des Links";
+"share.link.large_window_title" = "Scannen und mitlesen";
+"share.link.scan_hint" = "Mit der Handykamera scannen, um es im Browser zu öffnen";
+"share.recording.title_format" = "„%@“ teilen";
+"share.copy.title" = "Kopie senden";
+"share.copy.detail" = "Das Transkript als Datei senden – per AirDrop, Nachrichten oder Mail. Empfänger erhalten eine eigene Kopie.";
+"share.copy.markdown" = "Transkript (Markdown)";
+"share.copy.subtitles" = "Untertitel (SRT)";
+"share.copy.failed" = "Datei konnte nicht vorbereitet werden";
+"share.copy.default_file_name" = "Transkript";
+"share.recording.link_title" = "Link nur zum Lesen";
+"share.recording.link_detail" = "Wer den Link hat, kann das vollständige Transkript im Browser lesen und herunterladen. Ende-zu-Ende-verschlüsselt, läuft nach 24 Stunden ab und lässt sich jederzeit widerrufen.";
+"share.recording.create_link" = "Link erstellen";
+"share.recording.create_another" = "Weiteren erstellen";
+"share.recording.link_failed" = "Link konnte nicht erstellt werden";
+"share.recording.expires_hours_format" = "Noch %lld Std.";
+"share.recording.expires_minutes_format" = "Noch %lld Min.";
+"share.recording.revoke" = "Widerrufen";
+"share.recording.revoke_confirm_title" = "Diesen Link widerrufen?";
+"share.recording.revoke_confirm_body" = "Der Link wird sofort ungültig und sein Inhalt vom Server gelöscht. Bereits heruntergeladene Kopien lassen sich nicht zurückholen.";
+"share.recording.revoke_failed" = "Link konnte nicht widerrufen werden";
+"share.recording.revoked" = "Link widerrufen";

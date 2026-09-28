@@ -38,8 +38,7 @@ struct MainShellView: View {
         .toastOverlay()
         .onAppear {
             store.recordSnapshot()
-            // 敲门一分钟就超时、在看的直播随时会结束 —— 共享状态从主窗口
-            // 一出现就开始跟,不等用户逛到「收到的」页。
+            // 主窗口关了又开时,接上核心里还在跑的直播。
             ShareActivityStore.shared.start()
         }
         .task(id: needsOnboarding) {
@@ -123,16 +122,6 @@ struct MainShellView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 sidebarItem(
-                    icon: "tray.and.arrow.down.fill",
-                    label: String(localized: "sidebar.received"),
-                    active: activeTab == .share,
-                    accId: AccessibilityID.mainTabShare,
-                    live: shareActivity.isViewing
-                ) {
-                    store.select(tab: .share)
-                }
-
-                sidebarItem(
                     icon: "trash",
                     label: String(localized: "sidebar.trash"),
                     active: activeTab == .trash,
@@ -205,7 +194,6 @@ struct MainShellView: View {
         label: String,
         active: Bool,
         accId: String?,
-        live: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -218,14 +206,6 @@ struct MainShellView: View {
                     .font(.body)
                     .foregroundColor(active ? .textPrimary : .textSecondary)
                 Spacer()
-                // 正在看别人的直播 —— 不在「收到的」页时也要知道自己还连着。
-                if live {
-                    Circle()
-                        .fill(Color.signalGreen)
-                        .frame(width: 7, height: 7)
-                        .accessibilityLabel(String(localized: "share.sidebar.live_label"))
-                        .accessibilityIdentifier("sidebar.share.live")
-                }
             }
             .padding(.horizontal, Spacing.sm + 2)
             .frame(minHeight: 44)
@@ -392,7 +372,6 @@ struct MainShellView: View {
                 )
 
             RecordingProblemBanner()
-            JoinRequestBanner()
 
             ZStack {
                 Color.bgRoot
@@ -407,8 +386,6 @@ struct MainShellView: View {
                         KnowledgeLibraryPage()
                     case .trash:
                         TrashPage()
-                    case .share:
-                        ReceivedPage()
                     case .editor:
                         DocumentEditorPage(
                             route: activeEditorRoute,
@@ -455,13 +432,10 @@ struct MainShellView: View {
 
             Spacer(minLength: Spacing.md)
 
-            // Someone else's share being watched, or a recording being
-            // shared; then the recording in progress — whatever page shows.
-            ShareHeaderStatus(compact: width < 980 || capture.isCaptureActive)
+            // The recording in progress — whatever page shows.
             RecordingBar(compact: width < 980)
         }
         .animation(Motion.panelTransition, value: capture.isCaptureActive)
-        .animation(Motion.panelTransition, value: shareActivity.isInRoom)
         .sheet(item: $shareActivity.recordingShareRequest) { request in
             RecordingShareSheet(request: request)
         }
@@ -623,8 +597,6 @@ struct MainShellView: View {
             return "books.vertical.fill"
         case .trash:
             return "trash"
-        case .share:
-            return "tray.and.arrow.down.fill"
         case .editor:
             return activeEditorRoute?.notebookID == nil
                 ? "square.and.pencil"
@@ -644,8 +616,6 @@ struct MainShellView: View {
             return String(localized: "sidebar.knowledge")
         case .trash:
             return String(localized: "sidebar.trash")
-        case .share:
-            return String(localized: "sidebar.received")
         case .editor:
             if activeEditorRoute?.notebookID != nil {
                 return store.activeNotebookTitle

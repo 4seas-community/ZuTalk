@@ -9,15 +9,13 @@ pub mod block_document_api;
 pub(crate) mod capture_erasure;
 pub mod editor_api;
 pub mod lane_credential_api;
+pub mod link_share;
 pub mod notebook_api;
 pub mod notebook_capture_api;
 pub mod session_audio_api;
 mod session_mark_api;
 pub(crate) mod session_move;
 pub mod settings_api;
-pub(crate) mod share_api;
-pub mod share_web;
-pub mod shared_session_docs;
 pub mod speaker_directory_api;
 pub(crate) mod task_worker;
 pub(crate) mod topic_management;
@@ -385,7 +383,6 @@ pub struct ZuTalkCore {
         Arc<Mutex<Option<Arc<crate::lane_credential_api::LaneCredentialBroker>>>>,
     /// 打开中的第 2 纪元块文档(T2/B),见 block_document_api。
     pub(crate) block_documents: crate::block_document_api::BlockDocumentRegistry,
-    pub(crate) shared_sessions: std::sync::Arc<crate::shared_session_docs::SharedSessionState>,
     /// 待写盘的 editor session 集合。apply_edit 只 enqueue，后台 flusher
     /// 每 ~500ms drain 一次。这样单字符输入不再每次都阻塞主线程做 fs::write,
     /// 同一 session 连敲也只合并成一次 snapshot 写入。
@@ -400,13 +397,10 @@ pub struct ZuTalkCore {
     provider_credential_bootstrap: Arc<task_worker::ProviderCredentialBootstrapGate>,
     /// task_id → FfiTaskCallback (worker 按 task 进度触发回调)
     pub(crate) task_callbacks: Arc<TaskCallbackMap>,
-    /// 分享端点。首次用到分享功能时才绑定 —— 不用这个功能的用户不该付出
-    /// 一个常驻 QUIC 端点的代价。
-    pub(crate) share_runtime: Arc<crate::share_api::ShareRuntimeSlot>,
-    /// 分享的传输配置(中继、局域网发现)。由设置页写入。
-    pub(crate) share_transport: Mutex<crate::share_api::FfiShareTransport>,
-    /// 本机昵称。房间里和「附近的人」列表都用它。
-    pub(crate) share_display_name: Mutex<String>,
+    /// 进行中的直播链接(端到端加密的网页链接)。
+    pub(crate) live_link: Arc<crate::link_share::LiveLinkSlot>,
+    /// 链接共享服务的基址。默认是部署位,测试指向本地起的服务。
+    pub(crate) link_service: Mutex<String>,
     /// Durable local encryption keys for capture audio and Context Packs.
     pub(crate) key_store: Arc<dyn KeyProvider>,
     /// Soniox API Key 的进程内运行时；生产固定使用
@@ -615,13 +609,7 @@ impl ZuTalkCore {
         // 内置 Notebook 随核心启动就位。快速录音使用全新的保留内部身份，
         // 绝不把旧版可见的「默认」Topic 隐藏起来：整本 Notes、Context Pack
         // 等 Notebook 级资料未必能随 Session 搬迁，原位保留才不会造成数据
-        // 不可达。「分享」仍是收到的共享内容唯一落点(share-p2p.md §11)。
-        if let Err(error) = notebook_store.ensure_internal_notebook(
-            crate::share_api::SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE,
-            crate::share_api::SHARED_INBOX_NOTEBOOK_TITLE,
-        ) {
-            tracing::warn!("startup shared-inbox notebook (non-fatal): {error}");
-        }
+        // 不可达。
         if let Err(error) = notebook_store.ensure_internal_notebook(
             crate::notebook_api::QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE,
             "",
@@ -791,16 +779,14 @@ impl ZuTalkCore {
             editor_callbacks,
             lane_credential_broker: Arc::new(Mutex::new(None)),
             block_documents: Default::default(),
-            shared_sessions: Default::default(),
             pending_snapshot_saves,
             task_queue,
             session_task_registry,
             worker_cancel,
             provider_credential_bootstrap,
             task_callbacks,
-            share_runtime: Default::default(),
-            share_transport: Default::default(),
-            share_display_name: Default::default(),
+            live_link: Default::default(),
+            link_service: Mutex::new(crate::link_share::initial_link_service()),
             key_store,
             api_key_store,
             active_notebook_capture: Mutex::new(None),

@@ -18,6 +18,9 @@ use crate::{CoreError, ZuTalkCore};
 /// 随核心启动幂等创建 —— 第一次录音不该以「先学会新建 Notebook」为前提。
 pub const DEFAULT_NOTEBOOK_TITLE: &str = "默认";
 pub(crate) const QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE: &str = "__zutalk_internal_quick_capture__";
+/// 点对点共享时代的收件 Topic(已下线)。老用户的库里还有它,列表里
+/// 继续藏着,也不许新建同名的。
+pub(crate) const SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE: &str = "__zutalk_internal_shared_inbox__";
 
 /// Version 1 was the implicit, unmarked projection that grouped tokens only on
 /// provider pauses. Version 2 added provider metadata but could still aggregate
@@ -404,7 +407,7 @@ impl ZuTalkCore {
     pub fn create_notebook(&self, title: Option<String>) -> Result<FfiNotebook, CoreError> {
         let normalized_title = title.as_deref().map(str::trim);
         if normalized_title == Some(QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE)
-            || normalized_title == Some(crate::share_api::SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE)
+            || normalized_title == Some(SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE)
         {
             return Err(CoreError::ValidationFailed {
                 message: "reserved internal Topic title".to_string(),
@@ -430,7 +433,7 @@ impl ZuTalkCore {
             .into_iter()
             .filter(|record| {
                 record.title != QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE
-                    && record.title != crate::share_api::SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE
+                    && record.title != SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE
             })
             .map(Into::into)
             .collect())

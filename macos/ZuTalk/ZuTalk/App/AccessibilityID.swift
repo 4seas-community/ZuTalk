@@ -61,7 +61,6 @@ enum AccessibilityID {
 
     /// Trash
     static let mainTabTrash     = "main.tab.trash"
-    static let mainTabShare     = "main.tab.share"
 
     // MARK: - Library
 

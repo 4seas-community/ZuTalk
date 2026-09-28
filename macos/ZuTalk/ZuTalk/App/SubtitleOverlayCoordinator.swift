@@ -72,8 +72,7 @@ final class SubtitleOverlayCoordinator: ObservableObject {
 
     private init() {
         liveObservation = capture.$captureState
-            .combineLatest(ShareActivityStore.shared.$isViewing)
-            .map { state, viewing in state.isActive || viewing }
+            .map(\.isActive)
             .removeDuplicates()
             .sink { [weak self] live in
                 guard self?.isPresented == true else { return }
@@ -87,9 +86,8 @@ final class SubtitleOverlayCoordinator: ObservableObject {
             return
         }
 
-        // 两个合法的数据源:本机正在录,或者在别人的房间里收 —— 观看端的
-        // 悬浮字幕吃远端帧(SubtitleOverlayView 的共享分支),不吃本机采集。
-        guard capture.isCaptureActive || ShareActivityStore.shared.isViewing else {
+        // 唯一的数据源是本机正在录的这一场。
+        guard capture.isCaptureActive else {
             WindowCommandRouter.shared.openMainWindow(detail: "subtitle-overlay.idle") {
                 MainNavigationStore.shared.openActiveNotebookForCapture()
             }

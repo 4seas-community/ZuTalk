@@ -379,7 +379,10 @@ fn clipboard_language_columns(profile: &NotebookCaptureProfile) -> Vec<String> {
         })
 }
 
-fn export_transcript(core: &ZuTalkCore, session_id: &str) -> Result<ExportTranscript, CoreError> {
+pub(crate) fn export_transcript(
+    core: &ZuTalkCore,
+    session_id: &str,
+) -> Result<ExportTranscript, CoreError> {
     let run = core
         .notebook_capture_store
         .get_run_for_session(session_id)

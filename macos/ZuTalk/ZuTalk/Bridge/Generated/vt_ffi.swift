@@ -938,6 +938,65 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func unregisterEditorCallback(notebookId: String, tabId: String) throws
 
     /**
+     * 给一段录好的录音开一条只读链接:24 小时后失效,可以随时撤销。走网络。
+     */
+    func createRecordingLink(sessionId: String, title: String) throws  -> FfiRecordingLink
+
+    /**
+     * 当前直播链接的快照。纯内存,可以在主线程上调。
+     */
+    func liveLink()  -> FfiLiveLink?
+
+    /**
+     * 这段录音还有效的链接,新的在前。
+     */
+    func recordingLinks(sessionId: String)  -> [FfiRecordingLink]
+
+    /**
+     * 问一次服务端:几个人在看、锁没锁。走网络。
+     */
+    func refreshLiveLink()  -> FfiLiveLink?
+
+    /**
+     * 换一个链接:新房间、新密钥,旧链接当场失效(在看的人要重新扫码)。
+     * 用来把不该在场的人请出去。走网络。
+     */
+    func replaceLiveLink() throws  -> FfiLiveLink
+
+    /**
+     * 撤销一条录音链接:服务端当场删掉内容,链接从此打不开。走网络。
+     */
+    func revokeRecordingLink(roomId: String) throws
+
+    /**
+     * 散场后要不要把转录稿留在链接上。直播进行中可以来回改 —— 真正的
+     * 去留在停止那一刻才定。
+     */
+    func setLiveLinkKeepsAfterEnd(keeps: Bool) throws  -> FfiLiveLink
+
+    /**
+     * 锁上:新的观看者进不来,已经在看的不受影响。走网络。
+     */
+    func setLiveLinkLocked(locked: Bool) throws  -> FfiLiveLink
+
+    /**
+     * 开始直播这场录音:建房、推说明与已有的转录稿,之后每一帧都会加密推过去。
+     * 走网络,调用方不在主线程上调。
+     */
+    func startLiveLink(sessionId: String, title: String, keepsAfterEnd: Bool) throws  -> FfiLiveLink
+
+    /**
+     * 停止直播。散场后留转录稿的,先把最新的整份推完再封笔(内容留约
+     * 24 小时);不留的当场清掉。走网络。
+     */
+    func stopLiveLink() throws
+
+    /**
+     * 「发送副本」的文件内容。音频从不在里面。
+     */
+    func transcriptFile(sessionId: String, format: FfiTranscriptFileFormat) throws  -> String
+
+    /**
      * Files one legacy/unassigned Session into a Topic without pretending it
      * is a move. The store creates the ownership link and all three builtin
      * projections in one transaction and refuses an existing owner.
@@ -1257,223 +1316,6 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      * an explicit user action.
      */
     func getSessionTranscriptClipboardText(sessionId: String) throws  -> String
-
-    /**
-     * 直播中途允许观看端留下文字稿。**只能打开,不能收回** —— 已经同步过去
-     * 的内容在对方手里,关掉只会让界面说假话。
-     */
-    func allowViewersToKeepCopies() throws
-
-    /**
-     * 批准一条加入请求,把分享码交给对方。
-     */
-    func approveJoinRequest(requestId: String) throws  -> Bool
-
-    /**
-     * 当前正在主持的分享码。没有在主持时为 `None`。
-     *
-     * 分享码必须能从这里取回,不能只活在界面的内存里 —— 切走标签页再回来、
-     * 或者重开窗口,界面就再也拿不到它,而「正在共享」的状态还亮着,
-     * 复制按钮于是静默失效。
-     */
-    func currentShareCode()  -> String?
-
-    /**
-     * 拒绝一条加入请求。
-     */
-    func declineJoinRequest(requestId: String)  -> Bool
-
-    /**
-     * 出厂默认的传输配置。设置页用它做「恢复默认」。
-     */
-    func defaultShareTransport()  -> FfiShareTransport
-
-    /**
-     * 打开文档协同。
-     *
-     * 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
-     * 每一笔编辑都会推给对端,对端推来的每一笔都要过完整条准入链才会合入。
-     */
-    func enableDocumentSync() throws
-
-    /**
-     * 某段录音此刻是否正在播给别人看。录音条上的「直播中」据此亮起。
-     */
-    func isSessionSharedLive(sessionId: String)  -> Bool
-
-    /**
-     * 用分享码加入别人的房间。
-     */
-    func joinShare(code: String) throws
-
-    /**
-     * 同一网络里愿意被找到的直播。
-     *
-     * 刚打开时列表可能还空着 —— mDNS 是异步宣告的 —— 这时最多阻塞 `seconds`
-     * 秒等第一批。之后是常驻表的快照,立即返回。
-     */
-    func nearbyPeers(seconds: UInt32) throws  -> [FfiNearbyPeer]
-
-    /**
-     * 等着你回答的加入请求。
-     */
-    func pendingJoinRequests()  -> [FfiJoinRequest]
-
-    /**
-     * 把一位观看者移出这场共享。他手里的码随之失效;别人不受影响。
-     */
-    func removeShareMember(endpointId: String) throws  -> Bool
-
-    /**
-     * 向同一网络里的某台机器请求加入。批准后自动进房。
-     */
-    func requestToJoinNearby(endpointId: String) throws  -> FfiJoinOutcome
-
-    /**
-     * 房间里都有谁。没在房间里时为空。
-     */
-    func roomMembers()  -> [FfiRoomMember]
-
-    /**
-     * 让同一网络的人在附近列表里看到这场的名字与标题,或者撤下。
-     *
-     * 关着时本机不出现在任何人的附近列表里,敲门也只会得到「没在共享」。
-     */
-    func setShareDiscoverable(discoverable: Bool) throws
-
-    func setShareDisplayName(name: String) throws
-
-    /**
-     * 设定传输配置。
-     *
-     * 当前没在共享时立即生效(下次用到端点会按新配置重建);正在共享时保留现有
-     * 连接,新配置在下一次开始共享时生效 —— 中途换中继会把房间里的人踢掉。
-     */
-    func setShareTransport(transport: FfiShareTransport) throws
-
-    /**
-     * 本机的昵称。房间里的人和「附近的人」列表都靠它认出你。
-     *
-     * 存在本机;每次绑定端点时重新交给传输层。空的话别人只看得到公钥。
-     */
-    func shareDisplayName()  -> String
-
-    /**
-     * 本机分享身份。首次调用会生成并持久化。
-     */
-    func shareIdentity() throws  -> FfiShareIdentity
-
-    /**
-     * 取当前分享状态与字幕投影。
-     *
-     * 每次调用会吸收自上次以来收到的所有帧;因为帧是 replace-in-full 的,只有最新
-     * 的那一帧会留下痕迹,中间被跳过的帧不需要补。
-     */
-    func shareState()  -> FfiShareState
-
-    /**
-     * 当前生效的传输配置。
-     */
-    func shareTransport()  -> FfiShareTransport
-
-    /**
-     * 收到的共享内容该落进哪个 Notebook,没有就建一个。
-     */
-    func sharedInboxNotebook() throws  -> FfiNotebook
-
-    /**
-     * 把正在录的这一场直播给别人看,返回加入码。
-     *
-     * 观看的人只读。`keep_copies` 关着时主持人不接文档同步:观看端只收得到
-     * 实时字幕,他们的 ZuTalk 不会留下文字稿;打开后才把文字稿同步过去。
-     */
-    func startLiveShare(sessionId: String, keepCopies: Bool) throws  -> String
-
-    /**
-     * 把一段录好的录音共享给别人:他们会得到一份文字稿副本。
-     * `host_only` 为真时对方只读,否则可以订正。
-     */
-    func startRecordingShare(sessionId: String, hostOnly: Bool) throws  -> String
-
-    /**
-     * 停止共享。
-     *
-     * **只停止继续发送。** 已经合并进对方文档的内容无法收回 —— 房间密钥轮换让老成员
-     * 拿不到后续、也进不来新房间,仅此而已。界面必须如实说明这一点。
-     */
-    func stopSharing() throws
-
-    /**
-     * 开启网页分享。仅主持中可开;返回观看页地址。
-     *
-     * `service_url` 为空用默认部署位。重复调用返回当前房间,不重复建房。
-     */
-    func startWebShare(serviceUrl: String?) throws  -> FfiWebShareInfo
-
-    /**
-     * 关闭网页分享(共享本身继续)。
-     */
-    func stopWebShare()
-
-    /**
-     * 当前网页分享的快照;没开时为 `None`。
-     */
-    func webShareState()  -> FfiWebShareInfo?
-
-    /**
-     * 采纳:把这处订正写进你的录音,和你自己动手改一样(同一条编辑路径,
-     * 同样进搜索、同样可以再改)。
-     */
-    func acceptSharedCorrection(correction: FfiSharedCorrection) throws
-
-    /**
-     * 删除一份收到的共享转录稿。**只删本机副本** —— 台账即目录,文件没了
-     * 记录就没了;别人手里的副本不受影响,这与停止共享同一条真话。
-     */
-    func deleteSharedSession(sessionId: String) throws
-
-    /**
-     * 收到的文字稿:shared/ 目录台账里**别人的**那些。
-     *
-     * 本机共享出去时也会在 shared/ 下留一份同步用的副本 —— 那是自己的录音,
-     * 不该出现在「收到的」里,和别人的混在一起。
-     */
-    func listSharedSessions()  -> [FfiSharedSessionInfo]
-
-    /**
-     * 不采纳:共享副本改回你的版本。还在共享时,改回去的这一笔也同步给
-     * 每个人 —— 副本与你的录音重新一致。
-     */
-    func rejectSharedCorrection(sessionId: String, correction: FfiSharedCorrection) throws
-
-    /**
-     * 看的人在共享副本里改过、而你的录音还没跟上的地方。
-     *
-     * 订正只落在共享副本里 —— 那是同步给每个人的那一份,不是你的录音。
-     * 这里把两者的差别列出来,由你逐条采纳或不采纳。机器自己写进副本、
-     * 只是还没刷新到的差别(副本 == 机器影子)不算订正。
-     */
-    func sharedCorrections(sessionId: String) throws  -> [FfiSharedCorrection]
-
-    /**
-     * 一份共享 session 的句块(文档序)。
-     */
-    func sharedSessionBlocks(sessionId: String) throws  -> [FfiUtteranceBlock]
-
-    /**
-     * 在共享 session 的句块之间插批注。
-     */
-    func sharedSessionInsertAnnotation(sessionId: String, index: UInt32, annotationId: String, text: String) throws
-
-    /**
-     * 订正共享 session 的一条译文车道,并把增量推给房间。
-     */
-    func sharedSessionReplaceLane(sessionId: String, blockId: String, lane: String, text: String) throws
-
-    /**
-     * 订正共享 session 的原文车道。
-     */
-    func sharedSessionReplaceText(sessionId: String, blockId: String, text: String) throws
 
     func createSpeakerParticipant(displayName: String) throws  -> FfiSpeakerParticipant
 
@@ -2256,6 +2098,140 @@ open func unregisterEditorCallback(notebookId: String, tabId: String)throws   {t
 }
 
     /**
+     * 给一段录好的录音开一条只读链接:24 小时后失效,可以随时撤销。走网络。
+     */
+open func createRecordingLink(sessionId: String, title: String)throws  -> FfiRecordingLink  {
+    return try  FfiConverterTypeFfiRecordingLink_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_create_recording_link(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterString.lower(title),$0
+    )
+})
+}
+
+    /**
+     * 当前直播链接的快照。纯内存,可以在主线程上调。
+     */
+open func liveLink() -> FfiLiveLink?  {
+    return try!  FfiConverterOptionTypeFfiLiveLink.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_live_link(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 这段录音还有效的链接,新的在前。
+     */
+open func recordingLinks(sessionId: String) -> [FfiRecordingLink]  {
+    return try!  FfiConverterSequenceTypeFfiRecordingLink.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_recording_links(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
+     * 问一次服务端:几个人在看、锁没锁。走网络。
+     */
+open func refreshLiveLink() -> FfiLiveLink?  {
+    return try!  FfiConverterOptionTypeFfiLiveLink.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_refresh_live_link(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 换一个链接:新房间、新密钥,旧链接当场失效(在看的人要重新扫码)。
+     * 用来把不该在场的人请出去。走网络。
+     */
+open func replaceLiveLink()throws  -> FfiLiveLink  {
+    return try  FfiConverterTypeFfiLiveLink_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_replace_live_link(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 撤销一条录音链接:服务端当场删掉内容,链接从此打不开。走网络。
+     */
+open func revokeRecordingLink(roomId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_revoke_recording_link(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(roomId),$0
+    )
+}
+}
+
+    /**
+     * 散场后要不要把转录稿留在链接上。直播进行中可以来回改 —— 真正的
+     * 去留在停止那一刻才定。
+     */
+open func setLiveLinkKeepsAfterEnd(keeps: Bool)throws  -> FfiLiveLink  {
+    return try  FfiConverterTypeFfiLiveLink_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_set_live_link_keeps_after_end(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(keeps),$0
+    )
+})
+}
+
+    /**
+     * 锁上:新的观看者进不来,已经在看的不受影响。走网络。
+     */
+open func setLiveLinkLocked(locked: Bool)throws  -> FfiLiveLink  {
+    return try  FfiConverterTypeFfiLiveLink_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_set_live_link_locked(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(locked),$0
+    )
+})
+}
+
+    /**
+     * 开始直播这场录音:建房、推说明与已有的转录稿,之后每一帧都会加密推过去。
+     * 走网络,调用方不在主线程上调。
+     */
+open func startLiveLink(sessionId: String, title: String, keepsAfterEnd: Bool)throws  -> FfiLiveLink  {
+    return try  FfiConverterTypeFfiLiveLink_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_start_live_link(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterString.lower(title),
+        FfiConverterBool.lower(keepsAfterEnd),$0
+    )
+})
+}
+
+    /**
+     * 停止直播。散场后留转录稿的,先把最新的整份推完再封笔(内容留约
+     * 24 小时);不留的当场清掉。走网络。
+     */
+open func stopLiveLink()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_stop_live_link(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+    /**
+     * 「发送副本」的文件内容。音频从不在里面。
+     */
+open func transcriptFile(sessionId: String, format: FfiTranscriptFileFormat)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_transcript_file(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterTypeFfiTranscriptFileFormat_lower(format),$0
+    )
+})
+}
+
+    /**
      * Files one legacy/unassigned Session into a Topic without pretending it
      * is a move. The store creates the ownership link and all three builtin
      * projections in one transaction and refuses an existing owner.
@@ -3025,457 +3001,6 @@ open func getSessionTranscriptClipboardText(sessionId: String)throws  -> String 
 })
 }
 
-    /**
-     * 直播中途允许观看端留下文字稿。**只能打开,不能收回** —— 已经同步过去
-     * 的内容在对方手里,关掉只会让界面说假话。
-     */
-open func allowViewersToKeepCopies()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_allow_viewers_to_keep_copies(
-            self.uniffiCloneHandle(),$0
-    )
-}
-}
-
-    /**
-     * 批准一条加入请求,把分享码交给对方。
-     */
-open func approveJoinRequest(requestId: String)throws  -> Bool  {
-    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_approve_join_request(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(requestId),$0
-    )
-})
-}
-
-    /**
-     * 当前正在主持的分享码。没有在主持时为 `None`。
-     *
-     * 分享码必须能从这里取回,不能只活在界面的内存里 —— 切走标签页再回来、
-     * 或者重开窗口,界面就再也拿不到它,而「正在共享」的状态还亮着,
-     * 复制按钮于是静默失效。
-     */
-open func currentShareCode() -> String?  {
-    return try!  FfiConverterOptionString.lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_current_share_code(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 拒绝一条加入请求。
-     */
-open func declineJoinRequest(requestId: String) -> Bool  {
-    return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_decline_join_request(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(requestId),$0
-    )
-})
-}
-
-    /**
-     * 出厂默认的传输配置。设置页用它做「恢复默认」。
-     */
-open func defaultShareTransport() -> FfiShareTransport  {
-    return try!  FfiConverterTypeFfiShareTransport_lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_default_share_transport(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 打开文档协同。
-     *
-     * 必须在共享已经开始之后调用 —— 它要用当前房间的名册判定谁能写。之后本机的
-     * 每一笔编辑都会推给对端,对端推来的每一笔都要过完整条准入链才会合入。
-     */
-open func enableDocumentSync()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_enable_document_sync(
-            self.uniffiCloneHandle(),$0
-    )
-}
-}
-
-    /**
-     * 某段录音此刻是否正在播给别人看。录音条上的「直播中」据此亮起。
-     */
-open func isSessionSharedLive(sessionId: String) -> Bool  {
-    return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_is_session_shared_live(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),$0
-    )
-})
-}
-
-    /**
-     * 用分享码加入别人的房间。
-     */
-open func joinShare(code: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_join_share(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(code),$0
-    )
-}
-}
-
-    /**
-     * 同一网络里愿意被找到的直播。
-     *
-     * 刚打开时列表可能还空着 —— mDNS 是异步宣告的 —— 这时最多阻塞 `seconds`
-     * 秒等第一批。之后是常驻表的快照,立即返回。
-     */
-open func nearbyPeers(seconds: UInt32)throws  -> [FfiNearbyPeer]  {
-    return try  FfiConverterSequenceTypeFfiNearbyPeer.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_nearby_peers(
-            self.uniffiCloneHandle(),
-        FfiConverterUInt32.lower(seconds),$0
-    )
-})
-}
-
-    /**
-     * 等着你回答的加入请求。
-     */
-open func pendingJoinRequests() -> [FfiJoinRequest]  {
-    return try!  FfiConverterSequenceTypeFfiJoinRequest.lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_pending_join_requests(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 把一位观看者移出这场共享。他手里的码随之失效;别人不受影响。
-     */
-open func removeShareMember(endpointId: String)throws  -> Bool  {
-    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_remove_share_member(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(endpointId),$0
-    )
-})
-}
-
-    /**
-     * 向同一网络里的某台机器请求加入。批准后自动进房。
-     */
-open func requestToJoinNearby(endpointId: String)throws  -> FfiJoinOutcome  {
-    return try  FfiConverterTypeFfiJoinOutcome_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_request_to_join_nearby(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(endpointId),$0
-    )
-})
-}
-
-    /**
-     * 房间里都有谁。没在房间里时为空。
-     */
-open func roomMembers() -> [FfiRoomMember]  {
-    return try!  FfiConverterSequenceTypeFfiRoomMember.lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_room_members(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 让同一网络的人在附近列表里看到这场的名字与标题,或者撤下。
-     *
-     * 关着时本机不出现在任何人的附近列表里,敲门也只会得到「没在共享」。
-     */
-open func setShareDiscoverable(discoverable: Bool)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_set_share_discoverable(
-            self.uniffiCloneHandle(),
-        FfiConverterBool.lower(discoverable),$0
-    )
-}
-}
-
-open func setShareDisplayName(name: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_set_share_display_name(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(name),$0
-    )
-}
-}
-
-    /**
-     * 设定传输配置。
-     *
-     * 当前没在共享时立即生效(下次用到端点会按新配置重建);正在共享时保留现有
-     * 连接,新配置在下一次开始共享时生效 —— 中途换中继会把房间里的人踢掉。
-     */
-open func setShareTransport(transport: FfiShareTransport)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_set_share_transport(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeFfiShareTransport_lower(transport),$0
-    )
-}
-}
-
-    /**
-     * 本机的昵称。房间里的人和「附近的人」列表都靠它认出你。
-     *
-     * 存在本机;每次绑定端点时重新交给传输层。空的话别人只看得到公钥。
-     */
-open func shareDisplayName() -> String  {
-    return try!  FfiConverterString.lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_share_display_name(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 本机分享身份。首次调用会生成并持久化。
-     */
-open func shareIdentity()throws  -> FfiShareIdentity  {
-    return try  FfiConverterTypeFfiShareIdentity_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_share_identity(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 取当前分享状态与字幕投影。
-     *
-     * 每次调用会吸收自上次以来收到的所有帧;因为帧是 replace-in-full 的,只有最新
-     * 的那一帧会留下痕迹,中间被跳过的帧不需要补。
-     */
-open func shareState() -> FfiShareState  {
-    return try!  FfiConverterTypeFfiShareState_lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_share_state(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 当前生效的传输配置。
-     */
-open func shareTransport() -> FfiShareTransport  {
-    return try!  FfiConverterTypeFfiShareTransport_lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_share_transport(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 收到的共享内容该落进哪个 Notebook,没有就建一个。
-     */
-open func sharedInboxNotebook()throws  -> FfiNotebook  {
-    return try  FfiConverterTypeFfiNotebook_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_shared_inbox_notebook(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 把正在录的这一场直播给别人看,返回加入码。
-     *
-     * 观看的人只读。`keep_copies` 关着时主持人不接文档同步:观看端只收得到
-     * 实时字幕,他们的 ZuTalk 不会留下文字稿;打开后才把文字稿同步过去。
-     */
-open func startLiveShare(sessionId: String, keepCopies: Bool)throws  -> String  {
-    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_start_live_share(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),
-        FfiConverterBool.lower(keepCopies),$0
-    )
-})
-}
-
-    /**
-     * 把一段录好的录音共享给别人:他们会得到一份文字稿副本。
-     * `host_only` 为真时对方只读,否则可以订正。
-     */
-open func startRecordingShare(sessionId: String, hostOnly: Bool)throws  -> String  {
-    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_start_recording_share(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),
-        FfiConverterBool.lower(hostOnly),$0
-    )
-})
-}
-
-    /**
-     * 停止共享。
-     *
-     * **只停止继续发送。** 已经合并进对方文档的内容无法收回 —— 房间密钥轮换让老成员
-     * 拿不到后续、也进不来新房间,仅此而已。界面必须如实说明这一点。
-     */
-open func stopSharing()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_stop_sharing(
-            self.uniffiCloneHandle(),$0
-    )
-}
-}
-
-    /**
-     * 开启网页分享。仅主持中可开;返回观看页地址。
-     *
-     * `service_url` 为空用默认部署位。重复调用返回当前房间,不重复建房。
-     */
-open func startWebShare(serviceUrl: String?)throws  -> FfiWebShareInfo  {
-    return try  FfiConverterTypeFfiWebShareInfo_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_start_web_share(
-            self.uniffiCloneHandle(),
-        FfiConverterOptionString.lower(serviceUrl),$0
-    )
-})
-}
-
-    /**
-     * 关闭网页分享(共享本身继续)。
-     */
-open func stopWebShare()  {try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_stop_web_share(
-            self.uniffiCloneHandle(),$0
-    )
-}
-}
-
-    /**
-     * 当前网页分享的快照;没开时为 `None`。
-     */
-open func webShareState() -> FfiWebShareInfo?  {
-    return try!  FfiConverterOptionTypeFfiWebShareInfo.lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_web_share_state(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 采纳:把这处订正写进你的录音,和你自己动手改一样(同一条编辑路径,
-     * 同样进搜索、同样可以再改)。
-     */
-open func acceptSharedCorrection(correction: FfiSharedCorrection)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_accept_shared_correction(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeFfiSharedCorrection_lower(correction),$0
-    )
-}
-}
-
-    /**
-     * 删除一份收到的共享转录稿。**只删本机副本** —— 台账即目录,文件没了
-     * 记录就没了;别人手里的副本不受影响,这与停止共享同一条真话。
-     */
-open func deleteSharedSession(sessionId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_delete_shared_session(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),$0
-    )
-}
-}
-
-    /**
-     * 收到的文字稿:shared/ 目录台账里**别人的**那些。
-     *
-     * 本机共享出去时也会在 shared/ 下留一份同步用的副本 —— 那是自己的录音,
-     * 不该出现在「收到的」里,和别人的混在一起。
-     */
-open func listSharedSessions() -> [FfiSharedSessionInfo]  {
-    return try!  FfiConverterSequenceTypeFfiSharedSessionInfo.lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_list_shared_sessions(
-            self.uniffiCloneHandle(),$0
-    )
-})
-}
-
-    /**
-     * 不采纳:共享副本改回你的版本。还在共享时,改回去的这一笔也同步给
-     * 每个人 —— 副本与你的录音重新一致。
-     */
-open func rejectSharedCorrection(sessionId: String, correction: FfiSharedCorrection)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_reject_shared_correction(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),
-        FfiConverterTypeFfiSharedCorrection_lower(correction),$0
-    )
-}
-}
-
-    /**
-     * 看的人在共享副本里改过、而你的录音还没跟上的地方。
-     *
-     * 订正只落在共享副本里 —— 那是同步给每个人的那一份,不是你的录音。
-     * 这里把两者的差别列出来,由你逐条采纳或不采纳。机器自己写进副本、
-     * 只是还没刷新到的差别(副本 == 机器影子)不算订正。
-     */
-open func sharedCorrections(sessionId: String)throws  -> [FfiSharedCorrection]  {
-    return try  FfiConverterSequenceTypeFfiSharedCorrection.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_shared_corrections(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),$0
-    )
-})
-}
-
-    /**
-     * 一份共享 session 的句块(文档序)。
-     */
-open func sharedSessionBlocks(sessionId: String)throws  -> [FfiUtteranceBlock]  {
-    return try  FfiConverterSequenceTypeFfiUtteranceBlock.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_shared_session_blocks(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),$0
-    )
-})
-}
-
-    /**
-     * 在共享 session 的句块之间插批注。
-     */
-open func sharedSessionInsertAnnotation(sessionId: String, index: UInt32, annotationId: String, text: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_shared_session_insert_annotation(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),
-        FfiConverterUInt32.lower(index),
-        FfiConverterString.lower(annotationId),
-        FfiConverterString.lower(text),$0
-    )
-}
-}
-
-    /**
-     * 订正共享 session 的一条译文车道,并把增量推给房间。
-     */
-open func sharedSessionReplaceLane(sessionId: String, blockId: String, lane: String, text: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_shared_session_replace_lane(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),
-        FfiConverterString.lower(blockId),
-        FfiConverterString.lower(lane),
-        FfiConverterString.lower(text),$0
-    )
-}
-}
-
-    /**
-     * 订正共享 session 的原文车道。
-     */
-open func sharedSessionReplaceText(sessionId: String, blockId: String, text: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_shared_session_replace_text(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),
-        FfiConverterString.lower(blockId),
-        FfiConverterString.lower(text),$0
-    )
-}
-}
-
 open func createSpeakerParticipant(displayName: String)throws  -> FfiSpeakerParticipant  {
     return try  FfiConverterTypeFfiSpeakerParticipant_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zutalkcore_create_speaker_participant(
@@ -4054,83 +3579,6 @@ public func FfiConverterTypeFfiContextPackSourceInfo_lower(_ value: FfiContextPa
 
 
 /**
- * 一条等着你回答的加入请求。
- */
-public struct FfiJoinRequest: Equatable, Hashable {
-    public var requestId: String
-    /**
-     * 请求方的公钥。**这是唯一可信的身份** —— 名字是对方自己写的。
-     */
-    public var endpointId: String
-    public var shortLabel: String
-    /**
-     * 对方自报的名字,已经过滤。可能为空。
-     */
-    public var displayName: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(requestId: String,
-        /**
-         * 请求方的公钥。**这是唯一可信的身份** —— 名字是对方自己写的。
-         */endpointId: String, shortLabel: String,
-        /**
-         * 对方自报的名字,已经过滤。可能为空。
-         */displayName: String) {
-        self.requestId = requestId
-        self.endpointId = endpointId
-        self.shortLabel = shortLabel
-        self.displayName = displayName
-    }
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiJoinRequest: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiJoinRequest: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiJoinRequest {
-        return
-            try FfiJoinRequest(
-                requestId: FfiConverterString.read(from: &buf),
-                endpointId: FfiConverterString.read(from: &buf),
-                shortLabel: FfiConverterString.read(from: &buf),
-                displayName: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiJoinRequest, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.requestId, into: &buf)
-        FfiConverterString.write(value.endpointId, into: &buf)
-        FfiConverterString.write(value.shortLabel, into: &buf)
-        FfiConverterString.write(value.displayName, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiJoinRequest_lift(_ buf: RustBuffer) throws -> FfiJoinRequest {
-    return try FfiConverterTypeFfiJoinRequest.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiJoinRequest_lower(_ value: FfiJoinRequest) -> RustBuffer {
-    return FfiConverterTypeFfiJoinRequest.lower(value)
-}
-
-
-/**
  * What Settings needs to describe the model side, without a key in it.
  */
 public struct FfiLanguageModelEngineDescriptor: Equatable, Hashable {
@@ -4196,6 +3644,99 @@ public func FfiConverterTypeFfiLanguageModelEngineDescriptor_lift(_ buf: RustBuf
 #endif
 public func FfiConverterTypeFfiLanguageModelEngineDescriptor_lower(_ value: FfiLanguageModelEngineDescriptor) -> RustBuffer {
     return FfiConverterTypeFfiLanguageModelEngineDescriptor.lower(value)
+}
+
+
+/**
+ * 进行中的直播链接。
+ */
+public struct FfiLiveLink: Equatable, Hashable {
+    public var sessionId: String
+    /**
+     * 带密钥的完整链接:二维码与「复制链接」的内容。
+     */
+    public var url: String
+    /**
+     * 此刻打开着观看页的人数(上一次刷新时)。
+     */
+    public var viewers: UInt32
+    /**
+     * 锁上之后新的人进不来,已经在看的不受影响。
+     */
+    public var locked: Bool
+    /**
+     * 散场后转录稿留在链接上(约 24 小时),观众可以下载。关着时散场即删。
+     */
+    public var keepsAfterEnd: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(sessionId: String,
+        /**
+         * 带密钥的完整链接:二维码与「复制链接」的内容。
+         */url: String,
+        /**
+         * 此刻打开着观看页的人数(上一次刷新时)。
+         */viewers: UInt32,
+        /**
+         * 锁上之后新的人进不来,已经在看的不受影响。
+         */locked: Bool,
+        /**
+         * 散场后转录稿留在链接上(约 24 小时),观众可以下载。关着时散场即删。
+         */keepsAfterEnd: Bool) {
+        self.sessionId = sessionId
+        self.url = url
+        self.viewers = viewers
+        self.locked = locked
+        self.keepsAfterEnd = keepsAfterEnd
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiLiveLink: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiLiveLink: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLiveLink {
+        return
+            try FfiLiveLink(
+                sessionId: FfiConverterString.read(from: &buf),
+                url: FfiConverterString.read(from: &buf),
+                viewers: FfiConverterUInt32.read(from: &buf),
+                locked: FfiConverterBool.read(from: &buf),
+                keepsAfterEnd: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiLiveLink, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.sessionId, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterUInt32.write(value.viewers, into: &buf)
+        FfiConverterBool.write(value.locked, into: &buf)
+        FfiConverterBool.write(value.keepsAfterEnd, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiLiveLink_lift(_ buf: RustBuffer) throws -> FfiLiveLink {
+    return try FfiConverterTypeFfiLiveLink.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiLiveLink_lower(_ value: FfiLiveLink) -> RustBuffer {
+    return FfiConverterTypeFfiLiveLink.lower(value)
 }
 
 
@@ -4334,74 +3875,6 @@ public func FfiConverterTypeFfiMarkDigest_lift(_ buf: RustBuffer) throws -> FfiM
 #endif
 public func FfiConverterTypeFfiMarkDigest_lower(_ value: FfiMarkDigest) -> RustBuffer {
     return FfiConverterTypeFfiMarkDigest.lower(value)
-}
-
-
-/**
- * 同一网络里一场愿意被找到的直播。
- *
- * 只有主持人为这一场打开了「让附近的人找到」才会出现;名字与标题是主持人
- * 同意公开的那两句话,已经收拾过。公钥短形式是唯一可核对的身份。
- */
-public struct FfiNearbyPeer: Equatable, Hashable {
-    public var endpointId: String
-    public var shortLabel: String
-    public var hostName: String
-    public var title: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(endpointId: String, shortLabel: String, hostName: String, title: String) {
-        self.endpointId = endpointId
-        self.shortLabel = shortLabel
-        self.hostName = hostName
-        self.title = title
-    }
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiNearbyPeer: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiNearbyPeer: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNearbyPeer {
-        return
-            try FfiNearbyPeer(
-                endpointId: FfiConverterString.read(from: &buf),
-                shortLabel: FfiConverterString.read(from: &buf),
-                hostName: FfiConverterString.read(from: &buf),
-                title: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiNearbyPeer, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.endpointId, into: &buf)
-        FfiConverterString.write(value.shortLabel, into: &buf)
-        FfiConverterString.write(value.hostName, into: &buf)
-        FfiConverterString.write(value.title, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiNearbyPeer_lift(_ buf: RustBuffer) throws -> FfiNearbyPeer {
-    return try FfiConverterTypeFfiNearbyPeer.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiNearbyPeer_lower(_ value: FfiNearbyPeer) -> RustBuffer {
-    return FfiConverterTypeFfiNearbyPeer.lower(value)
 }
 
 
@@ -6491,45 +5964,23 @@ public func FfiConverterTypeFfiProviderConnectionCheck_lower(_ value: FfiProvide
 
 
 /**
- * 房间里的一个人。
+ * 一段录好的录音的链接。
  */
-public struct FfiRoomMember: Equatable, Hashable {
-    public var endpointId: String
-    public var shortLabel: String
-    /**
-     * 对方自报的昵称,可能为空或与别人重名 —— **公钥才是身份**。
-     */
-    public var displayName: String
-    /**
-     * 是不是你自己。
-     */
-    public var isMe: Bool
-    public var isHost: Bool
-    /**
-     * 主持人视角:这个成员的字幕连接实际走的链路。观看端看别人、
-     * 以及自己那一行都是 `None` —— 不知道就不显示,不猜。
-     */
-    public var link: FfiShareLinkPath?
+public struct FfiRecordingLink: Equatable, Hashable {
+    public var roomId: String
+    public var sessionId: String
+    public var url: String
+    public var createdAtEpoch: Int64
+    public var expiresAtEpoch: Int64
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(endpointId: String, shortLabel: String,
-        /**
-         * 对方自报的昵称,可能为空或与别人重名 —— **公钥才是身份**。
-         */displayName: String,
-        /**
-         * 是不是你自己。
-         */isMe: Bool, isHost: Bool,
-        /**
-         * 主持人视角:这个成员的字幕连接实际走的链路。观看端看别人、
-         * 以及自己那一行都是 `None` —— 不知道就不显示,不猜。
-         */link: FfiShareLinkPath?) {
-        self.endpointId = endpointId
-        self.shortLabel = shortLabel
-        self.displayName = displayName
-        self.isMe = isMe
-        self.isHost = isHost
-        self.link = link
+    public init(roomId: String, sessionId: String, url: String, createdAtEpoch: Int64, expiresAtEpoch: Int64) {
+        self.roomId = roomId
+        self.sessionId = sessionId
+        self.url = url
+        self.createdAtEpoch = createdAtEpoch
+        self.expiresAtEpoch = expiresAtEpoch
     }
 
 
@@ -6538,32 +5989,30 @@ public struct FfiRoomMember: Equatable, Hashable {
 }
 
 #if compiler(>=6)
-extension FfiRoomMember: Sendable {}
+extension FfiRecordingLink: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeFfiRoomMember: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiRoomMember {
+public struct FfiConverterTypeFfiRecordingLink: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiRecordingLink {
         return
-            try FfiRoomMember(
-                endpointId: FfiConverterString.read(from: &buf),
-                shortLabel: FfiConverterString.read(from: &buf),
-                displayName: FfiConverterString.read(from: &buf),
-                isMe: FfiConverterBool.read(from: &buf),
-                isHost: FfiConverterBool.read(from: &buf),
-                link: FfiConverterOptionTypeFfiShareLinkPath.read(from: &buf)
+            try FfiRecordingLink(
+                roomId: FfiConverterString.read(from: &buf),
+                sessionId: FfiConverterString.read(from: &buf),
+                url: FfiConverterString.read(from: &buf),
+                createdAtEpoch: FfiConverterInt64.read(from: &buf),
+                expiresAtEpoch: FfiConverterInt64.read(from: &buf)
         )
     }
 
-    public static func write(_ value: FfiRoomMember, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.endpointId, into: &buf)
-        FfiConverterString.write(value.shortLabel, into: &buf)
-        FfiConverterString.write(value.displayName, into: &buf)
-        FfiConverterBool.write(value.isMe, into: &buf)
-        FfiConverterBool.write(value.isHost, into: &buf)
-        FfiConverterOptionTypeFfiShareLinkPath.write(value.link, into: &buf)
+    public static func write(_ value: FfiRecordingLink, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.roomId, into: &buf)
+        FfiConverterString.write(value.sessionId, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterInt64.write(value.createdAtEpoch, into: &buf)
+        FfiConverterInt64.write(value.expiresAtEpoch, into: &buf)
     }
 }
 
@@ -6571,15 +6020,15 @@ public struct FfiConverterTypeFfiRoomMember: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeFfiRoomMember_lift(_ buf: RustBuffer) throws -> FfiRoomMember {
-    return try FfiConverterTypeFfiRoomMember.lift(buf)
+public func FfiConverterTypeFfiRecordingLink_lift(_ buf: RustBuffer) throws -> FfiRecordingLink {
+    return try FfiConverterTypeFfiRecordingLink.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeFfiRoomMember_lower(_ value: FfiRoomMember) -> RustBuffer {
-    return FfiConverterTypeFfiRoomMember.lower(value)
+public func FfiConverterTypeFfiRecordingLink_lower(_ value: FfiRecordingLink) -> RustBuffer {
+    return FfiConverterTypeFfiRecordingLink.lower(value)
 }
 
 
@@ -6944,634 +6393,6 @@ public func FfiConverterTypeFfiSessionSpeaker_lower(_ value: FfiSessionSpeaker) 
 }
 
 
-/**
- * 本机的分享身份。
- */
-public struct FfiShareIdentity: Equatable, Hashable {
-    /**
-     * 完整公钥的十六进制形式。对方要的就是它。
-     */
-    public var endpointId: String
-    /**
-     * 给人看的短形式,用于界面与日志。
-     */
-    public var shortLabel: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * 完整公钥的十六进制形式。对方要的就是它。
-         */endpointId: String,
-        /**
-         * 给人看的短形式,用于界面与日志。
-         */shortLabel: String) {
-        self.endpointId = endpointId
-        self.shortLabel = shortLabel
-    }
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiShareIdentity: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiShareIdentity: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiShareIdentity {
-        return
-            try FfiShareIdentity(
-                endpointId: FfiConverterString.read(from: &buf),
-                shortLabel: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiShareIdentity, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.endpointId, into: &buf)
-        FfiConverterString.write(value.shortLabel, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiShareIdentity_lift(_ buf: RustBuffer) throws -> FfiShareIdentity {
-    return try FfiConverterTypeFfiShareIdentity.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiShareIdentity_lower(_ value: FfiShareIdentity) -> RustBuffer {
-    return FfiConverterTypeFfiShareIdentity.lower(value)
-}
-
-
-/**
- * 当前共享状态的一帧快照。
- */
-public struct FfiShareState: Equatable, Hashable {
-    public var isSharing: Bool
-    /**
-     * 作为观看者加入了别人的房间。
-     */
-    public var isViewing: Bool
-    /**
-     * 只读房间(主持人可写,其他人只读)。
-     */
-    public var hostOnly: Bool
-    /**
-     * 本机是这个房间的主持人。
-     */
-    public var isHost: Bool
-    /**
-     * 观看端到主持人的当前链路;没在观看或还没连上时为 `None`。
-     */
-    public var viewerLink: FfiShareLinkPath?
-    /**
-     * 已应用的字幕帧号;还没收到任何帧时为 `None`。
-     */
-    public var appliedRevision: UInt64?
-    /**
-     * 本机作为主持人已经播出的最后一帧。`None` 表示**一帧都还没播** ——
-     * 通常是主持人还没开始录音,而不是网络有问题。这两种情况在界面上必须
-     * 说成不同的话,否则用户只会看到「什么都没有」。
-     */
-    public var broadcastRevision: UInt64?
-    /**
-     * 主持人已明确道别(仅观看端有意义)。界面据此显示「这场已结束,
-     * 收到的内容还在」,而不是永远停在「接收中」的最后一帧。
-     */
-    public var hostLeft: Bool
-    /**
-     * 当前房间按单次录音共享时,那一场的 session id。收件列表用它判定
-     * **哪一条**受房间写入策略约束 —— 只读约束只属于当前房间的那份文档,
-     * 不该殃及散场后留下的其它收件。Notebook 范围或未共享时为 `None`。
-     */
-    public var scopeSessionId: String?
-    /**
-     * 这是一场正在录的直播(`false` = 一段录好的录音)。主持人一侧按开始
-     * 时的选择;观看端按主持人随帧带来的说明,旧版主持人没有说明时为 `false`。
-     */
-    public var isLive: Bool
-    /**
-     * 观看端的 ZuTalk 会留下这场的文字稿。主持人为直播打开、或共享的是一段
-     * 录好的录音时为真;关着时观看端只能边听边看,离开就没了。
-     */
-    public var keepsCopies: Bool
-    /**
-     * 主持人:同一网络的人能在附近列表里看到这场的名字与标题。
-     */
-    public var discoverable: Bool
-    /**
-     * 这场共享的录音标题;没起名时为空。
-     */
-    public var title: String
-    /**
-     * 主持人自报的名字。观看端从主持人随帧带来的说明里读,不靠 gossip。
-     */
-    public var hostName: String
-    /**
-     * 观看端:主持人把本机移出了这场共享。
-     */
-    public var removedByHost: Bool
-    public var lines: [FfiSharedCaptionLine]
-    /**
-     * 观看端:主播最新一帧的**完整**预览 —— 与主播本机画布收到的同一形态
-     * (多语言 lane、cue、lane 健康齐全)。旧版主播只发压扁行时为 `None`,
-     * 此时界面退化为 `lines` 列表。
-     */
-    public var remotePreview: FfiNotebookCaptureLivePreview?
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(isSharing: Bool,
-        /**
-         * 作为观看者加入了别人的房间。
-         */isViewing: Bool,
-        /**
-         * 只读房间(主持人可写,其他人只读)。
-         */hostOnly: Bool,
-        /**
-         * 本机是这个房间的主持人。
-         */isHost: Bool,
-        /**
-         * 观看端到主持人的当前链路;没在观看或还没连上时为 `None`。
-         */viewerLink: FfiShareLinkPath?,
-        /**
-         * 已应用的字幕帧号;还没收到任何帧时为 `None`。
-         */appliedRevision: UInt64?,
-        /**
-         * 本机作为主持人已经播出的最后一帧。`None` 表示**一帧都还没播** ——
-         * 通常是主持人还没开始录音,而不是网络有问题。这两种情况在界面上必须
-         * 说成不同的话,否则用户只会看到「什么都没有」。
-         */broadcastRevision: UInt64?,
-        /**
-         * 主持人已明确道别(仅观看端有意义)。界面据此显示「这场已结束,
-         * 收到的内容还在」,而不是永远停在「接收中」的最后一帧。
-         */hostLeft: Bool,
-        /**
-         * 当前房间按单次录音共享时,那一场的 session id。收件列表用它判定
-         * **哪一条**受房间写入策略约束 —— 只读约束只属于当前房间的那份文档,
-         * 不该殃及散场后留下的其它收件。Notebook 范围或未共享时为 `None`。
-         */scopeSessionId: String?,
-        /**
-         * 这是一场正在录的直播(`false` = 一段录好的录音)。主持人一侧按开始
-         * 时的选择;观看端按主持人随帧带来的说明,旧版主持人没有说明时为 `false`。
-         */isLive: Bool,
-        /**
-         * 观看端的 ZuTalk 会留下这场的文字稿。主持人为直播打开、或共享的是一段
-         * 录好的录音时为真;关着时观看端只能边听边看,离开就没了。
-         */keepsCopies: Bool,
-        /**
-         * 主持人:同一网络的人能在附近列表里看到这场的名字与标题。
-         */discoverable: Bool,
-        /**
-         * 这场共享的录音标题;没起名时为空。
-         */title: String,
-        /**
-         * 主持人自报的名字。观看端从主持人随帧带来的说明里读,不靠 gossip。
-         */hostName: String,
-        /**
-         * 观看端:主持人把本机移出了这场共享。
-         */removedByHost: Bool, lines: [FfiSharedCaptionLine],
-        /**
-         * 观看端:主播最新一帧的**完整**预览 —— 与主播本机画布收到的同一形态
-         * (多语言 lane、cue、lane 健康齐全)。旧版主播只发压扁行时为 `None`,
-         * 此时界面退化为 `lines` 列表。
-         */remotePreview: FfiNotebookCaptureLivePreview?) {
-        self.isSharing = isSharing
-        self.isViewing = isViewing
-        self.hostOnly = hostOnly
-        self.isHost = isHost
-        self.viewerLink = viewerLink
-        self.appliedRevision = appliedRevision
-        self.broadcastRevision = broadcastRevision
-        self.hostLeft = hostLeft
-        self.scopeSessionId = scopeSessionId
-        self.isLive = isLive
-        self.keepsCopies = keepsCopies
-        self.discoverable = discoverable
-        self.title = title
-        self.hostName = hostName
-        self.removedByHost = removedByHost
-        self.lines = lines
-        self.remotePreview = remotePreview
-    }
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiShareState: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiShareState {
-        return
-            try FfiShareState(
-                isSharing: FfiConverterBool.read(from: &buf),
-                isViewing: FfiConverterBool.read(from: &buf),
-                hostOnly: FfiConverterBool.read(from: &buf),
-                isHost: FfiConverterBool.read(from: &buf),
-                viewerLink: FfiConverterOptionTypeFfiShareLinkPath.read(from: &buf),
-                appliedRevision: FfiConverterOptionUInt64.read(from: &buf),
-                broadcastRevision: FfiConverterOptionUInt64.read(from: &buf),
-                hostLeft: FfiConverterBool.read(from: &buf),
-                scopeSessionId: FfiConverterOptionString.read(from: &buf),
-                isLive: FfiConverterBool.read(from: &buf),
-                keepsCopies: FfiConverterBool.read(from: &buf),
-                discoverable: FfiConverterBool.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                hostName: FfiConverterString.read(from: &buf),
-                removedByHost: FfiConverterBool.read(from: &buf),
-                lines: FfiConverterSequenceTypeFfiSharedCaptionLine.read(from: &buf),
-                remotePreview: FfiConverterOptionTypeFfiNotebookCaptureLivePreview.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiShareState, into buf: inout [UInt8]) {
-        FfiConverterBool.write(value.isSharing, into: &buf)
-        FfiConverterBool.write(value.isViewing, into: &buf)
-        FfiConverterBool.write(value.hostOnly, into: &buf)
-        FfiConverterBool.write(value.isHost, into: &buf)
-        FfiConverterOptionTypeFfiShareLinkPath.write(value.viewerLink, into: &buf)
-        FfiConverterOptionUInt64.write(value.appliedRevision, into: &buf)
-        FfiConverterOptionUInt64.write(value.broadcastRevision, into: &buf)
-        FfiConverterBool.write(value.hostLeft, into: &buf)
-        FfiConverterOptionString.write(value.scopeSessionId, into: &buf)
-        FfiConverterBool.write(value.isLive, into: &buf)
-        FfiConverterBool.write(value.keepsCopies, into: &buf)
-        FfiConverterBool.write(value.discoverable, into: &buf)
-        FfiConverterString.write(value.title, into: &buf)
-        FfiConverterString.write(value.hostName, into: &buf)
-        FfiConverterBool.write(value.removedByHost, into: &buf)
-        FfiConverterSequenceTypeFfiSharedCaptionLine.write(value.lines, into: &buf)
-        FfiConverterOptionTypeFfiNotebookCaptureLivePreview.write(value.remotePreview, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiShareState_lift(_ buf: RustBuffer) throws -> FfiShareState {
-    return try FfiConverterTypeFfiShareState.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiShareState_lower(_ value: FfiShareState) -> RustBuffer {
-    return FfiConverterTypeFfiShareState.lower(value)
-}
-
-
-/**
- * 分享的传输配置。由设置页决定,不参与共享协议本身。
- */
-public struct FfiShareTransport: Equatable, Hashable {
-    /**
-     * 中继地址。为空表示只走直连 —— 局域网可用,跨网络打洞失败时没有兜底。
-     */
-    public var relayUrls: [String]
-    /**
-     * 局域网 mDNS 发现。macOS 15+ 首次会弹系统授权;拒绝后仍可用分享码配对。
-     */
-    public var enableLocalDiscovery: Bool
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * 中继地址。为空表示只走直连 —— 局域网可用,跨网络打洞失败时没有兜底。
-         */relayUrls: [String],
-        /**
-         * 局域网 mDNS 发现。macOS 15+ 首次会弹系统授权;拒绝后仍可用分享码配对。
-         */enableLocalDiscovery: Bool) {
-        self.relayUrls = relayUrls
-        self.enableLocalDiscovery = enableLocalDiscovery
-    }
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiShareTransport: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiShareTransport: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiShareTransport {
-        return
-            try FfiShareTransport(
-                relayUrls: FfiConverterSequenceString.read(from: &buf),
-                enableLocalDiscovery: FfiConverterBool.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiShareTransport, into buf: inout [UInt8]) {
-        FfiConverterSequenceString.write(value.relayUrls, into: &buf)
-        FfiConverterBool.write(value.enableLocalDiscovery, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiShareTransport_lift(_ buf: RustBuffer) throws -> FfiShareTransport {
-    return try FfiConverterTypeFfiShareTransport.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiShareTransport_lower(_ value: FfiShareTransport) -> RustBuffer {
-    return FfiConverterTypeFfiShareTransport.lower(value)
-}
-
-
-/**
- * 一行收到的字幕。**纯文本,没有任何音频字段。**
- */
-public struct FfiSharedCaptionLine: Equatable, Hashable {
-    public var speaker: String?
-    public var sourceLanguage: String
-    public var sourceText: String
-    public var targetLanguage: String?
-    public var targetText: String?
-    /**
-     * "partial" 或 "complete"。
-     */
-    public var completion: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(speaker: String?, sourceLanguage: String, sourceText: String, targetLanguage: String?, targetText: String?,
-        /**
-         * "partial" 或 "complete"。
-         */completion: String) {
-        self.speaker = speaker
-        self.sourceLanguage = sourceLanguage
-        self.sourceText = sourceText
-        self.targetLanguage = targetLanguage
-        self.targetText = targetText
-        self.completion = completion
-    }
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiSharedCaptionLine: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiSharedCaptionLine: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSharedCaptionLine {
-        return
-            try FfiSharedCaptionLine(
-                speaker: FfiConverterOptionString.read(from: &buf),
-                sourceLanguage: FfiConverterString.read(from: &buf),
-                sourceText: FfiConverterString.read(from: &buf),
-                targetLanguage: FfiConverterOptionString.read(from: &buf),
-                targetText: FfiConverterOptionString.read(from: &buf),
-                completion: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiSharedCaptionLine, into buf: inout [UInt8]) {
-        FfiConverterOptionString.write(value.speaker, into: &buf)
-        FfiConverterString.write(value.sourceLanguage, into: &buf)
-        FfiConverterString.write(value.sourceText, into: &buf)
-        FfiConverterOptionString.write(value.targetLanguage, into: &buf)
-        FfiConverterOptionString.write(value.targetText, into: &buf)
-        FfiConverterString.write(value.completion, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiSharedCaptionLine_lift(_ buf: RustBuffer) throws -> FfiSharedCaptionLine {
-    return try FfiConverterTypeFfiSharedCaptionLine.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiSharedCaptionLine_lower(_ value: FfiSharedCaptionLine) -> RustBuffer {
-    return FfiConverterTypeFfiSharedCaptionLine.lower(value)
-}
-
-
-/**
- * 一处等主持人回答的订正:看的人在共享副本里改了,和你自己的录音不一样。
- */
-public struct FfiSharedCorrection: Equatable, Hashable {
-    public var utteranceId: String
-    /**
-     * 被改的那一栏的语言;原文那一栏就是原文的语言。
-     */
-    public var language: String
-    public var isSource: Bool
-    /**
-     * 你的录音里现在的样子。
-     */
-    public var yours: String
-    /**
-     * 共享副本里的样子。
-     */
-    public var theirs: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(utteranceId: String,
-        /**
-         * 被改的那一栏的语言;原文那一栏就是原文的语言。
-         */language: String, isSource: Bool,
-        /**
-         * 你的录音里现在的样子。
-         */yours: String,
-        /**
-         * 共享副本里的样子。
-         */theirs: String) {
-        self.utteranceId = utteranceId
-        self.language = language
-        self.isSource = isSource
-        self.yours = yours
-        self.theirs = theirs
-    }
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiSharedCorrection: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiSharedCorrection: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSharedCorrection {
-        return
-            try FfiSharedCorrection(
-                utteranceId: FfiConverterString.read(from: &buf),
-                language: FfiConverterString.read(from: &buf),
-                isSource: FfiConverterBool.read(from: &buf),
-                yours: FfiConverterString.read(from: &buf),
-                theirs: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiSharedCorrection, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.utteranceId, into: &buf)
-        FfiConverterString.write(value.language, into: &buf)
-        FfiConverterBool.write(value.isSource, into: &buf)
-        FfiConverterString.write(value.yours, into: &buf)
-        FfiConverterString.write(value.theirs, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiSharedCorrection_lift(_ buf: RustBuffer) throws -> FfiSharedCorrection {
-    return try FfiConverterTypeFfiSharedCorrection.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiSharedCorrection_lower(_ value: FfiSharedCorrection) -> RustBuffer {
-    return FfiConverterTypeFfiSharedCorrection.lower(value)
-}
-
-
-/**
- * 一份收到的文字稿的摘要。
- */
-public struct FfiSharedSessionInfo: Equatable, Hashable {
-    public var sessionId: String
-    /**
-     * 主持人给那场录音起的名字;没起名或旧版主持人时为空。
-     */
-    public var title: String
-    /**
-     * 谁共享的。主持人自报的名字,可能为空。
-     */
-    public var hostName: String
-    /**
-     * 首个句块的正文,给列表当标题;空文档为空串。
-     */
-    public var preview: String
-    public var blockCount: UInt32
-    /**
-     * 收到(最后合入)的时刻,Unix 秒。台账即目录 —— 这就是文件 mtime,
-     * 与 share-p2p.md §11「收到时间取文件时间」一致。拿不到时为 0。
-     */
-    public var receivedAtEpoch: Int64
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(sessionId: String,
-        /**
-         * 主持人给那场录音起的名字;没起名或旧版主持人时为空。
-         */title: String,
-        /**
-         * 谁共享的。主持人自报的名字,可能为空。
-         */hostName: String,
-        /**
-         * 首个句块的正文,给列表当标题;空文档为空串。
-         */preview: String, blockCount: UInt32,
-        /**
-         * 收到(最后合入)的时刻,Unix 秒。台账即目录 —— 这就是文件 mtime,
-         * 与 share-p2p.md §11「收到时间取文件时间」一致。拿不到时为 0。
-         */receivedAtEpoch: Int64) {
-        self.sessionId = sessionId
-        self.title = title
-        self.hostName = hostName
-        self.preview = preview
-        self.blockCount = blockCount
-        self.receivedAtEpoch = receivedAtEpoch
-    }
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiSharedSessionInfo: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiSharedSessionInfo: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSharedSessionInfo {
-        return
-            try FfiSharedSessionInfo(
-                sessionId: FfiConverterString.read(from: &buf),
-                title: FfiConverterString.read(from: &buf),
-                hostName: FfiConverterString.read(from: &buf),
-                preview: FfiConverterString.read(from: &buf),
-                blockCount: FfiConverterUInt32.read(from: &buf),
-                receivedAtEpoch: FfiConverterInt64.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiSharedSessionInfo, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.sessionId, into: &buf)
-        FfiConverterString.write(value.title, into: &buf)
-        FfiConverterString.write(value.hostName, into: &buf)
-        FfiConverterString.write(value.preview, into: &buf)
-        FfiConverterUInt32.write(value.blockCount, into: &buf)
-        FfiConverterInt64.write(value.receivedAtEpoch, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiSharedSessionInfo_lift(_ buf: RustBuffer) throws -> FfiSharedSessionInfo {
-    return try FfiConverterTypeFfiSharedSessionInfo.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiSharedSessionInfo_lower(_ value: FfiSharedSessionInfo) -> RustBuffer {
-    return FfiConverterTypeFfiSharedSessionInfo.lower(value)
-}
-
-
 public struct FfiSpeakerParticipant: Equatable, Hashable {
     public var id: String
     public var displayName: String
@@ -7691,65 +6512,6 @@ public func FfiConverterTypeFfiUtteranceBlock_lift(_ buf: RustBuffer) throws -> 
 #endif
 public func FfiConverterTypeFfiUtteranceBlock_lower(_ value: FfiUtteranceBlock) -> RustBuffer {
     return FfiConverterTypeFfiUtteranceBlock.lower(value)
-}
-
-
-/**
- * 给 UI 的网页分享快照。
- */
-public struct FfiWebShareInfo: Equatable, Hashable {
-    /**
-     * 观看页地址 —— 二维码与复制按钮的内容。
-     */
-    public var viewerUrl: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * 观看页地址 —— 二维码与复制按钮的内容。
-         */viewerUrl: String) {
-        self.viewerUrl = viewerUrl
-    }
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiWebShareInfo: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiWebShareInfo: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiWebShareInfo {
-        return
-            try FfiWebShareInfo(
-                viewerUrl: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiWebShareInfo, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.viewerUrl, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiWebShareInfo_lift(_ buf: RustBuffer) throws -> FfiWebShareInfo {
-    return try FfiConverterTypeFfiWebShareInfo.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiWebShareInfo_lower(_ value: FfiWebShareInfo) -> RustBuffer {
-    return FfiConverterTypeFfiWebShareInfo.lower(value)
 }
 
 
@@ -8518,102 +7280,6 @@ public func FfiConverterTypeFfiEditOp_lift(_ buf: RustBuffer) throws -> FfiEditO
 #endif
 public func FfiConverterTypeFfiEditOp_lower(_ value: FfiEditOp) -> RustBuffer {
     return FfiConverterTypeFfiEditOp.lower(value)
-}
-
-
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
- * 请求加入的结果。
- */
-
-public enum FfiJoinOutcome: Equatable, Hashable {
-
-    /**
-     * 对方批准了,已经自动加入。
-     */
-    case joined
-    /**
-     * 对方此刻没在共享。等一等再试。
-     */
-    case notSharing
-    /**
-     * 对方拒绝了。再敲也没用。
-     */
-    case declined
-    /**
-     * 对方一直没回应。
-     */
-    case timedOut
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiJoinOutcome: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiJoinOutcome: FfiConverterRustBuffer {
-    typealias SwiftType = FfiJoinOutcome
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiJoinOutcome {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-
-        case 1: return .joined
-
-        case 2: return .notSharing
-
-        case 3: return .declined
-
-        case 4: return .timedOut
-
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: FfiJoinOutcome, into buf: inout [UInt8]) {
-        switch value {
-
-
-        case .joined:
-            writeInt(&buf, Int32(1))
-
-
-        case .notSharing:
-            writeInt(&buf, Int32(2))
-
-
-        case .declined:
-            writeInt(&buf, Int32(3))
-
-
-        case .timedOut:
-            writeInt(&buf, Int32(4))
-
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiJoinOutcome_lift(_ buf: RustBuffer) throws -> FfiJoinOutcome {
-    return try FfiConverterTypeFfiJoinOutcome.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiJoinOutcome_lower(_ value: FfiJoinOutcome) -> RustBuffer {
-    return FfiConverterTypeFfiJoinOutcome.lower(value)
 }
 
 
@@ -9420,14 +8086,19 @@ public func FfiConverterTypeFfiProviderConnectionStatus_lower(_ value: FfiProvid
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
- * 观看端到主持人此刻实际走的链路。真值来自 QUIC 连接当前选中的传输
- * 路径——「直连被禁、只剩中继」是 AP 隔离网络的诊断特征。
+ * 「发送副本」的文件格式。
  */
 
-public enum FfiShareLinkPath: Equatable, Hashable {
+public enum FfiTranscriptFileFormat: Equatable, Hashable {
 
-    case direct
-    case relayed
+    /**
+     * 转录稿:标题、说话人、各语言分行。
+     */
+    case markdown
+    /**
+     * 字幕文件(SRT),可以直接挂到视频上。
+     */
+    case subtitles
 
 
 
@@ -9436,36 +8107,36 @@ public enum FfiShareLinkPath: Equatable, Hashable {
 }
 
 #if compiler(>=6)
-extension FfiShareLinkPath: Sendable {}
+extension FfiTranscriptFileFormat: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeFfiShareLinkPath: FfiConverterRustBuffer {
-    typealias SwiftType = FfiShareLinkPath
+public struct FfiConverterTypeFfiTranscriptFileFormat: FfiConverterRustBuffer {
+    typealias SwiftType = FfiTranscriptFileFormat
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiShareLinkPath {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiTranscriptFileFormat {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
-        case 1: return .direct
+        case 1: return .markdown
 
-        case 2: return .relayed
+        case 2: return .subtitles
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
-    public static func write(_ value: FfiShareLinkPath, into buf: inout [UInt8]) {
+    public static func write(_ value: FfiTranscriptFileFormat, into buf: inout [UInt8]) {
         switch value {
 
 
-        case .direct:
+        case .markdown:
             writeInt(&buf, Int32(1))
 
 
-        case .relayed:
+        case .subtitles:
             writeInt(&buf, Int32(2))
 
         }
@@ -9476,15 +8147,15 @@ public struct FfiConverterTypeFfiShareLinkPath: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeFfiShareLinkPath_lift(_ buf: RustBuffer) throws -> FfiShareLinkPath {
-    return try FfiConverterTypeFfiShareLinkPath.lift(buf)
+public func FfiConverterTypeFfiTranscriptFileFormat_lift(_ buf: RustBuffer) throws -> FfiTranscriptFileFormat {
+    return try FfiConverterTypeFfiTranscriptFileFormat.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeFfiShareLinkPath_lower(_ value: FfiShareLinkPath) -> RustBuffer {
-    return FfiConverterTypeFfiShareLinkPath.lower(value)
+public func FfiConverterTypeFfiTranscriptFileFormat_lower(_ value: FfiTranscriptFileFormat) -> RustBuffer {
+    return FfiConverterTypeFfiTranscriptFileFormat.lower(value)
 }
 
 
@@ -10060,6 +8731,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeFfiLiveLink: FfiConverterRustBuffer {
+    typealias SwiftType = FfiLiveLink?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiLiveLink.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiLiveLink.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeFfiMarkDigest: FfiConverterRustBuffer {
     typealias SwiftType = FfiMarkDigest?
 
@@ -10108,54 +8803,6 @@ fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureContextReceipt: FfiCo
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureLivePreview: FfiConverterRustBuffer {
-    typealias SwiftType = FfiNotebookCaptureLivePreview?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeFfiNotebookCaptureLivePreview.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeFfiNotebookCaptureLivePreview.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterOptionTypeFfiWebShareInfo: FfiConverterRustBuffer {
-    typealias SwiftType = FfiWebShareInfo?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeFfiWebShareInfo.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeFfiWebShareInfo.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureMode: FfiConverterRustBuffer {
     typealias SwiftType = FfiNotebookCaptureMode?
 
@@ -10172,30 +8819,6 @@ fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureMode: FfiConverterRus
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeFfiNotebookCaptureMode.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterOptionTypeFfiShareLinkPath: FfiConverterRustBuffer {
-    typealias SwiftType = FfiShareLinkPath?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeFfiShareLinkPath.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeFfiShareLinkPath.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -10320,56 +8943,6 @@ fileprivate struct FfiConverterSequenceTypeFfiContextPackSourceInfo: FfiConverte
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFfiContextPackSourceInfo.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceTypeFfiJoinRequest: FfiConverterRustBuffer {
-    typealias SwiftType = [FfiJoinRequest]
-
-    public static func write(_ value: [FfiJoinRequest], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeFfiJoinRequest.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiJoinRequest] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [FfiJoinRequest]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeFfiJoinRequest.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceTypeFfiNearbyPeer: FfiConverterRustBuffer {
-    typealias SwiftType = [FfiNearbyPeer]
-
-    public static func write(_ value: [FfiNearbyPeer], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeFfiNearbyPeer.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiNearbyPeer] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [FfiNearbyPeer]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeFfiNearbyPeer.read(from: &buf))
         }
         return seq
     }
@@ -10678,23 +9251,23 @@ fileprivate struct FfiConverterSequenceTypeFfiOutlineRow: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypeFfiRoomMember: FfiConverterRustBuffer {
-    typealias SwiftType = [FfiRoomMember]
+fileprivate struct FfiConverterSequenceTypeFfiRecordingLink: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiRecordingLink]
 
-    public static func write(_ value: [FfiRoomMember], into buf: inout [UInt8]) {
+    public static func write(_ value: [FfiRecordingLink], into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         for item in value {
-            FfiConverterTypeFfiRoomMember.write(item, into: &buf)
+            FfiConverterTypeFfiRecordingLink.write(item, into: &buf)
         }
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiRoomMember] {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiRecordingLink] {
         let len: Int32 = try readInt(&buf)
-        var seq = [FfiRoomMember]()
+        var seq = [FfiRecordingLink]()
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeFfiRoomMember.read(from: &buf))
+            seq.append(try FfiConverterTypeFfiRecordingLink.read(from: &buf))
         }
         return seq
     }
@@ -10770,81 +9343,6 @@ fileprivate struct FfiConverterSequenceTypeFfiSessionSpeaker: FfiConverterRustBu
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFfiSessionSpeaker.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceTypeFfiSharedCaptionLine: FfiConverterRustBuffer {
-    typealias SwiftType = [FfiSharedCaptionLine]
-
-    public static func write(_ value: [FfiSharedCaptionLine], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeFfiSharedCaptionLine.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiSharedCaptionLine] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [FfiSharedCaptionLine]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeFfiSharedCaptionLine.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceTypeFfiSharedCorrection: FfiConverterRustBuffer {
-    typealias SwiftType = [FfiSharedCorrection]
-
-    public static func write(_ value: [FfiSharedCorrection], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeFfiSharedCorrection.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiSharedCorrection] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [FfiSharedCorrection]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeFfiSharedCorrection.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterSequenceTypeFfiSharedSessionInfo: FfiConverterRustBuffer {
-    typealias SwiftType = [FfiSharedSessionInfo]
-
-    public static func write(_ value: [FfiSharedSessionInfo], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeFfiSharedSessionInfo.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiSharedSessionInfo] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [FfiSharedSessionInfo]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeFfiSharedSessionInfo.read(from: &buf))
         }
         return seq
     }
@@ -11205,6 +9703,39 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_unregister_editor_callback() != 10320) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_create_recording_link() != 60585) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_live_link() != 9519) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_recording_links() != 57815) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_refresh_live_link() != 40760) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_replace_live_link() != 13389) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_revoke_recording_link() != 21160) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_live_link_keeps_after_end() != 59235) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_live_link_locked() != 9322) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_start_live_link() != 15547) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_stop_live_link() != 36851) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_transcript_file() != 20119) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_assign_orphan_session_to_notebook() != 57331) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11383,114 +9914,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_get_session_transcript_clipboard_text() != 62083) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_allow_viewers_to_keep_copies() != 15508) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_approve_join_request() != 24230) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_current_share_code() != 14858) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_decline_join_request() != 45741) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_default_share_transport() != 49606) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_enable_document_sync() != 42402) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_is_session_shared_live() != 15765) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_join_share() != 28038) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_peers() != 16198) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_pending_join_requests() != 7303) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_remove_share_member() != 13773) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_request_to_join_nearby() != 50395) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_room_members() != 56137) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_share_discoverable() != 47061) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_share_display_name() != 4692) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_share_transport() != 31979) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_share_display_name() != 10968) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_share_identity() != 26695) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_share_state() != 28945) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_share_transport() != 34051) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_shared_inbox_notebook() != 25548) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_start_live_share() != 13822) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_start_recording_share() != 33388) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_stop_sharing() != 2046) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_start_web_share() != 62908) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_stop_web_share() != 23054) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_web_share_state() != 56602) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_accept_shared_correction() != 16739) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_delete_shared_session() != 43925) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_list_shared_sessions() != 27449) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_reject_shared_correction() != 33004) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_shared_corrections() != 57609) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_shared_session_blocks() != 4920) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_shared_session_insert_annotation() != 762) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_shared_session_replace_lane() != 40567) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_shared_session_replace_text() != 38071) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_create_speaker_participant() != 65240) {

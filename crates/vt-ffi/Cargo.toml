@@ -15,11 +15,11 @@ vt-crypto = { path = "../vt-crypto" }
 vt-stt = { path = "../vt-stt" }
 vt-llm = { path = "../vt-llm" }
 vt-export = { path = "../vt-export" }
-vt-share = { path = "../vt-share" }
 vt-i18n = { path = "../vt-i18n" }
 tokio-util = { version = "0.7", features = ["rt"] }
 futures = "0.3"
 reqwest = { workspace = true }
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -41,7 +41,6 @@ bench = ["dep:criterion"]
 
 [dev-dependencies]
 serde_json = "1"
-iroh = "1.0.3"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }

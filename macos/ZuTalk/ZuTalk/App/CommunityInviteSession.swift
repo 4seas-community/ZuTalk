@@ -24,24 +24,6 @@ final class CommunityInviteSession: ObservableObject {
     @Published private(set) var isEnabled = UserDefaults.standard.bool(
         forKey: "zutalk.community-invite.enabled"
     )
-    /// 中继登记状态。
-    ///
-    /// 中继只放行登记过的 endpoint。这件事以前是「试一次，失败就算了」——
-    /// 于是失败之后中继会一直拒绝这台 Mac，而且是安静地拒绝：局域网直连照常，
-    /// 只有跨网络时才连不上，用户无从判断。所以它必须有状态、能重试、能被看见。
-    @Published private(set) var relayEnrollment: RelayEnrollment = .unknown
-
-    enum RelayEnrollment: Equatable {
-        /// 没有邀请码 —— 中继门禁建立在邀请之上，这台 Mac 用不了中继回落。
-        case noInvitation
-        case unknown
-        case working
-        case enrolled
-        case failed
-
-        var canUseRelay: Bool { self == .enrolled }
-    }
-
     /// Lane count of the capture selection currently on screen. The sidebar
     /// divides shared invite seconds by this to show wall-clock recordable
     /// time instead of raw lane-seconds.
@@ -92,60 +74,9 @@ final class CommunityInviteSession: ObservableObject {
             try saveAccessToken(response.accessToken)
             remainingSeconds = response.remainingSeconds
             setEnabled(true)
-            // 兑换成功就是「这台 Mac 归属于这个邀请」成立的那一刻，
-            // 中继登记应当在这里发生，而不是等用户第一次想共享时才补。
-            await enrollCurrentShareEndpoint()
         } catch {
             errorMessage = String(localized: "community_invite.invalid")
         }
-    }
-
-    /// 确保本机的分享身份已登记到邀请码服务，好让中继肯放行。
-    ///
-    /// 每一个持有邀请码的用户都应该能用中继，所以这个方法在三个时刻都会被调用：
-    /// 兑换邀请码之后、每次启动、以及开始或加入共享时。三个入口都指向同一次
-    /// 幂等的登记 —— 早期版本兑换过但没登记的 Mac，靠「每次启动」补上。
-    ///
-    /// `force` 用于用户手动重试：平时登记成功过就不再打扰服务器。
-    @discardableResult
-    func ensureShareEndpointEnrolled(_ endpointID: String, force: Bool = false) async -> Bool {
-        guard endpointID.isEmpty == false else { return false }
-        guard isEnabled, let token = accessToken else {
-            relayEnrollment = .noInvitation
-            return false
-        }
-        // 登记是按 endpoint 记的：身份换了就得重登。
-        let marker = "zutalk.share.enrolled-endpoint"
-        if !force, UserDefaults.standard.string(forKey: marker) == endpointID {
-            relayEnrollment = .enrolled
-            return true
-        }
-
-        relayEnrollment = .working
-        do {
-            let _: EnrollResponse = try await request(
-                path: "/v1/share-endpoint",
-                method: "POST",
-                body: ["endpoint_id": endpointID],
-                token: token
-            )
-            UserDefaults.standard.set(endpointID, forKey: marker)
-            relayEnrollment = .enrolled
-            return true
-        } catch {
-            // 登记不上只失去中继回落 —— 直连和分享码都不依赖它，所以不弹窗打断。
-            // 但状态要留下，设置页据此显示「未登记」并提供重试。
-            relayEnrollment = .failed
-            return false
-        }
-    }
-
-    /// 取本机分享身份并登记。身份由核心懒创建，取不到就说明还没到时候。
-    func enrollCurrentShareEndpoint(force: Bool = false) async {
-        guard let core = CoreClient.shared.core,
-              let identity = try? core.shareIdentity()
-        else { return }
-        await ensureShareEndpointEnrolled(identity.endpointId, force: force)
     }
 
     func refreshQuota() async {
@@ -489,10 +420,6 @@ private struct InviteTokenDocument: Codable {
         case version
         case accessToken = "access_token"
     }
-}
-
-private struct EnrollResponse: Decodable {
-    let status: String
 }
 
 private struct RedeemResponse: Decodable {

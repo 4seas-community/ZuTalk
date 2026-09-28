@@ -4277,7 +4277,7 @@ impl CaptureCallbackSink {
     fn new(
         callback: Arc<dyn FfiNotebookCaptureCallback>,
         store: NotebookCaptureStore,
-        share_tap: Option<crate::share_api::ShareCaptionTap>,
+        share_tap: Option<crate::link_share::LinkCaptionTap>,
     ) -> Result<Self, CoreError> {
         let mailbox = Arc::new(CaptureCallbackMailbox {
             pending: StdMutex::new(PendingCaptureCallbacks::default()),
@@ -4328,8 +4328,8 @@ impl CaptureCallbackSink {
                     }
                     if let Some(preview) = &preview {
                         erasure.absorb_preview(preview);
-                        // 广播与本机呈现同一帧。放在 catch_unwind 之外是刻意的:
-                        // Swift 回调 panic 不该顺带让房间里的人失去字幕,反过来也一样。
+                        // 直播链接与本机呈现同一帧。放在 catch_unwind 之外是刻意的:
+                        // Swift 回调 panic 不该顺带让看直播的人失去字幕,反过来也一样。
                         if let Some(tap) = &share_tap {
                             tap.broadcast(preview);
                         }
@@ -6788,8 +6788,8 @@ impl ZuTalkCore {
         let callback = CaptureCallbackSink::new(
             callback,
             (*self.notebook_capture_store).clone(),
-            Some(crate::share_api::ShareCaptionTap::new(
-                self.share_runtime.clone(),
+            Some(crate::link_share::LinkCaptionTap::new(
+                self.live_link.clone(),
             )),
         )?;
 
@@ -6992,7 +6992,7 @@ impl ZuTalkCore {
             .unwrap_or(run);
         // 网页分享上留一条「录音开始」的线。房间跨录音存活,不留线的话
         // 上一场的稿与这一场的字幕会接成一片。
-        self.push_web_share_segment(&session_id, "started");
+        self.push_live_link_segment(&session_id, "started");
         let event = callback.send(event_from_run(latest_run, Vec::new(), true));
         Ok(event)
     }
@@ -7387,7 +7387,7 @@ impl ZuTalkCore {
         // 暂停:网页那边字幕会就此停住,给它一条线说明「这里断了」;
         // 恢复:再来一条,带上这一段重新开始的时间。
         drop(active_guard);
-        self.push_web_share_segment(&session_id, if paused { "paused" } else { "started" });
+        self.push_live_link_segment(&session_id, if paused { "paused" } else { "started" });
         let event = callback.send(event_from_run(run, Vec::new(), false));
         Ok(event)
     }
@@ -10762,9 +10762,9 @@ impl ZuTalkCore {
                 .complete_projection_unless_purging(&run.id)
                 .map_err(store_error)?;
         }
-        // 正在共享这个 session 时,把新落地的 Final 事实刷进共享文档并
-        // 推送。best-effort:共享侧失败绝不影响采集产线。
-        self.refresh_shared_session_document(&run.session_id);
+        // 正在直播这一场时,把新落地的 Final 事实推给直播链接。
+        // best-effort:共享侧失败绝不影响采集产线。
+        self.push_live_link_transcript(&run.session_id);
         Ok(())
     }
 
@@ -10877,18 +10877,8 @@ impl ZuTalkCore {
 
         match apply_result {
             Ok(updated) => {
-                // 正在共享这个 session 时,把订正显式施加到共享文档并推送
-                // (机器刷新按影子让行,不会替宿主搬运订正)。best-effort。
-                let lane_key = match mutation.lane {
-                    UtteranceLane::Source => None,
-                    UtteranceLane::Translated => Some(capture_lane_id(&mutation.lane_language)),
-                };
-                self.propagate_lane_edit_to_shared_session(
-                    &mutation.session_id,
-                    &mutation.utterance_id,
-                    lane_key.as_deref(),
-                    &mutation.target_text,
-                );
+                // 正在直播这一场时,订正随下一次转录稿推送一起到网页。
+                self.push_live_link_transcript(&mutation.session_id);
                 Ok(updated)
             }
             Err(error) if document_durable => {
@@ -11116,7 +11106,7 @@ fn finalized_capture_search_content_through(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn claim_current_realtime_provider(store: &NotebookCaptureStore, session_id: &str) {
@@ -19359,103 +19349,6 @@ mod tests {
         assert_eq!(delivered.realtime_loro_applied_revision, 7);
     }
 
-    /// 看的人在共享副本里改的一句,主持人看得到、能采纳进自己的录音,
-    /// 也能不采纳 —— 副本改回主持人的版本。
-    #[test]
-    fn a_viewer_correction_can_be_accepted_or_turned_down() {
-        let (_temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
-        core.project_notebook_capture(&run_id).unwrap();
-        core.set_share_transport(crate::share_api::FfiShareTransport {
-            relay_urls: Vec::new(),
-            enable_local_discovery: false,
-        })
-        .unwrap();
-        core.start_recording_share("session-a".into(), false)
-            .unwrap();
-        assert!(
-            core.shared_corrections("session-a".into())
-                .unwrap()
-                .is_empty(),
-            "机器写进副本的内容不是订正"
-        );
-        let mine = core
-            .notebook_capture_store
-            .list_utterances("session-a")
-            .unwrap()
-            .remove(0)
-            .variants
-            .iter()
-            .find(|variant| variant.language == "zh")
-            .and_then(|variant| variant.text.clone())
-            .unwrap();
-
-        // 看的人订正了一栏(合入主持人的共享副本,等同于这一笔)。
-        core.shared_session_replace_lane(
-            "session-a".into(),
-            "utterance-a".into(),
-            "zh".into(),
-            "看的人的订正".into(),
-        )
-        .unwrap();
-        let corrections = core.shared_corrections("session-a".into()).unwrap();
-        assert_eq!(corrections.len(), 1);
-        assert_eq!(corrections[0].utterance_id, "utterance-a");
-        assert!(!corrections[0].is_source);
-        assert_eq!(corrections[0].yours, mine);
-        assert_eq!(corrections[0].theirs, "看的人的订正");
-
-        // 采纳:写进自己的录音,差别消失。
-        core.accept_shared_correction(corrections[0].clone())
-            .unwrap();
-        let accepted = core
-            .notebook_capture_store
-            .list_utterances("session-a")
-            .unwrap()
-            .remove(0);
-        assert_eq!(
-            accepted
-                .variants
-                .iter()
-                .find(|variant| variant.language == "zh")
-                .and_then(|variant| variant.text.clone())
-                .as_deref(),
-            Some("看的人的订正")
-        );
-        assert!(core
-            .shared_corrections("session-a".into())
-            .unwrap()
-            .is_empty());
-
-        // 又改了一次;这回不采纳:副本改回主持人的版本。
-        core.shared_session_replace_lane(
-            "session-a".into(),
-            "utterance-a".into(),
-            "zh".into(),
-            "不对的订正".into(),
-        )
-        .unwrap();
-        let turned_down = core.shared_corrections("session-a".into()).unwrap();
-        assert_eq!(turned_down.len(), 1);
-        core.reject_shared_correction("session-a".into(), turned_down[0].clone())
-            .unwrap();
-        assert!(core
-            .shared_corrections("session-a".into())
-            .unwrap()
-            .is_empty());
-        let block = core
-            .shared_session_blocks("session-a".into())
-            .unwrap()
-            .into_iter()
-            .find(|block| block.id == "utterance-a")
-            .unwrap();
-        assert_eq!(
-            block.lanes.get("zh").map(String::as_str),
-            Some("看的人的订正")
-        );
-
-        core.stop_sharing().unwrap();
-    }
-
     #[test]
     fn callback_delta_refresh_preserves_a_concurrent_user_lane_override() {
         let (_temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
@@ -19575,7 +19468,8 @@ mod tests {
         (temp, core, notebook.id, run.id, doc_id)
     }
 
-    fn projected_core_fixture() -> (tempfile::TempDir, ZuTalkCore, String, String, String) {
+    pub(crate) fn projected_core_fixture() -> (tempfile::TempDir, ZuTalkCore, String, String, String)
+    {
         projected_core_fixture_with_projection(true)
     }
 

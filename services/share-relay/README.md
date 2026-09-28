@@ -1,5 +1,9 @@
 # ZuTalk share relay
 
+> **只为旧版本留着（2026-09-28）。** 点对点共享随 0.5.9 下线（见
+> [docs/architecture/share-links.md](../../docs/architecture/share-links.md)），新版本不再连这台
+> 中继。0.5.8 及更早的客户端仍在用它，所以继续运行；等旧版本基本升级完再决定关停。
+
 自建 [iroh](https://github.com/n0-computer/iroh) 中继，供「分享」标签页在直连打洞
 失败时回落使用。设计见
 [docs/architecture/share-p2p.md](../../docs/architecture/share-p2p.md) 第 6 节。

@@ -740,10 +740,6 @@ struct DocumentEditorPage: View {
                    quickCaptureNotebook.id == requestedRoute.notebookID {
                     loadedNotebook = quickCaptureNotebook
                     loadedNotebook?.title = quickCaptureDisplayTitle
-                } else if loadedNotebook == nil,
-                          let sharedInboxNotebook = try? core.sharedInboxNotebook(),
-                          sharedInboxNotebook.id == requestedRoute.notebookID {
-                    loadedNotebook = sharedInboxNotebook
                 }
                 let loadedSession: SessionInfo?
                 if let sessionId = requestedRoute.selectedSessionID {

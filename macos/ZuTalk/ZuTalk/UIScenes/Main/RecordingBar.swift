@@ -123,7 +123,11 @@ struct RecordingBar: View {
                 // Sharing this recording live starts here, and while it is
                 // live the same button says so and how many are watching.
                 if let sessionId = capture.sessionId {
-                    LiveShareButton(sessionId: sessionId, compact: compact)
+                    LiveShareButton(
+                        sessionId: sessionId,
+                        title: LiveShareText.title(topic: topicTitle),
+                        compact: compact
+                    )
                 }
                 RecordingBarContent(
                     model: .current(

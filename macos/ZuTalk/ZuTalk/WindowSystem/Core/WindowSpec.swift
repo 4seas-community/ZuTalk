@@ -172,6 +172,41 @@ extension WindowSpec {
                 ),
                 notes: "Single movable and resizable live-subtitle window."
             ),
+            .shareCode: WindowSpec(
+                id: .shareCode,
+                role: WindowSurfaceID.shareCode.role,
+                ownership: .coordinatorOwned,
+                hostingPolicy: .fixedWindowOwned,
+                frameMutationPolicy: .coordinatorOnly,
+                frameApplyStrategy: .setFrame,
+                migrationPhase: .overlays,
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                initialContentRect: NSRect(x: 0, y: 0, width: 620, height: 700),
+                presentation: Presentation(
+                    presentAction: .showAndFocus,
+                    dismissAction: .close,
+                    activatesApp: true
+                ),
+                chrome: Chrome(
+                    level: nil,
+                    collectionBehavior: [.fullScreenPrimary],
+                    backgroundStyle: .systemDefault,
+                    isFloatingPanel: false,
+                    hasShadow: true,
+                    isOpaque: true,
+                    titleVisibility: .visible,
+                    titlebarAppearsTransparent: false,
+                    isMovable: nil,
+                    isMovableByWindowBackground: nil,
+                    ignoresMouseEvents: nil,
+                    hidesOnDeactivate: nil,
+                    animationBehavior: .documentWindow,
+                    minimumWindowSize: NSSize(width: 360, height: 440),
+                    minimumContentSize: nil,
+                    maximumContentSize: nil
+                ),
+                notes: "A large QR code for a share link, movable to a projector."
+            ),
         ]
     }
 }

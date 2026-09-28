@@ -66,7 +66,7 @@ HTTPS 连得上，否则拒绝打标签。它现在守的是上表这三个名�
 | `xyz.voice.zulangue.community-invite` | CommunityInviteSession.swift | 老用户的 Keychain | 已兑换的邀请码消失 |
 | Sparkle keychain 账户 `Zulangue` | justfile / docs/releasing.md | 本机 Keychain | 发布时找不到私钥；App 内置公钥对应的就是这把。**有门禁**：scripts/test_release_distribution_gate.sh |
 | `ZuTalk.app`（bundle 文件名）+ `xyz.voice.zutalk` | packaging/update-identity.json | 已装 0.4.x 的用户 | Sparkle 在更新包里找不到要装的 bundle，此后每次更新都失败（第 1.5 节）。**有门禁**：scripts/check_update_identity.sh |
-| 三个 `zulangue-*.exe.xyz` 主机名 | share_api.rs / share_web.rs / CommunityInviteSession.swift | DNS + 已发布的二进制 | 已装客户端全部失联（见第 0 节）。**有门禁**：scripts/check_service_endpoints.sh |
+| `zulangue-*.exe.xyz` 主机名（新版本编译进 caption 与 invite 两个；relay 只有 0.5.8 及更早的旧版本在用） | link_share.rs / CommunityInviteSession.swift（旧版本：share_api.rs / share_web.rs） | DNS + 已发布的二进制 | 已装客户端全部失联（见第 0 节）。**有门禁**：scripts/check_service_endpoints.sh |
 | CHANGELOG 中 0.3.x 条目 | CHANGELOG.md | 已发布的原文 | 不回溯改写（文件抬头已写明） |
 
 ### 1.2 服务端部署

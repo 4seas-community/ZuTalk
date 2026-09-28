@@ -1236,7 +1236,6 @@ struct SubtitleOverlayView: View {
     @ObservedObject private var presentationSettings = SubtitleOverlayPresentationSettings.shared
     // 观看端分支的数据源:别人房间里的远端预览帧。本机没在录而人在房间里
     // 时,画布切到它 —— 同一扇窗、同一套主题与字号,只有内容来源不同。
-    @ObservedObject private var shareActivity = ShareActivityStore.shared
     @Environment(\.accessibilityReduceTransparency)
     private var accessibilityReduceTransparency
     @AppStorage(SubtitleOverlayBackdropPolicy.defaultsKey)
@@ -1808,13 +1807,6 @@ struct SubtitleOverlayView: View {
         .accessibilityIdentifier(identifier)
     }
 
-    /// 观看端分支生效的条件:本机没在录,而人在别人的房间里。
-    /// 本机采集永远优先 —— 同时成立时(理论上不会,录音入口在房间中
-    /// 是禁用的)以本机为准,不会把两场内容混在一扇窗里。
-    private var showsSharedFeed: Bool {
-        store.isCaptureActive == false && shareActivity.isViewing
-    }
-
     /// A scroll view that keeps the live edge on screen.
     ///
     /// The tail anchor is a one-point spacer rather than the last row: rows are
@@ -1925,192 +1917,15 @@ struct SubtitleOverlayView: View {
     private var subtitleBody: some View {
         GeometryReader { geometry in
             Group {
-                if showsSharedFeed {
-                    sharedFeedBody(geometry: geometry)
-                } else {
-                    switch presentationSettings.displayMode {
-                    case .conversation:
-                        conversationBody(geometry: geometry)
-                    case .audience:
-                        audienceBody(geometry: geometry)
-                    }
+                switch presentationSettings.displayMode {
+                case .conversation:
+                    conversationBody(geometry: geometry)
+                case .audience:
+                    audienceBody(geometry: geometry)
                 }
             }
             .onAppear { canvasSize = geometry.size }
             .montereyOnChange(of: geometry.size) { _, size in canvasSize = size }
-        }
-    }
-
-    /// 远端帧的字幕投影。帧是 replace-in-full 的,整个画面每帧重画,没有
-    /// 增量状态;cue 与句子的对应不在这里重算(share-p2p.md §3.2 的红线)。
-    ///
-    /// **画布与本机录音同一块。** 在别人房间里看字幕和自己录音看字幕,是
-    /// 同一件事的两个来源,不该长成两个产品:本机三语是三栏,进了房间却
-    /// 变成一列滚动的横条,观众得重新学一次怎么读。差别只在内容从哪来。
-    @ViewBuilder
-    private func sharedFeedBody(geometry: GeometryProxy) -> some View {
-        if shareActivity.hostLeft {
-            emptyState(
-                String(localized: "share.status.host_left"),
-                systemImage: "antenna.radiowaves.left.and.right.slash"
-            )
-        } else if let preview = shareActivity.remotePreview {
-            audienceTimelineCanvas(
-                geometry: geometry,
-                input: Self.sharedAudienceInput(preview: preview)
-            )
-            .frame(width: geometry.size.width, height: geometry.size.height)
-        } else if shareActivity.remoteLines.isEmpty == false {
-            // 旧版主播:只有压扁行。
-            sharedFeedLegacyLines(shareActivity.remoteLines)
-                .frame(width: geometry.size.width, height: geometry.size.height)
-        } else {
-            emptyState(
-                String(localized: "subtitle.overlay.waiting"),
-                systemImage: "waveform"
-            )
-        }
-    }
-
-    /// 远端帧 → 画布输入。
-    ///
-    /// 本机录音的栏目来自采集档案(用户自己选的几门语言)。房间里没有这份
-    /// 档案:观看的人不曾配置主播讲什么、译什么。所以栏目从帧本身认 ——
-    /// **主播真的在跑的车道**(lane health / cue 的目标语言)加上这一帧的
-    /// 主导原文语言。
-    ///
-    /// 认车道而不认「出现过的语言」,是因为真实录音里语言识别会飘:一句
-    /// 被误判成法语的中文不该凭空长出一栏法语。飘出来的句子落进画布本来
-    /// 就有的「没有归属」条,与主播本机的处置一致。
-    static func sharedAudienceInput(
-        preview: FfiNotebookCaptureLivePreview
-    ) -> AudienceCanvasInput {
-        let frame = RustNotebookCaptureClient.map(preview)
-        let utterances = frame.utterances
-        let dominantSource = dominantSourceLanguage(utterances)
-
-        let lanedLanguages = Set(
-            frame.laneHealth
-                .compactMap { $0.targetLanguage }
-                .map(normalizedLanguageCode)
-        )
-        // 句子上带着的译文语言:两方对谈的整段译文,三语时 canonical 车道
-        // 自己译的那一栏。译文语言只可能是主播配置的目标,不会像原文识别
-        // 那样飘,所以可以直接认。
-        let inlineLanguages = Set(
-            utterances.flatMap { utterance in
-                utterance.languageVariants
-                    .filter { $0.role == "translation" && ($0.text?.isEmpty == false) }
-                    .map(\.language)
-                    + [utterance.translatedLanguage].compactMap { $0 }
-            }
-            .map(normalizedLanguageCode)
-        ).subtracting(lanedLanguages)
-        var lanes = Array(lanedLanguages) + Array(inlineLanguages)
-        if lanes.isEmpty {
-            // 旧版主播不发 lane health。退回「有译文的语言」——比无栏可看强。
-            lanes = frame.translationCues.map { normalizedLanguageCode($0.targetLanguage) }
-        }
-        var seen: Set<String> = []
-        var languages: [String] = []
-        for language in [dominantSource].compactMap({ $0 }) + lanes.sorted()
-        where seen.insert(language).inserted {
-            languages.append(language)
-        }
-
-        // 句子上带着的译文不走 cue。把它按 cue 的形状递给画布 —— 这不是
-        // 重算对应关系(那条红线还在),是把主播自己定好的绑定原样搬过来。
-        let cuesByLanguage = Dictionary(
-            grouping: frame.translationCues.filter { $0.withdrawn == false },
-            by: { normalizedLanguageCode($0.targetLanguage) }
-        ).merging(
-            SubtitleAudienceTimeline.inlineCues(
-                utterances: utterances,
-                languages: inlineLanguages
-            ),
-            uniquingKeysWith: { lane, _ in lane }
-        )
-
-        return AudienceCanvasInput(
-            languages: languages,
-            utterances: utterances,
-            placement: { utterance in
-                NotebookCaptureHistoryPolicy.audienceSourcePlacement(
-                    for: utterance,
-                    selectedLanguages: languages,
-                    lastIdentifiedSourceLanguage: dominantSource
-                )
-            },
-            cuesByLanguage: cuesByLanguage,
-            failedLanguages: Set(
-                frame.laneHealth
-                    .filter { $0.state == .failed }
-                    .compactMap { $0.targetLanguage }
-                    .map(normalizedLanguageCode)
-            ),
-            // 房间里这一帧就是画布看得见的全部,所以下界直接从它算 ——
-            // 本机那条路要先绕开裁剪,这里没有裁剪可绕。
-            inheritedSourceAnchors: NotebookCaptureLivePresentation.inheritedSourceAnchors(
-                durable: utterances,
-                sessionId: nil
-            )
-        )
-    }
-
-    /// 这一帧里说的主要是哪门语言。带说话人标识的句子(canonical 车道的
-    /// 产物)优先参与判定 —— 辅助车道的碎片通常没有说话人。同级按句数,
-    /// 长度只作平票裁决:一句冗长的外语碎片不该赢过两句正主。
-    static func dominantSourceLanguage(
-        _ utterances: [NotebookCaptureUtteranceDTO]
-    ) -> String? {
-        let speakered = utterances.filter { $0.sessionSpeakerId != nil }
-        let pool = speakered.isEmpty ? utterances : speakered
-        var count: [String: Int] = [:]
-        var length: [String: Int] = [:]
-        for utterance in pool {
-            let language = normalizedLanguageCode(
-                utterance.provisionalSourceLanguage ?? utterance.sourceLanguage
-            )
-            guard language.isEmpty == false, language != "und" else { continue }
-            count[language, default: 0] += 1
-            length[language, default: 0] += utterance.sourceText.count
-        }
-        return count.keys.max { left, right in
-            if count[left] != count[right] { return count[left]! < count[right]! }
-            return length[left]! < length[right]!
-        }
-    }
-
-    private func sharedFeedLegacyLines(_ lines: [FfiSharedCaptionLine]) -> some View {
-        liveFollowingScroll(
-            signal: SubtitleOverlayFollowSignal(
-                tailID: lines.last?.sourceText ?? "",
-                rowCount: lines.count,
-                textExtent: (lines.last?.sourceText.count ?? 0)
-                    + (lines.last?.targetText?.count ?? 0)
-            ),
-            showsIndicators: false
-        ) {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                    VStack(alignment: .leading, spacing: 4) {
-                        if line.sourceText.isEmpty == false {
-                            Text(line.sourceText)
-                                .font(.system(size: fontSize, weight: .medium))
-                                .foregroundColor(.primary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        if let text = line.targetText, text.isEmpty == false {
-                            Text(text)
-                                .font(.system(size: fontSize * 0.86))
-                                .foregroundColor(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(16)
         }
     }
 

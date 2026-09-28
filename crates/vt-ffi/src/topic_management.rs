@@ -5,9 +5,10 @@
 //! mistyped name or an abandoned topic stayed forever.
 
 use crate::notebook_api::FfiNotebook;
-use crate::notebook_api::QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE;
+use crate::notebook_api::{
+    QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE, SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE,
+};
 use crate::notebook_capture_api::store_error;
-use crate::share_api::SHARED_INBOX_NOTEBOOK_INTERNAL_TITLE;
 use crate::{CoreError, ZuTalkCore};
 
 /// Long enough for any real title, short enough to stay one line.

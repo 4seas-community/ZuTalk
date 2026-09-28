@@ -195,7 +195,6 @@ local-gate-rust-core:
         -p vt-stt \
         -p vt-audio \
         -p vt-export \
-        -p vt-share \
         -p vt-store \
         -p vt-i18n \
         -p vt-mirror

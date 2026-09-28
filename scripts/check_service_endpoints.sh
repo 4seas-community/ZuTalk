@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 发布前确认:客户端编译进去的三个服务地址,在外面真的存在。
+# 发布前确认:客户端编译进去的两个服务地址,在外面真的存在。
 #
-# 这三个常量是编译进用户机器上二进制的,发出去就改不动了。它们指向不
+# 这两个常量是编译进用户机器上二进制的,发出去就改不动了。它们指向不
 # 存在的主机名时,构建、测试、门禁**全部照常通过** —— 失败只发生在用户
-# 那边,而且是分享、网页字幕、邀请码兑换同时失效。改名期间这个窗口是
+# 那边,而且是共享链接、邀请码兑换同时失效。改名期间这个窗口是
 # 真实存在的:代码先指向新名,DNS 后补。
 #
 # 所以这里查的不是"字符串对不对",是"这个名字现在解析得到、TLS 握得上"。
@@ -39,13 +39,14 @@ extract() {
   printf '%s\n' "$url" | sed -E 's#^https://##; s#/.*$##'
 }
 
-RELAY_HOST="$(extract crates/vt-ffi/src/share_api.rs 'DEFAULT_RELAY_URL')"
-CAPTION_HOST="$(extract crates/vt-ffi/src/share_web.rs 'DEFAULT_WEB_CAPTION_SERVICE')"
+# 点对点中继(zulangue-relay)0.5.9 起客户端不再使用 —— 它只为还没升级的
+# 旧版本留着,不在这里查。
+CAPTION_HOST="$(extract crates/vt-ffi/src/link_share.rs 'DEFAULT_LINK_SERVICE')"
 INVITE_HOST="$(extract \
   macos/ZuTalk/ZuTalk/App/CommunityInviteSession.swift 'baseURL')"
 
 STATUS=0
-for HOST in "$RELAY_HOST" "$CAPTION_HOST" "$INVITE_HOST"; do
+for HOST in "$CAPTION_HOST" "$INVITE_HOST"; do
   ADDRESS="$(dig +short A "$HOST" "@${RESOLVER}" 2>/dev/null | grep -E '^[0-9.]+$' | head -1 || true)"
   if [[ -z "$ADDRESS" ]]; then
     echo "  ✗ $HOST —— 解析不到(DNS 记录还没加?见 docs/service-rename.md §3.1)" >&2
@@ -63,6 +64,6 @@ for HOST in "$RELAY_HOST" "$CAPTION_HOST" "$INVITE_HOST"; do
 done
 
 [[ $STATUS -eq 0 ]] \
-  || fail "客户端指向的服务地址还不可用;现在发版,新装用户的分享/字幕/邀请码会全部失效"
+  || fail "客户端指向的服务地址还不可用;现在发版,新装用户的共享链接/邀请码会全部失效"
 
-echo "✓ 三个服务地址均可解析且可连接"
+echo "✓ 两个服务地址均可解析且可连接"

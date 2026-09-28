@@ -47,15 +47,6 @@
 "community_invite.resources.remaining" = "Time remaining";
 "community_invite.remaining_detail_format" = "%1$lld h %2$lld min";
 "community_invite.refresh" = "Refresh remaining time";
-"community_invite.relay.title" = "Relay access";
-"community_invite.relay.enrolled" = "Admitted";
-"community_invite.relay.working" = "Checking…";
-"community_invite.relay.failed" = "Refused";
-"community_invite.relay.no_invitation" = "No invitation";
-"community_invite.relay.unknown" = "Not checked yet";
-"community_invite.relay.retry" = "Enrol this Mac with the relay again";
-"community_invite.relay.detail_enrolled" = "This Mac may use the relay, so sharing reaches people on other networks.";
-"community_invite.relay.detail_blocked" = "The relay only admits Macs enrolled against an invitation. Until this one is, sharing works on the same network and never connects across networks — with nothing on screen to say so.";
 "community_invite.replace" = "Use a new code";
 "community_invite.inactive" = "No community invitation active";
 "community_invite.use_toggle" = "Transcribe with community invite";
@@ -912,74 +903,21 @@
 "knowledge.import_json.failed" = "Couldn’t import knowledge base";
 
 /* 分享:点对点字幕与文档协同 */
-"share.audio_never" = "They never hear the audio — it stays on this Mac.";
+"share.audio_never" = "Audio never leaves this Mac — people only see text.";
 
 /* 设置:分享(点对点)传输 */
-"settings.section.p2p_name" = "Sharing";
-"settings.p2p.title" = "Sharing";
-"settings.p2p.subtitle" = "How this Mac reaches the people you share with.";
-"settings.p2p.identity" = "This Mac’s identity";
-"settings.p2p.copy_identity" = "Copy";
-"settings.p2p.identity_note" = "Others can tell this Mac apart by it — anyone can pick any name, but this can’t be faked.";
-"settings.p2p.relay" = "Relay servers";
-"settings.p2p.relay_note" = "One address per line. Leave empty to use direct connections only — that is enough on a shared Wi-Fi and works with no internet at all.";
-"settings.p2p.relay_privacy" = "A relay only forwards. Traffic stays end-to-end encrypted, so it cannot read what passes through.";
-"settings.p2p.local_discovery" = "Find shares on this network";
-"settings.p2p.local_discovery_note" = "Lists shares on this network whose host chose to be found, and lets others find yours when you choose to. Otherwise nothing about this Mac is visible. macOS asks for local network permission the first time; declining leaves join codes working.";
-"settings.p2p.save" = "Save";
-"settings.p2p.restore_default" = "Restore default";
-"settings.p2p.saved" = "Saved";
 
 /* 分享:状态与提示 */
-"share.core_unavailable" = "Sharing is still starting up. Try again in a moment.";
-"share.join_failed" = "Couldn’t join with this code. Ask for it again — copying from a message can drop characters, and a code stops working when its share ends.";
-"share.status.host_left" = "The host ended this share";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
-"share.link.direct" = "Direct";
-"share.link.relayed" = "Via relay";
-"share.link.direct_hint" = "Connected directly, without any server in between.";
-"share.link.relayed_hint" = "Could not connect directly, so a relay server passes the captions along — still end-to-end encrypted. Common on Wi-Fi that keeps devices apart.";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
-"shared.editor.title" = "Received transcript";
-"shared.editor.read_only" = "Read-only";
-"shared.editor.add_annotation" = "Add note";
-"shared.editor.done" = "Done";
-"shared.editor.empty_title" = "Nothing here yet";
-"shared.editor.empty_body" = "Content appears as the host's transcript syncs in.";
 
 /* 设置:中继准入 */
-"settings.p2p.relay_ready" = "Relay ready";
-"settings.p2p.relay_ready_hint" = "This Mac is registered, so the relay will carry a connection when two Macs cannot reach each other directly.";
-"settings.p2p.relay_not_registered" = "Relay unavailable";
-"settings.p2p.relay_not_registered_hint" = "Registration did not go through. Sharing still works on a shared network; only the fallback for different networks is missing.";
-"settings.p2p.relay_needs_invite" = "Relay needs an invitation";
-"settings.p2p.relay_needs_invite_hint" = "The relay admits invited Macs. Without one, sharing works on a shared network but has no fallback across networks.";
-"settings.p2p.relay_registering" = "Registering…";
-"settings.p2p.relay_unknown" = "Relay not checked yet";
-"settings.p2p.relay_unknown_hint" = "Registration is checked when the app starts and when you share.";
-"settings.p2p.relay_retry" = "Retry";
 
 /* 分享:同一网络里的人 */
-"share.nearby.not_sharing" = "That share has ended, or is no longer open to people nearby.";
-"share.nearby.declined" = "They declined.";
-"share.nearby.timed_out" = "No answer. They may have stepped away.";
 
 /* 分享:昵称与成员 */
-
-"share.sidebar.live_label" = "Watching a live share";
-"shared_inbox.lane_canonical" = "Source";
-"shared_inbox.lane_connecting" = "This column is still connecting";
-"shared_inbox.lane_failed" = "This column stopped — nothing more will arrive in it";
-
-"share.web.title" = "Web link";
-"share.web.start" = "Web link for people without ZuTalk…";
-"share.web.hint" = "Anyone who scans the code or opens the link can read along in a browser, in the language they choose.";
-"share.web.confirm.title" = "Open a web link?";
-"share.web.copy" = "Copy link";
-"share.web.stop" = "Close link";
-"share.web.qr_label" = "QR code for the live caption page";
 
 /* Topic workspace and session catalog */
 "common.done" = "Done";
@@ -1180,134 +1118,68 @@
 "session.marks.delete.confirm_title" = "Delete this mark and its note?";
 "session.marks.delete.confirm_message" = "What you wrote here cannot be recovered. The recording is not affected.";
 
-"sidebar.received" = "Received";
-"received.join.title" = "Join with a code";
-"received.join.placeholder" = "Paste the join code";
-"received.join.button" = "Join";
-"received.join.joining" = "Joining…";
-"received.join.note" = "Ask the person sharing for their join code. Anyone with the code can join, so it’s passed person to person.";
-"received.nearby.title" = "Shared nearby";
-"received.nearby.empty" = "No shares are open to people on this network right now.";
-"received.nearby.note" = "Only shares whose host chose to be found appear here, with the name and title they chose to show. The host approves every request.";
-"received.nearby.ask" = "Ask to join";
-"received.nearby.asking" = "Waiting for the host…";
-"received.nearby.abandon" = "Stop waiting";
-"received.open" = "Open transcript";
-"received.read_only_hint" = "The host made this read-only while it’s shared.";
-"received.transcripts.title" = "Transcripts kept on this Mac";
-"received.transcripts.empty" = "Nothing yet. When someone shares a recording with you, or lets viewers keep a live share’s transcript, it stays here.";
-"received.from_format" = "From %@";
-"received.blocks_format" = "%lld lines";
-"received.delete" = "Delete from this Mac";
-"received.delete.confirm_title" = "Delete this transcript?";
-"received.delete.confirm_body" = "Only the copy on this Mac is deleted. The person who shared it keeps theirs.";
-"received.watch.waiting" = "Nobody is speaking yet.";
-"received.watch.show_subtitles" = "Show subtitle window";
-"received.watch.hide_subtitles" = "Hide subtitle window";
-"received.watch.nothing_kept_note" = "You can watch along. Nothing is kept on this Mac — when you leave, it’s gone.";
-"received.watch.ended_nothing_kept_note" = "The host didn’t let viewers keep a transcript, so nothing was kept.";
-"received.watch.kept_live_note" = "The host lets viewers keep the transcript: it’s saved below and stays after the share ends.";
-"received.watch.kept_read_only_note" = "A copy of the transcript is kept on this Mac. You can read it, not change it, while it’s shared.";
-"received.watch.kept_editable_note" = "A copy of the transcript is kept on this Mac. Your corrections reach everyone’s copy in this share.";
-"received.watch.removed_note" = "The host removed you from this share. You can’t rejoin with the same code.";
-"share.live.title" = "Share this recording live";
-"share.live.intro" = "People you let in see the captions and translations as they’re spoken.";
-"share.live.start" = "Go live";
-"share.live.stop" = "Stop live share";
+"share.live.title" = "Share live captions";
+"share.live.intro" = "People scan the code or open the link to follow the captions and translations in any browser — no app, no sign-in.";
+"share.live.start" = "Start sharing";
+"share.live.stop" = "Stop sharing";
 "share.live.on" = "Live";
-"share.live.on_count_format" = "Live · %lld";
-"share.live.bar" = "Share live";
-"share.live.bar_hint" = "Let others watch this recording’s captions as they happen";
-"share.live.bar_on_hint" = "Who’s watching, the join code, and stopping";
-"share.live.ended_with_recording" = "The live share ended with the recording.";
-"share.live.keep_failed" = "Couldn’t let viewers keep the transcript";
-"share.keep.toggle" = "Let viewers keep the transcript";
-"share.keep.off_detail" = "Off: they can watch along; nothing stays on their Mac when they leave.";
-"share.keep.on_detail" = "On: their ZuTalk keeps a copy of the transcript. Stopping the share doesn’t take it back.";
-"share.keep.on_locked_detail" = "Allowed. Copies already given can’t be taken back, so this stays on for this share.";
+"share.live.on_count_format" = "Live · %lld watching";
+"share.live.bar" = "Share captions";
+"share.live.bar_hint" = "Let people scan a code and follow the captions and translations on their phones";
+"share.live.bar_on_hint" = "The QR code, who’s watching, lock and stop";
+"share.live.ended_with_recording" = "The recording ended, so the caption link closed and its content was deleted from the server.";
 "share.recording.menu" = "Share…";
-"share.recording.title" = "Share this recording";
-"share.recording.intro" = "The people you let in get a copy of the transcript on their Mac.";
-"share.recording.read_only" = "Can read";
-"share.recording.can_correct" = "Can correct";
-"share.recording.read_only_detail" = "They can read their copy but not change it while it’s shared.";
-"share.recording.can_correct_detail" = "Corrections sync to everyone’s shared copy. You choose which ones go into your own recording.";
-"share.recording.start" = "Start sharing";
-"share.recording.on" = "Sharing";
-"share.recording.stop" = "Stop sharing";
-"share.code.title" = "Join code";
-"share.code.copy" = "Copy join code";
-"share.code.copied" = "Join code copied";
-"share.code.note" = "Anyone with this code can join until you stop. Send it only to the people you want watching.";
-"share.watchers.title" = "Watching";
-"share.watchers.none" = "Nobody yet";
-"share.watchers.count_format" = "%lld watching";
-"share.watchers.empty" = "Nobody has joined yet.";
-"share.watchers.empty_live" = "Nobody has joined yet. Send the join code, or let people on this network find it.";
-"share.watchers.remove" = "Remove";
-"share.watchers.remove_hint" = "They’re disconnected and can’t rejoin with this code. Anything already kept on their Mac stays there.";
-"share.nearby.toggle" = "Let people on this network find it";
-"share.nearby.toggle_detail_format" = "When on, ZuTalk on the same Wi-Fi shows “%1$@ · %2$@” and can ask to join. You still approve each person.";
-"share.knock.title_format" = "%@ wants to join";
-"share.knock.approve" = "Let in";
-"share.knock.decline" = "Decline";
-"share.knock.expired" = "That request has already expired.";
-"share.web.starting" = "Opening…";
-"share.web.copied" = "Link copied";
-"share.web.failed" = "Couldn’t open a web link";
-"share.web.confirm.button" = "Open link";
-"share.web.uploads_captions" = "The live captions and translations go through ZuTalk’s server in plain text, and anyone with the link can read them. They stay at the link for about 24 hours after the last update.";
-"share.web.uploads_transcript" = "The captions, translations and the whole transcript — including names you gave speakers — go through ZuTalk’s server in plain text, and anyone with the link can read them. They stay at the link for about 24 hours after the last update.";
-"share.stop.note" = "Stops sending anything new. People watching lose the captions when you stop.";
-"share.stop.note_kept" = "Stops sending anything new. Copies already on their Macs can’t be taken back.";
-"share.name.shown_as_format" = "Others see you as “%@”.";
-"share.name.change" = "Change";
-"share.name.placeholder" = "Your name";
-"share.name.default" = "this Mac’s name";
-"share.busy.title" = "Already sharing";
-"share.busy.body_format" = "“%@” is being shared. One share at a time — stop it to share this one.";
-"share.busy.stop_other" = "Stop that share";
-"share.viewing_blocks_hosting_format" = "You’re watching %@’s share. Leave it before sharing your own.";
-"share.hosting_format" = "Sharing “%@”";
-"share.hosting_count_format" = "Sharing “%1$@” · %2$lld";
-"share.untitled" = "Untitled recording";
-"share.unnamed" = "Unnamed";
-"share.someone" = "Someone";
-"share.start_failed" = "Couldn’t start sharing";
-"share.join.while_hosting" = "Stop your own share before joining someone else’s.";
-"share.leave_to_record.title_format" = "Leave %@’s share to record?";
-"share.leave_to_record.body" = "You can’t watch someone’s share and record at the same time.";
-"share.leave_to_record.confirm" = "Leave and record";
-"share.switch.title_format" = "Leave %@’s share and join this one?";
-"share.switch.confirm" = "Leave and join";
-"share.watch.live_format" = "Watching %@ live";
-"share.watch.recording_format" = "%1$@ shared “%2$@”";
-"share.watch.ended_format" = "%@’s share has ended";
-"share.watch.removed_format" = "%@ removed you from the share";
-"share.watch.leave" = "Leave";
-"share.watch.close" = "Close";
-"share.watch.subtitle_window" = "Subtitles";
-
-"share.keep.confirm_title" = "Let everyone watching keep the transcript?";
-"share.keep.confirm_button" = "Allow";
-
-"received.nearby.searching" = "Looking on this network…";
-"received.nearby.discovery_off" = "Finding shares nearby is off in Settings › Sharing. You can still join with a code.";
-
-"received.watch.ended_kept_note" = "The share has ended. Your copy stays below, and it’s yours to correct.";
-
-"share.corrections.title_format" = "%lld corrections to review";
-"share.corrections.note" = "People you shared with changed these. Accept to put a change into your recording; turn it down to change their copy back to yours.";
-"share.corrections.accept" = "Accept";
-"share.corrections.turn_down" = "Turn down";
-"share.corrections.turn_down_hint" = "Change the shared copy back to your version, for everyone in the share";
-"share.corrections.source_format" = "Original · %@";
-"share.corrections.yours" = "Yours";
-"share.corrections.theirs" = "Their correction";
-"share.corrections.accept_failed" = "Couldn’t put the correction into your recording";
-"share.corrections.count_format" = "%lld to review";
-
-"share.knock.notification_body_format" = "Asking to join “%1$@” · %2$@";
 
 "capture.speaker.reconnect_twin_format" = "Also name “Speaker %@” after the reconnect";
 "capture.speaker.reconnect_twin_detail" = "Live captions reconnected during this recording, and speakers were numbered again from the start — so one person can appear as two “Speaker” labels. Untick if they are different people.";
+
+"share.live.starting" = "Creating the link…";
+"share.live.start_failed" = "Couldn’t start sharing captions";
+"share.live.stop_failed" = "Couldn’t stop sharing";
+"share.live.stop_note" = "Stopping ends the link and deletes its content from the server.";
+"share.live.stop_note_kept" = "After you stop, captions stop updating and the transcript stays on the link for about 24 hours.";
+"share.encrypted" = "End-to-end encrypted: the server only relays content it can’t read. Anyone with the link can view it.";
+"share.live.keep" = "Keep the transcript after it ends";
+"share.live.keep_on_detail" = "After you stop, anyone with the link can still read and download the full transcript. It’s deleted after about 24 hours.";
+"share.live.keep_off_detail" = "When you stop, the link stops working and everything is deleted from the server. Viewers see the transcript while it’s live but can’t download it.";
+"share.live.viewers_none" = "No one watching yet";
+"share.live.viewers_format" = "%lld watching";
+"share.live.lock" = "Lock";
+"share.live.lock_off_detail" = "When on, no one new can join. People already watching stay.";
+"share.live.lock_on_detail" = "Locked: anyone new who opens the link sees that it’s locked. People already watching stay.";
+"share.live.lock_failed" = "Couldn’t change the lock";
+"share.live.replace" = "Replace link…";
+"share.live.replace_detail" = "The old link and QR code stop working immediately, and viewers need to scan the new one. Use it to remove people who shouldn’t be watching.";
+"share.live.replace_confirm_title" = "Replace the link?";
+"share.live.replace_confirm_button" = "Replace";
+"share.live.replace_failed" = "Couldn’t replace the link";
+"share.live.other_title" = "Another recording is being shared";
+"share.live.other_body" = "Only one recording can share live captions at a time. Stop that one, then start here.";
+"share.live.default_title_format" = "Live captions · %@";
+"share.live.ended_with_recording_kept" = "The recording ended, so the caption link stopped updating. The transcript stays on the link for about 24 hours.";
+"share.link.copy" = "Copy link";
+"share.link.copied" = "Link copied";
+"share.link.created_copied" = "Link created and copied";
+"share.link.show_large" = "Show large QR code";
+"share.link.qr_label" = "QR code for the link";
+"share.link.large_window_title" = "Scan to follow";
+"share.link.scan_hint" = "Scan with a phone camera to open it in the browser";
+"share.recording.title_format" = "Share “%@”";
+"share.copy.title" = "Send a copy";
+"share.copy.detail" = "Send the transcript as a file — AirDrop, Messages, Mail. They get a copy of their own.";
+"share.copy.markdown" = "Transcript (Markdown)";
+"share.copy.subtitles" = "Subtitles (SRT)";
+"share.copy.failed" = "Couldn’t prepare the file";
+"share.copy.default_file_name" = "Transcript";
+"share.recording.link_title" = "Read-only link";
+"share.recording.link_detail" = "Anyone with the link can read the full transcript in a browser and download it. It’s end-to-end encrypted, expires after 24 hours, and you can revoke it at any time.";
+"share.recording.create_link" = "Create link";
+"share.recording.create_another" = "Create another";
+"share.recording.link_failed" = "Couldn’t create the link";
+"share.recording.expires_hours_format" = "%lld h left";
+"share.recording.expires_minutes_format" = "%lld min left";
+"share.recording.revoke" = "Revoke";
+"share.recording.revoke_confirm_title" = "Revoke this link?";
+"share.recording.revoke_confirm_body" = "The link stops working right away and its content is deleted from the server. Copies already downloaded can’t be recalled.";
+"share.recording.revoke_failed" = "Couldn’t revoke the link";
+"share.recording.revoked" = "Link revoked";
