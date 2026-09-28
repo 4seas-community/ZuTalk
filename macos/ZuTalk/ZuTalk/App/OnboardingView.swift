@@ -643,13 +643,13 @@ struct WelcomeScreen: View {
             VStack(alignment: .leading, spacing: 12) {
                 journeyStep(
                     number: "1",
-                    icon: "book.closed.fill",
+                    icon: "record.circle",
                     key: "onboarding.welcome.bullet1",
                     delayIdx: 0
                 )
                 journeyStep(
                     number: "2",
-                    icon: "record.circle",
+                    icon: "bookmark",
                     key: "onboarding.welcome.bullet2",
                     delayIdx: 1
                 )

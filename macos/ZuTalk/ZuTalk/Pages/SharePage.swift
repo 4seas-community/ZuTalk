@@ -377,11 +377,16 @@ struct SharePage: View {
 
                 // 范围:整本 vs 单条录音。单条才有收端落库与协同订正
                 // (Notebook 范围 v1 只有字幕,见 share-p2p.md §11)。
-                Picker("", selection: $viewModel.shareWholeNotebook) {
+                Text(String(localized: "share.scope.label"))
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+                    .padding(.top, Spacing.sm)
+                Picker(String(localized: "share.scope.label"), selection: $viewModel.shareWholeNotebook) {
                     Text(String(localized: "share.scope.notebook")).tag(true)
                     Text(String(localized: "share.scope.single")).tag(false)
                 }
                 .pickerStyle(.radioGroup)
+                .labelsHidden()
                 .accessibilityIdentifier("share.scope")
 
                 if !viewModel.shareWholeNotebook {
@@ -400,12 +405,21 @@ struct SharePage: View {
                     }
                 }
 
-                Picker("", selection: $viewModel.hostOnlySelection) {
-                    Text(String(localized: "share.role.everyone")).tag(false)
-                    Text(String(localized: "share.role.host")).tag(true)
+                // Only a shared recording can be corrected together; live
+                // captions of a whole topic leave nothing to edit.
+                if viewModel.shareWholeNotebook == false {
+                    Text(String(localized: "share.role.label"))
+                        .font(.bodyMedium)
+                        .foregroundColor(.textPrimary)
+                        .padding(.top, Spacing.sm)
+                    Picker(String(localized: "share.role.label"), selection: $viewModel.hostOnlySelection) {
+                        Text(String(localized: "share.role.everyone")).tag(false)
+                        Text(String(localized: "share.role.host")).tag(true)
+                    }
+                    .pickerStyle(.radioGroup)
+                    .labelsHidden()
+                    .accessibilityIdentifier("share.policy")
                 }
-                .pickerStyle(.radioGroup)
-                .accessibilityIdentifier("share.policy")
 
                 Button(String(localized: "share.start")) {
                     viewModel.requestStart()

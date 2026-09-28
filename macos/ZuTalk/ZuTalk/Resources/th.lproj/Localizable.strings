@@ -7,10 +7,10 @@
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "ดำเนินการต่อ →";
-"onboarding.welcome.bullet1" = "สร้างหัวข้อสำหรับบทสนทนาประเภทเดียวกัน เช่น “สัมภาษณ์ภาษาอังกฤษ”";
-"onboarding.welcome.bullet2" = "เปิดหัวข้อแล้วคลิกเริ่มบันทึก";
-"onboarding.welcome.bullet3" = "เมื่อคุณหยุด จะพบคำบรรยาย เสียง และโน้ตอยู่ด้วยกัน";
-"onboarding.welcome.privacy" = "ข้อมูลจะอยู่บน Mac เครื่องนี้ตามค่าเริ่มต้น คุณเป็นผู้เลือกว่าจะเปิดใช้การถอดเสียงระยะไกลสำหรับการประชุมแต่ละครั้งหรือไม่";
+"onboarding.welcome.bullet1" = "เลือกภาษาแล้วกดเริ่มบันทึก หรือกด ⌃⌥R จากแอปไหนก็ได้";
+"onboarding.welcome.bullet2" = "คำบรรยายขึ้นขณะที่พูด กด ⌃⌥S เพื่อทำเครื่องหมายช่วงสำคัญ";
+"onboarding.welcome.bullet3" = "จากนั้นอ่านบทถอดเสียง เครื่องหมาย และบันทึกได้ในที่เดียว และจัดเข้าหัวข้อเมื่อต้องการ";
+"onboarding.welcome.privacy" = "การบันทึกจะอยู่บน Mac เครื่องนี้ จะเปิดคำบรรยายสด (ซึ่งส่งเสียงไปที่ Soniox) หรือไม่ คุณเลือกเองทุกครั้ง";
 "onboarding.visual.live" = "บทถอดเสียงสด";
 "onboarding.visual.speaker.host" = "ผู้ดำเนินรายการ";
 "onboarding.visual.speaker.guest" = "ผู้เข้าร่วม";
@@ -41,7 +41,7 @@
 "community_invite.invalid" = "รหัสคำเชิญนี้ไม่ถูกต้อง โปรดตรวจสอบกับผู้ที่เชิญคุณ";
 "community_invite.unavailable" = "บริการชุมชนไม่พร้อมใช้งานชั่วคราว โปรดลองใหม่ภายหลัง";
 "community_invite.remaining_recordable_format" = "บันทึกได้อีกประมาณ %1$lld ชม. %2$lld นาที";
-"community_invite.remaining_recordable_hint" = "เวลาจากคำเชิญถูกหักตามจำนวนเลนการถอดเสียง ยิ่งเลือกภาษาเป้าหมายมาก ยิ่งใช้เวลาต่อนาทีการบันทึกมากขึ้น";
+"community_invite.remaining_recordable_hint" = "เวลาจากคำเชิญถูกหักตามจำนวนการเชื่อมต่อคำบรรยาย การบันทึกที่มีการเชื่อมต่อ 3 เส้นจะใช้เวลา 3 นาทีต่อการบันทึกทุก 1 นาที";
 "community_invite.settings.title" = "คำเชิญชุมชน";
 "community_invite.settings.subtitle" = "ดูเวลาการใช้งานที่คุณมี หรือป้อนรหัสคำเชิญ";
 "community_invite.resources.remaining" = "เวลาที่เหลือ";
@@ -154,8 +154,8 @@
 "settings.audio_input.error.switch_unavailable" = "ไม่สามารถเปลี่ยนอินพุตเสียงระหว่างการเปลี่ยนสถานะการบันทึกอื่นได้ โปรดลองอีกครั้งในอีกสักครู่";
 "capture.toast.audio_input_switch_failed" = "สลับอินพุตเสียงไม่สำเร็จ";
 "settings.language.title" = "ภาษาของแอป";
-"settings.language.hint" = "ควบคุมส่วนติดต่อผู้ใช้ เมนู และข้อความแสดงข้อผิดพลาดทั้งในเลเยอร์ Swift และ Rust";
-"settings.language.restart_hint" = "การเปลี่ยนภาษาจะมีผลสมบูรณ์หลังจากคุณเริ่ม ZuTalk ใหม่ ข้อความแสดงข้อผิดพลาดของ Rust อัปเดตแล้ว";
+"settings.language.hint" = "ภาษาที่ใช้ในหน้าต่าง เมนู และข้อความของ ZuTalk";
+"settings.language.restart_hint" = "เริ่ม ZuTalk ใหม่เพื่อให้การเปลี่ยนแปลงมีผลทั้งหมด";
 "settings.appearance.title" = "ลักษณะที่ปรากฏ";
 
 
@@ -215,7 +215,7 @@
 "settings.credentials.verifying" = "กำลังตรวจสอบ…";
 "settings.credentials.verifying_hint" = "กำลังเชื่อมต่อกับ Soniox เพื่อตรวจสอบคีย์นี้";
 "settings.credentials.verified_hint" = "Soniox ยอมรับคีย์นี้แล้ว พร้อมสำหรับการถอดเสียงระยะไกล";
-"settings.credentials.verify_before_save_hint" = "ZuTalk จะบันทึกคีย์ใหม่ต่อเมื่อ Soniox ตรวจสอบแล้วเท่านั้น";
+"settings.credentials.verify_before_save_format" = "ZuTalk จะบันทึกคีย์ใหม่ต่อเมื่อ %@ ตรวจสอบแล้วเท่านั้น";
 "settings.credentials.verify_and_save_accessibility_format" = "ตรวจสอบและบันทึกคีย์ %@";
 "settings.credentials.verification.ready" = "ตรวจสอบการเชื่อมต่อ Soniox แล้ว";
 "settings.credentials.verification.invalid" = "Soniox ปฏิเสธคีย์นี้ คีย์อาจไม่ถูกต้องหรือถูกเพิกถอน";
@@ -292,7 +292,7 @@
 "session.marks.digest.failed" = "เรียบเรียงไม่สำเร็จ";
 
 "settings.services.engine.title" = "เอนจินบันทึกเสียง";
-"settings.services.engine.subtitle" = "อ่านอย่างเดียว แกนหลัก Rust เป็นผู้กำหนดการเลือกเอนจินนี้สำหรับ MVP ปัจจุบัน";
+"settings.services.engine.subtitle" = "อ่านอย่างเดียว ขณะนี้ ZuTalk ใช้เอนจินนี้เสมอ";
 "settings.services.engine.service" = "บริการ";
 "settings.services.engine.realtime" = "การบันทึกแบบเรียลไทม์";
 "settings.services.engine.realtime_detail" = "การบันทึกที่เปิดคำบรรยายสดจะใช้เอนจินนี้สำหรับการถอดเสียงหลายภาษาแบบสดและการแปล";
@@ -372,13 +372,13 @@
 "editor.transcript.async.projection_failed_desc" = "ลองจัดเก็บอีกครั้ง ZuTalk จะไม่อัปโหลดการบันทึกซ้ำ";
 "editor.transcript.async.status.loading" = "กำลังโหลดสถานะบทถอดเสียงแบบละเอียด";
 "editor.transcript.async.status.off" = "ไม่ได้ร้องขอการถอดเสียงแบบละเอียด";
-"editor.transcript.async.status.provider_pending" = "กำลังเล่นซ้ำด้วยเอนจินเรียลไทม์";
-"editor.transcript.async.status.provider_failed" = "การเล่นซ้ำด้วยเอนจินเรียลไทม์ล้มเหลว";
+"editor.transcript.async.status.provider_pending" = "กำลังสร้างบทถอดเสียงแบบละเอียด";
+"editor.transcript.async.status.provider_failed" = "สร้างบทถอดเสียงแบบละเอียดไม่สำเร็จ";
 "editor.transcript.async.status.projection_pending" = "ได้รับบทถอดเสียงแล้ว · กำลังจัดเก็บ";
 "editor.transcript.async.status.projecting" = "กำลังจัดเก็บบทถอดเสียง";
 "editor.transcript.async.status.ready" = "บทถอดเสียงแบบละเอียดพร้อมแล้ว";
 "editor.transcript.async.status.projection_failed" = "ได้รับบทถอดเสียงแล้ว · จัดเก็บไม่สำเร็จ";
-"editor.transcript.async.retry_projection" = "ลองเขียนในเครื่องอีกครั้ง";
+"editor.transcript.async.retry_projection" = "จัดเก็บอีกครั้ง";
 "editor.transcript.async.retry_projection_hint" = "จัดเก็บบทถอดเสียงที่ได้รับอีกครั้งโดยไม่อัปโหลดเสียงซ้ำ";
 "editor.transcript.async.retry_failed" = "ไม่สามารถเขียนบทถอดเสียงที่บันทึกไว้ได้";
 "menubar.recording.mode.local" = "ในเครื่อง";
@@ -517,7 +517,7 @@
 "resources.audio.verify" = "ตรวจสอบการลบและแสดงโฟลเดอร์จัดเก็บใน Finder";
 "resources.audio.verify.failed" = "ไม่สามารถตรวจสอบการลบไฟล์เสียงได้";
 "resources.audio.verify.ok" = "ยืนยันแล้วว่าไฟล์เสียงถูกทำลาย";
-"resources.audio.verify.ok.detail" = "ชิ้นส่วนที่เข้ารหัส %d ชิ้นถูกเขียนทับและลบแล้ว กุญแจถูกทำลาย และไม่มีไฟล์หลงเหลือ เปิดโฟลเดอร์จัดเก็บใน Finder แล้ว";
+"resources.audio.verify.ok.detail" = "ชิ้นส่วนที่เข้ารหัสทั้ง %d ชิ้นถูกเขียนทับและลบแล้ว กุญแจถูกทำลาย ไม่มีอะไรหลงเหลือ เปิดโฟลเดอร์ใน Finder แล้ว";
 "resources.audio.verify.residue" = "พบไฟล์เสียงหลงเหลือ";
 "resources.audio.verify.residue.detail" = "ยังมีไฟล์เหลืออยู่ %d ไฟล์ในโฟลเดอร์จัดเก็บ เปิดใน Finder เพื่อตรวจสอบแล้ว";
 "manual_note.title.placeholder" = "ตั้งชื่อโน้ตประจำเวลานี้ (ไม่บังคับ)";
@@ -564,7 +564,7 @@
 
 /* Trash page */
 "trash.empty.title" = "ถังขยะว่างเปล่า";
-"trash.empty.desc" = "การบันทึกที่ลบแล้วจะอยู่ที่นี่ 30 วันก่อนถูกลบอย่างถาวร";
+"trash.empty.desc" = "การบันทึกที่ลบจะอยู่ที่นี่จนกว่าคุณจะกู้คืนหรือลบถาวร";
 "trash.action.restore" = "กู้คืน";
 "trash.action.purge" = "ลบอย่างถาวร";
 "trash.toast.restored" = "กู้คืนการบันทึกแล้ว";
@@ -663,7 +663,7 @@
 "capture.error.context_requires_remote" = "เปิดใช้การถอดเสียงสดก่อนใช้ข้อมูลอ้างอิง";
 "capture.error.languages_must_differ" = "เลือกภาษาโดยไม่ให้ซ้ำกัน";
 "capture.error.not_active" = "ขณะนี้ไม่มีการบันทึก";
-"capture.error.projection_locked" = "บทถอดเสียงจะอ่านได้อย่างเดียวจนกว่าการเขียนผลลัพธ์จะพร้อม";
+"capture.error.projection_locked" = "บทถอดเสียงจะแก้ไขได้เมื่อจัดเก็บเสร็จแล้ว";
 "capture.error.profile_snapshot_unavailable" = "โปรไฟล์การบันทึกที่จัดเก็บไว้ของการบันทึกนี้ไม่พร้อมใช้งาน";
 "capture.route.no_notebook" = "ยังไม่ได้เลือกหัวข้อ";
 "capture.route.no_notebook_detail" = "สร้างหรือเลือกหัวข้อก่อนเริ่มบันทึก";
@@ -743,7 +743,7 @@
 "capture.toast.context_load_failed" = "ไม่สามารถโหลดข้อมูลอ้างอิงได้";
 "capture.toast.context_update_failed" = "ไม่สามารถอัปเดตข้อมูลอ้างอิงได้";
 "capture.toast.edit_failed" = "ไม่สามารถอัปเดตเลนบทถอดเสียงได้";
-"capture.toast.projection_retry_failed" = "ไม่สามารถลองเขียนผลลัพธ์บทถอดเสียงอีกครั้งได้";
+"capture.toast.projection_retry_failed" = "จัดเก็บบทถอดเสียงอีกครั้งไม่สำเร็จ";
 "capture.settings.title" = "การตั้งค่า";
 "capture.settings.subtitle" = "ระบบจะบันทึกการเปลี่ยนแปลงอัตโนมัติและใช้เป็นค่าเริ่มต้นสำหรับการบันทึกครั้งถัดไป";
 "capture.settings.subtitle.topic" = "ระบบจะบันทึกการเปลี่ยนแปลงอัตโนมัติเป็นค่าเริ่มต้นสำหรับการบันทึกครั้งถัดไปในหัวข้อนี้ อินพุตเสียงใช้ร่วมกันทั้ง Mac เครื่องนี้";
@@ -810,10 +810,10 @@
 "capture.translation.halted" = "การแปล \"%@\" หยุดแล้ว";
 "capture.translation.halted.detail" = "เสียงในเครื่องส่งเข้าสตรีมแปลนี้ได้ไม่ต่อเนื่อง จึงหยุดไว้ ZuTalk จะเชื่อมต่อใหม่ให้อัตโนมัติ หรือกด “เชื่อมต่อใหม่” เพื่อลองทันที การถอดเสียงไม่ได้รับผลกระทบ";
 "capture.remote.unavailable" = "คำบรรยายใช้งานไม่ได้";
-"capture.projection.pending" = "รอเขียนผลลัพธ์";
-"capture.projection.projecting" = "กำลังเขียนผลลัพธ์";
-"capture.projection.ready" = "แก้ไขได้";
-"capture.projection.failed" = "เขียนผลลัพธ์ล้มเหลว";
+"capture.projection.pending" = "รอจัดเก็บ";
+"capture.projection.projecting" = "กำลังจัดเก็บ";
+"capture.projection.ready" = "จัดเก็บแล้ว";
+"capture.projection.failed" = "จัดเก็บไม่สำเร็จ";
 "capture.transcript.swap" = "สลับคอลัมน์ภาษาซ้ายและขวา";
 "capture.transcript.realtime_accessibility_label" = "บทถอดเสียงเรียลไทม์";
 "capture.transcript.run_navigator" = "ตัวนำทางการบันทึก";
@@ -826,7 +826,7 @@
 "capture.transcript.transcription_empty_title" = "ไม่มีถ้อยคำแบบเรียลไทม์";
 "capture.transcript.transcription_empty_detail" = "เปิดใช้การประมวลผลเรียลไทม์ระยะไกลแล้วเริ่มบันทึกเพื่อสร้างบทถอดเสียงของการบันทึกนี้";
 "capture.transcript.snapshot_unavailable_detail" = "ถ้อยคำที่จัดเก็บไว้ยังคงอยู่ แต่มุมมองนี้ไม่สามารถเลือกเลย์เอาต์ได้หากไม่มีการกำหนดค่าคอลัมน์ภาษาที่บันทึกไว้ของการบันทึกนี้";
-"capture.transcript.read_only" = "อ่านอย่างเดียวระหว่างบันทึกหรือเขียนผลลัพธ์";
+"capture.transcript.read_only" = "แก้ไขได้เมื่อหยุดบันทึกและจัดเก็บบทถอดเสียงแล้ว";
 "capture.transcript.copy" = "คัดลอกบทถอดเสียง";
 "capture.transcript.copy_hint" = "คัดลอกบทถอดเสียงของการบันทึกนี้พร้อมประทับเวลา ชื่อผู้พูด และป้ายภาษา";
 "capture.transcript.copy_empty_hint" = "ยังไม่มีเนื้อหาบทถอดเสียงให้คัดลอก";
@@ -869,8 +869,8 @@
 "capture.speaker.unlink" = "เลิกเชื่อมผู้เข้าร่วม";
 "capture.speaker.identity_format" = "%@ · ผู้พูด %@ · การเชื่อมต่อ %@";
 "capture.transcript.edit_lane" = "แก้ไขเลน %@";
-"capture.transcript.edit_hint" = "กด Return หรือย้ายโฟกัสเพื่อบันทึกเลนนี้";
-"capture.transcript.retry_projection" = "ลองเขียนผลลัพธ์อีกครั้ง";
+"capture.transcript.edit_hint" = "คลิกเพื่อแก้ไข กด Return หรือคลิกที่อื่นเพื่อจัดเก็บ";
+"capture.transcript.retry_projection" = "จัดเก็บอีกครั้ง";
 "capture.transcript.retry_projection_hint" = "จัดเก็บบทถอดเสียงที่ได้รับอีกครั้ง";
 "capture.settings.retention.title" = "การเก็บรักษาไฟล์เสียง";
 "capture.settings.retention.subtitle" = "ระบบจะตรึงนโยบายการเก็บรักษาเมื่อเริ่มการบันทึกแต่ละครั้ง";
@@ -998,8 +998,8 @@
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "เชื่อมต่อโดยตรง";
 "share.link.relayed" = "ผ่านรีเลย์";
-"share.link.direct_hint" = "ทราฟฟิกวิ่งตรงระหว่างเครื่อง — เจาะ NAT สำเร็จ";
-"share.link.relayed_hint" = "เชื่อมต่อโดยตรงไม่สำเร็จ ทราฟฟิกถูกส่งผ่านรีเลย์ (ยังเข้ารหัสแบบ end-to-end) พบบ่อยในเครือข่ายที่เปิด AP isolation";
+"share.link.direct_hint" = "เชื่อมต่อกับอีกฝ่ายโดยตรง ไม่ผ่านเซิร์ฟเวอร์ใดๆ";
+"share.link.relayed_hint" = "เชื่อมต่อโดยตรงไม่ได้ จึงใช้เซิร์ฟเวอร์รีเลย์ส่งต่อคำบรรยาย (ยังเข้ารหัสแบบต้นทางถึงปลายทาง) พบบ่อยใน Wi-Fi ที่กั้นอุปกรณ์ไม่ให้ติดต่อกัน";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
 "share.scope.notebook" = "เฉพาะคำบรรยายสด: อีกฝ่ายดูการบันทึกของหัวข้อนี้แบบสดโดยไม่เก็บอะไรไว้";
@@ -1007,7 +1007,7 @@
 "share.scope.no_sessions" = "หัวข้อนี้ยังไม่มีการบันทึก";
 "share.received.title" = "ทรานสคริปต์ที่แชร์";
 "share.received.untitled" = "(ยังไม่มีข้อความ)";
-"share.received.blocks" = "%lld บล็อก";
+"share.received.blocks" = "%lld ช่วง";
 "share.received.delete" = "ลบออกจากเครื่องนี้";
 "share.received.delete.confirm_title" = "ลบบทถอดเสียงที่ได้รับนี้หรือไม่";
 "share.received.delete.confirm_body" = "ลบเฉพาะสำเนาในเครื่อง Mac นี้ สำเนาของคนอื่นไม่ได้รับผลกระทบ";
@@ -1069,8 +1069,8 @@
 "shared_inbox.empty_body" = "ทรานสคริปต์ที่แชร์ให้คุณจะปรากฏที่นี่ — อัปเดตสดระหว่างห้องเปิดอยู่ และเก็บไว้หลังจบ";
 "shared_inbox.session_live" = "สด";
 "shared_inbox.lane_canonical" = "ต้นฉบับ";
-"shared_inbox.lane_connecting" = "เลนภาษานี้กำลังเชื่อมต่อ";
-"shared_inbox.lane_failed" = "เลนภาษานี้ล้มเหลว จะไม่มีเนื้อหามาอีก";
+"shared_inbox.lane_connecting" = "คอลัมน์นี้ยังกำลังเชื่อมต่อ";
+"shared_inbox.lane_failed" = "คอลัมน์นี้หยุดแล้ว จะไม่มีเนื้อหาเข้ามาอีก";
 
 "share.web.title" = "แชร์ผ่านเว็บ";
 "share.web.start" = "เริ่มแชร์ผ่านเว็บ";
@@ -1270,3 +1270,8 @@
 "topic.delete.confirm_button" = "ลบหัวข้อ";
 "topic.delete.confirm_message_format" = "การบันทึก %lld รายการจะยังอยู่ โดยย้ายพร้อมบทถอดเสียงและบันทึกไปที่ “ไม่มีหัวข้อ” ส่วนบันทึกของหัวข้อเองจะถูกลบ";
 "topic.delete.confirm_message_empty" = "หัวข้อนี้ไม่มีการบันทึก บันทึกของหัวข้อจะถูกลบ";
+
+"share.scope.label" = "สิ่งที่อีกฝ่ายจะได้รับ";
+"share.role.label" = "ใครแก้บทถอดเสียงได้";
+
+"captions_choice.on_invite_format" = "คำบรรยายสด · เหลือประมาณ %@";

@@ -476,7 +476,7 @@ struct CaptionsChoiceChip: View {
             }
         } label: {
             Label(
-                String(localized: on ? "captions_choice.on" : "captions_choice.off"),
+                on ? onTitle : String(localized: "captions_choice.off"),
                 systemImage: on ? "captions.bubble.fill" : "mic.fill"
             )
             .font(.bodyMedium)
@@ -498,6 +498,22 @@ struct CaptionsChoiceChip: View {
         .accessibilityLabel(Text(String(localized: on ? "captions_choice.on" : "captions_choice.off")))
         .accessibilityHint(Text(helpText(available: available, on: on)))
         .accessibilityIdentifier("captions-choice")
+    }
+
+    /// With an invite, how long it lasts at the connections this recording
+    /// will open — said before recording, where the time is about to be
+    /// spent, rather than only in the sidebar.
+    private var onTitle: String {
+        guard invite.isEnabled, invite.isActive, let remaining = invite.remainingSeconds else {
+            return String(localized: "captions_choice.on")
+        }
+        let recordable = CommunityInviteSession.wallClockRecordableSeconds(
+            remainingSeconds: remaining,
+            laneCount: invite.plannedLaneCount
+        )
+        let length = RecordingPresentation.duration(ms: UInt64(max(recordable, 0)) * 1_000)
+            ?? RecordingPresentation.duration(ms: 1_000) ?? ""
+        return String(format: String(localized: "captions_choice.on_invite_format"), length)
     }
 
     private func helpText(available: Bool, on: Bool) -> String {

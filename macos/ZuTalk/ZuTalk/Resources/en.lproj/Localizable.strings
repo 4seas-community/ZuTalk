@@ -7,10 +7,10 @@
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "Continue →";
-"onboarding.welcome.bullet1" = "Create a topic for one kind of conversation, such as “English interviews.”";
-"onboarding.welcome.bullet2" = "Open the topic and click Start Recording.";
-"onboarding.welcome.bullet3" = "When you stop, find the captions, audio, and notes together.";
-"onboarding.welcome.privacy" = "Data stays on this Mac by default. You choose whether to enable remote transcription for each meeting.";
+"onboarding.welcome.bullet1" = "Pick the languages and press Record — or press ⌃⌥R from any app.";
+"onboarding.welcome.bullet2" = "Captions appear as people speak. Press ⌃⌥S to mark what matters.";
+"onboarding.welcome.bullet3" = "Afterwards, read the transcript, marks and notes in one place, and file recordings into topics when you like.";
+"onboarding.welcome.privacy" = "Recordings stay on this Mac. Whether a recording gets live captions — which sends its audio to Soniox — is your choice each time.";
 "onboarding.visual.live" = "LIVE TRANSCRIPT";
 "onboarding.visual.speaker.host" = "Host";
 "onboarding.visual.speaker.guest" = "Participant";
@@ -41,7 +41,7 @@
 "community_invite.invalid" = "That invitation code is not valid. Check with the person who invited you.";
 "community_invite.unavailable" = "The community service is temporarily unavailable. Try again later.";
 "community_invite.remaining_recordable_format" = "About %1$lld h %2$lld min of recording left";
-"community_invite.remaining_recordable_hint" = "Invite time is spent once per transcription lane. Selecting more target languages uses more time per recorded minute.";
+"community_invite.remaining_recordable_hint" = "Invite time is spent per caption connection: a recording with three connections uses three minutes of it per minute recorded.";
 "community_invite.settings.title" = "Community invite";
 "community_invite.settings.subtitle" = "See the usage time you own, or enter an invitation code.";
 "community_invite.resources.remaining" = "Time remaining";
@@ -154,8 +154,8 @@
 "settings.audio_input.error.switch_unavailable" = "The audio input cannot be changed during another recording transition. Try again in a moment.";
 "capture.toast.audio_input_switch_failed" = "Could not switch audio input";
 "settings.language.title" = "APP LANGUAGE";
-"settings.language.hint" = "Controls UI, menus, and error messages across Swift and Rust layers.";
-"settings.language.restart_hint" = "Language switch takes full effect after you restart ZuTalk. Rust error messages already updated.";
+"settings.language.hint" = "The language of ZuTalk’s windows, menus and messages.";
+"settings.language.restart_hint" = "Restart ZuTalk for the change to take full effect.";
 "settings.appearance.title" = "APPEARANCE";
 
 
@@ -215,7 +215,7 @@
 "settings.credentials.verifying" = "Verifying…";
 "settings.credentials.verifying_hint" = "Connecting to Soniox to verify this key.";
 "settings.credentials.verified_hint" = "Soniox accepted this key. It is ready for remote transcription.";
-"settings.credentials.verify_before_save_hint" = "ZuTalk saves a new key only after Soniox verifies it.";
+"settings.credentials.verify_before_save_format" = "ZuTalk saves a new key only after %@ accepts it.";
 "settings.credentials.verify_and_save_accessibility_format" = "Verify and save %@ key";
 "settings.credentials.verification.ready" = "Soniox connection verified";
 "settings.credentials.verification.invalid" = "Soniox rejected this key. It may be invalid or revoked.";
@@ -292,7 +292,7 @@
 "session.marks.digest.failed" = "Could not be cleaned up";
 
 "settings.services.engine.title" = "Capture engine";
-"settings.services.engine.subtitle" = "Read-only. The Rust core owns this engine selection for the current MVP.";
+"settings.services.engine.subtitle" = "Read-only. ZuTalk currently always uses this engine.";
 "settings.services.engine.service" = "Service";
 "settings.services.engine.realtime" = "Realtime capture";
 "settings.services.engine.realtime_detail" = "Recordings with live captions use it for live multilingual transcription and translation.";
@@ -372,13 +372,13 @@
 "editor.transcript.async.projection_failed_desc" = "Try saving it again. ZuTalk will not upload the recording again.";
 "editor.transcript.async.status.loading" = "Loading refined transcript status";
 "editor.transcript.async.status.off" = "No refined transcription requested";
-"editor.transcript.async.status.provider_pending" = "Realtime engine replay in progress";
-"editor.transcript.async.status.provider_failed" = "Realtime engine replay failed";
+"editor.transcript.async.status.provider_pending" = "Making the refined transcript";
+"editor.transcript.async.status.provider_failed" = "The refined transcript could not be made";
 "editor.transcript.async.status.projection_pending" = "Transcript received · saving";
 "editor.transcript.async.status.projecting" = "Saving the transcript";
 "editor.transcript.async.status.ready" = "Refined transcript ready";
 "editor.transcript.async.status.projection_failed" = "Transcript received · could not be saved";
-"editor.transcript.async.retry_projection" = "Retry local write";
+"editor.transcript.async.retry_projection" = "Save again";
 "editor.transcript.async.retry_projection_hint" = "Saves the transcript that arrived again, without uploading audio.";
 "editor.transcript.async.retry_failed" = "Could not write the saved transcript";
 "menubar.recording.mode.local" = "LOCAL";
@@ -517,7 +517,7 @@
 "resources.audio.verify" = "Verify deletion and show the storage folder in Finder";
 "resources.audio.verify.failed" = "Could not verify the audio deletion";
 "resources.audio.verify.ok" = "Audio verifiably destroyed";
-"resources.audio.verify.ok.detail" = "%d encrypted chunk(s) were overwritten and deleted, the key is gone, and no files remain. The storage folder is now open in Finder.";
+"resources.audio.verify.ok.detail" = "All %d encrypted pieces were overwritten and deleted, the key is gone, and nothing remains. The folder is open in Finder.";
 "resources.audio.verify.residue" = "Leftover audio files found";
 "resources.audio.verify.residue.detail" = "%d file(s) still exist in the storage folder — it is now open in Finder for inspection.";
 "manual_note.title.placeholder" = "Name this time note (optional)";
@@ -564,7 +564,7 @@
 
 /* Trash page */
 "trash.empty.title" = "Trash is empty";
-"trash.empty.desc" = "Deleted recordings stay here for 30 days before being permanently removed.";
+"trash.empty.desc" = "Deleted recordings stay here until you delete them permanently or restore them.";
 "trash.action.restore" = "Restore";
 "trash.action.purge" = "Delete forever";
 "trash.toast.restored" = "Recording restored";
@@ -663,7 +663,7 @@
 "capture.error.context_requires_remote" = "Turn on live transcription before using reference material.";
 "capture.error.languages_must_differ" = "Choose languages without duplicates.";
 "capture.error.not_active" = "Nothing is being recorded.";
-"capture.error.projection_locked" = "The transcript is read-only until projection is ready.";
+"capture.error.projection_locked" = "The transcript can be edited once it has been saved.";
 "capture.error.profile_snapshot_unavailable" = "The saved capture profile for this recording is unavailable.";
 "capture.route.no_notebook" = "No topic selected";
 "capture.route.no_notebook_detail" = "Create or select a topic before recording.";
@@ -743,7 +743,7 @@
 "capture.toast.context_load_failed" = "Could not load reference material";
 "capture.toast.context_update_failed" = "Could not update reference material";
 "capture.toast.edit_failed" = "Could not update transcript lane";
-"capture.toast.projection_retry_failed" = "Could not retry transcript projection";
+"capture.toast.projection_retry_failed" = "Could not save the transcript again";
 "capture.settings.title" = "Settings";
 "capture.settings.subtitle" = "Changes save automatically and become the defaults for the next recording.";
 "capture.settings.subtitle.topic" = "Changes save automatically as defaults for the next recording in this Topic. Audio input is shared across this Mac.";
@@ -810,10 +810,10 @@
 "capture.translation.halted" = "\"%@\" translation stopped";
 "capture.translation.halted.detail" = "Local audio could not reach this translation stream without a gap, so it was stopped. ZuTalk reopens it automatically; press Reconnect to try right away. Transcription is unaffected.";
 "capture.remote.unavailable" = "Captions unavailable";
-"capture.projection.pending" = "Projection pending";
-"capture.projection.projecting" = "Projecting";
-"capture.projection.ready" = "Editable";
-"capture.projection.failed" = "Projection failed";
+"capture.projection.pending" = "Waiting to save";
+"capture.projection.projecting" = "Saving";
+"capture.projection.ready" = "Saved";
+"capture.projection.failed" = "Not saved";
 "capture.transcript.swap" = "Swap left and right language columns";
 "capture.transcript.realtime_accessibility_label" = "Realtime transcript";
 "capture.transcript.run_navigator" = "Recording navigator";
@@ -826,7 +826,7 @@
 "capture.transcript.transcription_empty_title" = "No realtime utterances";
 "capture.transcript.transcription_empty_detail" = "Enable remote realtime processing and start recording to build the recording transcript.";
 "capture.transcript.snapshot_unavailable_detail" = "The stored utterances are preserved, but this view cannot choose a layout without the recording's saved language-column configuration.";
-"capture.transcript.read_only" = "Read-only while recording or projecting";
+"capture.transcript.read_only" = "Can be edited once recording has stopped and the transcript is saved";
 "capture.transcript.copy" = "Copy transcript";
 "capture.transcript.copy_hint" = "Copies this recording's transcript with timestamps, speaker names, and language labels.";
 "capture.transcript.copy_empty_hint" = "There is no transcript content to copy yet.";
@@ -869,8 +869,8 @@
 "capture.speaker.unlink" = "Unlink participant";
 "capture.speaker.identity_format" = "%@ · speaker %@ · connection %@";
 "capture.transcript.edit_lane" = "Edit %@ lane";
-"capture.transcript.edit_hint" = "Press Return or move focus to save this lane.";
-"capture.transcript.retry_projection" = "Retry projection";
+"capture.transcript.edit_hint" = "Click to correct. Press Return or click elsewhere to save.";
+"capture.transcript.retry_projection" = "Save again";
 "capture.transcript.retry_projection_hint" = "Saves the received transcript again.";
 "capture.settings.retention.title" = "Audio retention";
 "capture.settings.retention.subtitle" = "The retention policy is frozen for each recording when it starts.";
@@ -998,8 +998,8 @@
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "Direct";
 "share.link.relayed" = "Via relay";
-"share.link.direct_hint" = "Traffic flows peer-to-peer — hole punching succeeded.";
-"share.link.relayed_hint" = "Direct connection failed; traffic is forwarded through the relay, still end-to-end encrypted. Common on networks with AP isolation.";
+"share.link.direct_hint" = "Connected directly, without any server in between.";
+"share.link.relayed_hint" = "Could not connect directly, so a relay server passes the captions along — still end-to-end encrypted. Common on Wi-Fi that keeps devices apart.";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
 "share.scope.notebook" = "Live captions only: people see this topic's recordings as they happen, and keep nothing.";
@@ -1007,7 +1007,7 @@
 "share.scope.no_sessions" = "This topic has no recordings yet.";
 "share.received.title" = "Shared transcripts";
 "share.received.untitled" = "(no text yet)";
-"share.received.blocks" = "%lld blocks";
+"share.received.blocks" = "%lld passages";
 "share.received.delete" = "Delete from this Mac";
 "share.received.delete.confirm_title" = "Delete this received transcript?";
 "share.received.delete.confirm_body" = "Removes only the copy on this Mac. Copies other people hold are not affected.";
@@ -1069,8 +1069,8 @@
 "shared_inbox.empty_body" = "Transcripts shared with you will appear here — live while the room is open, and kept after it ends.";
 "shared_inbox.session_live" = "Live";
 "shared_inbox.lane_canonical" = "Source";
-"shared_inbox.lane_connecting" = "This language lane is still connecting";
-"shared_inbox.lane_failed" = "This language lane failed — nothing more will arrive on it";
+"shared_inbox.lane_connecting" = "This column is still connecting";
+"shared_inbox.lane_failed" = "This column stopped — nothing more will arrive in it";
 
 "share.web.title" = "Web share";
 "share.web.start" = "Start web share";
@@ -1270,3 +1270,8 @@
 "topic.delete.confirm_button" = "Delete topic";
 "topic.delete.confirm_message_format" = "Its %lld recordings are kept — they move, with their transcripts and notes, to “No topic”. The topic’s own notes are deleted.";
 "topic.delete.confirm_message_empty" = "The topic has no recordings. Its notes are deleted.";
+
+"share.scope.label" = "What they get";
+"share.role.label" = "Who can correct the transcript";
+
+"captions_choice.on_invite_format" = "Live captions · about %@ left";

@@ -1191,6 +1191,7 @@ struct BilingualLaneText: View {
     let onEditingChanged: (BilingualLaneEditTarget, Bool) -> Void
     @State private var buffer: BilingualLaneDraftBuffer
     @State private var isCommitInFlight = false
+    @State private var isHovering = false
     @FocusState private var isFocused: Bool
 
     /// "Waiting for Chinese", not "Waiting for ZH": the code is an identifier,
@@ -1264,6 +1265,25 @@ struct BilingualLaneText: View {
                     .montereyOnChange(of: text) { _, value in
                         scheduleTextSync(value)
                     }
+                    // Editable text looked exactly like read-only text; a
+                    // wash on hover and an outline while editing say which
+                    // is which without adding chrome to every row.
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: Radius.xs)
+                            .fill(Color.bgElevated.opacity(isFocused ? 0.55 : isHovering ? 0.35 : 0))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Radius.xs)
+                            .strokeBorder(
+                                Color.brandAccent.opacity(isFocused ? 0.5 : 0),
+                                lineWidth: 1
+                            )
+                    )
+                    .padding(.horizontal, -4)
+                    .onHover { isHovering = $0 }
+                    .help(String(localized: "capture.transcript.edit_hint"))
             } else if let text, text.isEmpty == false {
                 Text(text)
                     .font(.body)

@@ -7,10 +7,10 @@
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "Continuar →";
-"onboarding.welcome.bullet1" = "Cree un tema para un tipo de conversación, por ejemplo “Entrevistas en inglés”.";
-"onboarding.welcome.bullet2" = "Abra el tema y haga clic en Iniciar grabación.";
-"onboarding.welcome.bullet3" = "Al detener la grabación, encontrará juntos los subtítulos, el audio y las notas.";
-"onboarding.welcome.privacy" = "De forma predeterminada, los datos permanecen en este Mac. En cada reunión se decide si se activa la transcripción remota.";
+"onboarding.welcome.bullet1" = "Elige los idiomas y pulsa Grabar, o pulsa ⌃⌥R desde cualquier app.";
+"onboarding.welcome.bullet2" = "Los subtítulos aparecen mientras se habla. Pulsa ⌃⌥S para marcar lo importante.";
+"onboarding.welcome.bullet3" = "Después, lee la transcripción, las marcas y las notas en un solo lugar, y organiza las grabaciones en temas cuando quieras.";
+"onboarding.welcome.privacy" = "Las grabaciones se quedan en este Mac. Tú decides cada vez si usar subtítulos en directo, que envían el audio a Soniox.";
 "onboarding.visual.live" = "TRANSCRIPCIÓN EN VIVO";
 "onboarding.visual.speaker.host" = "Anfitrión";
 "onboarding.visual.speaker.guest" = "Participante";
@@ -41,7 +41,7 @@
 "community_invite.invalid" = "Ese código de invitación no es válido. Consulte con la persona que lo invitó.";
 "community_invite.unavailable" = "El servicio de la comunidad no está disponible temporalmente. Inténtelo de nuevo más tarde.";
 "community_invite.remaining_recordable_format" = "Quedan unas %1$lld h %2$lld min de grabación";
-"community_invite.remaining_recordable_hint" = "El tiempo de la invitación se descuenta por cada carril de transcripción: cuantos más idiomas de destino seleccione, más tiempo consume cada minuto grabado.";
+"community_invite.remaining_recordable_hint" = "El tiempo de la invitación se descuenta por cada conexión de subtítulos: una grabación con tres conexiones consume tres minutos por cada minuto grabado.";
 "community_invite.settings.title" = "Invitación de la comunidad";
 "community_invite.settings.subtitle" = "Vea el tiempo de uso que posee o ingrese un código de invitación.";
 "community_invite.resources.remaining" = "Tiempo restante";
@@ -154,8 +154,8 @@
 "settings.audio_input.error.switch_unavailable" = "No se puede cambiar la entrada de audio durante otra transición de grabación. Inténtalo de nuevo en unos instantes.";
 "capture.toast.audio_input_switch_failed" = "No se pudo cambiar la entrada de audio";
 "settings.language.title" = "IDIOMA DE LA APP";
-"settings.language.hint" = "Controla la interfaz, los menús y los mensajes de error en las capas Swift y Rust.";
-"settings.language.restart_hint" = "El cambio de idioma se aplica por completo al reiniciar ZuTalk. Los mensajes de error de Rust ya se han actualizado.";
+"settings.language.hint" = "El idioma de las ventanas, los menús y los mensajes de ZuTalk.";
+"settings.language.restart_hint" = "El cambio se aplica por completo al reiniciar ZuTalk.";
 "settings.appearance.title" = "APARIENCIA";
 
 
@@ -214,7 +214,7 @@
 "settings.credentials.verifying" = "Verificando…";
 "settings.credentials.verifying_hint" = "Conectando con Soniox para verificar esta clave.";
 "settings.credentials.verified_hint" = "Soniox aceptó esta clave. Está lista para la transcripción remota.";
-"settings.credentials.verify_before_save_hint" = "ZuTalk guarda una clave nueva solo después de que Soniox la verifique.";
+"settings.credentials.verify_before_save_format" = "ZuTalk guarda una clave nueva solo después de que %@ la verifique.";
 "settings.credentials.verify_and_save_accessibility_format" = "Verificar y guardar la clave de %@";
 "settings.credentials.verification.ready" = "Conexión con Soniox verificada";
 "settings.credentials.verification.invalid" = "Soniox rechazó esta clave. Puede que no sea válida o esté revocada.";
@@ -291,7 +291,7 @@
 "session.marks.digest.failed" = "No se pudo ordenar";
 
 "settings.services.engine.title" = "Motor de captura";
-"settings.services.engine.subtitle" = "Solo lectura. El núcleo en Rust controla esta selección de motor en el MVP actual.";
+"settings.services.engine.subtitle" = "Solo lectura. Por ahora, ZuTalk siempre usa este motor.";
 "settings.services.engine.service" = "Servicio";
 "settings.services.engine.realtime" = "Captura en tiempo real";
 "settings.services.engine.realtime_detail" = "Las grabaciones con subtítulos en directo lo usan para la transcripción multilingüe y la traducción en vivo.";
@@ -371,13 +371,13 @@
 "editor.transcript.async.projection_failed_desc" = "Intente guardarla de nuevo. ZuTalk no volverá a subir la grabación.";
 "editor.transcript.async.status.loading" = "Cargando el estado de la transcripción refinada";
 "editor.transcript.async.status.off" = "No se solicitó transcripción refinada";
-"editor.transcript.async.status.provider_pending" = "Repetición del motor de tiempo real en curso";
-"editor.transcript.async.status.provider_failed" = "Error en la repetición del motor de tiempo real";
+"editor.transcript.async.status.provider_pending" = "Creando la transcripción refinada";
+"editor.transcript.async.status.provider_failed" = "No se pudo crear la transcripción refinada";
 "editor.transcript.async.status.projection_pending" = "Transcripción recibida · guardando";
 "editor.transcript.async.status.projecting" = "Guardando la transcripción";
 "editor.transcript.async.status.ready" = "Transcripción refinada lista";
 "editor.transcript.async.status.projection_failed" = "Transcripción recibida · no se pudo guardar";
-"editor.transcript.async.retry_projection" = "Reintentar escritura local";
+"editor.transcript.async.retry_projection" = "Guardar de nuevo";
 "editor.transcript.async.retry_projection_hint" = "Vuelve a guardar la transcripción recibida, sin volver a subir el audio.";
 "editor.transcript.async.retry_failed" = "No se pudo escribir la transcripción guardada";
 "menubar.recording.mode.local" = "LOCAL";
@@ -516,7 +516,7 @@
 "resources.audio.verify" = "Verificar la eliminación y mostrar la carpeta de almacenamiento en Finder";
 "resources.audio.verify.failed" = "No se pudo verificar la eliminación del audio";
 "resources.audio.verify.ok" = "Destrucción del audio verificada";
-"resources.audio.verify.ok.detail" = "%d fragmento(s) cifrado(s) se sobrescribieron y eliminaron, la clave fue destruida y no quedan archivos. La carpeta de almacenamiento está abierta en Finder.";
+"resources.audio.verify.ok.detail" = "Los %d fragmentos cifrados se sobrescribieron y eliminaron, la clave ya no existe y no queda nada. La carpeta está abierta en Finder.";
 "resources.audio.verify.residue" = "Se encontraron archivos de audio residuales";
 "resources.audio.verify.residue.detail" = "Aún quedan %d archivo(s) en la carpeta de almacenamiento; se abrió en Finder para su inspección.";
 "manual_note.title.placeholder" = "Ponga nombre a esta nota temporal (opcional)";
@@ -563,7 +563,7 @@
 
 /* Trash page */
 "trash.empty.title" = "La Papelera está vacía";
-"trash.empty.desc" = "Las grabaciones eliminadas permanecen aquí 30 días antes de eliminarse de forma permanente.";
+"trash.empty.desc" = "Las grabaciones eliminadas se quedan aquí hasta que las restaures o las elimines definitivamente.";
 "trash.action.restore" = "Restaurar";
 "trash.action.purge" = "Eliminar definitivamente";
 "trash.toast.restored" = "Grabación restaurada";
@@ -662,7 +662,7 @@
 "capture.error.context_requires_remote" = "Active la transcripción en vivo antes de usar material de referencia.";
 "capture.error.languages_must_differ" = "Elija idiomas sin duplicados.";
 "capture.error.not_active" = "No se está grabando nada.";
-"capture.error.projection_locked" = "La transcripción es de solo lectura hasta que la proyección esté lista.";
+"capture.error.projection_locked" = "La transcripción se podrá editar cuando se haya guardado.";
 "capture.error.profile_snapshot_unavailable" = "El perfil de captura guardado de esta grabación no está disponible.";
 "capture.route.no_notebook" = "Ningún tema seleccionado";
 "capture.route.no_notebook_detail" = "Cree o seleccione un tema antes de grabar.";
@@ -742,7 +742,7 @@
 "capture.toast.context_load_failed" = "No se pudo cargar el material de referencia";
 "capture.toast.context_update_failed" = "No se pudo actualizar el material de referencia";
 "capture.toast.edit_failed" = "No se pudo actualizar la columna de la transcripción";
-"capture.toast.projection_retry_failed" = "No se pudo reintentar la proyección de la transcripción";
+"capture.toast.projection_retry_failed" = "No se pudo volver a guardar la transcripción";
 "capture.settings.title" = "Ajustes";
 "capture.settings.subtitle" = "Los cambios se guardan automáticamente y pasan a ser los ajustes predeterminados para la próxima grabación.";
 "capture.settings.subtitle.topic" = "Los cambios se guardan automáticamente como ajustes predeterminados para la próxima grabación de este tema. La entrada de audio se comparte en este Mac.";
@@ -809,10 +809,10 @@
 "capture.translation.halted" = "Traducción «%@» detenida";
 "capture.translation.halted.detail" = "El audio local no pudo llegar a este flujo de traducción sin cortes, así que se detuvo. ZuTalk lo vuelve a abrir automáticamente; pulsa Reconectar para intentarlo ya. La transcripción no se ve afectada.";
 "capture.remote.unavailable" = "Subtítulos no disponibles";
-"capture.projection.pending" = "Proyección pendiente";
-"capture.projection.projecting" = "Proyectando";
-"capture.projection.ready" = "Editable";
-"capture.projection.failed" = "Error de proyección";
+"capture.projection.pending" = "Pendiente de guardar";
+"capture.projection.projecting" = "Guardando";
+"capture.projection.ready" = "Guardada";
+"capture.projection.failed" = "No se pudo guardar";
 "capture.transcript.swap" = "Intercambiar las columnas de idioma izquierda y derecha";
 "capture.transcript.realtime_accessibility_label" = "Transcripción en tiempo real";
 "capture.transcript.run_navigator" = "Navegador de grabaciones";
@@ -825,7 +825,7 @@
 "capture.transcript.transcription_empty_title" = "No hay intervenciones en tiempo real";
 "capture.transcript.transcription_empty_detail" = "Active el procesamiento remoto en tiempo real e inicie la grabación para generar su transcripción.";
 "capture.transcript.snapshot_unavailable_detail" = "Las intervenciones almacenadas se conservan, pero esta vista no puede elegir una disposición sin la configuración de columnas de idioma guardada de la grabación.";
-"capture.transcript.read_only" = "Solo lectura durante la grabación o la proyección";
+"capture.transcript.read_only" = "Se podrá editar cuando termine la grabación y se guarde la transcripción";
 "capture.transcript.copy" = "Copiar transcripción";
 "capture.transcript.copy_hint" = "Copia la transcripción de esta grabación con marcas de tiempo, nombres de hablantes y etiquetas de idioma.";
 "capture.transcript.copy_empty_hint" = "Aún no hay contenido de transcripción para copiar.";
@@ -868,8 +868,8 @@
 "capture.speaker.unlink" = "Desvincular participante";
 "capture.speaker.identity_format" = "%@ · hablante %@ · conexión %@";
 "capture.transcript.edit_lane" = "Editar la columna de %@";
-"capture.transcript.edit_hint" = "Pulse Retorno o cambie el foco para guardar esta columna.";
-"capture.transcript.retry_projection" = "Reintentar proyección";
+"capture.transcript.edit_hint" = "Haz clic para corregir. Pulsa Retorno o haz clic en otro sitio para guardar.";
+"capture.transcript.retry_projection" = "Guardar de nuevo";
 "capture.transcript.retry_projection_hint" = "Vuelve a guardar la transcripción recibida.";
 "capture.settings.retention.title" = "Retención del audio";
 "capture.settings.retention.subtitle" = "La política de conservación se fija al iniciar cada grabación.";
@@ -997,8 +997,8 @@
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "Conexión directa";
 "share.link.relayed" = "Vía relé";
-"share.link.direct_hint" = "El tráfico fluye de par a par: la perforación NAT tuvo éxito.";
-"share.link.relayed_hint" = "La conexión directa falló; el tráfico se reenvía por el relé, aún cifrado de extremo a extremo. Común en redes con aislamiento AP.";
+"share.link.direct_hint" = "Conexión directa, sin ningún servidor de por medio.";
+"share.link.relayed_hint" = "No se pudo conectar directamente, así que un servidor de retransmisión pasa los subtítulos, que siguen cifrados de extremo a extremo. Es habitual en redes Wi-Fi que aíslan los dispositivos entre sí.";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
 "share.scope.notebook" = "Solo subtítulos en directo: los demás ven las grabaciones de este tema sin conservar nada.";
@@ -1006,7 +1006,7 @@
 "share.scope.no_sessions" = "Este tema aún no tiene grabaciones.";
 "share.received.title" = "Transcripciones compartidas";
 "share.received.untitled" = "(sin texto todavía)";
-"share.received.blocks" = "%lld bloques";
+"share.received.blocks" = "%lld pasajes";
 "share.received.delete" = "Eliminar de este Mac";
 "share.received.delete.confirm_title" = "¿Eliminar esta transcripción recibida?";
 "share.received.delete.confirm_body" = "Solo elimina la copia de este Mac. Las copias de otras personas no se ven afectadas.";
@@ -1068,8 +1068,8 @@
 "shared_inbox.empty_body" = "Las transcripciones compartidas contigo aparecerán aquí: en vivo mientras la sala esté abierta, y se conservan después.";
 "shared_inbox.session_live" = "En vivo";
 "shared_inbox.lane_canonical" = "Original";
-"shared_inbox.lane_connecting" = "Este carril de idioma todavía se está conectando";
-"shared_inbox.lane_failed" = "Este carril de idioma falló; no llegará nada más";
+"shared_inbox.lane_connecting" = "Esta columna todavía se está conectando";
+"shared_inbox.lane_failed" = "Esta columna se detuvo; no llegará nada más";
 
 "share.web.title" = "Compartir por web";
 "share.web.start" = "Iniciar compartir por web";
@@ -1269,3 +1269,8 @@
 "topic.delete.confirm_button" = "Eliminar tema";
 "topic.delete.confirm_message_format" = "Sus %lld grabaciones se conservan: pasan a «Sin tema» con sus transcripciones y notas. Las notas propias del tema se eliminan.";
 "topic.delete.confirm_message_empty" = "Este tema no tiene grabaciones. Sus notas se eliminan.";
+
+"share.scope.label" = "Qué reciben";
+"share.role.label" = "Quién puede corregir la transcripción";
+
+"captions_choice.on_invite_format" = "Subtítulos en directo · quedan unos %@";

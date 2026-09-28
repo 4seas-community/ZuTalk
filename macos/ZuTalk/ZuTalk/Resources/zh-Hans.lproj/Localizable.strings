@@ -7,10 +7,10 @@
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "继续 →";
-"onboarding.welcome.bullet1" = "为一类对话建一个主题，例如“英语面试”。";
-"onboarding.welcome.bullet2" = "打开主题，点击“开始录音”。";
-"onboarding.welcome.bullet3" = "停止后，在同一个地方查看字幕、录音和笔记。";
-"onboarding.welcome.privacy" = "数据默认保存在这台 Mac；远端转录由你在具体会议中开启。";
+"onboarding.welcome.bullet1" = "选好会用到的语言，按「开始录音」——或在任何应用里按 ⌃⌥R。";
+"onboarding.welcome.bullet2" = "说话时字幕实时出现；听到要紧处按 ⌃⌥S 标记。";
+"onboarding.welcome.bullet3" = "录完后在同一处查看转录、标记和笔记，需要时再把录音归入主题。";
+"onboarding.welcome.privacy" = "录音默认只存在这台 Mac；要不要开实时字幕（会把音频发给 Soniox），每次录音时由你决定。";
 "onboarding.visual.live" = "现场转录";
 "onboarding.visual.speaker.host" = "主持人";
 "onboarding.visual.speaker.guest" = "参与者";
@@ -41,7 +41,7 @@
 "community_invite.invalid" = "邀请码无效，请向邀请人确认。";
 "community_invite.unavailable" = "社区服务暂时不可用，请稍后再试。";
 "community_invite.remaining_recordable_format" = "约可再录 %1$lld 小时 %2$lld 分钟";
-"community_invite.remaining_recordable_hint" = "邀请时长按转录车道扣减：选择的目标语言越多，每分钟录音消耗的时长越多。";
+"community_invite.remaining_recordable_hint" = "邀请时长按字幕连接数扣减：开着三条连接的录音，每录一分钟扣三分钟。";
 "community_invite.settings.title" = "社区邀请";
 "community_invite.settings.subtitle" = "查看你拥有的使用时长，或输入邀请码启用。";
 "community_invite.resources.remaining" = "剩余时间";
@@ -154,8 +154,8 @@
 "settings.audio_input.error.switch_unavailable" = "当前正在进行其他录音状态切换，请稍后再切换音频输入。";
 "capture.toast.audio_input_switch_failed" = "切换音频输入失败";
 "settings.language.title" = "APP 语言";
-"settings.language.hint" = "影响 Swift UI、菜单栏、Rust 端错误消息的显示语言。";
-"settings.language.restart_hint" = "重启 ZuTalk 后 UI 完全切换到新语言。Rust 错误消息已即时生效。";
+"settings.language.hint" = "ZuTalk 的窗口、菜单和提示所使用的语言。";
+"settings.language.restart_hint" = "重启 ZuTalk 后完全生效。";
 "settings.appearance.title" = "外观";
 
 
@@ -215,7 +215,7 @@
 "settings.credentials.verifying" = "正在验证…";
 "settings.credentials.verifying_hint" = "正在连接 Soniox 验证此密钥。";
 "settings.credentials.verified_hint" = "Soniox 已接受此密钥，可以用于远程转录。";
-"settings.credentials.verify_before_save_hint" = "新密钥只有在 Soniox 验证通过后才会保存。";
+"settings.credentials.verify_before_save_format" = "新密钥只有在 %@ 验证通过后才会保存。";
 "settings.credentials.verify_and_save_accessibility_format" = "验证并保存 %@ 密钥";
 "settings.credentials.verification.ready" = "Soniox 连接已验证";
 "settings.credentials.verification.invalid" = "Soniox 拒绝了此密钥；密钥可能无效或已被撤销。";
@@ -292,7 +292,7 @@
 "session.marks.digest.failed" = "整理失败";
 
 "settings.services.engine.title" = "录音引擎";
-"settings.services.engine.subtitle" = "只读。当前 MVP 的引擎选择由 Rust 核心统一管理。";
+"settings.services.engine.subtitle" = "只读。ZuTalk 目前固定使用这个引擎。";
 "settings.services.engine.service" = "服务";
 "settings.services.engine.realtime" = "实时录音";
 "settings.services.engine.realtime_detail" = "开了实时字幕的录音用它做实时多语言转录与翻译。";
@@ -372,13 +372,13 @@
 "editor.transcript.async.projection_failed_desc" = "可只重试本地写入；ZuTalk 不会再次上传录音。";
 "editor.transcript.async.status.loading" = "正在读取精修转录状态";
 "editor.transcript.async.status.off" = "本次未请求精修转录";
-"editor.transcript.async.status.provider_pending" = "实时引擎正在重放完整录音";
-"editor.transcript.async.status.provider_failed" = "实时引擎重放失败";
+"editor.transcript.async.status.provider_pending" = "正在生成精修转录";
+"editor.transcript.async.status.provider_failed" = "没能生成精修转录";
 "editor.transcript.async.status.projection_pending" = "转录已收到 · 正在保存";
 "editor.transcript.async.status.projecting" = "正在保存转录";
 "editor.transcript.async.status.ready" = "精修转录已就绪";
 "editor.transcript.async.status.projection_failed" = "转录已收到 · 保存失败";
-"editor.transcript.async.retry_projection" = "重试本地写入";
+"editor.transcript.async.retry_projection" = "重新保存";
 "editor.transcript.async.retry_projection_hint" = "重新保存已收到的转录，不会再次上传音频。";
 "editor.transcript.async.retry_failed" = "无法写入已保存的转录";
 "menubar.recording.mode.local" = "本地";
@@ -517,7 +517,7 @@
 "resources.audio.verify" = "验证删除并在访达中显示存储文件夹";
 "resources.audio.verify.failed" = "无法验证音频删除";
 "resources.audio.verify.ok" = "音频已确认销毁";
-"resources.audio.verify.ok.detail" = "%d 个加密分块已覆写删除，密钥已销毁，文件夹中无残留。存储文件夹已在访达中打开。";
+"resources.audio.verify.ok.detail" = "%d 个加密片段已全部覆写删除，密钥已销毁，什么都没留下。文件夹已在访达中打开。";
 "resources.audio.verify.residue" = "发现残留音频文件";
 "resources.audio.verify.residue.detail" = "存储文件夹中仍有 %d 个文件，已在访达中打开供检查。";
 "manual_note.title.placeholder" = "给这份时间笔记命名（可选）";
@@ -564,7 +564,7 @@
 
 /* Trash page */
 "trash.empty.title" = "回收站为空";
-"trash.empty.desc" = "删除的录音在此保留 30 天后永久移除。";
+"trash.empty.desc" = "删除的录音会留在这里，直到你恢复或永久删除它们。";
 "trash.action.restore" = "恢复";
 "trash.action.purge" = "永久删除";
 "trash.toast.restored" = "已恢复";
@@ -663,7 +663,7 @@
 "capture.error.context_requires_remote" = "请先开启实时转录，再使用参考资料。";
 "capture.error.languages_must_differ" = "请选择互不重复的语言。";
 "capture.error.not_active" = "现在没有在录音。";
-"capture.error.projection_locked" = "投影完成前，转录内容为只读。";
+"capture.error.projection_locked" = "转录保存好之后才能修改。";
 "capture.error.profile_snapshot_unavailable" = "无法读取这次录音保存的录音配置。";
 "capture.route.no_notebook" = "尚未选择主题";
 "capture.route.no_notebook_detail" = "请先创建或选择主题，再打开录音。";
@@ -743,7 +743,7 @@
 "capture.toast.context_load_failed" = "无法载入参考资料";
 "capture.toast.context_update_failed" = "无法更新参考资料";
 "capture.toast.edit_failed" = "无法更新转录语言列";
-"capture.toast.projection_retry_failed" = "无法重试转录投影";
+"capture.toast.projection_retry_failed" = "没能重新保存转录";
 "capture.settings.title" = "设置";
 "capture.settings.subtitle" = "更改自动保存，作为下一次录音的默认设置。";
 "capture.settings.subtitle.topic" = "更改自动保存，作为当前主题下一次录音的默认设置；音频输入在这台 Mac 上共享。";
@@ -810,10 +810,10 @@
 "capture.translation.halted" = "“%@”翻译已中断";
 "capture.translation.halted.detail" = "本机音频没能连续送进这条翻译流，所以它被暂停了。ZuTalk 会自动重新连接，也可以点「重新连接」立即重试。转录不受影响。";
 "capture.remote.unavailable" = "字幕不可用";
-"capture.projection.pending" = "等待投影";
-"capture.projection.projecting" = "投影中";
-"capture.projection.ready" = "可编辑";
-"capture.projection.failed" = "投影失败";
+"capture.projection.pending" = "等待保存";
+"capture.projection.projecting" = "正在保存";
+"capture.projection.ready" = "已保存";
+"capture.projection.failed" = "保存失败";
 "capture.transcript.swap" = "交换左右语言列";
 "capture.transcript.realtime_accessibility_label" = "实时转录";
 "capture.transcript.run_navigator" = "录音导航";
@@ -826,7 +826,7 @@
 "capture.transcript.transcription_empty_title" = "暂无实时话语";
 "capture.transcript.transcription_empty_detail" = "开启远端实时处理并开始录音后，这里会显示本场转录。";
 "capture.transcript.snapshot_unavailable_detail" = "已保存的话语仍会保留，但缺少本次录音保存的语言栏目配置，无法安全重建显示。";
-"capture.transcript.read_only" = "录音或投影期间只读";
+"capture.transcript.read_only" = "录音结束、转录保存好之后可以修改";
 "capture.transcript.copy" = "复制转录";
 "capture.transcript.copy_hint" = "复制这场录音的转录，保留时间、说话人名称和语言标签。";
 "capture.transcript.copy_empty_hint" = "暂无可复制的转录内容。";
@@ -869,8 +869,8 @@
 "capture.speaker.unlink" = "解除关联";
 "capture.speaker.identity_format" = "%@ · 说话人 %@ · 连接 %@";
 "capture.transcript.edit_lane" = "编辑 %@ 语言列";
-"capture.transcript.edit_hint" = "按回车或移开焦点以保存该语言列。";
-"capture.transcript.retry_projection" = "重试投影";
+"capture.transcript.edit_hint" = "点击即可修改；按回车或点别处保存。";
+"capture.transcript.retry_projection" = "重新保存";
 "capture.transcript.retry_projection_hint" = "重新保存已收到的转录。";
 "capture.settings.retention.title" = "音频保留";
 "capture.settings.retention.subtitle" = "每次开始录音时，系统会冻结本次录音的保留策略。";
@@ -998,8 +998,8 @@
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "直连";
 "share.link.relayed" = "经中继";
-"share.link.direct_hint" = "流量点对点直达，打洞成功。";
-"share.link.relayed_hint" = "直连没打通，流量经中继转发（仍端到端加密）。开了 AP 隔离的 Wi-Fi 上很常见。";
+"share.link.direct_hint" = "直接连上了对方，中间不经过任何服务器。";
+"share.link.relayed_hint" = "没能直接连上，改由中继服务器转发——仍是端到端加密。有些 Wi-Fi 会把设备彼此隔开，这很常见。";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
 "share.scope.notebook" = "只播字幕：对方实时看这个主题的录音，什么都不保留。";
@@ -1007,7 +1007,7 @@
 "share.scope.no_sessions" = "这个主题还没有录音。";
 "share.received.title" = "共享的转录稿";
 "share.received.untitled" = "（暂无文本）";
-"share.received.blocks" = "%lld 个句块";
+"share.received.blocks" = "%lld 段";
 "share.received.delete" = "从这台 Mac 删除";
 "share.received.delete.confirm_title" = "删除这份收到的转录稿？";
 "share.received.delete.confirm_body" = "只删除这台 Mac 上的副本。别人手里的副本不受影响。";
@@ -1069,8 +1069,8 @@
 "shared_inbox.empty_body" = "别人共享给你的转录稿会出现在这里——房间进行中实时更新，散场后保留。";
 "shared_inbox.session_live" = "实时";
 "shared_inbox.lane_canonical" = "原文";
-"shared_inbox.lane_connecting" = "这条语言车道还在连接";
-"shared_inbox.lane_failed" = "这条语言车道已失败，不会再有内容";
+"shared_inbox.lane_connecting" = "这一栏还在连接";
+"shared_inbox.lane_failed" = "这一栏已中断，不会再有新内容";
 
 "share.web.title" = "网页分享";
 "share.web.start" = "开启网页分享";
@@ -1270,3 +1270,8 @@
 "topic.delete.confirm_button" = "删除主题";
 "topic.delete.confirm_message_format" = "其中 %lld 场录音会保留——连同转录和笔记移到「未归入主题」。主题自己的笔记会被删除。";
 "topic.delete.confirm_message_empty" = "这个主题里没有录音。主题笔记会被删除。";
+
+"share.scope.label" = "对方能得到什么";
+"share.role.label" = "谁可以订正转录";
+
+"captions_choice.on_invite_format" = "实时字幕 · 约可录 %@";

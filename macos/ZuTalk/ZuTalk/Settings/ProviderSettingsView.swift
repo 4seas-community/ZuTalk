@@ -615,7 +615,12 @@ private struct ProviderCredentialAutoSaveRow: View {
                         ))
                     }
 
-                    Text(String(localized: "settings.credentials.verify_before_save_hint"))
+                    // Each account is checked by its own service; this said
+                    // "Soniox" under the language-model key too.
+                    Text(String(
+                        format: String(localized: "settings.credentials.verify_before_save_format"),
+                        account.displayName
+                    ))
                         .font(.caption2)
                         .foregroundColor(.textTertiary)
                 }

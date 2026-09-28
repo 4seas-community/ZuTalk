@@ -7,10 +7,10 @@
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "계속 →";
-"onboarding.welcome.bullet1" = "\"영어 인터뷰\"와 같은 한 종류의 대화를 위한 주제를 만드세요.";
-"onboarding.welcome.bullet2" = "주제를 열고 녹음 시작을 클릭하세요.";
-"onboarding.welcome.bullet3" = "멈추면 캡션, 오디오, 메모를 함께 찾아보세요.";
-"onboarding.welcome.privacy" = "데이터는 기본적으로 이 Mac에 유지됩니다. 각 회의에 대해 원격 녹음을 활성화할지 여부를 선택합니다.";
+"onboarding.welcome.bullet1" = "사용할 언어를 고르고 녹음을 시작하세요. 어느 앱에서나 ⌃⌥R로도 됩니다.";
+"onboarding.welcome.bullet2" = "말하는 대로 자막이 나타납니다. 중요한 부분은 ⌃⌥S로 표시하세요.";
+"onboarding.welcome.bullet3" = "끝나면 전사, 표시, 메모를 한곳에서 보고 원할 때 주제로 정리하세요.";
+"onboarding.welcome.privacy" = "녹음은 이 Mac에 남습니다. 실시간 자막(오디오를 Soniox로 보냄)을 켤지는 매번 직접 정합니다.";
 "onboarding.visual.live" = "실시간 대본";
 "onboarding.visual.speaker.host" = "호스트";
 "onboarding.visual.speaker.guest" = "참가자";
@@ -41,7 +41,7 @@
 "community_invite.invalid" = "해당 초대 코드는 유효하지 않습니다. 당신을 초대한 사람에게 확인해보세요.";
 "community_invite.unavailable" = "일시적으로 커뮤니티 서비스를 이용할 수 없습니다. 나중에 다시 시도하세요.";
 "community_invite.remaining_recordable_format" = "약 %1$lld시간 %2$lld분 더 녹음할 수 있습니다";
-"community_invite.remaining_recordable_hint" = "초대 시간은 전사 레인마다 차감됩니다. 대상 언어를 많이 선택할수록 녹음 1분당 소모 시간이 늘어납니다.";
+"community_invite.remaining_recordable_hint" = "초대 시간은 자막 연결마다 차감됩니다. 연결이 3개인 녹음은 1분 녹음할 때마다 3분이 차감됩니다.";
 "community_invite.settings.title" = "커뮤니티 초대";
 "community_invite.settings.subtitle" = "자신이 소유한 이용시간을 확인하거나, 초대코드를 입력하세요.";
 "community_invite.resources.remaining" = "남은 시간";
@@ -154,8 +154,8 @@
 "settings.audio_input.error.switch_unavailable" = "다른 녹음 상태를 전환하는 동안에는 오디오 입력을 변경할 수 없습니다. 잠시 후 다시 시도하세요.";
 "capture.toast.audio_input_switch_failed" = "오디오 입력을 전환할 수 없습니다";
 "settings.language.title" = "앱 언어";
-"settings.language.hint" = "Swift 및 Rust 레이어 전체에서 UI, 메뉴, 오류 메시지를 제어합니다.";
-"settings.language.restart_hint" = "ZuTalk를 다시 시작하면 언어 전환이 완전히 적용됩니다. Rust 오류 메시지가 이미 업데이트되었습니다.";
+"settings.language.hint" = "ZuTalk의 창, 메뉴, 메시지에 사용되는 언어입니다.";
+"settings.language.restart_hint" = "변경 사항을 완전히 적용하려면 ZuTalk를 다시 시작하세요.";
 "settings.appearance.title" = "외관";
 
 
@@ -215,7 +215,7 @@
 "settings.credentials.verifying" = "확인 중…";
 "settings.credentials.verifying_hint" = "이 키를 확인하기 위해 Soniox에 연결하는 중입니다.";
 "settings.credentials.verified_hint" = "Soniox는 이 키를 수락했습니다. 원격 전사가 가능합니다.";
-"settings.credentials.verify_before_save_hint" = "ZuTalk는 Soniox가 확인한 후에만 새 키를 저장합니다.";
+"settings.credentials.verify_before_save_format" = "ZuTalk는 %@에서 확인한 후에만 새 키를 저장합니다.";
 "settings.credentials.verify_and_save_accessibility_format" = "%@ 키 확인 및 저장";
 "settings.credentials.verification.ready" = "Soniox 연결이 확인되었습니다.";
 "settings.credentials.verification.invalid" = "Soniox는 이 키를 거부했습니다. 유효하지 않거나 취소될 수 있습니다.";
@@ -292,7 +292,7 @@
 "session.marks.digest.failed" = "다듬지 못했습니다";
 
 "settings.services.engine.title" = "캡처 엔진";
-"settings.services.engine.subtitle" = "읽기 전용입니다. Rust 코어는 현재 MVP에 대한 이 엔진 선택을 소유합니다.";
+"settings.services.engine.subtitle" = "읽기 전용입니다. ZuTalk는 현재 항상 이 엔진을 사용합니다.";
 "settings.services.engine.service" = "서비스";
 "settings.services.engine.realtime" = "실시간 캡처";
 "settings.services.engine.realtime_detail" = "실시간 자막을 켠 녹음에서 실시간 다국어 전사와 번역에 사용됩니다.";
@@ -372,13 +372,13 @@
 "editor.transcript.async.projection_failed_desc" = "다시 저장해 보세요. ZuTalk는 녹음을 다시 업로드하지 않습니다.";
 "editor.transcript.async.status.loading" = "정밀 전사 상태 로드 중";
 "editor.transcript.async.status.off" = "정밀 전사가 요청되지 않음";
-"editor.transcript.async.status.provider_pending" = "실시간 엔진 재생 진행 중";
-"editor.transcript.async.status.provider_failed" = "실시간 엔진 재생 실패";
+"editor.transcript.async.status.provider_pending" = "정밀 전사 생성 중";
+"editor.transcript.async.status.provider_failed" = "정밀 전사를 생성하지 못했습니다";
 "editor.transcript.async.status.projection_pending" = "전사 받음 · 저장 중";
 "editor.transcript.async.status.projecting" = "전사 저장 중";
 "editor.transcript.async.status.ready" = "정밀 전사 준비됨";
 "editor.transcript.async.status.projection_failed" = "전사 받음 · 저장하지 못함";
-"editor.transcript.async.retry_projection" = "로컬 쓰기 재시도";
+"editor.transcript.async.retry_projection" = "다시 저장";
 "editor.transcript.async.retry_projection_hint" = "오디오를 다시 업로드하지 않고, 받은 전사를 다시 저장합니다.";
 "editor.transcript.async.retry_failed" = "저장된 성적표를 쓸 수 없습니다.";
 "menubar.recording.mode.local" = "로컬";
@@ -517,7 +517,7 @@
 "resources.audio.verify" = "삭제를 확인하고 Finder에 저장 폴더를 표시합니다.";
 "resources.audio.verify.failed" = "오디오 삭제를 확인할 수 없습니다.";
 "resources.audio.verify.ok" = "오디오가 확실히 파괴됨";
-"resources.audio.verify.ok.detail" = "%d개의 암호화된 청크를 덮어쓰고 삭제했으며, 키가 사라지고 파일도 남아 있지 않습니다. 이제 저장 폴더가 Finder에 열립니다.";
+"resources.audio.verify.ok.detail" = "암호화된 조각 %d개를 모두 덮어쓴 뒤 삭제했고, 키도 없어졌으며, 남은 것은 없습니다. 폴더가 Finder에 열려 있습니다.";
 "resources.audio.verify.residue" = "남은 오디오 파일이 발견되었습니다";
 "resources.audio.verify.residue.detail" = "%d개의 파일이 여전히 저장소 폴더에 존재합니다. 이제 검사를 위해 Finder에 열려 있습니다.";
 "manual_note.title.placeholder" = "이 시간 메모 이름 지정(선택사항)";
@@ -564,7 +564,7 @@
 
 /* Trash page */
 "trash.empty.title" = "휴지통이 비어 있습니다.";
-"trash.empty.desc" = "삭제된 녹음은 영구적으로 제거되기 전에 30일 동안 여기에 보관됩니다.";
+"trash.empty.desc" = "삭제한 녹음은 복원하거나 영구 삭제할 때까지 여기에 남습니다.";
 "trash.action.restore" = "복원";
 "trash.action.purge" = "완전삭제";
 "trash.toast.restored" = "녹음이 복원되었습니다.";
@@ -663,7 +663,7 @@
 "capture.error.context_requires_remote" = "참조 자료를 사용하기 전에 실시간 전사를 켜세요.";
 "capture.error.languages_must_differ" = "중복되지 않는 언어를 선택하세요.";
 "capture.error.not_active" = "현재 녹음 중이 아닙니다.";
-"capture.error.projection_locked" = "스크립트는 프로젝션이 준비될 때까지 읽기 전용입니다.";
+"capture.error.projection_locked" = "전사는 저장이 끝난 뒤에 편집할 수 있습니다.";
 "capture.error.profile_snapshot_unavailable" = "이 녹화에 대해 저장된 캡처 프로필을 사용할 수 없습니다.";
 "capture.route.no_notebook" = "선택한 주제가 없습니다.";
 "capture.route.no_notebook_detail" = "녹음하기 전에 주제를 만들거나 선택하세요.";
@@ -743,7 +743,7 @@
 "capture.toast.context_load_failed" = "참조 자료를 로드할 수 없습니다.";
 "capture.toast.context_update_failed" = "참조 자료를 업데이트할 수 없습니다.";
 "capture.toast.edit_failed" = "스크립트 레인을 업데이트할 수 없습니다.";
-"capture.toast.projection_retry_failed" = "스크립트 프로젝션을 다시 시도할 수 없습니다.";
+"capture.toast.projection_retry_failed" = "전사를 다시 저장하지 못했습니다";
 "capture.settings.title" = "설정";
 "capture.settings.subtitle" = "변경 사항은 자동으로 저장되며 다음 녹음의 기본 설정이 됩니다.";
 "capture.settings.subtitle.topic" = "변경 사항은 자동으로 저장되며 이 주제의 다음 녹음 기본 설정이 됩니다. 오디오 입력은 이 Mac 전체에서 공유됩니다.";
@@ -810,10 +810,10 @@
 "capture.translation.halted" = "\"%@\" 번역이 중단되었습니다";
 "capture.translation.halted.detail" = "로컬 오디오를 이 번역 스트림에 끊김 없이 보낼 수 없어 중지했습니다. ZuTalk가 자동으로 다시 연결하며, 「다시 연결」을 눌러 바로 재시도할 수도 있습니다. 전사에는 영향이 없습니다.";
 "capture.remote.unavailable" = "자막 사용 불가";
-"capture.projection.pending" = "투영 보류 중";
-"capture.projection.projecting" = "투사 중";
-"capture.projection.ready" = "편집 가능";
-"capture.projection.failed" = "프로젝션 실패";
+"capture.projection.pending" = "저장 대기 중";
+"capture.projection.projecting" = "저장 중";
+"capture.projection.ready" = "저장됨";
+"capture.projection.failed" = "저장 실패";
 "capture.transcript.swap" = "왼쪽 및 오른쪽 언어 열 바꾸기";
 "capture.transcript.realtime_accessibility_label" = "실시간 기록";
 "capture.transcript.run_navigator" = "녹음 탐색기";
@@ -826,7 +826,7 @@
 "capture.transcript.transcription_empty_title" = "실시간 발언 없음";
 "capture.transcript.transcription_empty_detail" = "원격 실시간 처리를 활성화하고 녹음을 시작하면 이 녹음의 기록이 작성됩니다.";
 "capture.transcript.snapshot_unavailable_detail" = "저장된 발화는 보존되지만 이 보기는 녹음의 저장된 언어 열 구성 없이 레이아웃을 선택할 수 없습니다.";
-"capture.transcript.read_only" = "녹화 또는 투사 중에는 읽기 전용";
+"capture.transcript.read_only" = "녹음이 끝나고 전사가 저장되면 편집할 수 있습니다";
 "capture.transcript.copy" = "성적표 복사";
 "capture.transcript.copy_hint" = "타임스탬프, 화자 이름, 언어 라벨과 함께 이 녹음의 기록을 복사합니다.";
 "capture.transcript.copy_empty_hint" = "아직 복사할 스크립트 콘텐츠가 없습니다.";
@@ -869,8 +869,8 @@
 "capture.speaker.unlink" = "참가자 연결 해제";
 "capture.speaker.identity_format" = "%@ · 스피커 %@ · 연결 %@";
 "capture.transcript.edit_lane" = "%@ 차선 편집";
-"capture.transcript.edit_hint" = "이 차선을 저장하려면 Return 키를 누르거나 초점을 이동하세요.";
-"capture.transcript.retry_projection" = "프로젝션 재시도";
+"capture.transcript.edit_hint" = "클릭해 고치세요. Return 키를 누르거나 다른 곳을 클릭하면 저장됩니다.";
+"capture.transcript.retry_projection" = "다시 저장";
 "capture.transcript.retry_projection_hint" = "받은 전사를 다시 저장합니다.";
 "capture.settings.retention.title" = "오디오 보존";
 "capture.settings.retention.subtitle" = "각 녹음을 시작할 때 해당 녹음의 보존 정책이 고정됩니다.";
@@ -998,8 +998,8 @@
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "직접 연결";
 "share.link.relayed" = "릴레이 경유";
-"share.link.direct_hint" = "트래픽이 피어 간에 직접 흐르고 있습니다(홀 펀칭 성공).";
-"share.link.relayed_hint" = "직접 연결이 실패하여 릴레이를 거쳐 전달 중입니다(여전히 종단 간 암호화). AP 격리가 켜진 네트워크에서 흔합니다.";
+"share.link.direct_hint" = "상대와 직접 연결되었습니다. 중간에 서버를 거치지 않습니다.";
+"share.link.relayed_hint" = "직접 연결할 수 없어 릴레이 서버가 자막을 전달하고 있습니다(여전히 종단 간 암호화). 기기끼리 서로 막아 두는 Wi-Fi에서 흔히 일어납니다.";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
 "share.scope.notebook" = "자막만 송출: 상대는 이 주제의 녹음을 실시간으로 볼 뿐, 아무것도 남지 않습니다.";
@@ -1007,7 +1007,7 @@
 "share.scope.no_sessions" = "이 주제에는 아직 녹음이 없습니다.";
 "share.received.title" = "공유된 전사본";
 "share.received.untitled" = "(아직 텍스트 없음)";
-"share.received.blocks" = "블록 %lld개";
+"share.received.blocks" = "단락 %lld개";
 "share.received.delete" = "이 Mac에서 삭제";
 "share.received.delete.confirm_title" = "받은 전사본을 삭제할까요?";
 "share.received.delete.confirm_body" = "이 Mac의 사본만 삭제합니다. 다른 사람이 가진 사본에는 영향이 없습니다.";
@@ -1069,8 +1069,8 @@
 "shared_inbox.empty_body" = "공유받은 전사본이 여기에 표시됩니다. 룸이 진행되는 동안 실시간으로 갱신되고, 끝난 뒤에도 보관됩니다.";
 "shared_inbox.session_live" = "실시간";
 "shared_inbox.lane_canonical" = "원문";
-"shared_inbox.lane_connecting" = "이 언어 레인은 아직 연결 중입니다";
-"shared_inbox.lane_failed" = "이 언어 레인은 실패했습니다. 더 이상 내용이 오지 않습니다";
+"shared_inbox.lane_connecting" = "이 열은 아직 연결 중입니다";
+"shared_inbox.lane_failed" = "이 열은 중단되었습니다. 더 이상 내용이 오지 않습니다";
 
 "share.web.title" = "웹 공유";
 "share.web.start" = "웹 공유 시작";
@@ -1270,3 +1270,8 @@
 "topic.delete.confirm_button" = "주제 삭제";
 "topic.delete.confirm_message_format" = "녹음 %lld개는 남습니다. 전사와 메모와 함께 ‘주제 없음’으로 옮겨집니다. 주제 자체의 메모는 삭제됩니다.";
 "topic.delete.confirm_message_empty" = "이 주제에는 녹음이 없습니다. 메모는 삭제됩니다.";
+
+"share.scope.label" = "상대가 받는 것";
+"share.role.label" = "전사를 고칠 수 있는 사람";
+
+"captions_choice.on_invite_format" = "실시간 자막 · 약 %@ 남음";
