@@ -854,7 +854,7 @@
 "capture.speaker.new_participant_placeholder" = "新参与者名称";
 "capture.speaker.create_and_link" = "创建并关联";
 "capture.speaker.unlink" = "解除关联";
-"capture.speaker.identity_format" = "%@ · 说话人 %@ · 连接 %@";
+"capture.speaker.identity_format" = "说话人 %@";
 "capture.transcript.edit_lane" = "编辑 %@ 语言列";
 "capture.transcript.edit_hint" = "点击即可修改；按回车或点别处保存。";
 "capture.transcript.retry_projection" = "重新保存";
@@ -1309,3 +1309,5 @@
 
 "share.knock.notification_body_format" = "请求加入「%1$@」· %2$@";
 
+"capture.speaker.reconnect_twin_format" = "重连后的「说话人 %@」也用这个名字";
+"capture.speaker.reconnect_twin_detail" = "这段录音中途重连过，重连后说话人从头编号——同一个人可能被记成两个「说话人」。如果是两个人，取消勾选。";

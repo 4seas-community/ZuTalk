@@ -854,7 +854,7 @@
 "capture.speaker.new_participant_placeholder" = "Name des neuen Teilnehmers";
 "capture.speaker.create_and_link" = "Erstellen und verknüpfen";
 "capture.speaker.unlink" = "Teilnehmerverknüpfung aufheben";
-"capture.speaker.identity_format" = "%@ · Sprecher %@ · Verbindung %@";
+"capture.speaker.identity_format" = "Sprecher %@";
 "capture.transcript.edit_lane" = "Spur „%@“ bearbeiten";
 "capture.transcript.edit_hint" = "Zum Korrigieren klicken. Mit Return oder einem Klick daneben speichern.";
 "capture.transcript.retry_projection" = "Erneut speichern";
@@ -1309,3 +1309,5 @@
 
 "share.knock.notification_body_format" = "Möchte „%1$@“ beitreten · %2$@";
 
+"capture.speaker.reconnect_twin_format" = "Auch „Sprecher %@“ nach der Neuverbindung so benennen";
+"capture.speaker.reconnect_twin_detail" = "Die Live-Untertitel haben sich während dieser Aufnahme neu verbunden, und Sprecher wurden neu nummeriert – eine Person kann so zweimal als „Sprecher“ erscheinen. Abwählen, wenn es verschiedene Personen sind.";

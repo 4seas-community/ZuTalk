@@ -837,7 +837,7 @@
 "capture.speaker.new_participant_placeholder" = "新しい参加者名";
 "capture.speaker.create_and_link" = "作成して関連付け";
 "capture.speaker.unlink" = "関連付けを解除";
-"capture.speaker.identity_format" = "%@ · 話者 %@ · 接続 %@";
+"capture.speaker.identity_format" = "話者 %@";
 "capture.transcript.edit_lane" = "%@ レーンを編集";
 "capture.transcript.edit_hint" = "クリックして修正。Return キーか別の場所をクリックで保存します。";
 "capture.transcript.retry_projection" = "もう一度保存";
@@ -1309,3 +1309,5 @@
 
 "share.knock.notification_body_format" = "「%1$@」への参加をリクエスト · %2$@";
 
+"capture.speaker.reconnect_twin_format" = "再接続後の「話者 %@」にも同じ名前を付ける";
+"capture.speaker.reconnect_twin_detail" = "この録音の途中でライブ字幕が再接続され、話者の番号が振り直されました。同じ人が2つの「話者」に分かれることがあります。別人ならチェックを外してください。";

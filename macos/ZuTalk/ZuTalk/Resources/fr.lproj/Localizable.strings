@@ -854,7 +854,7 @@
 "capture.speaker.new_participant_placeholder" = "Nom du nouveau participant";
 "capture.speaker.create_and_link" = "Créer et associer";
 "capture.speaker.unlink" = "Dissocier le participant";
-"capture.speaker.identity_format" = "%@ · locuteur %@ · connexion %@";
+"capture.speaker.identity_format" = "Intervenant %@";
 "capture.transcript.edit_lane" = "Modifier la colonne %@";
 "capture.transcript.edit_hint" = "Cliquez pour corriger. Appuyez sur Retour ou cliquez ailleurs pour sauvegarder.";
 "capture.transcript.retry_projection" = "Sauvegarder à nouveau";
@@ -1309,3 +1309,5 @@
 
 "share.knock.notification_body_format" = "Demande à rejoindre « %1$@ » · %2$@";
 
+"capture.speaker.reconnect_twin_format" = "Nommer aussi « Intervenant %@ » après la reconnexion";
+"capture.speaker.reconnect_twin_detail" = "Les sous-titres en direct se sont reconnectés pendant cet enregistrement et les intervenants ont été renumérotés : une même personne peut apparaître sous deux étiquettes. Décochez s’il s’agit de deux personnes.";

@@ -564,9 +564,27 @@ private struct NotebookSpeakerEditorSheet: View {
     @State private var selectedParticipantId = ""
     @State private var newParticipantName = ""
     @State private var errorMessage: String?
+    /// Name the same-labelled speaker from after a reconnect too.
+    @State private var includeReconnectTwins = true
 
     private var speaker: NotebookSessionSpeakerDTO? {
         history.sessionSpeaker(id: sessionSpeakerId, sessionId: sessionId)
+    }
+
+    /// After a reconnect the provider numbers speakers afresh, so the same
+    /// "Speaker 1" on screen can be two records — and naming one used to
+    /// leave the other unnamed, so every rename had to be done twice. Only
+    /// twins nobody has named or linked yet are offered.
+    private var reconnectTwins: [NotebookSessionSpeakerDTO] {
+        guard let speaker else { return [] }
+        return NotebookSessionSpeakerDTO.unnamedReconnectTwins(
+            of: speaker,
+            among: history.sessionSpeakersBySession[sessionId] ?? []
+        )
+    }
+
+    private var twinIds: [String] {
+        includeReconnectTwins ? reconnectTwins.map(\.id) : []
     }
 
     private var sessionNameIsEmpty: Bool {
@@ -603,6 +621,25 @@ private struct NotebookSpeakerEditorSheet: View {
             .font(.caption)
             .foregroundColor(.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
+
+            if reconnectTwins.isEmpty == false, let speaker {
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle(
+                        String(
+                            format: String(localized: "capture.speaker.reconnect_twin_format"),
+                            speaker.providerLabel
+                        ),
+                        isOn: $includeReconnectTwins
+                    )
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                    Text(String(localized: "capture.speaker.reconnect_twin_detail"))
+                        .font(.caption)
+                        .foregroundColor(.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityIdentifier("capture.speaker.reconnect_twins")
+            }
 
             Divider()
 
@@ -704,9 +741,7 @@ private struct NotebookSpeakerEditorSheet: View {
         }
         return String(
             format: String(localized: "capture.speaker.identity_format"),
-            speaker.provider,
-            speaker.providerLabel,
-            String(speaker.providerSessionEpoch)
+            speaker.providerLabel
         )
     }
 
@@ -717,10 +752,14 @@ private struct NotebookSpeakerEditorSheet: View {
 
     private func saveSessionName() {
         perform {
+            let twins = twinIds
             let updated = try history.renameSessionSpeaker(
                 sessionSpeakerId: sessionSpeakerId,
                 localDisplayName: sessionName
             )
+            for twin in twins {
+                try history.renameSessionSpeaker(sessionSpeakerId: twin, localDisplayName: sessionName)
+            }
             sessionName = updated.localDisplayName ?? ""
         }
     }
@@ -737,20 +776,30 @@ private struct NotebookSpeakerEditorSheet: View {
 
     private func linkSelectedParticipant() {
         perform {
+            let twins = twinIds
             let updated = try history.linkSessionSpeaker(
                 sessionSpeakerId: sessionSpeakerId,
                 participantId: selectedParticipantId
             )
+            for twin in twins {
+                try history.linkSessionSpeaker(sessionSpeakerId: twin, participantId: selectedParticipantId)
+            }
             selectedParticipantId = updated.participantId ?? ""
         }
     }
 
     private func createAndLinkParticipant() {
         perform {
+            let twins = twinIds
             let updated = try history.createParticipantAndLink(
                 displayName: newParticipantName,
                 sessionSpeakerId: sessionSpeakerId
             )
+            if let participantId = updated.participantId {
+                for twin in twins {
+                    try history.linkSessionSpeaker(sessionSpeakerId: twin, participantId: participantId)
+                }
+            }
             newParticipantName = ""
             selectedParticipantId = updated.participantId ?? ""
         }

@@ -396,6 +396,23 @@ struct NotebookSessionSpeakerDTO: Codable, Equatable, Identifiable {
     let providerLabel: String
     var localDisplayName: String?
     var participantId: String?
+
+    /// The same on-screen "Speaker 1" recorded again after a reconnect —
+    /// the provider numbers speakers afresh on every connection — that
+    /// nobody has named or linked yet.
+    static func unnamedReconnectTwins(
+        of speaker: NotebookSessionSpeakerDTO,
+        among speakers: [NotebookSessionSpeakerDTO]
+    ) -> [NotebookSessionSpeakerDTO] {
+        speakers.filter {
+            $0.id != speaker.id
+                && $0.sessionId == speaker.sessionId
+                && $0.provider == speaker.provider
+                && $0.providerLabel == speaker.providerLabel
+                && $0.localDisplayName == nil
+                && $0.participantId == nil
+        }
+    }
 }
 
 /// One stretch of captured audio that went untranscribed in realtime — a

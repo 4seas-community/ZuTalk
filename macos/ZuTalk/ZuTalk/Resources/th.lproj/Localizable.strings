@@ -854,7 +854,7 @@
 "capture.speaker.new_participant_placeholder" = "ชื่อผู้เข้าร่วมใหม่";
 "capture.speaker.create_and_link" = "สร้างและเชื่อม";
 "capture.speaker.unlink" = "เลิกเชื่อมผู้เข้าร่วม";
-"capture.speaker.identity_format" = "%@ · ผู้พูด %@ · การเชื่อมต่อ %@";
+"capture.speaker.identity_format" = "ผู้พูด %@";
 "capture.transcript.edit_lane" = "แก้ไขเลน %@";
 "capture.transcript.edit_hint" = "คลิกเพื่อแก้ไข กด Return หรือคลิกที่อื่นเพื่อจัดเก็บ";
 "capture.transcript.retry_projection" = "จัดเก็บอีกครั้ง";
@@ -1309,3 +1309,5 @@
 
 "share.knock.notification_body_format" = "ขอเข้าร่วม “%1$@” · %2$@";
 
+"capture.speaker.reconnect_twin_format" = "ตั้งชื่อเดียวกันให้ “ผู้พูด %@” หลังเชื่อมต่อใหม่ด้วย";
+"capture.speaker.reconnect_twin_detail" = "คำบรรยายสดเชื่อมต่อใหม่ระหว่างการบันทึกนี้ และผู้พูดถูกนับเลขใหม่ตั้งแต่ต้น คนเดียวกันจึงอาจปรากฏเป็นสองป้าย ถ้าเป็นคนละคนให้เอาเครื่องหมายออก";

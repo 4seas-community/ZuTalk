@@ -69,6 +69,10 @@ ZuTalk requires macOS 12.5 or later.
   read as lengths and languages by their own names (中文 · English · ไทย).
 - **The transcript names its columns**, shows the speaker when the speaker
   changes, and switches between *Side by side* and *Original only* in view.
+- **Naming a speaker once is enough.** After live captions reconnect,
+  speakers are numbered again, so one person could show up as two
+  "Speaker 1"s and need naming twice; naming one now names the other too
+  unless you untick it.
 - **Rename recordings and topics, and delete topics.** Deleting a topic keeps
   its recordings: they move to "No topic".
 - **Optional: tidy a marked passage.** With a language model key in

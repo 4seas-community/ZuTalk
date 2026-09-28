@@ -854,7 +854,7 @@
 "capture.speaker.new_participant_placeholder" = "New participant name";
 "capture.speaker.create_and_link" = "Create and link";
 "capture.speaker.unlink" = "Unlink participant";
-"capture.speaker.identity_format" = "%@ · speaker %@ · connection %@";
+"capture.speaker.identity_format" = "Speaker %@";
 "capture.transcript.edit_lane" = "Edit %@ lane";
 "capture.transcript.edit_hint" = "Click to correct. Press Return or click elsewhere to save.";
 "capture.transcript.retry_projection" = "Save again";
@@ -1309,3 +1309,5 @@
 
 "share.knock.notification_body_format" = "Asking to join “%1$@” · %2$@";
 
+"capture.speaker.reconnect_twin_format" = "Also name “Speaker %@” after the reconnect";
+"capture.speaker.reconnect_twin_detail" = "Live captions reconnected during this recording, and speakers were numbered again from the start — so one person can appear as two “Speaker” labels. Untick if they are different people.";

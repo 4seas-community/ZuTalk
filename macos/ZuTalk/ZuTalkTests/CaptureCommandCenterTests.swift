@@ -74,6 +74,40 @@ final class CaptureCommandCenterTests: XCTestCase {
         XCTAssertFalse(center.isStarting)
     }
 
+    /// Naming "Speaker 1" names the "Speaker 1" recorded after a reconnect
+    /// too — but never someone already named, linked, or labelled otherwise.
+    func testReconnectTwinsAreTheUnnamedSameLabelSpeakers() {
+        func speaker(
+            _ id: String,
+            label: String,
+            epoch: UInt64,
+            name: String? = nil,
+            participant: String? = nil
+        ) -> NotebookSessionSpeakerDTO {
+            NotebookSessionSpeakerDTO(
+                id: id,
+                sessionId: "s",
+                providerSessionEpoch: epoch,
+                provider: "soniox",
+                providerLabel: label,
+                localDisplayName: name,
+                participantId: participant
+            )
+        }
+        let first = speaker("a", label: "1", epoch: 1)
+        let twins = NotebookSessionSpeakerDTO.unnamedReconnectTwins(
+            of: first,
+            among: [
+                first,
+                speaker("b", label: "1", epoch: 2),
+                speaker("c", label: "2", epoch: 2),
+                speaker("d", label: "1", epoch: 3, name: "已命名"),
+                speaker("e", label: "1", epoch: 4, participant: "p"),
+            ]
+        )
+        XCTAssertEqual(twins.map(\.id), ["b"])
+    }
+
     func testClockReadsMinutesAndHours() {
         XCTAssertEqual(CaptureCommandCenter.clock(0), "00:00")
         XCTAssertEqual(CaptureCommandCenter.clock(754), "12:34")
