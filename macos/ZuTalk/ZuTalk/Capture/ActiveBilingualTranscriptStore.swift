@@ -3298,17 +3298,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         normalizedLanguage(lhs) == normalizedLanguage(rhs)
     }
 
+    /// As everywhere else: each language by its own name.
     private func displayLanguage(_ language: String) -> String {
-        switch normalizedLanguage(language) {
-        case "en": return "EN"
-        case "zh": return "中"
-        case "ja": return "日"
-        case "ko": return "한"
-        case "es": return "ES"
-        case "fr": return "FR"
-        case "de": return "DE"
-        default: return language.uppercased()
-        }
+        RecordingPresentation.languageName(language)
     }
 
     private func formatTimestamp(_ milliseconds: UInt64?) -> String {

@@ -2103,7 +2103,7 @@ private struct AsyncTranscriptRow: View {
     }
 
     private var sourceLanguageLabel: String? {
-        normalizedSourceLanguage?.uppercased()
+        normalizedSourceLanguage.map(RecordingPresentation.languageName)
     }
 
     private var timestampText: String? {

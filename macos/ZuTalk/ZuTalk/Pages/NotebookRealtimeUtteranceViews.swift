@@ -897,11 +897,11 @@ private struct TranscriptionUtteranceRow: View {
                 .first
                 .map(String.init),
                provisional.isEmpty == false, provisional != "und" {
-                return provisional.uppercased()
+                return RecordingPresentation.languageName(provisional)
             }
             return String(localized: "capture.transcript.language_pending")
         }
-        return normalizedSourceLanguage.uppercased()
+        return RecordingPresentation.languageName(normalizedSourceLanguage)
     }
 
     private var timestampText: String? {
@@ -977,7 +977,7 @@ private struct MultilingualUtteranceRow: View {
                         }
                         Text(String(
                             format: String(localized: "capture.transcript.unselected_language"),
-                            normalizedSourceLanguage.uppercased()
+                            RecordingPresentation.languageName(normalizedSourceLanguage)
                         ))
                             .font(.captionMedium)
                             .foregroundColor(.signalAmber)

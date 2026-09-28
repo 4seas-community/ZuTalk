@@ -344,7 +344,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         try await twoLanguageStore.start(notebookId: "notebook-a")
         XCTAssertEqual(
             MenuBarRuntimeStore.shared.activeRecordingInfo?.languagePair,
-            "EN · 中"
+            "English · 中文"
         )
         try await twoLanguageStore.stop()
 
@@ -360,7 +360,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let languageSummary = try XCTUnwrap(
             MenuBarRuntimeStore.shared.activeRecordingInfo?.languagePair
         )
-        XCTAssertEqual(languageSummary, "EN · 中 · TH")
+        XCTAssertEqual(languageSummary, "English · 中文 · ไทย")
         XCTAssertFalse(languageSummary.contains("↔"))
         XCTAssertFalse(languageSummary.contains("→"))
         try await multilingualStore.stop()
@@ -1587,7 +1587,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
 
         let recent = try XCTUnwrap(MenuBarRuntimeStore.shared.cachedRecentLines.first)
         XCTAssertEqual(recent.text, "只剩翻译")
-        XCTAssertEqual(recent.languageLabel, "中")
+        XCTAssertEqual(recent.languageLabel, "中文")
         XCTAssertEqual(recent.timestamp, "")
         store.resetForTesting()
     }
