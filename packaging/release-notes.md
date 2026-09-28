@@ -91,9 +91,13 @@ ZuTalk requires macOS 12.5 or later.
   share. The live share ends with the recording.
 - **Share a finished recording from its menu** or from the recording's
   header: the people you let in get a copy of the transcript, read-only or
-  correctable.
+  correctable. Their corrections wait in the recording's share panel —
+  accept one to put it in your recording, or turn it down to change their
+  copy back.
 - **See who is watching, and remove someone.** A removed viewer is told
   so and can't come back with the same code.
+- **Someone asking to join is a notification** you can answer from
+  anywhere — Let in or Decline — when ZuTalk isn't in front.
 - **Found nearby only if you say so.** Other Macs on the network see your
   share — with the name and title you chose to show — only when you turn
   that on, and you still approve each person.

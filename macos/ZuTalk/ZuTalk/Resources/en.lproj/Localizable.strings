@@ -1231,7 +1231,7 @@
 "share.recording.read_only" = "Can read";
 "share.recording.can_correct" = "Can correct";
 "share.recording.read_only_detail" = "They can read their copy but not change it while it’s shared.";
-"share.recording.can_correct_detail" = "Corrections sync to everyone’s shared copy. Your own recording isn’t changed.";
+"share.recording.can_correct_detail" = "Corrections sync to everyone’s shared copy. You choose which ones go into your own recording.";
 "share.recording.start" = "Start sharing";
 "share.recording.on" = "Sharing";
 "share.recording.stop" = "Stop sharing";
@@ -1295,3 +1295,17 @@
 "received.nearby.discovery_off" = "Finding shares nearby is off in Settings › Sharing. You can still join with a code.";
 
 "received.watch.ended_kept_note" = "The share has ended. Your copy stays below, and it’s yours to correct.";
+
+"share.corrections.title_format" = "%lld corrections to review";
+"share.corrections.note" = "People you shared with changed these. Accept to put a change into your recording; turn it down to change their copy back to yours.";
+"share.corrections.accept" = "Accept";
+"share.corrections.turn_down" = "Turn down";
+"share.corrections.turn_down_hint" = "Change the shared copy back to your version, for everyone in the share";
+"share.corrections.source_format" = "Original · %@";
+"share.corrections.yours" = "Yours";
+"share.corrections.theirs" = "Their correction";
+"share.corrections.accept_failed" = "Couldn’t put the correction into your recording";
+"share.corrections.count_format" = "%lld to review";
+
+"share.knock.notification_body_format" = "Asking to join “%1$@” · %2$@";
+

@@ -10967,7 +10967,7 @@ struct FinalizedCaptureLane<'a> {
     kind: FinalizedCaptureLaneKind,
 }
 
-fn capture_lane_id(language: &str) -> String {
+pub(crate) fn capture_lane_id(language: &str) -> String {
     normalize_language(language)
 }
 
@@ -19357,6 +19357,103 @@ mod tests {
         assert_eq!(delivered.capture_state, FfiNotebookCaptureState::Paused);
         assert_eq!(delivered.remote_health, FfiNotebookRemoteHealth::Degraded);
         assert_eq!(delivered.realtime_loro_applied_revision, 7);
+    }
+
+    /// 看的人在共享副本里改的一句,主持人看得到、能采纳进自己的录音,
+    /// 也能不采纳 —— 副本改回主持人的版本。
+    #[test]
+    fn a_viewer_correction_can_be_accepted_or_turned_down() {
+        let (_temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
+        core.project_notebook_capture(&run_id).unwrap();
+        core.set_share_transport(crate::share_api::FfiShareTransport {
+            relay_urls: Vec::new(),
+            enable_local_discovery: false,
+        })
+        .unwrap();
+        core.start_recording_share("session-a".into(), false)
+            .unwrap();
+        assert!(
+            core.shared_corrections("session-a".into())
+                .unwrap()
+                .is_empty(),
+            "机器写进副本的内容不是订正"
+        );
+        let mine = core
+            .notebook_capture_store
+            .list_utterances("session-a")
+            .unwrap()
+            .remove(0)
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .and_then(|variant| variant.text.clone())
+            .unwrap();
+
+        // 看的人订正了一栏(合入主持人的共享副本,等同于这一笔)。
+        core.shared_session_replace_lane(
+            "session-a".into(),
+            "utterance-a".into(),
+            "zh".into(),
+            "看的人的订正".into(),
+        )
+        .unwrap();
+        let corrections = core.shared_corrections("session-a".into()).unwrap();
+        assert_eq!(corrections.len(), 1);
+        assert_eq!(corrections[0].utterance_id, "utterance-a");
+        assert!(!corrections[0].is_source);
+        assert_eq!(corrections[0].yours, mine);
+        assert_eq!(corrections[0].theirs, "看的人的订正");
+
+        // 采纳:写进自己的录音,差别消失。
+        core.accept_shared_correction(corrections[0].clone())
+            .unwrap();
+        let accepted = core
+            .notebook_capture_store
+            .list_utterances("session-a")
+            .unwrap()
+            .remove(0);
+        assert_eq!(
+            accepted
+                .variants
+                .iter()
+                .find(|variant| variant.language == "zh")
+                .and_then(|variant| variant.text.clone())
+                .as_deref(),
+            Some("看的人的订正")
+        );
+        assert!(core
+            .shared_corrections("session-a".into())
+            .unwrap()
+            .is_empty());
+
+        // 又改了一次;这回不采纳:副本改回主持人的版本。
+        core.shared_session_replace_lane(
+            "session-a".into(),
+            "utterance-a".into(),
+            "zh".into(),
+            "不对的订正".into(),
+        )
+        .unwrap();
+        let turned_down = core.shared_corrections("session-a".into()).unwrap();
+        assert_eq!(turned_down.len(), 1);
+        core.reject_shared_correction("session-a".into(), turned_down[0].clone())
+            .unwrap();
+        assert!(core
+            .shared_corrections("session-a".into())
+            .unwrap()
+            .is_empty());
+        let block = core
+            .shared_session_blocks("session-a".into())
+            .unwrap()
+            .into_iter()
+            .find(|block| block.id == "utterance-a")
+            .unwrap();
+        assert_eq!(
+            block.lanes.get("zh").map(String::as_str),
+            Some("看的人的订正")
+        );
+
+        core.stop_sharing().unwrap();
     }
 
     #[test]

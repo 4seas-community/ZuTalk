@@ -25,7 +25,7 @@ use std::sync::Mutex;
 use loro::LoroDoc;
 use vt_share::ScopeId;
 use vt_store::document_schema::{document_kind, new_block_document, DocumentKind};
-use vt_store::notebook_capture_store::preserves_settled_lane;
+use vt_store::notebook_capture_store::{preserves_settled_lane, UtteranceVariantRole};
 use vt_store::transcript_projection::TranscriptProjection;
 
 use crate::notebook_capture_api::{store_error, t2_insert_anchor, t2_machine_block_write};
@@ -782,6 +782,165 @@ impl ZuTalkCore {
             projection
                 .insert_annotation(index as usize, &annotation_id, &text)
                 .map_err(store_error)
+        })
+    }
+}
+
+/// 一处等主持人回答的订正:看的人在共享副本里改了,和你自己的录音不一样。
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FfiSharedCorrection {
+    pub utterance_id: String,
+    /// 被改的那一栏的语言;原文那一栏就是原文的语言。
+    pub language: String,
+    pub is_source: bool,
+    /// 你的录音里现在的样子。
+    pub yours: String,
+    /// 共享副本里的样子。
+    pub theirs: String,
+}
+
+#[uniffi::export]
+impl ZuTalkCore {
+    /// 看的人在共享副本里改过、而你的录音还没跟上的地方。
+    ///
+    /// 订正只落在共享副本里 —— 那是同步给每个人的那一份,不是你的录音。
+    /// 这里把两者的差别列出来,由你逐条采纳或不采纳。机器自己写进副本、
+    /// 只是还没刷新到的差别(副本 == 机器影子)不算订正。
+    pub fn shared_corrections(
+        &self,
+        session_id: String,
+    ) -> Result<Vec<FfiSharedCorrection>, CoreError> {
+        // 只对本机自己的录音有意义;收到的转录稿没有「你的录音」可比。
+        if self
+            .notebook_capture_store
+            .get_run_for_session(&session_id)
+            .map_err(store_error)?
+            .is_none()
+        {
+            return Ok(Vec::new());
+        }
+        let opened = self
+            .shared_sessions
+            .open
+            .lock()
+            .unwrap()
+            .contains_key(&session_id);
+        if !opened && !shared_document_path(&self.data_dir, &session_id)?.exists() {
+            return Ok(Vec::new());
+        }
+        let projection = ensure_shared_session_doc(
+            &self.shared_sessions,
+            &self.editor_bridge,
+            &self.data_dir,
+            &session_id,
+        )?;
+        let blocks = projection.refresh();
+        let utterances = self
+            .notebook_capture_store
+            .list_utterances(&session_id)
+            .map_err(store_error)?;
+        let shadows = self.shared_sessions.shadows.lock().unwrap();
+        let shadow = shadows.get(&session_id);
+        let machine_wrote = |block_id: &str, lane: &str, text: &str| {
+            shadow
+                .and_then(|shadow| shadow.get(&(block_id.to_string(), lane.to_string())))
+                .is_some_and(|written| written == text)
+        };
+
+        let mut corrections = Vec::new();
+        for utterance in &utterances {
+            let Some(yours) = crate::notebook_capture_api::t2_machine_block_write(utterance) else {
+                continue;
+            };
+            let Some(block) = blocks.iter().find(|block| block.id == yours.id) else {
+                continue;
+            };
+            if !yours.text.is_empty()
+                && !block.text.is_empty()
+                && block.text != yours.text
+                && !machine_wrote(&block.id, SOURCE_LANE_KEY, &block.text)
+            {
+                let language = utterance
+                    .variants
+                    .iter()
+                    .find(|variant| variant.role == UtteranceVariantRole::Source)
+                    .map(|variant| variant.language.clone())
+                    .unwrap_or_else(|| utterance.source_language.clone());
+                corrections.push(FfiSharedCorrection {
+                    utterance_id: utterance.id.clone(),
+                    language,
+                    is_source: true,
+                    yours: yours.text.clone(),
+                    theirs: block.text.clone(),
+                });
+            }
+            for (lane, theirs) in &block.lanes {
+                let Some(mine) = yours.lanes.get(lane) else {
+                    continue;
+                };
+                if theirs.is_empty() || theirs == mine || machine_wrote(&block.id, lane, theirs) {
+                    continue;
+                }
+                corrections.push(FfiSharedCorrection {
+                    utterance_id: utterance.id.clone(),
+                    language: lane.clone(),
+                    is_source: false,
+                    yours: mine.clone(),
+                    theirs: theirs.clone(),
+                });
+            }
+        }
+        Ok(corrections)
+    }
+
+    /// 采纳:把这处订正写进你的录音,和你自己动手改一样(同一条编辑路径,
+    /// 同样进搜索、同样可以再改)。
+    pub fn accept_shared_correction(
+        &self,
+        correction: FfiSharedCorrection,
+    ) -> Result<(), CoreError> {
+        let lane = crate::notebook_capture_api::capture_lane_id(&correction.language);
+        let utterance = self
+            .notebook_capture_store
+            .get_utterance_by_id(&correction.utterance_id)
+            .map_err(store_error)?
+            .ok_or_else(|| CoreError::NotFound {
+                message: format!("utterance {}", correction.utterance_id),
+            })?;
+        let variant = utterance
+            .variants
+            .iter()
+            .find(|variant| crate::notebook_capture_api::capture_lane_id(&variant.language) == lane)
+            .ok_or_else(|| CoreError::ValidationFailed {
+                message: format!("这句话没有 {} 这一栏", correction.language),
+            })?;
+        self.replace_notebook_utterance_lane(
+            correction.utterance_id,
+            variant.language.clone(),
+            correction.theirs,
+            variant.edit_revision,
+        )
+        .map(|_| ())
+    }
+
+    /// 不采纳:共享副本改回你的版本。还在共享时,改回去的这一笔也同步给
+    /// 每个人 —— 副本与你的录音重新一致。
+    pub fn reject_shared_correction(
+        &self,
+        session_id: String,
+        correction: FfiSharedCorrection,
+    ) -> Result<(), CoreError> {
+        self.shared_session_edit(&session_id, |projection| {
+            if correction.is_source {
+                projection.user_replace_text(&correction.utterance_id, &correction.yours)
+            } else {
+                projection.user_replace_lane(
+                    &correction.utterance_id,
+                    &crate::notebook_capture_api::capture_lane_id(&correction.language),
+                    &correction.yours,
+                )
+            }
+            .map_err(store_error)
         })
     }
 }

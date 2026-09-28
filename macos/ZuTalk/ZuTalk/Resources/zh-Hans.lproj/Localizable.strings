@@ -1231,7 +1231,7 @@
 "share.recording.read_only" = "只能看";
 "share.recording.can_correct" = "可以订正";
 "share.recording.read_only_detail" = "共享期间他们只能看，不能改。";
-"share.recording.can_correct_detail" = "订正会同步到每个人手里的共享副本，不会改你自己的录音。";
+"share.recording.can_correct_detail" = "订正会同步到每个人手里的共享副本；要不要写进你自己的录音，由你逐条决定。";
 "share.recording.start" = "开始共享";
 "share.recording.on" = "共享中";
 "share.recording.stop" = "停止共享";
@@ -1295,3 +1295,17 @@
 "received.nearby.discovery_off" = "「设置 › 共享」里关了附近发现，这里找不到附近的共享。仍可以用加入码加入。";
 
 "received.watch.ended_kept_note" = "共享已结束。副本留在下面，现在归你，可以随意订正。";
+
+"share.corrections.title_format" = "%lld 处订正等你处理";
+"share.corrections.note" = "看的人改了这些地方。采纳就写进你的录音；不采纳就把共享副本改回你的版本。";
+"share.corrections.accept" = "采纳";
+"share.corrections.turn_down" = "不采纳";
+"share.corrections.turn_down_hint" = "把共享副本改回你的版本，这次共享里的每个人都会看到";
+"share.corrections.source_format" = "原文 · %@";
+"share.corrections.yours" = "你的";
+"share.corrections.theirs" = "他们的订正";
+"share.corrections.accept_failed" = "没能把订正写进你的录音";
+"share.corrections.count_format" = "%lld 处订正";
+
+"share.knock.notification_body_format" = "请求加入「%1$@」· %2$@";
+

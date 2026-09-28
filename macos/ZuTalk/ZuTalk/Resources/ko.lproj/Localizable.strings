@@ -1231,7 +1231,7 @@
 "share.recording.read_only" = "읽기만";
 "share.recording.can_correct" = "수정 가능";
 "share.recording.read_only_detail" = "공유 중에는 사본을 읽을 수만 있고 바꿀 수 없습니다.";
-"share.recording.can_correct_detail" = "수정 사항은 모두의 공유 사본에 동기화됩니다. 내 녹음은 바뀌지 않습니다.";
+"share.recording.can_correct_detail" = "수정 사항은 모두의 공유 사본에 동기화됩니다. 내 녹음에 반영할지는 하나씩 직접 정합니다.";
 "share.recording.start" = "공유 시작";
 "share.recording.on" = "공유 중";
 "share.recording.stop" = "공유 중지";
@@ -1295,3 +1295,17 @@
 "received.nearby.discovery_off" = "설정 › 공유에서 근처 찾기가 꺼져 있습니다. 참여 코드로는 계속 참여할 수 있습니다.";
 
 "received.watch.ended_kept_note" = "공유가 끝났습니다. 사본은 아래에 남아 있으며 자유롭게 수정할 수 있습니다.";
+
+"share.corrections.title_format" = "검토할 수정 %lld건";
+"share.corrections.note" = "공유한 사람들이 이 부분을 수정했습니다. 수락하면 내 녹음에 반영되고, 거절하면 공유 사본이 내 버전으로 돌아갑니다.";
+"share.corrections.accept" = "수락";
+"share.corrections.turn_down" = "거절";
+"share.corrections.turn_down_hint" = "공유 사본을 내 버전으로 되돌립니다. 이 공유의 모두에게 반영됩니다";
+"share.corrections.source_format" = "원문 · %@";
+"share.corrections.yours" = "내 버전";
+"share.corrections.theirs" = "상대의 수정";
+"share.corrections.accept_failed" = "수정을 녹음에 반영하지 못했습니다";
+"share.corrections.count_format" = "수정 %lld건";
+
+"share.knock.notification_body_format" = "“%1$@” 참여 요청 · %2$@";
+

@@ -1231,7 +1231,7 @@
 "share.recording.read_only" = "Lecture";
 "share.recording.can_correct" = "Peut corriger";
 "share.recording.read_only_detail" = "Pendant le partage, ils lisent leur copie sans pouvoir la modifier.";
-"share.recording.can_correct_detail" = "Les corrections se synchronisent dans la copie partagée de chacun. Votre propre enregistrement ne change pas.";
+"share.recording.can_correct_detail" = "Les corrections se synchronisent dans la copie partagée de chacun. Vous choisissez celles qui entrent dans votre propre enregistrement.";
 "share.recording.start" = "Commencer le partage";
 "share.recording.on" = "Partage en cours";
 "share.recording.stop" = "Arrêter le partage";
@@ -1295,3 +1295,17 @@
 "received.nearby.discovery_off" = "La recherche à proximité est désactivée dans Réglages › Partage. Vous pouvez toujours rejoindre avec un code.";
 
 "received.watch.ended_kept_note" = "Le partage est terminé. Votre copie reste ci-dessous, et vous pouvez la corriger librement.";
+
+"share.corrections.title_format" = "%lld corrections à examiner";
+"share.corrections.note" = "Les personnes avec qui vous partagez ont modifié ces passages. Acceptez pour les reporter dans votre enregistrement ; refusez pour rétablir votre version dans leur copie.";
+"share.corrections.accept" = "Accepter";
+"share.corrections.turn_down" = "Refuser";
+"share.corrections.turn_down_hint" = "Rétablir votre version dans la copie partagée, pour tous les participants";
+"share.corrections.source_format" = "Original · %@";
+"share.corrections.yours" = "Votre version";
+"share.corrections.theirs" = "Leur correction";
+"share.corrections.accept_failed" = "Impossible de reporter la correction dans votre enregistrement";
+"share.corrections.count_format" = "%lld à examiner";
+
+"share.knock.notification_body_format" = "Demande à rejoindre « %1$@ » · %2$@";
+

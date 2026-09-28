@@ -112,7 +112,7 @@ struct ShareHeaderStatus: View {
                         .lineLimit(1)
                         .frame(maxWidth: 260, alignment: .leading)
                 }
-                if share.pendingJoinRequests.isEmpty == false {
+                if share.pendingJoinRequests.isEmpty == false || share.pendingCorrections.isEmpty == false {
                     Circle()
                         .fill(Color.signalAmber)
                         .frame(width: 8, height: 8)
@@ -132,13 +132,18 @@ struct ShareHeaderStatus: View {
 
     private var hostingText: String {
         let title = share.title.isEmpty ? String(localized: "share.untitled") : share.title
-        return share.watchers.isEmpty
+        let base = share.watchers.isEmpty
             ? String(format: String(localized: "share.hosting_format"), title)
             : String(
                 format: String(localized: "share.hosting_count_format"),
                 title,
                 Int64(share.watchers.count)
             )
+        guard share.pendingCorrections.isEmpty == false else { return base }
+        return base + " · " + String(
+            format: String(localized: "share.corrections.count_format"),
+            Int64(share.pendingCorrections.count)
+        )
     }
 
     private func pill(title: String, systemImage: String, action: @escaping () -> Void) -> some View {

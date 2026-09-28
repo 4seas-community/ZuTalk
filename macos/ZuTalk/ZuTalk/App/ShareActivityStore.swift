@@ -42,6 +42,8 @@ final class ShareActivityStore: ObservableObject {
     @Published private(set) var pendingJoinRequests: [FfiJoinRequest] = []
     @Published private(set) var webShare: FfiWebShareInfo?
     @Published private(set) var webShareStarting = false
+    /// 共享中的录音里,看的人改过、你还没回答的订正。
+    @Published private(set) var pendingCorrections: [FfiSharedCorrection] = []
 
     // MARK: 观看
 
@@ -96,6 +98,7 @@ final class ShareActivityStore: ObservableObject {
 
     /// 开始全局轮询。可重复调用;只会有一个定时器。
     func start() {
+        ShareNotifications.shared.install()
         if displayName.isEmpty { loadDisplayName() }
         poll()
         reschedule()
@@ -131,6 +134,7 @@ final class ShareActivityStore: ObservableObject {
     private func runHostStart(_ start: @escaping (any ZuTalkCoreProtocol) throws -> String) {
         guard let core, isBusy == false else { return }
         ensureDisplayName()
+        ShareNotifications.shared.requestPermissionIfNeeded()
         isBusy = true
         // 进房间要等网络层,不放在主线程上。
         Task.detached {
@@ -220,6 +224,49 @@ final class ShareActivityStore: ObservableObject {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(shareCode, forType: .string)
         ToastCenter.shared.success(String(localized: "share.code.copied"))
+    }
+
+    // MARK: - 主持:订正
+
+    /// 一段录音里等你回答的订正。共享停了也还在 —— 副本留着,差别也留着。
+    func corrections(for sessionId: String) -> [FfiSharedCorrection] {
+        (try? core?.sharedCorrections(sessionId: sessionId)) ?? []
+    }
+
+    /// 采纳:写进你的录音,和你自己改的一样。
+    func accept(_ correction: FfiSharedCorrection) {
+        guard let core else { return }
+        do {
+            try core.acceptSharedCorrection(correction: correction)
+            NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
+        } catch {
+            ToastCenter.shared.error(
+                String(localized: "share.corrections.accept_failed"),
+                detail: error.localizedDescription
+            )
+        }
+        refreshCorrections()
+    }
+
+    /// 不采纳:共享副本改回你的版本,还在共享时每个人都会看到改回来。
+    func turnDown(_ correction: FfiSharedCorrection, sessionId: String) {
+        guard let core else { return }
+        do {
+            try core.rejectSharedCorrection(sessionId: sessionId, correction: correction)
+        } catch {
+            ToastCenter.shared.error(error.localizedDescription)
+        }
+        refreshCorrections()
+    }
+
+    private func refreshCorrections() {
+        let current: [FfiSharedCorrection]
+        if isHosting, isLive == false, hostOnly == false, let sessionId = scopeSessionId {
+            current = corrections(for: sessionId)
+        } else {
+            current = []
+        }
+        set(\.pendingCorrections, current)
     }
 
     // MARK: - 主持:网页
@@ -527,11 +574,14 @@ final class ShareActivityStore: ObservableObject {
         for request in requests where announcedRequestIds.contains(request.requestId) == false {
             announcedRequestIds.insert(request.requestId)
             NSApp.requestUserAttention(.informationalRequest)
+            ShareNotifications.shared.announce(request, title: title)
         }
+        ShareNotifications.shared.withdraw(except: Set(requests.map(\.requestId)))
         set(\.pendingJoinRequests, requests)
 
         let web = hosting ? core.webShareState() : nil
         set(\.webShare, web)
+        refreshCorrections()
 
         if nearbyWatchers > 0,
            lastNearbyScan.map({ Date().timeIntervalSince($0) >= 4 }) ?? true {

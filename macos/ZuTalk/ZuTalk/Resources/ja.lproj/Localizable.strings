@@ -1231,7 +1231,7 @@
 "share.recording.read_only" = "閲覧のみ";
 "share.recording.can_correct" = "修正できる";
 "share.recording.read_only_detail" = "共有中はコピーを読めますが、変更はできません。";
-"share.recording.can_correct_detail" = "修正は全員の共有コピーに同期されます。あなた自身の録音は変わりません。";
+"share.recording.can_correct_detail" = "修正は全員の共有コピーに同期されます。自分の録音に反映するかどうかは一件ずつ選べます。";
 "share.recording.start" = "共有を開始";
 "share.recording.on" = "共有中";
 "share.recording.stop" = "共有を停止";
@@ -1295,3 +1295,17 @@
 "received.nearby.discovery_off" = "「設定 › 共有」で近くの検出がオフになっています。参加コードでは引き続き参加できます。";
 
 "received.watch.ended_kept_note" = "共有は終了しました。コピーは下に残り、自由に修正できます。";
+
+"share.corrections.title_format" = "確認待ちの修正 %lld 件";
+"share.corrections.note" = "共有相手がここを修正しました。承認するとあなたの録音に反映され、却下すると共有コピーがあなたの版に戻ります。";
+"share.corrections.accept" = "承認";
+"share.corrections.turn_down" = "却下";
+"share.corrections.turn_down_hint" = "共有コピーをあなたの版に戻します。共有中の全員に反映されます";
+"share.corrections.source_format" = "原文 · %@";
+"share.corrections.yours" = "あなたの版";
+"share.corrections.theirs" = "相手の修正";
+"share.corrections.accept_failed" = "修正を録音に反映できませんでした";
+"share.corrections.count_format" = "修正 %lld 件";
+
+"share.knock.notification_body_format" = "「%1$@」への参加をリクエスト · %2$@";
+

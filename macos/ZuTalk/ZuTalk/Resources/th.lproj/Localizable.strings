@@ -1231,7 +1231,7 @@
 "share.recording.read_only" = "อ่านได้";
 "share.recording.can_correct" = "แก้ไขได้";
 "share.recording.read_only_detail" = "ระหว่างแชร์ อ่านสำเนาได้แต่แก้ไม่ได้";
-"share.recording.can_correct_detail" = "การแก้ไขจะซิงก์ไปยังสำเนาที่แชร์ของทุกคน การบันทึกของคุณเองไม่เปลี่ยน";
+"share.recording.can_correct_detail" = "การแก้ไขจะซิงก์ไปยังสำเนาที่แชร์ของทุกคน คุณเลือกเองทีละรายการว่าจะใส่อันไหนลงในการบันทึกของคุณ";
 "share.recording.start" = "เริ่มแชร์";
 "share.recording.on" = "กำลังแชร์";
 "share.recording.stop" = "หยุดแชร์";
@@ -1295,3 +1295,17 @@
 "received.nearby.discovery_off" = "ปิดการค้นหาใกล้เคียงไว้ใน การตั้งค่า › การแชร์ ยังเข้าร่วมด้วยรหัสได้";
 
 "received.watch.ended_kept_note" = "การแชร์จบแล้ว สำเนายังอยู่ด้านล่าง และคุณแก้ไขได้ตามต้องการ";
+
+"share.corrections.title_format" = "การแก้ไขรอตรวจ %lld รายการ";
+"share.corrections.note" = "คนที่คุณแชร์ด้วยแก้ส่วนนี้ ยอมรับเพื่อใส่การแก้ไขลงในการบันทึกของคุณ หรือปฏิเสธเพื่อเปลี่ยนสำเนาของพวกเขากลับเป็นฉบับของคุณ";
+"share.corrections.accept" = "ยอมรับ";
+"share.corrections.turn_down" = "ปฏิเสธ";
+"share.corrections.turn_down_hint" = "เปลี่ยนสำเนาที่แชร์กลับเป็นฉบับของคุณสำหรับทุกคนในการแชร์";
+"share.corrections.source_format" = "ต้นฉบับ · %@";
+"share.corrections.yours" = "ของคุณ";
+"share.corrections.theirs" = "การแก้ไขของพวกเขา";
+"share.corrections.accept_failed" = "ใส่การแก้ไขลงในการบันทึกของคุณไม่สำเร็จ";
+"share.corrections.count_format" = "รอตรวจ %lld";
+
+"share.knock.notification_body_format" = "ขอเข้าร่วม “%1$@” · %2$@";
+

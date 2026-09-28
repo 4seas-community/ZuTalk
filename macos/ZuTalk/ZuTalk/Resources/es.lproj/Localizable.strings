@@ -1231,7 +1231,7 @@
 "share.recording.read_only" = "Solo leer";
 "share.recording.can_correct" = "Puede corregir";
 "share.recording.read_only_detail" = "Mientras se comparte, pueden leer su copia pero no cambiarla.";
-"share.recording.can_correct_detail" = "Las correcciones se sincronizan en la copia compartida de todos. Tu propia grabación no cambia.";
+"share.recording.can_correct_detail" = "Las correcciones se sincronizan en la copia compartida de todos. Tú eliges cuáles pasan a tu propia grabación.";
 "share.recording.start" = "Empezar a compartir";
 "share.recording.on" = "Compartiendo";
 "share.recording.stop" = "Dejar de compartir";
@@ -1295,3 +1295,17 @@
 "received.nearby.discovery_off" = "La búsqueda cercana está desactivada en Configuración › Compartir. Aún puedes unirte con un código.";
 
 "received.watch.ended_kept_note" = "El uso compartido terminó. Tu copia queda abajo y puedes corregirla libremente.";
+
+"share.corrections.title_format" = "%lld correcciones por revisar";
+"share.corrections.note" = "Las personas con quienes compartiste cambiaron esto. Acepta para llevar el cambio a tu grabación; recházalo para devolver su copia a tu versión.";
+"share.corrections.accept" = "Aceptar";
+"share.corrections.turn_down" = "Rechazar";
+"share.corrections.turn_down_hint" = "Devolver la copia compartida a tu versión, para todos en este uso compartido";
+"share.corrections.source_format" = "Original · %@";
+"share.corrections.yours" = "La tuya";
+"share.corrections.theirs" = "Su corrección";
+"share.corrections.accept_failed" = "No se pudo llevar la corrección a tu grabación";
+"share.corrections.count_format" = "%lld por revisar";
+
+"share.knock.notification_body_format" = "Pide unirse a «%1$@» · %2$@";
+

@@ -1231,7 +1231,7 @@
 "share.recording.read_only" = "Nur lesen";
 "share.recording.can_correct" = "Darf korrigieren";
 "share.recording.read_only_detail" = "Während der Freigabe können sie ihre Kopie lesen, aber nicht ändern.";
-"share.recording.can_correct_detail" = "Korrekturen werden in die geteilte Kopie aller übernommen. Deine eigene Aufnahme ändert sich nicht.";
+"share.recording.can_correct_detail" = "Korrekturen werden in die geteilte Kopie aller übernommen. Welche in deine eigene Aufnahme kommen, entscheidest du einzeln.";
 "share.recording.start" = "Teilen starten";
 "share.recording.on" = "Wird geteilt";
 "share.recording.stop" = "Teilen beenden";
@@ -1295,3 +1295,17 @@
 "received.nearby.discovery_off" = "Die Suche in der Nähe ist unter Einstellungen › Teilen aus. Mit einem Code kannst du weiterhin beitreten.";
 
 "received.watch.ended_kept_note" = "Die Freigabe ist beendet. Deine Kopie bleibt unten, und du kannst sie frei korrigieren.";
+
+"share.corrections.title_format" = "%lld Korrekturen zu prüfen";
+"share.corrections.note" = "Personen, mit denen du teilst, haben das geändert. Übernimm eine Änderung in deine Aufnahme oder lehne sie ab, dann wird ihre Kopie auf deine Fassung zurückgesetzt.";
+"share.corrections.accept" = "Übernehmen";
+"share.corrections.turn_down" = "Ablehnen";
+"share.corrections.turn_down_hint" = "Die geteilte Kopie für alle auf deine Fassung zurücksetzen";
+"share.corrections.source_format" = "Original · %@";
+"share.corrections.yours" = "Deine Fassung";
+"share.corrections.theirs" = "Ihre Korrektur";
+"share.corrections.accept_failed" = "Korrektur konnte nicht in deine Aufnahme übernommen werden";
+"share.corrections.count_format" = "%lld zu prüfen";
+
+"share.knock.notification_body_format" = "Möchte „%1$@“ beitreten · %2$@";
+

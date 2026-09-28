@@ -1421,6 +1421,12 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func webShareState()  -> FfiWebShareInfo?
 
     /**
+     * 采纳:把这处订正写进你的录音,和你自己动手改一样(同一条编辑路径,
+     * 同样进搜索、同样可以再改)。
+     */
+    func acceptSharedCorrection(correction: FfiSharedCorrection) throws
+
+    /**
      * 删除一份收到的共享转录稿。**只删本机副本** —— 台账即目录,文件没了
      * 记录就没了;别人手里的副本不受影响,这与停止共享同一条真话。
      */
@@ -1433,6 +1439,21 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      * 不该出现在「收到的」里,和别人的混在一起。
      */
     func listSharedSessions()  -> [FfiSharedSessionInfo]
+
+    /**
+     * 不采纳:共享副本改回你的版本。还在共享时,改回去的这一笔也同步给
+     * 每个人 —— 副本与你的录音重新一致。
+     */
+    func rejectSharedCorrection(sessionId: String, correction: FfiSharedCorrection) throws
+
+    /**
+     * 看的人在共享副本里改过、而你的录音还没跟上的地方。
+     *
+     * 订正只落在共享副本里 —— 那是同步给每个人的那一份,不是你的录音。
+     * 这里把两者的差别列出来,由你逐条采纳或不采纳。机器自己写进副本、
+     * 只是还没刷新到的差别(副本 == 机器影子)不算订正。
+     */
+    func sharedCorrections(sessionId: String) throws  -> [FfiSharedCorrection]
 
     /**
      * 一份共享 session 的句块(文档序)。
@@ -3336,6 +3357,18 @@ open func webShareState() -> FfiWebShareInfo?  {
 }
 
     /**
+     * 采纳:把这处订正写进你的录音,和你自己动手改一样(同一条编辑路径,
+     * 同样进搜索、同样可以再改)。
+     */
+open func acceptSharedCorrection(correction: FfiSharedCorrection)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_accept_shared_correction(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeFfiSharedCorrection_lower(correction),$0
+    )
+}
+}
+
+    /**
      * 删除一份收到的共享转录稿。**只删本机副本** —— 台账即目录,文件没了
      * 记录就没了;别人手里的副本不受影响,这与停止共享同一条真话。
      */
@@ -3357,6 +3390,35 @@ open func listSharedSessions() -> [FfiSharedSessionInfo]  {
     return try!  FfiConverterSequenceTypeFfiSharedSessionInfo.lift(try! rustCall() {
     uniffi_vt_ffi_fn_method_zutalkcore_list_shared_sessions(
             self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 不采纳:共享副本改回你的版本。还在共享时,改回去的这一笔也同步给
+     * 每个人 —— 副本与你的录音重新一致。
+     */
+open func rejectSharedCorrection(sessionId: String, correction: FfiSharedCorrection)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_reject_shared_correction(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterTypeFfiSharedCorrection_lower(correction),$0
+    )
+}
+}
+
+    /**
+     * 看的人在共享副本里改过、而你的录音还没跟上的地方。
+     *
+     * 订正只落在共享副本里 —— 那是同步给每个人的那一份,不是你的录音。
+     * 这里把两者的差别列出来,由你逐条采纳或不采纳。机器自己写进副本、
+     * 只是还没刷新到的差别(副本 == 机器影子)不算订正。
+     */
+open func sharedCorrections(sessionId: String)throws  -> [FfiSharedCorrection]  {
+    return try  FfiConverterSequenceTypeFfiSharedCorrection.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_shared_corrections(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
     )
 })
 }
@@ -7325,6 +7387,93 @@ public func FfiConverterTypeFfiSharedCaptionLine_lower(_ value: FfiSharedCaption
 
 
 /**
+ * 一处等主持人回答的订正:看的人在共享副本里改了,和你自己的录音不一样。
+ */
+public struct FfiSharedCorrection: Equatable, Hashable {
+    public var utteranceId: String
+    /**
+     * 被改的那一栏的语言;原文那一栏就是原文的语言。
+     */
+    public var language: String
+    public var isSource: Bool
+    /**
+     * 你的录音里现在的样子。
+     */
+    public var yours: String
+    /**
+     * 共享副本里的样子。
+     */
+    public var theirs: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(utteranceId: String,
+        /**
+         * 被改的那一栏的语言;原文那一栏就是原文的语言。
+         */language: String, isSource: Bool,
+        /**
+         * 你的录音里现在的样子。
+         */yours: String,
+        /**
+         * 共享副本里的样子。
+         */theirs: String) {
+        self.utteranceId = utteranceId
+        self.language = language
+        self.isSource = isSource
+        self.yours = yours
+        self.theirs = theirs
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSharedCorrection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSharedCorrection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSharedCorrection {
+        return
+            try FfiSharedCorrection(
+                utteranceId: FfiConverterString.read(from: &buf),
+                language: FfiConverterString.read(from: &buf),
+                isSource: FfiConverterBool.read(from: &buf),
+                yours: FfiConverterString.read(from: &buf),
+                theirs: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiSharedCorrection, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.utteranceId, into: &buf)
+        FfiConverterString.write(value.language, into: &buf)
+        FfiConverterBool.write(value.isSource, into: &buf)
+        FfiConverterString.write(value.yours, into: &buf)
+        FfiConverterString.write(value.theirs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSharedCorrection_lift(_ buf: RustBuffer) throws -> FfiSharedCorrection {
+    return try FfiConverterTypeFfiSharedCorrection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSharedCorrection_lower(_ value: FfiSharedCorrection) -> RustBuffer {
+    return FfiConverterTypeFfiSharedCorrection.lower(value)
+}
+
+
+/**
  * 一份收到的文字稿的摘要。
  */
 public struct FfiSharedSessionInfo: Equatable, Hashable {
@@ -10654,6 +10803,31 @@ fileprivate struct FfiConverterSequenceTypeFfiSharedCaptionLine: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiSharedCorrection: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiSharedCorrection]
+
+    public static func write(_ value: [FfiSharedCorrection], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiSharedCorrection.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiSharedCorrection] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiSharedCorrection]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiSharedCorrection.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiSharedSessionInfo: FfiConverterRustBuffer {
     typealias SwiftType = [FfiSharedSessionInfo]
 
@@ -11292,10 +11466,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_web_share_state() != 56602) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_accept_shared_correction() != 16739) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_delete_shared_session() != 43925) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_list_shared_sessions() != 27449) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_reject_shared_correction() != 33004) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_shared_corrections() != 57609) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_shared_session_blocks() != 4920) {

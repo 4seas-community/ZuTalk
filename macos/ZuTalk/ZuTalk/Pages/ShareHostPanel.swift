@@ -61,6 +61,11 @@ struct HostSharePanel: View {
             } else {
                 startForm
             }
+            // 订正在共享停了之后也还在:副本留着,和你录音的差别也留着。
+            // 共享进行中时它排在上面(见 activeSections)。
+            if isThisShare == false, case .recording(let sessionId, _) = subject {
+                SharedCorrectionsSection(sessionId: sessionId)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -132,10 +137,14 @@ struct HostSharePanel: View {
     @ViewBuilder
     private var activeSections: some View {
         statusHeader
-        codeSection
+        // 等你回答的东西排在最前面:敲门,然后订正。
         if share.pendingJoinRequests.isEmpty == false {
             JoinRequestList()
         }
+        if case .recording(let sessionId, _) = subject {
+            SharedCorrectionsSection(sessionId: sessionId)
+        }
+        codeSection
         watchersSection
         optionsSection
         webSection
@@ -471,6 +480,92 @@ struct HostSharePanel: View {
                 .foregroundColor(.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+/// 看的人在共享副本里改过的地方:采纳就写进你的录音,不采纳就把副本
+/// 改回你的版本。订正只落在共享副本里 —— 不经你点头,你的录音不会变。
+struct SharedCorrectionsSection: View {
+    let sessionId: String
+
+    @ObservedObject private var share = ShareActivityStore.shared
+    @State private var corrections: [FfiSharedCorrection] = []
+
+    var body: some View {
+        Group {
+            if corrections.isEmpty == false {
+                VStack(alignment: .leading, spacing: Spacing.sm) {
+                    Text(String(
+                        format: String(localized: "share.corrections.title_format"),
+                        Int64(corrections.count)
+                    ))
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+                    Text(String(localized: "share.corrections.note"))
+                        .font(.bodySM)
+                        .foregroundColor(.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    ForEach(corrections, id: \.self) { correction in
+                        row(correction)
+                    }
+                }
+                .accessibilityIdentifier("share.corrections")
+            }
+        }
+        .task(id: sessionId) {
+            while Task.isCancelled == false {
+                reload()
+                try? await MontereyTaskSleep.seconds(2)
+            }
+        }
+        .onReceive(share.$pendingCorrections) { _ in reload() }
+    }
+
+    private func row(_ correction: FfiSharedCorrection) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            HStack(spacing: Spacing.sm) {
+                Text(label(correction))
+                    .font(.captionMedium)
+                    .foregroundColor(.textTertiary)
+                Spacer()
+                Button(String(localized: "share.corrections.turn_down")) {
+                    share.turnDown(correction, sessionId: sessionId)
+                    reload()
+                }
+                .help(String(localized: "share.corrections.turn_down_hint"))
+                Button(String(localized: "share.corrections.accept")) {
+                    share.accept(correction)
+                    reload()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            Text(correction.yours)
+                .strikethrough()
+                .font(.bodySM)
+                .foregroundColor(.textTertiary)
+                .lineLimit(3)
+                .textSelection(.enabled)
+                .accessibilityLabel(Text(String(localized: "share.corrections.yours") + ": " + correction.yours))
+            Text(correction.theirs)
+                .font(.body)
+                .foregroundColor(.textPrimary)
+                .textSelection(.enabled)
+                .accessibilityLabel(Text(String(localized: "share.corrections.theirs") + ": " + correction.theirs))
+        }
+        .padding(Spacing.sm)
+        .background(Color.bgSunken)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+    }
+
+    private func label(_ correction: FfiSharedCorrection) -> String {
+        let language = RecordingPresentation.languageName(correction.language)
+        return correction.isSource
+            ? String(format: String(localized: "share.corrections.source_format"), language)
+            : language
+    }
+
+    private func reload() {
+        corrections = share.corrections(for: sessionId)
     }
 }
 
