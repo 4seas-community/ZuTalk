@@ -7928,17 +7928,24 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertFalse(realtimeConsole.contains("capture.settings.remote.toggle"))
         XCTAssertTrue(realtimeConsole.contains("automaticRealtimeDisclosure"))
         XCTAssertTrue(realtimeConsole.contains("capture.settings.realtime.start_disclosure"))
-        XCTAssertTrue(realtimeConsole.contains(".addLanguage("))
-        XCTAssertTrue(realtimeConsole.contains(".removeLanguage("))
-        XCTAssertTrue(realtimeConsole.contains(".moveLanguage("))
+        // The language chips are one shared editor (topic settings and Home's
+        // picker use it too); the console embeds it rather than its own copy.
+        let languageEditor = try String(
+            contentsOf: root.appendingPathComponent("Pages/CaptureLanguageEditor.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(realtimeConsole.contains("CaptureLanguageEditor(editor: editor)"))
+        XCTAssertTrue(languageEditor.contains(".addLanguage("))
+        XCTAssertTrue(languageEditor.contains(".removeLanguage("))
+        XCTAssertTrue(languageEditor.contains(".moveLanguage("))
         XCTAssertFalse(
-            realtimeConsole.contains(".selectedLanguages("),
+            languageEditor.contains(".selectedLanguages(") || realtimeConsole.contains(".selectedLanguages("),
             "language controls must enqueue semantic edits instead of stale full snapshots"
         )
         XCTAssertFalse(realtimeConsole.contains("modeBinding"))
         XCTAssertFalse(realtimeConsole.contains("languageABinding"))
         XCTAssertFalse(realtimeConsole.contains("languageBBinding"))
-        XCTAssertTrue(realtimeConsole.contains("editor.scheduleUpdate("))
+        XCTAssertTrue(languageEditor.contains("editor.scheduleUpdate("))
         XCTAssertTrue(realtimeConsole.contains("NotebookRealtimeConsolePresentation.resolve("))
         XCTAssertTrue(activeSummary.contains("capture.profile"))
         XCTAssertTrue(activeSummary.contains("capture.isAudioDrainDelayed"))
@@ -7991,7 +7998,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             "a healthy credential must stay silent in the recording console"
         )
         XCTAssertGreaterThanOrEqual(
-            realtimeConsole
+            languageEditor
                 .components(separatedBy: "NotebookRealtimeControlLayoutPolicy.minimumInteractiveTarget")
                 .count - 1,
             1,

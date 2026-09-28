@@ -209,10 +209,16 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertFalse(contents.contains("event.eventType"))
         XCTAssertFalse(contents.contains("tab.builtinKind"))
         XCTAssertFalse(contents.contains("home.workspace.error_format"))
-        let quickCaptureRecovery = try XCTUnwrap(home.range(
-            of: "await CommunityInviteSession.shared.settleRealtimeSession(usedSeconds: 0)"
+        // Starting — and recovering an invite reservation when a start fails —
+        // happens once, in the command center every Record button uses.
+        let commands = try String(
+            contentsOf: root.appendingPathComponent("Capture/CaptureCommandCenter.swift"),
+            encoding: .utf8
+        )
+        let quickCaptureRecovery = try XCTUnwrap(commands.range(
+            of: "await invite.settleRealtimeSession(usedSeconds: 0)"
         ))
-        let quickCaptureErrorDetail = try XCTUnwrap(home.range(
+        let quickCaptureErrorDetail = try XCTUnwrap(commands.range(
             of: "detail: error.localizedDescription"
         ))
         XCTAssertLessThan(

@@ -107,8 +107,16 @@ final class MenuBarRuntimeStoreTests: XCTestCase {
             .appendingPathComponent("ZuTalk", isDirectory: true)
         let source = root.appendingPathComponent("ZuTalkApp.swift")
         let contents = try String(contentsOf: source, encoding: .utf8)
+        let commands = try String(
+            contentsOf: root.appendingPathComponent("Capture/CaptureCommandCenter.swift"),
+            encoding: .utf8
+        )
 
-        XCTAssertTrue(contents.contains("openActiveNotebookForCapture"))
+        // Shortcuts and menus go through the one command center, which sends
+        // an already-running recording back to its topic instead of starting
+        // a second one.
+        XCTAssertTrue(contents.contains("CaptureCommandCenter.shared"))
+        XCTAssertTrue(commands.contains("openActiveNotebookForCapture"))
         XCTAssertFalse(contents.contains("session.start("))
         XCTAssertFalse(contents.contains("session.stop("))
     }

@@ -416,10 +416,12 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
     }
 
     func testServiceSettingsSeparateCredentialStorageFromNotebookEgress() throws {
+        // Saving a key and sending audio are two different things; the notice
+        // says so, and says exactly when audio does leave.
         let expectedEgressNotices = [
-            "en": "Saving a key does not grant new data sharing. Each Notebook must authorize remote processing separately. Work that a Notebook already authorized and left waiting for a credential may resume only after the key is durably saved and loaded.",
-            "zh-Hans": "保存密钥不会授予新的数据外发权限。每个 Notebook 仍须单独授权远端处理；若某项后台任务此前已获该 Notebook 授权，只是在等待凭据，它可能在密钥持久保存并成功加载后继续。",
-            "ja": "キーを保存するだけで新たなデータ送信が許可されることはありません。各 Notebook でリモート処理を個別に許可する必要があります。Notebook がすでに許可し、認証情報待ちになっていたバックグラウンド処理は、キーが永続的に保存され読み込まれた後に再開する場合があります。",
+            "en": "Saving a key sends nothing by itself. Audio goes to Soniox only for recordings with live captions on, or when you ask for a refined transcript.",
+            "zh-Hans": "保存密钥本身不会发送任何数据。只有开了实时字幕的录音，或你手动请求的精修转录，才会把音频发给 Soniox。",
+            "ja": "キーを保存しただけでは何も送信されません。音声が Soniox に送られるのは、リアルタイム字幕をオンにした録音か、高精度文字起こしを依頼したときだけです。",
         ]
         let requiredKeys = [
             "settings.services.title",
