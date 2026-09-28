@@ -10,8 +10,10 @@ final class DocumentEditorExportEntryTests: XCTestCase {
         XCTAssertTrue(source.contains(".sheet(isPresented: $isShowingExportSheet, onDismiss:"))
         XCTAssertTrue(source.contains("exportingSessionId ?? effectiveSessionId"))
         XCTAssertTrue(source.contains("ExportSheet(sessionId: sessionId)"))
-        XCTAssertTrue(source.contains("tray.and.arrow.up"))
-        XCTAssertTrue(source.contains(".disabled(sessionId == nil)"))
+        // Export sits in the recording's ⋯ menu, beside sharing and its files.
+        XCTAssertTrue(source.contains("Button(action: onExport)"))
+        XCTAssertTrue(source.contains("editor.export.menu"))
+        XCTAssertTrue(source.contains("private var recordingMenu: some View"))
     }
 
     private static func loadDocumentEditorPage() throws -> String {
@@ -96,27 +98,36 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains("let isTopicContext: Bool"))
         XCTAssertTrue(source.contains("if isTopicContext {\n                        ResourcesTabButton("))
         XCTAssertTrue(source.contains("if isTopicContext, captureSettingsNotebookId != nil"))
-        XCTAssertTrue(source.contains("return tab.displayType != .asyncTranscript"))
+        // A topic shows its own notes and nothing of a recording's; a
+        // recording shows its transcripts and never the topic's notes.
+        XCTAssertTrue(source.contains("return tab.displayType == .manualNote"))
         XCTAssertTrue(source.contains("return tab.displayType != .manualNote"))
-        XCTAssertTrue(source.contains("if isTopicContext == false,"))
+        XCTAssertTrue(source.contains("isTopicContext == false && sessionId != nil"))
         XCTAssertTrue(source.contains("topicID: route?.notebookID"))
     }
 
-    func testEverySessionExposesFourPurposeBuiltTabs() throws {
+    /// A recording's page: Transcript and Notes as tabs; live or refined as a
+    /// switch beside them; its files and settings behind ⋯ (a tab only while
+    /// open, so a tab always says where you are).
+    func testEveryRecordingHasTranscriptAndNotesWithTheRestBehindItsMenu() throws {
         let source = try Self.loadDocumentEditorPage()
 
-        let transcriptTabs = try XCTUnwrap(source.range(of: "ForEach(visibleTabs)"))
+        let transcriptTab = try XCTUnwrap(source.range(of: ".accessibilityIdentifier(\"session.tab.transcript\")"))
         let notesTab = try XCTUnwrap(source.range(of: "title: String(localized: \"session.tab.notes\")"))
         let settingsTab = try XCTUnwrap(source.range(of: "title: String(localized: \"session.tab.settings\")"))
+        XCTAssertTrue(source.contains("title: String(localized: \"session.tab.transcript\")"))
 
-        XCTAssertTrue(source.contains("session.tab.notes"))
-        XCTAssertTrue(source.contains("session.tab.settings"))
         XCTAssertTrue(source.contains("accessibilityIdentifier: \"session.tab.notes\""))
         XCTAssertTrue(source.contains("accessibilityIdentifier: \"session.tab.settings\""))
+        XCTAssertTrue(source.contains("if sessionSupplementarySurface == .settings {"))
+        XCTAssertTrue(source.contains("TranscriptVersionSwitch("))
+        XCTAssertTrue(source.contains("session.transcript.live_version"))
+        XCTAssertTrue(source.contains("session.transcript.refined_version"))
+        XCTAssertTrue(source.contains("Button(action: onSelectSessionSettings)"))
         XCTAssertTrue(source.contains("BlockNoteEditorView(sessionId: sessionId)"))
         XCTAssertTrue(source.contains("SessionSettingsView("))
         XCTAssertTrue(source.contains("sessionSupplementarySurface == nil"))
-        XCTAssertLessThan(transcriptTabs.lowerBound, notesTab.lowerBound)
+        XCTAssertLessThan(transcriptTab.lowerBound, notesTab.lowerBound)
         XCTAssertLessThan(notesTab.lowerBound, settingsTab.lowerBound)
     }
 

@@ -814,6 +814,20 @@ struct SessionResourceSettingsView: View {
                             )
                         }
                     }
+                    if item.audio == .destroyed {
+                        Button {
+                            AudioDestructionVerification.verify(sessionId: sessionId)
+                        } label: {
+                            Image(systemName: "checkmark.shield")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        .frame(width: 28, height: 28)
+                        .help(String(localized: "resources.audio.verify"))
+                        .accessibilityLabel(String(localized: "resources.audio.verify"))
+                        .accessibilityIdentifier("session.settings.audio.verify.\(sessionId)")
+                    }
                 }
 
                 resourceRow(
@@ -1085,16 +1099,6 @@ struct NotebookResourcesView: View {
                                 onOpen: { destination in
                                     onOpenResource(item.id, destination)
                                 },
-                                onDestroyAudio: {
-                                    if viewModel.destroyAudio(sessionId: item.id) == false {
-                                        ToastCenter.shared.error(
-                                            String(localized: "resources.audio.destroy.failed")
-                                        )
-                                    }
-                                },
-                                onVerifyAudioDestruction: {
-                                    verifyAudioDestruction(sessionId: item.id)
-                                },
                                 onMove: {
                                     movingSession = item
                                 },
@@ -1215,7 +1219,6 @@ struct NotebookResourcesView: View {
             // While anything records, its controls are in the recording bar
             // above; a second Record here could only fail.
             if capture.isCaptureActive == false {
-                CaptionsChoiceChip()
                 Button(action: onStartCapture) {
                     Label(
                         commands.isStarting
@@ -1438,38 +1441,6 @@ struct NotebookResourcesView: View {
 
     /// User-facing "prove it": recompute the receipt, report it, and reveal
     /// the audio storage folder in Finder so the user can look for themselves.
-    private func verifyAudioDestruction(sessionId: String) {
-        guard let report = viewModel.verifyAudioDestruction(sessionId: sessionId) else {
-            ToastCenter.shared.error(String(localized: "resources.audio.verify.failed"))
-            return
-        }
-
-        let clean = report.filesRemaining == 0
-            && report.keyDeleted
-            && report.deleteErrors.isEmpty
-        if clean {
-            ToastCenter.shared.success(
-                String(localized: "resources.audio.verify.ok"),
-                detail: String(
-                    format: String(localized: "resources.audio.verify.ok.detail"),
-                    Int(report.chunksDeleted)
-                )
-            )
-        } else {
-            ToastCenter.shared.warning(
-                String(localized: "resources.audio.verify.residue"),
-                detail: String(
-                    format: String(localized: "resources.audio.verify.residue.detail"),
-                    Int(report.filesRemaining)
-                )
-            )
-        }
-
-        NSWorkspace.shared.activateFileViewerSelecting(
-            [URL(fileURLWithPath: CoreClient.defaultDataDir(), isDirectory: true)]
-        )
-    }
-
     private func resourceMessage(
         icon: String,
         title: String,
@@ -1498,15 +1469,11 @@ private struct NotebookResourceBlock: View {
     let isSelected: Bool
     let onToggleSelection: () -> Void
     let onOpen: (NotebookResourceDestination) -> Void
-    let onDestroyAudio: () -> Void
-    let onVerifyAudioDestruction: () -> Void
     let onMove: () -> Void
     let onMoveToTrash: () -> Void
 
-    @State private var isConfirmingAudioDestroy = false
     @State private var isConfirmingTrash = false
     @State private var isRenaming = false
-    @State private var isShowingFiles = false
     @FocusState private var isPrimaryFocused: Bool
 
     var body: some View {
@@ -1561,9 +1528,15 @@ private struct NotebookResourceBlock: View {
                             title: item.title.isEmpty ? item.preview : item.title
                         )
                     } label: {
-                        Label(String(localized: "share.recording.menu"), systemImage: "person.2")
+                        Label(String(localized: "share.recording.menu"), systemImage: "square.and.arrow.up")
                     }
                     .disabled(item.isRecording)
+                    // 音频、两份转录稿、销毁音频与核验:在录音自己的页面上。
+                    Button {
+                        MainNavigationStore.shared.openSession(item.id, surface: .settings)
+                    } label: {
+                        Label(String(localized: "session.menu.settings"), systemImage: "slider.horizontal.3")
+                    }
                     Divider()
                     // 录音进行中删不了(Core 软删与彻底删除都拒绝)。
                     // 禁用 + 一句原因,比给一个必然失败的按钮诚实。
@@ -1600,76 +1573,13 @@ private struct NotebookResourceBlock: View {
                 .accessibilityIdentifier("resources.menu.\(item.id)")
             }
 
-            DisclosureGroup(isExpanded: $isShowingFiles) {
-                VStack(spacing: Spacing.xs) {
-                    resourceBar(
-                        title: String(localized: "resources.audio_export"),
-                        icon: "waveform",
-                        status: item.audio,
-                        detail: audioDetail,
-                        onOpen: item.audio == .ready ? { onOpen(.audio) } : nil
-                    ) {
-                        if item.audio == .ready {
-                            Button {
-                                isConfirmingAudioDestroy = true
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.signalRed)
-                            }
-                            .buttonStyle(.plain)
-                            .frame(width: 28, height: 28)
-                            .help(String(localized: "resources.audio.destroy"))
-                            .accessibilityLabel(String(localized: "resources.audio.destroy"))
-                            .accessibilityIdentifier("resources.audio.destroy.\(item.id)")
-                        }
-                        if item.audio == .destroyed {
-                            Button(action: onVerifyAudioDestruction) {
-                                Image(systemName: "checkmark.shield")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.textSecondary)
-                            }
-                            .buttonStyle(.plain)
-                            .frame(width: 28, height: 28)
-                            .help(String(localized: "resources.audio.verify"))
-                            .accessibilityLabel(String(localized: "resources.audio.verify"))
-                            .accessibilityIdentifier("resources.audio.verify.\(item.id)")
-                        }
-                    }
-                    resourceBar(
-                        title: String(localized: "resources.realtime"),
-                        icon: "captions.bubble",
-                        status: item.realtimeTranscript,
-                        onOpen: { onOpen(.realtimeTranscript) }
-                    )
-                    resourceBar(
-                        title: String(localized: "resources.async"),
-                        icon: "text.document",
-                        status: item.asyncTranscript,
-                        onOpen: { onOpen(.asyncTranscript) }
-                    )
-                }
-                .padding(.top, Spacing.sm)
-            } label: {
-                // What exists for this recording, named — three bare dots
-                // used to stand for audio, live and refined transcript.
-                HStack(spacing: Spacing.sm) {
-                    Text(String(localized: "topic.session.files_and_status"))
-                        .font(.bodySM)
-                        .foregroundColor(.textSecondary)
-                    Spacer()
-                    resourceSummaryChip(String(localized: "resources.summary.audio"), status: item.audio)
-                    resourceSummaryChip(String(localized: "resources.summary.live"), status: item.realtimeTranscript)
-                    resourceSummaryChip(String(localized: "resources.summary.refined"), status: item.asyncTranscript)
-                }
-            }
-            .disabled(isSelectionMode)
         }
-        .padding(Spacing.md)
-        .background(Color.bgElevated.opacity(0.3))
+        .padding(.horizontal, Spacing.md)
+        .padding(.vertical, Spacing.xsm)
+        .background(Color.bgElevated.opacity(0.18))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.sm)
-                .strokeBorder(Color.borderGhost.opacity(0.5), lineWidth: Stroke.thin)
+                .strokeBorder(Color.borderGhost.opacity(0.45), lineWidth: Stroke.thin)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .sheet(isPresented: $isRenaming) {
@@ -1681,21 +1591,6 @@ private struct NotebookResourceBlock: View {
             ) { title in
                 LibraryCommands.renameRecording(id: item.id, to: title)
             }
-        }
-        .confirmationDialog(
-            String(
-                format: String(localized: "resources.audio.destroy.confirm_title"),
-                displayTitle
-            ),
-            isPresented: $isConfirmingAudioDestroy,
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "resources.audio.destroy.confirm_button"), role: .destructive) {
-                onDestroyAudio()
-            }
-            Button(String(localized: "common.cancel"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "resources.audio.destroy.confirm_message"))
         }
         .confirmationDialog(
             String(
@@ -1719,14 +1614,14 @@ private struct NotebookResourceBlock: View {
         HStack(alignment: .top, spacing: Spacing.md) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(timeOnly)
-                    .font(.titleMD)
-                    .foregroundColor(.textPrimary)
+                    .font(.bodyMedium)
+                    .foregroundColor(.textSecondary)
                     .monospacedDigit()
                 Text(dateOnly)
                     .font(.caption)
                     .foregroundColor(.textTertiary)
             }
-            .frame(width: 112, alignment: .leading)
+            .frame(width: 96, alignment: .leading)
 
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 RecordingRowText(
@@ -1770,20 +1665,6 @@ private struct NotebookResourceBlock: View {
         }
     }
 
-    private func resourceSummaryChip(_ title: String, status: NotebookResourceStatus) -> some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(statusColor(status))
-                .frame(width: 6, height: 6)
-            Text(title)
-        }
-        .font(.bodySM)
-        .foregroundColor(.textSecondary)
-        .help("\(title): \(statusText(status))")
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("\(title), \(statusText(status))"))
-    }
-
     private var metadataParts: [String] {
         var parts: [String] = []
         if let duration = RecordingPresentation.duration(ms: item.durationMs) {
@@ -1807,71 +1688,6 @@ private struct NotebookResourceBlock: View {
         return nil
     }
 
-    private func resourceBar(
-        title: String,
-        icon: String,
-        status: NotebookResourceStatus,
-        detail: String? = nil,
-        onOpen: (() -> Void)?,
-        @ViewBuilder actions: () -> some View = { EmptyView() }
-    ) -> some View {
-        HStack(spacing: Spacing.sm) {
-            Button(action: { onOpen?() }) {
-                HStack(spacing: Spacing.sm) {
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.textSecondary)
-                        .frame(width: 18)
-
-                    Text(title)
-                        .font(.bodySM)
-                        .foregroundColor(.textPrimary)
-
-                    if let detail {
-                        Text(detail)
-                            .font(.caption)
-                            .foregroundColor(.textTertiary)
-                    }
-
-                    Spacer()
-
-                    Circle()
-                        .fill(statusColor(status))
-                        .frame(width: 6, height: 6)
-                    Text(statusText(status))
-                        .font(.caption)
-                        .foregroundColor(statusColor(status))
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(onOpen == nil)
-            .accessibilityLabel("\(title), \(statusText(status))")
-
-            actions()
-        }
-        .padding(.horizontal, Spacing.md)
-        .padding(.vertical, Spacing.sm)
-        .background(Color.bgRoot.opacity(0.45))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-    }
-
-    private var audioDetail: String? {
-        switch item.audio {
-        case .unknown: nil
-        case .ready: String(localized: "resources.audio.saved")
-        case .missing: String(localized: "resources.audio.not_saved")
-        case .destroyed:
-            item.audioDestroyedAt.map {
-                String(
-                    format: String(localized: "resources.audio.destroyed_at"),
-                    $0.formatted(date: .abbreviated, time: .shortened)
-                )
-            }
-        case .pending, .empty, .failed: nil
-        }
-    }
-
     private var timeOnly: String { item.createdAt.formatted(date: .omitted, time: .shortened) }
     private var dateOnly: String { item.createdAt.formatted(date: .abbreviated, time: .omitted) }
 
@@ -1881,13 +1697,6 @@ private struct NotebookResourceBlock: View {
             ?? String(localized: "resources.untitled_recording")
     }
 
-    private func statusText(_ status: NotebookResourceStatus) -> String {
-        NotebookResourceStatusPresentation.text(status)
-    }
-
-    private func statusColor(_ status: NotebookResourceStatus) -> Color {
-        NotebookResourceStatusPresentation.color(status)
-    }
 }
 
 /// Picks the notebook a recording moves to.
@@ -1960,5 +1769,44 @@ private struct MoveSessionSheet: View {
                 selectedNotebookId = first.id
             }
         }
+    }
+}
+
+/// 「证明给我看」:重算销毁回执,报告结果,并在访达里打开数据目录,让人
+/// 自己看一眼。录音的「文件与设置」里,音频销毁之后才出现。
+@MainActor
+enum AudioDestructionVerification {
+    static func verify(sessionId: String) {
+        guard let core = CoreClient.shared.core,
+              let report = try? core.getAudioDestructionReport(sessionId: sessionId)
+        else {
+            ToastCenter.shared.error(String(localized: "resources.audio.verify.failed"))
+            return
+        }
+
+        let clean = report.filesRemaining == 0
+            && report.keyDeleted
+            && report.deleteErrors.isEmpty
+        if clean {
+            ToastCenter.shared.success(
+                String(localized: "resources.audio.verify.ok"),
+                detail: String(
+                    format: String(localized: "resources.audio.verify.ok.detail"),
+                    Int(report.chunksDeleted)
+                )
+            )
+        } else {
+            ToastCenter.shared.warning(
+                String(localized: "resources.audio.verify.residue"),
+                detail: String(
+                    format: String(localized: "resources.audio.verify.residue.detail"),
+                    Int(report.filesRemaining)
+                )
+            )
+        }
+
+        NSWorkspace.shared.activateFileViewerSelecting(
+            [URL(fileURLWithPath: CoreClient.defaultDataDir(), isDirectory: true)]
+        )
     }
 }

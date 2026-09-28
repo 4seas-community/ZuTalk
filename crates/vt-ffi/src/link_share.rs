@@ -1039,6 +1039,18 @@ impl ZuTalkCore {
         links
     }
 
+    /// 所有还有效的录音链接,新的在前。设置里「共享」一节据此列出此刻
+    /// 在外面的一切,好让主持人一处看清、随手撤销。
+    pub fn all_recording_links(&self) -> Vec<FfiRecordingLink> {
+        let mut links: Vec<FfiRecordingLink> = self
+            .load_link_registry()
+            .iter()
+            .map(StoredLink::snapshot)
+            .collect();
+        links.sort_by(|a, b| b.created_at_epoch.cmp(&a.created_at_epoch));
+        links
+    }
+
     /// 撤销一条录音链接:服务端当场删掉内容,链接从此打不开。走网络。
     pub fn revoke_recording_link(&self, room_id: String) -> Result<(), CoreError> {
         let mut links = self.load_link_registry();
@@ -1495,9 +1507,12 @@ mod tests {
         assert!(vt_crypto::decrypt_chunk(&sealed, &stranger.0).is_err());
 
         assert_eq!(core.recording_links("session-a".into()), vec![link.clone()]);
+        assert_eq!(core.all_recording_links(), vec![link.clone()]);
+        assert!(core.recording_links("session-other".into()).is_empty());
         core.revoke_recording_link(link.room_id.clone()).unwrap();
         assert_eq!(service.status(&core, &room_id).0, 404, "撤销即删");
         assert!(core.recording_links("session-a".into()).is_empty());
+        assert!(core.all_recording_links().is_empty());
 
         // ── 直播 ──
         let live = core

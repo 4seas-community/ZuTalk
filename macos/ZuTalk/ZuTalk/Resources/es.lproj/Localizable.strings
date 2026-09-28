@@ -122,8 +122,7 @@
 "appearance.dark" = "Oscuro";
 
 /* General settings section */
-"settings.general.title" = "General";
-"settings.general.subtitle" = "Idioma y apariencia de toda la app.";
+"settings.general.subtitle" = "Idioma, apariencia y actualizaciones, además del repaso opcional de marcas y los atajos.";
 "settings.audio_input.title" = "Entrada de audio";
 "settings.audio_input.subtitle" = "Elige un micrófono, una interfaz de audio USB o una mesa reconocida por macOS.";
 "settings.audio_input.device" = "Dispositivo de entrada";
@@ -144,7 +143,7 @@
 "settings.audio_input.active_elsewhere" = "Hay otra grabación activa. Cambia la entrada desde su página de grabación.";
 "settings.audio_input.error.switch_unavailable" = "No se puede cambiar la entrada de audio durante otra transición de grabación. Inténtalo de nuevo en unos instantes.";
 "capture.toast.audio_input_switch_failed" = "No se pudo cambiar la entrada de audio";
-"settings.language.title" = "IDIOMA DE LA APP";
+"settings.language.title" = "Idioma de la app";
 "settings.language.hint" = "El idioma de las ventanas, los menús y los mensajes de ZuTalk.";
 "settings.language.restart_hint" = "El cambio se aplica por completo al reiniciar ZuTalk.";
 "settings.appearance.title" = "APARIENCIA";
@@ -171,8 +170,6 @@
 
 /* Recording settings */
 
-"editor.export.title" = "Exportar grabación";
-"editor.export.hint" = "Exportar esta grabación como ZIP";
 "editor.export.no_session" = "No hay ninguna grabación para exportar";
 "doc.scratchpad" = "Notas personales";
 
@@ -181,12 +178,8 @@
 
 /* Settings sidebar section rawValues (localized names) */
 "settings.section.general_name" = "General";
-"settings.section.services_name" = "Servicios y API";
-"settings.section.shortcuts_name" = "Atajos";
 
 /* Settings sidebar groups */
-"settings.group.services" = "CONEXIONES";
-"settings.group.general" = "GENERAL";
 
 /* Settings — API panels (Voice / AI) */
 "settings.credentials.enter_key" = "Ingrese la clave de API";
@@ -253,7 +246,6 @@
 "settings.credentials.error.runtime_cleanup_failed" = "El entorno de ejecución de la credencial del proveedor no se pudo limpiar de forma segura. Reinicie ZuTalk o repare el servicio local de la app antes de usar proveedores remotos.";
 
 /* Settings — Services & API */
-"settings.services.title" = "Servicios y API";
 "settings.services.subtitle" = "Administre las claves de servicio. Si una grabación tiene subtítulos en directo —lo que envía su audio a Soniox— se elige con el interruptor junto a cada botón Grabar.";
 "settings.services.connection.title" = "Conexión del servicio";
 "settings.services.connection.subtitle" = "ZuTalk actualmente solo es compatible con Soniox.";
@@ -314,7 +306,7 @@
 /* Toast — Document editor */
 
 /* Sidebar (main window) */
-"sidebar.home" = "Inicio";
+"sidebar.home" = "Todas las grabaciones";
 "sidebar.topics" = "Temas";
 "sidebar.trash" = "Papelera";
 "sidebar.tab.editor" = "Editor";
@@ -376,13 +368,8 @@
 "home.workspace.load_failed.title" = "Tema no disponible";
 "home.workspace.load_failed.description" = "Sus datos existentes no se han modificado. Intente cargarlos de nuevo.";
 "home.workspace.retry" = "Reintentar";
-"home.notebook.current" = "TEMA ACTUAL";
 "home.notebook.new" = "Nuevo tema";
 "home.notebook.new.help" = "Crear y nombrar un tema";
-"home.notebook.none" = "Sin tema";
-"home.notebook.switch" = "Cambiar de tema";
-"home.notebook.description" = "Grabe, siga transcripciones multilingües y escriba notas en un solo lugar.";
-"home.notebook.description.detail" = "Grabe en cualquier momento y asigne la grabación a un tema más tarde.";
 "home.notebook.local_first" = "Guardado en este Mac";
 "home.library.title" = "Temas";
 "home.library.subtitle" = "Cada tema tiene un espacio propio para grabaciones, transcripciones y notas compartidas.";
@@ -392,10 +379,6 @@
 "topics.search.placeholder" = "Buscar temas";
 "topics.search.empty.title" = "No se encontraron temas";
 "topics.search.empty.description" = "Prueba con otro término de búsqueda o crea un nuevo tema.";
-"home.notebook.open" = "Abrir tema";
-"home.capture.return" = "Volver a la captura";
-"home.capture.owner_here" = "Pertenece al tema seleccionado";
-"home.capture.owner_elsewhere" = "Pertenece a otro tema";
 "home.no_notebook.title" = "Aún no hay temas";
 "home.no_notebook.description" = "Puede grabar directamente desde arriba. La grabación queda Sin tema hasta que cree uno para reunir entrevistas relacionadas.";
 "home.first_use.step1.title" = "Crear un tema";
@@ -728,7 +711,6 @@
 "capture.settings.subtitle.quick_capture" = "Los cambios se guardan automáticamente como ajustes predeterminados para la próxima grabación rápida desde Inicio. La entrada de audio se comparte en este Mac.";
 "capture.settings.tab" = "Ajustes";
 "capture.settings.tab_hint" = "Abrir los ajustes de grabación, idioma y subtítulos.";
-"capture.settings.footer.realtime" = "Los idiomas y el modo en vivo se eligen en la pestaña «Transcripción en vivo».";
 "capture.settings.active_locked" = "Hay una grabación activa. El idioma, el contexto y la retención están bloqueados; la entrada de audio aún se puede cambiar.";
 "capture.settings.autosave.loading" = "Cargando ajustes…";
 "capture.settings.autosave.saving" = "Guardando…";
@@ -757,7 +739,7 @@
 "capture.realtime.controls.current_title" = "Configuración de la grabación actual";
 "capture.realtime.controls.profile_group" = "Configuración de grabación en tiempo real";
 "capture.realtime.controls.review_context" = "Revisar referencias";
-"capture.settings.context.title" = "Referencias de transcripción";
+"capture.settings.context.title" = "Términos y contexto";
 "capture.settings.context.preview" = "Revisar lo que se usará";
 "capture.settings.context.preview_count" = "%lld caracteres";
 "capture.settings.context.empty" = "Aún no hay material de referencia utilizable.";
@@ -858,19 +840,18 @@
 "capture.settings.retention.high.detail" = "Eliminar el audio y su clave cuando una transcripción refinada solicitada explícitamente se complete correctamente.";
 "capture.settings.retention.maximum.title" = "Eliminar tras cualquier transcripción";
 "capture.settings.retention.maximum.detail" = "Eliminar el audio y su clave en cuanto existan datos de transcripción duraderos. Si no existe ninguna transcripción, conservar la única fuente para evitar la pérdida de datos.";
-"sidebar.knowledge" = "Conocimiento";
-"knowledge.title" = "Conocimiento";
+"knowledge.title" = "Términos y contexto";
 "knowledge.subtitle" = "Prepara el contexto, los nombres propios y las traducciones preferidas para la transcripción.";
-"knowledge.new" = "Nueva base de conocimiento";
+"knowledge.new" = "Nuevo conjunto";
 "knowledge.create" = "Crear";
-"knowledge.untitled" = "Base de conocimiento sin título";
-"knowledge.name" = "Nombre de la base de conocimiento";
-"knowledge.empty.title" = "Crea tu primera base de conocimiento";
+"knowledge.untitled" = "Conjunto sin título";
+"knowledge.name" = "Nombre";
+"knowledge.empty.title" = "Crea tu primer conjunto";
 "knowledge.empty.description" = "Reúne en un solo perfil el contexto, las personas, las organizaciones y los términos de un tema.";
 "knowledge.card.no_summary" = "Aún sin descripción";
 "knowledge.card.counts" = "%lld términos · %lld traducciones preferidas";
-"knowledge.back" = "Conocimiento";
-"knowledge.summary.placeholder" = "En una frase, ¿qué debería ayudar a reconocer esta base de conocimiento?";
+"knowledge.back" = "Términos y contexto";
+"knowledge.summary.placeholder" = "En una frase, ¿qué debe ayudar a reconocer este conjunto?";
 "knowledge.saved_revision" = "Guardado automáticamente · Revisión %lld";
 "knowledge.ai.improve" = "Mejorar con IA";
 "knowledge.ai.coming_soon" = "La mejora con IA es la próxima integración; por ahora el perfil completo se puede editar manualmente.";
@@ -894,13 +875,13 @@
 "knowledge.translation.source" = "Origen";
 "knowledge.translation.target" = "Traducción preferida";
 "knowledge.translation.add" = "Añadir traducción preferida";
-"capture.settings.context.current" = "Base de conocimiento actual";
+"capture.settings.context.current" = "En uso";
 "capture.settings.context.no_selection" = "Ninguna seleccionada";
 "capture.settings.context.choose" = "Cambiar";
 "knowledge.import_json" = "Importar JSON";
-"knowledge.import_json.message" = "Elige un archivo JSON de base de conocimiento de ZuTalk (.zutalk-pack.json).";
-"knowledge.import_json.done" = "Base de conocimiento importada";
-"knowledge.import_json.failed" = "No se pudo importar la base de conocimiento";
+"knowledge.import_json.message" = "Elige un archivo JSON de términos y contexto de ZuTalk (.zutalk-pack.json).";
+"knowledge.import_json.done" = "Importado";
+"knowledge.import_json.failed" = "No se pudo importar este archivo";
 
 /* 分享:点对点字幕与文档协同 */
 "share.audio_never" = "El audio nunca sale de este Mac: solo se ve texto.";
@@ -942,27 +923,22 @@
 "home.record.start" = "Iniciar grabación";
 "home.record.starting" = "Iniciando…";
 "home.record.unfiled" = "Grabación sin clasificar";
-"home.record.start_hint" = "Inicia ahora una grabación sin clasificar y organízala después.";
-"home.record.unavailable_hint" = "La grabación aún no está lista; vuelve a cargar el espacio e inténtalo de nuevo.";
 "home.record.languages.picker" = "Idiomas de grabación";
-"home.record.languages.picker_hint_format" = "Idiomas de grabación: %@. Haz clic para ajustar; máximo tres por grabación.";
 "home.catalog.unfiled_empty.title" = "No hay grabaciones sin clasificar";
 "home.catalog.unfiled_empty.description" = "Las nuevas grabaciones iniciadas desde Inicio aparecerán primero aquí.";
 "home.catalog.row.open_unfiled_hint" = "Abrir esta grabación sin clasificar";
-"home.record.return_active_format" = "Volver a la grabación · %@";
 "home.status.completed" = "Completada";
 "home.status.failed" = "Fallida";
 "home.status.imported" = "Importada";
 "home.status.interrupted" = "Interrumpida";
 "home.status.recording" = "Grabando";
 "home.status.transcribing" = "Transcribiendo";
-"resources.audio_export" = "Exportación de audio";
 "resources.status.unknown" = "Desconocido";
 "resources.move.destination" = "Tema de destino";
 "resources.status.empty" = "Vacío";
 "topic.notes.shared_document" = "Documento compartido del tema";
 "topic.notes.tab" = "Notas";
-"topic.capture_setup.tab" = "Configurar grabación";
+"topic.capture_setup.tab" = "Ajustes";
 "topic.capture_setup.tab.hint" = "Abrir los ajustes de grabación, idioma y subtítulos de este tema.";
 "topic.research.copy" = "Copiar transcripciones";
 "topic.research.copy.done" = "Material de investigación copiado";
@@ -983,7 +959,6 @@
 "topic.research.selection.title" = "Material de investigación";
 "topic.route.unavailable" = "Tema no disponible";
 "topic.route.unavailable_detail" = "No se pudo abrir el espacio de este tema. Vuelve al inicio e inténtalo de nuevo.";
-"topic.session.files_and_status" = "Archivos y estado";
 "topic.session.no_preview" = "Aún no hay vista previa de la transcripción";
 "topic.session.recording_label" = "Grabación en vivo";
 "topic.session.tab.live" = "Transcripción en vivo";
@@ -1082,12 +1057,8 @@
 "settings.shortcuts.mark" = "Marcar lo que acabas de oír";
 "settings.shortcuts.overlay_banner" = "Ventana de subtítulos: banda superior";
 "settings.shortcuts.overlay_maximize" = "Ventana de subtítulos: llenar o restaurar";
-"topic.workspace.live_tab" = "En directo";
 "topic.workspace.total_format" = "%@ en total";
 "recording.row.no_words" = "Todavía sin texto";
-"resources.summary.audio" = "Audio";
-"resources.summary.live" = "Directo";
-"resources.summary.refined" = "Refinada";
 "capture.transcript.presentation.label" = "Modo de lectura";
 
 "capture.live.idle_title" = "Todavía no se está grabando";
@@ -1183,3 +1154,58 @@
 "share.recording.revoke_confirm_body" = "El enlace deja de funcionar al instante y su contenido se borra del servidor. Las copias ya descargadas no se pueden recuperar.";
 "share.recording.revoke_failed" = "No se pudo revocar el enlace";
 "share.recording.revoked" = "Enlace revocado";
+
+"settings.sharing.title" = "Compartir";
+"settings.sharing.subtitle" = "Todos los enlaces que están fuera ahora mismo, en un solo lugar y listos para revocar.";
+"settings.sharing.out_now" = "Compartido ahora";
+"settings.sharing.nothing_out" = "Ahora no hay nada compartido.";
+"settings.sharing.how" = "Cómo compartir";
+"settings.sharing.how_live" = "Mientras grabas, elige «Compartir subtítulos» en la barra de grabación; la gente escanea el código para seguirlo.";
+"settings.sharing.how_recording" = "Para una grabación terminada, elige «Compartir…» en su menú para enviar una copia o crear un enlace de solo lectura de 24 horas.";
+"settings.sharing.untitled_recording" = "Una grabación";
+"settings.sharing.read_only_link" = "Enlace de solo lectura";
+
+"settings.section.captions_name" = "Subtítulos en directo";
+"settings.section.sharing_name" = "Compartir";
+
+"sidebar.record" = "Nueva grabación";
+"sidebar.recording_now" = "Grabando";
+"record.page.title" = "Nueva grabación";
+"record.page.subtitle" = "Subtítulos y traducciones mientras se habla, y una transcripción refinada después.";
+"record.page.topic" = "Tema";
+"record.page.topic_detail" = "Un tema aporta sus idiomas y términos. También puedes archivar la grabación después.";
+"record.page.captions" = "Subtítulos en directo";
+"record.page.captions_detail" = "Si está activado, el audio va a Soniox para transcribir y traducir en directo. Si no, solo se graba en este Mac.";
+"record.page.captions_needs_key" = "Para los subtítulos en directo hace falta una clave de Soniox o un código de invitación en Ajustes. Por ahora solo se graba.";
+"record.page.shortcut_hint" = "⌃⌥R inicia o detiene una grabación desde cualquier app.";
+"record.page.import" = "Importar audio";
+"record.page.import_detail" = "Convierte un archivo de audio en una transcripción, archivada en el tema de arriba.";
+"record.page.import_button" = "Elegir archivo…";
+"record.page.importing" = "Importando…";
+"record.page.recording_now" = "Grabando";
+"record.page.recording_now_detail" = "Una grabación a la vez. Pausa, Marcar y Detener están en la barra de grabación, arriba en la ventana.";
+"record.page.open_recording" = "Ir a la grabación";
+
+"capture.settings.context.manage" = "Editar términos y contexto…";
+
+"session.tab.transcript" = "Transcripción";
+"session.transcript.live_version" = "En directo";
+"session.transcript.refined_version" = "Refinada";
+"session.menu.hint" = "Compartir, exportar y ajustes de la grabación";
+"session.menu.settings" = "Archivos y ajustes…";
+"editor.export.menu" = "Exportar…";
+
+"trash.subtitle" = "Las grabaciones borradas esperan aquí. Restaurar las devuelve a su sitio; borrar definitivamente también elimina el audio cifrado y no se puede deshacer.";
+"trash.empty_all" = "Vaciar papelera…";
+"trash.empty_all.confirm_title_format" = "¿Borrar definitivamente estas %lld grabaciones?";
+"trash.empty_all.confirm_button" = "Borrar todo definitivamente";
+"trash.empty_all.partial_format" = "%lld no se pudieron borrar y siguen en la papelera.";
+"trash.toast.emptied" = "Papelera vaciada";
+"trash.load_failed" = "No se pudo cargar la papelera";
+"trash.restore_failed" = "No se pudo restaurar";
+"trash.purge_failed" = "No se pudo borrar definitivamente";
+"trash.action.restore_hint" = "Devolverla a su tema (o Sin tema)";
+
+"settings.general.welcome_again" = "Guía de bienvenida";
+"settings.general.welcome_again_hint" = "Repasarla: añadir una clave, permitir el micrófono y ver cómo se graba. Tus grabaciones y ajustes no cambian.";
+"settings.general.welcome_again_button" = "Ver de nuevo";

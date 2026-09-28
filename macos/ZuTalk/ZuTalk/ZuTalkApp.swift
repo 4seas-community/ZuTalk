@@ -30,8 +30,14 @@ struct ZuTalkApp: App {
             }
             // 主入口走 NSStatusItem(MenuBarCoordinator),屏蔽 SwiftUI 默认 File/New 菜单
             CommandGroup(replacing: .newItem) {}
-            // 主窗口改由 AppKit WindowSystem 持有,不再暴露空白 SwiftUI settings scene。
-            CommandGroup(replacing: .appSettings) {}
+            // 主窗口改由 AppKit WindowSystem 持有,不再暴露空白 SwiftUI settings scene;
+            // ⌘, 打开的是主窗口里的设置页(设置里的快捷键一览列着它)。
+            CommandGroup(replacing: .appSettings) {
+                Button(String(localized: "sidebar.tab.settings") + "…") {
+                    WindowCommandRouter.shared.requestOpenSettings()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
             // 屏蔽 Format 菜单 ⌘B/⌘I/⌘U 的默认 toggleBold:/toggleItalic:。
             // 富文本编辑器已拆除(笔记走大纲编辑器,无格式化),保留屏蔽
             // 避免出现一排对纯文本行无效的系统菜单项。
@@ -298,18 +304,18 @@ extension Notification.Name {
 
 /// Minimal MVP 主窗口：Home、Trash、Notebook editor 与 Settings。
 enum MainTab: String, CaseIterable {
+    case record
     case home
     case topics
-    case knowledge
     case trash
     case editor
     case config
 
     var label: String {
         switch self {
+        case .record:     return "RECORD"
         case .home:       return "HOME"
         case .topics:     return "TOPICS"
-        case .knowledge:  return "KNOWLEDGE"
         case .trash:      return "TRASH"
         case .editor:     return "EDITOR"
         case .config:     return "CONFIG"

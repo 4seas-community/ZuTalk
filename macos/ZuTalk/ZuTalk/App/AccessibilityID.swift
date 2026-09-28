@@ -48,15 +48,15 @@ enum AccessibilityID {
 
     // MARK: - Main Window
 
-    /// HOME 主入口。
+    /// 开始录音(录音中是「正在录音」)。
+    static let mainTabRecord = "main.tab.record"
+
+    /// 全部录音。
     static let mainTabLibrary = "main.tab.library"
     static let mainTabHome    = "main.tab.library"
     static let mainTabTopics  = "main.tab.topics"
 
-    /// Knowledge profiles used to prepare transcription context.
-    static let mainTabKnowledge = "main.tab.knowledge"
-
-    /// 侧边栏底部 Settings icon
+    /// 设置
     static let mainTabConfig = "main.tab.config"
 
     /// Trash

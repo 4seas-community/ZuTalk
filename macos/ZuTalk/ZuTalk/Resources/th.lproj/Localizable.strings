@@ -122,8 +122,7 @@
 "appearance.dark" = "มืด";
 
 /* General settings section */
-"settings.general.title" = "ทั่วไป";
-"settings.general.subtitle" = "ภาษาและลักษณะที่ปรากฏของทั้งแอป";
+"settings.general.subtitle" = "ภาษา รูปลักษณ์ และการอัปเดต รวมถึงการเกลาเครื่องหมาย (ไม่บังคับ) และปุ่มลัด";
 "settings.audio_input.title" = "อินพุตเสียง";
 "settings.audio_input.subtitle" = "เลือกไมโครโฟน อินเทอร์เฟซเสียง USB หรือมิกเซอร์ที่ macOS รู้จัก";
 "settings.audio_input.device" = "อุปกรณ์อินพุต";
@@ -171,8 +170,6 @@
 
 /* Recording settings */
 
-"editor.export.title" = "ส่งออกการบันทึก";
-"editor.export.hint" = "ส่งออกการบันทึกนี้เป็นไฟล์ ZIP";
 "editor.export.no_session" = "ไม่มีการบันทึกให้ส่งออก";
 "doc.scratchpad" = "โน้ตส่วนตัว";
 
@@ -181,12 +178,8 @@
 
 /* Settings sidebar section rawValues (localized names) */
 "settings.section.general_name" = "ทั่วไป";
-"settings.section.services_name" = "บริการและ API";
-"settings.section.shortcuts_name" = "แป้นพิมพ์ลัด";
 
 /* Settings sidebar groups */
-"settings.group.services" = "การเชื่อมต่อ";
-"settings.group.general" = "ทั่วไป";
 
 /* Settings — API panels (Voice / AI) */
 "settings.credentials.enter_key" = "ป้อนคีย์ API";
@@ -253,7 +246,6 @@
 "settings.credentials.error.runtime_cleanup_failed" = "ไม่สามารถล้างรันไทม์ของข้อมูลรับรองผู้ให้บริการได้อย่างปลอดภัย เริ่ม ZuTalk ใหม่หรือซ่อมแซมบริการแอปในเครื่องก่อนใช้ผู้ให้บริการระยะไกล";
 
 /* Settings — Services & API */
-"settings.services.title" = "บริการและ API";
 "settings.services.subtitle" = "จัดการคีย์บริการ การบันทึกจะมีคำบรรยายสดหรือไม่ (ซึ่งจะส่งเสียงไปยัง Soniox) เลือกได้ด้วยสวิตช์ข้างปุ่มบันทึกแต่ละปุ่ม";
 "settings.services.connection.title" = "การเชื่อมต่อบริการ";
 "settings.services.connection.subtitle" = "ขณะนี้ ZuTalk รองรับเฉพาะ Soniox เท่านั้น";
@@ -314,7 +306,7 @@
 /* Toast — Document editor */
 
 /* Sidebar (main window) */
-"sidebar.home" = "หน้าแรก";
+"sidebar.home" = "การบันทึกทั้งหมด";
 "sidebar.topics" = "หัวข้อ";
 "sidebar.trash" = "ถังขยะ";
 "sidebar.tab.editor" = "ตัวแก้ไข";
@@ -376,13 +368,8 @@
 "home.workspace.load_failed.title" = "หัวข้อไม่พร้อมใช้งาน";
 "home.workspace.load_failed.description" = "ข้อมูลเดิมของคุณไม่มีการเปลี่ยนแปลง ลองโหลดอีกครั้ง";
 "home.workspace.retry" = "ลองอีกครั้ง";
-"home.notebook.current" = "หัวข้อปัจจุบัน";
 "home.notebook.new" = "หัวข้อใหม่";
 "home.notebook.new.help" = "สร้างและตั้งชื่อหัวข้อ";
-"home.notebook.none" = "ไม่มีหัวข้อ";
-"home.notebook.switch" = "สลับหัวข้อ";
-"home.notebook.description" = "บันทึกเสียง ติดตามบทถอดเสียงหลายภาษา และเขียนโน้ตในที่เดียว";
-"home.notebook.description.detail" = "บันทึกได้ทุกเมื่อ แล้วค่อยนำไปจัดเข้าหัวข้อภายหลัง";
 "home.notebook.local_first" = "บันทึกไว้บน Mac เครื่องนี้";
 "home.library.title" = "หัวข้อ";
 "home.library.subtitle" = "แต่ละหัวข้อมีพื้นที่ทำงานสำหรับการบันทึก บทถอดเสียง และโน้ตที่ใช้ร่วมกัน";
@@ -392,10 +379,6 @@
 "topics.search.placeholder" = "ค้นหาหัวข้อ";
 "topics.search.empty.title" = "ไม่พบหัวข้อ";
 "topics.search.empty.description" = "ลองใช้คำค้นหาอื่นหรือสร้างหัวข้อใหม่";
-"home.notebook.open" = "เปิดหัวข้อ";
-"home.capture.return" = "กลับไปที่การบันทึก";
-"home.capture.owner_here" = "เป็นของหัวข้อที่เลือกอยู่";
-"home.capture.owner_elsewhere" = "เป็นของหัวข้ออื่น";
 "home.no_notebook.title" = "ยังไม่มีหัวข้อ";
 "home.no_notebook.description" = "คุณเริ่มบันทึกจากปุ่มด้านบนได้ทันที ไฟล์จะอยู่ใน ไม่มีหัวข้อ จนกว่าจะสร้างหัวข้อเพื่อเชื่อมการสัมภาษณ์ที่เกี่ยวข้อง";
 "home.first_use.step1.title" = "สร้างหัวข้อ";
@@ -728,7 +711,6 @@
 "capture.settings.subtitle.quick_capture" = "ระบบจะบันทึกการเปลี่ยนแปลงอัตโนมัติเป็นค่าเริ่มต้นสำหรับการบันทึกด่วนครั้งถัดไปจากหน้าหลัก อินพุตเสียงใช้ร่วมกันทั้ง Mac เครื่องนี้";
 "capture.settings.tab" = "การตั้งค่า";
 "capture.settings.tab_hint" = "เปิดการตั้งค่าการบันทึก ภาษา และคำบรรยาย";
-"capture.settings.footer.realtime" = "เลือกภาษาและโหมดเรียลไทม์ได้ในแท็บบทถอดเสียงสด";
 "capture.settings.active_locked" = "กำลังบันทึกอยู่ การตั้งค่าภาษา บริบท และการเก็บรักษาถูกตรึงไว้ แต่ยังสลับอินพุตเสียงได้";
 "capture.settings.autosave.loading" = "กำลังโหลดการตั้งค่า…";
 "capture.settings.autosave.saving" = "กำลังบันทึก…";
@@ -757,7 +739,7 @@
 "capture.realtime.controls.current_title" = "การกำหนดค่าการบันทึกปัจจุบัน";
 "capture.realtime.controls.profile_group" = "การกำหนดค่าการบันทึกเรียลไทม์";
 "capture.realtime.controls.review_context" = "ตรวจทานข้อมูลอ้างอิง";
-"capture.settings.context.title" = "ข้อมูลอ้างอิงสำหรับการถอดเสียง";
+"capture.settings.context.title" = "คำเฉพาะและบริบท";
 "capture.settings.context.preview" = "ตรวจทานสิ่งที่จะถูกใช้";
 "capture.settings.context.preview_count" = "%lld ตัวอักษร";
 "capture.settings.context.empty" = "ยังไม่มีข้อมูลอ้างอิงที่ใช้ได้";
@@ -858,19 +840,18 @@
 "capture.settings.retention.high.detail" = "ลบไฟล์เสียงและคีย์ของมันหลังการถอดเสียงแบบละเอียดที่ร้องขอไว้อย่างชัดแจ้งสำเร็จ";
 "capture.settings.retention.maximum.title" = "ลบหลังได้บทถอดเสียงใด ๆ";
 "capture.settings.retention.maximum.detail" = "ลบไฟล์เสียงและคีย์ของมันทันทีที่มีข้อมูลบทถอดเสียงถาวร หากยังไม่มีบทถอดเสียง จะเก็บแหล่งข้อมูลเดียวที่มีไว้เพื่อป้องกันข้อมูลสูญหาย";
-"sidebar.knowledge" = "ความรู้";
-"knowledge.title" = "ฐานความรู้";
+"knowledge.title" = "คำเฉพาะและบริบท";
 "knowledge.subtitle" = "เตรียมบริบท ชื่อเฉพาะ และคำแปลที่ต้องการไว้สำหรับการถอดเสียง";
-"knowledge.new" = "สร้างฐานความรู้ใหม่";
+"knowledge.new" = "สร้างชุดข้อมูลใหม่";
 "knowledge.create" = "สร้าง";
-"knowledge.untitled" = "ฐานความรู้ไม่มีชื่อ";
-"knowledge.name" = "ชื่อฐานความรู้";
-"knowledge.empty.title" = "สร้างฐานความรู้แรกของคุณ";
+"knowledge.untitled" = "ชุดข้อมูลไม่มีชื่อ";
+"knowledge.name" = "ชื่อชุดข้อมูล";
+"knowledge.empty.title" = "สร้างชุดข้อมูลแรก";
 "knowledge.empty.description" = "รวมบริบท บุคคล องค์กร และคำศัพท์ของหัวข้อหนึ่งไว้ในโปรไฟล์เดียว";
 "knowledge.card.no_summary" = "ยังไม่มีคำอธิบาย";
 "knowledge.card.counts" = "คำศัพท์ %lld คำ · คำแปลที่ต้องการ %lld รายการ";
-"knowledge.back" = "ฐานความรู้";
-"knowledge.summary.placeholder" = "อธิบายสั้น ๆ ว่าฐานความรู้นี้ควรช่วยให้ระบบรู้จักอะไร";
+"knowledge.back" = "คำเฉพาะและบริบท";
+"knowledge.summary.placeholder" = "อธิบายในประโยคเดียวว่าชุดข้อมูลนี้ช่วยให้จำอะไรได้";
 "knowledge.saved_revision" = "บันทึกอัตโนมัติแล้ว · รุ่นที่ %lld";
 "knowledge.ai.improve" = "ปรับปรุงด้วย AI";
 "knowledge.ai.coming_soon" = "การปรับปรุงด้วย AI จะเชื่อมต่อในขั้นถัดไป ตอนนี้แก้ไขโปรไฟล์ทั้งหมดเองได้";
@@ -894,13 +875,13 @@
 "knowledge.translation.source" = "ต้นฉบับ";
 "knowledge.translation.target" = "คำแปลที่ต้องการ";
 "knowledge.translation.add" = "เพิ่มคำแปลที่ต้องการ";
-"capture.settings.context.current" = "ฐานความรู้ปัจจุบัน";
+"capture.settings.context.current" = "ใช้อยู่";
 "capture.settings.context.no_selection" = "ยังไม่ได้เลือก";
 "capture.settings.context.choose" = "เปลี่ยน";
 "knowledge.import_json" = "นำเข้า JSON";
-"knowledge.import_json.message" = "เลือกไฟล์ JSON ฐานความรู้ ZuTalk (.zutalk-pack.json)";
-"knowledge.import_json.done" = "นำเข้าฐานความรู้แล้ว";
-"knowledge.import_json.failed" = "นำเข้าฐานความรู้ไม่ได้";
+"knowledge.import_json.message" = "เลือกไฟล์ JSON คำเฉพาะและบริบทของ ZuTalk (.zutalk-pack.json)";
+"knowledge.import_json.done" = "นำเข้าแล้ว";
+"knowledge.import_json.failed" = "นำเข้าไฟล์นี้ไม่ได้";
 
 /* 分享:点对点字幕与文档协同 */
 "share.audio_never" = "เสียงไม่เคยออกจาก Mac เครื่องนี้ คนอื่นเห็นแค่ข้อความ";
@@ -942,27 +923,22 @@
 "home.record.start" = "เริ่มบันทึก";
 "home.record.starting" = "กำลังเริ่ม…";
 "home.record.unfiled" = "การบันทึกที่ยังไม่จัดหัวข้อ";
-"home.record.start_hint" = "เริ่มการบันทึกที่ยังไม่จัดหัวข้อทันที แล้วจัดภายหลัง";
-"home.record.unavailable_hint" = "การบันทึกยังไม่พร้อม โปรดโหลดพื้นที่ทำงานใหม่แล้วลองอีกครั้ง";
 "home.record.languages.picker" = "ภาษาที่ใช้บันทึก";
-"home.record.languages.picker_hint_format" = "ภาษาที่ใช้บันทึก: %@ คลิกเพื่อปรับ เลือกได้สูงสุดสามภาษาต่อครั้ง";
 "home.catalog.unfiled_empty.title" = "ไม่มีการบันทึกที่ยังไม่จัดหัวข้อ";
 "home.catalog.unfiled_empty.description" = "การบันทึกใหม่จากหน้าหลักจะแสดงที่นี่ก่อน";
 "home.catalog.row.open_unfiled_hint" = "เปิดการบันทึกที่ยังไม่จัดหัวข้อนี้";
-"home.record.return_active_format" = "กลับไปที่การบันทึก · %@";
 "home.status.completed" = "เสร็จสิ้น";
 "home.status.failed" = "ล้มเหลว";
 "home.status.imported" = "นำเข้าแล้ว";
 "home.status.interrupted" = "หยุดชะงัก";
 "home.status.recording" = "กำลังบันทึกเสียง";
 "home.status.transcribing" = "กำลังถอดเสียง";
-"resources.audio_export" = "ส่งออกไฟล์เสียง";
 "resources.status.unknown" = "ไม่ทราบ";
 "resources.move.destination" = "หัวข้อปลายทาง";
 "resources.status.empty" = "ไม่มีเนื้อหา";
 "topic.notes.shared_document" = "เอกสารที่ใช้ร่วมกันในหัวข้อ";
 "topic.notes.tab" = "โน้ต";
-"topic.capture_setup.tab" = "ตั้งค่าการบันทึก";
+"topic.capture_setup.tab" = "การตั้งค่า";
 "topic.capture_setup.tab.hint" = "เปิดการตั้งค่าการบันทึก ภาษา และคำบรรยายของหัวข้อนี้";
 "topic.research.copy" = "คัดลอกบทถอดเสียง";
 "topic.research.copy.done" = "คัดลอกชุดข้อมูลวิจัยแล้ว";
@@ -983,7 +959,6 @@
 "topic.research.selection.title" = "ชุดข้อมูลวิจัย";
 "topic.route.unavailable" = "ไม่สามารถเปิดหัวข้อได้";
 "topic.route.unavailable_detail" = "ไม่สามารถเปิดพื้นที่ทำงานของหัวข้อนี้ได้ กลับไปหน้าแรกแล้วลองอีกครั้ง";
-"topic.session.files_and_status" = "ไฟล์และสถานะ";
 "topic.session.no_preview" = "ยังไม่มีตัวอย่างบทถอดเสียง";
 "topic.session.recording_label" = "การบันทึกสด";
 "topic.session.tab.live" = "บทถอดเสียงสด";
@@ -1082,12 +1057,8 @@
 "settings.shortcuts.mark" = "ทำเครื่องหมายช่วงที่เพิ่งได้ยิน";
 "settings.shortcuts.overlay_banner" = "หน้าต่างคำบรรยาย: แถบเต็มความกว้างด้านบน";
 "settings.shortcuts.overlay_maximize" = "หน้าต่างคำบรรยาย: เต็มจอ / คืนค่า";
-"topic.workspace.live_tab" = "สด";
 "topic.workspace.total_format" = "รวม %@";
 "recording.row.no_words" = "ยังไม่มีข้อความ";
-"resources.summary.audio" = "เสียง";
-"resources.summary.live" = "สด";
-"resources.summary.refined" = "ปรับปรุง";
 "capture.transcript.presentation.label" = "รูปแบบการอ่าน";
 
 "capture.live.idle_title" = "ยังไม่ได้เริ่มบันทึก";
@@ -1183,3 +1154,58 @@
 "share.recording.revoke_confirm_body" = "ลิงก์จะใช้ไม่ได้ทันทีและเนื้อหาจะถูกลบจากเซิร์ฟเวอร์ สำเนาที่ดาวน์โหลดไปแล้วเรียกคืนไม่ได้";
 "share.recording.revoke_failed" = "เพิกถอนลิงก์ไม่ได้";
 "share.recording.revoked" = "เพิกถอนลิงก์แล้ว";
+
+"settings.sharing.title" = "การแชร์";
+"settings.sharing.subtitle" = "ลิงก์ทั้งหมดที่แชร์ออกไปตอนนี้อยู่ที่นี่ เพิกถอนได้ทุกเมื่อ";
+"settings.sharing.out_now" = "กำลังแชร์";
+"settings.sharing.nothing_out" = "ตอนนี้ไม่มีลิงก์ที่แชร์อยู่";
+"settings.sharing.how" = "วิธีแชร์";
+"settings.sharing.how_live" = "ระหว่างบันทึก กด “แชร์คำบรรยาย” ในแถบบันทึก คนในงานสแกนโค้ดเพื่อดูคำบรรยายสดได้";
+"settings.sharing.how_recording" = "การบันทึกที่เสร็จแล้ว เลือก “แชร์…” ในเมนูเพื่อส่งสำเนาหรือสร้างลิงก์อ่านอย่างเดียว 24 ชั่วโมง";
+"settings.sharing.untitled_recording" = "การบันทึก";
+"settings.sharing.read_only_link" = "ลิงก์อ่านอย่างเดียว";
+
+"settings.section.captions_name" = "คำบรรยายสด";
+"settings.section.sharing_name" = "การแชร์";
+
+"sidebar.record" = "เริ่มบันทึก";
+"sidebar.recording_now" = "กำลังบันทึก";
+"record.page.title" = "เริ่มบันทึก";
+"record.page.subtitle" = "คำบรรยายและคำแปลขึ้นระหว่างพูด และทำบทถอดความฉบับเกลาได้หลังบันทึก";
+"record.page.topic" = "หัวข้อ";
+"record.page.topic_detail" = "หัวข้อจะใช้ภาษาและคำเฉพาะของหัวข้อนั้น จะจัดเข้าหัวข้อทีหลังก็ได้";
+"record.page.captions" = "คำบรรยายสด";
+"record.page.captions_detail" = "เมื่อเปิด เสียงจะส่งไปยัง Soniox เพื่อถอดความและแปลสด เมื่อปิดจะบันทึกบน Mac เครื่องนี้เท่านั้น";
+"record.page.captions_needs_key" = "ต้องใส่คีย์ Soniox หรือรหัสเชิญในการตั้งค่าก่อนจึงจะมีคำบรรยายสด ตอนนี้บันทึกได้อย่างเดียว";
+"record.page.shortcut_hint" = "กด ⌃⌥R ในแอปใดก็ได้เพื่อเริ่มหรือหยุดบันทึก";
+"record.page.import" = "นำเข้าเสียง";
+"record.page.import_detail" = "แปลงไฟล์เสียงที่มีอยู่เป็นบทถอดความ และเก็บไว้ในหัวข้อที่เลือกด้านบน";
+"record.page.import_button" = "เลือกไฟล์…";
+"record.page.importing" = "กำลังนำเข้า…";
+"record.page.recording_now" = "กำลังบันทึก";
+"record.page.recording_now_detail" = "บันทึกได้ทีละรายการ ปุ่มหยุดชั่วคราว ทำเครื่องหมาย และหยุด อยู่ในแถบบันทึกด้านบนหน้าต่าง";
+"record.page.open_recording" = "ไปที่การบันทึก";
+
+"capture.settings.context.manage" = "แก้ไขคำเฉพาะและบริบท…";
+
+"session.tab.transcript" = "บทถอดความ";
+"session.transcript.live_version" = "แบบสด";
+"session.transcript.refined_version" = "ฉบับเกลา";
+"session.menu.hint" = "แชร์ ส่งออก และการตั้งค่าการบันทึก";
+"session.menu.settings" = "ไฟล์และการตั้งค่า…";
+"editor.export.menu" = "ส่งออก…";
+
+"trash.subtitle" = "การบันทึกที่ลบแล้วอยู่ที่นี่ กู้คืนแล้วจะกลับไปที่เดิม ลบถาวรจะลบเสียงที่เข้ารหัสไปด้วยและย้อนกลับไม่ได้";
+"trash.empty_all" = "ล้างถังขยะ…";
+"trash.empty_all.confirm_title_format" = "ลบการบันทึก %lld รายการนี้ถาวรไหม";
+"trash.empty_all.confirm_button" = "ลบทั้งหมดถาวร";
+"trash.empty_all.partial_format" = "มี %lld รายการที่ลบไม่ได้และยังอยู่ในถังขยะ";
+"trash.toast.emptied" = "ล้างถังขยะแล้ว";
+"trash.load_failed" = "โหลดถังขยะไม่ได้";
+"trash.restore_failed" = "กู้คืนไม่ได้";
+"trash.purge_failed" = "ลบถาวรไม่ได้";
+"trash.action.restore_hint" = "ใส่กลับไปที่หัวข้อเดิม (หรือไม่มีหัวข้อ)";
+
+"settings.general.welcome_again" = "คำแนะนำเริ่มต้น";
+"settings.general.welcome_again_hint" = "ดูอีกครั้ง: ใส่คีย์ อนุญาตไมโครโฟน และดูวิธีบันทึก การบันทึกและการตั้งค่าเดิมยังอยู่ครบ";
+"settings.general.welcome_again_button" = "ดูอีกครั้ง";

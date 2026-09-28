@@ -122,8 +122,7 @@
 "appearance.dark" = "深色";
 
 /* General settings section */
-"settings.general.title" = "常规";
-"settings.general.subtitle" = "整个 App 的语言与外观设置。";
+"settings.general.subtitle" = "语言、外观、更新，以及可选的整理标记和快捷键。";
 "settings.audio_input.title" = "音频输入";
 "settings.audio_input.subtitle" = "选择 macOS 已识别的麦克风、USB 声卡或调音台。";
 "settings.audio_input.device" = "输入设备";
@@ -144,7 +143,7 @@
 "settings.audio_input.active_elsewhere" = "另一场录音正在进行，请到当前录音页面切换输入。";
 "settings.audio_input.error.switch_unavailable" = "当前正在进行其他录音状态切换，请稍后再切换音频输入。";
 "capture.toast.audio_input_switch_failed" = "切换音频输入失败";
-"settings.language.title" = "APP 语言";
+"settings.language.title" = "App 语言";
 "settings.language.hint" = "ZuTalk 的窗口、菜单和提示所使用的语言。";
 "settings.language.restart_hint" = "重启 ZuTalk 后完全生效。";
 "settings.appearance.title" = "外观";
@@ -171,8 +170,6 @@
 
 /* Recording settings */
 
-"editor.export.title" = "导出录音";
-"editor.export.hint" = "将这个录音导出为 ZIP";
 "editor.export.no_session" = "没有可导出的录音";
 "doc.scratchpad" = "个人笔记";
 
@@ -180,13 +177,9 @@
 "onboarding.brand.subtitle" = "多语言沟通与会议 · LIVE MULTILINGUAL MEETINGS";
 
 /* Settings sidebar section rawValues */
-"settings.section.general_name" = "常规";
-"settings.section.services_name" = "服务与 API";
-"settings.section.shortcuts_name" = "快捷键";
+"settings.section.general_name" = "通用";
 
 /* Settings sidebar groups */
-"settings.group.services" = "服务连接";
-"settings.group.general" = "常规";
 
 /* Settings — API panels */
 "settings.credentials.enter_key" = "输入 API 密钥";
@@ -253,7 +246,6 @@
 "settings.credentials.error.runtime_cleanup_failed" = "无法安全清除运行中的服务凭据。使用远端服务前，请重启 ZuTalk 或修复本地应用服务。";
 
 /* Settings — Services & API */
-"settings.services.title" = "服务与 API";
 "settings.services.subtitle" = "管理服务密钥。录音时要不要开实时字幕（会把音频发给 Soniox），在每个录音按钮旁边的开关里决定。";
 "settings.services.connection.title" = "服务连接";
 "settings.services.connection.subtitle" = "ZuTalk 目前只支持 Soniox。";
@@ -314,7 +306,7 @@
 /* Toast — Enhance / Editor */
 
 /* Sidebar (main window) */
-"sidebar.home" = "主页";
+"sidebar.home" = "全部录音";
 "sidebar.topics" = "主题";
 "sidebar.trash" = "回收站";
 "sidebar.tab.editor" = "编辑器";
@@ -376,13 +368,8 @@
 "home.workspace.load_failed.title" = "主题暂时不可用";
 "home.workspace.load_failed.description" = "现有数据没有被更改，请重试载入。";
 "home.workspace.retry" = "重试";
-"home.notebook.current" = "当前主题";
 "home.notebook.new" = "新建主题";
 "home.notebook.new.help" = "创建并命名一个主题";
-"home.notebook.none" = "没有主题";
-"home.notebook.switch" = "切换主题";
-"home.notebook.description" = "在一个地方录音、查看多语言转录和写笔记。";
-"home.notebook.description.detail" = "随时可以开始录音，之后再归入主题。";
 "home.notebook.local_first" = "保存在本机";
 "home.library.title" = "主题";
 "home.library.subtitle" = "每个主题都有自己的工作区，用来整理录音、转录与共享笔记。";
@@ -392,10 +379,6 @@
 "topics.search.placeholder" = "搜索主题";
 "topics.search.empty.title" = "未找到主题";
 "topics.search.empty.description" = "请尝试其他关键词，或新建一个主题。";
-"home.notebook.open" = "打开主题";
-"home.capture.return" = "返回录音现场";
-"home.capture.owner_here" = "归属于当前选择的主题";
-"home.capture.owner_elsewhere" = "归属于另一个主题";
 "home.no_notebook.title" = "还没有主题";
 "home.no_notebook.description" = "可以先从上方直接录音，录音会留在“未归入主题”；需要串联多次访谈时再创建主题。";
 "home.first_use.step1.title" = "先创建主题";
@@ -728,7 +711,6 @@
 "capture.settings.subtitle.quick_capture" = "更改自动保存，作为首页下一次快速录音的默认设置；音频输入在这台 Mac 上共享。";
 "capture.settings.tab" = "设置";
 "capture.settings.tab_hint" = "打开录音、语言与字幕设置。";
-"capture.settings.footer.realtime" = "语言与实时模式在「实时转录」标签中选择。";
 "capture.settings.active_locked" = "录音正在进行：语言、参考资料和音频保留设置已冻结；音频输入仍可切换。";
 "capture.settings.autosave.loading" = "正在加载设置…";
 "capture.settings.autosave.saving" = "正在保存…";
@@ -757,7 +739,7 @@
 "capture.realtime.controls.current_title" = "本次录音配置";
 "capture.realtime.controls.profile_group" = "实时录音配置";
 "capture.realtime.controls.review_context" = "查看参考资料";
-"capture.settings.context.title" = "识别参考资料";
+"capture.settings.context.title" = "专有词与背景";
 "capture.settings.context.preview" = "查看将使用的内容";
 "capture.settings.context.preview_count" = "共 %lld 个字符";
 "capture.settings.context.empty" = "还没有可用的参考资料。";
@@ -858,19 +840,18 @@
 "capture.settings.retention.high.detail" = "显式精修转录成功后，删除音频及其密钥。";
 "capture.settings.retention.maximum.title" = "任一转录完成后删除";
 "capture.settings.retention.maximum.detail" = "只要已有可持久重建的转录事实，就删除音频及其密钥；若还没有转录，则保留唯一源文件以避免数据丢失。";
-"sidebar.knowledge" = "知识库";
-"knowledge.title" = "知识库";
+"knowledge.title" = "专有词与背景";
 "knowledge.subtitle" = "为转录准备背景、专有词和固定译法。";
-"knowledge.new" = "新建知识库";
+"knowledge.new" = "新建资料";
 "knowledge.create" = "创建";
-"knowledge.untitled" = "未命名知识库";
-"knowledge.name" = "知识库名称";
-"knowledge.empty.title" = "建立第一个知识库";
+"knowledge.untitled" = "未命名资料";
+"knowledge.name" = "资料名称";
+"knowledge.empty.title" = "建立第一份资料";
 "knowledge.empty.description" = "把一个主题的背景、人物、机构和术语整理在同一张档案中。";
 "knowledge.card.no_summary" = "尚未填写说明";
 "knowledge.card.counts" = "%lld 个专有词 · %lld 条固定译法";
-"knowledge.back" = "知识库";
-"knowledge.summary.placeholder" = "用一句话说明这个知识库帮助识别什么";
+"knowledge.back" = "专有词与背景";
+"knowledge.summary.placeholder" = "用一句话说明这份资料帮助识别什么";
 "knowledge.saved_revision" = "已自动保存 · 版本 %lld";
 "knowledge.ai.improve" = "让 AI 完善";
 "knowledge.ai.coming_soon" = "AI 完善将在下一步接入；现在可以手动编辑完整档案。";
@@ -894,13 +875,13 @@
 "knowledge.translation.source" = "原文";
 "knowledge.translation.target" = "固定译法";
 "knowledge.translation.add" = "添加固定译法";
-"capture.settings.context.current" = "当前知识库";
+"capture.settings.context.current" = "当前使用";
 "capture.settings.context.no_selection" = "未选择";
 "capture.settings.context.choose" = "切换";
 "knowledge.import_json" = "导入 JSON";
-"knowledge.import_json.message" = "选择一个 ZuTalk 知识库 JSON 文件（.zutalk-pack.json）。";
-"knowledge.import_json.done" = "知识库已导入";
-"knowledge.import_json.failed" = "无法导入知识库";
+"knowledge.import_json.message" = "选择一个 ZuTalk 资料 JSON 文件（.zutalk-pack.json）。";
+"knowledge.import_json.done" = "资料已导入";
+"knowledge.import_json.failed" = "无法导入这份资料";
 
 /* 分享:点对点字幕与文档协同 */
 "share.audio_never" = "音频从不离开这台 Mac，别人只看得到文字。";
@@ -942,27 +923,22 @@
 "home.record.start" = "开始录音";
 "home.record.starting" = "正在开始…";
 "home.record.unfiled" = "未归入主题";
-"home.record.start_hint" = "立即开始一段未归入主题的录音，之后可再归档。";
-"home.record.unavailable_hint" = "录音入口尚未就绪；请重试加载工作区。";
 "home.record.languages.picker" = "录音语言";
-"home.record.languages.picker_hint_format" = "录音语言：%@。点击调整，每场最多三种。";
 "home.catalog.unfiled_empty.title" = "没有未归入主题的录音";
 "home.catalog.unfiled_empty.description" = "从首页开始的新录音会先显示在这里。";
 "home.catalog.row.open_unfiled_hint" = "打开这条未归入主题的录音";
-"home.record.return_active_format" = "返回正在录音 · %@";
 "home.status.completed" = "已完成";
 "home.status.failed" = "失败";
 "home.status.imported" = "已导入";
 "home.status.interrupted" = "已中断";
 "home.status.recording" = "录音中";
 "home.status.transcribing" = "转录中";
-"resources.audio_export" = "导出音频";
 "resources.status.unknown" = "未知";
 "resources.move.destination" = "目标主题";
 "resources.status.empty" = "无内容";
 "topic.notes.shared_document" = "主题共享文档";
 "topic.notes.tab" = "笔记";
-"topic.capture_setup.tab" = "录音设置";
+"topic.capture_setup.tab" = "设置";
 "topic.capture_setup.tab.hint" = "打开当前主题的录音、语言与字幕设置。";
 "topic.research.copy" = "复制转录资料";
 "topic.research.copy.done" = "研究资料已复制";
@@ -983,7 +959,6 @@
 "topic.research.selection.title" = "研究资料";
 "topic.route.unavailable" = "无法打开主题";
 "topic.route.unavailable_detail" = "这个主题的工作区暂时不可用，请返回首页后重试。";
-"topic.session.files_and_status" = "文件与状态";
 "topic.session.no_preview" = "暂无转录预览";
 "topic.session.recording_label" = "实时录音";
 "topic.session.tab.live" = "实时转录";
@@ -1082,12 +1057,8 @@
 "settings.shortcuts.mark" = "标记刚才这一段";
 "settings.shortcuts.overlay_banner" = "字幕窗：顶部整宽字幕带";
 "settings.shortcuts.overlay_maximize" = "字幕窗：铺满 / 还原";
-"topic.workspace.live_tab" = "实时";
 "topic.workspace.total_format" = "共 %@";
 "recording.row.no_words" = "还没有文字";
-"resources.summary.audio" = "音频";
-"resources.summary.live" = "实时";
-"resources.summary.refined" = "精修";
 "capture.transcript.presentation.label" = "阅读方式";
 
 "capture.live.idle_title" = "还没开始录音";
@@ -1183,3 +1154,58 @@
 "share.recording.revoke_confirm_body" = "链接立即失效，内容从服务器上删除。已经下载的副本收不回。";
 "share.recording.revoke_failed" = "没能撤销链接";
 "share.recording.revoked" = "链接已撤销";
+
+"settings.sharing.title" = "共享";
+"settings.sharing.subtitle" = "此刻在外面的链接都在这里，可以随时撤销。";
+"settings.sharing.out_now" = "正在共享";
+"settings.sharing.nothing_out" = "现在没有任何链接在外面。";
+"settings.sharing.how" = "怎么共享";
+"settings.sharing.how_live" = "录音时，点录音条上的「共享字幕」，现场的人扫码就能看实时字幕。";
+"settings.sharing.how_recording" = "录好的录音，在它的菜单里选「共享…」：发送副本，或者生成 24 小时的只读链接。";
+"settings.sharing.untitled_recording" = "一段录音";
+"settings.sharing.read_only_link" = "只读链接";
+
+"settings.section.captions_name" = "实时字幕";
+"settings.section.sharing_name" = "共享";
+
+"sidebar.record" = "开始录音";
+"sidebar.recording_now" = "正在录音";
+"record.page.title" = "开始录音";
+"record.page.subtitle" = "边说边出字幕和翻译；录完还能整理成精修稿。";
+"record.page.topic" = "归入主题";
+"record.page.topic_detail" = "录进哪个主题，就用那个主题的语言和专有词。不归入也行，录完随时可以归档。";
+"record.page.captions" = "实时字幕";
+"record.page.captions_detail" = "开着时，音频会发给 Soniox 实时转写和翻译；关着只在本机录音。";
+"record.page.captions_needs_key" = "要实时字幕，先在设置里填 Soniox 密钥或社区邀请码。现在只能录音。";
+"record.page.shortcut_hint" = "在任何 App 里按 ⌃⌥R 也能开始或停止录音。";
+"record.page.import" = "导入音频";
+"record.page.import_detail" = "把已有的录音文件转成文字稿，放进上面选的主题。";
+"record.page.import_button" = "选择文件…";
+"record.page.importing" = "正在导入…";
+"record.page.recording_now" = "正在录音";
+"record.page.recording_now_detail" = "一次录一场。暂停、标记、停止都在窗口顶上的录音条里。";
+"record.page.open_recording" = "回到这场录音";
+
+"capture.settings.context.manage" = "编辑专有词与背景…";
+
+"session.tab.transcript" = "转录稿";
+"session.transcript.live_version" = "实时版";
+"session.transcript.refined_version" = "精修版";
+"session.menu.hint" = "共享、导出与录音设置";
+"session.menu.settings" = "录音文件与设置…";
+"editor.export.menu" = "导出…";
+
+"trash.subtitle" = "删掉的录音在这里。恢复就回到原来的地方；永久删除会连同加密音频一起清掉，不能撤销。";
+"trash.empty_all" = "清空回收站…";
+"trash.empty_all.confirm_title_format" = "永久删除这 %lld 场录音？";
+"trash.empty_all.confirm_button" = "全部永久删除";
+"trash.empty_all.partial_format" = "有 %lld 场没能删掉，还留在回收站里。";
+"trash.toast.emptied" = "回收站已清空";
+"trash.load_failed" = "读不出回收站";
+"trash.restore_failed" = "没能恢复";
+"trash.purge_failed" = "没能永久删除";
+"trash.action.restore_hint" = "放回原来的主题（或未归入主题）";
+
+"settings.general.welcome_again" = "新手引导";
+"settings.general.welcome_again_hint" = "再走一遍：填密钥、授权麦克风、了解怎么录。已有的录音和设置不受影响。";
+"settings.general.welcome_again_button" = "再看一遍";

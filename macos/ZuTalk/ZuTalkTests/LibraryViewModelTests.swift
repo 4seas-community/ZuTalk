@@ -156,11 +156,7 @@ final class LibraryViewModelTests: XCTestCase {
         let topics = String(contents[topicsStart.lowerBound...])
 
         XCTAssertTrue(home.contains("HomeSessionCatalog("))
-        XCTAssertTrue(home.contains("if shouldShowSessionCatalog"))
         XCTAssertTrue(contents.contains("viewModel.isLoadingSessions"))
-        XCTAssertTrue(contents.contains("viewModel.sessionLoadError != nil"))
-        XCTAssertTrue(contents.contains("viewModel.sessions.isEmpty == false"))
-        XCTAssertTrue(contents.contains("viewModel.notebooks.isEmpty == false"))
         XCTAssertTrue(contents.contains("HomeTopicFilterBar"))
         XCTAssertTrue(contents.contains("viewModel.catalogGroupedSessions"))
         XCTAssertTrue(contents.contains("MainNavigationStore.shared.openSession(sessionId)"))
@@ -176,39 +172,37 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertTrue(topics.contains("topics.search"))
         XCTAssertTrue(topics.contains("topics.create"))
         XCTAssertTrue(topics.contains("topics.page"))
-        XCTAssertTrue(contents.contains("viewModel.notebooks"))
         XCTAssertTrue(contents.contains("MainNavigationStore.shared.openTopicWorkspace(notebookID: notebookId)"))
-        XCTAssertFalse(home.contains("onImportAudio"))
-        XCTAssertFalse(contents.contains("HomeImportAudioSheet"))
-        XCTAssertFalse(contents.contains("home.catalog.import"))
-        XCTAssertFalse(contents.contains("home.notebook.import"))
-        XCTAssertTrue(contents.contains("ActiveBilingualTranscriptStore.shared"))
-        XCTAssertTrue(contents.contains("HomeRecordingEntryPolicy.activeDestination"))
-        XCTAssertTrue(contents.contains("home.record.return_active_format"))
-        XCTAssertTrue(contents.contains("onReturnToActiveCapture: returnToActiveCapture"))
-        XCTAssertTrue(contents.contains("onStartRecording: startQuickRecording"))
-        XCTAssertTrue(contents.contains("viewModel.canStartQuickCapture"))
-        // Home starts through the same commands as every other surface, on
-        // the editor its language picker edits, with the captions choice
-        // shown beside the button.
-        XCTAssertTrue(contents.contains(
-            "commands.startQuickCapture(profileEditor: quickCaptureProfileEditor)"
-        ))
-        XCTAssertTrue(contents.contains("CaptionsChoiceChip()"))
-        XCTAssertFalse(contents.contains("NotebookCaptureStartCoordinator("))
-        XCTAssertTrue(contents.contains("home.record.start"))
         XCTAssertTrue(contents.contains("home.row.topic.unknown"))
         XCTAssertTrue(contents.contains("home.workspace.membership_unavailable"))
-        XCTAssertFalse(contents.contains("onRecordInTopic"))
         XCTAssertTrue(contents.contains("HomeWorkspaceFailureView"))
         XCTAssertTrue(contents.contains("HomeWorkspaceRefreshWarning"))
-        XCTAssertFalse(contents.contains("allowedContentTypes = [.audio]"))
         XCTAssertFalse(contents.contains("HomeRecentRecordingsSection"))
         XCTAssertFalse(contents.contains("HomeActivityHeatmap"))
         XCTAssertFalse(contents.contains("notebookEvents"))
         XCTAssertFalse(contents.contains("event.eventType"))
         XCTAssertFalse(contents.contains("tab.builtinKind"))
         XCTAssertFalse(contents.contains("home.workspace.error_format"))
+        XCTAssertFalse(contents.contains("NotebookCaptureStartCoordinator("))
+
+        // All recordings is a ledger. Recordings start on the one Record page,
+        // first in the sidebar: languages, topic and live captions are chosen
+        // there, and the start goes through the same commands as ⌃⌥R.
+        XCTAssertFalse(home.contains("home.record.start"))
+        XCTAssertFalse(home.contains("CaptionsChoiceChip()"))
+        XCTAssertFalse(home.contains("startQuickCapture"))
+        let record = try String(
+            contentsOf: root.appendingPathComponent("Pages/RecordStartPage.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(record.contains("commands.startQuickCapture(profileEditor: editor)"))
+        XCTAssertTrue(record.contains("commands.start(notebookId: notebookId, profileEditor: starter)"))
+        XCTAssertTrue(record.contains("CaptionsChoiceChip()"))
+        XCTAssertTrue(record.contains("CaptureLanguageEditor(editor: editor)"))
+        XCTAssertTrue(record.contains("home.record.start"))
+        XCTAssertTrue(record.contains("allowedContentTypes = [.audio]"))
+        XCTAssertTrue(record.contains("MainNavigationStore.shared.openLiveRecording()"))
+        XCTAssertFalse(record.contains("NotebookCaptureStartCoordinator("))
         // Starting — and recovering an invite reservation when a start fails —
         // happens once, in the command center every Record button uses.
         let commands = try String(
@@ -262,55 +256,6 @@ final class LibraryViewModelTests: XCTestCase {
                 )
             }
         }
-    }
-
-    func testHomeRecordingEntryReturnsToTheAuthoritativeActiveCaptureTopic() {
-        let topics = [
-            makeNotebook(id: "nb-active", title: "Oral History"),
-            makeNotebook(id: "nb-browsed", title: "Team Meetings"),
-        ]
-
-        XCTAssertEqual(
-            HomeRecordingEntryPolicy.activeDestination(
-                isCaptureActive: true,
-                captureNotebookId: "nb-active",
-                notebooks: topics
-            ),
-            HomeActiveCaptureDestination(
-                notebookId: "nb-active",
-                topicTitle: "Oral History"
-            )
-        )
-        XCTAssertNil(
-            HomeRecordingEntryPolicy.activeDestination(
-                isCaptureActive: false,
-                captureNotebookId: "nb-active",
-                notebooks: topics
-            ),
-            "without active capture, Home must expose the one-click recording action"
-        )
-    }
-
-    func testHomeRecordingEntryStillReturnsWhenTheActiveTopicTitleHasNotLoaded() {
-        XCTAssertEqual(
-            HomeRecordingEntryPolicy.activeDestination(
-                isCaptureActive: true,
-                captureNotebookId: "nb-active",
-                notebooks: []
-            ),
-            HomeActiveCaptureDestination(
-                notebookId: "nb-active",
-                topicTitle: nil
-            ),
-            "a workspace refresh failure must not hide the route back to an active capture"
-        )
-        XCTAssertNil(
-            HomeRecordingEntryPolicy.activeDestination(
-                isCaptureActive: true,
-                captureNotebookId: "  \n",
-                notebooks: []
-            )
-        )
     }
 
     func testQuickCaptureMembershipIsPresentedAsUnfiledUntilMovedToAResearchTopic() {

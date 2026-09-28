@@ -88,8 +88,9 @@ final class SubtitleOverlayCoordinator: ObservableObject {
 
         // 唯一的数据源是本机正在录的这一场。
         guard capture.isCaptureActive else {
+            // Nothing is recording: the window opens where one starts.
             WindowCommandRouter.shared.openMainWindow(detail: "subtitle-overlay.idle") {
-                MainNavigationStore.shared.openActiveNotebookForCapture()
+                MainNavigationStore.shared.select(tab: .record)
             }
             return
         }

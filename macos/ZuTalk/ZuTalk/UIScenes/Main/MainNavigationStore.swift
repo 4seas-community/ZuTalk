@@ -88,6 +88,13 @@ final class MainNavigationStore: ObservableObject {
     /// Where the page under the header sits — the topic, and for a
     /// recording which one — published by that page for the header's path.
     @Published var editorBreadcrumb: EditorBreadcrumb?
+    /// A recording opened straight onto its notes or its files, from a list
+    /// row's menu. The recording page applies it once it has loaded.
+    @Published var pendingSessionSurface: SessionSupplementarySurface?
+    /// The topic the Record page should have chosen when it opens — set by a
+    /// topic's own Record button, which leads there instead of starting a
+    /// second way.
+    @Published var recordTopicPreselection: String?
 
     private let activeNotebookIDProvider: @MainActor () -> String?
     private let captureRouteContextProvider: @MainActor () -> CaptureRouteContext
@@ -143,6 +150,26 @@ final class MainNavigationStore: ObservableObject {
 
     func openSettings() {
         select(tab: .config)
+    }
+
+    /// Settings, landing on one section — "add your own key" lands on live
+    /// captions rather than wherever settings was last left.
+    func openSettings(section: SettingsSection) {
+        SettingsRouter.shared.section = section
+        select(tab: .config)
+    }
+
+    /// The one place recordings start, with a topic already chosen.
+    func openRecordPage(topicID: String?) {
+        recordTopicPreselection = topicID
+        select(tab: .record)
+    }
+
+    /// The recording in progress, reached from the sidebar's first item. The
+    /// sidebar keeps that item highlighted while its live page is open.
+    func openLiveRecording() {
+        activePrimaryTab = .record
+        openActiveNotebookForCapture()
     }
 
     func navigateHome() {
@@ -367,6 +394,11 @@ final class MainNavigationStore: ObservableObject {
         )
     }
 
+    func openSession(_ sessionID: String, surface: SessionSupplementarySurface) {
+        pendingSessionSurface = surface
+        openSession(sessionID)
+    }
+
     func openSession(_ sessionID: String) {
         guard let core = coreProvider() else {
             ToastCenter.shared.error(
@@ -516,12 +548,12 @@ final class MainNavigationStore: ObservableObject {
 
     private func route(for tab: MainTab) -> MainRoute {
         switch tab {
+        case .record:
+            return .record
         case .home:
             return .home
         case .topics:
             return .topics
-        case .knowledge:
-            return .knowledge
         case .trash:
             return .trash
         case .editor:

@@ -26,21 +26,21 @@ struct EditorRoute: Equatable, Sendable {
 }
 
 enum MainRoute: Equatable {
+    case record
     case home
     case topics
-    case knowledge
     case trash
     case editor(route: EditorRoute, initialView: EditorInitialView)
     case settings
 
     var tab: MainTab {
         switch self {
+        case .record:
+            return .record
         case .home:
             return .home
         case .topics:
             return .topics
-        case .knowledge:
-            return .knowledge
         case .trash:
             return .trash
         case .editor:

@@ -11,18 +11,21 @@ import SwiftUI
 
 struct TrashPage: View {
     @StateObject private var viewModel = TrashViewModel()
+    @State private var isConfirmingEmpty = false
 
     var body: some View {
-        Group {
-            if viewModel.items.isEmpty {
-                EmptyState(
-                    icon: "trash",
-                    title: String(localized: "trash.empty.title"),
-                    description: String(localized: "trash.empty.desc")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                header
+
+                if viewModel.items.isEmpty {
+                    EmptyState(
+                        icon: "trash",
+                        title: String(localized: "trash.empty.title"),
+                        description: String(localized: "trash.empty.desc")
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 320)
+                } else {
                     LazyVStack(alignment: .leading, spacing: Spacing.xs) {
                         ForEach(viewModel.items) { item in
                             TrashRow(
@@ -32,16 +35,54 @@ struct TrashPage: View {
                             )
                         }
                     }
-                    .padding(.horizontal, Spacing.xl)
-                    .padding(.vertical, Spacing.lg)
                 }
             }
+            .frame(maxWidth: 1_080, alignment: .leading)
+            .padding(.horizontal, Spacing.xl)
+            .padding(.vertical, Spacing.lg)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
         .onAppear { viewModel.reload() }
         .onReceive(NotificationCenter.default.publisher(for: .zutalkSessionUpdated)) { _ in
             viewModel.reload()
+        }
+        .confirmationDialog(
+            String(format: String(localized: "trash.empty_all.confirm_title_format"), Int64(viewModel.items.count)),
+            isPresented: $isConfirmingEmpty,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "trash.empty_all.confirm_button"), role: .destructive) {
+                viewModel.purgeAll()
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "trash.purge.confirm_desc"))
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: Spacing.md) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text(String(localized: "sidebar.trash"))
+                    .font(.titleLG)
+                    .foregroundColor(.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                Text(String(localized: "trash.subtitle"))
+                    .font(.bodySM)
+                    .foregroundColor(.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: Spacing.md)
+            if viewModel.items.isEmpty == false {
+                Button(role: .destructive) {
+                    isConfirmingEmpty = true
+                } label: {
+                    Label(String(localized: "trash.empty_all"), systemImage: "trash.slash")
+                }
+                .accessibilityIdentifier("trash.empty_all")
+            }
         }
     }
 }
@@ -56,7 +97,7 @@ private final class TrashViewModel: ObservableObject {
             let infos = try core.listTrashedSessions()
             items = infos.map(LibraryViewModel.makeListItem)
         } catch {
-            ToastCenter.shared.error("Load trash failed", detail: "\(error)")
+            ToastCenter.shared.error(String(localized: "trash.load_failed"), detail: error.localizedDescription)
             items = []
         }
     }
@@ -69,7 +110,7 @@ private final class TrashViewModel: ObservableObject {
             ToastCenter.shared.info(String(localized: "trash.toast.restored"))
             NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
         } catch {
-            ToastCenter.shared.error("Restore failed", detail: "\(error)")
+            ToastCenter.shared.error(String(localized: "trash.restore_failed"), detail: error.localizedDescription)
         }
     }
 
@@ -80,7 +121,30 @@ private final class TrashViewModel: ObservableObject {
             items.removeAll { $0.id == id }
             ToastCenter.shared.info(String(localized: "trash.toast.purged"))
         } catch {
-            ToastCenter.shared.error("Purge failed", detail: "\(error)")
+            ToastCenter.shared.error(String(localized: "trash.purge_failed"), detail: error.localizedDescription)
+        }
+    }
+
+    /// Empties the trash one recording at a time, so one that can't be
+    /// deleted leaves the rest gone and says which remain.
+    func purgeAll() {
+        guard let core = CoreClient.shared.core else { return }
+        var failed = 0
+        for item in items {
+            do {
+                try core.purgeSession(sessionId: item.id)
+            } catch {
+                failed += 1
+            }
+        }
+        reload()
+        if failed == 0 {
+            ToastCenter.shared.info(String(localized: "trash.toast.emptied"))
+        } else {
+            ToastCenter.shared.error(
+                String(localized: "trash.purge_failed"),
+                detail: String(format: String(localized: "trash.empty_all.partial_format"), Int64(failed))
+            )
         }
     }
 }
@@ -95,69 +159,37 @@ private struct TrashRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Spacing.md) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(titleForDisplay)
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary.opacity(0.85))
-                    .lineLimit(1)
+            Text(session.createdAt.formatted(date: .abbreviated, time: .shortened))
+                .font(.bodySM)
+                .foregroundColor(.textSecondary)
+                .monospacedDigit()
+                .frame(width: 132, alignment: .leading)
 
-                if !session.preview.isEmpty {
-                    Text(session.preview)
-                        .font(.caption)
-                        .foregroundColor(.textSecondary.opacity(0.6))
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                HStack(spacing: 8) {
-                    Text(session.timeString)
-                        .font(.captionMedium)
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                RecordingRowText(
+                    title: RecordingPresentation.title(session.title),
+                    preview: session.preview,
+                    placeholder: String(localized: "home.row.preview.not_transcribed")
+                )
+                if metadata.isEmpty == false {
+                    Text(metadata)
+                        .font(.bodySM)
                         .foregroundColor(.textTertiary)
-                    if session.durationString != "00:00" {
-                        Text("·")
-                            .font(.captionMedium)
-                            .foregroundColor(.textTertiary)
-                        Text(session.durationString)
-                            .font(.captionMedium)
-                            .foregroundColor(.textTertiary)
-                    }
+                        .lineLimit(1)
                 }
             }
 
-            Spacer()
+            Spacer(minLength: Spacing.sm)
 
             HStack(spacing: Spacing.sm) {
                 Button(action: onRestore) {
-                    Label(
-                        String(localized: "trash.action.restore"),
-                        systemImage: "arrow.uturn.backward"
-                    )
-                    .labelStyle(.iconOnly)
-                    .foregroundColor(.brandAccent)
-                    .frame(width: 28, height: 28)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Radius.sm)
-                            .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
-                    )
+                    Label(String(localized: "trash.action.restore"), systemImage: "arrow.uturn.backward")
                 }
-                .buttonStyle(.plain)
-                .help(String(localized: "trash.action.restore"))
+                .help(String(localized: "trash.action.restore_hint"))
 
-                Button { showPurgeConfirm = true } label: {
-                    Label(
-                        String(localized: "trash.action.purge"),
-                        systemImage: "trash.slash"
-                    )
-                    .labelStyle(.iconOnly)
-                    .foregroundColor(.signalRed)
-                    .frame(width: 28, height: 28)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Radius.sm)
-                            .strokeBorder(Color.signalRed.opacity(0.3), lineWidth: 0.5)
-                    )
+                Button(role: .destructive) { showPurgeConfirm = true } label: {
+                    Label(String(localized: "trash.action.purge"), systemImage: "trash.slash")
                 }
-                .buttonStyle(.plain)
-                .help(String(localized: "trash.action.purge"))
                 .confirmationDialog(
                     String(localized: "trash.purge.confirm_title"),
                     isPresented: $showPurgeConfirm
@@ -172,22 +204,28 @@ private struct TrashRow: View {
             }
         }
         .padding(.horizontal, Spacing.md)
-        .padding(.vertical, Spacing.sm + 2)
-        .background(isHovering ? Color.bgElevated.opacity(0.25) : Color.clear)
+        .padding(.vertical, Spacing.xsm)
+        .background(Color.bgElevated.opacity(isHovering ? 0.34 : 0.18))
         .overlay(
-            Rectangle()
-                .fill(Color.borderGhost.opacity(0.12))
-                .frame(height: 0.5),
-            alignment: .bottom
+            RoundedRectangle(cornerRadius: Radius.sm)
+                .strokeBorder(Color.borderGhost.opacity(0.45), lineWidth: Stroke.thin)
         )
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .onHover { isHovering = $0 }
     }
 
-    private var titleForDisplay: String {
-        let trimmed = session.title.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty { return trimmed }
-        return "Untitled · \(session.id.prefix(6))"
+    private var metadata: String {
+        [
+            RecordingPresentation.duration(ms: session.durationMs),
+            RecordingPresentation.languageList(session.languageCodes).nilIfEmpty,
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 #if DEBUG

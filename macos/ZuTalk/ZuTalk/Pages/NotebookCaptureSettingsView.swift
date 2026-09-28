@@ -46,12 +46,13 @@ struct NotebookCaptureSettingsView: View {
     @ObservedObject private var engineStore = NotebookCaptureEnginePresentationStore.shared
     @ObservedObject private var inputDevices = AudioInputDeviceStore.shared
     let scope: NotebookCaptureSettingsScope
-    let onOpenRealtimeControls: () -> Void
     /// Session Settings owns the page-level scroller so its resources,
     /// editable defaults, and immutable snapshot remain one continuous page.
     /// Topic/quick-capture settings still use their standalone scroller.
     private let embeddedInParentScrollView: Bool
     @State private var isReviewingContext = false
+    /// 专有词与背景的编辑器(原来侧边栏的「知识库」)从用到它的地方打开。
+    @State private var isManagingKnowledge = false
     @State private var isLoadingContextPacks = true
     @State private var contextLoadError: String?
 
@@ -59,14 +60,12 @@ struct NotebookCaptureSettingsView: View {
         notebookId: String,
         editor: NotebookCaptureProfileEditorModel,
         scope: NotebookCaptureSettingsScope = .topic,
-        embeddedInParentScrollView: Bool = false,
-        onOpenRealtimeControls: @escaping () -> Void
+        embeddedInParentScrollView: Bool = false
     ) {
         self.notebookId = notebookId
         _editor = ObservedObject(wrappedValue: editor)
         self.scope = scope
         self.embeddedInParentScrollView = embeddedInParentScrollView
-        self.onOpenRealtimeControls = onOpenRealtimeControls
     }
 
     var body: some View {
@@ -110,17 +109,21 @@ struct NotebookCaptureSettingsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
             }
 
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                languagesSection
+                contextBrowserSection
+            }
+            .disabled(editor.canEdit == false)
+            .opacity(editor.canEdit ? 1 : 0.62)
+
             audioInputSection
 
             VStack(alignment: .leading, spacing: Spacing.lg) {
-                contextBrowserSection
                 postStopRemoteProcessingSection
                 retentionSection
             }
             .disabled(editor.canEdit == false)
             .opacity(editor.canEdit ? 1 : 0.62)
-
-            realtimeFooterLink
         }
         .frame(maxWidth: 820, alignment: .leading)
         .padding(Spacing.xl)
@@ -333,22 +336,20 @@ struct NotebookCaptureSettingsView: View {
         return nil
     }
 
-    private var realtimeFooterLink: some View {
-        Button(action: onOpenRealtimeControls) {
-            HStack(spacing: Spacing.xs) {
-                Image(systemName: "waveform.and.mic")
-                    .font(.system(size: 11, weight: .semibold))
-                Text(String(localized: "capture.settings.footer.realtime"))
-                    .fixedSize(horizontal: false, vertical: true)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
-            }
-            .font(.caption)
-            .foregroundColor(.textSecondary)
-            .contentShape(Rectangle())
+    /// 这个主题录音时说哪些语言。以前只能在主题的「实时」标签里改 ——
+    /// 一个看起来是「看直播」的地方;现在和主题的其余设置放在一起。
+    private var languagesSection: some View {
+        settingsCard(
+            title: String(localized: "home.record.languages.picker"),
+            icon: "character.bubble"
+        ) {
+            Text(String(localized: "capture.settings.languages.ordered_detail"))
+                .font(.caption)
+                .foregroundColor(.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            CaptureLanguageEditor(editor: editor)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(String(localized: "capture.settings.footer.realtime")))
+        .accessibilityIdentifier("capture.settings.languages")
     }
 
     @ViewBuilder
@@ -473,12 +474,21 @@ struct NotebookCaptureSettingsView: View {
             .background(Color.bgSunken.opacity(0.35))
             .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
 
-            Button(String(localized: "capture.settings.context.preview")) {
-                requestContextPreview()
+            HStack(spacing: Spacing.md) {
+                Button(String(localized: "capture.settings.context.manage")) {
+                    isManagingKnowledge = true
+                }
+                .accessibilityIdentifier("capture.settings.context.manage")
+                Button(String(localized: "capture.settings.context.preview")) {
+                    requestContextPreview()
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .disabled(selectedContextPack == nil)
             }
-            .buttonStyle(.plain)
-            .font(.caption)
-            .disabled(selectedContextPack == nil)
+            .sheet(isPresented: $isManagingKnowledge, onDismiss: loadContextBrowser) {
+                KnowledgeLibrarySheet()
+            }
 
             if isReviewingContext {
                 contextReview

@@ -6,32 +6,15 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = LibraryViewModel()
-    @ObservedObject private var activeCapture = ActiveBilingualTranscriptStore.shared
-    @ObservedObject private var commands = CaptureCommandCenter.shared
-    @State private var isCreatingNotebook = false
-    /// One editor instance serves both the Record button's language picker and
-    /// the start flow. Sharing it means a language chosen in the picker is the
-    /// language the recording starts with — the start path drains any queued
-    /// picker edits before it snapshots the profile — and the persisted
-    /// quick-capture profile is what makes the last selection the default.
-    @State private var quickCaptureProfileEditor: NotebookCaptureProfileEditorModel?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.xl) {
-                if shouldShowSessionCatalog {
-                    HomeSessionCatalog(
-                        viewModel: viewModel,
-                        onOpenSession: openSession,
-                        onOpenTopic: openNotebook,
-                        onStartRecording: startQuickRecording,
-                        isStartingQuickCapture: commands.isStarting,
-                        activeCaptureDestination: activeCaptureDestination,
-                        onReturnToActiveCapture: returnToActiveCapture,
-                        onCreateTopic: { isCreatingNotebook = true },
-                        quickCaptureLanguageEditor: quickCaptureProfileEditor
-                    )
-                }
+                HomeSessionCatalog(
+                    viewModel: viewModel,
+                    onOpenSession: openSession,
+                    onOpenTopic: openNotebook
+                )
             }
             .frame(maxWidth: 1_080, alignment: .leading)
             .padding(.horizontal, Spacing.xl)
@@ -39,23 +22,9 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(Color.bgRoot)
-        .sheet(isPresented: $isCreatingNotebook) {
-            HomeCreateNotebookSheet { title in
-                let created = viewModel.createNotebook(title: title)
-                if created, let notebookId = viewModel.activeNotebookId {
-                    // Enter the new Topic's Session workspace. Starting the
-                    // microphone remains a separate, explicit action there.
-                    DispatchQueue.main.async {
-                        openNotebook(notebookId)
-                    }
-                }
-                return created
-            }
-        }
         .onAppear {
             viewModel.loadSessions()
             viewModel.loadNotebookWorkspace()
-            syncQuickCaptureProfileEditor()
         }
         .onReceive(NotificationCenter.default.publisher(for: .zutalkSessionUpdated)) { _ in
             viewModel.loadSessions()
@@ -64,34 +33,6 @@ struct HomeView: View {
         .montereyOnChange(of: viewModel.searchText) { _, _ in
             viewModel.updateTranscriptSearch()
         }
-        .montereyOnChange(of: viewModel.quickCaptureNotebookId) { _, _ in
-            syncQuickCaptureProfileEditor()
-        }
-        .montereyOnChange(of: activeCapture.isCaptureActive) { _, isActive in
-            // A finished run may have advanced the profile revision (the start
-            // itself commits the realtime authorization). Editing was locked
-            // throughout, so reloading loses nothing and rebases the picker's
-            // CAS revision onto whatever the run left behind.
-            if isActive == false {
-                quickCaptureProfileEditor?.load()
-            }
-        }
-    }
-
-    private var shouldShowSessionCatalog: Bool {
-        viewModel.isLoadingSessions
-            || viewModel.sessionLoadError != nil
-            || viewModel.sessions.isEmpty == false
-            || viewModel.notebooks.isEmpty == false
-            || viewModel.canStartQuickCapture
-    }
-
-    private var activeCaptureDestination: HomeActiveCaptureDestination? {
-        HomeRecordingEntryPolicy.activeDestination(
-            isCaptureActive: activeCapture.isCaptureActive,
-            captureNotebookId: activeCapture.notebookId,
-            notebooks: viewModel.researchNotebooks
-        )
     }
 
     private func openNotebook(_ notebookId: String) {
@@ -102,40 +43,6 @@ struct HomeView: View {
     private func openSession(_ sessionId: String) {
         viewModel.selectedId = sessionId
         MainNavigationStore.shared.openSession(sessionId)
-    }
-
-    private func syncQuickCaptureProfileEditor() {
-        guard let notebookId = viewModel.quickCaptureNotebookId else {
-            quickCaptureProfileEditor = nil
-            return
-        }
-        guard quickCaptureProfileEditor?.notebookId != notebookId else { return }
-        let editor = NotebookCaptureProfileEditorModel(notebookId: notebookId)
-        editor.load()
-        quickCaptureProfileEditor = editor
-    }
-
-    private func startQuickRecording() {
-        guard activeCapture.isCaptureActive == false else {
-            returnToActiveCapture()
-            return
-        }
-        // Start on the same editor the language picker edits, so queued
-        // picker changes are committed by the start's own drain instead of
-        // being lost to a second, freshly loaded instance.
-        commands.startQuickCapture(profileEditor: quickCaptureProfileEditor)
-    }
-
-    private func returnToActiveCapture() {
-        // Do not select the currently browsed Topic here. Capture routing owns
-        // the authoritative active Topic and Session and must win over Home's
-        // filter or last-browsed context.
-        MainNavigationStore.shared.openActiveNotebookForCapture()
-    }
-
-    private func reloadWorkspace() {
-        viewModel.loadSessions()
-        viewModel.loadNotebookWorkspace()
     }
 }
 
@@ -361,237 +268,6 @@ private struct HomeNotebookCard: View {
 
 // MARK: - Legacy active Notebook components
 
-private struct HomeNotebookHero: View {
-    @ObservedObject var viewModel: LibraryViewModel
-    @ObservedObject var capture: ActiveBilingualTranscriptStore
-    let onOpenNotebook: () -> Void
-    let onCreateNotebook: () -> Void
-
-    private var activeNotebook: FfiNotebook? { viewModel.activeNotebook }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.lg) {
-            HStack(alignment: .top, spacing: Spacing.md) {
-                VStack(alignment: .leading, spacing: Spacing.sm) {
-                    Text(String(localized: "home.notebook.current"))
-                        .font(.captionMedium)
-                        .tracking(0.8)
-                        .foregroundColor(.textSecondary)
-
-                    notebookPicker
-                }
-                .frame(maxWidth: 420, alignment: .leading)
-                .layoutPriority(1)
-
-                Spacer(minLength: Spacing.md)
-
-                Button(action: onCreateNotebook) {
-                    Label(
-                        String(localized: "home.notebook.new"),
-                        systemImage: "plus"
-                    )
-                    .font(.bodyMedium)
-                    .frame(minHeight: 44)
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.textSecondary)
-                .padding(.horizontal, Spacing.sm)
-                .contentShape(Rectangle())
-                .fixedSize()
-                .help(String(localized: "home.notebook.new.help"))
-                .accessibilityIdentifier("home.notebook.new")
-            }
-
-            Rectangle()
-                .fill(Color.borderGhost.opacity(0.55))
-                .frame(height: Stroke.thin)
-
-            MontereyHorizontalViewThatFits {
-                HStack(alignment: .bottom, spacing: Spacing.xl) {
-                    notebookSummary
-                    Spacer(minLength: Spacing.lg)
-                    notebookActions
-                }
-            } fallback: {
-                VStack(alignment: .leading, spacing: Spacing.lg) {
-                    notebookSummary
-                    notebookActions
-                }
-            }
-
-            if capture.isCaptureActive {
-                captureNotice
-            }
-
-            Label(
-                String(localized: "home.notebook.local_first"),
-                systemImage: "lock.shield.fill"
-            )
-            .font(.bodySM)
-            .foregroundColor(.textSecondary)
-            .accessibilityElement(children: .combine)
-        }
-        .padding(Spacing.lg)
-        .background(Color.bgElevated.opacity(0.38))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.borderGhost.opacity(0.65), lineWidth: Stroke.thin)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-    }
-
-    private var notebookPicker: some View {
-        Menu {
-            ForEach(viewModel.notebooks, id: \.id) { notebook in
-                Button {
-                    viewModel.selectNotebook(notebook.id)
-                } label: {
-                    if notebook.id == viewModel.activeNotebookId {
-                        Label(notebook.title, systemImage: "checkmark")
-                    } else {
-                        Text(notebook.title)
-                    }
-                }
-            }
-
-            Divider()
-
-            Button(action: onCreateNotebook) {
-                Label(String(localized: "home.notebook.new"), systemImage: "plus")
-            }
-        } label: {
-            HStack(spacing: Spacing.sm) {
-                Image(systemName: "book.closed.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.brandAccent)
-
-                Text(activeNotebook?.title ?? String(localized: "home.notebook.none"))
-                    .font(.titleLG)
-                    .foregroundColor(.textPrimary)
-                    .lineLimit(1)
-
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.textSecondary)
-            }
-            .padding(.vertical, Spacing.xs)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .frame(maxWidth: 420, alignment: .leading)
-        .accessibilityLabel(String(localized: "home.notebook.switch"))
-        .accessibilityValue(activeNotebook?.title ?? "")
-        .accessibilityIdentifier("home.notebook.picker")
-    }
-
-    private var notebookSummary: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text(String(localized: "home.notebook.description"))
-                .font(.bodyLG)
-                .foregroundColor(.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(String(localized: "home.notebook.description.detail"))
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: 520, alignment: .leading)
-    }
-
-    private var notebookActions: some View {
-        HomeActionButton(
-            title: openActionTitle,
-            icon: capture.isCaptureActive ? captureStateIcon : "arrow.right",
-            style: .primary,
-            action: onOpenNotebook
-        )
-        .accessibilityIdentifier("home.notebook.open")
-    }
-
-    private var openActionTitle: String {
-        capture.isCaptureActive
-            ? String(localized: "home.capture.return")
-            : String(localized: "home.notebook.open")
-    }
-
-    private var captureNotice: some View {
-        let belongsToSelectedNotebook = capture.notebookId == viewModel.activeNotebookId
-        return VStack(alignment: .leading, spacing: Spacing.sm) {
-            Label(captureStateText, systemImage: captureStateIcon)
-                .foregroundColor(.textPrimary)
-
-            Text(
-                belongsToSelectedNotebook
-                    ? String(localized: "home.capture.owner_here")
-                    : String(localized: "home.capture.owner_elsewhere")
-            )
-            .foregroundColor(.textSecondary)
-
-            Label(remoteHealthText, systemImage: remoteHealthIcon)
-                .foregroundColor(remoteHealthColor)
-        }
-        .font(.bodyMedium)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var captureStateText: String {
-        switch capture.presentationCaptureState {
-        case .recording: String(localized: "capture.state.recording")
-        case .paused: String(localized: "capture.state.paused")
-        case .draining: String(localized: "capture.state.draining")
-        case .completed: String(localized: "capture.state.completed")
-        case .interrupted: String(localized: "capture.state.interrupted")
-        case .failed: String(localized: "capture.state.failed")
-        }
-    }
-
-    private var captureStateIcon: String {
-        switch capture.presentationCaptureState {
-        case .recording: "record.circle.fill"
-        case .paused: "pause.circle.fill"
-        case .draining: "hourglass.circle.fill"
-        case .completed: "checkmark.circle.fill"
-        case .interrupted: "exclamationmark.circle.fill"
-        case .failed: "xmark.octagon.fill"
-        }
-    }
-
-    private var remoteHealthText: String {
-        if let lagMs = capture.realtimeLagMs, lagMs >= 1_000 {
-            return String(
-                format: String(localized: "capture.remote.catching_up"),
-                Int((lagMs + 999) / 1_000)
-            )
-        }
-        return switch capture.remoteHealth {
-        case .off: String(localized: "capture.remote.off")
-        case .connecting: String(localized: "capture.remote.connecting")
-        case .live: String(localized: "capture.remote.live")
-        case .degraded: String(localized: "capture.remote.degraded")
-        case .unavailable: String(localized: "capture.remote.unavailable")
-        }
-    }
-
-    private var remoteHealthIcon: String {
-        switch capture.remoteHealth {
-        case .off: "lock.shield.fill"
-        case .connecting: "network"
-        case .live: "waveform.path"
-        case .degraded: "exclamationmark.triangle.fill"
-        case .unavailable: "wifi.slash"
-        }
-    }
-
-    private var remoteHealthColor: Color {
-        switch capture.remoteHealth {
-        case .degraded, .unavailable: .signalAmber
-        case .off, .connecting, .live: .textSecondary
-        }
-    }
-}
-
 private struct HomeNoNotebookView: View {
     let onCreate: () -> Void
 
@@ -706,12 +382,6 @@ private struct HomeSessionCatalog: View {
     @ObservedObject var viewModel: LibraryViewModel
     let onOpenSession: (String) -> Void
     let onOpenTopic: (String) -> Void
-    let onStartRecording: () -> Void
-    let isStartingQuickCapture: Bool
-    let activeCaptureDestination: HomeActiveCaptureDestination?
-    let onReturnToActiveCapture: () -> Void
-    let onCreateTopic: () -> Void
-    let quickCaptureLanguageEditor: NotebookCaptureProfileEditorModel?
     @FocusState private var isSearchFocused: Bool
 
     private var groups: [SessionGroup] { viewModel.catalogGroupedSessions }
@@ -797,7 +467,11 @@ private struct HomeSessionCatalog: View {
                     HomeCatalogEmptyState(
                         title: String(localized: "home.catalog.empty.title"),
                         description: String(localized: "home.catalog.empty.description"),
-                        icon: "waveform"
+                        icon: "waveform",
+                        action: (
+                            String(localized: "sidebar.record"),
+                            { MainNavigationStore.shared.select(tab: .record) }
+                        )
                     )
                 }
             } else {
@@ -822,22 +496,11 @@ private struct HomeSessionCatalog: View {
         .accessibilityIdentifier("home.session.catalog")
     }
 
+    /// The ledger is for finding and opening recordings. Starting one has its
+    /// own page, first in the sidebar — a second Record button here was one of
+    /// five ways to start, each with its own language picker.
     private var catalogHeader: some View {
-        MontereyHorizontalViewThatFits {
-            HStack(alignment: .top, spacing: Spacing.md) {
-                catalogIdentity
-                    .layoutPriority(1)
-                Spacer(minLength: Spacing.md)
-                catalogActions
-                    .fixedSize()
-            }
-
-        } fallback: {
-            VStack(alignment: .leading, spacing: Spacing.md) {
-                catalogIdentity
-                catalogActions
-            }
-        }
+        catalogIdentity
     }
 
     private var catalogIdentity: some View {
@@ -852,102 +515,6 @@ private struct HomeSessionCatalog: View {
                 .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private var catalogActions: some View {
-        MontereyHorizontalViewThatFits {
-            HStack(spacing: Spacing.sm) {
-                quickCaptureLanguageAction
-                recordingAction
-                secondaryCatalogActions
-            }
-        } fallback: {
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                quickCaptureLanguageAction
-                recordingAction
-                secondaryCatalogActions
-            }
-        }
-    }
-
-    /// The capture languages, surfaced beside Record so a multi-language
-    /// session starts in one click. Hidden while a capture is active: the
-    /// button next door is then "return to recording" and the profile is
-    /// locked anyway.
-    @ViewBuilder
-    private var quickCaptureLanguageAction: some View {
-        if activeCaptureDestination == nil {
-            if let editor = quickCaptureLanguageEditor {
-                HomeQuickCaptureLanguagePicker(editor: editor)
-            }
-            // Whether this recording gets live captions is decided here,
-            // visibly — not by whether an invite happens to be active.
-            CaptionsChoiceChip()
-        }
-    }
-
-    @ViewBuilder
-    private var recordingAction: some View {
-            if let activeCaptureDestination {
-                Button(action: onReturnToActiveCapture) {
-                    Label(
-                        activeCaptureButtonTitle(activeCaptureDestination),
-                        systemImage: "record.circle.fill"
-                    )
-                    .font(.bodyMedium)
-                    .frame(minHeight: 44)
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.signalGreen)
-                .padding(.horizontal, Spacing.md)
-                .background(Color.signalGreen.opacity(0.1))
-                .overlay(
-                    Capsule()
-                        .strokeBorder(Color.signalGreen.opacity(0.28), lineWidth: Stroke.thin)
-                )
-                .clipShape(Capsule())
-                .help(activeCaptureButtonTitle(activeCaptureDestination))
-                .accessibilityIdentifier("home.catalog.record")
-            } else {
-                Button(action: onStartRecording) {
-                    Label(
-                        isStartingQuickCapture
-                            ? String(localized: "home.record.starting")
-                            : String(localized: "home.record.start"),
-                        systemImage: isStartingQuickCapture ? "ellipsis" : "record.circle"
-                    )
-                    .font(.bodyMedium)
-                    .frame(minHeight: 44)
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.signalRed)
-                .padding(.horizontal, Spacing.md)
-                .background(Color.signalRed.opacity(0.1))
-                .overlay(
-                    Capsule()
-                        .strokeBorder(Color.signalRed.opacity(0.3), lineWidth: Stroke.thin)
-                )
-                .clipShape(Capsule())
-                .disabled(isStartingQuickCapture || viewModel.canStartQuickCapture == false)
-                .help(String(localized: viewModel.canStartQuickCapture
-                    ? "home.record.start_hint"
-                    : "home.record.unavailable_hint"))
-                .accessibilityHint(Text(String(localized: viewModel.canStartQuickCapture
-                    ? "home.record.start_hint"
-                    : "home.record.unavailable_hint")))
-                .accessibilityIdentifier("home.catalog.record")
-            }
-    }
-
-    private var secondaryCatalogActions: some View {
-        Button(action: onCreateTopic) {
-            Label(String(localized: "home.notebook.new"), systemImage: "plus")
-                .font(.bodyMedium)
-                .frame(minHeight: 44)
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.textPrimary)
-        .accessibilityIdentifier("home.notebook.new")
     }
 
     @ViewBuilder
@@ -982,15 +549,6 @@ private struct HomeSessionCatalog: View {
             .foregroundColor(.textPrimary)
             .accessibilityIdentifier("home.topic.open_selected")
         }
-    }
-
-    private func activeCaptureButtonTitle(
-        _ destination: HomeActiveCaptureDestination
-    ) -> String {
-        String(
-            format: String(localized: "home.record.return_active_format"),
-            destination.topicTitle ?? String(localized: "home.record.unfiled")
-        )
     }
 
     private var compactSearch: some View {
@@ -1247,6 +805,7 @@ private struct HomeCatalogEmptyState: View {
     let title: String
     let description: String
     let icon: String
+    var action: (title: String, perform: () -> Void)?
 
     var body: some View {
         HStack(spacing: Spacing.md) {
@@ -1269,6 +828,15 @@ private struct HomeCatalogEmptyState: View {
             }
 
             Spacer(minLength: 0)
+
+            if let action {
+                Button(action: action.perform) {
+                    Label(action.title, systemImage: "record.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.signalRed)
+                .accessibilityIdentifier("home.catalog.empty.record")
+            }
         }
         .padding(Spacing.lg)
         .background(Color.bgElevated.opacity(0.2))
@@ -1450,9 +1018,15 @@ private struct HomeSessionRow: View {
                         title: titleForDisplay
                     )
                 } label: {
-                    Label(String(localized: "share.recording.menu"), systemImage: "person.2")
+                    Label(String(localized: "share.recording.menu"), systemImage: "square.and.arrow.up")
                 }
                 .disabled(session.isRecording)
+                Button {
+                    MainNavigationStore.shared.openSession(session.id, surface: .settings)
+                } label: {
+                    Label(String(localized: "session.menu.settings"), systemImage: "slider.horizontal.3")
+                }
+                .disabled(canOpen == false)
                 Divider()
                 Button(role: .destructive) {
                     isConfirmingDelete = true
@@ -1634,80 +1208,6 @@ private struct HomeSessionRow: View {
 /// persisted quick-capture profile the start flow reads, so the previous
 /// selection is the default and a change here is what the next one-click
 /// recording uses — including two- and three-language sessions.
-private struct HomeQuickCaptureLanguagePicker: View {
-    @ObservedObject var editor: NotebookCaptureProfileEditorModel
-    @State private var isPresentingEditor = false
-
-    private var selectedLanguages: [String] { editor.draft.selectedLanguages }
-
-    var body: some View {
-        Button {
-            isPresentingEditor = true
-        } label: {
-            Label(compactSelectionTitle, systemImage: "character.bubble")
-                .font(.bodyMedium)
-                .frame(minHeight: 44)
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.textPrimary)
-        .padding(.horizontal, Spacing.md)
-        .background(Color.bgElevated.opacity(0.42))
-        .overlay(
-            Capsule()
-                .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: Stroke.thin)
-        )
-        .clipShape(Capsule())
-        .disabled(editor.canEdit == false)
-        .opacity(editor.canEdit ? 1 : 0.58)
-        .help(pickerHelp)
-        .accessibilityLabel(Text(String(localized: "home.record.languages.picker")))
-        .accessibilityValue(Text(fullSelectionNames))
-        .accessibilityIdentifier("home.record.languages")
-        .popover(isPresented: $isPresentingEditor, arrowEdge: .bottom) {
-            editorPopover
-        }
-    }
-
-    /// Each language by its own name, as rows and column headers show it.
-    private var compactSelectionTitle: String {
-        RecordingPresentation.languageList(selectedLanguages)
-    }
-
-    private var fullSelectionNames: String {
-        selectedLanguages.map(languageLabel).joined(separator: " · ")
-    }
-
-    private var pickerHelp: String {
-        String(
-            format: String(localized: "home.record.languages.picker_hint_format"),
-            fullSelectionNames
-        )
-    }
-
-    private var editorPopover: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text(String(localized: "capture.settings.languages.question"))
-                .font(.captionMedium)
-                .foregroundColor(.textPrimary)
-                .accessibilityAddTraits(.isHeader)
-            Text(String(localized: "capture.settings.languages.ordered_detail"))
-                .font(.system(size: 10))
-                .foregroundColor(.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            CaptureLanguageEditor(editor: editor)
-        }
-        .padding(Spacing.md)
-        .frame(width: 420)
-        .disabled(editor.canEdit == false)
-        .accessibilityElement(children: .contain)
-    }
-
-    private func languageLabel(_ code: String) -> String {
-        RecordingPresentation.languageName(code)
-    }
-}
-
 // MARK: - Creation and actions
 
 private struct HomeCreateNotebookSheet: View {

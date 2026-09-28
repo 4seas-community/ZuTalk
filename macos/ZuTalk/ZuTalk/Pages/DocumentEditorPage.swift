@@ -256,7 +256,8 @@ struct DocumentEditorPage: View {
                     onExport: {
                         exportingSessionId = effectiveSessionId
                         isShowingExportSheet = true
-                    }
+                    },
+                    onShare: shareRecordingAction
                 )
 
                 if routeLoadError != nil {
@@ -333,8 +334,7 @@ struct DocumentEditorPage: View {
                     NotebookCaptureSettingsView(
                         notebookId: notebookId,
                         editor: captureProfileEditor,
-                        scope: captureSettingsScope,
-                        onOpenRealtimeControls: openRealtimeControls
+                        scope: captureSettingsScope
                     )
                         .id(notebookId)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -411,6 +411,11 @@ struct DocumentEditorPage: View {
                 isShowingResources = currentRoute?.opensTopicWorkspace == true
                 sessionSupplementarySurface = nil
             }
+            applyPendingSessionSurface()
+        }
+        .onAppear(perform: applyPendingSessionSurface)
+        .montereyOnChange(of: navigation.pendingSessionSurface) { _, _ in
+            applyPendingSessionSurface()
         }
         // 停录后的异步转录物化完成后重新加载关联文档。
         .onReceive(NotificationCenter.default.publisher(for: .zutalkSessionUpdated)) { _ in
@@ -514,7 +519,6 @@ struct DocumentEditorPage: View {
                     session: editorSession,
                     editor: captureProfileEditor,
                     captureSettingsScope: captureSettingsScope,
-                    onOpenRealtimeControls: openRealtimeControls,
                     onOpenResource: { destination in
                         if destination == .manualNote {
                             showSessionNote()
@@ -615,6 +619,16 @@ struct DocumentEditorPage: View {
 
     private var captureSettingsScope: NotebookCaptureSettingsScope {
         isQuickCaptureNotebook ? .quickCapture : .topic
+    }
+
+    /// Sharing a finished recording, from ⋯. One still being recorded is
+    /// shared live from the recording bar instead.
+    private var shareRecordingAction: (() -> Void)? {
+        guard let sessionId = effectiveSessionId else { return nil }
+        let capture = ActiveBilingualTranscriptStore.shared
+        if capture.isCaptureActive, capture.sessionId == sessionId { return nil }
+        let label = navigation.editorBreadcrumb?.recording?.label ?? ""
+        return { ShareActivityStore.shared.presentRecordingShare(sessionId: sessionId, title: label) }
     }
 
     private var effectiveSessionId: String? {
@@ -882,6 +896,19 @@ struct DocumentEditorPage: View {
         isShowingResources = true
     }
 
+    /// A list row asked for this recording's notes or files rather than its
+    /// transcript.
+    private func applyPendingSessionSurface() {
+        guard let surface = navigation.pendingSessionSurface,
+              effectiveSessionId != nil
+        else { return }
+        navigation.pendingSessionSurface = nil
+        switch surface {
+        case .note: showSessionNote()
+        case .settings: showSessionSettings()
+        }
+    }
+
     private func showSessionNote() {
         guard effectiveSessionId != nil else { return }
         activeSidePanel = nil
@@ -929,21 +956,10 @@ struct DocumentEditorPage: View {
 
     /// The topic's Record button records. It used to open the live page,
     /// where a second Record button did.
+    /// A topic's Record button leads to the Record page with this topic chosen:
+    /// languages and live captions are decided in one place, for every start.
     private func startRecordingInTopic() {
-        guard let notebookId = route?.notebookID,
-              notebookId == captureProfileEditor.notebookId
-        else {
-            openRealtimeControls()
-            return
-        }
-        CaptureCommandCenter.shared.start(notebookId: notebookId, profileEditor: captureProfileEditor)
-    }
-
-    private func openRealtimeControls() {
-        guard let realtimeTab = notebookTabs.first(where: {
-            $0.displayType == .realtimeTranscript
-        }) else { return }
-        selectNotebookTab(realtimeTab)
+        navigation.openRecordPage(topicID: route?.notebookID)
     }
 
     private func syncPresentedRoute() {
@@ -1172,7 +1188,15 @@ private struct DocumentTabBar: View {
     let onSelectSessionNote: () -> Void
     let onSelectSessionSettings: () -> Void
     let onExport: () -> Void
+    /// Nil while the recording is still being recorded: that one is shared
+    /// live from the recording bar instead.
+    let onShare: (() -> Void)?
     @ObservedObject private var captureStore = ActiveBilingualTranscriptStore.shared
+
+    /// A recording's page has two tabs — its transcript and its notes. Which
+    /// transcript (live or refined) is a switch beside them, not two more tabs;
+    /// the recording's files and settings sit behind ⋯.
+    private var isRecordingPage: Bool { isTopicContext == false && sessionId != nil }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1185,18 +1209,15 @@ private struct DocumentTabBar: View {
                         )
                     }
 
-                    ForEach(visibleTabs) { tab in
-                        NotebookTabButton(
-                            tab: effectiveTab(tab),
-                            isActive: isCaptureSettingsSelected == false
-                                && isResourcesSelected == false
-                                && sessionSupplementarySurface == nil
-                                && tab.id == activeTabId,
-                            action: { onSelect(tab) }
-                        )
-                    }
-
-                    if isTopicContext == false, sessionId != nil {
+                    if isRecordingPage {
+                        if let transcriptTab {
+                            NotebookTabButton(
+                                tab: transcriptTab,
+                                isActive: isTranscriptSelected,
+                                action: { onSelect(activeTranscriptTab ?? transcriptTabs[0]) }
+                            )
+                            .accessibilityIdentifier("session.tab.transcript")
+                        }
                         SessionSupplementaryTabButton(
                             title: String(localized: "session.tab.notes"),
                             systemImage: "square.and.pencil",
@@ -1204,13 +1225,28 @@ private struct DocumentTabBar: View {
                             isActive: sessionSupplementarySurface == .note,
                             action: onSelectSessionNote
                         )
-                        SessionSupplementaryTabButton(
-                            title: String(localized: "session.tab.settings"),
-                            systemImage: "slider.horizontal.3",
-                            accessibilityIdentifier: "session.tab.settings",
-                            isActive: sessionSupplementarySurface == .settings,
-                            action: onSelectSessionSettings
-                        )
+                        // Reached from ⋯; shown as a tab only while it is open,
+                        // so there is always a selected tab saying where you are.
+                        if sessionSupplementarySurface == .settings {
+                            SessionSupplementaryTabButton(
+                                title: String(localized: "session.tab.settings"),
+                                systemImage: "slider.horizontal.3",
+                                accessibilityIdentifier: "session.tab.settings",
+                                isActive: true,
+                                action: onSelectSessionSettings
+                            )
+                        }
+                    } else {
+                        ForEach(visibleTabs) { tab in
+                            NotebookTabButton(
+                                tab: effectiveTab(tab),
+                                isActive: isCaptureSettingsSelected == false
+                                    && isResourcesSelected == false
+                                    && sessionSupplementarySurface == nil
+                                    && tab.id == activeTabId,
+                                action: { onSelect(tab) }
+                            )
+                        }
                     }
 
                     // A Topic needs a settings entry before its first Session
@@ -1227,20 +1263,16 @@ private struct DocumentTabBar: View {
 
             Spacer(minLength: Spacing.md)
 
-            if isTopicContext == false,
-               isCaptureSettingsSelected == false,
-               isResourcesSelected == false {
-                Button(action: onExport) {
-                    Image(systemName: "tray.and.arrow.up")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(sessionId == nil ? .textTertiary.opacity(0.5) : .textTertiary)
-                        .padding(.horizontal, Spacing.sm)
-                        .padding(.vertical, 5)
+            if isRecordingPage {
+                if isTranscriptSelected, transcriptTabs.count > 1 {
+                    TranscriptVersionSwitch(
+                        tabs: transcriptTabs.map(effectiveTab),
+                        activeTabId: activeTabId,
+                        onSelect: onSelect
+                    )
+                    .padding(.trailing, Spacing.sm)
                 }
-                .buttonStyle(.plain)
-                .disabled(sessionId == nil)
-                .help(String(localized: sessionId == nil ? "editor.export.no_session" : "editor.export.hint"))
-                .accessibilityLabel(String(localized: "editor.export.title"))
+                recordingMenu
             }
         }
         .padding(.horizontal, Spacing.lg)
@@ -1253,13 +1285,76 @@ private struct DocumentTabBar: View {
         )
     }
 
+    /// A topic's own tabs: its notes. Its recordings and settings are the
+    /// buttons either side; a topic has no transcript of its own — the live
+    /// view it used to have here was a recording's page by another name.
     private var visibleTabs: [NotebookTabViewModel] {
         tabs.filter { tab in
             if isTopicContext {
-                return tab.displayType != .asyncTranscript
+                return tab.displayType == .manualNote
             }
             return tab.displayType != .manualNote
         }
+    }
+
+    private var transcriptTabs: [NotebookTabViewModel] {
+        tabs.filter { $0.displayType == .realtimeTranscript || $0.displayType == .asyncTranscript }
+            .sorted { lhs, _ in lhs.displayType == .realtimeTranscript }
+    }
+
+    private var activeTranscriptTab: NotebookTabViewModel? {
+        transcriptTabs.first { $0.id == activeTabId }
+    }
+
+    private var isTranscriptSelected: Bool {
+        isCaptureSettingsSelected == false
+            && isResourcesSelected == false
+            && sessionSupplementarySurface == nil
+            && activeTranscriptTab != nil
+    }
+
+    /// The one "Transcript" tab, carrying the status of the version on show
+    /// (a live dot while recording, a spinner while the refined one is made).
+    private var transcriptTab: NotebookTabViewModel? {
+        guard let base = activeTranscriptTab ?? transcriptTabs.first else { return nil }
+        let effective = effectiveTab(base)
+        return NotebookTabViewModel(
+            id: effective.id,
+            notebookId: effective.notebookId,
+            tabId: effective.tabId,
+            displayType: effective.displayType,
+            documentId: effective.documentId,
+            sessionLink: effective.sessionLink,
+            title: String(localized: "session.tab.transcript"),
+            status: effective.status,
+            position: effective.position
+        )
+    }
+
+    private var recordingMenu: some View {
+        Menu {
+            if let onShare {
+                Button(action: onShare) {
+                    Label(String(localized: "share.recording.menu"), systemImage: "square.and.arrow.up")
+                }
+            }
+            Button(action: onExport) {
+                Label(String(localized: "editor.export.menu"), systemImage: "tray.and.arrow.up")
+            }
+            Divider()
+            Button(action: onSelectSessionSettings) {
+                Label(String(localized: "session.menu.settings"), systemImage: "slider.horizontal.3")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.textSecondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(String(localized: "session.menu.hint"))
+        .accessibilityLabel(String(localized: "session.menu.hint"))
+        .accessibilityIdentifier("session.menu")
     }
 
     private func effectiveTab(_ tab: NotebookTabViewModel) -> NotebookTabViewModel {
@@ -1271,12 +1366,7 @@ private struct DocumentTabBar: View {
             activeSessionId: captureStore.sessionId,
             captureIsActive: captureStore.captureState.isActive
         )
-        // In a topic the live tab shows whatever this topic is recording now;
-        // it is not where recording starts, so it is not named "Record".
-        let resolvedTitle = isTopicContext && tab.displayType == .realtimeTranscript
-            ? String(localized: "topic.workspace.live_tab")
-            : tab.title
-        guard resolvedStatus != tab.status || resolvedTitle != tab.title else { return tab }
+        guard resolvedStatus != tab.status else { return tab }
         return NotebookTabViewModel(
             id: tab.id,
             notebookId: tab.notebookId,
@@ -1284,10 +1374,62 @@ private struct DocumentTabBar: View {
             displayType: tab.displayType,
             documentId: tab.documentId,
             sessionLink: tab.sessionLink,
-            title: resolvedTitle,
+            title: tab.title,
             status: resolvedStatus,
             position: tab.position
         )
+    }
+}
+
+/// 实时版 | 精修版. Two small segments rather than two tabs: they are the
+/// same transcript made two ways, and only one exists for most of a
+/// recording's life.
+private struct TranscriptVersionSwitch: View {
+    let tabs: [NotebookTabViewModel]
+    let activeTabId: String?
+    let onSelect: (NotebookTabViewModel) -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(tabs) { tab in
+                let isActive = tab.id == activeTabId
+                Button {
+                    onSelect(tab)
+                } label: {
+                    HStack(spacing: 4) {
+                        if tab.status == .pending {
+                            ProgressView().controlSize(.mini)
+                        } else if tab.status == .failed {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 9))
+                                .foregroundColor(.signalAmber)
+                        }
+                        Text(title(tab))
+                            .font(.captionMedium)
+                    }
+                    .foregroundColor(isActive ? .textPrimary : .textSecondary)
+                    .padding(.horizontal, Spacing.sm + 2)
+                    .frame(minHeight: 24)
+                    .background(isActive ? Color.bgElevated : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.xs))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isActive ? .isSelected : [])
+                .accessibilityIdentifier(tab.displayType == .realtimeTranscript
+                    ? "session.transcript.live"
+                    : "session.transcript.refined")
+            }
+        }
+        .padding(2)
+        .background(Color.bgSunken.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+    }
+
+    private func title(_ tab: NotebookTabViewModel) -> String {
+        String(localized: tab.displayType == .realtimeTranscript
+            ? "session.transcript.live_version"
+            : "session.transcript.refined_version")
     }
 }
 
@@ -1665,7 +1807,7 @@ private struct AsyncTranscriptView: View {
                 // setup action visible for an already queued task too: the
                 // worker will continue once that key becomes available.
                 Button {
-                    MainNavigationStore.shared.openSettings()
+                    MainNavigationStore.shared.openSettings(section: .captions)
                 } label: {
                     Label(
                         String(localized: "editor.transcript.async.invite_add_key"),
@@ -2161,7 +2303,6 @@ private struct SessionSettingsView: View {
     let session: SessionInfo
     @ObservedObject var editor: NotebookCaptureProfileEditorModel
     let captureSettingsScope: NotebookCaptureSettingsScope
-    let onOpenRealtimeControls: () -> Void
     let onOpenResource: (NotebookResourceDestination) -> Void
 
     var body: some View {
@@ -2173,8 +2314,7 @@ private struct SessionSettingsView: View {
                     notebookId: notebookId,
                     editor: editor,
                     scope: captureSettingsScope,
-                    embeddedInParentScrollView: true,
-                    onOpenRealtimeControls: onOpenRealtimeControls
+                    embeddedInParentScrollView: true
                 )
                 .id("session-recording-settings:\(notebookId)")
                 .frame(maxWidth: .infinity, alignment: .top)

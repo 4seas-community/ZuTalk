@@ -8286,7 +8286,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 "capture.settings.autosave.saved",
                 "capture.settings.autosave.save_failed",
                 "capture.settings.active_locked",
-                "capture.settings.footer.realtime",
                 "capture.settings.context.create_library",
                 "capture.settings.retention.title",
                 "capture.settings.realtime.start_disclosure",

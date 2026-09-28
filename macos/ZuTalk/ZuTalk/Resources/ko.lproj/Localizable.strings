@@ -122,8 +122,7 @@
 "appearance.dark" = "어둠";
 
 /* General settings section */
-"settings.general.title" = "일반";
-"settings.general.subtitle" = "전체 앱의 언어 및 모양.";
+"settings.general.subtitle" = "언어, 모양, 업데이트, 그리고 선택 기능인 표시 정리와 단축키.";
 "settings.audio_input.title" = "오디오 입력";
 "settings.audio_input.subtitle" = "macOS가 인식한 마이크, USB 오디오 인터페이스 또는 믹서를 선택합니다.";
 "settings.audio_input.device" = "입력 기기";
@@ -171,8 +170,6 @@
 
 /* Recording settings */
 
-"editor.export.title" = "녹음 내보내기";
-"editor.export.hint" = "이 녹음을 ZIP으로 내보내기";
 "editor.export.no_session" = "내보낼 녹음이 없습니다.";
 "doc.scratchpad" = "개인 메모";
 
@@ -181,12 +178,8 @@
 
 /* Settings sidebar section rawValues (localized names) */
 "settings.section.general_name" = "일반";
-"settings.section.services_name" = "서비스 및 API";
-"settings.section.shortcuts_name" = "단축키";
 
 /* Settings sidebar groups */
-"settings.group.services" = "연결";
-"settings.group.general" = "일반";
 
 /* Settings — API panels (Voice / AI) */
 "settings.credentials.enter_key" = "API 키를 입력하세요";
@@ -253,7 +246,6 @@
 "settings.credentials.error.runtime_cleanup_failed" = "공급자 자격 증명 런타임을 안전하게 지울 수 없습니다. 원격 공급자를 사용하기 전에 ZuTalk를 다시 시작하거나 로컬 앱 서비스를 복구하십시오.";
 
 /* Settings — Services & API */
-"settings.services.title" = "서비스 및 API";
 "settings.services.subtitle" = "서비스 키를 관리합니다. 녹음에 실시간 자막을 켤지(켜면 오디오가 Soniox로 전송됨)는 각 녹음 버튼 옆의 스위치로 선택합니다.";
 "settings.services.connection.title" = "서비스 연결";
 "settings.services.connection.subtitle" = "ZuTalk는 현재 Soniox만 지원합니다.";
@@ -314,7 +306,7 @@
 /* Toast — Document editor */
 
 /* Sidebar (main window) */
-"sidebar.home" = "홈";
+"sidebar.home" = "모든 녹음";
 "sidebar.topics" = "주제";
 "sidebar.trash" = "휴지통";
 "sidebar.tab.editor" = "편집자";
@@ -376,13 +368,8 @@
 "home.workspace.load_failed.title" = "주제를 사용할 수 없음";
 "home.workspace.load_failed.description" = "기존 데이터는 변경되지 않았습니다. 다시 로드해 보세요.";
 "home.workspace.retry" = "다시 시도하세요";
-"home.notebook.current" = "현재 주제";
 "home.notebook.new" = "새 주제";
 "home.notebook.new.help" = "주제를 만들고 이름 지정";
-"home.notebook.none" = "주제 없음";
-"home.notebook.switch" = "주제 전환";
-"home.notebook.description" = "한 곳에서 녹음하고, 다국어 성적표를 따르고, 메모를 작성하세요.";
-"home.notebook.description.detail" = "언제든 녹음하고, 나중에 주제에 배정하세요.";
 "home.notebook.local_first" = "이 Mac에 저장됨";
 "home.library.title" = "주제";
 "home.library.subtitle" = "주제별 작업 공간에서 녹음, 전사, 공유 메모를 정리하세요.";
@@ -392,10 +379,6 @@
 "topics.search.placeholder" = "주제 검색";
 "topics.search.empty.title" = "주제를 찾을 수 없습니다";
 "topics.search.empty.description" = "다른 검색어를 입력하거나 새 주제를 만들어 보세요.";
-"home.notebook.open" = "주제 열기";
-"home.capture.return" = "캡처로 돌아가기";
-"home.capture.owner_here" = "선택한 주제에 속함";
-"home.capture.owner_elsewhere" = "다른 주제에 속함";
 "home.no_notebook.title" = "아직 주제가 없습니다";
 "home.no_notebook.description" = "위에서 바로 녹음을 시작할 수 있습니다. 관련 인터뷰를 묶을 주제를 만들기 전까지는 주제 없음에 보관됩니다.";
 "home.first_use.step1.title" = "주제 만들기";
@@ -728,7 +711,6 @@
 "capture.settings.subtitle.quick_capture" = "변경 사항은 자동으로 저장되며 홈에서 시작하는 다음 빠른 녹음의 기본 설정이 됩니다. 오디오 입력은 이 Mac 전체에서 공유됩니다.";
 "capture.settings.tab" = "설정";
 "capture.settings.tab_hint" = "녹음, 언어 및 자막 설정을 엽니다.";
-"capture.settings.footer.realtime" = "언어와 실시간 모드는 실시간 대본 탭에서 선택됩니다.";
 "capture.settings.active_locked" = "녹음 중입니다. 언어, 컨텍스트 및 보존 설정은 고정되지만 오디오 입력은 계속 전환할 수 있습니다.";
 "capture.settings.autosave.loading" = "설정 로드 중…";
 "capture.settings.autosave.saving" = "저장 중…";
@@ -757,7 +739,7 @@
 "capture.realtime.controls.current_title" = "현재 녹화 구성";
 "capture.realtime.controls.profile_group" = "실시간 녹화 구성";
 "capture.realtime.controls.review_context" = "참고자료 검토";
-"capture.settings.context.title" = "전사 참조";
+"capture.settings.context.title" = "전문 용어와 배경";
 "capture.settings.context.preview" = "무엇이 사용될지 검토하세요";
 "capture.settings.context.preview_count" = "%lld자";
 "capture.settings.context.empty" = "아직 사용할 수 있는 참고 자료가 없습니다.";
@@ -858,19 +840,18 @@
 "capture.settings.retention.high.detail" = "명시적으로 요청한 정밀 전사가 성공한 후 오디오와 해당 키를 삭제합니다.";
 "capture.settings.retention.maximum.title" = "스크립트 작성 후 삭제";
 "capture.settings.retention.maximum.detail" = "지속 가능한 기록 사실이 존재하는 즉시 오디오와 해당 키를 삭제합니다. 기록이 없으면 데이터 손실을 방지하기 위해 유일한 소스를 유지하십시오.";
-"sidebar.knowledge" = "지식";
-"knowledge.title" = "지식 베이스";
+"knowledge.title" = "전문 용어와 배경";
 "knowledge.subtitle" = "전사를 위해 배경, 고유명사, 선호 번역을 미리 준비합니다.";
-"knowledge.new" = "새 지식 베이스";
+"knowledge.new" = "새 자료";
 "knowledge.create" = "만들기";
-"knowledge.untitled" = "제목 없는 지식 베이스";
-"knowledge.name" = "지식 베이스 이름";
-"knowledge.empty.title" = "첫 지식 베이스를 만드세요";
+"knowledge.untitled" = "이름 없는 자료";
+"knowledge.name" = "자료 이름";
+"knowledge.empty.title" = "첫 자료 만들기";
 "knowledge.empty.description" = "한 주제의 배경, 인물, 조직, 용어를 하나의 프로필에 모아 둡니다.";
 "knowledge.card.no_summary" = "아직 설명이 없습니다";
 "knowledge.card.counts" = "용어 %lld개 · 선호 번역 %lld개";
-"knowledge.back" = "지식 베이스";
-"knowledge.summary.placeholder" = "이 지식 베이스가 무엇을 인식하도록 도와야 하는지 한 문장으로 적어 주세요";
+"knowledge.back" = "전문 용어와 배경";
+"knowledge.summary.placeholder" = "이 자료가 무엇을 알아듣는 데 도움이 되는지 한 문장으로";
 "knowledge.saved_revision" = "자동 저장됨 · 리비전 %lld";
 "knowledge.ai.improve" = "AI로 다듬기";
 "knowledge.ai.coming_soon" = "AI 보완은 다음 통합에서 지원합니다. 지금은 전체 프로필을 직접 편집할 수 있습니다.";
@@ -894,13 +875,13 @@
 "knowledge.translation.source" = "원문";
 "knowledge.translation.target" = "선호 번역";
 "knowledge.translation.add" = "선호 번역 추가";
-"capture.settings.context.current" = "현재 지식 베이스";
+"capture.settings.context.current" = "사용 중";
 "capture.settings.context.no_selection" = "선택 안 함";
 "capture.settings.context.choose" = "변경";
 "knowledge.import_json" = "JSON 가져오기";
-"knowledge.import_json.message" = "ZuTalk 지식 베이스 JSON 파일(.zutalk-pack.json)을 선택하세요.";
-"knowledge.import_json.done" = "지식 베이스를 가져왔습니다";
-"knowledge.import_json.failed" = "지식 베이스를 가져올 수 없습니다";
+"knowledge.import_json.message" = "ZuTalk 전문 용어와 배경 JSON 파일(.zutalk-pack.json)을 고르세요.";
+"knowledge.import_json.done" = "가져왔어요";
+"knowledge.import_json.failed" = "이 파일을 가져오지 못했어요";
 
 /* 分享:点对点字幕与文档协同 */
 "share.audio_never" = "오디오는 이 Mac을 벗어나지 않아요. 다른 사람은 글자만 볼 수 있어요.";
@@ -942,27 +923,22 @@
 "home.record.start" = "녹음 시작";
 "home.record.starting" = "시작 중…";
 "home.record.unfiled" = "미분류 녹음";
-"home.record.start_hint" = "미분류 녹음을 바로 시작하고 나중에 정리합니다.";
-"home.record.unavailable_hint" = "녹음을 아직 시작할 수 없습니다. 작업 공간을 다시 불러오세요.";
 "home.record.languages.picker" = "녹음 언어";
-"home.record.languages.picker_hint_format" = "녹음 언어: %@. 클릭해 조정할 수 있어요(녹음당 최대 3개).";
 "home.catalog.unfiled_empty.title" = "미분류 녹음 없음";
 "home.catalog.unfiled_empty.description" = "홈에서 시작한 새 녹음은 먼저 여기에 표시됩니다.";
 "home.catalog.row.open_unfiled_hint" = "이 미분류 녹음 열기";
-"home.record.return_active_format" = "녹음으로 돌아가기 · %@";
 "home.status.completed" = "완료됨";
 "home.status.failed" = "실패";
 "home.status.imported" = "가져옴";
 "home.status.interrupted" = "중단됨";
 "home.status.recording" = "녹음 중";
 "home.status.transcribing" = "전사 중";
-"resources.audio_export" = "오디오 내보내기";
 "resources.status.unknown" = "알 수 없음";
 "resources.move.destination" = "대상 주제";
 "resources.status.empty" = "내용 없음";
 "topic.notes.shared_document" = "주제 공유 문서";
 "topic.notes.tab" = "메모";
-"topic.capture_setup.tab" = "녹음 설정";
+"topic.capture_setup.tab" = "설정";
 "topic.capture_setup.tab.hint" = "이 주제의 녹음, 언어 및 자막 설정을 엽니다.";
 "topic.research.copy" = "전사 복사";
 "topic.research.copy.done" = "연구 자료를 복사했습니다";
@@ -983,7 +959,6 @@
 "topic.research.selection.title" = "연구 자료";
 "topic.route.unavailable" = "주제를 열 수 없음";
 "topic.route.unavailable_detail" = "이 주제의 작업 공간을 열 수 없습니다. 홈으로 돌아가 다시 시도하세요.";
-"topic.session.files_and_status" = "파일 및 상태";
 "topic.session.no_preview" = "아직 전사 미리보기가 없습니다";
 "topic.session.recording_label" = "실시간 녹음";
 "topic.session.tab.live" = "실시간 전사";
@@ -1082,12 +1057,8 @@
 "settings.shortcuts.mark" = "방금 들은 부분 표시";
 "settings.shortcuts.overlay_banner" = "자막 창: 화면 위쪽 띠";
 "settings.shortcuts.overlay_maximize" = "자막 창: 채우기/복원";
-"topic.workspace.live_tab" = "실시간";
 "topic.workspace.total_format" = "총 %@";
 "recording.row.no_words" = "아직 텍스트가 없습니다";
-"resources.summary.audio" = "오디오";
-"resources.summary.live" = "실시간";
-"resources.summary.refined" = "정제";
 "capture.transcript.presentation.label" = "보기 방식";
 
 "capture.live.idle_title" = "아직 녹음하지 않았습니다";
@@ -1183,3 +1154,58 @@
 "share.recording.revoke_confirm_body" = "링크가 바로 끊기고 내용은 서버에서 삭제돼요. 이미 내려받은 사본은 되돌릴 수 없어요.";
 "share.recording.revoke_failed" = "링크를 취소하지 못했어요";
 "share.recording.revoked" = "링크를 취소했어요";
+
+"settings.sharing.title" = "공유";
+"settings.sharing.subtitle" = "지금 나가 있는 모든 링크를 한곳에서 보고 언제든 취소할 수 있어요.";
+"settings.sharing.out_now" = "공유 중";
+"settings.sharing.nothing_out" = "지금 공유 중인 링크가 없어요.";
+"settings.sharing.how" = "공유 방법";
+"settings.sharing.how_live" = "녹음 중에 녹음 막대의 ‘자막 공유’를 누르면 현장의 사람들이 코드를 스캔해 실시간 자막을 볼 수 있어요.";
+"settings.sharing.how_recording" = "끝난 녹음은 메뉴의 ‘공유…’에서 사본을 보내거나 24시간 읽기 전용 링크를 만들 수 있어요.";
+"settings.sharing.untitled_recording" = "녹음";
+"settings.sharing.read_only_link" = "읽기 전용 링크";
+
+"settings.section.captions_name" = "실시간 자막";
+"settings.section.sharing_name" = "공유";
+
+"sidebar.record" = "녹음 시작";
+"sidebar.recording_now" = "녹음 중";
+"record.page.title" = "녹음 시작";
+"record.page.subtitle" = "말하는 동안 자막과 번역이 나오고, 녹음 후에는 정밀 전사본도 만들 수 있어요.";
+"record.page.topic" = "주제";
+"record.page.topic_detail" = "주제에 넣으면 그 주제의 언어와 전문 용어를 써요. 나중에 정리해도 돼요.";
+"record.page.captions" = "실시간 자막";
+"record.page.captions_detail" = "켜면 오디오를 Soniox로 보내 실시간 전사와 번역을 해요. 끄면 이 Mac에서 녹음만 해요.";
+"record.page.captions_needs_key" = "실시간 자막을 쓰려면 설정에서 Soniox 키나 초대 코드를 넣어야 해요. 지금은 녹음만 돼요.";
+"record.page.shortcut_hint" = "어느 앱에서든 ⌃⌥R로 녹음을 시작하거나 멈출 수 있어요.";
+"record.page.import" = "오디오 가져오기";
+"record.page.import_detail" = "가지고 있는 오디오 파일을 전사본으로 만들어 위에서 고른 주제에 넣어요.";
+"record.page.import_button" = "파일 선택…";
+"record.page.importing" = "가져오는 중…";
+"record.page.recording_now" = "녹음 중";
+"record.page.recording_now_detail" = "녹음은 한 번에 하나예요. 일시정지, 표시, 중지는 창 위쪽 녹음 막대에 있어요.";
+"record.page.open_recording" = "녹음으로 가기";
+
+"capture.settings.context.manage" = "전문 용어와 배경 편집…";
+
+"session.tab.transcript" = "전사본";
+"session.transcript.live_version" = "실시간";
+"session.transcript.refined_version" = "정밀";
+"session.menu.hint" = "공유, 내보내기, 녹음 설정";
+"session.menu.settings" = "파일과 설정…";
+"editor.export.menu" = "내보내기…";
+
+"trash.subtitle" = "삭제한 녹음은 여기 있어요. 복원하면 원래 자리로 돌아가고, 영구 삭제하면 암호화된 오디오까지 지워지며 되돌릴 수 없어요.";
+"trash.empty_all" = "휴지통 비우기…";
+"trash.empty_all.confirm_title_format" = "이 녹음 %lld개를 영구 삭제할까요?";
+"trash.empty_all.confirm_button" = "모두 영구 삭제";
+"trash.empty_all.partial_format" = "%lld개는 삭제하지 못해 휴지통에 남아 있어요.";
+"trash.toast.emptied" = "휴지통을 비웠어요";
+"trash.load_failed" = "휴지통을 불러오지 못했어요";
+"trash.restore_failed" = "복원하지 못했어요";
+"trash.purge_failed" = "영구 삭제하지 못했어요";
+"trash.action.restore_hint" = "원래 주제(또는 주제 없음)로 되돌려요";
+
+"settings.general.welcome_again" = "시작 안내";
+"settings.general.welcome_again_hint" = "다시 한번 둘러봐요: 키 입력, 마이크 허용, 녹음 방법. 녹음과 설정은 그대로예요.";
+"settings.general.welcome_again_button" = "다시 보기";

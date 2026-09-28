@@ -111,19 +111,18 @@ struct GeneralSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
-            SettingsSectionHeader(
-                title: String(localized: "settings.general.title"),
+            SettingsPageHeader(
+                title: String(localized: "settings.section.general_name"),
                 subtitle: String(localized: "settings.general.subtitle")
             )
 
-            // Language
-            InstrumentPanel(padding: Spacing.md) {
-                VStack(alignment: .leading, spacing: Spacing.md) {
-                    Text("settings.language.title")
-                        .font(Font.mono8)
-                        .foregroundColor(Color.textMuted)
-                        .tracking(0.6)
-
+            SettingsCard {
+                SettingsRow(
+                    String(localized: "settings.language.title"),
+                    description: String(localized: showRestartHint
+                        ? "settings.language.restart_hint"
+                        : "settings.language.hint")
+                ) {
                     Picker("", selection: $language) {
                         ForEach(AppLanguage.allCases) { lang in
                             Text(String(localized: lang.displayNameKey)).tag(lang.rawValue)
@@ -131,30 +130,13 @@ struct GeneralSettingsSection: View {
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
+                    .fixedSize()
                     .montereyOnChange(of: language) { _, newValue in
                         applyLanguage(newValue)
                     }
-
-                    if showRestartHint {
-                        Text("settings.language.restart_hint")
-                            .font(Font.sans11)
-                            .foregroundColor(Color.signalAmber)
-                    } else {
-                        Text("settings.language.hint")
-                            .font(Font.sans11)
-                            .foregroundColor(Color.textTertiary)
-                    }
                 }
-            }
-
-            // Appearance
-            InstrumentPanel(padding: Spacing.md) {
-                VStack(alignment: .leading, spacing: Spacing.md) {
-                    Text("settings.appearance.title")
-                        .font(Font.mono8)
-                        .foregroundColor(Color.textMuted)
-                        .tracking(0.6)
-
+                SettingsRowDivider()
+                SettingsRow(String(localized: "settings.appearance.title")) {
                     Picker("", selection: $appearance) {
                         ForEach(AppearanceMode.allCases, id: \.rawValue) { mode in
                             Text(mode.displayName).tag(mode.rawValue)
@@ -162,6 +144,7 @@ struct GeneralSettingsSection: View {
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
+                    .fixedSize()
                     .montereyOnChange(of: appearance) { _, newValue in
                         if let mode = AppearanceMode(rawValue: newValue) {
                             applyAppearance(mode)
@@ -197,6 +180,15 @@ struct GeneralSettingsSection: View {
                         .foregroundColor(Color.textSecondary)
                         .textSelection(.enabled)
                         .accessibilityIdentifier("settings.updates.version")
+                }
+                SettingsRowDivider()
+                SettingsRow(
+                    String(localized: "settings.general.welcome_again"),
+                    description: String(localized: "settings.general.welcome_again_hint")
+                ) {
+                    Button(String(localized: "settings.general.welcome_again_button")) {
+                        MainNavigationStore.shared.presentOnboarding()
+                    }
                 }
                 SettingsRowDivider()
                 SettingsRow(

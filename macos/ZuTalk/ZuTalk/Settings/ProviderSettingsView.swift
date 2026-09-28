@@ -171,6 +171,15 @@ final class ProviderConnectionsViewModel: ObservableObject {
 }
 
 struct ProviderSettingsView: View {
+    /// 设置分三节以后,这份视图出现在两处:「实时字幕」里是字幕要用的密钥
+    /// 与邀请,「通用」里只有可选的语言模型(整理标记)。
+    enum Scope {
+        case captions
+        case languageModel
+    }
+
+    var scope: Scope = .captions
+
     @StateObject private var viewModel = ProviderConnectionsViewModel()
     @ObservedObject private var engineStore = NotebookCaptureEnginePresentationStore.shared
     @ObservedObject private var verificationStore = ProviderConnectionVerificationStore.shared
@@ -179,48 +188,12 @@ struct ProviderSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xl) {
-            SettingsPageHeader(
-                title: String(localized: "settings.services.title"),
-                subtitle: String(localized: "settings.services.subtitle")
-            )
-
-            if let recoveryError = viewModel.recoveryError {
-                credentialRecoveryBanner(recoveryError)
+            switch scope {
+            case .captions:
+                captionsContent
+            case .languageModel:
+                languageModelCard
             }
-
-            SettingsCard(
-                title: String(localized: "settings.services.connection.title"),
-                subtitle: String(localized: "settings.services.connection.subtitle")
-            ) {
-                ForEach(Array(captureAccounts.enumerated()), id: \.element.id) { index, account in
-                    if index > 0 {
-                        SettingsRowDivider()
-                    }
-                    credentialRow(account)
-                }
-            }
-
-            CommunityInviteSettingsCard()
-
-            languageModelCard
-
-            Label(
-                String(localized: "settings.credentials.trust_boundary_notice"),
-                systemImage: "externaldrive.fill.badge.checkmark"
-            )
-            .font(.caption)
-            .foregroundColor(.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-            engineCard
-
-            Label(
-                String(localized: "settings.services.no_egress_notice"),
-                systemImage: "lock.shield.fill"
-            )
-            .font(.caption)
-            .foregroundColor(.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
 
             if let operationError = viewModel.operationError {
                 Label(operationError, systemImage: "exclamationmark.triangle.fill")
@@ -264,6 +237,50 @@ struct ProviderSettingsView: View {
         } message: {
             Text(deletionMessage)
         }
+    }
+
+    @ViewBuilder
+    private var captionsContent: some View {
+        SettingsPageHeader(
+            title: String(localized: "settings.section.captions_name"),
+            subtitle: String(localized: "settings.services.subtitle")
+        )
+
+        if let recoveryError = viewModel.recoveryError {
+            credentialRecoveryBanner(recoveryError)
+        }
+
+        SettingsCard(
+            title: String(localized: "settings.services.connection.title"),
+            subtitle: String(localized: "settings.services.connection.subtitle")
+        ) {
+            ForEach(Array(captureAccounts.enumerated()), id: \.element.id) { index, account in
+                if index > 0 {
+                    SettingsRowDivider()
+                }
+                credentialRow(account)
+            }
+        }
+
+        CommunityInviteSettingsCard()
+
+        Label(
+            String(localized: "settings.credentials.trust_boundary_notice"),
+            systemImage: "externaldrive.fill.badge.checkmark"
+        )
+        .font(.caption)
+        .foregroundColor(.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        engineCard
+
+        Label(
+            String(localized: "settings.services.no_egress_notice"),
+            systemImage: "lock.shield.fill"
+        )
+        .font(.caption)
+        .foregroundColor(.textSecondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     /// Credentials the app needs before it can transcribe anything.

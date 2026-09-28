@@ -122,8 +122,7 @@
 "appearance.dark" = "Dark";
 
 /* General settings section */
-"settings.general.title" = "General";
-"settings.general.subtitle" = "Language and appearance for the whole app.";
+"settings.general.subtitle" = "Language, appearance and updates, plus optional tidying of marks and shortcuts.";
 "settings.audio_input.title" = "Audio input";
 "settings.audio_input.subtitle" = "Choose a microphone, USB audio interface, or mixer recognized by macOS.";
 "settings.audio_input.device" = "Input device";
@@ -144,7 +143,7 @@
 "settings.audio_input.active_elsewhere" = "Another recording is active. Switch the input from its recording page.";
 "settings.audio_input.error.switch_unavailable" = "The audio input cannot be changed during another recording transition. Try again in a moment.";
 "capture.toast.audio_input_switch_failed" = "Could not switch audio input";
-"settings.language.title" = "APP LANGUAGE";
+"settings.language.title" = "App language";
 "settings.language.hint" = "The language of ZuTalk’s windows, menus and messages.";
 "settings.language.restart_hint" = "Restart ZuTalk for the change to take full effect.";
 "settings.appearance.title" = "APPEARANCE";
@@ -171,8 +170,6 @@
 
 /* Recording settings */
 
-"editor.export.title" = "Export recording";
-"editor.export.hint" = "Export this recording as a ZIP";
 "editor.export.no_session" = "No recording to export";
 "doc.scratchpad" = "Personal notes";
 
@@ -181,12 +178,8 @@
 
 /* Settings sidebar section rawValues (localized names) */
 "settings.section.general_name" = "General";
-"settings.section.services_name" = "Services & API";
-"settings.section.shortcuts_name" = "Shortcuts";
 
 /* Settings sidebar groups */
-"settings.group.services" = "CONNECTIONS";
-"settings.group.general" = "GENERAL";
 
 /* Settings — API panels (Voice / AI) */
 "settings.credentials.enter_key" = "Enter API key";
@@ -253,7 +246,6 @@
 "settings.credentials.error.runtime_cleanup_failed" = "The provider credential runtime could not be cleared safely. Restart ZuTalk or repair the local app service before using remote providers.";
 
 /* Settings — Services & API */
-"settings.services.title" = "Services & API";
 "settings.services.subtitle" = "Manage service keys. Whether a recording gets live captions — which sends its audio to Soniox — is chosen with the switch beside each Record button.";
 "settings.services.connection.title" = "Service connection";
 "settings.services.connection.subtitle" = "ZuTalk currently supports Soniox only.";
@@ -314,7 +306,7 @@
 /* Toast — Document editor */
 
 /* Sidebar (main window) */
-"sidebar.home" = "Home";
+"sidebar.home" = "All recordings";
 "sidebar.topics" = "Topics";
 "sidebar.trash" = "Trash";
 "sidebar.tab.editor" = "Editor";
@@ -376,13 +368,8 @@
 "home.workspace.load_failed.title" = "Topic unavailable";
 "home.workspace.load_failed.description" = "Your existing data was not changed. Try loading it again.";
 "home.workspace.retry" = "Try again";
-"home.notebook.current" = "CURRENT TOPIC";
 "home.notebook.new" = "New Topic";
 "home.notebook.new.help" = "Create and name a topic";
-"home.notebook.none" = "No topic";
-"home.notebook.switch" = "Switch topic";
-"home.notebook.description" = "Record, follow multilingual transcripts, and write notes in one place.";
-"home.notebook.description.detail" = "Record any time and file the recording into a topic later.";
 "home.notebook.local_first" = "Saved on this Mac";
 "home.library.title" = "Topics";
 "home.library.subtitle" = "Each topic has its own workspace for recordings, transcripts, and shared notes.";
@@ -392,10 +379,6 @@
 "topics.search.placeholder" = "Search topics";
 "topics.search.empty.title" = "No topics found";
 "topics.search.empty.description" = "Try another search term, or create a new topic.";
-"home.notebook.open" = "Open topic";
-"home.capture.return" = "Return to capture";
-"home.capture.owner_here" = "Owned by the selected topic";
-"home.capture.owner_elsewhere" = "Owned by another topic";
 "home.no_notebook.title" = "No topics yet";
 "home.no_notebook.description" = "You can record from above first. It stays in No topic until you create a topic to connect related interviews.";
 "home.first_use.step1.title" = "Create a topic";
@@ -728,7 +711,6 @@
 "capture.settings.subtitle.quick_capture" = "Changes save automatically as defaults for the next quick recording from Home. Audio input is shared across this Mac.";
 "capture.settings.tab" = "Settings";
 "capture.settings.tab_hint" = "Open recording, language, and caption settings.";
-"capture.settings.footer.realtime" = "Languages and the live mode are chosen in the Live Transcript tab.";
 "capture.settings.active_locked" = "A recording is active. Language, context, and retention are frozen; the audio input can still be switched.";
 "capture.settings.autosave.loading" = "Loading settings…";
 "capture.settings.autosave.saving" = "Saving…";
@@ -757,7 +739,7 @@
 "capture.realtime.controls.current_title" = "Current recording configuration";
 "capture.realtime.controls.profile_group" = "Realtime recording configuration";
 "capture.realtime.controls.review_context" = "Review references";
-"capture.settings.context.title" = "Transcription References";
+"capture.settings.context.title" = "Terms and background";
 "capture.settings.context.preview" = "Review what will be used";
 "capture.settings.context.preview_count" = "%lld characters";
 "capture.settings.context.empty" = "No usable reference material yet.";
@@ -858,19 +840,18 @@
 "capture.settings.retention.high.detail" = "Delete audio and its key after an explicit refined transcription succeeds.";
 "capture.settings.retention.maximum.title" = "Delete after any transcript";
 "capture.settings.retention.maximum.detail" = "Delete audio and its key as soon as durable transcript facts exist. If no transcript exists, keep the only source to prevent data loss.";
-"sidebar.knowledge" = "Knowledge";
-"knowledge.title" = "Knowledge";
+"knowledge.title" = "Terms and background";
 "knowledge.subtitle" = "Prepare background, proper nouns, and preferred translations for transcription.";
-"knowledge.new" = "New knowledge base";
+"knowledge.new" = "New set";
 "knowledge.create" = "Create";
-"knowledge.untitled" = "Untitled knowledge base";
-"knowledge.name" = "Knowledge base name";
-"knowledge.empty.title" = "Create your first knowledge base";
+"knowledge.untitled" = "Untitled set";
+"knowledge.name" = "Name";
+"knowledge.empty.title" = "Create your first set";
 "knowledge.empty.description" = "Keep a topic's background, people, organizations, and terms in one profile.";
 "knowledge.card.no_summary" = "No description yet";
 "knowledge.card.counts" = "%lld terms · %lld preferred translations";
-"knowledge.back" = "Knowledge";
-"knowledge.summary.placeholder" = "In one sentence, what should this knowledge base help recognize?";
+"knowledge.back" = "Terms and background";
+"knowledge.summary.placeholder" = "In one sentence, what should this set help recognize?";
 "knowledge.saved_revision" = "Saved automatically · Revision %lld";
 "knowledge.ai.improve" = "Improve with AI";
 "knowledge.ai.coming_soon" = "AI improvement is the next integration; the full profile can be edited manually now.";
@@ -894,13 +875,13 @@
 "knowledge.translation.source" = "Source";
 "knowledge.translation.target" = "Preferred translation";
 "knowledge.translation.add" = "Add preferred translation";
-"capture.settings.context.current" = "Current knowledge base";
+"capture.settings.context.current" = "In use";
 "capture.settings.context.no_selection" = "None selected";
 "capture.settings.context.choose" = "Change";
 "knowledge.import_json" = "Import JSON";
-"knowledge.import_json.message" = "Choose a ZuTalk knowledge-base JSON file (.zutalk-pack.json).";
-"knowledge.import_json.done" = "Knowledge base imported";
-"knowledge.import_json.failed" = "Couldn’t import knowledge base";
+"knowledge.import_json.message" = "Choose a ZuTalk terms-and-background JSON file (.zutalk-pack.json).";
+"knowledge.import_json.done" = "Imported";
+"knowledge.import_json.failed" = "Couldn’t import this file";
 
 /* 分享:点对点字幕与文档协同 */
 "share.audio_never" = "Audio never leaves this Mac — people only see text.";
@@ -942,27 +923,22 @@
 "home.record.start" = "Start recording";
 "home.record.starting" = "Starting…";
 "home.record.unfiled" = "Unfiled recording";
-"home.record.start_hint" = "Start an unfiled recording now and organize it later.";
-"home.record.unavailable_hint" = "Recording is not ready yet; reload the workspace and try again.";
 "home.record.languages.picker" = "Recording languages";
-"home.record.languages.picker_hint_format" = "Recording languages: %@. Click to adjust — up to three per recording.";
 "home.catalog.unfiled_empty.title" = "No unfiled recordings";
 "home.catalog.unfiled_empty.description" = "New recordings started from Home will appear here first.";
 "home.catalog.row.open_unfiled_hint" = "Open this unfiled recording";
-"home.record.return_active_format" = "Return to recording · %@";
 "home.status.completed" = "Completed";
 "home.status.failed" = "Failed";
 "home.status.imported" = "Imported";
 "home.status.interrupted" = "Interrupted";
 "home.status.recording" = "Recording";
 "home.status.transcribing" = "Transcribing";
-"resources.audio_export" = "Audio export";
 "resources.status.unknown" = "Unknown";
 "resources.move.destination" = "Destination topic";
 "resources.status.empty" = "Empty";
 "topic.notes.shared_document" = "Shared topic document";
 "topic.notes.tab" = "Notes";
-"topic.capture_setup.tab" = "Recording setup";
+"topic.capture_setup.tab" = "Settings";
 "topic.capture_setup.tab.hint" = "Open this topic's recording, language, and caption settings.";
 "topic.research.copy" = "Copy transcripts";
 "topic.research.copy.done" = "Research bundle copied";
@@ -983,7 +959,6 @@
 "topic.research.selection.title" = "Research bundle";
 "topic.route.unavailable" = "Topic unavailable";
 "topic.route.unavailable_detail" = "This topic workspace could not be opened. Return to Home and try again.";
-"topic.session.files_and_status" = "Files and status";
 "topic.session.no_preview" = "No transcript preview yet";
 "topic.session.recording_label" = "Live recording";
 "topic.session.tab.live" = "Live transcript";
@@ -1082,12 +1057,8 @@
 "settings.shortcuts.mark" = "Mark what you just heard";
 "settings.shortcuts.overlay_banner" = "Subtitle window: banner across the top";
 "settings.shortcuts.overlay_maximize" = "Subtitle window: fill or restore";
-"topic.workspace.live_tab" = "Live";
 "topic.workspace.total_format" = "%@ in total";
 "recording.row.no_words" = "No words yet";
-"resources.summary.audio" = "Audio";
-"resources.summary.live" = "Live";
-"resources.summary.refined" = "Refined";
 "capture.transcript.presentation.label" = "How to read";
 
 "capture.live.idle_title" = "Not recording yet";
@@ -1183,3 +1154,58 @@
 "share.recording.revoke_confirm_body" = "The link stops working right away and its content is deleted from the server. Copies already downloaded can’t be recalled.";
 "share.recording.revoke_failed" = "Couldn’t revoke the link";
 "share.recording.revoked" = "Link revoked";
+
+"settings.sharing.title" = "Sharing";
+"settings.sharing.subtitle" = "Every link that’s out right now, in one place, ready to revoke.";
+"settings.sharing.out_now" = "Shared now";
+"settings.sharing.nothing_out" = "Nothing is shared right now.";
+"settings.sharing.how" = "How sharing works";
+"settings.sharing.how_live" = "While recording, choose Share captions in the recording bar; people scan the code to follow along.";
+"settings.sharing.how_recording" = "For a finished recording, choose Share… in its menu to send a copy or create a 24-hour read-only link.";
+"settings.sharing.untitled_recording" = "A recording";
+"settings.sharing.read_only_link" = "Read-only link";
+
+"settings.section.captions_name" = "Live captions";
+"settings.section.sharing_name" = "Sharing";
+
+"sidebar.record" = "New recording";
+"sidebar.recording_now" = "Recording now";
+"record.page.title" = "New recording";
+"record.page.subtitle" = "Captions and translations as people speak, and a refined transcript afterwards.";
+"record.page.topic" = "Topic";
+"record.page.topic_detail" = "A topic brings its own languages and terms. You can also file the recording later.";
+"record.page.captions" = "Live captions";
+"record.page.captions_detail" = "When on, audio goes to Soniox for live transcription and translation. When off, it only records on this Mac.";
+"record.page.captions_needs_key" = "Live captions need a Soniox key or an invite code in Settings. For now it records only.";
+"record.page.shortcut_hint" = "⌃⌥R starts or stops a recording from any app.";
+"record.page.import" = "Import audio";
+"record.page.import_detail" = "Turn an existing audio file into a transcript, filed in the topic above.";
+"record.page.import_button" = "Choose file…";
+"record.page.importing" = "Importing…";
+"record.page.recording_now" = "Recording now";
+"record.page.recording_now_detail" = "One recording at a time. Pause, Mark and Stop are in the recording bar at the top of the window.";
+"record.page.open_recording" = "Go to the recording";
+
+"capture.settings.context.manage" = "Edit terms and background…";
+
+"session.tab.transcript" = "Transcript";
+"session.transcript.live_version" = "Live";
+"session.transcript.refined_version" = "Refined";
+"session.menu.hint" = "Share, export and recording settings";
+"session.menu.settings" = "Files and settings…";
+"editor.export.menu" = "Export…";
+
+"trash.subtitle" = "Deleted recordings wait here. Restore puts one back where it was; deleting permanently also erases its encrypted audio and can’t be undone.";
+"trash.empty_all" = "Empty Trash…";
+"trash.empty_all.confirm_title_format" = "Permanently delete these %lld recordings?";
+"trash.empty_all.confirm_button" = "Delete all permanently";
+"trash.empty_all.partial_format" = "%lld couldn’t be deleted and are still in the Trash.";
+"trash.toast.emptied" = "Trash emptied";
+"trash.load_failed" = "Couldn’t load the Trash";
+"trash.restore_failed" = "Couldn’t restore";
+"trash.purge_failed" = "Couldn’t delete permanently";
+"trash.action.restore_hint" = "Put it back in its topic (or No topic)";
+
+"settings.general.welcome_again" = "Welcome guide";
+"settings.general.welcome_again_hint" = "Go through it again: add a key, allow the microphone, see how recording works. Your recordings and settings stay as they are.";
+"settings.general.welcome_again_button" = "Show again";

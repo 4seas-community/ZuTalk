@@ -84,36 +84,6 @@ enum HomeSessionStatusState: Equatable {
     case imported
 }
 
-/// Home's recording affordance has two materially different jobs. When a
-/// capture is already active it must return to that capture's Topic; otherwise
-/// it lets the user choose where a new recording should live.
-struct HomeActiveCaptureDestination: Equatable {
-    let notebookId: String
-    let topicTitle: String?
-}
-
-enum HomeRecordingEntryPolicy {
-    static func activeDestination(
-        isCaptureActive: Bool,
-        captureNotebookId: String?,
-        notebooks: [FfiNotebook]
-    ) -> HomeActiveCaptureDestination? {
-        guard isCaptureActive,
-              let captureNotebookId,
-              captureNotebookId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        else { return nil }
-
-        let topicTitle = notebooks
-            .first(where: { $0.id == captureNotebookId })?
-            .title
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return HomeActiveCaptureDestination(
-            notebookId: captureNotebookId,
-            topicTitle: topicTitle?.isEmpty == false ? topicTitle : nil
-        )
-    }
-}
-
 extension SessionListItem {
     /// 这段录音此刻还在录。删除一族的入口都要看它 —— Core 会拒绝删除
     /// 正在录的 session(软删与彻底删除一视同仁),UI 不该先摆出一个

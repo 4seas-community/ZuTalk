@@ -36,25 +36,29 @@ final class SoftwareUpdateVersionTests: XCTestCase {
 
 @MainActor
 final class LocalSystemSettingsViewModelTests: XCTestCase {
-    func testServicesSectionNameIsNotAProviderName() {
-        let displayName = SettingsSection.services.displayName
+    /// The captions section is named for what it is for, not for the
+    /// company that happens to provide it today.
+    func testCaptionsSectionNameIsNotAProviderName() {
+        let displayName = SettingsSection.captions.displayName
 
         XCTAssertNotEqual(displayName, ProviderCredentialAccount.soniox.displayName)
     }
 
-    func testServicesSectionLocalizationsDoNotUseProviderAsNavigation() throws {
-        XCTAssertEqual(
-            try localizedString(locale: "en", key: "settings.section.services_name"),
-            "Services & API"
-        )
-        XCTAssertEqual(
-            try localizedString(locale: "zh-Hans", key: "settings.section.services_name"),
-            "服务与 API"
-        )
-        XCTAssertEqual(
-            try localizedString(locale: "ja", key: "settings.section.services_name"),
-            "サービスと API"
-        )
+    func testSettingsSectionsAreNamedForWhatTheyAreAbout() throws {
+        XCTAssertEqual(SettingsSection.allCases, [.general, .captions, .sharing])
+        let expected = [
+            "en": ["General", "Live captions", "Sharing"],
+            "zh-Hans": ["通用", "实时字幕", "共享"],
+            "ja": ["一般", "リアルタイム字幕", "共有"],
+        ]
+        for (locale, names) in expected {
+            XCTAssertEqual(
+                try ["general", "captions", "sharing"].map {
+                    try localizedString(locale: locale, key: "settings.section.\($0)_name")
+                },
+                names
+            )
+        }
     }
 
     func testProviderDeletionRequiresExplicitConfirmation() throws {
@@ -424,7 +428,7 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
             "ja": "キーを保存しただけでは何も送信されません。音声が Soniox に送られるのは、リアルタイム字幕をオンにした録音か、高精度文字起こしを依頼したときだけです。",
         ]
         let requiredKeys = [
-            "settings.services.title",
+            "settings.section.captions_name",
             "settings.services.connection.title",
             "settings.services.no_egress_notice",
             "settings.services.engine.realtime",
@@ -482,8 +486,10 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         XCTAssertFalse(settings.contains("case recording"))
         XCTAssertFalse(settings.contains("RecordingSection"))
         XCTAssertFalse(settings.contains("settings.group.modes"))
-        XCTAssertTrue(settings.contains("case services"))
-        XCTAssertTrue(settings.contains("ServiceConnectionsSection"))
+        // Live captions is a section about what captions need (a key or an
+        // invite), not a place to configure how recordings behave.
+        XCTAssertTrue(settings.contains("case captions"))
+        XCTAssertTrue(settings.contains("ProviderSettingsView(scope: .captions)"))
         XCTAssertFalse(settings.contains("settings.shortcuts.toggle_floating"))
         XCTAssertFalse(settings.contains("settings.shortcuts.cycle_display"))
         XCTAssertFalse(settings.contains("⌃⌥V"))
@@ -576,8 +582,9 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         )
         XCTAssertFalse(combined.contains("Peer sharing status"))
         XCTAssertFalse(combined.contains("DaemonStatusSection()"))
-        XCTAssertTrue(combined.contains("sections: [.general, .shortcuts]"))
-        XCTAssertFalse(combined.contains("sections: [.general, .knowledge, .shortcuts]"))
+        XCTAssertTrue(combined.contains("case general"))
+        XCTAssertTrue(combined.contains("case sharing"))
+        XCTAssertFalse(combined.contains("case knowledge"))
         XCTAssertFalse(combined.contains("case diagnostics"))
         XCTAssertFalse(combined.contains("DiagnosticsSection()"))
         XCTAssertFalse(combined.contains("\"Core unavailable\""))

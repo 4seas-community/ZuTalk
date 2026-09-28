@@ -476,7 +476,7 @@ struct CaptionsChoiceChip: View {
             if available {
                 commands.setRealtimeCaptionsEnabled(!commands.realtimeCaptionsEnabled)
             } else {
-                MainNavigationStore.shared.openSettings()
+                MainNavigationStore.shared.openSettings(section: .captions)
             }
         } label: {
             Label(

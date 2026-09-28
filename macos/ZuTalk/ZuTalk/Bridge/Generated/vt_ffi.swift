@@ -938,6 +938,12 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func unregisterEditorCallback(notebookId: String, tabId: String) throws
 
     /**
+     * 所有还有效的录音链接,新的在前。设置里「共享」一节据此列出此刻
+     * 在外面的一切,好让主持人一处看清、随手撤销。
+     */
+    func allRecordingLinks()  -> [FfiRecordingLink]
+
+    /**
      * 给一段录好的录音开一条只读链接:24 小时后失效,可以随时撤销。走网络。
      */
     func createRecordingLink(sessionId: String, title: String) throws  -> FfiRecordingLink
@@ -2095,6 +2101,18 @@ open func unregisterEditorCallback(notebookId: String, tabId: String)throws   {t
         FfiConverterString.lower(tabId),$0
     )
 }
+}
+
+    /**
+     * 所有还有效的录音链接,新的在前。设置里「共享」一节据此列出此刻
+     * 在外面的一切,好让主持人一处看清、随手撤销。
+     */
+open func allRecordingLinks() -> [FfiRecordingLink]  {
+    return try!  FfiConverterSequenceTypeFfiRecordingLink.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_all_recording_links(
+            self.uniffiCloneHandle(),$0
+    )
+})
 }
 
     /**
@@ -9701,6 +9719,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_unregister_editor_callback() != 10320) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_all_recording_links() != 28687) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_create_recording_link() != 60585) {

@@ -680,6 +680,29 @@ private enum KnowledgeProfileStoreError: LocalizedError {
     }
 }
 
+/// 专有词与背景的资料库,从主题设置里打开。资料可以给多个主题共用,
+/// 所以它不属于某一个主题;但它只在录音要用到时才有意义,所以入口放在
+/// 主题设置,而不是侧边栏的第一层。
+struct KnowledgeLibrarySheet: View {
+    @Environment(\.presentationMode) private var presentationMode
+
+    var body: some View {
+        VStack(spacing: 0) {
+            KnowledgeLibraryPage()
+            Divider()
+            HStack {
+                Spacer()
+                Button(String(localized: "common.done")) {
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(Spacing.md)
+        }
+        .frame(minWidth: 860, idealWidth: 960, minHeight: 620, idealHeight: 720)
+    }
+}
+
 struct KnowledgeLibraryPage: View {
     @StateObject private var store = KnowledgeProfileStore()
     @State private var selectedID: UUID?

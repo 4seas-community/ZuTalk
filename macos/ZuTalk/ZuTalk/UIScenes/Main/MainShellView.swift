@@ -89,8 +89,10 @@ struct MainShellView: View {
             Spacer().frame(height: Spacing.md)
 
             VStack(alignment: .leading, spacing: 2) {
+                recordSidebarItem
+
                 sidebarItem(
-                    icon: "house.fill",
+                    icon: "waveform",
                     label: String(localized: "sidebar.home"),
                     active: store.activePrimaryTab == .home,
                     accId: AccessibilityID.mainTabHome
@@ -106,15 +108,6 @@ struct MainShellView: View {
                 ) {
                     store.select(tab: .topics)
                 }
-
-                sidebarItem(
-                    icon: "books.vertical.fill",
-                    label: String(localized: "sidebar.knowledge"),
-                    active: activeTab == .knowledge,
-                    accId: AccessibilityID.mainTabKnowledge
-                ) {
-                    store.select(tab: .knowledge)
-                }
             }
             .padding(.horizontal, Spacing.sm)
 
@@ -129,6 +122,15 @@ struct MainShellView: View {
                 ) {
                     store.select(tab: .trash)
                 }
+
+                sidebarItem(
+                    icon: "gearshape.fill",
+                    label: String(localized: "sidebar.tab.settings"),
+                    active: activeTab == .config,
+                    accId: AccessibilityID.mainTabConfig
+                ) {
+                    store.openSettings()
+                }
             }
             .padding(.horizontal, Spacing.sm)
 
@@ -137,6 +139,48 @@ struct MainShellView: View {
             sidebarFooter
                 .padding(.horizontal, Spacing.md)
                 .padding(.bottom, Spacing.md)
+        }
+    }
+
+    /// 开始录音;录音进行中变成「正在录音」,点它回到那场录音。窗口里
+    /// 开始录音只有这一个入口,所以它排在第一位。
+    @ViewBuilder
+    private var recordSidebarItem: some View {
+        if capture.isCaptureActive {
+            Button {
+                store.openLiveRecording()
+            } label: {
+                HStack(spacing: Spacing.sm + 2) {
+                    PulsingDot(color: .signalRed, size: 9)
+                        .frame(width: 18)
+                        .accessibilityHidden(true)
+                    Text(String(localized: "sidebar.recording_now"))
+                        .font(.bodyMedium)
+                        .foregroundColor(.textPrimary)
+                    Spacer()
+                    Text(CaptureCommandCenter.clock(capture.elapsedRecordingTime))
+                        .font(.bodySM)
+                        .monospacedDigit()
+                        .foregroundColor(.textSecondary)
+                }
+                .padding(.horizontal, Spacing.sm + 2)
+                .frame(minHeight: 44)
+                .background(Color.signalRed.opacity(store.activePrimaryTab == .record ? 0.14 : 0.08))
+                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "sidebar.recording_now"))
+            .accessibilityAddTraits(store.activePrimaryTab == .record ? .isSelected : [])
+            .accessibilityIdentifier(AccessibilityID.mainTabRecord)
+        } else {
+            sidebarItem(
+                icon: "record.circle",
+                label: String(localized: "sidebar.record"),
+                active: store.activePrimaryTab == .record,
+                accId: AccessibilityID.mainTabRecord
+            ) {
+                store.select(tab: .record)
+            }
         }
     }
 
@@ -238,28 +282,13 @@ struct MainShellView: View {
                 .task { await communityInvite.refreshQuota() }
             }
 
-            HStack(spacing: Spacing.sm) {
-                Label(
-                    String(localized: "sidebar.local_first"),
-                    systemImage: "lock.shield.fill"
-                )
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-
-                Spacer()
-
-                Button(action: { store.openSettings() }) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(activeTab == .config ? .brandAccent : .textSecondary)
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.plain)
-                .help(String(localized: "sidebar.tab.settings"))
-                .accessibilityLabel(String(localized: "sidebar.tab.settings"))
-                .accessibilityAddTraits(activeTab == .config ? .isSelected : [])
-                .accessibilityIdentifier(AccessibilityID.mainTabConfig)
-            }
+            Label(
+                String(localized: "sidebar.local_first"),
+                systemImage: "lock.shield.fill"
+            )
+            .font(.bodySM)
+            .foregroundColor(.textSecondary)
+            .frame(minHeight: 36)
         }
         // The update row appears and swaps states on its own schedule; without
         // this the footer would jump under the user's cursor.
@@ -382,8 +411,8 @@ struct MainShellView: View {
                         HomeView()
                     case .topics:
                         TopicsView()
-                    case .knowledge:
-                        KnowledgeLibraryPage()
+                    case .record:
+                        RecordStartPage()
                     case .trash:
                         TrashPage()
                     case .editor:
@@ -509,7 +538,7 @@ struct MainShellView: View {
                             title: recording.label
                         )
                     } label: {
-                        Image(systemName: "person.2")
+                        Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.textSecondary)
                             .frame(width: 24, height: 24)
@@ -593,8 +622,8 @@ struct MainShellView: View {
             return "house.fill"
         case .topics:
             return "folder.fill"
-        case .knowledge:
-            return "books.vertical.fill"
+        case .record:
+            return "record.circle"
         case .trash:
             return "trash"
         case .editor:
@@ -612,8 +641,8 @@ struct MainShellView: View {
             return String(localized: "sidebar.home")
         case .topics:
             return String(localized: "sidebar.topics")
-        case .knowledge:
-            return String(localized: "sidebar.knowledge")
+        case .record:
+            return String(localized: "sidebar.record")
         case .trash:
             return String(localized: "sidebar.trash")
         case .editor:

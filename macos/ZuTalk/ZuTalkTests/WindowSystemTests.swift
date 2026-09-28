@@ -651,15 +651,25 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertFalse(contents.contains("sidebarWidth"))
         XCTAssertFalse(contents.contains(".frame(width: 64)"))
 
-        for destination in [
+        // Recording first, then where recordings are kept, then settings.
+        // Terms and background live in each topic's settings, not up here.
+        let destinations = [
+            "sidebar.record",
             "sidebar.home",
             "sidebar.topics",
-            "sidebar.knowledge",
             "sidebar.trash",
             "sidebar.tab.settings"
-        ] {
-            XCTAssertTrue(contents.contains(destination), "\(destination) should be present in the MVP navigation shell")
+        ]
+        var previous = contents.startIndex
+        for destination in destinations {
+            let found = try XCTUnwrap(
+                contents.range(of: destination, range: previous..<contents.endIndex),
+                "\(destination) should be present, in order, in the navigation shell"
+            )
+            previous = found.upperBound
         }
+        XCTAssertFalse(contents.contains("sidebar.knowledge"))
+        XCTAssertTrue(contents.contains("store.openLiveRecording()"))
         for deferredDestination in [
             "store.select(tab: .people)",
             "store.select(tab: .templates)",
@@ -670,10 +680,9 @@ final class WindowSystemTests: XCTestCase {
 
         XCTAssertFalse(contents.contains(".frame(width: 240)"))
         XCTAssertTrue(contents.contains(".accessibilityLabel(String(localized: \"sidebar.collapse\"))"))
-        XCTAssertTrue(contents.contains(".accessibilityLabel(String(localized: \"sidebar.tab.settings\"))"))
         XCTAssertTrue(contents.contains(".accessibilityLabel(label)"))
         XCTAssertTrue(contents.contains(".accessibilityAddTraits(active ? .isSelected : [])"))
-        XCTAssertTrue(contents.contains(".accessibilityAddTraits(activeTab == .config ? .isSelected : [])"))
+        XCTAssertTrue(contents.contains("active: activeTab == .config"))
 
         let navigationSource = root
             .appendingPathComponent("UIScenes/Main/MainNavigationStore.swift")

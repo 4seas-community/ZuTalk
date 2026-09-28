@@ -150,7 +150,21 @@ struct OnboardingView: View {
             }
         }
         .cornerCrosshairs(color: .textTertiary.opacity(0.5), inset: 16, size: 10)
+        .overlay(alignment: .topTrailing) {
+            // Opened again from Settings: nothing here is required any more,
+            // so there is a way out at every step.
+            if hasCompletedBefore {
+                Button(String(localized: "common.close")) {
+                    onComplete()
+                }
+                .keyboardShortcut(.cancelAction)
+                .padding(Spacing.lg)
+                .accessibilityIdentifier("onboarding.close")
+            }
+        }
     }
+
+    private let hasCompletedBefore = UserDefaults.standard.bool(forKey: "zutalk.onboarding.completed")
 
     private func withPhaseAnim(_ action: () -> Void) {
         withAnimation(.easeInOut(duration: 0.35)) { action() }

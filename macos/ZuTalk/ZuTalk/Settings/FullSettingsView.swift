@@ -13,61 +13,54 @@ private func L(_ key: String.LocalizationValue) -> String {
 
 // MARK: - Settings Section
 //
-// 分组组织:
-//   SERVICES   — 全局服务凭据与只读引擎说明
-//   GENERAL    — general / shortcuts (UI 偏好 + 只读参考)
+// 三节,按「这件事关于什么」分,不按「这是哪种技术」分:
+//   通用     — 语言、外观、更新、整理标记(可选的语言模型)、快捷键
+//   实时字幕 — 让字幕跑起来的东西:Soniox 密钥或社区邀请
+//   共享     — 此刻在外面的链接,一处看清、随手撤销
+// 主题自己的设置(语言、专有词与背景、音频保留)在主题里,不在这里。
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case services = "Services"
     case general = "General"
-    case shortcuts = "Shortcuts"
+    case captions = "Captions"
+    case sharing = "Sharing"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .services:    return String(localized: "settings.section.services_name")
-        case .general:     return String(localized: "settings.section.general_name")
-        case .shortcuts:   return String(localized: "settings.section.shortcuts_name")
+        case .general:  return String(localized: "settings.section.general_name")
+        case .captions: return String(localized: "settings.section.captions_name")
+        case .sharing:  return String(localized: "settings.section.sharing_name")
         }
     }
 
     var icon: String {
         switch self {
-        case .services:    return "network"
-        case .general:     return "gearshape"
-        case .shortcuts:   return "command"
+        case .general:  return "gearshape"
+        case .captions: return "captions.bubble"
+        case .sharing:  return "square.and.arrow.up"
         }
     }
 }
 
-/// 侧边栏分组 — 每组包含若干 SettingsSection,按功能域归类。
-private struct SettingsGroup {
-    let titleKey: String.LocalizationValue
-    let sections: [SettingsSection]
+/// 从别处点进设置时要落在哪一节 —— 比如「添加自己的密钥」直接落到实时字幕。
+@MainActor
+final class SettingsRouter: ObservableObject {
+    static let shared = SettingsRouter()
+    @Published var section: SettingsSection = .general
+    private init() {}
 }
-
-private let settingsGroups: [SettingsGroup] = [
-    SettingsGroup(
-        titleKey: "settings.group.services",
-        sections: [.services]
-    ),
-    SettingsGroup(
-        titleKey: "settings.group.general",
-        sections: [.general, .shortcuts]
-    ),
-]
 
 // MARK: - FullSettingsView
 
 struct FullSettingsView: View {
-    @State private var selectedSection: SettingsSection = .services
+    @ObservedObject private var router = SettingsRouter.shared
 
     var body: some View {
         HStack(spacing: 0) {
             // 左侧导航
             sidebar
-                .frame(width: 220)
+                .frame(width: 200)
                 .background(Color.bgRoot)
 
             Rectangle()
@@ -78,6 +71,7 @@ struct FullSettingsView: View {
             ScrollView {
                 content
                     .padding(Spacing.xl)
+                    .frame(maxWidth: 760, alignment: .topLeading)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .background(Color.bgRoot)
@@ -88,44 +82,30 @@ struct FullSettingsView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(settingsGroups.enumerated()), id: \.offset) { idx, group in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: group.titleKey))
-                            .font(Font.mono9.weight(.medium))
-                            .foregroundColor(Color.textSecondary)
-                            .tracking(0.8)
-                            .padding(.horizontal, Spacing.md)
-                            .padding(.top, idx == 0 ? Spacing.lg : Spacing.md + 4)
-                            .padding(.bottom, 6)
-
-                        ForEach(group.sections) { section in
-                            sidebarItem(section)
-                        }
-                    }
-                }
-
-                Spacer(minLength: Spacing.xl)
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(SettingsSection.allCases) { section in
+                sidebarItem(section)
             }
+            Spacer(minLength: Spacing.xl)
         }
+        .padding(.top, Spacing.lg)
     }
 
     private func sidebarItem(_ section: SettingsSection) -> some View {
-        Button(action: { selectedSection = section }) {
+        Button(action: { router.section = section }) {
             HStack(spacing: 8) {
                 Image(systemName: section.icon)
                     .font(.system(size: 11))
                     .frame(width: 14)
                     .foregroundColor(
-                        selectedSection == section
+                        router.section == section
                             ? Color.textSecondary
                             : Color.textTertiary
                     )
                 Text(section.displayName)
                     .font(Font.sans11)
                     .foregroundColor(
-                        selectedSection == section
+                        router.section == section
                             ? Color.textSecondary
                             : Color.textTertiary
                     )
@@ -134,13 +114,13 @@ struct FullSettingsView: View {
             .padding(.horizontal, Spacing.md)
             .padding(.vertical, 6)
             .background(
-                selectedSection == section
+                router.section == section
                     ? Color.bgElevated
                     : Color.clear
             )
             .overlay(
                 HStack {
-                    if selectedSection == section {
+                    if router.section == section {
                         Rectangle()
                             .fill(Color.brandAccent)
                             .frame(width: 2)
@@ -156,10 +136,17 @@ struct FullSettingsView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch selectedSection {
-        case .services:    ServiceConnectionsSection()
-        case .general:     GeneralSettingsSection()
-        case .shortcuts:   ShortcutsSection()
+        switch router.section {
+        case .general:
+            VStack(alignment: .leading, spacing: Spacing.xl) {
+                GeneralSettingsSection()
+                ProviderSettingsView(scope: .languageModel)
+                ShortcutsSection()
+            }
+        case .captions:
+            ProviderSettingsView(scope: .captions)
+        case .sharing:
+            SharingSettingsSection()
         }
     }
 }
@@ -187,21 +174,13 @@ struct SettingsSectionHeader: View {
 
 // MARK: - Service Connections
 
-struct ServiceConnectionsSection: View {
-    var body: some View {
-        ProviderSettingsView()
-    }
-}
-
 struct ShortcutsSection: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.lg) {
-            SettingsSectionHeader(
-                title: L("settings.shortcuts.title"),
-                subtitle: L("settings.shortcuts.subtitle")
-            )
-
-            InstrumentPanel(padding: Spacing.md) {
+        SettingsCard(
+            title: L("settings.shortcuts.title"),
+            subtitle: L("settings.shortcuts.subtitle")
+        ) {
+            SettingsFullRow {
                 VStack(alignment: .leading, spacing: 10) {
                     // Only what is actually registered: see HotKeyManager
                     // and the subtitle window's own buttons.
