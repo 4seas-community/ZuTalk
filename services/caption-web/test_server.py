@@ -3,6 +3,7 @@
 import json
 import os
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -187,7 +188,7 @@ class CaptionWebTests(unittest.TestCase):
         # 留存期一到才真的删。
         self.store.rooms[rid].last_activity -= self.store.retention_seconds + 1
         self.assertEqual(self.store.sweep_idle(), 1)
-        status, _ = self.request("GET", f"/r/{rid}")
+        status, _ = self.request("GET", f"/v1/rooms/{rid}")
         self.assertEqual(status, 404)
 
     def test_rooms_survive_a_restart(self):
@@ -272,13 +273,128 @@ class CaptionWebTests(unittest.TestCase):
         # 会议室网络不可预设能出外网:页面必须无外部资源。
         self.assertNotIn("http://", page.split("<body>")[1])
         self.assertNotIn("https://", page.split("<body>")[1])
-        # 界面文案三语齐备:观看的人是简中/泰/英背景,英文独占的
-        # 「This share has ended」对另外两种人就是谜语。
-        self.assertIn("这场分享已结束", page)
-        self.assertIn("การแชร์นี้จบแล้ว", page)
-        self.assertIn("This share has ended", page)
-        for lang in ("zh-Hans", "en", "th"):
+        # 界面文案八语齐备:扫码的人什么语言背景都有,英文独占的
+        # 「The live share has ended」对别的人就是谜语。
+        self.assertIn("直播已结束", page)
+        self.assertIn("ไลฟ์จบแล้ว", page)
+        self.assertIn("The live share has ended", page)
+        for lang in ("zh-Hans", "en", "ja", "ko", "fr", "es", "de", "th"):
             self.assertIn(f'"{lang}"', page)
+        # 内容在浏览器里解密:密钥取自链接 # 后面,从不发给服务器。
+        self.assertIn("crypto.subtle.decrypt", page)
+        self.assertIn("location.hash", page)
+
+    def test_a_dead_link_still_gets_a_page_that_says_so(self):
+        """扫一个过期或撤销了的码,看到的该是一句话,不是一段 JSON。"""
+        request = urllib.request.Request(f"http://127.0.0.1:{self.port}/r/no-such-room")
+        with urllib.request.urlopen(request, timeout=5) as response:
+            self.assertEqual(response.status, 200)
+            self.assertIn("text/html", response.headers["Content-Type"])
+            # 页面只连自己这台服务,不给别的脚本来源。
+            self.assertIn("default-src 'none'", response.headers["Content-Security-Policy"])
+            self.assertEqual(response.headers["Referrer-Policy"], "no-referrer")
+        status, _ = self.request("GET", "/v1/rooms/no-such-room")
+        self.assertEqual(status, 404)
+
+    def test_the_server_relays_ciphertext_it_cannot_read(self):
+        """端到端加密的载荷:服务端只认信封上的事件类型、录音 id 与分割线
+        种类,密文原样存、原样转。说明(meta)同样进全量。"""
+        room = self.create_room()
+        rid, token = room["room_id"], room["publish_token"]
+        for suffix, body in (
+            ("meta", {"v": 2, "ct": "bWV0YQ"}),
+            ("blocks", {"v": 2, "session_id": "s1", "ct": "YmxvY2tz"}),
+            ("frame", {"v": 2, "ct": "ZnJhbWU"}),
+            ("segment", {"v": 2, "kind": "started", "ct": "c2Vn"}),
+        ):
+            status, _ = self.request("POST", f"/v1/rooms/{rid}/{suffix}", body=body, token=token)
+            self.assertEqual(status, 200, suffix)
+        stream = self.open_sse(rid)
+        event, data = self.read_event(stream)
+        self.assertEqual(event, "init")
+        self.assertEqual(data["meta"], {"v": 2, "ct": "bWV0YQ"})
+        self.assertEqual(data["sessions"], [{"v": 2, "session_id": "s1", "ct": "YmxvY2tz"}])
+        self.assertEqual(data["frame"], {"v": 2, "ct": "ZnJhbWU"})
+        self.assertEqual(data["segments"][0]["kind"], "started")
+        stream.close()
+
+    def test_a_locked_share_keeps_new_viewers_out(self):
+        room = self.create_room()
+        rid, token = room["room_id"], room["publish_token"]
+        watching = self.open_sse(rid)
+        self.read_event(watching)
+        status, stats = self.request("GET", f"/v1/rooms/{rid}/stats", token=token)
+        self.assertEqual((status, stats["viewers"], stats["locked"]), (200, 1, False))
+
+        status, stats = self.request("POST", f"/v1/rooms/{rid}/lock", body={"locked": True}, token=token)
+        self.assertEqual((status, stats["locked"]), (200, True))
+        status, public = self.request("GET", f"/v1/rooms/{rid}")
+        self.assertEqual(public, {"locked": True, "ended": False})
+        with self.assertRaises(urllib.error.HTTPError) as refused:
+            self.open_sse(rid)
+        self.assertEqual(refused.exception.code, 403)
+        # 已经在看的人不受影响。
+        status, _ = self.request("POST", f"/v1/rooms/{rid}/frame", body={"v": 2, "ct": "eA"}, token=token)
+        self.assertEqual(self.read_event(watching)[0], "frame")
+
+        status, _ = self.request("POST", f"/v1/rooms/{rid}/lock", body={"locked": False}, token=token)
+        self.assertEqual(status, 200)
+        self.assertEqual(self.read_event(self.open_sse(rid))[0], "init")
+        # 别人拿不到人数,也锁不了。
+        status, _ = self.request("GET", f"/v1/rooms/{rid}/stats", token="nope")
+        self.assertEqual(status, 401)
+        status, _ = self.request("POST", f"/v1/rooms/{rid}/lock", body={"locked": True}, token="nope")
+        self.assertEqual(status, 401)
+        watching.close()
+
+    def test_a_closed_page_stops_counting_within_a_couple_of_asks(self):
+        """关掉的页面要等下一次写才暴露。主持人的询问本身就是那次写 ——
+        否则走了的人会被多算到下一次心跳(25 秒)。"""
+        room = self.create_room()
+        rid, token = room["room_id"], room["publish_token"]
+        leaving = self.open_sse(rid)
+        self.read_event(leaving)
+        staying = self.open_sse(rid)
+        self.read_event(staying)
+        leaving.close()
+        counts = []
+        for _ in range(20):
+            _, stats = self.request("GET", f"/v1/rooms/{rid}/stats", token=token)
+            counts.append(stats["viewers"])
+            if stats["viewers"] == 1:
+                break
+            time.sleep(0.1)
+        self.assertEqual(counts[-1], 1, counts)
+        # 留下的那位没有收到任何可见事件。
+        status, _ = self.request("POST", f"/v1/rooms/{rid}/frame", body={"v": 2, "ct": "eA"}, token=token)
+        self.assertEqual(self.read_event(staying)[0], "frame")
+        staying.close()
+
+    def test_withdrawing_a_link_deletes_it_even_after_it_ended(self):
+        """撤销:在看的人收到带 purged 的 ended,内容当场从服务器上删掉,
+        链接从此失效。已结束(封笔)的房间也能撤 —— 录好的录音链接就是
+        推完即封笔的房间。"""
+        room = self.create_room()
+        rid, token = room["room_id"], room["publish_token"]
+        self.request("POST", f"/v1/rooms/{rid}/blocks", body={"v": 2, "session_id": "s", "ct": "eA"}, token=token)
+        watching = self.open_sse(rid)
+        self.read_event(watching)
+        status, _ = self.request("DELETE", f"/v1/rooms/{rid}?purge=1", token="nope")
+        self.assertEqual(status, 401)
+        status, _ = self.request("DELETE", f"/v1/rooms/{rid}?purge=1", token=token)
+        self.assertEqual(status, 200)
+        event, data = self.read_event(watching)
+        self.assertEqual((event, data), ("ended", {"purged": True}))
+        status, _ = self.request("GET", f"/v1/rooms/{rid}")
+        self.assertEqual(status, 404)
+
+        sealed = self.create_room()
+        self.request("DELETE", f"/v1/rooms/{sealed['room_id']}", token=sealed["publish_token"])
+        status, _ = self.request(
+            "DELETE", f"/v1/rooms/{sealed['room_id']}?purge=1", token=sealed["publish_token"]
+        )
+        self.assertEqual(status, 200)
+        self.assertNotIn(sealed["room_id"], self.store.rooms)
 
     def test_live_tail_columns_anchor_to_the_bottom_like_the_app_canvas(self):
         """实时区各栏底端对齐 ——「现在」在底边。
@@ -369,7 +485,7 @@ class CaptionWebTests(unittest.TestCase):
         stored.last_activity -= self.store.retention_seconds + 1
         removed = self.store.sweep_idle()
         self.assertEqual(removed, 1)
-        status, _ = self.request("GET", f"/r/{room['room_id']}")
+        status, _ = self.request("GET", f"/v1/rooms/{room['room_id']}")
         self.assertEqual(status, 404)
 
     def test_pause_marker_stops_the_live_tail_for_late_subscribers(self):
