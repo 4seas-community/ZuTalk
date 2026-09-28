@@ -7,8 +7,8 @@
 
 /* Onboarding — Welcome */
 "onboarding.welcome.button" = "继续 →";
-"onboarding.welcome.bullet1" = "为一类对话建一个 Notebook，例如“英语面试”。";
-"onboarding.welcome.bullet2" = "打开 Notebook，点击“开始录音”。";
+"onboarding.welcome.bullet1" = "为一类对话建一个主题，例如“英语面试”。";
+"onboarding.welcome.bullet2" = "打开主题，点击“开始录音”。";
 "onboarding.welcome.bullet3" = "停止后，在同一个地方查看字幕、录音和笔记。";
 "onboarding.welcome.privacy" = "数据默认保存在这台 Mac；远端转录由你在具体会议中开启。";
 "onboarding.visual.live" = "现场转录";
@@ -188,9 +188,9 @@
 /* Recording settings */
 
 
-"editor.export.title" = "导出会话";
-"editor.export.hint" = "将这个会话导出为 ZIP";
-"editor.export.no_session" = "没有可导出的录音会话";
+"editor.export.title" = "导出录音";
+"editor.export.hint" = "将这个录音导出为 ZIP";
+"editor.export.no_session" = "没有可导出的录音";
 "doc.scratchpad" = "个人笔记";
 
 
@@ -272,10 +272,10 @@
 
 /* Settings — Services & API */
 "settings.services.title" = "服务与 API";
-"settings.services.subtitle" = "管理全局服务凭据并查看固定录音引擎。数据是否外发由每个 Notebook 单独决定。";
+"settings.services.subtitle" = "管理服务密钥。录音时要不要开实时字幕（会把音频发给 Soniox），在每个录音按钮旁边的开关里决定。";
 "settings.services.connection.title" = "服务连接";
 "settings.services.connection.subtitle" = "ZuTalk 目前只支持 Soniox。";
-"settings.services.no_egress_notice" = "保存密钥不会授予新的数据外发权限。每个 Notebook 仍须单独授权远端处理；若某项后台任务此前已获该 Notebook 授权，只是在等待凭据，它可能在密钥持久保存并成功加载后继续。";
+"settings.services.no_egress_notice" = "保存密钥本身不会发送任何数据。只有开了实时字幕的录音，或你手动请求的精修转录，才会把音频发给 Soniox。";
 /* Language model: the optional credential, and what enabling it sends. */
 "settings.services.model.title" = "语言模型";
 "settings.services.model.subtitle_format" = "可选。把标记的段落整理清楚，并据此成文。使用 %@。";
@@ -295,7 +295,7 @@
 "settings.services.engine.subtitle" = "只读。当前 MVP 的引擎选择由 Rust 核心统一管理。";
 "settings.services.engine.service" = "服务";
 "settings.services.engine.realtime" = "实时录音";
-"settings.services.engine.realtime_detail" = "Notebook 明确开启远端处理后，用于实时多语言转录和语言字幕。";
+"settings.services.engine.realtime_detail" = "开了实时字幕的录音用它做实时多语言转录与翻译。";
 "settings.services.engine.post_stop" = "停止后处理";
 "settings.services.engine.post_stop_detail" = "将已完成的本地录音上传到 Soniox 异步文件 API 转录，取回结果后立即删除远端文件与转录任务。";
 "settings.services.engine.post_stop_unavailable_detail" = "核心未提供停止后执行方式描述。";
@@ -339,7 +339,7 @@
 "sidebar.tab.editor" = "编辑器";
 "sidebar.tab.settings" = "设置";
 "sidebar.local_first" = "本地优先";
-"sidebar.notebook" = "Notebook";
+"sidebar.notebook" = "主题";
 "sidebar.collapse" = "收起侧栏";
 "sidebar.expand" = "展开侧栏";
 "sidebar.back_to_home" = "返回主页";
@@ -357,29 +357,29 @@
 /* Document editor residuals */
 "editor.tab.transcript" = "实时转录";
 "editor.transcript.realtime.empty_title" = "没有实时转录";
-"editor.transcript.realtime.empty_desc" = "这个录音 session 没有实时结果。";
-"editor.transcript.async.pending_title" = "后台转录处理中";
+"editor.transcript.realtime.empty_desc" = "这场录音没有实时转录。";
+"editor.transcript.async.pending_title" = "精修转录处理中";
 "editor.transcript.async.pending_desc" = "你明确请求的当前实时引擎重放仍在处理。";
-"editor.transcript.async.metadata_missing_notice" = "这份处理后转录未包含说话人与语言信息。";
-"editor.transcript.async.failed_title" = "后台转录失败";
+"editor.transcript.async.metadata_missing_notice" = "这份精修转录未包含说话人与语言信息。";
+"editor.transcript.async.failed_title" = "精修转录失败";
 "editor.transcript.async.failed_desc" = "远端转录失败，录音仍安全保存在本机。";
-"editor.transcript.async.empty_title" = "没有停止后转录";
-"editor.transcript.async.empty_desc" = "停止后后台转录默认关闭，本次 session 未提交该请求。";
+"editor.transcript.async.empty_title" = "没有精修转录";
+"editor.transcript.async.empty_desc" = "这场录音没有申请精修转录。";
 "editor.transcript.async.no_session_title" = "未选择录音";
-"editor.transcript.async.no_session_desc" = "在“资源”页选择一段录音，即可查看或发起停止后转录。";
-"editor.transcript.async.projection_pending_desc" = "供应商结果已保存，正在写入当前 Notebook。";
-"editor.transcript.async.projection_failed_title" = "转录已收到，但写入 Notebook 失败";
+"editor.transcript.async.no_session_desc" = "在“录音”页选择一段录音，即可查看或发起精修转录。";
+"editor.transcript.async.projection_pending_desc" = "转录已收到，正在保存到这场录音。";
+"editor.transcript.async.projection_failed_title" = "转录已收到，但没能保存";
 "editor.transcript.async.projection_failed_desc" = "可只重试本地写入；ZuTalk 不会再次上传录音。";
-"editor.transcript.async.status.loading" = "正在读取后台转录状态";
-"editor.transcript.async.status.off" = "本次未请求停止后后台转录";
+"editor.transcript.async.status.loading" = "正在读取精修转录状态";
+"editor.transcript.async.status.off" = "本次未请求精修转录";
 "editor.transcript.async.status.provider_pending" = "实时引擎正在重放完整录音";
 "editor.transcript.async.status.provider_failed" = "实时引擎重放失败";
-"editor.transcript.async.status.projection_pending" = "供应商结果已保存 · 等待写入 Notebook";
-"editor.transcript.async.status.projecting" = "正在把已保存的转录写入 Notebook";
-"editor.transcript.async.status.ready" = "停止后转录已就绪";
-"editor.transcript.async.status.projection_failed" = "供应商结果已保存 · Notebook 写入失败";
+"editor.transcript.async.status.projection_pending" = "转录已收到 · 正在保存";
+"editor.transcript.async.status.projecting" = "正在保存转录";
+"editor.transcript.async.status.ready" = "精修转录已就绪";
+"editor.transcript.async.status.projection_failed" = "转录已收到 · 保存失败";
 "editor.transcript.async.retry_projection" = "重试本地写入";
-"editor.transcript.async.retry_projection_hint" = "只把已保存的供应商结果写入 Notebook，不会再次上传音频。";
+"editor.transcript.async.retry_projection_hint" = "重新保存已收到的转录，不会再次上传音频。";
 "editor.transcript.async.retry_failed" = "无法写入已保存的转录";
 "menubar.recording.mode.local" = "本地";
 "menubar.recording.mode.remote" = "SONIOX RT5";
@@ -387,34 +387,34 @@
 "editor.footer.local_encrypted" = "已保存到本机";
 
 /* Home page */
-"home.workspace.load_failed" = "无法载入 Notebook 数据。";
-"home.workspace.membership_unavailable" = "无法载入主题归属。会话仍保存在本机；重试前不会显示或更改归属。";
-"home.workspace.select_failed" = "无法打开这个 Notebook。";
-"home.workspace.resolve_failed" = "无法确定这条录音所属的 Notebook。";
-"home.workspace.refresh_failed" = "无法刷新 Notebook 数据。";
-"home.workspace.load_failed.title" = "Notebook 暂时不可用";
+"home.workspace.load_failed" = "无法载入主题数据。";
+"home.workspace.membership_unavailable" = "无法载入主题归属。录音仍保存在本机；重试前不会显示或更改归属。";
+"home.workspace.select_failed" = "无法打开这个主题。";
+"home.workspace.resolve_failed" = "无法确定这条录音所属的主题。";
+"home.workspace.refresh_failed" = "无法刷新主题数据。";
+"home.workspace.load_failed.title" = "主题暂时不可用";
 "home.workspace.load_failed.description" = "现有数据没有被更改，请重试载入。";
 "home.workspace.retry" = "重试";
-"home.notebook.current" = "当前 NOTEBOOK";
+"home.notebook.current" = "当前主题";
 "home.notebook.new" = "新建主题";
 "home.notebook.new.help" = "创建并命名一个主题";
-"home.notebook.none" = "没有 Notebook";
-"home.notebook.switch" = "切换 Notebook";
+"home.notebook.none" = "没有主题";
+"home.notebook.switch" = "切换主题";
 "home.notebook.description" = "在一个地方录音、查看多语言转录和写笔记。";
-"home.notebook.description.detail" = "录音控制只在 Notebook 内出现，因此每个 session 都会保留正确的归属和上下文。";
+"home.notebook.description.detail" = "随时可以开始录音，之后再归入主题。";
 "home.notebook.local_first" = "保存在本机";
 "home.library.title" = "主题";
-"home.library.subtitle" = "每个主题都有自己的工作区，用来整理会话、转录与共享笔记。";
+"home.library.subtitle" = "每个主题都有自己的工作区，用来整理录音、转录与共享笔记。";
 "home.library.open_hint" = "打开主题";
-"home.topic.workspace_contents" = "会话、转录与共享笔记";
-"home.library.session_count_format" = "%lld 条会话";
+"home.topic.workspace_contents" = "录音、转录与共享笔记";
+"home.library.session_count_format" = "%lld 场录音";
 "topics.search.placeholder" = "搜索主题";
 "topics.search.empty.title" = "未找到主题";
 "topics.search.empty.description" = "请尝试其他关键词，或新建一个主题。";
-"home.notebook.open" = "打开 Notebook";
+"home.notebook.open" = "打开主题";
 "home.capture.return" = "返回录音现场";
-"home.capture.owner_here" = "归属于当前选择的 Notebook";
-"home.capture.owner_elsewhere" = "归属于另一个 Notebook";
+"home.capture.owner_here" = "归属于当前选择的主题";
+"home.capture.owner_elsewhere" = "归属于另一个主题";
 "home.no_notebook.title" = "还没有主题";
 "home.no_notebook.description" = "可以先从上方直接录音，录音会留在“未归入主题”；需要串联多次访谈时再创建主题。";
 "home.first_use.step1.title" = "先创建主题";
@@ -429,37 +429,37 @@
 "home.import.completed" = "音频已导入";
 "home.import.failed" = "无法导入音频";
 "home.import.failed.detail" = "所选文件没有被更改，请检查格式后重试。";
-"home.import.no_notebook" = "尚未选择 Notebook";
-"home.import.no_notebook.detail" = "请先创建或选择 Notebook，再导入音频。";
+"home.import.no_notebook" = "尚未选择主题";
+"home.import.no_notebook.detail" = "请先创建或选择主题，再导入音频。";
 "home.import.already_running" = "已有音频正在导入";
 "home.import.already_running.detail" = "请等待当前音频完成导入。";
 "home.recent.title" = "最近录音";
-"home.recent.count_format" = "这个 Notebook 中有 %lld 条";
-"home.recent.search_placeholder" = "搜索这个 Notebook…";
+"home.recent.count_format" = "这个主题中有 %lld 条";
+"home.recent.search_placeholder" = "搜索这个主题…";
 "home.recent.search.clear" = "清除搜索";
-"home.recent.empty.title" = "这个 Notebook 还没有录音";
+"home.recent.empty.title" = "这个主题还没有录音";
 "home.recent.empty.description" = "在首页快速录音，或进入主题后导入音频。";
 "home.recent.no_match.title" = "没有匹配的录音";
 "home.recent.no_match.description" = "换一个标题或转录片段试试。";
-"home.recent.row.open_hint" = "在所属 Notebook 中打开这条录音";
+"home.recent.row.open_hint" = "在所属主题中打开这条录音";
 "home.recent.row.actions_format" = "%@ 的操作";
 "home.recent.row.untitled" = "未命名录音";
-"home.catalog.title" = "全部会话";
+"home.catalog.title" = "全部录音";
 "home.catalog.subtitle" = "按时间查看每次录音和导入的音频。";
-"home.catalog.loading" = "正在载入会话…";
-"home.catalog.count_format" = "%lld 条会话";
+"home.catalog.loading" = "正在载入录音…";
+"home.catalog.count_format" = "%lld 场录音";
 "home.catalog.search_placeholder" = "搜索标题、转录预览、语言、类型或主题…";
 "home.catalog.search.clear" = "清除搜索";
 "home.catalog.filter.all" = "全部";
-"home.catalog.empty.title" = "还没有会话";
+"home.catalog.empty.title" = "还没有录音";
 "home.catalog.empty.description" = "现在就开始录音；需要时再把它归入主题。";
-"home.catalog.topic_empty.title" = "这个主题还没有会话";
-"home.catalog.topic_empty.description" = "可从首页开始录音，再将会话归入这里；也可直接向此主题导入音频。";
-"home.catalog.no_match.title" = "没有匹配的会话";
+"home.catalog.topic_empty.title" = "这个主题还没有录音";
+"home.catalog.topic_empty.description" = "可从首页开始录音，再将录音归入这里；也可直接向此主题导入音频。";
+"home.catalog.no_match.title" = "没有匹配的录音";
 "home.catalog.no_match.description" = "换一个标题、转录预览、语言、类型或主题试试。";
 "home.catalog.row.open_hint" = "打开这场录音的转录稿";
 "home.catalog.row.actions_format" = "%@ 的操作";
-"home.catalog.row.untitled" = "未命名会话";
+"home.catalog.row.untitled" = "未命名录音";
 "home.recordings.load_failed" = "无法载入录音列表。";
 "home.recording.delete_failed" = "无法将这条录音移到回收站。";
 "home.recording.delete_while_recording" = "录音结束后才能删除这段录音。";
@@ -475,43 +475,43 @@
 "home.create.invalid_title" = "需要填写主题名称";
 "home.create.invalid_title.detail" = "填写名称后再创建主题。";
 "home.create.title_too_long" = "主题名称过长";
-"resources.tab" = "资源";
-"resources.tab.hint" = "查看这个 Notebook 中每次录音的对应文件与状态";
-"resources.title" = "资源";
-"resources.subtitle" = "每个会话的音频与转录状态。";
+"resources.tab" = "录音";
+"resources.tab.hint" = "查看这个主题中每次录音的对应文件与状态";
+"resources.title" = "录音";
+"resources.subtitle" = "每个录音的音频与转录状态。";
 "resources.load_failed" = "无法载入资源";
-"resources.empty" = "这个 Notebook 还没有录音资源";
+"resources.empty" = "这个主题还没有录音资源";
 "resources.audio" = "音频";
 "resources.realtime" = "实时转录";
-"resources.async" = "异步转录";
+"resources.async" = "精修转录";
 "resources.note" = "个人笔记";
 "resources.untitled_recording" = "未命名录音";
 "resources.status.missing" = "尚未生成";
 "resources.status.pending" = "处理中";
 "resources.status.ready" = "可用";
 "resources.status.failed" = "失败";
-"resources.move" = "将会话移动到其他主题…";
-"resources.move.title" = "移动会话";
+"resources.move" = "将录音移动到其他主题…";
+"resources.move.title" = "移动录音";
 "resources.move.message" = "“%@”的音频与已有转录会一起移动；共享主题笔记仍保留在当前主题。";
 "resources.move.action" = "移动";
 "resources.move.no_destination" = "没有其他主题可供移动。";
 "resources.move.done" = "录音已移动";
 "resources.move.failed" = "无法移动这条录音";
-"resources.delete" = "将会话移入废纸篓";
+"resources.delete" = "将录音移入废纸篓";
 "resources.delete.confirm_title" = "将“%@”移入回收站？";
 "resources.delete.confirm_button" = "移入回收站";
-"resources.delete.confirm_message" = "会话、音频与转录会移入废纸篓，并可在那里恢复；共享主题笔记仍保留在这个主题中。";
+"resources.delete.confirm_message" = "录音、音频与转录会移入废纸篓，并可在那里恢复；共享主题笔记仍保留在这个主题中。";
 "resources.delete.failed" = "无法将录音移入回收站";
 "resources.audio.saved" = "已保存";
 "resources.audio.not_saved" = "未保存";
 "resources.audio.destroy" = "删除音频";
 "resources.audio.destroy.confirm_title" = "永久删除“%@”的音频？";
 "resources.audio.destroy.confirm_button" = "删除音频";
-"resources.audio.destroy.confirm_message" = "音频文件会被安全销毁且无法恢复；转录稿、笔记和本次会话都会保留。";
+"resources.audio.destroy.confirm_message" = "音频文件会被安全销毁且无法恢复；转录稿、笔记和本次录音都会保留。";
 "resources.audio.destroy.failed" = "无法删除音频";
 "resources.audio.destroy.done" = "音频已删除";
 "resources.audio.destroy.while_recording" = "请先停止录音，再删除音频。";
-"resources.audio.destroy.while_processing" = "处理后转录正在使用音频，请等待处理完成后再删除。";
+"resources.audio.destroy.while_processing" = "精修转录正在使用音频，请等待处理完成后再删除。";
 "resources.status.destroyed" = "已删除";
 "resources.audio.destroyed_at" = "已于 %@ 销毁";
 "resources.audio.verify" = "验证删除并在访达中显示存储文件夹";
@@ -543,8 +543,8 @@
 "home.row.topic.unassigned" = "未归入主题";
 "home.row.topic.unknown" = "主题归属尚未载入";
 "library.toast.moved_to_trash" = "已移到回收站";
-"library.toast.bulk_moved_to_trash" = "%lld 个 session 已移到回收站";
-"doc.transcript_hd" = "异步转录";
+"library.toast.bulk_moved_to_trash" = "%lld 场录音已移到回收站";
+"doc.transcript_hd" = "精修转录";
 "editor.tab.transcript.live.hint" = "实时转录进行中";
 "editor.tab.transcript.hint" = "音频转录";
 
@@ -599,8 +599,8 @@
 "menubar.recording.live_transcript" = "实时转录";
 "menubar.recording.open_subtitles" = "打开实时字幕";
 "menubar.recording.close_subtitles" = "关闭实时字幕";
-"menubar.recording.open_notebook" = "打开笔记本";
-"menubar.processing.open_session" = "打开会话";
+"menubar.recording.open_notebook" = "打开主题";
+"menubar.processing.open_session" = "打开录音";
 "menubar.suppressed.privacy.title" = "麦克风权限被拒绝";
 "menubar.suppressed.privacy.body" = "在系统设置中允许 ZuTalk 访问麦克风后才能录音。";
 "menubar.suppressed.privacy.action" = "打开系统设置";
@@ -650,29 +650,29 @@
 "editor.tasks.count_format" = "%lld 个后台任务";
 "editor.tasks.refresh" = "刷新任务";
 "editor.tasks.empty" = "暂无任务";
-"editor.tasks.empty.detail" = "后台异步转录任务会显示在这里。";
+"editor.tasks.empty.detail" = "后台精修转录任务会显示在这里。";
 "editor.tasks.retry_format" = "重试 %lld 次";
 /* Accessibility labels */
 "editor.outline.drag_handle" = "拖动以重新排序";
 
 /* Notebook 多语言录音 */
 "common.close" = "关闭";
-"capture.error.ffi_unavailable" = "Notebook 录音服务暂不可用。";
-"capture.error.already_active" = "另一个 Notebook 正在录音。";
+"capture.error.ffi_unavailable" = "录音服务暂不可用。";
+"capture.error.already_active" = "已经有一场录音在进行。";
 "capture.error.remote_required" = "语言字幕需要开启“远端实时处理”。";
 "capture.error.context_requires_remote" = "请先开启实时转录，再使用参考资料。";
 "capture.error.languages_must_differ" = "请选择互不重复的语言。";
-"capture.error.not_active" = "当前没有活跃的 Notebook 录音。";
+"capture.error.not_active" = "现在没有在录音。";
 "capture.error.projection_locked" = "投影完成前，转录内容为只读。";
 "capture.error.profile_snapshot_unavailable" = "无法读取这次录音保存的录音配置。";
-"capture.route.no_notebook" = "尚未选择 Notebook";
-"capture.route.no_notebook_detail" = "请先创建或选择 Notebook，再打开录音。";
-"capture.route.unavailable" = "无法打开 Notebook 录音";
+"capture.route.no_notebook" = "尚未选择主题";
+"capture.route.no_notebook_detail" = "请先创建或选择主题，再打开录音。";
+"capture.route.unavailable" = "无法开始录音";
 "capture.route.unavailable_detail" = "ZuTalk 本地服务尚未就绪。";
 "session.route.unavailable" = "无法打开录音";
 "session.route.unavailable_detail" = "录音内容没有被更改，请重试。";
-"capture.open_notebook" = "打开 Notebook";
-"capture.open_notebook_hint" = "录音控制仅在所属 Notebook 内提供。";
+"capture.open_notebook" = "打开主题";
+"capture.open_notebook_hint" = "打开这场录音所在的主题。";
 "subtitle.overlay.read_only" = "实时字幕 · 只读";
 "subtitle.overlay.accessibility_label" = "多语言实时字幕悬浮窗";
 "subtitle.overlay.language_count" = "%lld 种语言";
@@ -713,11 +713,11 @@
 "capture.toolbar.resume" = "继续";
 "capture.toolbar.stop" = "停止";
 "capture.toolbar.stop_hint" = "停止音频输入；若已启用远端处理，ZuTalk 还会等待远端返回尾部 token。";
-"capture.toolbar.active_other_notebook" = "录音归属于另一个 Notebook";
+"capture.toolbar.active_other_notebook" = "录音归属于另一个主题";
 "capture.toolbar.subtitle_window.open" = "打开实时字幕";
 "capture.toolbar.subtitle_window.close" = "关闭实时字幕";
 "capture.toolbar.subtitle_window.hint" = "打开一个始终置顶的多语言实时字幕窗口。";
-"capture.toolbar.subtitle_window.unavailable_hint" = "请先在当前 Notebook 开始录音，再打开实时字幕。";
+"capture.toolbar.subtitle_window.unavailable_hint" = "请先在当前主题开始录音，再打开实时字幕。";
 "capture.toast.start_failed" = "无法开始录音";
 "capture.toast.pause_failed" = "无法切换录音状态";
 "capture.toolbar.restart_transcription" = "重新连接转录";
@@ -783,7 +783,7 @@
 "capture.settings.context.preview" = "查看将使用的内容";
 "capture.settings.context.preview_count" = "共 %lld 个字符";
 "capture.settings.context.empty" = "还没有可用的参考资料。";
-"capture.settings.context.pack_detail" = "选择后会自动记住，并用于实时转录和异步转录。添加术语、人物、机构和会议背景，可提高转录准确度。";
+"capture.settings.context.pack_detail" = "选择后会自动记住，并用于实时转录和精修转录。添加术语、人物、机构和会议背景，可提高转录准确度。";
 "capture.settings.context.private_pack" = "当前录音范围";
 "capture.settings.context.current_topic" = "当前主题";
 "capture.settings.context.current_quick_capture" = "首页快速录音";
@@ -828,7 +828,7 @@
 "capture.transcript.snapshot_unavailable_detail" = "已保存的话语仍会保留，但缺少本次录音保存的语言栏目配置，无法安全重建显示。";
 "capture.transcript.read_only" = "录音或投影期间只读";
 "capture.transcript.copy" = "复制转录";
-"capture.transcript.copy_hint" = "复制本场 session 的转录，保留时间、说话人名称和语言标签。";
+"capture.transcript.copy_hint" = "复制这场录音的转录，保留时间、说话人名称和语言标签。";
 "capture.transcript.copy_empty_hint" = "暂无可复制的转录内容。";
 "capture.transcript.copy_finish_edit_hint" = "请先完成或取消当前编辑，再复制转录。";
 "capture.transcript.copy_success" = "已复制转录";
@@ -840,9 +840,9 @@
 "capture.transcript.waiting_detail" = "即使远端关闭或不可用，本地录音仍会继续。";
 "capture.transcript.language_pending" = "语言待确认…";
 "capture.transcript.unselected_language" = "检测到 %@，但本场未选择该语言";
-"capture.transcript.presentation.timeline" = "时间线";
+"capture.transcript.presentation.timeline" = "只看原话";
 "capture.transcript.presentation.timeline_detail" = "按时间顺序，每段发言只显示一次。";
-"capture.transcript.presentation.language_columns" = "文字对照版";
+"capture.transcript.presentation.language_columns" = "并排对照";
 "capture.transcript.presentation.language_columns_detail" = "每种已选择的语言固定显示在自己的有序栏目中。";
 "capture.transcript.waiting_lane" = "等待 %@";
 "capture.transcript.failed_lane" = "未能生成 %@ 栏内容";
@@ -871,13 +871,13 @@
 "capture.transcript.edit_lane" = "编辑 %@ 语言列";
 "capture.transcript.edit_hint" = "按回车或移开焦点以保存该语言列。";
 "capture.transcript.retry_projection" = "重试投影";
-"capture.transcript.retry_projection_hint" = "重新把已保存的话语写入 Notebook 转录。";
+"capture.transcript.retry_projection_hint" = "重新保存已收到的转录。";
 "capture.settings.retention.title" = "音频保留";
 "capture.settings.retention.subtitle" = "每次开始录音时，系统会冻结本次录音的保留策略。";
 "capture.settings.retention.standard.title" = "保留音频";
 "capture.settings.retention.standard.detail" = "保留录音，直到你选择“永久删除”。";
-"capture.settings.retention.high.title" = "异步转录后删除";
-"capture.settings.retention.high.detail" = "显式异步转录成功后，删除音频及其密钥。";
+"capture.settings.retention.high.title" = "精修转录后删除";
+"capture.settings.retention.high.detail" = "显式精修转录成功后，删除音频及其密钥。";
 "capture.settings.retention.maximum.title" = "任一转录完成后删除";
 "capture.settings.retention.maximum.detail" = "只要已有可持久重建的转录事实，就删除音频及其密钥；若还没有转录，则保留唯一源文件以避免数据丢失。";
 "sidebar.knowledge" = "知识库";
@@ -951,12 +951,12 @@
 "share.relayed" = "经中继";
 "share.start" = "开始共享";
 "share.cancel" = "取消";
-"share.needs_notebook" = "请先打开一个 Notebook——共享的范围是某一个 Notebook。";
-"share.start.confirm.title" = "开始共享这个 Notebook？";
-"share.start.confirm.body" = "在共享开着期间，你在这个 Notebook 里开始的录音，字幕会实时发给房间里的每个人。音频永远不会被共享。停止只停后续，无法删除对方已经收到的内容。";
+"share.needs_notebook" = "请先打开一个主题——共享的范围是某一个主题。";
+"share.start.confirm.title" = "开始共享这个主题？";
+"share.start.confirm.body" = "在共享开着期间，你在这个主题里开始的录音，字幕会实时发给房间里的每个人。音频永远不会被共享。停止只停后续，无法删除对方已经收到的内容。";
 "share.start.confirm.session_title" = "共享这段录音？";
 "share.start.confirm.session_body" = "被你放进来的人会保留这段录音转录稿的一份副本，并在房间允许时一起订正。音频永远不会被共享。停止只停后续，无法删除对方已经收到的内容。";
-"share.start.confirm.remember" = "这个 Notebook 下次不再询问。";
+"share.start.confirm.remember" = "这个主题下次不再询问。";
 
 /* 设置:分享(点对点)传输 */
 "settings.section.p2p_name" = "分享";
@@ -975,7 +975,7 @@
 "settings.p2p.saved" = "已保存";
 
 /* 分享:状态与提示 */
-"share.pick_notebook" = "共享哪个 Notebook";
+"share.pick_notebook" = "共享哪个主题";
 "share.your_code" = "分享码";
 "share.code_note" = "把它发给要加入的人。传递过程中被折行或改了大小写都不影响。";
 "share.copied" = "已复制";
@@ -983,7 +983,7 @@
 "share.core_unavailable" = "分享还在启动，请稍后再试。";
 "share.join_failed" = "这个分享码读不出来。让对方重发一次——从消息里复制容易丢字符。";
 "share.status.idle" = "未共享";
-"share.status.idle_hint" = "共享一个 Notebook 把字幕发给别人，或用别人给的分享码加入。";
+"share.status.idle_hint" = "共享一个主题把字幕发给别人，或用别人给的分享码加入。";
 "share.status.hosting_waiting" = "共享中 — 还没发出内容";
 "share.status.hosting_waiting_hint" = "别人可以用你的分享码加入了。**开始录音后**才会有字幕发出去。";
 "share.status.hosting_live" = "正在发送你的字幕";
@@ -1002,9 +1002,9 @@
 "share.link.relayed_hint" = "直连没打通，流量经中继转发（仍端到端加密）。开了 AP 隔离的 Wi-Fi 上很常见。";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
-"share.scope.notebook" = "只播字幕：对方实时看这个 Notebook 的录音，什么都不保留。";
+"share.scope.notebook" = "只播字幕：对方实时看这个主题的录音，什么都不保留。";
 "share.scope.single" = "共享一段录音：对方保留转录稿，可一起订正。";
-"share.scope.no_sessions" = "这个 Notebook 还没有录音。";
+"share.scope.no_sessions" = "这个主题还没有录音。";
 "share.received.title" = "共享的转录稿";
 "share.received.untitled" = "（暂无文本）";
 "share.received.blocks" = "%lld 个句块";
@@ -1084,14 +1084,14 @@
 
 /* Topic workspace and session catalog */
 "common.done" = "完成";
-"editor.route.load_failed" = "无法打开这条会话。";
+"editor.route.load_failed" = "无法打开这场录音。";
 "editor.transcript.edit_failed" = "无法保存转录修改。";
-"home.catalog.row.unfiled_hint" = "这条会话尚未归入主题。请使用文件夹按钮选择主题。";
-"home.catalog.row.membership_unknown_hint" = "主题归属尚未载入。请使用会话列表上方的重试按钮。";
+"home.catalog.row.unfiled_hint" = "这场录音尚未归入主题。请使用文件夹按钮选择主题。";
+"home.catalog.row.membership_unknown_hint" = "主题归属尚未载入。请使用录音列表上方的重试按钮。";
 "home.row.assign_to_topic" = "归入主题";
-"home.row.assign.done" = "会话已归入主题";
-"home.row.assign.failed" = "无法将这条会话归入所选主题。";
-"home.row.assign.projection_pending" = "会话已归入主题；转写内容将在打开主题资源时自动重试载入。";
+"home.row.assign.done" = "录音已归入主题";
+"home.row.assign.failed" = "无法将这场录音归入所选主题。";
+"home.row.assign.projection_pending" = "录音已归入主题；转录内容会在打开主题时自动重试载入。";
 "home.catalog.search_failed" = "无法完成搜索。";
 "home.catalog.searching_transcripts" = "正在搜索转录…";
 "home.import.sheet.choose" = "选择音频文件";
@@ -1109,9 +1109,9 @@
 "home.record.unavailable_hint" = "录音入口尚未就绪；请重试加载工作区。";
 "home.record.languages.picker" = "录音语言";
 "home.record.languages.picker_hint_format" = "录音语言：%@。点击调整，每场最多三种。";
-"home.catalog.unfiled_empty.title" = "没有未归档会话";
+"home.catalog.unfiled_empty.title" = "没有未归入主题的录音";
 "home.catalog.unfiled_empty.description" = "从首页开始的新录音会先显示在这里。";
-"home.catalog.row.open_unfiled_hint" = "打开这条未归入主题的会话";
+"home.catalog.row.open_unfiled_hint" = "打开这条未归入主题的录音";
 "home.record.return_active_format" = "返回正在录音 · %@";
 "home.status.completed" = "已完成";
 "home.status.failed" = "失败";
@@ -1129,19 +1129,19 @@
 "topic.capture_setup.tab.hint" = "打开当前主题的录音、语言与字幕设置。";
 "topic.research.copy" = "复制转录资料";
 "topic.research.copy.done" = "研究资料已复制";
-"topic.research.copy.done_detail" = "已复制 %lld 条会话，包含来源标识。";
+"topic.research.copy.done_detail" = "已复制 %lld 场录音，包含来源标识。";
 "topic.research.copy.failed" = "无法复制所选转录。";
 "topic.research.copy.preparing" = "正在整理…";
-"topic.research.copy.partial" = "研究资料已复制，部分会话已略过";
+"topic.research.copy.partial" = "研究资料已复制，部分录音已略过";
 "topic.research.copy.partial_detail" = "已复制 %lld 条；%lld 条没有可用转录，已略过。";
 "topic.research.bundle.recorded" = "录制时间";
-"topic.research.bundle.source_session" = "来源会话";
-"topic.research.bundle.omitted" = "已略过的会话";
+"topic.research.bundle.source_session" = "来源录音";
+"topic.research.bundle.omitted" = "已略过的录音";
 "topic.research.bundle.no_transcript" = "没有可用转录";
-"topic.research.deselect_session" = "取消选择会话";
-"topic.research.select" = "选择会话";
+"topic.research.deselect_session" = "取消选择录音";
+"topic.research.select" = "选择录音";
 "topic.research.select_all" = "全选当前结果";
-"topic.research.select_session" = "选择会话";
+"topic.research.select_session" = "选择录音";
 "topic.research.selection.count_format" = "已选择 %lld 条";
 "topic.research.selection.title" = "研究资料";
 "topic.route.unavailable" = "无法打开主题";
@@ -1150,18 +1150,18 @@
 "topic.session.no_preview" = "暂无转录预览";
 "topic.session.recording_label" = "实时录音";
 "topic.session.tab.live" = "实时转录";
-"topic.session.tab.processed" = "处理后转录";
-"topic.sessions.tab" = "资源";
+"topic.session.tab.processed" = "精修转录";
+"topic.sessions.tab" = "录音";
 "topic.sessions.tab.hint" = "查看这个主题中的录音与导入音频";
 "topic.workspace.breadcrumb" = "主题";
-"topic.workspace.empty" = "这个主题还没有会话";
+"topic.workspace.empty" = "这个主题还没有录音";
 "topic.workspace.local_first" = "主题文件保存在这台 Mac 上";
-"topic.workspace.loading" = "正在载入主题会话…";
-"topic.workspace.no_match" = "没有匹配的会话";
+"topic.workspace.loading" = "正在载入主题录音…";
+"topic.workspace.no_match" = "没有匹配的录音";
 "topic.workspace.record" = "开始录音";
-"topic.workspace.search_placeholder" = "在这个主题中搜索会话…";
-"topic.workspace.subtitle" = "在一个本地工作区中整理会话、转录与共享笔记。";
-"topic.workspace.subtitle_format" = "%@ 汇集了会话、转录与共享笔记。";
+"topic.workspace.search_placeholder" = "在这个主题中搜索录音…";
+"topic.workspace.subtitle" = "在一个本地工作区中整理录音、转录与共享笔记。";
+"topic.workspace.subtitle_format" = "%@ 汇集了录音、转录与共享笔记。";
 "topic.workspace.title" = "主题工作区";
 
 /* 会话笔记与设置 */
@@ -1179,19 +1179,19 @@
 
 "session.tab.notes" = "笔记";
 "session.tab.settings" = "设置";
-"session.notes.title" = "会话笔记";
-"session.notes.context" = "只属于这次会话";
-"session.settings.title" = "会话设置";
+"session.notes.title" = "录音笔记";
+"session.notes.context" = "只属于这次录音";
+"session.settings.title" = "录音设置";
 "session.settings.workspace.configuration" = "录音配置";
 "session.settings.workspace.snapshot" = "本次快照";
 "session.settings.workspace.scope" = "录音配置可编辑；本次录音已经使用的历史设置请在「本次快照」查看。";
 "session.settings.workspace.scope.topic" = "录音配置可编辑，作用于当前主题的下一次录音；本次实际使用的历史设置见页面底部快照。";
 "session.settings.workspace.scope.quick_capture" = "录音配置可编辑，作用于首页下一次快速录音；本次实际使用的历史设置见页面底部快照。";
 "session.settings.resources.title" = "本次资源";
-"session.settings.resources.subtitle" = "查看本次会话当前拥有的资源状态。删除音频不会删除转录稿、笔记或会话。";
+"session.settings.resources.subtitle" = "查看本次录音当前拥有的资源状态。删除音频不会删除转录稿、笔记或录音。";
 "session.settings.resources.note.detail" = "可编辑";
 "session.settings.subtitle" = "本次录音实际使用的设置，不会改变主题默认值。";
-"session.settings.section.session" = "会话信息";
+"session.settings.section.session" = "录音信息";
 "session.settings.section.capture" = "录音快照";
 "session.settings.field.created" = "创建时间";
 "session.settings.field.duration" = "时长";
@@ -1214,11 +1214,11 @@
 "session.settings.value.enabled" = "已开启";
 "session.settings.value.disabled" = "已关闭";
 "session.settings.value.not_recorded" = "录音当时未记录";
-"session.settings.load_failed" = "无法载入会话设置";
+"session.settings.load_failed" = "无法载入录音设置";
 "session.settings.retry" = "重试";
-"session.settings.snapshot.missing" = "这次会话创建时没有记录录音设置快照。";
+"session.settings.snapshot.missing" = "这次录音创建时没有记录录音设置快照。";
 "session.settings.snapshot.imported_missing" = "导入内容没有录音配置快照。";
-"session.settings.snapshot.corrupt" = "这次会话的历史设置快照已损坏，无法可靠显示。";
+"session.settings.snapshot.corrupt" = "这次录音的历史设置快照已损坏，无法可靠显示。";
 "session.settings.mode.transcription_only" = "仅转录";
 "session.settings.mode.two_way" = "双向对话";
 "session.settings.mode.multilingual_one_way" = "多语言会议";
@@ -1245,3 +1245,10 @@
 "settings.shortcuts.mark" = "标记刚才这一段";
 "settings.shortcuts.overlay_banner" = "字幕窗：顶部整宽字幕带";
 "settings.shortcuts.overlay_maximize" = "字幕窗：铺满 / 还原";
+"topic.workspace.live_tab" = "实时";
+"topic.workspace.total_format" = "共 %@";
+"recording.row.no_words" = "还没有文字";
+"resources.summary.audio" = "音频";
+"resources.summary.live" = "实时";
+"resources.summary.refined" = "精修";
+"capture.transcript.presentation.label" = "阅读方式";

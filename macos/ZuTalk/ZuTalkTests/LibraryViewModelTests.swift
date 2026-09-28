@@ -1491,7 +1491,7 @@ final class SessionBadgeTests: XCTestCase {
 
 // MARK: - LibraryViewModel pure helpers (formatting)
 //
-// formatDuration / formatLanguagePair / abbreviateLanguage 是 nonisolated 纯函数；
+// formatDuration / formatLanguagePair 是 nonisolated 纯函数；
 // makeListItem 因为构造 SessionBadge 需要 Color tokens 所以是 @MainActor。
 // 整个 helper 测试类标记 @MainActor，这样所有测试都在主线程上运行。
 
@@ -1533,62 +1533,36 @@ final class LibraryViewModelHelpersTests: XCTestCase {
         )
     }
 
-    func testFormatLanguagePairSourceOnly() {
+    /// Every language by its own name, in order, once — whatever the record
+    /// calls source and target.
+    func testLanguagesAreListedAsTheirSpeakersWriteThem() {
         XCTAssertEqual(
-            LibraryViewModel.formatLanguagePair(source: "en", targets: []),
-            "EN"
+            LibraryViewModel.formatLanguagePair(source: "", targets: ["en", "zh-CN", "th"]),
+            "English · 中文 · ไทย"
         )
-    }
-
-    func testFormatLanguagePairEqualMultilingualLanes() {
         XCTAssertEqual(
-            LibraryViewModel.formatLanguagePair(
-                source: "",
-                targets: ["en", "zh-CN", "th"]
-            ),
-            "EN · 中 · TH"
+            LibraryViewModel.formatLanguagePair(source: "en", targets: ["zh-Hans"]),
+            "English · 中文"
         )
-    }
-
-    func testFormatLanguagePairOneTarget() {
         XCTAssertEqual(
-            LibraryViewModel.formatLanguagePair(source: "en", targets: ["zh-CN"]),
-            "EN ↔ 中"
+            LibraryViewModel.formatLanguagePair(source: "en", targets: ["en", "ja", "ko"]),
+            "English · 日本語 · 한국어"
+        )
+        XCTAssertEqual(
+            LibraryViewModel.formatLanguagePair(source: "fr", targets: []),
+            "Français"
         )
     }
 
-    func testFormatLanguagePairMultipleTargets() {
-        let result = LibraryViewModel.formatLanguagePair(
-            source: "en",
-            targets: ["zh-CN", "ja", "ko"]
-        )
-        XCTAssertEqual(result, "EN → 中,日,韩")
+    func testDurationsReadAsLengthsNotClockTimes() {
+        XCTAssertNil(RecordingPresentation.duration(ms: 400))
+        XCTAssertNotNil(RecordingPresentation.duration(ms: 45_000))
+        XCTAssertFalse(RecordingPresentation.duration(ms: 125_000)?.contains(":") ?? true)
     }
 
-    func testFormatLanguagePairUnknownLanguage() {
-        let result = LibraryViewModel.formatLanguagePair(
-            source: "en",
-            targets: ["xx"]
-        )
-        XCTAssertEqual(result, "EN ↔ XX")
-    }
-
-    func testFormatLanguagePairCommonLanguageCodes() {
-        let pairs: [(String, String)] = [
-            ("zh-cn", "中"),
-            ("zh-hans", "中"),
-            ("zh-tw", "繁"),
-            ("zh-hant", "繁"),
-            ("ja", "日"),
-            ("ko", "韩"),
-            ("es", "ES"),
-            ("fr", "FR"),
-            ("de", "DE"),
-        ]
-        for (input, expected) in pairs {
-            let actual = LibraryViewModel.formatLanguagePair(source: "en", targets: [input])
-            XCTAssertEqual(actual, "EN ↔ \(expected)", "input: \(input)")
-        }
+    func testUntitledRecordingsHaveNoTitle() {
+        XCTAssertNil(RecordingPresentation.title("  \n"))
+        XCTAssertEqual(RecordingPresentation.title(" 周会 "), "周会")
     }
 
     // MARK: - makeListItem
@@ -1613,7 +1587,8 @@ final class LibraryViewModelHelpersTests: XCTestCase {
         XCTAssertEqual(item.id, "abc-123")
         XCTAssertEqual(item.title, "interview-2024")
         XCTAssertEqual(item.durationString, "02:05")
-        XCTAssertEqual(item.languagePair, "EN ↔ 中")
+        XCTAssertEqual(item.languagePair, "English · 中文")
+        XCTAssertEqual(item.languageCodes, ["en", "zh-CN"])
         XCTAssertTrue(item.hasEncryptedAudio)
         XCTAssertEqual(item.sessionType, "import")
     }

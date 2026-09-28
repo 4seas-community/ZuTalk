@@ -348,13 +348,7 @@ final class NotebookResourcesViewModel: ObservableObject {
         source: String,
         targets: [String]
     ) -> String {
-        let normalizedSource = source.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedTargets = targets.filter {
-            $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        }
-        if normalizedSource.isEmpty { return normalizedTargets.joined(separator: " · ") }
-        if normalizedTargets.isEmpty { return normalizedSource.uppercased() }
-        return "\(normalizedSource.uppercased()) → \(normalizedTargets.map { $0.uppercased() }.joined(separator: " · "))"
+        RecordingPresentation.languageList([source] + targets)
     }
 
     func importAudio(
@@ -1151,30 +1145,24 @@ struct NotebookResourcesView: View {
         }
     }
 
+    /// How much is here. The topic's name is already in the header path;
+    /// an eyebrow, a second copy of the name and two lines of boilerplate
+    /// used to sit here instead.
     private var topicIdentity: some View {
-        VStack(alignment: .leading, spacing: Spacing.xs) {
-            Text(String(localized: "topic.workspace.title"))
-                .font(.captionMedium)
-                .foregroundColor(.textSecondary)
-
-            Text(notebookTitle ?? String(localized: "sidebar.notebook"))
-                .font(.titleLG)
-                .foregroundColor(.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
-
-            Text(String(localized: "topic.workspace.subtitle"))
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Label(
-                String(localized: "topic.workspace.local_first"),
-                systemImage: "lock.shield.fill"
-            )
-            .font(.caption)
-            .foregroundColor(.textTertiary)
-        }
+        let total = viewModel.items.reduce(UInt64(0)) { $0 + $1.durationMs }
+        let parts = [
+            String(
+                format: String(localized: "home.catalog.count_format"),
+                Int64(viewModel.items.count)
+            ),
+            RecordingPresentation.duration(ms: total).map {
+                String(format: String(localized: "topic.workspace.total_format"), $0)
+            },
+        ].compactMap { $0 }
+        return Text(parts.joined(separator: " · "))
+            .font(.bodyMedium)
+            .foregroundColor(.textSecondary)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private var topicHeaderActions: some View {
@@ -1268,16 +1256,21 @@ struct NotebookResourcesView: View {
         .accessibilityIdentifier("topic.search")
     }
 
+    /// The number of matches while searching; the total is in the summary
+    /// above.
+    @ViewBuilder
     private var topicSessionCount: some View {
-        Text(
-            String(
-                format: String(localized: "home.catalog.count_format"),
-                Int64(visibleItems.count)
+        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            Text(
+                String(
+                    format: String(localized: "home.catalog.count_format"),
+                    Int64(visibleItems.count)
+                )
             )
-        )
-        .font(.bodySM)
-        .foregroundColor(.textSecondary)
-        .monospacedDigit()
+            .font(.bodySM)
+            .foregroundColor(.textSecondary)
+            .monospacedDigit()
+        }
     }
 
     private var topicSelectionButton: some View {
@@ -1610,14 +1603,16 @@ private struct NotebookResourceBlock: View {
                 }
                 .padding(.top, Spacing.sm)
             } label: {
+                // What exists for this recording, named — three bare dots
+                // used to stand for audio, live and refined transcript.
                 HStack(spacing: Spacing.sm) {
                     Text(String(localized: "topic.session.files_and_status"))
-                        .font(.captionMedium)
+                        .font(.bodySM)
                         .foregroundColor(.textSecondary)
                     Spacer()
-                    resourceSummaryDot(status: item.audio)
-                    resourceSummaryDot(status: item.realtimeTranscript)
-                    resourceSummaryDot(status: item.asyncTranscript)
+                    resourceSummaryChip(String(localized: "resources.summary.audio"), status: item.audio)
+                    resourceSummaryChip(String(localized: "resources.summary.live"), status: item.realtimeTranscript)
+                    resourceSummaryChip(String(localized: "resources.summary.refined"), status: item.asyncTranscript)
                 }
             }
             .disabled(isSelectionMode)
@@ -1676,42 +1671,22 @@ private struct NotebookResourceBlock: View {
             .frame(width: 112, alignment: .leading)
 
             VStack(alignment: .leading, spacing: Spacing.xs) {
+                RecordingRowText(
+                    title: RecordingPresentation.title(item.title),
+                    preview: item.preview,
+                    placeholder: String(localized: "topic.session.no_preview"),
+                    status: rowStatus
+                )
+
                 HStack(spacing: Spacing.sm) {
-                    Text(displayTitle)
-                        .font(.bodyMedium)
-                        .foregroundColor(.textPrimary)
-                        .lineLimit(1)
-                    TopicSessionStatusBadge(item: item)
-                }
-
-                if item.preview.isEmpty == false {
-                    Text(item.preview)
-                        .font(.bodySM)
-                        .foregroundColor(.textSecondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text(String(localized: "topic.session.no_preview"))
-                        .font(.bodySM)
-                        .foregroundColor(.textTertiary)
-                        .italic()
-                }
-
-                HStack(spacing: Spacing.md) {
-                    Label(duration, systemImage: "timer")
-                    if item.languagePair.isEmpty == false {
-                        Label(item.languagePair, systemImage: "character.bubble")
+                    ForEach(Array(metadataParts.enumerated()), id: \.offset) { index, part in
+                        if index > 0 {
+                            Text("·")
+                        }
+                        Text(part).lineLimit(1)
                     }
-                    Label(
-                        item.sessionType.lowercased() == "import"
-                            ? String(localized: "home.row.kind.import")
-                            : String(localized: "home.row.kind.recording"),
-                        systemImage: item.sessionType.lowercased() == "import"
-                            ? "square.and.arrow.down"
-                            : "mic"
-                    )
                 }
-                .font(.caption)
+                .font(.bodySM)
                 .foregroundColor(.textTertiary)
             }
 
@@ -1737,11 +1712,41 @@ private struct NotebookResourceBlock: View {
         }
     }
 
-    private func resourceSummaryDot(status: NotebookResourceStatus) -> some View {
-        Circle()
-            .fill(statusColor(status))
-            .frame(width: 6, height: 6)
-            .accessibilityHidden(true)
+    private func resourceSummaryChip(_ title: String, status: NotebookResourceStatus) -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(statusColor(status))
+                .frame(width: 6, height: 6)
+            Text(title)
+        }
+        .font(.bodySM)
+        .foregroundColor(.textSecondary)
+        .help("\(title): \(statusText(status))")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("\(title), \(statusText(status))"))
+    }
+
+    private var metadataParts: [String] {
+        var parts: [String] = []
+        if let duration = RecordingPresentation.duration(ms: item.durationMs) {
+            parts.append(duration)
+        }
+        if item.languagePair.isEmpty == false {
+            parts.append(item.languagePair)
+        }
+        if item.sessionType.lowercased() == "import" {
+            parts.append(String(localized: "home.row.kind.import"))
+        }
+        return parts
+    }
+
+    private var rowStatus: RecordingPresentation.Status? {
+        let status = item.rawStatus.lowercased()
+        if status == "recording" { return .recording }
+        if item.asyncTranscript == .pending { return .transcribing }
+        if status == "failed" || item.asyncTranscript == .failed { return .failed }
+        if status == "interrupted" { return .interrupted }
+        return nil
     }
 
     private func resourceBar(
@@ -1813,14 +1818,9 @@ private struct NotebookResourceBlock: View {
     private var dateOnly: String { item.createdAt.formatted(date: .abbreviated, time: .omitted) }
 
     private var displayTitle: String {
-        item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? String(localized: "resources.untitled_recording")
-            : item.title
-    }
-
-    private var duration: String {
-        let totalSeconds = item.durationMs / 1_000
-        return String(format: "%02llu:%02llu", totalSeconds / 60, totalSeconds % 60)
+        RecordingPresentation.title(item.title)
+            ?? (item.preview.isEmpty ? nil : String(item.preview.prefix(24)))
+            ?? String(localized: "resources.untitled_recording")
     }
 
     private func statusText(_ status: NotebookResourceStatus) -> String {
@@ -1829,59 +1829,6 @@ private struct NotebookResourceBlock: View {
 
     private func statusColor(_ status: NotebookResourceStatus) -> Color {
         NotebookResourceStatusPresentation.color(status)
-    }
-}
-
-private struct TopicSessionStatusBadge: View {
-    let item: NotebookResourceItem
-
-    var body: some View {
-        Label(label, systemImage: icon)
-            .font(.captionMedium)
-            .foregroundColor(color)
-            .lineLimit(1)
-    }
-
-    private var normalizedStatus: String { item.rawStatus.lowercased() }
-
-    private var label: String {
-        if normalizedStatus == "recording" {
-            return String(localized: "home.status.recording")
-        }
-        if item.asyncTranscript == .pending {
-            return String(localized: "home.status.transcribing")
-        }
-        if normalizedStatus == "failed" || item.asyncTranscript == .failed {
-            return String(localized: "home.status.failed")
-        }
-        if normalizedStatus == "interrupted" {
-            return String(localized: "home.status.interrupted")
-        }
-        if item.sessionType.lowercased() == "import" {
-            return String(localized: "home.status.imported")
-        }
-        return String(localized: "home.status.completed")
-    }
-
-    private var icon: String {
-        if normalizedStatus == "recording" { return "record.circle.fill" }
-        if item.asyncTranscript == .pending { return "hourglass" }
-        if normalizedStatus == "failed" || item.asyncTranscript == .failed {
-            return "xmark.octagon.fill"
-        }
-        if normalizedStatus == "interrupted" { return "exclamationmark.triangle.fill" }
-        if item.sessionType.lowercased() == "import" { return "square.and.arrow.down" }
-        return "checkmark.circle.fill"
-    }
-
-    private var color: Color {
-        if normalizedStatus == "recording" { return .signalRed }
-        if normalizedStatus == "failed" || normalizedStatus == "interrupted"
-            || item.asyncTranscript == .failed {
-            return .signalAmber
-        }
-        if item.asyncTranscript == .pending { return .signalAmber }
-        return .textSecondary
     }
 }
 

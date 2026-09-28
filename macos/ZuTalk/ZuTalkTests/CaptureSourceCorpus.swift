@@ -19,6 +19,7 @@ enum CaptureSourceCorpus {
         "Pages/NotebookRealtimeTranscriptPolicies.swift",
         "Pages/NotebookRealtimeUtteranceViews.swift",
         "Pages/CaptureStateLabel.swift",
+        "Pages/CaptureLanguageEditor.swift",
         "Capture/CaptureCommandCenter.swift",
         "UIScenes/Main/RecordingBar.swift",
     ]

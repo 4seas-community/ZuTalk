@@ -453,16 +453,21 @@ struct MainShellView: View {
                 sidebarRevealButton
             }
 
-            HStack(spacing: Spacing.sm) {
-                Image(systemName: tabIcon(for: activeTab))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.textSecondary)
-                Text(tabTitle(for: activeTab))
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
-                    .lineLimit(1)
+            if activeTab == .editor, let breadcrumb = store.editorBreadcrumb {
+                editorPath(breadcrumb)
+                    .layoutPriority(-1)
+            } else {
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: tabIcon(for: activeTab))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.textSecondary)
+                    Text(tabTitle(for: activeTab))
+                        .font(.bodyMedium)
+                        .foregroundColor(.textPrimary)
+                        .lineLimit(1)
+                }
+                .layoutPriority(-1)
             }
-            .layoutPriority(-1)
 
             Spacer(minLength: Spacing.md)
 
@@ -470,6 +475,89 @@ struct MainShellView: View {
             RecordingBar(compact: width < 980)
         }
         .animation(Motion.panelTransition, value: capture.isCaptureActive)
+    }
+
+    /// Home or Topics › topic › recording, each a way back up. For a
+    /// recording, its length and languages follow its name.
+    private func editorPath(_ breadcrumb: EditorBreadcrumb) -> some View {
+        let root: MainTab = store.activePrimaryTab == .topics ? .topics : .home
+        return HStack(spacing: Spacing.sm) {
+            pathButton(
+                title: tabTitle(for: root),
+                systemImage: tabIcon(for: root),
+                isCurrent: false
+            ) {
+                store.select(tab: root)
+            }
+            .accessibilityIdentifier("header.path.root")
+
+            if let topicTitle = breadcrumb.topicTitle {
+                pathSeparator
+                pathButton(
+                    title: topicTitle,
+                    systemImage: nil,
+                    isCurrent: breadcrumb.recording == nil
+                ) {
+                    if let topicID = breadcrumb.topicID {
+                        store.openTopicWorkspace(notebookID: topicID)
+                    }
+                }
+                .disabled(breadcrumb.recording == nil)
+                .accessibilityIdentifier("header.path.topic")
+            }
+
+            if let recording = breadcrumb.recording {
+                pathSeparator
+                Text(recording.label)
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+                    .lineLimit(1)
+                if let status = recording.status {
+                    Label(status.text, systemImage: status.icon)
+                        .font(.bodySM)
+                        .foregroundColor(status.color)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                if let detail = recording.detail {
+                    Text(detail)
+                        .font(.bodySM)
+                        .foregroundColor(.textTertiary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var pathSeparator: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundColor(.textTertiary)
+            .accessibilityHidden(true)
+    }
+
+    private func pathButton(
+        title: String,
+        systemImage: String?,
+        isCurrent: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: Spacing.sm) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .medium))
+                }
+                Text(title)
+                    .font(.bodyMedium)
+                    .lineLimit(1)
+            }
+            .foregroundColor(isCurrent ? .textPrimary : .textSecondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(title)
     }
 
     private var sidebarRevealButton: some View {

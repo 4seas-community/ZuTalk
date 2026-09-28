@@ -1264,8 +1264,9 @@ mod tests {
         assert!(!subtitles.contains("Second sentence"));
 
         let session = core.get_session("capture-facts".into()).unwrap();
-        assert!(session.preview.contains("Realtime source"));
-        assert!(session.preview.contains("实时原文"));
+        // The row preview is what was said, in order, without language labels
+        // or translations.
+        assert_eq!(session.preview, "Realtime source 第二句话");
         assert!(!session.preview.contains("STALE ASYNC TEXT"));
 
         let utterances = core

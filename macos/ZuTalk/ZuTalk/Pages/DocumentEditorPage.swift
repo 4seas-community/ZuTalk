@@ -4,8 +4,7 @@
 //
 // 架构:
 //   DocumentEditorPage (SwiftUI 宿主)
-//     ├── NoteTopChrome  (后退 / title / document 切换器)
-//     ├── NoteMetadataBar(pill 元数据)
+//     ├── (位置与录音信息在主窗口顶栏的路径里,见 EditorBreadcrumb)
 //     ├── BlockNoteEditorView(大纲编辑器,块文档 FFI)
 //     │      └── BlockNoteStore ← noteBlockDocumentOpen / noteApplyOutline
 //     └── NoteBottomSignature(local capture metadata)
@@ -241,16 +240,6 @@ struct DocumentEditorPage: View {
             // Route contains a stable builtin Loro document ID, so chrome can
             // remain mounted while Notebook metadata refreshes.
             if docId != nil {
-                NoteTopChrome(
-                    notebookTitle: editorNotebook?.title,
-                    session: chromeSession,
-                    isTopicWorkspace: isTopicContext,
-                    backLabel: String(localized: navigation.activePrimaryTab == .topics
-                        ? "sidebar.topics"
-                        : "sidebar.home"),
-                    onBack: navigateBack
-                )
-
                 DocumentTabBar(
                     tabs: notebookTabs,
                     activeTabId: activeNotebookTabId,
@@ -277,22 +266,16 @@ struct DocumentEditorPage: View {
                     }
                 }
 
-                if isShowingCaptureSettings {
-                    NotebookSettingsNotebookHeader(title: editorNotebook?.title)
-                } else if isShowingResources == false {
-                    NotebookBuiltinTabTitle(title: visibleSurfaceTitle)
-                    // 笔记面刻意不挂说明横幅:标签页已经写着「笔记」,
-                    // 面包屑已经写着是哪一场会话。写作面前面每多一条
-                    // 装饰,落笔前就多一分打断。
-                    if sessionSupplementarySurface == .note,
-                       effectiveSessionId != nil {
-                        EmptyView()
-                    } else if sessionSupplementarySurface == nil,
-                              activeNotebookTab?.displayType == .manualNote {
-                        TopicNotesContextHeader()
-                    } else if sessionSupplementarySurface != .settings {
-                        NoteMetadataBar(sessionId: effectiveSessionId)
-                    }
+                // The header above already names the topic and the
+                // recording, with its time, length and languages; the tab
+                // bar names the view. Each used to be repeated here — a
+                // breadcrumb row, a large copy of the tab's name, and a row
+                // with the length again.
+                if isShowingCaptureSettings == false,
+                   isShowingResources == false,
+                   sessionSupplementarySurface == nil,
+                   activeNotebookTab?.displayType == .manualNote {
+                    TopicNotesContextHeader()
                 }
             }
 
@@ -407,6 +390,14 @@ struct DocumentEditorPage: View {
         }
         .task(id: routeTaskId) {
             await loadNotebookRoute()
+        }
+        .task(id: breadcrumb) {
+            navigation.editorBreadcrumb = breadcrumb
+        }
+        .onDisappear {
+            if navigation.editorBreadcrumb == breadcrumb {
+                navigation.editorBreadcrumb = nil
+            }
         }
         .task(id: route?.notebookID) {
             guard let notebookId = route?.notebookID,
@@ -653,15 +644,39 @@ struct DocumentEditorPage: View {
         return editorSession
     }
 
-    private var visibleSurfaceTitle: String? {
-        switch sessionSupplementarySurface {
-        case .note:
-            return String(localized: "session.notes.title")
-        case .settings:
-            return String(localized: "session.settings.title")
-        case nil:
-            return activeNotebookTab?.title
+    /// This page's place, for the header: see `EditorBreadcrumb`.
+    private var breadcrumb: EditorBreadcrumb? {
+        guard docId != nil else { return nil }
+        var recording: EditorBreadcrumb.Recording?
+        if let session = chromeSession {
+            let started = Date(timeIntervalSince1970: TimeInterval(session.createdAtUnixMs) / 1_000)
+                .formatted(date: .abbreviated, time: .shortened)
+            let title = RecordingPresentation.title(session.title)
+            let details = [
+                title == nil ? nil : started,
+                RecordingPresentation.duration(ms: session.durationMs),
+                RecordingPresentation.languageList([session.sourceLanguage] + session.targetLanguages),
+            ]
+            .compactMap { $0 }
+            .filter { $0.isEmpty == false }
+            let status: RecordingPresentation.Status?
+            switch session.status.lowercased() {
+            case "recording": status = .recording
+            case "interrupted": status = .interrupted
+            case "failed": status = .failed
+            default: status = nil
+            }
+            recording = EditorBreadcrumb.Recording(
+                label: title ?? started,
+                detail: details.isEmpty ? nil : details.joined(separator: " · "),
+                status: status
+            )
         }
+        return EditorBreadcrumb(
+            topicID: route?.notebookID,
+            topicTitle: isQuickCaptureNotebook ? nil : editorNotebook?.title,
+            recording: recording
+        )
     }
 
     /// Topic workspaces own resources, shared notes and capture defaults.
@@ -958,17 +973,6 @@ struct DocumentEditorPage: View {
         selectNotebookTab(realtimeTab)
     }
 
-    private func navigateBack() {
-        if isTopicContext {
-            navigation.navigateTopics()
-        } else if navigation.activePrimaryTab == .topics,
-                  let notebookId = route?.notebookID {
-            navigation.openTopicWorkspace(notebookID: notebookId)
-        } else {
-            WindowCommandRouter.shared.requestNavigateHome()
-        }
-    }
-
     private func syncPresentedRoute() {
         let selectedTab = activeNotebookTab
         showTranscript = NotebookTranscriptPresentationPolicy.shouldShow(
@@ -1000,142 +1004,6 @@ private struct EditorRouteLoadWarning: View {
         .padding(.horizontal, Spacing.lg)
         .background(Color.bgElevated.opacity(0.24))
         .accessibilityIdentifier("editor.route.load_failure")
-    }
-}
-
-// MARK: - NoteTopChrome (简化:只剩 back 按钮,document 切换移到下方 DocumentTabBar)
-
-private struct NoteTopChrome: View {
-    let notebookTitle: String?
-    let session: SessionInfo?
-    let isTopicWorkspace: Bool
-    let backLabel: String
-    let onBack: () -> Void
-
-    var body: some View {
-        HStack(spacing: Spacing.md) {
-            Button(action: onBack) {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text(backLabel)
-                        .font(.captionMedium)
-                }
-                .foregroundColor(.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .help(backLabel)
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundColor(.textTertiary)
-                .accessibilityHidden(true)
-
-            if isTopicWorkspace {
-                Label(
-                    notebookTitle ?? String(localized: "topic.workspace.breadcrumb"),
-                    systemImage: "list.bullet.rectangle"
-                )
-                .font(.bodyMedium)
-                .foregroundColor(.textPrimary)
-            } else if let session {
-                HStack(spacing: Spacing.sm) {
-                    if let notebookTitle, notebookTitle.isEmpty == false {
-                        Text(notebookTitle)
-                            .font(.bodyMedium)
-                            .foregroundColor(.textSecondary)
-                            .lineLimit(1)
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.textTertiary)
-                            .accessibilityHidden(true)
-                    }
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(sessionDate(session))
-                            .font(.bodyMedium)
-                            .foregroundColor(.textPrimary)
-                            .monospacedDigit()
-
-                        if session.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                            Text(session.title)
-                                .font(.caption)
-                                .foregroundColor(.textSecondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    SessionStatusPill(status: session.status, sessionType: session.sessionType)
-                }
-                .accessibilityElement(children: .combine)
-            } else {
-                Text(notebookTitle ?? String(localized: "topic.workspace.breadcrumb"))
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, Spacing.lg)
-        .padding(.vertical, Spacing.sm)
-        .frame(minHeight: 52)
-    }
-
-    private func sessionDate(_ session: SessionInfo) -> String {
-        Date(timeIntervalSince1970: TimeInterval(session.createdAtUnixMs) / 1_000)
-            .formatted(date: .abbreviated, time: .shortened)
-    }
-}
-
-private struct SessionStatusPill: View {
-    let status: String
-    let sessionType: String
-
-    var body: some View {
-        Label(label, systemImage: icon)
-            .font(.captionMedium)
-            .foregroundColor(color)
-            .padding(.horizontal, Spacing.sm)
-            .frame(minHeight: 24)
-            .background(color.opacity(0.1))
-            .clipShape(Capsule())
-    }
-
-    private var normalizedStatus: String { status.lowercased() }
-
-    private var label: String {
-        switch normalizedStatus {
-        case "recording": return String(localized: "home.status.recording")
-        case "failed": return String(localized: "home.status.failed")
-        case "interrupted": return String(localized: "home.status.interrupted")
-        case "imported": return String(localized: "home.status.imported")
-        default:
-            return sessionType.lowercased() == "import"
-                ? String(localized: "home.status.imported")
-                : String(localized: "home.status.completed")
-        }
-    }
-
-    private var icon: String {
-        switch normalizedStatus {
-        case "recording": return "record.circle.fill"
-        case "failed": return "xmark.octagon.fill"
-        case "interrupted": return "exclamationmark.triangle.fill"
-        case "imported": return "square.and.arrow.down"
-        default: return sessionType.lowercased() == "import"
-            ? "square.and.arrow.down"
-            : "checkmark.circle.fill"
-        }
-    }
-
-    private var color: Color {
-        switch normalizedStatus {
-        case "recording": return .signalRed
-        case "failed", "interrupted": return .signalAmber
-        default: return .textSecondary
-        }
     }
 }
 
@@ -1430,8 +1298,10 @@ private struct DocumentTabBar: View {
             activeSessionId: captureStore.sessionId,
             captureIsActive: captureStore.captureState.isActive
         )
+        // In a topic the live tab shows whatever this topic is recording now;
+        // it is not where recording starts, so it is not named "Record".
         let resolvedTitle = isTopicContext && tab.displayType == .realtimeTranscript
-            ? String(localized: "topic.workspace.record")
+            ? String(localized: "topic.workspace.live_tab")
             : tab.title
         guard resolvedStatus != tab.status || resolvedTitle != tab.title else { return tab }
         return NotebookTabViewModel(
@@ -2273,37 +2143,6 @@ private struct AsyncTranscriptLoadingView: View {
 
 // MARK: - Builtin tab title
 
-private struct NotebookSettingsNotebookHeader: View {
-    let title: String?
-
-    var body: some View {
-        Text(title?.isEmpty == false ? title! : String(localized: "home.notebook.new"))
-            .font(.system(size: 22, weight: .semibold))
-            .foregroundColor(.textPrimary)
-            .lineLimit(1)
-            .padding(.horizontal, Spacing.lg)
-            .padding(.top, Spacing.sm)
-            .padding(.bottom, Spacing.sm)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
-
-private struct NotebookBuiltinTabTitle: View {
-    let title: String?
-
-    var body: some View {
-        Text(title ?? String(localized: "editor.title.untitled"))
-            .font(.system(size: 22, weight: .semibold))
-            .foregroundColor(.textPrimary)
-            .padding(.horizontal, Spacing.lg)
-            .padding(.top, Spacing.sm)
-            .padding(.bottom, Spacing.xs)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
-
 private struct TopicNotesContextHeader: View {
     var body: some View {
         HStack(spacing: Spacing.sm) {
@@ -2810,67 +2649,6 @@ private struct SessionSettingsRow: View {
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm + 2)
         .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - NoteMetadataBar (pill-style metadata)
-
-private struct NoteMetadataBar: View {
-    let sessionId: String?
-    @State private var sessionInfo: SessionInfo?
-
-    var body: some View {
-        HStack(spacing: Spacing.sm) {
-            if let info = sessionInfo {
-                if info.durationMs > 0 {
-                    Pill(icon: "clock", text: formatDuration(info.durationMs))
-                }
-                if !info.sourceLanguage.isEmpty {
-                    Pill(icon: "character.bubble", text: info.sourceLanguage.uppercased())
-                }
-            }
-            Spacer()
-        }
-        .padding(.horizontal, Spacing.lg)
-        .padding(.bottom, Spacing.sm)
-        .task(id: sessionId ?? "") { await load() }
-    }
-
-    @MainActor
-    private func load() async {
-        guard let sessionId, let core = CoreClient.shared.core else {
-            sessionInfo = nil
-            return
-        }
-        do {
-            sessionInfo = try core.getSession(id: sessionId)
-        } catch {
-            // session 不存在(旧数据或未入 session_records),静默
-            sessionInfo = nil
-        }
-    }
-
-    private struct Pill: View {
-        let icon: String
-        let text: String
-        var body: some View {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .medium))
-                Text(text)
-                    .font(.captionMedium)
-            }
-            .foregroundColor(.textSecondary)
-        }
-    }
-
-    private func formatDuration(_ ms: UInt64) -> String {
-        let total = Int(ms / 1000)
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
-        return String(format: "%d:%02d", m, s)
     }
 }
 

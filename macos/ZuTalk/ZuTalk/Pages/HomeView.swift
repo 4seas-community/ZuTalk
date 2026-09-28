@@ -1299,46 +1299,19 @@ private struct HomeSessionRow: View {
         HStack(spacing: Spacing.sm) {
             Button(action: onOpen) {
                 HStack(alignment: .top, spacing: Spacing.md) {
-                    VStack(alignment: .leading, spacing: Spacing.xs) {
-                        Text(session.timeString)
-                            .font(.bodyMedium)
-                            .foregroundColor(.textPrimary)
-                            .monospacedDigit()
-
-                        Image(systemName: rowIcon)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(rowIconColor)
-                            .accessibilityHidden(true)
-                    }
-                    .frame(width: 58, alignment: .leading)
+                    Text(session.timeString)
+                        .font(.bodyMedium)
+                        .foregroundColor(.textSecondary)
+                        .monospacedDigit()
+                        .frame(width: 52, alignment: .leading)
 
                     VStack(alignment: .leading, spacing: Spacing.xs) {
-                        HStack(spacing: Spacing.sm) {
-                            Text(titleForDisplay)
-                                .font(.bodyMedium)
-                                .foregroundColor(.textPrimary)
-                                .lineLimit(1)
-
-                            if let status = statusLabel {
-                                Label(status.text, systemImage: status.icon)
-                                    .font(.captionMedium)
-                                    .foregroundColor(status.color)
-                            }
-                        }
-
-                        if session.preview.isEmpty == false {
-                            Text(session.preview)
-                                .font(.bodySM)
-                                .foregroundColor(.textSecondary)
-                                .lineLimit(2)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } else if let placeholder = previewPlaceholder {
-                            Text(placeholder.text)
-                                .font(.bodySM)
-                                .foregroundColor(placeholder.color)
-                                .italic()
-                        }
-
+                        RecordingRowText(
+                            title: RecordingPresentation.title(session.title),
+                            preview: session.preview,
+                            placeholder: previewPlaceholder?.text,
+                            status: rowStatus
+                        )
                         metadata
                     }
 
@@ -1390,6 +1363,7 @@ private struct HomeSessionRow: View {
                         .contentShape(Rectangle())
                 }
                 .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
                 .fixedSize()
                 .help(String(localized: "home.row.assign_to_topic"))
                 .accessibilityLabel(String(localized: "home.row.assign_to_topic"))
@@ -1415,6 +1389,7 @@ private struct HomeSessionRow: View {
                     .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
             .fixedSize()
             .accessibilityLabel(
                 String(format: String(localized: "home.catalog.row.actions_format"), titleForDisplay)
@@ -1436,33 +1411,52 @@ private struct HomeSessionRow: View {
         .animation(Motion.microInteraction, value: isFocused)
     }
 
+    /// Length, languages, where it is filed — in that order, because the
+    /// first two describe the recording and the last only its place.
     private var metadata: some View {
         HStack(spacing: Spacing.sm) {
-            Label(
-                membershipLabel,
-                systemImage: "folder"
-            )
-            .lineLimit(1)
-            .frame(maxWidth: 180, alignment: .leading)
-
-            if session.durationString.isEmpty == false,
-               session.durationString != "00:00" {
-                Text("·")
-                Text(session.durationString)
+            let parts = metadataParts
+            ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
+                if index > 0 {
+                    Text("·").foregroundColor(.textTertiary)
+                }
+                if let icon = part.icon {
+                    Label(part.text, systemImage: icon)
+                        .lineLimit(1)
+                } else {
+                    Text(part.text).lineLimit(1)
+                }
             }
-
-            if session.languagePair.isEmpty == false,
-               session.languagePair != "—" {
-                Text("·")
-                Text(session.languagePair)
-            }
-
-            Text("·")
-
-            Label(sessionKindLabel, systemImage: sessionKindIcon)
         }
-        .font(.captionMedium)
-        .foregroundColor(.textSecondary)
+        .font(.bodySM)
+        .foregroundColor(.textTertiary)
+    }
+
+    private var metadataParts: [(text: String, icon: String?)] {
+        var parts: [(text: String, icon: String?)] = []
+        if let duration = RecordingPresentation.duration(ms: session.durationMs) {
+            parts.append((duration, nil))
+        }
+        let languages = RecordingPresentation.languageList(session.languageCodes)
+        if languages.isEmpty == false {
+            parts.append((languages, nil))
+        }
+        if session.sessionType == "import" {
+            parts.append((String(localized: "home.row.kind.import"), "square.and.arrow.down"))
+        }
+        parts.append((membershipLabel, topicTitle == nil ? "tray" : "folder"))
+        return parts
+    }
+
+    /// Only a state that needs attention is shown; finished is the norm.
+    private var rowStatus: RecordingPresentation.Status? {
+        switch session.homeStatusState {
+        case .recording: return .recording
+        case .transcribing: return .transcribing
+        case .interrupted: return .interrupted
+        case .failed: return .failed
+        case .completed, .imported, .none: return nil
+        }
     }
 
     private var sessionKindLabel: String {
@@ -1482,66 +1476,12 @@ private struct HomeSessionRow: View {
         session.sessionType == "import" ? "square.and.arrow.down" : "mic.fill"
     }
 
+    /// For menus and VoiceOver, which need a name: the title, else the
+    /// first words, else the time.
     private var titleForDisplay: String {
-        let trimmed = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty
-            ? String(localized: "home.catalog.row.untitled")
-            : trimmed
-    }
-
-    private var rowIcon: String {
-        session.homeStatusState == .recording
-            ? "waveform.circle.fill"
-            : "waveform"
-    }
-
-    private var rowIconColor: Color {
-        session.homeStatusState == .recording
-            ? .accentOrange
-            : .textSecondary
-    }
-
-    private var statusLabel: (text: String, color: Color, icon: String)? {
-        switch session.homeStatusState {
-        case .recording:
-            return (
-                String(localized: "home.row.preview.recording"),
-                .accentOrange,
-                "record.circle.fill"
-            )
-        case .transcribing:
-            return (
-                String(localized: "home.row.preview.pending"),
-                .signalAmber,
-                "hourglass"
-            )
-        case .interrupted:
-            return (
-                String(localized: "home.row.status.interrupted"),
-                .signalAmber,
-                "exclamationmark.circle.fill"
-            )
-        case .failed:
-            return (
-                String(localized: "home.row.preview.failed"),
-                .destructive,
-                "exclamationmark.triangle.fill"
-            )
-        case .completed:
-            return (
-                String(localized: "home.row.status.completed"),
-                .signalGreen,
-                "checkmark.circle.fill"
-            )
-        case .imported:
-            return (
-                String(localized: "home.row.status.imported"),
-                .textPrimary,
-                "square.and.arrow.down"
-            )
-        case .none:
-            return nil
-        }
+        RecordingPresentation.title(session.title)
+            ?? (session.preview.isEmpty ? nil : String(session.preview.prefix(24)))
+            ?? session.timeString
     }
 
     private var previewPlaceholder: (text: String, color: Color)? {
@@ -1573,8 +1513,8 @@ private struct HomeSessionRow: View {
         if session.languagePair.isEmpty == false, session.languagePair != "—" {
             parts.append(session.languagePair)
         }
-        if let statusLabel {
-            parts.append(statusLabel.text)
+        if let rowStatus {
+            parts.append(rowStatus.text)
         }
         if session.preview.isEmpty == false {
             parts.append(session.preview)
@@ -1592,11 +1532,6 @@ private struct HomeSessionRow: View {
 private struct HomeQuickCaptureLanguagePicker: View {
     @ObservedObject var editor: NotebookCaptureProfileEditorModel
     @State private var isPresentingEditor = false
-    @State private var languageSearch = ""
-
-    private var languages: [(code: String, label: String)] {
-        NotebookCaptureSupportedLanguages.options()
-    }
 
     private var selectedLanguages: [String] { editor.draft.selectedLanguages }
 
@@ -1628,10 +1563,9 @@ private struct HomeQuickCaptureLanguagePicker: View {
         }
     }
 
-    /// Short codes keep the control one glance wide in every UI language;
-    /// the full localized names live in the tooltip and the popover.
+    /// Each language by its own name, as rows and column headers show it.
     private var compactSelectionTitle: String {
-        selectedLanguages.map { $0.uppercased() }.joined(separator: " · ")
+        RecordingPresentation.languageList(selectedLanguages)
     }
 
     private var fullSelectionNames: String {
@@ -1656,202 +1590,16 @@ private struct HomeQuickCaptureLanguagePicker: View {
                 .foregroundColor(.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            ScrollView(.horizontal) {
-                HStack(spacing: Spacing.sm) {
-                    ForEach(Array(selectedLanguages.enumerated()), id: \.element) { index, language in
-                        selectedLanguageChip(language: language, index: index)
-                    }
-                }
-            }
-            .montereyScrollIndicators(true)
-
-            HStack(spacing: Spacing.sm) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.textTertiary)
-                    .accessibilityHidden(true)
-                TextField(
-                    String(localized: "capture.settings.languages.search"),
-                    text: $languageSearch
-                )
-                .textFieldStyle(.plain)
-                .accessibilityLabel(Text(String(localized: "capture.settings.languages.search")))
-            }
-            .padding(.horizontal, Spacing.sm)
-            .frame(minHeight: 36)
-            .background(Color.bgSunken.opacity(0.5))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.xs)
-                    .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.xs))
-
-            if languageSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                suggestedLanguageResults
-            } else {
-                languageSearchResults
-            }
+            CaptureLanguageEditor(editor: editor)
         }
         .padding(Spacing.md)
-        .frame(width: 360)
+        .frame(width: 420)
         .disabled(editor.canEdit == false)
         .accessibilityElement(children: .contain)
     }
 
-    @ViewBuilder
-    private var suggestedLanguageResults: some View {
-        let selected = Set(selectedLanguages)
-        let suggestions = NotebookCaptureSupportedLanguages.suggestedCodes()
-            .filter { selected.contains($0) == false }
-            .compactMap { code in languages.first { $0.code == code } }
-
-        if selectedLanguages.count < NotebookCaptureSupportedLanguages.maximumSelectedCount,
-           suggestions.isEmpty == false {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(String(localized: "capture.settings.languages.suggested"))
-                    .font(.system(size: 10))
-                    .foregroundColor(.textTertiary)
-                addLanguageChipRow(suggestions)
-            }
-        }
-    }
-
-    private var languageSearchResults: some View {
-        let query = languageSearch
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let selected = Set(selectedLanguages)
-        let matches = languages.filter { language in
-            selected.contains(language.code) == false
-                && (language.code.localizedCaseInsensitiveContains(query)
-                    || language.label.localizedCaseInsensitiveContains(query))
-        }
-
-        return Group {
-            if selectedLanguages.count >= NotebookCaptureSupportedLanguages.maximumSelectedCount {
-                Text(String(localized: "capture.settings.languages.maximum_reached"))
-                    .font(.caption)
-                    .foregroundColor(.textTertiary)
-                    .padding(.vertical, Spacing.xs)
-            } else if matches.isEmpty {
-                Text(String(localized: "capture.settings.languages.no_results"))
-                    .font(.caption)
-                    .foregroundColor(.textTertiary)
-                    .padding(.vertical, Spacing.xs)
-            } else {
-                addLanguageChipRow(matches)
-            }
-        }
-    }
-
-    private func addLanguageChipRow(
-        _ options: [(code: String, label: String)]
-    ) -> some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: Spacing.xs) {
-                ForEach(options, id: \.code) { language in
-                    Button {
-                        addLanguage(language.code)
-                    } label: {
-                        Label(language.label, systemImage: "plus")
-                            .font(.caption)
-                            .padding(.horizontal, Spacing.sm)
-                            .frame(minHeight: 32)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.textPrimary)
-                    .background(Color.bgElevated.opacity(0.42))
-                    .clipShape(Capsule())
-                    .accessibilityLabel(Text(String(
-                        format: String(localized: "capture.settings.languages.add_format"),
-                        language.label
-                    )))
-                }
-            }
-        }
-        .montereyScrollIndicators(true)
-    }
-
-    private func selectedLanguageChip(language: String, index: Int) -> some View {
-        HStack(spacing: 2) {
-            Text(languageLabel(language))
-                .font(.captionMedium)
-                .foregroundColor(.textPrimary)
-                .padding(.leading, Spacing.sm)
-                .padding(.trailing, Spacing.xs)
-
-            languageChipButton(
-                systemImage: "chevron.left",
-                label: String(localized: "capture.settings.languages.move_earlier"),
-                disabled: index == 0,
-                action: { moveLanguage(at: index, offset: -1) }
-            )
-            languageChipButton(
-                systemImage: "chevron.right",
-                label: String(localized: "capture.settings.languages.move_later"),
-                disabled: index == selectedLanguages.count - 1,
-                action: { moveLanguage(at: index, offset: 1) }
-            )
-            languageChipButton(
-                systemImage: "xmark",
-                label: String(localized: "capture.settings.languages.remove"),
-                disabled: selectedLanguages.count <= 1,
-                action: { removeLanguage(at: index) }
-            )
-        }
-        .frame(minHeight: 36)
-        .background(Color.bgElevated.opacity(0.42))
-        .overlay(
-            Capsule()
-                .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
-        )
-        .clipShape(Capsule())
-        .accessibilityElement(children: .contain)
-    }
-
-    private func languageChipButton(
-        systemImage: String,
-        label: String,
-        disabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 9, weight: .semibold))
-                .frame(width: 28, height: 32)
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.textSecondary)
-        .contentShape(Rectangle())
-        .disabled(disabled)
-        .accessibilityLabel(Text(label))
-    }
-
-    private func addLanguage(_ language: String) {
-        guard selectedLanguages.count
-                < NotebookCaptureSupportedLanguages.maximumSelectedCount,
-              selectedLanguages.contains(language) == false
-        else { return }
-        editor.scheduleUpdate(.addLanguage(language))
-        languageSearch = ""
-    }
-
-    private func removeLanguage(at index: Int) {
-        guard selectedLanguages.count > 1,
-              selectedLanguages.indices.contains(index)
-        else { return }
-        editor.scheduleUpdate(.removeLanguage(selectedLanguages[index]))
-    }
-
-    private func moveLanguage(at index: Int, offset: Int) {
-        let destination = index + offset
-        guard selectedLanguages.indices.contains(index),
-              selectedLanguages.indices.contains(destination)
-        else { return }
-        editor.scheduleUpdate(.moveLanguage(selectedLanguages[index], offset: offset))
-    }
-
     private func languageLabel(_ code: String) -> String {
-        languages.first(where: { $0.code == code })?.label ?? code.uppercased()
+        RecordingPresentation.languageName(code)
     }
 }
 

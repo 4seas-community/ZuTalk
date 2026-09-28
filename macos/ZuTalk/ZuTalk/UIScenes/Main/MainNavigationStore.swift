@@ -41,6 +41,23 @@ enum SessionDefaultTabPolicy {
     }
 }
 
+/// The header's path for a topic or recording page. The page used to repeat
+/// this in a row of its own, and again as a large title under its tabs.
+struct EditorBreadcrumb: Equatable {
+    struct Recording: Equatable {
+        /// The recording's title, or when it has none its start time.
+        var label: String
+        /// Start time (when titled), length and languages.
+        var detail: String?
+        var status: RecordingPresentation.Status?
+    }
+
+    var topicID: String?
+    /// Nil for a recording that belongs to no topic yet.
+    var topicTitle: String?
+    var recording: Recording?
+}
+
 @MainActor
 final class MainNavigationStore: ObservableObject {
     static let shared = MainNavigationStore()
@@ -64,6 +81,9 @@ final class MainNavigationStore: ObservableObject {
     @Published private(set) var activeEditorRoute: EditorRoute?
     @Published private(set) var activeNotebookTitle: String?
     @Published private(set) var pendingEditorView: EditorInitialView = .notes
+    /// Where the page under the header sits — the topic, and for a
+    /// recording which one — published by that page for the header's path.
+    @Published var editorBreadcrumb: EditorBreadcrumb?
 
     private let activeNotebookIDProvider: @MainActor () -> String?
     private let captureRouteContextProvider: @MainActor () -> CaptureRouteContext

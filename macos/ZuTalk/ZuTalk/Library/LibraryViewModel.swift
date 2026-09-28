@@ -22,7 +22,9 @@ struct SessionListItem: Identifiable, Equatable {
     var timeString: String       // e.g. "14:23"
     var durationString: String   // e.g. "01:23:45"
     var durationMs: UInt64 = 0
-    var languagePair: String     // e.g. "EN ↔ 中"
+    var languagePair: String     // e.g. "中文 · English"
+    /// The recording's languages, in the order they were chosen.
+    var languageCodes: [String] = []
     var badges: [SessionBadge] = []
     var createdAt: Date = Date()
     var sessionType: String = "overlay"
@@ -1177,6 +1179,8 @@ class LibraryViewModel: ObservableObject {
                 source: info.sourceLanguage,
                 targets: info.targetLanguages
             ),
+            languageCodes: ([info.sourceLanguage] + info.targetLanguages)
+                .filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false },
             badges: badges,
             createdAt: createdAt,
             sessionType: info.sessionType,
@@ -1198,35 +1202,12 @@ class LibraryViewModel: ObservableObject {
         }
     }
 
-    /// 格式化语言显示：录音所选语言等权时用点分隔；旧的明确源/目标数据
-    /// 仍保留双向或单向箭头。
+    /// Every language of a recording, as its speakers write it. Older
+    /// source/target records list the same way: the arrows claimed a
+    /// direction the list never had room to explain.
     nonisolated static func formatLanguagePair(source: String, targets: [String]) -> String {
-        let src = source.isEmpty ? "" : source.uppercased()
-        let abbreviated = targets.map(Self.abbreviateLanguage)
-
-        if src.isEmpty && abbreviated.isEmpty { return "—" }
-        if src.isEmpty { return abbreviated.joined(separator: " · ") }
-        if abbreviated.isEmpty { return src }
-        if abbreviated.count == 1 { return "\(src) ↔ \(abbreviated[0])" }
-        return "\(src) → \(abbreviated.joined(separator: ","))"
-    }
-
-    nonisolated private static func abbreviateLanguage(_ code: String) -> String {
-        let normalized = code.lowercased()
-        switch normalized {
-        case "zh-cn", "zh-hans", "zh": return "中"
-        case "zh-tw", "zh-hant":       return "繁"
-        case "ja", "jp":                return "日"
-        case "ko":                      return "韩"
-        case "en":                      return "EN"
-        case "es":                      return "ES"
-        case "fr":                      return "FR"
-        case "de":                      return "DE"
-        case "ru":                      return "RU"
-        case "it":                      return "IT"
-        case "pt":                      return "PT"
-        default:                        return code.uppercased()
-        }
+        let list = RecordingPresentation.languageList([source] + targets)
+        return list.isEmpty ? "—" : list
     }
 
     private static let timeFormatter: DateFormatter = {

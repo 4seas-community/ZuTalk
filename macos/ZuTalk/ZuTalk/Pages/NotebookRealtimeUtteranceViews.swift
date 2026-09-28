@@ -151,16 +151,11 @@ struct NotebookRealtimeUtteranceView: View {
         .frame(minHeight: 52)
     }
 
+    /// When it was recorded. The internal session ID used to sit under it.
     private var runIdentity: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Label(createdAtText, systemImage: "clock")
-                .font(.captionMedium)
-                .foregroundColor(.textPrimary)
-            Text(String(run.sessionId.prefix(12)))
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundColor(.textTertiary)
-                .textSelection(.enabled)
-        }
+        Label(createdAtText, systemImage: "clock")
+            .font(.bodySM)
+            .foregroundColor(.textPrimary)
     }
 
     private var runMetadata: some View {
@@ -202,13 +197,18 @@ struct NotebookRealtimeUtteranceView: View {
         .accessibilityAddTraits(.isHeader)
     }
 
+    /// Said only when it is not the ordinary finished-and-saved state, which
+    /// nearly every recording is in.
+    @ViewBuilder
     private var captureStateLabel: some View {
-        CaptureStateLabel(
-            captureState: run.captureState,
-            remoteHealth: run.remoteHealth,
-            projectionState: run.projectionState,
-            showsRemoteHealthWhenInactive: false
-        )
+        if run.captureState != .completed || run.projectionState != .ready {
+            CaptureStateLabel(
+                captureState: run.captureState,
+                remoteHealth: run.remoteHealth,
+                projectionState: run.projectionState,
+                showsRemoteHealthWhenInactive: false
+            )
+        }
     }
 
     @ViewBuilder
@@ -310,7 +310,9 @@ struct NotebookRealtimeUtteranceView: View {
             )
         } else {
             let gapAnchors = anchoredTranscriptGaps
-            LazyVStack(spacing: 0) {
+            let speakerTurns = NotebookSpeakerTurns.starts(in: presentedUtterances)
+            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+              Section(header: NotebookLanguageColumnHeader(languages: displayLanguages)) {
                 ForEach(presentedUtterances) { utterance in
                     transcriptGapDividers(gapAnchors.leading[utterance.id])
                     MultilingualUtteranceRow(
@@ -321,7 +323,9 @@ struct NotebookRealtimeUtteranceView: View {
                             commonCaptionLanguage: nil
                         )
                         .resolvingWaits(translationProgress, rowEndMs: utterance.sourceEndMs),
-                        speakerDisplayName: speakerDisplayName(for: utterance),
+                        speakerDisplayName: speakerTurns.contains(utterance.id)
+                            ? speakerDisplayName(for: utterance)
+                            : nil,
                         onManageSpeaker: { selectSpeaker(for: utterance) },
                         isLaneEditingEnabled: isLaneEditingEnabled,
                         realtimeLoroAppliedRevision: run.realtimeLoroAppliedRevision,
@@ -344,6 +348,7 @@ struct NotebookRealtimeUtteranceView: View {
                     Divider().background(Color.borderGhost.opacity(0.22))
                 }
                 transcriptGapDividers(gapAnchors.trailing)
+              }
             }
             .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset)
         }
@@ -366,12 +371,15 @@ struct NotebookRealtimeUtteranceView: View {
                 utterances: sourceTimelineUtterances,
                 gaps: history.transcriptGaps(sessionId: run.sessionId)
             )
+            let speakerTurns = NotebookSpeakerTurns.starts(in: sourceTimelineUtterances)
             LazyVStack(spacing: 0) {
                 ForEach(sourceTimelineUtterances) { utterance in
                     transcriptGapDividers(gapAnchors.leading[utterance.id])
                     TranscriptionUtteranceRow(
                         utterance: utterance,
-                        speakerDisplayName: speakerDisplayName(for: utterance),
+                        speakerDisplayName: speakerTurns.contains(utterance.id)
+                            ? speakerDisplayName(for: utterance)
+                            : nil,
                         onManageSpeaker: { selectSpeaker(for: utterance) },
                         isEditable: isLaneEditingEnabled && utterance.isLoroEditableLane(
                             language: utterance.sourceLanguage,
@@ -462,6 +470,55 @@ struct NotebookRealtimeUtteranceView: View {
         guard let sessionSpeakerId = utterance.sessionSpeakerId else { return }
         history.refreshSessionSpeakers(sessionId: run.sessionId)
         speakerSelection = NotebookSpeakerSelection(id: sessionSpeakerId)
+    }
+}
+
+/// The rows where someone starts speaking. The speaker's name used to
+/// head every row, so one person talking for ten minutes read "Speaker 1"
+/// forty times.
+enum NotebookSpeakerTurns {
+    static func starts(in utterances: [NotebookCaptureUtteranceDTO]) -> Set<String> {
+        var starts = Set<String>()
+        var previous: String??
+        for utterance in utterances {
+            if previous == nil || previous! != utterance.sessionSpeakerId {
+                starts.insert(utterance.id)
+            }
+            previous = .some(utterance.sessionSpeakerId)
+        }
+        return starts
+    }
+}
+
+/// Which language each column is, pinned above the rows while they scroll.
+/// Columns used to be told apart only by their script.
+struct NotebookLanguageColumnHeader: View {
+    let languages: [String]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(languages.enumerated()), id: \.offset) { index, language in
+                Text(RecordingPresentation.languageName(language))
+                    .font(.bodySM.weight(.semibold))
+                    .foregroundColor(.textSecondary)
+                    .lineLimit(1)
+                    .padding(.horizontal, Spacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if index < languages.count - 1 {
+                    Divider().background(Color.borderGhost.opacity(0.3))
+                }
+            }
+        }
+        .frame(height: 32)
+        .background(Color.bgRoot.opacity(0.96))
+        .overlay(
+            Rectangle()
+                .fill(Color.borderGhost.opacity(0.35))
+                .frame(height: 0.5),
+            alignment: .bottom
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 

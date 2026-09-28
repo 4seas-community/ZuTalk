@@ -62,27 +62,20 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
         XCTAssertNil(tabs.first?.sessionLink)
     }
 
-    func testNotebookTabBarStaysAboveVariableTabContent() throws {
+    /// The header's path names the topic and recording (`EditorBreadcrumb`);
+    /// the page no longer repeats them in a breadcrumb row, a large copy of
+    /// the tab's name, or a second row with the length.
+    func testNotebookTabBarLeadsThePageWithoutRepeatingTheHeader() throws {
         let source = try Self.loadDocumentEditorPage()
-        let topChrome = try XCTUnwrap(source.range(of: "NoteTopChrome("))
         let tabBar = try XCTUnwrap(source.range(of: "DocumentTabBar("))
-        let settingsHeader = try XCTUnwrap(
-            source.range(of: "NotebookSettingsNotebookHeader(title: editorNotebook?.title)")
-        )
-        let builtinTitle = try XCTUnwrap(
-            source.range(of: "NotebookBuiltinTabTitle(title: visibleSurfaceTitle)")
-        )
         let topicNotesHeader = try XCTUnwrap(source.range(of: "TopicNotesContextHeader()"))
-        let metadataBar = try XCTUnwrap(
-            source.range(of: "NoteMetadataBar(sessionId: effectiveSessionId)")
-        )
 
-        XCTAssertLessThan(topChrome.lowerBound, tabBar.lowerBound)
-        XCTAssertLessThan(tabBar.lowerBound, settingsHeader.lowerBound)
-        XCTAssertLessThan(tabBar.lowerBound, builtinTitle.lowerBound)
         XCTAssertLessThan(tabBar.lowerBound, topicNotesHeader.lowerBound)
-        XCTAssertLessThan(tabBar.lowerBound, metadataBar.lowerBound)
-        XCTAssertTrue(source.contains("} else if isShowingResources == false {"))
+        XCTAssertTrue(source.contains("navigation.editorBreadcrumb = breadcrumb"))
+        XCTAssertFalse(source.contains("NoteTopChrome("))
+        XCTAssertFalse(source.contains("NotebookBuiltinTabTitle("))
+        XCTAssertFalse(source.contains("NoteMetadataBar("))
+        XCTAssertFalse(source.contains("NotebookSettingsNotebookHeader("))
     }
 
     func testTopicNotesClearsSessionContextAndUsesTopicChrome() throws {
@@ -93,7 +86,7 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains("selectedSessionID: targetSessionId"))
         XCTAssertTrue(source.contains("selectedSessionID: displayType == .manualNote ? nil : sessionId"))
         XCTAssertTrue(source.contains(
-            "notebookTitle ?? String(localized: \"topic.workspace.breadcrumb\")"
+            "topicTitle: isQuickCaptureNotebook ? nil : editorNotebook?.title"
         ))
     }
 
@@ -106,7 +99,7 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains("return tab.displayType != .asyncTranscript"))
         XCTAssertTrue(source.contains("return tab.displayType != .manualNote"))
         XCTAssertTrue(source.contains("if isTopicContext == false,"))
-        XCTAssertTrue(source.contains("navigation.openTopicWorkspace(notebookID: notebookId)"))
+        XCTAssertTrue(source.contains("topicID: route?.notebookID"))
     }
 
     func testEverySessionExposesFourPurposeBuiltTabs() throws {

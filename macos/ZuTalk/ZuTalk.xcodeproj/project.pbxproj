@@ -12,6 +12,7 @@
 		13512861C79CC24A8995F038 /* BlockNoteInlineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222D848D9BBCDB731A2C00CA /* BlockNoteInlineTests.swift */; };
 		24837CE6787271CBF1A1E5E0 /* WindowSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 162823BFBEBB61C186527799 /* WindowSystemTests.swift */; };
 		263F77C7195DA6D8330D4BBF /* OnboardingControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF4098FE0DDC1AC0C338F00 /* OnboardingControllerTests.swift */; };
+		297978659FFE54CF9CF91693 /* CaptureCommandCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C094EF1F459244686E4A78E2 /* CaptureCommandCenterTests.swift */; };
 		2AE05082BD7A66E351054CEA /* SoftwareUpdateRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D14E3453B94D1356D0CC22 /* SoftwareUpdateRetryTests.swift */; };
 		311D6659C7CEBB1B7D9F3A6F /* IntegrityChecksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EB8781E8D2523CE9443D0EE /* IntegrityChecksTests.swift */; };
 		345A25274BE8DF990C5D88E5 /* EditorAPITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C6921155A5E8B401C25A14 /* EditorAPITests.swift */; };
@@ -126,6 +127,7 @@
 		BCC2EC30B476B20521496DE3 /* Motion.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		BCFDA163E28AEBAE7F806B2C /* WindowArchitectureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WindowArchitectureTests.swift; sourceTree = "<group>"; };
 		BFE772E620BB14E84C6376AF /* ZuTalkUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZuTalkUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C094EF1F459244686E4A78E2 /* CaptureCommandCenterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CaptureCommandCenterTests.swift; sourceTree = "<group>"; };
 		C0D3F0010000000000000001 /* vt_ffi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = vt_ffi.swift; sourceTree = "<group>"; };
 		C0D3F0010000000000000002 /* libZuTalkFFI.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libZuTalkFFI.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0E302F449C28ED87E719068 /* MenuBarRuntimeStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MenuBarRuntimeStoreTests.swift; sourceTree = "<group>"; };
@@ -589,6 +591,7 @@
 				92AECB335DC6A24A47CE04AF /* BlockNoteDocumentTests.swift */,
 				222D848D9BBCDB731A2C00CA /* BlockNoteInlineTests.swift */,
 				00A341AE3ED304EBEB48593A /* SessionMarkStoreTests.swift */,
+				C094EF1F459244686E4A78E2 /* CaptureCommandCenterTests.swift */,
 			);
 			path = ZuTalkTests;
 			sourceTree = "<group>";
@@ -809,6 +812,7 @@
 				6ECCBE7D52035B69006E69E3 /* BlockNoteDocumentTests.swift in Sources */,
 				13512861C79CC24A8995F038 /* BlockNoteInlineTests.swift in Sources */,
 				68FD48734659C6AFE24E978A /* SessionMarkStoreTests.swift in Sources */,
+				297978659FFE54CF9CF91693 /* CaptureCommandCenterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

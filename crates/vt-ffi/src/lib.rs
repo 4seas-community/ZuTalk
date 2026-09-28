@@ -1824,7 +1824,7 @@ impl ZuTalkCore {
                 .list_utterances(session_id)
                 .unwrap_or_default();
             if !utterances.is_empty() {
-                capture_utterance_search_content(&utterances)
+                capture_utterance_preview(&utterances, MAX_CHARS)
             } else {
                 let async_is_fact_source = run.async_task_state
                     == vt_store::notebook_capture_store::AsyncTaskState::Completed;
@@ -1855,8 +1855,35 @@ impl ZuTalkCore {
     }
 }
 
-/// Deterministic, rebuildable text used by both Home previews and FTS. The
-/// language labels keep equal text in different lanes distinguishable while
+/// What a recording's row shows under its title: the words as they were
+/// said, in order. Translations and language labels stay out — the preview
+/// used to be the search text, so every row read "[zh] … [en] … [th] …".
+pub(crate) fn capture_utterance_preview(
+    utterances: &[vt_store::notebook_capture_store::RealtimeUtterance],
+    max_chars: usize,
+) -> String {
+    let mut out = String::new();
+    let mut count = 0;
+    for utterance in utterances {
+        let text = utterance.source_text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+            count += 1;
+        }
+        out.push_str(text);
+        count += text.chars().count();
+        if count > max_chars {
+            break;
+        }
+    }
+    out
+}
+
+/// Deterministic, rebuildable text used by full-text search. The language
+/// labels keep equal text in different lanes distinguishable while
 /// preserving source/translation order. No projection/editor state is read.
 pub(crate) fn capture_utterance_search_content(
     utterances: &[vt_store::notebook_capture_store::RealtimeUtterance],
