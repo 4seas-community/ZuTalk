@@ -40,8 +40,8 @@ ZuTalk requires macOS 12.5 or later.
   each can be marked "subtitles only". If two are spoken and one is only
   read, a recording uses two connections instead of four; if all three are
   spoken, three. Every row gets every column, and captions keep up with the
-  speaker. The switch is on each language chip, in the topic's settings and
-  in Home's language picker.
+  speaker. The switch is on each language chip, in a topic's settings and
+  on the New recording page.
 
 ## Control a recording from anywhere
 
@@ -54,9 +54,8 @@ ZuTalk requires macOS 12.5 or later.
   and stops keeping the display awake once the recording ends.
 - **⌃⌥R starts or stops a recording from any app**, ⌃⌥P pauses, ⌃⌥S marks
   the passage you just heard.
-- **Live captions or recording only — chosen beside every Record button**
-  and remembered. With an invite it shows how long the invite lasts. A
-  topic's Record button now records instead of opening another page.
+- **Live captions or recording only — chosen when you start** and
+  remembered. With an invite it shows how long the invite lasts.
 
 ## Clearer everywhere
 
@@ -81,6 +80,27 @@ ZuTalk requires macOS 12.5 or later.
   are sent, never audio; turning the switch off also deletes what came back.
 - **Plain language** instead of internal terms, and no promises the app did
   not keep — Trash no longer claims to empty itself after 30 days.
+
+## Laid out around your recordings
+
+- **The sidebar is what you do:** New recording, All recordings, Topics,
+  Trash, Settings.
+- **One place to start a recording.** *New recording* asks which topic it
+  goes in, which languages are spoken and whether to show live captions,
+  then records — or imports an audio file. A topic's Record button opens it
+  with that topic chosen. While recording, the same item reads *Recording
+  now* with the time, and takes you back to it.
+- **A recording has two tabs:** its transcript, with a *Live | Refined*
+  switch, and its notes. Sharing, export and its files sit behind ⋯.
+- **A topic has three:** its recordings, its notes, and its settings —
+  now including its languages and its *terms and background* (what used
+  to be the separate Knowledge page), edited where they are used.
+- **Recording lists look and work the same** in All recordings and in a
+  topic, with rename, share, files and trash in each row's menu.
+- **Settings has three sections:** General, Live captions and Sharing. ⌘,
+  opens it, and the welcome guide can be shown again from General.
+- **Trash says what it is,** shows what each recording was, and can be
+  emptied in one go.
 
 ## Sharing that works for anyone with a phone
 
