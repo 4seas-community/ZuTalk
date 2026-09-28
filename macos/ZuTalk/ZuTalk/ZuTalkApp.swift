@@ -176,12 +176,17 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
             RecordingHudController.shared.install()
         }
 
-        // Capture controls are Notebook-only. The global shortcut routes to
-        // that Notebook instead of mutating capture from outside it.
+        // The same commands every recording surface uses; see
+        // `CaptureCommandCenter`.
         HotKeyManager.shared.installDefaults(
-            toggleRecording: { [weak self] in self?.openCaptureNotebook() },
+            toggleRecording: {
+                MainActor.assumeIsolated { CaptureCommandCenter.shared.toggleRecordingFromShortcut() }
+            },
+            togglePause: {
+                MainActor.assumeIsolated { CaptureCommandCenter.shared.togglePauseFromShortcut() }
+            },
             markMoment: {
-                MainActor.assumeIsolated { _ = SessionMarkStore.shared.markLiveCapture() }
+                MainActor.assumeIsolated { _ = CaptureCommandCenter.shared.mark() }
             }
         )
 
@@ -276,17 +281,6 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
             DebugLog.warn("flushAllEditorsSync failed on quit", detail: "\(error)")
         }
         try? core.shutdown()
-    }
-
-    // MARK: - Capture routing
-
-    /// Global shortcuts and non-Notebook affordances only reveal the owning
-    /// Notebook. They cannot mutate capture state.
-    @MainActor
-    private func openCaptureNotebook() {
-        WindowCommandRouter.shared.openMainWindow(detail: "capture-route") {
-            MainNavigationStore.shared.openActiveNotebookForCapture()
-        }
     }
 
     @MainActor

@@ -374,7 +374,7 @@ struct DocumentEditorPage: View {
                     NotebookResourcesView(
                         notebookId: notebookId,
                         notebookTitle: editorNotebook?.title,
-                        onStartCapture: openRealtimeControls,
+                        onStartCapture: startRecordingInTopic,
                         onOpenResource: { sessionId, destination in
                             openResource(sessionId: sessionId, destination: destination)
                         }
@@ -937,6 +937,18 @@ struct DocumentEditorPage: View {
             documentID: targetTab.documentId,
             selectedSessionID: displayType == .manualNote ? nil : sessionId
         )
+    }
+
+    /// The topic's Record button records. It used to open the live page,
+    /// where a second Record button did.
+    private func startRecordingInTopic() {
+        guard let notebookId = route?.notebookID,
+              notebookId == captureProfileEditor.notebookId
+        else {
+            openRealtimeControls()
+            return
+        }
+        CaptureCommandCenter.shared.start(notebookId: notebookId, profileEditor: captureProfileEditor)
     }
 
     private func openRealtimeControls() {

@@ -1,19 +1,26 @@
 import AppKit
 import SwiftUI
 
-/// Idle state of the menu-bar popover — the launchpad. Replaces the prior
-/// island idle hover-expanded panel (`IdleHoverExpandedView`). Capture routes
-/// into the Notebook; overlay windows remain read-only viewer infrastructure.
+/// Idle state of the menu-bar popover — the launchpad. Recording starts right
+/// here, the way ⌃⌥R does, without opening the main window first.
 @MainActor
 struct MenuBarIdleView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             MenuBarActionRow(
                 systemImage: "record.circle.fill",
-                title: String(localized: "capture.open_notebook"),
-                tint: Color.brandAccent,
+                title: String(localized: "menubar.action.start_recording"),
+                shortcut: "⌃⌥R",
+                tint: Color.signalRed,
                 accessibilityID: AccessibilityID.menuBarRecordButton,
-                action: "recording"
+                action: "startRecording"
+            )
+            MenuBarActionRow(
+                systemImage: "macwindow",
+                title: String(localized: "menubar.action.open_main_window"),
+                tint: Color.textSecondary,
+                accessibilityID: "menu-bar.open-main-window",
+                action: "openMainWindow"
             )
             MenuBarActionRow(
                 systemImage: "gearshape.fill",
@@ -37,6 +44,7 @@ struct MenuBarIdleView: View {
 private struct MenuBarActionRow: View {
     let systemImage: String
     let title: String
+    var shortcut: String? = nil
     let tint: Color
     let accessibilityID: String
     let action: String
@@ -55,6 +63,11 @@ private struct MenuBarActionRow: View {
                     .foregroundColor(Color.textPrimary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
+                if let shortcut {
+                    Text(shortcut)
+                        .font(Font.mono9)
+                        .foregroundColor(Color.textTertiary)
+                }
             }
             .padding(.horizontal, Spacing.sm)
             .frame(height: Spacing.xl)

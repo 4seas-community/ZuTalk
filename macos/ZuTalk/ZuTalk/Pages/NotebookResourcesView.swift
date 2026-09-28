@@ -997,6 +997,8 @@ struct NotebookResourcesView: View {
     let onStartCapture: () -> Void
     let onOpenResource: (String, NotebookResourceDestination) -> Void
     @StateObject private var viewModel = NotebookResourcesViewModel()
+    @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var commands = CaptureCommandCenter.shared
     @State private var movingSession: NotebookResourceItem?
     @State private var searchText = ""
     @State private var isSelectingSessions = false
@@ -1190,15 +1192,24 @@ struct NotebookResourcesView: View {
             .disabled(viewModel.isImportingAudio)
             .accessibilityIdentifier("topic.import")
 
-            Button(action: onStartCapture) {
-                Label(
-                    String(localized: "topic.workspace.record"),
-                    systemImage: "record.circle"
-                )
-                .frame(minHeight: 36)
+            // While anything records, its controls are in the recording bar
+            // above; a second Record here could only fail.
+            if capture.isCaptureActive == false {
+                CaptionsChoiceChip()
+                Button(action: onStartCapture) {
+                    Label(
+                        commands.isStarting
+                            ? String(localized: "capture.toolbar.starting")
+                            : String(localized: "topic.workspace.record"),
+                        systemImage: commands.isStarting ? "ellipsis" : "record.circle"
+                    )
+                    .frame(minHeight: 36)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.signalRed)
+                .disabled(commands.isStarting)
+                .accessibilityIdentifier("topic.record")
             }
-            .buttonStyle(.borderedProminent)
-            .accessibilityIdentifier("topic.record")
         }
     }
 

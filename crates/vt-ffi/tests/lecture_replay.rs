@@ -853,12 +853,20 @@ fn replay_lecture_realtime_accelerated() {
     );
 
     let tmp = TempDir::new().expect("create replay data directory");
+    // `ZULANGUE_REPLAY_DATA_DIR` keeps the replayed notebook, e.g. to look at
+    // it in a development build. Never point it at a real profile.
+    let data_dir = std::env::var_os("ZULANGUE_REPLAY_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| tmp.path().to_path_buf());
     let core = Arc::new(
-        ZuTalkCore::new_for_test(tmp.path().to_string_lossy().into_owned())
+        ZuTalkCore::new_for_test(data_dir.to_string_lossy().into_owned())
             .expect("create core for replay"),
     );
     let notebook = core
-        .create_notebook(Some("Accelerated replay".to_string()))
+        .create_notebook(Some(
+            std::env::var("ZULANGUE_REPLAY_TITLE")
+                .unwrap_or_else(|_| "Accelerated replay".to_string()),
+        ))
         .expect("create replay notebook");
     let mut profile = core
         .get_notebook_capture_profile(notebook.id.clone())
@@ -1308,7 +1316,7 @@ fn replay_lecture_realtime_accelerated() {
     if let Some(error) = &push_error {
         line(format!("FEED ABORTED: {error}"));
     }
-    match persisted_provider_failure(tmp.path(), &session_id) {
+    match persisted_provider_failure(&data_dir, &session_id) {
         Some((error_type, request_id)) => line(format!(
             "durable provider failure: {error_type}{}",
             if request_id.is_empty() {

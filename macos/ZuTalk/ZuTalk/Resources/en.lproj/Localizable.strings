@@ -311,8 +311,8 @@
 
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "Keyboard shortcuts";
-"settings.shortcuts.subtitle" = "Global hotkeys for ZuTalk actions.";
-"settings.shortcuts.toggle_recording" = "Open Notebook capture";
+"settings.shortcuts.subtitle" = "The first three work from any app, even when ZuTalk is in the background.";
+"settings.shortcuts.toggle_recording" = "Start or stop recording";
 "settings.shortcuts.cycle_display" = "Cycle display mode";
 "settings.shortcuts.font_bigger" = "Increase font size";
 "settings.shortcuts.font_smaller" = "Decrease font size";
@@ -1224,3 +1224,24 @@
 "session.settings.mode.multilingual_one_way" = "Multilingual meeting";
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@ channels";
 "editor.transcript.async.speaker_format" = "Speaker %@";
+
+"recording_bar.unfiled" = "Not in a topic";
+"recording_bar.open_hint" = "Show the live transcript of this recording";
+"recording_bar.mark" = "Mark";
+"recording_bar.marked" = "Marked";
+"recording_bar.mark_hint" = "Mark the passage you just heard (⌃⌥S, from any app)";
+"recording_bar.pause_hint" = "Pause or resume (⌃⌥P, from any app)";
+"recording_bar.stop_hint" = "End the recording and save it (⌃⌥R, from any app)";
+"recording_bar.captions.off" = "Recording only";
+"captions_choice.on" = "Live captions";
+"captions_choice.off" = "Recording only";
+"captions_choice.on_hint" = "Recordings get live captions and translation: audio is sent to Soniox while recording. Click to record on this Mac only.";
+"captions_choice.off_hint" = "Recordings stay on this Mac, without live captions. Click to turn live captions on.";
+"captions_choice.unavailable_hint" = "Live captions need a Soniox key or an invite code. Click to add one in Settings.";
+"capture.toast.stopped_saved" = "Recording saved (%@)";
+"menubar.action.start_recording" = "Start recording";
+"menubar.action.open_main_window" = "Open ZuTalk";
+"settings.shortcuts.pause" = "Pause or resume";
+"settings.shortcuts.mark" = "Mark what you just heard";
+"settings.shortcuts.overlay_banner" = "Subtitle window: banner across the top";
+"settings.shortcuts.overlay_maximize" = "Subtitle window: fill or restore";

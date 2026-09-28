@@ -187,18 +187,15 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertTrue(contents.contains("home.record.return_active_format"))
         XCTAssertTrue(contents.contains("onReturnToActiveCapture: returnToActiveCapture"))
         XCTAssertTrue(contents.contains("onStartRecording: startQuickRecording"))
-        XCTAssertTrue(contents.contains("NotebookCaptureStartCoordinator("))
         XCTAssertTrue(contents.contains("viewModel.canStartQuickCapture"))
+        // Home starts through the same commands as every other surface, on
+        // the editor its language picker edits, with the captions choice
+        // shown beside the button.
         XCTAssertTrue(contents.contains(
-            "NotebookCaptureStartPreparationWorkflow.prepare("
+            "commands.startQuickCapture(profileEditor: quickCaptureProfileEditor)"
         ))
-        XCTAssertTrue(contents.contains(
-            ".shouldEnableRealtimeForQuickCapture("
-        ))
-        XCTAssertTrue(contents.contains(
-            "prepareForHomeQuickCaptureStart("
-        ))
-        XCTAssertFalse(contents.contains("prepareForCaptureStart(enableRealtimeIfNeeded: false)"))
+        XCTAssertTrue(contents.contains("CaptionsChoiceChip()"))
+        XCTAssertFalse(contents.contains("NotebookCaptureStartCoordinator("))
         XCTAssertTrue(contents.contains("home.record.start"))
         XCTAssertTrue(contents.contains("home.row.topic.unknown"))
         XCTAssertTrue(contents.contains("home.workspace.membership_unavailable"))
@@ -306,27 +303,6 @@ final class LibraryViewModelTests: XCTestCase {
                 isCaptureActive: true,
                 captureNotebookId: "  \n",
                 notebooks: []
-            )
-        )
-    }
-
-    func testHomeQuickCaptureEnablesRealtimeOnlyForAnEnabledActiveInvite() {
-        XCTAssertTrue(
-            HomeRecordingEntryPolicy.shouldEnableRealtimeForQuickCapture(
-                inviteIsEnabled: true,
-                inviteIsActive: true
-            )
-        )
-        XCTAssertFalse(
-            HomeRecordingEntryPolicy.shouldEnableRealtimeForQuickCapture(
-                inviteIsEnabled: false,
-                inviteIsActive: true
-            )
-        )
-        XCTAssertFalse(
-            HomeRecordingEntryPolicy.shouldEnableRealtimeForQuickCapture(
-                inviteIsEnabled: true,
-                inviteIsActive: false
             )
         )
     }

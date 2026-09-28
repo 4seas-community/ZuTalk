@@ -311,8 +311,8 @@
 
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "键盘快捷键";
-"settings.shortcuts.subtitle" = "ZuTalk 动作的全局快捷键。";
-"settings.shortcuts.toggle_recording" = "打开 Notebook 录音";
+"settings.shortcuts.subtitle" = "前三个在任何应用里都能用，ZuTalk 在后台时也有效。";
+"settings.shortcuts.toggle_recording" = "开始 / 停止录音";
 "settings.shortcuts.cycle_display" = "切换显示模式";
 "settings.shortcuts.font_bigger" = "增大字号";
 "settings.shortcuts.font_smaller" = "减小字号";
@@ -1224,3 +1224,24 @@
 "session.settings.mode.multilingual_one_way" = "多语言会议";
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@ 声道";
 "editor.transcript.async.speaker_format" = "说话人 %@";
+
+"recording_bar.unfiled" = "未归入主题";
+"recording_bar.open_hint" = "打开这场录音的实时转录";
+"recording_bar.mark" = "标记";
+"recording_bar.marked" = "已标记";
+"recording_bar.mark_hint" = "标记刚才听到的这一段（⌃⌥S，在任何应用里都能用）";
+"recording_bar.pause_hint" = "暂停或继续（⌃⌥P，在任何应用里都能用）";
+"recording_bar.stop_hint" = "结束并保存这场录音（⌃⌥R，在任何应用里都能用）";
+"recording_bar.captions.off" = "仅录音";
+"captions_choice.on" = "实时字幕";
+"captions_choice.off" = "仅录音";
+"captions_choice.on_hint" = "录音时开实时字幕和翻译：录音期间音频会发送给 Soniox。点一下改为只在这台 Mac 上录音。";
+"captions_choice.off_hint" = "录音只留在这台 Mac 上，没有实时字幕。点一下开启实时字幕。";
+"captions_choice.unavailable_hint" = "实时字幕需要 Soniox 密钥或邀请码。点一下去设置里添加。";
+"capture.toast.stopped_saved" = "录音已保存（%@）";
+"menubar.action.start_recording" = "开始录音";
+"menubar.action.open_main_window" = "打开 ZuTalk";
+"settings.shortcuts.pause" = "暂停 / 继续";
+"settings.shortcuts.mark" = "标记刚才这一段";
+"settings.shortcuts.overlay_banner" = "字幕窗：顶部整宽字幕带";
+"settings.shortcuts.overlay_maximize" = "字幕窗：铺满 / 还原";

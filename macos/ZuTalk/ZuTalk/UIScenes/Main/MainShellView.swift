@@ -6,6 +6,7 @@ struct MainShellView: View {
     @ObservedObject private var store: MainNavigationStore
     @ObservedObject private var communityInvite = CommunityInviteSession.shared
     @ObservedObject private var shareActivity = ShareActivityStore.shared
+    @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @State private var isSidebarHidden = false
 
     init(store: MainNavigationStore) {
@@ -407,6 +408,8 @@ struct MainShellView: View {
                     alignment: .bottom
                 )
 
+            RecordingProblemBanner()
+
             ZStack {
                 Color.bgRoot
 
@@ -438,6 +441,13 @@ struct MainShellView: View {
     }
 
     private var contentHeader: some View {
+        GeometryReader { geometry in
+            contentHeaderRow(width: geometry.size.width)
+                .frame(maxHeight: .infinity)
+        }
+    }
+
+    private func contentHeaderRow(width: CGFloat) -> some View {
         HStack(spacing: Spacing.md) {
             if isSidebarHidden {
                 sidebarRevealButton
@@ -450,11 +460,16 @@ struct MainShellView: View {
                 Text(tabTitle(for: activeTab))
                     .font(.bodyMedium)
                     .foregroundColor(.textPrimary)
+                    .lineLimit(1)
             }
+            .layoutPriority(-1)
 
-            Spacer()
+            Spacer(minLength: Spacing.md)
 
+            // The recording in progress, whatever page is showing.
+            RecordingBar(compact: width < 980)
         }
+        .animation(Motion.panelTransition, value: capture.isCaptureActive)
     }
 
     private var sidebarRevealButton: some View {

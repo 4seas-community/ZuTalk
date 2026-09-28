@@ -214,7 +214,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testHomeCaptureWithoutInviteCommitsQueuedProfileWithoutImplicitRealtimeAuthorization() async throws {
+    func testRecordingOnlyCommitsQueuedProfileWithoutRealtime() async throws {
         let client = FakeNotebookCaptureClient(
             profile: .localDefault(notebookId: "quick-capture")
         )
@@ -227,9 +227,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         editor.load()
 
         _ = editor.scheduleUpdate(.addLanguage("th"))
-        try await editor.prepareForHomeQuickCaptureStart(
-            inviteRealtimeAuthorized: false
-        )
+        try await editor.prepareForCaptureStart(realtime: false)
         try await store.start(notebookId: "quick-capture")
 
         XCTAssertEqual(client.profile.selectedLanguages, ["en", "zh", "th"])
@@ -241,7 +239,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
     }
 
     @MainActor
-    func testFreshHomeInviteCommitsRealtimeProfileBeforePreparingCredential() async throws {
+    func testLiveCaptionsCommitRealtimeProfileBeforePreparingCredential() async throws {
         let persistence = FakeNotebookCaptureProfilePersistence(
             profile: .localDefault(notebookId: "quick-capture")
         )
@@ -253,17 +251,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         var steps: [String] = []
 
         let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
-            enableRealtimeIfNeeded: HomeRecordingEntryPolicy
-                .shouldEnableRealtimeForQuickCapture(
-                    inviteIsEnabled: true,
-                    inviteIsActive: true
-                ),
-            prepareProfile: { inviteRealtimeAuthorized in
+            enableRealtimeIfNeeded: true,
+            prepareProfile: { realtime in
                 steps.append("profile.begin")
-                XCTAssertTrue(inviteRealtimeAuthorized)
-                try await editor.prepareForHomeQuickCaptureStart(
-                    inviteRealtimeAuthorized: inviteRealtimeAuthorized
-                )
+                XCTAssertTrue(realtime)
+                try await editor.prepareForCaptureStart(realtime: realtime)
                 steps.append("profile.committed")
                 return editor.draft
             },
@@ -282,53 +274,42 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(editor.draft.mode, .twoWay)
     }
 
+    /// A profile an earlier recording left realtime-on must not open a remote
+    /// connection once the person has switched captions off.
     @MainActor
-    func testHomeDisabledOrInactiveInviteCommitsQuickCaptureBackToLocalOnly() async throws {
-        let unavailableInviteStates: [(enabled: Bool, active: Bool)] = [
-            (false, true),
-            (true, false),
-        ]
+    func testRecordingOnlyCommitsAProfileLeftOnBackToLocalOnly() async throws {
+        var previousProfile = NotebookCaptureProfileDTO.twoWay(
+            notebookId: "quick-capture"
+        )
+        previousProfile.remoteRealtimeEnabled = true
+        let persistence = FakeNotebookCaptureProfilePersistence(
+            profile: previousProfile
+        )
+        let editor = NotebookCaptureProfileEditorModel(
+            notebookId: "quick-capture",
+            persistence: persistence
+        )
+        editor.load()
+        var credentialPreparationCount = 0
 
-        for inviteState in unavailableInviteStates {
-            var previouslyInvitedProfile = NotebookCaptureProfileDTO.twoWay(
-                notebookId: "quick-capture"
-            )
-            previouslyInvitedProfile.remoteRealtimeEnabled = true
-            let persistence = FakeNotebookCaptureProfilePersistence(
-                profile: previouslyInvitedProfile
-            )
-            let editor = NotebookCaptureProfileEditorModel(
-                notebookId: "quick-capture",
-                persistence: persistence
-            )
-            editor.load()
-            var credentialPreparationCount = 0
+        let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
+            enableRealtimeIfNeeded: false,
+            prepareProfile: { realtime in
+                try await editor.prepareForCaptureStart(realtime: realtime)
+                return editor.draft
+            },
+            prepareRealtimeCredential: { _ in
+                credentialPreparationCount += 1
+                return .invite
+            }
+        )
 
-            let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
-                enableRealtimeIfNeeded: HomeRecordingEntryPolicy
-                    .shouldEnableRealtimeForQuickCapture(
-                        inviteIsEnabled: inviteState.enabled,
-                        inviteIsActive: inviteState.active
-                    ),
-                prepareProfile: { inviteRealtimeAuthorized in
-                    try await editor.prepareForHomeQuickCaptureStart(
-                        inviteRealtimeAuthorized: inviteRealtimeAuthorized
-                    )
-                    return editor.draft
-                },
-                prepareRealtimeCredential: { _ in
-                    credentialPreparationCount += 1
-                    return .invite
-                }
-            )
-
-            XCTAssertEqual(preparation, .notUsed)
-            XCTAssertFalse(editor.draft.remoteRealtimeEnabled)
-            XCTAssertFalse(persistence.profile.remoteRealtimeEnabled)
-            XCTAssertEqual(editor.draft.mode, .transcriptionOnly)
-            XCTAssertEqual(persistence.saveRequests.count, 1)
-            XCTAssertEqual(credentialPreparationCount, 0)
-        }
+        XCTAssertEqual(preparation, .notUsed)
+        XCTAssertFalse(editor.draft.remoteRealtimeEnabled)
+        XCTAssertFalse(persistence.profile.remoteRealtimeEnabled)
+        XCTAssertEqual(editor.draft.mode, .transcriptionOnly)
+        XCTAssertEqual(persistence.saveRequests.count, 1)
+        XCTAssertEqual(credentialPreparationCount, 0)
     }
 
     @MainActor
@@ -7830,37 +7811,52 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(captureViews.contains("capture.settings.context.not_selected"))
         XCTAssertTrue(captureViews.contains("NotebookCaptureProfileEditorModel"))
         XCTAssertTrue(captureViews.contains(
-            "func prepareForCaptureStart(enableRealtimeIfNeeded: Bool = true) async throws"
+            "func prepareForCaptureStart(realtime: Bool = true) async throws"
         ))
         XCTAssertTrue(captureViews.contains(
-            "try await profileEditor.prepareForCaptureStart("
+            "try await profileEditor.prepareForCaptureStart(realtime: realtime)"
         ))
-        let startButtonStart = try XCTUnwrap(
-            captureViews.range(of: "private var startButton: some View")
+        // Every surface starts, pauses and stops through one command center;
+        // the toolbar and the recording bar only call it.
+        let startNowStart = try XCTUnwrap(
+            captureViews.range(of: "func startNow(")
         )
-        let startButtonEnd = try XCTUnwrap(
-            captureViews[startButtonStart.upperBound...]
-                .range(of: "private var pauseButton: some View")
+        let startNowEnd = try XCTUnwrap(
+            captureViews[startNowStart.upperBound...]
+                .range(of: "private func quickCaptureNotebookId()")
         )
-        let startButtonSource = String(
-            captureViews[startButtonStart.lowerBound..<startButtonEnd.lowerBound]
+        let startNowSource = String(
+            captureViews[startNowStart.lowerBound..<startNowEnd.lowerBound]
         )
         let workflowPreparation = try XCTUnwrap(
-            startButtonSource.range(of: "NotebookCaptureStartPreparationWorkflow.prepare(")
+            startNowSource.range(of: "NotebookCaptureStartPreparationWorkflow.prepare(")
         )
         let captureStart = try XCTUnwrap(
-            startButtonSource.range(of: "NotebookCaptureStartCoordinator(")
+            startNowSource.range(of: "NotebookCaptureStartCoordinator(")
         )
         XCTAssertLessThan(
             workflowPreparation.lowerBound,
             captureStart.lowerBound,
             "Profile and credential preparation must complete before preparing audio"
         )
+        XCTAssertEqual(
+            captureViews.components(separatedBy: "try await capture.setPaused(").count - 1,
+            1,
+            "Pause must have exactly one implementation, in CaptureCommandCenter"
+        )
+        XCTAssertEqual(
+            captureViews.components(separatedBy: "try await capture.stop()").count - 1,
+            1,
+            "Stop must have exactly one implementation, in CaptureCommandCenter"
+        )
+        XCTAssertTrue(captureViews.contains(
+            "commands.start(notebookId: notebookId, profileEditor: profileEditor)"
+        ))
         XCTAssertFalse(documentEditor.contains("NotebookCaptureToolbar("))
         XCTAssertEqual(
             captureViews.components(separatedBy: "NotebookCaptureToolbar(").count - 1,
             1,
-            "Realtime Transcript must be the only mounted capture command surface"
+            "Realtime Transcript must be the only place the topic toolbar is mounted"
         )
         XCTAssertTrue(captureViews.contains("navigation.openRealtimeTranscript("))
         XCTAssertTrue(captureViews.contains("profileForNotebook"))

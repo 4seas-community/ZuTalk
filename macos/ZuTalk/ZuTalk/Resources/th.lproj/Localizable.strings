@@ -311,8 +311,8 @@
 
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "แป้นพิมพ์ลัด";
-"settings.shortcuts.subtitle" = "ปุ่มลัดส่วนกลางสำหรับการทำงานของ ZuTalk";
-"settings.shortcuts.toggle_recording" = "เปิดการบันทึกของ Notebook";
+"settings.shortcuts.subtitle" = "สามรายการแรกใช้ได้จากทุกแอป แม้ ZuTalk จะอยู่เบื้องหลัง";
+"settings.shortcuts.toggle_recording" = "เริ่ม / หยุดบันทึก";
 "settings.shortcuts.cycle_display" = "สลับโหมดการแสดงผล";
 "settings.shortcuts.font_bigger" = "เพิ่มขนาดแบบอักษร";
 "settings.shortcuts.font_smaller" = "ลดขนาดแบบอักษร";
@@ -1224,3 +1224,24 @@
 "session.settings.mode.multilingual_one_way" = "การประชุมหลายภาษา";
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@ ช่องสัญญาณ";
 "editor.transcript.async.speaker_format" = "ผู้พูด %@";
+
+"recording_bar.unfiled" = "ยังไม่อยู่ในหัวข้อ";
+"recording_bar.open_hint" = "เปิดถอดความสดของการบันทึกนี้";
+"recording_bar.mark" = "ทำเครื่องหมาย";
+"recording_bar.marked" = "ทำเครื่องหมายแล้ว";
+"recording_bar.mark_hint" = "ทำเครื่องหมายช่วงที่เพิ่งได้ยิน (⌃⌥S ใช้ได้จากทุกแอป)";
+"recording_bar.pause_hint" = "หยุดชั่วคราวหรือทำต่อ (⌃⌥P ใช้ได้จากทุกแอป)";
+"recording_bar.stop_hint" = "จบและบันทึกการบันทึกนี้ (⌃⌥R ใช้ได้จากทุกแอป)";
+"recording_bar.captions.off" = "บันทึกเสียงอย่างเดียว";
+"captions_choice.on" = "คำบรรยายสด";
+"captions_choice.off" = "บันทึกเสียงอย่างเดียว";
+"captions_choice.on_hint" = "เปิดคำบรรยายและคำแปลสดระหว่างบันทึก เสียงจะถูกส่งไปที่ Soniox ขณะบันทึก คลิกเพื่อบันทึกเฉพาะบน Mac เครื่องนี้";
+"captions_choice.off_hint" = "การบันทึกจะอยู่บน Mac เครื่องนี้เท่านั้น ไม่มีคำบรรยายสด คลิกเพื่อเปิดคำบรรยายสด";
+"captions_choice.unavailable_hint" = "คำบรรยายสดต้องใช้คีย์ Soniox หรือรหัสเชิญ คลิกเพื่อเพิ่มในการตั้งค่า";
+"capture.toast.stopped_saved" = "บันทึกการบันทึกแล้ว (%@)";
+"menubar.action.start_recording" = "เริ่มบันทึก";
+"menubar.action.open_main_window" = "เปิด ZuTalk";
+"settings.shortcuts.pause" = "หยุดชั่วคราว / ทำต่อ";
+"settings.shortcuts.mark" = "ทำเครื่องหมายช่วงที่เพิ่งได้ยิน";
+"settings.shortcuts.overlay_banner" = "หน้าต่างคำบรรยาย: แถบเต็มความกว้างด้านบน";
+"settings.shortcuts.overlay_maximize" = "หน้าต่างคำบรรยาย: เต็มจอ / คืนค่า";

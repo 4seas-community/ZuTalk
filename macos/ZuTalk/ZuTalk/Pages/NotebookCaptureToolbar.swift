@@ -2,97 +2,41 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// The only UI surface allowed to start, pause, resume, or stop capture.
-/// Menu bar, Floating, and Caption Mirror surfaces observe the same store read-only.
+/// Where a topic's recording starts: the live-captions choice and Record.
+///
+/// While a recording runs — this topic's or any other — its controls are in
+/// the recording bar above every page (`RecordingBar`), so this stays out of
+/// the way instead of offering a second, partial set of them.
 struct NotebookCaptureToolbar: View {
     let notebookId: String
     @ObservedObject var profileEditor: NotebookCaptureProfileEditorModel
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var commands = CaptureCommandCenter.shared
     @ObservedObject private var shareActivity = ShareActivityStore.shared
-    @State private var isStarting = false
-    @State private var isPausing = false
-    @State private var isStopping = false
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 3) {
-            HStack(spacing: Spacing.sm) {
-                if capture.isCaptureActive {
-                    if capture.notebookId == notebookId {
-                        captureStatus
-                        CaptureHealthControls(
-                            capture: capture,
-                            livePresentation: capture.livePresentation
-                        )
-                        pauseButton
-                        stopButton
-                    } else {
-                        Button {
-                            MainNavigationStore.shared.openActiveNotebookForCapture()
-                        } label: {
-                            Label(
-                                String(localized: "capture.toolbar.active_other_notebook"),
-                                systemImage: "arrowshape.turn.up.left.fill"
-                            )
-                            .font(.captionMedium)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(.textSecondary)
-                        .help(String(localized: "capture.open_notebook_hint"))
-                        .accessibilityLabel(Text(String(localized: "capture.open_notebook")))
-                    }
-                } else if shareActivity.isViewing {
-                    // 在别人的房间里就不能录音:收端的字幕来自远端,本机
-                    // 再开一路采集会把两场内容拧在一起。这里不是禁用按钮
-                    // 就完事 —— 要说清楚现在处于什么状态、出口在哪。
-                    joinedRoomStatus
-                } else {
-                    startButton
-                }
-
-            }
-
-            if capture.notebookId == notebookId,
-               let problem = capture.transcriptionProblemText {
-                Label(problem, systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.signalAmber)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.trailing)
-                    .frame(maxWidth: 420, alignment: .trailing)
-            }
-
-            if showsPauseBillingNotice {
-                Label(
-                    String(localized: "capture.toolbar.pause_billing"),
-                    systemImage: "clock.badge.exclamationmark"
-                )
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.signalAmber)
-                .lineLimit(1)
-                .help(String(localized: "capture.toolbar.pause_billing_detail"))
-                .accessibilityHint(Text(String(localized: "capture.toolbar.pause_billing_detail")))
-            }
-
-            // 共享指示器:这段录音的字幕正在(或暂停)发给房间里的人。
-            // share-p2p.md §4.1 的要求 —— 录音进行中常驻可见,一键可关。
-            if capture.isCaptureActive, capture.notebookId == notebookId {
-                ShareBroadcastIndicator(
-                    notebookId: notebookId,
-                    sessionId: capture.sessionId
-                )
+        HStack(spacing: Spacing.sm) {
+            if capture.isCaptureActive {
+                EmptyView()
+            } else if shareActivity.isViewing {
+                // 在别人的房间里就不能录音:收端的字幕来自远端,本机
+                // 再开一路采集会把两场内容拧在一起。这里不是禁用按钮
+                // 就完事 —— 要说清楚现在处于什么状态、出口在哪。
+                joinedRoomStatus
+            } else {
+                CaptionsChoiceChip()
+                startButton
             }
         }
         .onAppear { publishPlannedLaneCount() }
         .montereyOnChange(of: profileEditor.draft.selectedLanguages) { _, _ in
             publishPlannedLaneCount()
         }
-        .montereyOnChange(of: profileEditor.draft.remoteRealtimeEnabled) { _, _ in
+        .montereyOnChange(of: profileEditor.draft.subtitleOnlyLanguages) { _, _ in
             publishPlannedLaneCount()
         }
-        .montereyOnChange(of: capture.sessionId) { _, _ in
-            // A pause request that never returned belongs to the recording it
-            // was made for; it must not keep Pause disabled in the next one.
-            isPausing = false
+        .montereyOnChange(of: commands.realtimeCaptionsEnabled) { _, _ in
+            publishPlannedLaneCount()
         }
     }
 
@@ -101,7 +45,7 @@ struct NotebookCaptureToolbar: View {
     /// remote lanes, so they report a single lane.
     private func publishPlannedLaneCount() {
         CommunityInviteSession.shared.updatePlannedLaneCount(
-            profileEditor.draft.remoteRealtimeEnabled
+            commands.nextRecordingUsesCaptions
                 ? Self.remoteLaneCount(
                     selectedLanguages: profileEditor.draft.selectedLanguages,
                     subtitleOnlyLanguages: profileEditor.draft.subtitleOnlyLanguages
@@ -132,9 +76,9 @@ struct NotebookCaptureToolbar: View {
                 String(localized: "capture.toolbar.joined_room"),
                 systemImage: "dot.radiowaves.left.and.right"
             )
-            .font(.captionMedium)
-            .padding(.horizontal, 10)
-            .frame(minHeight: 28)
+            .font(.bodyMedium)
+            .padding(.horizontal, Spacing.md)
+            .frame(minHeight: 36)
         }
         .buttonStyle(.plain)
         .foregroundColor(.signalAmber)
@@ -148,254 +92,31 @@ struct NotebookCaptureToolbar: View {
     }
 
     private var startButton: some View {
-        Button {
-            guard isStarting == false,
-                  profileEditor.captureStartDisabledReason == nil
-            else { return }
-            guard let startLease = NotebookCaptureStartWorkflowGate.shared.acquire() else {
-                ToastCenter.shared.warning(String(localized: "capture.toast.start_failed"))
-                return
-            }
-            isStarting = true
-            Task { @MainActor in
-                defer {
-                    NotebookCaptureStartWorkflowGate.shared.release(startLease)
-                    isStarting = false
-                }
-                do {
-                    let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
-                        enableRealtimeIfNeeded: true,
-                        prepareProfile: { enableRealtimeIfNeeded in
-                            try await profileEditor.prepareForCaptureStart(
-                                enableRealtimeIfNeeded: enableRealtimeIfNeeded
-                            )
-                            return profileEditor.draft
-                        },
-                        prepareRealtimeCredential: { laneCount in
-                            try await CommunityInviteSession.shared
-                                .prepareRealtimeCredential(laneCount: laneCount)
-                        }
-                    )
-                    if preparation == .personalKeyFallback {
-                        ToastCenter.shared.info(
-                            String(localized: "community_invite.fallback_personal_key")
-                        )
-                    }
-                    try await NotebookCaptureStartCoordinator(
-                        capture: capture,
-                        navigation: MainNavigationStore.shared
-                    ).start(notebookId: notebookId)
-                } catch {
-                    // Return any invite reservation made above; a no-op when
-                    // none exists.
-                    await CommunityInviteSession.shared.settleRealtimeSession(usedSeconds: 0)
-                    ToastCenter.shared.error(
-                        String(localized: "capture.toast.start_failed"),
-                        detail: error.localizedDescription
-                    )
-                }
-            }
+        let disabledReason = profileEditor.captureStartDisabledReason
+        return Button {
+            guard commands.isStarting == false, disabledReason == nil else { return }
+            commands.start(notebookId: notebookId, profileEditor: profileEditor)
         } label: {
             Label(
-                isStarting
+                commands.isStarting
                     ? String(localized: "capture.toolbar.starting")
                     : String(localized: "capture.toolbar.start"),
-                systemImage: isStarting ? "ellipsis" : "record.circle"
+                systemImage: commands.isStarting ? "ellipsis" : "record.circle"
             )
-            .font(.captionMedium)
-            .padding(.horizontal, 10)
-            .frame(minHeight: 28)
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.brandAccent)
-        .background(Color.brandAccent.opacity(0.12))
-        .overlay(Capsule().strokeBorder(Color.brandAccent.opacity(0.45), lineWidth: 0.5))
-        .clipShape(Capsule())
-        .disabled(isStarting || profileEditor.captureStartDisabledReason != nil)
-        .keyboardShortcut("r", modifiers: [.control, .option])
-        .accessibilityLabel(Text(String(localized: "capture.toolbar.start")))
-        .accessibilityHint(Text(
-            profileEditor.captureStartDisabledReason
-                ?? String(localized: "capture.toolbar.start_hint")
-        ))
-        .help(
-            profileEditor.captureStartDisabledReason
-                ?? String(localized: "capture.toolbar.start_hint")
-        )
-    }
-
-    private var pauseButton: some View {
-        let isPaused = capture.captureState == .paused
-        return Button {
-            guard isPausing == false else { return }
-            isPausing = true
-            Task { @MainActor in
-                defer { isPausing = false }
-                do {
-                    try await capture.setPaused(!isPaused)
-                } catch {
-                    ToastCenter.shared.error(
-                        String(localized: "capture.toast.pause_failed"),
-                        detail: error.localizedDescription
-                    )
-                }
-            }
-        } label: {
-            Label(
-                isPaused
-                    ? String(localized: "capture.toolbar.resume")
-                    : String(localized: "capture.toolbar.pause"),
-                systemImage: isPaused ? "play.fill" : "pause.fill"
-            )
-            .font(.captionMedium)
-            .frame(minWidth: 72, minHeight: 28)
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.textPrimary)
-        .background(Color.bgElevated.opacity(0.65))
-        .clipShape(Capsule())
-        .disabled(capture.captureState == .draining || isPausing)
-        .keyboardShortcut("p", modifiers: [.control, .option])
-        .accessibilityLabel(Text(isPaused
-            ? String(localized: "capture.toolbar.resume")
-            : String(localized: "capture.toolbar.pause")))
-    }
-
-    private var stopButton: some View {
-        Button {
-            guard isStopping == false else { return }
-            isStopping = true
-            Task { @MainActor in
-                defer { isStopping = false }
-                let usedSeconds = Int(capture.elapsedRecordingTime.rounded(.up))
-                do {
-                    if capture.stopRecoveryRequired {
-                        try await capture.retryStopRecovery()
-                    } else {
-                        try await capture.stop()
-                    }
-                    await CommunityInviteSession.shared.settleRealtimeSession(
-                        usedSeconds: usedSeconds
-                    )
-                } catch {
-                    if capture.isCaptureActive == false {
-                        await CommunityInviteSession.shared.settleRealtimeSession(
-                            usedSeconds: usedSeconds
-                        )
-                    }
-                    ToastCenter.shared.error(
-                        String(localized: "capture.toast.stop_failed"),
-                        detail: error.localizedDescription
-                    )
-                }
-            }
-        } label: {
-            Label(
-                isStopping
-                    ? String(localized: "capture.state.draining")
-                    : capture.stopRecoveryRequired
-                        ? String(localized: "home.workspace.retry")
-                        : String(localized: "capture.toolbar.stop"),
-                systemImage: isStopping
-                    ? "hourglass"
-                    : capture.stopRecoveryRequired ? "arrow.clockwise" : "stop.fill"
-            )
-                .font(.captionMedium)
-                .frame(minWidth: 64, minHeight: 28)
+            .font(.bodyMedium)
+            .padding(.horizontal, Spacing.md)
+            .frame(minHeight: 36)
         }
         .buttonStyle(.plain)
         .foregroundColor(.signalRed)
-        .background(Color.signalRed.opacity(0.12))
+        .background(Color.signalRed.opacity(0.1))
+        .overlay(Capsule().strokeBorder(Color.signalRed.opacity(0.3), lineWidth: 0.5))
         .clipShape(Capsule())
-        .disabled(
-            (capture.captureState == .draining && capture.stopRecoveryRequired == false)
-                || isStopping
-        )
-        .keyboardShortcut("r", modifiers: [.control, .option])
-        .accessibilityLabel(Text(capture.stopRecoveryRequired
-            ? String(localized: "home.workspace.retry")
-            : String(localized: "capture.toolbar.stop")))
-        .accessibilityHint(Text(String(localized: "capture.toolbar.stop_hint")))
-    }
-
-    private var captureStatus: some View {
-        CaptureStateLabel(
-            captureState: capture.presentationCaptureState,
-            remoteHealth: capture.remoteHealth,
-            projectionState: capture.projectionState,
-            haltedTranslationLanguages: capture.haltedTranslationLanguages,
-            transitionText: capture.pauseTransition.map { transition in
-                switch transition {
-                case .pausing: return String(localized: "capture.state.pausing")
-                case .resuming: return String(localized: "capture.state.resuming")
-                }
-            }
-        )
-    }
-
-    private var showsPauseBillingNotice: Bool {
-        guard capture.captureState == .paused else { return false }
-        return capture.remoteHealth == .connecting
-            || capture.remoteHealth == .live
-            || capture.remoteHealth == .degraded
-    }
-}
-
-/// What the live text is doing right now, beside the recording controls: how
-/// far behind it is, and a way back when part of it has stopped.
-///
-/// Lag used to be visible only as rows piling up on "Waiting", which reads as
-/// translation breaking rather than running late; and the only way back from
-/// a stopped column was to stop and start a new recording. Both depend on
-/// per-lane state, so this observes the live frame by itself instead of
-/// rebuilding the whole toolbar on every telemetry tick.
-private struct CaptureHealthControls: View {
-    @ObservedObject var capture: ActiveBilingualTranscriptStore
-    @ObservedObject var livePresentation: NotebookCaptureLivePresentationStore
-
-    var body: some View {
-        if let lag = capture.liveLagNotice {
-            Label(lag, systemImage: "tortoise.fill")
-                .font(.captionMedium)
-                .foregroundColor(.signalAmber)
-                .lineLimit(1)
-                .help(String(localized: "capture.toolbar.translation_lag_hint"))
-                .accessibilityHint(Text(String(localized: "capture.toolbar.translation_lag_hint")))
-        }
-        if capture.canRestartTranscription || capture.isRestartingTranscription {
-            reconnectButton
-        }
-    }
-
-    private var reconnectButton: some View {
-        Button {
-            Task { @MainActor in
-                do {
-                    try await capture.restartTranscription()
-                } catch {
-                    ToastCenter.shared.error(
-                        String(localized: "capture.toast.restart_transcription_failed"),
-                        detail: error.localizedDescription
-                    )
-                }
-            }
-        } label: {
-            Label(
-                String(localized: "capture.toolbar.restart_transcription"),
-                systemImage: capture.isRestartingTranscription ? "hourglass" : "arrow.clockwise"
-            )
-            .font(.captionMedium)
-            .frame(minHeight: 28)
-            .padding(.horizontal, Spacing.sm)
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.signalAmber)
-        .background(Color.signalAmber.opacity(0.12))
-        .clipShape(Capsule())
-        .disabled(capture.isRestartingTranscription)
-        .help(String(localized: "capture.toolbar.restart_transcription_hint"))
-        .accessibilityLabel(Text(String(localized: "capture.toolbar.restart_transcription")))
-        .accessibilityHint(Text(String(localized: "capture.toolbar.restart_transcription_hint")))
+        .disabled(commands.isStarting || disabledReason != nil)
+        .accessibilityLabel(Text(String(localized: "capture.toolbar.start")))
+        .accessibilityHint(Text(disabledReason ?? String(localized: "capture.toolbar.start_hint")))
+        .help(disabledReason ?? String(localized: "capture.toolbar.start_hint"))
+        .accessibilityIdentifier("capture.start")
     }
 }
 

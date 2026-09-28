@@ -14,6 +14,11 @@ extension NSApplication {
             WindowCommandRouter.shared.openMainWindow(detail: "menu-bar.popover.open-capture-notebook") {
                 MainNavigationStore.shared.openActiveNotebookForCapture()
             }
+        case "startRecording":
+            // Starts where ⌃⌥R does: a recording that belongs to no topic yet.
+            CaptureCommandCenter.shared.startQuickCapture()
+        case "openMainWindow":
+            WindowCommandRouter.shared.openMainWindow(detail: "menu-bar.popover.open-main-window") {}
         case "settings":
             WindowCommandRouter.shared.requestOpenSettings()
         case "checkForUpdates":

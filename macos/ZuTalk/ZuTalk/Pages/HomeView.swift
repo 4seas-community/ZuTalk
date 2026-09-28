@@ -7,8 +7,8 @@ import SwiftUI
 struct HomeView: View {
     @StateObject private var viewModel = LibraryViewModel()
     @ObservedObject private var activeCapture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var commands = CaptureCommandCenter.shared
     @State private var isCreatingNotebook = false
-    @State private var isStartingQuickCapture = false
     /// One editor instance serves both the Record button's language picker and
     /// the start flow. Sharing it means a language chosen in the picker is the
     /// language the recording starts with — the start path drains any queued
@@ -25,7 +25,7 @@ struct HomeView: View {
                         onOpenSession: openSession,
                         onOpenTopic: openNotebook,
                         onStartRecording: startQuickRecording,
-                        isStartingQuickCapture: isStartingQuickCapture,
+                        isStartingQuickCapture: commands.isStarting,
                         activeCaptureDestination: activeCaptureDestination,
                         onReturnToActiveCapture: returnToActiveCapture,
                         onCreateTopic: { isCreatingNotebook = true },
@@ -116,76 +116,14 @@ struct HomeView: View {
     }
 
     private func startQuickRecording() {
-        guard isStartingQuickCapture == false,
-              activeCapture.isCaptureActive == false,
-              let notebookId = viewModel.quickCaptureNotebookId else {
-            if activeCapture.isCaptureActive {
-                returnToActiveCapture()
-            } else {
-                ToastCenter.shared.error(String(localized: "capture.route.unavailable"))
-            }
+        guard activeCapture.isCaptureActive == false else {
+            returnToActiveCapture()
             return
         }
-        guard let startLease = NotebookCaptureStartWorkflowGate.shared.acquire() else {
-            ToastCenter.shared.warning(String(localized: "capture.toast.start_failed"))
-            return
-        }
-        isStartingQuickCapture = true
-        Task { @MainActor in
-            defer {
-                NotebookCaptureStartWorkflowGate.shared.release(startLease)
-                isStartingQuickCapture = false
-            }
-            // Start on the same editor the language picker edits, so queued
-            // picker changes are committed by the start's own drain instead of
-            // being lost to a second, freshly loaded instance.
-            let profileEditor: NotebookCaptureProfileEditorModel
-            if let shared = quickCaptureProfileEditor, shared.notebookId == notebookId {
-                profileEditor = shared
-                // A load or save that failed transiently would otherwise block
-                // the start; retry is a no-op in the healthy states.
-                profileEditor.retry()
-            } else {
-                profileEditor = NotebookCaptureProfileEditorModel(notebookId: notebookId)
-                profileEditor.load()
-            }
-            do {
-                let inviteSession = CommunityInviteSession.shared
-                let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
-                    enableRealtimeIfNeeded: HomeRecordingEntryPolicy
-                        .shouldEnableRealtimeForQuickCapture(
-                            inviteIsEnabled: inviteSession.isEnabled,
-                            inviteIsActive: inviteSession.isActive
-                        ),
-                    prepareProfile: { inviteRealtimeAuthorized in
-                        try await profileEditor.prepareForHomeQuickCaptureStart(
-                            inviteRealtimeAuthorized: inviteRealtimeAuthorized
-                        )
-                        return profileEditor.draft
-                    },
-                    prepareRealtimeCredential: { laneCount in
-                        try await inviteSession.prepareRealtimeCredential(laneCount: laneCount)
-                    }
-                )
-                if preparation == .personalKeyFallback {
-                    ToastCenter.shared.info(
-                        String(localized: "community_invite.fallback_personal_key")
-                    )
-                }
-                try await NotebookCaptureStartCoordinator(
-                    capture: activeCapture,
-                    navigation: MainNavigationStore.shared
-                ).start(notebookId: notebookId)
-            } catch {
-                // Return any invite reservation made during preparation before
-                // surfacing the stage-specific, localized failure to the user.
-                await CommunityInviteSession.shared.settleRealtimeSession(usedSeconds: 0)
-                ToastCenter.shared.error(
-                    String(localized: "capture.toast.start_failed"),
-                    detail: error.localizedDescription
-                )
-            }
-        }
+        // Start on the same editor the language picker edits, so queued
+        // picker changes are committed by the start's own drain instead of
+        // being lost to a second, freshly loaded instance.
+        commands.startQuickCapture(profileEditor: quickCaptureProfileEditor)
     }
 
     private func returnToActiveCapture() {
@@ -920,8 +858,13 @@ private struct HomeSessionCatalog: View {
     /// locked anyway.
     @ViewBuilder
     private var quickCaptureLanguageAction: some View {
-        if activeCaptureDestination == nil, let editor = quickCaptureLanguageEditor {
-            HomeQuickCaptureLanguagePicker(editor: editor)
+        if activeCaptureDestination == nil {
+            if let editor = quickCaptureLanguageEditor {
+                HomeQuickCaptureLanguagePicker(editor: editor)
+            }
+            // Whether this recording gets live captions is decided here,
+            // visibly — not by whether an invite happens to be active.
+            CaptionsChoiceChip()
         }
     }
 

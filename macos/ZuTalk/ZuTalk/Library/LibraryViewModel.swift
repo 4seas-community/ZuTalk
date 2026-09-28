@@ -91,16 +91,6 @@ struct HomeActiveCaptureDestination: Equatable {
 }
 
 enum HomeRecordingEntryPolicy {
-    /// A redeemed, enabled community invitation is an explicit authorization
-    /// for Home's one-click capture to use realtime transcription. Without it,
-    /// a fresh quick-capture profile remains local-only.
-    static func shouldEnableRealtimeForQuickCapture(
-        inviteIsEnabled: Bool,
-        inviteIsActive: Bool
-    ) -> Bool {
-        inviteIsEnabled && inviteIsActive
-    }
-
     static func activeDestination(
         isCaptureActive: Bool,
         captureNotebookId: String?,

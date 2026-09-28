@@ -311,8 +311,8 @@
 
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "키보드 단축키";
-"settings.shortcuts.subtitle" = "ZuTalk 작업을 위한 전역 단축키입니다.";
-"settings.shortcuts.toggle_recording" = "노트북 캡처 열기";
+"settings.shortcuts.subtitle" = "처음 세 개는 ZuTalk가 백그라운드에 있어도 어느 앱에서나 작동합니다.";
+"settings.shortcuts.toggle_recording" = "녹음 시작/중지";
 "settings.shortcuts.cycle_display" = "사이클 표시 모드";
 "settings.shortcuts.font_bigger" = "글꼴 크기 늘리기";
 "settings.shortcuts.font_smaller" = "글꼴 크기 줄이기";
@@ -1224,3 +1224,24 @@
 "session.settings.mode.multilingual_one_way" = "다국어 회의";
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@채널";
 "editor.transcript.async.speaker_format" = "화자 %@";
+
+"recording_bar.unfiled" = "주제 없음";
+"recording_bar.open_hint" = "이 녹음의 실시간 전사 보기";
+"recording_bar.mark" = "표시";
+"recording_bar.marked" = "표시함";
+"recording_bar.mark_hint" = "방금 들은 부분 표시(⌃⌥S, 어느 앱에서나)";
+"recording_bar.pause_hint" = "일시정지 또는 계속(⌃⌥P, 어느 앱에서나)";
+"recording_bar.stop_hint" = "녹음을 끝내고 저장(⌃⌥R, 어느 앱에서나)";
+"recording_bar.captions.off" = "녹음만";
+"captions_choice.on" = "실시간 자막";
+"captions_choice.off" = "녹음만";
+"captions_choice.on_hint" = "녹음 중 실시간 자막과 번역을 켭니다. 녹음하는 동안 오디오가 Soniox로 전송됩니다. 클릭하면 이 Mac에서만 녹음합니다.";
+"captions_choice.off_hint" = "녹음은 이 Mac에만 남고 실시간 자막은 없습니다. 클릭하면 실시간 자막을 켭니다.";
+"captions_choice.unavailable_hint" = "실시간 자막에는 Soniox 키나 초대 코드가 필요합니다. 클릭해 설정에서 추가하세요.";
+"capture.toast.stopped_saved" = "녹음을 저장했습니다(%@)";
+"menubar.action.start_recording" = "녹음 시작";
+"menubar.action.open_main_window" = "ZuTalk 열기";
+"settings.shortcuts.pause" = "일시정지/계속";
+"settings.shortcuts.mark" = "방금 들은 부분 표시";
+"settings.shortcuts.overlay_banner" = "자막 창: 화면 위쪽 띠";
+"settings.shortcuts.overlay_maximize" = "자막 창: 채우기/복원";

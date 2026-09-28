@@ -310,8 +310,8 @@
 
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "Tastaturkurzbefehle";
-"settings.shortcuts.subtitle" = "Globale Kurzbefehle für ZuTalk-Aktionen.";
-"settings.shortcuts.toggle_recording" = "Notebook-Aufnahme öffnen";
+"settings.shortcuts.subtitle" = "Die ersten drei funktionieren aus jeder App, auch wenn ZuTalk im Hintergrund ist.";
+"settings.shortcuts.toggle_recording" = "Aufnahme starten oder beenden";
 "settings.shortcuts.cycle_display" = "Anzeigemodus wechseln";
 "settings.shortcuts.font_bigger" = "Schrift vergrößern";
 "settings.shortcuts.font_smaller" = "Schrift verkleinern";
@@ -1223,3 +1223,24 @@
 "session.settings.mode.multilingual_one_way" = "Mehrsprachige Besprechung";
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@ Kanäle";
 "editor.transcript.async.speaker_format" = "Sprecher %@";
+
+"recording_bar.unfiled" = "Ohne Thema";
+"recording_bar.open_hint" = "Live-Transkript dieser Aufnahme anzeigen";
+"recording_bar.mark" = "Markieren";
+"recording_bar.marked" = "Markiert";
+"recording_bar.mark_hint" = "Die eben gehörte Passage markieren (⌃⌥S, aus jeder App)";
+"recording_bar.pause_hint" = "Pausieren oder fortsetzen (⌃⌥P, aus jeder App)";
+"recording_bar.stop_hint" = "Aufnahme beenden und sichern (⌃⌥R, aus jeder App)";
+"recording_bar.captions.off" = "Nur Aufnahme";
+"captions_choice.on" = "Live-Untertitel";
+"captions_choice.off" = "Nur Aufnahme";
+"captions_choice.on_hint" = "Aufnahmen bekommen Live-Untertitel und Übersetzung: Während der Aufnahme wird Audio an Soniox gesendet. Klicken, um nur auf diesem Mac aufzunehmen.";
+"captions_choice.off_hint" = "Aufnahmen bleiben auf diesem Mac, ohne Live-Untertitel. Klicken, um Live-Untertitel einzuschalten.";
+"captions_choice.unavailable_hint" = "Live-Untertitel brauchen einen Soniox-Schlüssel oder einen Einladungscode. Klicken, um ihn in den Einstellungen hinzuzufügen.";
+"capture.toast.stopped_saved" = "Aufnahme gesichert (%@)";
+"menubar.action.start_recording" = "Aufnahme starten";
+"menubar.action.open_main_window" = "ZuTalk öffnen";
+"settings.shortcuts.pause" = "Pausieren oder fortsetzen";
+"settings.shortcuts.mark" = "Eben Gehörtes markieren";
+"settings.shortcuts.overlay_banner" = "Untertitelfenster: Band oben";
+"settings.shortcuts.overlay_maximize" = "Untertitelfenster: füllen oder zurück";

@@ -311,8 +311,8 @@
 
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "Raccourcis clavier";
-"settings.shortcuts.subtitle" = "Raccourcis globaux pour les actions ZuTalk.";
-"settings.shortcuts.toggle_recording" = "Ouvrir la capture du Notebook";
+"settings.shortcuts.subtitle" = "Les trois premiers fonctionnent depuis n’importe quelle app, même ZuTalk en arrière-plan.";
+"settings.shortcuts.toggle_recording" = "Démarrer ou arrêter l’enregistrement";
 "settings.shortcuts.cycle_display" = "Changer de mode d’affichage";
 "settings.shortcuts.font_bigger" = "Augmenter la taille de police";
 "settings.shortcuts.font_smaller" = "Réduire la taille de police";
@@ -1224,3 +1224,24 @@
 "session.settings.mode.multilingual_one_way" = "Réunion multilingue";
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@ canaux";
 "editor.transcript.async.speaker_format" = "Intervenant %@";
+
+"recording_bar.unfiled" = "Hors sujet";
+"recording_bar.open_hint" = "Afficher la transcription en direct de cet enregistrement";
+"recording_bar.mark" = "Marquer";
+"recording_bar.marked" = "Marqué";
+"recording_bar.mark_hint" = "Marquer le passage que vous venez d’entendre (⌃⌥S, depuis n’importe quelle app)";
+"recording_bar.pause_hint" = "Mettre en pause ou reprendre (⌃⌥P, depuis n’importe quelle app)";
+"recording_bar.stop_hint" = "Terminer et enregistrer (⌃⌥R, depuis n’importe quelle app)";
+"recording_bar.captions.off" = "Enregistrement seul";
+"captions_choice.on" = "Sous-titres en direct";
+"captions_choice.off" = "Enregistrement seul";
+"captions_choice.on_hint" = "Les enregistrements ont des sous-titres et une traduction en direct : l’audio est envoyé à Soniox pendant l’enregistrement. Cliquez pour n’enregistrer que sur ce Mac.";
+"captions_choice.off_hint" = "Les enregistrements restent sur ce Mac, sans sous-titres en direct. Cliquez pour activer les sous-titres en direct.";
+"captions_choice.unavailable_hint" = "Les sous-titres en direct nécessitent une clé Soniox ou un code d’invitation. Cliquez pour en ajouter un dans les Réglages.";
+"capture.toast.stopped_saved" = "Enregistrement sauvegardé (%@)";
+"menubar.action.start_recording" = "Démarrer l’enregistrement";
+"menubar.action.open_main_window" = "Ouvrir ZuTalk";
+"settings.shortcuts.pause" = "Pause ou reprise";
+"settings.shortcuts.mark" = "Marquer ce que vous venez d’entendre";
+"settings.shortcuts.overlay_banner" = "Fenêtre de sous-titres : bandeau en haut";
+"settings.shortcuts.overlay_maximize" = "Fenêtre de sous-titres : plein écran ou restaurer";

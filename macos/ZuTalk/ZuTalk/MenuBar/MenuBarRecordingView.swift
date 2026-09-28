@@ -28,7 +28,7 @@ struct MenuBarRecordingView: View {
                     sessionId: capture.sessionId
                 )
             }
-            readOnlyNotice
+            MenuBarRecordingControls()
             if !recentLines.isEmpty {
                 transcriptSection
             }
@@ -58,23 +58,6 @@ struct MenuBarRecordingView: View {
         .accessibilityLabel(Text(
             "\(info.isPaused ? String(localized: "capture.state.paused") : String(localized: "capture.state.recording")), \(info.elapsedString)"
         ))
-    }
-
-    private var readOnlyNotice: some View {
-        Label(
-            String(localized: "subtitle.overlay.read_only"),
-            systemImage: "eye.fill"
-        )
-        .font(Font.sans11Medium)
-        .foregroundColor(Color.textSecondary)
-        .padding(.horizontal, Spacing.sm)
-        .frame(maxWidth: .infinity, minHeight: Spacing.xl, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: Radius.sm).fill(Color.bgPanel))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.sm)
-                .stroke(Color.borderPanel, lineWidth: 1)
-        )
-        .accessibilityLabel(Text(String(localized: "subtitle.overlay.read_only")))
     }
 
     private var transcriptSection: some View {
@@ -183,4 +166,92 @@ struct MenuBarRecordingView: View {
         MenuBarCoordinator.shared.closePopover()
     }
 
+}
+
+/// Mark, Pause and Stop for the recording in progress, from the menu bar.
+///
+/// The popover used to say "read only" and send people to the main window
+/// for these — while ZuTalk was tucked away behind the slides or the call
+/// they were recording.
+@MainActor
+private struct MenuBarRecordingControls: View {
+    @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var commands = CaptureCommandCenter.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            if let problem = capture.transcriptionProblemText {
+                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                    .font(Font.sans11Medium)
+                    .foregroundColor(Color.accentGold)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: Spacing.xs) {
+                if capture.canRestartTranscription || capture.isRestartingTranscription {
+                    control(
+                        title: String(localized: "capture.toolbar.restart_transcription"),
+                        systemImage: "arrow.clockwise",
+                        tint: Color.accentGold,
+                        disabled: capture.isRestartingTranscription
+                    ) { commands.restartTranscription() }
+                }
+                control(
+                    title: String(localized: "recording_bar.mark"),
+                    systemImage: "bookmark",
+                    tint: Color.textPrimary,
+                    disabled: capture.captureState == .draining
+                ) { commands.mark() }
+                control(
+                    title: capture.captureState == .paused
+                        ? String(localized: "capture.toolbar.resume")
+                        : String(localized: "capture.toolbar.pause"),
+                    systemImage: capture.captureState == .paused ? "play.fill" : "pause.fill",
+                    tint: Color.textPrimary,
+                    disabled: commands.canPause == false
+                ) { commands.togglePause() }
+                control(
+                    title: String(localized: "capture.toolbar.stop"),
+                    systemImage: "stop.fill",
+                    tint: Color.signalRed,
+                    disabled: commands.canStop == false
+                ) {
+                    commands.stop(announce: true)
+                    MenuBarCoordinator.shared.closePopover()
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("menu-bar.recording-controls")
+    }
+
+    private func control(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(title)
+                    .font(Font.sans11Medium)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundColor(tint)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(RoundedRectangle(cornerRadius: Radius.sm).fill(Color.bgPanel))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.sm)
+                    .stroke(Color.borderPanel, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.45 : 1)
+        .accessibilityLabel(Text(title))
+    }
 }

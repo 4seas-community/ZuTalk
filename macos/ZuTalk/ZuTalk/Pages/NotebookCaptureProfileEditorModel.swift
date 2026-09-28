@@ -108,24 +108,15 @@ final class NotebookCaptureProfileEditorModel: ObservableObject {
     /// the explicit authorization for this recording's Soniox realtime lane.
     /// Persist that authorization before audio preparation so there is one
     /// user decision, one durable profile snapshot, and no pre-start egress.
-    func prepareForCaptureStart(enableRealtimeIfNeeded: Bool = true) async throws {
+    /// Commits the profile a recording is about to start with. `realtime` is
+    /// the live-captions choice shown beside every Record button; it is
+    /// written either way, so a profile left on by an earlier recording can
+    /// never open a remote connection the person just switched off. Queued
+    /// language edits land first, so what the picker shows is what records.
+    func prepareForCaptureStart(realtime: Bool = true) async throws {
         await drainScheduledViewActionsBeforeCaptureStart()
-        if enableRealtimeIfNeeded, draft.remoteRealtimeEnabled == false {
-            update { $0.remoteRealtimeEnabled = true }
-        }
-        try validateCaptureStartIsReady()
-    }
-
-    /// Home's internal quick-capture profile follows the invitation that
-    /// authorizes that one-click entry. An earlier invited recording may have
-    /// persisted realtime=true; when the invitation is later disabled or
-    /// removed, commit realtime=false before starting so the hidden profile
-    /// cannot keep opening an unauthorized remote lane. Notebook profiles do
-    /// not use this entry point and retain their normal capture configuration.
-    func prepareForHomeQuickCaptureStart(inviteRealtimeAuthorized: Bool) async throws {
-        await drainScheduledViewActionsBeforeCaptureStart()
-        if draft.remoteRealtimeEnabled != inviteRealtimeAuthorized {
-            update { $0.remoteRealtimeEnabled = inviteRealtimeAuthorized }
+        if draft.remoteRealtimeEnabled != realtime {
+            update { $0.remoteRealtimeEnabled = realtime }
         }
         try validateCaptureStartIsReady()
     }

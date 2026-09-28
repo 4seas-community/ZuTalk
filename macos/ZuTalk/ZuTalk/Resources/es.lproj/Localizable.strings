@@ -310,8 +310,8 @@
 
 /* Settings — Shortcuts */
 "settings.shortcuts.title" = "Atajos de teclado";
-"settings.shortcuts.subtitle" = "Atajos globales para las acciones de ZuTalk.";
-"settings.shortcuts.toggle_recording" = "Abrir la captura del Notebook";
+"settings.shortcuts.subtitle" = "Los tres primeros funcionan desde cualquier app, aunque ZuTalk esté en segundo plano.";
+"settings.shortcuts.toggle_recording" = "Empezar o detener la grabación";
 "settings.shortcuts.cycle_display" = "Alternar el modo de visualización";
 "settings.shortcuts.font_bigger" = "Aumentar tamaño de letra";
 "settings.shortcuts.font_smaller" = "Reducir tamaño de letra";
@@ -1223,3 +1223,24 @@
 "session.settings.mode.multilingual_one_way" = "Reunión multilingüe";
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@ canales";
 "editor.transcript.async.speaker_format" = "Hablante %@";
+
+"recording_bar.unfiled" = "Sin tema";
+"recording_bar.open_hint" = "Ver la transcripción en directo de esta grabación";
+"recording_bar.mark" = "Marcar";
+"recording_bar.marked" = "Marcado";
+"recording_bar.mark_hint" = "Marcar el fragmento que acabas de oír (⌃⌥S, desde cualquier app)";
+"recording_bar.pause_hint" = "Pausar o reanudar (⌃⌥P, desde cualquier app)";
+"recording_bar.stop_hint" = "Terminar y guardar la grabación (⌃⌥R, desde cualquier app)";
+"recording_bar.captions.off" = "Solo grabación";
+"captions_choice.on" = "Subtítulos en directo";
+"captions_choice.off" = "Solo grabación";
+"captions_choice.on_hint" = "Las grabaciones tienen subtítulos y traducción en directo: el audio se envía a Soniox mientras se graba. Haz clic para grabar solo en este Mac.";
+"captions_choice.off_hint" = "Las grabaciones se quedan en este Mac, sin subtítulos en directo. Haz clic para activarlos.";
+"captions_choice.unavailable_hint" = "Los subtítulos en directo necesitan una clave de Soniox o un código de invitación. Haz clic para añadirlo en Ajustes.";
+"capture.toast.stopped_saved" = "Grabación guardada (%@)";
+"menubar.action.start_recording" = "Empezar a grabar";
+"menubar.action.open_main_window" = "Abrir ZuTalk";
+"settings.shortcuts.pause" = "Pausar o reanudar";
+"settings.shortcuts.mark" = "Marcar lo que acabas de oír";
+"settings.shortcuts.overlay_banner" = "Ventana de subtítulos: banda superior";
+"settings.shortcuts.overlay_maximize" = "Ventana de subtítulos: llenar o restaurar";

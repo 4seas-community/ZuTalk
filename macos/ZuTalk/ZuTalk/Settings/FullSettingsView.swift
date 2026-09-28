@@ -207,9 +207,13 @@ struct ShortcutsSection: View {
 
             InstrumentPanel(padding: Spacing.md) {
                 VStack(alignment: .leading, spacing: 10) {
+                    // Only what is actually registered: see HotKeyManager
+                    // and the subtitle window's own buttons.
                     shortcutRow(label: L("settings.shortcuts.toggle_recording"), keys: "⌃⌥R")
-                    shortcutRow(label: L("settings.shortcuts.font_bigger"), keys: "⌃⌥+")
-                    shortcutRow(label: L("settings.shortcuts.font_smaller"), keys: "⌃⌥-")
+                    shortcutRow(label: L("settings.shortcuts.pause"), keys: "⌃⌥P")
+                    shortcutRow(label: L("settings.shortcuts.mark"), keys: "⌃⌥S")
+                    shortcutRow(label: L("settings.shortcuts.overlay_banner"), keys: "⌃⌘B")
+                    shortcutRow(label: L("settings.shortcuts.overlay_maximize"), keys: "⌃⌘F")
                     shortcutRow(label: L("settings.shortcuts.open_settings"), keys: "⌘,")
                 }
             }
