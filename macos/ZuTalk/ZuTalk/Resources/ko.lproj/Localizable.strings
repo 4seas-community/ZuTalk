@@ -589,7 +589,7 @@
 "updates.unavailable.message" = "이 개발 빌드에는 공개 업데이트 서명 키가 포함되어 있지 않습니다.";
 "updates.unavailable.dismiss" = "알았어";
 "settings.updates.title" = "소프트웨어 업데이트";
-"settings.updates.subtitle" = "서명된 업데이트는 Sparkle을 통해 안전하게 전달됩니다.";
+"settings.updates.subtitle" = "새 버전은 설치 전에 서명을 확인합니다.";
 "settings.updates.automatic" = "자동으로 업데이트 확인";
 "settings.updates.automatic_hint" = "ZuTalk는 서명된 업데이트 피드를 주기적으로 확인하고 새 버전이 출시되면 알려줍니다.";
 "settings.updates.current_version" = "현재 버전";
@@ -1275,3 +1275,7 @@
 "share.role.label" = "전사를 고칠 수 있는 사람";
 
 "captions_choice.on_invite_format" = "실시간 자막 · 약 %@ 남음";
+
+"topics.card.last_recorded_format" = "마지막 녹음: %@";
+
+"home.catalog.filter.more_format" = "%lld개 더";

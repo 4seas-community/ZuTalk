@@ -46,7 +46,7 @@ struct MenuBarPopoverRootView: View {
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "power")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color.brandAccent)
+                    .foregroundColor(Color.textSecondary)
                     .frame(width: 18, alignment: .center)
                 Text(String(localized: "menubar.action.quit"))
                     .font(Font.sans12)
@@ -58,10 +58,8 @@ struct MenuBarPopoverRootView: View {
             }
             .padding(.horizontal, Spacing.sm)
             .frame(height: Spacing.xl)
-            .background(
-                RoundedRectangle(cornerRadius: Radius.sm)
-                    .fill(Color.brandAccentSoft)
-            )
+            // Quitting is the least likely reason to open this popover; it
+            // was the only row drawn highlighted, above Start recording.
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

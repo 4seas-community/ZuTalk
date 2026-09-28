@@ -589,7 +589,7 @@
 "updates.unavailable.message" = "รุ่นพัฒนานี้ไม่มีคีย์สาธารณะสำหรับตรวจสอบลายเซ็นอัปเดต";
 "updates.unavailable.dismiss" = "ตกลง";
 "settings.updates.title" = "การอัปเดตซอฟต์แวร์";
-"settings.updates.subtitle" = "อัปเดตที่มีลายเซ็นจะถูกส่งอย่างปลอดภัยผ่าน Sparkle";
+"settings.updates.subtitle" = "เวอร์ชันใหม่จะถูกตรวจสอบลายเซ็นก่อนติดตั้ง";
 "settings.updates.automatic" = "ตรวจหาอัปเดตโดยอัตโนมัติ";
 "settings.updates.automatic_hint" = "ZuTalk จะตรวจสอบฟีดอัปเดตที่มีลายเซ็นเป็นระยะ และแจ้งให้คุณทราบเมื่อมีเวอร์ชันใหม่";
 "settings.updates.current_version" = "เวอร์ชันปัจจุบัน";
@@ -1275,3 +1275,7 @@
 "share.role.label" = "ใครแก้บทถอดเสียงได้";
 
 "captions_choice.on_invite_format" = "คำบรรยายสด · เหลือประมาณ %@";
+
+"topics.card.last_recorded_format" = "บันทึกล่าสุด: %@";
+
+"home.catalog.filter.more_format" = "อีก %lld หัวข้อ";

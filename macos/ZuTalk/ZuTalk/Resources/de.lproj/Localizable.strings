@@ -588,7 +588,7 @@
 "updates.unavailable.message" = "Dieser Entwicklungs-Build enthält nicht den öffentlichen Update-Signaturschlüssel.";
 "updates.unavailable.dismiss" = "OK";
 "settings.updates.title" = "Softwareupdates";
-"settings.updates.subtitle" = "Signierte Updates werden sicher über Sparkle bereitgestellt.";
+"settings.updates.subtitle" = "Neue Versionen werden vor der Installation auf ihre Signatur geprüft.";
 "settings.updates.automatic" = "Automatisch nach Updates suchen";
 "settings.updates.automatic_hint" = "ZuTalk prüft den signierten Update-Feed regelmäßig und benachrichtigt dich, wenn eine neue Version verfügbar ist.";
 "settings.updates.current_version" = "Aktuelle Version";
@@ -1274,3 +1274,7 @@
 "share.role.label" = "Wer das Transkript korrigieren darf";
 
 "captions_choice.on_invite_format" = "Live-Untertitel · noch etwa %@";
+
+"topics.card.last_recorded_format" = "Zuletzt aufgenommen: %@";
+
+"home.catalog.filter.more_format" = "%lld weitere";

@@ -572,7 +572,7 @@
 "updates.unavailable.message" = "この開発ビルドにはアップデート署名用の公開鍵が含まれていません。";
 "updates.unavailable.dismiss" = "OK";
 "settings.updates.title" = "ソフトウェアアップデート";
-"settings.updates.subtitle" = "署名済みアップデートを Sparkle から安全に受信します。";
+"settings.updates.subtitle" = "新しいバージョンは署名を確認してからインストールされます。";
 "settings.updates.automatic" = "アップデートを自動的に確認";
 "settings.updates.automatic_hint" = "署名済みアップデートフィードを定期的に確認し、新しいバージョンが利用可能になると通知します。";
 "settings.updates.current_version" = "現在のバージョン";
@@ -1275,3 +1275,7 @@
 "share.role.label" = "文字起こしを修正できる人";
 
 "captions_choice.on_invite_format" = "リアルタイム字幕 · 残り約 %@";
+
+"topics.card.last_recorded_format" = "最終録音：%@";
+
+"home.catalog.filter.more_format" = "ほか %lld 件";

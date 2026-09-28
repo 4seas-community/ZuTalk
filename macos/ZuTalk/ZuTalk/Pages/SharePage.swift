@@ -424,6 +424,9 @@ struct SharePage: View {
                 Button(String(localized: "share.start")) {
                     viewModel.requestStart()
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .padding(.top, Spacing.sm)
                 .disabled(
                     viewModel.selectedNotebookID.isEmpty
                         || (!viewModel.shareWholeNotebook && viewModel.selectedSessionID.isEmpty)

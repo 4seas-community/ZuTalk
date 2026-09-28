@@ -589,7 +589,7 @@
 "updates.unavailable.message" = "此开发版本未包含更新签名公钥。";
 "updates.unavailable.dismiss" = "好";
 "settings.updates.title" = "软件更新";
-"settings.updates.subtitle" = "通过 Sparkle 安全接收签名更新。";
+"settings.updates.subtitle" = "新版本在安装前都会先验证签名。";
 "settings.updates.automatic" = "自动检查更新";
 "settings.updates.automatic_hint" = "ZuTalk 会定期检查经过签名的更新源，并在新版本可用时提醒你。";
 "settings.updates.current_version" = "当前版本";
@@ -1275,3 +1275,7 @@
 "share.role.label" = "谁可以订正转录";
 
 "captions_choice.on_invite_format" = "实时字幕 · 约可录 %@";
+
+"topics.card.last_recorded_format" = "最近录音：%@";
+
+"home.catalog.filter.more_format" = "另外 %lld 个主题";

@@ -219,6 +219,7 @@ struct TopicsView: View {
                             HomeNotebookCard(
                                 notebook: notebook,
                                 sessionCount: viewModel.notebookSessionCounts[notebook.id] ?? 0,
+                                lastRecordedAt: viewModel.lastRecordedAt(inTopic: notebook.id),
                                 onOpen: { openTopic(notebook.id) }
                             )
                             .contextMenu {
@@ -283,6 +284,7 @@ struct TopicsView: View {
 private struct HomeNotebookCard: View {
     let notebook: FfiNotebook
     let sessionCount: Int
+    var lastRecordedAt: Date?
     let onOpen: () -> Void
     @State private var isHovering = false
 
@@ -316,20 +318,24 @@ private struct HomeNotebookCard: View {
                         .foregroundColor(.textSecondary)
                 }
 
-                Text(String(localized: "home.topic.workspace_contents"))
-                    .font(.caption)
+                // When it was last used says more than two lines every card
+                // shared ("recordings, transcripts and shared notes", "saved
+                // on this Mac").
+                if let lastRecordedAt {
+                    Label(
+                        String(
+                            format: String(localized: "topics.card.last_recorded_format"),
+                            lastRecordedAt.formatted(.relative(presentation: .named))
+                        ),
+                        systemImage: "clock"
+                    )
+                    .font(.bodySM)
                     .foregroundColor(.textTertiary)
                     .lineLimit(1)
-
-                Label(
-                    String(localized: "home.notebook.local_first"),
-                    systemImage: "lock.fill"
-                )
-                .font(.caption)
-                .foregroundColor(.textTertiary)
+                }
             }
             .padding(Spacing.lg)
-            .frame(maxWidth: .infinity, minHeight: 176, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 148, alignment: .topLeading)
             .surfaceCard(
                 fill: isHovering ? Color.bgElevated.opacity(0.58) : Color.bgElevated.opacity(0.3),
                 cornerRadius: Radius.md,
@@ -1140,7 +1146,7 @@ private struct HomeTopicFilterBar: View {
                     .accessibilityIdentifier("home.topic.filter.unfiled")
                 }
 
-                ForEach(viewModel.researchNotebooks, id: \.id) { notebook in
+                ForEach(visibleTopics, id: \.id) { notebook in
                     HomeTopicFilterChip(
                         title: notebook.title,
                         count: viewModel.notebookSessionCounts[notebook.id] ?? 0,
@@ -1149,9 +1155,54 @@ private struct HomeTopicFilterBar: View {
                     )
                     .accessibilityIdentifier("home.topic.filter.\(notebook.id)")
                 }
+
+                // Topics past the first few used to scroll off the edge with
+                // no indicator that they were there.
+                if overflowTopics.isEmpty == false {
+                    Menu {
+                        ForEach(overflowTopics, id: \.id) { notebook in
+                            Button {
+                                viewModel.selectTopicFilter(notebook.id)
+                            } label: {
+                                Text("\(notebook.title)  \(viewModel.notebookSessionCounts[notebook.id] ?? 0)")
+                            }
+                        }
+                    } label: {
+                        Label(
+                            String(
+                                format: String(localized: "home.catalog.filter.more_format"),
+                                Int64(overflowTopics.count)
+                            ),
+                            systemImage: "chevron.down"
+                        )
+                        .font(.bodySM)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .accessibilityIdentifier("home.topic.filter.more")
+                }
             }
         }
         .accessibilityIdentifier("home.topic.filters")
+    }
+
+    private static let chipLimit = 6
+
+    /// The most recently used topics, plus the selected one wherever it is.
+    private var visibleTopics: [FfiNotebook] {
+        let all = viewModel.researchNotebooks
+        var shown = Array(all.prefix(Self.chipLimit))
+        if let selected = viewModel.selectedTopicFilterId,
+           shown.contains(where: { $0.id == selected }) == false,
+           let topic = all.first(where: { $0.id == selected }) {
+            shown.append(topic)
+        }
+        return shown
+    }
+
+    private var overflowTopics: [FfiNotebook] {
+        let shown = Set(visibleTopics.map(\.id))
+        return viewModel.researchNotebooks.filter { shown.contains($0.id) == false }
     }
 }
 

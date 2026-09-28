@@ -589,7 +589,7 @@
 "updates.unavailable.message" = "Cette version de développement ne contient pas la clé publique de signature des mises à jour.";
 "updates.unavailable.dismiss" = "OK";
 "settings.updates.title" = "Mises à jour logicielles";
-"settings.updates.subtitle" = "Les mises à jour signées sont distribuées en toute sécurité via Sparkle.";
+"settings.updates.subtitle" = "Les nouvelles versions sont signées et vérifiées avant l’installation.";
 "settings.updates.automatic" = "Rechercher automatiquement les mises à jour";
 "settings.updates.automatic_hint" = "ZuTalk vérifie périodiquement le flux de mises à jour signé et vous avertit lorsqu’une nouvelle version est disponible.";
 "settings.updates.current_version" = "Version actuelle";
@@ -1275,3 +1275,7 @@
 "share.role.label" = "Qui peut corriger la transcription";
 
 "captions_choice.on_invite_format" = "Sous-titres en direct · environ %@ restant";
+
+"topics.card.last_recorded_format" = "Dernier enregistrement : %@";
+
+"home.catalog.filter.more_format" = "%lld de plus";

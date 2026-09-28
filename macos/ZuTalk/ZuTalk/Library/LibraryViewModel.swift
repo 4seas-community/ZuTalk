@@ -529,6 +529,14 @@ class LibraryViewModel: ObservableObject {
         return storageMemberships.filter { $0.value != quickCaptureNotebookId }
     }
 
+    /// The latest recording filed in a topic, among those loaded.
+    func lastRecordedAt(inTopic topicId: String) -> Date? {
+        sessions
+            .filter { topicIdBySessionId[$0.id] == topicId }
+            .map(\.createdAt)
+            .max()
+    }
+
     func topicTitle(forSessionId sessionId: String) -> String? {
         guard let topicId = topicIdBySessionId[sessionId] else { return nil }
         return notebooks.first(where: { $0.id == topicId })?.title
