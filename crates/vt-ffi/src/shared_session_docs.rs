@@ -54,6 +54,22 @@ pub(crate) struct SharedSessionState {
     published: Mutex<HashMap<String, loro::VersionVector>>,
     /// 观看端:本房间已入册的文档 id。Session 范围在加入时预置那一个。
     known: Mutex<HashSet<String>>,
+    /// 已经写进旁注文件的「谁共享的、叫什么」,免得每一拍都重写一遍。
+    meta_written: Mutex<HashMap<String, ReceivedMeta>>,
+}
+
+/// 收到的文字稿旁边那张小纸条:谁共享的、那场录音叫什么。
+///
+/// 文档本身只有句块,主持人的名字与标题随字幕帧而来(主持人本人说的,
+/// 见 `vt_share::ShareHeader`)。散场之后「收到的」列表还要能说出这两句,
+/// 所以落一个 `<session_id>.json` 在文档旁边。台账仍然是目录:没有 .loro
+/// 的纸条不算收到过任何东西。
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ReceivedMeta {
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub host_name: String,
 }
 
 impl SharedSessionState {
@@ -68,6 +84,7 @@ impl SharedSessionState {
     /// 把一个 session 的全部进程内痕迹清掉。删除收件时用 —— 台账即目录,
     /// 内存里的投影、影子、发布水位、入册记录都要一起走。
     pub(crate) fn remove(&self, session_id: &str) {
+        self.meta_written.lock().unwrap().remove(session_id);
         self.open.lock().unwrap().remove(session_id);
         self.shadows.lock().unwrap().remove(session_id);
         self.published.lock().unwrap().remove(session_id);
@@ -84,6 +101,56 @@ fn shared_document_path(data_dir: &Path, session_id: &str) -> Result<PathBuf, Co
         return Err(internal(format!("非法共享文档 id: {session_id:?}")));
     }
     Ok(shared_documents_dir(data_dir).join(format!("{session_id}.loro")))
+}
+
+fn received_meta_path(data_dir: &Path, session_id: &str) -> Result<PathBuf, CoreError> {
+    Ok(shared_document_path(data_dir, session_id)?.with_extension("json"))
+}
+
+fn read_received_meta(data_dir: &Path, session_id: &str) -> ReceivedMeta {
+    received_meta_path(data_dir, session_id)
+        .ok()
+        .and_then(|path| fs::read(path).ok())
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+/// 观看端记下这场是谁共享的、叫什么。只在内容变了时写。
+pub(crate) fn remember_received_meta(
+    state: &SharedSessionState,
+    data_dir: &Path,
+    session_id: &str,
+    title: &str,
+    host_name: &str,
+) {
+    let meta = ReceivedMeta {
+        title: title.to_string(),
+        host_name: host_name.to_string(),
+    };
+    if meta == ReceivedMeta::default() {
+        return;
+    }
+    {
+        let written = state.meta_written.lock().unwrap();
+        if written.get(session_id) == Some(&meta) {
+            return;
+        }
+    }
+    let Ok(path) = received_meta_path(data_dir, session_id) else {
+        return;
+    };
+    let result = fs::create_dir_all(shared_documents_dir(data_dir))
+        .and_then(|_| fs::write(&path, serde_json::to_vec(&meta).unwrap_or_default()));
+    match result {
+        Ok(()) => {
+            state
+                .meta_written
+                .lock()
+                .unwrap()
+                .insert(session_id.to_string(), meta);
+        }
+        Err(error) => tracing::warn!(session_id, %error, "收到的文字稿旁注没写成"),
+    }
 }
 
 /// 打开(或从盘装载,或按黄金起点新建)一份共享 session 文档,双挂载。
@@ -406,13 +473,14 @@ impl ZuTalkCore {
         self.push_web_share_blocks(session_id);
     }
 
-    /// 这个 session 是否落在当前主持的共享范围内(且文档同步已武装)。
+    /// 这个 session 是否落在当前主持的共享范围内,且主持人允许对方留存
+    /// (文档同步已接上)。没接上时不写 shared/ 下的副本,也不推任何文档。
     fn session_in_hosted_share_scope(&self, session_id: &str) -> bool {
         let guard = self.share_runtime.lock().unwrap();
         let Some(runtime) = guard.as_ref() else {
             return false;
         };
-        if !runtime.is_hosting() {
+        if !runtime.serves_documents() {
             return false;
         }
         match runtime.roster_scope() {
@@ -568,10 +636,14 @@ impl vt_share::DocumentSync for SharedDocSync {
 // FFI:观看端与宿主共用的共享 session 读写面
 // =========================================================================
 
-/// 一条收到(或正在共享)的 session 摘要。
+/// 一份收到的文字稿的摘要。
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiSharedSessionInfo {
     pub session_id: String,
+    /// 主持人给那场录音起的名字;没起名或旧版主持人时为空。
+    pub title: String,
+    /// 谁共享的。主持人自报的名字,可能为空。
+    pub host_name: String,
     /// 首个句块的正文,给列表当标题;空文档为空串。
     pub preview: String,
     pub block_count: u32,
@@ -582,7 +654,10 @@ pub struct FfiSharedSessionInfo {
 
 #[uniffi::export]
 impl ZuTalkCore {
-    /// shared/ 目录台账:收到过与共享过的全部 session 文档。
+    /// 收到的文字稿:shared/ 目录台账里**别人的**那些。
+    ///
+    /// 本机共享出去时也会在 shared/ 下留一份同步用的副本 —— 那是自己的录音,
+    /// 不该出现在「收到的」里,和别人的混在一起。
     pub fn list_shared_sessions(&self) -> Vec<FfiSharedSessionInfo> {
         let dir = shared_documents_dir(&self.data_dir);
         let Ok(entries) = fs::read_dir(&dir) else {
@@ -594,6 +669,9 @@ impl ZuTalkCore {
             let Some(session_id) = name.strip_suffix(".loro") else {
                 continue;
             };
+            if self.session_store.get_session(session_id).is_ok() {
+                continue;
+            }
             let Ok(projection) = ensure_shared_session_doc(
                 &self.shared_sessions,
                 &self.editor_bridge,
@@ -610,8 +688,11 @@ impl ZuTalkCore {
                 .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|elapsed| elapsed.as_secs() as i64)
                 .unwrap_or(0);
+            let meta = read_received_meta(&self.data_dir, session_id);
             sessions.push(FfiSharedSessionInfo {
                 session_id: session_id.to_string(),
+                title: meta.title,
+                host_name: meta.host_name,
                 preview: blocks
                     .iter()
                     .find(|block| !block.text.is_empty())
@@ -639,6 +720,9 @@ impl ZuTalkCore {
         self.editor_bridge.evict(&session_id);
         if path.exists() {
             fs::remove_file(&path).map_err(|e| internal(format!("删除共享文档: {e}")))?;
+        }
+        if let Ok(meta) = received_meta_path(&self.data_dir, &session_id) {
+            let _ = fs::remove_file(meta);
         }
         Ok(())
     }

@@ -111,6 +111,28 @@ pub struct CaptionFrame {
     pub cues: Vec<CaptionCue>,
     #[serde(default)]
     pub lane_health: Vec<CaptionLaneHealth>,
+    /// 这场共享的说明。旧版主持人的帧没有它。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub share: Option<ShareHeader>,
+}
+
+/// 主持人随每一帧带上的这场共享的说明。
+///
+/// 观看端靠它称呼这场录音、知道主持人是谁、这是直播还是录好的录音、主持人
+/// 让不让保存文字稿。随帧走而不走 gossip:字幕通道是与主持人认证过的直连,
+/// 这些话就是主持人本人说的,不会晚到也不会丢。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShareHeader {
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub host_name: String,
+    /// 正在录的直播;`false` 是一段录好的录音。
+    #[serde(default)]
+    pub live: bool,
+    /// 主持人允许观看端留下文字稿。
+    #[serde(default)]
+    pub keeps_copies: bool,
 }
 
 impl CaptionFrame {
@@ -124,6 +146,7 @@ impl CaptionFrame {
             utterances: Vec::new(),
             cues: Vec::new(),
             lane_health: Vec::new(),
+            share: None,
         }
     }
 }
@@ -270,6 +293,7 @@ mod tests {
                 state: "live".into(),
                 group_epoch: 1,
             }],
+            share: None,
         }
     }
 

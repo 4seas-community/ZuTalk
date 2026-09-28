@@ -38,7 +38,8 @@ struct MainShellView: View {
         .toastOverlay()
         .onAppear {
             store.recordSnapshot()
-            // 敲门请求一分钟就超时,提醒必须全局在场,不能等用户逛到分享页。
+            // 敲门一分钟就超时、在看的直播随时会结束 —— 共享状态从主窗口
+            // 一出现就开始跟,不等用户逛到「收到的」页。
             ShareActivityStore.shared.start()
         }
         .task(id: needsOnboarding) {
@@ -122,12 +123,11 @@ struct MainShellView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 sidebarItem(
-                    icon: "person.2.fill",
-                    label: String(localized: "sidebar.share"),
+                    icon: "tray.and.arrow.down.fill",
+                    label: String(localized: "sidebar.received"),
                     active: activeTab == .share,
                     accId: AccessibilityID.mainTabShare,
-                    badge: shareActivity.pendingJoinRequests.count,
-                    live: shareActivity.isInRoom
+                    live: shareActivity.isViewing
                 ) {
                     store.select(tab: .share)
                 }
@@ -205,7 +205,6 @@ struct MainShellView: View {
         label: String,
         active: Bool,
         accId: String?,
-        badge: Int = 0,
         live: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
@@ -219,30 +218,13 @@ struct MainShellView: View {
                     .font(.body)
                     .foregroundColor(active ? .textPrimary : .textSecondary)
                 Spacer()
-                // 在房间中的实时徽记 —— 用户不在分享页时也要知道自己
-                // 还连着一场共享(它占着录音入口,也吃着网络)。
+                // 正在看别人的直播 —— 不在「收到的」页时也要知道自己还连着。
                 if live {
                     Circle()
                         .fill(Color.signalGreen)
                         .frame(width: 7, height: 7)
                         .accessibilityLabel(String(localized: "share.sidebar.live_label"))
                         .accessibilityIdentifier("sidebar.share.live")
-                }
-                // 有人在等回答时的角标。敲门一分钟就超时,所以这个数字
-                // 必须在用户不在分享页时也看得见。
-                if badge > 0 {
-                    Text("\(badge)")
-                        .font(.captionMedium)
-                        .monospacedDigit()
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.signalAmber)
-                        .clipShape(Capsule())
-                        .accessibilityLabel(String(
-                            format: String(localized: "share.knock.badge_label"),
-                            badge
-                        ))
                 }
             }
             .padding(.horizontal, Spacing.sm + 2)
@@ -410,6 +392,7 @@ struct MainShellView: View {
                 )
 
             RecordingProblemBanner()
+            JoinRequestBanner()
 
             ZStack {
                 Color.bgRoot
@@ -425,7 +408,7 @@ struct MainShellView: View {
                     case .trash:
                         TrashPage()
                     case .share:
-                        SharePage()
+                        ReceivedPage()
                     case .editor:
                         DocumentEditorPage(
                             route: activeEditorRoute,
@@ -472,10 +455,16 @@ struct MainShellView: View {
 
             Spacer(minLength: Spacing.md)
 
-            // The recording in progress, whatever page is showing.
+            // Someone else's share being watched, or a recording being
+            // shared; then the recording in progress — whatever page shows.
+            ShareHeaderStatus(compact: width < 980 || capture.isCaptureActive)
             RecordingBar(compact: width < 980)
         }
         .animation(Motion.panelTransition, value: capture.isCaptureActive)
+        .animation(Motion.panelTransition, value: shareActivity.isInRoom)
+        .sheet(item: $shareActivity.recordingShareRequest) { request in
+            RecordingShareSheet(request: request)
+        }
         .sheet(item: $renamingRecording) { recording in
             RenameSheet(
                 title: String(localized: "library.rename.recording"),
@@ -537,6 +526,26 @@ struct MainShellView: View {
                 .buttonStyle(.plain)
                 .help(String(localized: "library.rename.recording"))
                 .accessibilityIdentifier("header.path.recording")
+                // A finished recording is shared from here; one still being
+                // recorded goes live from the recording bar instead.
+                if recording.status != .recording {
+                    Button {
+                        shareActivity.presentRecordingShare(
+                            sessionId: recording.sessionID,
+                            title: recording.label
+                        )
+                    } label: {
+                        Image(systemName: "person.2")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.textSecondary)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(String(localized: "share.recording.menu"))
+                    .accessibilityLabel(String(localized: "share.recording.menu"))
+                    .accessibilityIdentifier("header.path.share")
+                }
                 if let status = recording.status {
                     Label(status.text, systemImage: status.icon)
                         .font(.bodySM)
@@ -615,7 +624,7 @@ struct MainShellView: View {
         case .trash:
             return "trash"
         case .share:
-            return "person.2.fill"
+            return "tray.and.arrow.down.fill"
         case .editor:
             return activeEditorRoute?.notebookID == nil
                 ? "square.and.pencil"
@@ -636,7 +645,7 @@ struct MainShellView: View {
         case .trash:
             return String(localized: "sidebar.trash")
         case .share:
-            return String(localized: "sidebar.share")
+            return String(localized: "sidebar.received")
         case .editor:
             if activeEditorRoute?.notebookID != nil {
                 return store.activeNotebookTitle

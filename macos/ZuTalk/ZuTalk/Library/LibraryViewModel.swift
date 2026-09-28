@@ -658,7 +658,6 @@ class LibraryViewModel: ObservableObject {
                 }
                 systemNotebooks = [
                     try core.getQuickCaptureNotebook(),
-                    try core.sharedInboxNotebook(),
                 ].filter { $0.deletedAt == nil }
             } else {
                 systemNotebooks = []

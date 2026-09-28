@@ -453,7 +453,6 @@ final class MainNavigationStore: ObservableObject {
             if preferredNotebook == nil, let normalizedPreferredID {
                 let systemNotebooks = [
                     try? core.getQuickCaptureNotebook(),
-                    try? core.sharedInboxNotebook(),
                 ].compactMap { $0 }
                 preferredNotebook = systemNotebooks.first { $0.id == normalizedPreferredID }
             }
@@ -554,7 +553,6 @@ final class MainNavigationStore: ObservableObject {
         var routableNotebooks = try core.listNotebooks()
         for systemNotebook in [
             try? core.getQuickCaptureNotebook(),
-            try? core.sharedInboxNotebook(),
         ].compactMap({ $0 })
         where routableNotebooks.contains(where: { $0.id == systemNotebook.id }) == false {
             routableNotebooks.append(systemNotebook)

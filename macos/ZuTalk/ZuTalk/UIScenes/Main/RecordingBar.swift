@@ -120,10 +120,10 @@ struct RecordingBar: View {
     var body: some View {
         if capture.isCaptureActive {
             HStack(spacing: Spacing.sm) {
-                // Whether these words are leaving the Mac right now, one
-                // click from stopping — wherever the user happens to be.
-                if let notebookId = capture.notebookId {
-                    ShareBroadcastIndicator(notebookId: notebookId, sessionId: capture.sessionId)
+                // Sharing this recording live starts here, and while it is
+                // live the same button says so and how many are watching.
+                if let sessionId = capture.sessionId {
+                    LiveShareButton(sessionId: sessionId, compact: compact)
                 }
                 RecordingBarContent(
                     model: .current(

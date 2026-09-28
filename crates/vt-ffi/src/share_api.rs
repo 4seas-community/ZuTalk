@@ -23,8 +23,8 @@ use std::sync::{Arc, Mutex};
 use vt_crypto::SessionKey;
 use vt_share::net::{receive_captions, CaptionInbox};
 use vt_share::{
-    CaptionReceiver, ScopeId, ShareCode, ShareEndpoint, ShareEndpointConfig, ShareIdentity,
-    WritePolicy,
+    CaptionReceiver, NearbyAnnouncement, ScopeId, ShareCode, ShareEndpoint, ShareEndpointConfig,
+    ShareHeader, ShareIdentity, WritePolicy,
 };
 
 use crate::notebook_capture_api::FfiNotebookCaptureLivePreview;
@@ -123,14 +123,16 @@ impl Default for FfiShareTransport {
     }
 }
 
-/// 同一网络里看到的一台 ZuTalk。
+/// 同一网络里一场愿意被找到的直播。
 ///
-/// 局域网上只看得到不透明公钥 —— 对方是谁、在共享什么,都要连上去问,
-/// 而且要经过对方同意。
+/// 只有主持人为这一场打开了「让附近的人找到」才会出现;名字与标题是主持人
+/// 同意公开的那两句话,已经收拾过。公钥短形式是唯一可核对的身份。
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiNearbyPeer {
     pub endpoint_id: String,
     pub short_label: String,
+    pub host_name: String,
+    pub title: String,
 }
 
 /// 房间里的一个人。
@@ -189,21 +191,6 @@ impl From<vt_share::net::CaptionLinkPath> for FfiShareLinkPath {
     }
 }
 
-/// 某段正在录的音此刻对房间的广播状态。
-///
-/// 录音条上的共享指示器靠它说真话:指示器亮不亮必须与 `ShareCaptionTap`
-/// 的实际放行逻辑同源,否则又是一个「恒真指示器」。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum FfiSessionBroadcastStatus {
-    /// 不在任何共享范围内(或本机没在主持)。
-    NotShared,
-    /// 这段录音的字幕正在播给房间。
-    Broadcasting,
-    /// 在共享范围内,但用户对这一段按了静音。只影响本次录音,
-    /// 共享本身还开着。
-    Muted,
-}
-
 /// 当前共享状态的一帧快照。
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct FfiShareState {
@@ -229,6 +216,20 @@ pub struct FfiShareState {
     /// **哪一条**受房间写入策略约束 —— 只读约束只属于当前房间的那份文档,
     /// 不该殃及散场后留下的其它收件。Notebook 范围或未共享时为 `None`。
     pub scope_session_id: Option<String>,
+    /// 这是一场正在录的直播(`false` = 一段录好的录音)。主持人一侧按开始
+    /// 时的选择;观看端按主持人随帧带来的说明,旧版主持人没有说明时为 `false`。
+    pub is_live: bool,
+    /// 观看端的 ZuTalk 会留下这场的文字稿。主持人为直播打开、或共享的是一段
+    /// 录好的录音时为真;关着时观看端只能边听边看,离开就没了。
+    pub keeps_copies: bool,
+    /// 主持人:同一网络的人能在附近列表里看到这场的名字与标题。
+    pub discoverable: bool,
+    /// 这场共享的录音标题;没起名时为空。
+    pub title: String,
+    /// 主持人自报的名字。观看端从主持人随帧带来的说明里读,不靠 gossip。
+    pub host_name: String,
+    /// 观看端:主持人把本机移出了这场共享。
+    pub removed_by_host: bool,
     pub lines: Vec<FfiSharedCaptionLine>,
     /// 观看端:主播最新一帧的**完整**预览 —— 与主播本机画布收到的同一形态
     /// (多语言 lane、cue、lane 健康齐全)。旧版主播只发压扁行时为 `None`,
@@ -249,9 +250,9 @@ pub(crate) struct ShareRuntime {
     transport: FfiShareTransport,
     /// 本机播出的最后一帧。用来区分「还没开始录音」和「播了但对方没收到」。
     last_broadcast_revision: Option<u64>,
-    /// 用户按下「停止共享这段」的录音。只影响这些 session 本次的广播,
-    /// 不清除共享本身 —— 见 share-p2p.md §4.1「关闭只影响本次」。
-    muted_sessions: std::collections::BTreeSet<String>,
+    /// 本机的文档同步已经接上。主持人只在允许观看端留存时才接 —— 没接上
+    /// 就不物化、不写 shared/ 下的副本,也不回答任何人的文档请求。
+    doc_sync_enabled: bool,
     /// 已加入的 gossip 房间。在场与名册靠它 —— 没有它,房间里看不见彼此。
     room: Option<Arc<vt_share::net::RoomHandle>>,
     /// 网页分享(明文经服务器,见 share-web-captions.md)。它是「当前这场
@@ -271,23 +272,51 @@ impl ShareRuntime {
     pub(crate) fn roster_scope(&self) -> Option<ScopeId> {
         self.roster.as_ref().map(|roster| roster.scope().clone())
     }
+
+    /// 文档同步已接上的主持人。shared/ 下的副本只为它写。
+    pub(crate) fn serves_documents(&self) -> bool {
+        self.hosting.is_some() && self.doc_sync_enabled
+    }
+
+    /// 这段录音此刻的字幕是否正在播给房间。
+    pub(crate) fn broadcasts_session(&self, session_id: &str) -> bool {
+        matches!(
+            self.hosting.as_ref().map(|room| &room.code.scope),
+            Some(ScopeId::Session { session_id: shared }) if shared == session_id
+        )
+    }
 }
 
 struct HostedRoom {
     code: ShareCode,
+    /// 这一场主持人对房间说的话,随每一帧带出去。
+    header: ShareHeader,
+    /// 同一网络的人能在附近列表里看到名字与标题。
+    discoverable: bool,
 }
 
 struct ViewedRoom {
     scope: ScopeId,
+    code: ShareCode,
     host_only: bool,
     inbox: CaptionInbox,
     projection: CaptionReceiver,
     task: tokio::task::JoinHandle<()>,
+    /// 主持人最近一次随帧说明的这场共享。旧版主持人没有。
+    header: Option<ShareHeader>,
+    /// 向主持人要文字稿的那条连接。主持人没允许留存时它会被当场关掉;
+    /// 主持人中途允许了,要再拨一次。
+    doc_sync: Option<tokio::task::JoinHandle<()>>,
+    /// 上一次拨的时刻。断线重拨要隔一会儿,不在轮询节拍上连环拨号。
+    last_dial: Option<std::time::Instant>,
 }
 
 impl Drop for ViewedRoom {
     fn drop(&mut self) {
         self.task.abort();
+        if let Some(task) = self.doc_sync.take() {
+            task.abort();
+        }
     }
 }
 
@@ -354,7 +383,7 @@ impl ZuTalkCore {
             roster: None,
             transport: wanted,
             last_broadcast_revision: None,
-            muted_sessions: Default::default(),
+            doc_sync_enabled: false,
             room: None,
             web_share: None,
         });
@@ -417,9 +446,10 @@ impl ZuTalkCore {
         })
     }
 
-    /// 同一网络里有哪些 ZuTalk。
+    /// 同一网络里愿意被找到的直播。
     ///
-    /// 会阻塞 `seconds` 秒来收集 —— mDNS 是异步宣告的,立刻返回只会得到空列表。
+    /// 刚打开时列表可能还空着 —— mDNS 是异步宣告的 —— 这时最多阻塞 `seconds`
+    /// 秒等第一批。之后是常驻表的快照,立即返回。
     pub fn nearby_peers(&self, seconds: u32) -> Result<Vec<FfiNearbyPeer>, CoreError> {
         let endpoint = self.ensure_share_endpoint()?;
         let window = std::time::Duration::from_secs(seconds.clamp(1, 10) as u64);
@@ -431,6 +461,8 @@ impl ZuTalkCore {
             .map(|p| FfiNearbyPeer {
                 endpoint_id: p.endpoint_id.to_string(),
                 short_label: p.short_label,
+                host_name: p.announcement.host_name,
+                title: p.announcement.title,
             })
             .collect())
     }
@@ -517,9 +549,19 @@ impl ZuTalkCore {
         let cleaned = vt_share::sanitize_display_name(&name);
         *self.share_display_name.lock().unwrap() = cleaned.clone();
         // 端点还没建时不必现在推 —— 建的时候会读这个值。
-        if let Ok(guard) = self.share_runtime.lock() {
-            if let Some(runtime) = guard.as_ref() {
+        if let Ok(mut guard) = self.share_runtime.lock() {
+            if let Some(runtime) = guard.as_mut() {
                 let endpoint = runtime.endpoint.clone();
+                // 正在主持的这一场也改口:后面的帧与附近宣告都用新名字。
+                if let Some(hosting) = runtime.hosting.as_mut() {
+                    hosting.header.host_name = cleaned.clone();
+                    if hosting.discoverable {
+                        endpoint.set_nearby_announcement(Some(&NearbyAnnouncement::new(
+                            &hosting.header.host_name,
+                            &hosting.header.title,
+                        )));
+                    }
+                }
                 drop(guard);
                 self.runtime
                     .block_on(async move { endpoint.set_display_name(&cleaned).await });
@@ -574,25 +616,125 @@ impl ZuTalkCore {
         })
     }
 
-    /// 开始共享,返回交给对方的分享码。
+    /// 把正在录的这一场直播给别人看,返回加入码。
     ///
-    /// `notebook_id` 与 `session_id` 二选一:前者按 Notebook 共享(其中开始的录音
-    /// 默认参与),后者只共享指定的一次录音。
-    pub fn start_sharing(
+    /// 观看的人只读。`keep_copies` 关着时主持人不接文档同步:观看端只收得到
+    /// 实时字幕,他们的 ZuTalk 不会留下文字稿;打开后才把文字稿同步过去。
+    pub fn start_live_share(
         &self,
-        notebook_id: Option<String>,
-        session_id: Option<String>,
+        session_id: String,
+        keep_copies: bool,
+    ) -> Result<String, CoreError> {
+        self.start_sharing(session_id, true, true, keep_copies)
+    }
+
+    /// 把一段录好的录音共享给别人:他们会得到一份文字稿副本。
+    /// `host_only` 为真时对方只读,否则可以订正。
+    pub fn start_recording_share(
+        &self,
+        session_id: String,
         host_only: bool,
     ) -> Result<String, CoreError> {
-        let scope = match (notebook_id, session_id) {
-            (Some(notebook_id), None) => ScopeId::Notebook { notebook_id },
-            (None, Some(session_id)) => ScopeId::Session { session_id },
-            _ => {
+        self.start_sharing(session_id, false, host_only, true)
+    }
+
+    /// 直播中途允许观看端留下文字稿。**只能打开,不能收回** —— 已经同步过去
+    /// 的内容在对方手里,关掉只会让界面说假话。
+    pub fn allow_viewers_to_keep_copies(&self) -> Result<(), CoreError> {
+        {
+            let mut guard = self.share_runtime.lock().unwrap();
+            let Some(hosting) = guard.as_mut().and_then(|runtime| runtime.hosting.as_mut()) else {
                 return Err(CoreError::ValidationFailed {
-                    message: "共享范围必须且只能指定 notebook_id 或 session_id 之一".into(),
-                })
+                    message: "没有在共享".into(),
+                });
+            };
+            if hosting.header.keeps_copies {
+                return Ok(());
             }
+            hosting.header.keeps_copies = true;
+        }
+        self.enable_document_sync()
+    }
+
+    /// 让同一网络的人在附近列表里看到这场的名字与标题,或者撤下。
+    ///
+    /// 关着时本机不出现在任何人的附近列表里,敲门也只会得到「没在共享」。
+    pub fn set_share_discoverable(&self, discoverable: bool) -> Result<(), CoreError> {
+        let (endpoint, announcement, code) = {
+            let mut guard = self.share_runtime.lock().unwrap();
+            let Some(runtime) = guard.as_mut() else {
+                return Err(CoreError::ValidationFailed {
+                    message: "没有在共享".into(),
+                });
+            };
+            let Some(hosting) = runtime.hosting.as_mut() else {
+                return Err(CoreError::ValidationFailed {
+                    message: "没有在共享".into(),
+                });
+            };
+            hosting.discoverable = discoverable;
+            let announcement = discoverable
+                .then(|| NearbyAnnouncement::new(&hosting.header.host_name, &hosting.header.title));
+            (
+                runtime.endpoint.clone(),
+                announcement,
+                discoverable.then(|| hosting.code.to_string()),
+            )
         };
+        endpoint.set_nearby_announcement(announcement.as_ref());
+        // 请求台只在公开时交码。没公开的直播不接陌生人的敲门。
+        self.runtime
+            .block_on(async move { endpoint.set_hosted_share_code(code).await });
+        Ok(())
+    }
+
+    /// 把一位观看者移出这场共享。他手里的码随之失效;别人不受影响。
+    pub fn remove_share_member(&self, endpoint_id: String) -> Result<bool, CoreError> {
+        let who: vt_share::EndpointId =
+            endpoint_id
+                .trim()
+                .parse()
+                .map_err(|_| CoreError::ValidationFailed {
+                    message: format!("无法识别的设备: {endpoint_id}"),
+                })?;
+        let (endpoint, room) = {
+            let guard = self.share_runtime.lock().unwrap();
+            let Some(runtime) = guard.as_ref() else {
+                return Ok(false);
+            };
+            if runtime.hosting.is_none() {
+                return Ok(false);
+            }
+            let Some(room) = runtime.room.clone() else {
+                return Ok(false);
+            };
+            (runtime.endpoint.clone(), room)
+        };
+        Ok(self
+            .runtime
+            .block_on(async move { endpoint.remove_member(&room, who).await }))
+    }
+}
+
+impl ZuTalkCore {
+    fn start_sharing(
+        &self,
+        session_id: String,
+        live: bool,
+        host_only: bool,
+        keep_copies: bool,
+    ) -> Result<String, CoreError> {
+        if session_id.trim().is_empty() {
+            return Err(CoreError::ValidationFailed {
+                message: "要共享哪一段录音?".into(),
+            });
+        }
+        let title = self
+            .session_store
+            .get_session(&session_id)
+            .map(|record| record.title)
+            .unwrap_or_default();
+        let scope = ScopeId::Session { session_id };
 
         let endpoint = self.ensure_share_endpoint()?;
 
@@ -604,12 +746,12 @@ impl ZuTalkCore {
             if let Some(runtime) = guard.as_ref() {
                 if runtime.viewing.is_some() {
                     return Err(CoreError::ValidationFailed {
-                        message: "正在观看别人的共享;先离开那个房间,再从这台 Mac 分享".into(),
+                        message: "正在看别人的共享;先离开,再从这台 Mac 共享".into(),
                     });
                 }
                 if runtime.hosting.is_some() {
                     return Err(CoreError::ValidationFailed {
-                        message: "已经在共享;先停止当前共享,再开始新的一场".into(),
+                        message: "已经在共享;先停止当前这一场,再开始新的".into(),
                     });
                 }
             }
@@ -639,25 +781,50 @@ impl ZuTalkCore {
                 })?
         };
 
-        let mut guard = self.share_runtime.lock().unwrap();
-        let runtime = guard.as_mut().expect("端点刚刚建立");
-        runtime.roster = Some(vt_share::RoomRoster::new(
-            code.scope.clone(),
-            identity_id,
-            code.policy,
-        ));
-        runtime.room = Some(Arc::new(joined));
-        runtime.hosting = Some(HostedRoom { code: code.clone() });
-        let endpoint = runtime.endpoint.clone();
-        let text = code.to_string();
-        drop(guard);
-        // 请求台要知道现在主持的是哪个码,才能在批准时交出去;
-        // 没有它就只能回「没在共享」。
-        self.runtime
-            .block_on(async move { endpoint.set_hosted_share_code(Some(text)).await });
+        let header = ShareHeader {
+            title,
+            host_name: self.share_display_name.lock().unwrap().clone(),
+            live,
+            keeps_copies: keep_copies,
+        };
+        {
+            let mut guard = self.share_runtime.lock().unwrap();
+            let runtime = guard.as_mut().expect("端点刚刚建立");
+            runtime.roster = Some(vt_share::RoomRoster::new(
+                code.scope.clone(),
+                identity_id,
+                code.policy,
+            ));
+            runtime.room = Some(Arc::new(joined));
+            runtime.hosting = Some(HostedRoom {
+                code: code.clone(),
+                header: header.clone(),
+                discoverable: false,
+            });
+        }
+        // 先播一帧只有说明的空帧:录好的录音不会再有字幕帧,直播也可能正
+        // 停在一句话的间隙 —— 进来的人要马上知道看的是谁的哪一场。
+        let mut opening = vt_share::CaptionFrame::flat(code.scope.clone(), 0, Vec::new());
+        if let ScopeId::Session { session_id } = &code.scope {
+            opening.session_id = session_id.clone();
+        }
+        opening.share = Some(header);
+        endpoint.broadcast_caption(opening);
+        // 附近宣告默认静默,请求台也不交码 —— 公开是主持人另外点头的事。
+        endpoint.set_nearby_announcement(None);
+
+        if keep_copies {
+            if let Err(error) = self.enable_document_sync() {
+                let _ = self.stop_sharing();
+                return Err(error);
+            }
+        }
         Ok(code.to_string())
     }
+}
 
+#[uniffi::export]
+impl ZuTalkCore {
     /// 停止共享。
     ///
     /// **只停止继续发送。** 已经合并进对方文档的内容无法收回 —— 房间密钥轮换让老成员
@@ -670,13 +837,19 @@ impl ZuTalkCore {
             if let Some(web) = runtime.web_share.take() {
                 web.close(&self.runtime);
             }
-            runtime.hosting = None;
+            if runtime.hosting.take().is_some() {
+                // 附近列表里撤下,下一场的观看端也不会先看到这一场的最后一帧。
+                runtime.endpoint.set_nearby_announcement(None);
+                runtime.endpoint.end_broadcast();
+            }
             // ViewedRoom 的 Drop 会中止接收任务。
             runtime.viewing = None;
             runtime.roster = None;
-            // 静音是对「这一场共享」说的。共享结束,静音清单跟着清零,
-            // 下次共享从干净状态开始。
-            runtime.muted_sessions.clear();
+            // 文档同步随这一场结束;下一场按它自己的选择重新接。
+            runtime.doc_sync_enabled = false;
+            let endpoint = runtime.endpoint.clone();
+            self.runtime
+                .block_on(async move { endpoint.disable_document_sync().await });
             // 播出水位同理:不清零,下一场共享会在录音开始前就显示成
             // 「正在播出」—— hostingWaiting 与 hostingLive 的区分靠它。
             runtime.last_broadcast_revision = None;
@@ -725,14 +898,13 @@ impl ZuTalkCore {
 
         let inbox = CaptionInbox::default();
         let scope = parsed.scope.clone();
-        let host_addr = parsed.host.clone();
 
         let task = {
             let endpoint = endpoint.clone();
             let inbox = inbox.clone();
-            let scope = scope.clone();
+            let code = parsed.clone();
             self.runtime.spawn(async move {
-                if let Err(error) = receive_captions(&endpoint, host_addr, scope, inbox).await {
+                if let Err(error) = receive_captions(&endpoint, code, inbox).await {
                     tracing::warn!(%error, "字幕接收结束");
                 }
             })
@@ -758,30 +930,29 @@ impl ZuTalkCore {
         ));
         runtime.viewing = Some(ViewedRoom {
             scope: scope.clone(),
+            code: parsed.clone(),
             host_only: matches!(parsed.policy, WritePolicy::HostOnly),
             inbox,
             projection: CaptionReceiver::new(),
             task,
+            header: None,
+            doc_sync: None,
+            last_dial: None,
         });
         drop(guard);
 
         // 收端落库从这里开始:按单次录音共享时那一篇预先入册,然后武装
-        // 文档同步、拨一次催缺。失败不挡字幕——字幕走独立通道。
-        // Notebook 范围在这里入不了册(session 还不存在)——之后由
-        // share_state 在吸收字幕帧时按主播宣告逐个登记。
+        // 文档同步、拨一次。主持人没允许留存时这一拨会被当场关掉,本机什么
+        // 也不落;主持人中途允许了,share_state 看到说明会再拨。
+        // Notebook 范围(旧版主持人)在这里入不了册 —— 之后由 share_state
+        // 在吸收字幕帧时按主播宣告逐个登记。
         if let ScopeId::Session { session_id } = &scope {
             self.shared_sessions.register_known(session_id);
         }
         if let Err(error) = self.enable_document_sync() {
             tracing::warn!(%error, "文档同步未能武装;字幕仍可用");
         }
-        let sync_endpoint = endpoint.clone();
-        let sync_host = parsed.host.clone();
-        self.runtime.spawn(async move {
-            if let Err(error) = sync_endpoint.sync_document_with(sync_host).await {
-                tracing::warn!(%error, "文档催缺未完成;对端的后续推送仍会送达");
-            }
-        });
+        self.dial_document_sync();
         Ok(())
     }
 
@@ -840,6 +1011,9 @@ impl ZuTalkCore {
         };
         self.runtime
             .block_on(async move { endpoint.enable_document_sync(context).await });
+        if let Some(runtime) = self.share_runtime.lock().unwrap().as_mut() {
+            runtime.doc_sync_enabled = true;
+        }
         Ok(())
     }
 
@@ -848,23 +1022,67 @@ impl ZuTalkCore {
     /// 每次调用会吸收自上次以来收到的所有帧;因为帧是 replace-in-full 的,只有最新
     /// 的那一帧会留下痕迹,中间被跳过的帧不需要补。
     pub fn share_state(&self) -> FfiShareState {
-        let mut guard = self.share_runtime.lock().unwrap();
-        let Some(runtime) = guard.as_mut() else {
-            return FfiShareState {
-                is_sharing: false,
-                is_viewing: false,
-                host_only: false,
-                is_host: false,
-                viewer_link: None,
-                applied_revision: None,
-                broadcast_revision: None,
-                host_left: false,
-                scope_session_id: None,
-                lines: Vec::new(),
-                remote_preview: None,
+        let mut redial = false;
+        let state = {
+            let mut guard = self.share_runtime.lock().unwrap();
+            let Some(runtime) = guard.as_mut() else {
+                return FfiShareState::idle();
             };
+            self.snapshot_share_state(runtime, &mut redial)
         };
+        if redial {
+            self.dial_document_sync();
+        }
+        if state.is_viewing && state.keeps_copies {
+            if let Some(session_id) = state.scope_session_id.as_deref() {
+                crate::shared_session_docs::remember_received_meta(
+                    &self.shared_sessions,
+                    &self.data_dir,
+                    session_id,
+                    &state.title,
+                    &state.host_name,
+                );
+            }
+        }
+        state
+    }
 
+    /// 某段录音此刻是否正在播给别人看。录音条上的「直播中」据此亮起。
+    pub fn is_session_shared_live(&self, session_id: String) -> bool {
+        self.share_runtime
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|runtime| runtime.broadcasts_session(&session_id))
+    }
+}
+
+impl FfiShareState {
+    fn idle() -> Self {
+        FfiShareState {
+            is_sharing: false,
+            is_viewing: false,
+            host_only: false,
+            is_host: false,
+            viewer_link: None,
+            applied_revision: None,
+            broadcast_revision: None,
+            host_left: false,
+            scope_session_id: None,
+            is_live: false,
+            keeps_copies: false,
+            discoverable: false,
+            title: String::new(),
+            host_name: String::new(),
+            removed_by_host: false,
+            lines: Vec::new(),
+            remote_preview: None,
+        }
+    }
+}
+
+impl ZuTalkCore {
+    fn snapshot_share_state(&self, runtime: &mut ShareRuntime, redial: &mut bool) -> FfiShareState {
         let is_host = runtime.hosting.is_some();
         let host_only = match (&runtime.hosting, &runtime.viewing) {
             (Some(room), _) => matches!(room.code.policy, WritePolicy::HostOnly),
@@ -875,9 +1093,13 @@ impl ZuTalkCore {
         let mut applied_revision = None;
         let mut lines = Vec::new();
         let mut remote_preview = None;
+        let mut removed_by_host = false;
         if let Some(room) = runtime.viewing.as_mut() {
             let scope = room.scope.clone();
             for frame in self.runtime.block_on(room.inbox.drain()) {
+                if let Some(header) = frame.share.clone() {
+                    room.header = Some(header);
+                }
                 room.projection.accept(frame, &scope);
             }
             applied_revision = room.projection.applied_revision();
@@ -895,12 +1117,26 @@ impl ZuTalkCore {
                 })
                 .collect();
             remote_preview = room.projection.latest_frame().and_then(remote_preview_from);
+            removed_by_host = room.inbox.removed();
 
-            // Notebook 范围的收端落库入册:主播在字幕通道里宣告的 session id
-            // 可以入册 —— 字幕帧只来自与主播 QUIC 认证的直连,且已过范围
-            // 检查,等价于**主播自报**,不是「成员自报」;bridge 键位占用
-            // 防御照旧兜底(id 撞上本机文档时拒绝挂载)。Session 范围在
-            // 加入时已由分享码钉死,不需要这条。
+            // 主持人允许留存了,而要文字稿的那条连接已经被关掉(开始时没允许)
+            // 或断了 —— 再拨一次。
+            let wants_copies = room.header.as_ref().is_some_and(|h| h.keeps_copies);
+            let dialing = room
+                .doc_sync
+                .as_ref()
+                .is_some_and(|task| !task.is_finished());
+            let cooled = room
+                .last_dial
+                .is_none_or(|at| at.elapsed() >= std::time::Duration::from_secs(3));
+            if wants_copies && !dialing && cooled && !removed_by_host {
+                *redial = true;
+            }
+
+            // Notebook 范围(旧版主持人)的收端落库入册:主播在字幕通道里宣告
+            // 的 session id 可以入册 —— 字幕帧只来自与主播 QUIC 认证的直连,
+            // 且已过范围检查,等价于**主播自报**,不是「成员自报」;bridge 键位
+            // 占用防御照旧兜底(id 撞上本机文档时拒绝挂载)。
             if matches!(&scope, ScopeId::Notebook { .. }) {
                 if let Some(preview) = remote_preview.as_ref() {
                     if !preview.session_id.is_empty() {
@@ -924,6 +1160,12 @@ impl ZuTalkCore {
             false
         };
 
+        let header = match (&runtime.hosting, &runtime.viewing) {
+            (Some(room), _) => Some(room.header.clone()),
+            (None, Some(room)) => room.header.clone(),
+            _ => None,
+        }
+        .unwrap_or_default();
         FfiShareState {
             is_sharing: is_host || runtime.viewing.is_some(),
             is_viewing: runtime.viewing.is_some(),
@@ -941,58 +1183,48 @@ impl ZuTalkCore {
                 Some(ScopeId::Session { session_id }) => Some(session_id),
                 _ => None,
             },
+            is_live: header.live,
+            keeps_copies: header.keeps_copies,
+            discoverable: runtime
+                .hosting
+                .as_ref()
+                .is_some_and(|room| room.discoverable),
+            title: sanitize_label(&header.title),
+            host_name: vt_share::sanitize_display_name(&header.host_name),
+            removed_by_host,
             lines,
             remote_preview,
         }
     }
 
-    /// 某段录音此刻会不会被播给房间。
-    ///
-    /// 录音条上的共享指示器每一拍问一次。判定必须与 [`ShareCaptionTap::broadcast`]
-    /// 的放行逻辑逐条对应 —— 指示器亮着而字幕没在发、或反过来,都比没有指示器更坏。
-    pub fn session_broadcast_status(
-        &self,
-        notebook_id: String,
-        session_id: String,
-    ) -> FfiSessionBroadcastStatus {
-        let guard = self.share_runtime.lock().unwrap();
-        let Some(runtime) = guard.as_ref() else {
-            return FfiSessionBroadcastStatus::NotShared;
-        };
-        let Some(hosting) = runtime.hosting.as_ref() else {
-            return FfiSessionBroadcastStatus::NotShared;
-        };
-        let in_scope = match &hosting.code.scope {
-            ScopeId::Notebook {
-                notebook_id: shared,
-            } => shared == &notebook_id,
-            ScopeId::Session { session_id: shared } => shared == &session_id,
-        };
-        if !in_scope {
-            return FfiSessionBroadcastStatus::NotShared;
-        }
-        if runtime.muted_sessions.contains(&session_id) {
-            FfiSessionBroadcastStatus::Muted
-        } else {
-            FfiSessionBroadcastStatus::Broadcasting
-        }
-    }
-
-    /// 对一段录音按下(或松开)「停止共享这段」。
-    ///
-    /// 只影响这个 session 本次的广播;共享继续开着,Notebook 的共享范围不变。
-    /// 没在主持时是 no-op —— 界面上此时也不该有这个按钮。
-    pub fn set_session_broadcast_muted(&self, session_id: String, muted: bool) {
+    /// 观看端:向主持人要文字稿。主持人没接文档同步时这一拨会被当场关掉,
+    /// 本机什么也不落。
+    fn dial_document_sync(&self) {
         let mut guard = self.share_runtime.lock().unwrap();
         let Some(runtime) = guard.as_mut() else {
             return;
         };
-        if muted {
-            runtime.muted_sessions.insert(session_id);
-        } else {
-            runtime.muted_sessions.remove(&session_id);
+        let endpoint = runtime.endpoint.clone();
+        let Some(room) = runtime.viewing.as_mut() else {
+            return;
+        };
+        if let Some(task) = room.doc_sync.take() {
+            task.abort();
         }
+        let host = room.code.host.clone();
+        room.last_dial = Some(std::time::Instant::now());
+        room.doc_sync = Some(self.runtime.spawn(async move {
+            if let Err(error) = endpoint.sync_document_with(host).await {
+                tracing::debug!(%error, "文档同步未接上;主持人允许留存时会再拨");
+            }
+        }));
     }
+}
+
+/// 别人给的标题,显示前收拾一遍:去控制字符、压首尾空白、限长。
+fn sanitize_label(raw: &str) -> String {
+    let cleaned: String = raw.chars().filter(|c| !c.is_control()).collect();
+    cleaned.trim().chars().take(120).collect()
 }
 
 /// 采集侧到分享通道的接线。
@@ -1004,20 +1236,14 @@ impl ZuTalkCore {
 #[derive(Clone)]
 pub(crate) struct ShareCaptionTap {
     runtime: Arc<ShareRuntimeSlot>,
-    /// 这条 tap 服务的录音属于哪个 Notebook。在采集启动处绑定 —— 那里
-    /// notebook 归属是确定已知的,不需要回头查库。
-    capture_notebook_id: String,
 }
 
 impl ShareCaptionTap {
-    pub(crate) fn new(runtime: Arc<ShareRuntimeSlot>, capture_notebook_id: String) -> Self {
-        Self {
-            runtime,
-            capture_notebook_id,
-        }
+    pub(crate) fn new(runtime: Arc<ShareRuntimeSlot>) -> Self {
+        Self { runtime }
     }
 
-    /// 把一帧本机预览广播给房间。非主持人、未共享、范围不符、被静音时都是 no-op。
+    /// 把一帧本机预览广播给房间。非主持人、未共享、不是共享的那一场时都是 no-op。
     pub(crate) fn broadcast(&self, preview: &FfiNotebookCaptureLivePreview) {
         let Ok(guard) = self.runtime.lock() else {
             return;
@@ -1026,35 +1252,17 @@ impl ShareCaptionTap {
             return;
         };
         // 只有主持人广播自己的字幕。观看者手里的是别人的内容,不该再转发出去。
+        // 只播共享的那一场:同时在录的别的录音一帧也不出去。
+        if !runtime.broadcasts_session(&preview.session_id) {
+            return;
+        }
         let Some(hosting) = runtime.hosting.as_ref() else {
             return;
         };
-        let scope = &hosting.code.scope;
-
-        match scope {
-            // 按单次录音共享时,只广播那一场的字幕。
-            ScopeId::Session { session_id } => {
-                if session_id != &preview.session_id {
-                    return;
-                }
-            }
-            // 按 Notebook 共享时,只广播**那个 Notebook 里**的录音。以前这里
-            // 没有过滤:共享着 Notebook A,去 Notebook B 录音,字幕照发 ——
-            // 而屏幕上没有任何地方说这件事。
-            ScopeId::Notebook { notebook_id } => {
-                if notebook_id != &self.capture_notebook_id {
-                    return;
-                }
-            }
-        }
-
-        // 用户对这一段按了「停止共享」。指示器与这里必须同一份判定。
-        if runtime.muted_sessions.contains(&preview.session_id) {
-            return;
-        }
 
         // 同一帧、同一放行:网页通道在这之后分流,P2P 不发的帧网页也不发。
-        let frame = caption_frame_from(scope.clone(), preview);
+        let mut frame = caption_frame_from(hosting.code.scope.clone(), preview);
+        frame.share = Some(hosting.header.clone());
         if let Some(web) = runtime.web_share.as_ref() {
             web.publish_frame(&frame);
         }
@@ -1169,6 +1377,7 @@ fn caption_frame_from(
         utterances,
         cues,
         lane_health,
+        share: None,
     }
 }
 
@@ -1248,15 +1457,11 @@ fn remote_preview_from(frame: &vt_share::CaptionFrame) -> Option<FfiNotebookCapt
 impl ZuTalkCore {
     /// 测试专用:以主播身份把一帧预览按**真实 tap 路径**广播出去。
     ///
-    /// 集成测试没有真采集回调可挂,但范围过滤、静音、完整帧翻译这些
-    /// 判定必须走生产代码,不能在测试里手搭旁路。
+    /// 集成测试没有真采集回调可挂,但范围过滤、完整帧翻译这些判定必须走
+    /// 生产代码,不能在测试里手搭旁路。
     #[doc(hidden)]
-    pub fn broadcast_live_preview_for_test(
-        &self,
-        capture_notebook_id: String,
-        preview: &FfiNotebookCaptureLivePreview,
-    ) {
-        ShareCaptionTap::new(self.share_runtime.clone(), capture_notebook_id).broadcast(preview);
+    pub fn broadcast_live_preview_for_test(&self, preview: &FfiNotebookCaptureLivePreview) {
+        ShareCaptionTap::new(self.share_runtime.clone()).broadcast(preview);
     }
 }
 
@@ -1340,48 +1545,84 @@ mod tests {
     use super::*;
     use vt_crypto::MemoryKeyStore;
 
-    /// tap 的**帧级**放行:静音与范围不符的帧真的不发,不只是状态查询说不发。
+    /// tap 的**帧级**放行:只有共享的那一场播得出去,不只是状态查询说不播。
     ///
-    /// `session_broadcast_status` 锁的是指示器那一半;这里锁广播那一半 ——
+    /// 录音条上的「直播中」看 `is_session_shared_live`;这里锁广播那一半 ——
     /// 两半漂移开,就是「指示器灭着,字幕还在往外走」这种最坏的组合。
     /// 以 `last_broadcast_revision`(只在真正送出时推进)为观察点。
     #[test]
-    fn the_tap_refuses_muted_and_out_of_scope_frames_at_send_time() {
+    fn only_the_shared_recording_is_broadcast() {
         let dir = tempfile::tempdir().unwrap();
         let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
-        core.start_sharing(Some("nb-1".into()), None, false)
-            .unwrap();
+        core.start_live_share("sess-a".into(), false).unwrap();
+        let tap = ShareCaptionTap::new(core.share_runtime.clone());
 
-        let tap_in_scope = ShareCaptionTap::new(core.share_runtime.clone(), "nb-1".into());
-        let tap_other_notebook = ShareCaptionTap::new(core.share_runtime.clone(), "nb-2".into());
+        // 同时在录的另一场:一帧都不许出去。
+        tap.broadcast(&preview("sess-b", 1));
+        assert_eq!(core.share_state().broadcast_revision, None);
+        assert!(!core.is_session_shared_live("sess-b".into()));
 
-        // 别的 Notebook 里的录音:一帧都不许出去。
-        tap_other_notebook.broadcast(&preview("sess-b", 1));
-        assert_eq!(
-            core.share_state().broadcast_revision,
-            None,
-            "共享着 nb-1,nb-2 的帧不得广播"
-        );
-
-        // 范围内但被静音:同样一帧不许出去。
-        core.set_session_broadcast_muted("sess-a".into(), true);
-        tap_in_scope.broadcast(&preview("sess-a", 2));
-        assert_eq!(
-            core.share_state().broadcast_revision,
-            None,
-            "静音的录音不得广播 —— 指示器灭着字幕还在走是最坏的组合"
-        );
-
-        // 解除静音:恢复播出。
-        core.set_session_broadcast_muted("sess-a".into(), false);
-        tap_in_scope.broadcast(&preview("sess-a", 3));
+        tap.broadcast(&preview("sess-a", 3));
         assert_eq!(core.share_state().broadcast_revision, Some(3));
+        assert!(core.is_session_shared_live("sess-a".into()));
 
         core.stop_sharing().unwrap();
 
-        // 停止后 tap 变 no-op。
-        tap_in_scope.broadcast(&preview("sess-a", 4));
+        // 停止后 tap 变 no-op,指示器也灭。
+        tap.broadcast(&preview("sess-a", 4));
         assert_eq!(core.share_state().broadcast_revision, None);
+        assert!(!core.is_session_shared_live("sess-a".into()));
+    }
+
+    /// 直播默认不让观看端留文字稿:主持人不接文档同步,也不在 shared/ 下写
+    /// 任何东西。打开之后才接,而且关不回去。
+    #[test]
+    fn a_live_share_keeps_nothing_until_the_host_allows_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        core.start_live_share("sess-live".into(), false).unwrap();
+
+        let state = core.share_state();
+        assert!(state.is_live && !state.keeps_copies && state.host_only);
+        core.refresh_shared_session_document("sess-live");
+        assert!(
+            !crate::shared_session_docs::shared_documents_dir(&core.data_dir)
+                .join("sess-live.loro")
+                .exists(),
+            "不允许留存时,主持人不该为这一场写同步副本"
+        );
+
+        core.allow_viewers_to_keep_copies().unwrap();
+        assert!(core.share_state().keeps_copies);
+        assert!(core
+            .share_runtime
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .serves_documents());
+
+        core.stop_sharing().unwrap();
+        assert!(!core.share_state().keeps_copies);
+    }
+
+    /// 附近宣告只在主持人点头时带上名字与标题;请求台也只在那时交码。
+    #[test]
+    fn nearby_visibility_is_the_hosts_choice() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        assert!(
+            core.set_share_discoverable(true).is_err(),
+            "没在共享时无从公开"
+        );
+
+        core.start_live_share("sess-near".into(), false).unwrap();
+        assert!(!core.share_state().discoverable, "默认不公开");
+        core.set_share_discoverable(true).unwrap();
+        assert!(core.share_state().discoverable);
+        core.set_share_discoverable(false).unwrap();
+        assert!(!core.share_state().discoverable);
+        core.stop_sharing().unwrap();
     }
 
     /// 身份必须稳定:第二次取回的公钥要和第一次相同,否则联系人保存的公钥会失效。

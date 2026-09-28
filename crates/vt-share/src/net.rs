@@ -16,7 +16,8 @@ use crate::docsync::{
 };
 use crate::identity::ShareIdentity;
 use crate::nearby::{
-    sanitize_display_name, DenyReason, NearbyMessage, NearbyPeer, PendingJoinRequest, NEARBY_ALPN,
+    sanitize_display_name, DenyReason, NearbyAnnouncement, NearbyMessage, NearbyPeer,
+    PendingJoinRequest, NEARBY_ALPN, NEARBY_SILENT,
 };
 use crate::permission::CaptureBoundaryGuard;
 use crate::permission::RoomRoster;
@@ -80,6 +81,191 @@ pub enum NetError {
     Connect(String),
     #[error("流读写失败: {0}")]
     Stream(String),
+    #[error("主持人把本机移出了这场共享")]
+    Removed,
+}
+
+/// 拨进来的人不在名册里。对方重试即可 —— 可能只是 Hello 还没到。
+const CLOSE_NOT_A_MEMBER: u32 = 401;
+/// 主持人移出了这台设备。对方不该再重连。
+const CLOSE_REMOVED: u32 = 403;
+
+/// 刚加入的人常常先拨字幕、Hello 后到。等这么久再下结论,免得第一次
+/// 连接总被拒、要等重连才看得见字幕。
+const ADMISSION_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// 当前房间的放行依据:谁是主持人、本机是谁、名册在哪、凭什么核对入场凭证。
+#[derive(Debug, Clone)]
+struct RoomAccess {
+    generation: u64,
+    host: iroh::EndpointId,
+    me: iroh::EndpointId,
+    scope: ScopeId,
+    room_secret: crate::room::RoomSecret,
+    presence: Arc<Mutex<RoomPresence>>,
+    /// 凭证收人之后要广播新名册,和事件循环用同一个发送端。
+    sender: Arc<Mutex<Option<iroh_gossip::api::GossipSender>>>,
+    identity: iroh::SecretKey,
+}
+
+type RoomAccessSlot = Arc<std::sync::Mutex<Option<RoomAccess>>>;
+
+static ROOM_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// 观看端连上字幕通道后交的第一条消息:我有这份码,我叫什么。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct CaptionHello {
+    ticket: [u8; 32],
+    display_name: String,
+}
+
+enum Admission {
+    Member,
+    Removed,
+    Stranger,
+}
+
+/// 名册里有没有这个人。
+async fn roster_says(access: &RoomAccess, remote: iroh::EndpointId) -> Option<Admission> {
+    let presence = access.presence.lock().await;
+    if presence.is_banned(remote) {
+        Some(Admission::Removed)
+    } else if presence.roster().is_member(remote) {
+        Some(Admission::Member)
+    } else {
+        None
+    }
+}
+
+/// 凭证收人:进名册、把名册同步给文档准入门、广播给房间。
+async fn admit_by_ticket(
+    access: &RoomAccess,
+    doc_context: &Mutex<Option<DocSyncContext>>,
+    who: iroh::EndpointId,
+    display_name: &str,
+) {
+    let (changed, roster, broadcast) = {
+        let mut presence = access.presence.lock().await;
+        let changed = presence.admit_with_ticket(who, display_name);
+        (
+            changed,
+            presence.roster().clone(),
+            presence.roster_broadcast(),
+        )
+    };
+    if !changed {
+        return;
+    }
+    if let Some(context) = doc_context.lock().await.as_ref() {
+        if context.scope == access.scope {
+            *context.roster.lock().await = roster;
+        }
+    }
+    let sender = access.sender.lock().await.as_ref().cloned();
+    if let (Some(roster), Some(sender)) = (broadcast, sender) {
+        if let Ok(bytes) = seal_control(&roster, &access.scope, &access.identity) {
+            let _ = sender.broadcast(bytes.into()).await;
+        }
+    }
+}
+
+/// 拨进字幕或文档通道的人,按当前房间该怎么对待。
+///
+/// 这两条通道不看分享码,只看连接的公钥 —— 而公钥是公开的(局域网 mDNS
+/// 一直在广播它)。不按名册放行,任何人不必拿码、不必被批准就能直接拨
+/// 字幕通道收看,分享码与批准都形同虚设。
+///
+/// 进名册有两条路:gossip 上的 Hello(旧版本观看端只有这条),或者字幕
+/// 通道上当场交的入场凭证(`accepts_ticket`)。凭证是主路 —— Hello 有时
+/// 十几秒才到,有时根本不到,不能让观看的人对着空白等。
+async fn admit(
+    slot: &RoomAccessSlot,
+    doc_context: &Mutex<Option<DocSyncContext>>,
+    connection: &Connection,
+    accepts_ticket: bool,
+) -> Admission {
+    let remote = connection.remote_id();
+    let access = slot.lock().unwrap().clone();
+    let Some(access) = access else {
+        return Admission::Stranger;
+    };
+    if access.host != access.me {
+        // 观看端:成员之间没有连接,会拨过来的只有主持人。
+        return if remote == access.host {
+            Admission::Member
+        } else {
+            Admission::Stranger
+        };
+    }
+    if let Some(known) = roster_says(&access, remote).await {
+        return known;
+    }
+
+    let from_roster = async {
+        loop {
+            if let Some(known) = roster_says(&access, remote).await {
+                return known;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    };
+    let from_ticket = async {
+        if !accepts_ticket {
+            return std::future::pending::<Admission>().await;
+        }
+        let hello = async {
+            let mut stream = connection.accept_uni().await.ok()?;
+            read_message::<_, CaptionHello>(&mut stream).await.ok()
+        };
+        let Some(hello) = hello.await else {
+            // 旧版本观看端不交凭证:只能等 Hello。
+            return std::future::pending::<Admission>().await;
+        };
+        if hello.ticket != access.room_secret.admission_ticket(&access.scope, &remote) {
+            return Admission::Stranger;
+        }
+        if let Some(Admission::Removed) = roster_says(&access, remote).await {
+            return Admission::Removed;
+        }
+        admit_by_ticket(&access, doc_context, remote, &hello.display_name).await;
+        Admission::Member
+    };
+    let decided = tokio::time::timeout(ADMISSION_WAIT, async {
+        tokio::select! {
+            outcome = from_roster => outcome,
+            outcome = from_ticket => outcome,
+        }
+    })
+    .await;
+    decided.unwrap_or(Admission::Stranger)
+}
+
+/// 按放行结果收口。返回 `true` 表示可以继续服务这条连接。
+async fn admit_or_close(
+    slot: &RoomAccessSlot,
+    doc_context: &Mutex<Option<DocSyncContext>>,
+    connection: &Connection,
+    accepts_ticket: bool,
+) -> bool {
+    match admit(slot, doc_context, connection, accepts_ticket).await {
+        Admission::Member => true,
+        Admission::Removed => {
+            connection.close(CLOSE_REMOVED.into(), b"removed by host");
+            false
+        }
+        Admission::Stranger => {
+            connection.close(CLOSE_NOT_A_MEMBER.into(), b"not a member");
+            false
+        }
+    }
+}
+
+fn closed_as_removed(conn: &Connection) -> bool {
+    matches!(
+        conn.close_reason(),
+        Some(iroh::endpoint::ConnectionError::ApplicationClosed(close))
+            if close.error_code == CLOSE_REMOVED.into()
+    )
 }
 
 /// 把设置里那几行字符串解析成中继地址。
@@ -127,6 +313,9 @@ pub struct ShareEndpoint {
     gossip: iroh_gossip::net::Gossip,
     identity: ShareIdentity,
     captions: broadcast::Sender<Arc<CaptionFrame>>,
+    /// 最近播出的一帧。晚进来的观看端先收到它 —— 不然在说话的间隙加入,
+    /// 要对着空白等到下一句话才知道自己连上了、在看的是哪一场。
+    last_caption: Arc<std::sync::Mutex<Option<Arc<CaptionFrame>>>>,
     /// 本机产生的文档更新,广播给所有已连接的对端。
     doc_updates: broadcast::Sender<Arc<(String, Vec<u8>)>>,
     doc_context: Arc<Mutex<Option<DocSyncContext>>>,
@@ -138,9 +327,19 @@ pub struct ShareEndpoint {
     display_name: Arc<Mutex<String>>,
     /// 局域网发现服务。`None` 表示设置里没开。
     mdns: Option<iroh_mdns_address_lookup::MdnsAddressLookup>,
+    /// 局域网上看到的 ZuTalk 与它们最近一次的宣告。常驻订阅维护 ——
+    /// mDNS 只在对方**变了**时报一次,每次扫描现订阅只能看到上次之后的
+    /// 变化,第二次扫描起列表就是空的。
+    nearby_table:
+        Arc<std::sync::Mutex<std::collections::BTreeMap<iroh::EndpointId, Option<String>>>>,
+    _nearby_task: Option<AbortOnDrop>,
     /// 此刻连着字幕通道的观看端连接。主持人的链路诊断从这里读 ——
     /// AP 隔离(两机清单第一/二条)要靠主持人也看得见「谁在走中继」才判得出。
     caption_watchers: Arc<std::sync::Mutex<Vec<Connection>>>,
+    /// 此刻连着文档通道的对端。移出成员时要当场断开他们。
+    doc_connections: Arc<std::sync::Mutex<Vec<Connection>>>,
+    /// 当前房间的放行依据。见 [`admit`]。
+    room_access: RoomAccessSlot,
     /// 主持人转发面:成员推来、验签合入成功的**原始信封**,原样发给
     /// 所有文档连接。保留原作者签名 —— 接收端照常按名册验 A,不是
     /// 主持人替 A 背书。观看端从不往里写。
@@ -210,6 +409,41 @@ impl ShareEndpoint {
             .map_err(|e| NetError::Bind(e.to_string()))?;
 
         let caption_watchers: Arc<std::sync::Mutex<Vec<Connection>>> = Default::default();
+        let last_caption: Arc<std::sync::Mutex<Option<Arc<CaptionFrame>>>> = Default::default();
+        let doc_connections: Arc<std::sync::Mutex<Vec<Connection>>> = Default::default();
+        let room_access: RoomAccessSlot = Default::default();
+        let nearby_table: Arc<
+            std::sync::Mutex<std::collections::BTreeMap<iroh::EndpointId, Option<String>>>,
+        > = Default::default();
+        let nearby_task = mdns.as_ref().map(|mdns| {
+            let mdns = mdns.clone();
+            let table = nearby_table.clone();
+            let me = identity.endpoint_id();
+            AbortOnDrop(tokio::spawn(async move {
+                use n0_future::StreamExt;
+                let mut events = mdns.subscribe().await;
+                while let Some(event) = events.next().await {
+                    match event {
+                        iroh_mdns_address_lookup::DiscoveryEvent::Discovered {
+                            endpoint_info,
+                            ..
+                        } => {
+                            let id = endpoint_info.endpoint_id;
+                            if id == me {
+                                continue;
+                            }
+                            let data = endpoint_info.data.user_data().map(|d| d.to_string());
+                            table.lock().unwrap().insert(id, data);
+                        }
+                        iroh_mdns_address_lookup::DiscoveryEvent::Expired { endpoint_id } => {
+                            table.lock().unwrap().remove(&endpoint_id);
+                        }
+                        // non_exhaustive:我们只关心出现与消失。
+                        _ => {}
+                    }
+                }
+            }))
+        });
         let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
         let router = Router::builder(endpoint.clone())
             .accept(iroh_gossip::ALPN, gossip.clone())
@@ -217,7 +451,10 @@ impl ShareEndpoint {
                 LIVE_CAPTION_ALPN,
                 CaptionAcceptor {
                     captions: captions.clone(),
+                    last: last_caption.clone(),
                     watchers: caption_watchers.clone(),
+                    access: room_access.clone(),
+                    doc_context: doc_context.clone(),
                 },
             )
             .accept(
@@ -234,6 +471,8 @@ impl ShareEndpoint {
                     updates: doc_updates.clone(),
                     envelopes: doc_envelopes.clone(),
                     identity: identity.clone(),
+                    access: room_access.clone(),
+                    connections: doc_connections.clone(),
                 },
             )
             .spawn();
@@ -245,13 +484,18 @@ impl ShareEndpoint {
             gossip,
             identity: identity.clone(),
             captions,
+            last_caption,
             doc_updates,
             doc_context,
             join_desk,
             display_name,
             hosted_code,
             mdns,
+            nearby_table,
+            _nearby_task: nearby_task,
             caption_watchers,
+            doc_connections,
+            room_access,
             doc_envelopes,
         })
     }
@@ -271,8 +515,15 @@ impl ShareEndpoint {
     /// **立即返回,永不阻塞。** 没有接收者时是 no-op;接收者慢了就丢旧帧。
     /// 这是采集回调能安全调用它的前提。
     pub fn broadcast_caption(&self, frame: CaptionFrame) {
+        let frame = Arc::new(frame);
+        *self.last_caption.lock().unwrap() = Some(frame.clone());
         // send 只在没有订阅者时报错,那是正常状态,不是故障。
-        let _ = self.captions.send(Arc::new(frame));
+        let _ = self.captions.send(frame);
+    }
+
+    /// 这一场播完了:忘掉最后一帧,下一场的观看端不会先看到上一场的字幕。
+    pub fn end_broadcast(&self) {
+        *self.last_caption.lock().unwrap() = None;
     }
 
     /// 等到与任一配置中继握手成功,或超时。
@@ -303,6 +554,15 @@ impl ShareEndpoint {
     /// 接上文档同步。在此之前 `DOC_SYNC_ALPN` 上的连接一律被拒。
     pub async fn enable_document_sync(&self, context: DocSyncContext) {
         *self.doc_context.lock().await = Some(context);
+    }
+
+    /// 关掉文档同步:之后拨进来的文档连接一律被拒,已有的连接当场断开。
+    pub async fn disable_document_sync(&self) {
+        *self.doc_context.lock().await = None;
+        let mut registry = self.doc_connections.lock().unwrap();
+        for conn in registry.drain(..) {
+            conn.close(0u32.into(), b"document sync ended");
+        }
     }
 
     /// 把本机产生的一份文档更新推给所有对端。
@@ -360,8 +620,15 @@ impl ShareEndpoint {
         let inbound =
             spawn_update_reader(conn.clone(), context.clone(), self.doc_envelopes.clone());
         let responder = spawn_have_responder(conn.clone(), context.clone(), self.identity.clone());
-        let prober = spawn_anti_entropy(conn, context, self.doc_envelopes.clone());
-        let _ = tokio::join!(outbound, inbound, responder, prober);
+        let prober = spawn_anti_entropy(conn.clone(), context, self.doc_envelopes.clone());
+        // 以连接为准收尾。推送任务只在有东西可发时才碰连接,对端关了它也
+        // 察觉不到 —— 等它们自己结束,调用方就永远以为还连着,对端(比如
+        // 主持人后来才允许留存)要它重拨时它也不会重拨。
+        let tasks = [outbound, inbound, responder, prober];
+        conn.closed().await;
+        for task in &tasks {
+            task.abort();
+        }
         Ok(())
     }
 
@@ -388,54 +655,78 @@ impl ShareEndpoint {
         *self.display_name.lock().await = sanitize_display_name(name);
     }
 
-    /// 同一网络里看到的 ZuTalk。
+    /// 同一网络里愿意被找到的直播。
     ///
-    /// 局域网上只看得到不透明公钥 —— 对方是谁、在共享什么,都要连上去问。
-    /// 没开局域网发现时返回空。
+    /// 只列出宣告了 [`NearbyAnnouncement`] 的机器 —— 没在直播、或主持人没打开
+    /// 「让附近的人找到」的,根本不出现。表是常驻订阅维护的;刚绑定时可能还
+    /// 空着,这时最多等 `window` 让第一批宣告到达。没开局域网发现时返回空。
     pub async fn nearby_peers(&self, window: std::time::Duration) -> Vec<NearbyPeer> {
-        let Some(mdns) = self.mdns.as_ref() else {
+        if self.mdns.is_none() {
             return Vec::new();
-        };
-        use n0_future::StreamExt;
-        let mut events = mdns.subscribe().await;
-        let me = self.endpoint.id();
-        let mut seen: std::collections::BTreeMap<iroh::EndpointId, NearbyPeer> =
-            std::collections::BTreeMap::new();
+        }
         let deadline = tokio::time::Instant::now() + window;
         loop {
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                break;
+            let live: Vec<NearbyPeer> = self
+                .nearby_table
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(|(id, data)| {
+                    let announcement = NearbyAnnouncement::decode(data.as_deref()?)?;
+                    Some(NearbyPeer {
+                        endpoint_id: *id,
+                        short_label: id.fmt_short().to_string(),
+                        announcement,
+                    })
+                })
+                .collect();
+            if !live.is_empty() || tokio::time::Instant::now() >= deadline {
+                return live;
             }
-            match tokio::time::timeout(remaining, events.next()).await {
-                Ok(Some(iroh_mdns_address_lookup::DiscoveryEvent::Discovered {
-                    endpoint_info,
-                    ..
-                })) => {
-                    let id = endpoint_info.endpoint_id;
-                    // 自己也在广播,别把自己列进「附近的人」。
-                    if id == me {
-                        continue;
-                    }
-                    seen.insert(
-                        id,
-                        NearbyPeer {
-                            endpoint_id: id,
-                            short_label: id.fmt_short().to_string(),
-                        },
-                    );
-                }
-                Ok(Some(iroh_mdns_address_lookup::DiscoveryEvent::Expired { endpoint_id })) => {
-                    seen.remove(&endpoint_id);
-                }
-                // DiscoveryEvent 是 non_exhaustive:上游加了新事件时,
-                // 忽略比拒绝编译更合适 —— 我们只关心「出现」和「消失」。
-                Ok(Some(_)) => continue,
-                Ok(None) => break,
-                Err(_) => break,
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+    }
+
+    /// 在局域网上宣告(或撤下)这场直播的名字与标题。
+    ///
+    /// `None` 发的是「静默」标记而不是清空 —— mDNS 服务只在有值时覆写 TXT,
+    /// 清空会让上一场的标题一直挂在别人的列表里。
+    pub fn set_nearby_announcement(&self, announcement: Option<&NearbyAnnouncement>) {
+        let text = announcement
+            .map(NearbyAnnouncement::encode)
+            .unwrap_or_else(|| NEARBY_SILENT.to_string());
+        match text.parse::<iroh::address_lookup::UserData>() {
+            Ok(data) => self.endpoint.set_user_data_for_address_lookup(Some(data)),
+            Err(error) => tracing::warn!(%error, "附近宣告放不进 mDNS 记录"),
+        }
+    }
+
+    /// 主持人把一位成员移出当前房间:出名册、广播新名册、断开他的字幕与
+    /// 文档连接。他手里的码还在,但再连进来会被拒 —— 要让所有旧码失效,
+    /// 只能停止这场共享再开一场。
+    pub async fn remove_member(&self, room: &RoomHandle, who: iroh::EndpointId) -> bool {
+        let removed = room.ban(who).await;
+        if !removed {
+            return false;
+        }
+        let roster = room.roster().await;
+        if let Some(context) = self.doc_context.lock().await.as_ref() {
+            if context.scope == *roster.scope() {
+                *context.roster.lock().await = roster;
             }
         }
-        seen.into_values().collect()
+        for registry in [&self.caption_watchers, &self.doc_connections] {
+            let mut guard = registry.lock().unwrap();
+            guard.retain(|conn| {
+                if conn.remote_id() == who {
+                    conn.close(CLOSE_REMOVED.into(), b"removed by host");
+                    false
+                } else {
+                    conn.close_reason().is_none()
+                }
+            });
+        }
+        true
     }
 
     /// 向同一网络里的某台机器请求加入它的共享。
@@ -535,7 +826,18 @@ impl ShareEndpoint {
         // 已经有邻居时也发一次,省掉一个来回。
         let _ = sender.broadcast(hello.clone().into()).await;
 
+        let generation = ROOM_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let shared_sender = Arc::new(Mutex::new(Some(sender.clone())));
+        *self.room_access.lock().unwrap() = Some(RoomAccess {
+            generation,
+            host,
+            me,
+            scope: scope.clone(),
+            room_secret: code.room_secret.clone(),
+            presence: presence.clone(),
+            sender: shared_sender.clone(),
+            identity: self.identity.secret().clone(),
+        });
         // 事件循环会把 scope move 进去,离开时发 Goodbye 还要用,先留一份。
         let scope_for_handle = scope.clone();
         let task = {
@@ -602,6 +904,8 @@ impl ShareEndpoint {
             secret: self.identity.secret().clone(),
             sender: shared_sender,
             task,
+            access: self.room_access.clone(),
+            generation,
         })
     }
 
@@ -883,6 +1187,8 @@ struct DocSyncAcceptor {
     /// 主持人转发面。见 [`ShareEndpoint::doc_envelopes`]。
     envelopes: broadcast::Sender<Arc<Vec<u8>>>,
     identity: ShareIdentity,
+    access: RoomAccessSlot,
+    connections: Arc<std::sync::Mutex<Vec<Connection>>>,
 }
 
 impl ProtocolHandler for DocSyncAcceptor {
@@ -892,6 +1198,15 @@ impl ProtocolHandler for DocSyncAcceptor {
             connection.close(1u32.into(), b"document sync not enabled");
             return Ok(());
         };
+        // 文档里是整份文字稿:和字幕一样只给名册里的人。
+        if !admit_or_close(&self.access, &self.context, &connection, false).await {
+            return Ok(());
+        }
+        {
+            let mut registry = self.connections.lock().unwrap();
+            registry.retain(|conn| conn.close_reason().is_none());
+            registry.push(connection.clone());
+        }
 
         // 版本宣告的应答常驻 —— 首次催缺与之后每一轮反熵都走它。
         let responder =
@@ -906,8 +1221,13 @@ impl ProtocolHandler for DocSyncAcceptor {
         let inbound =
             spawn_update_reader(connection.clone(), context.clone(), self.envelopes.clone());
         // 受理侧也主动对账:宿主同样可能缺成员的更新。
-        let prober = spawn_anti_entropy(connection, context, self.envelopes.clone());
-        let _ = tokio::join!(responder, outbound, inbound, prober);
+        let prober = spawn_anti_entropy(connection.clone(), context, self.envelopes.clone());
+        // 同 `sync_document_with`:连接断了就收尾,不留一直等更新的空转任务。
+        let tasks = [responder, outbound, inbound, prober];
+        connection.closed().await;
+        for task in &tasks {
+            task.abort();
+        }
         Ok(())
     }
 }
@@ -988,6 +1308,10 @@ pub struct RoomHandle {
     /// 用来发 Goodbye。事件循环也持有一份。
     sender: Arc<Mutex<Option<iroh_gossip::api::GossipSender>>>,
     task: tokio::task::JoinHandle<()>,
+    /// 端点的放行槽。房间散了要把自己从里面撤掉,否则字幕通道还按一个
+    /// 已经不存在的名册放人。
+    access: RoomAccessSlot,
+    generation: u64,
 }
 
 impl RoomHandle {
@@ -1031,11 +1355,44 @@ impl RoomHandle {
     pub async fn host_departed(&self) -> bool {
         self.presence.lock().await.host_departed()
     }
+
+    /// 移出一位成员并广播新名册。见 [`ShareEndpoint::remove_member`]。
+    async fn ban(&self, who: iroh::EndpointId) -> bool {
+        let broadcast = {
+            let mut presence = self.presence.lock().await;
+            if !presence.ban(who) {
+                return false;
+            }
+            presence.roster_broadcast()
+        };
+        if let (Some(roster), Some(sender)) =
+            (broadcast, self.sender.lock().await.as_ref().cloned())
+        {
+            if let Ok(bytes) = seal_control(&roster, &self.scope, &self.secret) {
+                let _ = sender.broadcast(bytes.into()).await;
+            }
+        }
+        true
+    }
 }
 
 impl Drop for RoomHandle {
     fn drop(&mut self) {
         self.task.abort();
+        let mut slot = self.access.lock().unwrap();
+        if slot.as_ref().map(|access| access.generation) == Some(self.generation) {
+            *slot = None;
+        }
+    }
+}
+
+/// 后台任务的句柄,随拥有者一起结束。
+#[derive(Debug)]
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
     }
 }
 
@@ -1060,6 +1417,8 @@ pub struct CaptionInbox {
     /// 到主持人的当前链路。`None` = 没连上(或刚断开重连中)。
     /// 用同步锁:唯一的读方(share_state)是同步调用,写方每帧一次。
     link: Arc<std::sync::Mutex<Option<CaptionLinkPath>>>,
+    /// 主持人把本机移出了。接收循环据此停止重连。
+    removed: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl CaptionInbox {
@@ -1071,6 +1430,11 @@ impl CaptionInbox {
     /// 当前到主持人的链路。
     pub fn link_path(&self) -> Option<CaptionLinkPath> {
         *self.link.lock().unwrap()
+    }
+
+    /// 主持人是否把本机移出了这场共享。
+    pub fn removed(&self) -> bool {
+        self.removed.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn set_link_path(&self, value: Option<CaptionLinkPath>) {
@@ -1102,25 +1466,37 @@ fn caption_link_path_of(conn: &Connection) -> Option<CaptionLinkPath> {
 #[derive(Debug, Clone)]
 struct CaptionAcceptor {
     captions: broadcast::Sender<Arc<CaptionFrame>>,
+    last: Arc<std::sync::Mutex<Option<Arc<CaptionFrame>>>>,
     /// 活跃观看端注册表,主持人的链路诊断从这里读。
     watchers: Arc<std::sync::Mutex<Vec<Connection>>>,
+    access: RoomAccessSlot,
+    doc_context: Arc<Mutex<Option<DocSyncContext>>>,
 }
 
 impl ProtocolHandler for CaptionAcceptor {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+        if !admit_or_close(&self.access, &self.doc_context, &connection, true).await {
+            return Ok(());
+        }
         {
             // 登记进注册表,顺手剪掉已断开的 —— 重连会积累死连接。
             let mut watchers = self.watchers.lock().unwrap();
             watchers.retain(|conn| conn.close_reason().is_none());
             watchers.push(connection.clone());
         }
+        // 先订阅再取最后一帧:两步之间播出的帧会在订阅里,不会漏;重复的
+        // 那一帧按 revision 在接收端丢掉。
         let mut rx = self.captions.subscribe();
+        let mut pending = self.last.lock().unwrap().clone();
         loop {
-            let frame = match rx.recv().await {
-                Ok(frame) => frame,
-                // 落后太多:跳到最新,不补发。旧帧对 replace-in-full 没有价值。
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => break,
+            let frame = match pending.take() {
+                Some(frame) => frame,
+                None => match rx.recv().await {
+                    Ok(frame) => frame,
+                    // 落后太多:跳到最新,不补发。旧帧对 replace-in-full 没有价值。
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                },
             };
             // 每帧一条 uni-stream:写完即关,帧与帧互不阻塞,也没有尺寸上限。
             let mut stream = match connection.open_uni().await {
@@ -1147,14 +1523,27 @@ const RECONNECT_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
 
 pub async fn receive_captions(
     endpoint: &ShareEndpoint,
-    host: EndpointAddr,
-    scope: ScopeId,
+    code: ShareCode,
     inbox: CaptionInbox,
 ) -> Result<(), NetError> {
+    let ticket = code
+        .room_secret
+        .admission_ticket(&code.scope, &endpoint.endpoint_id());
+    let host = code.host;
+    let scope = code.scope;
     // 一直重连,直到调用方把这个任务取消(停止共享或退出房间时会取消)。
     loop {
-        match receive_captions_once(endpoint, host.clone(), scope.clone(), inbox.clone()).await {
+        match receive_captions_once(endpoint, host.clone(), scope.clone(), ticket, inbox.clone())
+            .await
+        {
             Ok(()) => {}
+            Err(NetError::Removed) => {
+                inbox
+                    .removed
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                inbox.set_link_path(None);
+                return Err(NetError::Removed);
+            }
             Err(error) => tracing::debug!(%error, "字幕连接中断,准备重连"),
         }
         // 断线期间不显示过期的链路——「没连上」和「经中继」在界面上
@@ -1168,6 +1557,7 @@ async fn receive_captions_once(
     endpoint: &ShareEndpoint,
     host: EndpointAddr,
     scope: ScopeId,
+    ticket: [u8; 32],
     inbox: CaptionInbox,
 ) -> Result<(), NetError> {
     let conn = endpoint
@@ -1176,6 +1566,23 @@ async fn receive_captions_once(
         .await
         .map_err(|e| NetError::Connect(e.to_string()))?;
     inbox.set_link_path(caption_link_path_of(&conn));
+
+    // 先交入场凭证,主持人当场核对。旧版主持人不读它,这条流就晾在那里,无害。
+    let display_name = endpoint.display_name.lock().await.clone();
+    let mut hello = conn
+        .open_uni()
+        .await
+        .map_err(|e| NetError::Stream(e.to_string()))?;
+    write_message(
+        &mut hello,
+        &CaptionHello {
+            ticket,
+            display_name,
+        },
+    )
+    .await
+    .map_err(|e| NetError::Stream(e.to_string()))?;
+    let _ = hello.finish();
 
     while let Ok(mut stream) = conn.accept_uni().await {
         // 每帧刷新一次:打洞在首帧之后才成功时,指示器要跟着从
@@ -1186,6 +1593,9 @@ async fn receive_captions_once(
             Ok(_) => tracing::debug!("丢弃一帧属于其他共享范围的字幕"),
             Err(error) => tracing::debug!(%error, "丢弃一帧无法解码的字幕"),
         }
+    }
+    if closed_as_removed(&conn) {
+        return Err(NetError::Removed);
     }
     Ok(())
 }

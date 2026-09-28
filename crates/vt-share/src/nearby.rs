@@ -12,8 +12,10 @@
 //!
 //! # 局域网上能看到什么
 //!
-//! 只有一个不透明的公钥。**姓名和房间信息不进 mDNS 广播** —— 那会让咖啡馆里的
-//! 任何人看到「谁在开什么会」。这些只在对方主动连上来、并且被问到时才给。
+//! 默认只有一个不透明的公钥。姓名和录音标题只在**主持人为这一场直播打开
+//! 「让附近的人找到」**时才进 mDNS 广播([`NearbyAnnouncement`]) —— 那是
+//! 主持人对「同一网络的人都能看到我在直播什么」的明确同意。没打开时,
+//! 附近列表里根本不出现这台机器,敲门也只会得到「没在共享」。
 
 use serde::{Deserialize, Serialize};
 
@@ -87,12 +89,76 @@ pub struct PendingJoinRequest {
     pub display_name: String,
 }
 
-/// 同一网络里看到的一台 ZuTalk。
+/// 同一网络里一场愿意被找到的直播。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NearbyPeer {
     pub endpoint_id: iroh::EndpointId,
-    /// 给人看的短形式。局域网上除此之外看不到任何信息。
+    /// 公钥的短形式。名字是对方自己写的,它才是可核对的身份。
     pub short_label: String,
+    /// 主持人自报的名字与录音标题,已经收拾过。
+    pub announcement: NearbyAnnouncement,
+}
+
+/// 主持人同意公开到局域网上的那两句话。
+///
+/// 装在 mDNS 的 TXT 记录里(iroh 的 user data,上限 245 字节),所以编码后
+/// 必须放得下:名字已有 64 字节上限,标题按字符截到剩余空间。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NearbyAnnouncement {
+    #[serde(rename = "n")]
+    pub host_name: String,
+    #[serde(rename = "t")]
+    pub title: String,
+}
+
+/// mDNS TXT 记录里 user data 的上限(iroh `UserData::MAX_LENGTH`)。
+pub const MAX_ANNOUNCEMENT_BYTES: usize = 245;
+/// 编码的版本前缀。关掉公开时发的是 [`NEARBY_SILENT`] 而不是清空 ——
+/// mDNS 服务更新地址时只在有值时覆写 TXT,清空会让旧标题一直挂着。
+const NEARBY_LIVE_PREFIX: &str = "zt1";
+pub const NEARBY_SILENT: &str = "zt0";
+
+impl NearbyAnnouncement {
+    pub fn new(host_name: &str, title: &str) -> Self {
+        Self {
+            host_name: sanitize_display_name(host_name),
+            title: sanitize_label(title, 160),
+        }
+    }
+
+    /// 编成 TXT 记录能装下的一行。标题太长时逐字缩短,直到放得下。
+    pub fn encode(&self) -> String {
+        let mut announcement = self.clone();
+        loop {
+            let body = serde_json::to_string(&announcement).unwrap_or_default();
+            let encoded = format!("{NEARBY_LIVE_PREFIX}{body}");
+            if encoded.len() <= MAX_ANNOUNCEMENT_BYTES || announcement.title.is_empty() {
+                return encoded;
+            }
+            announcement.title.pop();
+        }
+    }
+
+    /// 解开别人的广播。不是直播宣告(旧版本、关着公开、乱码)一律 `None`。
+    /// 内容来自局域网上的任何人,所以照样当不可信输入收拾一遍。
+    pub fn decode(raw: &str) -> Option<Self> {
+        let body = raw.strip_prefix(NEARBY_LIVE_PREFIX)?;
+        let parsed: Self = serde_json::from_str(body).ok()?;
+        Some(Self::new(&parsed.host_name, &parsed.title))
+    }
+}
+
+/// 与 [`sanitize_display_name`] 同一套收拾,上限另给。
+fn sanitize_label(raw: &str, max_bytes: usize) -> String {
+    let cleaned: String = raw.chars().filter(|c| !c.is_control()).collect();
+    let mut out = String::new();
+    for c in cleaned.trim().chars() {
+        if out.len() + c.len_utf8() > max_bytes {
+            break;
+        }
+        out.push(c);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -150,6 +216,30 @@ mod tests {
     #[test]
     fn an_empty_name_stays_empty() {
         assert_eq!(sanitize_display_name("   \n\t "), "");
+    }
+
+    #[test]
+    fn an_announcement_round_trips_and_fits() {
+        let long = NearbyAnnouncement::new(&"名".repeat(40), &"長い題名".repeat(60));
+        let encoded = long.encode();
+        assert!(encoded.len() <= MAX_ANNOUNCEMENT_BYTES);
+        let decoded = NearbyAnnouncement::decode(&encoded).unwrap();
+        assert_eq!(decoded.host_name, long.host_name);
+        assert!(long.title.starts_with(&decoded.title));
+
+        let short = NearbyAnnouncement::new("楼下的 Mac", "周会");
+        assert_eq!(NearbyAnnouncement::decode(&short.encode()), Some(short));
+    }
+
+    /// 关着公开、旧版本、别人塞进来的乱码,都不算一场直播。
+    #[test]
+    fn only_a_live_announcement_decodes() {
+        assert_eq!(NearbyAnnouncement::decode(NEARBY_SILENT), None);
+        assert_eq!(NearbyAnnouncement::decode("foobar"), None);
+        assert_eq!(NearbyAnnouncement::decode("zt1{not json"), None);
+        let spoofed = NearbyAnnouncement::decode(r#"zt1{"n":"a\nb","t":"x\ty"}"#).unwrap();
+        assert_eq!(spoofed.host_name, "ab");
+        assert_eq!(spoofed.title, "xy");
     }
 
     /// 「还没开始共享」和「被拒绝了」必须分得开 —— 否则用户会反复敲门。

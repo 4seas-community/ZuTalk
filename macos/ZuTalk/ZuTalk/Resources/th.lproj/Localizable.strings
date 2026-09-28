@@ -158,11 +158,6 @@
 "settings.language.restart_hint" = "เริ่ม ZuTalk ใหม่เพื่อให้การเปลี่ยนแปลงมีผลทั้งหมด";
 "settings.appearance.title" = "ลักษณะที่ปรากฏ";
 
-
-
-
-
-
 /* Permissions */
 "permission.microphone.name" = "ไมโครโฟน";
 "permission.microphone.usage" = "บันทึกเสียงของคุณและส่งไปยัง Soniox เพื่อถอดเสียง";
@@ -183,16 +178,12 @@
 "export.subtitles_omitted_format" = "บรรทัดที่ไม่มีเวลา: %lld ไฟล์ .srt/.vtt ไม่รวมบรรทัดเหล่านี้ แต่ยังอยู่ในบทถอดความ";
 "common.export.action" = "ส่งออก";
 
-
-
 /* Recording settings */
-
 
 "editor.export.title" = "ส่งออกการบันทึก";
 "editor.export.hint" = "ส่งออกการบันทึกนี้เป็นไฟล์ ZIP";
 "editor.export.no_session" = "ไม่มีการบันทึกให้ส่งออก";
 "doc.scratchpad" = "โน้ตส่วนตัว";
-
 
 /* Onboarding brand line */
 "onboarding.brand.subtitle" = "การสื่อสารหลายภาษา · การประชุมสด";
@@ -317,7 +308,6 @@
 "settings.shortcuts.font_bigger" = "เพิ่มขนาดแบบอักษร";
 "settings.shortcuts.font_smaller" = "ลดขนาดแบบอักษร";
 "settings.shortcuts.open_settings" = "เปิดการตั้งค่า";
-
 
 /* Diagnostics section */
 "diagnostics.operational.provider_keys" = "ข้อมูลรับรองบริการ";
@@ -548,8 +538,6 @@
 "editor.tab.transcript.live.hint" = "บทถอดเสียงสด — กำลังบันทึกอยู่";
 "editor.tab.transcript.hint" = "บทถอดเสียงของไฟล์เสียง";
 
-
-
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "ยังไม่มีบทถอดเสียง";
 "editor.empty.no_transcript_desc" = "บทถอดเสียงจะพร้อมใช้งานหลังการบันทึกเสร็จสิ้น";
@@ -618,7 +606,6 @@
 /* DesignSystem previews (P2) */
 "preview.crosshair.blueprint" = "เนื้อหาพิมพ์เขียว";
 "preview.crosshair.hardware" = "เนื้อหาฮาร์ดแวร์";
-
 
 /* Document editor */
 "editor.toolbar.show_sources" = "แสดงแหล่งที่มา";
@@ -925,75 +912,28 @@
 "knowledge.import_json.failed" = "นำเข้าฐานความรู้ไม่ได้";
 
 /* 分享:点对点字幕与文档协同 */
-"sidebar.share" = "แชร์";
-"share.title" = "แชร์";
-"share.identity" = "คีย์แชร์ของคุณ";
-"share.copy_code" = "คัดลอกรหัสแชร์";
-"share.join" = "เข้าร่วมด้วยรหัส";
-"share.mode.host" = "แชร์จากเครื่องนี้";
-"share.mode.join" = "เข้าร่วมของคนอื่น";
-"share.stop" = "หยุดแชร์";
-"share.stop_note" = "หยุดการส่งต่อจากนี้ไป ไม่สามารถลบสิ่งที่อีกฝ่ายได้รับไปแล้ว";
-"share.leave" = "ออกจากห้อง";
-"share.leave_note" = "ออกแล้วจะไม่รับเนื้อหาอีก บทถอดเสียงที่ได้รับแล้วยังอยู่ในเครื่อง Mac นี้";
-"share.audio_never" = "เสียงจะไม่ถูกแชร์ไม่ว่ากรณีใด";
-"share.capture.live" = "กำลังแชร์คำบรรยาย";
-"share.capture.live_hint" = "คนในห้องเห็นคำบรรยายของการอัดนี้แบบสด เสียงจะไม่ถูกแชร์เด็ดขาด";
-"share.capture.mute" = "ไม่แชร์การอัดนี้";
-"share.capture.mute_hint" = "ระงับเฉพาะคำบรรยายของการอัดนี้ การแชร์ยังเปิดอยู่";
-"share.capture.muted" = "การอัดนี้ไม่ได้ถูกแชร์";
-"share.capture.muted_hint" = "การแชร์เปิดอยู่ แต่คำบรรยายของการอัดนี้ถูกระงับไว้";
-"share.capture.unmute" = "แชร์ต่อ";
-"share.empty" = "ยังไม่ได้แชร์อะไร";
-"share.role.host" = "ผู้ดำเนินรายการแก้ไขได้ คนอื่นอ่านอย่างเดียว";
-"share.role.everyone" = "ทุกคนแก้ไขได้";
-"share.direct" = "เชื่อมต่อโดยตรง";
-"share.relayed" = "เชื่อมต่อผ่านรีเลย์";
-"share.start" = "เริ่มแชร์";
-"share.cancel" = "ยกเลิก";
-"share.needs_notebook" = "เปิดหัวข้อก่อน — การแชร์กำหนดขอบเขตทีละหัวข้อ";
-"share.start.confirm.title" = "เริ่มแชร์หัวข้อนี้หรือไม่";
-"share.start.confirm.body" = "ระหว่างที่การแชร์นี้เปิดอยู่ การบันทึกที่คุณเริ่มในหัวข้อนี้จะส่งคำบรรยายแบบสดถึงทุกคนในห้อง เสียงจะไม่ถูกแชร์ไม่ว่ากรณีใด การหยุดจะหยุดเฉพาะการส่งต่อจากนี้ไป ไม่สามารถลบสิ่งที่อีกฝ่ายได้รับไปแล้ว";
-"share.start.confirm.session_title" = "แชร์การอัดนี้หรือไม่";
-"share.start.confirm.session_body" = "คนที่คุณให้เข้าห้องจะเก็บสำเนาบทถอดเสียงของการอัดนี้ไว้ และช่วยแก้ไขได้หากห้องอนุญาต เสียงจะไม่ถูกแชร์ไม่ว่ากรณีใด การหยุดจะหยุดเฉพาะการส่งต่อจากนี้ไป ไม่สามารถลบสิ่งที่อีกฝ่ายได้รับไปแล้ว";
-"share.start.confirm.remember" = "หัวข้อนี้จะไม่ถามซ้ำอีก";
+"share.audio_never" = "พวกเขาไม่ได้ยินเสียง เสียงไม่ออกจาก Mac เครื่องนี้";
 
 /* 设置:分享(点对点)传输 */
 "settings.section.p2p_name" = "การแชร์";
 "settings.p2p.title" = "การแชร์";
 "settings.p2p.subtitle" = "Mac เครื่องนี้ติดต่อกับคนที่คุณแชร์ด้วยอย่างไร";
-"settings.p2p.identity" = "คีย์แชร์ของ Mac เครื่องนี้";
+"settings.p2p.identity" = "ตัวตนของ Mac เครื่องนี้";
 "settings.p2p.copy_identity" = "คัดลอก";
-"settings.p2p.identity_note" = "คนอื่นจดจำ Mac เครื่องนี้ด้วยคีย์นี้ การเปลี่ยนจะทำให้สำเนาที่ผู้ติดต่อบันทึกไว้ใช้ไม่ได้ทั้งหมด";
+"settings.p2p.identity_note" = "คนอื่นใช้สิ่งนี้แยก Mac เครื่องนี้ออก ใครจะตั้งชื่ออะไรก็ได้ แต่สิ่งนี้ปลอมไม่ได้";
 "settings.p2p.relay" = "เซิร์ฟเวอร์รีเลย์";
 "settings.p2p.relay_note" = "หนึ่งที่อยู่ต่อบรรทัด เว้นว่างไว้เพื่อใช้การเชื่อมต่อโดยตรงเท่านั้น — บน Wi-Fi เดียวกันเท่านี้ก็พอ และใช้ได้แม้ไม่มีอินเทอร์เน็ต";
 "settings.p2p.relay_privacy" = "รีเลย์ทำหน้าที่ส่งต่อเท่านั้น ข้อมูลเข้ารหัสแบบต้นทางถึงปลายทาง จึงอ่านสิ่งที่ผ่านไม่ได้";
-"settings.p2p.local_discovery" = "ค้นหาคนในเครือข่ายนี้";
-"settings.p2p.local_discovery_note" = "ช่วยให้คุณค้นหา Mac เครื่องอื่นที่นี่และขอเข้าร่วมได้ โดยไม่ต้องส่งรหัสไปมา บนเครือข่ายเห็นเพียงคีย์เท่านั้น macOS จะขออนุญาตเครือข่ายภายในในครั้งแรก หากปฏิเสธ รหัสแชร์ยังใช้ได้";
+"settings.p2p.local_discovery" = "ค้นหาการแชร์ในเครือข่ายนี้";
+"settings.p2p.local_discovery_note" = "แสดงการแชร์ในเครือข่ายนี้ที่ผู้จัดเลือกให้ค้นพบได้ และให้คนอื่นค้นพบของคุณเมื่อคุณเลือก นอกจากนั้นจะไม่เห็นอะไรเกี่ยวกับ Mac เครื่องนี้ macOS จะขอสิทธิ์เครือข่ายเฉพาะที่ในครั้งแรก ถ้าปฏิเสธ รหัสเข้าร่วมยังใช้ได้";
 "settings.p2p.save" = "บันทึก";
 "settings.p2p.restore_default" = "คืนค่าเริ่มต้น";
 "settings.p2p.saved" = "บันทึกแล้ว";
 
 /* 分享:状态与提示 */
-"share.pick_notebook" = "หัวข้อที่จะแชร์";
-"share.your_code" = "รหัสแชร์";
-"share.code_note" = "ส่งให้คนที่จะเข้าร่วม การขึ้นบรรทัดใหม่หรือตัวพิมพ์ที่เปลี่ยนระหว่างทางไม่มีผล";
-"share.copied" = "คัดลอกแล้ว";
-"share.no_code_yet" = "ยังไม่มีรหัส เริ่มแชร์ก่อน";
 "share.core_unavailable" = "การแชร์กำลังเริ่มทำงาน ลองอีกครั้งในอีกสักครู่";
-"share.join_failed" = "อ่านรหัสแชร์นี้ไม่ได้ ขอใหม่อีกครั้ง — การคัดลอกจากข้อความอาจทำให้ตัวอักษรหาย";
-"share.status.idle" = "ยังไม่ได้แชร์";
-"share.status.idle_hint" = "แชร์หัวข้อเพื่อส่งคำบรรยาย หรือเข้าร่วมด้วยรหัสที่ได้รับ";
-"share.status.hosting_waiting" = "กำลังแชร์ — ยังไม่ได้ส่งอะไร";
-"share.status.hosting_waiting_hint" = "คนอื่นเข้าร่วมด้วยรหัสของคุณได้แล้ว คำบรรยายจะเริ่มเมื่อคุณเริ่มบันทึก";
-"share.status.hosting_live" = "กำลังส่งคำบรรยายของคุณ";
-"share.status.hosting_live_hint" = "ทุกคนที่เข้าร่วมกำลังเห็นสิ่งที่คุณถอดความ";
-"share.status.joined_waiting" = "เข้าร่วมแล้ว — รอผู้ดำเนินรายการ";
-"share.status.joined_waiting_hint" = "คุณเชื่อมต่อแล้ว คำบรรยายจะปรากฏเมื่อผู้ดำเนินรายการเริ่มบันทึก";
-"share.status.receiving" = "กำลังรับคำบรรยาย";
-"share.status.receiving_hint" = "นี่คือคำบรรยายของผู้ดำเนินรายการ จะไม่ถูกบันทึกลง Mac เครื่องนี้";
+"share.join_failed" = "เข้าร่วมด้วยรหัสนี้ไม่ได้ ขอใหม่อีกครั้ง การคัดลอกจากข้อความอาจทำให้ตัวอักษรหาย และรหัสจะใช้ไม่ได้เมื่อการแชร์จบ";
 "share.status.host_left" = "ผู้แชร์จบการแชร์นี้แล้ว";
-"share.status.host_left_hint" = "จะไม่มีเนื้อหาใหม่เข้ามาอีก สิ่งที่คุณได้รับแล้วยังอยู่ในเครื่อง Mac นี้";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "เชื่อมต่อโดยตรง";
@@ -1002,17 +942,8 @@
 "share.link.relayed_hint" = "เชื่อมต่อโดยตรงไม่ได้ จึงใช้เซิร์ฟเวอร์รีเลย์ส่งต่อคำบรรยาย (ยังเข้ารหัสแบบต้นทางถึงปลายทาง) พบบ่อยใน Wi-Fi ที่กั้นอุปกรณ์ไม่ให้ติดต่อกัน";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
-"share.scope.notebook" = "เฉพาะคำบรรยายสด: อีกฝ่ายดูการบันทึกของหัวข้อนี้แบบสดโดยไม่เก็บอะไรไว้";
-"share.scope.single" = "แชร์การอัดหนึ่งรายการ: อีกฝ่ายเก็บบทถอดเสียงไว้และช่วยแก้ไขได้";
-"share.scope.no_sessions" = "หัวข้อนี้ยังไม่มีการบันทึก";
-"share.received.title" = "ทรานสคริปต์ที่แชร์";
-"share.received.untitled" = "(ยังไม่มีข้อความ)";
-"share.received.blocks" = "%lld ช่วง";
-"share.received.delete" = "ลบออกจากเครื่องนี้";
-"share.received.delete.confirm_title" = "ลบบทถอดเสียงที่ได้รับนี้หรือไม่";
-"share.received.delete.confirm_body" = "ลบเฉพาะสำเนาในเครื่อง Mac นี้ สำเนาของคนอื่นไม่ได้รับผลกระทบ";
-"shared.editor.title" = "ทรานสคริปต์ที่แชร์";
-"shared.editor.read_only" = "ห้องอ่านอย่างเดียว";
+"shared.editor.title" = "บทถอดเสียงที่ได้รับ";
+"shared.editor.read_only" = "อ่านอย่างเดียว";
 "shared.editor.add_annotation" = "เพิ่มบันทึกย่อ";
 "shared.editor.done" = "เสร็จ";
 "shared.editor.empty_title" = "ยังไม่มีอะไรที่นี่";
@@ -1031,55 +962,23 @@
 "settings.p2p.relay_retry" = "ลองใหม่";
 
 /* 分享:同一网络里的人 */
-"share.nearby" = "คนในเครือข่ายนี้";
-"share.nearby.scan" = "ค้นหา";
-"share.nearby.scanning" = "กำลังค้นหา…";
-"share.nearby.empty" = "ยังไม่พบใคร ทั้งสองเครื่องต้องเปิด ZuTalk ในเครือข่ายเดียวกัน";
-"share.nearby.ask" = "ขอเข้าร่วม";
-"share.nearby.note" = "บนเครือข่ายเห็นเพียงคีย์เท่านั้น ไม่มีชื่อและไม่มีหัวข้อการประชุม การขอเข้าร่วมจะส่งชื่อของคุณไป และอีกฝ่ายเป็นผู้ตัดสิน";
-"share.nearby.not_sharing" = "เครื่องนั้นยังไม่ได้แชร์อะไรตอนนี้";
+"share.nearby.not_sharing" = "การแชร์นั้นจบแล้ว หรือไม่เปิดให้คนใกล้เคียงแล้ว";
 "share.nearby.declined" = "อีกฝ่ายปฏิเสธ";
 "share.nearby.timed_out" = "ไม่มีการตอบกลับ อีกฝ่ายอาจไม่อยู่";
-"share.requests" = "มีคนขอเข้าร่วม";
-"share.requests.unnamed" = "Mac ที่ไม่มีชื่อ";
-"share.requests.approve" = "ให้เข้า";
-"share.requests.decline" = "ปฏิเสธ";
-"share.requests.note" = "ชื่อเป็นสิ่งที่อีกฝ่ายพิมพ์เอง คีย์ด้านล่างเท่านั้นที่ปลอมไม่ได้";
-"share.knock.toast" = "%@ ต้องการเข้าร่วมการแชร์ของคุณ";
-"share.knock.toast_detail" = "อนุมัติหรือปฏิเสธได้ในแท็บแชร์";
-"share.knock.badge_label" = "มีคำขอเข้าร่วม %lld รายการรออยู่";
 
 /* 分享:昵称与成员 */
-"share.nickname" = "ชื่อของคุณในห้อง";
-"share.nickname.prompt" = "เช่น MacBook ของฉัน";
-"share.nickname.note" = "คนที่คุณแชร์ด้วยจะเห็นชื่อนี้ หากเว้นว่างไว้ พวกเขาจะเห็นเพียงคีย์ของคุณ";
-"share.members" = "ในห้องนี้";
-"share.members.unnamed" = "ไม่มีชื่อ";
-"share.members.you" = "คุณ";
-"share.members.host" = "ผู้ดำเนินรายการ";
-"share.nearby.asking" = "กำลังรอคำตอบ…";
-"share.nearby.abandon" = "เลิกรอ";
 
-"capture.toolbar.joined_room" = "อยู่ในห้องแชร์";
-"capture.toolbar.joined_room_hint" = "กำลังรับซับไตเติลสดของอีกฝ่าย หากต้องการอัดเสียงที่นี่ ให้ออกจากห้องในหน้าแชร์ก่อน";
-"share.sidebar.live_label" = "อยู่ในห้องแชร์";
-"shared_inbox.live_title" = "กำลังรับสด";
-"shared_inbox.live_waiting" = "เข้าร่วมแล้ว กำลังรอโฮสต์เริ่มอัดเสียง";
-"shared_inbox.empty_title" = "ยังไม่ได้รับเนื้อหา";
-"shared_inbox.empty_body" = "ทรานสคริปต์ที่แชร์ให้คุณจะปรากฏที่นี่ — อัปเดตสดระหว่างห้องเปิดอยู่ และเก็บไว้หลังจบ";
-"shared_inbox.session_live" = "สด";
+"share.sidebar.live_label" = "กำลังดูไลฟ์";
 "shared_inbox.lane_canonical" = "ต้นฉบับ";
 "shared_inbox.lane_connecting" = "คอลัมน์นี้ยังกำลังเชื่อมต่อ";
 "shared_inbox.lane_failed" = "คอลัมน์นี้หยุดแล้ว จะไม่มีเนื้อหาเข้ามาอีก";
 
-"share.web.title" = "แชร์ผ่านเว็บ";
-"share.web.start" = "เริ่มแชร์ผ่านเว็บ";
-"share.web.hint" = "สแกน QR โค้ดเพื่ออ่านทรานสคริปต์สดในเบราว์เซอร์ได้เลย ไม่ต้องติดตั้งแอป และสลับภาษาได้";
-"share.web.confirm.title" = "เริ่มแชร์ผ่านเว็บหรือไม่?";
-"share.web.confirm.body" = "บันทึกถอดเสียงของสิ่งที่คุณแชร์จะถูกอัปโหลดไปยังเซิร์ฟเวอร์คำบรรยายแบบข้อความธรรมดา หากแชร์หัวข้อ จะรวมทุกการบันทึกที่มีอยู่แล้วด้วย ไม่ใช่เฉพาะที่ใหม่ และจะเก็บไว้ช่วงหนึ่งหลังการแชร์สิ้นสุด ใครก็ตามที่มีลิงก์สามารถอ่านได้ ไม่มีการแชร์เสียงเด็ดขาด";
-"share.web.plaintext_note" = "ข้อความซับไตเติลผ่านเซิร์ฟเวอร์แบบไม่เข้ารหัสและถูกเก็บไว้อีกระยะหนึ่ง ใครมีลิงก์ก็อ่านได้";
+"share.web.title" = "ลิงก์เว็บ";
+"share.web.start" = "ลิงก์เว็บสำหรับคนที่ไม่มี ZuTalk…";
+"share.web.hint" = "ใครสแกนโค้ดหรือเปิดลิงก์ก็อ่านตามในเบราว์เซอร์ได้ในภาษาที่เลือก";
+"share.web.confirm.title" = "เปิดลิงก์เว็บไหม";
 "share.web.copy" = "คัดลอกลิงก์";
-"share.web.stop" = "หยุดแชร์ผ่านเว็บ";
+"share.web.stop" = "ปิดลิงก์";
 "share.web.qr_label" = "QR โค้ดของหน้าซับไตเติลสด";
 
 /* Topic workspace and session catalog */
@@ -1271,9 +1170,6 @@
 "topic.delete.confirm_message_format" = "การบันทึก %lld รายการจะยังอยู่ โดยย้ายพร้อมบทถอดเสียงและบันทึกไปที่ “ไม่มีหัวข้อ” ส่วนบันทึกของหัวข้อเองจะถูกลบ";
 "topic.delete.confirm_message_empty" = "หัวข้อนี้ไม่มีการบันทึก บันทึกของหัวข้อจะถูกลบ";
 
-"share.scope.label" = "สิ่งที่อีกฝ่ายจะได้รับ";
-"share.role.label" = "ใครแก้บทถอดเสียงได้";
-
 "captions_choice.on_invite_format" = "คำบรรยายสด · เหลือประมาณ %@";
 
 "topics.card.last_recorded_format" = "บันทึกล่าสุด: %@";
@@ -1283,3 +1179,119 @@
 "session.marks.reveal" = "ไปยังช่วงนี้ในบทถอดเสียง";
 "session.marks.delete.confirm_title" = "ลบเครื่องหมายนี้และบันทึกของมันไหม";
 "session.marks.delete.confirm_message" = "สิ่งที่คุณเขียนไว้ที่นี่จะกู้คืนไม่ได้ การบันทึกไม่ได้รับผลกระทบ";
+
+"sidebar.received" = "ที่ได้รับ";
+"received.join.title" = "เข้าร่วมด้วยรหัส";
+"received.join.placeholder" = "วางรหัสเข้าร่วม";
+"received.join.button" = "เข้าร่วม";
+"received.join.joining" = "กำลังเข้าร่วม…";
+"received.join.note" = "ขอรหัสเข้าร่วมจากคนที่แชร์ ใครมีรหัสก็เข้าร่วมได้ จึงควรส่งต่อกันแบบคนต่อคน";
+"received.nearby.title" = "การแชร์ใกล้เคียง";
+"received.nearby.empty" = "ตอนนี้ไม่มีการแชร์ที่เปิดให้คนในเครือข่ายนี้";
+"received.nearby.note" = "จะแสดงเฉพาะการแชร์ที่ผู้จัดเลือกให้ค้นพบได้ พร้อมชื่อและหัวเรื่องที่ผู้จัดยินยอมให้แสดง ทุกคำขอต้องได้รับอนุมัติจากผู้จัด";
+"received.nearby.ask" = "ขอเข้าร่วม";
+"received.nearby.asking" = "กำลังรอผู้จัด…";
+"received.nearby.abandon" = "เลิกรอ";
+"received.open" = "เปิดบทถอดเสียง";
+"received.read_only_hint" = "ผู้จัดตั้งเป็นอ่านอย่างเดียวระหว่างแชร์";
+"received.transcripts.title" = "บทถอดเสียงที่เก็บไว้ใน Mac เครื่องนี้";
+"received.transcripts.empty" = "ยังไม่มี เมื่อมีคนแชร์การบันทึกให้คุณ หรืออนุญาตให้เก็บบทถอดเสียงของไลฟ์ไว้ จะอยู่ที่นี่";
+"received.from_format" = "จาก %@";
+"received.blocks_format" = "%lld ประโยค";
+"received.delete" = "ลบออกจาก Mac เครื่องนี้";
+"received.delete.confirm_title" = "ลบบทถอดเสียงนี้ไหม";
+"received.delete.confirm_body" = "จะลบเฉพาะสำเนาใน Mac เครื่องนี้ ผู้ที่แชร์ยังเก็บของตัวเองไว้";
+"received.watch.waiting" = "ยังไม่มีใครพูด";
+"received.watch.show_subtitles" = "แสดงหน้าต่างคำบรรยาย";
+"received.watch.hide_subtitles" = "ซ่อนหน้าต่างคำบรรยาย";
+"received.watch.nothing_kept_note" = "ดูตามไปได้ แต่ Mac เครื่องนี้จะไม่เก็บอะไรไว้ ออกแล้วก็หายไป";
+"received.watch.ended_nothing_kept_note" = "ผู้จัดไม่ได้อนุญาตให้เก็บบทถอดเสียง จึงไม่มีอะไรเก็บไว้";
+"received.watch.kept_live_note" = "ผู้จัดอนุญาตให้เก็บบทถอดเสียง จะบันทึกไว้ด้านล่างและยังอยู่หลังไลฟ์จบ";
+"received.watch.kept_read_only_note" = "สำเนาบทถอดเสียงจะอยู่ใน Mac เครื่องนี้ ระหว่างแชร์อ่านได้แต่แก้ไม่ได้";
+"received.watch.kept_editable_note" = "สำเนาบทถอดเสียงจะอยู่ใน Mac เครื่องนี้ การแก้ไขของคุณจะไปถึงสำเนาของทุกคนในการแชร์นี้";
+"received.watch.removed_note" = "ผู้จัดนำคุณออกจากการแชร์นี้ ใช้รหัสเดิมเข้าร่วมอีกไม่ได้";
+"share.live.title" = "แชร์การบันทึกนี้แบบสด";
+"share.live.intro" = "คนที่คุณให้เข้ามาจะเห็นคำบรรยายและคำแปลขณะที่พูด";
+"share.live.start" = "เริ่มไลฟ์";
+"share.live.stop" = "หยุดไลฟ์";
+"share.live.on" = "กำลังไลฟ์";
+"share.live.on_count_format" = "กำลังไลฟ์ · %lld คน";
+"share.live.bar" = "ไลฟ์";
+"share.live.bar_hint" = "ให้คนอื่นดูคำบรรยายของการบันทึกนี้แบบสด";
+"share.live.bar_on_hint" = "ใครกำลังดู รหัสเข้าร่วม และการหยุด";
+"share.live.ended_with_recording" = "ไลฟ์จบลงพร้อมกับการบันทึก";
+"share.live.keep_failed" = "อนุญาตให้เก็บบทถอดเสียงไม่สำเร็จ";
+"share.keep.toggle" = "อนุญาตให้ผู้ชมเก็บบทถอดเสียง";
+"share.keep.off_detail" = "ปิด: ดูตามได้อย่างเดียว ออกแล้วไม่เหลืออะไรใน Mac ของพวกเขา";
+"share.keep.on_detail" = "เปิด: ZuTalk ของพวกเขาจะเก็บสำเนาบทถอดเสียงไว้ หยุดไลฟ์ก็เรียกคืนไม่ได้";
+"share.keep.on_locked_detail" = "อนุญาตแล้ว สำเนาที่ให้ไปเรียกคืนไม่ได้ จึงเปิดไว้ตลอดการแชร์นี้";
+"share.recording.menu" = "แชร์…";
+"share.recording.title" = "แชร์การบันทึกนี้";
+"share.recording.intro" = "คนที่คุณให้เข้ามาจะได้รับสำเนาบทถอดเสียงใน Mac ของเขา";
+"share.recording.read_only" = "อ่านได้";
+"share.recording.can_correct" = "แก้ไขได้";
+"share.recording.read_only_detail" = "ระหว่างแชร์ อ่านสำเนาได้แต่แก้ไม่ได้";
+"share.recording.can_correct_detail" = "การแก้ไขจะซิงก์ไปยังสำเนาที่แชร์ของทุกคน การบันทึกของคุณเองไม่เปลี่ยน";
+"share.recording.start" = "เริ่มแชร์";
+"share.recording.on" = "กำลังแชร์";
+"share.recording.stop" = "หยุดแชร์";
+"share.code.title" = "รหัสเข้าร่วม";
+"share.code.copy" = "คัดลอกรหัสเข้าร่วม";
+"share.code.copied" = "คัดลอกรหัสเข้าร่วมแล้ว";
+"share.code.note" = "จนกว่าคุณจะหยุด ใครมีรหัสนี้ก็เข้าร่วมได้ ส่งให้เฉพาะคนที่คุณอยากให้ดู";
+"share.watchers.title" = "ใครกำลังดู";
+"share.watchers.none" = "ยังไม่มีใคร";
+"share.watchers.count_format" = "%lld คนกำลังดู";
+"share.watchers.empty" = "ยังไม่มีใครเข้าร่วม";
+"share.watchers.empty_live" = "ยังไม่มีใครเข้าร่วม ส่งรหัสเข้าร่วม หรือให้คนในเครือข่ายเดียวกันค้นพบได้";
+"share.watchers.remove" = "นำออก";
+"share.watchers.remove_hint" = "จะถูกตัดการเชื่อมต่อและใช้รหัสนี้เข้ามาอีกไม่ได้ สิ่งที่อยู่ใน Mac ของเขาแล้วยังคงอยู่";
+"share.nearby.toggle" = "ให้คนในเครือข่ายเดียวกันค้นพบได้";
+"share.nearby.toggle_detail_format" = "เมื่อเปิด ZuTalk ใน Wi-Fi เดียวกันจะเห็น “%1$@ · %2$@” และขอเข้าร่วมได้ คุณยังต้องอนุมัติทีละคน";
+"share.knock.title_format" = "%@ ต้องการเข้าร่วม";
+"share.knock.approve" = "ให้เข้าร่วม";
+"share.knock.decline" = "ปฏิเสธ";
+"share.knock.expired" = "คำขอนี้หมดอายุแล้ว";
+"share.web.starting" = "กำลังเปิด…";
+"share.web.copied" = "คัดลอกลิงก์แล้ว";
+"share.web.failed" = "เปิดลิงก์เว็บไม่สำเร็จ";
+"share.web.confirm.button" = "เปิดลิงก์";
+"share.web.uploads_captions" = "คำบรรยายและคำแปลสดจะผ่านเซิร์ฟเวอร์ของ ZuTalk เป็นข้อความธรรมดา ใครมีลิงก์ก็อ่านได้ และจะอยู่ที่ลิงก์ราว 24 ชั่วโมงหลังอัปเดตครั้งสุดท้าย";
+"share.web.uploads_transcript" = "คำบรรยาย คำแปล และบทถอดเสียงทั้งหมด รวมถึงชื่อที่คุณตั้งให้ผู้พูด จะผ่านเซิร์ฟเวอร์ของ ZuTalk เป็นข้อความธรรมดา ใครมีลิงก์ก็อ่านได้ และจะอยู่ที่ลิงก์ราว 24 ชั่วโมงหลังอัปเดตครั้งสุดท้าย";
+"share.stop.note" = "หยุดส่งเนื้อหาใหม่ ผู้ชมจะไม่เห็นคำบรรยายอีก";
+"share.stop.note_kept" = "หยุดส่งเนื้อหาใหม่ สำเนาที่อยู่ใน Mac ของพวกเขาแล้วเรียกคืนไม่ได้";
+"share.name.shown_as_format" = "คนอื่นเห็นคุณเป็น “%@”";
+"share.name.change" = "เปลี่ยน";
+"share.name.placeholder" = "ชื่อของคุณ";
+"share.name.default" = "ชื่อของ Mac เครื่องนี้";
+"share.busy.title" = "กำลังแชร์อยู่แล้ว";
+"share.busy.body_format" = "กำลังแชร์ “%@” แชร์ได้ทีละรายการ หยุดอันนั้นก่อนจึงจะแชร์อันนี้ได้";
+"share.busy.stop_other" = "หยุดการแชร์นั้น";
+"share.viewing_blocks_hosting_format" = "คุณกำลังดูการแชร์ของ %@ ออกก่อนจึงจะแชร์ของตัวเองได้";
+"share.hosting_format" = "กำลังแชร์ “%@”";
+"share.hosting_count_format" = "กำลังแชร์ “%1$@” · %2$lld คน";
+"share.untitled" = "การบันทึกที่ไม่มีชื่อ";
+"share.unnamed" = "ไม่มีชื่อ";
+"share.someone" = "อีกฝ่าย";
+"share.start_failed" = "เริ่มแชร์ไม่สำเร็จ";
+"share.join.while_hosting" = "หยุดการแชร์ของตัวเองก่อนเข้าร่วมของคนอื่น";
+"share.leave_to_record.title_format" = "ออกจากการแชร์ของ %@ เพื่อบันทึกไหม";
+"share.leave_to_record.body" = "ดูการแชร์ของคนอื่นและบันทึกพร้อมกันไม่ได้";
+"share.leave_to_record.confirm" = "ออกและบันทึก";
+"share.switch.title_format" = "ออกจากการแชร์ของ %@ แล้วเข้าร่วมอันนี้ไหม";
+"share.switch.confirm" = "ออกและเข้าร่วม";
+"share.watch.live_format" = "กำลังดูไลฟ์ของ %@";
+"share.watch.recording_format" = "“%2$@” ที่ %1$@ แชร์";
+"share.watch.ended_format" = "การแชร์ของ %@ จบแล้ว";
+"share.watch.removed_format" = "%@ นำคุณออกจากการแชร์";
+"share.watch.leave" = "ออก";
+"share.watch.close" = "ปิด";
+"share.watch.subtitle_window" = "คำบรรยาย";
+
+"share.keep.confirm_title" = "อนุญาตให้ทุกคนที่กำลังดูเก็บบทถอดเสียงไหม";
+"share.keep.confirm_button" = "อนุญาต";
+
+"received.nearby.searching" = "กำลังค้นหาในเครือข่ายนี้…";
+"received.nearby.discovery_off" = "ปิดการค้นหาใกล้เคียงไว้ใน การตั้งค่า › การแชร์ ยังเข้าร่วมด้วยรหัสได้";
+
+"received.watch.ended_kept_note" = "การแชร์จบแล้ว สำเนายังอยู่ด้านล่าง และคุณแก้ไขได้ตามต้องการ";

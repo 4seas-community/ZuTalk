@@ -1,10 +1,11 @@
 //! 分享 UX 的端到端叙事:界面上每一块屏幕读到的东西,在这里逐站核实。
 //!
 //! 两个真实 core、真实端点、真实分享码,按用户实际经历的顺序走完一整场:
-//! 开始共享 → 加入 → 名册收敛(带链路诊断)→ 主持人物化文档 → 观看端
-//! 收到副本 → 协同订正收敛回主持人 → 录音条指示器/静音 → 主持人停止 →
-//! 观看端看到「已结束」→ 副本留存 → 删除。再加一场只读房间,证明
-//! HostOnly 下观看端的订正到不了主持人。
+//! 共享一段录音 → 加入 → 名册收敛(带链路诊断)→ 主持人物化文档 → 观看端
+//! 收到副本 → 协同订正收敛回主持人 → 主持人停止 → 观看端看到「已结束」→
+//! 副本留存(记得是谁的哪一场)→ 删除。再加一场只读房间,证明 HostOnly 下
+//! 观看端的订正到不了主持人;一场直播,证明默认什么都不留、允许后才留;
+//! 以及被移出的人知道自己被移出了。
 //!
 //! 这不是单元测试的重复:单元测试各锁一站,这里锁的是**站与站之间的接缝**。
 
@@ -38,12 +39,11 @@ fn a_full_share_session_from_start_to_deletion() {
     host.set_share_display_name("主持人".into()).unwrap();
     viewer.set_share_display_name("观看者".into()).unwrap();
 
-    // ── 第一站:主持人按「单条录音」开始共享(对方保留一份的模式)。
+    // ── 第一站:主持人共享一段录好的录音,对方可以订正。
     let session = "sess-e2e";
     let code = host
-        .start_sharing(None, Some(session.into()), false)
+        .start_recording_share(session.into(), false)
         .expect("开始共享");
-    host.enable_document_sync().expect("武装文档协同");
 
     // 分享码可以从核心再取一次 —— 界面重建后复制按钮仍然有效。
     assert_eq!(host.current_share_code().as_deref(), Some(code.as_str()));
@@ -81,23 +81,14 @@ fn a_full_share_session_from_start_to_deletion() {
         "主持人应当看得到观看者的链路(直连/中继)"
     );
 
-    // ── 第四站:录音条指示器的判定面。这场共享只覆盖 sess-e2e。
-    use vt_ffi::FfiSessionBroadcastStatus as B;
-    assert_eq!(
-        host.session_broadcast_status("nb-any".into(), session.into()),
-        B::Broadcasting
+    // ── 第四站:观看端知道这是一段录好的录音,而且会留一份。
+    assert!(
+        wait_until(10, || {
+            let state = viewer.share_state();
+            state.host_name == "主持人" && !state.is_live && state.keeps_copies
+        }),
+        "观看端应当从主持人那里知道:谁的、录好的、会留一份"
     );
-    assert_eq!(
-        host.session_broadcast_status("nb-any".into(), "other-session".into()),
-        B::NotShared,
-        "别的录音不在范围内,指示器不得亮"
-    );
-    host.set_session_broadcast_muted(session.into(), true);
-    assert_eq!(
-        host.session_broadcast_status("nb-any".into(), session.into()),
-        B::Muted
-    );
-    host.set_session_broadcast_muted(session.into(), false);
 
     // ── 第五站:主持人物化共享文档(界面动词:插批注),推给房间。
     host.shared_session_insert_annotation(session.into(), 0, "note-host".into(), "会前备注".into())
@@ -144,13 +135,12 @@ fn a_full_share_session_from_start_to_deletion() {
 
     // ── 第八站:观看端离开。副本留下,随后可删,删了不再出现。
     viewer.stop_sharing().unwrap();
-    assert!(
-        viewer
-            .list_shared_sessions()
-            .iter()
-            .any(|info| info.session_id == session),
-        "散场后副本仍在 —— 这正是「对方保留一份」的承诺"
-    );
+    let kept = viewer.list_shared_sessions();
+    let kept = kept
+        .iter()
+        .find(|info| info.session_id == session)
+        .expect("散场后副本仍在 —— 这正是「对方保留一份」的承诺");
+    assert_eq!(kept.host_name, "主持人", "散场后也说得出是谁共享的");
     viewer.delete_shared_session(session.into()).unwrap();
     assert!(
         !viewer
@@ -174,10 +164,7 @@ fn a_read_only_room_refuses_viewer_corrections_at_the_host() {
     let viewer = core(&viewer_dir);
 
     let session = "sess-readonly";
-    let code = host
-        .start_sharing(None, Some(session.into()), true)
-        .unwrap();
-    host.enable_document_sync().unwrap();
+    let code = host.start_recording_share(session.into(), true).unwrap();
     viewer.join_share(code).unwrap();
 
     let state = viewer.share_state();
@@ -214,4 +201,95 @@ fn a_read_only_room_refuses_viewer_corrections_at_the_host() {
 
     host.stop_sharing().unwrap();
     viewer.stop_sharing().unwrap();
+}
+
+/// 直播默认什么都不留:观看端边看边听,离开就没了。主持人允许之后才留,
+/// 而且留下的那份记得是谁的哪一场。
+#[test]
+fn a_live_share_leaves_nothing_behind_unless_the_host_allows_it() {
+    let host_dir = tempfile::tempdir().unwrap();
+    let viewer_dir = tempfile::tempdir().unwrap();
+    let host = core(&host_dir);
+    let viewer = core(&viewer_dir);
+    host.set_share_display_name("主持人".into()).unwrap();
+
+    let session = "sess-live-keep";
+    let code = host.start_live_share(session.into(), false).unwrap();
+    viewer.join_share(code).unwrap();
+    assert!(wait_until(10, || host.room_members().len() >= 2));
+
+    // 主持人写了东西 —— 不允许留存时它哪儿也不去。
+    host.shared_session_insert_annotation(session.into(), 0, "n1".into(), "现场笔记".into())
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(1_500));
+    let state = viewer.share_state();
+    assert!(state.is_live && !state.keeps_copies);
+    assert!(
+        viewer.list_shared_sessions().is_empty(),
+        "直播没允许留存,观看端的 ZuTalk 不该留下任何文字稿"
+    );
+
+    // 主持人打开「允许观看的人保存文字稿」:观看端重新去要,落下一份。
+    host.allow_viewers_to_keep_copies().unwrap();
+    host.shared_session_insert_annotation(session.into(), 1, "n2".into(), "允许之后".into())
+        .unwrap();
+    // 说明随下一帧到达;直播里帧是一直在来的。
+    let preview = viewer_preview(session);
+    assert!(
+        wait_until(15, || {
+            host.broadcast_live_preview_for_test(&preview);
+            viewer.share_state().keeps_copies
+                && viewer
+                    .list_shared_sessions()
+                    .iter()
+                    .any(|info| info.session_id == session && info.block_count >= 1)
+        }),
+        "主持人允许之后,观看端应当收到并留下文字稿"
+    );
+    let kept = viewer.list_shared_sessions();
+    assert_eq!(kept[0].host_name, "主持人");
+
+    host.stop_sharing().unwrap();
+    viewer.stop_sharing().unwrap();
+}
+
+/// 被移出的人知道自己被移出了,而且不再收到字幕。
+#[test]
+fn a_removed_viewer_is_told_so() {
+    let host_dir = tempfile::tempdir().unwrap();
+    let viewer_dir = tempfile::tempdir().unwrap();
+    let host = core(&host_dir);
+    let viewer = core(&viewer_dir);
+
+    let code = host.start_live_share("sess-kick".into(), false).unwrap();
+    viewer.join_share(code).unwrap();
+    let viewer_id = viewer.share_identity().unwrap().endpoint_id;
+    assert!(wait_until(10, || host.room_members().iter().any(
+        |member| member.endpoint_id == viewer_id && member.link.is_some()
+    )));
+
+    assert!(host.remove_share_member(viewer_id.clone()).unwrap());
+    assert!(
+        wait_until(10, || viewer.share_state().removed_by_host),
+        "观看端应当知道自己被移出了,而不是对着不动的字幕干等"
+    );
+    assert!(
+        host.room_members()
+            .iter()
+            .all(|member| member.endpoint_id != viewer_id),
+        "移出之后名册里不该再有他"
+    );
+
+    host.stop_sharing().unwrap();
+    viewer.stop_sharing().unwrap();
+}
+
+fn viewer_preview(session: &str) -> vt_ffi::notebook_capture_api::FfiNotebookCaptureLivePreview {
+    vt_ffi::notebook_capture_api::FfiNotebookCaptureLivePreview {
+        session_id: session.into(),
+        preview_revision: 1,
+        utterances: Vec::new(),
+        translation_cues: Vec::new(),
+        lane_health: Vec::new(),
+    }
 }

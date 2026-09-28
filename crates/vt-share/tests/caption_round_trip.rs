@@ -5,13 +5,15 @@
 //! 帧、丢帧后接收端会不会卡住、乱序旧帧会不会把画面倒回去。
 //!
 //! 全程无中继、无发现服务:直接用对方的 `EndpointAddr` 配对,与局域网断网场景一致。
+//!
+//! 字幕通道只服务房间名册里的人,所以每条往返测试都先让两端拿同一份码进房。
 
 use std::time::Duration;
 
-use vt_share::net::{receive_captions, CaptionInbox};
+use vt_share::net::{receive_captions, CaptionInbox, RoomHandle};
 use vt_share::{
-    CaptionFrame, CaptionLine, CaptionReceiver, FrameOutcome, ScopeId, ShareEndpoint,
-    ShareEndpointConfig, ShareIdentity,
+    CaptionFrame, CaptionLine, CaptionReceiver, FrameOutcome, RoomSecret, ScopeId, ShareCode,
+    ShareEndpoint, ShareEndpointConfig, ShareIdentity, WritePolicy,
 };
 
 fn scope() -> ScopeId {
@@ -41,6 +43,37 @@ async fn endpoint() -> ShareEndpoint {
         .expect("离线绑定应当成功")
 }
 
+/// 主持人开房,观看端拿码进房。房间句柄要活到测试结束 —— 丢掉它,
+/// 字幕通道就不再认这个名册。
+async fn paired_room(
+    host: &ShareEndpoint,
+    viewer: &ShareEndpoint,
+) -> (RoomHandle, RoomHandle, ShareCode) {
+    let code = ShareCode::new(
+        host.endpoint_addr().await,
+        scope(),
+        RoomSecret::generate(),
+        WritePolicy::HostOnly,
+    );
+    let host_room = host.join_room(&code, vec![]).await.unwrap();
+    let viewer_room = viewer
+        .join_room(&code, vec![host.endpoint_id()])
+        .await
+        .unwrap();
+    (host_room, viewer_room, code)
+}
+
+/// 等到观看端过了名册这道门、真的挂上了字幕通道。之前广播的帧没有人收。
+async fn wait_for_watcher(host: &ShareEndpoint, viewer: iroh::EndpointId) -> bool {
+    for _ in 0..200 {
+        if host.caption_watchers().iter().any(|(id, _)| *id == viewer) {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    false
+}
+
 /// 轮询等待 inbox 收满 `want` 帧,避免依赖固定 sleep 造成的偶发失败。
 async fn collect(inbox: &CaptionInbox, want: usize) -> Vec<CaptionFrame> {
     let mut got = Vec::new();
@@ -58,17 +91,19 @@ async fn collect(inbox: &CaptionInbox, want: usize) -> Vec<CaptionFrame> {
 async fn caption_frame_crosses_two_real_endpoints() {
     let host = endpoint().await;
     let viewer = endpoint().await;
-
-    let host_addr = host.endpoint_addr().await;
+    let viewer_id = viewer.endpoint_id();
+    let (_host_room, _viewer_room, code) = paired_room(&host, &viewer).await;
     let inbox = CaptionInbox::default();
 
     let listening = {
         let inbox = inbox.clone();
-        tokio::spawn(async move { receive_captions(&viewer, host_addr, scope(), inbox).await })
+        tokio::spawn(async move { receive_captions(&viewer, code, inbox).await })
     };
 
-    // 给接收端一点时间把连接建起来,再开始广播。
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        wait_for_watcher(&host, viewer_id).await,
+        "观看端应当进得了字幕通道"
+    );
     host.broadcast_caption(frame(1, vec![line("こんにちは")]));
 
     let got = collect(&inbox, 1).await;
@@ -98,14 +133,18 @@ async fn caption_frame_crosses_two_real_endpoints() {
 async fn frame_far_larger_than_a_datagram_survives() {
     let host = endpoint().await;
     let viewer = endpoint().await;
-    let host_addr = host.endpoint_addr().await;
+    let viewer_id = viewer.endpoint_id();
+    let (_host_room, _viewer_room, code) = paired_room(&host, &viewer).await;
     let inbox = CaptionInbox::default();
 
     let listening = {
         let inbox = inbox.clone();
-        tokio::spawn(async move { receive_captions(&viewer, host_addr, scope(), inbox).await })
+        tokio::spawn(async move { receive_captions(&viewer, code, inbox).await })
     };
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        wait_for_watcher(&host, viewer_id).await,
+        "观看端应当进得了字幕通道"
+    );
 
     // 八行 × 每行约 2 KB 的日文正文,序列化后远超一个 QUIC 包。
     let bulky: Vec<CaptionLine> = (0..8)
@@ -137,14 +176,18 @@ async fn frame_far_larger_than_a_datagram_survives() {
 async fn projection_converges_on_the_newest_frame() {
     let host = endpoint().await;
     let viewer = endpoint().await;
-    let host_addr = host.endpoint_addr().await;
+    let viewer_id = viewer.endpoint_id();
+    let (_host_room, _viewer_room, code) = paired_room(&host, &viewer).await;
     let inbox = CaptionInbox::default();
 
     let listening = {
         let inbox = inbox.clone();
-        tokio::spawn(async move { receive_captions(&viewer, host_addr, scope(), inbox).await })
+        tokio::spawn(async move { receive_captions(&viewer, code, inbox).await })
     };
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        wait_for_watcher(&host, viewer_id).await,
+        "观看端应当进得了字幕通道"
+    );
 
     for revision in 1..=12u64 {
         host.broadcast_caption(frame(revision, vec![line(&format!("行 {revision}"))]));
@@ -172,14 +215,18 @@ async fn projection_converges_on_the_newest_frame() {
 async fn frames_from_another_scope_are_filtered_in_transit() {
     let host = endpoint().await;
     let viewer = endpoint().await;
-    let host_addr = host.endpoint_addr().await;
+    let viewer_id = viewer.endpoint_id();
+    let (_host_room, _viewer_room, code) = paired_room(&host, &viewer).await;
     let inbox = CaptionInbox::default();
 
     let listening = {
         let inbox = inbox.clone();
-        tokio::spawn(async move { receive_captions(&viewer, host_addr, scope(), inbox).await })
+        tokio::spawn(async move { receive_captions(&viewer, code, inbox).await })
     };
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        wait_for_watcher(&host, viewer_id).await,
+        "观看端应当进得了字幕通道"
+    );
 
     let mut foreign = frame(1, vec![line("别人的会议")]);
     foreign.scope = ScopeId::Session {
@@ -194,6 +241,120 @@ async fn frames_from_another_scope_are_filtered_in_transit() {
         "跨范围的帧必须在传输层就被丢掉"
     );
 
+    listening.abort();
+    host.shutdown().await;
+}
+
+/// 没拿到码的人直接拨主持人的字幕通道,什么也收不到。
+///
+/// 公钥是公开的 —— 局域网 mDNS 一直在广播它。以前字幕通道谁拨都给,
+/// 分享码与「请求加入 → 批准」形同虚设。
+#[tokio::test]
+async fn a_stranger_without_the_code_receives_nothing() {
+    let host = endpoint().await;
+    let viewer = endpoint().await;
+    let stranger = endpoint().await;
+    let (_host_room, _viewer_room, code) = paired_room(&host, &viewer).await;
+
+    // 知道主持人在哪、在共享什么,只是没有那份码。
+    let guessed = ShareCode::new(
+        code.host.clone(),
+        code.scope.clone(),
+        RoomSecret::generate(),
+        code.policy,
+    );
+    let inbox = CaptionInbox::default();
+    let listening = {
+        let inbox = inbox.clone();
+        tokio::spawn(async move { receive_captions(&stranger, guessed, inbox).await })
+    };
+
+    for revision in 1..=20u64 {
+        host.broadcast_caption(frame(revision, vec![line("内部会议")]));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        inbox.drain().await.is_empty(),
+        "不在名册里的人不该收到任何一帧"
+    );
+    assert!(host.caption_watchers().is_empty(), "陌生人不该挂上字幕通道");
+
+    listening.abort();
+    host.shutdown().await;
+}
+
+/// 主持人移出一位观看者:当场断开,之后再连也进不来,观看端知道自己被移出了。
+#[tokio::test]
+async fn a_removed_viewer_is_cut_off_and_stays_out() {
+    let host = endpoint().await;
+    let viewer = endpoint().await;
+    let viewer_id = viewer.endpoint_id();
+    let (host_room, _viewer_room, code) = paired_room(&host, &viewer).await;
+    let inbox = CaptionInbox::default();
+    let listening = {
+        let inbox = inbox.clone();
+        tokio::spawn(async move { receive_captions(&viewer, code, inbox).await })
+    };
+    assert!(wait_for_watcher(&host, viewer_id).await);
+    host.broadcast_caption(frame(1, vec![line("移出之前")]));
+    assert_eq!(collect(&inbox, 1).await.len(), 1);
+
+    assert!(host.remove_member(&host_room, viewer_id).await);
+    assert!(!host_room.roster().await.is_member(viewer_id));
+
+    let mut noticed = false;
+    for _ in 0..100 {
+        if inbox.removed() {
+            noticed = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(noticed, "观看端应当知道自己被移出了,而不是一直重连");
+
+    for revision in 2..=10u64 {
+        host.broadcast_caption(frame(revision, vec![line("移出之后")]));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        inbox.drain().await.iter().all(|f| f.preview_revision < 2),
+        "移出之后的帧不该再到达"
+    );
+
+    listening.abort();
+    host.shutdown().await;
+}
+
+/// 说话的间隙加入的人,马上看到最近一帧 —— 不必等下一句话才知道自己连上了。
+#[tokio::test]
+async fn a_late_viewer_sees_the_latest_frame_at_once() {
+    let host = endpoint().await;
+    let viewer = endpoint().await;
+    let (_host_room, _viewer_room, code) = paired_room(&host, &viewer).await;
+
+    let mut titled = frame(4, vec![line("さっきの話")]);
+    titled.share = Some(vt_share::ShareHeader {
+        title: "周会".into(),
+        host_name: "楼下的 Mac".into(),
+        live: true,
+        keeps_copies: false,
+    });
+    host.broadcast_caption(titled);
+
+    let inbox = CaptionInbox::default();
+    let listening = {
+        let inbox = inbox.clone();
+        tokio::spawn(async move { receive_captions(&viewer, code, inbox).await })
+    };
+    let got = collect(&inbox, 1).await;
+    assert_eq!(got.len(), 1, "晚进来的人应当立即收到最近一帧");
+    assert_eq!(got[0].preview_revision, 4);
+    assert_eq!(
+        got[0].share.as_ref().map(|s| s.title.as_str()),
+        Some("周会")
+    );
+
+    host.end_broadcast();
     listening.abort();
     host.shutdown().await;
 }

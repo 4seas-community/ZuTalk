@@ -32,7 +32,7 @@ mod wire;
 
 pub use caption::{
     CaptionCue, CaptionFrame, CaptionLaneHealth, CaptionLine, CaptionReceiver, CaptionUtterance,
-    FrameOutcome,
+    FrameOutcome, ShareHeader,
 };
 pub use docsync::{
     declare_versions, handle_incoming_update, respond_to_have, seal_update, DocSyncMessage,
@@ -40,9 +40,10 @@ pub use docsync::{
 };
 pub use envelope::{EnvelopeError, PayloadKind, ShareEnvelope, UnsignedEnvelope};
 pub use identity::ShareIdentity;
+pub use iroh::EndpointId;
 pub use nearby::{
-    sanitize_display_name, DenyReason, NearbyMessage, NearbyPeer, PendingJoinRequest,
-    MAX_DISPLAY_NAME_BYTES, NEARBY_ALPN,
+    sanitize_display_name, DenyReason, NearbyAnnouncement, NearbyMessage, NearbyPeer,
+    PendingJoinRequest, MAX_DISPLAY_NAME_BYTES, NEARBY_ALPN,
 };
 pub use net::{
     parse_relay_urls, DocSyncContext, JoinRequestDesk, ShareEndpoint, ShareEndpointConfig,

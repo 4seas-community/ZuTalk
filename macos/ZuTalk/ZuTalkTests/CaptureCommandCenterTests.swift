@@ -52,6 +52,28 @@ final class CaptureCommandCenterTests: XCTestCase {
         XCTAssertFalse(center.canStop)
     }
 
+    /// Watching someone else's share and recording can't run together. Every
+    /// way to start a recording asks first, and saying no starts nothing.
+    func testDecliningToLeaveASharedLiveStartsNothing() async {
+        var asked = 0
+        let center = CaptureCommandCenter(
+            defaults: defaults,
+            coreProvider: { nil },
+            inviteReady: { false },
+            leaveWatchingToRecord: {
+                asked += 1
+                return false
+            }
+        )
+        let started = await center.startNow(
+            notebookId: "nb-watching",
+            profileEditor: NotebookCaptureProfileEditorModel(notebookId: "nb-watching")
+        )
+        XCTAssertFalse(started)
+        XCTAssertEqual(asked, 1)
+        XCTAssertFalse(center.isStarting)
+    }
+
     func testClockReadsMinutesAndHours() {
         XCTAssertEqual(CaptureCommandCenter.clock(0), "00:00")
         XCTAssertEqual(CaptureCommandCenter.clock(754), "12:34")

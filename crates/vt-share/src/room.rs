@@ -11,6 +11,7 @@ use sha2::{Digest, Sha256};
 
 /// topic 派生的域分隔串。改动即协议破坏。
 const TOPIC_DOMAIN: &[u8] = b"zutalk/room/v1";
+const ADMISSION_DOMAIN: &[u8] = b"zutalk/admission/v1";
 
 /// 共享范围。
 ///
@@ -83,6 +84,20 @@ impl RoomSecret {
         hasher.update(self.0);
         let digest: [u8; 32] = hasher.finalize().into();
         iroh_gossip::proto::TopicId::from_bytes(digest)
+    }
+
+    /// 某台设备进这个房间的凭证:证明它手里有这份码。
+    ///
+    /// 观看端连上字幕通道时先交它,主持人当场核对 —— 不必等 gossip 上的
+    /// Hello(那条消息有时要十几秒才到,有时根本不到)。绑定设备公钥,
+    /// 截获了也冒充不了别人;secret 照例放在最后。
+    pub fn admission_ticket(&self, scope: &ScopeId, member: &iroh::EndpointId) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(ADMISSION_DOMAIN);
+        hasher.update(scope.derivation_bytes());
+        hasher.update(member.as_bytes());
+        hasher.update(self.0);
+        hasher.finalize().into()
     }
 }
 

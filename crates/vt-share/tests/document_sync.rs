@@ -7,9 +7,10 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use vt_share::net::RoomHandle;
 use vt_share::{
-    AllowAllBoundaries, DocSyncContext, DocumentSync, RoomRoster, ScopeId, ShareEndpoint,
-    ShareEndpointConfig, ShareIdentity, WritePolicy,
+    AllowAllBoundaries, DocSyncContext, DocumentSync, RoomRoster, RoomSecret, ScopeId, ShareCode,
+    ShareEndpoint, ShareEndpointConfig, ShareIdentity, WritePolicy,
 };
 
 fn scope() -> ScopeId {
@@ -69,28 +70,52 @@ impl DocumentSync for FakeDoc {
     }
 }
 
-async fn endpoint_with_doc(
-    host_id: iroh::EndpointId,
+/// 主持人开房并接上文档同步。名册与房间同源 —— 文档通道只服务名册里的人。
+async fn hosted(
     policy: WritePolicy,
     doc: Arc<FakeDoc>,
-) -> ShareEndpoint {
+) -> (Arc<ShareEndpoint>, RoomHandle, ShareCode) {
+    let host = ShareEndpoint::bind(&ShareIdentity::generate(), ShareEndpointConfig::default())
+        .await
+        .unwrap();
+    let code = ShareCode::new(
+        host.endpoint_addr().await,
+        scope(),
+        RoomSecret::generate(),
+        policy,
+    );
+    let room = host.join_room(&code, vec![]).await.unwrap();
+    host.enable_document_sync(DocSyncContext {
+        scope: scope(),
+        roster: Arc::new(tokio::sync::Mutex::new(room.roster().await)),
+        guard: Arc::new(AllowAllBoundaries),
+        hosting: true,
+        sink: doc,
+    })
+    .await;
+    (Arc::new(host), room, code)
+}
+
+/// 拿码进房、接上文档同步的观看端。
+async fn joined(code: &ShareCode, doc: Arc<FakeDoc>) -> (Arc<ShareEndpoint>, RoomHandle) {
     let endpoint = ShareEndpoint::bind(&ShareIdentity::generate(), ShareEndpointConfig::default())
         .await
         .unwrap();
+    let room = endpoint.join_room(code, vec![code.host.id]).await.unwrap();
     endpoint
         .enable_document_sync(DocSyncContext {
             scope: scope(),
             roster: Arc::new(tokio::sync::Mutex::new(RoomRoster::new(
                 scope(),
-                host_id,
-                policy,
+                code.host.id,
+                code.policy,
             ))),
             guard: Arc::new(AllowAllBoundaries),
             hosting: false,
             sink: doc,
         })
         .await;
-    endpoint
+    (Arc::new(endpoint), room)
 }
 
 async fn wait_for_applied(doc: &FakeDoc, want: usize) -> Vec<Vec<u8>> {
@@ -111,26 +136,9 @@ async fn late_joiner_receives_the_missing_history() {
     *host_doc.history.lock().unwrap() = b"earlier-history".to_vec();
     let joiner_doc = Arc::new(FakeDoc::default());
 
-    // 主持人的身份同时是名册里的 host，所以它签的更新过得了准入。
-    let host = ShareEndpoint::bind(&ShareIdentity::generate(), ShareEndpointConfig::default())
-        .await
-        .unwrap();
-    let host_id = host.endpoint_id();
-    host.enable_document_sync(DocSyncContext {
-        scope: scope(),
-        roster: Arc::new(tokio::sync::Mutex::new(RoomRoster::new(
-            scope(),
-            host_id,
-            WritePolicy::Everyone,
-        ))),
-        guard: Arc::new(AllowAllBoundaries),
-        hosting: true,
-        sink: host_doc.clone(),
-    })
-    .await;
-
-    let joiner = endpoint_with_doc(host_id, WritePolicy::Everyone, joiner_doc.clone()).await;
-    let host_addr = host.endpoint_addr().await;
+    let (host, _host_room, code) = hosted(WritePolicy::Everyone, host_doc).await;
+    let (joiner, _joiner_room) = joined(&code, joiner_doc.clone()).await;
+    let host_addr = code.host.clone();
 
     let syncing = tokio::spawn(async move { joiner.sync_document_with(host_addr).await });
 
@@ -138,7 +146,7 @@ async fn late_joiner_receives_the_missing_history() {
     assert_eq!(applied, vec![b"earlier-history".to_vec()], "应当补齐历史");
 
     syncing.abort();
-    host.shutdown().await;
+    drop(host);
 }
 
 /// 主持人之后产生的更新，实时推到已连接的对端。
@@ -147,28 +155,13 @@ async fn live_updates_reach_a_connected_peer() {
     let host_doc = Arc::new(FakeDoc::default());
     let peer_doc = Arc::new(FakeDoc::default());
 
-    let host = ShareEndpoint::bind(&ShareIdentity::generate(), ShareEndpointConfig::default())
-        .await
-        .unwrap();
-    let host_id = host.endpoint_id();
-    host.enable_document_sync(DocSyncContext {
-        scope: scope(),
-        roster: Arc::new(tokio::sync::Mutex::new(RoomRoster::new(
-            scope(),
-            host_id,
-            WritePolicy::Everyone,
-        ))),
-        guard: Arc::new(AllowAllBoundaries),
-        hosting: true,
-        sink: host_doc,
-    })
-    .await;
-
-    let peer = endpoint_with_doc(host_id, WritePolicy::Everyone, peer_doc.clone()).await;
-    let host_addr = host.endpoint_addr().await;
+    let (host, _host_room, code) = hosted(WritePolicy::Everyone, host_doc).await;
+    let (peer, _peer_room) = joined(&code, peer_doc.clone()).await;
+    let host_addr = code.host.clone();
     let syncing = tokio::spawn(async move { peer.sync_document_with(host_addr).await });
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // 等对端过了名册那道门:在那之前发的实时更新没有连接可走,只能靠对账补。
+    tokio::time::sleep(Duration::from_millis(800)).await;
     host.publish_document_update(DOC.into(), b"live-edit-1".to_vec());
     host.publish_document_update(DOC.into(), b"live-edit-2".to_vec());
 
@@ -179,10 +172,9 @@ async fn live_updates_reach_a_connected_peer() {
     );
 
     syncing.abort();
-    host.shutdown().await;
 }
 
-/// 只读房间里，非主持人推来的更新到不了对方的文档层。
+/// 只读房间里，非主持人推来的更新到不了主持人的文档层。
 ///
 /// 这是「只读」在网络路径上的最终断言 —— 前面几层测的是判定函数，这条测的是
 /// 判定真的挂在了收包路径上。
@@ -191,23 +183,19 @@ async fn read_only_room_drops_updates_from_a_viewer() {
     let host_doc = Arc::new(FakeDoc::default());
     let viewer_doc = Arc::new(FakeDoc::default());
 
-    // 主持人是另一把不参与本次连接的钥匙，所以观看者签的更新一定不是主持人签的。
-    let absent_host = iroh::SecretKey::generate().public();
-
-    let host = endpoint_with_doc(absent_host, WritePolicy::HostOnly, host_doc.clone()).await;
-    // sync_document_with 会一直跑,所以 endpoint 要留在外面共享,不能 move 进任务。
-    let viewer = Arc::new(endpoint_with_doc(absent_host, WritePolicy::HostOnly, viewer_doc).await);
-    let host_addr = host.endpoint_addr().await;
+    let (_host, _host_room, code) = hosted(WritePolicy::HostOnly, host_doc.clone()).await;
+    let (viewer, _viewer_room) = joined(&code, viewer_doc).await;
+    let host_addr = code.host.clone();
 
     let syncing = {
         let viewer = viewer.clone();
         tokio::spawn(async move { viewer.sync_document_with(host_addr).await })
     };
 
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    tokio::time::sleep(Duration::from_millis(800)).await;
     // 观看者试图推一笔更新给主持人。
     viewer.publish_document_update(DOC.into(), b"viewer-edit".to_vec());
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
     syncing.abort();
 
     assert!(
@@ -215,6 +203,42 @@ async fn read_only_room_drops_updates_from_a_viewer() {
         "只读房间里观看者的更新不该抵达主持人的文档层，实际 {:?}",
         host_doc.applied()
     );
+}
 
-    host.shutdown().await;
+/// 没拿到码的人拨文档通道,拿不到文字稿。
+///
+/// 文档通道和字幕通道一样只看连接的公钥;不按名册放行,任何知道主持人
+/// 公钥的人都能把整份文字稿拉走。
+#[tokio::test]
+async fn a_stranger_cannot_pull_the_transcript() {
+    let host_doc = Arc::new(FakeDoc::default());
+    *host_doc.history.lock().unwrap() = b"the-whole-transcript".to_vec();
+    let (_host, _host_room, code) = hosted(WritePolicy::HostOnly, host_doc).await;
+
+    let stranger_doc = Arc::new(FakeDoc::default());
+    let stranger = ShareEndpoint::bind(&ShareIdentity::generate(), ShareEndpointConfig::default())
+        .await
+        .unwrap();
+    stranger
+        .enable_document_sync(DocSyncContext {
+            scope: scope(),
+            roster: Arc::new(tokio::sync::Mutex::new(RoomRoster::new(
+                scope(),
+                code.host.id,
+                code.policy,
+            ))),
+            guard: Arc::new(AllowAllBoundaries),
+            hosting: false,
+            sink: stranger_doc.clone(),
+        })
+        .await;
+    let host_addr = code.host.clone();
+    let syncing = tokio::spawn(async move { stranger.sync_document_with(host_addr).await });
+
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    syncing.abort();
+    assert!(
+        stranger_doc.applied().is_empty(),
+        "不在名册里的人不该拿到任何历史"
+    );
 }

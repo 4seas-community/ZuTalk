@@ -1443,6 +1443,16 @@ private struct HomeSessionRow: View {
                 } label: {
                     Label(String(localized: "library.rename.recording"), systemImage: "pencil")
                 }
+                // 录好的才共享;正在录的从录音条直播。
+                Button {
+                    ShareActivityStore.shared.presentRecordingShare(
+                        sessionId: session.id,
+                        title: titleForDisplay
+                    )
+                } label: {
+                    Label(String(localized: "share.recording.menu"), systemImage: "person.2")
+                }
+                .disabled(session.isRecording)
                 Divider()
                 Button(role: .destructive) {
                     isConfirmingDelete = true

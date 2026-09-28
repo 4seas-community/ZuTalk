@@ -20,14 +20,9 @@ struct MenuBarRecordingView: View {
                 projectionState: info.projectionState,
                 haltedTranslationLanguages: capture.haltedTranslationLanguages
             )
-            // 共享指示器(§4.1):App 缩在菜单栏里录音时,这里是用户唯一
-            // 看得见的表面 —— 字幕在不在离开这台机器,必须在这里也说。
-            if let notebookId = capture.notebookId {
-                ShareBroadcastIndicator(
-                    notebookId: notebookId,
-                    sessionId: capture.sessionId
-                )
-            }
+            // App 缩在菜单栏里录音时,这里是唯一看得见的表面 ——
+            // 这场录音在不在直播给别人看,必须在这里也说。
+            LiveShareStatusLabel(sessionId: capture.sessionId)
             MenuBarRecordingControls()
             if !recentLines.isEmpty {
                 transcriptSection

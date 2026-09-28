@@ -158,11 +158,6 @@
 "settings.language.restart_hint" = "変更をすべて反映するには ZuTalk を再起動してください。";
 "settings.appearance.title" = "外観";
 
-
-
-
-
-
 /* Permissions */
 "permission.microphone.name" = "マイク";
 "permission.microphone.usage" = "音声を録音して Soniox で文字起こしします";
@@ -183,16 +178,12 @@
 "export.subtitles_omitted_format" = "時間情報のない行: %lld。.srt/.vtt には含まれません。文字起こしには残っています。";
 "common.export.action" = "書き出し";
 
-
-
 /* Recording settings */
-
 
 "editor.export.title" = "録音を書き出し";
 "editor.export.hint" = "この録音を ZIP として書き出す";
 "editor.export.no_session" = "書き出せる録音がありません";
 "doc.scratchpad" = "個人メモ";
-
 
 /* Onboarding brand line */
 "onboarding.brand.subtitle" = "多言語コミュニケーション · LIVE MEETINGS";
@@ -315,7 +306,6 @@
 "settings.shortcuts.font_bigger" = "文字サイズを拡大";
 "settings.shortcuts.font_smaller" = "文字サイズを縮小";
 "settings.shortcuts.open_settings" = "設定を開く";
-
 
 /* Diagnostics */
 "diagnostics.operational.provider_keys" = "サービス認証情報";
@@ -502,8 +492,6 @@
 "manual_note.timeline.open" = "メモを開く";
 "home.create.title_too_long.detail_format" = "%lld 文字以内で入力してください。";
 
-
-
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "文字起こしはまだありません";
 "editor.empty.no_transcript_desc" = "録音終了後に文字起こしが利用可能になります。";
@@ -601,7 +589,6 @@
 /* DesignSystem previews */
 "preview.crosshair.blueprint" = "ブループリントコンテンツ";
 "preview.crosshair.hardware" = "ハードウェアコンテンツ";
-
 
 /* Document editor */
 "editor.toolbar.show_sources" = "ソースを表示";
@@ -925,75 +912,28 @@
 "knowledge.import_json.failed" = "知識ベースを読み込めませんでした";
 
 /* 分享:点对点字幕与文档协同 */
-"sidebar.share" = "共有";
-"share.title" = "共有";
-"share.identity" = "共有キー";
-"share.copy_code" = "共有コードをコピー";
-"share.join" = "コードで参加";
-"share.mode.host" = "この Mac から共有";
-"share.mode.join" = "ほかの人の共有に参加";
-"share.stop" = "共有を停止";
-"share.stop_note" = "以降の送信を停止します。相手が既に受け取った内容は削除できません。";
-"share.leave" = "ルームを退出";
-"share.leave_note" = "退出すると受信は止まります。すでに受け取った文字起こしはこの Mac に残ります。";
-"share.audio_never" = "音声が共有されることはありません。";
-"share.capture.live" = "字幕を共有中";
-"share.capture.live_hint" = "ルームの参加者にこの録音の字幕がリアルタイムで表示されています。音声は決して共有されません。";
-"share.capture.mute" = "この録音は共有しない";
-"share.capture.mute_hint" = "この録音の字幕だけを止めます。共有自体は続きます。";
-"share.capture.muted" = "この録音は共有していません";
-"share.capture.muted_hint" = "共有は有効ですが、この録音の字幕は送信されていません。";
-"share.capture.unmute" = "再開";
-"share.empty" = "まだ何も共有していません。";
-"share.role.host" = "ホストのみ編集可、他は閲覧のみ";
-"share.role.everyone" = "全員が編集可";
-"share.direct" = "直接接続";
-"share.relayed" = "リレー経由";
-"share.start" = "共有を開始";
-"share.cancel" = "キャンセル";
-"share.needs_notebook" = "先にテーマを開いてください。共有の範囲はテーマ単位です。";
-"share.start.confirm.title" = "このテーマの共有を開始しますか？";
-"share.start.confirm.body" = "共有が開いている間、このテーマで開始した録音の字幕はルームの全員にリアルタイムで送られます。音声が共有されることはありません。停止しても以降の送信が止まるだけで、相手が既に受け取った内容は削除できません。";
-"share.start.confirm.session_title" = "この録音を共有しますか？";
-"share.start.confirm.session_body" = "入室を許可した相手はこの録音の文字起こしのコピーを保持し、ルームの設定が許せば一緒に修正できます。音声が共有されることはありません。停止しても以降の送信が止まるだけで、相手が既に受け取った内容は削除できません。";
-"share.start.confirm.remember" = "このテーマでは次回から確認しません。";
+"share.audio_never" = "音声は聞こえません。音声はこのMacから出ません。";
 
 /* 设置:分享(点对点)传输 */
 "settings.section.p2p_name" = "共有";
 "settings.p2p.title" = "共有";
 "settings.p2p.subtitle" = "この Mac が共有相手に到達する方法。";
-"settings.p2p.identity" = "この Mac の共有キー";
+"settings.p2p.identity" = "このMacのID";
 "settings.p2p.copy_identity" = "コピー";
-"settings.p2p.identity_note" = "相手はこのキーでこの Mac を識別します。変更すると連絡先が保存した控えはすべて無効になります。";
+"settings.p2p.identity_note" = "ほかの人はこれでこのMacを見分けます。名前は誰でも自由に付けられますが、これは偽装できません。";
 "settings.p2p.relay" = "リレーサーバー";
 "settings.p2p.relay_note" = "1 行に 1 つ。空欄なら直接接続のみ——同じ Wi-Fi 上ではそれで十分で、インターネットがなくても動きます。";
 "settings.p2p.relay_privacy" = "リレーは転送するだけです。通信は端から端まで暗号化されており、中身は読めません。";
-"settings.p2p.local_discovery" = "同じネットワーク上の相手を見つける";
-"settings.p2p.local_discovery_note" = "コードをやり取りせずに、ここにいる他の Mac を見つけて参加を依頼できます。ネットワーク上で見えるのは鍵だけです。macOS が初回にローカルネットワークの許可を求めます。拒否しても共有コードは使えます。";
+"settings.p2p.local_discovery" = "同じネットワークの共有を探す";
+"settings.p2p.local_discovery_note" = "同じネットワークでホストが公開を選んだ共有を表示し、あなたが公開を選んだときは他の人もあなたの共有を見つけられます。それ以外、このMacについては何も見えません。macOSは初回にローカルネットワークの許可を求めます。拒否しても参加コードは使えます。";
 "settings.p2p.save" = "保存";
 "settings.p2p.restore_default" = "デフォルトに戻す";
 "settings.p2p.saved" = "保存しました";
 
 /* 分享:状态与提示 */
-"share.pick_notebook" = "共有するテーマ";
-"share.your_code" = "共有コード";
-"share.code_note" = "参加する人に送ってください。途中で改行や大文字小文字が変わっても問題ありません。";
-"share.copied" = "コピーしました";
-"share.no_code_yet" = "まだコードがありません。先に共有を開始してください。";
 "share.core_unavailable" = "共有を起動中です。少し待ってからもう一度お試しください。";
-"share.join_failed" = "この共有コードを読み取れません。もう一度送ってもらってください——メッセージからのコピーは文字が欠けることがあります。";
-"share.status.idle" = "未共有";
-"share.status.idle_hint" = "テーマを共有して字幕を送るか、もらったコードで参加します。";
-"share.status.hosting_waiting" = "共有中 — まだ何も送っていません";
-"share.status.hosting_waiting_hint" = "コードで参加できます。字幕は録音を開始してから流れます。";
-"share.status.hosting_live" = "字幕を送信中";
-"share.status.hosting_live_hint" = "参加者はあなたの文字起こしを見ています。";
-"share.status.joined_waiting" = "参加済み — ホスト待ち";
-"share.status.joined_waiting_hint" = "接続できています。ホストが録音を始めると字幕が表示されます。";
-"share.status.receiving" = "字幕を受信中";
-"share.status.receiving_hint" = "ホストの字幕です。この Mac には保存されません。";
+"share.join_failed" = "このコードでは参加できませんでした。もう一度送ってもらってください。メッセージからのコピーで文字が欠けることがあり、共有が終わるとコードも無効になります。";
 "share.status.host_left" = "ホストがこの共有を終了しました";
-"share.status.host_left_hint" = "これ以上は届きません。すでに受け取った内容はこの Mac に残っています。";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "直接接続";
@@ -1002,17 +942,8 @@
 "share.link.relayed_hint" = "直接つながらなかったため、リレーサーバーが字幕を中継しています（エンドツーエンド暗号化は維持）。端末どうしを隔てる Wi-Fi ではよくあることです。";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
-"share.scope.notebook" = "字幕のみ配信：このテーマの録音を相手はリアルタイムで見るだけで、何も残りません。";
-"share.scope.single" = "録音を 1 件共有：相手は文字起こしを保持し、一緒に修正できます。";
-"share.scope.no_sessions" = "このテーマにはまだ録音がありません。";
-"share.received.title" = "共有された文字起こし";
-"share.received.untitled" = "（まだテキストなし）";
-"share.received.blocks" = "%lld 段落";
-"share.received.delete" = "この Mac から削除";
-"share.received.delete.confirm_title" = "受け取った文字起こしを削除しますか？";
-"share.received.delete.confirm_body" = "この Mac のコピーだけを削除します。ほかの人が持つコピーには影響しません。";
-"shared.editor.title" = "共有文字起こし";
-"shared.editor.read_only" = "読み取り専用ルーム";
+"shared.editor.title" = "受け取った文字起こし";
+"shared.editor.read_only" = "読み取り専用";
 "shared.editor.add_annotation" = "メモを追加";
 "shared.editor.done" = "完了";
 "shared.editor.empty_title" = "まだ何もありません";
@@ -1031,55 +962,23 @@
 "settings.p2p.relay_retry" = "再試行";
 
 /* 分享:同一网络里的人 */
-"share.nearby" = "同じネットワークの人";
-"share.nearby.scan" = "探す";
-"share.nearby.scanning" = "探しています…";
-"share.nearby.empty" = "まだ見つかりません。両方の Mac で同じネットワーク上に ZuTalk を開いてください。";
-"share.nearby.ask" = "参加を依頼";
-"share.nearby.note" = "ネットワーク上で見えるのは鍵の文字列だけです——名前も会議名もありません。依頼するとあなたの名前が相手に送られ、相手が判断します。";
-"share.nearby.not_sharing" = "その Mac は今、何も共有していません。";
+"share.nearby.not_sharing" = "その共有は終了したか、近くの人には公開されていません。";
 "share.nearby.declined" = "断られました。";
 "share.nearby.timed_out" = "応答がありません。席を外しているかもしれません。";
-"share.requests" = "参加の依頼";
-"share.requests.unnamed" = "名前のない Mac";
-"share.requests.approve" = "許可";
-"share.requests.decline" = "断る";
-"share.requests.note" = "名前は相手が入力したものです。その下の鍵だけが偽装できません。";
-"share.knock.toast" = "%@ が共有への参加を求めています";
-"share.knock.toast_detail" = "「共有」タブで承認または拒否してください。";
-"share.knock.badge_label" = "%lld 件の参加リクエストが待機中";
 
 /* 分享:昵称与成员 */
-"share.nickname" = "ルームでの名前";
-"share.nickname.prompt" = "例：私の MacBook";
-"share.nickname.note" = "共有相手に表示されます。空欄にすると鍵だけが見えます。";
-"share.members" = "このルーム";
-"share.members.unnamed" = "名前なし";
-"share.members.you" = "あなた";
-"share.members.host" = "ホスト";
-"share.nearby.asking" = "返事を待っています…";
-"share.nearby.abandon" = "待つのをやめる";
 
-"capture.toolbar.joined_room" = "ルームに参加中";
-"capture.toolbar.joined_room_hint" = "相手のライブ字幕を受信しています。ここで録音するには、共有ページでルームを退出してください。";
-"share.sidebar.live_label" = "ルームに参加中";
-"shared_inbox.live_title" = "ライブ受信中";
-"shared_inbox.live_waiting" = "参加しました。ホストの録音開始を待っています。";
-"shared_inbox.empty_title" = "まだ何も受信していません";
-"shared_inbox.empty_body" = "共有された文字起こしがここに表示されます。ルームの進行中はリアルタイムで更新され、終了後も保存されます。";
-"shared_inbox.session_live" = "ライブ";
+"share.sidebar.live_label" = "ライブを視聴中";
 "shared_inbox.lane_canonical" = "原文";
 "shared_inbox.lane_connecting" = "この列はまだ接続中です";
 "shared_inbox.lane_failed" = "この列は停止しました。これ以上は届きません";
 
-"share.web.title" = "ウェブ共有";
-"share.web.start" = "ウェブ共有を開始";
-"share.web.hint" = "QRコードをスキャンすると、アプリなしでブラウザからライブ字幕を読めます。言語も切り替えられます。";
-"share.web.confirm.title" = "ウェブ共有を開始しますか？";
-"share.web.confirm.body" = "共有する範囲の文字起こしは平文で字幕サーバーにアップロードされます。テーマを共有する場合は、新しい録音だけでなく既存のすべての録音も含まれます。共有終了後もしばらく保存されます。リンクを知っている人は誰でも読めます。音声が共有されることはありません。";
-"share.web.plaintext_note" = "字幕テキストは平文でサーバーを経由し、しばらく保存されます。リンクを知っている人は誰でも閲覧できます。";
+"share.web.title" = "Webリンク";
+"share.web.start" = "ZuTalkがない人向けのWebリンク…";
+"share.web.hint" = "コードを読み取るかリンクを開いた人は、好きな言語でブラウザから一緒に読めます。";
+"share.web.confirm.title" = "Webリンクを作成しますか？";
 "share.web.copy" = "リンクをコピー";
-"share.web.stop" = "ウェブ共有を停止";
+"share.web.stop" = "リンクを閉じる";
 "share.web.qr_label" = "ライブ字幕ページのQRコード";
 
 /* Topic workspace and session catalog */
@@ -1271,9 +1170,6 @@
 "topic.delete.confirm_message_format" = "%lld 件の録音は残ります。文字起こしとノートと一緒に「テーマなし」へ移ります。テーマ自体のノートは削除されます。";
 "topic.delete.confirm_message_empty" = "このテーマに録音はありません。ノートは削除されます。";
 
-"share.scope.label" = "相手が受け取るもの";
-"share.role.label" = "文字起こしを修正できる人";
-
 "captions_choice.on_invite_format" = "リアルタイム字幕 · 残り約 %@";
 
 "topics.card.last_recorded_format" = "最終録音：%@";
@@ -1283,3 +1179,119 @@
 "session.marks.reveal" = "文字起こしのこの位置へ移動";
 "session.marks.delete.confirm_title" = "このマークとメモを削除しますか？";
 "session.marks.delete.confirm_message" = "ここに書いた内容は元に戻せません。録音には影響しません。";
+
+"sidebar.received" = "受信";
+"received.join.title" = "参加コードで参加";
+"received.join.placeholder" = "参加コードを貼り付け";
+"received.join.button" = "参加";
+"received.join.joining" = "参加中…";
+"received.join.note" = "共有している人に参加コードをもらってください。コードを持つ人は誰でも参加できるので、人から人へ直接渡します。";
+"received.nearby.title" = "近くの共有";
+"received.nearby.empty" = "このネットワークで公開中の共有はありません。";
+"received.nearby.note" = "ホストが見つけられるように設定した共有だけが、ホストが公開を選んだ名前とタイトルで表示されます。参加リクエストはすべてホストが承認します。";
+"received.nearby.ask" = "参加をリクエスト";
+"received.nearby.asking" = "ホストの応答を待っています…";
+"received.nearby.abandon" = "待つのをやめる";
+"received.open" = "文字起こしを開く";
+"received.read_only_hint" = "共有中はホストが読み取り専用にしています。";
+"received.transcripts.title" = "このMacに残っている文字起こし";
+"received.transcripts.empty" = "まだありません。誰かが録音を共有したり、ライブで文字起こしの保存を許可したりすると、ここに残ります。";
+"received.from_format" = "%@ から";
+"received.blocks_format" = "%lld 文";
+"received.delete" = "このMacから削除";
+"received.delete.confirm_title" = "この文字起こしを削除しますか？";
+"received.delete.confirm_body" = "このMac上のコピーだけが削除されます。共有した人の手元のものは残ります。";
+"received.watch.waiting" = "まだ誰も話していません。";
+"received.watch.show_subtitles" = "字幕ウインドウを表示";
+"received.watch.hide_subtitles" = "字幕ウインドウを隠す";
+"received.watch.nothing_kept_note" = "見ながら聞けます。このMacには何も残りません。離れるとなくなります。";
+"received.watch.ended_nothing_kept_note" = "ホストが文字起こしの保存を許可しなかったため、何も残っていません。";
+"received.watch.kept_live_note" = "ホストが文字起こしの保存を許可しています。下に保存され、ライブ終了後も残ります。";
+"received.watch.kept_read_only_note" = "文字起こしのコピーがこのMacに残ります。共有中は読めますが変更はできません。";
+"received.watch.kept_editable_note" = "文字起こしのコピーがこのMacに残ります。あなたの修正はこの共有の全員のコピーに届きます。";
+"received.watch.removed_note" = "ホストがあなたをこの共有から外しました。同じコードでは再参加できません。";
+"share.live.title" = "この録音をライブ共有";
+"share.live.intro" = "参加を認めた人は、話されたそばから字幕と翻訳を見られます。";
+"share.live.start" = "ライブを開始";
+"share.live.stop" = "ライブを停止";
+"share.live.on" = "ライブ中";
+"share.live.on_count_format" = "ライブ中 · %lld人";
+"share.live.bar" = "ライブ共有";
+"share.live.bar_hint" = "この録音の字幕をリアルタイムで他の人に見せる";
+"share.live.bar_on_hint" = "視聴者・参加コード・停止";
+"share.live.ended_with_recording" = "録音の終了とともにライブも終了しました。";
+"share.live.keep_failed" = "文字起こしの保存を許可できませんでした";
+"share.keep.toggle" = "視聴者に文字起こしの保存を許可";
+"share.keep.off_detail" = "オフ：見ながら聞けるだけで、離れると相手のMacには何も残りません。";
+"share.keep.on_detail" = "オン：相手のZuTalkに文字起こしのコピーが残ります。ライブを止めても取り戻せません。";
+"share.keep.on_locked_detail" = "許可済み。渡したコピーは取り戻せないため、このライブ中はオンのままです。";
+"share.recording.menu" = "共有…";
+"share.recording.title" = "この録音を共有";
+"share.recording.intro" = "参加を認めた人のMacに文字起こしのコピーが届きます。";
+"share.recording.read_only" = "閲覧のみ";
+"share.recording.can_correct" = "修正できる";
+"share.recording.read_only_detail" = "共有中はコピーを読めますが、変更はできません。";
+"share.recording.can_correct_detail" = "修正は全員の共有コピーに同期されます。あなた自身の録音は変わりません。";
+"share.recording.start" = "共有を開始";
+"share.recording.on" = "共有中";
+"share.recording.stop" = "共有を停止";
+"share.code.title" = "参加コード";
+"share.code.copy" = "参加コードをコピー";
+"share.code.copied" = "参加コードをコピーしました";
+"share.code.note" = "停止するまで、このコードを持つ人は誰でも参加できます。見てほしい人にだけ送ってください。";
+"share.watchers.title" = "視聴中の人";
+"share.watchers.none" = "まだいません";
+"share.watchers.count_format" = "%lld人が視聴中";
+"share.watchers.empty" = "まだ誰も参加していません。";
+"share.watchers.empty_live" = "まだ誰も参加していません。参加コードを送るか、同じネットワークの人が見つけられるようにしてください。";
+"share.watchers.remove" = "外す";
+"share.watchers.remove_hint" = "接続が切れ、このコードでは再参加できません。相手のMacにすでに残ったものは取り戻せません。";
+"share.nearby.toggle" = "同じネットワークの人に表示";
+"share.nearby.toggle_detail_format" = "オンにすると、同じWi-FiのZuTalkに「%1$@ · %2$@」が表示され、参加をリクエストできます。承認は一人ずつあなたが行います。";
+"share.knock.title_format" = "%@ さんが参加を希望しています";
+"share.knock.approve" = "参加を許可";
+"share.knock.decline" = "断る";
+"share.knock.expired" = "このリクエストはすでに期限切れです。";
+"share.web.starting" = "作成中…";
+"share.web.copied" = "リンクをコピーしました";
+"share.web.failed" = "Webリンクを作成できませんでした";
+"share.web.confirm.button" = "リンクを作成";
+"share.web.uploads_captions" = "リアルタイム字幕と翻訳は平文でZuTalkのサーバーを経由し、リンクを持つ人は誰でも読めます。最後の更新から約24時間リンク上に残ります。";
+"share.web.uploads_transcript" = "字幕・翻訳・文字起こし全体（話者に付けた名前を含む）は平文でZuTalkのサーバーを経由し、リンクを持つ人は誰でも読めます。最後の更新から約24時間リンク上に残ります。";
+"share.stop.note" = "停止すると新しい内容は送られず、視聴者にも見えなくなります。";
+"share.stop.note_kept" = "停止すると新しい内容は送られません。相手のMacにすでにあるコピーは取り戻せません。";
+"share.name.shown_as_format" = "ほかの人には「%@」と表示されます。";
+"share.name.change" = "変更";
+"share.name.placeholder" = "あなたの名前";
+"share.name.default" = "このMacの名前";
+"share.busy.title" = "すでに共有中";
+"share.busy.body_format" = "「%@」を共有中です。共有は一度に一つだけです。これを共有するには先に停止してください。";
+"share.busy.stop_other" = "その共有を停止";
+"share.viewing_blocks_hosting_format" = "%@ さんの共有を視聴中です。自分のものを共有する前に退出してください。";
+"share.hosting_format" = "「%@」を共有中";
+"share.hosting_count_format" = "「%1$@」を共有中 · %2$lld人";
+"share.untitled" = "名前のない録音";
+"share.unnamed" = "名前なし";
+"share.someone" = "相手";
+"share.start_failed" = "共有を開始できませんでした";
+"share.join.while_hosting" = "他の人の共有に参加する前に、自分の共有を停止してください。";
+"share.leave_to_record.title_format" = "%@ さんの共有から退出して録音しますか？";
+"share.leave_to_record.body" = "他の人の共有を見ながら録音することはできません。";
+"share.leave_to_record.confirm" = "退出して録音";
+"share.switch.title_format" = "%@ さんの共有から退出してこちらに参加しますか？";
+"share.switch.confirm" = "退出して参加";
+"share.watch.live_format" = "%@ さんのライブを視聴中";
+"share.watch.recording_format" = "%1$@ さんが共有した「%2$@」";
+"share.watch.ended_format" = "%@ さんの共有は終了しました";
+"share.watch.removed_format" = "%@ さんに共有から外されました";
+"share.watch.leave" = "退出";
+"share.watch.close" = "閉じる";
+"share.watch.subtitle_window" = "字幕";
+
+"share.keep.confirm_title" = "視聴中の全員に文字起こしの保存を許可しますか？";
+"share.keep.confirm_button" = "許可";
+
+"received.nearby.searching" = "このネットワークを探しています…";
+"received.nearby.discovery_off" = "「設定 › 共有」で近くの検出がオフになっています。参加コードでは引き続き参加できます。";
+
+"received.watch.ended_kept_note" = "共有は終了しました。コピーは下に残り、自由に修正できます。";

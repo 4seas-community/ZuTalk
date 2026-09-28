@@ -2,8 +2,10 @@
 //!
 //! 设计见 `docs/architecture/share-web-captions.md`。三条不动摇的边界:
 //!
-//! 1. **帧必须经 `ShareCaptionTap` 的同一放行判定**再进这里 —— 范围过滤与
-//!    per-session 静音只有一套,P2P 不发的帧网页也不发。
+//! 1. **帧必须经 `ShareCaptionTap` 的同一放行判定**再进这里 —— 范围过滤只有
+//!    一套,P2P 不发的帧网页也不发。整份文字稿(块快照)只在主持人允许留存、
+//!    文档同步接上时才推 —— 网页也是一种「留下来的副本」(服务器保留约
+//!    24 小时),不能比 App 里的观看者拿得更多。
 //! 2. **推送不阻塞采集**。帧进 `watch` 通道(新值覆盖旧值,与 replace-in-full
 //!    天然搭配);块按 session 覆盖后排队 —— 稿的「只留最新」是每个 session
 //!    一份,单槽会让开房时连推的几场只活下来最后一场。独立任务慢慢发。
@@ -392,11 +394,15 @@ impl ZuTalkCore {
     }
 
     /// 当前主持范围里的全部 session,按录制先后。网页按到达顺序排稿,
-    /// 所以这里的顺序就是观看者读到的顺序。没在主持时为空。
+    /// 所以这里的顺序就是观看者读到的顺序。没在主持、或主持人没允许留存
+    /// 文字稿时为空 —— 那时网页只有实时字幕。
     fn web_share_scope_sessions(&self) -> Vec<String> {
         let scope = {
             let guard = self.share_runtime.lock().unwrap();
-            guard.as_ref().and_then(|r| r.roster_scope())
+            guard
+                .as_ref()
+                .filter(|r| r.serves_documents())
+                .and_then(|r| r.roster_scope())
         };
         match scope {
             Some(vt_share::ScopeId::Session { session_id }) => vec![session_id],
@@ -459,23 +465,22 @@ impl ZuTalkCore {
 impl ZuTalkCore {
     /// 录音开始/恢复或暂停时,在网页上留一条分割线。
     ///
-    /// 放行判定与字幕同源(`session_broadcast_status`):这一段的字幕不
-    /// 播给房间,它的分割线也不该出现 —— 否则网页上会凭空多出一条
-    /// 「开始录音」而下面什么都不来。
-    pub(crate) fn push_web_share_segment(&self, notebook_id: &str, session_id: &str, kind: &str) {
+    /// 放行判定与字幕同源(`broadcasts_session`):这一段的字幕不播给房间,
+    /// 它的分割线也不该出现 —— 否则网页上会凭空多出一条「开始录音」而
+    /// 下面什么都不来。
+    pub(crate) fn push_web_share_segment(&self, session_id: &str, kind: &str) {
         let web = {
             let guard = self.share_runtime.lock().unwrap();
-            match guard.as_ref().and_then(|r| r.web_share.clone()) {
-                Some(web) => web,
-                None => return,
+            match guard.as_ref() {
+                Some(runtime) if runtime.broadcasts_session(session_id) => {
+                    match runtime.web_share.clone() {
+                        Some(web) => web,
+                        None => return,
+                    }
+                }
+                _ => return,
             }
         };
-        if !matches!(
-            self.session_broadcast_status(notebook_id.to_string(), session_id.to_string()),
-            crate::share_api::FfiSessionBroadcastStatus::Broadcasting
-        ) {
-            return;
-        }
         // 线画在这一场当前最后一块之后。拿不到稿(还没落定过内容)时
         // 为 None —— 网页把它画在这一场的开头。
         let after_block_id = self
@@ -662,26 +667,22 @@ mod tests {
         core.stop_web_share();
     }
 
-    /// tap 放行的帧同一份进网页通道;被静音的帧两条通道都不发。
+    /// tap 放行的帧同一份进网页通道;不是共享的那一场,两条通道都不发。
     #[test]
     fn the_tap_feeds_the_web_channel_with_the_same_gating() {
         let dir = tempfile::tempdir().unwrap();
         let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
-        core.start_sharing(Some("nb-web".into()), None, false)
-            .unwrap();
+        core.start_live_share("sess-web".into(), false).unwrap();
         let (web, _segments) = attach_web_runtime(&core);
 
-        let tap = ShareCaptionTap::new(core.share_runtime.clone(), "nb-web".into());
+        let tap = ShareCaptionTap::new(core.share_runtime.clone());
 
-        // 静音:P2P 与网页都不发。
-        core.set_session_broadcast_muted("sess-web".into(), true);
-        tap.broadcast(&crate::share_api::test_support::preview("sess-web", 1));
+        tap.broadcast(&crate::share_api::test_support::preview("sess-other", 1));
         assert!(
             web.latest_frame_for_test().is_none(),
-            "静音帧不得进网页通道"
+            "别的录音的帧不得进网页通道"
         );
 
-        core.set_session_broadcast_muted("sess-web".into(), false);
         tap.broadcast(&crate::share_api::test_support::preview("sess-web", 2));
         let frame = web.latest_frame_for_test().expect("放行帧应进网页通道");
         assert_eq!(frame.preview_revision, 2);
@@ -698,9 +699,8 @@ mod tests {
     fn publishing_a_shared_session_pushes_blocks_to_the_web() {
         let dir = tempfile::tempdir().unwrap();
         let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
-        core.start_sharing(None, Some("sess-doc".into()), false)
+        core.start_recording_share("sess-doc".into(), false)
             .unwrap();
-        core.enable_document_sync().unwrap();
         let (web, _segments) = attach_web_runtime(&core);
 
         core.shared_session_insert_annotation("sess-doc".into(), 0, "n1".into(), "网页稿".into())
@@ -750,64 +750,20 @@ mod tests {
         );
     }
 
-    /// Notebook 范围开房:范围内每一场录音都要推,不能只推最后一场。
-    ///
-    /// 一场会议的前半段往往早就录完、再也不会有增量 —— 靠「下一次发布
-    /// 补上」等于永远不补,网页上那半场就是不存在。
+    /// 直播没允许留存时,网页上只有实时字幕,不推整份文字稿 —— 网页也是
+    /// 一份留在服务器上的副本,不能比 App 里的观看者拿得更多。
     #[test]
-    fn opening_a_notebook_room_pushes_every_session_in_scope() {
-        use crate::notebook_capture_api::{
-            FfiNotebookCaptureCallback, FfiNotebookCaptureEvent, FfiNotebookCaptureLivePreview,
-        };
-
-        struct Silent;
-        impl FfiNotebookCaptureCallback for Silent {
-            fn on_capture_event(&self, _event: FfiNotebookCaptureEvent) {}
-            fn on_live_preview(&self, _preview: FfiNotebookCaptureLivePreview) {}
-        }
-
+    fn a_live_share_without_copies_sends_no_transcript_to_the_web() {
         let dir = tempfile::tempdir().unwrap();
         let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
-        let notebook = core.create_notebook(Some("论坛".into())).unwrap();
+        core.start_live_share("sess-live".into(), false).unwrap();
+        assert!(core.web_share_scope_sessions().is_empty());
 
-        let mut recorded = Vec::new();
-        for _ in 0..2 {
-            let profile = core
-                .get_notebook_capture_profile(notebook.id.clone())
-                .unwrap();
-            let capture = core
-                .start_notebook_capture_session(
-                    notebook.id.clone(),
-                    profile.revision,
-                    None,
-                    Box::new(Silent),
-                )
-                .unwrap();
-            core.push_notebook_capture_session(capture.session_id.clone(), vec![0_u8; 3_200])
-                .unwrap();
-            core.stop_notebook_capture_session(capture.session_id.clone())
-                .unwrap();
-            recorded.push(capture.session_id);
-        }
-
-        core.start_sharing(Some(notebook.id.clone()), None, false)
-            .unwrap();
-        core.enable_document_sync().unwrap();
-        let (web, _segments) = attach_web_runtime(&core);
-
-        // 范围列表按录制先后 —— 网页按到达顺序排稿。
-        assert_eq!(core.web_share_scope_sessions(), recorded);
-
-        for session_id in core.web_share_scope_sessions() {
-            core.push_web_share_blocks(&session_id);
-        }
-        let pushed: Vec<String> = web
-            .pending_blocks_for_test()
-            .into_iter()
-            .map(|(session_id, _)| session_id)
-            .collect();
-        assert_eq!(pushed, recorded, "范围内每一场都要推,且不许互相顶掉");
-
+        core.allow_viewers_to_keep_copies().unwrap();
+        assert_eq!(
+            core.web_share_scope_sessions(),
+            vec!["sess-live".to_string()]
+        );
         core.stop_sharing().unwrap();
     }
 
@@ -845,9 +801,8 @@ mod tests {
     fn a_session_without_capture_facts_publishes_an_empty_directory() {
         let dir = tempfile::tempdir().unwrap();
         let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
-        core.start_sharing(None, Some("sess-spk".into()), false)
+        core.start_recording_share("sess-spk".into(), false)
             .unwrap();
-        core.enable_document_sync().unwrap();
         let (web, _segments) = attach_web_runtime(&core);
 
         core.shared_session_insert_annotation("sess-spk".into(), 0, "n1".into(), "批注".into())
@@ -873,15 +828,13 @@ mod tests {
             .expect("由 caption_web_smoke.sh 设置,例如 http://127.0.0.1:8100");
         let dir = tempfile::tempdir().unwrap();
         let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
-        core.start_sharing(None, Some("sess-smoke".into()), false)
-            .unwrap();
-        core.enable_document_sync().unwrap();
+        core.start_live_share("sess-smoke".into(), true).unwrap();
 
         let info = core.start_web_share(Some(base)).unwrap();
         println!("viewer_url={}", info.viewer_url);
 
         // 一帧字幕 + 一份稿。推送是异步 watch,发几拍等它送达。
-        let tap = ShareCaptionTap::new(core.share_runtime.clone(), "unused".into());
+        let tap = ShareCaptionTap::new(core.share_runtime.clone());
         core.shared_session_insert_annotation("sess-smoke".into(), 0, "n1".into(), "冒烟稿".into())
             .unwrap();
         for revision in 1..=5 {
@@ -897,13 +850,12 @@ mod tests {
     /// 分割线与字幕同一套放行判定。
     ///
     /// 一条凭空出现的「录音开始」比没有线更坏 —— 观看者会盯着一个
-    /// 永远不来内容的段落等。所以静音、范围不符的录音不得留线。
+    /// 永远不来内容的段落等。所以不是共享的那一场不得留线。
     #[test]
     fn segments_follow_the_same_gating_as_captions() {
         let dir = tempfile::tempdir().unwrap();
         let core = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
-        core.start_sharing(Some("nb-seg".into()), None, false)
-            .unwrap();
+        core.start_live_share("sess-seg".into(), false).unwrap();
         let (web, mut segments) = WebShareRuntime::assemble_without_sender(&core.runtime);
         core.share_runtime
             .lock()
@@ -912,29 +864,23 @@ mod tests {
             .unwrap()
             .web_share = Some(Arc::new(web));
 
-        // 别的 Notebook 的录音:不留线。
-        core.push_web_share_segment("nb-other", "sess-x", "started");
-        assert!(segments.try_recv().is_err(), "范围外的录音不得留线");
+        // 同时在录的别的录音:不留线。
+        core.push_web_share_segment("sess-x", "started");
+        assert!(segments.try_recv().is_err(), "没共享的录音不得留线");
 
-        // 静音的录音:字幕不播,线也不留。
-        core.set_session_broadcast_muted("sess-seg".into(), true);
-        core.push_web_share_segment("nb-seg", "sess-seg", "started");
-        assert!(segments.try_recv().is_err(), "静音的录音不得留线");
-
-        // 范围内且未静音:留线,带时间。
-        core.set_session_broadcast_muted("sess-seg".into(), false);
-        core.push_web_share_segment("nb-seg", "sess-seg", "started");
+        // 共享的那一场:留线,带时间。
+        core.push_web_share_segment("sess-seg", "started");
         let segment = segments.try_recv().expect("放行的录音应当留线");
         assert_eq!(segment.kind, "started");
         assert_eq!(segment.session_id, "sess-seg");
         assert!(segment.at > 0, "线上要带得出「几点开始的」");
 
-        core.push_web_share_segment("nb-seg", "sess-seg", "paused");
+        core.push_web_share_segment("sess-seg", "paused");
         assert_eq!(segments.try_recv().unwrap().kind, "paused");
 
         core.stop_sharing().unwrap();
         // 停止共享后网页分享一并收口,再暂停也不该有线。
-        core.push_web_share_segment("nb-seg", "sess-seg", "paused");
+        core.push_web_share_segment("sess-seg", "paused");
         assert!(segments.try_recv().is_err());
     }
 

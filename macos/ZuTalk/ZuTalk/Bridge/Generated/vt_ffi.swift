@@ -1259,6 +1259,12 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func getSessionTranscriptClipboardText(sessionId: String) throws  -> String
 
     /**
+     * 直播中途允许观看端留下文字稿。**只能打开,不能收回** —— 已经同步过去
+     * 的内容在对方手里,关掉只会让界面说假话。
+     */
+    func allowViewersToKeepCopies() throws
+
+    /**
      * 批准一条加入请求,把分享码交给对方。
      */
     func approveJoinRequest(requestId: String) throws  -> Bool
@@ -1291,14 +1297,20 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func enableDocumentSync() throws
 
     /**
+     * 某段录音此刻是否正在播给别人看。录音条上的「直播中」据此亮起。
+     */
+    func isSessionSharedLive(sessionId: String)  -> Bool
+
+    /**
      * 用分享码加入别人的房间。
      */
     func joinShare(code: String) throws
 
     /**
-     * 同一网络里有哪些 ZuTalk。
+     * 同一网络里愿意被找到的直播。
      *
-     * 会阻塞 `seconds` 秒来收集 —— mDNS 是异步宣告的,立刻返回只会得到空列表。
+     * 刚打开时列表可能还空着 —— mDNS 是异步宣告的 —— 这时最多阻塞 `seconds`
+     * 秒等第一批。之后是常驻表的快照,立即返回。
      */
     func nearbyPeers(seconds: UInt32) throws  -> [FfiNearbyPeer]
 
@@ -1306,6 +1318,11 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      * 等着你回答的加入请求。
      */
     func pendingJoinRequests()  -> [FfiJoinRequest]
+
+    /**
+     * 把一位观看者移出这场共享。他手里的码随之失效;别人不受影响。
+     */
+    func removeShareMember(endpointId: String) throws  -> Bool
 
     /**
      * 向同一网络里的某台机器请求加入。批准后自动进房。
@@ -1318,20 +1335,11 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func roomMembers()  -> [FfiRoomMember]
 
     /**
-     * 某段录音此刻会不会被播给房间。
+     * 让同一网络的人在附近列表里看到这场的名字与标题,或者撤下。
      *
-     * 录音条上的共享指示器每一拍问一次。判定必须与 [`ShareCaptionTap::broadcast`]
-     * 的放行逻辑逐条对应 —— 指示器亮着而字幕没在发、或反过来,都比没有指示器更坏。
+     * 关着时本机不出现在任何人的附近列表里,敲门也只会得到「没在共享」。
      */
-    func sessionBroadcastStatus(notebookId: String, sessionId: String)  -> FfiSessionBroadcastStatus
-
-    /**
-     * 对一段录音按下(或松开)「停止共享这段」。
-     *
-     * 只影响这个 session 本次的广播;共享继续开着,Notebook 的共享范围不变。
-     * 没在主持时是 no-op —— 界面上此时也不该有这个按钮。
-     */
-    func setSessionBroadcastMuted(sessionId: String, muted: Bool)
+    func setShareDiscoverable(discoverable: Bool) throws
 
     func setShareDisplayName(name: String) throws
 
@@ -1374,12 +1382,18 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func sharedInboxNotebook() throws  -> FfiNotebook
 
     /**
-     * 开始共享,返回交给对方的分享码。
+     * 把正在录的这一场直播给别人看,返回加入码。
      *
-     * `notebook_id` 与 `session_id` 二选一:前者按 Notebook 共享(其中开始的录音
-     * 默认参与),后者只共享指定的一次录音。
+     * 观看的人只读。`keep_copies` 关着时主持人不接文档同步:观看端只收得到
+     * 实时字幕,他们的 ZuTalk 不会留下文字稿;打开后才把文字稿同步过去。
      */
-    func startSharing(notebookId: String?, sessionId: String?, hostOnly: Bool) throws  -> String
+    func startLiveShare(sessionId: String, keepCopies: Bool) throws  -> String
+
+    /**
+     * 把一段录好的录音共享给别人:他们会得到一份文字稿副本。
+     * `host_only` 为真时对方只读,否则可以订正。
+     */
+    func startRecordingShare(sessionId: String, hostOnly: Bool) throws  -> String
 
     /**
      * 停止共享。
@@ -1413,7 +1427,10 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func deleteSharedSession(sessionId: String) throws
 
     /**
-     * shared/ 目录台账:收到过与共享过的全部 session 文档。
+     * 收到的文字稿:shared/ 目录台账里**别人的**那些。
+     *
+     * 本机共享出去时也会在 shared/ 下留一份同步用的副本 —— 那是自己的录音,
+     * 不该出现在「收到的」里,和别人的混在一起。
      */
     func listSharedSessions()  -> [FfiSharedSessionInfo]
 
@@ -2988,6 +3005,17 @@ open func getSessionTranscriptClipboardText(sessionId: String)throws  -> String 
 }
 
     /**
+     * 直播中途允许观看端留下文字稿。**只能打开,不能收回** —— 已经同步过去
+     * 的内容在对方手里,关掉只会让界面说假话。
+     */
+open func allowViewersToKeepCopies()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_allow_viewers_to_keep_copies(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+    /**
      * 批准一条加入请求,把分享码交给对方。
      */
 open func approveJoinRequest(requestId: String)throws  -> Bool  {
@@ -3051,6 +3079,18 @@ open func enableDocumentSync()throws   {try rustCallWithError(FfiConverterTypeCo
 }
 
     /**
+     * 某段录音此刻是否正在播给别人看。录音条上的「直播中」据此亮起。
+     */
+open func isSessionSharedLive(sessionId: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_is_session_shared_live(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
      * 用分享码加入别人的房间。
      */
 open func joinShare(code: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
@@ -3062,9 +3102,10 @@ open func joinShare(code: String)throws   {try rustCallWithError(FfiConverterTyp
 }
 
     /**
-     * 同一网络里有哪些 ZuTalk。
+     * 同一网络里愿意被找到的直播。
      *
-     * 会阻塞 `seconds` 秒来收集 —— mDNS 是异步宣告的,立刻返回只会得到空列表。
+     * 刚打开时列表可能还空着 —— mDNS 是异步宣告的 —— 这时最多阻塞 `seconds`
+     * 秒等第一批。之后是常驻表的快照,立即返回。
      */
 open func nearbyPeers(seconds: UInt32)throws  -> [FfiNearbyPeer]  {
     return try  FfiConverterSequenceTypeFfiNearbyPeer.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
@@ -3082,6 +3123,18 @@ open func pendingJoinRequests() -> [FfiJoinRequest]  {
     return try!  FfiConverterSequenceTypeFfiJoinRequest.lift(try! rustCall() {
     uniffi_vt_ffi_fn_method_zutalkcore_pending_join_requests(
             self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 把一位观看者移出这场共享。他手里的码随之失效;别人不受影响。
+     */
+open func removeShareMember(endpointId: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_remove_share_member(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(endpointId),$0
     )
 })
 }
@@ -3110,32 +3163,14 @@ open func roomMembers() -> [FfiRoomMember]  {
 }
 
     /**
-     * 某段录音此刻会不会被播给房间。
+     * 让同一网络的人在附近列表里看到这场的名字与标题,或者撤下。
      *
-     * 录音条上的共享指示器每一拍问一次。判定必须与 [`ShareCaptionTap::broadcast`]
-     * 的放行逻辑逐条对应 —— 指示器亮着而字幕没在发、或反过来,都比没有指示器更坏。
+     * 关着时本机不出现在任何人的附近列表里,敲门也只会得到「没在共享」。
      */
-open func sessionBroadcastStatus(notebookId: String, sessionId: String) -> FfiSessionBroadcastStatus  {
-    return try!  FfiConverterTypeFfiSessionBroadcastStatus_lift(try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_session_broadcast_status(
+open func setShareDiscoverable(discoverable: Bool)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_set_share_discoverable(
             self.uniffiCloneHandle(),
-        FfiConverterString.lower(notebookId),
-        FfiConverterString.lower(sessionId),$0
-    )
-})
-}
-
-    /**
-     * 对一段录音按下(或松开)「停止共享这段」。
-     *
-     * 只影响这个 session 本次的广播;共享继续开着,Notebook 的共享范围不变。
-     * 没在主持时是 no-op —— 界面上此时也不该有这个按钮。
-     */
-open func setSessionBroadcastMuted(sessionId: String, muted: Bool)  {try! rustCall() {
-    uniffi_vt_ffi_fn_method_zutalkcore_set_session_broadcast_muted(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(sessionId),
-        FfiConverterBool.lower(muted),$0
+        FfiConverterBool.lower(discoverable),$0
     )
 }
 }
@@ -3223,17 +3258,30 @@ open func sharedInboxNotebook()throws  -> FfiNotebook  {
 }
 
     /**
-     * 开始共享,返回交给对方的分享码。
+     * 把正在录的这一场直播给别人看,返回加入码。
      *
-     * `notebook_id` 与 `session_id` 二选一:前者按 Notebook 共享(其中开始的录音
-     * 默认参与),后者只共享指定的一次录音。
+     * 观看的人只读。`keep_copies` 关着时主持人不接文档同步:观看端只收得到
+     * 实时字幕,他们的 ZuTalk 不会留下文字稿;打开后才把文字稿同步过去。
      */
-open func startSharing(notebookId: String?, sessionId: String?, hostOnly: Bool)throws  -> String  {
+open func startLiveShare(sessionId: String, keepCopies: Bool)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
-    uniffi_vt_ffi_fn_method_zutalkcore_start_sharing(
+    uniffi_vt_ffi_fn_method_zutalkcore_start_live_share(
             self.uniffiCloneHandle(),
-        FfiConverterOptionString.lower(notebookId),
-        FfiConverterOptionString.lower(sessionId),
+        FfiConverterString.lower(sessionId),
+        FfiConverterBool.lower(keepCopies),$0
+    )
+})
+}
+
+    /**
+     * 把一段录好的录音共享给别人:他们会得到一份文字稿副本。
+     * `host_only` 为真时对方只读,否则可以订正。
+     */
+open func startRecordingShare(sessionId: String, hostOnly: Bool)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_start_recording_share(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
         FfiConverterBool.lower(hostOnly),$0
     )
 })
@@ -3300,7 +3348,10 @@ open func deleteSharedSession(sessionId: String)throws   {try rustCallWithError(
 }
 
     /**
-     * shared/ 目录台账:收到过与共享过的全部 session 文档。
+     * 收到的文字稿:shared/ 目录台账里**别人的**那些。
+     *
+     * 本机共享出去时也会在 shared/ 下留一份同步用的副本 —— 那是自己的录音,
+     * 不该出现在「收到的」里,和别人的混在一起。
      */
 open func listSharedSessions() -> [FfiSharedSessionInfo]  {
     return try!  FfiConverterSequenceTypeFfiSharedSessionInfo.lift(try! rustCall() {
@@ -4225,20 +4276,24 @@ public func FfiConverterTypeFfiMarkDigest_lower(_ value: FfiMarkDigest) -> RustB
 
 
 /**
- * 同一网络里看到的一台 ZuTalk。
+ * 同一网络里一场愿意被找到的直播。
  *
- * 局域网上只看得到不透明公钥 —— 对方是谁、在共享什么,都要连上去问,
- * 而且要经过对方同意。
+ * 只有主持人为这一场打开了「让附近的人找到」才会出现;名字与标题是主持人
+ * 同意公开的那两句话,已经收拾过。公钥短形式是唯一可核对的身份。
  */
 public struct FfiNearbyPeer: Equatable, Hashable {
     public var endpointId: String
     public var shortLabel: String
+    public var hostName: String
+    public var title: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(endpointId: String, shortLabel: String) {
+    public init(endpointId: String, shortLabel: String, hostName: String, title: String) {
         self.endpointId = endpointId
         self.shortLabel = shortLabel
+        self.hostName = hostName
+        self.title = title
     }
 
 
@@ -4258,13 +4313,17 @@ public struct FfiConverterTypeFfiNearbyPeer: FfiConverterRustBuffer {
         return
             try FfiNearbyPeer(
                 endpointId: FfiConverterString.read(from: &buf),
-                shortLabel: FfiConverterString.read(from: &buf)
+                shortLabel: FfiConverterString.read(from: &buf),
+                hostName: FfiConverterString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf)
         )
     }
 
     public static func write(_ value: FfiNearbyPeer, into buf: inout [UInt8]) {
         FfiConverterString.write(value.endpointId, into: &buf)
         FfiConverterString.write(value.shortLabel, into: &buf)
+        FfiConverterString.write(value.hostName, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
     }
 }
 
@@ -6934,6 +6993,32 @@ public struct FfiShareState: Equatable, Hashable {
      * 不该殃及散场后留下的其它收件。Notebook 范围或未共享时为 `None`。
      */
     public var scopeSessionId: String?
+    /**
+     * 这是一场正在录的直播(`false` = 一段录好的录音)。主持人一侧按开始
+     * 时的选择;观看端按主持人随帧带来的说明,旧版主持人没有说明时为 `false`。
+     */
+    public var isLive: Bool
+    /**
+     * 观看端的 ZuTalk 会留下这场的文字稿。主持人为直播打开、或共享的是一段
+     * 录好的录音时为真;关着时观看端只能边听边看,离开就没了。
+     */
+    public var keepsCopies: Bool
+    /**
+     * 主持人:同一网络的人能在附近列表里看到这场的名字与标题。
+     */
+    public var discoverable: Bool
+    /**
+     * 这场共享的录音标题;没起名时为空。
+     */
+    public var title: String
+    /**
+     * 主持人自报的名字。观看端从主持人随帧带来的说明里读,不靠 gossip。
+     */
+    public var hostName: String
+    /**
+     * 观看端:主持人把本机移出了这场共享。
+     */
+    public var removedByHost: Bool
     public var lines: [FfiSharedCaptionLine]
     /**
      * 观看端:主播最新一帧的**完整**预览 —— 与主播本机画布收到的同一形态
@@ -6973,7 +7058,27 @@ public struct FfiShareState: Equatable, Hashable {
          * 当前房间按单次录音共享时,那一场的 session id。收件列表用它判定
          * **哪一条**受房间写入策略约束 —— 只读约束只属于当前房间的那份文档,
          * 不该殃及散场后留下的其它收件。Notebook 范围或未共享时为 `None`。
-         */scopeSessionId: String?, lines: [FfiSharedCaptionLine],
+         */scopeSessionId: String?,
+        /**
+         * 这是一场正在录的直播(`false` = 一段录好的录音)。主持人一侧按开始
+         * 时的选择;观看端按主持人随帧带来的说明,旧版主持人没有说明时为 `false`。
+         */isLive: Bool,
+        /**
+         * 观看端的 ZuTalk 会留下这场的文字稿。主持人为直播打开、或共享的是一段
+         * 录好的录音时为真;关着时观看端只能边听边看,离开就没了。
+         */keepsCopies: Bool,
+        /**
+         * 主持人:同一网络的人能在附近列表里看到这场的名字与标题。
+         */discoverable: Bool,
+        /**
+         * 这场共享的录音标题;没起名时为空。
+         */title: String,
+        /**
+         * 主持人自报的名字。观看端从主持人随帧带来的说明里读,不靠 gossip。
+         */hostName: String,
+        /**
+         * 观看端:主持人把本机移出了这场共享。
+         */removedByHost: Bool, lines: [FfiSharedCaptionLine],
         /**
          * 观看端:主播最新一帧的**完整**预览 —— 与主播本机画布收到的同一形态
          * (多语言 lane、cue、lane 健康齐全)。旧版主播只发压扁行时为 `None`,
@@ -6988,6 +7093,12 @@ public struct FfiShareState: Equatable, Hashable {
         self.broadcastRevision = broadcastRevision
         self.hostLeft = hostLeft
         self.scopeSessionId = scopeSessionId
+        self.isLive = isLive
+        self.keepsCopies = keepsCopies
+        self.discoverable = discoverable
+        self.title = title
+        self.hostName = hostName
+        self.removedByHost = removedByHost
         self.lines = lines
         self.remotePreview = remotePreview
     }
@@ -7017,6 +7128,12 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
                 broadcastRevision: FfiConverterOptionUInt64.read(from: &buf),
                 hostLeft: FfiConverterBool.read(from: &buf),
                 scopeSessionId: FfiConverterOptionString.read(from: &buf),
+                isLive: FfiConverterBool.read(from: &buf),
+                keepsCopies: FfiConverterBool.read(from: &buf),
+                discoverable: FfiConverterBool.read(from: &buf),
+                title: FfiConverterString.read(from: &buf),
+                hostName: FfiConverterString.read(from: &buf),
+                removedByHost: FfiConverterBool.read(from: &buf),
                 lines: FfiConverterSequenceTypeFfiSharedCaptionLine.read(from: &buf),
                 remotePreview: FfiConverterOptionTypeFfiNotebookCaptureLivePreview.read(from: &buf)
         )
@@ -7032,6 +7149,12 @@ public struct FfiConverterTypeFfiShareState: FfiConverterRustBuffer {
         FfiConverterOptionUInt64.write(value.broadcastRevision, into: &buf)
         FfiConverterBool.write(value.hostLeft, into: &buf)
         FfiConverterOptionString.write(value.scopeSessionId, into: &buf)
+        FfiConverterBool.write(value.isLive, into: &buf)
+        FfiConverterBool.write(value.keepsCopies, into: &buf)
+        FfiConverterBool.write(value.discoverable, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.hostName, into: &buf)
+        FfiConverterBool.write(value.removedByHost, into: &buf)
         FfiConverterSequenceTypeFfiSharedCaptionLine.write(value.lines, into: &buf)
         FfiConverterOptionTypeFfiNotebookCaptureLivePreview.write(value.remotePreview, into: &buf)
     }
@@ -7202,10 +7325,18 @@ public func FfiConverterTypeFfiSharedCaptionLine_lower(_ value: FfiSharedCaption
 
 
 /**
- * 一条收到(或正在共享)的 session 摘要。
+ * 一份收到的文字稿的摘要。
  */
 public struct FfiSharedSessionInfo: Equatable, Hashable {
     public var sessionId: String
+    /**
+     * 主持人给那场录音起的名字;没起名或旧版主持人时为空。
+     */
+    public var title: String
+    /**
+     * 谁共享的。主持人自报的名字,可能为空。
+     */
+    public var hostName: String
     /**
      * 首个句块的正文,给列表当标题;空文档为空串。
      */
@@ -7221,6 +7352,12 @@ public struct FfiSharedSessionInfo: Equatable, Hashable {
     // declare one manually.
     public init(sessionId: String,
         /**
+         * 主持人给那场录音起的名字;没起名或旧版主持人时为空。
+         */title: String,
+        /**
+         * 谁共享的。主持人自报的名字,可能为空。
+         */hostName: String,
+        /**
          * 首个句块的正文,给列表当标题;空文档为空串。
          */preview: String, blockCount: UInt32,
         /**
@@ -7228,6 +7365,8 @@ public struct FfiSharedSessionInfo: Equatable, Hashable {
          * 与 share-p2p.md §11「收到时间取文件时间」一致。拿不到时为 0。
          */receivedAtEpoch: Int64) {
         self.sessionId = sessionId
+        self.title = title
+        self.hostName = hostName
         self.preview = preview
         self.blockCount = blockCount
         self.receivedAtEpoch = receivedAtEpoch
@@ -7250,6 +7389,8 @@ public struct FfiConverterTypeFfiSharedSessionInfo: FfiConverterRustBuffer {
         return
             try FfiSharedSessionInfo(
                 sessionId: FfiConverterString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf),
+                hostName: FfiConverterString.read(from: &buf),
                 preview: FfiConverterString.read(from: &buf),
                 blockCount: FfiConverterUInt32.read(from: &buf),
                 receivedAtEpoch: FfiConverterInt64.read(from: &buf)
@@ -7258,6 +7399,8 @@ public struct FfiConverterTypeFfiSharedSessionInfo: FfiConverterRustBuffer {
 
     public static func write(_ value: FfiSharedSessionInfo, into buf: inout [UInt8]) {
         FfiConverterString.write(value.sessionId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.hostName, into: &buf)
         FfiConverterString.write(value.preview, into: &buf)
         FfiConverterUInt32.write(value.blockCount, into: &buf)
         FfiConverterInt64.write(value.receivedAtEpoch, into: &buf)
@@ -9122,96 +9265,6 @@ public func FfiConverterTypeFfiProviderConnectionStatus_lift(_ buf: RustBuffer) 
 #endif
 public func FfiConverterTypeFfiProviderConnectionStatus_lower(_ value: FfiProviderConnectionStatus) -> RustBuffer {
     return FfiConverterTypeFfiProviderConnectionStatus.lower(value)
-}
-
-
-// Note that we don't yet support `indirect` for enums.
-// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
- * 某段正在录的音此刻对房间的广播状态。
- *
- * 录音条上的共享指示器靠它说真话:指示器亮不亮必须与 `ShareCaptionTap`
- * 的实际放行逻辑同源,否则又是一个「恒真指示器」。
- */
-
-public enum FfiSessionBroadcastStatus: Equatable, Hashable {
-
-    /**
-     * 不在任何共享范围内(或本机没在主持)。
-     */
-    case notShared
-    /**
-     * 这段录音的字幕正在播给房间。
-     */
-    case broadcasting
-    /**
-     * 在共享范围内,但用户对这一段按了静音。只影响本次录音,
-     * 共享本身还开着。
-     */
-    case muted
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension FfiSessionBroadcastStatus: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFfiSessionBroadcastStatus: FfiConverterRustBuffer {
-    typealias SwiftType = FfiSessionBroadcastStatus
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSessionBroadcastStatus {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-
-        case 1: return .notShared
-
-        case 2: return .broadcasting
-
-        case 3: return .muted
-
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: FfiSessionBroadcastStatus, into buf: inout [UInt8]) {
-        switch value {
-
-
-        case .notShared:
-            writeInt(&buf, Int32(1))
-
-
-        case .broadcasting:
-            writeInt(&buf, Int32(2))
-
-
-        case .muted:
-            writeInt(&buf, Int32(3))
-
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiSessionBroadcastStatus_lift(_ buf: RustBuffer) throws -> FfiSessionBroadcastStatus {
-    return try FfiConverterTypeFfiSessionBroadcastStatus.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFfiSessionBroadcastStatus_lower(_ value: FfiSessionBroadcastStatus) -> RustBuffer {
-    return FfiConverterTypeFfiSessionBroadcastStatus.lower(value)
 }
 
 
@@ -11158,6 +11211,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_get_session_transcript_clipboard_text() != 62083) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_allow_viewers_to_keep_copies() != 15508) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_approve_join_request() != 24230) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11173,13 +11229,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_enable_document_sync() != 42402) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_is_session_shared_live() != 15765) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_join_share() != 28038) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_peers() != 49390) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_peers() != 16198) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_pending_join_requests() != 7303) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_remove_share_member() != 13773) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_request_to_join_nearby() != 50395) {
@@ -11188,10 +11250,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_room_members() != 56137) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_session_broadcast_status() != 10552) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_session_broadcast_muted() != 31635) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_share_discoverable() != 47061) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_set_share_display_name() != 4692) {
@@ -11215,7 +11274,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_shared_inbox_notebook() != 25548) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_start_sharing() != 5315) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_start_live_share() != 13822) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_start_recording_share() != 33388) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_stop_sharing() != 2046) {
@@ -11233,7 +11295,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_delete_shared_session() != 43925) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_list_shared_sessions() != 4650) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_list_shared_sessions() != 27449) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_shared_session_blocks() != 4920) {

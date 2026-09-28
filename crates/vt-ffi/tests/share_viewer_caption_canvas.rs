@@ -211,7 +211,7 @@ fn a_trilingual_frame_reaches_the_viewer_with_everything_the_canvas_needs() {
     let viewer = core(&viewer_dir);
 
     let code = host
-        .start_sharing(Some("nb-canvas".into()), None, false)
+        .start_live_share("sess-canvas".into(), false)
         .expect("开始共享");
     viewer.join_share(code).expect("加入房间");
     assert!(
@@ -219,12 +219,16 @@ fn a_trilingual_frame_reaches_the_viewer_with_everything_the_canvas_needs() {
         "观看端应当进到房间里"
     );
 
-    // 走真实 tap 路径广播:范围过滤、静音判定、完整形态翻译都是生产代码。
+    // 走真实 tap 路径广播:范围过滤、完整形态翻译都是生产代码。主持人开场
+    // 那一帧只有说明、没有句子,所以等的是真有句子的那一帧。
     let sent = trilingual_preview();
     assert!(
         wait_until(15, || {
-            host.broadcast_live_preview_for_test("nb-canvas".into(), &sent);
-            viewer.share_state().remote_preview.is_some()
+            host.broadcast_live_preview_for_test(&sent);
+            viewer
+                .share_state()
+                .remote_preview
+                .is_some_and(|preview| !preview.utterances.is_empty())
         }),
         "观看端应当收到主播的预览帧"
     );

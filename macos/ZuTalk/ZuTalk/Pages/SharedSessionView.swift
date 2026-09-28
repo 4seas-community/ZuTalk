@@ -1,5 +1,5 @@
 // SharedSessionView.swift
-// 共享 session 的句块视图:收到(或共享中)的转录稿,权限内可订正。
+// 收到的文字稿:句块视图,权限内可订正。
 //
 // 数据源是 shared/ 目录里的 T2 块文档(sharedSessionBlocks),不是 SQLite
 // ——收到的内容本机没有事实层,文档即真相。轮询刷新:远端更新经 doc-sync
@@ -10,6 +10,8 @@ import SwiftUI
 
 struct SharedSessionView: View {
     let sessionId: String
+    var title: String = ""
+    var hostName: String = ""
     let editable: Bool
 
     @Environment(\.dismiss) private var dismiss
@@ -23,9 +25,17 @@ struct SharedSessionView: View {
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "doc.text")
                     .foregroundColor(.textSecondary)
-                Text(String(localized: "shared.editor.title"))
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(title.isEmpty ? String(localized: "shared.editor.title") : title)
+                        .font(.bodyMedium)
+                        .foregroundColor(.textPrimary)
+                        .lineLimit(1)
+                    if hostName.isEmpty == false {
+                        Text(String(format: String(localized: "received.from_format"), hostName))
+                            .font(.bodySM)
+                            .foregroundColor(.textTertiary)
+                    }
+                }
                 Spacer()
                 if !editable {
                     Label(

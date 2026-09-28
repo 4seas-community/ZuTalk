@@ -38,6 +38,9 @@ final class CaptureCommandCenter: ObservableObject {
     private let defaults: UserDefaults
     private let coreProvider: @MainActor () -> (any ZuTalkCoreProtocol)?
     private let inviteReady: @MainActor () -> Bool
+    /// Watching someone else's share and recording can't happen together —
+    /// the two would tangle. Asks before leaving; `true` means go ahead.
+    private let leaveWatchingToRecord: @MainActor () -> Bool
 
     static let realtimeCaptionsDefaultsKey = "capture.realtime_captions.enabled"
 
@@ -49,7 +52,8 @@ final class CaptureCommandCenter: ObservableObject {
         coreProvider: @escaping @MainActor () -> (any ZuTalkCoreProtocol)? = {
             CoreClient.shared.core
         },
-        inviteReady: (@MainActor () -> Bool)? = nil
+        inviteReady: (@MainActor () -> Bool)? = nil,
+        leaveWatchingToRecord: (@MainActor () -> Bool)? = nil
     ) {
         let invite = invite ?? .shared
         self.capture = capture ?? .shared
@@ -58,6 +62,8 @@ final class CaptureCommandCenter: ObservableObject {
         self.defaults = defaults
         self.coreProvider = coreProvider
         self.inviteReady = inviteReady ?? { invite.isEnabled && invite.isActive }
+        self.leaveWatchingToRecord = leaveWatchingToRecord
+            ?? { ShareActivityStore.shared.confirmLeavingToRecord() }
         storedCaptionsChoice = defaults.object(forKey: Self.realtimeCaptionsDefaultsKey) != nil
             ? defaults.bool(forKey: Self.realtimeCaptionsDefaultsKey)
             : nil
@@ -117,6 +123,7 @@ final class CaptureCommandCenter: ObservableObject {
             navigation.openActiveNotebookForCapture()
             return false
         }
+        guard leaveWatchingToRecord() else { return false }
         guard isStarting == false,
               let startLease = NotebookCaptureStartWorkflowGate.shared.acquire()
         else {

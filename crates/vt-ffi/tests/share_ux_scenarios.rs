@@ -6,7 +6,7 @@
 //! - 三人房间:A 的订正要经主持人转发才到得了 B —— 文档更新走成对
 //!   直连流,没有转发星型就是断的;
 //! - 双向黄金起点:观看端先写、宿主后写,§11 声称能安全合并;
-//! - Notebook 范围:v1 字幕-only,观看端必须拒收一切文档;
+//! - 允许留存的直播:完整字幕帧与文字稿两条通道都要到;
 //! - 删了再收:副本删除后重进房间,催缺把它再拉回来;
 //! - 散场再开:上一场的「已结束」不得污染下一场。
 
@@ -52,10 +52,7 @@ fn a_late_joiner_catches_up_on_existing_content() {
     let viewer = core(&viewer_dir);
 
     let session = "sess-late";
-    let code = host
-        .start_sharing(None, Some(session.into()), false)
-        .unwrap();
-    host.enable_document_sync().unwrap();
+    let code = host.start_recording_share(session.into(), false).unwrap();
 
     // 内容先于观看端存在:一条普通批注 + 一条 20KB 的长文。
     host.shared_session_insert_annotation(session.into(), 0, "note-1".into(), "开场白".into())
@@ -98,10 +95,7 @@ fn a_correction_reaches_the_other_viewer_through_the_host() {
     let viewer_b = core(&b_dir);
 
     let session = "sess-trio";
-    let code = host
-        .start_sharing(None, Some(session.into()), false)
-        .unwrap();
-    host.enable_document_sync().unwrap();
+    let code = host.start_recording_share(session.into(), false).unwrap();
 
     viewer_a.join_share(code.clone()).unwrap();
     viewer_b.join_share(code).unwrap();
@@ -168,10 +162,7 @@ fn both_sides_can_start_from_the_golden_ancestor_and_merge() {
     let viewer = core(&viewer_dir);
 
     let session = "sess-golden";
-    let code = host
-        .start_sharing(None, Some(session.into()), false)
-        .unwrap();
-    host.enable_document_sync().unwrap();
+    let code = host.start_recording_share(session.into(), false).unwrap();
     viewer.join_share(code).unwrap();
     assert!(wait_until(10, || host.room_members().len() >= 2));
 
@@ -222,76 +213,35 @@ fn both_sides_can_start_from_the_golden_ancestor_and_merge() {
     viewer.stop_sharing().unwrap();
 }
 
-/// Notebook 范围 v1 是字幕-only:观看端必须拒收一切文档。
+/// 允许留存的直播:字幕的完整形态到手,主持人写进文字稿的东西也落到观看端。
 ///
-/// 入册清单为空,接受成员自报的 id 会打开 bridge 键位抢占面
-/// (share-p2p.md §11)。这里锁的是:宿主就算推了,观看端也一份不落盘。
+/// 这是「直播 + 允许观看的人保存文字稿」这一格的端到端:多语言画布的根
+/// (完整预览帧)与留下来的那份文字稿走两条通道,两条都要到。
 #[test]
-fn notebook_scope_rooms_stay_captions_only() {
+fn a_live_share_with_copies_reaches_the_viewer_on_both_channels() {
     let host_dir = tempfile::tempdir().unwrap();
     let viewer_dir = tempfile::tempdir().unwrap();
     let host = core(&host_dir);
     let viewer = core(&viewer_dir);
 
-    let code = host
-        .start_sharing(Some("nb-1".into()), None, false)
-        .unwrap();
-    host.enable_document_sync().unwrap();
-    viewer.join_share(code).unwrap();
-    assert!(wait_until(10, || host.room_members().len() >= 2));
-
-    // 宿主往一份 session 文档里写东西并发布。观看端的范围判定应当拒收。
-    host.shared_session_insert_annotation("sess-nb".into(), 0, "note-1".into(), "不该出去".into())
-        .unwrap();
-
-    // 给传播留时间,然后断言观看端什么都没落盘。
-    std::thread::sleep(Duration::from_millis(1_500));
-    assert!(
-        viewer.list_shared_sessions().is_empty(),
-        "Notebook 范围的房间里,观看端不得落盘任何文档 —— v1 只有字幕"
-    );
-
-    host.stop_sharing().unwrap();
-    viewer.stop_sharing().unwrap();
-}
-
-/// Notebook 范围的落库入口:**主播在字幕通道宣告过的 session** 可以入册。
-///
-/// 字幕帧只来自与主播 QUIC 认证的直连且已过范围检查 —— 它是主播自报,
-/// 不是成员自报,不打开键位抢占面。宣告后,主播对那一场的文档推送
-/// 观看端要照收并落盘;完整预览帧(多语言画布的根)也要到手。
-#[test]
-fn a_caption_announced_session_lands_in_a_notebook_scope_room() {
-    let host_dir = tempfile::tempdir().unwrap();
-    let viewer_dir = tempfile::tempdir().unwrap();
-    let host = core(&host_dir);
-    let viewer = core(&viewer_dir);
-
-    let session = "sess-nb-live";
-    let code = host
-        .start_sharing(Some("nb-live".into()), None, false)
-        .unwrap();
-    host.enable_document_sync().unwrap();
+    let session = "sess-live";
+    let code = host.start_live_share(session.into(), true).unwrap();
     viewer.join_share(code).unwrap();
     assert!(wait_until(10, || host.room_members().len() >= 2));
 
     // 主播开始「录音」:字幕帧按真实 tap 路径反复播出(字幕连接的建立
     // 时刻不确定,单发一帧可能落在连接之前)。观看端轮询 share_state,
-    // 直到完整预览帧到手 —— 这一步同时完成 session 入册。
+    // 直到有句子的完整预览帧到手 —— 开场那一帧只有说明。
     let mut revision = 0u64;
     assert!(
         wait_until(10, || {
             revision += 1;
-            host.broadcast_live_preview_for_test(
-                "nb-live".into(),
-                &live_preview(session, revision),
-            );
+            host.broadcast_live_preview_for_test(&live_preview(session, revision));
             viewer
                 .share_state()
                 .remote_preview
                 .as_ref()
-                .map(|p| p.session_id == session)
-                .unwrap_or(false)
+                .is_some_and(|p| p.session_id == session && !p.utterances.is_empty())
         }),
         "观看端应当收到完整预览帧"
     );
@@ -303,7 +253,7 @@ fn a_caption_announced_session_lands_in_a_notebook_scope_room() {
     assert_eq!(preview.lane_health.len(), 1, "lane 健康要完整过网");
     assert!(!state.lines.is_empty(), "压扁行的兼容投影与完整帧同源并存");
 
-    // 宣告过的 session:主播的文档写入要能落到观看端。
+    // 允许留存:主播写进文字稿的东西要落到观看端。
     host.shared_session_insert_annotation(session.into(), 0, "note-1".into(), "现场笔记".into())
         .unwrap();
     assert!(
@@ -313,7 +263,7 @@ fn a_caption_announced_session_lands_in_a_notebook_scope_room() {
                 .map(|blocks| blocks.iter().any(|b| b.text == "现场笔记"))
                 .unwrap_or(false)
         }),
-        "字幕宣告过的 session,文档内容必须落到观看端"
+        "允许留存的直播,文字稿必须落到观看端"
     );
     assert!(
         !viewer.list_shared_sessions().is_empty(),
@@ -390,10 +340,7 @@ fn a_deleted_copy_can_be_received_again() {
     let viewer = core(&viewer_dir);
 
     let session = "sess-again";
-    let code = host
-        .start_sharing(None, Some(session.into()), false)
-        .unwrap();
-    host.enable_document_sync().unwrap();
+    let code = host.start_recording_share(session.into(), false).unwrap();
 
     viewer.join_share(code.clone()).unwrap();
     host.shared_session_insert_annotation(session.into(), 0, "note-1".into(), "第一稿".into())
@@ -435,7 +382,7 @@ fn a_new_room_resets_the_ended_state() {
 
     // 第一场:开、进、散。
     let code1 = host
-        .start_sharing(None, Some("sess-one".into()), false)
+        .start_recording_share("sess-one".into(), false)
         .unwrap();
     viewer.join_share(code1).unwrap();
     assert!(wait_until(10, || host.room_members().len() >= 2));
@@ -448,7 +395,7 @@ fn a_new_room_resets_the_ended_state() {
 
     // 第二场:新码新房。
     let code2 = host
-        .start_sharing(None, Some("sess-two".into()), false)
+        .start_recording_share("sess-two".into(), false)
         .unwrap();
     viewer.join_share(code2).unwrap();
     let state = viewer.share_state();
@@ -474,10 +421,7 @@ fn a_burst_of_edits_converges_to_the_last_version() {
     let viewer = core(&viewer_dir);
 
     let session = "sess-burst";
-    let code = host
-        .start_sharing(None, Some(session.into()), false)
-        .unwrap();
-    host.enable_document_sync().unwrap();
+    let code = host.start_recording_share(session.into(), false).unwrap();
     viewer.join_share(code).unwrap();
     assert!(wait_until(10, || host.room_members().len() >= 2));
 
@@ -529,10 +473,7 @@ fn conflicting_edits_on_the_same_block_converge_identically() {
     let viewer = core(&viewer_dir);
 
     let session = "sess-conflict";
-    let code = host
-        .start_sharing(None, Some(session.into()), false)
-        .unwrap();
-    host.enable_document_sync().unwrap();
+    let code = host.start_recording_share(session.into(), false).unwrap();
     viewer.join_share(code).unwrap();
     assert!(wait_until(10, || host.room_members().len() >= 2));
 
@@ -623,10 +564,7 @@ fn identity_and_received_copies_survive_a_restart() {
     // 重启后的内容还能作为新一场共享的底稿,被晚加入的人催缺到。
     let viewer_dir = tempfile::tempdir().unwrap();
     let viewer = core(&viewer_dir);
-    let code = reborn
-        .start_sharing(None, Some(session.into()), false)
-        .unwrap();
-    reborn.enable_document_sync().unwrap();
+    let code = reborn.start_recording_share(session.into(), false).unwrap();
     viewer.join_share(code).unwrap();
     assert!(
         wait_until(10, || {
@@ -653,10 +591,10 @@ fn one_room_at_a_time_and_polite_room_switching() {
     let viewer = core(&viewer_dir);
 
     let code1 = host1
-        .start_sharing(None, Some("sess-one".into()), false)
+        .start_recording_share("sess-one".into(), false)
         .unwrap();
     let code2 = host2
-        .start_sharing(None, Some("sess-two".into()), false)
+        .start_recording_share("sess-two".into(), false)
         .unwrap();
 
     // 主持中不能加入别人的房间。
@@ -666,13 +604,13 @@ fn one_room_at_a_time_and_polite_room_switching() {
     );
     // 已在共享不能再次开始。
     assert!(host1
-        .start_sharing(None, Some("sess-three".into()), false)
+        .start_recording_share("sess-three".into(), false)
         .is_err());
 
     // 观看中不能开始分享。
     viewer.join_share(code1).unwrap();
     assert!(viewer
-        .start_sharing(None, Some("sess-mine".into()), false)
+        .start_recording_share("sess-mine".into(), false)
         .is_err());
     assert!(wait_until(10, || host1.room_members().len() >= 2));
 
@@ -716,7 +654,7 @@ fn the_join_desk_stays_sane_when_there_is_no_room() {
 
     // 开了共享:请求台仍然是空的(没人敲门),批准不存在的请求依然不成立。
     let _code = core
-        .start_sharing(None, Some("sess-desk".into()), false)
+        .start_recording_share("sess-desk".into(), false)
         .unwrap();
     assert!(core.pending_join_requests().is_empty());
     assert!(

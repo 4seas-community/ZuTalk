@@ -6790,7 +6790,6 @@ impl ZuTalkCore {
             (*self.notebook_capture_store).clone(),
             Some(crate::share_api::ShareCaptionTap::new(
                 self.share_runtime.clone(),
-                notebook_id.clone(),
             )),
         )?;
 
@@ -6993,14 +6992,7 @@ impl ZuTalkCore {
             .unwrap_or(run);
         // 网页分享上留一条「录音开始」的线。房间跨录音存活,不留线的话
         // 上一场的稿与这一场的字幕会接成一片。
-        let broadcast_notebook_id = {
-            let guard = self.active_notebook_capture.lock().unwrap();
-            guard
-                .as_ref()
-                .map(|active| active.notebook_id.clone())
-                .unwrap_or_default()
-        };
-        self.push_web_share_segment(&broadcast_notebook_id, &session_id, "started");
+        self.push_web_share_segment(&session_id, "started");
         let event = callback.send(event_from_run(latest_run, Vec::new(), true));
         Ok(event)
     }
@@ -7387,20 +7379,15 @@ impl ZuTalkCore {
                 ),
             }
         }
-        let (callback, notebook_id) = {
-            let active = active_guard
-                .as_ref()
-                .expect("active capture was checked above");
-            (active.callback.clone(), active.notebook_id.clone())
-        };
+        let callback = active_guard
+            .as_ref()
+            .expect("active capture was checked above")
+            .callback
+            .clone();
         // 暂停:网页那边字幕会就此停住,给它一条线说明「这里断了」;
         // 恢复:再来一条,带上这一段重新开始的时间。
         drop(active_guard);
-        self.push_web_share_segment(
-            &notebook_id,
-            &session_id,
-            if paused { "paused" } else { "started" },
-        );
+        self.push_web_share_segment(&session_id, if paused { "paused" } else { "started" });
         let event = callback.send(event_from_run(run, Vec::new(), false));
         Ok(event)
     }

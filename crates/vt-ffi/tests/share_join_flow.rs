@@ -16,9 +16,10 @@ fn joining_with_a_valid_code_reports_a_usable_state() {
     let host = core(&host_dir);
     let viewer = core(&viewer_dir);
 
-    // 主持人开始共享,拿到分享码。
+    // 主持人开始直播,拿到加入码。
+    host.set_share_display_name("主持人".into()).unwrap();
     let code = host
-        .start_sharing(Some("nb-1".into()), None, false)
+        .start_live_share("sess-1".into(), false)
         .expect("开始共享应当成功");
     assert!(
         code.starts_with("zutalkshare"),
@@ -43,13 +44,23 @@ fn joining_with_a_valid_code_reports_a_usable_state() {
     );
     assert!(state.is_viewing, "加入后应当处于观看状态");
 
-    // 主持人没在录音 —— 所以没有任何字幕。以前界面对此一言不发,
-    // 现在这个组合必须能被区分出来:已连上,但对方还没开始。
+    // 主持人还没说话 —— 所以没有任何字幕。以前界面对此一言不发,
+    // 现在这个组合必须能被区分出来:已连上,知道在看谁的哪一场,只是还没人说话。
     assert!(state.lines.is_empty());
-    assert_eq!(
-        state.applied_revision, None,
-        "还没收到帧;界面据此显示「已加入 — 等待主持人」"
-    );
+    let mut introduced = None;
+    for _ in 0..200 {
+        let state = viewer.share_state();
+        if !state.host_name.is_empty() {
+            introduced = Some(state);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let introduced = introduced.expect("主持人开场就该让观看端知道这是谁的直播");
+    assert_eq!(introduced.host_name, "主持人");
+    assert!(introduced.is_live);
+    assert!(!introduced.keeps_copies, "直播默认不留文字稿");
+    assert!(introduced.lines.is_empty());
 
     // 主持人那边同样要能区分「共享开着」和「真的在播」。
     let host_state = host.share_state();
@@ -70,9 +81,7 @@ fn the_share_code_survives_a_view_being_recreated() {
     let host = core(&dir);
     assert_eq!(host.current_share_code(), None, "没共享时不该有码");
 
-    let issued = host
-        .start_sharing(Some("nb-1".into()), None, false)
-        .unwrap();
+    let issued = host.start_live_share("sess-1".into(), false).unwrap();
     assert_eq!(
         host.current_share_code().as_deref(),
         Some(issued.as_str()),
@@ -83,62 +92,36 @@ fn the_share_code_survives_a_view_being_recreated() {
     assert_eq!(host.current_share_code(), None, "停止后不该再交出码");
 }
 
-/// 录音条上的共享指示器必须说真话:在共享范围内亮、不在时灭、静音后变灰。
-///
-/// 判定与 `ShareCaptionTap::broadcast` 同一份 —— 这里锁住的是 FFI 查询那一半。
+/// 录音条上的「直播中」必须说真话:只有共享的那一场亮,停了就灭。
 #[test]
-fn the_broadcast_status_matches_the_share_scope() {
-    use vt_ffi::FfiSessionBroadcastStatus;
-
+fn the_live_indicator_matches_the_shared_recording() {
     let dir = tempfile::tempdir().unwrap();
     let host = core(&dir);
+    assert!(!host.is_session_shared_live("sess-1".into()));
 
-    // 没在共享:任何录音都不该亮指示器。
-    assert_eq!(
-        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
-        FfiSessionBroadcastStatus::NotShared
-    );
-
-    // 共享整本 nb-1:其中的录音在播,别的 Notebook 不在。
-    host.start_sharing(Some("nb-1".into()), None, false)
-        .unwrap();
-    assert_eq!(
-        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
-        FfiSessionBroadcastStatus::Broadcasting
-    );
-    assert_eq!(
-        host.session_broadcast_status("nb-2".into(), "sess-2".into()),
-        FfiSessionBroadcastStatus::NotShared,
-        "共享着 nb-1,在 nb-2 里录音不该显示成在共享"
+    host.start_live_share("sess-1".into(), false).unwrap();
+    assert!(host.is_session_shared_live("sess-1".into()));
+    assert!(
+        !host.is_session_shared_live("sess-2".into()),
+        "同时录着的另一场不该显示成在直播"
     );
 
-    // 一键静音只影响这一段,松开就恢复。
-    host.set_session_broadcast_muted("sess-1".into(), true);
-    assert_eq!(
-        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
-        FfiSessionBroadcastStatus::Muted
-    );
-    host.set_session_broadcast_muted("sess-1".into(), false);
-    assert_eq!(
-        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
-        FfiSessionBroadcastStatus::Broadcasting
-    );
-
-    // 停止共享后指示器灭,静音清单也不跨共享残留。
-    host.set_session_broadcast_muted("sess-1".into(), true);
     host.stop_sharing().unwrap();
-    assert_eq!(
-        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
-        FfiSessionBroadcastStatus::NotShared
-    );
-    host.start_sharing(Some("nb-1".into()), None, false)
-        .unwrap();
-    assert_eq!(
-        host.session_broadcast_status("nb-1".into(), "sess-1".into()),
-        FfiSessionBroadcastStatus::Broadcasting,
-        "上一场共享的静音不该带进下一场"
-    );
+    assert!(!host.is_session_shared_live("sess-1".into()));
+}
+
+/// 一次一场:正在共享时不能再开第二场,也不能去看别人的。
+#[test]
+fn one_share_at_a_time() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = core(&dir);
+    host.start_live_share("sess-1".into(), false).unwrap();
+    assert!(host.start_recording_share("sess-2".into(), true).is_err());
     host.stop_sharing().unwrap();
+    assert!(
+        host.start_live_share(" ".into(), false).is_err(),
+        "要说清共享哪一段"
+    );
 }
 
 /// 主持人停止共享后,观看端要能看出「这场已结束」。
@@ -152,9 +135,7 @@ fn a_viewer_sees_the_host_leave() {
     let host = core(&host_dir);
     let viewer = core(&viewer_dir);
 
-    let code = host
-        .start_sharing(None, Some("sess-1".into()), false)
-        .unwrap();
+    let code = host.start_recording_share("sess-1".into(), true).unwrap();
     viewer.join_share(code).unwrap();
     assert!(!viewer.share_state().host_left, "主持人还在,不该显示已结束");
 
@@ -262,8 +243,7 @@ fn the_host_appears_in_its_own_room() {
     core.set_share_display_name("主持人".into()).unwrap();
     assert!(core.room_members().is_empty(), "没共享时房间是空的");
 
-    core.start_sharing(Some("nb-1".into()), None, false)
-        .unwrap();
+    core.start_live_share("sess-1".into(), false).unwrap();
     let members = core.room_members();
     assert_eq!(members.len(), 1, "主持人应当在自己的房间里");
     assert!(members[0].is_me);

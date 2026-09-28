@@ -156,6 +156,9 @@ pub struct RoomPresence {
     /// 瞬断,不该在观看端显示成「对方结束了共享」。观看端靠它区分
     /// 「还在收」与「这场已经散了,收到的内容还在」。
     host_departed: bool,
+    /// 主持人移出的人。他们手里的码还能让 gossip 收到控制面消息,但再打
+    /// 招呼也不会回到名册里 —— 字幕与文档通道按名册放行,所以移出是真的。
+    banned: BTreeSet<EndpointId>,
 }
 
 impl RoomPresence {
@@ -186,7 +189,41 @@ impl RoomPresence {
             roster,
             names,
             host_departed: false,
+            banned: BTreeSet::new(),
         }
+    }
+
+    /// 主持人移出一位成员。返回名册是否因此变化。主持人自己移不掉。
+    pub fn ban(&mut self, who: EndpointId) -> bool {
+        if !self.is_host || who == self.host {
+            return false;
+        }
+        self.banned.insert(who);
+        self.names.remove(&who);
+        self.seen.remove(&who);
+        self.roster.remove(who)
+    }
+
+    pub fn is_banned(&self, who: EndpointId) -> bool {
+        self.banned.contains(&who)
+    }
+
+    /// 主持人凭入场凭证收下一位成员(凭证已由调用方核对)。与 Hello 同效,
+    /// 只是不依赖 gossip 把消息送到。返回名册或名字是否因此变化。
+    pub fn admit_with_ticket(&mut self, who: EndpointId, display_name: &str) -> bool {
+        if !self.is_host || self.banned.contains(&who) {
+            return false;
+        }
+        let cleaned = crate::nearby::sanitize_display_name(display_name);
+        let name_changed = !cleaned.is_empty()
+            && self.names.get(&who).map(String::as_str) != Some(cleaned.as_str());
+        if name_changed {
+            self.names.insert(who, cleaned);
+        }
+        self.seen.insert(who);
+        let joined = !self.roster.is_member(who);
+        self.roster.admit(who);
+        joined || name_changed
     }
 
     /// 主持人是否已明确道别。主持人自己这一侧永远是 `false`。
@@ -223,6 +260,9 @@ impl RoomPresence {
     pub fn apply(&mut self, author: EndpointId, control: RoomControl) -> bool {
         match control {
             RoomControl::Hello { display_name } => {
+                if self.banned.contains(&author) {
+                    return false;
+                }
                 // 道过别的主持人又打招呼 —— 撤销「已结束」。防的是短命的
                 // 停止/重开序列把观看端永久卡在「已结束」上。
                 if author == self.host {
@@ -469,6 +509,28 @@ mod tests {
             panic!("主持人应当有名册可广播");
         };
         assert!(members.contains(guest.public().as_bytes()));
+    }
+
+    /// 移出的人再打招呼也回不到名册里 —— 否则「移出」只管到他下一次重连。
+    #[test]
+    fn a_removed_member_stays_out_after_another_hello() {
+        let host = SecretKey::generate();
+        let guest = SecretKey::generate();
+        let mut presence = RoomPresence::new(
+            scope(),
+            host.public(),
+            host.public(),
+            "",
+            WritePolicy::HostOnly,
+        );
+        presence.apply(guest.public(), RoomControl::hello("访客"));
+        assert!(presence.ban(guest.public()));
+        assert!(!presence.roster().is_member(guest.public()));
+
+        assert!(!presence.apply(guest.public(), RoomControl::hello("访客")));
+        assert!(!presence.roster().is_member(guest.public()));
+        assert!(presence.is_banned(guest.public()));
+        assert!(!presence.ban(host.public()), "主持人移不掉自己");
     }
 
     /// 重复的 Hello 不该反复触发名册广播。

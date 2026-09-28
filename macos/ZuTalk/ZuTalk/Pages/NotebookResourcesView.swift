@@ -1554,6 +1554,16 @@ private struct NotebookResourceBlock: View {
                             systemImage: "arrow.right.doc.on.clipboard"
                         )
                     }
+                    // 录好的才共享;正在录的从录音条直播。
+                    Button {
+                        ShareActivityStore.shared.presentRecordingShare(
+                            sessionId: item.id,
+                            title: item.title.isEmpty ? item.preview : item.title
+                        )
+                    } label: {
+                        Label(String(localized: "share.recording.menu"), systemImage: "person.2")
+                    }
+                    .disabled(item.isRecording)
                     Divider()
                     // 录音进行中删不了(Core 软删与彻底删除都拒绝)。
                     // 禁用 + 一句原因,比给一个必然失败的按钮诚实。

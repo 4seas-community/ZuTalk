@@ -158,10 +158,6 @@
 "settings.language.restart_hint" = "El cambio se aplica por completo al reiniciar ZuTalk.";
 "settings.appearance.title" = "APARIENCIA";
 
-
-
-
-
 /* Permissions */
 "permission.microphone.name" = "Micrófono";
 "permission.microphone.usage" = "Graba su voz y la envía a Soniox para transcribirla";
@@ -182,16 +178,12 @@
 "export.subtitles_omitted_format" = "Líneas sin marca de tiempo: %lld. Los archivos .srt/.vtt las omiten; la transcripción las conserva.";
 "common.export.action" = "Exportar";
 
-
-
 /* Recording settings */
-
 
 "editor.export.title" = "Exportar grabación";
 "editor.export.hint" = "Exportar esta grabación como ZIP";
 "editor.export.no_session" = "No hay ninguna grabación para exportar";
 "doc.scratchpad" = "Notas personales";
-
 
 /* Onboarding brand line */
 "onboarding.brand.subtitle" = "COMUNICACIÓN MULTILINGÜE · REUNIONES EN VIVO";
@@ -316,7 +308,6 @@
 "settings.shortcuts.font_bigger" = "Aumentar tamaño de letra";
 "settings.shortcuts.font_smaller" = "Reducir tamaño de letra";
 "settings.shortcuts.open_settings" = "Abrir Configuración";
-
 
 /* Diagnostics section */
 "diagnostics.operational.provider_keys" = "Credenciales de servicio";
@@ -547,8 +538,6 @@
 "editor.tab.transcript.live.hint" = "Transcripción en vivo — grabación en curso";
 "editor.tab.transcript.hint" = "Transcripción del audio";
 
-
-
 /* Document editor empty states */
 "editor.empty.no_transcript_title" = "Aún no hay transcripción";
 "editor.empty.no_transcript_desc" = "La transcripción estará disponible cuando termine la grabación.";
@@ -617,7 +606,6 @@
 /* DesignSystem previews (P2) */
 "preview.crosshair.blueprint" = "CONTENIDO BLUEPRINT";
 "preview.crosshair.hardware" = "CONTENIDO HARDWARE";
-
 
 /* Document editor */
 "editor.toolbar.show_sources" = "Mostrar fuentes";
@@ -924,75 +912,28 @@
 "knowledge.import_json.failed" = "No se pudo importar la base de conocimiento";
 
 /* 分享:点对点字幕与文档协同 */
-"sidebar.share" = "Compartir";
-"share.title" = "Compartir";
-"share.identity" = "Tu clave para compartir";
-"share.copy_code" = "Copiar código";
-"share.join" = "Unirse con un código";
-"share.mode.host" = "Compartir desde este Mac";
-"share.mode.join" = "Unirse a otra persona";
-"share.stop" = "Dejar de compartir";
-"share.stop_note" = "Detiene los envíos siguientes. No puede borrar lo que otros ya recibieron.";
-"share.leave" = "Salir de la sala";
-"share.leave_note" = "Deja de recibir. Las transcripciones que ya recibiste se quedan en este Mac.";
-"share.audio_never" = "El audio nunca se comparte.";
-"share.capture.live" = "Compartiendo subtítulos";
-"share.capture.live_hint" = "Las personas de tu sala ven los subtítulos de esta grabación en directo. El audio nunca se comparte.";
-"share.capture.mute" = "No compartir esta";
-"share.capture.mute_hint" = "Retiene los subtítulos de esta grabación. El uso compartido sigue activo.";
-"share.capture.muted" = "Esta grabación no se comparte";
-"share.capture.muted_hint" = "El uso compartido está activo, pero los subtítulos de esta grabación están retenidos.";
-"share.capture.unmute" = "Reanudar";
-"share.empty" = "Aún no compartes nada.";
-"share.role.host" = "El anfitrión edita, los demás solo leen";
-"share.role.everyone" = "Todos pueden editar";
-"share.direct" = "Conexión directa";
-"share.relayed" = "Conexión por retransmisión";
-"share.start" = "Empezar a compartir";
-"share.cancel" = "Cancelar";
-"share.needs_notebook" = "Abre primero un tema: se comparte un tema a la vez.";
-"share.start.confirm.title" = "¿Empezar a compartir este tema?";
-"share.start.confirm.body" = "Mientras este uso compartido esté abierto, las grabaciones que inicies en este tema envían sus subtítulos en directo a toda la sala. El audio nunca se comparte. Detenerlo frena los envíos siguientes, pero no borra lo que otros ya recibieron.";
-"share.start.confirm.session_title" = "¿Compartir esta grabación?";
-"share.start.confirm.session_body" = "Las personas que dejes entrar conservan una copia de la transcripción de esta grabación y pueden ayudar a corregirla si la sala lo permite. El audio nunca se comparte. Detenerlo frena los envíos siguientes, pero no borra lo que ya recibieron.";
-"share.start.confirm.remember" = "No se volverá a preguntar para este tema.";
+"share.audio_never" = "Nunca oyen el audio: se queda en este Mac.";
 
 /* 设置:分享(点对点)传输 */
 "settings.section.p2p_name" = "Compartir";
 "settings.p2p.title" = "Compartir";
 "settings.p2p.subtitle" = "Cómo este Mac llega a las personas con las que compartes.";
-"settings.p2p.identity" = "Clave de compartir de este Mac";
+"settings.p2p.identity" = "Identidad de este Mac";
 "settings.p2p.copy_identity" = "Copiar";
-"settings.p2p.identity_note" = "Los demás reconocen este Mac por esta clave. Cambiarla invalida todas las copias que tus contactos hayan guardado.";
+"settings.p2p.identity_note" = "Los demás distinguen este Mac por ella: cualquiera puede elegir cualquier nombre, pero esto no se puede falsificar.";
 "settings.p2p.relay" = "Servidores de retransmisión";
 "settings.p2p.relay_note" = "Una dirección por línea. Déjalo vacío para usar solo conexiones directas: basta en una misma red Wi-Fi y funciona sin internet.";
 "settings.p2p.relay_privacy" = "Una retransmisión solo reenvía. El tráfico sigue cifrado de extremo a extremo, así que no puede leer lo que pasa por ella.";
-"settings.p2p.local_discovery" = "Encontrar personas en esta red";
-"settings.p2p.local_discovery_note" = "Te permite encontrar otros Mac aquí y pedir unirte, sin pasar un código. En la red solo se ve una clave. macOS pide permiso de red local la primera vez; si lo rechazas, los códigos de compartir siguen funcionando.";
+"settings.p2p.local_discovery" = "Buscar lo compartido en esta red";
+"settings.p2p.local_discovery_note" = "Muestra lo compartido en esta red cuyo anfitrión eligió ser visible, y permite que otros encuentren lo tuyo cuando tú lo elijas. Por lo demás, no se ve nada de este Mac. macOS pide permiso de red local la primera vez; si lo rechazas, los códigos de acceso siguen funcionando.";
 "settings.p2p.save" = "Guardar";
 "settings.p2p.restore_default" = "Restaurar valores predeterminados";
 "settings.p2p.saved" = "Guardado";
 
 /* 分享:状态与提示 */
-"share.pick_notebook" = "Tema a compartir";
-"share.your_code" = "Código para compartir";
-"share.code_note" = "Envíaselo a quienes se unan. Los saltos de línea y las mayúsculas añadidos por el camino no importan.";
-"share.copied" = "Copiado";
-"share.no_code_yet" = "Aún no hay código: empieza a compartir primero.";
 "share.core_unavailable" = "Compartir todavía se está iniciando. Inténtalo en un momento.";
-"share.join_failed" = "No se pudo leer ese código. Pídelo de nuevo: copiarlo desde un mensaje puede perder caracteres.";
-"share.status.idle" = "Sin compartir";
-"share.status.idle_hint" = "Comparte un tema para enviar tus subtítulos, o únete con un código que te hayan dado.";
-"share.status.hosting_waiting" = "Compartiendo: aún no se envía nada";
-"share.status.hosting_waiting_hint" = "Ya pueden unirse con tu código. Los subtítulos empiezan cuando comiences a grabar.";
-"share.status.hosting_live" = "Enviando tus subtítulos";
-"share.status.hosting_live_hint" = "Quienes se unieron están viendo lo que transcribes.";
-"share.status.joined_waiting" = "Unido: esperando al anfitrión";
-"share.status.joined_waiting_hint" = "Estás conectado. Los subtítulos aparecen cuando el anfitrión empiece a grabar.";
-"share.status.receiving" = "Recibiendo subtítulos";
-"share.status.receiving_hint" = "Son los subtítulos del anfitrión. No se guardan en este Mac.";
+"share.join_failed" = "No se pudo unir con este código. Pídelo de nuevo: al copiarlo de un mensaje pueden perderse caracteres, y el código deja de funcionar cuando termina el uso compartido.";
 "share.status.host_left" = "El anfitrión terminó este uso compartido";
-"share.status.host_left_hint" = "No llegará nada más. Lo que ya recibiste se queda en este Mac.";
 
 /* 分享:观看端链路指示(真值来自 QUIC 选中路径) */
 "share.link.direct" = "Conexión directa";
@@ -1001,17 +942,8 @@
 "share.link.relayed_hint" = "No se pudo conectar directamente, así que un servidor de retransmisión pasa los subtítulos, que siguen cifrados de extremo a extremo. Es habitual en redes Wi-Fi que aíslan los dispositivos entre sí.";
 
 /* 分享:范围选择、收到的转录稿与协同订正 */
-"share.scope.notebook" = "Solo subtítulos en directo: los demás ven las grabaciones de este tema sin conservar nada.";
-"share.scope.single" = "Una grabación: los demás conservan su transcripción y pueden ayudar a corregirla.";
-"share.scope.no_sessions" = "Este tema aún no tiene grabaciones.";
-"share.received.title" = "Transcripciones compartidas";
-"share.received.untitled" = "(sin texto todavía)";
-"share.received.blocks" = "%lld pasajes";
-"share.received.delete" = "Eliminar de este Mac";
-"share.received.delete.confirm_title" = "¿Eliminar esta transcripción recibida?";
-"share.received.delete.confirm_body" = "Solo elimina la copia de este Mac. Las copias de otras personas no se ven afectadas.";
-"shared.editor.title" = "Transcripción compartida";
-"shared.editor.read_only" = "Sala de solo lectura";
+"shared.editor.title" = "Transcripción recibida";
+"shared.editor.read_only" = "Solo lectura";
 "shared.editor.add_annotation" = "Añadir nota";
 "shared.editor.done" = "Hecho";
 "shared.editor.empty_title" = "Aún no hay nada aquí";
@@ -1030,55 +962,23 @@
 "settings.p2p.relay_retry" = "Reintentar";
 
 /* 分享:同一网络里的人 */
-"share.nearby" = "Personas en esta red";
-"share.nearby.scan" = "Buscar";
-"share.nearby.scanning" = "Buscando…";
-"share.nearby.empty" = "Aún no hay nadie. Ambos Mac necesitan ZuTalk abierto en la misma red.";
-"share.nearby.ask" = "Pedir unirse";
-"share.nearby.note" = "En la red solo se ve una clave: ni nombres ni títulos de reunión. Pedir unirse envía tu nombre; la otra persona decide.";
-"share.nearby.not_sharing" = "Ese Mac no está compartiendo nada ahora.";
+"share.nearby.not_sharing" = "Ese uso compartido terminó o ya no está abierto a quien está cerca.";
 "share.nearby.declined" = "Han rechazado.";
 "share.nearby.timed_out" = "Sin respuesta. Puede que se hayan ausentado.";
-"share.requests" = "Quiere unirse";
-"share.requests.unnamed" = "Mac sin nombre";
-"share.requests.approve" = "Dejar entrar";
-"share.requests.decline" = "Rechazar";
-"share.requests.note" = "El nombre es el que escribieron. La clave de abajo es lo único que no se puede falsificar.";
-"share.knock.toast" = "%@ quiere unirse a tu sala";
-"share.knock.toast_detail" = "Aprueba o rechaza en la pestaña Compartir.";
-"share.knock.badge_label" = "%lld solicitudes de unión en espera";
 
 /* 分享:昵称与成员 */
-"share.nickname" = "Tu nombre en una sala";
-"share.nickname.prompt" = "p. ej. mi MacBook";
-"share.nickname.note" = "Lo verán las personas con las que compartes. Si lo dejas vacío, solo verán tu clave.";
-"share.members" = "En esta sala";
-"share.members.unnamed" = "Sin nombre";
-"share.members.you" = "tú";
-"share.members.host" = "anfitrión";
-"share.nearby.asking" = "Esperando respuesta…";
-"share.nearby.abandon" = "Dejar de esperar";
 
-"capture.toolbar.joined_room" = "En una sala compartida";
-"capture.toolbar.joined_room_hint" = "Estás recibiendo los subtítulos en vivo de otra persona. Sal de la sala desde la página Compartir antes de grabar aquí.";
-"share.sidebar.live_label" = "En una sala compartida";
-"shared_inbox.live_title" = "Recibiendo en vivo";
-"shared_inbox.live_waiting" = "Te has unido. Esperando a que el anfitrión empiece a grabar.";
-"shared_inbox.empty_title" = "Aún no has recibido nada";
-"shared_inbox.empty_body" = "Las transcripciones compartidas contigo aparecerán aquí: en vivo mientras la sala esté abierta, y se conservan después.";
-"shared_inbox.session_live" = "En vivo";
+"share.sidebar.live_label" = "Viendo un directo";
 "shared_inbox.lane_canonical" = "Original";
 "shared_inbox.lane_connecting" = "Esta columna todavía se está conectando";
 "shared_inbox.lane_failed" = "Esta columna se detuvo; no llegará nada más";
 
-"share.web.title" = "Compartir por web";
-"share.web.start" = "Iniciar compartir por web";
-"share.web.hint" = "Quien escanee el código QR puede leer la transcripción en vivo en un navegador, sin aplicación y con idiomas conmutables.";
-"share.web.confirm.title" = "¿Iniciar compartir por web?";
-"share.web.confirm.body" = "La transcripción de lo que compartes se sube en texto plano al servidor de subtítulos —si compartes un tema, incluye todas las grabaciones que ya tiene, no solo las nuevas— y se conserva un tiempo después de terminar. Cualquiera con el enlace puede leerla. El audio nunca se comparte.";
-"share.web.plaintext_note" = "El texto de los subtítulos pasa en claro por el servidor y se conserva allí un tiempo. Cualquiera con el enlace puede leerlo.";
+"share.web.title" = "Enlace web";
+"share.web.start" = "Enlace web para quien no tiene ZuTalk…";
+"share.web.hint" = "Quien escanee el código o abra el enlace puede seguirlo en un navegador, en el idioma que elija.";
+"share.web.confirm.title" = "¿Abrir un enlace web?";
 "share.web.copy" = "Copiar enlace";
-"share.web.stop" = "Detener compartir por web";
+"share.web.stop" = "Cerrar enlace";
 "share.web.qr_label" = "Código QR de la página de subtítulos en vivo";
 
 /* Topic workspace and session catalog */
@@ -1270,9 +1170,6 @@
 "topic.delete.confirm_message_format" = "Sus %lld grabaciones se conservan: pasan a «Sin tema» con sus transcripciones y notas. Las notas propias del tema se eliminan.";
 "topic.delete.confirm_message_empty" = "Este tema no tiene grabaciones. Sus notas se eliminan.";
 
-"share.scope.label" = "Qué reciben";
-"share.role.label" = "Quién puede corregir la transcripción";
-
 "captions_choice.on_invite_format" = "Subtítulos en directo · quedan unos %@";
 
 "topics.card.last_recorded_format" = "Última grabación: %@";
@@ -1282,3 +1179,119 @@
 "session.marks.reveal" = "Ir a este momento en la transcripción";
 "session.marks.delete.confirm_title" = "¿Eliminar esta marca y su nota?";
 "session.marks.delete.confirm_message" = "Lo que escribiste aquí no se podrá recuperar. La grabación no se ve afectada.";
+
+"sidebar.received" = "Recibidos";
+"received.join.title" = "Unirse con un código";
+"received.join.placeholder" = "Pega el código de acceso";
+"received.join.button" = "Unirse";
+"received.join.joining" = "Uniéndose…";
+"received.join.note" = "Pide el código de acceso a quien comparte. Cualquiera que lo tenga puede unirse, así que se pasa de persona a persona.";
+"received.nearby.title" = "Compartido cerca";
+"received.nearby.empty" = "Ahora no hay nada compartido abierto a las personas de esta red.";
+"received.nearby.note" = "Aquí solo aparece lo compartido cuyo anfitrión eligió ser visible, con el nombre y el título que eligió mostrar. El anfitrión aprueba cada solicitud.";
+"received.nearby.ask" = "Pedir unirse";
+"received.nearby.asking" = "Esperando al anfitrión…";
+"received.nearby.abandon" = "Dejar de esperar";
+"received.open" = "Abrir transcripción";
+"received.read_only_hint" = "El anfitrión lo dejó en solo lectura mientras se comparte.";
+"received.transcripts.title" = "Transcripciones guardadas en este Mac";
+"received.transcripts.empty" = "Nada todavía. Cuando alguien te comparta una grabación, o deje guardar la transcripción de un directo, quedará aquí.";
+"received.from_format" = "De %@";
+"received.blocks_format" = "%lld frases";
+"received.delete" = "Eliminar de este Mac";
+"received.delete.confirm_title" = "¿Eliminar esta transcripción?";
+"received.delete.confirm_body" = "Solo se elimina la copia de este Mac. Quien la compartió conserva la suya.";
+"received.watch.waiting" = "Nadie está hablando todavía.";
+"received.watch.show_subtitles" = "Mostrar ventana de subtítulos";
+"received.watch.hide_subtitles" = "Ocultar ventana de subtítulos";
+"received.watch.nothing_kept_note" = "Puedes seguirlo en directo. No se guarda nada en este Mac: al salir, desaparece.";
+"received.watch.ended_nothing_kept_note" = "El anfitrión no permitió guardar la transcripción, así que no se guardó nada.";
+"received.watch.kept_live_note" = "El anfitrión permite guardar la transcripción: se guarda abajo y queda al terminar.";
+"received.watch.kept_read_only_note" = "Se guarda una copia de la transcripción en este Mac. Mientras se comparte, puedes leerla pero no cambiarla.";
+"received.watch.kept_editable_note" = "Se guarda una copia de la transcripción en este Mac. Tus correcciones llegan a la copia de todos en este uso compartido.";
+"received.watch.removed_note" = "El anfitrión te quitó de este uso compartido. No puedes volver con el mismo código.";
+"share.live.title" = "Compartir esta grabación en directo";
+"share.live.intro" = "Las personas que dejes entrar ven los subtítulos y traducciones mientras se habla.";
+"share.live.start" = "Empezar el directo";
+"share.live.stop" = "Detener el directo";
+"share.live.on" = "En directo";
+"share.live.on_count_format" = "En directo · %lld";
+"share.live.bar" = "En directo";
+"share.live.bar_hint" = "Deja que otros vean en directo los subtítulos de esta grabación";
+"share.live.bar_on_hint" = "Quién mira, el código de acceso y detener";
+"share.live.ended_with_recording" = "El directo terminó con la grabación.";
+"share.live.keep_failed" = "No se pudo permitir guardar la transcripción";
+"share.keep.toggle" = "Dejar que guarden la transcripción";
+"share.keep.off_detail" = "Desactivado: pueden seguirlo; no queda nada en su Mac al salir.";
+"share.keep.on_detail" = "Activado: su ZuTalk guarda una copia de la transcripción. Detener el directo no la recupera.";
+"share.keep.on_locked_detail" = "Permitido. Las copias ya entregadas no se pueden recuperar, así que sigue activado en este directo.";
+"share.recording.menu" = "Compartir…";
+"share.recording.title" = "Compartir esta grabación";
+"share.recording.intro" = "Las personas que dejes entrar reciben una copia de la transcripción en su Mac.";
+"share.recording.read_only" = "Solo leer";
+"share.recording.can_correct" = "Puede corregir";
+"share.recording.read_only_detail" = "Mientras se comparte, pueden leer su copia pero no cambiarla.";
+"share.recording.can_correct_detail" = "Las correcciones se sincronizan en la copia compartida de todos. Tu propia grabación no cambia.";
+"share.recording.start" = "Empezar a compartir";
+"share.recording.on" = "Compartiendo";
+"share.recording.stop" = "Dejar de compartir";
+"share.code.title" = "Código de acceso";
+"share.code.copy" = "Copiar código de acceso";
+"share.code.copied" = "Código de acceso copiado";
+"share.code.note" = "Hasta que lo detengas, cualquiera con este código puede unirse. Envíalo solo a quien quieras que mire.";
+"share.watchers.title" = "Quién mira";
+"share.watchers.none" = "Nadie aún";
+"share.watchers.count_format" = "%lld mirando";
+"share.watchers.empty" = "Nadie se ha unido aún.";
+"share.watchers.empty_live" = "Nadie se ha unido aún. Envía el código de acceso o deja que lo encuentren en esta red.";
+"share.watchers.remove" = "Quitar";
+"share.watchers.remove_hint" = "Se desconecta y no puede volver con este código. Lo que ya quedó en su Mac se queda allí.";
+"share.nearby.toggle" = "Visible en esta red";
+"share.nearby.toggle_detail_format" = "Si está activado, los ZuTalk de la misma Wi-Fi ven «%1$@ · %2$@» y pueden pedir unirse. Tú apruebas a cada persona.";
+"share.knock.title_format" = "%@ quiere unirse";
+"share.knock.approve" = "Dejar entrar";
+"share.knock.decline" = "Rechazar";
+"share.knock.expired" = "Esa solicitud ya caducó.";
+"share.web.starting" = "Abriendo…";
+"share.web.copied" = "Enlace copiado";
+"share.web.failed" = "No se pudo abrir un enlace web";
+"share.web.confirm.button" = "Abrir enlace";
+"share.web.uploads_captions" = "Los subtítulos y traducciones en directo pasan en texto plano por el servidor de ZuTalk, y cualquiera con el enlace puede leerlos. Siguen en el enlace unas 24 horas tras la última actualización.";
+"share.web.uploads_transcript" = "Los subtítulos, las traducciones y la transcripción completa —incluidos los nombres que diste a los hablantes— pasan en texto plano por el servidor de ZuTalk, y cualquiera con el enlace puede leerlos. Siguen en el enlace unas 24 horas tras la última actualización.";
+"share.stop.note" = "Deja de enviar contenido nuevo. Quienes miran pierden los subtítulos al detenerlo.";
+"share.stop.note_kept" = "Deja de enviar contenido nuevo. Las copias que ya están en sus Mac no se pueden recuperar.";
+"share.name.shown_as_format" = "Los demás te ven como «%@».";
+"share.name.change" = "Cambiar";
+"share.name.placeholder" = "Tu nombre";
+"share.name.default" = "el nombre de este Mac";
+"share.busy.title" = "Ya estás compartiendo";
+"share.busy.body_format" = "Se está compartiendo «%@». Solo uno a la vez: detenlo para compartir este.";
+"share.busy.stop_other" = "Detener ese uso compartido";
+"share.viewing_blocks_hosting_format" = "Estás viendo lo que comparte %@. Sal antes de compartir lo tuyo.";
+"share.hosting_format" = "Compartiendo «%@»";
+"share.hosting_count_format" = "Compartiendo «%1$@» · %2$lld";
+"share.untitled" = "Grabación sin título";
+"share.unnamed" = "Sin nombre";
+"share.someone" = "Alguien";
+"share.start_failed" = "No se pudo empezar a compartir";
+"share.join.while_hosting" = "Detén tu propio uso compartido antes de unirte al de otra persona.";
+"share.leave_to_record.title_format" = "¿Salir de lo que comparte %@ para grabar?";
+"share.leave_to_record.body" = "No puedes ver lo que comparte alguien y grabar a la vez.";
+"share.leave_to_record.confirm" = "Salir y grabar";
+"share.switch.title_format" = "¿Salir de lo que comparte %@ y unirte a este?";
+"share.switch.confirm" = "Salir y unirse";
+"share.watch.live_format" = "Viendo el directo de %@";
+"share.watch.recording_format" = "«%2$@», compartido por %1$@";
+"share.watch.ended_format" = "Lo que compartía %@ terminó";
+"share.watch.removed_format" = "%@ te quitó del uso compartido";
+"share.watch.leave" = "Salir";
+"share.watch.close" = "Cerrar";
+"share.watch.subtitle_window" = "Subtítulos";
+
+"share.keep.confirm_title" = "¿Dejar que todos los que miran guarden la transcripción?";
+"share.keep.confirm_button" = "Permitir";
+
+"received.nearby.searching" = "Buscando en esta red…";
+"received.nearby.discovery_off" = "La búsqueda cercana está desactivada en Configuración › Compartir. Aún puedes unirte con un código.";
+
+"received.watch.ended_kept_note" = "El uso compartido terminó. Tu copia queda abajo y puedes corregirla libremente.";
