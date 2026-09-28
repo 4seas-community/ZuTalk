@@ -140,6 +140,7 @@ private struct SessionMarkCard: View {
     @State private var draft: String
     @State private var isHovering = false
     @State private var showsRawExcerpt = false
+    @State private var isConfirmingDelete = false
 
     init(
         mark: SessionMarkViewModel,
@@ -157,12 +158,25 @@ private struct SessionMarkCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             HStack(spacing: Spacing.xs) {
-                Text(mark.startLabel)
-                    .font(.monoNum11)
-                    .foregroundColor(.textTertiary)
+                // The moment is a link back to the passage it marks.
+                Button {
+                    NotificationCenter.default.post(
+                        name: .zutalkRevealTranscriptMoment,
+                        object: nil,
+                        userInfo: ["sessionId": mark.sessionId, "ms": mark.startMs]
+                    )
+                } label: {
+                    Label(mark.startLabel, systemImage: "arrow.turn.down.left")
+                        .font(.monoNum11)
+                        .foregroundColor(.textTertiary)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(String(localized: "session.marks.reveal"))
+                .accessibilityLabel(Text(String(localized: "session.marks.reveal")))
                 Spacer(minLength: Spacing.xs)
                 if isHovering {
-                    Button(action: onDelete) {
+                    Button(action: requestDelete) {
                         Image(systemName: "trash")
                             .font(.system(size: 10, weight: .medium))
                             .contentShape(Rectangle())
@@ -222,6 +236,24 @@ private struct SessionMarkCard: View {
                 .strokeBorder(Color.borderGhost.opacity(0.35), lineWidth: 0.5)
         )
         .onHover { isHovering = $0 }
+        .contextMenu {
+            Button(role: .destructive, action: requestDelete) {
+                Label(String(localized: "session.marks.delete"), systemImage: "trash")
+            }
+        }
+        // A mark with a note holds the listener's own words, which nothing
+        // regenerates; losing them to a stray click on a hover button is not
+        // something to allow without asking.
+        .confirmationDialog(
+            String(localized: "session.marks.delete.confirm_title"),
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "session.marks.delete"), role: .destructive, action: onDelete)
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "session.marks.delete.confirm_message"))
+        }
         .onChange(of: mark.note) { updated in
             // The excerpt refreshes as transcript improves, which re-creates
             // this row. Never let that clobber text being typed.
@@ -229,6 +261,14 @@ private struct SessionMarkCard: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session.marks.card.\(mark.id)")
+    }
+
+    private func requestDelete() {
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            onDelete()
+        } else {
+            isConfirmingDelete = true
+        }
     }
 
     @ViewBuilder

@@ -546,7 +546,16 @@ final class NotebookResourcesViewModel: ObservableObject {
     ) -> [FfiNotebook] {
         guard let core = core ?? CoreClient.shared.core else { return [] }
         let notebooks = (try? core.listNotebooks()) ?? []
-        return notebooks.filter { $0.deletedAt == nil && $0.id != notebookId }
+        var destinations = notebooks.filter { $0.deletedAt == nil && $0.id != notebookId }
+        // Filing a recording into a topic can be undone: "No topic" is a
+        // destination like any other.
+        if var unfiled = try? core.getQuickCaptureNotebook(),
+           unfiled.deletedAt == nil,
+           unfiled.id != notebookId {
+            unfiled.title = String(localized: "home.row.topic.unassigned")
+            destinations.append(unfiled)
+        }
+        return destinations
     }
 
     /// Moves a recording and everything it owns into another notebook. The core

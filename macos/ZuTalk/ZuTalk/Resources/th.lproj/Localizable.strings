@@ -1279,3 +1279,7 @@
 "topics.card.last_recorded_format" = "บันทึกล่าสุด: %@";
 
 "home.catalog.filter.more_format" = "อีก %lld หัวข้อ";
+
+"session.marks.reveal" = "ไปยังช่วงนี้ในบทถอดเสียง";
+"session.marks.delete.confirm_title" = "ลบเครื่องหมายนี้และบันทึกของมันไหม";
+"session.marks.delete.confirm_message" = "สิ่งที่คุณเขียนไว้ที่นี่จะกู้คืนไม่ได้ การบันทึกไม่ได้รับผลกระทบ";

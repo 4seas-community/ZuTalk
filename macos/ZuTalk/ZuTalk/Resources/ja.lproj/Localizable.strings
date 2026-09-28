@@ -1279,3 +1279,7 @@
 "topics.card.last_recorded_format" = "最終録音：%@";
 
 "home.catalog.filter.more_format" = "ほか %lld 件";
+
+"session.marks.reveal" = "文字起こしのこの位置へ移動";
+"session.marks.delete.confirm_title" = "このマークとメモを削除しますか？";
+"session.marks.delete.confirm_message" = "ここに書いた内容は元に戻せません。録音には影響しません。";

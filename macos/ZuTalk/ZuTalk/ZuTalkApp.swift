@@ -295,6 +295,9 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
 extension Notification.Name {
     /// 异步转录完成后通知 LibraryView 刷新，sessionId 位于 object。
     static let zutalkSessionUpdated = Notification.Name("ZuTalkSessionUpdated")
+    /// Scroll the open transcript to a moment: `sessionId` and `ms` (capture
+    /// milliseconds) in userInfo. Posted by a mark's time.
+    static let zutalkRevealTranscriptMoment = Notification.Name("ZuTalkRevealTranscriptMoment")
 }
 
 // MARK: - Main Window

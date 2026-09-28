@@ -1278,3 +1278,7 @@
 "topics.card.last_recorded_format" = "Zuletzt aufgenommen: %@";
 
 "home.catalog.filter.more_format" = "%lld weitere";
+
+"session.marks.reveal" = "Diesen Moment im Transkript zeigen";
+"session.marks.delete.confirm_title" = "Diese Markierung samt Notiz löschen?";
+"session.marks.delete.confirm_message" = "Was du hier geschrieben hast, lässt sich nicht wiederherstellen. Die Aufnahme bleibt unberührt.";

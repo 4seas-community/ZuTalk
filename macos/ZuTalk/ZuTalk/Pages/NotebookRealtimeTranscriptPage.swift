@@ -899,6 +899,11 @@ private struct NotebookRealtimeHistoryView: View {
                 .montereyOnChange(of: focusSessionId) { _, _ in
                     reconcileSelection(using: proxy, animated: false)
                 }
+                .onReceive(
+                    NotificationCenter.default.publisher(for: .zutalkRevealTranscriptMoment)
+                ) { notification in
+                    reveal(notification, using: proxy)
+                }
                 .montereyOnChange(of: availableRuns.map(\.sessionId)) { _, _ in
                     reconcileSelection(using: proxy, animated: false)
                 }
@@ -979,6 +984,31 @@ private struct NotebookRealtimeHistoryView: View {
             )
             .task(id: run.sessionId) {
                 await history.loadTranscript(sessionId: run.sessionId)
+            }
+        }
+    }
+
+    /// Brings the row spoken at a moment into view, and stops following the
+    /// live edge so it stays there.
+    private func reveal(_ notification: Notification, using proxy: ScrollViewProxy) {
+        guard let run = presentedRun,
+              let sessionId = notification.userInfo?["sessionId"] as? String,
+              sessionId == run.sessionId,
+              let ms = notification.userInfo?["ms"] as? UInt64
+        else { return }
+        let utterances = sessionId == activeSessionID ? capture.utterances : run.utterances
+        guard let target = utterances
+            .filter({ ($0.sourceStartMs ?? .max) <= ms })
+            .max(by: { ($0.sourceStartMs ?? 0) < ($1.sourceStartMs ?? 0) })
+            ?? utterances.first
+        else { return }
+        cancelLiveFollow()
+        isFollowingLive = false
+        if reduceMotion {
+            proxy.scrollTo(target.id, anchor: .center)
+        } else {
+            withAnimation(.easeOut(duration: 0.22)) {
+                proxy.scrollTo(target.id, anchor: .center)
             }
         }
     }

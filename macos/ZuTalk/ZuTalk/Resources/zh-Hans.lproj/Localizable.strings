@@ -1279,3 +1279,7 @@
 "topics.card.last_recorded_format" = "最近录音：%@";
 
 "home.catalog.filter.more_format" = "另外 %lld 个主题";
+
+"session.marks.reveal" = "在转录里跳到这一刻";
+"session.marks.delete.confirm_title" = "删除这个标记和它的笔记？";
+"session.marks.delete.confirm_message" = "你写在这里的内容无法找回；录音本身不受影响。";

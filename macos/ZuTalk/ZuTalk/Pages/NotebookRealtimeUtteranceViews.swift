@@ -1026,6 +1026,10 @@ private struct MultilingualUtteranceRow: View {
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
             }
+            // Words the provider may still revise read a little lighter than
+            // settled ones; they looked the same, so a line could change
+            // under a reader who had taken it as final.
+            .opacity(utterance.completion == "complete" ? 1 : 0.72)
         }
         .accessibilityElement(children: .contain)
     }

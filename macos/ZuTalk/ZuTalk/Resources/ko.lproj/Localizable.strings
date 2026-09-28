@@ -1279,3 +1279,7 @@
 "topics.card.last_recorded_format" = "마지막 녹음: %@";
 
 "home.catalog.filter.more_format" = "%lld개 더";
+
+"session.marks.reveal" = "전사에서 이 순간으로 이동";
+"session.marks.delete.confirm_title" = "이 표시와 메모를 삭제할까요?";
+"session.marks.delete.confirm_message" = "여기에 쓴 내용은 되돌릴 수 없습니다. 녹음에는 영향이 없습니다.";

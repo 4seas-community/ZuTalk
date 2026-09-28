@@ -1279,3 +1279,7 @@
 "topics.card.last_recorded_format" = "Dernier enregistrement : %@";
 
 "home.catalog.filter.more_format" = "%lld de plus";
+
+"session.marks.reveal" = "Afficher ce moment dans la transcription";
+"session.marks.delete.confirm_title" = "Supprimer cette marque et sa note ?";
+"session.marks.delete.confirm_message" = "Ce que vous avez écrit ici ne pourra pas être récupéré. L’enregistrement n’est pas touché.";

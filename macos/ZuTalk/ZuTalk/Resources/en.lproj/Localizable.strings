@@ -1279,3 +1279,7 @@
 "topics.card.last_recorded_format" = "Last recorded %@";
 
 "home.catalog.filter.more_format" = "%lld more";
+
+"session.marks.reveal" = "Show this moment in the transcript";
+"session.marks.delete.confirm_title" = "Delete this mark and its note?";
+"session.marks.delete.confirm_message" = "What you wrote here cannot be recovered. The recording is not affected.";

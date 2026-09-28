@@ -1278,3 +1278,7 @@
 "topics.card.last_recorded_format" = "Última grabación: %@";
 
 "home.catalog.filter.more_format" = "%lld más";
+
+"session.marks.reveal" = "Ir a este momento en la transcripción";
+"session.marks.delete.confirm_title" = "¿Eliminar esta marca y su nota?";
+"session.marks.delete.confirm_message" = "Lo que escribiste aquí no se podrá recuperar. La grabación no se ve afectada.";
