@@ -20,6 +20,7 @@ pub mod share_web;
 pub mod shared_session_docs;
 pub mod speaker_directory_api;
 pub(crate) mod task_worker;
+pub(crate) mod topic_management;
 pub mod transcribe_api;
 
 uniffi::setup_scaffolding!();
@@ -1882,9 +1883,11 @@ pub(crate) fn capture_utterance_preview(
     out
 }
 
-/// Deterministic, rebuildable text used by full-text search. The language
-/// labels keep equal text in different lanes distinguishable while
-/// preserving source/translation order. No projection/editor state is read.
+/// Deterministic, rebuildable text for the test seam that rebuilds the
+/// full-text index from durable facts. The language labels keep equal text in
+/// different lanes distinguishable while preserving source/translation order.
+/// No projection/editor state is read.
+#[cfg(test)]
 pub(crate) fn capture_utterance_search_content(
     utterances: &[vt_store::notebook_capture_store::RealtimeUtterance],
 ) -> String {

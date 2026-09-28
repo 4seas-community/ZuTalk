@@ -44,7 +44,11 @@ enum SessionDefaultTabPolicy {
 /// The header's path for a topic or recording page. The page used to repeat
 /// this in a row of its own, and again as a large title under its tabs.
 struct EditorBreadcrumb: Equatable {
-    struct Recording: Equatable {
+    struct Recording: Equatable, Identifiable {
+        var id: String { sessionID }
+        var sessionID: String
+        /// What it is called now; empty when untitled.
+        var storedTitle: String
         /// The recording's title, or when it has none its start time.
         var label: String
         /// Start time (when titled), length and languages.

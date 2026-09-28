@@ -68,8 +68,18 @@ final class SubtitleOverlayCoordinator: ObservableObject {
     var isMaximized: Bool { placement != .restored }
 
     private let capture = ActiveBilingualTranscriptStore.shared
+    private var liveObservation: AnyCancellable?
 
-    private init() {}
+    private init() {
+        liveObservation = capture.$captureState
+            .combineLatest(ShareActivityStore.shared.$isViewing)
+            .map { state, viewing in state.isActive || viewing }
+            .removeDuplicates()
+            .sink { [weak self] live in
+                guard self?.isPresented == true else { return }
+                WindowCoordinator.shared.setSubtitleOverlayLive(live)
+            }
+    }
 
     func toggle() {
         if WindowCoordinator.shared.isRegistered(.subtitleOverlay) {

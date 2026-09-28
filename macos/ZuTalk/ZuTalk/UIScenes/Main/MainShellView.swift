@@ -8,6 +8,7 @@ struct MainShellView: View {
     @ObservedObject private var shareActivity = ShareActivityStore.shared
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @State private var isSidebarHidden = false
+    @State private var renamingRecording: EditorBreadcrumb.Recording?
 
     init(store: MainNavigationStore) {
         self._store = ObservedObject(wrappedValue: store)
@@ -475,6 +476,16 @@ struct MainShellView: View {
             RecordingBar(compact: width < 980)
         }
         .animation(Motion.panelTransition, value: capture.isCaptureActive)
+        .sheet(item: $renamingRecording) { recording in
+            RenameSheet(
+                title: String(localized: "library.rename.recording"),
+                placeholder: String(localized: "library.rename.recording_placeholder"),
+                initialText: recording.storedTitle,
+                allowsEmpty: true
+            ) { title in
+                LibraryCommands.renameRecording(id: recording.sessionID, to: title)
+            }
+        }
     }
 
     /// Home or Topics › topic › recording, each a way back up. For a
@@ -508,10 +519,24 @@ struct MainShellView: View {
 
             if let recording = breadcrumb.recording {
                 pathSeparator
-                Text(recording.label)
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
-                    .lineLimit(1)
+                // The recording's name, and the way to change it.
+                Button {
+                    renamingRecording = recording
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(recording.label)
+                            .font(.bodyMedium)
+                            .foregroundColor(.textPrimary)
+                            .lineLimit(1)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.textTertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(String(localized: "library.rename.recording"))
+                .accessibilityIdentifier("header.path.recording")
                 if let status = recording.status {
                     Label(status.text, systemImage: status.icon)
                         .font(.bodySM)

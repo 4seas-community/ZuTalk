@@ -129,6 +129,19 @@ impl SessionQueryStore {
         Ok(())
     }
 
+    /// Names a recording; an empty title makes it untitled again.
+    pub fn set_title(&self, id: &str, title: &str) -> Result<(), SessionQueryError> {
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE session_records SET title = ?1 WHERE id = ?2",
+            rusqlite::params![title.trim(), id],
+        )?;
+        if changed == 0 {
+            return Err(SessionQueryError::NotFound(id.to_string()));
+        }
+        Ok(())
+    }
+
     /// 按 id 读取单条 session 记录。包含已软删记录,供状态更新时保留原始字段。
     pub fn get_session(&self, id: &str) -> Result<SessionRecord, SessionQueryError> {
         let conn = self.conn.lock().unwrap();

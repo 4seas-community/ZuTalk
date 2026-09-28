@@ -1224,7 +1224,7 @@
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@ Kanäle";
 "editor.transcript.async.speaker_format" = "Sprecher %@";
 
-"recording_bar.unfiled" = "Ohne Thema";
+"recording_bar.unfiled" = "Kein Thema";
 "recording_bar.open_hint" = "Live-Transkript dieser Aufnahme anzeigen";
 "recording_bar.mark" = "Markieren";
 "recording_bar.marked" = "Markiert";
@@ -1251,3 +1251,21 @@
 "resources.summary.live" = "Live";
 "resources.summary.refined" = "Überarbeitet";
 "capture.transcript.presentation.label" = "Ansicht";
+
+"capture.live.idle_title" = "Noch keine Aufnahme";
+"capture.live.idle_detail" = "Starte die Aufnahme – die Live-Untertitel dieses Themas erscheinen hier in den oben gewählten Sprachen.";
+
+"common.save" = "Sichern";
+"library.rename.recording" = "Aufnahme umbenennen…";
+"library.rename.recording_placeholder" = "Leer lassen, um die ersten Worte zu zeigen";
+"library.rename.topic" = "Thema umbenennen…";
+"library.rename.failed" = "Umbenennen fehlgeschlagen";
+"topic.actions" = "Themenaktionen";
+"topic.delete" = "Thema löschen…";
+"topic.delete.failed" = "Thema konnte nicht gelöscht werden";
+"topic.delete.done_format" = "„%@“ gelöscht";
+"topic.delete.done_moved_format" = "Die %lld Aufnahmen stehen jetzt unter „Kein Thema“.";
+"topic.delete.confirm_title" = "„%@“ löschen?";
+"topic.delete.confirm_button" = "Thema löschen";
+"topic.delete.confirm_message_format" = "Die %lld Aufnahmen bleiben erhalten und wandern mit Transkripten und Notizen nach „Kein Thema“. Die eigenen Notizen des Themas werden gelöscht.";
+"topic.delete.confirm_message_empty" = "Dieses Thema hat keine Aufnahmen. Seine Notizen werden gelöscht.";

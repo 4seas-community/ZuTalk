@@ -1252,3 +1252,21 @@
 "resources.summary.live" = "실시간";
 "resources.summary.refined" = "정제";
 "capture.transcript.presentation.label" = "보기 방식";
+
+"capture.live.idle_title" = "아직 녹음하지 않았습니다";
+"capture.live.idle_detail" = "녹음을 시작하면 위에서 고른 언어로 이 주제의 실시간 자막이 여기에 나타납니다.";
+
+"common.save" = "저장";
+"library.rename.recording" = "녹음 이름 변경…";
+"library.rename.recording_placeholder" = "비워 두면 첫 문장을 보여 줍니다";
+"library.rename.topic" = "주제 이름 변경…";
+"library.rename.failed" = "이름을 바꿀 수 없습니다";
+"topic.actions" = "주제 작업";
+"topic.delete" = "주제 삭제…";
+"topic.delete.failed" = "주제를 삭제할 수 없습니다";
+"topic.delete.done_format" = "‘%@’을(를) 삭제했습니다";
+"topic.delete.done_moved_format" = "녹음 %lld개는 ‘주제 없음’으로 옮겼습니다.";
+"topic.delete.confirm_title" = "‘%@’을(를) 삭제할까요?";
+"topic.delete.confirm_button" = "주제 삭제";
+"topic.delete.confirm_message_format" = "녹음 %lld개는 남습니다. 전사와 메모와 함께 ‘주제 없음’으로 옮겨집니다. 주제 자체의 메모는 삭제됩니다.";
+"topic.delete.confirm_message_empty" = "이 주제에는 녹음이 없습니다. 메모는 삭제됩니다.";

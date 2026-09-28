@@ -271,6 +271,66 @@ impl NotebookStore {
         Ok(notebook)
     }
 
+    /// Gives a topic a new name. Internal notebooks are refused by the FFI
+    /// layer, which knows their reserved titles.
+    pub fn rename_notebook(
+        &self,
+        notebook_id: &str,
+        title: &str,
+    ) -> Result<NotebookRecord, NotebookStoreError> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err(NotebookStoreError::Validation(
+                "topic title cannot be empty".into(),
+            ));
+        }
+        let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE notebooks SET title = ?1, updated_at = ?2
+             WHERE id = ?3 AND deleted_at IS NULL",
+            params![title, now, notebook_id],
+        )?;
+        if changed == 0 {
+            return Err(NotebookStoreError::NotFound(notebook_id.to_string()));
+        }
+        Ok(conn.query_row(
+            "SELECT id, title, created_at, updated_at, deleted_at
+             FROM notebooks WHERE id = ?1",
+            params![notebook_id],
+            Self::row_to_notebook,
+        )?)
+    }
+
+    /// Removes an empty topic from every list. Recordings are never deleted
+    /// with a topic: the caller moves them out first, and a topic that still
+    /// owns one is refused.
+    pub fn soft_delete_empty_notebook(&self, notebook_id: &str) -> Result<(), NotebookStoreError> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let linked: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM notebook_sessions WHERE notebook_id = ?1",
+            params![notebook_id],
+            |row| row.get(0),
+        )?;
+        if linked > 0 {
+            return Err(NotebookStoreError::Validation(format!(
+                "topic {notebook_id} still has {linked} recordings"
+            )));
+        }
+        let changed = tx.execute(
+            "UPDATE notebooks SET deleted_at = ?1, updated_at = ?1
+             WHERE id = ?2 AND deleted_at IS NULL",
+            params![now, notebook_id],
+        )?;
+        if changed == 0 {
+            return Err(NotebookStoreError::NotFound(notebook_id.to_string()));
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn get_notebook(
         &self,
         notebook_id: &str,

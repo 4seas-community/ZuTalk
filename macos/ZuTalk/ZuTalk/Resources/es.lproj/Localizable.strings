@@ -1251,3 +1251,21 @@
 "resources.summary.live" = "Directo";
 "resources.summary.refined" = "Refinada";
 "capture.transcript.presentation.label" = "Modo de lectura";
+
+"capture.live.idle_title" = "Todavía no se está grabando";
+"capture.live.idle_detail" = "Empieza a grabar y los subtítulos en directo de este tema aparecerán aquí, en los idiomas elegidos arriba.";
+
+"common.save" = "Guardar";
+"library.rename.recording" = "Renombrar grabación…";
+"library.rename.recording_placeholder" = "Déjalo vacío para mostrar sus primeras palabras";
+"library.rename.topic" = "Renombrar tema…";
+"library.rename.failed" = "No se pudo renombrar";
+"topic.actions" = "Acciones del tema";
+"topic.delete" = "Eliminar tema…";
+"topic.delete.failed" = "No se pudo eliminar el tema";
+"topic.delete.done_format" = "«%@» eliminado";
+"topic.delete.done_moved_format" = "Sus %lld grabaciones están ahora en «Sin tema».";
+"topic.delete.confirm_title" = "¿Eliminar «%@»?";
+"topic.delete.confirm_button" = "Eliminar tema";
+"topic.delete.confirm_message_format" = "Sus %lld grabaciones se conservan: pasan a «Sin tema» con sus transcripciones y notas. Las notas propias del tema se eliminan.";
+"topic.delete.confirm_message_empty" = "Este tema no tiene grabaciones. Sus notas se eliminan.";

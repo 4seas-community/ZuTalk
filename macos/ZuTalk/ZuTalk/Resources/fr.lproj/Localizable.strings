@@ -1225,7 +1225,7 @@
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@ canaux";
 "editor.transcript.async.speaker_format" = "Intervenant %@";
 
-"recording_bar.unfiled" = "Hors sujet";
+"recording_bar.unfiled" = "Sans sujet";
 "recording_bar.open_hint" = "Afficher la transcription en direct de cet enregistrement";
 "recording_bar.mark" = "Marquer";
 "recording_bar.marked" = "Marqué";
@@ -1252,3 +1252,21 @@
 "resources.summary.live" = "Direct";
 "resources.summary.refined" = "Affiné";
 "capture.transcript.presentation.label" = "Mode de lecture";
+
+"capture.live.idle_title" = "Pas encore d’enregistrement";
+"capture.live.idle_detail" = "Lancez l’enregistrement : les sous-titres en direct de ce sujet apparaîtront ici, dans les langues choisies ci-dessus.";
+
+"common.save" = "Enregistrer";
+"library.rename.recording" = "Renommer l’enregistrement…";
+"library.rename.recording_placeholder" = "Laissez vide pour afficher ses premiers mots";
+"library.rename.topic" = "Renommer le sujet…";
+"library.rename.failed" = "Impossible de renommer";
+"topic.actions" = "Actions du sujet";
+"topic.delete" = "Supprimer le sujet…";
+"topic.delete.failed" = "Impossible de supprimer le sujet";
+"topic.delete.done_format" = "« %@ » supprimé";
+"topic.delete.done_moved_format" = "Ses %lld enregistrements sont maintenant dans « Sans sujet ».";
+"topic.delete.confirm_title" = "Supprimer « %@ » ?";
+"topic.delete.confirm_button" = "Supprimer le sujet";
+"topic.delete.confirm_message_format" = "Ses %lld enregistrements sont conservés : avec leurs transcriptions et notes, ils vont dans « Sans sujet ». Les notes du sujet lui-même sont supprimées.";
+"topic.delete.confirm_message_empty" = "Ce sujet ne contient aucun enregistrement. Ses notes sont supprimées.";

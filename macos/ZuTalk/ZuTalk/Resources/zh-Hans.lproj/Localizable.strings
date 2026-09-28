@@ -1252,3 +1252,21 @@
 "resources.summary.live" = "实时";
 "resources.summary.refined" = "精修";
 "capture.transcript.presentation.label" = "阅读方式";
+
+"capture.live.idle_title" = "还没开始录音";
+"capture.live.idle_detail" = "按「开始录音」，这个主题的实时字幕会按上面选的语言出现在这里。";
+
+"common.save" = "保存";
+"library.rename.recording" = "重命名录音…";
+"library.rename.recording_placeholder" = "留空则显示开头的几句话";
+"library.rename.topic" = "重命名主题…";
+"library.rename.failed" = "无法重命名";
+"topic.actions" = "主题操作";
+"topic.delete" = "删除主题…";
+"topic.delete.failed" = "无法删除主题";
+"topic.delete.done_format" = "已删除「%@」";
+"topic.delete.done_moved_format" = "其中 %lld 场录音已移到「未归入主题」。";
+"topic.delete.confirm_title" = "删除「%@」？";
+"topic.delete.confirm_button" = "删除主题";
+"topic.delete.confirm_message_format" = "其中 %lld 场录音会保留——连同转录和笔记移到「未归入主题」。主题自己的笔记会被删除。";
+"topic.delete.confirm_message_empty" = "这个主题里没有录音。主题笔记会被删除。";

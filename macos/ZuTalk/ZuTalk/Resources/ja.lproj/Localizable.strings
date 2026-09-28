@@ -1252,3 +1252,21 @@
 "resources.summary.live" = "ライブ";
 "resources.summary.refined" = "清書";
 "capture.transcript.presentation.label" = "表示方法";
+
+"capture.live.idle_title" = "まだ録音していません";
+"capture.live.idle_detail" = "「録音を開始」を押すと、このテーマのリアルタイム字幕が上で選んだ言語でここに表示されます。";
+
+"common.save" = "保存";
+"library.rename.recording" = "録音の名前を変更…";
+"library.rename.recording_placeholder" = "空欄にすると冒頭の言葉を表示します";
+"library.rename.topic" = "テーマの名前を変更…";
+"library.rename.failed" = "名前を変更できませんでした";
+"topic.actions" = "テーマの操作";
+"topic.delete" = "テーマを削除…";
+"topic.delete.failed" = "テーマを削除できませんでした";
+"topic.delete.done_format" = "「%@」を削除しました";
+"topic.delete.done_moved_format" = "%lld 件の録音は「テーマなし」に移りました。";
+"topic.delete.confirm_title" = "「%@」を削除しますか？";
+"topic.delete.confirm_button" = "テーマを削除";
+"topic.delete.confirm_message_format" = "%lld 件の録音は残ります。文字起こしとノートと一緒に「テーマなし」へ移ります。テーマ自体のノートは削除されます。";
+"topic.delete.confirm_message_empty" = "このテーマに録音はありません。ノートは削除されます。";

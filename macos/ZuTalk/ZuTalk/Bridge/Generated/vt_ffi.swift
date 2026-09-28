@@ -1454,6 +1454,24 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
 
     func unlinkNotebookSessionSpeaker(sessionSpeakerId: String) throws  -> FfiSessionSpeaker
 
+    /**
+     * Deletes a topic. Its recordings are kept: each moves, with its
+     * transcripts and notes, to the recordings that belong to no topic — the
+     * same place a recording started from Home goes. Only the topic's own
+     * notes go with it. Refused while one of its recordings is recording.
+     *
+     * Returns how many recordings were moved out.
+     */
+    func deleteNotebook(notebookId: String) throws  -> UInt32
+
+    func renameNotebook(notebookId: String, title: String) throws  -> FfiNotebook
+
+    /**
+     * Names a recording. An empty title makes it untitled again, and lists
+     * go back to showing its first words.
+     */
+    func renameSession(sessionId: String, title: String) throws
+
 }
 /**
  * ZuTalk 核心入口
@@ -3411,6 +3429,46 @@ open func unlinkNotebookSessionSpeaker(sessionSpeakerId: String)throws  -> FfiSe
         FfiConverterString.lower(sessionSpeakerId),$0
     )
 })
+}
+
+    /**
+     * Deletes a topic. Its recordings are kept: each moves, with its
+     * transcripts and notes, to the recordings that belong to no topic — the
+     * same place a recording started from Home goes. Only the topic's own
+     * notes go with it. Refused while one of its recordings is recording.
+     *
+     * Returns how many recordings were moved out.
+     */
+open func deleteNotebook(notebookId: String)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_delete_notebook(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),$0
+    )
+})
+}
+
+open func renameNotebook(notebookId: String, title: String)throws  -> FfiNotebook  {
+    return try  FfiConverterTypeFfiNotebook_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_rename_notebook(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),
+        FfiConverterString.lower(title),$0
+    )
+})
+}
+
+    /**
+     * Names a recording. An empty title makes it untitled again, and lists
+     * go back to showing its first words.
+     */
+open func renameSession(sessionId: String, title: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_rename_session(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterString.lower(title),$0
+    )
+}
 }
 
 
@@ -11209,6 +11267,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_unlink_notebook_session_speaker() != 8815) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_delete_notebook() != 58582) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_rename_notebook() != 15298) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_rename_session() != 18297) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_constructor_zutalkcore_new_deferred() != 9755) {

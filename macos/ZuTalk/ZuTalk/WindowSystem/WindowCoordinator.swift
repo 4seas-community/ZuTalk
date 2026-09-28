@@ -157,6 +157,13 @@ final class WindowCoordinator {
         return panel
     }
 
+    /// Keeps the display awake only while the subtitle window has something
+    /// live to show. It used to stay awake — and on top — over an ended
+    /// recording's "recording ended" screen until someone closed it.
+    func setSubtitleOverlayLive(_ live: Bool) {
+        subtitleDisplaySleepActivity.setActive(live && subtitleOverlayController != nil)
+    }
+
     func dismissSubtitleOverlay() {
         subtitleDisplaySleepActivity.setActive(false)
         guard subtitleOverlayController != nil else { return }

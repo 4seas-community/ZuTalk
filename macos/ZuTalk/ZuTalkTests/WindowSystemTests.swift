@@ -860,6 +860,27 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    /// Once the recording ends, the subtitle window has nothing live to show
+    /// and must stop holding the display awake; it resumes if recording does.
+    func testSubtitleOverlayKeepsTheDisplayAwakeOnlyWhileLive() {
+        let store = ActiveBilingualTranscriptStore()
+        _ = WindowCoordinator.shared.presentSubtitleOverlay(store: store)
+        XCTAssertTrue(WindowCoordinator.shared.isPreventingSubtitleDisplaySleepForTesting)
+
+        WindowCoordinator.shared.setSubtitleOverlayLive(false)
+        XCTAssertFalse(WindowCoordinator.shared.isPreventingSubtitleDisplaySleepForTesting)
+
+        WindowCoordinator.shared.setSubtitleOverlayLive(true)
+        XCTAssertTrue(WindowCoordinator.shared.isPreventingSubtitleDisplaySleepForTesting)
+
+        WindowCoordinator.shared.dismissSubtitleOverlay()
+        WindowCoordinator.shared.setSubtitleOverlayLive(true)
+        XCTAssertFalse(
+            WindowCoordinator.shared.isPreventingSubtitleDisplaySleepForTesting,
+            "no window, nothing to keep awake for"
+        )
+    }
+
     func testSubtitleOverlayControllerClose_releasesDisplaySleepActivity() throws {
         let store = ActiveBilingualTranscriptStore()
         let panel = WindowCoordinator.shared.presentSubtitleOverlay(store: store)

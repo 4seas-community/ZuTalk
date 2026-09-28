@@ -1225,7 +1225,7 @@
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@ ช่องสัญญาณ";
 "editor.transcript.async.speaker_format" = "ผู้พูด %@";
 
-"recording_bar.unfiled" = "ยังไม่อยู่ในหัวข้อ";
+"recording_bar.unfiled" = "ไม่มีหัวข้อ";
 "recording_bar.open_hint" = "เปิดถอดความสดของการบันทึกนี้";
 "recording_bar.mark" = "ทำเครื่องหมาย";
 "recording_bar.marked" = "ทำเครื่องหมายแล้ว";
@@ -1252,3 +1252,21 @@
 "resources.summary.live" = "สด";
 "resources.summary.refined" = "ปรับปรุง";
 "capture.transcript.presentation.label" = "รูปแบบการอ่าน";
+
+"capture.live.idle_title" = "ยังไม่ได้เริ่มบันทึก";
+"capture.live.idle_detail" = "กดเริ่มบันทึก แล้วคำบรรยายสดของหัวข้อนี้จะแสดงที่นี่ตามภาษาที่เลือกไว้ด้านบน";
+
+"common.save" = "บันทึก";
+"library.rename.recording" = "เปลี่ยนชื่อการบันทึก…";
+"library.rename.recording_placeholder" = "เว้นว่างไว้เพื่อแสดงคำแรก ๆ";
+"library.rename.topic" = "เปลี่ยนชื่อหัวข้อ…";
+"library.rename.failed" = "เปลี่ยนชื่อไม่ได้";
+"topic.actions" = "การทำงานกับหัวข้อ";
+"topic.delete" = "ลบหัวข้อ…";
+"topic.delete.failed" = "ลบหัวข้อไม่ได้";
+"topic.delete.done_format" = "ลบ “%@” แล้ว";
+"topic.delete.done_moved_format" = "การบันทึก %lld รายการย้ายไปที่ “ไม่มีหัวข้อ” แล้ว";
+"topic.delete.confirm_title" = "ลบ “%@” ไหม";
+"topic.delete.confirm_button" = "ลบหัวข้อ";
+"topic.delete.confirm_message_format" = "การบันทึก %lld รายการจะยังอยู่ โดยย้ายพร้อมบทถอดเสียงและบันทึกไปที่ “ไม่มีหัวข้อ” ส่วนบันทึกของหัวข้อเองจะถูกลบ";
+"topic.delete.confirm_message_empty" = "หัวข้อนี้ไม่มีการบันทึก บันทึกของหัวข้อจะถูกลบ";

@@ -1472,6 +1472,7 @@ struct SubtitleOverlayView: View {
                 if includesStatus {
                     captureStatus
                 }
+                SubtitleOverlayRecordingControls(opacity: controlsOpacity)
                 backdropOpacityControl
                 themeButton
                 pinButton
@@ -1540,10 +1541,12 @@ struct SubtitleOverlayView: View {
                         .strokeBorder(SubtitleOverlayPalette.hairline, lineWidth: 0.5)
                 )
         )
-        .help(String(localized: coordinator.isMaximized
+        // Keyed to the fill placement like the icon: in banner placement this
+        // button fills the screen, and it used to say "Restore".
+        .help(String(localized: coordinator.placement == .filled
             ? "subtitle.overlay.restore"
             : "subtitle.overlay.maximize"))
-        .accessibilityLabel(Text(String(localized: coordinator.isMaximized
+        .accessibilityLabel(Text(String(localized: coordinator.placement == .filled
             ? "subtitle.overlay.restore"
             : "subtitle.overlay.maximize")))
         .accessibilityIdentifier(AccessibilityID.floatingSubtitleMaximize)
@@ -3302,5 +3305,69 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
     private func persistFrame(defaults: UserDefaults = .standard) {
         guard isMaximized == false, isApplyingMaximizedTransition == false else { return }
         defaults.set(NSStringFromRect(managedWindow.frame), forKey: Self.savedFrameKey)
+    }
+}
+
+/// Mark, Pause and Stop in the subtitle window's hover controls. A presenter
+/// with only this window in view — the slides full screen behind it — used
+/// to have no way to stop the recording without finding the main window.
+private struct SubtitleOverlayRecordingControls: View {
+    let opacity: Double
+    @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var commands = CaptureCommandCenter.shared
+
+    var body: some View {
+        if capture.isCaptureActive {
+            HStack(spacing: 4) {
+                control(
+                    systemImage: commands.lastMarkedAt.map { Date().timeIntervalSince($0) < 2.5 } == true
+                        ? "bookmark.fill" : "bookmark",
+                    label: String(localized: "recording_bar.mark_hint"),
+                    tint: .secondary,
+                    disabled: false
+                ) { commands.mark() }
+                control(
+                    systemImage: capture.captureState == .paused ? "play.fill" : "pause.fill",
+                    label: String(localized: "recording_bar.pause_hint"),
+                    tint: .secondary,
+                    disabled: commands.canPause == false
+                ) { commands.togglePause() }
+                control(
+                    systemImage: "stop.fill",
+                    label: String(localized: "recording_bar.stop_hint"),
+                    tint: .red,
+                    disabled: commands.canStop == false
+                ) { commands.stop(announce: true) }
+            }
+        }
+    }
+
+    private func control(
+        systemImage: String,
+        label: String,
+        tint: Color,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(tint)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(SubtitleOverlayPalette.surface.opacity(opacity))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(SubtitleOverlayPalette.hairline, lineWidth: 0.5)
+                )
+        )
+        .disabled(disabled)
+        .opacity(disabled ? 0.45 : 1)
+        .help(label)
+        .accessibilityLabel(Text(label))
     }
 }

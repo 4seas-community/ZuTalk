@@ -993,6 +993,8 @@ struct NotebookResourcesView: View {
     @StateObject private var viewModel = NotebookResourcesViewModel()
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var commands = CaptureCommandCenter.shared
+    @State private var renamingTopic: TopicReference?
+    @State private var deletingTopic: TopicReference?
     @State private var movingSession: NotebookResourceItem?
     @State private var searchText = ""
     @State private var isSelectingSessions = false
@@ -1167,6 +1169,27 @@ struct NotebookResourcesView: View {
 
     private var topicHeaderActions: some View {
         HStack(spacing: Spacing.sm) {
+            Menu {
+                TopicActionsMenu(
+                    topicID: notebookId,
+                    title: notebookTitle ?? "",
+                    recordingCount: viewModel.items.count,
+                    renaming: $renamingTopic,
+                    deleting: $deletingTopic
+                )
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.textSecondary)
+                    .frame(width: 36, height: 36)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(String(localized: "topic.actions"))
+            .accessibilityLabel(Text(String(localized: "topic.actions")))
+            .topicActionSheets(renaming: $renamingTopic, deleting: $deletingTopic)
+
             Button(action: chooseAudioFile) {
                 Label(
                     viewModel.isImportingAudio
@@ -1473,6 +1496,7 @@ private struct NotebookResourceBlock: View {
 
     @State private var isConfirmingAudioDestroy = false
     @State private var isConfirmingTrash = false
+    @State private var isRenaming = false
     @State private var isShowingFiles = false
     @FocusState private var isPrimaryFocused: Bool
 
@@ -1508,6 +1532,11 @@ private struct NotebookResourceBlock: View {
                 Spacer()
 
                 Menu {
+                    Button {
+                        isRenaming = true
+                    } label: {
+                        Label(String(localized: "library.rename.recording"), systemImage: "pencil")
+                    }
                     Button {
                         onMove()
                     } label: {
@@ -1624,6 +1653,16 @@ private struct NotebookResourceBlock: View {
                 .strokeBorder(Color.borderGhost.opacity(0.5), lineWidth: Stroke.thin)
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        .sheet(isPresented: $isRenaming) {
+            RenameSheet(
+                title: String(localized: "library.rename.recording"),
+                placeholder: String(localized: "library.rename.recording_placeholder"),
+                initialText: item.title,
+                allowsEmpty: true
+            ) { title in
+                LibraryCommands.renameRecording(id: item.id, to: title)
+            }
+        }
         .confirmationDialog(
             String(
                 format: String(localized: "resources.audio.destroy.confirm_title"),

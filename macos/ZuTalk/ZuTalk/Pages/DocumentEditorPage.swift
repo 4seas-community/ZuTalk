@@ -308,8 +308,7 @@ struct DocumentEditorPage: View {
                     NotebookRealtimeTranscriptPage(
                         notebookId: transcriptTab.notebookId,
                         sessionId: effectiveSessionId,
-                        editor: captureProfileEditor,
-                        onOpenAdvancedSettings: openAdvancedSettingsForCurrentContext
+                        editor: captureProfileEditor
                     )
                         .id("realtime:\(transcriptTab.notebookId):\(effectiveSessionId ?? "new")")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -667,6 +666,8 @@ struct DocumentEditorPage: View {
             default: status = nil
             }
             recording = EditorBreadcrumb.Recording(
+                sessionID: session.id,
+                storedTitle: session.title,
                 label: title ?? started,
                 detail: details.isEmpty ? nil : details.joined(separator: " · "),
                 status: status
@@ -886,18 +887,6 @@ struct DocumentEditorPage: View {
         isShowingResources = false
         sessionSupplementarySurface = nil
         presentedCaptureSettingsNotebookId = notebookId
-    }
-
-    /// The same control appears on both the Topic's pre-recording surface and
-    /// a concrete Session's realtime surface, but those routes own different
-    /// settings workspaces. Never cover a Session with the Topic overlay: its
-    /// Settings tab also carries the immutable snapshot for that recording.
-    private func openAdvancedSettingsForCurrentContext() {
-        if effectiveSessionId != nil {
-            showSessionSettings()
-        } else {
-            showCaptureSettings()
-        }
     }
 
     private func showResources() {

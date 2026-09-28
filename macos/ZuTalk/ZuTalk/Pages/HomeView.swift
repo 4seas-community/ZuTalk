@@ -145,6 +145,8 @@ struct TopicsView: View {
     @StateObject private var viewModel = LibraryViewModel()
     @State private var searchText = ""
     @State private var isCreatingNotebook = false
+    @State private var renamingTopic: TopicReference?
+    @State private var deletingTopic: TopicReference?
 
     private let columns = [
         GridItem(.adaptive(minimum: 250, maximum: 340), spacing: Spacing.md)
@@ -219,6 +221,15 @@ struct TopicsView: View {
                                 sessionCount: viewModel.notebookSessionCounts[notebook.id] ?? 0,
                                 onOpen: { openTopic(notebook.id) }
                             )
+                            .contextMenu {
+                                TopicActionsMenu(
+                                    topicID: notebook.id,
+                                    title: notebook.title,
+                                    recordingCount: viewModel.notebookSessionCounts[notebook.id] ?? 0,
+                                    renaming: $renamingTopic,
+                                    deleting: $deletingTopic
+                                )
+                            }
                         }
                     }
 
@@ -234,6 +245,7 @@ struct TopicsView: View {
         }
         .background(Color.bgRoot)
         .accessibilityIdentifier("topics.page")
+        .topicActionSheets(renaming: $renamingTopic, deleting: $deletingTopic)
         .sheet(isPresented: $isCreatingNotebook) {
             HomeCreateNotebookSheet { title in
                 let created = viewModel.createNotebook(title: title)
@@ -1293,6 +1305,8 @@ private struct HomeSessionRow: View {
     let onDelete: () -> Void
     let onAssign: (String) -> Void
     @State private var isHovering = false
+    @State private var isRenaming = false
+    @State private var isConfirmingDelete = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -1373,8 +1387,16 @@ private struct HomeSessionRow: View {
                 // 正在录的删不了(Core 软删与彻底删除都拒绝)。禁用而不是
                 // 藏起来 —— 按钮消失了用户会以为是别的毛病,禁用配一句
                 // 原因才说得清「等录完」。
-                Button(role: .destructive, action: onDelete) {
-                    Label(String(localized: "common.delete"), systemImage: "trash")
+                Button {
+                    isRenaming = true
+                } label: {
+                    Label(String(localized: "library.rename.recording"), systemImage: "pencil")
+                }
+                Divider()
+                Button(role: .destructive) {
+                    isConfirmingDelete = true
+                } label: {
+                    Label(String(localized: "resources.delete"), systemImage: "trash")
                 }
                 .disabled(session.isRecording)
 
@@ -1409,6 +1431,28 @@ private struct HomeSessionRow: View {
         .onHover { isHovering = $0 }
         .animation(Motion.microInteraction, value: isHovering)
         .animation(Motion.microInteraction, value: isFocused)
+        .sheet(isPresented: $isRenaming) {
+            RenameSheet(
+                title: String(localized: "library.rename.recording"),
+                placeholder: String(localized: "library.rename.recording_placeholder"),
+                initialText: session.title,
+                allowsEmpty: true
+            ) { title in
+                LibraryCommands.renameRecording(id: session.id, to: title)
+            }
+        }
+        // Trash can be restored from, but a click in a menu should still say
+        // where the recording is going; the topic's own rows already asked.
+        .confirmationDialog(
+            String(format: String(localized: "resources.delete.confirm_title"), titleForDisplay),
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "resources.delete.confirm_button"), role: .destructive, action: onDelete)
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "resources.delete.confirm_message"))
+        }
     }
 
     /// Length, languages, where it is filed — in that order, because the

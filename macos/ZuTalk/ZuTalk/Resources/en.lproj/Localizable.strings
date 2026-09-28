@@ -1225,7 +1225,7 @@
 "session.settings.value.audio_format" = "%1$@ Hz · %2$@ channels";
 "editor.transcript.async.speaker_format" = "Speaker %@";
 
-"recording_bar.unfiled" = "Not in a topic";
+"recording_bar.unfiled" = "No topic";
 "recording_bar.open_hint" = "Show the live transcript of this recording";
 "recording_bar.mark" = "Mark";
 "recording_bar.marked" = "Marked";
@@ -1252,3 +1252,21 @@
 "resources.summary.live" = "Live";
 "resources.summary.refined" = "Refined";
 "capture.transcript.presentation.label" = "How to read";
+
+"capture.live.idle_title" = "Not recording yet";
+"capture.live.idle_detail" = "Press Record and live captions for this topic appear here, in the languages chosen above.";
+
+"common.save" = "Save";
+"library.rename.recording" = "Rename recording…";
+"library.rename.recording_placeholder" = "Leave empty to show its first words";
+"library.rename.topic" = "Rename topic…";
+"library.rename.failed" = "Could not rename";
+"topic.actions" = "Topic actions";
+"topic.delete" = "Delete topic…";
+"topic.delete.failed" = "Could not delete the topic";
+"topic.delete.done_format" = "“%@” deleted";
+"topic.delete.done_moved_format" = "Its %lld recordings are now under “No topic”.";
+"topic.delete.confirm_title" = "Delete “%@”?";
+"topic.delete.confirm_button" = "Delete topic";
+"topic.delete.confirm_message_format" = "Its %lld recordings are kept — they move, with their transcripts and notes, to “No topic”. The topic’s own notes are deleted.";
+"topic.delete.confirm_message_empty" = "The topic has no recordings. Its notes are deleted.";

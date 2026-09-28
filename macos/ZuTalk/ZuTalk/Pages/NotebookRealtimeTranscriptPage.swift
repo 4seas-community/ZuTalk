@@ -11,7 +11,6 @@ struct NotebookRealtimeTranscriptPage: View {
     /// A non-nil id is a hard presentation boundary, never a timeline focus.
     let sessionId: String?
     @ObservedObject var editor: NotebookCaptureProfileEditorModel
-    let onOpenAdvancedSettings: () -> Void
     @StateObject private var history = NotebookCaptureHistoryStore()
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var subtitleOverlay = SubtitleOverlayCoordinator.shared
@@ -20,15 +19,11 @@ struct NotebookRealtimeTranscriptPage: View {
     var body: some View {
         VStack(spacing: 0) {
             if showsCaptureSetup {
+                // Languages and captions for the next recording, and Record.
+                // The settings tab is one click away in the tab bar; a button
+                // here used to open it a second way.
                 HStack(spacing: Spacing.md) {
-                    Label(
-                        String(localized: "capture.realtime.controls.profile_group"),
-                        systemImage: "waveform.and.mic"
-                    )
-                    .font(.captionMedium)
-                    .foregroundColor(.textSecondary)
                     Spacer(minLength: Spacing.md)
-                    advancedSettingsButton
                     NotebookCaptureToolbar(
                         notebookId: notebookId,
                         profileEditor: editor
@@ -194,22 +189,6 @@ struct NotebookRealtimeTranscriptPage: View {
         .accessibilityIdentifier(AccessibilityID.floatingSubtitleButton)
     }
 
-    private var advancedSettingsButton: some View {
-        Button(action: onOpenAdvancedSettings) {
-            Label(
-                String(localized: "topic.capture_setup.tab"),
-                systemImage: "slider.horizontal.3"
-            )
-            .font(.captionMedium)
-            .foregroundColor(.textSecondary)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(String(localized: "topic.capture_setup.tab.hint"))
-        .accessibilityLabel(Text(String(localized: "topic.capture_setup.tab")))
-        .accessibilityHint(Text(String(localized: "capture.settings.tab_hint")))
-        .accessibilityIdentifier("capture.realtime.advanced_settings")
-    }
 }
 
 /// High-frequency capture configuration. Its bindings target the Notebook's
@@ -756,8 +735,11 @@ private struct NotebookRealtimeHistoryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            presentationControl
-            Divider().background(Color.borderGhost.opacity(0.28))
+            // A way of reading is only offered when there is something to read.
+            if presentedRun != nil {
+                presentationControl
+                Divider().background(Color.borderGhost.opacity(0.28))
+            }
             historyBody
         }
         .background(Color.bgRoot)
@@ -850,10 +832,16 @@ private struct NotebookRealtimeHistoryView: View {
                 )
             )
         } else if presentedRun == nil {
+            // Nothing is being recorded here yet: say what will appear, not
+            // that a recording "has no realtime result".
             EmptyState(
-                illustration: { Arcanum003WaveformRuler() },
-                title: String(localized: "editor.transcript.realtime.empty_title"),
-                description: String(localized: "editor.transcript.realtime.empty_desc")
+                icon: "captions.bubble",
+                title: String(localized: focusSessionId == nil
+                    ? "capture.live.idle_title"
+                    : "editor.transcript.realtime.empty_title"),
+                description: String(localized: focusSessionId == nil
+                    ? "capture.live.idle_detail"
+                    : "editor.transcript.realtime.empty_desc")
             )
         } else {
             ScrollViewReader { proxy in
