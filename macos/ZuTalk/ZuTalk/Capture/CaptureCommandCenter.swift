@@ -20,9 +20,17 @@ final class CaptureCommandCenter: ObservableObject {
     @Published private(set) var isStopping = false
     /// When the last mark landed, so the surface that made it can say so.
     @Published private(set) var lastMarkedAt: Date?
+    /// The person's own choice, once they have made one.
+    @Published private var storedCaptionsChoice: Bool?
+
     /// Whether new recordings ask for live captions. Shown and switched next
     /// to every Record button, so the choice is made where it takes effect.
-    @Published private(set) var realtimeCaptionsEnabled: Bool
+    /// Until someone chooses, it follows whether they set up a way to get
+    /// captions — saving a key or redeeming an invite is that intent — and
+    /// follows it live, since keys are restored after launch.
+    var realtimeCaptionsEnabled: Bool {
+        storedCaptionsChoice ?? realtimeCredentialAvailable
+    }
 
     private let capture: ActiveBilingualTranscriptStore
     private let navigation: MainNavigationStore
@@ -50,15 +58,9 @@ final class CaptureCommandCenter: ObservableObject {
         self.defaults = defaults
         self.coreProvider = coreProvider
         self.inviteReady = inviteReady ?? { invite.isEnabled && invite.isActive }
-        // Until someone chooses, captions follow whether they set up a way to
-        // get them: saving a key or redeeming an invite is that intent.
-        if defaults.object(forKey: Self.realtimeCaptionsDefaultsKey) != nil {
-            realtimeCaptionsEnabled = defaults.bool(forKey: Self.realtimeCaptionsDefaultsKey)
-        } else {
-            realtimeCaptionsEnabled = coreProvider()?.hasApiKey(
-                scope: ProviderCredentialAccount.soniox.scope
-            ) == true || self.inviteReady()
-        }
+        storedCaptionsChoice = defaults.object(forKey: Self.realtimeCaptionsDefaultsKey) != nil
+            ? defaults.bool(forKey: Self.realtimeCaptionsDefaultsKey)
+            : nil
     }
 
     // MARK: - Captions choice
@@ -75,7 +77,7 @@ final class CaptureCommandCenter: ObservableObject {
     }
 
     func setRealtimeCaptionsEnabled(_ enabled: Bool) {
-        realtimeCaptionsEnabled = enabled
+        storedCaptionsChoice = enabled
         defaults.set(enabled, forKey: Self.realtimeCaptionsDefaultsKey)
     }
 

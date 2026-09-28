@@ -35,7 +35,7 @@ struct NotebookCaptureToolbar: View {
         .montereyOnChange(of: profileEditor.draft.subtitleOnlyLanguages) { _, _ in
             publishPlannedLaneCount()
         }
-        .montereyOnChange(of: commands.realtimeCaptionsEnabled) { _, _ in
+        .montereyOnChange(of: commands.nextRecordingUsesCaptions) { _, _ in
             publishPlannedLaneCount()
         }
     }

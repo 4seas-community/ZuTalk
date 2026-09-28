@@ -83,3 +83,29 @@ final class CaptureCommandCenterTests: XCTestCase {
         XCTAssertFalse(settings.contains("settings.shortcuts.font_smaller"))
     }
 }
+
+@MainActor
+final class CaptureCaptionsDefaultTests: XCTestCase {
+    /// Keys are restored after launch. Before anyone chooses, the default
+    /// follows them as they appear instead of freezing at "off".
+    func testTheDefaultFollowsCredentialsUntilSomeoneChooses() {
+        let suiteName = "CaptureCaptionsDefaultTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var inviteReady = false
+        let center = CaptureCommandCenter(
+            defaults: defaults,
+            coreProvider: { nil },
+            inviteReady: { inviteReady }
+        )
+        XCTAssertFalse(center.realtimeCaptionsEnabled)
+
+        inviteReady = true
+        XCTAssertTrue(center.realtimeCaptionsEnabled)
+        XCTAssertTrue(center.nextRecordingUsesCaptions)
+
+        center.setRealtimeCaptionsEnabled(false)
+        XCTAssertFalse(center.realtimeCaptionsEnabled, "an explicit choice wins")
+        XCTAssertFalse(center.nextRecordingUsesCaptions)
+    }
+}
