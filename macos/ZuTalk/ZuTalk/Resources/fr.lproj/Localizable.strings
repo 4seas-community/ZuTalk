@@ -583,7 +583,6 @@
 
 /* Document editor */
 "editor.toolbar.show_sources" = "Afficher les sources";
-"editor.toolbar.show_tasks" = "Afficher les tâches";
 
 /* Éditeur de notes en plan (document par blocs) */
 "editor.outline.load_failed_title" = "Impossible d'ouvrir les notes";
@@ -607,12 +606,6 @@
 "editor.outline.kind.divider" = "Séparateur";
 "editor.outline.task.done" = "Terminée";
 "editor.outline.task.todo" = "Non terminée";
-"editor.tasks.title" = "Tâches";
-"editor.tasks.count_format" = "%lld tâches en arrière-plan";
-"editor.tasks.refresh" = "Actualiser les tâches";
-"editor.tasks.empty" = "Aucune tâche pour l’instant";
-"editor.tasks.empty.detail" = "Les tâches de transcription affinée apparaîtront ici.";
-"editor.tasks.retry_format" = "%lld tentatives";
 /* Accessibility labels */
 "editor.outline.drag_handle" = "Glisser pour réordonner";
 
@@ -1209,3 +1202,11 @@
 "settings.general.welcome_again" = "Guide de bienvenue";
 "settings.general.welcome_again_hint" = "Le refaire : ajouter une clé, autoriser le micro, voir comment enregistrer. Vos enregistrements et réglages restent intacts.";
 "settings.general.welcome_again_button" = "Revoir";
+
+"capture.speaker.directory_format" = "Gérer les noms (%lld)";
+"capture.speaker.directory.rename" = "Renommer";
+"capture.speaker.directory.remove" = "Supprimer";
+"capture.speaker.directory.usage_format" = "%lld enregistrements";
+"capture.speaker.directory.detail" = "Renommer change le nom dans tous les enregistrements qui l’utilisent. Supprimer le retire de la liste : ces intervenants redeviennent « Intervenant N » et rien ne change dans les enregistrements.";
+"capture.speaker.directory.remove_confirm_format" = "Retirer « %@ » de la liste ?";
+"capture.speaker.directory.remove_detail" = "Les intervenants qui portaient ce nom redeviennent « Intervenant N ». Enregistrements, transcriptions et notes restent intacts.";

@@ -521,6 +521,8 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var presentationByNotebook: [String: NotebookTranscriptPresentationMode] = [:]
     @Published private(set) var speakerParticipants: [SpeakerParticipantDTO] = []
+    /// How many recordings each named person appears in, for the name list.
+    @Published private(set) var participantRecordingCounts: [String: UInt32] = [:]
     @Published private(set) var sessionSpeakersBySession: [String: [NotebookSessionSpeakerDTO]] = [:]
     @Published private(set) var transcriptLoadingSessionIds: Set<String> = []
     @Published private(set) var transcriptLoadErrors: [String: String] = [:]
@@ -785,8 +787,24 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     func refreshSpeakerParticipants() {
         do {
             speakerParticipants = orderedParticipants(try client.listSpeakerParticipants())
+            participantRecordingCounts = (try? client.speakerParticipantRecordingCounts()) ?? [:]
         } catch {
             // Best effort by design. Existing session-only labels still work.
+        }
+    }
+
+    /// Takes a name off the list. Speakers linked to it go back to their
+    /// anonymous label; no recording's text changes.
+    func deleteSpeakerParticipant(participantId: String) throws {
+        _ = try client.deleteSpeakerParticipant(participantId: participantId)
+        speakerParticipants.removeAll { $0.id == participantId }
+        participantRecordingCounts[participantId] = nil
+        for (session, speakers) in sessionSpeakersBySession {
+            sessionSpeakersBySession[session] = speakers.map { speaker in
+                var speaker = speaker
+                if speaker.participantId == participantId { speaker.participantId = nil }
+                return speaker
+            }
         }
     }
 

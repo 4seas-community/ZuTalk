@@ -566,7 +566,6 @@
 
 /* Document editor */
 "editor.toolbar.show_sources" = "ソースを表示";
-"editor.toolbar.show_tasks" = "タスクを表示";
 
 /* アウトラインノートエディタ(ブロックドキュメント) */
 "editor.outline.load_failed_title" = "ノートを開けませんでした";
@@ -590,12 +589,6 @@
 "editor.outline.kind.divider" = "区切り線";
 "editor.outline.task.done" = "完了";
 "editor.outline.task.todo" = "未完了";
-"editor.tasks.title" = "タスク";
-"editor.tasks.count_format" = "%lld 件のバックグラウンドタスク";
-"editor.tasks.refresh" = "タスクを更新";
-"editor.tasks.empty" = "タスクはまだありません";
-"editor.tasks.empty.detail" = "高精度文字起こしのジョブがここに表示されます。";
-"editor.tasks.retry_format" = "%lld 回再試行";
 /* Accessibility labels */
 "editor.outline.drag_handle" = "ドラッグして並べ替え";
 
@@ -1209,3 +1202,11 @@
 "settings.general.welcome_again" = "はじめてのガイド";
 "settings.general.welcome_again_hint" = "もう一度たどります：キーの入力、マイクの許可、録音のしかた。録音と設定はそのままです。";
 "settings.general.welcome_again_button" = "もう一度見る";
+
+"capture.speaker.directory_format" = "名前の一覧を管理（%lld）";
+"capture.speaker.directory.rename" = "名前を変更";
+"capture.speaker.directory.remove" = "削除";
+"capture.speaker.directory.usage_format" = "%lld 件の録音";
+"capture.speaker.directory.detail" = "名前を変えると、その名前を使うすべての録音に反映されます。削除は一覧から外すだけで、その話者は「話者 N」に戻り、録音の内容は変わりません。";
+"capture.speaker.directory.remove_confirm_format" = "「%@」を一覧から削除しますか？";
+"capture.speaker.directory.remove_detail" = "この名前だった話者は「話者 N」に戻ります。録音・文字起こし・メモはそのままです。";

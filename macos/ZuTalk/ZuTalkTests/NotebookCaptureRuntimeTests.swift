@@ -9401,6 +9401,29 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
         return speakerParticipants[index]
     }
 
+    func deleteSpeakerParticipant(participantId: String) throws -> Bool {
+        let before = speakerParticipants.count
+        speakerParticipants.removeAll { $0.id == participantId }
+        for (session, speakers) in sessionSpeakersBySession {
+            sessionSpeakersBySession[session] = speakers.map { speaker in
+                var speaker = speaker
+                if speaker.participantId == participantId { speaker.participantId = nil }
+                return speaker
+            }
+        }
+        return speakerParticipants.count < before
+    }
+
+    func speakerParticipantRecordingCounts() throws -> [String: UInt32] {
+        var counts: [String: Set<String>] = [:]
+        for (session, speakers) in sessionSpeakersBySession {
+            for case let id? in speakers.map(\.participantId) {
+                counts[id, default: []].insert(session)
+            }
+        }
+        return counts.mapValues { UInt32($0.count) }
+    }
+
     func listNotebookSessionSpeakers(
         sessionId: String
     ) throws -> [NotebookSessionSpeakerDTO] {

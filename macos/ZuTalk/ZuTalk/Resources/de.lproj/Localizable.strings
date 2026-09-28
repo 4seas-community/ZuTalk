@@ -583,7 +583,6 @@
 
 /* Document editor */
 "editor.toolbar.show_sources" = "Quellen einblenden";
-"editor.toolbar.show_tasks" = "Aufgaben einblenden";
 
 /* Gliederungs-Notizeditor (Blockdokument) */
 "editor.outline.load_failed_title" = "Notizen konnten nicht geöffnet werden";
@@ -607,12 +606,6 @@
 "editor.outline.kind.divider" = "Trennlinie";
 "editor.outline.task.done" = "Erledigt";
 "editor.outline.task.todo" = "Offen";
-"editor.tasks.title" = "Aufgaben";
-"editor.tasks.count_format" = "%lld Hintergrundaufgaben";
-"editor.tasks.refresh" = "Aufgaben aktualisieren";
-"editor.tasks.empty" = "Noch keine Aufgaben";
-"editor.tasks.empty.detail" = "Aufträge für verfeinerte Transkriptionen erscheinen hier.";
-"editor.tasks.retry_format" = "%lld Wiederholungen";
 /* Accessibility labels */
 "editor.outline.drag_handle" = "Ziehen zum Umsortieren";
 
@@ -1209,3 +1202,11 @@
 "settings.general.welcome_again" = "Willkommensanleitung";
 "settings.general.welcome_again_hint" = "Noch einmal durchgehen: Schlüssel eintragen, Mikrofon erlauben, Aufnehmen kennenlernen. Aufnahmen und Einstellungen bleiben erhalten.";
 "settings.general.welcome_again_button" = "Erneut zeigen";
+
+"capture.speaker.directory_format" = "Namen verwalten (%lld)";
+"capture.speaker.directory.rename" = "Umbenennen";
+"capture.speaker.directory.remove" = "Entfernen";
+"capture.speaker.directory.usage_format" = "%lld Aufnahmen";
+"capture.speaker.directory.detail" = "Umbenennen ändert den Namen in allen Aufnahmen, die ihn verwenden. Entfernen nimmt ihn nur aus der Liste: Diese Sprecher heißen wieder „Sprecher N“, an den Aufnahmen ändert sich nichts.";
+"capture.speaker.directory.remove_confirm_format" = "„%@“ aus der Liste entfernen?";
+"capture.speaker.directory.remove_detail" = "Sprecher mit diesem Namen heißen wieder „Sprecher N“. Aufnahmen, Transkripte und Notizen bleiben unverändert.";

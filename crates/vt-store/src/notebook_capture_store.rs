@@ -3607,6 +3607,25 @@ impl NotebookCaptureStore {
         })
     }
 
+    /// How many recordings each named person appears in (recordings in the
+    /// trash included — restoring one brings the name back with it).
+    pub fn participant_session_counts(
+        &self,
+    ) -> Result<std::collections::HashMap<String, u32>, NotebookCaptureStoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT participant_id, COUNT(DISTINCT session_id)
+             FROM session_speakers
+             WHERE participant_id IS NOT NULL
+             GROUP BY participant_id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+        })?;
+        rows.collect::<Result<std::collections::HashMap<_, _>, _>>()
+            .map_err(Into::into)
+    }
+
     /// Delete only the human-managed index record. Any linked anonymous
     /// session speakers remain and become unlinked through the foreign key.
     pub fn delete_participant(
@@ -10590,8 +10609,18 @@ mod tests {
             Some(participant.id.as_str())
         );
 
+        // One recording left that names this person (the other was purged).
+        assert_eq!(
+            store
+                .participant_session_counts()
+                .unwrap()
+                .get(&participant.id),
+            Some(&1)
+        );
+
         assert!(store.delete_participant(&participant.id).unwrap());
         assert!(!store.delete_participant(&participant.id).unwrap());
+        assert!(store.participant_session_counts().unwrap().is_empty());
         let unlinked = store.get_session_speaker(&second.id).unwrap().unwrap();
         assert_eq!(unlinked.participant_id, None);
         assert_eq!(unlinked.participant_linked_at, None);

@@ -583,7 +583,6 @@
 
 /* Document editor */
 "editor.toolbar.show_sources" = "Show sources";
-"editor.toolbar.show_tasks" = "Show tasks";
 
 /* Outline note editor (block document) */
 "editor.outline.load_failed_title" = "Notes could not be opened";
@@ -607,12 +606,6 @@
 "editor.outline.kind.divider" = "Divider";
 "editor.outline.task.done" = "Done";
 "editor.outline.task.todo" = "Not done";
-"editor.tasks.title" = "Tasks";
-"editor.tasks.count_format" = "%lld background tasks";
-"editor.tasks.refresh" = "Refresh tasks";
-"editor.tasks.empty" = "No tasks yet";
-"editor.tasks.empty.detail" = "Refined transcription jobs will appear here.";
-"editor.tasks.retry_format" = "%lld retries";
 /* Accessibility labels */
 "editor.outline.drag_handle" = "Drag to reorder";
 
@@ -1209,3 +1202,11 @@
 "settings.general.welcome_again" = "Welcome guide";
 "settings.general.welcome_again_hint" = "Go through it again: add a key, allow the microphone, see how recording works. Your recordings and settings stay as they are.";
 "settings.general.welcome_again_button" = "Show again";
+
+"capture.speaker.directory_format" = "Manage names (%lld)";
+"capture.speaker.directory.rename" = "Rename";
+"capture.speaker.directory.remove" = "Remove";
+"capture.speaker.directory.usage_format" = "%lld recordings";
+"capture.speaker.directory.detail" = "Renaming changes the name in every recording that uses it. Removing takes it off the list: those speakers go back to “Speaker N” and nothing in the recordings changes.";
+"capture.speaker.directory.remove_confirm_format" = "Remove “%@” from the list?";
+"capture.speaker.directory.remove_detail" = "Speakers who had this name go back to “Speaker N”. Recordings, transcripts and notes stay as they are.";

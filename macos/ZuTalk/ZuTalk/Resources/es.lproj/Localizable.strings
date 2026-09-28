@@ -583,7 +583,6 @@
 
 /* Document editor */
 "editor.toolbar.show_sources" = "Mostrar fuentes";
-"editor.toolbar.show_tasks" = "Mostrar tareas";
 
 /* Editor de notas en esquema (documento de bloques) */
 "editor.outline.load_failed_title" = "No se pudieron abrir las notas";
@@ -607,12 +606,6 @@
 "editor.outline.kind.divider" = "Separador";
 "editor.outline.task.done" = "Hecha";
 "editor.outline.task.todo" = "Sin hacer";
-"editor.tasks.title" = "Tareas";
-"editor.tasks.count_format" = "%lld tareas en segundo plano";
-"editor.tasks.refresh" = "Actualizar tareas";
-"editor.tasks.empty" = "Aún no hay tareas";
-"editor.tasks.empty.detail" = "Los trabajos de transcripción refinada aparecerán aquí.";
-"editor.tasks.retry_format" = "%lld reintentos";
 /* Accessibility labels */
 "editor.outline.drag_handle" = "Arrastrar para reordenar";
 
@@ -1209,3 +1202,11 @@
 "settings.general.welcome_again" = "Guía de bienvenida";
 "settings.general.welcome_again_hint" = "Repasarla: añadir una clave, permitir el micrófono y ver cómo se graba. Tus grabaciones y ajustes no cambian.";
 "settings.general.welcome_again_button" = "Ver de nuevo";
+
+"capture.speaker.directory_format" = "Gestionar nombres (%lld)";
+"capture.speaker.directory.rename" = "Renombrar";
+"capture.speaker.directory.remove" = "Quitar";
+"capture.speaker.directory.usage_format" = "%lld grabaciones";
+"capture.speaker.directory.detail" = "Renombrar cambia el nombre en todas las grabaciones que lo usan. Quitarlo solo lo saca de la lista: esos hablantes vuelven a ser «Hablante N» y las grabaciones no cambian.";
+"capture.speaker.directory.remove_confirm_format" = "¿Quitar «%@» de la lista?";
+"capture.speaker.directory.remove_detail" = "Los hablantes con este nombre vuelven a ser «Hablante N». Grabaciones, transcripciones y notas no cambian.";

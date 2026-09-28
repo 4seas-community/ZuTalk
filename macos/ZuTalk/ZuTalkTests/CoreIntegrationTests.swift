@@ -43,11 +43,6 @@ final class CoreIntegrationTests: XCTestCase {
     func testFrontendLiveClientsUseProductUnavailableCopyAtClientBoundary() {
         let serviceUnavailable = "Local app service is not ready yet."
 
-        let taskClient = LiveTaskStatusClient(coreProvider: { nil })
-        XCTAssertThrowsError(try taskClient.listTasks(statusFilter: nil)) { error in
-            XCTAssertEqual(error.localizedDescription, serviceUnavailable)
-        }
-
         let workspaceClient = LiveNotebookWorkspaceClient(coreProvider: { nil })
         XCTAssertThrowsError(try workspaceClient.listNotebooks()) { error in
             XCTAssertEqual(error.localizedDescription, serviceUnavailable)

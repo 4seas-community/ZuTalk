@@ -85,6 +85,8 @@ protocol NotebookCaptureClienting: AnyObject {
         participantId: String,
         displayName: String
     ) throws -> SpeakerParticipantDTO
+    func deleteSpeakerParticipant(participantId: String) throws -> Bool
+    func speakerParticipantRecordingCounts() throws -> [String: UInt32]
     func listNotebookSessionSpeakers(sessionId: String) throws -> [NotebookSessionSpeakerDTO]
     func renameNotebookSessionSpeaker(
         sessionSpeakerId: String,
@@ -214,6 +216,14 @@ extension NotebookCaptureClienting {
         participantId: String,
         displayName: String
     ) throws -> SpeakerParticipantDTO {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
+    func deleteSpeakerParticipant(participantId: String) throws -> Bool {
+        throw NotebookCaptureClientError.ffiUnavailable
+    }
+
+    func speakerParticipantRecordingCounts() throws -> [String: UInt32] {
         throw NotebookCaptureClientError.ffiUnavailable
     }
 
@@ -736,6 +746,14 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             participantId: participantId,
             displayName: displayName
         ))
+    }
+
+    func deleteSpeakerParticipant(participantId: String) throws -> Bool {
+        try requireCore().deleteSpeakerParticipant(participantId: participantId)
+    }
+
+    func speakerParticipantRecordingCounts() throws -> [String: UInt32] {
+        try requireCore().speakerParticipantRecordingCounts()
     }
 
     func listNotebookSessionSpeakers(

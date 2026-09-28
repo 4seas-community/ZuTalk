@@ -216,15 +216,15 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
 }
 
 final class DocumentEditorTaskQueuePanelTests: XCTestCase {
-    func testDocumentEditorMountsTaskQueuePanel() throws {
+    /// The raw task queue (status words, short ids) was a debugging view hung
+    /// above topic notes. What it said is on each recording's row and in its
+    /// refined transcript's status bar, in words people use.
+    func testTheRawTaskQueueIsNotShownInTheEditor() throws {
         let source = try Self.loadDocumentEditorPage()
 
-        XCTAssertTrue(source.contains("case tasks"))
-        XCTAssertTrue(source.contains("@StateObject private var notebookTasks = NotebookTasksViewModel()"))
-        XCTAssertTrue(source.contains("NotebookTasksPanel(viewModel: notebookTasks)"))
-        XCTAssertTrue(source.contains("BlockNoteUtilityBar("))
-        XCTAssertTrue(source.contains("Image(systemName: \"checklist\")"))
-        XCTAssertTrue(source.contains("client.listTasks(statusFilter: nil)"))
+        XCTAssertFalse(source.contains("NotebookTasksPanel"))
+        XCTAssertFalse(source.contains("BlockNoteUtilityBar"))
+        XCTAssertFalse(source.contains("task.status.capitalized"))
     }
 
     private static func loadDocumentEditorPage() throws -> String {
@@ -338,10 +338,6 @@ final class DocumentEditorWorkspacePanelLocalizationTests: XCTestCase {
             encoding: .utf8
         )
 
-        for key in ["editor.tasks.title", "editor.tasks.empty"] {
-            XCTAssertTrue(source.contains(key), "\(key) should be used by editor workspace panels")
-        }
-
         XCTAssertFalse(source.contains("NotebookAskPanel"))
         XCTAssertFalse(source.contains("editor.ask."))
         XCTAssertFalse(source.contains("Text(\"No tasks yet\")"))
@@ -349,31 +345,6 @@ final class DocumentEditorWorkspacePanelLocalizationTests: XCTestCase {
         XCTAssertFalse(source.contains(".help(\"Submit notebook question\")"))
         XCTAssertFalse(source.contains(".help(\"Refresh sources\")"))
         XCTAssertFalse(source.contains("ToastCenter.shared.error(\"Notebook ask failed\""))
-    }
-
-    func testToolbarWorkspaceActionsUseLocalizedTooltips() throws {
-        let source = try Self.loadDocumentEditorPage()
-        let toolbarKeys = ["editor.toolbar.show_tasks"]
-
-        for key in toolbarKeys {
-            XCTAssertTrue(
-                source.contains(".help(String(localized: \"\(key)\"))"),
-                "\(key) should be used by editor toolbar actions"
-            )
-        }
-
-        for staleTooltip in [
-            "tooltip: \"Show tasks\""
-        ] {
-            XCTAssertFalse(source.contains(staleTooltip), "\(staleTooltip) should be localized")
-        }
-
-        for locale in ["en.lproj", "zh-Hans.lproj", "ja.lproj"] {
-            let strings = try Self.loadLocalization(locale)
-            for key in toolbarKeys {
-                XCTAssertTrue(strings.contains("\"\(key)\" ="), "\(locale) should define \(key)")
-            }
-        }
     }
 
     private static func loadDocumentEditorPage() throws -> String {

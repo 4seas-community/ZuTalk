@@ -19,10 +19,6 @@ enum EditorInitialView: String {
     case transcript
 }
 
-private enum DocumentEditorSidePanel: Equatable {
-    case tasks
-}
-
 private struct NotebookRouteLoadSnapshot: Sendable {
     let notebookTabs: [NotebookTabViewModel]
     let notebook: FfiNotebook?
@@ -195,7 +191,6 @@ struct DocumentEditorPage: View {
         false
     }
 
-    @State private var activeSidePanel: DocumentEditorSidePanel?
     @State private var isShowingExportSheet = false
     @State private var exportingSessionId: String?
     @State private var presentedCaptureSettingsNotebookId: String?
@@ -211,7 +206,6 @@ struct DocumentEditorPage: View {
     @State private var isQuickCaptureNotebook = false
     @State private var routeLoadError: String?
     @State private var routeLoadGeneration: UInt = 0
-    @StateObject private var notebookTasks = NotebookTasksViewModel()
     @StateObject private var captureProfileEditor: NotebookCaptureProfileEditorModel
 
     /// 当前是否展示 Transcript 视图(Plaud 式)。true 时隐藏笔记编辑层。
@@ -447,42 +441,14 @@ struct DocumentEditorPage: View {
             )
         } else {
             VStack(spacing: 0) {
-            // 旧的格式工具栏随平文本编辑器一起拆除;大纲编辑器 v1 无格式化。
-            // 任务面板入口保留为独立的工具条,只在笔记 tab 出现。
-            if activeNotebookTab?.displayType == .manualNote {
-                BlockNoteUtilityBar(
-                    isTasksPanelActive: activeSidePanel == .tasks,
-                    onShowTasks: {
-                        if activeSidePanel == .tasks {
-                            activeSidePanel = nil
-                        } else {
-                            activeSidePanel = .tasks
-                            notebookTasks.refresh()
-                        }
-                    }
-                )
-
-                Divider()
-                    .background(Color.borderGhost.opacity(0.4))
-            }
-
             if docId != nil,
                let notebookId = route?.notebookID,
                let tabId = route?.tabID {
-                HStack(spacing: 0) {
-                    VStack(spacing: 0) {
-                        documentEditorContent(notebookId: notebookId, tabId: tabId)
-                        NoteBottomSignature()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    if activeSidePanel != nil {
-                        Divider()
-                            .background(Color.borderGhost.opacity(0.45))
-                        NotebookTasksPanel(viewModel: notebookTasks)
-                            .frame(width: 380)
-                    }
+                VStack(spacing: 0) {
+                    documentEditorContent(notebookId: notebookId, tabId: tabId)
+                    NoteBottomSignature()
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 EmptyState(
                     illustration: { Arcanum003WaveformRuler() },
@@ -879,7 +845,6 @@ struct DocumentEditorPage: View {
     private func showCaptureSettings() {
         guard effectiveSessionId == nil,
               let notebookId = captureSettingsNotebookId else { return }
-        activeSidePanel = nil
         // 覆盖层出现前收回键盘焦点,行内 TextField 不得在被盖住时继续吃键击。
         NSApp.keyWindow?.makeFirstResponder(nil)
         isShowingResources = false
@@ -888,7 +853,6 @@ struct DocumentEditorPage: View {
     }
 
     private func showResources() {
-        activeSidePanel = nil
         NSApp.keyWindow?.makeFirstResponder(nil)
         presentedCaptureSettingsNotebookId = nil
         sessionSupplementarySurface = nil
@@ -911,7 +875,6 @@ struct DocumentEditorPage: View {
 
     private func showSessionNote() {
         guard effectiveSessionId != nil else { return }
-        activeSidePanel = nil
         NSApp.keyWindow?.makeFirstResponder(nil)
         presentedCaptureSettingsNotebookId = nil
         isShowingResources = false
@@ -921,7 +884,6 @@ struct DocumentEditorPage: View {
 
     private func showSessionSettings() {
         guard effectiveSessionId != nil else { return }
-        activeSidePanel = nil
         NSApp.keyWindow?.makeFirstResponder(nil)
         presentedCaptureSettingsNotebookId = nil
         isShowingResources = false
@@ -993,178 +955,6 @@ private struct EditorRouteLoadWarning: View {
         .padding(.horizontal, Spacing.lg)
         .background(Color.bgElevated.opacity(0.24))
         .accessibilityIdentifier("editor.route.load_failure")
-    }
-}
-
-// MARK: - Notebook Tasks
-
-@MainActor
-private final class NotebookTasksViewModel: ObservableObject {
-    @Published private(set) var tasks: [TaskInfoDto] = []
-    @Published private(set) var lastError: String?
-
-    private let client: any TaskStatusClienting
-
-    init(client: (any TaskStatusClienting)? = nil) {
-        self.client = client ?? LiveTaskStatusClient()
-    }
-
-    func refresh() {
-        do {
-            tasks = try client.listTasks(statusFilter: nil)
-            lastError = nil
-        } catch {
-            tasks = []
-            lastError = error.localizedDescription
-        }
-    }
-}
-
-private struct NotebookTasksPanel: View {
-    @ObservedObject var viewModel: NotebookTasksViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            HStack(alignment: .top, spacing: Spacing.sm) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(String(localized: "editor.tasks.title"))
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-                    Text(String(format: String(localized: "editor.tasks.count_format"), Int64(viewModel.tasks.count)))
-                        .font(.caption)
-                        .foregroundColor(.textTertiary)
-                }
-
-                Spacer()
-
-                Button {
-                    viewModel.refresh()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .help(String(localized: "editor.tasks.refresh"))
-            }
-
-            if let lastError = viewModel.lastError, !lastError.isEmpty {
-                Text(lastError)
-                    .font(.caption)
-                    .foregroundColor(.signalRed)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if viewModel.tasks.isEmpty {
-                VStack(alignment: .center, spacing: Spacing.sm) {
-                    Image(systemName: "checklist")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(.textTertiary)
-                    Text(String(localized: "editor.tasks.empty"))
-                        .font(.bodyMedium)
-                        .foregroundColor(.textSecondary)
-                    Text(String(localized: "editor.tasks.empty.detail"))
-                        .font(.caption)
-                        .foregroundColor(.textTertiary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: Spacing.sm) {
-                        ForEach(viewModel.tasks, id: \.id) { task in
-                            NotebookTaskRow(task: task)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(Spacing.lg)
-        .frame(maxHeight: .infinity)
-        .background(Color.bgRoot)
-        .task {
-            viewModel.refresh()
-        }
-    }
-}
-
-private struct NotebookTaskRow: View {
-    let task: TaskInfoDto
-
-    var body: some View {
-        HStack(alignment: .top, spacing: Spacing.md) {
-            Image(systemName: iconName)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(tone)
-                .frame(width: 20, height: 20)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: Spacing.xs) {
-                    Text(task.status.capitalized)
-                        .font(.captionMedium)
-                        .foregroundColor(.textPrimary)
-                    Text(shortId)
-                        .font(.caption.monospacedDigit())
-                        .foregroundColor(.textTertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                Text(detailLine)
-                    .font(.caption)
-                    .foregroundColor(.textTertiary)
-                    .lineLimit(2)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, Spacing.md)
-        .padding(.vertical, Spacing.sm)
-        .background(Color.bgElevated.opacity(0.48))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-    }
-
-    private var normalizedStatus: String {
-        task.status.lowercased()
-    }
-
-    private var shortId: String {
-        String(task.id.prefix(8))
-    }
-
-    private var iconName: String {
-        switch normalizedStatus {
-        case "pending":
-            return "clock"
-        case "running", "leased":
-            return "arrow.triangle.2.circlepath"
-        case "failed", "error":
-            return "xmark.octagon"
-        case "done", "completed", "succeeded":
-            return "checkmark.circle"
-        default:
-            return "circle"
-        }
-    }
-
-    private var tone: Color {
-        switch normalizedStatus {
-        case "failed", "error":
-            return .signalRed
-        case "running", "leased":
-            return .signalAmber
-        case "done", "completed", "succeeded":
-            return .signalGreen
-        default:
-            return .textTertiary
-        }
-    }
-
-    private var detailLine: String {
-        if let error = task.errorMsg?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
-            return error
-        }
-        return String(format: String(localized: "editor.tasks.retry_format"), Int64(task.retryCount))
     }
 }
 
@@ -2904,46 +2694,3 @@ private struct NoteBottomSignature: View {
 }
 
 
-// MARK: - BlockNoteUtilityBar(笔记 tab 的工具条:目前只有任务面板入口)
-
-/// 旧格式工具栏拆除后保留的最小工具条。格式化不再存在(大纲编辑器 v1
-/// 是纯文本行),但转录任务队列面板的入口仍要可达。
-private struct BlockNoteUtilityBar: View {
-    let isTasksPanelActive: Bool
-    let onShowTasks: () -> Void
-
-    @State private var isHovering = false
-
-    var body: some View {
-        HStack {
-            Spacer()
-
-            Button(action: onShowTasks) {
-                Image(systemName: "checklist")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(
-                        isTasksPanelActive
-                            ? .brandAccent
-                            : (isHovering ? .brandAccent : .textSecondary)
-                    )
-                    .frame(width: 32, height: 32)
-                    .background(
-                        isTasksPanelActive
-                            ? Color.brandAccent.opacity(0.14)
-                            : (isHovering ? Color.bgElevated.opacity(0.5) : Color.clear)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-                    .contentShape(RoundedRectangle(cornerRadius: Radius.sm))
-            }
-            .buttonStyle(.plain)
-            .onHover { isHovering = $0 }
-            .help(String(localized: "editor.toolbar.show_tasks"))
-            .accessibilityLabel(Text(String(localized: "editor.toolbar.show_tasks")))
-            .accessibilityAddTraits(isTasksPanelActive ? .isSelected : [])
-        }
-        .padding(.horizontal, Spacing.lg)
-        .padding(.vertical, Spacing.xs)
-        .frame(height: 40)
-        .background(Color.bgSunken)
-    }
-}

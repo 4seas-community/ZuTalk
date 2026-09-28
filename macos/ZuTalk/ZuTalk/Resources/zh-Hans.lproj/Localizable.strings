@@ -583,7 +583,6 @@
 
 /* Document editor */
 "editor.toolbar.show_sources" = "显示来源";
-"editor.toolbar.show_tasks" = "显示任务";
 
 /* 大纲笔记编辑器(块文档) */
 "editor.outline.load_failed_title" = "笔记暂时打不开";
@@ -607,12 +606,6 @@
 "editor.outline.kind.divider" = "分隔线";
 "editor.outline.task.done" = "已完成";
 "editor.outline.task.todo" = "未完成";
-"editor.tasks.title" = "任务";
-"editor.tasks.count_format" = "%lld 个后台任务";
-"editor.tasks.refresh" = "刷新任务";
-"editor.tasks.empty" = "暂无任务";
-"editor.tasks.empty.detail" = "后台精修转录任务会显示在这里。";
-"editor.tasks.retry_format" = "重试 %lld 次";
 /* Accessibility labels */
 "editor.outline.drag_handle" = "拖动以重新排序";
 
@@ -1209,3 +1202,11 @@
 "settings.general.welcome_again" = "新手引导";
 "settings.general.welcome_again_hint" = "再走一遍：填密钥、授权麦克风、了解怎么录。已有的录音和设置不受影响。";
 "settings.general.welcome_again_button" = "再看一遍";
+
+"capture.speaker.directory_format" = "管理名单（%lld 个名字）";
+"capture.speaker.directory.rename" = "改名";
+"capture.speaker.directory.remove" = "删除";
+"capture.speaker.directory.usage_format" = "%lld 场录音";
+"capture.speaker.directory.detail" = "改名会改到所有用这个名字的录音里。删除只是把名字从名单里拿掉，那些说话人变回「说话人 N」，录音内容不变。";
+"capture.speaker.directory.remove_confirm_format" = "从名单里删除「%@」？";
+"capture.speaker.directory.remove_detail" = "用过这个名字的说话人会变回「说话人 N」。录音、转录稿和笔记都不变。";

@@ -79,6 +79,23 @@ impl ZuTalkCore {
             .map_err(speaker_store_error)
     }
 
+    /// Remove a name from the list. Speakers linked to it go back to their
+    /// anonymous label; nothing in any recording's text changes.
+    pub fn delete_speaker_participant(&self, participant_id: String) -> Result<bool, CoreError> {
+        self.notebook_capture_store
+            .delete_participant(&participant_id)
+            .map_err(speaker_store_error)
+    }
+
+    /// How many recordings each named person appears in.
+    pub fn speaker_participant_recording_counts(
+        &self,
+    ) -> Result<std::collections::HashMap<String, u32>, CoreError> {
+        self.notebook_capture_store
+            .participant_session_counts()
+            .map_err(speaker_store_error)
+    }
+
     pub fn list_notebook_session_speakers(
         &self,
         session_id: String,

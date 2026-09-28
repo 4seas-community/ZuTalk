@@ -1325,6 +1325,12 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
 
     func createSpeakerParticipant(displayName: String) throws  -> FfiSpeakerParticipant
 
+    /**
+     * Remove a name from the list. Speakers linked to it go back to their
+     * anonymous label; nothing in any recording's text changes.
+     */
+    func deleteSpeakerParticipant(participantId: String) throws  -> Bool
+
     func linkNotebookSessionSpeaker(sessionSpeakerId: String, participantId: String) throws  -> FfiSessionSpeaker
 
     func listNotebookSessionSpeakers(sessionId: String) throws  -> [FfiSessionSpeaker]
@@ -1337,6 +1343,11 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func renameNotebookSessionSpeaker(sessionSpeakerId: String, localDisplayName: String?) throws  -> FfiSessionSpeaker
 
     func renameSpeakerParticipant(participantId: String, displayName: String) throws  -> FfiSpeakerParticipant
+
+    /**
+     * How many recordings each named person appears in.
+     */
+    func speakerParticipantRecordingCounts() throws  -> [String: UInt32]
 
     func unlinkNotebookSessionSpeaker(sessionSpeakerId: String) throws  -> FfiSessionSpeaker
 
@@ -3028,6 +3039,19 @@ open func createSpeakerParticipant(displayName: String)throws  -> FfiSpeakerPart
 })
 }
 
+    /**
+     * Remove a name from the list. Speakers linked to it go back to their
+     * anonymous label; nothing in any recording's text changes.
+     */
+open func deleteSpeakerParticipant(participantId: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_delete_speaker_participant(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(participantId),$0
+    )
+})
+}
+
 open func linkNotebookSessionSpeaker(sessionSpeakerId: String, participantId: String)throws  -> FfiSessionSpeaker  {
     return try  FfiConverterTypeFfiSessionSpeaker_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zutalkcore_link_notebook_session_speaker(
@@ -3074,6 +3098,17 @@ open func renameSpeakerParticipant(participantId: String, displayName: String)th
             self.uniffiCloneHandle(),
         FfiConverterString.lower(participantId),
         FfiConverterString.lower(displayName),$0
+    )
+})
+}
+
+    /**
+     * How many recordings each named person appears in.
+     */
+open func speakerParticipantRecordingCounts()throws  -> [String: UInt32]  {
+    return try  FfiConverterDictionaryStringUInt32.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_speaker_participant_recording_counts(
+            self.uniffiCloneHandle(),$0
     )
 })
 }
@@ -9494,6 +9529,32 @@ fileprivate struct FfiConverterSequenceTypeTaskInfoDto: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterDictionaryStringUInt32: FfiConverterRustBuffer {
+    public static func write(_ value: [String: UInt32], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for (key, value) in value {
+            FfiConverterString.write(key, into: &buf)
+            FfiConverterUInt32.write(value, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String: UInt32] {
+        let len: Int32 = try readInt(&buf)
+        var dict = [String: UInt32]()
+        dict.reserveCapacity(Int(len))
+        for _ in 0..<len {
+            let key = try FfiConverterString.read(from: &buf)
+            let value = try FfiConverterUInt32.read(from: &buf)
+            dict[key] = value
+        }
+        return dict
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterDictionaryStringString: FfiConverterRustBuffer {
     public static func write(_ value: [String: String], into buf: inout [UInt8]) {
         let len = Int32(value.count)
@@ -9940,6 +10001,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_create_speaker_participant() != 65240) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_delete_speaker_participant() != 59444) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_link_notebook_session_speaker() != 50955) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9953,6 +10017,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_rename_speaker_participant() != 3734) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_speaker_participant_recording_counts() != 11863) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_unlink_notebook_session_speaker() != 8815) {

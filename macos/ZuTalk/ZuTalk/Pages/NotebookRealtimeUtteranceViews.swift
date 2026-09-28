@@ -555,6 +555,87 @@ private struct NotebookSpeakerChip: View {
     }
 }
 
+/// The kept list of names: rename one everywhere at once, or remove one.
+private struct ParticipantDirectoryList: View {
+    @ObservedObject var history: NotebookCaptureHistoryStore
+    let onError: (String) -> Void
+    @State private var editingId: String?
+    @State private var draft = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            ForEach(history.orderedSpeakerParticipants) { participant in
+                HStack(spacing: Spacing.sm) {
+                    if editingId == participant.id {
+                        TextField("", text: $draft)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { rename(participant) }
+                        Button(String(localized: "capture.speaker.save")) { rename(participant) }
+                            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Button(String(localized: "common.cancel")) { editingId = nil }
+                    } else {
+                        Text(participant.displayName)
+                            .font(.body)
+                            .foregroundColor(.textPrimary)
+                            .lineLimit(1)
+                        Text(usage(participant))
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                        Spacer(minLength: Spacing.sm)
+                        Button(String(localized: "capture.speaker.directory.rename")) {
+                            draft = participant.displayName
+                            editingId = participant.id
+                        }
+                        .buttonStyle(.borderless)
+                        Button(String(localized: "capture.speaker.directory.remove"), role: .destructive) {
+                            confirmRemove(participant)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+                .font(.caption)
+            }
+            Text(String(localized: "capture.speaker.directory.detail"))
+                .font(.caption)
+                .foregroundColor(.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func usage(_ participant: SpeakerParticipantDTO) -> String {
+        let count = history.participantRecordingCounts[participant.id] ?? 0
+        return String(format: String(localized: "capture.speaker.directory.usage_format"), Int64(count))
+    }
+
+    private func rename(_ participant: SpeakerParticipantDTO) {
+        let name = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard name.isEmpty == false else { return }
+        do {
+            try history.renameSpeakerParticipant(participantId: participant.id, displayName: name)
+            editingId = nil
+        } catch {
+            onError(error.localizedDescription)
+        }
+    }
+
+    private func confirmRemove(_ participant: SpeakerParticipantDTO) {
+        let alert = NSAlert()
+        alert.messageText = String(
+            format: String(localized: "capture.speaker.directory.remove_confirm_format"),
+            participant.displayName
+        )
+        alert.informativeText = String(localized: "capture.speaker.directory.remove_detail")
+        alert.addButton(withTitle: String(localized: "capture.speaker.directory.remove"))
+        alert.addButton(withTitle: String(localized: "common.cancel"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            try history.deleteSpeakerParticipant(participantId: participant.id)
+        } catch {
+            onError(error.localizedDescription)
+        }
+    }
+}
+
 private struct NotebookSpeakerEditorSheet: View {
     let sessionId: String
     let sessionSpeakerId: String
@@ -716,6 +797,22 @@ private struct NotebookSpeakerEditorSheet: View {
                     }
                     .buttonStyle(.borderless)
                 }
+            }
+
+            // The names above are kept across recordings. Typos and people
+            // entered twice used to stay in the list for good.
+            if history.orderedSpeakerParticipants.isEmpty == false {
+                DisclosureGroup(
+                    String(
+                        format: String(localized: "capture.speaker.directory_format"),
+                        Int64(history.orderedSpeakerParticipants.count)
+                    )
+                ) {
+                    ParticipantDirectoryList(history: history, onError: { errorMessage = $0 })
+                        .padding(.top, Spacing.xs)
+                }
+                .font(.captionMedium)
+                .accessibilityIdentifier("capture.speaker.directory")
             }
 
             if let errorMessage {

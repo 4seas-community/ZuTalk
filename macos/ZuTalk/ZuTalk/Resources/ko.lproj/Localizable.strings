@@ -583,7 +583,6 @@
 
 /* Document editor */
 "editor.toolbar.show_sources" = "소스 표시";
-"editor.toolbar.show_tasks" = "작업 표시";
 
 /* 개요 노트 편집기(블록 문서) */
 "editor.outline.load_failed_title" = "노트를 열 수 없습니다";
@@ -607,12 +606,6 @@
 "editor.outline.kind.divider" = "구분선";
 "editor.outline.task.done" = "완료";
 "editor.outline.task.todo" = "미완료";
-"editor.tasks.title" = "작업";
-"editor.tasks.count_format" = "%lld개의 백그라운드 작업";
-"editor.tasks.refresh" = "작업 새로 고침";
-"editor.tasks.empty" = "아직 할 일이 없습니다.";
-"editor.tasks.empty.detail" = "정밀 전사 작업이 여기에 표시됩니다.";
-"editor.tasks.retry_format" = "%lld번 재시도";
 /* Accessibility labels */
 "editor.outline.drag_handle" = "드래그하여 순서 변경";
 
@@ -1209,3 +1202,11 @@
 "settings.general.welcome_again" = "시작 안내";
 "settings.general.welcome_again_hint" = "다시 한번 둘러봐요: 키 입력, 마이크 허용, 녹음 방법. 녹음과 설정은 그대로예요.";
 "settings.general.welcome_again_button" = "다시 보기";
+
+"capture.speaker.directory_format" = "이름 목록 관리(%lld개)";
+"capture.speaker.directory.rename" = "이름 바꾸기";
+"capture.speaker.directory.remove" = "삭제";
+"capture.speaker.directory.usage_format" = "녹음 %lld개";
+"capture.speaker.directory.detail" = "이름을 바꾸면 그 이름을 쓰는 모든 녹음에 반영돼요. 삭제하면 목록에서만 빠지고, 해당 화자는 ‘화자 N’으로 돌아가며 녹음 내용은 그대로예요.";
+"capture.speaker.directory.remove_confirm_format" = "목록에서 ‘%@’을(를) 삭제할까요?";
+"capture.speaker.directory.remove_detail" = "이 이름을 쓰던 화자는 ‘화자 N’으로 돌아가요. 녹음, 전사본, 노트는 그대로예요.";

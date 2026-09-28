@@ -583,7 +583,6 @@
 
 /* Document editor */
 "editor.toolbar.show_sources" = "แสดงแหล่งที่มา";
-"editor.toolbar.show_tasks" = "แสดงงาน";
 
 /* ตัวแก้ไขโน้ตแบบเค้าโครง (เอกสารบล็อก) */
 "editor.outline.load_failed_title" = "ไม่สามารถเปิดโน้ตได้";
@@ -607,12 +606,6 @@
 "editor.outline.kind.divider" = "เส้นคั่น";
 "editor.outline.task.done" = "เสร็จแล้ว";
 "editor.outline.task.todo" = "ยังไม่เสร็จ";
-"editor.tasks.title" = "งาน";
-"editor.tasks.count_format" = "งานเบื้องหลัง %lld งาน";
-"editor.tasks.refresh" = "รีเฟรชงาน";
-"editor.tasks.empty" = "ยังไม่มีงาน";
-"editor.tasks.empty.detail" = "งานถอดเสียงแบบละเอียดจะปรากฏที่นี่";
-"editor.tasks.retry_format" = "ลองใหม่ %lld ครั้ง";
 /* Accessibility labels */
 "editor.outline.drag_handle" = "ลากเพื่อจัดลำดับใหม่";
 
@@ -1209,3 +1202,11 @@
 "settings.general.welcome_again" = "คำแนะนำเริ่มต้น";
 "settings.general.welcome_again_hint" = "ดูอีกครั้ง: ใส่คีย์ อนุญาตไมโครโฟน และดูวิธีบันทึก การบันทึกและการตั้งค่าเดิมยังอยู่ครบ";
 "settings.general.welcome_again_button" = "ดูอีกครั้ง";
+
+"capture.speaker.directory_format" = "จัดการรายชื่อ (%lld)";
+"capture.speaker.directory.rename" = "เปลี่ยนชื่อ";
+"capture.speaker.directory.remove" = "ลบ";
+"capture.speaker.directory.usage_format" = "%lld การบันทึก";
+"capture.speaker.directory.detail" = "การเปลี่ยนชื่อจะเปลี่ยนในทุกการบันทึกที่ใช้ชื่อนี้ การลบแค่เอาชื่อออกจากรายชื่อ ผู้พูดเหล่านั้นจะกลับเป็น “ผู้พูด N” และเนื้อหาการบันทึกไม่เปลี่ยน";
+"capture.speaker.directory.remove_confirm_format" = "ลบ “%@” ออกจากรายชื่อไหม";
+"capture.speaker.directory.remove_detail" = "ผู้พูดที่ใช้ชื่อนี้จะกลับเป็น “ผู้พูด N” การบันทึก บทถอดความ และบันทึกย่อยังคงเดิม";
