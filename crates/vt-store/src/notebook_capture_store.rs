@@ -532,6 +532,13 @@ pub struct NotebookCaptureProfile {
     /// Explicit shared caption target for 3+ language one-way translation.
     #[serde(default)]
     pub common_caption_language: Option<String>,
+    /// Selected languages that are only read as subtitles, never spoken in
+    /// the room. Empty — what every profile and run snapshot written before
+    /// the field existed reads as — means any selected language may be
+    /// spoken. Three-language capture opens its connections from this: fewer
+    /// spoken languages need fewer of them.
+    #[serde(default)]
+    pub subtitle_only_languages: Vec<String>,
     pub privacy_level: String,
     pub send_context_to_soniox: bool,
     pub revision: u64,
@@ -549,6 +556,8 @@ pub struct NotebookCaptureProfileUpdate {
     pub right_language: String,
     pub selected_languages: Vec<String>,
     pub common_caption_language: Option<String>,
+    /// See [`NotebookCaptureProfile::subtitle_only_languages`].
+    pub subtitle_only_languages: Vec<String>,
     pub privacy_level: String,
     pub send_context_to_soniox: bool,
 }
@@ -1302,7 +1311,7 @@ impl NotebookCaptureStore {
                         language_b, left_language, right_language,
                         selected_languages_json, common_caption_language,
                         privacy_level, send_context_to_soniox, revision,
-                        created_at, updated_at
+                        created_at, updated_at, subtitle_only_languages_json
                  FROM notebook_capture_profiles WHERE notebook_id = ?1",
                 [notebook_id],
                 profile_from_row,
@@ -1319,6 +1328,11 @@ impl NotebookCaptureStore {
     ) -> Result<NotebookCaptureProfile, NotebookCaptureStoreError> {
         validate_profile_update(update)?;
         let selected_languages_json = serde_json::to_string(&update.selected_languages)?;
+        let subtitle_only_languages_json =
+            serde_json::to_string(&normalized_subtitle_only_languages(
+                &update.selected_languages,
+                &update.subtitle_only_languages,
+            ))?;
         let now = chrono::Utc::now().to_rfc3339();
         let updated = self.conn.lock().unwrap().execute(
             "UPDATE notebook_capture_profiles
@@ -1326,7 +1340,8 @@ impl NotebookCaptureStore {
                  language_b = ?4, left_language = ?5, right_language = ?6,
                  selected_languages_json = ?7, common_caption_language = ?8,
                  privacy_level = ?9, send_context_to_soniox = ?10,
-                 revision = revision + 1, updated_at = ?11
+                 revision = revision + 1, updated_at = ?11,
+                 subtitle_only_languages_json = ?14
              WHERE notebook_id = ?12 AND revision = ?13",
             params![
                 update.remote_realtime_enabled,
@@ -1342,6 +1357,7 @@ impl NotebookCaptureStore {
                 now,
                 notebook_id,
                 u64_to_i64(expected_revision, "expected_revision")?,
+                subtitle_only_languages_json,
             ],
         )?;
         if updated == 0 {
@@ -1604,6 +1620,7 @@ impl NotebookCaptureStore {
             right_language: profile_snapshot.right_language.clone(),
             selected_languages: profile_snapshot.selected_languages.clone(),
             common_caption_language: profile_snapshot.common_caption_language.clone(),
+            subtitle_only_languages: profile_snapshot.subtitle_only_languages.clone(),
             privacy_level: profile_snapshot.privacy_level.clone(),
             send_context_to_soniox: profile_snapshot.send_context_to_soniox,
         })?;
@@ -5311,6 +5328,9 @@ fn profile_from_row(row: &Row<'_>) -> rusqlite::Result<NotebookCaptureProfile> {
         right_language: row.get(6)?,
         selected_languages,
         common_caption_language: None,
+        subtitle_only_languages: serde_json::from_str(&row.get::<_, String>(14)?)
+            .map_err(NotebookCaptureStoreError::from)
+            .map_err(to_sql_conversion_error)?,
         privacy_level: row.get(9)?,
         send_context_to_soniox: row.get(10)?,
         revision: i64_to_u64(row.get(11)?, "profile revision").map_err(to_sql_conversion_error)?,
@@ -7940,6 +7960,31 @@ fn deduplicate_preserving_order(values: &mut Vec<String>) {
     values.retain(|value| seen.insert(value.clone()));
 }
 
+/// Keeps only selected languages, in selection order, once each. A list that
+/// would leave nobody speaking is no list at all: it means every language may
+/// be spoken, which is also what an empty list says. Normalized rather than
+/// rejected, so changing the language selection never fails to save over a
+/// role set for a language that is no longer there.
+pub fn normalized_subtitle_only_languages(
+    selected_languages: &[String],
+    subtitle_only_languages: &[String],
+) -> Vec<String> {
+    let requested = subtitle_only_languages
+        .iter()
+        .map(|language| canonical_language(language))
+        .collect::<std::collections::HashSet<_>>();
+    let kept = selected_languages
+        .iter()
+        .filter(|language| requested.contains(&canonical_language(language)))
+        .cloned()
+        .collect::<Vec<_>>();
+    if kept.len() >= selected_languages.len() {
+        Vec::new()
+    } else {
+        kept
+    }
+}
+
 fn validate_profile_update(
     update: &NotebookCaptureProfileUpdate,
 ) -> Result<(), NotebookCaptureStoreError> {
@@ -8120,6 +8165,7 @@ fn validate_authorized_profile_snapshot(
         right_language: profile.right_language.clone(),
         selected_languages: profile.selected_languages.clone(),
         common_caption_language: profile.common_caption_language.clone(),
+        subtitle_only_languages: profile.subtitle_only_languages.clone(),
         privacy_level: profile.privacy_level.clone(),
         send_context_to_soniox: profile.send_context_to_soniox,
     })
@@ -9031,6 +9077,7 @@ mod tests {
             right_language: "zh".into(),
             selected_languages: vec!["en".into(), "zh".into()],
             common_caption_language: None,
+            subtitle_only_languages: Vec::new(),
             privacy_level: "invalid".into(),
             send_context_to_soniox: false,
         };
@@ -9050,6 +9097,51 @@ mod tests {
     }
 
     #[test]
+    fn subtitle_only_languages_are_kept_in_selection_order_and_never_cover_everyone() {
+        let (_temp, store, notebook_id) = fixture();
+        let created = store.get_or_create_profile(&notebook_id).unwrap();
+        assert!(
+            created.subtitle_only_languages.is_empty(),
+            "a new profile lets every language be spoken"
+        );
+        let mut update = NotebookCaptureProfileUpdate {
+            remote_realtime_enabled: true,
+            capture_mode: CaptureMode::MultilingualOneWay,
+            language_a: "en".into(),
+            language_b: "zh".into(),
+            left_language: "en".into(),
+            right_language: "zh".into(),
+            selected_languages: vec!["en".into(), "zh".into(), "th".into()],
+            common_caption_language: None,
+            subtitle_only_languages: vec!["TH".into(), "fr".into(), "th".into()],
+            privacy_level: "standard".into(),
+            send_context_to_soniox: false,
+        };
+        let stored = store.update_profile(&notebook_id, 0, &update).unwrap();
+        assert_eq!(
+            stored.subtitle_only_languages,
+            vec!["th".to_string()],
+            "only selected languages, once each, in selection order"
+        );
+
+        update.subtitle_only_languages = vec!["en".into(), "zh".into(), "th".into()];
+        let stored = store.update_profile(&notebook_id, 1, &update).unwrap();
+        assert!(
+            stored.subtitle_only_languages.is_empty(),
+            "nobody speaking is read as everybody may speak"
+        );
+
+        update.subtitle_only_languages = vec!["th".into()];
+        update.selected_languages = vec!["en".into(), "zh".into()];
+        update.capture_mode = CaptureMode::TwoWay;
+        let stored = store.update_profile(&notebook_id, 2, &update).unwrap();
+        assert!(
+            stored.subtitle_only_languages.is_empty(),
+            "dropping a language from the selection drops its role instead of failing the save"
+        );
+    }
+
+    #[test]
     fn multilingual_profile_requires_unique_ordered_languages_without_common_caption() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
@@ -9062,6 +9154,7 @@ mod tests {
             right_language: "zh".into(),
             selected_languages: vec!["en".into(), "zh".into(), "th".into()],
             common_caption_language: None,
+            subtitle_only_languages: Vec::new(),
             privacy_level: "standard".into(),
             send_context_to_soniox: false,
         };
@@ -9106,6 +9199,7 @@ mod tests {
             right_language: "en".into(),
             selected_languages: vec!["th".into()],
             common_caption_language: None,
+            subtitle_only_languages: Vec::new(),
             privacy_level: "standard".into(),
             send_context_to_soniox: false,
         };
@@ -9132,6 +9226,7 @@ mod tests {
                 .map(str::to_string)
                 .collect(),
             common_caption_language: None,
+            subtitle_only_languages: Vec::new(),
             privacy_level: "standard".into(),
             send_context_to_soniox: false,
         };
@@ -9217,6 +9312,7 @@ mod tests {
                     right_language: "zh".into(),
                     selected_languages: vec!["en".into(), "zh".into()],
                     common_caption_language: None,
+                    subtitle_only_languages: Vec::new(),
                     privacy_level: "high".into(),
                     send_context_to_soniox: false,
                 },
@@ -14914,6 +15010,7 @@ mod tests {
             right_language: "zh".into(),
             selected_languages: vec!["en".into(), "zh".into()],
             common_caption_language: None,
+            subtitle_only_languages: Vec::new(),
             privacy_level: "standard".into(),
             send_context_to_soniox: true,
         };

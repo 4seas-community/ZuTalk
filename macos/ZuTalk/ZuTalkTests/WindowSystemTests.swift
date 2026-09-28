@@ -1574,6 +1574,86 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertEqual(input.cuesByLanguage["en"]?.map(\.text), ["Hello"])
     }
 
+    /// With three languages the canonical lane translates one column itself,
+    /// onto its rows. The canvas reads columns as cues, so that column has to
+    /// be restated as cues — or it stays empty on the overlay.
+    func testInlineTranslationsOfTheCanonicalLaneBecomeCuesOfTheirColumn() {
+        var durable = NotebookCaptureUtteranceDTO(
+            id: "utt-1",
+            sessionId: "session",
+            sequence: 1,
+            revision: 3,
+            sourceLanguage: "zh",
+            sourceText: "第一句话。",
+            sourceStartMs: 0,
+            sourceEndMs: 900,
+            translatedLanguage: "th",
+            translatedText: "ประโยคแรก",
+            completion: "complete",
+            alignment: "paired"
+        )
+        durable.languageVariants = [
+            NotebookCaptureLanguageVariantDTO(
+                language: "th",
+                role: "translation",
+                text: "ประโยคแรก",
+                state: "ready",
+                completion: "complete"
+            ),
+            NotebookCaptureLanguageVariantDTO(
+                language: "en",
+                role: "translation",
+                text: "First sentence.",
+                state: "ready",
+                completion: "complete"
+            ),
+        ]
+        let live = NotebookCaptureUtteranceDTO(
+            id: "utt-2",
+            sessionId: "session",
+            sequence: 2,
+            revision: 0,
+            sourceLanguage: "zh",
+            sourceText: "第二句",
+            sourceStartMs: 2_000,
+            sourceEndMs: 2_600,
+            translatedLanguage: "th",
+            translatedText: "ประโยคที่",
+            completion: "partial",
+            alignment: "paired"
+        )
+
+        let cues = SubtitleAudienceTimeline.inlineCues(
+            utterances: [durable, live],
+            languages: ["th"]
+        )
+
+        XCTAssertEqual(Array(cues.keys), ["th"], "English has a lane of its own and sends cues")
+        XCTAssertEqual(cues["th"]?.map(\.text), ["ประโยคแรก", "ประโยคที่"])
+        XCTAssertEqual(cues["th"]?.map(\.completion), ["complete", "partial"])
+        XCTAssertEqual(cues["th"]?.map(\.sourceStartMs), [0, 2_000])
+        XCTAssertTrue(
+            SubtitleAudienceTimeline.inlineCues(utterances: [durable], languages: []).isEmpty
+        )
+    }
+
+    func testSubtitleOnlyLanguagesFollowSelectionAndNeverSilenceTheRoom() {
+        XCTAssertEqual(
+            NotebookCaptureLanguageRoles.subtitleOnly(
+                selected: ["zh", "en", "th"],
+                requested: ["TH", "fr", "en"]
+            ),
+            ["en", "th"]
+        )
+        XCTAssertEqual(
+            NotebookCaptureLanguageRoles.subtitleOnly(
+                selected: ["zh", "en", "th"],
+                requested: ["zh", "en", "th"]
+            ),
+            []
+        )
+    }
+
     func testAudienceTimelineColumnsAnchorByTimeAndKeepIndependentSegmentation() {
         let source = { (sequence: UInt64, language: String, text: String, start: UInt64) in
             NotebookCaptureUtteranceDTO(

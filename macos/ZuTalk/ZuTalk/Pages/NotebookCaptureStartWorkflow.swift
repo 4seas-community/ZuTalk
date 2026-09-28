@@ -59,15 +59,48 @@ enum NotebookCaptureStartPreparationWorkflow {
         guard finalProfile.remoteRealtimeEnabled else { return .notUsed }
 
         return try await prepareRealtimeCredential(
-            remoteLaneCount(selectedLanguages: finalProfile.selectedLanguages)
+            remoteLaneCount(
+                selectedLanguages: finalProfile.selectedLanguages,
+                subtitleOnlyLanguages: finalProfile.subtitleOnlyLanguages
+            )
         )
     }
 
-    /// Mirrors the Rust core's `remote_stream_plan`: one or two languages run
-    /// on a single WebSocket, three or more open one canonical lane plus one
-    /// translation lane per language. Invite billing charges per lane.
-    static func remoteLaneCount(selectedLanguages: [String]) -> Int {
-        selectedLanguages.count <= 2 ? 1 : selectedLanguages.count + 1
+    /// Mirrors the Rust core's `remote_stream_plan`. One or two languages run
+    /// on a single connection. With three or more, each connection translates
+    /// into one language, and a language needs one only if something may be
+    /// said in another: two spoken languages share one two-way connection plus
+    /// one per subtitle-only language; one spoken language needs one per
+    /// subtitle-only language; three or more spoken need one per language.
+    /// Invite billing charges per connection.
+    static func remoteLaneCount(
+        selectedLanguages: [String],
+        subtitleOnlyLanguages: [String] = []
+    ) -> Int {
+        guard selectedLanguages.count > 2 else { return 1 }
+        let subtitleOnly = NotebookCaptureLanguageRoles.subtitleOnly(
+            selected: selectedLanguages,
+            requested: subtitleOnlyLanguages
+        ).count
+        switch selectedLanguages.count - subtitleOnly {
+        case 2: return 1 + subtitleOnly
+        case 1: return subtitleOnly
+        default: return selectedLanguages.count
+        }
+    }
+}
+
+/// Which selected languages are spoken in the room and which are only read.
+enum NotebookCaptureLanguageRoles {
+    /// The subtitle-only languages as the core will apply them: in selection
+    /// order, only selected ones, and never all of them — a room where nobody
+    /// speaks is read as one where anyone may.
+    static func subtitleOnly(selected: [String], requested: [String]) -> [String] {
+        let requested = Set(requested.map(SubtitleOverlayView.normalizedLanguageCode))
+        let kept = selected.filter {
+            requested.contains(SubtitleOverlayView.normalizedLanguageCode($0))
+        }
+        return kept.count >= selected.count ? [] : kept
     }
 }
 

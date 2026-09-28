@@ -23,7 +23,8 @@ const REMOTE_ARTIFACTS_VERSION: i32 = 30;
 const INBOX_MULTI_SEGMENT_VERSION: i32 = 31;
 const SAMPLE_FORMAT_VERSION: i32 = 32;
 const MARKS_VERSION: i32 = 33;
-const CURRENT_VERSION: i32 = 34;
+const MARK_DIGESTS_VERSION: i32 = 34;
+const CURRENT_VERSION: i32 = 35;
 
 const V23_TABLES: &[&str] = &[
     "audio_retention_chunks",
@@ -558,7 +559,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v32_to_v33(conn)?;
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
-            validate_v34_baseline(conn)
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
         }
         SPEAKER_VERSION => {
             validate_v24_baseline(conn)?;
@@ -581,7 +584,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v32_to_v33(conn)?;
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
-            validate_v34_baseline(conn)
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
         }
         SELECTED_LANGUAGES_VERSION => {
             validate_v25_baseline(conn)?;
@@ -602,7 +607,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v32_to_v33(conn)?;
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
-            validate_v34_baseline(conn)
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
         }
         MULTILINGUAL_VERSION => {
             validate_v26_baseline(conn)?;
@@ -621,7 +628,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v32_to_v33(conn)?;
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
-            validate_v34_baseline(conn)
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
         }
         REALTIME_LORO_VERSION => {
             validate_v27_baseline(conn)?;
@@ -638,7 +647,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v32_to_v33(conn)?;
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
-            validate_v34_baseline(conn)
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
         }
         TRANSLATION_INBOX_VERSION => {
             validate_v28_baseline(conn)?;
@@ -653,7 +664,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v32_to_v33(conn)?;
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
-            validate_v34_baseline(conn)
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
         }
         TRANSCRIPT_GAPS_VERSION => {
             validate_v29_baseline(conn)?;
@@ -666,7 +679,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v32_to_v33(conn)?;
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
-            validate_v34_baseline(conn)
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
         }
         INBOX_MULTI_SEGMENT_VERSION => {
             validate_v31_baseline(conn)?;
@@ -675,21 +690,32 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v32_to_v33(conn)?;
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
-            validate_v34_baseline(conn)
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
         }
         SAMPLE_FORMAT_VERSION => {
             validate_v32_baseline(conn)?;
             migrate_v32_to_v33(conn)?;
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
-            validate_v34_baseline(conn)
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
         }
         MARKS_VERSION => {
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
-            validate_v34_baseline(conn)
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
         }
-        CURRENT_VERSION => validate_v34_baseline(conn),
+        MARK_DIGESTS_VERSION => {
+            validate_v34_baseline(conn)?;
+            migrate_v34_to_v35(conn)?;
+            validate_v35_baseline(conn)
+        }
+        CURRENT_VERSION => validate_v35_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
     }?;
 
@@ -723,7 +749,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, schema {INBOX_MULTI_SEGMENT_VERSION}, schema {SAMPLE_FORMAT_VERSION}, schema {MARKS_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, schema {INBOX_MULTI_SEGMENT_VERSION}, schema {SAMPLE_FORMAT_VERSION}, schema {MARKS_VERSION}, schema {MARK_DIGESTS_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -869,9 +895,27 @@ fn validate_v33_baseline(conn: &Connection) -> SqlResult<()> {
 /// or the transcript improves, that fingerprint stops matching and the row is
 /// known to be stale rather than quietly wrong.
 fn validate_v34_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v33_baseline_objects(conn, CURRENT_VERSION)?;
+    validate_v34_baseline_objects(conn, MARK_DIGESTS_VERSION)
+}
+
+fn validate_v34_baseline_objects(conn: &Connection, claimed_version: i32) -> SqlResult<()> {
+    validate_v33_baseline_objects(conn, claimed_version)?;
     let table_sql = schema_object_sql(conn, "table", "mark_digests")?.to_ascii_lowercase();
     if !table_sql.contains("source_fingerprint") || !table_sql.contains("state") {
+        return Err(schema_reset_required(claimed_version));
+    }
+    Ok(())
+}
+
+/// v35: three-language capture opens its connections by which languages are
+/// spoken in the room. The profile records the ones that are only read as
+/// subtitles; an empty list, which every earlier profile and run snapshot
+/// reads as, means every language may be spoken.
+fn validate_v35_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v34_baseline_objects(conn, CURRENT_VERSION)?;
+    let table_sql =
+        schema_object_sql(conn, "table", "notebook_capture_profiles")?.to_ascii_lowercase();
+    if !table_sql.contains("subtitle_only_languages_json") {
         return Err(schema_reset_required(CURRENT_VERSION));
     }
     Ok(())
@@ -930,7 +974,8 @@ fn validate_v24_or_later_baseline(conn: &Connection, claimed_version: i32) -> Sq
     let has_transcript_gaps = claimed_version >= TRANSCRIPT_GAPS_VERSION;
     let has_remote_artifact_journal = claimed_version >= REMOTE_ARTIFACTS_VERSION;
     let (tables, indexes, triggers) = match claimed_version {
-        CURRENT_VERSION => (V34_TABLES, V33_INDEXES, V29_TRIGGERS),
+        // v35 added a column; the object set is v34's.
+        CURRENT_VERSION | MARK_DIGESTS_VERSION => (V34_TABLES, V33_INDEXES, V29_TRIGGERS),
         MARKS_VERSION => (V33_TABLES, V33_INDEXES, V29_TRIGGERS),
         // v31 changed one index's uniqueness and v32 added columns; neither
         // changed the object set.
@@ -1846,6 +1891,11 @@ fn install_current_baseline(conn: &Connection) -> SqlResult<()> {
                                                        AND json_type(selected_languages_json) = 'array'
                                                    ),
             common_caption_language        TEXT,
+            subtitle_only_languages_json   TEXT NOT NULL DEFAULT '[]'
+                                                   CHECK(
+                                                       json_valid(subtitle_only_languages_json)
+                                                       AND json_type(subtitle_only_languages_json) = 'array'
+                                                   ),
             privacy_level                 TEXT NOT NULL DEFAULT 'standard'
                                                    CHECK(privacy_level IN (
                                                        'standard', 'high', 'maximum'
@@ -2759,9 +2809,31 @@ fn migrate_v32_to_v33(conn: &Connection) -> SqlResult<()> {
 fn migrate_v33_to_v34(conn: &Connection) -> SqlResult<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(mark_digests_schema())?;
+    tx.pragma_update(None, "user_version", MARK_DIGESTS_VERSION)?;
+    tx.commit()?;
+    tracing::info!("migrated ZuTalk schema v{MARKS_VERSION} to v{MARK_DIGESTS_VERSION}");
+    Ok(())
+}
+
+/// Column-guarded like v32, so an interrupted run resumes cleanly.
+fn migrate_v34_to_v35(conn: &Connection) -> SqlResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    if tx
+        .prepare("SELECT subtitle_only_languages_json FROM notebook_capture_profiles LIMIT 0")
+        .is_err()
+    {
+        tx.execute_batch(
+            "ALTER TABLE notebook_capture_profiles
+                 ADD COLUMN subtitle_only_languages_json TEXT NOT NULL DEFAULT '[]'
+                 CHECK(
+                     json_valid(subtitle_only_languages_json)
+                     AND json_type(subtitle_only_languages_json) = 'array'
+                 );",
+        )?;
+    }
     tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated ZuTalk schema v{MARKS_VERSION} to v{CURRENT_VERSION}");
+    tracing::info!("migrated ZuTalk schema v{MARK_DIGESTS_VERSION} to v{CURRENT_VERSION}");
     Ok(())
 }
 
@@ -2811,7 +2883,7 @@ mod tests {
     /// database is v30" — spelling the version at each one is what went stale
     /// across the last three bumps.
     fn validate_current_baseline(conn: &Connection) -> SqlResult<()> {
-        validate_v34_baseline(conn)
+        validate_v35_baseline(conn)
     }
 
     fn downgrade_v27_to_v26(conn: &Connection) {
@@ -3092,6 +3164,7 @@ mod tests {
                 "right_language",
                 "selected_languages_json",
                 "common_caption_language",
+                "subtitle_only_languages_json",
                 "privacy_level",
                 "send_context_to_soniox",
                 "revision",

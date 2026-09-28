@@ -1,10 +1,8 @@
 import XCTest
 @testable import ZuTalk
 
-/// Invite billing charges per Soniox lane. This mapping must mirror the Rust
-/// core's `remote_stream_plan`: one or two languages share a single stream,
-/// three or more open one canonical lane plus one translation lane per
-/// selected language.
+/// Invite billing charges per Soniox connection. This mapping must mirror the
+/// Rust core's `remote_stream_plan`.
 @MainActor
 final class CommunityInviteLaneCountTests: XCTestCase {
     func testOneOrTwoLanguagesUseSingleLane() {
@@ -15,14 +13,55 @@ final class CommunityInviteLaneCountTests: XCTestCase {
         )
     }
 
-    func testThreeOrMoreLanguagesOpenCanonicalPlusPerLanguageLanes() {
+    func testEverySpokenLanguageIsATranslationTargetOnce() {
         XCTAssertEqual(
             NotebookCaptureToolbar.remoteLaneCount(selectedLanguages: ["en", "th", "zh"]),
-            4
+            3
         )
         XCTAssertEqual(
             NotebookCaptureToolbar.remoteLaneCount(selectedLanguages: ["en", "th", "zh", "ja"]),
-            5
+            4
+        )
+    }
+
+    func testSubtitleOnlyLanguagesDropConnections() {
+        // Two spoken languages share one two-way connection.
+        XCTAssertEqual(
+            NotebookCaptureToolbar.remoteLaneCount(
+                selectedLanguages: ["zh", "th", "en"],
+                subtitleOnlyLanguages: ["th"]
+            ),
+            2
+        )
+        // One spoken language is never translated into itself.
+        XCTAssertEqual(
+            NotebookCaptureToolbar.remoteLaneCount(
+                selectedLanguages: ["zh", "th", "en"],
+                subtitleOnlyLanguages: ["th", "en"]
+            ),
+            2
+        )
+        XCTAssertEqual(
+            NotebookCaptureToolbar.remoteLaneCount(
+                selectedLanguages: ["zh", "en", "th", "ja"],
+                subtitleOnlyLanguages: ["th"]
+            ),
+            4
+        )
+        // Marking every language, or an unselected one, silences nothing.
+        XCTAssertEqual(
+            NotebookCaptureToolbar.remoteLaneCount(
+                selectedLanguages: ["zh", "th", "en"],
+                subtitleOnlyLanguages: ["zh", "th", "en"]
+            ),
+            3
+        )
+        XCTAssertEqual(
+            NotebookCaptureToolbar.remoteLaneCount(
+                selectedLanguages: ["zh", "th", "en"],
+                subtitleOnlyLanguages: ["fr"]
+            ),
+            3
         )
     }
 

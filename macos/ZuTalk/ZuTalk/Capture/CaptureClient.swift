@@ -839,6 +839,7 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             sendContextToSoniox: value.sendContextToSoniox,
             revision: value.revision,
             selectedLanguages: selectedLanguages,
+            subtitleOnlyLanguages: value.subtitleOnlyLanguages,
             commonCaptionLanguage: nil
         )
     }
@@ -858,6 +859,9 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             leftLanguage: value.leftLanguage,
             rightLanguage: value.rightLanguage,
             selectedLanguages: selectedLanguages,
+            subtitleOnlyLanguages: value.subtitleOnlyLanguages.filter { language in
+                selectedLanguages.contains(language)
+            },
             commonCaptionLanguage: nil,
             privacyLevel: value.privacyLevel.rawValue,
             sendContextToSoniox: value.sendContextToSoniox,

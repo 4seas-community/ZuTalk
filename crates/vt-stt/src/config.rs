@@ -53,7 +53,7 @@ impl Default for SttConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TranslationConfig {
     OneWay {
         target_language: String,

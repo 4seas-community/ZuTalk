@@ -222,6 +222,14 @@ final class NotebookCaptureProfileEditorModel: ObservableObject {
         }
         normalized.leftLanguage = normalized.languageA
         normalized.rightLanguage = normalized.languageB
+        // Who speaks what only matters once there are more languages than a
+        // single two-way connection covers.
+        normalized.subtitleOnlyLanguages = normalized.selectedLanguages.count > 2
+            ? NotebookCaptureLanguageRoles.subtitleOnly(
+                selected: normalized.selectedLanguages,
+                requested: normalized.subtitleOnlyLanguages
+            )
+            : []
         return normalized
     }
 
@@ -292,6 +300,8 @@ enum NotebookCaptureProfileEditAction {
     case addLanguage(String)
     case removeLanguage(String)
     case moveLanguage(String, offset: Int)
+    /// Spoken in the room, or only read as subtitles.
+    case setSubtitleOnly(String, Bool)
     case sendContextToSoniox(Bool)
 
     fileprivate func apply(to profile: inout NotebookCaptureProfileDTO) {
@@ -317,6 +327,19 @@ enum NotebookCaptureProfileEditAction {
             guard profile.selectedLanguages.indices.contains(destination) else { return }
             profile.selectedLanguages.remove(at: index)
             profile.selectedLanguages.insert(language, at: destination)
+        case .setSubtitleOnly(let language, let subtitleOnly):
+            if subtitleOnly {
+                // Someone has to be speaking: the last spoken language stays.
+                let spoken = profile.selectedLanguages.filter {
+                    $0 != language && profile.subtitleOnlyLanguages.contains($0) == false
+                }
+                guard spoken.isEmpty == false,
+                      profile.subtitleOnlyLanguages.contains(language) == false
+                else { return }
+                profile.subtitleOnlyLanguages.append(language)
+            } else {
+                profile.subtitleOnlyLanguages.removeAll { $0 == language }
+            }
         case .sendContextToSoniox(let enabled):
             profile.sendContextToSoniox = enabled
         }

@@ -772,6 +772,10 @@
 "capture.settings.languages.move_earlier" = "เลื่อนภาษาขึ้น";
 "capture.settings.languages.move_later" = "เลื่อนภาษาลง";
 "capture.settings.languages.remove" = "เอาภาษาออก";
+"capture.settings.languages.roles.all_spoken" = "ทุกภาษาอาจมีคนพูด จึงเปิดการเชื่อมต่อแปลภาษาละหนึ่งเส้น (%d เส้น) แตะไอคอนคลื่นเสียงของภาษาที่ไม่มีใครพูด เพื่อแสดงเป็นคำบรรยายอย่างเดียวและใช้การเชื่อมต่อน้อยลง";
+"capture.settings.languages.roles.some_subtitle_only" = "ฟังภาษา: %1$@ คำบรรยายอย่างเดียว: %2$@ · %3$d การเชื่อมต่อ";
+"capture.settings.languages.role.spoken" = "อาจมีคนพูด%@ — แตะเพื่อแสดงเป็นคำบรรยายอย่างเดียว";
+"capture.settings.languages.role.subtitle_only" = "%@ แสดงเป็นคำบรรยายอย่างเดียว — แตะหากมีคนพูด";
 "capture.realtime.controls.current_title" = "การกำหนดค่าการบันทึกปัจจุบัน";
 "capture.realtime.controls.profile_group" = "การกำหนดค่าการบันทึกเรียลไทม์";
 "capture.realtime.controls.review_context" = "ตรวจทานข้อมูลอ้างอิง";

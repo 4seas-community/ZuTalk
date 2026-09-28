@@ -69,6 +69,11 @@ struct NotebookCaptureProfileDTO: Codable, Equatable {
     /// as a compatibility signal from an older generated FFI and are resolved
     /// locally from the legacy left/right pair before presentation or save.
     var selectedLanguages: [String] = []
+    /// Selected languages nobody in the room speaks: shown as subtitles, never
+    /// listened for. Empty means any of them may be spoken. Only meaningful
+    /// with three or more languages, where it decides how many connections a
+    /// recording opens; the core never lets it cover every language.
+    var subtitleOnlyLanguages: [String] = []
     /// Legacy compatibility only. New captures have no privileged caption
     /// language: every selected language is an equal output column.
     var commonCaptionLanguage: String? = nil

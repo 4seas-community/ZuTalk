@@ -384,6 +384,62 @@ enum SubtitleAudienceTimeline {
         let isComplete: Bool
     }
 
+    /// The translations a capture's canonical lane writes straight onto its
+    /// own rows, in the shape of the cues the other lanes send.
+    ///
+    /// With three or more languages every translation used to come from a lane
+    /// of its own, as cues. The canonical lane now translates too — into the
+    /// language nobody is expected to speak, or both ways between the two who
+    /// do — and that column has no lane to send cues. Its words are already
+    /// bound to their row, so this only restates the binding; it never
+    /// guesses which words a translation covers.
+    nonisolated static func inlineCues(
+        utterances: [NotebookCaptureUtteranceDTO],
+        languages: Set<String>
+    ) -> [String: [NotebookCaptureTranslationCueDTO]] {
+        guard languages.isEmpty == false else { return [:] }
+        var cues: [String: [NotebookCaptureTranslationCueDTO]] = [:]
+        for utterance in utterances {
+            var texts: [String: (text: String, completion: String)] = [:]
+            for variant in utterance.languageVariants where variant.role == "translation" {
+                let language = SubtitleOverlayView.normalizedLanguageCode(variant.language)
+                guard languages.contains(language),
+                      let text = variant.text,
+                      text.isEmpty == false
+                else { continue }
+                texts[language] = (text, variant.completion ?? utterance.completion)
+            }
+            // A live row carries its translation only in the legacy fields.
+            if let language = utterance.translatedLanguage
+                .map(SubtitleOverlayView.normalizedLanguageCode),
+               languages.contains(language),
+               texts[language] == nil,
+               let text = utterance.translatedText,
+               text.isEmpty == false {
+                texts[language] = (text, utterance.completion)
+            }
+            for (language, value) in texts {
+                cues[language, default: []].append(
+                    NotebookCaptureTranslationCueDTO(
+                        targetLanguage: language,
+                        groupEpoch: 0,
+                        providerSequence: utterance.sequence,
+                        sourceLanguage: SubtitleOverlayView.normalizedLanguageCode(
+                            utterance.sourceLanguage
+                        ),
+                        sourceStartMs: utterance.sourceStartMs,
+                        sourceEndMs: utterance.sourceEndMs,
+                        text: value.text,
+                        completion: value.completion,
+                        withdrawn: false,
+                        revision: utterance.revision
+                    )
+                )
+            }
+        }
+        return cues
+    }
+
     /// Spoken order: anchored items by time, source before its own translation
     /// on a tie. An item the provider never timed does not fall to the end of
     /// its column; it inherits the coverage of the nearest earlier item from
@@ -1930,13 +1986,27 @@ struct SubtitleOverlayView: View {
         let utterances = frame.utterances
         let dominantSource = dominantSourceLanguage(utterances)
 
-        var lanes: [String] = frame.laneHealth
-            .compactMap { $0.targetLanguage }
+        let lanedLanguages = Set(
+            frame.laneHealth
+                .compactMap { $0.targetLanguage }
+                .map(normalizedLanguageCode)
+        )
+        // 句子上带着的译文语言:两方对谈的整段译文,三语时 canonical 车道
+        // 自己译的那一栏。译文语言只可能是主播配置的目标,不会像原文识别
+        // 那样飘,所以可以直接认。
+        let inlineLanguages = Set(
+            utterances.flatMap { utterance in
+                utterance.languageVariants
+                    .filter { $0.role == "translation" && ($0.text?.isEmpty == false) }
+                    .map(\.language)
+                    + [utterance.translatedLanguage].compactMap { $0 }
+            }
             .map(normalizedLanguageCode)
+        ).subtracting(lanedLanguages)
+        var lanes = Array(lanedLanguages) + Array(inlineLanguages)
         if lanes.isEmpty {
             // 旧版主播不发 lane health。退回「有译文的语言」——比无栏可看强。
             lanes = frame.translationCues.map { normalizedLanguageCode($0.targetLanguage) }
-                + utterances.compactMap { $0.translatedLanguage }.map(normalizedLanguageCode)
         }
         var seen: Set<String> = []
         var languages: [String] = []
@@ -1945,34 +2015,18 @@ struct SubtitleOverlayView: View {
             languages.append(language)
         }
 
-        var cuesByLanguage = Dictionary(
+        // 句子上带着的译文不走 cue。把它按 cue 的形状递给画布 —— 这不是
+        // 重算对应关系(那条红线还在),是把主播自己定好的绑定原样搬过来。
+        let cuesByLanguage = Dictionary(
             grouping: frame.translationCues.filter { $0.withdrawn == false },
             by: { normalizedLanguageCode($0.targetLanguage) }
+        ).merging(
+            SubtitleAudienceTimeline.inlineCues(
+                utterances: utterances,
+                languages: inlineLanguages
+            ),
+            uniquingKeysWith: { lane, _ in lane }
         )
-        // 两方对谈的主播不发 cue,译文绑在句子上。把它按 cue 的形状递给
-        // 画布 —— 这不是重算对应关系(那条红线还在),是把主播自己定好的
-        // 绑定原样搬过来。
-        for utterance in utterances {
-            guard let language = utterance.translatedLanguage.map(normalizedLanguageCode),
-                  let text = utterance.translatedText,
-                  text.isEmpty == false,
-                  cuesByLanguage[language] == nil
-            else { continue }
-            cuesByLanguage[language, default: []].append(
-                NotebookCaptureTranslationCueDTO(
-                    targetLanguage: language,
-                    groupEpoch: 0,
-                    providerSequence: utterance.sequence,
-                    sourceLanguage: normalizedLanguageCode(utterance.sourceLanguage),
-                    sourceStartMs: utterance.sourceStartMs,
-                    sourceEndMs: utterance.sourceEndMs,
-                    text: text,
-                    completion: utterance.completion,
-                    withdrawn: false,
-                    revision: utterance.revision
-                )
-            )
-        }
 
         return AudienceCanvasInput(
             languages: languages,
@@ -2147,6 +2201,12 @@ struct SubtitleOverlayView: View {
         let cuesByLanguage = Dictionary(
             grouping: store.presentedTranslationCueSnapshot,
             by: { normalizedLanguageCode($0.targetLanguage) }
+        ).merging(
+            SubtitleAudienceTimeline.inlineCues(
+                utterances: utterances,
+                languages: store.inlineTranslationLanguages
+            ),
+            uniquingKeysWith: { lane, _ in lane }
         )
         let timeline = SubtitleConversationTimeline.projection(
             languages: displayLanguages,
@@ -2248,15 +2308,22 @@ struct SubtitleOverlayView: View {
     /// row, so provider-rate preview updates got progressively more expensive
     /// as a meeting grew even though the canvas shows at most eight cards.
     private var localAudienceInput: AudienceCanvasInput {
-        AudienceCanvasInput(
+        let utterances = store.presentedAudienceUtterances(
+            maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount
+        )
+        return AudienceCanvasInput(
             languages: store.selectedLanguages,
-            utterances: store.presentedAudienceUtterances(
-                maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount
-            ),
+            utterances: utterances,
             placement: store.makeAudienceSourcePlacement(),
             cuesByLanguage: Dictionary(
                 grouping: store.presentedTranslationCueSnapshot,
                 by: { normalizedLanguageCode($0.targetLanguage) }
+            ).merging(
+                SubtitleAudienceTimeline.inlineCues(
+                    utterances: utterances,
+                    languages: store.inlineTranslationLanguages
+                ),
+                uniquingKeysWith: { lane, _ in lane }
             ),
             failedLanguages: store.failedTranslationLanguages,
             inheritedSourceAnchors: store.presentedAudienceInheritedSourceAnchors(

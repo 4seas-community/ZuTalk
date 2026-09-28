@@ -772,6 +772,10 @@
 "capture.settings.languages.move_earlier" = "언어를 더 일찍 옮기세요";
 "capture.settings.languages.move_later" = "나중에 언어를 이동하세요";
 "capture.settings.languages.remove" = "언어 삭제";
+"capture.settings.languages.roles.all_spoken" = "어느 언어든 말할 수 있으므로 언어마다 번역 연결을 하나씩 엽니다(%d개). 아무도 말하지 않을 언어는 파형 아이콘을 눌러 '자막만'으로 바꾸면 연결이 줄어듭니다.";
+"capture.settings.languages.roles.some_subtitle_only" = "듣는 언어: %1$@. 자막만: %2$@ · 연결 %3$d개.";
+"capture.settings.languages.role.spoken" = "%@ 말할 수 있음 — 누르면 자막만으로 전환";
+"capture.settings.languages.role.subtitle_only" = "%@ 자막만 — 말하는 사람이 있으면 눌러서 되돌리기";
 "capture.realtime.controls.current_title" = "현재 녹화 구성";
 "capture.realtime.controls.profile_group" = "실시간 녹화 구성";
 "capture.realtime.controls.review_context" = "참고자료 검토";

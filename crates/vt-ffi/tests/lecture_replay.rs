@@ -31,6 +31,7 @@
 //! ZULANGUE_SONIOX_KEY_FILE=/path/to/private-key-file \
 //! ZULANGUE_REPLAY_SPEED=8 \
 //! ZULANGUE_REPLAY_LANGUAGE=en \
+//! ZULANGUE_REPLAY_SUBTITLE_ONLY= \
 //! cargo test --release -p vt-ffi --test lecture_replay -- --ignored --nocapture
 //! ```
 //!
@@ -127,6 +128,35 @@ fn replay_languages() -> Vec<String> {
         "ZULANGUE_REPLAY_LANGUAGE takes 1..=3 comma-separated languages"
     );
     languages
+}
+
+/// Selected languages marked as read but never spoken, comma-separated. They
+/// change how many connections a three-language capture opens.
+fn replay_subtitle_only_languages() -> Vec<String> {
+    std::env::var("ZULANGUE_REPLAY_SUBTITLE_ONLY")
+        .unwrap_or_default()
+        .split(',')
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+/// The number of connections the core's stream plan opens, which is what an
+/// invite is charged for.
+fn planned_lane_count(languages: &[String], subtitle_only: &[String]) -> u32 {
+    if languages.len() <= 2 {
+        return 1;
+    }
+    let subtitle_only = vt_store::notebook_capture_store::normalized_subtitle_only_languages(
+        languages,
+        subtitle_only,
+    )
+    .len();
+    match languages.len() - subtitle_only {
+        2 => 1 + subtitle_only as u32,
+        1 => subtitle_only as u32,
+        _ => languages.len() as u32,
+    }
 }
 
 #[derive(Deserialize)]
@@ -800,13 +830,8 @@ fn replay_lecture_realtime_accelerated() {
     let speed = replay_speed();
     let languages = replay_languages();
     let language = languages[0].clone();
-    // One lane per selected language, plus the canonical lane when there is
-    // more than one — the same plan the core derives.
-    let lane_count = if languages.len() >= 3 {
-        languages.len() as u32 + 1
-    } else {
-        1
-    };
+    let subtitle_only = replay_subtitle_only_languages();
+    let lane_count = planned_lane_count(&languages, &subtitle_only);
     let invite = InviteLane::from_env(lane_count).map(Arc::new);
     let api_key = if invite.is_none() {
         Some(soniox_api_key())
@@ -840,6 +865,7 @@ fn replay_lecture_realtime_accelerated() {
         .expect("read capture profile");
     profile.remote_realtime_enabled = true;
     profile.selected_languages = languages.clone();
+    profile.subtitle_only_languages = subtitle_only.clone();
     profile.language_a = languages[0].clone();
     profile.language_b = languages
         .get(1)

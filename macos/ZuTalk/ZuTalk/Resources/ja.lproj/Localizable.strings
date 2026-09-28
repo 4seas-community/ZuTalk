@@ -755,6 +755,10 @@
 "capture.settings.languages.move_earlier" = "言語を前へ移動";
 "capture.settings.languages.move_later" = "言語を後ろへ移動";
 "capture.settings.languages.remove" = "言語を削除";
+"capture.settings.languages.roles.all_spoken" = "どの言語も話される可能性があるため、言語ごとに翻訳接続を 1 本ずつ使います（%d 本）。誰も話さない言語は波形アイコンを押して「字幕のみ」にすると、接続を減らせます。";
+"capture.settings.languages.roles.some_subtitle_only" = "聞き取る言語：%1$@。字幕のみ：%2$@ · 接続 %3$d 本。";
+"capture.settings.languages.role.spoken" = "%@ は話される可能性あり — 押すと字幕のみに";
+"capture.settings.languages.role.subtitle_only" = "%@ は字幕のみ — 話す人がいれば押して戻す";
 "capture.realtime.controls.current_title" = "今回の録音設定";
 "capture.realtime.controls.profile_group" = "リアルタイム録音設定";
 "capture.realtime.controls.review_context" = "参考資料を確認";

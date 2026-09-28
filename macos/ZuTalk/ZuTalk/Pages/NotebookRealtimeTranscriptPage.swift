@@ -558,6 +558,10 @@ private struct NotebookRealtimeCaptureConsole: View {
             }
             .montereyScrollIndicators(true)
 
+            if draft.selectedLanguages.count > 2 {
+                languageRolesSummary
+            }
+
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.textTertiary)
@@ -679,12 +683,67 @@ private struct NotebookRealtimeCaptureConsole: View {
         .montereyScrollIndicators(true)
     }
 
+    /// With three languages, what the room speaks decides how many
+    /// connections a recording opens. Says which languages are listened for,
+    /// which are only read, and what that costs.
+    private var languageRolesSummary: some View {
+        let subtitleOnly = draft.subtitleOnlyLanguages
+        let spoken = draft.selectedLanguages.filter { subtitleOnly.contains($0) == false }
+        let connections = NotebookCaptureToolbar.remoteLaneCount(
+            selectedLanguages: draft.selectedLanguages,
+            subtitleOnlyLanguages: subtitleOnly
+        )
+        let text = subtitleOnly.isEmpty
+            ? String(
+                format: String(localized: "capture.settings.languages.roles.all_spoken"),
+                connections
+            )
+            : String(
+                format: String(localized: "capture.settings.languages.roles.some_subtitle_only"),
+                ListFormatter.localizedString(byJoining: spoken.map(languageLabel)),
+                ListFormatter.localizedString(byJoining: subtitleOnly.map(languageLabel)),
+                connections
+            )
+        return Label(text, systemImage: "captions.bubble")
+            .font(.system(size: 10))
+            .foregroundColor(.textTertiary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
+    }
+
     private func selectedLanguageChip(language: String, index: Int) -> some View {
-        HStack(spacing: 2) {
+        let subtitleOnly = draft.subtitleOnlyLanguages.contains(language)
+        let spokenCount = draft.selectedLanguages.count - draft.subtitleOnlyLanguages.count
+        return HStack(spacing: 2) {
+            if draft.selectedLanguages.count > 2 {
+                languageChipButton(
+                    systemImage: subtitleOnly ? "captions.bubble" : "waveform",
+                    label: String(
+                        format: String(
+                            localized: subtitleOnly
+                                ? "capture.settings.languages.role.subtitle_only"
+                                : "capture.settings.languages.role.spoken"
+                        ),
+                        languageLabel(language)
+                    ),
+                    disabled: subtitleOnly == false && spokenCount <= 1,
+                    action: {
+                        editor.scheduleUpdate(.setSubtitleOnly(language, subtitleOnly == false))
+                    }
+                )
+                .help(String(
+                    format: String(
+                        localized: subtitleOnly
+                            ? "capture.settings.languages.role.subtitle_only"
+                            : "capture.settings.languages.role.spoken"
+                    ),
+                    languageLabel(language)
+                ))
+            }
             Text(languageLabel(language))
                 .font(.captionMedium)
-                .foregroundColor(.textPrimary)
-                .padding(.leading, Spacing.sm)
+                .foregroundColor(subtitleOnly ? .textSecondary : .textPrimary)
+                .padding(.leading, draft.selectedLanguages.count > 2 ? 0 : Spacing.sm)
                 .padding(.trailing, Spacing.xs)
 
             languageChipButton(

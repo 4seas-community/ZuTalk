@@ -103,18 +103,21 @@ struct NotebookCaptureToolbar: View {
         CommunityInviteSession.shared.updatePlannedLaneCount(
             profileEditor.draft.remoteRealtimeEnabled
                 ? Self.remoteLaneCount(
-                    selectedLanguages: profileEditor.draft.selectedLanguages
+                    selectedLanguages: profileEditor.draft.selectedLanguages,
+                    subtitleOnlyLanguages: profileEditor.draft.subtitleOnlyLanguages
                 )
                 : 1
         )
     }
 
-    /// Mirrors the Rust core's `remote_stream_plan`: one or two languages run
-    /// on a single WebSocket, three or more open one canonical lane plus one
-    /// translation lane per language. Invite billing charges per lane.
-    static func remoteLaneCount(selectedLanguages: [String]) -> Int {
+    /// See `NotebookCaptureStartPreparationWorkflow.remoteLaneCount`.
+    static func remoteLaneCount(
+        selectedLanguages: [String],
+        subtitleOnlyLanguages: [String] = []
+    ) -> Int {
         NotebookCaptureStartPreparationWorkflow.remoteLaneCount(
-            selectedLanguages: selectedLanguages
+            selectedLanguages: selectedLanguages,
+            subtitleOnlyLanguages: subtitleOnlyLanguages
         )
     }
 

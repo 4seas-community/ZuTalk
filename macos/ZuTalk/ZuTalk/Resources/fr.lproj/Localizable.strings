@@ -772,6 +772,10 @@
 "capture.settings.languages.move_earlier" = "Déplacer la langue vers l’avant";
 "capture.settings.languages.move_later" = "Déplacer la langue vers l’arrière";
 "capture.settings.languages.remove" = "Retirer la langue";
+"capture.settings.languages.roles.all_spoken" = "Chacune de ces langues peut être parlée : chacune a donc sa propre connexion de traduction (%d). Touchez l’onde d’une langue que personne ne parlera pour l’afficher en sous-titres seulement et en utiliser moins.";
+"capture.settings.languages.roles.some_subtitle_only" = "À l’écoute : %1$@. En sous-titres seulement : %2$@ · %3$d connexions.";
+"capture.settings.languages.role.spoken" = "%@ peut être parlé — touchez pour l’afficher en sous-titres seulement";
+"capture.settings.languages.role.subtitle_only" = "%@ en sous-titres seulement — touchez si quelqu’un peut le parler";
 "capture.realtime.controls.current_title" = "Configuration de l’enregistrement en cours";
 "capture.realtime.controls.profile_group" = "Configuration d’enregistrement en temps réel";
 "capture.realtime.controls.review_context" = "Vérifier les références";

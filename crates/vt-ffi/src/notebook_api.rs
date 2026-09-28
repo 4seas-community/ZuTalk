@@ -2863,6 +2863,7 @@ mod import_tests {
                     right_language: "zh".into(),
                     selected_languages: vec!["en".into(), "zh".into()],
                     common_caption_language: None,
+                    subtitle_only_languages: Vec::new(),
                     privacy_level: privacy_level.into(),
                     send_context_to_soniox: false,
                 },

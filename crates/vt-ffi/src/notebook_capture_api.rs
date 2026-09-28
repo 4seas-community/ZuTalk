@@ -130,6 +130,11 @@ pub struct FfiNotebookCaptureProfile {
     pub left_language: String,
     pub right_language: String,
     pub selected_languages: Vec<String>,
+    /// Selected languages nobody in the room speaks: shown as subtitles, never
+    /// listened for. Empty means every selected language may be spoken. It
+    /// decides how many connections a capture of three or more languages
+    /// opens; never covers every selected language.
+    pub subtitle_only_languages: Vec<String>,
     pub common_caption_language: Option<String>,
     pub privacy_level: String,
     pub send_context_to_soniox: bool,
@@ -530,6 +535,7 @@ impl From<NotebookCaptureProfile> for FfiNotebookCaptureProfile {
             left_language: value.left_language,
             right_language: value.right_language,
             selected_languages: value.selected_languages,
+            subtitle_only_languages: value.subtitle_only_languages,
             common_caption_language: value.common_caption_language,
             privacy_level: value.privacy_level,
             send_context_to_soniox: value.send_context_to_soniox,
@@ -893,6 +899,11 @@ fn profile_update_from_ffi(value: &FfiNotebookCaptureProfile) -> NotebookCapture
         language_b: language_b.clone(),
         left_language: language_a,
         right_language: language_b,
+        subtitle_only_languages: value
+            .subtitle_only_languages
+            .iter()
+            .map(|language| canonical_language(language))
+            .collect(),
         selected_languages,
         // Compatibility field only. Every selected language is now an equal
         // output target; column order must never choose one privileged caption.
@@ -1381,35 +1392,108 @@ struct RemoteGroupOrigin {
 struct RemoteStreamLane {
     target_language: Option<String>,
     canonical: bool,
+    /// What the canonical lane translates into on its own connection. `None`
+    /// for an auxiliary lane, and for a canonical lane that only transcribes.
+    inline_translation: Option<TranslationConfig>,
 }
 
-type RemoteStreamPlanEntry = (Option<String>, Option<TranslationConfig>);
+/// One connection of a capture's stream group. The first entry is always the
+/// canonical lane: it owns the rows everything else is placed on. Every other
+/// entry fills one language column of those rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RemoteStreamPlanEntry {
+    /// The column an auxiliary lane fills; `None` for the canonical lane.
+    target_language: Option<String>,
+    translation: Option<TranslationConfig>,
+}
 
+/// The connections a capture opens for its selected languages.
+///
+/// A connection translates into one language, or both ways between two, so
+/// three or more languages take several. What decides how many is which of
+/// them are spoken in the room: every language needs its translation only
+/// when something is said in another one.
+///
+/// - Two spoken languages share one two-way connection, which is also the
+///   canonical lane; each subtitle-only language adds one one-way connection.
+/// - One spoken language needs a one-way connection per subtitle-only
+///   language, and nothing into itself.
+/// - Three or more spoken languages need a one-way connection into every
+///   selected language.
+///
+/// Recordings used to open a transcription-only canonical lane on top of
+/// that. It was the slowest connection to settle a line (about 5.7 s against
+/// about 2 s for a translating one) and every row waited on it; a one-way
+/// connection carries the same original words. The canonical one-way lane
+/// targets the language least likely to be spoken — a subtitle-only one, or
+/// else the last selected — because a one-way connection settles speech that
+/// is already in its target language as slowly as the old canonical lane did.
 fn remote_stream_plan(
     selected_languages: &[String],
+    subtitle_only_languages: &[String],
 ) -> Result<Vec<RemoteStreamPlanEntry>, CoreError> {
+    let canonical = |translation| RemoteStreamPlanEntry {
+        target_language: None,
+        translation,
+    };
+    let one_way = |target_language: &String| TranslationConfig::OneWay {
+        target_language: target_language.clone(),
+    };
     match selected_languages {
         [] => Err(CoreError::ValidationFailed {
             message: "remote realtime capture requires at least one selected language".to_string(),
         }),
-        [_] => Ok(vec![(None, None)]),
-        [language_a, language_b] => Ok(vec![(
-            None,
-            Some(TranslationConfig::TwoWay {
-                language_a: language_a.clone(),
-                language_b: language_b.clone(),
-            }),
-        )]),
-        selected => Ok(std::iter::once((None, None))
-            .chain(selected.iter().map(|target_language| {
-                (
-                    Some(target_language.clone()),
-                    Some(TranslationConfig::OneWay {
-                        target_language: target_language.clone(),
-                    }),
-                )
-            }))
-            .collect()),
+        [_] => Ok(vec![canonical(None)]),
+        [language_a, language_b] => Ok(vec![canonical(Some(TranslationConfig::TwoWay {
+            language_a: language_a.clone(),
+            language_b: language_b.clone(),
+        }))]),
+        selected => {
+            let subtitle_only =
+                vt_store::notebook_capture_store::normalized_subtitle_only_languages(
+                    selected,
+                    subtitle_only_languages,
+                );
+            let spoken = selected
+                .iter()
+                .filter(|language| !subtitle_only.contains(language))
+                .collect::<Vec<_>>();
+            let auxiliary = |targets: &[String]| {
+                targets
+                    .iter()
+                    .map(|target_language| RemoteStreamPlanEntry {
+                        target_language: Some(target_language.clone()),
+                        translation: Some(one_way(target_language)),
+                    })
+                    .collect::<Vec<_>>()
+            };
+            if let [language_a, language_b] = spoken.as_slice() {
+                let mut plan = vec![canonical(Some(TranslationConfig::TwoWay {
+                    language_a: (*language_a).clone(),
+                    language_b: (*language_b).clone(),
+                }))];
+                plan.extend(auxiliary(&subtitle_only));
+                return Ok(plan);
+            }
+            let targets = if spoken.len() == 1 {
+                subtitle_only.clone()
+            } else {
+                selected.to_vec()
+            };
+            let canonical_target = subtitle_only
+                .first()
+                .or(selected.last())
+                .expect("three or more selected languages")
+                .clone();
+            let mut plan = vec![canonical(Some(one_way(&canonical_target)))];
+            plan.extend(auxiliary(
+                &targets
+                    .into_iter()
+                    .filter(|target| *target != canonical_target)
+                    .collect::<Vec<_>>(),
+            ));
+            Ok(plan)
+        }
     }
 }
 
@@ -1914,6 +1998,27 @@ async fn collect_stream_events_until_closed(
             let mut lane_profile = profile.clone();
             if let Some(target_language) = descriptor.target_language.as_ref() {
                 lane_profile.common_caption_language = Some(target_language.clone());
+            }
+            match &descriptor.inline_translation {
+                // The canonical lane of a three-language capture whose two
+                // spoken languages share a connection: it pairs them exactly
+                // as a two-language capture does, and a line in a
+                // subtitle-only language is outside that pair — it gets its
+                // column from that language's own lane.
+                Some(TranslationConfig::TwoWay {
+                    language_a,
+                    language_b,
+                }) => {
+                    lane_profile.capture_mode = CaptureMode::TwoWay;
+                    lane_profile.language_a = language_a.clone();
+                    lane_profile.language_b = language_b.clone();
+                    lane_profile.selected_languages = vec![language_a.clone(), language_b.clone()];
+                }
+                Some(TranslationConfig::OneWay { target_language }) => {
+                    lane_profile.common_caption_language =
+                        Some(normalize_language(target_language));
+                }
+                None => {}
             }
             StreamAggregationLane {
                 assembler: RealtimeUtteranceAssembler::new(session_id.clone(), &lane_profile)
@@ -9274,7 +9379,10 @@ impl ZuTalkCore {
             Some(engine.realtime_model_id)
         );
 
-        let lane_translations = remote_stream_plan(&profile.selected_languages)?;
+        let lane_translations = remote_stream_plan(
+            &profile.selected_languages,
+            &profile.subtitle_only_languages,
+        )?;
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let stream_factory = self.notebook_soniox_stream_factory.clone();
@@ -9284,15 +9392,23 @@ impl ZuTalkCore {
         let mut streams = Vec::with_capacity(lane_translations.len());
         {
             let _guard = self.runtime.enter();
-            for (index, (target_language, translation)) in lane_translations.into_iter().enumerate()
+            for (
+                index,
+                RemoteStreamPlanEntry {
+                    target_language,
+                    translation,
+                },
+            ) in lane_translations.into_iter().enumerate()
             {
+                let canonical = index == 0 && target_language.is_none();
                 let descriptor = RemoteStreamLane {
                     target_language: target_language.as_deref().map(normalize_language),
-                    // Multilingual capture owns one source-only timeline lane.
-                    // Translation lanes are projections onto that timeline, so
-                    // changing column order can never change authoritative
-                    // utterance IDs, boundaries, speakers, or source language.
-                    canonical: index == 0 && target_language.is_none(),
+                    // Multilingual capture owns one timeline lane. Translation
+                    // lanes are projections onto that timeline, so changing
+                    // column order can never change authoritative utterance
+                    // IDs, boundaries, speakers, or source language.
+                    canonical,
+                    inline_translation: canonical.then(|| translation.clone()).flatten(),
                 };
                 let client_reference_id = target_language
                     .as_deref()
@@ -11303,6 +11419,7 @@ mod tests {
                     right_language: "zh".into(),
                     selected_languages: vec!["en".into(), "zh".into()],
                     common_caption_language: None,
+                    subtitle_only_languages: Vec::new(),
                     privacy_level: "standard".into(),
                     send_context_to_soniox: true,
                 },
@@ -11350,6 +11467,7 @@ mod tests {
                     right_language: "zh".into(),
                     selected_languages: vec!["en".into(), "zh".into()],
                     common_caption_language: None,
+                    subtitle_only_languages: Vec::new(),
                     privacy_level: "high".into(),
                     send_context_to_soniox: false,
                 },
@@ -11858,7 +11976,7 @@ mod tests {
             .unwrap();
         profile.remote_realtime_enabled = true;
         profile.mode = FfiNotebookCaptureMode::MultilingualOneWay;
-        profile.selected_languages = vec!["en".into(), "zh".into(), "th".into()];
+        profile.selected_languages = vec!["en".into(), "th".into(), "zh".into()];
         let profile = core.update_notebook_capture_profile(profile).unwrap();
         let (events_tx, events_rx) = std::sync::mpsc::channel();
         let started = core
@@ -11925,7 +12043,7 @@ mod tests {
             .unwrap();
         profile.remote_realtime_enabled = true;
         profile.mode = FfiNotebookCaptureMode::MultilingualOneWay;
-        profile.selected_languages = vec!["en".into(), "zh".into(), "th".into()];
+        profile.selected_languages = vec!["en".into(), "th".into(), "zh".into()];
         let profile = core.update_notebook_capture_profile(profile).unwrap();
         let started = core
             .start_notebook_capture_session(
@@ -11964,11 +12082,16 @@ mod tests {
         core.stop_notebook_capture_session(session_id).unwrap();
     }
 
-    /// Two Chinese sentences, translated by English and Thai lanes. The Thai
-    /// lane loses its connection between the sentences — a network blip, or
-    /// a skip to the live edge — and comes back on a new epoch.
+    /// Two Chinese sentences, translated by English and Thai lanes. With
+    /// `thai_reconnects`, the Thai lane loses its connection between the
+    /// sentences — a network blip, or a skip to the live edge — and comes
+    /// back on a new epoch. A Chinese–English two-way connection translates
+    /// the sentences into English.
     #[derive(Default)]
-    struct ReconnectingThaiLaneFactory;
+    struct ReconnectingThaiLaneFactory {
+        thai_reconnects: bool,
+        started: StdMutex<Vec<Option<TranslationConfig>>>,
+    }
 
     impl NotebookSonioxStreamFactory for ReconnectingThaiLaneFactory {
         fn start(
@@ -11979,12 +12102,18 @@ mod tests {
             _cancel: tokio_util::sync::CancellationToken,
             _capture_origin_ms: u64,
         ) -> SonioxStreamRuntime {
+            self.started
+                .lock()
+                .unwrap()
+                .push(config.translation.clone());
             let target = match &config.translation {
                 Some(TranslationConfig::OneWay { target_language }) => {
                     Some(target_language.clone())
                 }
-                _ => None,
+                Some(TranslationConfig::TwoWay { .. }) => Some("en".to_string()),
+                None => None,
             };
+            let thai_reconnects = self.thai_reconnects;
             let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
             let (control_tx, mut control_rx) = tokio::sync::mpsc::channel(4);
             let (event_tx, event_rx) = tokio::sync::mpsc::channel(64);
@@ -12035,7 +12164,7 @@ mod tests {
                     }
                     let _ = event_tx.send(SttStreamEvent::Tokens(tokens)).await;
                     let _ = event_tx.send(SttStreamEvent::Endpoint).await;
-                    if index == 0 && target.as_deref() == Some("th") {
+                    if thai_reconnects && index == 0 && target.as_deref() == Some("th") {
                         let _ = event_tx
                             .send(SttStreamEvent::Reconnecting {
                                 attempt: 1,
@@ -12090,7 +12219,10 @@ mod tests {
     fn a_translation_lane_keeps_filling_its_column_after_it_reconnects() {
         let temp = tempfile::tempdir().unwrap();
         let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
-        core.notebook_soniox_stream_factory = Arc::new(ReconnectingThaiLaneFactory);
+        core.notebook_soniox_stream_factory = Arc::new(ReconnectingThaiLaneFactory {
+            thai_reconnects: true,
+            ..Default::default()
+        });
         core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
             .unwrap();
         let notebook = core.create_notebook(Some("Lane reconnect".into())).unwrap();
@@ -12099,7 +12231,9 @@ mod tests {
             .unwrap();
         profile.remote_realtime_enabled = true;
         profile.mode = FfiNotebookCaptureMode::MultilingualOneWay;
-        profile.selected_languages = vec!["en".into(), "zh".into(), "th".into()];
+        // Thai is not last, so it is a column of its own rather than the
+        // timeline's translation.
+        profile.selected_languages = vec!["en".into(), "th".into(), "zh".into()];
         let profile = core.update_notebook_capture_profile(profile).unwrap();
         let started = core
             .start_notebook_capture_session(
@@ -12137,6 +12271,141 @@ mod tests {
         );
         assert_eq!(lane_text(0, "th").as_deref(), Some("ประโยคแรก"));
         assert_eq!(lane_text(1, "th").as_deref(), Some("ประโยคที่สอง"));
+        core.stop_notebook_capture_session(session_id).unwrap();
+    }
+
+    /// All three languages may be spoken: three one-way connections, the
+    /// timeline's translating into the last selected language. Its Thai
+    /// fills the Thai column without a lane of its own.
+    #[test]
+    fn the_timeline_fills_the_column_it_translates_into() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let factory = Arc::new(ReconnectingThaiLaneFactory::default());
+        core.notebook_soniox_stream_factory = factory.clone();
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core.create_notebook(Some("All spoken".into())).unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        profile.selected_languages = vec!["en".into(), "zh".into(), "th".into()];
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        assert_eq!(factory.started.lock().unwrap().len(), 3);
+        let session_id = started.session_id.clone();
+        let lane_text = |sequence: u64, language: &str| {
+            core.notebook_capture_store
+                .list_utterances(&session_id)
+                .unwrap()
+                .into_iter()
+                .find(|row| row.sequence == sequence)
+                .and_then(|row| {
+                    row.variants
+                        .into_iter()
+                        .find(|variant| variant.language == language)
+                        .filter(|variant| variant.state == UtteranceVariantState::Ready)
+                        .and_then(|variant| variant.text)
+                })
+        };
+        for _ in 0..40 {
+            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+        }
+        wait_for("both columns of the second sentence", || {
+            lane_text(1, "en").is_some() && lane_text(1, "th").is_some()
+        });
+        assert_eq!(lane_text(0, "th").as_deref(), Some("ประโยคแรก"));
+        assert_eq!(lane_text(1, "th").as_deref(), Some("ประโยคที่สอง"));
+        assert_eq!(lane_text(0, "en").as_deref(), Some("First sentence."));
+        core.stop_notebook_capture_session(session_id).unwrap();
+    }
+
+    /// Chinese and English spoken, Thai only read: the two spoken languages
+    /// share one two-way connection, which is also the timeline, and Thai has
+    /// one of its own — two connections where there used to be four. The
+    /// English column is filled by the timeline itself.
+    #[test]
+    fn two_spoken_languages_share_the_timeline_and_a_subtitle_language_gets_its_own_lane() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let factory = Arc::new(ReconnectingThaiLaneFactory::default());
+        core.notebook_soniox_stream_factory = factory.clone();
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core.create_notebook(Some("Spoken pair".into())).unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        profile.selected_languages = vec!["zh".into(), "th".into(), "en".into()];
+        profile.subtitle_only_languages = vec!["th".into()];
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        assert_eq!(profile.mode, FfiNotebookCaptureMode::MultilingualOneWay);
+        assert_eq!(profile.subtitle_only_languages, ["th"]);
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        assert_eq!(
+            *factory.started.lock().unwrap(),
+            [
+                Some(TranslationConfig::TwoWay {
+                    language_a: "zh".into(),
+                    language_b: "en".into(),
+                }),
+                Some(TranslationConfig::OneWay {
+                    target_language: "th".into(),
+                }),
+            ]
+        );
+        let session_id = started.session_id.clone();
+        let lane_text = |sequence: u64, language: &str| {
+            core.notebook_capture_store
+                .list_utterances(&session_id)
+                .unwrap()
+                .into_iter()
+                .find(|row| row.sequence == sequence)
+                .and_then(|row| {
+                    row.variants
+                        .into_iter()
+                        .find(|variant| variant.language == language)
+                        .filter(|variant| variant.state == UtteranceVariantState::Ready)
+                        .and_then(|variant| variant.text)
+                })
+        };
+        for _ in 0..40 {
+            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+        }
+        wait_for("both columns of the second sentence", || {
+            lane_text(1, "en").is_some() && lane_text(1, "th").is_some()
+        });
+        assert_eq!(lane_text(0, "en").as_deref(), Some("First sentence."));
+        assert_eq!(lane_text(1, "en").as_deref(), Some("Second sentence."));
+        assert_eq!(lane_text(0, "th").as_deref(), Some("ประโยคแรก"));
+        assert_eq!(lane_text(1, "th").as_deref(), Some("ประโยคที่สอง"));
+        let rows = core
+            .notebook_capture_store
+            .list_utterances(&session_id)
+            .unwrap();
+        assert_eq!(
+            rows.len(),
+            2,
+            "one row per sentence, from the timeline alone"
+        );
         core.stop_notebook_capture_session(session_id).unwrap();
     }
 
@@ -12501,6 +12770,7 @@ mod tests {
                 descriptor: RemoteStreamLane {
                     target_language: None,
                     canonical: true,
+                    inline_translation: None,
                 },
                 config: SttConfig::default(),
                 audio_tx,
@@ -12660,17 +12930,15 @@ mod tests {
         );
         assert_eq!(started.selected_languages, ["en", "zh", "th"]);
         assert_eq!(started.common_caption_language, None);
-        assert_eq!(factory.constructor_count.load(Ordering::SeqCst), 4);
+        // Every selected language may be spoken, so each needs a connection
+        // translating into it — and no more: the first of them is also the
+        // timeline, where a transcription-only connection used to be.
+        assert_eq!(factory.constructor_count.load(Ordering::SeqCst), 3);
         {
             let configs = factory.configs.lock().unwrap();
-            assert_eq!(configs.len(), 4);
-            assert!(
-                configs[0].translation.is_none(),
-                "the authoritative timeline must not depend on a display-language target"
-            );
+            assert_eq!(configs.len(), 3);
             let targets = configs
                 .iter()
-                .skip(1)
                 .map(|config| {
                     assert_eq!(config.language_hints, ["en", "zh", "th"]);
                     match config.translation.as_ref() {
@@ -12681,13 +12949,17 @@ mod tests {
                     }
                 })
                 .collect::<Vec<_>>();
-            assert_eq!(targets, ["en", "zh", "th"]);
+            assert_eq!(
+                targets,
+                ["th", "en", "zh"],
+                "the timeline translates into the language least likely spoken"
+            );
         }
         core.push_notebook_capture_session(started.session_id.clone(), vec![0_u8; 3_200])
             .unwrap();
         assert_eq!(
             factory.pcm_send_count.load(Ordering::SeqCst),
-            4,
+            3,
             "one local PCM ingress must reach the timeline and every target stream"
         );
         core.interrupt_notebook_capture_session(
@@ -12697,6 +12969,95 @@ mod tests {
         .unwrap();
     }
 
+    fn plan_shape(plan: &[RemoteStreamPlanEntry]) -> Vec<String> {
+        plan.iter()
+            .map(|entry| {
+                let translation = match entry.translation.as_ref() {
+                    None => "transcribe".to_string(),
+                    Some(TranslationConfig::OneWay { target_language }) => {
+                        format!("->{target_language}")
+                    }
+                    Some(TranslationConfig::TwoWay {
+                        language_a,
+                        language_b,
+                    }) => format!("{language_a}<->{language_b}"),
+                };
+                match (&entry.target_language, &entry.translation) {
+                    (None, _) => format!("canonical {translation}"),
+                    (Some(target), Some(TranslationConfig::OneWay { target_language }))
+                        if target == target_language =>
+                    {
+                        format!("column {translation}")
+                    }
+                    (Some(target), _) => panic!("column {target} is filled by {translation}"),
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_capture_opens_one_connection_per_language_something_could_be_translated_into() {
+        let languages = |values: &[&str]| {
+            values
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+        };
+        let plan = |selected: &[&str], subtitle_only: &[&str]| {
+            plan_shape(
+                &remote_stream_plan(&languages(selected), &languages(subtitle_only)).unwrap(),
+            )
+        };
+
+        assert_eq!(plan(&["zh"], &[]), ["canonical transcribe"]);
+        assert_eq!(plan(&["zh", "en"], &[]), ["canonical zh<->en"]);
+        assert_eq!(
+            plan(&["zh", "en"], &["en"]),
+            ["canonical zh<->en"],
+            "two languages already share one connection"
+        );
+        // All three may be spoken: each is someone's translation target.
+        assert_eq!(
+            plan(&["zh", "en", "th"], &[]),
+            ["canonical ->th", "column ->zh", "column ->en"]
+        );
+        // Two spoken languages pair on one connection; the third is only read.
+        assert_eq!(
+            plan(&["zh", "th", "en"], &["th"]),
+            ["canonical zh<->en", "column ->th"]
+        );
+        assert_eq!(
+            plan(&["zh", "en", "th", "ja"], &["ja", "th"]),
+            ["canonical zh<->en", "column ->th", "column ->ja"]
+        );
+        // One spoken language is never translated into itself.
+        assert_eq!(
+            plan(&["zh", "en", "th"], &["en", "th"]),
+            ["canonical ->en", "column ->th"]
+        );
+        // Three spoken of four: every language is a target, and the timeline
+        // takes the one nobody speaks.
+        assert_eq!(
+            plan(&["zh", "en", "th", "ja"], &["th"]),
+            [
+                "canonical ->th",
+                "column ->zh",
+                "column ->en",
+                "column ->ja"
+            ]
+        );
+        // A subtitle-only list naming every language, or languages not
+        // selected, cannot silence the room.
+        assert_eq!(
+            plan(&["zh", "en", "th"], &["zh", "en", "th"]),
+            plan(&["zh", "en", "th"], &[])
+        );
+        assert_eq!(
+            plan(&["zh", "en", "th"], &["fr"]),
+            plan(&["zh", "en", "th"], &[])
+        );
+    }
+
     #[test]
     fn selected_language_order_changes_targets_but_not_the_authoritative_timeline() {
         for selected in [
@@ -12704,26 +13065,25 @@ mod tests {
             vec!["th".to_string(), "en".to_string(), "zh".to_string()],
             vec!["zh".to_string(), "th".to_string(), "en".to_string()],
         ] {
-            let plan = remote_stream_plan(&selected).unwrap();
-            assert_eq!(plan.len(), 4);
+            let plan = remote_stream_plan(&selected, &[]).unwrap();
+            assert_eq!(plan.len(), 3);
             assert!(
-                plan[0].0.is_none() && plan[0].1.is_none(),
-                "the first plan entry is a language-free timeline, not the first display column"
+                plan[0].target_language.is_none(),
+                "the first plan entry is the timeline, not the first display column"
             );
-            let targets = plan
+            let mut targets = plan
                 .iter()
-                .skip(1)
-                .map(|(target, translation)| {
-                    let target = target.as_deref().expect("target lane");
-                    assert!(matches!(
-                        translation,
-                        Some(TranslationConfig::OneWay { target_language })
-                            if target_language == target
-                    ));
-                    target.to_string()
+                .map(|entry| match entry.translation.as_ref() {
+                    Some(TranslationConfig::OneWay { target_language }) => target_language.clone(),
+                    other => panic!("expected a one-way connection, got {other:?}"),
                 })
                 .collect::<Vec<_>>();
-            assert_eq!(targets, selected);
+            targets.sort();
+            assert_eq!(
+                targets,
+                ["en", "th", "zh"],
+                "every language is a target once"
+            );
         }
     }
 
@@ -13472,6 +13832,7 @@ mod tests {
             right_language: "zh".into(),
             selected_languages: vec!["en".into(), "zh".into()],
             common_caption_language: None,
+            subtitle_only_languages: Vec::new(),
             privacy_level: "standard".into(),
             send_context_to_soniox: false,
             revision: 0,
@@ -14642,6 +15003,7 @@ mod tests {
                 descriptor: RemoteStreamLane {
                     target_language: target.map(str::to_string),
                     canonical,
+                    inline_translation: None,
                 },
                 config: SttConfig::default(),
                 audio_tx,
@@ -14792,6 +15154,7 @@ mod tests {
                         descriptor: RemoteStreamLane {
                             target_language: None,
                             canonical: true,
+                            inline_translation: None,
                         },
                         config: SttConfig::default(),
                         audio_tx: canonical_tx,
@@ -14806,6 +15169,7 @@ mod tests {
                         descriptor: RemoteStreamLane {
                             target_language: Some("en".to_string()),
                             canonical: false,
+                            inline_translation: None,
                         },
                         config: SttConfig::default(),
                         audio_tx: dead_tx,
@@ -14857,6 +15221,7 @@ mod tests {
                 descriptor: RemoteStreamLane {
                     target_language: Some("en".to_string()),
                     canonical: false,
+                    inline_translation: None,
                 },
                 config: SttConfig::default(),
                 audio_tx,
@@ -14881,6 +15246,7 @@ mod tests {
                     descriptor: RemoteStreamLane {
                         target_language: None,
                         canonical: true,
+                        inline_translation: None,
                     },
                     config: SttConfig::default(),
                     audio_tx: canonical_tx,
@@ -15017,6 +15383,7 @@ mod tests {
                 descriptor: RemoteStreamLane {
                     target_language: target.map(str::to_string),
                     canonical,
+                    inline_translation: None,
                 },
                 config: SttConfig::default(),
                 audio_tx,
@@ -15126,6 +15493,7 @@ mod tests {
                 descriptor: RemoteStreamLane {
                     target_language: None,
                     canonical: true,
+                    inline_translation: None,
                 },
                 assembler: RealtimeUtteranceAssembler::new(
                     "lane-health-coalescing".into(),
@@ -15149,6 +15517,7 @@ mod tests {
                 descriptor: RemoteStreamLane {
                     target_language: Some("th".to_string()),
                     canonical: false,
+                    inline_translation: None,
                 },
                 assembler: RealtimeUtteranceAssembler::new(
                     "lane-health-coalescing".into(),
@@ -15245,6 +15614,7 @@ mod tests {
                 descriptor: RemoteStreamLane {
                     target_language: target.map(str::to_string),
                     canonical,
+                    inline_translation: None,
                 },
                 assembler: RealtimeUtteranceAssembler::new("health-session".into(), &profile()),
                 provider_session_epoch: 0,
@@ -17373,6 +17743,7 @@ mod tests {
                 descriptor: RemoteStreamLane {
                     target_language: target.map(str::to_string),
                     canonical,
+                    inline_translation: None,
                 },
                 assembler: RealtimeUtteranceAssembler::new("barrier-session".into(), &profile()),
                 provider_session_epoch: 0,
@@ -17753,6 +18124,7 @@ mod tests {
                 descriptor: RemoteStreamLane {
                     target_language: Some(target_language.to_string()),
                     canonical,
+                    inline_translation: None,
                 },
                 assembler: RealtimeUtteranceAssembler::new(session.id.clone(), &lane_profile),
                 provider_session_epoch: 0,
@@ -20588,6 +20960,7 @@ mod tests {
                     right_language: "zh".into(),
                     selected_languages: vec!["en".into(), "zh".into()],
                     common_caption_language: None,
+                    subtitle_only_languages: Vec::new(),
                     privacy_level: "high".into(),
                     send_context_to_soniox: false,
                 },
@@ -20776,6 +21149,7 @@ mod tests {
                     right_language: "zh".into(),
                     selected_languages: vec!["en".into(), "zh".into()],
                     common_caption_language: None,
+                    subtitle_only_languages: Vec::new(),
                     privacy_level: "standard".into(),
                     send_context_to_soniox: false,
                 },
@@ -20969,6 +21343,7 @@ mod tests {
                     right_language: "zh".into(),
                     selected_languages: vec!["en".into(), "zh".into()],
                     common_caption_language: None,
+                    subtitle_only_languages: Vec::new(),
                     privacy_level: "standard".into(),
                     send_context_to_soniox: false,
                 },
@@ -21216,6 +21591,7 @@ mod tests {
                     right_language: "zh".into(),
                     selected_languages: vec!["en".into(), "zh".into()],
                     common_caption_language: None,
+                    subtitle_only_languages: Vec::new(),
                     privacy_level: "standard".into(),
                     send_context_to_soniox: false,
                 },

@@ -2416,6 +2416,17 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// Below this, lag is the provider's normal pace and not worth a word.
     static let noticeableLagMs: UInt64 = 5_000
 
+    /// Selected languages the canonical lane translates into itself: those
+    /// without a lane of their own in the running group. Their words reach
+    /// the rows directly and never arrive as cues. Empty until the group has
+    /// reported its lanes, and outside a live capture.
+    var inlineTranslationLanguages: Set<String> {
+        let telemetry = laneTelemetry
+        guard telemetry[Self.canonicalLaneHealthKey] != nil else { return [] }
+        return Set(selectedLanguages.map(normalizedLanguage))
+            .subtracting(telemetry.keys)
+    }
+
     /// Languages whose column is dark for good. The canvas uses this to stay
     /// silent instead of promising a translation that will never arrive.
     var failedTranslationLanguages: Set<String> {

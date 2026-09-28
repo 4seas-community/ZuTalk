@@ -5467,6 +5467,13 @@ public struct FfiNotebookCaptureProfile: Equatable, Hashable {
     public var leftLanguage: String
     public var rightLanguage: String
     public var selectedLanguages: [String]
+    /**
+     * Selected languages nobody in the room speaks: shown as subtitles, never
+     * listened for. Empty means every selected language may be spoken. It
+     * decides how many connections a capture of three or more languages
+     * opens; never covers every selected language.
+     */
+    public var subtitleOnlyLanguages: [String]
     public var commonCaptionLanguage: String?
     public var privacyLevel: String
     public var sendContextToSoniox: Bool
@@ -5474,7 +5481,13 @@ public struct FfiNotebookCaptureProfile: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(notebookId: String, remoteRealtimeEnabled: Bool, mode: FfiNotebookCaptureMode, languageA: String, languageB: String, leftLanguage: String, rightLanguage: String, selectedLanguages: [String], commonCaptionLanguage: String?, privacyLevel: String, sendContextToSoniox: Bool, revision: UInt64) {
+    public init(notebookId: String, remoteRealtimeEnabled: Bool, mode: FfiNotebookCaptureMode, languageA: String, languageB: String, leftLanguage: String, rightLanguage: String, selectedLanguages: [String],
+        /**
+         * Selected languages nobody in the room speaks: shown as subtitles, never
+         * listened for. Empty means every selected language may be spoken. It
+         * decides how many connections a capture of three or more languages
+         * opens; never covers every selected language.
+         */subtitleOnlyLanguages: [String], commonCaptionLanguage: String?, privacyLevel: String, sendContextToSoniox: Bool, revision: UInt64) {
         self.notebookId = notebookId
         self.remoteRealtimeEnabled = remoteRealtimeEnabled
         self.mode = mode
@@ -5483,6 +5496,7 @@ public struct FfiNotebookCaptureProfile: Equatable, Hashable {
         self.leftLanguage = leftLanguage
         self.rightLanguage = rightLanguage
         self.selectedLanguages = selectedLanguages
+        self.subtitleOnlyLanguages = subtitleOnlyLanguages
         self.commonCaptionLanguage = commonCaptionLanguage
         self.privacyLevel = privacyLevel
         self.sendContextToSoniox = sendContextToSoniox
@@ -5513,6 +5527,7 @@ public struct FfiConverterTypeFfiNotebookCaptureProfile: FfiConverterRustBuffer 
                 leftLanguage: FfiConverterString.read(from: &buf),
                 rightLanguage: FfiConverterString.read(from: &buf),
                 selectedLanguages: FfiConverterSequenceString.read(from: &buf),
+                subtitleOnlyLanguages: FfiConverterSequenceString.read(from: &buf),
                 commonCaptionLanguage: FfiConverterOptionString.read(from: &buf),
                 privacyLevel: FfiConverterString.read(from: &buf),
                 sendContextToSoniox: FfiConverterBool.read(from: &buf),
@@ -5529,6 +5544,7 @@ public struct FfiConverterTypeFfiNotebookCaptureProfile: FfiConverterRustBuffer 
         FfiConverterString.write(value.leftLanguage, into: &buf)
         FfiConverterString.write(value.rightLanguage, into: &buf)
         FfiConverterSequenceString.write(value.selectedLanguages, into: &buf)
+        FfiConverterSequenceString.write(value.subtitleOnlyLanguages, into: &buf)
         FfiConverterOptionString.write(value.commonCaptionLanguage, into: &buf)
         FfiConverterString.write(value.privacyLevel, into: &buf)
         FfiConverterBool.write(value.sendContextToSoniox, into: &buf)

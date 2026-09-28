@@ -772,6 +772,10 @@
 "capture.settings.languages.move_earlier" = "Move language earlier";
 "capture.settings.languages.move_later" = "Move language later";
 "capture.settings.languages.remove" = "Remove language";
+"capture.settings.languages.roles.all_spoken" = "Any of these may be spoken, so each gets its own translation connection (%d). Tap the waveform on a language nobody will speak to show it as subtitles only and use fewer.";
+"capture.settings.languages.roles.some_subtitle_only" = "Listening for %1$@. %2$@ only shown as subtitles · %3$d connections.";
+"capture.settings.languages.role.spoken" = "%@ may be spoken — tap to show it as subtitles only";
+"capture.settings.languages.role.subtitle_only" = "%@ is subtitles only — tap if someone may speak it";
 "capture.realtime.controls.current_title" = "Current recording configuration";
 "capture.realtime.controls.profile_group" = "Realtime recording configuration";
 "capture.realtime.controls.review_context" = "Review references";

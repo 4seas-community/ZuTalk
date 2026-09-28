@@ -772,6 +772,10 @@
 "capture.settings.languages.move_earlier" = "将语言向前移动";
 "capture.settings.languages.move_later" = "将语言向后移动";
 "capture.settings.languages.remove" = "移除语言";
+"capture.settings.languages.roles.all_spoken" = "这几种语言现场都可能有人说，每种语言各开一条翻译连接（%d 条）。确定没人说的语言，点它前面的声波图标改成“只看字幕”，可以少开连接。";
+"capture.settings.languages.roles.some_subtitle_only" = "现场说：%1$@。只看字幕：%2$@ · %3$d 条连接。";
+"capture.settings.languages.role.spoken" = "现场可能有人说%@ — 点一下改成只看字幕";
+"capture.settings.languages.role.subtitle_only" = "%@只看字幕 — 如果现场有人说，点一下改回";
 "capture.realtime.controls.current_title" = "本次录音配置";
 "capture.realtime.controls.profile_group" = "实时录音配置";
 "capture.realtime.controls.review_context" = "查看参考资料";

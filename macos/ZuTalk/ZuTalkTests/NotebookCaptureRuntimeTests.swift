@@ -3963,7 +3963,10 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             captureState: .recording,
             remoteHealth: .degraded,
             projectionState: degraded.projectionState,
-            utterances: []
+            utterances: [],
+            contextReceipt: nil,
+            providerErrorType: nil,
+            providerRequestId: nil
         ))
         XCTAssertTrue(store.canRestartTranscription)
 
@@ -6026,6 +6029,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             leftLanguage: "en",
             rightLanguage: "zh",
             selectedLanguages: ["en", "zh", "th"],
+            subtitleOnlyLanguages: ["th"],
             commonCaptionLanguage: "en",
             privacyLevel: "standard",
             sendContextToSoniox: false,
@@ -6034,11 +6038,13 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
 
         XCTAssertEqual(mapped.mode, .multilingualOneWay)
         XCTAssertEqual(mapped.selectedLanguages, ["en", "zh", "th"])
+        XCTAssertEqual(mapped.subtitleOnlyLanguages, ["th"])
         XCTAssertNil(mapped.commonCaptionLanguage)
 
         let lowered = RustNotebookCaptureClient.ffi(mapped)
         XCTAssertEqual(lowered.mode, .multilingualOneWay)
         XCTAssertEqual(lowered.selectedLanguages, ["en", "zh", "th"])
+        XCTAssertEqual(lowered.subtitleOnlyLanguages, ["th"])
         XCTAssertNil(lowered.commonCaptionLanguage)
     }
 
@@ -9238,7 +9244,10 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
             captureState: result.captureState,
             remoteHealth: result.remoteHealth,
             projectionState: result.projectionState,
-            utterances: []
+            utterances: [],
+            contextReceipt: nil,
+            providerErrorType: nil,
+            providerRequestId: nil
         )
     }
 
