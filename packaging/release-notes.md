@@ -72,6 +72,9 @@ ZuTalk requires macOS 12.5 or later.
   speakers are numbered again, so one person could show up as two
   "Speaker 1"s and need naming twice; naming one now names the other too
   unless you untick it.
+- **The names you give speakers can be managed** from the speaker panel:
+  see how many recordings use each, rename one everywhere at once, or
+  remove a typo — its speakers go back to "Speaker N".
 - **Rename recordings and topics, and delete topics.** Deleting a topic keeps
   its recordings: they move to "No topic".
 - **Optional: tidy a marked passage.** With a language model key in
