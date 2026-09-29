@@ -30,9 +30,50 @@ pub enum ReplicaError {
     Sqlite(#[from] rusqlite::Error),
     #[error("同步事实不完整: {0}")]
     Invalid(String),
+    #[error(transparent)]
+    Document(#[from] crate::replica_docs::ReplicaDocError),
+    /// 调用方在事务里做别的事时出的错,原样带出来。
+    #[error("{0}")]
+    Other(String),
 }
 
-type Result<T> = std::result::Result<T, ReplicaError>;
+pub type Result<T> = std::result::Result<T, ReplicaError>;
+
+pub use rusqlite::{Connection as ReplicaConnection, Transaction as ReplicaTransaction};
+
+/// 同步自己的一条数据库连接。物化与导出都在它的立即事务里做:导入对方的
+/// 改动、写回行、存下文档快照,要么一起提交,要么一起不发生。
+pub struct ReplicaStore {
+    conn: std::sync::Mutex<Connection>,
+}
+
+impl ReplicaStore {
+    pub fn new(db_path: &std::path::Path) -> Result<Self> {
+        let conn = Connection::open(db_path)?;
+        // 与录音同一个等待上限:物化一场长录音的事务不短,不能让它在录音写库时
+        // 一秒就放弃。
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        crate::migration::run_migrations(&conn)?;
+        crate::migration::use_write_ahead_log(&conn);
+        Ok(Self {
+            conn: std::sync::Mutex::new(conn),
+        })
+    }
+
+    pub fn read<R>(&self, f: impl FnOnce(&Connection) -> Result<R>) -> Result<R> {
+        let conn = self.conn.lock().unwrap();
+        f(&conn)
+    }
+
+    /// 在一个立即事务里做完 `f`;`f` 出错就整个回滚。
+    pub fn write<R>(&self, f: impl FnOnce(&Transaction) -> Result<R>) -> Result<R> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let value = f(&tx)?;
+        tx.commit()?;
+        Ok(value)
+    }
+}
 
 // ── 列清单 ────────────────────────────────────────────────────────────────
 //

@@ -296,6 +296,15 @@ impl SyncEngine {
         }
     }
 
+    /// 请这个空间里连着的设备把完整摘要再发一次。本机刚能收下之前婉拒的文档时用。
+    pub fn refresh(&self, space: &SpaceId) {
+        if let Some(space) = self.host.space(space) {
+            for link in space.links.lock().unwrap().values() {
+                let _ = link.control.send(Outbound::RequestSummary);
+            }
+        }
+    }
+
     /// 一个空间的名单变了(同步来的、本机移除了设备)。按新名单增减拨号与连接。
     pub fn members_changed(&self, space: &SpaceId) {
         if let Some(space) = self.host.space(space) {
@@ -414,7 +423,8 @@ impl SyncEngine {
             .collect()
     }
 
-    pub async fn shutdown(self) {
+    /// 断开所有空间、关掉端点。之后这个引擎不再可用。
+    pub async fn shutdown(&self) {
         self.host.stop();
         let _ = self.router.shutdown().await;
     }
@@ -775,10 +785,13 @@ struct Link {
     dirty: Mutex<BTreeSet<DocId>>,
     dirty_signal: Notify,
     in_flight: AtomicUsize,
+    /// 写循环的队列,读循环和引擎都往里放。
+    control: mpsc::UnboundedSender<Outbound>,
 }
 
 enum Outbound {
     Summary,
+    RequestSummary,
     Want(DocId),
     Serve { doc: DocId, from: Vec<u8> },
 }
@@ -814,6 +827,7 @@ async fn run_link(
     recv: RecvStream,
 ) -> Result<(), WireError> {
     let device = conn.remote_id();
+    let (outbound, queue) = mpsc::unbounded_channel();
     let link = Arc::new(Link {
         conn: conn.clone(),
         dialed_by_me,
@@ -821,6 +835,7 @@ async fn run_link(
         dirty: Mutex::default(),
         dirty_signal: Notify::new(),
         in_flight: AtomicUsize::new(0),
+        control: outbound.clone(),
     });
     if host.closing.load(Ordering::SeqCst)
         || space.removed.load(Ordering::SeqCst)
@@ -831,7 +846,6 @@ async fn run_link(
     }
     tracing::debug!(device = %device.fmt_short(), "同步连接建立");
 
-    let (outbound, queue) = mpsc::unbounded_channel();
     let _ = outbound.send(Outbound::Summary);
     let writer = tokio::spawn(write_loop(
         host.config.anti_entropy,
@@ -907,6 +921,9 @@ async fn read_loop(
             }
             SyncMessage::Want { doc, version } => {
                 let _ = outbound.send(Outbound::Serve { doc, from: version });
+            }
+            SyncMessage::RequestSummary => {
+                let _ = outbound.send(Outbound::Summary);
             }
             SyncMessage::Update { doc, bytes, last } => {
                 let buffer = match &mut assembling {
@@ -1020,6 +1037,7 @@ async fn write_loop(
                 )
                 .await
             }
+            Outbound::RequestSummary => write_frame(&mut send, &SyncMessage::RequestSummary).await,
             Outbound::Want(doc) => {
                 let target = doc.clone();
                 let version = space

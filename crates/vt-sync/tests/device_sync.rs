@@ -56,12 +56,16 @@ fn encode(items: &BTreeSet<String>) -> Vec<u8> {
 /// 一个空间看到的文档:底下是整台设备的文档,按前缀过滤。
 struct View {
     all: Arc<SetStore>,
-    prefixes: Vec<&'static str>,
+    prefixes: Mutex<Vec<&'static str>>,
 }
 
 impl View {
     fn covers(&self, doc: &str) -> bool {
-        self.prefixes.iter().any(|prefix| doc.starts_with(prefix))
+        self.prefixes
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|prefix| doc.starts_with(prefix))
     }
 }
 
@@ -237,7 +241,7 @@ impl Mac {
 fn view(store: &Arc<SetStore>, prefixes: &[&'static str]) -> Arc<View> {
     Arc::new(View {
         all: store.clone(),
-        prefixes: prefixes.to_vec(),
+        prefixes: Mutex::new(prefixes.to_vec()),
     })
 }
 
@@ -629,4 +633,40 @@ async fn a_topic_space_shares_only_its_own_documents() {
     for mac in [mine, my_laptop, colleague] {
         mac.engine.shutdown().await;
     }
+}
+
+/// 先婉拒、后能收的文档:收下录音之后请对方重发摘要,附属文档马上就到,
+/// 不等下一轮反熵(测试里反熵是 60 秒),也不必断线重连。
+#[tokio::test(flavor = "multi_thread")]
+async fn a_document_refused_earlier_arrives_once_asked_again() {
+    const WITH_NOTES: &[&str] = &["library", "recording/", "topic/", "note/"];
+    let a = Mac::start("甲").await;
+    let b = Mac::start("乙").await;
+    a.engine
+        .add_space(a.group(), view(&a.store, WITH_NOTES), a.roster());
+    a.store.add("note/for-later", "录音的笔记");
+
+    // 乙起初不收 note/。
+    let narrow = view(&b.store, LIBRARY);
+    let ticket = a.invite().await;
+    let joined = b.engine.join(&ticket).await.unwrap();
+    let roster = Roster::with(&[b.identity.id(), joined.inviter]);
+    b.engine.remove_space(&b.group());
+    b.engine
+        .add_space(joined.space, narrow.clone(), roster.clone());
+    *b.group.lock().unwrap() = (joined.space, roster);
+    eventually("连上", || connected_peers(&b) == 1).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(b.store.items("note/for-later").is_empty());
+
+    // 乙现在能收了:只请对方重发摘要。
+    narrow.prefixes.lock().unwrap().push("note/");
+    b.engine.refresh(&b.group());
+    eventually("附属文档到了", || {
+        b.store.items("note/for-later").contains("录音的笔记")
+    })
+    .await;
+
+    a.engine.shutdown().await;
+    b.engine.shutdown().await;
 }
