@@ -24,7 +24,8 @@ const INBOX_MULTI_SEGMENT_VERSION: i32 = 31;
 const SAMPLE_FORMAT_VERSION: i32 = 32;
 const MARKS_VERSION: i32 = 33;
 const MARK_DIGESTS_VERSION: i32 = 34;
-const CURRENT_VERSION: i32 = 35;
+const SUBTITLE_ONLY_VERSION: i32 = 35;
+const CURRENT_VERSION: i32 = 36;
 
 const V23_TABLES: &[&str] = &[
     "audio_retention_chunks",
@@ -465,6 +466,93 @@ const V34_TABLES: &[&str] = &[
     "session_records",
     "session_speakers",
 ];
+/// v36 adds the sync tables; everything else is v34's set.
+const V36_TABLES: &[&str] = &[
+    "audio_retention_chunks",
+    "context_pack_sources",
+    "context_packs",
+    "mark_digests",
+    "notebook_capture_profiles",
+    "notebook_capture_runs",
+    "notebook_context_pack_bindings",
+    "notebook_projection_mutations",
+    "notebook_session_projections",
+    "notebook_sessions",
+    "notebook_tabs",
+    "notebooks",
+    "participants",
+    "provider_remote_artifacts",
+    "realtime_transcript_gaps",
+    "realtime_translation_inbox",
+    "realtime_utterance_overrides",
+    "realtime_utterance_variants",
+    "realtime_utterances",
+    "search_index",
+    "search_index_config",
+    "search_index_content",
+    "search_index_data",
+    "search_index_docsize",
+    "search_index_idx",
+    "session_marks",
+    "session_meta",
+    "session_purge_jobs",
+    "session_records",
+    "session_speakers",
+    "sync_changes",
+    "sync_deferred_membership",
+    "sync_documents",
+    "sync_recording_origins",
+    "sync_removed_devices",
+    "sync_spaces",
+    "sync_state",
+];
+const V36_TRIGGERS: &[&str] = &[
+    "context_binding_library_only_insert",
+    "context_binding_library_only_update",
+    "notebook_capture_runs_async_authorization_immutable",
+    "notebook_capture_runs_async_identity_immutable",
+    "notebook_capture_runs_async_projection_transition",
+    "notebook_capture_runs_async_receipt_insert",
+    "notebook_capture_runs_async_receipt_update",
+    "notebook_capture_runs_async_state_transition",
+    "notebook_capture_runs_post_stop_provenance_immutable",
+    "notebook_capture_runs_provider_receipt_immutable",
+    "notebook_capture_runs_realtime_provenance_immutable",
+    "realtime_utterances_require_realtime_provenance",
+    "session_meta_provider_tokens_immutable",
+    "sync_mark_gaps_insert",
+    "sync_mark_gaps_update",
+    "sync_mark_marks_insert",
+    "sync_mark_marks_update",
+    "sync_mark_membership_delete",
+    "sync_mark_membership_insert",
+    "sync_mark_membership_update",
+    "sync_mark_meta_insert",
+    "sync_mark_meta_update",
+    "sync_mark_notebooks_insert",
+    "sync_mark_notebooks_update",
+    "sync_mark_overrides_delete",
+    "sync_mark_overrides_insert",
+    "sync_mark_overrides_update",
+    "sync_mark_participants_delete",
+    "sync_mark_participants_insert",
+    "sync_mark_participants_update",
+    "sync_mark_profiles_insert",
+    "sync_mark_profiles_update",
+    "sync_mark_records_delete",
+    "sync_mark_records_insert",
+    "sync_mark_records_update",
+    "sync_mark_runs_update",
+    "sync_mark_section_title_update",
+    "sync_mark_speaker_links_update",
+    "sync_mark_speakers_insert",
+    "sync_mark_speakers_update",
+    "sync_mark_utterances_delete",
+    "sync_mark_utterances_insert",
+    "sync_mark_utterances_update",
+    "sync_mark_variants_insert",
+    "sync_mark_variants_update",
+];
 const V33_INDEXES: &[&str] = &[
     "idx_audio_retention_chunks_due",
     "idx_audio_retention_chunks_session",
@@ -496,6 +584,39 @@ const V33_INDEXES: &[&str] = &[
     "idx_session_records_active_created",
     "idx_session_speakers_participant",
     "idx_session_speakers_session_epoch",
+];
+const V36_INDEXES: &[&str] = &[
+    "idx_audio_retention_chunks_due",
+    "idx_audio_retention_chunks_session",
+    "idx_context_pack_sources_pack_order",
+    "idx_context_packs_library",
+    "idx_context_packs_private_owner",
+    "idx_notebook_capture_runs_notebook_created",
+    "idx_notebook_capture_runs_single_active",
+    "idx_notebook_context_bindings_order",
+    "idx_notebook_projection_mutations_session",
+    "idx_notebook_projection_mutations_utterance_language",
+    "idx_notebook_session_projections_notebook_session",
+    "idx_notebook_session_projections_tab",
+    "idx_notebook_sessions_session_unique",
+    "idx_notebook_tabs_builtin_unique",
+    "idx_notebook_tabs_notebook_position",
+    "idx_notebooks_updated",
+    "idx_participants_display_name",
+    "idx_realtime_transcript_gaps_pending",
+    "idx_realtime_translation_inbox_bound_lane",
+    "idx_realtime_translation_inbox_unbound",
+    "idx_realtime_utterance_variants_language",
+    "idx_realtime_utterance_variants_one_source",
+    "idx_realtime_utterances_id_sequence",
+    "idx_realtime_utterances_session_sequence",
+    "idx_realtime_utterances_session_speaker",
+    "idx_session_marks_session_at",
+    "idx_session_purge_jobs_updated",
+    "idx_session_records_active_created",
+    "idx_session_speakers_participant",
+    "idx_session_speakers_session_epoch",
+    "idx_sync_spaces_single_device_group",
 ];
 
 /// Puts the database in write-ahead-log mode. Persistent: it is recorded in
@@ -561,7 +682,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v33_to_v34(conn)?;
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
         SPEAKER_VERSION => {
             validate_v24_baseline(conn)?;
@@ -586,7 +709,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v33_to_v34(conn)?;
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
         SELECTED_LANGUAGES_VERSION => {
             validate_v25_baseline(conn)?;
@@ -609,7 +734,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v33_to_v34(conn)?;
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
         MULTILINGUAL_VERSION => {
             validate_v26_baseline(conn)?;
@@ -630,7 +757,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v33_to_v34(conn)?;
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
         REALTIME_LORO_VERSION => {
             validate_v27_baseline(conn)?;
@@ -649,7 +778,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v33_to_v34(conn)?;
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
         TRANSLATION_INBOX_VERSION => {
             validate_v28_baseline(conn)?;
@@ -666,7 +797,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v33_to_v34(conn)?;
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
         TRANSCRIPT_GAPS_VERSION => {
             validate_v29_baseline(conn)?;
@@ -681,7 +814,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v33_to_v34(conn)?;
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
         INBOX_MULTI_SEGMENT_VERSION => {
             validate_v31_baseline(conn)?;
@@ -692,7 +827,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v33_to_v34(conn)?;
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
         SAMPLE_FORMAT_VERSION => {
             validate_v32_baseline(conn)?;
@@ -701,21 +838,32 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v33_to_v34(conn)?;
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
         MARKS_VERSION => {
             validate_v33_baseline(conn)?;
             migrate_v33_to_v34(conn)?;
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
         MARK_DIGESTS_VERSION => {
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
-            validate_v35_baseline(conn)
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
         }
-        CURRENT_VERSION => validate_v35_baseline(conn),
+        SUBTITLE_ONLY_VERSION => {
+            validate_v35_baseline(conn)?;
+            migrate_v35_to_v36(conn)?;
+            validate_v36_baseline(conn)
+        }
+        CURRENT_VERSION => validate_v36_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
     }?;
 
@@ -749,7 +897,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, schema {INBOX_MULTI_SEGMENT_VERSION}, schema {SAMPLE_FORMAT_VERSION}, schema {MARKS_VERSION}, schema {MARK_DIGESTS_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, schema {INBOX_MULTI_SEGMENT_VERSION}, schema {SAMPLE_FORMAT_VERSION}, schema {MARKS_VERSION}, schema {MARK_DIGESTS_VERSION}, schema {SUBTITLE_ONLY_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -912,10 +1060,26 @@ fn validate_v34_baseline_objects(conn: &Connection, claimed_version: i32) -> Sql
 /// subtitles; an empty list, which every earlier profile and run snapshot
 /// reads as, means every language may be spoken.
 fn validate_v35_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v34_baseline_objects(conn, CURRENT_VERSION)?;
+    validate_v35_baseline_objects(conn, SUBTITLE_ONLY_VERSION)
+}
+
+fn validate_v35_baseline_objects(conn: &Connection, claimed_version: i32) -> SqlResult<()> {
+    validate_v34_baseline_objects(conn, claimed_version)?;
     let table_sql =
         schema_object_sql(conn, "table", "notebook_capture_profiles")?.to_ascii_lowercase();
     if !table_sql.contains("subtitle_only_languages_json") {
+        return Err(schema_reset_required(claimed_version));
+    }
+    Ok(())
+}
+
+/// v36: device-to-device sync. The object-set check in
+/// `validate_v24_or_later_baseline` already requires every sync table,
+/// index and trigger by name; this adds the one column a rename could lose.
+fn validate_v36_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v35_baseline_objects(conn, CURRENT_VERSION)?;
+    let table_sql = schema_object_sql(conn, "table", "sync_documents")?.to_ascii_lowercase();
+    if !table_sql.contains("snapshot") {
         return Err(schema_reset_required(CURRENT_VERSION));
     }
     Ok(())
@@ -974,8 +1138,9 @@ fn validate_v24_or_later_baseline(conn: &Connection, claimed_version: i32) -> Sq
     let has_transcript_gaps = claimed_version >= TRANSCRIPT_GAPS_VERSION;
     let has_remote_artifact_journal = claimed_version >= REMOTE_ARTIFACTS_VERSION;
     let (tables, indexes, triggers) = match claimed_version {
+        CURRENT_VERSION => (V36_TABLES, V36_INDEXES, V36_TRIGGERS),
         // v35 added a column; the object set is v34's.
-        CURRENT_VERSION | MARK_DIGESTS_VERSION => (V34_TABLES, V33_INDEXES, V29_TRIGGERS),
+        SUBTITLE_ONLY_VERSION | MARK_DIGESTS_VERSION => (V34_TABLES, V33_INDEXES, V29_TRIGGERS),
         MARKS_VERSION => (V33_TABLES, V33_INDEXES, V29_TRIGGERS),
         // v31 changed one index's uniqueness and v32 added columns; neither
         // changed the object set.
@@ -1157,8 +1322,14 @@ fn validate_v24_or_later_baseline(conn: &Connection, claimed_version: i32) -> Sq
         return Err(schema_reset_required(claimed_version));
     }
     for trigger in triggers {
-        let sql = schema_object_sql(conn, "trigger", trigger)?;
-        if !sql.to_ascii_lowercase().contains("raise(abort") {
+        let sql = schema_object_sql(conn, "trigger", trigger)?.to_ascii_lowercase();
+        // Guards refuse a write; sync's triggers only record that one happened.
+        let expected = if trigger.starts_with("sync_mark_") {
+            "insert into sync_changes"
+        } else {
+            "raise(abort"
+        };
+        if !sql.contains(expected) {
             return Err(schema_reset_required(claimed_version));
         }
     }
@@ -2242,6 +2413,7 @@ fn install_current_baseline(conn: &Connection) -> SqlResult<()> {
     tx.execute_batch(provider_remote_artifacts_schema())?;
     tx.execute_batch(session_marks_schema())?;
     tx.execute_batch(mark_digests_schema())?;
+    tx.execute_batch(library_sync_schema())?;
     tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
     tx.commit()?;
     tracing::info!("installed clean ZuTalk schema v{CURRENT_VERSION}");
@@ -2290,6 +2462,295 @@ fn mark_digests_schema() -> &'static str {
 /// whatever utterance encloses it — the sentence was not finished when the key
 /// went down. `note` is the one field here no producer can regenerate, so it
 /// carries no default beyond empty and is never rewritten by a repair pass.
+/// Device-to-device sync (docs/architecture/local-first-sync.md).
+///
+/// - `sync_documents`: the Loro documents devices exchange, as snapshots.
+///   They live in this database, not beside it, so that importing a peer's
+///   update and writing the rows it describes commit in one transaction — a
+///   crash can never leave a document that claims rows the tables lack, which
+///   the next export would read as the user having deleted them.
+/// - `sync_changes`: which recording, topic or library facts changed locally
+///   since they were last written into their document. Filled by the triggers
+///   below, in the same transaction as the change itself; drained by the sync
+///   pump. Every write path is covered without any of them knowing about sync.
+/// - `sync_spaces`: the spaces this device syncs — its device group, topics
+///   shared with other people, a backup pairing.
+/// - `sync_recording_origins`: recordings that arrived from another device,
+///   and which one. Their audio is on that device, and only it renders their
+///   refined transcript.
+/// - `sync_removed_devices`: removal is permanent per device id, whatever a
+///   member list later says.
+/// - `sync_deferred_membership`: a recording that arrived before its topic,
+///   parked in this device's unfiled topic until the topic does arrive.
+/// - `sync_state`: small facts about this device's sync, by key.
+///
+/// The triggers insert with `WHERE NOT EXISTS` rather than `OR IGNORE`: a
+/// trigger's conflict clause yields to the statement that fired it, so an
+/// outer `INSERT OR REPLACE` would otherwise decide how this insert conflicts.
+fn library_sync_schema() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS sync_documents (
+        doc_id      TEXT PRIMARY KEY CHECK(length(doc_id) > 0),
+        snapshot    BLOB NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS sync_changes (
+        scope  TEXT NOT NULL CHECK(scope IN ('recording', 'topic', 'library')),
+        key    TEXT NOT NULL,
+        PRIMARY KEY(scope, key)
+    ) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS sync_spaces (
+        space_id     TEXT PRIMARY KEY
+                          CHECK(length(space_id) = 64 AND space_id NOT GLOB '*[^0-9a-f]*'),
+        kind         TEXT NOT NULL CHECK(kind IN ('devices', 'topic', 'backup')),
+        role         TEXT NOT NULL CHECK(role IN ('owner', 'member')),
+        notebook_id  TEXT,
+        label        TEXT NOT NULL DEFAULT '',
+        created_at   TEXT NOT NULL,
+        CHECK((kind = 'topic') = (notebook_id IS NOT NULL))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_spaces_single_device_group
+        ON sync_spaces(kind) WHERE kind = 'devices';
+    CREATE TABLE IF NOT EXISTS sync_recording_origins (
+        session_id     TEXT PRIMARY KEY,
+        origin_device  TEXT NOT NULL
+                            CHECK(length(origin_device) = 64
+                                  AND origin_device NOT GLOB '*[^0-9a-f]*')
+    );
+    CREATE TABLE IF NOT EXISTS sync_removed_devices (
+        space_id    TEXT NOT NULL,
+        device_id   TEXT NOT NULL,
+        removed_at  TEXT NOT NULL,
+        PRIMARY KEY(space_id, device_id)
+    ) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS sync_deferred_membership (
+        session_id   TEXT PRIMARY KEY,
+        notebook_id  TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS sync_state (
+        key    TEXT PRIMARY KEY,
+        value  TEXT NOT NULL
+    );
+
+    CREATE TRIGGER IF NOT EXISTS sync_mark_records_insert AFTER INSERT ON session_records
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.id
+        WHERE NOT EXISTS (SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_records_update
+    AFTER UPDATE OF title, status, duration_ms, deleted_at ON session_records
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.id
+        WHERE NOT EXISTS (SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_records_delete AFTER DELETE ON session_records
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', OLD.id
+        WHERE NOT EXISTS (SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = OLD.id);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS sync_mark_membership_insert AFTER INSERT ON notebook_sessions
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_membership_update
+    AFTER UPDATE OF notebook_id ON notebook_sessions
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_membership_delete AFTER DELETE ON notebook_sessions
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', OLD.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = OLD.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_section_title_update
+    AFTER UPDATE OF section_title ON notebook_session_projections
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS sync_mark_runs_update
+    AFTER UPDATE OF capture_state, async_task_state, async_provider_output_sha256
+    ON notebook_capture_runs
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS sync_mark_utterances_insert AFTER INSERT ON realtime_utterances
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_utterances_update AFTER UPDATE ON realtime_utterances
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_utterances_delete AFTER DELETE ON realtime_utterances
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', OLD.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = OLD.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_variants_insert
+    AFTER INSERT ON realtime_utterance_variants
+    BEGIN
+        INSERT INTO sync_changes(scope, key)
+        SELECT 'recording', u.session_id FROM realtime_utterances u
+        WHERE u.id = NEW.utterance_id
+          AND NOT EXISTS (
+              SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = u.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_variants_update
+    AFTER UPDATE ON realtime_utterance_variants
+    BEGIN
+        INSERT INTO sync_changes(scope, key)
+        SELECT 'recording', u.session_id FROM realtime_utterances u
+        WHERE u.id = NEW.utterance_id
+          AND NOT EXISTS (
+              SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = u.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_overrides_insert
+    AFTER INSERT ON realtime_utterance_overrides
+    BEGIN
+        INSERT INTO sync_changes(scope, key)
+        SELECT 'recording', u.session_id FROM realtime_utterances u
+        WHERE u.id = NEW.utterance_id
+          AND NOT EXISTS (
+              SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = u.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_overrides_update
+    AFTER UPDATE ON realtime_utterance_overrides
+    BEGIN
+        INSERT INTO sync_changes(scope, key)
+        SELECT 'recording', u.session_id FROM realtime_utterances u
+        WHERE u.id = NEW.utterance_id
+          AND NOT EXISTS (
+              SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = u.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_overrides_delete
+    AFTER DELETE ON realtime_utterance_overrides
+    BEGIN
+        INSERT INTO sync_changes(scope, key)
+        SELECT 'recording', u.session_id FROM realtime_utterances u
+        WHERE u.id = OLD.utterance_id
+          AND NOT EXISTS (
+              SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = u.session_id);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS sync_mark_speakers_insert AFTER INSERT ON session_speakers
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_speakers_update
+    AFTER UPDATE OF local_display_name ON session_speakers
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    -- Which person a speaker is belongs to this library's people list, which
+    -- is never shared with collaborators; it travels with the library.
+    CREATE TRIGGER IF NOT EXISTS sync_mark_speaker_links_update
+    AFTER UPDATE OF participant_id ON session_speakers
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'library', ''
+        WHERE NOT EXISTS (SELECT 1 FROM sync_changes WHERE scope = 'library' AND key = '');
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_marks_insert AFTER INSERT ON session_marks
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_marks_update AFTER UPDATE ON session_marks
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_gaps_insert AFTER INSERT ON realtime_transcript_gaps
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_gaps_update AFTER UPDATE ON realtime_transcript_gaps
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_meta_insert AFTER INSERT ON session_meta
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_meta_update AFTER UPDATE OF tokens_json ON session_meta
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'recording', NEW.session_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'recording' AND key = NEW.session_id);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS sync_mark_notebooks_insert AFTER INSERT ON notebooks
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'topic', NEW.id
+        WHERE NOT EXISTS (SELECT 1 FROM sync_changes WHERE scope = 'topic' AND key = NEW.id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_notebooks_update
+    AFTER UPDATE OF title, deleted_at ON notebooks
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'topic', NEW.id
+        WHERE NOT EXISTS (SELECT 1 FROM sync_changes WHERE scope = 'topic' AND key = NEW.id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_profiles_insert
+    AFTER INSERT ON notebook_capture_profiles
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'topic', NEW.notebook_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'topic' AND key = NEW.notebook_id);
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_profiles_update
+    AFTER UPDATE ON notebook_capture_profiles
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'topic', NEW.notebook_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM sync_changes WHERE scope = 'topic' AND key = NEW.notebook_id);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS sync_mark_participants_insert AFTER INSERT ON participants
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'library', ''
+        WHERE NOT EXISTS (SELECT 1 FROM sync_changes WHERE scope = 'library' AND key = '');
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_participants_update AFTER UPDATE ON participants
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'library', ''
+        WHERE NOT EXISTS (SELECT 1 FROM sync_changes WHERE scope = 'library' AND key = '');
+    END;
+    CREATE TRIGGER IF NOT EXISTS sync_mark_participants_delete AFTER DELETE ON participants
+    BEGIN
+        INSERT INTO sync_changes(scope, key) SELECT 'library', ''
+        WHERE NOT EXISTS (SELECT 1 FROM sync_changes WHERE scope = 'library' AND key = '');
+    END;
+    "#
+}
+
 fn session_marks_schema() -> &'static str {
     r#"
     CREATE TABLE IF NOT EXISTS session_marks (
@@ -2831,9 +3292,25 @@ fn migrate_v34_to_v35(conn: &Connection) -> SqlResult<()> {
                  );",
         )?;
     }
+    tx.pragma_update(None, "user_version", SUBTITLE_ONLY_VERSION)?;
+    tx.commit()?;
+    tracing::info!("migrated ZuTalk schema v{MARK_DIGESTS_VERSION} to v{SUBTITLE_ONLY_VERSION}");
+    Ok(())
+}
+
+/// v36: the tables device-to-device sync keeps beside the library, and the
+/// triggers that tell it what changed.
+///
+/// One transaction, and `library_sync_schema()` is all `IF NOT EXISTS`, so a
+/// database is either at v35 with none of it or at v36 with all of it. Nothing
+/// is backfilled into `sync_changes`: the first sync of a library exports every
+/// recording and topic whether or not a trigger ever saw it change.
+fn migrate_v35_to_v36(conn: &Connection) -> SqlResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(library_sync_schema())?;
     tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated ZuTalk schema v{MARK_DIGESTS_VERSION} to v{CURRENT_VERSION}");
+    tracing::info!("migrated ZuTalk schema v{SUBTITLE_ONLY_VERSION} to v{CURRENT_VERSION}");
     Ok(())
 }
 
@@ -2883,13 +3360,14 @@ mod tests {
     /// database is v30" — spelling the version at each one is what went stale
     /// across the last three bumps.
     fn validate_current_baseline(conn: &Connection) -> SqlResult<()> {
-        validate_v35_baseline(conn)
+        validate_v36_baseline(conn)
     }
 
     fn downgrade_v27_to_v26(conn: &Connection) {
         conn.execute_batch(
             r#"
-            DROP TABLE mark_digests;
+            DROP TRIGGER sync_mark_gaps_insert; DROP TRIGGER sync_mark_gaps_update; DROP TRIGGER sync_mark_marks_insert; DROP TRIGGER sync_mark_marks_update; DROP TRIGGER sync_mark_membership_delete; DROP TRIGGER sync_mark_membership_insert; DROP TRIGGER sync_mark_membership_update; DROP TRIGGER sync_mark_meta_insert; DROP TRIGGER sync_mark_meta_update; DROP TRIGGER sync_mark_notebooks_insert; DROP TRIGGER sync_mark_notebooks_update; DROP TRIGGER sync_mark_overrides_delete; DROP TRIGGER sync_mark_overrides_insert; DROP TRIGGER sync_mark_overrides_update; DROP TRIGGER sync_mark_participants_delete; DROP TRIGGER sync_mark_participants_insert; DROP TRIGGER sync_mark_participants_update; DROP TRIGGER sync_mark_profiles_insert; DROP TRIGGER sync_mark_profiles_update; DROP TRIGGER sync_mark_records_delete; DROP TRIGGER sync_mark_records_insert; DROP TRIGGER sync_mark_records_update; DROP TRIGGER sync_mark_runs_update; DROP TRIGGER sync_mark_section_title_update; DROP TRIGGER sync_mark_speaker_links_update; DROP TRIGGER sync_mark_speakers_insert; DROP TRIGGER sync_mark_speakers_update; DROP TRIGGER sync_mark_utterances_delete; DROP TRIGGER sync_mark_utterances_insert; DROP TRIGGER sync_mark_utterances_update; DROP TRIGGER sync_mark_variants_insert; DROP TRIGGER sync_mark_variants_update; DROP TABLE sync_documents; DROP TABLE sync_changes; DROP INDEX idx_sync_spaces_single_device_group; DROP TABLE sync_spaces; DROP TABLE sync_recording_origins; DROP TABLE sync_removed_devices; DROP TABLE sync_deferred_membership; DROP TABLE sync_state;
+             DROP TABLE mark_digests;
             DROP INDEX idx_session_marks_session_at;
             DROP TABLE session_marks;
             DROP TABLE provider_remote_artifacts;
@@ -2955,7 +3433,8 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         conn.execute_batch(
-            "DROP TABLE mark_digests;
+            "DROP TRIGGER sync_mark_gaps_insert; DROP TRIGGER sync_mark_gaps_update; DROP TRIGGER sync_mark_marks_insert; DROP TRIGGER sync_mark_marks_update; DROP TRIGGER sync_mark_membership_delete; DROP TRIGGER sync_mark_membership_insert; DROP TRIGGER sync_mark_membership_update; DROP TRIGGER sync_mark_meta_insert; DROP TRIGGER sync_mark_meta_update; DROP TRIGGER sync_mark_notebooks_insert; DROP TRIGGER sync_mark_notebooks_update; DROP TRIGGER sync_mark_overrides_delete; DROP TRIGGER sync_mark_overrides_insert; DROP TRIGGER sync_mark_overrides_update; DROP TRIGGER sync_mark_participants_delete; DROP TRIGGER sync_mark_participants_insert; DROP TRIGGER sync_mark_participants_update; DROP TRIGGER sync_mark_profiles_insert; DROP TRIGGER sync_mark_profiles_update; DROP TRIGGER sync_mark_records_delete; DROP TRIGGER sync_mark_records_insert; DROP TRIGGER sync_mark_records_update; DROP TRIGGER sync_mark_runs_update; DROP TRIGGER sync_mark_section_title_update; DROP TRIGGER sync_mark_speaker_links_update; DROP TRIGGER sync_mark_speakers_insert; DROP TRIGGER sync_mark_speakers_update; DROP TRIGGER sync_mark_utterances_delete; DROP TRIGGER sync_mark_utterances_insert; DROP TRIGGER sync_mark_utterances_update; DROP TRIGGER sync_mark_variants_insert; DROP TRIGGER sync_mark_variants_update; DROP TABLE sync_documents; DROP TABLE sync_changes; DROP INDEX idx_sync_spaces_single_device_group; DROP TABLE sync_spaces; DROP TABLE sync_recording_origins; DROP TABLE sync_removed_devices; DROP TABLE sync_deferred_membership; DROP TABLE sync_state;
+             DROP TABLE mark_digests;
              DROP INDEX idx_session_marks_session_at;
              DROP TABLE session_marks;
              ALTER TABLE session_meta DROP COLUMN sample_format;
@@ -2991,7 +3470,8 @@ mod tests {
         // a no-op rather than a duplicate-column failure. The v33 table goes
         // with the stamp — a database claiming v31 may not carry it.
         conn.execute_batch(
-            "DROP TABLE mark_digests;
+            "DROP TRIGGER sync_mark_gaps_insert; DROP TRIGGER sync_mark_gaps_update; DROP TRIGGER sync_mark_marks_insert; DROP TRIGGER sync_mark_marks_update; DROP TRIGGER sync_mark_membership_delete; DROP TRIGGER sync_mark_membership_insert; DROP TRIGGER sync_mark_membership_update; DROP TRIGGER sync_mark_meta_insert; DROP TRIGGER sync_mark_meta_update; DROP TRIGGER sync_mark_notebooks_insert; DROP TRIGGER sync_mark_notebooks_update; DROP TRIGGER sync_mark_overrides_delete; DROP TRIGGER sync_mark_overrides_insert; DROP TRIGGER sync_mark_overrides_update; DROP TRIGGER sync_mark_participants_delete; DROP TRIGGER sync_mark_participants_insert; DROP TRIGGER sync_mark_participants_update; DROP TRIGGER sync_mark_profiles_insert; DROP TRIGGER sync_mark_profiles_update; DROP TRIGGER sync_mark_records_delete; DROP TRIGGER sync_mark_records_insert; DROP TRIGGER sync_mark_records_update; DROP TRIGGER sync_mark_runs_update; DROP TRIGGER sync_mark_section_title_update; DROP TRIGGER sync_mark_speaker_links_update; DROP TRIGGER sync_mark_speakers_insert; DROP TRIGGER sync_mark_speakers_update; DROP TRIGGER sync_mark_utterances_delete; DROP TRIGGER sync_mark_utterances_insert; DROP TRIGGER sync_mark_utterances_update; DROP TRIGGER sync_mark_variants_insert; DROP TRIGGER sync_mark_variants_update; DROP TABLE sync_documents; DROP TABLE sync_changes; DROP INDEX idx_sync_spaces_single_device_group; DROP TABLE sync_spaces; DROP TABLE sync_recording_origins; DROP TABLE sync_removed_devices; DROP TABLE sync_deferred_membership; DROP TABLE sync_state;
+             DROP TABLE mark_digests;
              DROP INDEX idx_session_marks_session_at;
              DROP TABLE session_marks;",
         )
@@ -3007,7 +3487,8 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         conn.execute_batch(
-            "DROP TABLE mark_digests;
+            "DROP TRIGGER sync_mark_gaps_insert; DROP TRIGGER sync_mark_gaps_update; DROP TRIGGER sync_mark_marks_insert; DROP TRIGGER sync_mark_marks_update; DROP TRIGGER sync_mark_membership_delete; DROP TRIGGER sync_mark_membership_insert; DROP TRIGGER sync_mark_membership_update; DROP TRIGGER sync_mark_meta_insert; DROP TRIGGER sync_mark_meta_update; DROP TRIGGER sync_mark_notebooks_insert; DROP TRIGGER sync_mark_notebooks_update; DROP TRIGGER sync_mark_overrides_delete; DROP TRIGGER sync_mark_overrides_insert; DROP TRIGGER sync_mark_overrides_update; DROP TRIGGER sync_mark_participants_delete; DROP TRIGGER sync_mark_participants_insert; DROP TRIGGER sync_mark_participants_update; DROP TRIGGER sync_mark_profiles_insert; DROP TRIGGER sync_mark_profiles_update; DROP TRIGGER sync_mark_records_delete; DROP TRIGGER sync_mark_records_insert; DROP TRIGGER sync_mark_records_update; DROP TRIGGER sync_mark_runs_update; DROP TRIGGER sync_mark_section_title_update; DROP TRIGGER sync_mark_speaker_links_update; DROP TRIGGER sync_mark_speakers_insert; DROP TRIGGER sync_mark_speakers_update; DROP TRIGGER sync_mark_utterances_delete; DROP TRIGGER sync_mark_utterances_insert; DROP TRIGGER sync_mark_utterances_update; DROP TRIGGER sync_mark_variants_insert; DROP TRIGGER sync_mark_variants_update; DROP TABLE sync_documents; DROP TABLE sync_changes; DROP INDEX idx_sync_spaces_single_device_group; DROP TABLE sync_spaces; DROP TABLE sync_recording_origins; DROP TABLE sync_removed_devices; DROP TABLE sync_deferred_membership; DROP TABLE sync_state;
+             DROP TABLE mark_digests;
              DROP INDEX idx_session_marks_session_at;
              DROP TABLE session_marks;
              PRAGMA user_version = 32;",
@@ -3085,6 +3566,13 @@ mod tests {
                 "session_purge_jobs",
                 "session_records",
                 "session_speakers",
+                "sync_changes",
+                "sync_deferred_membership",
+                "sync_documents",
+                "sync_recording_origins",
+                "sync_removed_devices",
+                "sync_spaces",
+                "sync_state",
             ]
         );
         assert_eq!(
@@ -3120,6 +3608,7 @@ mod tests {
                 "idx_session_records_active_created",
                 "idx_session_speakers_participant",
                 "idx_session_speakers_session_epoch",
+                "idx_sync_spaces_single_device_group",
             ]
         );
         assert_eq!(
@@ -3138,6 +3627,38 @@ mod tests {
                 "notebook_capture_runs_realtime_provenance_immutable",
                 "realtime_utterances_require_realtime_provenance",
                 "session_meta_provider_tokens_immutable",
+                "sync_mark_gaps_insert",
+                "sync_mark_gaps_update",
+                "sync_mark_marks_insert",
+                "sync_mark_marks_update",
+                "sync_mark_membership_delete",
+                "sync_mark_membership_insert",
+                "sync_mark_membership_update",
+                "sync_mark_meta_insert",
+                "sync_mark_meta_update",
+                "sync_mark_notebooks_insert",
+                "sync_mark_notebooks_update",
+                "sync_mark_overrides_delete",
+                "sync_mark_overrides_insert",
+                "sync_mark_overrides_update",
+                "sync_mark_participants_delete",
+                "sync_mark_participants_insert",
+                "sync_mark_participants_update",
+                "sync_mark_profiles_insert",
+                "sync_mark_profiles_update",
+                "sync_mark_records_delete",
+                "sync_mark_records_insert",
+                "sync_mark_records_update",
+                "sync_mark_runs_update",
+                "sync_mark_section_title_update",
+                "sync_mark_speaker_links_update",
+                "sync_mark_speakers_insert",
+                "sync_mark_speakers_update",
+                "sync_mark_utterances_delete",
+                "sync_mark_utterances_insert",
+                "sync_mark_utterances_update",
+                "sync_mark_variants_insert",
+                "sync_mark_variants_update",
             ]
         );
         assert_eq!(
@@ -4686,5 +5207,107 @@ mod tests {
                 [],
             )
             .is_err());
+    }
+
+    fn sync_changes(conn: &Connection) -> Vec<(String, String)> {
+        let mut stmt = conn
+            .prepare("SELECT scope, key FROM sync_changes ORDER BY scope, key")
+            .unwrap();
+        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    }
+
+    /// The upgrade every 0.6.x installation runs: the sync tables arrive empty
+    /// and nothing is queued, so a device that never pairs never exports.
+    #[test]
+    fn migration_v35_to_v36_adds_sync_tables_and_is_resumable() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        conn.execute_batch(
+            "DROP TRIGGER sync_mark_gaps_insert; DROP TRIGGER sync_mark_gaps_update; DROP TRIGGER sync_mark_marks_insert; DROP TRIGGER sync_mark_marks_update; DROP TRIGGER sync_mark_membership_delete; DROP TRIGGER sync_mark_membership_insert; DROP TRIGGER sync_mark_membership_update; DROP TRIGGER sync_mark_meta_insert; DROP TRIGGER sync_mark_meta_update; DROP TRIGGER sync_mark_notebooks_insert; DROP TRIGGER sync_mark_notebooks_update; DROP TRIGGER sync_mark_overrides_delete; DROP TRIGGER sync_mark_overrides_insert; DROP TRIGGER sync_mark_overrides_update; DROP TRIGGER sync_mark_participants_delete; DROP TRIGGER sync_mark_participants_insert; DROP TRIGGER sync_mark_participants_update; DROP TRIGGER sync_mark_profiles_insert; DROP TRIGGER sync_mark_profiles_update; DROP TRIGGER sync_mark_records_delete; DROP TRIGGER sync_mark_records_insert; DROP TRIGGER sync_mark_records_update; DROP TRIGGER sync_mark_runs_update; DROP TRIGGER sync_mark_section_title_update; DROP TRIGGER sync_mark_speaker_links_update; DROP TRIGGER sync_mark_speakers_insert; DROP TRIGGER sync_mark_speakers_update; DROP TRIGGER sync_mark_utterances_delete; DROP TRIGGER sync_mark_utterances_insert; DROP TRIGGER sync_mark_utterances_update; DROP TRIGGER sync_mark_variants_insert; DROP TRIGGER sync_mark_variants_update; 
+             DROP TABLE sync_documents; DROP TABLE sync_changes;
+             DROP INDEX idx_sync_spaces_single_device_group; DROP TABLE sync_spaces;
+             DROP TABLE sync_recording_origins; DROP TABLE sync_removed_devices;
+             DROP TABLE sync_deferred_membership; DROP TABLE sync_state;
+             PRAGMA user_version = 35;",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO session_records (id, title) VALUES ('before-sync', '旧录音')",
+            [],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+        assert_eq!(
+            conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
+                .unwrap(),
+            CURRENT_VERSION
+        );
+        assert!(sync_changes(&conn).is_empty(), "the upgrade queues nothing");
+        // Relaunching validates rather than re-running the DDL.
+        run_migrations(&conn).unwrap();
+    }
+
+    /// Every write path is covered by a trigger, so sync never depends on the
+    /// code that changed a row remembering to say so.
+    #[test]
+    fn sync_triggers_record_which_facts_changed() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO notebooks (id, title, created_at, updated_at)
+                 VALUES ('topic-1', '周会', 't', 't');
+             INSERT INTO session_records (id, title) VALUES ('rec-1', '');
+             INSERT INTO participants (id, display_name, created_at, updated_at)
+                 VALUES ('p-1', '小林', 't', 't');",
+        )
+        .unwrap();
+        assert_eq!(
+            sync_changes(&conn),
+            vec![
+                ("library".to_string(), String::new()),
+                ("recording".to_string(), "rec-1".to_string()),
+                ("topic".to_string(), "topic-1".to_string()),
+            ]
+        );
+
+        // Repeated writes to the same facts queue them once.
+        conn.execute_batch(
+            "DELETE FROM sync_changes;
+             UPDATE session_records SET title = '周一' WHERE id = 'rec-1';
+             UPDATE session_records SET deleted_at = 't' WHERE id = 'rec-1';
+             UPDATE notebooks SET title = '周例会' WHERE id = 'topic-1';",
+        )
+        .unwrap();
+        assert_eq!(
+            sync_changes(&conn),
+            vec![
+                ("recording".to_string(), "rec-1".to_string()),
+                ("topic".to_string(), "topic-1".to_string()),
+            ]
+        );
+
+        // A column sync does not carry leaves the queue alone.
+        conn.execute_batch(
+            "DELETE FROM sync_changes;
+             UPDATE notebooks SET updated_at = 'later' WHERE id = 'topic-1';",
+        )
+        .unwrap();
+        assert!(sync_changes(&conn).is_empty());
+
+        // An outer REPLACE decides a trigger's own conflict clause; the
+        // triggers are written so that nothing can conflict at all.
+        conn.execute_batch(
+            "INSERT INTO sync_changes (scope, key) VALUES ('recording', 'rec-1');
+             INSERT OR REPLACE INTO session_records (id, title) VALUES ('rec-1', '替换');",
+        )
+        .unwrap();
+        assert_eq!(
+            sync_changes(&conn),
+            vec![("recording".to_string(), "rec-1".to_string())]
+        );
     }
 }
