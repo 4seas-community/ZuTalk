@@ -945,7 +945,11 @@ _lipo:
         "{{ release_arm64_ffi }}" \
         "{{ release_x86_64_ffi }}" \
         -output "$TMP"
-    lipo "$TMP" -verify_arch arm64 x86_64
+    # 一次只核一个架构:Xcode 自带的 lipo 把 -verify_arch 后面的第二个架构
+    # 当成第二个输入文件,整条命令失败(CLT 的 lipo 接受多个)。
+    for arch in arm64 x86_64; do
+        lipo "$TMP" -verify_arch "$arch"
+    done
     if [[ -f "$OUT" ]] && cmp -s "$TMP" "$OUT"; then
         echo "  = $OUT unchanged"
     else
