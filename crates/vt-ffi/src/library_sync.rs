@@ -173,8 +173,9 @@ fn parse_device(hex_id: &str) -> Option<EndpointId> {
 enum SpaceKind {
     /// 自己的设备组:整个资料库。
     Devices,
-    /// 与别人协作的一个主题:只有这个主题和它的录音、笔记。
-    Topic(String),
+    /// 与别人协作的一个主题:只有这个主题和它的录音、笔记。`owner` 表示本机
+    /// 是发起协作的那台。
+    Topic { notebook: String, owner: bool },
 }
 
 /// 一份笔记类文档存在哪。
@@ -307,7 +308,10 @@ impl LibrarySync {
         };
         let kind = match (row.kind.as_str(), &row.notebook_id) {
             ("devices", _) => SpaceKind::Devices,
-            ("topic", Some(notebook)) => SpaceKind::Topic(notebook.clone()),
+            ("topic", Some(notebook)) => SpaceKind::Topic {
+                notebook: notebook.clone(),
+                owner: row.role == "owner",
+            },
             _ => return,
         };
         self.spaces.write().unwrap().insert(space, kind);
@@ -486,15 +490,25 @@ impl LibrarySync {
         match (kind, doc_ref) {
             (_, DocRef::Roster(hex)) => hex == space.to_hex(),
             (SpaceKind::Devices, _) => true,
-            (SpaceKind::Topic(_), DocRef::Library) => false,
-            (SpaceKind::Topic(notebook), DocRef::Topic(id)) => id == notebook,
-            (SpaceKind::Topic(notebook), DocRef::Recording(session)) => self
-                .replica
-                .read(|conn| facts::read_recording(conn, session, &self.unfiled))
-                .ok()
-                .flatten()
-                .is_none_or(|recording| recording.topic.as_deref() == Some(notebook.as_str())),
-            (SpaceKind::Topic(notebook), DocRef::Note(id)) => {
+            (SpaceKind::Topic { .. }, DocRef::Library) => false,
+            (SpaceKind::Topic { notebook, .. }, DocRef::Topic(id)) => id == notebook,
+            (SpaceKind::Topic { notebook, .. }, DocRef::Recording(session)) => {
+                // 本机还没有的录音:收下再看(物化前按它的主题把关);本机有的:
+                // 按它此刻在哪个主题。
+                match self.replica.read(|conn| {
+                    let here: bool = conn.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM session_records WHERE id = ?1)",
+                        [session],
+                        |row| row.get(0),
+                    )?;
+                    Ok(here.then(|| facts::recording_topic(conn, session, &self.unfiled)))
+                }) {
+                    Ok(None) => true,
+                    Ok(Some(Ok(topic))) => topic.as_deref() == Some(notebook.as_str()),
+                    _ => false,
+                }
+            }
+            (SpaceKind::Topic { notebook, .. }, DocRef::Note(id)) => {
                 self.note_belongs_to_topic(id, &notebook)
             }
         }
@@ -504,10 +518,10 @@ impl LibrarySync {
         if let Some(session) = self.session_for_note(doc_id) {
             return self
                 .replica
-                .read(|conn| facts::read_recording(conn, &session, &self.unfiled))
+                .read(|conn| facts::recording_topic(conn, &session, &self.unfiled))
                 .ok()
                 .flatten()
-                .is_some_and(|recording| recording.topic.as_deref() == Some(notebook));
+                .is_some_and(|topic| topic == notebook);
         }
         let Some(core) = self.core.upgrade() else {
             return false;
@@ -901,6 +915,10 @@ impl LibrarySync {
             }
             Some(doc_ref) => {
                 let mut after = Aftermath::default();
+                let protect_deletion = matches!(
+                    self.space_kind(&space),
+                    Some(SpaceKind::Topic { owner: true, .. })
+                );
                 let result = {
                     let _gate = self.gate.lock().unwrap();
                     self.replica.write(|tx| {
@@ -932,7 +950,7 @@ impl LibrarySync {
                                 return Err(other(format!("录音 {session} 不属于这个协作主题")));
                             }
                         }
-                        self.materialize(tx, doc_id, &doc, &mut after)?;
+                        self.materialize(tx, doc_id, &doc, &mut after, protect_deletion)?;
                         self.save_fact_doc(tx, doc_id, &doc)?;
                         Ok(true)
                     })
@@ -958,7 +976,7 @@ impl LibrarySync {
     /// 里塞别的东西。
     fn recording_fits_space(&self, space: &SpaceId, doc: &LoroDoc) -> Result<bool, ReplicaError> {
         match self.space_kind(space) {
-            Some(SpaceKind::Topic(notebook)) => {
+            Some(SpaceKind::Topic { notebook, .. }) => {
                 Ok(docs::read_recording(doc)?.is_none_or(|(recording, _)| {
                     recording.topic.as_deref() == Some(notebook.as_str())
                 }))
@@ -967,12 +985,15 @@ impl LibrarySync {
         }
     }
 
+    /// `protect_deletion`:这份更新来自本机发起的协作主题。协作者删不掉发起人的
+    /// 主题 —— 主题行的删除时间保留本机的,并把本机的状态写回文档。
     fn materialize(
         &self,
         tx: &ReplicaTransaction,
         doc_id: &str,
         doc: &LoroDoc,
         after: &mut Aftermath,
+        protect_deletion: bool,
     ) -> Result<(), ReplicaError> {
         match parse_doc(doc_id) {
             Some(DocRef::Recording(session)) => {
@@ -1018,21 +1039,40 @@ impl LibrarySync {
                 facts::clear_change(tx, &ChangedScope::Recording(session.to_string()))
             }
             Some(DocRef::Topic(notebook)) => {
-                let Some(topic) = docs::read_topic(doc)? else {
+                let Some(mut topic) = docs::read_topic(doc)? else {
                     return Ok(());
                 };
+                let mut restore = false;
+                if protect_deletion {
+                    if let Some(local) = facts::read_topic(tx, notebook)? {
+                        let local_deleted = local
+                            .notebook
+                            .get("deleted_at")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null);
+                        if topic.notebook.get("deleted_at") != Some(&local_deleted) {
+                            topic.notebook.insert("deleted_at".into(), local_deleted);
+                            restore = true;
+                        }
+                    }
+                }
                 let outcome = facts::apply_topic(tx, &topic)?;
                 for waiting in outcome.waiting_recordings {
                     let id = recording_doc(&waiting);
                     if let Some(recording) = self.fact_doc(tx, &id)? {
-                        self.materialize(tx, &id, &recording, after)?;
+                        self.materialize(tx, &id, &recording, after, protect_deletion)?;
                     }
                 }
                 if outcome.created {
                     after.refresh = true;
                 }
                 after.library_changed = true;
-                facts::clear_change(tx, &ChangedScope::Topic(notebook.to_string()))
+                facts::clear_change(tx, &ChangedScope::Topic(notebook.to_string()))?;
+                if restore {
+                    // 下一轮导出把本机的状态写回文档,协作者那边跟着恢复。
+                    facts::mark_changed(tx, &ChangedScope::Topic(notebook.to_string()))?;
+                }
+                Ok(())
             }
             Some(DocRef::Library) => {
                 facts::apply_library(tx, &docs::read_library(doc)?)?;
@@ -1301,7 +1341,10 @@ impl LibrarySync {
             .ok_or_else(|| internal("本机还没有设备组"))?;
         let ticket = self
             .runtime
-            .block_on(self.engine.create_invite(&space, InvitePurpose::Device, ""))
+            .block_on(
+                self.engine
+                    .create_invite(&space, InvitePurpose::Device, "", ""),
+            )
             .map_err(internal)?;
         Ok(ticket.to_string())
     }
@@ -1312,13 +1355,13 @@ impl LibrarySync {
         }
     }
 
-    /// 用别人给的配对码加入。现在只处理加自己的 Mac;协作主题与备份各有入口。
+    /// 用别人给的码加入:加自己的 Mac,或加入协作主题。备份码不走这里。
     fn join(self: &Arc<Self>, code: &str) -> Result<FfiSyncJoinResult, CoreError> {
         let ticket: PairingTicket = code.parse().map_err(|_| sync_error("not_a_code"))?;
         if ticket.inviter.id == parse_device(&self.device_hex).expect("本机 id 合法") {
             return Err(sync_error("own_code"));
         }
-        if ticket.purpose != InvitePurpose::Device {
+        if ticket.purpose == InvitePurpose::Backup {
             return Err(sync_error("wrong_purpose"));
         }
         let joined = self
@@ -1328,17 +1371,282 @@ impl LibrarySync {
                 tracing::info!(%error, "同步:配对没有成功");
                 sync_error(pair_error_code(&error))
             })?;
-        match joined.purpose {
-            InvitePurpose::Device => self.adopt_device_group(&joined)?,
-            InvitePurpose::Topic | InvitePurpose::Backup => {
-                return Err(sync_error("wrong_purpose"))
+        let notebook_id = match joined.purpose {
+            InvitePurpose::Device => {
+                self.adopt_device_group(&joined)?;
+                None
             }
-        }
+            InvitePurpose::Topic => Some(self.adopt_topic_space(&joined)?),
+            InvitePurpose::Backup => return Err(sync_error("wrong_purpose")),
+        };
         Ok(FfiSyncJoinResult {
             purpose: joined.purpose.into(),
             label: joined.label,
             inviter_name: joined.inviter_name,
+            notebook_id,
         })
+    }
+
+    /// 加入别人邀请的协作主题。主题本身随后经同步到来。返回主题 id。
+    fn adopt_topic_space(self: &Arc<Self>, joined: &vt_sync::Joined) -> Result<String, CoreError> {
+        let notebook = joined.context.trim().to_string();
+        if notebook.is_empty() || notebook.contains(['/', '\\']) {
+            return Err(sync_error("interrupted"));
+        }
+        // 同一个主题之前加入过(比如退出后又被邀请):换成新的空间。
+        if let Some((old, _)) = self.topic_space(&notebook) {
+            self.drop_space(&old).map_err(internal)?;
+        }
+        let row = SpaceRow {
+            space_id: joined.space.to_hex(),
+            kind: "topic".into(),
+            role: "member".into(),
+            notebook_id: Some(notebook.clone()),
+            label: joined.label.clone(),
+        };
+        {
+            let _gate = self.gate.lock().unwrap();
+            self.replica
+                .write(|tx| {
+                    facts::insert_space(tx, &row)?;
+                    let roster = self.fact_doc_or_new(tx, &roster_doc(&joined.space))?;
+                    docs::put_member(&roster, &self.device_hex, &self.device_name.lock().unwrap())?;
+                    docs::put_member(&roster, &device_hex(&joined.inviter), &joined.inviter_name)?;
+                    self.save_fact_doc(tx, &roster_doc(&joined.space), &roster)
+                })
+                .map_err(internal)?;
+        }
+        self.register_space(&row);
+        self.wake.notify_one();
+        Ok(notebook)
+    }
+
+    /// 本机在协作的这个主题的空间,以及本机是不是发起人。
+    fn topic_space(&self, notebook: &str) -> Option<(SpaceId, bool)> {
+        self.spaces
+            .read()
+            .unwrap()
+            .iter()
+            .find_map(|(id, kind)| match kind {
+                SpaceKind::Topic { notebook: n, owner } if n == notebook => Some((*id, *owner)),
+                _ => None,
+            })
+    }
+
+    /// 在本机把一个空间整个撤掉:引擎不再同步它,空间记录与名单文档删掉。
+    fn drop_space(&self, space: &SpaceId) -> Result<(), ReplicaError> {
+        self.engine.remove_space(space);
+        self.spaces.write().unwrap().remove(space);
+        let _gate = self.gate.lock().unwrap();
+        self.replica.write(|tx| {
+            facts::delete_space(tx, &space.to_hex())?;
+            self.forget_fact_doc(tx, &roster_doc(space))
+        })?;
+        self.rosters.write().unwrap().remove(space);
+        Ok(())
+    }
+
+    /// 发起协作:本机还没有这个主题的空间就建一个,本机是发起人。
+    fn share_topic(self: &Arc<Self>, notebook: &str) -> Result<SpaceId, CoreError> {
+        if let Some((space, _)) = self.topic_space(notebook) {
+            return Ok(space);
+        }
+        let core = self.core.upgrade().ok_or_else(|| internal("核心已关闭"))?;
+        let topic = core
+            .notebook_store
+            .get_notebook(notebook)
+            .ok()
+            .flatten()
+            .ok_or_else(|| sync_error("topic_missing"))?;
+        if topic.deleted_at.is_some()
+            || notebook == self.unfiled
+            || topic
+                .title
+                .starts_with(facts::INTERNAL_NOTEBOOK_TITLE_PREFIX)
+        {
+            return Err(sync_error("topic_not_shareable"));
+        }
+        let space = SpaceId::generate();
+        let row = SpaceRow {
+            space_id: space.to_hex(),
+            kind: "topic".into(),
+            role: "owner".into(),
+            notebook_id: Some(notebook.to_string()),
+            label: topic.title,
+        };
+        {
+            let _gate = self.gate.lock().unwrap();
+            self.replica
+                .write(|tx| {
+                    facts::insert_space(tx, &row)?;
+                    let roster = self.fact_doc_or_new(tx, &roster_doc(&space))?;
+                    docs::put_member(&roster, &self.device_hex, &self.device_name.lock().unwrap())?;
+                    self.save_fact_doc(tx, &roster_doc(&space), &roster)
+                })
+                .map_err(internal)?;
+        }
+        self.register_space(&row);
+        Ok(space)
+    }
+
+    fn create_topic_invite(self: &Arc<Self>, notebook: &str) -> Result<String, CoreError> {
+        let space = self.share_topic(notebook)?;
+        let core = self.core.upgrade().ok_or_else(|| internal("核心已关闭"))?;
+        let title = core
+            .notebook_store
+            .get_notebook(notebook)
+            .ok()
+            .flatten()
+            .map(|topic| topic.title)
+            .unwrap_or_default();
+        let ticket = self
+            .runtime
+            .block_on(
+                self.engine
+                    .create_invite(&space, InvitePurpose::Topic, &title, notebook),
+            )
+            .map_err(internal)?;
+        Ok(ticket.to_string())
+    }
+
+    fn topic_status(&self, notebook: &str) -> FfiTopicCollaboration {
+        let Some((space, owner)) = self.topic_space(notebook) else {
+            return FfiTopicCollaboration {
+                shared: false,
+                is_owner: false,
+                removed: false,
+                members: Vec::new(),
+            };
+        };
+        let roster = self.roster(&space);
+        let peers: HashMap<String, vt_sync::PeerStatus> = self
+            .engine
+            .peers(&space)
+            .into_iter()
+            .map(|peer| (device_hex(&peer.device), peer))
+            .collect();
+        let members = roster
+            .members()
+            .map(|(hex, name)| {
+                let peer = peers.get(hex);
+                FfiSyncDevice {
+                    device_id: hex.clone(),
+                    name: name.clone(),
+                    is_this_device: *hex == self.device_hex,
+                    connected: peer.is_some_and(|p| p.connected),
+                    via_relay: peer.is_some_and(|p| p.via_relay),
+                    last_synced_unix_ms: peer.and_then(|p| p.last_synced_unix_ms),
+                }
+            })
+            .collect();
+        FfiTopicCollaboration {
+            shared: true,
+            is_owner: owner,
+            removed: roster.removed.contains_key(&self.device_hex),
+            members,
+        }
+    }
+
+    /// 发起人把一位协作者移出。和移除自己的 Mac 一样:先让对方收到名单,再断开。
+    fn remove_topic_member(&self, notebook: &str, device: &str) -> Result<(), CoreError> {
+        let (space, owner) = self
+            .topic_space(notebook)
+            .ok_or_else(|| sync_error("not_shared"))?;
+        if !owner {
+            return Err(sync_error("not_owner"));
+        }
+        if device == self.device_hex {
+            return Err(sync_error("cannot_remove_self"));
+        }
+        self.strike_off(&space, &[device.to_string()])
+    }
+
+    /// 在一个空间的名单上划掉这些设备,名单先发出去,两秒后断开。
+    fn strike_off(&self, space: &SpaceId, devices: &[String]) -> Result<(), CoreError> {
+        let id = roster_doc(space);
+        {
+            let _gate = self.gate.lock().unwrap();
+            self.replica
+                .write(|tx| {
+                    let doc = self.fact_doc_or_new(tx, &id)?;
+                    for device in devices {
+                        docs::remove_member(&doc, device, &now())?;
+                        facts::mark_removed(tx, &space.to_hex(), device)?;
+                    }
+                    self.save_fact_doc(tx, &id, &doc)
+                })
+                .map_err(internal)?;
+        }
+        self.engine.notify_changed(space, &id);
+        let sync = self.core.upgrade().and_then(|core| core.library_sync.get());
+        let space = *space;
+        self.runtime.spawn(async move {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            if let Some(sync) = sync {
+                sync.engine.members_changed(&space);
+            }
+        });
+        Ok(())
+    }
+
+    /// 协作者退出:在名单上划掉自己、尽量让对方知道,然后撤掉本机的空间。
+    /// 主题留在本机,成了一个普通主题。
+    fn leave_topic(&self, notebook: &str) -> Result<(), CoreError> {
+        let (space, owner) = self
+            .topic_space(notebook)
+            .ok_or_else(|| sync_error("not_shared"))?;
+        if owner {
+            return self.stop_sharing_topic(notebook);
+        }
+        let id = roster_doc(&space);
+        let wrote = {
+            let _gate = self.gate.lock().unwrap();
+            self.replica.write(|tx| {
+                let doc = self.fact_doc_or_new(tx, &id)?;
+                let changed = docs::remove_member(&doc, &self.device_hex, &now())?;
+                if changed {
+                    self.save_fact_doc(tx, &id, &doc)?;
+                }
+                Ok(changed)
+            })
+        };
+        if matches!(wrote, Ok(true)) && self.engine.peers(&space).iter().any(|p| p.connected) {
+            self.engine.notify_changed(&space, &id);
+            std::thread::sleep(Duration::from_millis(1_500));
+        }
+        self.drop_space(&space).map_err(internal)
+    }
+
+    /// 发起人停止协作:所有协作者都划掉(在线的马上知道),本机撤掉空间。
+    fn stop_sharing_topic(&self, notebook: &str) -> Result<(), CoreError> {
+        let (space, _) = self
+            .topic_space(notebook)
+            .ok_or_else(|| sync_error("not_shared"))?;
+        let others: Vec<String> = self
+            .roster(&space)
+            .members()
+            .map(|(hex, _)| hex.clone())
+            .filter(|hex| *hex != self.device_hex)
+            .collect();
+        if !others.is_empty() {
+            self.strike_off(&space, &others)?;
+            if self.engine.peers(&space).iter().any(|p| p.connected) {
+                std::thread::sleep(Duration::from_millis(1_500));
+            }
+        }
+        self.drop_space(&space).map_err(internal)
+    }
+
+    fn shared_topics(&self) -> Vec<String> {
+        self.spaces
+            .read()
+            .unwrap()
+            .values()
+            .filter_map(|kind| match kind {
+                SpaceKind::Topic { notebook, .. } => Some(notebook.clone()),
+                SpaceKind::Devices => None,
+            })
+            .collect()
     }
 
     /// 换上对方的设备组。本机的录音与主题原样留着,稍后全部导出给新组;
@@ -1632,6 +1940,18 @@ impl ZuTalkCore {
         self.library_sync.note_changed(doc_id);
     }
 
+    /// 本机要删一个在协作的主题:先退出(发起人则停止)协作,删除只发生在本机。
+    /// 否则删除会传给对方,对方的主题连同里面的录音一起不见了。
+    pub(crate) fn library_sync_before_topic_deleted(&self, notebook_id: &str) {
+        if let Some(sync) = self.library_sync.get() {
+            if sync.topic_space(notebook_id).is_some() {
+                if let Err(error) = sync.leave_topic(notebook_id) {
+                    tracing::warn!(%error, "同步:删主题前退出协作失败");
+                }
+            }
+        }
+    }
+
     fn builtin_tab(
         &self,
         notebook: &str,
@@ -1830,6 +2150,21 @@ pub struct FfiSyncJoinResult {
     pub purpose: FfiSyncInvitePurpose,
     pub label: String,
     pub inviter_name: String,
+    /// 加入的是协作主题时,主题的 id(主题随后经同步到来)。
+    pub notebook_id: Option<String>,
+}
+
+/// 一个主题的协作状态。
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FfiTopicCollaboration {
+    /// 这个主题在和别人协作。
+    pub shared: bool,
+    /// 本机是发起协作的那台(能邀请、移出、停止)。
+    pub is_owner: bool,
+    /// 本机已经被发起人移出了。
+    pub removed: bool,
+    /// 名单上的设备,含本机。
+    pub members: Vec<FfiSyncDevice>,
 }
 
 #[uniffi::export]
@@ -1917,6 +2252,47 @@ impl ZuTalkCore {
         self.start_library_sync(name, options)
     }
 
+    /// 为一个主题生成协作邀请码。第一次邀请时本机成为发起人。十分钟内有效、
+    /// 只能用一次;对方用它加入之后,这个主题的录音、转录稿、笔记双方都能编辑。
+    pub fn sync_topic_invite(&self, notebook_id: String) -> Result<String, CoreError> {
+        self.running_sync()?.create_topic_invite(&notebook_id)
+    }
+
+    pub fn sync_topic_status(&self, notebook_id: String) -> FfiTopicCollaboration {
+        match self.library_sync.get() {
+            Some(sync) => sync.topic_status(&notebook_id),
+            None => FfiTopicCollaboration {
+                shared: false,
+                is_owner: false,
+                removed: false,
+                members: Vec::new(),
+            },
+        }
+    }
+
+    /// 发起人把一位协作者移出这个主题。
+    pub fn sync_remove_topic_member(
+        &self,
+        notebook_id: String,
+        device_id: String,
+    ) -> Result<(), CoreError> {
+        self.running_sync()?
+            .remove_topic_member(&notebook_id, &device_id)
+    }
+
+    /// 协作者退出;发起人调用时等于停止协作。主题留在本机。
+    pub fn sync_leave_topic(&self, notebook_id: String) -> Result<(), CoreError> {
+        self.running_sync()?.leave_topic(&notebook_id)
+    }
+
+    /// 本机在协作的主题。
+    pub fn sync_shared_topics(&self) -> Vec<String> {
+        self.library_sync
+            .get()
+            .map(|sync| sync.shared_topics())
+            .unwrap_or_default()
+    }
+
     /// 这场录音是在哪台 Mac 上录的;本机录的为空。
     pub fn session_recorded_on(&self, session_id: String) -> Option<String> {
         self.recorded_elsewhere(&session_id)
@@ -1972,7 +2348,11 @@ mod tests {
 
     /// 在一台 Mac 上录完一场:一个主题、一场录完的录音、两句话。
     fn record(core: &ZuTalkCore, sid: &str) -> String {
-        let notebook = core.create_notebook(Some("周会".into())).unwrap();
+        record_in(core, sid, "周会")
+    }
+
+    fn record_in(core: &ZuTalkCore, sid: &str, topic: &str) -> String {
+        let notebook = core.create_notebook(Some(topic.into())).unwrap();
         let initial = core
             .notebook_capture_store
             .get_or_create_profile(&notebook.id)
@@ -2218,6 +2598,142 @@ mod tests {
 
         studio.sync_stop();
         laptop.sync_stop();
+    }
+
+    fn topic_title(core: &ZuTalkCore, notebook: &str) -> Option<String> {
+        core.notebook_store
+            .get_notebook(notebook)
+            .ok()
+            .flatten()
+            .filter(|topic| topic.deleted_at.is_none())
+            .map(|topic| topic.title)
+    }
+
+    #[test]
+    fn a_colleague_invited_to_one_topic_gets_that_topic_and_nothing_else() {
+        let (_a, studio) = core();
+        let (_b, laptop) = core();
+        let (_c, colleague) = core();
+        let shared = record_in(&studio, "shared-rec", "周会");
+        let private = record_in(&studio, "private-rec", "私事");
+        start(&studio, "我的工作室");
+        start(&laptop, "我的笔记本");
+        start(&colleague, "同事的 Mac");
+        pair(&studio, &laptop);
+
+        let code = studio.sync_topic_invite(shared.clone()).unwrap();
+        assert_eq!(
+            colleague.sync_describe_code(code.clone()).unwrap(),
+            FfiSyncInvitePurpose::Topic
+        );
+        let joined = colleague.sync_join(code).unwrap();
+        assert_eq!(joined.purpose, FfiSyncInvitePurpose::Topic);
+        assert_eq!(joined.label, "周会");
+        assert_eq!(joined.notebook_id.as_deref(), Some(shared.as_str()));
+
+        eventually("同事拿到周会和里面的录音", || {
+            topic_title(&colleague, &shared).as_deref() == Some("周会")
+                && texts(&colleague, &shared, "shared-rec") == ["大家早上好", "今天先过一下进度"]
+        });
+        // 别的主题、别的录音都不出去。
+        std::thread::sleep(Duration::from_secs(1));
+        assert!(topic_title(&colleague, &private).is_none());
+        assert!(title_of(&colleague, "private-rec").is_none());
+        let status = studio.sync_topic_status(shared.clone());
+        assert!(status.shared && status.is_owner);
+        assert_eq!(status.members.len(), 2);
+        assert_eq!(colleague.sync_shared_topics(), vec![shared.clone()]);
+
+        // 同事改标题:回到我这台,再经设备组到我的笔记本。
+        colleague
+            .rename_session("shared-rec".into(), "周会(同事整理)".into())
+            .unwrap();
+        eventually("我的工作室收到", || {
+            title_of(&studio, "shared-rec").as_deref() == Some("周会(同事整理)")
+        });
+        eventually("我的笔记本也收到", || {
+            title_of(&laptop, "shared-rec").as_deref() == Some("周会(同事整理)")
+        });
+
+        // 同事删掉这个主题:只是退出协作,我这边的主题完好。
+        colleague.delete_notebook(shared.clone()).unwrap();
+        assert!(!colleague.sync_topic_status(shared.clone()).shared);
+        eventually("名单上没有同事了", || {
+            studio.sync_topic_status(shared.clone()).members.len() == 1
+        });
+        std::thread::sleep(Duration::from_secs(1));
+        assert_eq!(topic_title(&studio, &shared).as_deref(), Some("周会"));
+        assert_eq!(topic_title(&laptop, &shared).as_deref(), Some("周会"));
+
+        for core in [&studio, &laptop, &colleague] {
+            core.sync_stop();
+        }
+    }
+
+    #[test]
+    fn a_colleague_removed_from_a_topic_knows_it() {
+        let (_a, studio) = core();
+        let (_c, colleague) = core();
+        let shared = record(&studio, "shared-rec");
+        start(&studio, "我的工作室");
+        start(&colleague, "同事的 Mac");
+        let joined = colleague
+            .sync_join(studio.sync_topic_invite(shared.clone()).unwrap())
+            .unwrap();
+        assert_eq!(joined.notebook_id.as_deref(), Some(shared.as_str()));
+        eventually("同事拿到录音", || {
+            title_of(&colleague, "shared-rec").is_some()
+        });
+
+        let colleague_id = colleague.sync_status().device_id;
+        assert!(matches!(
+            colleague.sync_remove_topic_member(shared.clone(), studio.sync_status().device_id),
+            Err(CoreError::ValidationFailed { ref message }) if message == "sync.error.not_owner"
+        ));
+        studio
+            .sync_remove_topic_member(shared.clone(), colleague_id)
+            .unwrap();
+        eventually("同事知道自己被移出了", || {
+            colleague.sync_topic_status(shared.clone()).removed
+        });
+        // 他手上的副本还在。
+        assert!(title_of(&colleague, "shared-rec").is_some());
+
+        studio.sync_stop();
+        colleague.sync_stop();
+    }
+
+    #[test]
+    fn the_owner_deleting_a_shared_topic_leaves_colleagues_their_copy() {
+        let (_a, studio) = core();
+        let (_c, colleague) = core();
+        let shared = record_in(&studio, "shared-rec", "周会");
+        start(&studio, "我的工作室");
+        start(&colleague, "同事的 Mac");
+        colleague
+            .sync_join(studio.sync_topic_invite(shared.clone()).unwrap())
+            .unwrap();
+        eventually("同事拿到录音", || {
+            title_of(&colleague, "shared-rec").is_some()
+        });
+
+        // 发起人删主题:先停止协作,删除不会传给同事。
+        studio.delete_notebook(shared.clone()).unwrap();
+        assert!(studio.sync_shared_topics().is_empty());
+        eventually("同事知道协作停了", || {
+            colleague.sync_topic_status(shared.clone()).removed
+        });
+        std::thread::sleep(Duration::from_secs(1));
+        assert_eq!(topic_title(&colleague, &shared).as_deref(), Some("周会"));
+        assert!(title_of(&colleague, "shared-rec").is_some());
+
+        // 同事那边退出之后,主题成了他自己的普通主题。
+        colleague.sync_leave_topic(shared.clone()).unwrap();
+        assert!(!colleague.sync_topic_status(shared.clone()).shared);
+        assert_eq!(topic_title(&colleague, &shared).as_deref(), Some("周会"));
+
+        studio.sync_stop();
+        colleague.sync_stop();
     }
 
     #[test]

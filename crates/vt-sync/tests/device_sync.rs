@@ -217,7 +217,7 @@ impl Mac {
 
     async fn invite(&self) -> PairingTicket {
         self.engine
-            .create_invite(&self.group(), InvitePurpose::Device, "")
+            .create_invite(&self.group(), InvitePurpose::Device, "", "")
             .await
             .unwrap()
     }
@@ -562,7 +562,7 @@ async fn a_topic_space_shares_only_its_own_documents() {
         .add_space(topic_space, view(&mine.store, TOPIC), topic_roster.clone());
     let ticket = mine
         .engine
-        .create_invite(&topic_space, InvitePurpose::Topic, "周会")
+        .create_invite(&topic_space, InvitePurpose::Topic, "周会", "topic-1")
         .await
         .unwrap();
     assert_eq!(ticket.purpose, InvitePurpose::Topic);
@@ -570,6 +570,7 @@ async fn a_topic_space_shares_only_its_own_documents() {
     let joined = colleague.engine.join(&ticket).await.expect("应当加入");
     assert_eq!(joined.purpose, InvitePurpose::Topic);
     assert_eq!(joined.label, "周会");
+    assert_eq!(joined.context, "topic-1");
     assert_eq!(joined.space, topic_space);
     colleague.engine.add_space(
         joined.space,

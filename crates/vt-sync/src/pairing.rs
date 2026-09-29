@@ -137,8 +137,10 @@ pub(crate) enum PairMessage {
     Accepted {
         space: SpaceId,
         purpose: InvitePurpose,
-        /// 邀请方给这个空间的说明(主题名等)。
+        /// 邀请方给这个空间的说明(主题名等),给人看。
         label: String,
+        /// 给应用自己用的上下文(比如协作主题的 id),不给人看。
+        context: String,
         inviter_name: String,
     },
     Rejected {
@@ -179,6 +181,7 @@ pub(crate) struct OpenInvite {
     pub(crate) space: SpaceId,
     pub(crate) purpose: InvitePurpose,
     pub(crate) label: String,
+    pub(crate) context: String,
 }
 
 /// 邀请方手里还没用掉的配对码。
@@ -194,6 +197,7 @@ impl InviteBook {
         space: SpaceId,
         purpose: InvitePurpose,
         label: String,
+        context: String,
         ttl: Duration,
     ) {
         let now = tokio::time::Instant::now();
@@ -205,6 +209,7 @@ impl InviteBook {
             space,
             purpose,
             label,
+            context,
         });
     }
 
@@ -273,6 +278,7 @@ mod tests {
             space,
             InvitePurpose::Device,
             String::new(),
+            String::new(),
             INVITE_TTL,
         );
 
@@ -296,6 +302,7 @@ mod tests {
             SpaceId::generate(),
             InvitePurpose::Device,
             String::new(),
+            String::new(),
             INVITE_TTL,
         );
         tokio::time::advance(INVITE_TTL + Duration::from_secs(1)).await;
@@ -314,6 +321,7 @@ mod tests {
             revoked,
             InvitePurpose::Topic,
             "周会".into(),
+            String::new(),
             INVITE_TTL,
         );
         book.issue(
@@ -321,6 +329,7 @@ mod tests {
             kept,
             InvitePurpose::Topic,
             "访谈".into(),
+            String::new(),
             INVITE_TTL,
         );
         book.revoke_space(&revoked);

@@ -1018,6 +1018,7 @@ struct NotebookResourcesView: View {
     @ObservedObject private var commands = CaptureCommandCenter.shared
     @State private var renamingTopic: TopicReference?
     @State private var deletingTopic: TopicReference?
+    @State private var collaboratingTopic: TopicReference?
     @State private var movingSession: NotebookResourceItem?
     @State private var searchText = ""
     @State private var isSelectingSessions = false
@@ -1188,7 +1189,8 @@ struct NotebookResourcesView: View {
                     title: notebookTitle ?? "",
                     recordingCount: viewModel.items.count,
                     renaming: $renamingTopic,
-                    deleting: $deletingTopic
+                    deleting: $deletingTopic,
+                    collaborating: $collaboratingTopic
                 )
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -1201,7 +1203,11 @@ struct NotebookResourcesView: View {
             .fixedSize()
             .help(String(localized: "topic.actions"))
             .accessibilityLabel(Text(String(localized: "topic.actions")))
-            .topicActionSheets(renaming: $renamingTopic, deleting: $deletingTopic)
+            .topicActionSheets(
+                renaming: $renamingTopic,
+                deleting: $deletingTopic,
+                collaborating: $collaboratingTopic
+            )
 
             Button(action: chooseAudioFile) {
                 Label(

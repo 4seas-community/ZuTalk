@@ -249,10 +249,19 @@ struct DevicesSettingsSection: View {
         let code = joinCode
         joinedWith = nil
         Task {
-            if let inviter = await store.join(code: code) {
-                joinedWith = inviter.isEmpty ? String(localized: "settings.devices.unnamed") : inviter
-                joinCode = ""
+            guard let joined = await store.join(code: code) else { return }
+            joinCode = ""
+            if joined.purpose == .topic, let notebook = joined.notebookId {
+                // 粘贴的是协作主题的码:加入之后直接去那个主题。
+                ToastCenter.shared.success(String(
+                    format: String(localized: "topic.collab.joined_format"), joined.label
+                ))
+                MainNavigationStore.shared.openTopicWorkspace(notebookID: notebook)
+                return
             }
+            joinedWith = joined.inviterName.isEmpty
+                ? String(localized: "settings.devices.unnamed")
+                : joined.inviterName
         }
     }
 

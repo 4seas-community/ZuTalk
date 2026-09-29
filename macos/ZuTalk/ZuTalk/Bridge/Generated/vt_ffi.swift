@@ -981,13 +981,28 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func syncLeaveGroup() throws  -> FfiSyncStatus
 
     /**
+     * 协作者退出;发起人调用时等于停止协作。主题留在本机。
+     */
+    func syncLeaveTopic(notebookId: String) throws
+
+    /**
      * 从设备组里移除一台 Mac。它自己留着已经同步到的资料,但再也连不进来。
      */
     func syncRemoveDevice(deviceId: String) throws
 
+    /**
+     * 发起人把一位协作者移出这个主题。
+     */
+    func syncRemoveTopicMember(notebookId: String, deviceId: String) throws
+
     func syncRenameDevice(name: String) throws
 
     func syncSetListener(listener: FfiSyncListener) throws
+
+    /**
+     * 本机在协作的主题。
+     */
+    func syncSharedTopics()  -> [String]
 
     /**
      * 打开设备同步。已经打开时只更新本机名字。
@@ -1000,6 +1015,14 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      * 关掉设备同步:断开所有连接。本机的资料原样留着。
      */
     func syncStop()
+
+    /**
+     * 为一个主题生成协作邀请码。第一次邀请时本机成为发起人。十分钟内有效、
+     * 只能用一次;对方用它加入之后,这个主题的录音、转录稿、笔记双方都能编辑。
+     */
+    func syncTopicInvite(notebookId: String) throws  -> String
+
+    func syncTopicStatus(notebookId: String)  -> FfiTopicCollaboration
 
     /**
      * 所有还有效的录音链接,新的在前。设置里「共享」一节据此列出此刻
@@ -2266,11 +2289,34 @@ open func syncLeaveGroup()throws  -> FfiSyncStatus  {
 }
 
     /**
+     * 协作者退出;发起人调用时等于停止协作。主题留在本机。
+     */
+open func syncLeaveTopic(notebookId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_leave_topic(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),$0
+    )
+}
+}
+
+    /**
      * 从设备组里移除一台 Mac。它自己留着已经同步到的资料,但再也连不进来。
      */
 open func syncRemoveDevice(deviceId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
     uniffi_vt_ffi_fn_method_zutalkcore_sync_remove_device(
             self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceId),$0
+    )
+}
+}
+
+    /**
+     * 发起人把一位协作者移出这个主题。
+     */
+open func syncRemoveTopicMember(notebookId: String, deviceId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_remove_topic_member(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),
         FfiConverterString.lower(deviceId),$0
     )
 }
@@ -2290,6 +2336,17 @@ open func syncSetListener(listener: FfiSyncListener)throws   {try rustCallWithEr
         FfiConverterCallbackInterfaceFfiSyncListener_lower(listener),$0
     )
 }
+}
+
+    /**
+     * 本机在协作的主题。
+     */
+open func syncSharedTopics() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_shared_topics(
+            self.uniffiCloneHandle(),$0
+    )
+})
 }
 
     /**
@@ -2320,6 +2377,28 @@ open func syncStop()  {try! rustCall() {
             self.uniffiCloneHandle(),$0
     )
 }
+}
+
+    /**
+     * 为一个主题生成协作邀请码。第一次邀请时本机成为发起人。十分钟内有效、
+     * 只能用一次;对方用它加入之后,这个主题的录音、转录稿、笔记双方都能编辑。
+     */
+open func syncTopicInvite(notebookId: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_topic_invite(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),$0
+    )
+})
+}
+
+open func syncTopicStatus(notebookId: String) -> FfiTopicCollaboration  {
+    return try!  FfiConverterTypeFfiTopicCollaboration_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_topic_status(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),$0
+    )
+})
 }
 
     /**
@@ -6846,13 +6925,21 @@ public struct FfiSyncJoinResult: Equatable, Hashable {
     public var purpose: FfiSyncInvitePurpose
     public var label: String
     public var inviterName: String
+    /**
+     * 加入的是协作主题时,主题的 id(主题随后经同步到来)。
+     */
+    public var notebookId: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(purpose: FfiSyncInvitePurpose, label: String, inviterName: String) {
+    public init(purpose: FfiSyncInvitePurpose, label: String, inviterName: String,
+        /**
+         * 加入的是协作主题时,主题的 id(主题随后经同步到来)。
+         */notebookId: String?) {
         self.purpose = purpose
         self.label = label
         self.inviterName = inviterName
+        self.notebookId = notebookId
     }
 
 
@@ -6873,7 +6960,8 @@ public struct FfiConverterTypeFfiSyncJoinResult: FfiConverterRustBuffer {
             try FfiSyncJoinResult(
                 purpose: FfiConverterTypeFfiSyncInvitePurpose.read(from: &buf),
                 label: FfiConverterString.read(from: &buf),
-                inviterName: FfiConverterString.read(from: &buf)
+                inviterName: FfiConverterString.read(from: &buf),
+                notebookId: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -6881,6 +6969,7 @@ public struct FfiConverterTypeFfiSyncJoinResult: FfiConverterRustBuffer {
         FfiConverterTypeFfiSyncInvitePurpose.write(value.purpose, into: &buf)
         FfiConverterString.write(value.label, into: &buf)
         FfiConverterString.write(value.inviterName, into: &buf)
+        FfiConverterOptionString.write(value.notebookId, into: &buf)
     }
 }
 
@@ -6975,6 +7064,95 @@ public func FfiConverterTypeFfiSyncStatus_lift(_ buf: RustBuffer) throws -> FfiS
 #endif
 public func FfiConverterTypeFfiSyncStatus_lower(_ value: FfiSyncStatus) -> RustBuffer {
     return FfiConverterTypeFfiSyncStatus.lower(value)
+}
+
+
+/**
+ * 一个主题的协作状态。
+ */
+public struct FfiTopicCollaboration: Equatable, Hashable {
+    /**
+     * 这个主题在和别人协作。
+     */
+    public var shared: Bool
+    /**
+     * 本机是发起协作的那台(能邀请、移出、停止)。
+     */
+    public var isOwner: Bool
+    /**
+     * 本机已经被发起人移出了。
+     */
+    public var removed: Bool
+    /**
+     * 名单上的设备,含本机。
+     */
+    public var members: [FfiSyncDevice]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 这个主题在和别人协作。
+         */shared: Bool,
+        /**
+         * 本机是发起协作的那台(能邀请、移出、停止)。
+         */isOwner: Bool,
+        /**
+         * 本机已经被发起人移出了。
+         */removed: Bool,
+        /**
+         * 名单上的设备,含本机。
+         */members: [FfiSyncDevice]) {
+        self.shared = shared
+        self.isOwner = isOwner
+        self.removed = removed
+        self.members = members
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiTopicCollaboration: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiTopicCollaboration: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiTopicCollaboration {
+        return
+            try FfiTopicCollaboration(
+                shared: FfiConverterBool.read(from: &buf),
+                isOwner: FfiConverterBool.read(from: &buf),
+                removed: FfiConverterBool.read(from: &buf),
+                members: FfiConverterSequenceTypeFfiSyncDevice.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiTopicCollaboration, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.shared, into: &buf)
+        FfiConverterBool.write(value.isOwner, into: &buf)
+        FfiConverterBool.write(value.removed, into: &buf)
+        FfiConverterSequenceTypeFfiSyncDevice.write(value.members, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiTopicCollaboration_lift(_ buf: RustBuffer) throws -> FfiTopicCollaboration {
+    return try FfiConverterTypeFfiTopicCollaboration.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiTopicCollaboration_lower(_ value: FfiTopicCollaboration) -> RustBuffer {
+    return FfiConverterTypeFfiTopicCollaboration.lower(value)
 }
 
 
@@ -10573,13 +10751,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_leave_group() != 61370) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_leave_topic() != 41912) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_remove_device() != 33379) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_remove_topic_member() != 49921) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_rename_device() != 15695) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_set_listener() != 42255) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_shared_topics() != 39647) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_start() != 40995) {
@@ -10589,6 +10776,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_stop() != 36851) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_topic_invite() != 31387) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_topic_status() != 57597) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_all_recording_links() != 28687) {

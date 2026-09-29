@@ -114,6 +114,8 @@ pub struct Joined {
     pub purpose: InvitePurpose,
     /// 邀请方给这个空间的说明,比如主题名。设备组为空。
     pub label: String,
+    /// 邀请方给应用自己的上下文,比如协作主题在邀请方那里的 id。
+    pub context: String,
     pub inviter: EndpointId,
     pub inviter_name: String,
 }
@@ -323,12 +325,14 @@ impl SyncEngine {
     }
 
     /// 为一个空间生成一张配对码,在 [`SyncConfig::invite_ttl`] 内有效、只能用一次。
-    /// `label` 在配对成功后交给加入方(比如主题名),不写进配对码本身。
+    /// `label`(给人看,比如主题名)与 `context`(给应用用)在配对成功后交给
+    /// 加入方,不写进配对码本身。
     pub async fn create_invite(
         &self,
         space: &SpaceId,
         purpose: InvitePurpose,
         label: &str,
+        context: &str,
     ) -> Result<PairingTicket, SyncError> {
         if self.host.space(space).is_none() {
             return Err(SyncError::UnknownSpace);
@@ -339,6 +343,7 @@ impl SyncEngine {
             *space,
             purpose,
             label.to_string(),
+            context.to_string(),
             self.host.config.invite_ttl,
         );
         Ok(PairingTicket::new(self.addr().await, secret, purpose))
@@ -387,11 +392,13 @@ impl SyncEngine {
                 space,
                 purpose,
                 label,
+                context,
                 inviter_name,
             } => Ok(Joined {
                 space,
                 purpose,
                 label: sanitize_device_name(&label),
+                context: context.chars().take(256).collect(),
                 inviter,
                 inviter_name: sanitize_device_name(&inviter_name),
             }),
@@ -757,6 +764,7 @@ impl ProtocolHandler for PairAcceptor {
                                 space: invite.space,
                                 purpose: invite.purpose,
                                 label: invite.label,
+                                context: invite.context,
                                 inviter_name: host.config.device_name.clone(),
                             }
                         }

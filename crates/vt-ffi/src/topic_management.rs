@@ -91,6 +91,7 @@ impl ZuTalkCore {
     /// Returns how many recordings were moved out.
     pub fn delete_notebook(&self, notebook_id: String) -> Result<u32, CoreError> {
         self.user_topic(&notebook_id)?;
+        self.library_sync_before_topic_deleted(&notebook_id);
         let unfiled = self.get_quick_capture_notebook()?.id;
         let linked = self
             .notebook_store

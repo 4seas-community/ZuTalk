@@ -37,6 +37,8 @@ final class DeviceSyncStore: ObservableObject {
     @Published private(set) var problem: String?
 
     private var refreshTimer: Timer?
+    /// 正在进行的启动。协作主题要等它完成才能邀请。
+    private var startTask: Task<Void, Never>?
 
     private init() {
         let defaults = UserDefaults.standard
@@ -79,11 +81,20 @@ final class DeviceSyncStore: ObservableObject {
         }
     }
 
+    /// 协作主题、加入配对码都要同步引擎在跑:没开的替用户打开,等它起来。
+    func ensureRunning() async -> Bool {
+        if enabled == false {
+            setEnabled(true)
+        }
+        await startTask?.value
+        return status?.running == true
+    }
+
     private func start() {
         guard let core = CoreClient.shared.core else { return }
         let name = deviceName
         busy = true
-        Task {
+        startTask = Task {
             let result = await Task.detached { Result { try core.syncStart(deviceName: name) } }.value
             busy = false
             switch result {
@@ -180,11 +191,12 @@ final class DeviceSyncStore: ObservableObject {
         ToastCenter.shared.success(String(localized: "sync.invite.copied"))
     }
 
-    /// 在新的这台上输入另一台给的配对码。成功返回邀请方的名字。
-    func join(code: String) async -> String? {
+    /// 输入别人给的配对码:加自己的 Mac,或加入协作主题,按码的用途分流。
+    func join(code: String) async -> FfiSyncJoinResult? {
         guard let core = CoreClient.shared.core else { return nil }
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        guard await ensureRunning() else { return nil }
         busy = true
         problem = nil
         let result = await Task.detached { Result { try core.syncJoin(code: trimmed) } }.value
@@ -193,11 +205,45 @@ final class DeviceSyncStore: ObservableObject {
         case .success(let joined):
             refresh()
             NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
-            return joined.inviterName
+            return joined
         case .failure(let error):
             problem = Self.describe(error)
             return nil
         }
+    }
+
+    // MARK: - 协作主题
+
+    /// 为一个主题生成协作邀请码。同步没开的先打开。
+    func topicInvite(notebookId: String) async -> Result<String, Error> {
+        guard let core = CoreClient.shared.core else { return .failure(CoreError.NotFound(message: "core")) }
+        guard await ensureRunning() else {
+            return .failure(CoreError.ValidationFailed(message: "sync.error.not_running"))
+        }
+        return await Task.detached { Result { try core.syncTopicInvite(notebookId: notebookId) } }.value
+    }
+
+    func topicStatus(notebookId: String) -> FfiTopicCollaboration? {
+        guard enabled, let core = CoreClient.shared.core else { return nil }
+        return core.syncTopicStatus(notebookId: notebookId)
+    }
+
+    func removeTopicMember(notebookId: String, deviceId: String) async -> Error? {
+        guard let core = CoreClient.shared.core else { return nil }
+        let result = await Task.detached {
+            Result { try core.syncRemoveTopicMember(notebookId: notebookId, deviceId: deviceId) }
+        }.value
+        if case .failure(let error) = result { return error }
+        return nil
+    }
+
+    /// 协作者退出;发起人调用时停止协作。主题留在本机。
+    func leaveTopic(notebookId: String) async -> Error? {
+        guard let core = CoreClient.shared.core else { return nil }
+        let result = await Task.detached { Result { try core.syncLeaveTopic(notebookId: notebookId) } }.value
+        if case .failure(let error) = result { return error }
+        NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
+        return nil
     }
 
     /// 让这台离开设备组(或被移出之后重新开始):换一个新身份,从只有自己开始。
@@ -249,6 +295,11 @@ final class DeviceSyncStore: ObservableObject {
             case "sync.error.interrupted": return String(localized: "sync.error.interrupted")
             case "sync.error.cannot_remove_self": return String(localized: "sync.error.cannot_remove_self")
             case "sync.error.audio_elsewhere": return String(localized: "sync.error.audio_elsewhere")
+            case "sync.error.not_owner": return String(localized: "sync.error.not_owner")
+            case "sync.error.not_shared": return String(localized: "sync.error.not_shared")
+            case "sync.error.topic_missing": return String(localized: "sync.error.topic_missing")
+            case "sync.error.topic_not_shareable": return String(localized: "sync.error.topic_not_shareable")
+            case "sync.error.not_running": return String(localized: "sync.error.not_running")
             default: break
             }
         }

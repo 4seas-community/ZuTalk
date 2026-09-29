@@ -669,6 +669,35 @@ pub fn is_internal_notebook(conn: &Connection, notebook_id: &str) -> Result<bool
         .is_some_and(|title| title.starts_with(INTERNAL_NOTEBOOK_TITLE_PREFIX)))
 }
 
+/// 一场录音此刻算在哪个主题(同 [`read_recording`] 的 `topic`,只查这一项)。
+/// 本机没有这场录音、或它在「未归入」里时为 `None`。
+pub fn recording_topic(
+    conn: &Connection,
+    session_id: &str,
+    unfiled_notebook: &str,
+) -> Result<Option<String>> {
+    let deferred: Option<String> = conn
+        .query_row(
+            "SELECT notebook_id FROM sync_deferred_membership WHERE session_id = ?1",
+            [session_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let linked: Option<String> = match deferred {
+        Some(notebook) => Some(notebook),
+        None => conn
+            .query_row(
+                "SELECT notebook_id FROM notebook_sessions WHERE session_id = ?1",
+                [session_id],
+                |row| row.get(0),
+            )
+            .optional()?,
+    };
+    Ok(linked
+        .filter(|notebook| notebook != unfiled_notebook)
+        .filter(|notebook| !is_internal_notebook(conn, notebook).unwrap_or(false)))
+}
+
 /// 本机所有录音与主题的 id。第一次同步、或加入设备组时全量导出用。
 pub fn all_recording_ids(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt = conn.prepare("SELECT id FROM session_records ORDER BY created_at, id")?;

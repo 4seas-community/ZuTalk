@@ -118,13 +118,14 @@ struct TopicReference: Identifiable, Equatable {
     let recordingCount: Int
 }
 
-/// Rename and Delete for a topic, for its card's context menu and its page.
+/// Rename, Collaborate and Delete for a topic, for its card's context menu and its page.
 struct TopicActionsMenu: View {
     let topicID: String
     let title: String
     let recordingCount: Int
     @Binding var renaming: TopicReference?
     @Binding var deleting: TopicReference?
+    @Binding var collaborating: TopicReference?
 
     var body: some View {
         let topic = TopicReference(id: topicID, title: title, recordingCount: recordingCount)
@@ -132,6 +133,11 @@ struct TopicActionsMenu: View {
             renaming = topic
         } label: {
             Label(String(localized: "library.rename.topic"), systemImage: "pencil")
+        }
+        Button {
+            collaborating = topic
+        } label: {
+            Label(String(localized: "topic.collab.menu"), systemImage: "person.2")
         }
         Divider()
         Button(role: .destructive) {
@@ -143,12 +149,17 @@ struct TopicActionsMenu: View {
 }
 
 extension View {
-    /// The rename sheet and delete confirmation that `TopicActionsMenu` asks for.
+    /// The rename sheet, collaboration sheet and delete confirmation that
+    /// `TopicActionsMenu` asks for.
     func topicActionSheets(
         renaming: Binding<TopicReference?>,
-        deleting: Binding<TopicReference?>
+        deleting: Binding<TopicReference?>,
+        collaborating: Binding<TopicReference?>
     ) -> some View {
-        sheet(item: renaming) { topic in
+        sheet(item: collaborating) { topic in
+            TopicCollaborationSheet(topicID: topic.id, title: topic.title)
+        }
+        .sheet(item: renaming) { topic in
             RenameSheet(
                 title: String(localized: "library.rename.topic"),
                 placeholder: String(localized: "home.notebook.new.help"),
@@ -175,12 +186,24 @@ extension View {
             }
             Button(String(localized: "common.cancel"), role: .cancel) {}
         } message: { topic in
-            Text(topic.recordingCount > 0
-                ? String(
-                    format: String(localized: "topic.delete.confirm_message_format"),
-                    Int64(topic.recordingCount)
-                )
-                : String(localized: "topic.delete.confirm_message_empty"))
+            Text(topicDeleteMessage(for: topic))
         }
     }
+}
+
+@MainActor
+private func topicDeleteMessage(for topic: TopicReference) -> String {
+    let base = topic.recordingCount > 0
+        ? String(
+            format: String(localized: "topic.delete.confirm_message_format"),
+            Int64(topic.recordingCount)
+        )
+        : String(localized: "topic.delete.confirm_message_empty")
+    // 共享中的主题:删掉之前先退出协作(发起人删则所有人都不再同步)。
+    guard let collab = DeviceSyncStore.shared.topicStatus(notebookId: topic.id), collab.shared else {
+        return base
+    }
+    return base + "\n\n" + (collab.isOwner
+        ? String(localized: "topic.collab.delete_note_owner")
+        : String(localized: "topic.collab.delete_note_member"))
 }

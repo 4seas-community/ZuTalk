@@ -54,6 +54,8 @@ struct TopicsView: View {
     @State private var isCreatingNotebook = false
     @State private var renamingTopic: TopicReference?
     @State private var deletingTopic: TopicReference?
+    @State private var collaboratingTopic: TopicReference?
+    @State private var isJoiningTopic = false
 
     private let columns = [
         GridItem(.adaptive(minimum: 250, maximum: 340), spacing: Spacing.md)
@@ -75,6 +77,23 @@ struct TopicsView: View {
                     }
 
                     Spacer(minLength: Spacing.md)
+
+                    Button {
+                        isJoiningTopic = true
+                    } label: {
+                        Label(String(localized: "topic.collab.join_button"), systemImage: "person.2")
+                            .font(.bodyMedium)
+                            .padding(.horizontal, Spacing.md)
+                            .frame(minHeight: 40)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.textPrimary)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Radius.sm)
+                            .strokeBorder(Color.borderGhost, lineWidth: Stroke.thin)
+                    )
+                    .help(String(localized: "topic.collab.join_explain"))
+                    .accessibilityIdentifier("topics.join")
 
                     Button {
                         isCreatingNotebook = true
@@ -135,7 +154,8 @@ struct TopicsView: View {
                                     title: notebook.title,
                                     recordingCount: viewModel.notebookSessionCounts[notebook.id] ?? 0,
                                     renaming: $renamingTopic,
-                                    deleting: $deletingTopic
+                                    deleting: $deletingTopic,
+                                    collaborating: $collaboratingTopic
                                 )
                             }
                         }
@@ -153,7 +173,14 @@ struct TopicsView: View {
         }
         .background(Color.bgRoot)
         .accessibilityIdentifier("topics.page")
-        .topicActionSheets(renaming: $renamingTopic, deleting: $deletingTopic)
+        .topicActionSheets(
+            renaming: $renamingTopic,
+            deleting: $deletingTopic,
+            collaborating: $collaboratingTopic
+        )
+        .sheet(isPresented: $isJoiningTopic, onDismiss: reload) {
+            JoinTopicSheet()
+        }
         .sheet(isPresented: $isCreatingNotebook) {
             HomeCreateNotebookSheet { title in
                 let created = viewModel.createNotebook(title: title)
