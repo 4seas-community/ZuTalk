@@ -508,6 +508,43 @@ final class EditorSurfaceTests: XCTestCase {
         )
     }
 
+    /// 另一台 Mac 同步过来的录音:音频在那台上,这里不给「转录」也不催添加密钥,
+    /// 只说去哪台转录。已经有精修结果的(随文档同步过来)照常什么也不显示。
+    func testAsyncPrimaryActionPointsToTheMacThatHasTheAudio() {
+        XCTAssertEqual(
+            AsyncTranscriptActionPolicy.primaryAction(
+                projectionState: NotebookAsyncProjectionState.none,
+                providerState: "none",
+                hasReadyPersonalKey: true,
+                recordedOn: "工作室"
+            ),
+            .audioElsewhere("工作室")
+        )
+        XCTAssertEqual(
+            AsyncTranscriptActionPolicy.primaryAction(
+                projectionState: NotebookAsyncProjectionState.none,
+                providerState: "none",
+                hasReadyPersonalKey: false,
+                recordedOn: ""
+            ),
+            .audioElsewhere("")
+        )
+        XCTAssertEqual(
+            AsyncTranscriptActionPolicy.primaryAction(
+                projectionState: .ready,
+                providerState: "completed",
+                hasReadyPersonalKey: true,
+                recordedOn: "工作室"
+            ),
+            .none
+        )
+        XCTAssertFalse(RecordingOrigin.audioElsewhereHint("工作室").isEmpty)
+        XCTAssertNotEqual(
+            RecordingOrigin.audioElsewhereHint("工作室"),
+            RecordingOrigin.audioElsewhereHint("")
+        )
+    }
+
     func testAsyncPrimaryActionKeepsCredentialRecoveryVisibleWithoutReuploadingFailures() {
         XCTAssertEqual(
             AsyncTranscriptActionPolicy.primaryAction(

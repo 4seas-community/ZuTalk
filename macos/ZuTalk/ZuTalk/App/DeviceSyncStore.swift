@@ -86,6 +86,8 @@ final class DeviceSyncStore: ObservableObject {
                 self.status = status
                 try? core.syncSetListener(listener: DeviceSyncListener())
                 startRefreshing()
+                // 列表可能在同步启动前就画好了:那时还叫不出「来自哪台」。
+                NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
             case .failure(let error):
                 problem = Self.describe(error)
                 DebugLog.warn("device sync failed to start", detail: "\(error)")

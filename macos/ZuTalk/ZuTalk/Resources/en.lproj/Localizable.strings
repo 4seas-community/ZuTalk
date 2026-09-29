@@ -1259,8 +1259,8 @@
 "sync.error.cannot_remove_self" = "This Mac can’t remove itself.";
 "sync.error.audio_elsewhere" = "The audio is on the Mac that recorded it — transcribe it there.";
 "sync.error.generic" = "Sync ran into a problem. Try again in a moment.";
-"recording.origin.badge_unknown" = "FROM ANOTHER MAC";
-"recording.origin.badge_format" = "FROM %@";
+"recording.origin.badge_unknown" = "From another Mac";
+"recording.origin.badge_format" = "From %@";
 "recording.origin.audio_elsewhere" = "On another Mac";
 "recording.origin.audio_on_format" = "On “%@”";
 "recording.origin.refine_elsewhere" = "Audio is on the Mac that recorded it — transcribe it there.";

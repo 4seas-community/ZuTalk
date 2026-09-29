@@ -1124,6 +1124,10 @@ private struct HomeSessionRow: View {
             parts.append((String(localized: "home.row.kind.import"), "square.and.arrow.down"))
         }
         parts.append((membershipLabel, topicTitle == nil ? "tray" : "folder"))
+        if let device = session.recordedOn {
+            // 另一台 Mac 录的:音频在那台上。
+            parts.append((RecordingOrigin.badge(device), "laptopcomputer"))
+        }
         return parts
     }
 
@@ -1185,6 +1189,9 @@ private struct HomeSessionRow: View {
         // VoiceOver order; title remains secondary and may be absent.
         var parts = [session.timeString, titleForDisplay]
         parts.append(membershipLabel)
+        if let device = session.recordedOn {
+            parts.append(RecordingOrigin.badge(device))
+        }
         parts.append(sessionKindLabel)
         if session.durationString.isEmpty == false {
             parts.append(session.durationString)

@@ -534,7 +534,8 @@ pub fn read_recording(
         .optional()?;
     let topic = deferred
         .or(linked)
-        .filter(|notebook| notebook != unfiled_notebook);
+        .filter(|notebook| notebook != unfiled_notebook)
+        .filter(|notebook| !is_internal_notebook(conn, notebook).unwrap_or(false));
 
     let mut section_titles = BTreeMap::new();
     {
@@ -653,6 +654,21 @@ pub fn read_library(conn: &Connection) -> Result<LibraryFacts> {
     })
 }
 
+/// 保留标题的内部笔记本(「未归入主题」、遗留的收件箱)不同步:它们每台设备各有
+/// 一个,放在里面的录音按「未归入」算。
+pub const INTERNAL_NOTEBOOK_TITLE_PREFIX: &str = "__zutalk_internal_";
+
+pub fn is_internal_notebook(conn: &Connection, notebook_id: &str) -> Result<bool> {
+    Ok(conn
+        .query_row(
+            "SELECT title FROM notebooks WHERE id = ?1",
+            [notebook_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .is_some_and(|title| title.starts_with(INTERNAL_NOTEBOOK_TITLE_PREFIX)))
+}
+
 /// 本机所有录音与主题的 id。第一次同步、或加入设备组时全量导出用。
 pub fn all_recording_ids(conn: &Connection) -> Result<Vec<String>> {
     let mut stmt = conn.prepare("SELECT id FROM session_records ORDER BY created_at, id")?;
@@ -663,10 +679,17 @@ pub fn all_recording_ids(conn: &Connection) -> Result<Vec<String>> {
 }
 
 pub fn all_topic_ids(conn: &Connection, unfiled_notebook: &str) -> Result<Vec<String>> {
-    let mut stmt =
-        conn.prepare("SELECT id FROM notebooks WHERE id <> ?1 ORDER BY created_at, id")?;
+    let mut stmt = conn.prepare(
+        "SELECT id FROM notebooks WHERE id <> ?1 AND title NOT LIKE ?2 ORDER BY created_at, id",
+    )?;
     let ids = stmt
-        .query_map([unfiled_notebook], |row| row.get(0))?
+        .query_map(
+            params![
+                unfiled_notebook,
+                format!("{INTERNAL_NOTEBOOK_TITLE_PREFIX}%")
+            ],
+            |row| row.get(0),
+        )?
         .collect::<rusqlite::Result<Vec<String>>>()?;
     Ok(ids)
 }

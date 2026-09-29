@@ -18,6 +18,11 @@
 //! 所以文档与表永远是一起提交的:崩溃不会留下「文档有、表没有」的状态,
 //! 下一次导出也就不会把对方的内容误当成本机删除。
 //!
+//! **锁的顺序**只有一个方向:`gate` → 数据库连接(`replica`)→ 其余的内存表
+//! (`cache`、`digests`、`session_notes`、`rosters`)。拿着内存表的锁绝不去读库 ——
+//! 先取出来、放开,再读。两台 Mac 联调时抓到过一次反过来的:摘要线程拿着录音笔记
+//! 的 id 表去读库,导出线程拿着库去清那张表,两边互等,主线程问状态也跟着卡死。
+//!
 //! **音频不在这里。** 这个模块只搬文字事实与文档字节;事实的列清单在
 //! vt-store 里是封闭的,见 `scripts/test_share_no_audio_gate.sh`。
 
@@ -213,6 +218,9 @@ pub(crate) struct LibrarySync {
     /// 录音笔记的文档 id → 录音 id。按需重建。
     session_notes: Mutex<Option<HashMap<String, String>>>,
     spaces: RwLock<HashMap<SpaceId, SpaceKind>>,
+    /// 各空间名单的内存快照。名单文档每次落库都刷新它;查状态、判断谁是成员
+    /// 只读它,不碰数据库 —— 界面每隔几秒在主线程上问一次,不能等导出事务。
+    rosters: RwLock<HashMap<SpaceId, docs::Roster>>,
     /// 导出与物化一次只做一件。
     gate: Mutex<()>,
     wake: tokio::sync::Notify,
@@ -246,7 +254,9 @@ impl LibrarySync {
         };
         let config = SyncConfig {
             relay_urls,
-            local_discovery: options.local_discovery.unwrap_or_else(default_local_discovery),
+            local_discovery: options
+                .local_discovery
+                .unwrap_or_else(default_local_discovery),
             device_name: device_name.clone(),
             loopback_only: options.loopback_only,
             ..SyncConfig::default()
@@ -268,6 +278,7 @@ impl LibrarySync {
             digests: Mutex::default(),
             session_notes: Mutex::default(),
             spaces: RwLock::default(),
+            rosters: RwLock::default(),
             gate: Mutex::new(()),
             wake: tokio::sync::Notify::new(),
             stopping: AtomicBool::new(false),
@@ -390,6 +401,13 @@ impl LibrarySync {
         let snapshot = doc.export(ExportMode::Snapshot).map_err(other)?;
         facts::save_document(tx, id, &snapshot)?;
         self.digests.lock().unwrap().remove(id);
+        if let Some(space) = match parse_doc(id) {
+            Some(DocRef::Roster(hex)) => SpaceId::from_hex(hex),
+            _ => None,
+        } {
+            let roster = self.load_roster(tx, &space)?;
+            self.rosters.write().unwrap().insert(space, roster);
+        }
         Ok(())
     }
 
@@ -421,14 +439,18 @@ impl LibrarySync {
         let vv = match parse_doc(doc)? {
             DocRef::Note(id) => self.note_vv(id)?,
             _ => {
-                if let Some(cached) = self.cache.lock().unwrap().get(doc) {
-                    cached.oplog_vv()
-                } else {
-                    let bytes = self
-                        .replica
-                        .read(|conn| facts::load_document(conn, doc))
-                        .ok()??;
-                    snapshot_vv(&bytes)?
+                // 先把缓存里的拿出来、放开缓存锁,再去读库:导出在数据库事务里
+                // 取缓存,锁的顺序只能是「数据库连接 → 缓存」。
+                let cached = self.cache.lock().unwrap().get(doc).map(LoroDoc::oplog_vv);
+                match cached {
+                    Some(vv) => vv,
+                    None => {
+                        let bytes = self
+                            .replica
+                            .read(|conn| facts::load_document(conn, doc))
+                            .ok()??;
+                        snapshot_vv(&bytes)?
+                    }
                 }
             }
         };
@@ -551,8 +573,9 @@ impl LibrarySync {
     }
 
     fn session_note_map(&self) -> HashMap<String, String> {
-        let mut cached = self.session_notes.lock().unwrap();
-        if let Some(map) = cached.as_ref() {
+        // 锁的顺序是「数据库连接 → 这张表」(导出时在事务里清空它),所以读库
+        // 之前必须先放开它,否则两边互等。
+        if let Some(map) = self.session_notes.lock().unwrap().as_ref() {
             return map.clone();
         }
         let ids = self
@@ -567,7 +590,7 @@ impl LibrarySync {
                     .map(|doc| (doc, session))
             })
             .collect();
-        *cached = Some(map.clone());
+        *self.session_notes.lock().unwrap() = Some(map.clone());
         map
     }
 
@@ -832,7 +855,7 @@ impl LibrarySync {
                 }
             }
             ChangedScope::Topic(notebook) => {
-                if notebook != &self.unfiled {
+                if notebook != &self.unfiled && !facts::is_internal_notebook(tx, notebook)? {
                     if let Some(topic) = facts::read_topic(tx, notebook)? {
                         let id = topic_doc(notebook);
                         let doc = self.fact_doc_or_new(tx, &id)?;
@@ -1108,21 +1131,32 @@ impl LibrarySync {
     // ── 名单 ─────────────────────────────────────────────────────────────
 
     fn roster(&self, space: &SpaceId) -> docs::Roster {
-        let removed = self
+        if let Some(roster) = self.rosters.read().unwrap().get(space) {
+            return roster.clone();
+        }
+        // 还没有快照(启动时这个空间还没加载):读一次库。
+        let loaded = self
             .replica
-            .read(|conn| facts::removed_devices(conn, &space.to_hex()))
+            .read(|conn| self.load_roster(conn, space))
             .unwrap_or_default();
+        self.rosters.write().unwrap().insert(*space, loaded.clone());
+        loaded
+    }
+
+    /// 从库里读一个空间的名单:名单文档,加上本机记着的永久移除。
+    fn load_roster(
+        &self,
+        conn: &ReplicaConnection,
+        space: &SpaceId,
+    ) -> Result<docs::Roster, ReplicaError> {
         let mut roster = self
-            .replica
-            .read(|conn| self.fact_doc(conn, &roster_doc(space)))
-            .ok()
-            .flatten()
+            .fact_doc(conn, &roster_doc(space))?
             .map(|doc| docs::read_roster(&doc))
             .unwrap_or_default();
-        for device in removed {
+        for device in facts::removed_devices(conn, &space.to_hex())? {
             roster.removed.entry(device).or_default();
         }
-        roster
+        Ok(roster)
     }
 
     fn roster_members(&self, space: &SpaceId) -> Vec<EndpointId> {
@@ -1242,7 +1276,9 @@ impl LibrarySync {
             })?;
         match joined.purpose {
             InvitePurpose::Device => self.adopt_device_group(&joined)?,
-            InvitePurpose::Topic | InvitePurpose::Backup => return Err(sync_error("wrong_purpose")),
+            InvitePurpose::Topic | InvitePurpose::Backup => {
+                return Err(sync_error("wrong_purpose"))
+            }
         }
         Ok(FfiSyncJoinResult {
             purpose: joined.purpose.into(),
@@ -1312,8 +1348,8 @@ impl LibrarySync {
                 .write(|tx| {
                     let doc = self.fact_doc_or_new(tx, &id)?;
                     docs::remove_member(&doc, device, &now())?;
-                    self.save_fact_doc(tx, &id, &doc)?;
-                    facts::mark_removed(tx, &space.to_hex(), device)
+                    facts::mark_removed(tx, &space.to_hex(), device)?;
+                    self.save_fact_doc(tx, &id, &doc)
                 })
                 .map_err(internal)?;
         }
@@ -1504,15 +1540,21 @@ impl Membership for SpaceRoster {
 
 /// 核心持有的同步入口。同步没开时是空的,钩子什么也不做。
 #[derive(Clone, Default)]
-pub(crate) struct SyncSlot(Arc<RwLock<Option<Arc<LibrarySync>>>>);
+pub(crate) struct SyncSlot {
+    running: Arc<RwLock<Option<Arc<LibrarySync>>>>,
+    /// 同步没开时的设备名:设备 id(hex)→ 名字,从库里的名单读一次。没开同步时
+    /// 名单不会变,所以读一次就够;同步开关时清掉。
+    offline_names: Arc<Mutex<Option<HashMap<String, String>>>>,
+}
 
 impl SyncSlot {
     fn get(&self) -> Option<Arc<LibrarySync>> {
-        self.0.read().unwrap().clone()
+        self.running.read().unwrap().clone()
     }
 
     fn set(&self, sync: Option<Arc<LibrarySync>>) -> Option<Arc<LibrarySync>> {
-        std::mem::replace(&mut *self.0.write().unwrap(), sync)
+        *self.offline_names.lock().unwrap() = None;
+        std::mem::replace(&mut *self.running.write().unwrap(), sync)
     }
 
     /// 本机改了一份笔记类文档。
@@ -1610,15 +1652,42 @@ impl ZuTalkCore {
             .replica
             .read(|conn| facts::recording_origin(conn, session_id))
             .ok()??;
-        let name = self
-            .library_sync
-            .get()
-            .and_then(|sync| {
-                let space = sync.device_group()?;
-                sync.roster(&space).devices.get(&origin).cloned()
+        Some(self.device_name_of(&origin).unwrap_or_default())
+    }
+
+    /// 设备组名单上一台设备的名字。同步开着时读内存里的名单;没开时从库里读一次
+    /// —— 资料库列表往往在同步启动之前就要显示「来自哪台」。
+    fn device_name_of(&self, device: &str) -> Option<String> {
+        if let Some(sync) = self.library_sync.get() {
+            let space = sync.device_group()?;
+            return sync.roster(&space).devices.get(device).cloned();
+        }
+        let slot = &self.library_sync.offline_names;
+        if let Some(names) = slot.lock().unwrap().as_ref() {
+            return names.get(device).cloned();
+        }
+        let names = self
+            .replica
+            .read(|conn| {
+                let Some(group) = facts::spaces(conn)?
+                    .into_iter()
+                    .find(|row| row.kind == "devices")
+                else {
+                    return Ok(HashMap::new());
+                };
+                let Some(bytes) =
+                    facts::load_document(conn, &format!("roster/{}", group.space_id))?
+                else {
+                    return Ok(HashMap::new());
+                };
+                let doc = LoroDoc::new();
+                doc.import(&bytes).map_err(other)?;
+                Ok(docs::read_roster(&doc).devices.into_iter().collect())
             })
             .unwrap_or_default();
-        Some(name)
+        let name = names.get(device).cloned();
+        *slot.lock().unwrap() = Some(names);
+        name
     }
 
     pub(crate) fn start_library_sync(
@@ -1630,7 +1699,9 @@ impl ZuTalkCore {
             sync.rename(device_name);
             return Ok(sync.status());
         }
-        let sync = LibrarySync::start(self, device_name, options)?;
+        let sync = LibrarySync::start(self, device_name.clone(), options)?;
+        // App 存的名字才是准的:上次在别处改过、或名单里还是旧名字时,写回名单。
+        sync.rename(device_name);
         let status = sync.status();
         self.library_sync.set(Some(sync));
         Ok(status)
@@ -2049,5 +2120,10 @@ mod tests {
 
         studio.sync_stop();
         laptop.sync_stop();
+        // 同步关了,资料库列表照样说得出这场是在哪台录的。
+        assert_eq!(
+            laptop.session_recorded_on(sid.into()).as_deref(),
+            Some("工作室")
+        );
     }
 }

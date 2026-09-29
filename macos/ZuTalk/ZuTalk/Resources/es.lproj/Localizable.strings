@@ -1259,8 +1259,8 @@
 "sync.error.cannot_remove_self" = "Este Mac no puede quitarse a sí mismo.";
 "sync.error.audio_elsewhere" = "El audio está en el Mac que lo grabó: transcríbelo allí.";
 "sync.error.generic" = "La sincronización tuvo un problema. Inténtalo en un momento.";
-"recording.origin.badge_unknown" = "DE OTRO MAC";
-"recording.origin.badge_format" = "DE %@";
+"recording.origin.badge_unknown" = "De otro Mac";
+"recording.origin.badge_format" = "De %@";
 "recording.origin.audio_elsewhere" = "En otro Mac";
 "recording.origin.audio_on_format" = "En «%@»";
 "recording.origin.refine_elsewhere" = "El audio está en el Mac que lo grabó: transcríbelo allí.";

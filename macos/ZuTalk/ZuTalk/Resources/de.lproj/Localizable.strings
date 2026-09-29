@@ -1259,8 +1259,8 @@
 "sync.error.cannot_remove_self" = "Dieser Mac kann sich nicht selbst entfernen.";
 "sync.error.audio_elsewhere" = "Das Audio liegt auf dem Mac, der es aufgenommen hat – transkribieren Sie es dort.";
 "sync.error.generic" = "Beim Abgleich ist ein Problem aufgetreten. Versuchen Sie es gleich noch einmal.";
-"recording.origin.badge_unknown" = "VON ANDEREM MAC";
-"recording.origin.badge_format" = "VON %@";
+"recording.origin.badge_unknown" = "Von einem anderen Mac";
+"recording.origin.badge_format" = "Von %@";
 "recording.origin.audio_elsewhere" = "Auf einem anderen Mac";
 "recording.origin.audio_on_format" = "Auf „%@“";
 "recording.origin.refine_elsewhere" = "Das Audio liegt auf dem Mac, der es aufgenommen hat – transkribieren Sie es dort.";

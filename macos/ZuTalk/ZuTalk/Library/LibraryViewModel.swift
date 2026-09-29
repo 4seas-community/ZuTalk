@@ -29,6 +29,8 @@ struct SessionListItem: Identifiable, Equatable {
     var createdAt: Date = Date()
     var sessionType: String = "overlay"
     var hasEncryptedAudio: Bool = true
+    /// 另一台 Mac 录的、经设备同步过来的:那台 Mac 的名字(可能为空)。本机录的为 nil。
+    var recordedOn: String? = nil
     /// Transcript 首 ~120 字预览(Home 列表显示这行让用户一眼看出"在说什么")
     var preview: String = ""
     // 完整数据(Detail 视图已删,这两个留着兼容 LibraryViewModel 映射,UI 不读)
@@ -1165,6 +1167,7 @@ class LibraryViewModel: ObservableObject {
             createdAt: createdAt,
             sessionType: info.sessionType,
             hasEncryptedAudio: info.hasEncryptedAudio,
+            recordedOn: info.recordedOn,
             preview: info.preview,
             rawStatus: info.status
         )
