@@ -1130,6 +1130,33 @@ pub enum NotebookCaptureStoreError {
     CorruptData(String),
 }
 
+/// See [`NotebookCaptureStore::recovery_content_digests`]. Each field is
+/// `count/revision-sum/newest-update` for one table's rows of the session, or
+/// empty when the session has none there.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecoveryContentDigest {
+    pub utterances: String,
+    pub variants: String,
+    pub overrides: String,
+    pub inbox: String,
+}
+
+impl RecoveryContentDigest {
+    /// Whether the session has anything in its translation inbox. With
+    /// nothing there, inbox reconciliation has nothing to replay or bind.
+    pub fn has_inbox(&self) -> bool {
+        !self.inbox.is_empty()
+    }
+
+    /// Everything the digest covers, as one comparable string.
+    pub fn fingerprint(&self) -> String {
+        format!(
+            "u{};v{};o{};i{}",
+            self.utterances, self.variants, self.overrides, self.inbox
+        )
+    }
+}
+
 /// See [`NotebookCaptureStore::realtime_resume_point`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RealtimeResumePoint {
@@ -1877,6 +1904,72 @@ impl NotebookCaptureStore {
         ))?;
         let rows = stmt.query_map([], capture_run_from_row)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// A cheap digest, per session, of every row startup recovery reads: the
+    /// transcript, its language variants, the listener's lane edits and the
+    /// translation inbox — row counts, revision sums and newest update times.
+    ///
+    /// Startup uses it to skip a session whose recovery already ran against
+    /// exactly these rows. Without it every launch re-reconciled the inbox and
+    /// re-indexed the search text of every recording ever made, on the main
+    /// thread, before the first window could draw. Four grouped scans answer
+    /// for the whole library at once.
+    pub fn recovery_content_digests(
+        &self,
+    ) -> Result<std::collections::HashMap<String, RecoveryContentDigest>, NotebookCaptureStoreError>
+    {
+        let conn = self.conn.lock().unwrap();
+        let mut digests: std::collections::HashMap<String, RecoveryContentDigest> =
+            std::collections::HashMap::new();
+        type DigestField = fn(&mut RecoveryContentDigest) -> &mut String;
+        let sources: [(&str, DigestField); 4] = [
+            (
+                "SELECT session_id, COUNT(*), COALESCE(SUM(revision), 0),
+                        COALESCE(CAST(MAX(updated_at) AS TEXT), '')
+                 FROM realtime_utterances GROUP BY session_id",
+                |digest| &mut digest.utterances,
+            ),
+            (
+                "SELECT u.session_id, COUNT(*), COALESCE(SUM(v.revision), 0),
+                        COALESCE(CAST(MAX(v.updated_at) AS TEXT), '')
+                 FROM realtime_utterance_variants v
+                 JOIN realtime_utterances u ON u.id = v.utterance_id
+                 GROUP BY u.session_id",
+                |digest| &mut digest.variants,
+            ),
+            (
+                "SELECT u.session_id, COUNT(*), COALESCE(SUM(o.edit_revision), 0),
+                        COALESCE(CAST(MAX(o.updated_at) AS TEXT), '')
+                 FROM realtime_utterance_overrides o
+                 JOIN realtime_utterances u ON u.id = o.utterance_id
+                 GROUP BY u.session_id",
+                |digest| &mut digest.overrides,
+            ),
+            (
+                "SELECT session_id, COUNT(*), COALESCE(SUM(revision), 0),
+                        COALESCE(CAST(MAX(updated_at) AS TEXT), '')
+                 FROM realtime_translation_inbox GROUP BY session_id",
+                |digest| &mut digest.inbox,
+            ),
+        ];
+        for (sql, field) in sources {
+            let mut stmt = conn.prepare(sql)?;
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })?;
+            for row in rows {
+                let (session_id, count, revisions, newest) = row?;
+                let digest = digests.entry(session_id).or_default();
+                *field(digest) = format!("{count}/{revisions}/{newest}");
+            }
+        }
+        Ok(digests)
     }
 
     /// Cleanly completed captures are replay candidates for explicit post-stop

@@ -28,6 +28,7 @@ use vt_store::notebook_capture_store::{
     RealtimeUtteranceVariant, RemoteHealth, SessionPurgeJob, SessionPurgePlan, UtteranceAlignment,
     UtteranceCompletion, UtteranceLane, UtteranceVariantRole, UtteranceVariantState,
 };
+use vt_store::notebook_capture_store::{NotebookCaptureStoreError, RecoveryContentDigest};
 use vt_store::transcript_projection::{
     MachineBlockUpsert, MachineBlockWrite, TranscriptProjection, UtteranceBlock,
 };
@@ -9689,6 +9690,15 @@ impl ZuTalkCore {
     }
 
     pub(crate) fn resume_pending_notebook_projection_mutations(&self) -> Result<(), CoreError> {
+        self.resume_pending_notebook_projection_mutations_counted()
+            .map(|_| ())
+    }
+
+    /// The startup recovery above, reporting how much of it actually ran.
+    pub(crate) fn resume_pending_notebook_projection_mutations_counted(
+        &self,
+    ) -> Result<StartupRecoveryWork, CoreError> {
+        let mut work = StartupRecoveryWork::default();
         // Recover the machine projection watermark first. User mutations may
         // target a lane whose Final machine fact was committed immediately
         // before a crash but whose receipt was not yet acknowledged.
@@ -9707,18 +9717,59 @@ impl ZuTalkCore {
         // durable inbox but before the canonical binding transaction. Recovery
         // has already made these runs terminal, so consume only the pre-crash
         // inbox facts before discovering pending Loro watermarks.
+        //
+        // Only recordings with something in the inbox have anything to
+        // replay or bind, and a reconcile that already ran against exactly
+        // these rows — successfully, or failing in a way that will not change
+        // — is not run again. Every launch used to reconcile every recording
+        // ever made, and the same ones failed the same way each time.
+        let inbox_started = std::time::Instant::now();
+        let mut recovery_cache =
+            crate::startup_recovery_cache::StartupRecoveryCache::load(&self.data_dir);
+        // None only when the digest query itself failed; then nothing is
+        // skipped, which is the old behaviour.
+        let digests = self.notebook_capture_store.recovery_content_digests().ok();
+        let mut inbox_settled = Vec::new();
         for run in &terminal_runs {
-            if let Err(error) = self
+            if let Some(digests) = &digests {
+                let Some(digest) = digests.get(&run.session_id).filter(|d| d.has_inbox()) else {
+                    work.inbox_skipped += 1;
+                    continue;
+                };
+                if recovery_cache.translation_inbox.get(&run.session_id)
+                    == Some(&inbox_recovery_fingerprint(run, digest))
+                {
+                    work.inbox_skipped += 1;
+                    continue;
+                }
+            }
+            work.inbox_reconciled += 1;
+            match self
                 .notebook_capture_store
                 .reconcile_translation_inbox_after_recovery(&run.session_id)
             {
-                tracing::warn!(
-                    session_id = %run.session_id,
-                    error = %error,
-                    "startup left ambiguous auxiliary translation facts durably unbound"
-                );
+                Ok(_) => inbox_settled.push(run),
+                Err(error) => {
+                    tracing::warn!(
+                        session_id = %run.session_id,
+                        error = %error,
+                        "startup left ambiguous auxiliary translation facts durably unbound"
+                    );
+                    // A SQLite failure may pass; anything else is a verdict
+                    // on these rows and will be the same next launch.
+                    if !matches!(error, NotebookCaptureStoreError::Sqlite(_)) {
+                        inbox_settled.push(run);
+                    }
+                }
             }
         }
+        tracing::info!(
+            runs = terminal_runs.len(),
+            skipped = work.inbox_skipped,
+            elapsed_ms = inbox_started.elapsed().as_millis() as u64,
+            "startup translation inbox reconcile"
+        );
+        let projections_started = std::time::Instant::now();
         let mut realtime_sessions = std::collections::BTreeSet::new();
         for projection in self
             .notebook_capture_store
@@ -9740,8 +9791,14 @@ impl ZuTalkCore {
         {
             realtime_sessions.insert(run.session_id.clone());
         }
+        // Only a recovery that went through wrote anything; the same few
+        // recordings fail here on every launch and must not make every
+        // launch re-read the whole library.
+        let mut projections_recovered = false;
         for session_id in realtime_sessions {
-            if let Err(error) = self.recover_notebook_realtime_projection(&session_id) {
+            let recovered = self.recover_notebook_realtime_projection(&session_id);
+            projections_recovered |= recovered.is_ok();
+            if let Err(error) = recovered {
                 tracing::warn!(
                     session_id,
                     error = %error,
@@ -9750,11 +9807,17 @@ impl ZuTalkCore {
             }
         }
 
+        tracing::info!(
+            elapsed_ms = projections_started.elapsed().as_millis() as u64,
+            "startup realtime projection recovery"
+        );
+
         let _mutation_guard = crate::editor_api::editor_document_mutation_guard();
         let pending = self
             .notebook_capture_store
             .list_pending_projection_mutations()
             .map_err(store_error)?;
+        let mutations_replayed = !pending.is_empty();
         for mutation in pending {
             if let Err(error) = self.apply_notebook_projection_mutation_t2(&mutation) {
                 tracing::warn!(
@@ -9773,40 +9836,129 @@ impl ZuTalkCore {
         // to lanes at or below the durable applied watermark so an unrelated
         // async transcript index is never replaced by speculative realtime
         // text.
-        for session_id in terminal_sessions {
+        //
+        // Only a recording whose rows or applied watermark moved since its
+        // index was last rebuilt here can need it. Every launch used to read
+        // and re-index every recording's full transcript.
+        let search_started = std::time::Instant::now();
+        // Read after reconcile, projection recovery and edit replay have all
+        // written: fingerprint what recovery left behind, not what it started
+        // from, or the next launch would see its own writes as a change.
+        //
+        // When nothing above wrote, the digests read before are still true:
+        // most launches reuse them instead of scanning the library twice.
+        let rows_may_have_moved =
+            !inbox_settled.is_empty() || projections_recovered || mutations_replayed;
+        let digests_now = if rows_may_have_moved {
+            self.notebook_capture_store.recovery_content_digests().ok()
+        } else {
+            digests
+        };
+        if let Some(digests) = &digests_now {
+            for run in inbox_settled {
+                if let Some(digest) = digests.get(&run.session_id) {
+                    recovery_cache.translation_inbox.insert(
+                        run.session_id.clone(),
+                        inbox_recovery_fingerprint(run, digest),
+                    );
+                }
+            }
+        }
+        // Likewise the runs read at the top: unless recovery wrote, their
+        // applied watermarks are current, and one query per recording to
+        // re-read them was most of what an idle launch still spent here.
+        let loaded_runs: HashMap<&str, &NotebookCaptureRun> = if rows_may_have_moved {
+            HashMap::new()
+        } else {
+            terminal_runs
+                .iter()
+                .map(|run| (run.session_id.as_str(), run))
+                .collect()
+        };
+        for session_id in &terminal_sessions {
+            let run = match loaded_runs
+                .get(session_id.as_str())
+                .map(|run| Ok((*run).clone()))
+                .unwrap_or_else(|| {
+                    self.notebook_capture_store
+                        .get_run_for_session(session_id)
+                        .map_err(store_error)
+                        .and_then(|run| {
+                            run.ok_or_else(|| CoreError::NotFound {
+                                message: format!("capture session {session_id}"),
+                            })
+                        })
+                }) {
+                Ok(run) => run,
+                Err(error) => {
+                    tracing::warn!(
+                        session_id,
+                        error = %error,
+                        "startup isolated a failed capture FTS repair; recovery continues"
+                    );
+                    continue;
+                }
+            };
+            let fingerprint = digests_now.as_ref().map(|digests| {
+                search_index_recovery_fingerprint(&run, digests.get(session_id.as_str()))
+            });
+            if fingerprint.is_some()
+                && recovery_cache.search_index.get(session_id) == fingerprint.as_ref()
+            {
+                work.search_skipped += 1;
+                continue;
+            }
+            work.search_repaired += 1;
             let repair_result = (|| -> Result<(), CoreError> {
-                let run = self
-                    .notebook_capture_store
-                    .get_run_for_session(&session_id)
-                    .map_err(store_error)?
-                    .ok_or_else(|| CoreError::NotFound {
-                        message: format!("capture session {session_id}"),
-                    })?;
                 let visible = self
                     .notebook_capture_store
-                    .list_utterances(&session_id)
+                    .list_utterances(session_id)
                     .map_err(store_error)?;
                 let has_projected_lane = finalized_capture_lanes(&visible).iter().any(|lane| {
                     lane.revision > 0 && lane.revision <= run.realtime_loro_applied_revision
                 });
                 if has_projected_lane {
                     self.rebuild_finalized_capture_search_index_through(
-                        &session_id,
+                        session_id,
                         &visible,
                         run.realtime_loro_applied_revision,
                     )?;
                 }
                 Ok(())
             })();
-            if let Err(error) = repair_result {
-                tracing::warn!(
-                    session_id,
-                    error = %error,
-                    "startup isolated a failed capture FTS repair; recovery continues"
-                );
+            match repair_result {
+                Ok(()) => {
+                    if let Some(fingerprint) = fingerprint {
+                        recovery_cache
+                            .search_index
+                            .insert(session_id.clone(), fingerprint);
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        session_id,
+                        error = %error,
+                        "startup isolated a failed capture FTS repair; recovery continues"
+                    );
+                }
             }
         }
-        Ok(())
+        tracing::info!(
+            sessions = terminal_sessions.len(),
+            skipped = work.search_skipped,
+            elapsed_ms = search_started.elapsed().as_millis() as u64,
+            "startup search index repair"
+        );
+
+        // Recordings that are gone take their entries with them.
+        recovery_cache
+            .translation_inbox
+            .retain(|session_id, _| terminal_sessions.contains(session_id));
+        recovery_cache
+            .search_index
+            .retain(|session_id, _| terminal_sessions.contains(session_id));
+        recovery_cache.save(&self.data_dir);
+        Ok(work)
     }
 
     fn recover_notebook_realtime_projection(&self, session_id: &str) -> Result<(), CoreError> {
@@ -11110,6 +11262,36 @@ fn finalized_capture_search_content_through(
         content.push_str(lane.text);
     }
     content
+}
+
+/// How much of startup recovery ran, and how much was already settled.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StartupRecoveryWork {
+    pub(crate) inbox_reconciled: usize,
+    pub(crate) inbox_skipped: usize,
+    pub(crate) search_repaired: usize,
+    pub(crate) search_skipped: usize,
+}
+
+/// What a recording's startup inbox reconcile depends on: that the run is
+/// terminal, and the rows it replays and binds.
+fn inbox_recovery_fingerprint(run: &NotebookCaptureRun, digest: &RecoveryContentDigest) -> String {
+    format!("{:?}|{}", run.capture_state, digest.fingerprint())
+}
+
+/// What a recording's startup search-index repair depends on: the applied
+/// watermark it indexes through, and the rows it reads.
+fn search_index_recovery_fingerprint(
+    run: &NotebookCaptureRun,
+    digest: Option<&RecoveryContentDigest>,
+) -> String {
+    format!(
+        "{}|{}",
+        run.realtime_loro_applied_revision,
+        digest
+            .map(RecoveryContentDigest::fingerprint)
+            .unwrap_or_default()
+    )
 }
 
 #[cfg(test)]
@@ -20552,6 +20734,90 @@ pub(crate) mod tests {
             "你好世界",
             "recovery grows the projected lane in place (one zh lane per block by construction)"
         );
+    }
+
+    /// A launch does only new recovery work.
+    ///
+    /// Recovery runs on the app's main thread before the first window draws.
+    /// It used to reconcile every recording's translation inbox and re-index
+    /// every recording's search text on every launch — nearly three seconds
+    /// on a library of a hundred recordings, for no new result. A recording
+    /// whose rows have not moved since recovery last ran over them is
+    /// skipped; one whose rows moved is recovered again.
+    #[test]
+    fn startup_recovery_skips_recordings_whose_rows_have_not_moved() {
+        let (temp, core, _notebook_id, run_id, _doc_id) = projected_core_fixture();
+        core.project_notebook_capture(&run_id).unwrap();
+        let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
+        db.execute(
+            "INSERT INTO realtime_translation_inbox
+             (session_id, lane_index, group_epoch, provider_sequence,
+              target_language, source_language, source_text,
+              source_start_ms, source_end_ms, translated_text,
+              completion, state, revision, bound_utterance_id, bound_sequence,
+              created_at, updated_at)
+             VALUES
+             ('session-a', 1, 0, 0, 'zh', 'en', 'hello', 0, 500,
+              '你好', 'complete', 'present', 0, 'utterance-a', 0, '', ''),
+             ('session-a', 1, 0, 1, 'zh', 'en', 'hello', 0, 500,
+              '世界', 'complete', 'present', 0, NULL, NULL, '', '')",
+            [],
+        )
+        .unwrap();
+
+        let first = core
+            .resume_pending_notebook_projection_mutations_counted()
+            .unwrap();
+        assert_eq!(first.inbox_reconciled, 1);
+        assert_eq!(first.search_repaired, 1);
+
+        let second = core
+            .resume_pending_notebook_projection_mutations_counted()
+            .unwrap();
+        assert_eq!(
+            second.inbox_reconciled, 0,
+            "nothing moved, so the reconcile is not repeated"
+        );
+        assert_eq!(second.search_repaired, 0, "nor the search index");
+        assert_eq!(second.inbox_skipped, 1);
+        assert_eq!(second.search_skipped, 1);
+
+        // A new inbox fact is new work, and it still lands.
+        db.execute(
+            "INSERT INTO realtime_translation_inbox
+             (session_id, lane_index, group_epoch, provider_sequence,
+              target_language, source_language, source_text,
+              source_start_ms, source_end_ms, translated_text,
+              completion, state, revision, bound_utterance_id, bound_sequence,
+              created_at, updated_at)
+             VALUES
+             ('session-a', 1, 0, 2, 'zh', 'en', 'hello', 0, 500,
+              '！', 'complete', 'present', 0, NULL, NULL, '', '')",
+            [],
+        )
+        .unwrap();
+        let third = core
+            .resume_pending_notebook_projection_mutations_counted()
+            .unwrap();
+        assert_eq!(third.inbox_reconciled, 1);
+        let lane = core
+            .notebook_capture_store
+            .get_machine_utterance_by_id("utterance-a")
+            .unwrap()
+            .unwrap()
+            .variants
+            .into_iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
+        assert_eq!(lane.text.as_deref(), Some("你好世界！"));
+
+        // A recording with an empty inbox has nothing to reconcile at all.
+        db.execute("DELETE FROM realtime_translation_inbox", [])
+            .unwrap();
+        let emptied = core
+            .resume_pending_notebook_projection_mutations_counted()
+            .unwrap();
+        assert_eq!(emptied.inbox_reconciled, 0);
     }
 
     /// The upgrade path for recordings made before the segment join became

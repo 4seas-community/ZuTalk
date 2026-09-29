@@ -18,6 +18,7 @@ mod session_mark_api;
 pub(crate) mod session_move;
 pub mod settings_api;
 pub mod speaker_directory_api;
+pub(crate) mod startup_recovery_cache;
 pub(crate) mod task_worker;
 pub(crate) mod topic_management;
 pub mod transcribe_api;
@@ -610,6 +611,7 @@ impl ZuTalkCore {
         // GUI app 的 stderr 被 launchd 吞,必须落盘才能诊断 Soniox 沉默等 bug。
         // 多次 new(tests) 用 Once + try_init 防止重复注册 panic。
         init_tracing_once(&path);
+        let mut startup = StartupPhases::new();
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -687,6 +689,7 @@ impl ZuTalkCore {
                 message: format!("notebook capture store: {e}"),
             },
         )?);
+        startup.mark("open stores");
         notebook_capture_store
             .recover_unfinished_runs()
             .map_err(|e| CoreError::InitFailed {
@@ -711,6 +714,7 @@ impl ZuTalkCore {
                 "repaired missing capture membership"
             );
         }
+        startup.mark("unfinished capture runs");
         let task_db_path = path.join("tasks.db");
         let task_queue = runtime
             .block_on(TaskQueue::new(&task_db_path))
@@ -738,6 +742,7 @@ impl ZuTalkCore {
                     message: format!("Context Pack store: {e}"),
                 }
             })?;
+        startup.mark("task queue and secret stores");
         // Runs before capture recovery and before any purge resumes so both see
         // one canonical audio layout instead of a half-relocated one.
         audio_layout::relocate_legacy_session_audio(&path, &db_path);
@@ -748,6 +753,7 @@ impl ZuTalkCore {
             &session_meta,
             &session_store,
         );
+        startup.mark("interrupted capture audio");
         let api_key_store: Arc<dyn ApiKeyProvider> = Arc::new(MemoryApiKeyStore::new());
         let default_privacy_level = load_privacy_default(&path)?;
         let editor_callbacks: Arc<
@@ -832,11 +838,17 @@ impl ZuTalkCore {
         // Durable recovery runs before the task worker can claim remote work.
         // Purges win over pending lane edits and async intents for the same
         // immutable session id.
+        startup.mark("core assembly");
         core.resume_pending_session_purges()?;
+        startup.mark("session purges");
         core.resume_pending_notebook_projection_mutations()?;
+        startup.mark("realtime projections and edits");
         core.resume_pending_async_search_projections()?;
+        startup.mark("async search projections");
         core.compensate_post_stop_notebook_async_tasks()?;
+        startup.mark("post-stop async tasks");
         core.resume_pending_notebook_async_projections()?;
+        startup.mark("async projections");
 
         // 启动 task worker 循环 —— 持久队列真正"通电"
         task_worker::spawn_worker(
@@ -861,6 +873,7 @@ impl ZuTalkCore {
             core.worker_cancel.clone(),
         );
 
+        startup.finish();
         tracing::info!("ZuTalk Core initialized at {data_dir}");
         Ok(core)
     }
@@ -1369,6 +1382,43 @@ impl ZuTalkCore {
     }
 }
 
+/// How long each startup phase took.
+///
+/// The constructor runs on the app's main thread before the first window can
+/// draw, so every phase here is time the user spends looking at nothing. The
+/// log line per phase is what turns "launch feels slow" into a place to look.
+struct StartupPhases {
+    started: std::time::Instant,
+    last: std::time::Instant,
+}
+
+impl StartupPhases {
+    fn new() -> Self {
+        let now = std::time::Instant::now();
+        Self {
+            started: now,
+            last: now,
+        }
+    }
+
+    fn mark(&mut self, phase: &'static str) {
+        let now = std::time::Instant::now();
+        tracing::info!(
+            phase,
+            elapsed_ms = now.duration_since(self.last).as_millis() as u64,
+            "startup phase"
+        );
+        self.last = now;
+    }
+
+    fn finish(&self) {
+        tracing::info!(
+            total_ms = self.started.elapsed().as_millis() as u64,
+            "startup finished"
+        );
+    }
+}
+
 fn recover_interrupted_capture_audio(
     data_dir: &Path,
     capture_store: &NotebookCaptureStore,
@@ -1380,8 +1430,26 @@ fn recover_interrupted_capture_audio(
         tracing::warn!("list interrupted Notebook capture runs failed");
         return;
     };
+    // An interrupted run stays interrupted after its audio is recovered —
+    // that is its final state — so every launch used to recover every one
+    // again: re-index the audio of each that has some, and fail the same way
+    // for each that has none. A crash journal is always recovered; without
+    // one, a run whose audio is exactly as it was when last handled here is
+    // skipped.
+    let mut cache = crate::startup_recovery_cache::StartupRecoveryCache::load(data_dir);
+    let mut seen = std::collections::HashSet::new();
     for run in runs {
-        if let Err(error) = recover_interrupted_capture_audio_run(
+        seen.insert(run.id.clone());
+        let has_journal = run
+            .audio_journal_path
+            .as_deref()
+            .is_some_and(|path| Path::new(path).exists())
+            || vt_pipeline::session_capture_journal_path(data_dir, &run.session_id).exists();
+        let fingerprint = interrupted_audio_fingerprint(&run);
+        if !has_journal && cache.capture_audio.get(&run.id) == Some(&fingerprint) {
+            continue;
+        }
+        match recover_interrupted_capture_audio_run(
             data_dir,
             capture_store,
             key_store,
@@ -1389,9 +1457,44 @@ fn recover_interrupted_capture_audio(
             session_store,
             &run.id,
         ) {
-            tracing::warn!(run_id = run.id, %error, "recover interrupted capture audio");
+            Ok(()) => {
+                // Recovery may have rewritten the run's audio fields.
+                if let Ok(Some(run)) = capture_store.get_run(&run.id) {
+                    cache
+                        .capture_audio
+                        .insert(run.id.clone(), interrupted_audio_fingerprint(&run));
+                }
+            }
+            Err(error) => {
+                tracing::warn!(run_id = run.id, %error, "recover interrupted capture audio");
+                // Nothing on disk to recover from will not change by itself;
+                // anything else may be a passing failure and is retried.
+                if !has_journal && error == "interrupted capture has no recoverable audio" {
+                    cache.capture_audio.insert(run.id.clone(), fingerprint);
+                }
+            }
         }
     }
+    cache
+        .capture_audio
+        .retain(|run_id, _| seen.contains(run_id));
+    cache.save(data_dir);
+}
+
+/// What re-indexing an interrupted run's audio depends on when there is no
+/// crash journal: where its audio is, whether that file still exists, and how
+/// much of it there is.
+fn interrupted_audio_fingerprint(
+    run: &vt_store::notebook_capture_store::NotebookCaptureRun,
+) -> String {
+    let audio_exists = run
+        .audio_path
+        .as_deref()
+        .is_some_and(|path| Path::new(path).exists());
+    format!(
+        "{}|{:?}|{}|{}|{}",
+        run.updated_at, run.audio_path, audio_exists, run.captured_frames, run.sample_format
+    )
 }
 
 /// Recovers and indexes one interrupted capture. The journal is removed only
