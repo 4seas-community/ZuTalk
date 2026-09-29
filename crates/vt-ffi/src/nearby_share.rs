@@ -26,8 +26,9 @@ use super::*;
 use crate::notebook_capture_api::FfiNotebookCaptureLivePreview;
 
 const PARCEL_VERSION: u32 = 1;
-/// 递稿人自报的名字存在这里,「来自 X」要用。
-const NEARBY_NAME_STATE: &str = "nearby_name/";
+/// 不在名单上的设备的名字(附近递稿人自报的、备份的主人)存在这里,
+/// 「来自 X」要用。
+pub(super) const PEER_NAME_STATE: &str = "nearby_name/";
 /// 直播中转录稿最多多久推一次。帧另走,不受它限制。
 const TRANSCRIPT_INTERVAL: Duration = Duration::from_secs(2);
 /// 观看端一次交给界面的行数上限。更早的在主播那里,观看端只看眼前。
@@ -140,11 +141,7 @@ impl LibrarySync {
                 }
                 self.materialize(tx, &doc_id, &doc, &mut after, false)?;
                 self.save_fact_doc(tx, &doc_id, &doc)?;
-                facts::set_state(
-                    tx,
-                    &format!("{NEARBY_NAME_STATE}{from_hex}"),
-                    Some(from_name),
-                )?;
+                facts::set_state(tx, &format!("{PEER_NAME_STATE}{from_hex}"), Some(from_name))?;
                 Ok(Ok(()))
             })
         };
@@ -837,7 +834,7 @@ impl ZuTalkCore {
     /// 附近递来的录音:递稿人自报的名字。
     pub(super) fn nearby_sender_name(&self, device: &str) -> Option<String> {
         self.replica
-            .read(|conn| facts::state(conn, &format!("{NEARBY_NAME_STATE}{device}")))
+            .read(|conn| facts::state(conn, &format!("{PEER_NAME_STATE}{device}")))
             .ok()
             .flatten()
     }

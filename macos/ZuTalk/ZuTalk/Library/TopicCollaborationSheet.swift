@@ -292,7 +292,12 @@ struct JoinTopicSheet: View {
         Task {
             guard let joined = await store.join(code: pasted) else { return }
             dismiss()
-            if let notebook = joined.notebookId {
+            if joined.purpose == .backup {
+                ToastCenter.shared.success(String(
+                    format: String(localized: joined.restoring ? "backup.restoring_format" : "backup.holding_format"),
+                    joined.label
+                ))
+            } else if let notebook = joined.notebookId {
                 ToastCenter.shared.success(String(
                     format: String(localized: "topic.collab.joined_format"), joined.label
                 ))

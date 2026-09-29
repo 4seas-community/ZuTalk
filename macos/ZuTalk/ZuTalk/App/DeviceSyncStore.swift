@@ -35,6 +35,10 @@ final class DeviceSyncStore: ObservableObject {
     @Published private(set) var busy = false
     /// 最近一次失败,已经是给人看的话。
     @Published private(set) var problem: String?
+    /// 备份:这台备份到哪、替谁保管。读盘,不在主线程上取。
+    @Published private(set) var backup: FfiBackupStatus?
+    @Published private(set) var backupInvite: PendingInvite?
+    @Published private(set) var backingUp = false
 
     private var refreshTimer: Timer?
     /// 正在进行的启动。协作主题要等它完成才能邀请。
@@ -143,6 +147,16 @@ final class DeviceSyncStore: ObservableObject {
         let next = core.syncStatus()
         if next != status {
             status = next
+        }
+        if let restored = core.backupTakeRestored() {
+            ToastCenter.shared.success(
+                String(format: String(localized: "backup.restored_format"), restored.sourceName),
+                detail: String(format: String(localized: "backup.restored_detail_format"), Int64(restored.recordingsAdded))
+            )
+            NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
+        }
+        if let backupInvite, backupInvite.expiresAt <= Date() {
+            self.backupInvite = nil
         }
         if let invite, invite.expiresAt <= Date() {
             self.invite = nil
@@ -283,6 +297,112 @@ final class DeviceSyncStore: ObservableObject {
         }
     }
 
+    // MARK: - 备份
+
+    /// 备份的状态要读盘(备份机上存着的每一份),放到后台取。
+    func refreshBackup() async {
+        guard enabled, let core = CoreClient.shared.core else {
+            backup = nil
+            return
+        }
+        let next = await Task.detached { core.backupStatus() }.value
+        if next != backup { backup = next }
+    }
+
+    /// 备份码:到要保管备份的那台 Mac 上粘贴。同步没开的先打开。
+    func createBackupInvite() {
+        Task {
+            guard await ensureRunning(), let core = CoreClient.shared.core else { return }
+            problem = nil
+            let result = await Task.detached { Result { try core.backupCreateInvite() } }.value
+            switch result {
+            case .success(let code):
+                backupInvite = PendingInvite(code: code, expiresAt: Date().addingTimeInterval(Self.inviteLifetime))
+            case .failure(let error):
+                problem = Self.describe(error)
+            }
+            await refreshBackup()
+        }
+    }
+
+    func cancelBackupInvite() {
+        backupInvite = nil
+    }
+
+    func copyBackupInvite() {
+        guard let backupInvite else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(backupInvite.code, forType: .string)
+        ToastCenter.shared.success(String(localized: "sync.invite.copied"))
+    }
+
+    func backupNow() {
+        guard let core = CoreClient.shared.core, backingUp == false else { return }
+        backingUp = true
+        Task {
+            let result = await Task.detached { Result { try core.backupNow() } }.value
+            backingUp = false
+            switch result {
+            case .success(let made):
+                ToastCenter.shared.success(String(localized: made ? "backup.made" : "backup.unchanged"))
+            case .failure(let error):
+                ToastCenter.shared.error(String(localized: "backup.failed"), detail: Self.describe(error))
+            }
+            await refreshBackup()
+        }
+    }
+
+    func removeBackupTarget(_ device: FfiSyncDevice) {
+        guard let core = CoreClient.shared.core else { return }
+        let id = device.deviceId
+        Task {
+            let result = await Task.detached { Result { try core.backupRemoveTarget(deviceId: id) } }.value
+            if case .failure(let error) = result { problem = Self.describe(error) }
+            await refreshBackup()
+        }
+    }
+
+    /// 备份机上:不再保管这一台的备份,存着的都删掉。
+    func forgetHeld(_ held: FfiBackupHeld) {
+        guard let core = CoreClient.shared.core else { return }
+        let id = held.spaceId
+        Task {
+            let result = await Task.detached { Result { try core.backupForgetHeld(spaceId: id) } }.value
+            if case .failure(let error) = result { problem = Self.describe(error) }
+            await refreshBackup()
+        }
+    }
+
+    /// 备份机上:为保管的某一份生成恢复码。
+    func restoreInvite(spaceId: String, madeAtMs: Int64?) async -> Result<String, Error> {
+        guard let core = CoreClient.shared.core else {
+            return .failure(CoreError.ValidationFailed(message: "sync.error.not_running"))
+        }
+        return await Task.detached {
+            Result { try core.backupRestoreInvite(spaceId: spaceId, madeAtMs: madeAtMs) }
+        }.value
+    }
+
+    /// 备份机上:把保管的某一份直接恢复到这台。
+    func restoreHere(spaceId: String, madeAtMs: Int64?) async -> Bool {
+        guard let core = CoreClient.shared.core else { return false }
+        let result = await Task.detached {
+            Result { try core.backupRestoreHere(spaceId: spaceId, madeAtMs: madeAtMs) }
+        }.value
+        switch result {
+        case .success(let restored):
+            ToastCenter.shared.success(
+                String(format: String(localized: "backup.restored_format"), restored.sourceName),
+                detail: String(format: String(localized: "backup.restored_detail_format"), Int64(restored.recordingsAdded))
+            )
+            NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
+            return true
+        case .failure(let error):
+            ToastCenter.shared.error(String(localized: "backup.restore_failed"), detail: Self.describe(error))
+            return false
+        }
+    }
+
     // MARK: - 错误
 
     /// 核心返回的是稳定代码(`sync.error.*`),按它查本地化的说法;认不出的
@@ -314,6 +434,10 @@ final class DeviceSyncStore: ObservableObject {
             case "sync.error.nearby_failed": return String(localized: "sync.error.nearby_failed")
             case "sync.error.nearby_not_live": return String(localized: "sync.error.nearby_not_live")
             case "sync.error.nearby_too_large": return String(localized: "sync.error.nearby_too_large")
+            case "sync.error.no_backup_target": return String(localized: "sync.error.no_backup_target")
+            case "sync.error.backup_missing": return String(localized: "sync.error.backup_missing")
+            case "sync.error.backup_unreadable": return String(localized: "sync.error.backup_unreadable")
+            case "sync.error.backup_too_large": return String(localized: "sync.error.backup_too_large")
             default: break
             }
         }

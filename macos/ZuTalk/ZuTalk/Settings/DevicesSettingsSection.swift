@@ -100,6 +100,8 @@ struct DevicesSettingsSection: View {
                 }
             }
 
+            BackupSettingsCard()
+
             SettingsCard(
                 title: String(localized: "nearby.settings.title"),
                 subtitle: String(localized: "nearby.settings.subtitle")
@@ -293,6 +295,15 @@ struct DevicesSettingsSection: View {
         Task {
             guard let joined = await store.join(code: code) else { return }
             joinCode = ""
+            if joined.purpose == .backup {
+                // 备份码:这台开始保管那台的备份;恢复码:正在把那一份合进来。
+                ToastCenter.shared.success(String(
+                    format: String(localized: joined.restoring ? "backup.restoring_format" : "backup.holding_format"),
+                    joined.label
+                ))
+                await store.refreshBackup()
+                return
+            }
             if joined.purpose == .topic, let notebook = joined.notebookId {
                 // 粘贴的是协作主题的码:加入之后直接去那个主题。
                 ToastCenter.shared.success(String(

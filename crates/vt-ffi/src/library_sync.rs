@@ -48,6 +48,8 @@ use vt_sync::{
 use crate::notebook_api::QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE;
 use crate::{CoreError, ZuTalkCore};
 
+#[path = "backup_share.rs"]
+mod backup;
 #[path = "nearby_share.rs"]
 mod nearby;
 pub(crate) use nearby::{nearby_broadcast, NearbyLiveSlot};
@@ -180,6 +182,14 @@ enum SpaceKind {
     /// 与别人协作的一个主题:只有这个主题和它的录音、笔记。`owner` 表示本机
     /// 是发起协作的那台。
     Topic { notebook: String, owner: bool },
+    /// 本机被备份:空间里只有最近一份快照,给备份机拉。
+    BackupSource,
+    /// 本机替另一台保管备份:只收快照。
+    BackupHolder,
+    /// 备份机为恢复开的临时空间(不落库):只给出一份。
+    RestoreServe,
+    /// 要恢复的这台的临时空间(不落库):收下那一份,合进资料库。
+    RestoreReceive,
 }
 
 /// 一份笔记类文档存在哪。
@@ -235,6 +245,8 @@ pub(crate) struct LibrarySync {
     listener: Mutex<Option<Arc<dyn FfiSyncListener>>>,
     /// 附近:递来的文字稿、在看的直播。
     nearby: Arc<nearby::NearbyInbox>,
+    /// 备份:源这边给出去的那一份、临时的恢复空间。
+    backup: backup::BackupState,
 }
 
 /// 测试与开发时覆盖的引擎设置。
@@ -294,6 +306,7 @@ impl LibrarySync {
             stopping: AtomicBool::new(false),
             listener: Mutex::new(None),
             nearby: Arc::default(),
+            backup: backup::BackupState::default(),
         });
         sync.nearby.attach(&sync);
         sync.engine.set_nearby_handler(Some(sync.nearby.clone()));
@@ -301,6 +314,7 @@ impl LibrarySync {
         for row in sync.replica.read(facts::spaces).map_err(internal)? {
             sync.register_space(&row);
         }
+        sync.load_outbox();
         sync.runtime.spawn(pump(Arc::downgrade(&sync)));
         Ok(sync)
     }
@@ -321,15 +335,27 @@ impl LibrarySync {
                 notebook: notebook.clone(),
                 owner: row.role == "owner",
             },
+            ("backup", _) if row.role == "owner" => SpaceKind::BackupSource,
+            ("backup", _) => SpaceKind::BackupHolder,
             _ => return,
+        };
+        let store: Arc<dyn DocumentStore> = match kind {
+            SpaceKind::BackupSource => Arc::new(backup::SourceStore {
+                sync: Arc::downgrade(self),
+            }),
+            SpaceKind::BackupHolder => Arc::new(backup::HolderStore {
+                sync: Arc::downgrade(self),
+                space,
+            }),
+            _ => Arc::new(SpaceStore {
+                sync: Arc::downgrade(self),
+                space,
+            }),
         };
         self.spaces.write().unwrap().insert(space, kind);
         self.engine.add_space(
             space,
-            Arc::new(SpaceStore {
-                sync: Arc::downgrade(self),
-                space,
-            }),
+            store,
             Arc::new(SpaceRoster {
                 sync: Arc::downgrade(self),
                 space,
@@ -520,6 +546,14 @@ impl LibrarySync {
             (SpaceKind::Topic { notebook, .. }, DocRef::Note(id)) => {
                 self.note_belongs_to_topic(id, &notebook)
             }
+            // 备份空间有自己的存储,资料库的文档一份也不在里面。
+            (
+                SpaceKind::BackupSource
+                | SpaceKind::BackupHolder
+                | SpaceKind::RestoreServe
+                | SpaceKind::RestoreReceive,
+                _,
+            ) => false,
         }
     }
 
@@ -1365,14 +1399,11 @@ impl LibrarySync {
         }
     }
 
-    /// 用别人给的码加入:加自己的 Mac,或加入协作主题。备份码不走这里。
+    /// 用别人给的码加入:加自己的 Mac、加入协作主题、当备份机,或从备份恢复。
     fn join(self: &Arc<Self>, code: &str) -> Result<FfiSyncJoinResult, CoreError> {
         let ticket: PairingTicket = code.parse().map_err(|_| sync_error("not_a_code"))?;
         if ticket.inviter.id == parse_device(&self.device_hex).expect("本机 id 合法") {
             return Err(sync_error("own_code"));
-        }
-        if ticket.purpose == InvitePurpose::Backup {
-            return Err(sync_error("wrong_purpose"));
         }
         let joined = self
             .runtime
@@ -1387,13 +1418,21 @@ impl LibrarySync {
                 None
             }
             InvitePurpose::Topic => Some(self.adopt_topic_space(&joined)?),
-            InvitePurpose::Backup => return Err(sync_error("wrong_purpose")),
+            InvitePurpose::Backup => {
+                match joined.context.as_str() {
+                    "hold" => self.adopt_backup_holder(&joined)?,
+                    "restore" => self.begin_restore(&joined),
+                    _ => return Err(sync_error("wrong_purpose")),
+                }
+                None
+            }
         };
         Ok(FfiSyncJoinResult {
             purpose: joined.purpose.into(),
             label: joined.label,
             inviter_name: joined.inviter_name,
             notebook_id,
+            restoring: joined.purpose == InvitePurpose::Backup && joined.context == "restore",
         })
     }
 
@@ -1654,7 +1693,7 @@ impl LibrarySync {
             .values()
             .filter_map(|kind| match kind {
                 SpaceKind::Topic { notebook, .. } => Some(notebook.clone()),
-                SpaceKind::Devices => None,
+                _ => None,
             })
             .collect()
     }
@@ -1758,7 +1797,11 @@ async fn pump(sync: Weak<LibrarySync>) {
             return;
         }
         let worker = strong.clone();
-        let _ = tokio::task::spawn_blocking(move || worker.pump_once()).await;
+        let _ = tokio::task::spawn_blocking(move || {
+            worker.pump_once();
+            worker.backup_tick();
+        })
+        .await;
         tokio::select! {
             _ = tokio::time::sleep(PUMP_INTERVAL) => {}
             _ = strong.wake.notified() => {}
@@ -2169,6 +2212,8 @@ pub struct FfiSyncJoinResult {
     pub inviter_name: String,
     /// 加入的是协作主题时,主题的 id(主题随后经同步到来)。
     pub notebook_id: Option<String>,
+    /// 粘贴的是恢复码:正在从备份恢复,完成后 `backup_take_restored` 给出结果。
+    pub restoring: bool,
 }
 
 /// 一个主题的协作状态。
@@ -3060,5 +3105,148 @@ mod tests {
 
         studio.sync_stop();
         stranger.sync_stop();
+    }
+
+    // ── 备份 ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn a_mac_backed_up_to_another_can_be_restored_onto_a_third() {
+        let (_a, studio) = core();
+        let (_b, keeper) = core();
+        let (_c, fresh) = core();
+        let sid = "backup-rec";
+        record(&studio, sid);
+        studio
+            .session_mark_create(sid.into(), Some(1_000))
+            .expect("录完的录音可以加标记");
+        let note = studio.session_note_block_document_open(sid.into()).unwrap();
+        studio
+            .note_apply_outline(
+                note,
+                vec![crate::block_document_api::FfiOutlineRow {
+                    id: "row-1".into(),
+                    depth: 0,
+                    text: "会后把进度表发给大家".into(),
+                    kind: crate::block_document_api::FfiOutlineKind::Paragraph,
+                    checked: false,
+                }],
+            )
+            .unwrap();
+        start(&studio, "工作室");
+        start(&keeper, "旧 Mac");
+        start(&fresh, "新 Mac");
+
+        let joined = keeper
+            .sync_join(studio.backup_create_invite().unwrap())
+            .unwrap();
+        assert_eq!(joined.purpose, FfiSyncInvitePurpose::Backup);
+        assert!(!joined.restoring);
+        assert_eq!(studio.backup_status().targets.len(), 1);
+        // 备份机不是设备组的一员:资料库不会过去。
+        std::thread::sleep(Duration::from_secs(1));
+        assert!(title_of(&keeper, sid).is_none());
+
+        // 配对之后第一份自动就做了,不用等一天。
+        eventually("备份机收到第一份", || {
+            keeper
+                .backup_status()
+                .held
+                .first()
+                .is_some_and(|held| held.copies.len() == 1 && held.source_name == "工作室")
+        });
+        let held = keeper.backup_status().held.remove(0);
+        assert_eq!(held.copies[0].recordings, 1);
+        // 什么都没变:不做第二份。
+        assert!(!studio.backup_now().unwrap());
+
+        // 存盘的是密文。
+        let dir = keeper.data_dir.join("backups").join(&held.space_id);
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|ext| ext == "zbk") {
+                let bytes = std::fs::read(&path).unwrap();
+                for plain in ["大家早上好", "周一例会", "会后把进度表发给大家"] {
+                    assert!(
+                        !bytes.windows(plain.len()).any(|w| w == plain.as_bytes()),
+                        "备份文件里读得出「{plain}」"
+                    );
+                }
+            }
+        }
+
+        studio
+            .rename_session(sid.into(), "周一例会(定稿)".into())
+            .unwrap();
+        assert!(studio.backup_now().unwrap());
+        eventually("备份机收到第二份", || {
+            keeper.backup_status().held[0].copies.len() == 2
+        });
+
+        // 恢复到一台全新的 Mac:用最新的一份。
+        let code = keeper
+            .backup_restore_invite(held.space_id.clone(), None)
+            .unwrap();
+        let restoring = fresh.sync_join(code).unwrap();
+        assert!(restoring.restoring);
+        eventually("恢复完成", || {
+            fresh
+                .library_sync
+                .get()
+                .unwrap()
+                .backup
+                .restored
+                .lock()
+                .unwrap()
+                .is_some()
+        });
+        let restored = fresh.backup_take_restored().unwrap();
+        assert_eq!(restored.source_name, "工作室");
+        assert_eq!(restored.recordings_added, 1);
+        assert_eq!(title_of(&fresh, sid).as_deref(), Some("周一例会(定稿)"));
+        let home = unfiled(&fresh);
+        let topic = fresh
+            .list_notebooks()
+            .unwrap()
+            .into_iter()
+            .find(|notebook| notebook.title == "周会")
+            .map(|notebook| notebook.id)
+            .unwrap_or(home);
+        eventually("句子投影出来", || {
+            texts(&fresh, &topic, sid) == ["大家早上好", "今天先过一下进度"]
+        });
+        assert_eq!(fresh.session_mark_list(sid.into()).unwrap().len(), 1);
+        let rows = fresh
+            .session_note_block_document_open(sid.into())
+            .and_then(|doc| fresh.note_outline_rows(doc))
+            .unwrap();
+        assert!(rows.iter().any(|row| row.text == "会后把进度表发给大家"));
+        assert_eq!(
+            fresh.session_recorded_on(sid.into()).as_deref(),
+            Some("工作室")
+        );
+        eventually("临时空间撤掉", || !fresh.backup_status().restoring);
+
+        // 主力 Mac 坏了,在保管备份的这台上接着用:直接恢复到这台。
+        let here = keeper
+            .backup_restore_here(held.space_id.clone(), None)
+            .unwrap();
+        assert_eq!(here.recordings_added, 1);
+        assert_eq!(title_of(&keeper, sid).as_deref(), Some("周一例会(定稿)"));
+        assert_eq!(
+            keeper.session_recorded_on(sid.into()).as_deref(),
+            Some("工作室")
+        );
+
+        // 备份机不再保管:存着的都删掉。源不再备份到它。
+        keeper.backup_forget_held(held.space_id.clone()).unwrap();
+        assert!(keeper.backup_status().held.is_empty());
+        assert!(!dir.exists());
+        let target = studio.backup_status().targets[0].device_id.clone();
+        studio.backup_remove_target(target).unwrap();
+        assert!(studio.backup_status().targets.is_empty());
+
+        for core in [&studio, &keeper, &fresh] {
+            core.sync_stop();
+        }
     }
 }

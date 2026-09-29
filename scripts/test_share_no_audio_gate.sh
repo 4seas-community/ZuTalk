@@ -9,8 +9,9 @@
 #   2. 链接密钥只能现生成:不从密钥库取任何已有的 SessionKey(那是音频的钥匙);
 #   3. 发送副本只走纯文字导出:不走会打包 audio.wav 的 zip 导出;
 #   4. App 的共享界面同样不碰音频导出;
-#   5. 设备同步与附近(crates/vt-sync,docs/architecture/local-first-sync.md)在
-#      依赖图上够不到 vt-audio 与 vt-crypto,源码里也不碰音频。
+#   5. 设备同步、附近与加密备份(crates/vt-sync,docs/architecture/local-first-sync.md)
+#      在依赖图上够不到 vt-audio 与 vt-crypto,源码里也不碰音频;备份存盘的密钥
+#      只能是它自己现生成的那把。
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -129,12 +130,35 @@ for LIBRARY_SYNC in "$ROOT_DIR/crates/vt-ffi/src/library_sync.rs" "$ROOT_DIR/cra
     rm -f "$SYNC_STRIPPED"
     fail "$NAME 碰了音频或音频的密钥;同步只搬文字事实"
   fi
-  KEY_REFS="$(grep -Eo "key_store\.[a-z_]+\([A-Z_a-z]+" "$SYNC_STRIPPED" | sed 's/.*(//' | sort -u || true)"
+  KEY_REFS="$(tr '\n' ' ' <"$SYNC_STRIPPED" \
+    | grep -Eo "key_store[[:space:]]*\.[a-z_]+\([[:space:]]*[A-Z_a-z]+" | sed 's/.*(//' | tr -d ' ' | sort -u || true)"
   rm -f "$SYNC_STRIPPED"
   while IFS= read -r ref; do
     [[ -n "$ref" ]] || continue
     [[ "$ref" == "IDENTITY_KEY_REF" ]] || fail "$NAME 从密钥库取了设备身份以外的东西: $ref"
   done <<<"$KEY_REFS"
 done
+
+# 加密备份(vt-ffi/src/backup_share.rs,library_sync 的子模块)要加解密备份文件,
+# 所以单列一层:照样碰不到音频;密钥库只取它自己那把现生成的备份密钥
+# (BACKUP_KEY_REF),不取任何音频密钥;不走音频的解密读取。
+BACKUP_SHARE="$ROOT_DIR/crates/vt-ffi/src/backup_share.rs"
+[[ -f "$BACKUP_SHARE" ]] || fail "缺少 $BACKUP_SHARE"
+BACKUP_STRIPPED="$(mktemp)"
+awk '/^#\[cfg\(test\)\]$/{exit} {print}' "$BACKUP_SHARE" | sed 's://.*::' >"$BACKUP_STRIPPED"
+if grep -En "vt_audio|DecryptReader|decrypt_range|encrypted_path|audio_path|audio_key_ref|audio_journal|\.wav|export_session_zip|include_audio" \
+    "$BACKUP_STRIPPED" >/dev/null; then
+  rm -f "$BACKUP_STRIPPED"
+  fail "backup_share.rs 碰了音频或音频的解密;备份只存文字"
+fi
+# rustfmt 会把 `key_store` 与 `.load_key(…)` 拆成两行:先并成一行再找。
+BACKUP_KEY_REFS="$(tr '\n' ' ' <"$BACKUP_STRIPPED" \
+  | grep -Eo "key_store[[:space:]]*\.[a-z_]+\([[:space:]]*[A-Z_a-z]+" | sed 's/.*(//' | tr -d ' ' | sort -u || true)"
+rm -f "$BACKUP_STRIPPED"
+[[ -n "$BACKUP_KEY_REFS" ]] || fail "没能从 backup_share.rs 解析出密钥库的调用"
+while IFS= read -r ref; do
+  [[ -n "$ref" ]] || continue
+  [[ "$ref" == "BACKUP_KEY_REF" ]] || fail "backup_share.rs 从密钥库取了备份密钥以外的东西: $ref"
+done <<<"$BACKUP_KEY_REFS"
 
 echo "✓ [share] 音频不可共享、不可同步的五层约束成立"

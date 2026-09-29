@@ -1024,6 +1024,40 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
 
     func syncTopicStatus(notebookId: String)  -> FfiTopicCollaboration
 
+    /**
+     * 备份码:到要保管备份的那台 Mac 上,在「设置 › 设备」粘贴。
+     */
+    func backupCreateInvite() throws  -> String
+
+    /**
+     * 备份机上:不再保管这一台的备份,删掉存着的每一份。
+     */
+    func backupForgetHeld(spaceId: String) throws
+
+    /**
+     * 马上做一份(资料库没变时不做)。返回有没有做出新的一份。不要在主线程上调。
+     */
+    func backupNow() throws  -> Bool
+
+    func backupRemoveTarget(deviceId: String) throws
+
+    /**
+     * 备份机上:把保管的某一份直接恢复到这台 Mac。不要在主线程上调。
+     */
+    func backupRestoreHere(spaceId: String, madeAtMs: Int64?) throws  -> FfiBackupRestored
+
+    /**
+     * 备份机上:为保管的某一份生成恢复码,到要恢复的 Mac 上粘贴。15 分钟内有效。
+     */
+    func backupRestoreInvite(spaceId: String, madeAtMs: Int64?) throws  -> String
+
+    func backupStatus()  -> FfiBackupStatus
+
+    /**
+     * 取走最近一次恢复的结果(界面提示一次)。
+     */
+    func backupTakeRestored()  -> FfiBackupRestored?
+
     func nearbyAnswer(offerId: UInt64, accept: Bool)
 
     /**
@@ -2442,6 +2476,92 @@ open func syncTopicStatus(notebookId: String) -> FfiTopicCollaboration  {
     uniffi_vt_ffi_fn_method_zutalkcore_sync_topic_status(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(notebookId),$0
+    )
+})
+}
+
+    /**
+     * 备份码:到要保管备份的那台 Mac 上,在「设置 › 设备」粘贴。
+     */
+open func backupCreateInvite()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_backup_create_invite(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 备份机上:不再保管这一台的备份,删掉存着的每一份。
+     */
+open func backupForgetHeld(spaceId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_backup_forget_held(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(spaceId),$0
+    )
+}
+}
+
+    /**
+     * 马上做一份(资料库没变时不做)。返回有没有做出新的一份。不要在主线程上调。
+     */
+open func backupNow()throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_backup_now(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+open func backupRemoveTarget(deviceId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_backup_remove_target(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceId),$0
+    )
+}
+}
+
+    /**
+     * 备份机上:把保管的某一份直接恢复到这台 Mac。不要在主线程上调。
+     */
+open func backupRestoreHere(spaceId: String, madeAtMs: Int64?)throws  -> FfiBackupRestored  {
+    return try  FfiConverterTypeFfiBackupRestored_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_backup_restore_here(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(spaceId),
+        FfiConverterOptionInt64.lower(madeAtMs),$0
+    )
+})
+}
+
+    /**
+     * 备份机上:为保管的某一份生成恢复码,到要恢复的 Mac 上粘贴。15 分钟内有效。
+     */
+open func backupRestoreInvite(spaceId: String, madeAtMs: Int64?)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_backup_restore_invite(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(spaceId),
+        FfiConverterOptionInt64.lower(madeAtMs),$0
+    )
+})
+}
+
+open func backupStatus() -> FfiBackupStatus  {
+    return try!  FfiConverterTypeFfiBackupStatus_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_backup_status(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 取走最近一次恢复的结果(界面提示一次)。
+     */
+open func backupTakeRestored() -> FfiBackupRestored?  {
+    return try!  FfiConverterOptionTypeFfiBackupRestored.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_backup_take_restored(
+            self.uniffiCloneHandle(),$0
     )
 })
 }
@@ -3916,6 +4036,296 @@ public func FfiConverterTypeExportZipOutcome_lift(_ buf: RustBuffer) throws -> E
 #endif
 public func FfiConverterTypeExportZipOutcome_lower(_ value: ExportZipOutcome) -> RustBuffer {
     return FfiConverterTypeExportZipOutcome.lower(value)
+}
+
+
+public struct FfiBackupCopy: Equatable, Hashable {
+    public var madeAtMs: Int64
+    public var bytes: UInt64
+    public var recordings: UInt32
+    public var topics: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(madeAtMs: Int64, bytes: UInt64, recordings: UInt32, topics: UInt32) {
+        self.madeAtMs = madeAtMs
+        self.bytes = bytes
+        self.recordings = recordings
+        self.topics = topics
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiBackupCopy: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiBackupCopy: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiBackupCopy {
+        return
+            try FfiBackupCopy(
+                madeAtMs: FfiConverterInt64.read(from: &buf),
+                bytes: FfiConverterUInt64.read(from: &buf),
+                recordings: FfiConverterUInt32.read(from: &buf),
+                topics: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiBackupCopy, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.madeAtMs, into: &buf)
+        FfiConverterUInt64.write(value.bytes, into: &buf)
+        FfiConverterUInt32.write(value.recordings, into: &buf)
+        FfiConverterUInt32.write(value.topics, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiBackupCopy_lift(_ buf: RustBuffer) throws -> FfiBackupCopy {
+    return try FfiConverterTypeFfiBackupCopy.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiBackupCopy_lower(_ value: FfiBackupCopy) -> RustBuffer {
+    return FfiConverterTypeFfiBackupCopy.lower(value)
+}
+
+
+public struct FfiBackupHeld: Equatable, Hashable {
+    /**
+     * 这台保管的某一台的备份(空间 id)。
+     */
+    public var spaceId: String
+    public var sourceName: String
+    public var connected: Bool
+    /**
+     * 新的在前。
+     */
+    public var copies: [FfiBackupCopy]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 这台保管的某一台的备份(空间 id)。
+         */spaceId: String, sourceName: String, connected: Bool,
+        /**
+         * 新的在前。
+         */copies: [FfiBackupCopy]) {
+        self.spaceId = spaceId
+        self.sourceName = sourceName
+        self.connected = connected
+        self.copies = copies
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiBackupHeld: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiBackupHeld: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiBackupHeld {
+        return
+            try FfiBackupHeld(
+                spaceId: FfiConverterString.read(from: &buf),
+                sourceName: FfiConverterString.read(from: &buf),
+                connected: FfiConverterBool.read(from: &buf),
+                copies: FfiConverterSequenceTypeFfiBackupCopy.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiBackupHeld, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.spaceId, into: &buf)
+        FfiConverterString.write(value.sourceName, into: &buf)
+        FfiConverterBool.write(value.connected, into: &buf)
+        FfiConverterSequenceTypeFfiBackupCopy.write(value.copies, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiBackupHeld_lift(_ buf: RustBuffer) throws -> FfiBackupHeld {
+    return try FfiConverterTypeFfiBackupHeld.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiBackupHeld_lower(_ value: FfiBackupHeld) -> RustBuffer {
+    return FfiConverterTypeFfiBackupHeld.lower(value)
+}
+
+
+public struct FfiBackupRestored: Equatable, Hashable {
+    public var sourceName: String
+    public var madeAtMs: Int64
+    /**
+     * 本机多出来的录音。已经有的不算。
+     */
+    public var recordingsAdded: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(sourceName: String, madeAtMs: Int64,
+        /**
+         * 本机多出来的录音。已经有的不算。
+         */recordingsAdded: UInt32) {
+        self.sourceName = sourceName
+        self.madeAtMs = madeAtMs
+        self.recordingsAdded = recordingsAdded
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiBackupRestored: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiBackupRestored: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiBackupRestored {
+        return
+            try FfiBackupRestored(
+                sourceName: FfiConverterString.read(from: &buf),
+                madeAtMs: FfiConverterInt64.read(from: &buf),
+                recordingsAdded: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiBackupRestored, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.sourceName, into: &buf)
+        FfiConverterInt64.write(value.madeAtMs, into: &buf)
+        FfiConverterUInt32.write(value.recordingsAdded, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiBackupRestored_lift(_ buf: RustBuffer) throws -> FfiBackupRestored {
+    return try FfiConverterTypeFfiBackupRestored.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiBackupRestored_lower(_ value: FfiBackupRestored) -> RustBuffer {
+    return FfiConverterTypeFfiBackupRestored.lower(value)
+}
+
+
+public struct FfiBackupStatus: Equatable, Hashable {
+    /**
+     * 这台备份到哪几台。
+     */
+    public var targets: [FfiSyncDevice]
+    /**
+     * 最近一份快照做好的时间与大小。
+     */
+    public var lastMadeMs: Int64?
+    public var lastBytes: UInt64?
+    /**
+     * 这台替别的 Mac 保管的备份。
+     */
+    public var held: [FfiBackupHeld]
+    /**
+     * 正在从一份备份恢复。
+     */
+    public var restoring: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 这台备份到哪几台。
+         */targets: [FfiSyncDevice],
+        /**
+         * 最近一份快照做好的时间与大小。
+         */lastMadeMs: Int64?, lastBytes: UInt64?,
+        /**
+         * 这台替别的 Mac 保管的备份。
+         */held: [FfiBackupHeld],
+        /**
+         * 正在从一份备份恢复。
+         */restoring: Bool) {
+        self.targets = targets
+        self.lastMadeMs = lastMadeMs
+        self.lastBytes = lastBytes
+        self.held = held
+        self.restoring = restoring
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiBackupStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiBackupStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiBackupStatus {
+        return
+            try FfiBackupStatus(
+                targets: FfiConverterSequenceTypeFfiSyncDevice.read(from: &buf),
+                lastMadeMs: FfiConverterOptionInt64.read(from: &buf),
+                lastBytes: FfiConverterOptionUInt64.read(from: &buf),
+                held: FfiConverterSequenceTypeFfiBackupHeld.read(from: &buf),
+                restoring: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiBackupStatus, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeFfiSyncDevice.write(value.targets, into: &buf)
+        FfiConverterOptionInt64.write(value.lastMadeMs, into: &buf)
+        FfiConverterOptionUInt64.write(value.lastBytes, into: &buf)
+        FfiConverterSequenceTypeFfiBackupHeld.write(value.held, into: &buf)
+        FfiConverterBool.write(value.restoring, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiBackupStatus_lift(_ buf: RustBuffer) throws -> FfiBackupStatus {
+    return try FfiConverterTypeFfiBackupStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiBackupStatus_lower(_ value: FfiBackupStatus) -> RustBuffer {
+    return FfiConverterTypeFfiBackupStatus.lower(value)
 }
 
 
@@ -7592,17 +8002,25 @@ public struct FfiSyncJoinResult: Equatable, Hashable {
      * 加入的是协作主题时,主题的 id(主题随后经同步到来)。
      */
     public var notebookId: String?
+    /**
+     * 粘贴的是恢复码:正在从备份恢复,完成后 `backup_take_restored` 给出结果。
+     */
+    public var restoring: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(purpose: FfiSyncInvitePurpose, label: String, inviterName: String,
         /**
          * 加入的是协作主题时,主题的 id(主题随后经同步到来)。
-         */notebookId: String?) {
+         */notebookId: String?,
+        /**
+         * 粘贴的是恢复码:正在从备份恢复,完成后 `backup_take_restored` 给出结果。
+         */restoring: Bool) {
         self.purpose = purpose
         self.label = label
         self.inviterName = inviterName
         self.notebookId = notebookId
+        self.restoring = restoring
     }
 
 
@@ -7624,7 +8042,8 @@ public struct FfiConverterTypeFfiSyncJoinResult: FfiConverterRustBuffer {
                 purpose: FfiConverterTypeFfiSyncInvitePurpose.read(from: &buf),
                 label: FfiConverterString.read(from: &buf),
                 inviterName: FfiConverterString.read(from: &buf),
-                notebookId: FfiConverterOptionString.read(from: &buf)
+                notebookId: FfiConverterOptionString.read(from: &buf),
+                restoring: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -7633,6 +8052,7 @@ public struct FfiConverterTypeFfiSyncJoinResult: FfiConverterRustBuffer {
         FfiConverterString.write(value.label, into: &buf)
         FfiConverterString.write(value.inviterName, into: &buf)
         FfiConverterOptionString.write(value.notebookId, into: &buf)
+        FfiConverterBool.write(value.restoring, into: &buf)
     }
 }
 
@@ -10373,6 +10793,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeFfiBackupRestored: FfiConverterRustBuffer {
+    typealias SwiftType = FfiBackupRestored?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiBackupRestored.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiBackupRestored.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeFfiInviteDigestRoute: FfiConverterRustBuffer {
     typealias SwiftType = FfiInviteDigestRoute?
 
@@ -10583,6 +11027,56 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiBackupCopy: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiBackupCopy]
+
+    public static func write(_ value: [FfiBackupCopy], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiBackupCopy.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiBackupCopy] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiBackupCopy]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiBackupCopy.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiBackupHeld: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiBackupHeld]
+
+    public static func write(_ value: [FfiBackupHeld], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiBackupHeld.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiBackupHeld] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiBackupHeld]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiBackupHeld.read(from: &buf))
         }
         return seq
     }
@@ -11621,6 +12115,30 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_topic_status() != 57597) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_backup_create_invite() != 15258) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_backup_forget_held() != 47920) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_backup_now() != 42047) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_backup_remove_target() != 26947) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_backup_restore_here() != 6184) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_backup_restore_invite() != 35504) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_backup_status() != 18554) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_backup_take_restored() != 4172) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_answer() != 29638) {
