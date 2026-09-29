@@ -429,6 +429,14 @@ xcode-build-universal:
     just assert-universal-app
     bash "{{ project_dir }}/scripts/check_release_version.sh" "$OUT/ZuTalk.app"
     echo "✓ Universal Xcode build → $OUT/ZuTalk.app"
+    # 0.6.0 发布时,本机 /Applications/ZuTalk.app 在这次构建前后变成了一个只有
+    # 目录和签名清单的空壳(Finder 报「可能已损毁或不完整」);发布产物完好。
+    # 来源没有查明:同参数单独重跑构建不复现,构建日志与系统日志里也没有写
+    # /Applications 的记录。再出现时要一眼认出来,而不是怀疑发布包。
+    if [[ -d /Applications/ZuTalk.app && ! -f /Applications/ZuTalk.app/Contents/Info.plist ]]; then
+        echo "⚠ 本机 /Applications/ZuTalk.app 只剩空壳(不是发布产物的问题)。" >&2
+        echo "  发布完成后用 build/dmg 里新做的 DMG 重装它;录音数据在 ~/Library/Application Support/ZuTalk,不受影响。" >&2
+    fi
 
 # Developer ID distribution build. Xcode signs Sparkle.framework and its
 # helpers as part of the archive, so the finished bundle keeps one stable code
