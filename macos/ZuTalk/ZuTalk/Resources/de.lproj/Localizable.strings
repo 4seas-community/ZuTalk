@@ -657,6 +657,7 @@
 "subtitle.overlay.theme.dark" = "Dunkle Fläche";
 "subtitle.overlay.theme.light" = "Helle Fläche";
 "subtitle.overlay.mode" = "Untertitelmodus";
+"subtitle.overlay.close_window" = "Untertitelfenster schließen (Aufnahme läuft weiter)";
 "subtitle.overlay.mode.conversation" = "Vergleich";
 "subtitle.overlay.mode.audience" = "Event";
 "subtitle.overlay.mode.conversation.help" = "Behält die letzten Äußerungen für sprachübergreifende Gespräche, Rückblick und Verständnis.";

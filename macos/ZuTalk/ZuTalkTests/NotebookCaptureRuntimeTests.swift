@@ -3254,6 +3254,35 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(audio.unsubscribeCount, 1)
     }
 
+    /// Everything that read this recording while it was live — the header's
+    /// "Recording" chip, the recording lists — holds a snapshot that still
+    /// says so. The moment the recording ends is the one to make them re-read
+    /// it, and only once: every re-read is a round of database queries.
+    @MainActor
+    func testStoppingARecordingTellsSessionViewsToRereadItOnce() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let audio = FakeNotebookCaptureAudioSource()
+        let store = ActiveBilingualTranscriptStore(client: client, audioSource: audio)
+        store.loadProfile(notebookId: "notebook-a")
+        try await store.start(notebookId: "notebook-a")
+        let sessionId = try XCTUnwrap(store.sessionId)
+
+        let posted = LockedStrings()
+        let observer = NotificationCenter.default.addObserver(
+            forName: .zutalkSessionUpdated,
+            object: nil,
+            queue: nil
+        ) { note in
+            posted.append(note.object as? String ?? "<nil>")
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        try await store.stop()
+
+        XCTAssertFalse(store.isCaptureActive)
+        XCTAssertEqual(posted.values, [sessionId])
+    }
+
     @MainActor
     func testStopFailureWithAuthoritativeRecordingSnapshotDurablyInterruptsFailClosed() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
@@ -4941,11 +4970,16 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(store.transcriptLoadState(sessionId: "session-b"), .loaded)
         XCTAssertEqual(client.listSessionSpeakersCount, 2)
 
+        let readsBeforeRefresh = client.listUtterancesCount
         await store.load(notebookId: "notebook-a")
-        XCTAssertTrue(
-            store.runs.allSatisfy(\.utterances.isEmpty),
-            "a catalog refresh invalidates cached transcript text"
+        XCTAssertEqual(
+            client.listUtterancesCount,
+            readsBeforeRefresh + 1,
+            "a catalog refresh re-reads the selected transcript instead of carrying cached text across it"
         )
+        XCTAssertTrue(store.runs[0].utterances.isEmpty, "only the selected recording is hydrated")
+        XCTAssertEqual(store.runs[1].utterances, [secondUtterance])
+        XCTAssertEqual(store.transcriptLoadState(sessionId: "session-b"), .loaded)
     }
 
     @MainActor
@@ -5024,6 +5058,80 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(store.runs.map(\.sessionId), ["session-b"])
         XCTAssertTrue(store.runs[0].utterances.isEmpty)
         XCTAssertEqual(store.transcriptLoadState(sessionId: utterance.sessionId), .unloaded)
+    }
+
+    /// Stopping a recording refreshes the notebook's catalog and, in the same
+    /// moment, mounts the load view for the recording that just ended. A
+    /// refresh that lands while that view's read is in flight invalidates the
+    /// read — and the view asks once per session id, so it used to sit on a
+    /// spinner that nothing would ever clear.
+    @MainActor
+    func testTranscriptRequestedDuringACatalogRefreshStillLoads() async {
+        let utterance = NotebookCaptureUtteranceDTO.sample
+        let run = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: utterance.sessionId,
+            createdAt: "2001-01-02T08:00:00Z",
+            utterances: [utterance]
+        )
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a"),
+            startUtterances: [utterance],
+            historyRuns: [run],
+            historySummariesOmitUtterances: true
+        )
+        let store = NotebookCaptureHistoryStore(client: client)
+        await store.load(notebookId: "notebook-a")
+        let controller = BlockingNotebookUtteranceLoadController()
+        client.utteranceLoadController = controller
+
+        let transcript = Task { await store.loadTranscript(sessionId: utterance.sessionId) }
+        let didStartLoading = await waitUntil { controller.isWaiting }
+        XCTAssertTrue(didStartLoading)
+
+        let refresh = Task { await store.load(notebookId: "notebook-a") }
+        let didAskAgain = await waitUntil { controller.waiterCount == 2 }
+        XCTAssertTrue(didAskAgain, "the refresh re-requests the transcript on screen")
+        controller.release()
+        await transcript.value
+        await refresh.value
+
+        XCTAssertEqual(store.transcriptLoadState(sessionId: utterance.sessionId), .loaded)
+        XCTAssertEqual(store.runs.first?.utterances.count, 1)
+    }
+
+    /// The other order of the same race: the transcript arrives first, then
+    /// the catalog lands and replaces every run with its utterance-free
+    /// summary. The recording on screen must not fall back to "not loaded".
+    @MainActor
+    func testTranscriptLoadedWhileACatalogRefreshIsInFlightSurvivesIt() async {
+        let utterance = NotebookCaptureUtteranceDTO.sample
+        let run = NotebookCaptureHistoryRunDTO.fixture(
+            sessionId: utterance.sessionId,
+            createdAt: "2001-01-02T08:00:00Z",
+            utterances: [utterance]
+        )
+        let client = FakeNotebookCaptureClient(
+            profile: .twoWay(notebookId: "notebook-a"),
+            startUtterances: [utterance],
+            historyRuns: [run],
+            historySummariesOmitUtterances: true
+        )
+        let store = NotebookCaptureHistoryStore(client: client)
+        await store.load(notebookId: "notebook-a")
+        let catalog = BlockingNotebookCatalogLoadController()
+        client.catalogLoadController = catalog
+
+        let refresh = Task { await store.load(notebookId: "notebook-a") }
+        let didSuspend = await waitUntil { catalog.isWaiting }
+        XCTAssertTrue(didSuspend)
+        await store.loadTranscript(sessionId: utterance.sessionId)
+        XCTAssertEqual(store.transcriptLoadState(sessionId: utterance.sessionId), .loaded)
+
+        catalog.release()
+        await refresh.value
+
+        XCTAssertEqual(store.transcriptLoadState(sessionId: utterance.sessionId), .loaded)
+        XCTAssertEqual(store.runs.first?.utterances.count, 1)
     }
 
     @MainActor
@@ -8594,27 +8702,31 @@ private final class BlockingNotebookReconcileController {
 
 @MainActor
 private final class BlockingNotebookUtteranceLoadController {
-    private var continuation: CheckedContinuation<Void, Never>?
+    // Several loads can be held at once: a catalog refresh re-requests the
+    // transcript the screen is waiting on while the first read is in flight.
+    private var continuations: [CheckedContinuation<Void, Never>] = []
     private var isReleased = false
-    private(set) var isWaiting = false
+    private(set) var waiterCount = 0
+    var isWaiting: Bool { waiterCount > 0 }
 
     func wait() async {
         guard isReleased == false else { return }
-        isWaiting = true
+        waiterCount += 1
         await withCheckedContinuation { continuation in
             if isReleased {
                 continuation.resume()
             } else {
-                self.continuation = continuation
+                continuations.append(continuation)
             }
         }
-        isWaiting = false
+        waiterCount -= 1
     }
 
     func release() {
         isReleased = true
-        continuation?.resume()
-        continuation = nil
+        let waiting = continuations
+        continuations = []
+        waiting.forEach { $0.resume() }
     }
 }
 

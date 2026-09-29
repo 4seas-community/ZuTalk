@@ -657,6 +657,7 @@
 "subtitle.overlay.theme.dark" = "深色画布";
 "subtitle.overlay.theme.light" = "浅色画布";
 "subtitle.overlay.mode" = "字幕模式";
+"subtitle.overlay.close_window" = "关闭字幕窗口（录音继续）";
 "subtitle.overlay.mode.conversation" = "对照";
 "subtitle.overlay.mode.audience" = "活动";
 "subtitle.overlay.mode.conversation.help" = "保留最近几句话，便于跨语言沟通、校对和理解。";

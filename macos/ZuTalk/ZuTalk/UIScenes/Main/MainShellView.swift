@@ -6,7 +6,10 @@ struct MainShellView: View {
     @ObservedObject private var store: MainNavigationStore
     @ObservedObject private var communityInvite = CommunityInviteSession.shared
     @ObservedObject private var shareActivity = ShareActivityStore.shared
-    @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    // Only whether something records. The capture store itself changes on
+    // every callback and every second, and observing it here re-evaluated
+    // the whole window each time.
+    @ObservedObject private var captureActivity = ActiveBilingualTranscriptStore.shared.activity
     @State private var isSidebarHidden = false
     @State private var renamingRecording: EditorBreadcrumb.Recording?
 
@@ -146,32 +149,8 @@ struct MainShellView: View {
     /// 开始录音只有这一个入口,所以它排在第一位。
     @ViewBuilder
     private var recordSidebarItem: some View {
-        if capture.isCaptureActive {
-            Button {
-                store.openLiveRecording()
-            } label: {
-                HStack(spacing: Spacing.sm + 2) {
-                    PulsingDot(color: .signalRed, size: 9)
-                        .frame(width: 18)
-                        .accessibilityHidden(true)
-                    Text(String(localized: "sidebar.recording_now"))
-                        .font(.bodyMedium)
-                        .foregroundColor(.textPrimary)
-                    Spacer()
-                    Text(CaptureCommandCenter.clock(capture.elapsedRecordingTime))
-                        .font(.bodySM)
-                        .monospacedDigit()
-                        .foregroundColor(.textSecondary)
-                }
-                .padding(.horizontal, Spacing.sm + 2)
-                .frame(minHeight: 44)
-                .background(Color.signalRed.opacity(store.activePrimaryTab == .record ? 0.14 : 0.08))
-                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(localized: "sidebar.recording_now"))
-            .accessibilityAddTraits(store.activePrimaryTab == .record ? .isSelected : [])
-            .accessibilityIdentifier(AccessibilityID.mainTabRecord)
+        if captureActivity.isCaptureActive {
+            SidebarLiveRecordingItem(store: store)
         } else {
             sidebarItem(
                 icon: "record.circle",
@@ -464,7 +443,7 @@ struct MainShellView: View {
             // The recording in progress — whatever page shows.
             RecordingBar(compact: width < 980)
         }
-        .animation(Motion.panelTransition, value: capture.isCaptureActive)
+        .animation(Motion.panelTransition, value: captureActivity.isCaptureActive)
         .sheet(item: $shareActivity.recordingShareRequest) { request in
             RecordingShareSheet(request: request)
         }
@@ -654,5 +633,53 @@ struct MainShellView: View {
         case .config:
             return String(localized: "sidebar.tab.settings")
         }
+    }
+}
+
+/// The sidebar's "Recording now" entry. Its own view so the clock ticking
+/// every second redraws this row, not the window around it.
+private struct SidebarLiveRecordingItem: View {
+    @ObservedObject var store: MainNavigationStore
+    @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+
+    var body: some View {
+        // After Stop the microphone is already off while the last words
+        // are written down. A pulsing red "Recording now" in that window
+        // tells the user the stop did not take.
+        let isFinishing = capture.captureState == .draining
+        let label = isFinishing
+            ? String(localized: "capture.state.draining")
+            : String(localized: "sidebar.recording_now")
+        Button {
+            store.openLiveRecording()
+        } label: {
+            HStack(spacing: Spacing.sm + 2) {
+                Group {
+                    if isFinishing {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        PulsingDot(color: .signalRed, size: 9)
+                    }
+                }
+                .frame(width: 18)
+                .accessibilityHidden(true)
+                Text(label)
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+                Spacer()
+                Text(CaptureCommandCenter.clock(capture.elapsedRecordingTime))
+                    .font(.bodySM)
+                    .monospacedDigit()
+                    .foregroundColor(.textSecondary)
+            }
+            .padding(.horizontal, Spacing.sm + 2)
+            .frame(minHeight: 44)
+            .background(Color.signalRed.opacity(store.activePrimaryTab == .record ? 0.14 : 0.08))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(store.activePrimaryTab == .record ? .isSelected : [])
+        .accessibilityIdentifier(AccessibilityID.mainTabRecord)
     }
 }

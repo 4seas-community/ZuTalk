@@ -1646,8 +1646,10 @@ struct SubtitleOverlayView: View {
         }
         .buttonStyle(.plain)
         .foregroundColor(.secondary)
-        .help(String(localized: "common.close"))
-        .accessibilityLabel(Text(String(localized: "common.close")))
+        // An unlabelled × beside the red Stop reads as "end it". It only
+        // hides this window; the recording carries on, and the label says so.
+        .help(String(localized: "subtitle.overlay.close_window"))
+        .accessibilityLabel(Text(String(localized: "subtitle.overlay.close_window")))
     }
 
     private var modePicker: some View {

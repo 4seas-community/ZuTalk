@@ -51,6 +51,17 @@ final class NotebookCaptureLivePresentationStore: ObservableObject {
     }
 }
 
+/// Whether a recording is under way, published on its own.
+///
+/// The capture store changes on every callback and every second. Views that
+/// only need to know *whether* something is recording — the app's root among
+/// them — observe this instead, and re-evaluate only when a recording starts
+/// or ends.
+@MainActor
+final class CaptureActivityStore: ObservableObject {
+    @Published fileprivate(set) var isCaptureActive = false
+}
+
 @MainActor
 final class ActiveBilingualTranscriptStore: ObservableObject {
     static let shared = ActiveBilingualTranscriptStore()
@@ -89,10 +100,14 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
     }
 
-    @Published private(set) var sessionId: String?
+    @Published private(set) var sessionId: String? {
+        didSet { syncCaptureActivity() }
+    }
     @Published private(set) var notebookId: String?
     @Published private(set) var profile = NotebookCaptureProfileDTO.localDefault(notebookId: "")
-    @Published private(set) var captureState: NotebookCaptureState = .completed
+    @Published private(set) var captureState: NotebookCaptureState = .completed {
+        didSet { syncCaptureActivity() }
+    }
     /// The state of the newest event applied for this session, as Rust
     /// reported it — before a held lease masked it as draining.
     private var newestAppliedCaptureState: NotebookCaptureState?
@@ -105,6 +120,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// Process-local Soniox speculative tail. Durable transcript consumers
     /// must continue to use `utterances`.
     let livePresentation = NotebookCaptureLivePresentationStore()
+    /// `isCaptureActive`, published only when it flips.
+    let activity = CaptureActivityStore()
     private struct AudienceDurablePresentationCache {
         let sessionId: String
         let selectedLanguages: [String]
@@ -121,12 +138,27 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     var livePreviewUtterances: [NotebookCaptureUtteranceDTO] {
         livePresentation.utterances
     }
+    private var cachedUtteranceSpeakerIds: [String]?
+    /// The distinct session speakers in the durable transcript, sorted.
+    ///
+    /// Read from a page body that re-evaluates far more often than rows
+    /// change; computed once per durable change instead of walking every
+    /// row of the recording on each evaluation.
+    var utteranceSpeakerIds: [String] {
+        if let cachedUtteranceSpeakerIds {
+            return cachedUtteranceSpeakerIds
+        }
+        let ids = Array(Set(utterances.compactMap(\.sessionSpeakerId))).sorted()
+        cachedUtteranceSpeakerIds = ids
+        return ids
+    }
     @Published private(set) var utterances: [NotebookCaptureUtteranceDTO] = [] {
         didSet {
             // Durable rows change far less often than speculative frames. A
             // lazy invalidation makes a long `und` tail pay for one reverse
             // scan at the next durable boundary, not once per visible row on
             // every provider-rate SwiftUI refresh.
+            cachedUtteranceSpeakerIds = nil
             cachedLastIdentifiedSourceLanguage = nil
             hasCachedLastIdentifiedSourceLanguage = false
             cachedHighestFinalProjectionRevision = 0
@@ -251,7 +283,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// Published because `isEditable` reads it: the transcript withdraws its
     /// lane carets for the length of a terminal transition, and a caret that
     /// outlives the store's own gate is a caret whose commit is rejected.
-    @Published private var terminalTransitionLease: TerminalTransitionLease?
+    @Published private var terminalTransitionLease: TerminalTransitionLease? {
+        didSet { syncCaptureActivity() }
+    }
     private var terminalTransitionDrainPending = false
     private var pendingTerminalTransitionEvent: NotebookCaptureEventDTO?
     private var audioDrainWatchdogTask: Task<Void, Never>?
@@ -296,6 +330,32 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 #endif
     var isCaptureActive: Bool {
         sessionId != nil && (captureState.isActive || terminalTransitionLease != nil)
+    }
+
+    private func syncCaptureActivity() {
+        let isActive = isCaptureActive
+        if activity.isCaptureActive != isActive {
+            activity.isCaptureActive = isActive
+        }
+    }
+
+    /// Assigns a published field only when the value actually changes.
+    /// `@Published` announces every assignment, and each announcement
+    /// re-evaluates every view observing this store — the app's root among
+    /// them.
+    private func assignIfChanged<Value: Equatable>(
+        _ keyPath: ReferenceWritableKeyPath<ActiveBilingualTranscriptStore, Value>,
+        _ value: Value
+    ) {
+        if self[keyPath: keyPath] != value {
+            self[keyPath: keyPath] = value
+        }
+    }
+
+    /// Lag as the page shows it: whole seconds, and nothing below one second.
+    nonisolated static func displayedLagSeconds(_ lagMs: UInt64?) -> UInt64? {
+        guard let lagMs, lagMs >= 1_000 else { return nil }
+        return (lagMs + 999) / 1_000
     }
 
     var presentedUtterances: [NotebookCaptureUtteranceDTO] {
@@ -1858,22 +1918,33 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
            currentSessionId != event.sessionId {
             clearSessionScopedDisplayState()
         }
-        sessionId = event.sessionId
+        // Most callbacks — progress ticks above all — change none of these.
+        // `@Published` fires on every assignment, equal or not, and this
+        // store is observed from the app's root down, so assigning them
+        // unconditionally re-evaluated every observing view once per callback.
+        assignIfChanged(\.sessionId, event.sessionId)
         newestAppliedCaptureState = event.captureState
-        captureState = matchingLease != nil && event.captureState.isActive
-            ? .draining
-            : event.captureState
-        remoteHealth = event.remoteHealth
-        realtimeLagMs = event.realtimeLagMs
-        projectionState = event.projectionState
-        realtimeLoroAppliedRevision = max(
-            realtimeLoroAppliedRevision,
-            event.realtimeLoroAppliedRevision
+        assignIfChanged(
+            \.captureState,
+            matchingLease != nil && event.captureState.isActive
+                ? .draining
+                : event.captureState
         )
-        providerErrorType = event.providerErrorType
-        providerRequestId = event.providerRequestId
-        postStopAsyncState = event.postStopAsyncState
-        postStopAsyncProjectionState = event.postStopAsyncProjectionState
+        assignIfChanged(\.remoteHealth, event.remoteHealth)
+        // Lag moves by milliseconds on nearly every callback but is only ever
+        // shown as whole seconds past one second. Publish what the eye sees.
+        if Self.displayedLagSeconds(realtimeLagMs) != Self.displayedLagSeconds(event.realtimeLagMs) {
+            realtimeLagMs = event.realtimeLagMs
+        }
+        assignIfChanged(\.projectionState, event.projectionState)
+        assignIfChanged(
+            \.realtimeLoroAppliedRevision,
+            max(realtimeLoroAppliedRevision, event.realtimeLoroAppliedRevision)
+        )
+        assignIfChanged(\.providerErrorType, event.providerErrorType)
+        assignIfChanged(\.providerRequestId, event.providerRequestId)
+        assignIfChanged(\.postStopAsyncState, event.postStopAsyncState)
+        assignIfChanged(\.postStopAsyncProjectionState, event.postStopAsyncProjectionState)
         if realtimeProviderId == nil,
            realtimeModelId == nil,
            let providerId = event.realtimeProviderId,
@@ -1931,11 +2002,12 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         reconcileLaneHealth(for: event)
         projectRealtimeIfPending(sessionId: event.sessionId)
         if let receipt = event.contextReceipt, receipt.applied {
-            appliedContextReceipt = receipt
-            appliedContextSessionId = event.sessionId
+            assignIfChanged(\.appliedContextReceipt, receipt)
+            assignIfChanged(\.appliedContextSessionId, event.sessionId)
         }
 
         if event.captureState.isActive == false {
+            let isNewlyTerminal = terminalSessionId != event.sessionId
             cancelLivePreviewCoalescing()
             lastAppliedLivePreviewRevision = nil
             refreshRecentTranscriptPresentation()
@@ -1946,6 +2018,17 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             )
             if let matchingLease {
                 clearTerminalTransition(matchingLease)
+            }
+            // Whatever read this recording while it was live — the header's
+            // "Recording" chip, the recording lists — still holds that
+            // snapshot, and no route change is coming to refresh it. Rust has
+            // recorded the end by now, so a re-read sees it. Once per
+            // recording: every re-read is a round of database queries.
+            if isNewlyTerminal {
+                NotificationCenter.default.post(
+                    name: .zutalkSessionUpdated,
+                    object: event.sessionId
+                )
             }
         } else if matchingLease != nil {
             // An active callback may have been emitted before Rust observed the

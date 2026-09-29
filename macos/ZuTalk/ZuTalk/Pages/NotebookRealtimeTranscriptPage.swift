@@ -88,13 +88,20 @@ struct NotebookRealtimeTranscriptPage: View {
         .task(id: markSessionId ?? "none") {
             SessionMarkStore.shared.load(sessionId: markSessionId)
         }
-        .onReceive(
-            Timer.publish(every: 2, on: .main, in: .common).autoconnect()
-        ) { _ in
+        .task(id: isMarkingLive) {
             // Cheap by construction: this only reads when a mark dropped in
             // the last few seconds could still be waiting on a partial.
+            //
+            // A task rather than `.onReceive(Timer.publish(...))` in the body:
+            // that built a new timer on every evaluation, and during a
+            // recording the page re-evaluates more often than every two
+            // seconds, so the tick kept being reset instead of firing.
             guard isMarkingLive else { return }
-            SessionMarkStore.shared.refreshSettlingExcerpts()
+            while Task.isCancelled == false {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard Task.isCancelled == false else { break }
+                SessionMarkStore.shared.refreshSettlingExcerpts()
+            }
         }
         .montereyOnChange(of: activeSessionSpeakerIds) { _, speakerIds in
             refreshActiveSessionSpeakers(speakerIds)
@@ -142,7 +149,7 @@ struct NotebookRealtimeTranscriptPage: View {
 
     private var activeSessionSpeakerIds: [String] {
         guard capture.notebookId == notebookId else { return [] }
-        return Array(Set(capture.utterances.compactMap(\.sessionSpeakerId))).sorted()
+        return capture.utteranceSpeakerIds
     }
 
     private var floatingSubtitleButton: some View {
@@ -904,7 +911,10 @@ private struct NotebookRealtimeHistoryView: View {
                 ) { notification in
                     reveal(notification, using: proxy)
                 }
-                .montereyOnChange(of: availableRuns.map(\.sessionId)) { _, _ in
+                // The live overlay maps runs one to one and keeps their ids,
+                // so the catalog's ids are the same list — without filtering
+                // the whole live transcript again just to read them.
+                .montereyOnChange(of: history.runs.map(\.sessionId)) { _, _ in
                     reconcileSelection(using: proxy, animated: false)
                 }
                 .montereyOnChange(of: activeSessionID) { _, _ in

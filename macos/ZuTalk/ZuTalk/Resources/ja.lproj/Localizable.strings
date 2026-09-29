@@ -640,6 +640,7 @@
 "subtitle.overlay.theme.dark" = "ダークキャンバス";
 "subtitle.overlay.theme.light" = "ライトキャンバス";
 "subtitle.overlay.mode" = "字幕モード";
+"subtitle.overlay.close_window" = "字幕ウィンドウを閉じる（録音は続きます）";
 "subtitle.overlay.mode.conversation" = "対照";
 "subtitle.overlay.mode.audience" = "イベント";
 "subtitle.overlay.mode.conversation.help" = "言語間の会話、確認、理解のために直近の発話を表示します。";

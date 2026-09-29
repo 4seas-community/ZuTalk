@@ -536,6 +536,9 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     private var loadedTranscriptSessionIds: Set<String> = []
     private var transcriptLoadRequestIds: [String: UUID] = [:]
     private var catalogLoadRequestId: UUID?
+    /// The recording whose transcript the screen is waiting for. Survives a
+    /// catalog refresh, which otherwise forgets every read in flight.
+    private var requestedTranscriptSessionId: String?
 
     init(client: NotebookCaptureClienting? = nil) {
         self.client = client ?? RustNotebookCaptureClient()
@@ -598,6 +601,18 @@ final class NotebookCaptureHistoryStore: ObservableObject {
             for sessionId in eagerLoadedSessionIds {
                 refreshSessionSpeakers(sessionId: sessionId)
             }
+            // The refresh above invalidated every transcript read, but the
+            // recording on screen still wants its transcript, and its load
+            // view asks only once per session id. Stopping a recording
+            // triggers the refresh and that view's read together, so without
+            // this the loser of the race sat on a spinner nothing would clear.
+            if let wanted = requestedTranscriptSessionId,
+               loadedTranscriptSessionIds.contains(wanted) == false,
+               runs.contains(where: { $0.sessionId == wanted }) {
+                catalogLoadRequestId = nil
+                isLoading = false
+                await loadTranscript(sessionId: wanted)
+            }
         } catch {
             guard Task.isCancelled == false,
                   catalogLoadRequestId == requestId,
@@ -647,6 +662,9 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     /// lightweight, so ten long recordings do not cross FFI or enter SwiftUI's
     /// view tree together.
     func loadTranscript(sessionId: String) async {
+        if sessionId.isEmpty == false {
+            requestedTranscriptSessionId = sessionId
+        }
         guard sessionId.isEmpty == false,
               let notebookId = loadedNotebookId,
               loadedTranscriptSessionIds.contains(sessionId) == false,
@@ -704,6 +722,7 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     /// Keeps the transcript cache bounded to the run currently selected in the
     /// rail and invalidates any slower request for a run the user left behind.
     func retainOnlyTranscript(sessionId: String?) {
+        requestedTranscriptSessionId = sessionId
         let retainedIds = sessionId.map { Set([$0]) } ?? []
         transcriptLoadRequestIds = transcriptLoadRequestIds.filter {
             retainedIds.contains($0.key)

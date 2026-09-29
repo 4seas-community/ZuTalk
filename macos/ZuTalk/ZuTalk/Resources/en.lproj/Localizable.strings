@@ -657,6 +657,7 @@
 "subtitle.overlay.theme.dark" = "Dark canvas";
 "subtitle.overlay.theme.light" = "Light canvas";
 "subtitle.overlay.mode" = "Subtitle mode";
+"subtitle.overlay.close_window" = "Close the subtitle window (recording continues)";
 "subtitle.overlay.mode.conversation" = "Compare";
 "subtitle.overlay.mode.audience" = "Event";
 "subtitle.overlay.mode.conversation.help" = "Keep recent utterances for cross-language conversation, review, and understanding.";

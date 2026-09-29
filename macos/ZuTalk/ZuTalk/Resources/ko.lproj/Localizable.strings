@@ -657,6 +657,7 @@
 "subtitle.overlay.theme.dark" = "어두운 캔버스";
 "subtitle.overlay.theme.light" = "가벼운 캔버스";
 "subtitle.overlay.mode" = "자막 모드";
+"subtitle.overlay.close_window" = "자막 창 닫기(녹음은 계속됩니다)";
 "subtitle.overlay.mode.conversation" = "비교";
 "subtitle.overlay.mode.audience" = "이벤트";
 "subtitle.overlay.mode.conversation.help" = "언어 간 대화, 검토 및 이해를 위해 최근 발화를 보관하세요.";

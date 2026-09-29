@@ -118,6 +118,13 @@ final class SessionMarkStore: ObservableObject {
     /// excerpt could still be improving. Nil once nothing is settling.
     private var lastMarkAt: Date?
 
+    /// The re-read in flight, if any. A newer one replaces it.
+    private var reloadTask: Task<Void, Never>?
+    /// Bumped by every local write. A re-read that started before a write
+    /// saw the list without it, so its answer is dropped rather than
+    /// published over the write; the next refresh catches up.
+    private var writeGeneration = 0
+
     private let coreProvider: @MainActor () -> (any ZuTalkCoreProtocol)?
 
     init(
@@ -135,18 +142,58 @@ final class SessionMarkStore: ObservableObject {
     /// on every render is worse than no list.
     func load(sessionId: String?, force: Bool = false) {
         guard force || sessionId != self.sessionId else { return }
+        let switchedSession = sessionId != self.sessionId
         self.sessionId = sessionId
         guard let sessionId, let core = coreProvider() else {
+            reloadTask?.cancel()
+            reloadTask = nil
             marks = []
             return
         }
-        do {
-            marks = try core.sessionMarkList(sessionId: sessionId).map(SessionMarkViewModel.init)
-            lastError = nil
-        } catch {
-            // Keep whatever is already on screen. A read failure is not
-            // evidence that the listener's marks are gone.
-            lastError = error.localizedDescription
+        // Another recording's marks must not linger while this one's load.
+        if switchedSession, marks.isEmpty == false {
+            marks = []
+        }
+        reload(sessionId: sessionId, core: core)
+    }
+
+    /// Re-reads the session's marks off the main thread and publishes only
+    /// what changed.
+    ///
+    /// The read resolves every mark against the whole transcript — thousands
+    /// of rows in a long recording. It used to run on the main thread every
+    /// two seconds after a mark was dropped, which is exactly when the
+    /// listener is typing that mark's note.
+    private func reload(sessionId: String, core: any ZuTalkCoreProtocol) {
+        reloadTask?.cancel()
+        let generation = writeGeneration
+        reloadTask = Task { [weak self] in
+            let (records, failure) = await Task.detached(priority: .userInitiated) {
+                () -> ([FfiSessionMark]?, String?) in
+                do {
+                    return (try core.sessionMarkList(sessionId: sessionId), nil)
+                } catch {
+                    return (nil, error.localizedDescription)
+                }
+            }.value
+            guard let self,
+                  Task.isCancelled == false,
+                  self.sessionId == sessionId,
+                  self.writeGeneration == generation
+            else { return }
+            if let records {
+                let fresh = records.map(SessionMarkViewModel.init)
+                if fresh != self.marks {
+                    self.marks = fresh
+                }
+                if self.lastError != nil {
+                    self.lastError = nil
+                }
+            } else {
+                // Keep whatever is already on screen. A read failure is not
+                // evidence that the listener's marks are gone.
+                self.lastError = failure
+            }
         }
     }
 
@@ -242,6 +289,7 @@ final class SessionMarkStore: ObservableObject {
         guard let core = coreProvider() else { return }
         do {
             try core.sessionMarkDelete(markId: markId)
+            writeGeneration += 1
             marks.removeAll { $0.id == markId }
             if pendingFocusMarkId == markId { pendingFocusMarkId = nil }
             lastError = nil
@@ -289,6 +337,7 @@ final class SessionMarkStore: ObservableObject {
     static let settlingWindow: TimeInterval = 20
 
     private func insert(_ mark: SessionMarkViewModel) {
+        writeGeneration += 1
         marks = Self.ordered(marks, upserting: mark)
     }
 

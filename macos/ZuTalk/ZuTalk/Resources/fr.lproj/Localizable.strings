@@ -657,6 +657,7 @@
 "subtitle.overlay.theme.dark" = "Toile sombre";
 "subtitle.overlay.theme.light" = "Toile claire";
 "subtitle.overlay.mode" = "Mode des sous-titres";
+"subtitle.overlay.close_window" = "Fermer la fenêtre des sous-titres (l'enregistrement continue)";
 "subtitle.overlay.mode.conversation" = "Comparer";
 "subtitle.overlay.mode.audience" = "Événement";
 "subtitle.overlay.mode.conversation.help" = "Conserve les derniers énoncés pour la conversation multilingue, la relecture et la compréhension.";
