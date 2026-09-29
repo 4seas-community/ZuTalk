@@ -28,6 +28,11 @@ final class CommunityInviteSession: ObservableObject {
     /// divides shared invite seconds by this to show wall-clock recordable
     /// time instead of raw lane-seconds.
     @Published private(set) var plannedLaneCount = 1
+    /// What the invite service offers for cleaning up marked passages, as of
+    /// the last quota answer. Nil until the service says so, and nil for good
+    /// on a service without a model key — passages are never routed through
+    /// it on a guess.
+    @Published private(set) var passageDigestOffer: CommunityInvitePassageDigestOffer?
 
     private let baseURL = URL(string: "https://zulangue-invite.exe.xyz")!
     /// 邀请 token 存在 app 私有目录的 0600 文件里，而不是钥匙串。发布构建
@@ -53,9 +58,31 @@ final class CommunityInviteSession: ObservableObject {
 
     var isActive: Bool { accessToken != nil }
 
+    /// Whether the invitation currently stands in for a model key. The
+    /// assistance switch still decides whether anything is sent, and a key the
+    /// user saved still wins; the core enforces both.
+    var coversPassageDigest: Bool {
+        isEnabled && isActive && passageDigestOffer != nil
+    }
+
     func setEnabled(_ enabled: Bool) {
         isEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: "zutalk.community-invite.enabled")
+        pushPassageDigestRouteToCore()
+    }
+
+    /// Tells the core where passages may go on the invitation, or that they
+    /// may not. Called whenever the token, the switch, or the offer changes.
+    func pushPassageDigestRouteToCore() {
+        var route: FfiInviteDigestRoute?
+        if coversPassageDigest, let accessToken, let offer = passageDigestOffer {
+            route = FfiInviteDigestRoute(
+                serviceUrl: baseURL.absoluteString,
+                accessToken: accessToken,
+                modelId: offer.model
+            )
+        }
+        try? CoreClient.shared.core?.setInviteDigestRoute(route: route)
     }
 
     func redeem(_ code: String) async {
@@ -76,19 +103,27 @@ final class CommunityInviteSession: ObservableObject {
             setEnabled(true)
         } catch {
             errorMessage = String(localized: "community_invite.invalid")
+            return
         }
+        // The redeem answer does not say whether passage cleanup is offered;
+        // the quota answer does.
+        await refreshQuota()
     }
 
     func refreshQuota() async {
         guard isEnabled, let token = accessToken else { return }
         do {
-            let response: QuotaResponse = try await request(
+            let response: CommunityInviteQuotaResponse = try await request(
                 path: "/v1/quota",
                 method: "GET",
                 body: nil,
                 token: token
             )
             remainingSeconds = response.remainingSeconds
+            // A failed refresh keeps the last offer: being offline for a
+            // moment is not the service withdrawing cleanup.
+            passageDigestOffer = response.passageDigest
+            pushPassageDigestRouteToCore()
         } catch {
             errorMessage = String(localized: "community_invite.unavailable")
         }
@@ -280,6 +315,7 @@ final class CommunityInviteSession: ObservableObject {
     func removeInvite() {
         try? FileManager.default.removeItem(at: tokenFileURL)
         accessToken = nil
+        passageDigestOffer = nil
         laneCredentialProvider?.discardPooledKeys()
         laneCredentialProvider = nil
         CoreClient.shared.core?.setLaneCredentialRequester(requester: nil)
@@ -314,7 +350,7 @@ final class CommunityInviteSession: ObservableObject {
               let sessionID
         else { return }
         do {
-            let response: QuotaResponse = try await request(
+            let response: CommunityInviteQuotaResponse = try await request(
                 path: "/v1/realtime-session/settle",
                 method: "POST",
                 body: [
@@ -432,11 +468,32 @@ private struct RedeemResponse: Decodable {
     }
 }
 
-private struct QuotaResponse: Decodable {
+struct CommunityInviteQuotaResponse: Decodable {
     let remainingSeconds: Int
+    /// Only `/v1/quota` carries this; settle answers leave it out, and are
+    /// never read for it.
+    let passageDigest: CommunityInvitePassageDigestOffer?
 
     enum CodingKeys: String, CodingKey {
         case remainingSeconds = "remaining_seconds"
+        case passageDigest = "passage_digest"
+    }
+}
+
+/// The invite service's offer to clean up marked passages on its own model
+/// key. The service names the provider and model, so Settings can say where a
+/// passage goes without the app keeping a copy of the service's choices.
+struct CommunityInvitePassageDigestOffer: Decodable, Equatable {
+    let provider: String
+    let model: String
+    let dailyLimit: Int
+    let remainingToday: Int
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case model
+        case dailyLimit = "daily_limit"
+        case remainingToday = "remaining_today"
     }
 }
 

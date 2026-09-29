@@ -255,6 +255,9 @@
 "settings.services.model.subtitle_format" = "Optional. Bringt markierte Stellen in Form und schreibt daraus. Verwendet %@.";
 "settings.services.model.egress_notice" = "Gesendet wird nur, was du markierst. Das vollständige Transkript bleibt auf diesem Mac.";
 "settings.services.model.audio_notice" = "Audio wird nie gesendet – mit oder ohne konfigurierten Schlüssel.";
+"settings.services.model.invite_included" = "Deine Einladung enthält das Aufbereiten";
+"settings.services.model.invite_included_detail_format" = "Kein Schlüssel nötig. Ist der Schalter oben an, gehen markierte Passagen über den ZuTalk-Einladungsdienst an %1$@ und kommen lesbar zurück; der Dienst speichert nichts. Heute noch: %2$lld.";
+"settings.services.model.invite_superseded_format" = "Dein eigener %@-Schlüssel ist gespeichert, daher gehen Passagen nur an %@ und nie über den Einladungsdienst.";
 "settings.services.model.console_link" = "API-Schlüssel holen";
 
 /* Cleaning up a marked passage: the switch, and what a card shows. */

@@ -255,6 +255,9 @@
 "settings.services.model.subtitle_format" = "可选。把标记的段落整理清楚，并据此成文。使用 %@。";
 "settings.services.model.egress_notice" = "只有你标记的段落会被发送，完整转录留在这台 Mac 上。";
 "settings.services.model.audio_notice" = "录音从不发送——配不配这个 key 都一样。";
+"settings.services.model.invite_included" = "邀请已包含段落整理";
+"settings.services.model.invite_included_detail_format" = "不用填密钥。打开上面的开关后，标记的段落经 ZuTalk 邀请服务转交 %1$@ 整理，服务不保存内容。今天还能整理 %2$lld 段。";
+"settings.services.model.invite_superseded_format" = "你已保存自己的 %@ 密钥，段落只发给 %@，不经过邀请服务。";
 "settings.services.model.console_link" = "获取 API Key";
 
 /* Cleaning up a marked passage: the switch, and what a card shows. */

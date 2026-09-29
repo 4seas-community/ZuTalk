@@ -255,6 +255,9 @@
 "settings.services.model.subtitle_format" = "ไม่บังคับ ใช้เรียบเรียงช่วงที่ทำเครื่องหมายและเขียนต่อจากนั้น ใช้ %@";
 "settings.services.model.egress_notice" = "ส่งเฉพาะช่วงที่คุณทำเครื่องหมาย ถอดความทั้งหมดยังอยู่บน Mac เครื่องนี้";
 "settings.services.model.audio_notice" = "ไม่มีการส่งเสียงออกไป ไม่ว่าจะตั้งค่าคีย์ไว้หรือไม่";
+"settings.services.model.invite_included" = "คำเชิญของคุณรวมการเรียบเรียงช่วงที่ทำเครื่องหมายไว้แล้ว";
+"settings.services.model.invite_included_detail_format" = "ไม่ต้องใส่คีย์ เมื่อเปิดสวิตช์ด้านบน ช่วงที่ทำเครื่องหมายจะผ่านบริการคำเชิญของ ZuTalk ไปยัง %1$@ เพื่อเรียบเรียง บริการไม่เก็บเนื้อหาไว้ วันนี้เหลืออีก %2$lld ครั้ง";
+"settings.services.model.invite_superseded_format" = "คุณบันทึกคีย์ %@ ของตัวเองไว้แล้ว ช่วงที่ทำเครื่องหมายจะส่งไปที่ %@ เท่านั้น ไม่ผ่านบริการคำเชิญ";
 "settings.services.model.console_link" = "ขอ API key";
 
 /* Cleaning up a marked passage: the switch, and what a card shows. */

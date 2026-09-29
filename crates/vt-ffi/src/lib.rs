@@ -293,9 +293,11 @@ fn language_model_connection_status(
         Err(LanguageModelError::NetworkUnavailable(_)) => {
             FfiProviderConnectionStatus::NetworkUnavailable
         }
-        Err(LanguageModelError::ServiceUnavailable { .. } | LanguageModelError::EmptyResponse) => {
-            FfiProviderConnectionStatus::ServiceUnavailable
-        }
+        Err(
+            LanguageModelError::ServiceUnavailable { .. }
+            | LanguageModelError::EmptyResponse
+            | LanguageModelError::PassageTooLong,
+        ) => FfiProviderConnectionStatus::ServiceUnavailable,
     }
 }
 
@@ -341,6 +343,17 @@ pub struct FfiLanguageModelEngineDescriptor {
     pub console_url: String,
 }
 
+/// An invitation standing in for a model key, as the app hands it over.
+///
+/// The model is whatever the invite service advertised in its offer; the core
+/// keeps no copy of the service's choices.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiInviteDigestRoute {
+    pub service_url: String,
+    pub access_token: String,
+    pub model_id: String,
+}
+
 /// ZuTalk 核心入口
 #[derive(uniffi::Object)]
 pub struct ZuTalkCore {
@@ -366,6 +379,10 @@ pub struct ZuTalkCore {
     /// does not is a flag some future call site forgets — so the check lives at
     /// the boundary where the request would actually be made.
     pub(crate) language_model_enabled: std::sync::atomic::AtomicBool,
+    /// Where marked passages go when the listener has no model key of their
+    /// own but holds an invitation whose service offers cleanup. Set and
+    /// withdrawn by the app; never consulted while a key is configured.
+    pub(crate) invite_digest_route: std::sync::RwLock<Option<vt_llm::InviteDigestRoute>>,
     pub(crate) notebook_store: NotebookStore,
     /// Arc 是为了让分享层能持有它去解析「这个 Notebook 下有哪些文档」。
     /// Deref 让既有的调用点原样可用。
@@ -773,6 +790,7 @@ impl ZuTalkCore {
             session_meta,
             session_marks,
             language_model_enabled: std::sync::atomic::AtomicBool::new(false),
+            invite_digest_route: std::sync::RwLock::new(None),
             notebook_store,
             notebook_capture_store,
             context_pack_store,
@@ -1161,6 +1179,51 @@ impl ZuTalkCore {
     pub fn is_language_model_enabled(&self) -> bool {
         self.language_model_enabled
             .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Lets an invitation stand in for a model key, or withdraws it (`None`).
+    ///
+    /// The app sets this only while the listener is using an invitation whose
+    /// service offers passage cleanup. It does not turn anything on: the
+    /// assistance switch still decides whether a passage is sent at all, and a
+    /// key the listener configured themselves still wins — their own account,
+    /// and a provider they chose.
+    pub fn set_invite_digest_route(
+        &self,
+        route: Option<FfiInviteDigestRoute>,
+    ) -> Result<(), CoreError> {
+        let route = match route {
+            Some(route) => {
+                let service_url = route.service_url.trim().trim_end_matches('/').to_string();
+                // The passage and the invitation token ride on this; plain
+                // HTTP would hand both to anyone on the network path.
+                if !service_url.starts_with("https://") {
+                    return Err(CoreError::ValidationFailed {
+                        message: "invite service url must be https".to_string(),
+                    });
+                }
+                let access_token = route.access_token.trim().to_string();
+                if access_token.is_empty() {
+                    return Err(CoreError::ValidationFailed {
+                        message: "invite access token is empty".to_string(),
+                    });
+                }
+                Some(vt_llm::InviteDigestRoute {
+                    service_url,
+                    access_token,
+                    model_id: route.model_id.trim().to_string(),
+                })
+            }
+            None => None,
+        };
+        let mut slot = self
+            .invite_digest_route
+            .write()
+            .map_err(|_| CoreError::InternalError {
+                message: "invite digest route lock poisoned".to_string(),
+            })?;
+        *slot = route;
+        Ok(())
     }
 
     /// 检查某 scope 是否有 API Key(供 UI 显示"未配置"标记,不泄露 key 本身)。

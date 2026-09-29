@@ -185,6 +185,7 @@ struct ProviderSettingsView: View {
     @ObservedObject private var verificationStore = ProviderConnectionVerificationStore.shared
     @ObservedObject private var modelStore = LanguageModelPresentationStore.shared
     @ObservedObject private var assistance = LanguageModelAssistanceStore.shared
+    @ObservedObject private var invite = CommunityInviteSession.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xl) {
@@ -307,7 +308,7 @@ struct ProviderSettingsView: View {
                 title: String(localized: "settings.services.model.title"),
                 subtitle: String(
                     format: String(localized: "settings.services.model.subtitle_format"),
-                    modelStore.engine.modelId
+                    activeModelId
                 )
             ) {
                 SettingsFullRow {
@@ -331,6 +332,11 @@ struct ProviderSettingsView: View {
                 }
 
                 SettingsRowDivider()
+
+                if let offer = invite.coversPassageDigest ? invite.passageDigestOffer : nil {
+                    inviteCleanupRow(offer)
+                    SettingsRowDivider()
+                }
 
                 ForEach(Array(languageModelAccounts.enumerated()), id: \.element.id) { index, account in
                     if index > 0 {
@@ -370,6 +376,59 @@ struct ProviderSettingsView: View {
                 }
             }
             .accessibilityIdentifier("settings.services.model")
+            .task {
+                guard invite.isEnabled, invite.isActive else { return }
+                await invite.refreshQuota()
+            }
+        }
+    }
+
+    /// Whether a key the user saved is loaded. The core sends with it first,
+    /// so while it is, the invitation's cleanup is never used.
+    private var hasPersonalModelKey: Bool {
+        languageModelAccounts.contains { viewModel.snapshot(for: $0).isActive }
+    }
+
+    /// The model a marked passage would actually go to.
+    private var activeModelId: String {
+        if hasPersonalModelKey == false,
+           invite.coversPassageDigest,
+           let offer = invite.passageDigestOffer {
+            return offer.model
+        }
+        return modelStore.engine.modelId
+    }
+
+    /// The invitation includes cleanup. Said where the key field is, because
+    /// the first thing an invited user wonders here is whether they need one —
+    /// and the second is where their passage goes if they do not.
+    private func inviteCleanupRow(_ offer: CommunityInvitePassageDigestOffer) -> some View {
+        SettingsFullRow {
+            VStack(alignment: .leading, spacing: 2) {
+                Label(
+                    String(localized: "settings.services.model.invite_included"),
+                    systemImage: "gift.fill"
+                )
+                .font(Font.sans12)
+                .foregroundColor(.textPrimary)
+                Text(hasPersonalModelKey
+                    ? String(
+                        format: String(localized: "settings.services.model.invite_superseded_format"),
+                        modelStore.engine.providerDisplayName,
+                        modelStore.engine.providerDisplayName
+                    )
+                    : String(
+                        format: String(localized: "settings.services.model.invite_included_detail_format"),
+                        offer.provider,
+                        offer.remainingToday
+                    ))
+                    .font(.caption)
+                    .foregroundColor(.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("settings.services.model.invite_included")
         }
     }
 

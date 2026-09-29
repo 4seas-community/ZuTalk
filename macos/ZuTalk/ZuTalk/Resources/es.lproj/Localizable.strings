@@ -255,6 +255,9 @@
 "settings.services.model.subtitle_format" = "Opcional. Ordena los pasajes marcados y redacta a partir de ellos. Usa %@.";
 "settings.services.model.egress_notice" = "Solo se envían los pasajes que marcas. La transcripción completa se queda en este Mac.";
 "settings.services.model.audio_notice" = "El audio nunca se envía, con clave configurada o sin ella.";
+"settings.services.model.invite_included" = "Tu invitación incluye la limpieza";
+"settings.services.model.invite_included_detail_format" = "No hace falta clave. Con el interruptor de arriba activado, los pasajes marcados pasan por el servicio de invitaciones de ZuTalk hasta %1$@ y vuelven legibles; el servicio no guarda nada. Restantes hoy: %2$lld.";
+"settings.services.model.invite_superseded_format" = "Tienes tu propia clave de %@ guardada: los pasajes van solo a %@ y nunca pasan por el servicio de invitaciones.";
 "settings.services.model.console_link" = "Conseguir una clave API";
 
 /* Cleaning up a marked passage: the switch, and what a card shows. */

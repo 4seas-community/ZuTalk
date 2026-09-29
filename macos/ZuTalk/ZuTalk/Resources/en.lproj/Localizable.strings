@@ -255,6 +255,9 @@
 "settings.services.model.subtitle_format" = "Optional. Cleans up marked passages and writes from them. Uses %@.";
 "settings.services.model.egress_notice" = "Only the passages you mark are sent. Your full transcript stays on this Mac.";
 "settings.services.model.audio_notice" = "Audio is never sent, with a key configured or without one.";
+"settings.services.model.invite_included" = "Your invitation includes cleanup";
+"settings.services.model.invite_included_detail_format" = "No key needed. With the switch above on, marked passages go through the ZuTalk invite service to %1$@ and come back readable; the service keeps nothing. Left today: %2$lld.";
+"settings.services.model.invite_superseded_format" = "Your own %@ key is saved, so passages go only to %@ and never through the invite service.";
 "settings.services.model.console_link" = "Get an API key";
 
 /* Cleaning up a marked passage: the switch, and what a card shows. */

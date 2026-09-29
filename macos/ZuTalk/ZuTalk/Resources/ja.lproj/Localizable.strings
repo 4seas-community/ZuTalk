@@ -253,6 +253,9 @@
 "settings.services.model.subtitle_format" = "任意。マークした箇所を整え、それをもとに文章を作ります。%@ を使用。";
 "settings.services.model.egress_notice" = "送信されるのはマークした箇所だけです。文字起こし全体はこの Mac に残ります。";
 "settings.services.model.audio_notice" = "音声は送信しません。キーの有無にかかわらず同じです。";
+"settings.services.model.invite_included" = "招待にはマーク箇所の整理が含まれています";
+"settings.services.model.invite_included_detail_format" = "キーは不要です。上のスイッチをオンにすると、マークした箇所は ZuTalk の招待サービスを経由して %1$@ で整理されます。サービスは内容を保存しません。今日の残り：%2$lld 件。";
+"settings.services.model.invite_superseded_format" = "自分の %@ キーが保存されているため、マークした箇所は %@ にだけ送られ、招待サービスは経由しません。";
 "settings.services.model.console_link" = "API キーを取得";
 
 /* Cleaning up a marked passage: the switch, and what a card shows. */

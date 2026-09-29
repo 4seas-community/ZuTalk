@@ -399,6 +399,11 @@ RustBuffer uniffi_vt_ffi_fn_method_zutalkcore_search_sessions(uint64_t ptr, Rust
 void uniffi_vt_ffi_fn_method_zutalkcore_set_api_key(uint64_t ptr, RustBuffer scope, RustBuffer value, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_SET_INVITE_DIGEST_ROUTE
+#define UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_SET_INVITE_DIGEST_ROUTE
+void uniffi_vt_ffi_fn_method_zutalkcore_set_invite_digest_route(uint64_t ptr, RustBuffer route, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_SET_LANGUAGE_MODEL_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_SET_LANGUAGE_MODEL_ENABLED
 void uniffi_vt_ffi_fn_method_zutalkcore_set_language_model_enabled(uint64_t ptr, int8_t enabled, RustCallStatus *_Nonnull out_status
@@ -1343,6 +1348,12 @@ uint16_t uniffi_vt_ffi_checksum_method_zutalkcore_search_sessions(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_SET_API_KEY
 #define UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_SET_API_KEY
 uint16_t uniffi_vt_ffi_checksum_method_zutalkcore_set_api_key(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_SET_INVITE_DIGEST_ROUTE
+#define UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_SET_INVITE_DIGEST_ROUTE
+uint16_t uniffi_vt_ffi_checksum_method_zutalkcore_set_invite_digest_route(void
 
 );
 #endif

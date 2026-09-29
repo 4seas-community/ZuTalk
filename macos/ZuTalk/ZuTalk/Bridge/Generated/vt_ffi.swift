@@ -700,6 +700,17 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func setApiKey(scope: String, value: String) throws
 
     /**
+     * Lets an invitation stand in for a model key, or withdraws it (`None`).
+     *
+     * The app sets this only while the listener is using an invitation whose
+     * service offers passage cleanup. It does not turn anything on: the
+     * assistance switch still decides whether a passage is sent at all, and a
+     * key the listener configured themselves still wins — their own account,
+     * and a provider they chose.
+     */
+    func setInviteDigestRoute(route: FfiInviteDigestRoute?) throws
+
+    /**
      * Turns model assistance on or off.
      *
      * The app persists the choice; the core enforces it. Off means no request
@@ -1652,6 +1663,23 @@ open func setApiKey(scope: String, value: String)throws   {try rustCallWithError
             self.uniffiCloneHandle(),
         FfiConverterString.lower(scope),
         FfiConverterString.lower(value),$0
+    )
+}
+}
+
+    /**
+     * Lets an invitation stand in for a model key, or withdraws it (`None`).
+     *
+     * The app sets this only while the listener is using an invitation whose
+     * service offers passage cleanup. It does not turn anything on: the
+     * assistance switch still decides whether a passage is sent at all, and a
+     * key the listener configured themselves still wins — their own account,
+     * and a provider they chose.
+     */
+open func setInviteDigestRoute(route: FfiInviteDigestRoute?)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_set_invite_digest_route(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionTypeFfiInviteDigestRoute.lower(route),$0
     )
 }
 }
@@ -3628,6 +3656,70 @@ public func FfiConverterTypeFfiContextPackSourceInfo_lift(_ buf: RustBuffer) thr
 #endif
 public func FfiConverterTypeFfiContextPackSourceInfo_lower(_ value: FfiContextPackSourceInfo) -> RustBuffer {
     return FfiConverterTypeFfiContextPackSourceInfo.lower(value)
+}
+
+
+/**
+ * An invitation standing in for a model key, as the app hands it over.
+ *
+ * The model is whatever the invite service advertised in its offer; the core
+ * keeps no copy of the service's choices.
+ */
+public struct FfiInviteDigestRoute: Equatable, Hashable {
+    public var serviceUrl: String
+    public var accessToken: String
+    public var modelId: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(serviceUrl: String, accessToken: String, modelId: String) {
+        self.serviceUrl = serviceUrl
+        self.accessToken = accessToken
+        self.modelId = modelId
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiInviteDigestRoute: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiInviteDigestRoute: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiInviteDigestRoute {
+        return
+            try FfiInviteDigestRoute(
+                serviceUrl: FfiConverterString.read(from: &buf),
+                accessToken: FfiConverterString.read(from: &buf),
+                modelId: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiInviteDigestRoute, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serviceUrl, into: &buf)
+        FfiConverterString.write(value.accessToken, into: &buf)
+        FfiConverterString.write(value.modelId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiInviteDigestRoute_lift(_ buf: RustBuffer) throws -> FfiInviteDigestRoute {
+    return try FfiConverterTypeFfiInviteDigestRoute.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiInviteDigestRoute_lower(_ value: FfiInviteDigestRoute) -> RustBuffer {
+    return FfiConverterTypeFfiInviteDigestRoute.lower(value)
 }
 
 
@@ -8784,6 +8876,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeFfiInviteDigestRoute: FfiConverterRustBuffer {
+    typealias SwiftType = FfiInviteDigestRoute?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiInviteDigestRoute.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiInviteDigestRoute.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeFfiLiveLink: FfiConverterRustBuffer {
     typealias SwiftType = FfiLiveLink?
 
@@ -9690,6 +9806,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_set_api_key() != 17118) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_invite_digest_route() != 49444) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_set_language_model_enabled() != 29263) {

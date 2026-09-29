@@ -192,8 +192,7 @@ impl ZuTalkCore {
         if !self.is_language_model_enabled() {
             return;
         }
-        let engine = vt_llm::CURRENT_LANGUAGE_MODEL_ENGINE;
-        let Ok(api_key) = self.api_key_store.get(engine.credential_scope) else {
+        let Some(credential) = self.digest_credential() else {
             return;
         };
         let request = passage_request(mark, utterances, &vt_i18n::current_locale());
@@ -206,16 +205,30 @@ impl ZuTalkCore {
         let mark_id = mark.id.clone();
         let language = request.target_language.clone();
         self.runtime.spawn(async move {
-            let outcome = vt_llm::digest_passage(engine, &api_key, &request).await;
+            let (outcome, attempted_model) = match credential {
+                DigestCredential::PersonalKey(api_key) => {
+                    let engine = vt_llm::CURRENT_LANGUAGE_MODEL_ENGINE;
+                    let outcome = vt_llm::digest_passage(engine, &api_key, &request)
+                        .await
+                        .map(|text| (text, engine.model_id.to_string()));
+                    (outcome, engine.model_id.to_string())
+                }
+                DigestCredential::Invite(route) => {
+                    let outcome = vt_llm::digest_passage_via_invite(&route, &request)
+                        .await
+                        .map(|digest| (digest.text, digest.model_id));
+                    (outcome, route.model_id)
+                }
+            };
             // A failure is recorded, not swallowed. A card that silently keeps
             // showing fragments reads as "the feature is off", and the listener
             // has no way to tell the difference or to ask again.
             let digest = match outcome {
-                Ok(text) => MarkDigest {
+                Ok((text, model_id)) => MarkDigest {
                     mark_id,
                     language,
                     text,
-                    model_id: engine.model_id.to_string(),
+                    model_id,
                     source_fingerprint: fingerprint,
                     state: MarkDigestState::Ready,
                     error: None,
@@ -229,7 +242,7 @@ impl ZuTalkCore {
                         mark_id,
                         language,
                         text: String::new(),
-                        model_id: engine.model_id.to_string(),
+                        model_id: attempted_model,
                         source_fingerprint: fingerprint,
                         state: MarkDigestState::Failed,
                         error: Some(error.to_string()),
@@ -241,6 +254,23 @@ impl ZuTalkCore {
                 tracing::warn!(%error, "storing a cleaned-up passage failed");
             }
         });
+    }
+
+    /// What a passage would be sent with, if anything.
+    ///
+    /// The listener's own key first: their account, and a provider they chose.
+    /// The invitation only when there is no key — it routes the passage through
+    /// a second party, which is fine to fall back on and wrong to prefer.
+    fn digest_credential(&self) -> Option<DigestCredential> {
+        let engine = vt_llm::CURRENT_LANGUAGE_MODEL_ENGINE;
+        if let Ok(api_key) = self.api_key_store.get(engine.credential_scope) {
+            return Some(DigestCredential::PersonalKey(api_key));
+        }
+        self.invite_digest_route
+            .read()
+            .ok()?
+            .clone()
+            .map(DigestCredential::Invite)
     }
 
     fn digests_for(&self, session_id: &str) -> Arc<Vec<MarkDigest>> {
@@ -293,6 +323,12 @@ impl ZuTalkCore {
                 message: format!("read transcript for marks: {e}"),
             })
     }
+}
+
+/// Who a marked passage would be sent to.
+enum DigestCredential {
+    PersonalKey(String),
+    Invite(vt_llm::InviteDigestRoute),
 }
 
 /// A store failure keeps its shape across the boundary: a mark the app thinks
@@ -740,6 +776,84 @@ mod tests {
         assert!(core.is_language_model_enabled());
         let unconfigured = core.session_mark_create(session_id, Some(21_000)).unwrap();
         assert!(unconfigured.digest.is_none());
+    }
+
+    fn invite_route(url: &str, token: &str) -> crate::FfiInviteDigestRoute {
+        crate::FfiInviteDigestRoute {
+            service_url: url.into(),
+            access_token: token.into(),
+            model_id: "deepseek-flash".into(),
+        }
+    }
+
+    /// An invitation carries the passage and its token over the network, so
+    /// the route is refused unless both are protected on the way.
+    #[test]
+    fn an_invite_route_must_be_encrypted_and_carry_a_token() {
+        let (_temp, core, _session_id) = core_with_transcript();
+
+        assert!(core
+            .set_invite_digest_route(Some(invite_route("http://invite.example", "token")))
+            .is_err());
+        assert!(core
+            .set_invite_digest_route(Some(invite_route("https://invite.example", "  ")))
+            .is_err());
+        assert!(
+            core.digest_credential().is_none(),
+            "a refused route is not kept"
+        );
+
+        core.set_invite_digest_route(Some(invite_route("https://invite.example/", " token ")))
+            .unwrap();
+        let Some(DigestCredential::Invite(route)) = core.digest_credential() else {
+            panic!("the invitation stands in when there is no key");
+        };
+        assert_eq!(route.service_url, "https://invite.example");
+        assert_eq!(route.access_token, "token");
+
+        core.set_invite_digest_route(None).unwrap();
+        assert!(core.digest_credential().is_none());
+    }
+
+    /// The listener's own key is their account and a provider they chose; an
+    /// invitation routes the passage through a second party. Fall back on the
+    /// invitation, never prefer it.
+    #[test]
+    fn a_configured_key_always_wins_over_the_invitation() {
+        let (_temp, core, _session_id) = core_with_transcript();
+        core.set_invite_digest_route(Some(invite_route("https://invite.example", "token")))
+            .unwrap();
+        core.set_api_key(
+            vt_llm::CURRENT_LANGUAGE_MODEL_ENGINE
+                .credential_scope
+                .to_string(),
+            "personal-key".into(),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            core.digest_credential(),
+            Some(DigestCredential::PersonalKey(key)) if key == "personal-key"
+        ));
+    }
+
+    /// An invitation does not turn anything on. Off still means no request.
+    #[test]
+    fn an_invitation_sends_nothing_while_assistance_is_off() {
+        let (_temp, core, session_id) = core_with_transcript();
+        // Reaching the network from here would fail loudly: nothing listens.
+        core.set_invite_digest_route(Some(invite_route("https://127.0.0.1:9", "token")))
+            .unwrap();
+
+        let mark = core
+            .session_mark_create(session_id.clone(), Some(21_000))
+            .unwrap();
+        assert!(mark.digest.is_none());
+        assert!(core
+            .session_marks
+            .list_digests(&session_id)
+            .unwrap()
+            .is_empty());
     }
 
     /// Turning assistance off has to mean "and forget what came back". Leaving

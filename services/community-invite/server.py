@@ -207,6 +207,42 @@ ADMIN_LOGIN_MAX_FAILURES_GLOBAL = 40
 ADMIN_LOGIN_WINDOW_SECONDS = 15 * 60
 ADMIN_LOGIN_LOCKOUT_SECONDS = 15 * 60
 
+# Passage cleanup on an invitation. DeepSeek has no scoped temporary keys, so
+# unlike Soniox the client cannot be handed a credential of its own: the
+# marked passage travels through this service, which calls DeepSeek with the
+# operator's key (`DEEPSEEK_API_KEY` in service.env) and hands the text back.
+# The passage is never stored or logged here — only per-invite daily counts
+# and token totals, which is what the operator's bill needs.
+DEEPSEEK_CHAT_URL = "https://api.deepseek.com/chat/completions"
+DIGEST_PROVIDER_DISPLAY_NAME = "DeepSeek"
+DIGEST_MODEL = "deepseek-flash"
+# The app's own locales. The reading language is interpolated into the
+# instruction, so anything outside this set is refused rather than trusted.
+DIGEST_LANGUAGES = frozenset({"en", "th", "ja", "ko", "fr", "es", "de", "zh-Hans"})
+# A marked passage is a few utterances; even a boundary dragged wide stays far
+# below this. The client checks the same number before sending anything.
+DIGEST_MAX_PASSAGE_CHARS = 12_000
+# CJK is three bytes a character in UTF-8, plus JSON escaping headroom.
+DIGEST_MAX_BODY_BYTES = 64 * 1024
+# A repair cannot be much longer than its input, and an unbounded ceiling
+# turns one runaway response into a bill nobody expected.
+DIGEST_MAX_OUTPUT_TOKENS = 2_048
+# The ceiling that makes a leaked token cheap: a full day of it is roughly
+# twenty cents at peak list price. Generous for a day of heavy marking —
+# dragging a mark's boundary sends the passage again, so drags count too.
+DIGEST_REQUESTS_PER_INVITE_PER_DAY = 300
+# Each cleanup holds a handler thread for the length of an upstream call.
+# Past this many at once the service answers "busy" instead of piling up.
+DIGEST_MAX_CONCURRENCY = 8
+DIGEST_ADMISSION_TIMEOUT_SECONDS = 2.0
+# The app waits 60 seconds; leave room for the response to get back.
+DIGEST_UPSTREAM_TIMEOUT_SECONDS = 45
+# Peak list price per million tokens, for the admin page's estimate only —
+# an upper bound, since off-peak is half. Ground truth is DeepSeek's console.
+DEEPSEEK_USD_PER_M_INPUT = 0.30
+DEEPSEEK_USD_PER_M_OUTPUT = 1.20
+_DIGEST_ADMISSION = threading.BoundedSemaphore(DIGEST_MAX_CONCURRENCY)
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -340,6 +376,17 @@ class Store:
                     action TEXT NOT NULL,
                     detail TEXT NOT NULL,
                     created_at TEXT NOT NULL
+                );
+                -- Passage cleanup, counted per invitation per UTC day. Like
+                -- relay_daily, the shape is the privacy guarantee: counts and
+                -- token totals only, no column a passage could land in.
+                CREATE TABLE IF NOT EXISTS digest_daily (
+                    invite_id INTEGER NOT NULL REFERENCES invites(id),
+                    day TEXT NOT NULL,
+                    requests INTEGER NOT NULL DEFAULT 0,
+                    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                    completion_tokens INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (invite_id, day)
                 );
                 """
             )
@@ -781,6 +828,82 @@ class Store:
                 "unattributed": dict(unattributed),
             }
 
+    # ── Passage cleanup ─────────────────────────────────────────────────
+    #
+    # A request is claimed against the day's allowance before the upstream
+    # call and given back if nothing came of it, so a DeepSeek outage never
+    # eats a listener's allowance and two concurrent requests cannot both
+    # slip under the last slot.
+
+    def claim_digest(self, invite_id: int, day: str, limit: int) -> bool:
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT requests FROM digest_daily WHERE invite_id = ? AND day = ?",
+                (invite_id, day),
+            ).fetchone()
+            if row is not None and row["requests"] >= limit:
+                return False
+            db.execute(
+                """
+                INSERT INTO digest_daily (invite_id, day, requests)
+                VALUES (?, ?, 1)
+                ON CONFLICT (invite_id, day)
+                DO UPDATE SET requests = requests + 1
+                """,
+                (invite_id, day),
+            )
+            return True
+
+    def release_digest(self, invite_id: int, day: str) -> None:
+        with self.connect() as db:
+            db.execute(
+                """
+                UPDATE digest_daily SET requests = MAX(0, requests - 1)
+                WHERE invite_id = ? AND day = ?
+                """,
+                (invite_id, day),
+            )
+
+    def record_digest_tokens(
+        self, invite_id: int, day: str, prompt_tokens: int, completion_tokens: int
+    ) -> None:
+        with self.connect() as db:
+            db.execute(
+                """
+                INSERT INTO digest_daily
+                    (invite_id, day, prompt_tokens, completion_tokens)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (invite_id, day) DO UPDATE SET
+                    prompt_tokens = prompt_tokens + excluded.prompt_tokens,
+                    completion_tokens = completion_tokens + excluded.completion_tokens
+                """,
+                (invite_id, day, max(0, prompt_tokens), max(0, completion_tokens)),
+            )
+
+    def digest_requests_on(self, invite_id: int, day: str) -> int:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT requests FROM digest_daily WHERE invite_id = ? AND day = ?",
+                (invite_id, day),
+            ).fetchone()
+            return int(row["requests"]) if row is not None else 0
+
+    def digest_totals(self) -> dict[int, dict]:
+        with self.connect() as db:
+            return {
+                row["invite_id"]: dict(row)
+                for row in db.execute(
+                    """
+                    SELECT invite_id,
+                        SUM(requests) AS requests,
+                        SUM(prompt_tokens) AS prompt_tokens,
+                        SUM(completion_tokens) AS completion_tokens
+                    FROM digest_daily GROUP BY invite_id
+                    """
+                )
+            }
+
     def _audit(self, db, invite_id: int, action: str, detail: str) -> None:
         db.execute(
             "INSERT INTO invite_audit (invite_id, action, detail, created_at)"
@@ -1028,6 +1151,118 @@ def create_soniox_temporary_key_batch(
     )
 
 
+def utc_day() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def digest_offer(store: Store, invite_id: int) -> dict | None:
+    """What this invitation offers for passage cleanup, or None.
+
+    The app only routes a passage through this service when the quota
+    response carries this, so a machine without a DeepSeek key never sees a
+    single passage: the offer is absent and the app keeps everything local.
+    """
+    if not os.environ.get("DEEPSEEK_API_KEY", ""):
+        return None
+    used = store.digest_requests_on(invite_id, utc_day())
+    return {
+        "provider": DIGEST_PROVIDER_DISPLAY_NAME,
+        "model": DIGEST_MODEL,
+        "daily_limit": DIGEST_REQUESTS_PER_INVITE_PER_DAY,
+        "remaining_today": max(0, DIGEST_REQUESTS_PER_INVITE_PER_DAY - used),
+    }
+
+
+def digest_system_prompt(target_language: str) -> str:
+    """The instruction, owned here rather than taken from the request.
+
+    Mirrors `vt_llm::digest::system_prompt` in the app. The client sends only
+    the passage and the reading language: accepting an instruction from it
+    would turn this endpoint into a general-purpose model on the operator's
+    bill for anyone holding an invitation.
+    """
+    return (
+        "You repair live speech-to-text for a listener who marked this passage "
+        "because it mattered to them.\n\n"
+        "The input is fragmented: split at arbitrary pauses, mispunctuated, "
+        "sometimes cut mid-word, sometimes machine-translated mid-sentence. "
+        f"Your job is to make it readable in {target_language}.\n\n"
+        "Rules:\n"
+        "- Repair only. Fix punctuation, sentence boundaries, and obvious "
+        "transcription slips. Rejoin fragments that belong to one sentence.\n"
+        "- Do not summarize, shorten, or reorganize. The listener wants these "
+        "words, not an account of them.\n"
+        "- Do not add anything that was not said. If a fragment is "
+        "unrecoverable, leave it as a fragment rather than guessing what it "
+        "meant.\n"
+        "- If the passage begins or ends mid-sentence, leave it that way. It "
+        "does.\n"
+        "- Keep speaker changes where the input marks them.\n"
+        f"- Output the repaired passage in {target_language} and nothing else: "
+        "no preamble, no notes about what you changed, no quotation marks "
+        "around it."
+    )
+
+
+class DigestUpstreamError(Exception):
+    """DeepSeek did not produce a cleanup. `status` is its HTTP status, or
+    None when the call never got an answer. The message never carries the
+    upstream body: it can echo the request, and the request is a passage."""
+
+    def __init__(self, status: int | None):
+        super().__init__(f"upstream status {status}")
+        self.status = status
+
+
+def call_deepseek_digest(
+    api_key: str, target_language: str, passage: str
+) -> tuple[str, int, int]:
+    """Returns the cleaned-up text and the prompt/completion token counts."""
+    payload = {
+        "model": DIGEST_MODEL,
+        "messages": [
+            {"role": "system", "content": digest_system_prompt(target_language)},
+            {"role": "user", "content": passage},
+        ],
+        "max_tokens": DIGEST_MAX_OUTPUT_TOKENS,
+        # Thinking is on by default. A repair gains nothing from it and pays
+        # for it in latency and reasoning tokens.
+        "thinking": {"type": "disabled"},
+        "stream": False,
+    }
+    request = urllib.request.Request(
+        DEEPSEEK_CHAT_URL,
+        data=json.dumps(payload).encode(),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(
+            request, timeout=DIGEST_UPSTREAM_TIMEOUT_SECONDS
+        ) as response:
+            body = json.load(response)
+    except urllib.error.HTTPError as error:
+        raise DigestUpstreamError(error.code) from None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise DigestUpstreamError(None) from None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise DigestUpstreamError(None) from None
+    usage = body.get("usage") if isinstance(body, dict) else None
+    usage = usage if isinstance(usage, dict) else {}
+    prompt_tokens = int(usage.get("prompt_tokens") or 0)
+    completion_tokens = int(usage.get("completion_tokens") or 0)
+    text = ""
+    choices = body.get("choices") if isinstance(body, dict) else None
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        message = choices[0].get("message")
+        if isinstance(message, dict) and isinstance(message.get("content"), str):
+            text = message["content"].strip()
+    return text, prompt_tokens, completion_tokens
+
+
 ADMIN_STYLE = """
 body{font:14px/1.5 system-ui;margin:2rem;color:#222}
 h1{font-size:1.4rem} h2{font-size:1rem;margin:0 0 .6rem}
@@ -1053,6 +1288,27 @@ letter-spacing:.05em;user-select:all}
 .notice{padding:.5rem .8rem;background:#eef6ff;border-radius:4px}
 .warn{color:#c0392b} .dim{color:#777} .strong{font-weight:600}
 """
+
+
+def digest_summary(totals: dict) -> str:
+    """One line on passage cleanup for the admin page. Whether the service
+    offers it at all comes first: without a key nothing is routed here."""
+    if not os.environ.get("DEEPSEEK_API_KEY", ""):
+        return (
+            "<p class='dim'>Passage cleanup is off: set <code>DEEPSEEK_API_KEY"
+            "</code> in service.env to offer it to invitations.</p>"
+        )
+    estimate = (
+        totals["prompt_tokens"] * DEEPSEEK_USD_PER_M_INPUT
+        + totals["completion_tokens"] * DEEPSEEK_USD_PER_M_OUTPUT
+    ) / 1_000_000
+    return (
+        f"<p class='dim'>Passage cleanup ({DIGEST_MODEL}): "
+        f"{totals['requests']} cleanups, {totals['prompt_tokens']} tokens in, "
+        f"{totals['completion_tokens']} out, at most ${estimate:.2f} at peak "
+        f"list price. Each invitation may run "
+        f"{DIGEST_REQUESTS_PER_INVITE_PER_DAY} a day.</p>"
+    )
 
 
 def admin_document(body: str) -> str:
@@ -1127,7 +1383,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/v1/quota":
             invite = self.authorized_invite()
             if invite is not None:
-                self.send_json(200, quota_payload(invite))
+                payload = quota_payload(invite)
+                offer = digest_offer(self.store, invite["id"])
+                if offer is not None:
+                    payload["passage_digest"] = offer
+                self.send_json(200, payload)
             return
         parsed = urllib.parse.urlsplit(self.path)
         if parsed.path == "/admin":
@@ -1248,9 +1508,11 @@ class Handler(BaseHTTPRequestHandler):
     ) -> None:
         self.store.expire_stale_reservations()
         usage = self.store.usage_totals()
+        digests = self.store.digest_totals()
         csrf = self.csrf_token(session)
         rows = []
         totals = {"used": 0, "reserved": 0, "billed": 0.0}
+        digest_totals = {"requests": 0, "prompt_tokens": 0, "completion_tokens": 0}
 
         for invite in self.store.admin_overview():
             invite_id = invite["id"]
@@ -1268,6 +1530,9 @@ class Handler(BaseHTTPRequestHandler):
             )
             enabled = bool(invite["enabled"])
             last_seen = (invite["last_session_at"] or "")[:16].replace("T", " ")
+            cleaned = digests.get(invite_id, {})
+            for field in digest_totals:
+                digest_totals[field] += int(cleaned.get(field) or 0)
             hidden = (
                 f"<input type='hidden' name='csrf' value='{csrf}'>"
                 f"<input type='hidden' name='invite_id' value='{invite_id}'>"
@@ -1286,6 +1551,7 @@ class Handler(BaseHTTPRequestHandler):
                 f"<td class='strong'>{remaining / 3600:.2f}</td>"
                 f"<td>{invite['open_sessions']}/{invite['total_sessions']}</td>"
                 f"<td>{invite['keys_issued']}</td>"
+                f"<td>{int(cleaned.get('requests') or 0)}</td>"
                 f"<td>${billed_cost:.2f}</td>"
                 f"<td class='dim'>{html.escape(last_seen) or '—'}</td>"
                 "<td><form method='post' action='/admin/quota' class='inline'>"
@@ -1333,15 +1599,16 @@ class Handler(BaseHTTPRequestHandler):
             "<table><thead><tr>"
             "<th>Label</th><th>Note</th><th>Quota h</th><th>Used lane-h</th>"
             "<th>Reserved</th><th>Remaining h</th><th>Sessions</th>"
-            "<th>Keys</th><th>Billed</th><th>Last used</th>"
+            "<th>Keys</th><th>Cleanups</th><th>Billed</th><th>Last used</th>"
             "<th>Adjust hours</th><th>Access</th>"
             "</tr></thead><tbody>"
-            + ("".join(rows) or "<tr><td colspan='12'>No invitations yet.</td></tr>")
+            + ("".join(rows) or "<tr><td colspan='13'>No invitations yet.</td></tr>")
             + "</tbody><tfoot><tr>"
             "<th>Total</th><th></th><th></th>"
             f"<th>{totals['used'] / 3600:.2f}</th>"
             f"<th>{totals['reserved'] / 3600:.2f}</th>"
             "<th></th><th></th><th></th>"
+            f"<th>{digest_totals['requests']}</th>"
             f"<th>${totals['billed']:.2f}</th><th></th><th></th><th></th>"
             "</tr></tfoot></table>"
             "<p class='dim'>Used lane-hours are what clients reported at settle "
@@ -1349,6 +1616,7 @@ class Handler(BaseHTTPRequestHandler):
             "<code>server.py reconcile</code>. Usage this account cannot "
             f"attribute to any invitation: {int(unattributed['entries'])} entries, "
             f"${float(unattributed['cost_usd']):.2f}.</p>"
+            + digest_summary(digest_totals)
         )
         self.send_html(200, admin_document(body))
 
@@ -1536,6 +1804,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(404, {"error": "invalid_invite"})
             else:
                 self.send_json(200, result)
+            return
+
+        if self.path == "/v1/passage-digest":
+            invite = self.authorized_invite()
+            if invite is not None:
+                self.handle_passage_digest(invite)
             return
 
         invite = self.authorized_invite()
@@ -1746,6 +2020,69 @@ class Handler(BaseHTTPRequestHandler):
                 response.update(keys[0])
             self.send_json(200, response)
 
+    def handle_passage_digest(self, invite: sqlite3.Row) -> None:
+        """Cleans up one marked passage on the operator's DeepSeek key.
+
+        Upstream failures are never passed through as 401: to the app that
+        means "your invitation no longer works", and a wrong or unfunded
+        operator key is not something a listener can fix by re-redeeming.
+        """
+        api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+        if not api_key:
+            self.send_json(503, {"error": "service_not_configured"})
+            return
+        if int(self.headers.get("Content-Length", "0") or 0) > DIGEST_MAX_BODY_BYTES:
+            self.send_json(413, {"error": "passage_too_long"})
+            return
+        body = self.read_json(limit=DIGEST_MAX_BODY_BYTES)
+        target_language = body.get("target_language")
+        passage = body.get("passage")
+        if target_language not in DIGEST_LANGUAGES or not isinstance(passage, str):
+            self.send_json(400, {"error": "invalid_passage"})
+            return
+        passage = passage.strip()
+        if not passage:
+            self.send_json(400, {"error": "invalid_passage"})
+            return
+        if len(passage) > DIGEST_MAX_PASSAGE_CHARS:
+            self.send_json(413, {"error": "passage_too_long"})
+            return
+
+        # Admission before the daily claim: a busy service is transient and
+        # must not spend the listener's allowance.
+        if not _DIGEST_ADMISSION.acquire(timeout=DIGEST_ADMISSION_TIMEOUT_SECONDS):
+            self.send_json(503, {"error": "digest_busy"})
+            return
+        try:
+            day = utc_day()
+            if not self.store.claim_digest(
+                invite["id"], day, DIGEST_REQUESTS_PER_INVITE_PER_DAY
+            ):
+                self.send_json(429, {"error": "digest_daily_limit"})
+                return
+            try:
+                text, prompt_tokens, completion_tokens = call_deepseek_digest(
+                    api_key, target_language, passage
+                )
+            except DigestUpstreamError as error:
+                self.store.release_digest(invite["id"], day)
+                if error.status == 429:
+                    self.send_json(429, {"error": "rate_limited"})
+                else:
+                    self.send_json(502, {"error": "upstream_unavailable"})
+                return
+            # Tokens are billed whether or not anything usable came back.
+            self.store.record_digest_tokens(
+                invite["id"], day, prompt_tokens, completion_tokens
+            )
+            if not text:
+                self.store.release_digest(invite["id"], day)
+                self.send_json(502, {"error": "empty_response"})
+                return
+            self.send_json(200, {"text": text, "model": DIGEST_MODEL})
+        finally:
+            _DIGEST_ADMISSION.release()
+
     def authorized_invite(self) -> sqlite3.Row | None:
         value = self.headers.get("Authorization", "")
         if not value.startswith("Bearer "):
@@ -1756,12 +2093,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(401, {"error": "unauthorized"})
         return invite
 
-    def read_json(self) -> dict:
-        length = min(int(self.headers.get("Content-Length", "0")), 16_384)
+    def read_json(self, limit: int = 16_384) -> dict:
+        length = min(int(self.headers.get("Content-Length", "0")), limit)
         try:
-            return json.loads(self.rfile.read(length) or b"{}")
-        except json.JSONDecodeError:
+            value = json.loads(self.rfile.read(length) or b"{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
             return {}
+        return value if isinstance(value, dict) else {}
 
     def send_json(self, status: int, value: dict) -> None:
         payload = json.dumps(value, separators=(",", ":")).encode()

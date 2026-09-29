@@ -127,6 +127,45 @@ final class CommunityInviteRealtimeSessionResponseTests: XCTestCase {
     }
 }
 
+/// Passage cleanup is routed through the invite service only when the
+/// service's own quota answer offers it; an older service, or one without a
+/// model key, says nothing and the app routes nothing.
+@MainActor
+final class CommunityInviteQuotaResponseTests: XCTestCase {
+    func testQuotaWithoutAnOfferDecodesWithNone() throws {
+        let data = Data(#"{"remaining_seconds":108000,"used_seconds":0}"#.utf8)
+
+        let response = try JSONDecoder().decode(
+            CommunityInviteQuotaResponse.self,
+            from: data
+        )
+
+        XCTAssertEqual(response.remainingSeconds, 108_000)
+        XCTAssertNil(response.passageDigest)
+    }
+
+    func testQuotaCarriesTheServicesCleanupOffer() throws {
+        let data = Data(
+            #"{"remaining_seconds":3600,"passage_digest":{"provider":"DeepSeek","model":"deepseek-flash","daily_limit":300,"remaining_today":297}}"#.utf8
+        )
+
+        let response = try JSONDecoder().decode(
+            CommunityInviteQuotaResponse.self,
+            from: data
+        )
+
+        XCTAssertEqual(
+            response.passageDigest,
+            CommunityInvitePassageDigestOffer(
+                provider: "DeepSeek",
+                model: "deepseek-flash",
+                dailyLimit: 300,
+                remainingToday: 297
+            )
+        )
+    }
+}
+
 /// The invite access token lives in an app-private file, not the Keychain:
 /// releases are ad-hoc signed, so a Keychain item would demand the login
 /// keychain password after every update.

@@ -255,6 +255,9 @@
 "settings.services.model.subtitle_format" = "Facultatif. Met au propre les passages marqués et rédige à partir d’eux. Utilise %@.";
 "settings.services.model.egress_notice" = "Seuls les passages que vous marquez sont envoyés. La transcription complète reste sur ce Mac.";
 "settings.services.model.audio_notice" = "L'audio n'est jamais envoyé, avec ou sans clé configurée.";
+"settings.services.model.invite_included" = "Votre invitation inclut la mise au propre";
+"settings.services.model.invite_included_detail_format" = "Aucune clé nécessaire. Interrupteur ci-dessus activé, les passages marqués passent par le service d'invitation ZuTalk jusqu'à %1$@ et reviennent lisibles ; le service ne conserve rien. Restant aujourd'hui : %2$lld.";
+"settings.services.model.invite_superseded_format" = "Votre propre clé %@ est enregistrée : les passages vont uniquement à %@, jamais par le service d'invitation.";
 "settings.services.model.console_link" = "Obtenir une clé API";
 
 /* Cleaning up a marked passage: the switch, and what a card shows. */

@@ -14,11 +14,15 @@ use std::time::Duration;
 
 pub mod digest;
 pub mod engine;
+pub mod invite;
 
 pub use digest::{
     digest_passage, is_worth_digesting, source_fingerprint, PassageDigestRequest, PassageLine,
 };
 pub use engine::{LanguageModelEngine, CURRENT_LANGUAGE_MODEL_ENGINE};
+pub use invite::{
+    digest_passage_via_invite, InviteDigest, InviteDigestRoute, INVITE_MAX_PASSAGE_CHARS,
+};
 
 /// Failures a credential check can produce, in the shapes the app can act on.
 ///
@@ -47,6 +51,10 @@ pub enum LanguageModelError {
 
     #[error("model returned nothing")]
     EmptyResponse,
+
+    /// Only the invite route has a ceiling; a listener's own key does not.
+    #[error("passage too long to send")]
+    PassageTooLong,
 }
 
 /// Checks a credential without spending anything or leaving a trace.

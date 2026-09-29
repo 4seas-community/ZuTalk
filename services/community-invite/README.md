@@ -33,6 +33,34 @@ The server divides the reservation by the lane count to derive that bound.
 Passing the raw reservation would let every lane run the full reservation on
 its own, overshooting the quota by the lane count.
 
+## Passage cleanup (optional)
+
+Set `DEEPSEEK_API_KEY` in `service.env` and invitations also cover cleaning
+up marked passages — the app's "Clean up marked passages" switch then works
+without the invited partner bringing a model key of their own. Without the
+variable nothing changes: `/v1/quota` carries no `passage_digest` offer, and
+the app routes no passage here.
+
+DeepSeek has no scoped temporary keys, so this cannot work like Soniox: the
+passage travels through this service (`POST /v1/passage-digest`, body
+`{"target_language", "passage"}`), which calls `deepseek-flash` with thinking
+off and returns `{"text", "model"}`. The service owns the instruction — the
+client cannot send one — so the endpoint is not a general-purpose model on the
+operator's bill. Neither the passage nor the answer is stored or logged;
+`digest_daily` keeps per-invitation daily counts and token totals only.
+
+Bounds: 300 cleanups per invitation per UTC day (`429 digest_daily_limit`),
+12,000 characters per passage (`413`), 2,048 output tokens, 8 concurrent
+upstream calls (`503 digest_busy`). A request is claimed against the day's
+allowance before the upstream call and given back if nothing came of it.
+Upstream credential or balance failures return `502`, never `401` — to the app
+a 401 means the invitation itself stopped working. A key the partner saved
+themselves always wins over the invitation, and the app's switch stays off
+until they turn it on. The admin page shows cleanups per invitation and an
+upper-bound cost estimate at peak list price.
+
+## Admin panel
+
 Set `ZULANGUE_ADMIN_TOKEN` in `service.env` to enable the admin panel at
 `/admin`. Signing in exchanges the token for an HttpOnly, SameSite=Strict
 session cookie (8 hours, memory-only — a restart signs you out); every
