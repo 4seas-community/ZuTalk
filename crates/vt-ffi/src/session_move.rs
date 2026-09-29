@@ -78,6 +78,11 @@ impl ZuTalkCore {
         for target in &plan.targets {
             self.clear_section_from_source(&plan, target)?;
         }
+        // 精修稿与笔记的两份文档都改了;同步中的那几份要让对端知道。
+        for target in &plan.targets {
+            self.library_sync_note_changed(&target.source_doc_id);
+            self.library_sync_note_changed(&target.target_doc_id);
+        }
         Ok(())
     }
 
@@ -151,7 +156,11 @@ impl ZuTalkCore {
     /// Deletes a session's contiguous flat-text section from one document.
     /// Idempotent: an absent section is a no-op, so both the clear phase and a
     /// rollback can run twice without touching a neighbouring section.
-    fn remove_flat_section(&self, doc_id: &str, session_id: &str) -> Result<(), CoreError> {
+    pub(crate) fn remove_flat_section(
+        &self,
+        doc_id: &str,
+        session_id: &str,
+    ) -> Result<(), CoreError> {
         crate::editor_api::open_editor_session_strict(&self.data_dir, &self.editor_bridge, doc_id)?;
         let delta = self.editor_bridge.get_delta(doc_id).map_err(store_error)?;
         let Some(range) = legacy_session_section_range(&delta, session_id)? else {

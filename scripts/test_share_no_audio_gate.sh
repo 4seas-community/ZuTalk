@@ -116,4 +116,22 @@ while IFS= read -r file; do
   fi
 done < <(find "$SYNC_CRATE/src" -type f -name '*.rs' | sort)
 
+# 同步的编排层(vt-ffi/src/library_sync.rs)同样碰不到音频:它只搬事实与文档
+# 字节。密钥库只用来存取设备身份(一把与音频无关的签名密钥)。
+LIBRARY_SYNC="$ROOT_DIR/crates/vt-ffi/src/library_sync.rs"
+[[ -f "$LIBRARY_SYNC" ]] || fail "缺少 $LIBRARY_SYNC"
+SYNC_STRIPPED="$(mktemp)"
+awk '/^#\[cfg\(test\)\]$/{exit} {print}' "$LIBRARY_SYNC" | sed 's://.*::' >"$SYNC_STRIPPED"
+if grep -En "vt_audio|decrypt|DecryptReader|encrypted_path|audio_path|audio_key_ref|audio_journal|\.wav|export_session_zip|include_audio" \
+    "$SYNC_STRIPPED" >/dev/null; then
+  rm -f "$SYNC_STRIPPED"
+  fail "library_sync.rs 碰了音频或音频的密钥;同步只搬文字事实"
+fi
+KEY_REFS="$(grep -Eo "key_store\.[a-z_]+\([A-Z_a-z]+" "$SYNC_STRIPPED" | sed 's/.*(//' | sort -u)"
+rm -f "$SYNC_STRIPPED"
+while IFS= read -r ref; do
+  [[ -n "$ref" ]] || continue
+  [[ "$ref" == "IDENTITY_KEY_REF" ]] || fail "library_sync.rs 从密钥库取了设备身份以外的东西: $ref"
+done <<<"$KEY_REFS"
+
 echo "✓ [share] 音频不可共享、不可同步的五层约束成立"

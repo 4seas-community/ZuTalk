@@ -9,6 +9,7 @@ pub mod block_document_api;
 pub(crate) mod capture_erasure;
 pub mod editor_api;
 pub mod lane_credential_api;
+pub mod library_sync;
 pub mod link_share;
 pub mod notebook_api;
 pub mod notebook_capture_api;
@@ -416,6 +417,11 @@ pub struct ZuTalkCore {
     pub(crate) task_callbacks: Arc<TaskCallbackMap>,
     /// 进行中的直播链接(端到端加密的网页链接)。
     pub(crate) live_link: Arc<crate::link_share::LiveLinkSlot>,
+    /// 设备同步自己的数据库连接。同步没开时也在:判断一场录音是不是别的
+    /// 设备录的,不能依赖同步正在运行。
+    pub(crate) replica: Arc<vt_store::library_replica::ReplicaStore>,
+    /// 设备之间的同步;没打开时为空。见 library_sync。
+    pub(crate) library_sync: crate::library_sync::SyncSlot,
     /// 链接共享服务的基址。默认是部署位,测试指向本地起的服务。
     pub(crate) link_service: Mutex<String>,
     /// Durable local encryption keys for capture audio and Context Packs.
@@ -622,6 +628,13 @@ impl ZuTalkCore {
         let notebook_store = NotebookStore::new(&db_path).map_err(|e| CoreError::InitFailed {
             message: format!("main database schema: {e}"),
         })?;
+        let replica = Arc::new(
+            vt_store::library_replica::ReplicaStore::new(&db_path).map_err(|e| {
+                CoreError::InitFailed {
+                    message: format!("sync store: {e}"),
+                }
+            })?,
+        );
 
         // 内置 Notebook 随核心启动就位。快速录音使用全新的保留内部身份，
         // 绝不把旧版可见的「默认」Topic 隐藏起来：整本 Notes、Context Pack
@@ -804,6 +817,8 @@ impl ZuTalkCore {
             provider_credential_bootstrap,
             task_callbacks,
             live_link: Default::default(),
+            replica,
+            library_sync: Default::default(),
             link_service: Mutex::new(crate::link_share::initial_link_service()),
             key_store,
             api_key_store,
@@ -838,6 +853,7 @@ impl ZuTalkCore {
                 core.notebook_store.clone(),
                 core.editor_bridge.clone(),
                 core.editor_callbacks.clone(),
+                core.library_sync.clone(),
             )),
             (*core.notebook_capture_store).clone(),
             core.session_task_registry.clone(),

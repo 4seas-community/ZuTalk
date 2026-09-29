@@ -176,11 +176,11 @@ fn internal(message: impl std::fmt::Display) -> CoreError {
     }
 }
 
-fn block_documents_dir(data_dir: &Path) -> PathBuf {
+pub(crate) fn block_documents_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("block-documents")
 }
 
-fn block_document_path(data_dir: &Path, doc_id: &str) -> Result<PathBuf, CoreError> {
+pub(crate) fn block_document_path(data_dir: &Path, doc_id: &str) -> Result<PathBuf, CoreError> {
     // doc_id 进文件名,拒绝路径分隔符——与其它 store 的防穿越纪律一致。
     if doc_id.is_empty() || doc_id.contains(['/', '\\', '.']) {
         return Err(internal(format!("非法块文档 id: {doc_id:?}")));
@@ -643,7 +643,11 @@ impl ZuTalkCore {
 
     /// 第 1 纪元笔记 → B 块文档的内容迁移。旧文件改名留档,失败时不动
     /// 旧文件(下次打开重试)。
-    fn migrate_legacy_note(&self, doc_id: &str, legacy_path: &Path) -> Result<(), CoreError> {
+    pub(crate) fn migrate_legacy_note(
+        &self,
+        doc_id: &str,
+        legacy_path: &Path,
+    ) -> Result<(), CoreError> {
         let bytes = fs::read(legacy_path).map_err(|e| internal(format!("读第 1 纪元笔记: {e}")))?;
         let legacy = LoroDoc::new();
         legacy
@@ -730,6 +734,35 @@ impl ZuTalkCore {
         }
     }
 
+    /// 读一份打开中的块文档。没打开时为 `None`。
+    pub(crate) fn with_open_block_document<T>(
+        &self,
+        doc_id: &str,
+        f: impl FnOnce(&LoroDoc) -> T,
+    ) -> Option<T> {
+        let registry = self.block_documents.lock().unwrap();
+        registry.get(doc_id).map(|handle| f(handle.doc()))
+    }
+
+    /// 把同步来的更新合进一份打开中的块文档并落盘。笔记的镜像经它自己的订阅
+    /// 跟上文档;界面由调用方通知。没打开时为 `None`。
+    pub(crate) fn import_into_open_block_document(
+        &self,
+        doc_id: &str,
+        update: &[u8],
+    ) -> Option<Result<bool, CoreError>> {
+        let registry = self.block_documents.lock().unwrap();
+        let handle = registry.get(doc_id)?;
+        let before = handle.doc().oplog_vv();
+        if let Err(error) = handle.doc().import(update) {
+            return Some(Err(internal(format!("合入同步更新: {error}"))));
+        }
+        if handle.doc().oplog_vv() == before {
+            return Some(Ok(false));
+        }
+        Some(self.save_block_document(doc_id, handle).map(|()| true))
+    }
+
     pub(crate) fn persist_block_document(&self, doc_id: &str) -> Result<(), CoreError> {
         let registry = self.block_documents.lock().unwrap();
         let Some(handle) = registry.get(doc_id) else {
@@ -743,6 +776,8 @@ impl ZuTalkCore {
         doc_id: &str,
         handle: &BlockDocumentHandle,
     ) -> Result<(), CoreError> {
+        // 本机改了一份可能在同步的文档:告诉同步层(没开同步时什么也不做)。
+        self.library_sync_note_changed(doc_id);
         let path = block_document_path(&self.data_dir, doc_id)?;
         fs::create_dir_all(block_documents_dir(&self.data_dir))
             .map_err(|e| internal(format!("建块文档目录: {e}")))?;

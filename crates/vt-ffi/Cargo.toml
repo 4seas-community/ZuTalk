@@ -16,6 +16,7 @@ vt-stt = { path = "../vt-stt" }
 vt-llm = { path = "../vt-llm" }
 vt-export = { path = "../vt-export" }
 vt-i18n = { path = "../vt-i18n" }
+vt-sync = { path = "../vt-sync" }
 tokio-util = { version = "0.7", features = ["rt"] }
 futures = "0.3"
 reqwest = { workspace = true }

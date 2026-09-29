@@ -1523,6 +1523,120 @@ pub fn set_state(conn: &Connection, key: &str, value: Option<&str>) -> Result<()
     Ok(())
 }
 
+/// 本机在同步的一个空间。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpaceRow {
+    /// 空间 id(hex)。
+    pub space_id: String,
+    /// `devices` / `topic` / `backup`。
+    pub kind: String,
+    /// `owner` / `member`。
+    pub role: String,
+    pub notebook_id: Option<String>,
+    pub label: String,
+}
+
+pub fn spaces(conn: &Connection) -> Result<Vec<SpaceRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT space_id, kind, role, notebook_id, label FROM sync_spaces ORDER BY created_at",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(SpaceRow {
+                space_id: row.get(0)?,
+                kind: row.get(1)?,
+                role: row.get(2)?,
+                notebook_id: row.get(3)?,
+                label: row.get(4)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+pub fn insert_space(tx: &Transaction, row: &SpaceRow) -> Result<()> {
+    tx.execute(
+        "INSERT INTO sync_spaces (space_id, kind, role, notebook_id, label, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            row.space_id,
+            row.kind,
+            row.role,
+            row.notebook_id,
+            row.label,
+            now()
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn delete_space(tx: &Transaction, space_id: &str) -> Result<()> {
+    tx.execute("DELETE FROM sync_spaces WHERE space_id = ?1", [space_id])?;
+    Ok(())
+}
+
+pub fn removed_devices(conn: &Connection, space_id: &str) -> Result<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT device_id FROM sync_removed_devices WHERE space_id = ?1")?;
+    let rows = stmt
+        .query_map([space_id], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<String>>>()?;
+    Ok(rows)
+}
+
+pub fn mark_removed(tx: &Transaction, space_id: &str, device_id: &str) -> Result<()> {
+    tx.execute(
+        "INSERT INTO sync_removed_devices (space_id, device_id, removed_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(space_id, device_id) DO NOTHING",
+        params![space_id, device_id, now()],
+    )?;
+    Ok(())
+}
+
+/// 本机该不该自己渲染这场录音的精修稿。
+///
+/// 别的设备录的、又在同步中的主题里:精修稿随主题的文档同步过来,本机再渲染
+/// 一份,合并后就是两份。在本机「未归入主题」里的照常渲染 —— 那份文档每台
+/// 设备各有一份,不同步。`unfiled_title` 是「未归入主题」的保留标题。
+pub fn renders_refined_locally(
+    conn: &Connection,
+    session_id: &str,
+    unfiled_title: &str,
+) -> Result<bool> {
+    let replica_in_synced_topic: bool = conn.query_row(
+        "SELECT EXISTS(
+             SELECT 1 FROM sync_recording_origins o
+             JOIN notebook_sessions s ON s.session_id = o.session_id
+             JOIN notebooks n ON n.id = s.notebook_id
+             WHERE o.session_id = ?1 AND n.title <> ?2)",
+        params![session_id, unfiled_title],
+        |row| row.get(0),
+    )?;
+    Ok(!replica_in_synced_topic)
+}
+
+/// 同 [`renders_refined_locally`],按数据库路径开一条只读的连接。给没有
+/// 同步连接可用的渲染器用。
+pub fn renders_refined_locally_at(
+    db_path: &std::path::Path,
+    session_id: &str,
+    unfiled_title: &str,
+) -> Result<bool> {
+    let conn = Connection::open_with_flags(
+        db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    let has_table: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'sync_recording_origins')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_table {
+        return Ok(true);
+    }
+    renders_refined_locally(&conn, session_id, unfiled_title)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

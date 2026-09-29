@@ -7866,6 +7866,16 @@ impl ZuTalkCore {
         session_id: String,
     ) -> Result<FfiNotebookCaptureEvent, CoreError> {
         let _ownership_guard = self.capture_ownership_gate.lock().unwrap();
+        // 另一台 Mac 录的:音频在那台上,这里没有可转写的东西。
+        if let Some(device) = self.recorded_elsewhere(&session_id) {
+            return Err(CoreError::ValidationFailed {
+                message: if device.is_empty() {
+                    "音频在录音的那台 Mac 上,请在那台上精修".to_string()
+                } else {
+                    format!("音频在「{device}」上,请在那台 Mac 上精修")
+                },
+            });
+        }
         let run = self
             .notebook_capture_store
             .get_run_for_session(&session_id)
@@ -10661,7 +10671,7 @@ impl ZuTalkCore {
     /// from delta-planned flat text to idempotent block upserts. Until the
     /// shard-4 cutover the block document lives in `block-documents/` next
     /// to the epoch-1 snapshot, keyed by the doc_id the tab will adopt.
-    fn sync_capture_into_t2_transcript(
+    pub(crate) fn sync_capture_into_t2_transcript(
         &self,
         run: &NotebookCaptureRun,
         complete_projection: bool,

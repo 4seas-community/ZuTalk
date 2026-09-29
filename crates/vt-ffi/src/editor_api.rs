@@ -752,6 +752,8 @@ impl ZuTalkCore {
             .lock()
             .unwrap()
             .insert(session_id.to_string());
+        // 精修稿这类文档在同步:本机的改动告诉同步层(没开同步时什么也不做)。
+        self.library_sync_note_changed(session_id);
     }
 }
 

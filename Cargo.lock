@@ -5644,6 +5644,7 @@ dependencies = [
  "vt-pipeline",
  "vt-store",
  "vt-stt",
+ "vt-sync",
  "zip",
 ]
 

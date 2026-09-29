@@ -155,6 +155,9 @@ struct Host {
     /// 叫醒所有在退避中的拨号循环(网络变了、刚拿到新地址)。
     redial: Notify,
     closing: AtomicBool,
+    /// 引擎启动时所在的运行时。调用方(比如 FFI 线程)不在运行时里时,拨号
+    /// 任务也得有地方跑。
+    runtime: tokio::runtime::Handle,
 }
 
 /// 一个同步空间:文档、名单、此刻的连接与拨号任务。
@@ -215,6 +218,7 @@ impl SyncEngine {
             invites: InviteBook::default(),
             redial: Notify::new(),
             closing: AtomicBool::new(false),
+            runtime: tokio::runtime::Handle::current(),
         });
         let router = Router::builder(endpoint)
             .accept(SYNC_ALPN, SyncAcceptor(host.clone()))
@@ -515,9 +519,10 @@ impl Host {
             keep
         });
         for device in members {
-            dialers
-                .entry(device)
-                .or_insert_with(|| tokio::spawn(dial_loop(self.clone(), space.clone(), device)));
+            dialers.entry(device).or_insert_with(|| {
+                self.runtime
+                    .spawn(dial_loop(self.clone(), space.clone(), device))
+            });
         }
     }
 

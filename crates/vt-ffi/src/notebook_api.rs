@@ -173,6 +173,8 @@ pub(crate) struct NotebookTranscriptProjector {
     notebook_store: NotebookStore,
     editor_bridge: vt_store::EditorBridge,
     editor_callbacks: Arc<Mutex<HashMap<String, Arc<dyn crate::editor_api::FfiEditorCallback>>>>,
+    /// 精修稿写进了主题的文档:同步开着时让别的设备知道。
+    sync: crate::library_sync::SyncSlot,
 }
 
 impl NotebookTranscriptProjector {
@@ -184,6 +186,7 @@ impl NotebookTranscriptProjector {
         editor_callbacks: Arc<
             Mutex<HashMap<String, Arc<dyn crate::editor_api::FfiEditorCallback>>>,
         >,
+        sync: crate::library_sync::SyncSlot,
     ) -> Self {
         Self {
             data_dir,
@@ -191,6 +194,7 @@ impl NotebookTranscriptProjector {
             notebook_store,
             editor_bridge,
             editor_callbacks,
+            sync,
         }
     }
 
@@ -221,6 +225,17 @@ impl NotebookTranscriptProjector {
         replace_existing: bool,
     ) -> Result<Option<String>, CoreError> {
         validate_async_projection_tab(&builtin_kind)?;
+        // 另一台 Mac 录的、在同步中的主题里:精修稿随主题的文档同步过来,
+        // 这里再渲染一份,合并之后就是两份。
+        if !vt_store::library_replica::renders_refined_locally_at(
+            &self.db_path,
+            session_id,
+            QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE,
+        )
+        .unwrap_or(true)
+        {
+            return Ok(None);
+        }
         let notebook_id = match self
             .notebook_store
             .get_linked_notebook_id(session_id)
@@ -274,6 +289,7 @@ impl NotebookTranscriptProjector {
             &legacy_segments,
             replace_existing,
         )?;
+        self.sync.note_changed(&doc_id);
         Ok(Some(doc_id))
     }
 
@@ -811,6 +827,7 @@ impl ZuTalkCore {
             self.notebook_store.clone(),
             self.editor_bridge.clone(),
             self.editor_callbacks.clone(),
+            self.library_sync.clone(),
         )
     }
 }
