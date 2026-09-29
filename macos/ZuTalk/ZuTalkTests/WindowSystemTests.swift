@@ -628,7 +628,9 @@ final class WindowSystemTests: XCTestCase {
             captureRouteContextProvider: { (nil, nil, false) },
             coreProvider: { core }
         )
-        store.openSession(sessionId)
+        // The click-facing `openSession` resolves off the main thread; await
+        // the same work directly.
+        await store.openSessionResolvingRoute(sessionId)
 
         XCTAssertEqual(store.activeNotebookID, quick.id)
         XCTAssertEqual(store.selectedSessionID, sessionId)

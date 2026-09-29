@@ -28,7 +28,7 @@ enum NotebookCaptureRouteSessionPolicy {
 }
 
 enum SessionDefaultTabPolicy {
-    static func builtinKind(
+    nonisolated static func builtinKind(
         sessionType: String,
         hasAsyncTask: Bool,
         isActiveCapture: Bool
@@ -399,7 +399,23 @@ final class MainNavigationStore: ObservableObject {
         openSession(sessionID)
     }
 
+    /// The route lookup in flight for the last recording clicked, if any.
+    private var sessionRouteTask: Task<Void, Never>?
+
     func openSession(_ sessionID: String) {
+        sessionRouteTask?.cancel()
+        sessionRouteTask = Task { [weak self] in
+            await self?.openSessionResolvingRoute(sessionID)
+        }
+    }
+
+    /// Opens a recording where it lives.
+    ///
+    /// Finding that place reads every topic's tabs, links and projections —
+    /// close to a hundred queries on a library of twenty topics. It used to
+    /// run on the main thread inside the click; now the click returns at
+    /// once and the lookup happens off the main thread.
+    func openSessionResolvingRoute(_ sessionID: String) async {
         guard let core = coreProvider() else {
             ToastCenter.shared.error(
                 String(localized: "session.route.unavailable"),
@@ -407,33 +423,52 @@ final class MainNavigationStore: ObservableObject {
             )
             return
         }
-
-        do {
-            guard let route = try notebookRoute(for: sessionID, core: core) else {
-                Self.logger.warning(
-                    "Session has no Notebook route: \(sessionID, privacy: .private)"
+        let captureContext = captureRouteContextProvider()
+        let isActiveCapture = captureContext.isActive
+            && captureContext.sessionID == sessionID
+        let (route, failure) = await Task.detached(priority: .userInitiated) {
+            () -> (ResolvedSessionRoute?, String?) in
+            do {
+                return (
+                    try Self.resolveNotebookRoute(
+                        for: sessionID,
+                        core: core,
+                        isActiveCapture: isActiveCapture
+                    ),
+                    nil
                 )
-                ToastCenter.shared.warning(
-                    String(localized: "session.route.unavailable"),
-                    detail: String(localized: "session.route.unavailable_detail")
-                )
-                return
+            } catch {
+                return (nil, String(describing: error))
             }
-            openNotebookTab(
-                notebookID: route.notebookID,
-                tabID: route.tabID,
-                documentID: route.documentID,
-                selectedSessionID: sessionID
-            )
-        } catch {
+        }.value
+        guard Task.isCancelled == false else { return }
+
+        if let failure {
             Self.logger.error(
-                "Open recording failed: \(String(describing: error), privacy: .private)"
+                "Open recording failed: \(failure, privacy: .private)"
             )
             ToastCenter.shared.error(
                 String(localized: "session.route.unavailable"),
                 detail: String(localized: "session.route.unavailable_detail")
             )
+            return
         }
+        guard let route else {
+            Self.logger.warning(
+                "Session has no Notebook route: \(sessionID, privacy: .private)"
+            )
+            ToastCenter.shared.warning(
+                String(localized: "session.route.unavailable"),
+                detail: String(localized: "session.route.unavailable_detail")
+            )
+            return
+        }
+        openNotebookTab(
+            notebookID: route.notebookID,
+            tabID: route.tabID,
+            documentID: route.documentID,
+            selectedSessionID: sessionID
+        )
     }
 
     func recordSnapshot() {
@@ -567,17 +602,19 @@ final class MainNavigationStore: ObservableObject {
         }
     }
 
-    private func notebookRoute(
+    typealias ResolvedSessionRoute = (notebookID: String, tabID: String, documentID: String)
+
+    nonisolated private static func resolveNotebookRoute(
         for sessionID: String,
-        core: any ZuTalkCoreProtocol
-    ) throws -> EditorRoute? {
+        core: any ZuTalkCoreProtocol,
+        isActiveCapture: Bool
+    ) throws -> ResolvedSessionRoute? {
         let session = try core.getSession(id: sessionID)
-        let captureContext = captureRouteContextProvider()
+        let tasks = (try? core.listTasks(statusFilter: nil)) ?? []
         let preferredKind = SessionDefaultTabPolicy.builtinKind(
             sessionType: session.sessionType,
-            hasAsyncTask: TranscriptionTaskIndex.load(core: core)[sessionID] != nil,
-            isActiveCapture: captureContext.isActive
-                && captureContext.sessionID == sessionID
+            hasAsyncTask: TranscriptionTaskIndex.makeIndex(tasks: tasks)[sessionID] != nil,
+            isActiveCapture: isActiveCapture
         )
 
         var routableNotebooks = try core.listNotebooks()
@@ -595,10 +632,15 @@ final class MainNavigationStore: ObservableObject {
                 .contains { $0.sessionId == sessionID }
 
             var projectedTabIDs = Set<String>()
-            for tab in tabs {
-                let hasProjection = try core.listNotebookSessionProjections(tabId: tab.id)
-                    .contains { $0.deletedAt == nil && $0.sessionId == sessionID }
-                if hasProjection { projectedTabIDs.insert(tab.id) }
+            if linkedDirectly == false {
+                for tab in tabs {
+                    let hasProjection = try core.listNotebookSessionProjections(tabId: tab.id)
+                        .contains { $0.deletedAt == nil && $0.sessionId == sessionID }
+                    if hasProjection {
+                        projectedTabIDs.insert(tab.id)
+                        break
+                    }
+                }
             }
 
             guard linkedDirectly || projectedTabIDs.isEmpty == false else { continue }
@@ -609,12 +651,7 @@ final class MainNavigationStore: ObservableObject {
             } ?? tabs.first
 
             guard let preferred else { return nil }
-            return EditorRoute(
-                notebookID: notebook.id,
-                tabID: preferred.id,
-                documentID: preferred.docId,
-                selectedSessionID: sessionID
-            )
+            return (notebook.id, preferred.id, preferred.docId)
         }
         return nil
     }
