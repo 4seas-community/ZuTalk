@@ -974,6 +974,13 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func syncJoin(code: String) throws  -> FfiSyncJoinResult
 
     /**
+     * 让这台 Mac 离开设备组,换一个新的设备身份,从只有自己的设备组重新开始。
+     * 本机的录音、主题、笔记原样留着;其他 Mac 上的内容不受影响。被移出之后
+     * 想再加回去,也走这一步再重新配对。
+     */
+    func syncLeaveGroup() throws  -> FfiSyncStatus
+
+    /**
      * 从设备组里移除一台 Mac。它自己留着已经同步到的资料,但再也连不进来。
      */
     func syncRemoveDevice(deviceId: String) throws
@@ -2241,6 +2248,19 @@ open func syncJoin(code: String)throws  -> FfiSyncJoinResult  {
     uniffi_vt_ffi_fn_method_zutalkcore_sync_join(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(code),$0
+    )
+})
+}
+
+    /**
+     * 让这台 Mac 离开设备组,换一个新的设备身份,从只有自己的设备组重新开始。
+     * 本机的录音、主题、笔记原样留着;其他 Mac 上的内容不受影响。被移出之后
+     * 想再加回去,也走这一步再重新配对。
+     */
+open func syncLeaveGroup()throws  -> FfiSyncStatus  {
+    return try  FfiConverterTypeFfiSyncStatus_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_leave_group(
+            self.uniffiCloneHandle(),$0
     )
 })
 }
@@ -6885,6 +6905,10 @@ public struct FfiSyncStatus: Equatable, Hashable {
     public var deviceId: String
     public var deviceName: String
     /**
+     * 这台 Mac 已经被别的设备移出了设备组。
+     */
+    public var removedFromGroup: Bool
+    /**
      * 设备组里的全部设备,含本机。
      */
     public var devices: [FfiSyncDevice]
@@ -6893,11 +6917,15 @@ public struct FfiSyncStatus: Equatable, Hashable {
     // declare one manually.
     public init(running: Bool, deviceId: String, deviceName: String,
         /**
+         * 这台 Mac 已经被别的设备移出了设备组。
+         */removedFromGroup: Bool,
+        /**
          * 设备组里的全部设备,含本机。
          */devices: [FfiSyncDevice]) {
         self.running = running
         self.deviceId = deviceId
         self.deviceName = deviceName
+        self.removedFromGroup = removedFromGroup
         self.devices = devices
     }
 
@@ -6920,6 +6948,7 @@ public struct FfiConverterTypeFfiSyncStatus: FfiConverterRustBuffer {
                 running: FfiConverterBool.read(from: &buf),
                 deviceId: FfiConverterString.read(from: &buf),
                 deviceName: FfiConverterString.read(from: &buf),
+                removedFromGroup: FfiConverterBool.read(from: &buf),
                 devices: FfiConverterSequenceTypeFfiSyncDevice.read(from: &buf)
         )
     }
@@ -6928,6 +6957,7 @@ public struct FfiConverterTypeFfiSyncStatus: FfiConverterRustBuffer {
         FfiConverterBool.write(value.running, into: &buf)
         FfiConverterString.write(value.deviceId, into: &buf)
         FfiConverterString.write(value.deviceName, into: &buf)
+        FfiConverterBool.write(value.removedFromGroup, into: &buf)
         FfiConverterSequenceTypeFfiSyncDevice.write(value.devices, into: &buf)
     }
 }
@@ -10538,6 +10568,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_join() != 9864) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_leave_group() != 61370) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_remove_device() != 33379) {

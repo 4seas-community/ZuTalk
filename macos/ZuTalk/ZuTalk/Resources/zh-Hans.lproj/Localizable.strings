@@ -1265,3 +1265,11 @@
 "recording.origin.audio_on_format" = "在「%@」上";
 "recording.origin.refine_elsewhere" = "音频在录音的那台 Mac 上，请在那台上转录。";
 "recording.origin.refine_on_format" = "音频在「%@」上，请在那台 Mac 上转录。";
+
+"settings.devices.removed_title" = "这台 Mac 已被移出";
+"settings.devices.removed_message" = "它留着已经同步到的内容，但不再和其他 Mac 同步。重新开始之后，可以用新的配对码再加入。";
+"settings.devices.start_over" = "重新开始同步";
+"settings.devices.leave" = "离开";
+"settings.devices.leave_hint" = "这台 Mac 不再和其他 Mac 同步，已有的内容原样留着。";
+"settings.devices.leave_confirm_title" = "让这台 Mac 离开？";
+"settings.devices.leave_confirm_message" = "这台 Mac 留着已有的内容，不再同步；其他 Mac 上的内容不受影响。之后可以用新的配对码再加入。";

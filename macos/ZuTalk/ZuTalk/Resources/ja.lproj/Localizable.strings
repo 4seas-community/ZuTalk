@@ -1265,3 +1265,11 @@
 "recording.origin.audio_on_format" = "「%@」にあります";
 "recording.origin.refine_elsewhere" = "音声は録音した Mac にあります。そちらで文字起こしできます。";
 "recording.origin.refine_on_format" = "音声は「%@」にあります。そちらで文字起こしできます。";
+
+"settings.devices.removed_title" = "この Mac は同期から外されました";
+"settings.devices.removed_message" = "受け取った内容はそのまま残りますが、ほかの Mac とは同期しません。やり直すと、新しいペアリングコードでまた参加できます。";
+"settings.devices.start_over" = "やり直す";
+"settings.devices.leave" = "離れる";
+"settings.devices.leave_hint" = "この Mac をほかの Mac と同期しなくします。中身はそのまま残ります。";
+"settings.devices.leave_confirm_title" = "この Mac を離れさせますか?";
+"settings.devices.leave_confirm_message" = "この Mac は中身を残したまま同期をやめます。ほかの Mac には影響しません。あとで新しいコードでまたペアリングできます。";

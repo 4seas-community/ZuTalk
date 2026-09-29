@@ -1265,3 +1265,11 @@
 "recording.origin.audio_on_format" = "Sur « %@ »";
 "recording.origin.refine_elsewhere" = "L’audio est sur le Mac qui l’a enregistré : transcrivez-le là-bas.";
 "recording.origin.refine_on_format" = "L’audio est sur « %@ » : transcrivez-le là-bas.";
+
+"settings.devices.removed_title" = "Ce Mac a été retiré de vos Mac";
+"settings.devices.removed_message" = "Il garde ce qu’il a déjà, mais ne se synchronise plus avec vos autres Mac. Recommencez pour l’appairer à nouveau avec un nouveau code.";
+"settings.devices.start_over" = "Recommencer";
+"settings.devices.leave" = "Quitter";
+"settings.devices.leave_hint" = "Ce Mac cesse de se synchroniser avec les autres. Son contenu reste.";
+"settings.devices.leave_confirm_title" = "Faire quitter ce Mac ?";
+"settings.devices.leave_confirm_message" = "Ce Mac garde son contenu et arrête de se synchroniser ; vos autres Mac ne sont pas touchés. Vous pourrez l’appairer à nouveau avec un nouveau code.";

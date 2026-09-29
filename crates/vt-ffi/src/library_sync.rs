@@ -212,6 +212,8 @@ pub(crate) struct LibrarySync {
     engine: SyncEngine,
     unfiled: String,
     runtime: tokio::runtime::Handle,
+    /// 启动时的引擎设置。离开设备组后用同样的设置重启。
+    options: SyncOptions,
     /// 事实文档的内存副本。LoroDoc 的 clone 共享状态。
     cache: Mutex<HashMap<String, LoroDoc>>,
     digests: Mutex<HashMap<String, (VersionDigest, Vec<u8>)>>,
@@ -248,7 +250,7 @@ impl LibrarySync {
             .ensure_internal_notebook(QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE, "")
             .map_err(internal)?
             .id;
-        let relay_urls = match options.relay_urls {
+        let relay_urls = match options.relay_urls.clone() {
             Some(urls) => urls,
             None => default_relays(),
         };
@@ -274,6 +276,7 @@ impl LibrarySync {
             engine,
             unfiled,
             runtime: core.runtime.handle().clone(),
+            options: options.clone(),
             cache: Mutex::default(),
             digests: Mutex::default(),
             session_notes: Mutex::default(),
@@ -1160,7 +1163,12 @@ impl LibrarySync {
     }
 
     fn roster_members(&self, space: &SpaceId) -> Vec<EndpointId> {
-        self.roster(space)
+        let roster = self.roster(space);
+        // 本机被移出了:别的设备都不认它了,也就不必再去拨它们。
+        if roster.removed.contains_key(&self.device_hex) {
+            return Vec::new();
+        }
+        roster
             .members()
             .filter_map(|(hex, _)| parse_device(hex))
             .collect()
@@ -1214,8 +1222,54 @@ impl LibrarySync {
             running: true,
             device_id: self.device_hex.clone(),
             device_name: self.device_name.lock().unwrap().clone(),
+            removed_from_group: self.removed_from_group(),
             devices,
         }
+    }
+
+    /// 本机已经被别的设备从设备组里移除了:名单的「已移除」表里有本机。
+    fn removed_from_group(&self) -> bool {
+        self.device_group()
+            .is_some_and(|space| self.roster(&space).removed.contains_key(&self.device_hex))
+    }
+
+    /// 离开之前在名单上把自己划掉,尽量让还连着的设备知道。连不上的设备会一直
+    /// 把本机列在名单上,直到有人移除它 —— 这台之后换了身份,再也连不进去。
+    fn announce_leaving(&self) {
+        let Some(space) = self.device_group() else {
+            return;
+        };
+        let id = roster_doc(&space);
+        let wrote = {
+            let _gate = self.gate.lock().unwrap();
+            self.replica.write(|tx| {
+                let doc = self.fact_doc_or_new(tx, &id)?;
+                let changed = docs::remove_member(&doc, &self.device_hex, &now())?;
+                if changed {
+                    self.save_fact_doc(tx, &id, &doc)?;
+                }
+                Ok(changed)
+            })
+        };
+        if matches!(wrote, Ok(true)) && self.engine.peers(&space).iter().any(|p| p.connected) {
+            self.engine.notify_changed(&space, &id);
+            // 给还连着的设备一点时间把名单拉走。
+            std::thread::sleep(Duration::from_millis(1_500));
+        }
+    }
+
+    /// 丢掉本机所有同步文档与空间记录。录音、主题、笔记本身都在 SQLite 与各自的
+    /// 文档里,不受影响;下次配对时按新身份重新导出。
+    fn forget_everything(&self) -> Result<(), ReplicaError> {
+        let _gate = self.gate.lock().unwrap();
+        let result = self.replica.write(|tx| {
+            tx.execute("DELETE FROM sync_documents", [])?;
+            tx.execute("DELETE FROM sync_spaces", [])?;
+            facts::set_state(tx, INITIAL_EXPORT_STATE, None)
+        });
+        self.drop_cache();
+        self.rosters.write().unwrap().clear();
+        result
     }
 
     /// 本机的名字变了:名单上改掉,别的设备跟着看到。
@@ -1353,8 +1407,16 @@ impl LibrarySync {
                 })
                 .map_err(internal)?;
         }
-        self.engine.members_changed(&space);
+        // 先把新名单发出去,被移除的那台也收得到,它才知道自己出局了;两秒之后
+        // 再断开。这期间它连不进新连接,旧连接上也只剩这一份名单可拉。
         self.engine.notify_changed(&space, &id);
+        let sync = self.core.upgrade().and_then(|core| core.library_sync.get());
+        self.runtime.spawn(async move {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            if let Some(sync) = sync {
+                sync.engine.members_changed(&space);
+            }
+        });
         Ok(())
     }
 
@@ -1740,6 +1802,8 @@ pub struct FfiSyncStatus {
     pub running: bool,
     pub device_id: String,
     pub device_name: String,
+    /// 这台 Mac 已经被别的设备移出了设备组。
+    pub removed_from_group: bool,
     /// 设备组里的全部设备,含本机。
     pub devices: Vec<FfiSyncDevice>,
 }
@@ -1789,6 +1853,7 @@ impl ZuTalkCore {
                 running: false,
                 device_id: String::new(),
                 device_name: String::new(),
+                removed_from_group: false,
                 devices: Vec::new(),
             },
         }
@@ -1830,6 +1895,26 @@ impl ZuTalkCore {
     /// 从设备组里移除一台 Mac。它自己留着已经同步到的资料,但再也连不进来。
     pub fn sync_remove_device(&self, device_id: String) -> Result<(), CoreError> {
         self.running_sync()?.remove_device(&device_id)
+    }
+
+    /// 让这台 Mac 离开设备组,换一个新的设备身份,从只有自己的设备组重新开始。
+    /// 本机的录音、主题、笔记原样留着;其他 Mac 上的内容不受影响。被移出之后
+    /// 想再加回去,也走这一步再重新配对。
+    pub fn sync_leave_group(self: Arc<Self>) -> Result<FfiSyncStatus, CoreError> {
+        let sync = self.running_sync()?;
+        let name = sync.device_name.lock().unwrap().clone();
+        let options = sync.options.clone();
+        if !sync.removed_from_group() {
+            sync.announce_leaving();
+        }
+        sync.forget_everything().map_err(internal)?;
+        if let Some(sync) = self.library_sync.set(None) {
+            sync.stop();
+        }
+        self.key_store
+            .delete_key(IDENTITY_KEY_REF)
+            .map_err(|e| internal(format!("换设备身份: {e}")))?;
+        self.start_library_sync(name, options)
     }
 
     /// 这场录音是在哪台 Mac 上录的;本机录的为空。
@@ -2078,6 +2163,57 @@ mod tests {
         laptop.purge_session(sid.into()).unwrap();
         eventually("工作室上也删掉了", || {
             studio.get_session(sid.into()).is_err()
+        });
+
+        studio.sync_stop();
+        laptop.sync_stop();
+    }
+
+    #[test]
+    fn a_removed_mac_knows_it_and_can_start_over_and_pair_again() {
+        let (_a_dir, studio) = core();
+        let (_b_dir, laptop) = core();
+        let sid = "sync-session-removed";
+        record(&studio, sid);
+        start(&studio, "工作室");
+        start(&laptop, "旧笔记本");
+        pair(&studio, &laptop);
+        eventually("笔记本上有这场录音", || {
+            title_of(&laptop, sid).is_some()
+        });
+        let old_id = laptop.sync_status().device_id;
+
+        studio.sync_remove_device(old_id.clone()).unwrap();
+        eventually("笔记本知道自己被移出了", || {
+            laptop.sync_status().removed_from_group
+        });
+        assert!(matches!(
+            studio.sync_remove_device(studio.sync_status().device_id),
+            Err(CoreError::ValidationFailed { ref message }) if message == "sync.error.cannot_remove_self"
+        ));
+
+        // 重新开始:新身份、只有自己,资料都还在。
+        let fresh = laptop.clone().sync_leave_group().unwrap();
+        assert_ne!(fresh.device_id, old_id);
+        assert!(!fresh.removed_from_group);
+        assert_eq!(fresh.devices.len(), 1);
+        assert!(title_of(&laptop, sid).is_some());
+
+        // 用新的配对码可以再加回来。
+        pair(&studio, &laptop);
+        eventually("工作室上又看到两台", || {
+            studio
+                .sync_status()
+                .devices
+                .iter()
+                .filter(|device| !device.name.is_empty())
+                .count()
+                >= 2
+                && studio
+                    .sync_status()
+                    .devices
+                    .iter()
+                    .any(|device| device.device_id == fresh.device_id && device.connected)
         });
 
         studio.sync_stop();

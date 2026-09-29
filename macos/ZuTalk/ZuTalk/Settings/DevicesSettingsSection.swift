@@ -13,6 +13,7 @@ struct DevicesSettingsSection: View {
     @State private var joinCode = ""
     @State private var joinedWith: String?
     @State private var removing: FfiSyncDevice?
+    @State private var confirmingLeave = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
@@ -47,6 +48,19 @@ struct DevicesSettingsSection: View {
                 }
             }
 
+            if store.enabled, store.removedFromGroup {
+                SettingsCard(title: String(localized: "settings.devices.removed_title")) {
+                    SettingsRow(
+                        String(localized: "settings.devices.removed_title"),
+                        description: String(localized: "settings.devices.removed_message")
+                    ) {
+                        Button(String(localized: "settings.devices.start_over")) { store.leaveGroup() }
+                            .disabled(store.busy)
+                            .accessibilityIdentifier("settings.devices.start-over")
+                    }
+                }
+            }
+
             if store.enabled {
                 SettingsCard(title: String(localized: "settings.devices.my_macs")) {
                     if store.otherDevices.isEmpty {
@@ -61,6 +75,16 @@ struct DevicesSettingsSection: View {
                     ForEach(Array(store.otherDevices.enumerated()), id: \.element.deviceId) { index, device in
                         if index > 0 { SettingsRowDivider() }
                         deviceRow(device)
+                    }
+                    if store.otherDevices.isEmpty == false, store.removedFromGroup == false {
+                        SettingsRowDivider()
+                        SettingsRow(
+                            String(localized: "settings.devices.leave"),
+                            description: String(localized: "settings.devices.leave_hint")
+                        ) {
+                            Button(String(localized: "settings.devices.leave")) { confirmingLeave = true }
+                                .disabled(store.busy)
+                        }
                     }
                 }
                 .accessibilityIdentifier("settings.devices.list")
@@ -114,6 +138,17 @@ struct DevicesSettingsSection: View {
             Button(String(localized: "common.cancel"), role: .cancel) { removing = nil }
         } message: { _ in
             Text(String(localized: "settings.devices.remove_confirm_message"))
+        }
+        .alert(
+            String(localized: "settings.devices.leave_confirm_title"),
+            isPresented: $confirmingLeave
+        ) {
+            Button(String(localized: "settings.devices.leave"), role: .destructive) {
+                store.leaveGroup()
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "settings.devices.leave_confirm_message"))
         }
     }
 

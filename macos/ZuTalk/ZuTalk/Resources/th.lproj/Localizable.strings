@@ -1265,3 +1265,11 @@
 "recording.origin.audio_on_format" = "อยู่ใน “%@”";
 "recording.origin.refine_elsewhere" = "เสียงอยู่ใน Mac ที่บันทึก ให้ถอดเสียงที่เครื่องนั้น";
 "recording.origin.refine_on_format" = "เสียงอยู่ใน “%@” ให้ถอดเสียงที่เครื่องนั้น";
+
+"settings.devices.removed_title" = "Mac เครื่องนี้ถูกนำออกแล้ว";
+"settings.devices.removed_message" = "เครื่องนี้เก็บสิ่งที่มีอยู่แล้วไว้ แต่ไม่ซิงก์กับ Mac เครื่องอื่นอีก เริ่มใหม่แล้วจับคู่อีกครั้งด้วยรหัสใหม่ได้";
+"settings.devices.start_over" = "เริ่มใหม่";
+"settings.devices.leave" = "ออก";
+"settings.devices.leave_hint" = "Mac เครื่องนี้จะไม่ซิงก์กับเครื่องอื่นอีก สิ่งที่มีอยู่ยังอยู่ครบ";
+"settings.devices.leave_confirm_title" = "ให้ Mac เครื่องนี้ออกไหม";
+"settings.devices.leave_confirm_message" = "Mac เครื่องนี้เก็บสิ่งที่มีไว้และหยุดซิงก์ Mac เครื่องอื่นไม่ได้รับผลกระทบ ภายหลังจับคู่ใหม่ด้วยรหัสใหม่ได้";

@@ -603,6 +603,11 @@ RustBuffer uniffi_vt_ffi_fn_method_zutalkcore_sync_describe_code(uint64_t ptr, R
 RustBuffer uniffi_vt_ffi_fn_method_zutalkcore_sync_join(uint64_t ptr, RustBuffer code, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_SYNC_LEAVE_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_SYNC_LEAVE_GROUP
+RustBuffer uniffi_vt_ffi_fn_method_zutalkcore_sync_leave_group(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_SYNC_REMOVE_DEVICE
 #define UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_SYNC_REMOVE_DEVICE
 void uniffi_vt_ffi_fn_method_zutalkcore_sync_remove_device(uint64_t ptr, RustBuffer device_id, RustCallStatus *_Nonnull out_status
@@ -1648,6 +1653,12 @@ uint16_t uniffi_vt_ffi_checksum_method_zutalkcore_sync_describe_code(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_SYNC_JOIN
 #define UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_SYNC_JOIN
 uint16_t uniffi_vt_ffi_checksum_method_zutalkcore_sync_join(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_SYNC_LEAVE_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_SYNC_LEAVE_GROUP
+uint16_t uniffi_vt_ffi_checksum_method_zutalkcore_sync_leave_group(void
 
 );
 #endif

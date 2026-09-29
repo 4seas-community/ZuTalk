@@ -1265,3 +1265,11 @@
 "recording.origin.audio_on_format" = "On “%@”";
 "recording.origin.refine_elsewhere" = "Audio is on the Mac that recorded it — transcribe it there.";
 "recording.origin.refine_on_format" = "Audio is on “%@” — transcribe it there.";
+
+"settings.devices.removed_title" = "This Mac was removed from your Macs";
+"settings.devices.removed_message" = "It keeps what it already has, but no longer syncs with your other Macs. Start over to pair it again with a new code.";
+"settings.devices.start_over" = "Start over";
+"settings.devices.leave" = "Leave";
+"settings.devices.leave_hint" = "Stop syncing this Mac with the others. What’s on it stays.";
+"settings.devices.leave_confirm_title" = "Leave with this Mac?";
+"settings.devices.leave_confirm_message" = "This Mac keeps what it has and stops syncing; your other Macs are not affected. You can pair it again later with a new code.";

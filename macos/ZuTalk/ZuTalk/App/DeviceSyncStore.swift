@@ -54,6 +54,11 @@ final class DeviceSyncStore: ObservableObject {
         (status?.devices ?? []).filter { !$0.isThisDevice }
     }
 
+    /// 这台已经被别的 Mac 移出了设备组。
+    var removedFromGroup: Bool {
+        status?.removedFromGroup ?? false
+    }
+
     // MARK: - 开关
 
     /// 启动时调用:打开过同步的,接着同步。
@@ -192,6 +197,26 @@ final class DeviceSyncStore: ObservableObject {
         case .failure(let error):
             problem = Self.describe(error)
             return nil
+        }
+    }
+
+    /// 让这台离开设备组(或被移出之后重新开始):换一个新身份,从只有自己开始。
+    /// 本机的录音与笔记原样留着。
+    func leaveGroup() {
+        guard let core = CoreClient.shared.core else { return }
+        busy = true
+        problem = nil
+        invite = nil
+        Task {
+            let result = await Task.detached { Result { try core.syncLeaveGroup() } }.value
+            busy = false
+            switch result {
+            case .success(let status):
+                self.status = status
+                try? core.syncSetListener(listener: DeviceSyncListener())
+            case .failure(let error):
+                problem = Self.describe(error)
+            }
         }
     }
 

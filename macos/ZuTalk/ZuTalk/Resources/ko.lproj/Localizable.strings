@@ -1265,3 +1265,11 @@
 "recording.origin.audio_on_format" = "‘%@’에 있음";
 "recording.origin.refine_elsewhere" = "오디오는 녹음한 Mac에 있어요. 그 Mac에서 텍스트로 변환하세요.";
 "recording.origin.refine_on_format" = "오디오는 ‘%@’에 있어요. 그 Mac에서 텍스트로 변환하세요.";
+
+"settings.devices.removed_title" = "이 Mac은 동기화에서 제외됐어요";
+"settings.devices.removed_message" = "이미 받은 내용은 남지만 다른 Mac과 더 이상 동기화하지 않아요. 다시 시작하면 새 페어링 코드로 다시 참여할 수 있어요.";
+"settings.devices.start_over" = "다시 시작";
+"settings.devices.leave" = "나가기";
+"settings.devices.leave_hint" = "이 Mac을 다른 Mac과 더 이상 동기화하지 않아요. 가진 내용은 그대로 남아요.";
+"settings.devices.leave_confirm_title" = "이 Mac을 나가게 할까요?";
+"settings.devices.leave_confirm_message" = "이 Mac은 내용을 그대로 두고 동기화를 멈춰요. 다른 Mac에는 영향이 없어요. 나중에 새 코드로 다시 페어링할 수 있어요.";
