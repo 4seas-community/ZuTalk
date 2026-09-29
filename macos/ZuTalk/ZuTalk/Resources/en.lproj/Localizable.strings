@@ -1041,6 +1041,7 @@
 "recording_bar.mark_hint" = "Mark the passage you just heard (⌃⌥S, from any app)";
 "recording_bar.pause_hint" = "Pause or resume (⌃⌥P, from any app)";
 "recording_bar.stop_hint" = "End the recording and save it (⌃⌥R, from any app)";
+"recording_bar.retry_stop" = "Retry stop";
 "recording_bar.captions.off" = "Recording only";
 "captions_choice.on" = "Live captions";
 "captions_choice.off" = "Recording only";

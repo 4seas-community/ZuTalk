@@ -1142,6 +1142,33 @@ private struct NotebookRealtimeHistoryView: View {
 /// Owns the provider-rate observation for the one mounted live run. A
 /// speculative preview frame updates live text and follow-at-edge behavior
 /// without rebuilding the durable Session Section.
+/// The live preview's rows for the main window, at most ten times a second.
+///
+/// The provider's speculative tail changes up to thirty times a second, which
+/// the subtitle window needs to feel live. This page re-evaluates the whole
+/// recording on every change — speaker turns, gaps, cues, one diff per row —
+/// so here a third of the rate reads the same and costs a third as much. The
+/// newest frame always arrives: the throttle keeps the latest value.
+@MainActor
+final class ThrottledLivePreviewUtterances: ObservableObject {
+    @Published private(set) var utterances: [NotebookCaptureUtteranceDTO]
+    private var subscription: AnyCancellable?
+
+    init(
+        source: NotebookCaptureLivePresentationStore,
+        interval: RunLoop.SchedulerTimeType.Stride = .milliseconds(100)
+    ) {
+        utterances = source.utterances
+        subscription = source.$frame
+            .map(\.utterances)
+            .removeDuplicates()
+            .throttle(for: interval, scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] rows in
+                self?.utterances = rows
+            }
+    }
+}
+
 private struct NotebookRealtimeActiveRunView: View {
     let run: NotebookCaptureHistoryRunDTO
     let presentationMode: NotebookTranscriptPresentationMode
@@ -1150,7 +1177,7 @@ private struct NotebookRealtimeActiveRunView: View {
     private let capture: ActiveBilingualTranscriptStore
     private let liveTailAnchorID: String
     private let onLiveAutoscrollSignal: () -> Void
-    @ObservedObject private var livePresentation: NotebookCaptureLivePresentationStore
+    @StateObject private var livePreview: ThrottledLivePreviewUtterances
 
     init(
         run: NotebookCaptureHistoryRunDTO,
@@ -1168,13 +1195,15 @@ private struct NotebookRealtimeActiveRunView: View {
         self.capture = capture
         self.liveTailAnchorID = liveTailAnchorID
         self.onLiveAutoscrollSignal = onLiveAutoscrollSignal
-        _livePresentation = ObservedObject(wrappedValue: capture.livePresentation)
+        _livePreview = StateObject(
+            wrappedValue: ThrottledLivePreviewUtterances(source: capture.livePresentation)
+        )
     }
 
     var body: some View {
         let presentedUtterances = NotebookCaptureLivePresentation.utterances(
             durable: run.utterances,
-            preview: livePresentation.utterances,
+            preview: livePreview.utterances,
             sessionId: run.sessionId
         )
         VStack(spacing: 0) {
@@ -1222,7 +1251,7 @@ private struct NotebookRealtimeActiveRunView: View {
         NotebookRealtimeAutoscrollPolicy.signal(
             in: NotebookCaptureLivePresentation.utteranceTail(
                 durable: run.utterances,
-                preview: livePresentation.utterances,
+                preview: livePreview.utterances,
                 sessionId: run.sessionId,
                 limit: 1
             ),

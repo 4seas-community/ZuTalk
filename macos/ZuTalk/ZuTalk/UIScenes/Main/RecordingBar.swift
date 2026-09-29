@@ -280,11 +280,13 @@ struct RecordingBarContent: View {
                 title: model.phase == .stopping
                     ? String(localized: "capture.state.draining")
                     : model.stopNeedsRetry
-                        ? String(localized: "home.workspace.retry")
+                        ? String(localized: "recording_bar.retry_stop")
                         : String(localized: "capture.toolbar.stop"),
+                // Not the reconnect button's ↻: the two can sit side by side,
+                // and a bare "Retry" beside "Reconnect" does not say which.
                 systemImage: model.phase == .stopping
                     ? "hourglass"
-                    : model.stopNeedsRetry ? "arrow.clockwise" : "stop.fill",
+                    : model.stopNeedsRetry ? "exclamationmark.arrow.circlepath" : "stop.fill",
                 tint: .signalRed,
                 compact: compact,
                 disabled: model.canStop == false,

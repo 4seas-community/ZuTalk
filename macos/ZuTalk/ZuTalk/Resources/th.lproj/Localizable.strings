@@ -1041,6 +1041,7 @@
 "recording_bar.mark_hint" = "ทำเครื่องหมายช่วงที่เพิ่งได้ยิน (⌃⌥S ใช้ได้จากทุกแอป)";
 "recording_bar.pause_hint" = "หยุดชั่วคราวหรือทำต่อ (⌃⌥P ใช้ได้จากทุกแอป)";
 "recording_bar.stop_hint" = "จบและบันทึกการบันทึกนี้ (⌃⌥R ใช้ได้จากทุกแอป)";
+"recording_bar.retry_stop" = "ลองหยุดอีกครั้ง";
 "recording_bar.captions.off" = "บันทึกเสียงอย่างเดียว";
 "captions_choice.on" = "คำบรรยายสด";
 "captions_choice.off" = "บันทึกเสียงอย่างเดียว";

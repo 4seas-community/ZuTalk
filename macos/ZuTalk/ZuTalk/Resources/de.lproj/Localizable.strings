@@ -1041,6 +1041,7 @@
 "recording_bar.mark_hint" = "Die eben gehörte Passage markieren (⌃⌥S, aus jeder App)";
 "recording_bar.pause_hint" = "Pausieren oder fortsetzen (⌃⌥P, aus jeder App)";
 "recording_bar.stop_hint" = "Aufnahme beenden und sichern (⌃⌥R, aus jeder App)";
+"recording_bar.retry_stop" = "Stoppen wiederholen";
 "recording_bar.captions.off" = "Nur Aufnahme";
 "captions_choice.on" = "Live-Untertitel";
 "captions_choice.off" = "Nur Aufnahme";

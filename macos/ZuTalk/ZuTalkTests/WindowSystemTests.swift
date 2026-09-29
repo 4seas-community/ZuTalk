@@ -758,12 +758,15 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertFalse(historyView.contains("ForEach(availableRuns)"))
         XCTAssertTrue(historyView.contains("presentedRun"))
         XCTAssertTrue(historyView.contains("NotebookRealtimeActiveRunView("))
+        // Only the active run observes the live preview, and in the main
+        // window it does so through the throttled mirror.
         XCTAssertTrue(
             activeRunView.contains(
-                "@ObservedObject private var livePresentation: "
-                    + "NotebookCaptureLivePresentationStore"
+                "@StateObject private var livePreview: "
+                    + "ThrottledLivePreviewUtterances"
             )
         )
+        XCTAssertFalse(activeRunView.contains("@ObservedObject private var livePresentation"))
         XCTAssertTrue(activeRunView.contains("NotebookRealtimeAutoscrollPolicy.signal("))
         XCTAssertTrue(activeRunView.contains("onLiveAutoscrollSignal()"))
     }

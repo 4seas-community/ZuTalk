@@ -1041,6 +1041,7 @@
 "recording_bar.mark_hint" = "标记刚才听到的这一段（⌃⌥S，在任何应用里都能用）";
 "recording_bar.pause_hint" = "暂停或继续（⌃⌥P，在任何应用里都能用）";
 "recording_bar.stop_hint" = "结束并保存这场录音（⌃⌥R，在任何应用里都能用）";
+"recording_bar.retry_stop" = "重试停止";
 "recording_bar.captions.off" = "仅录音";
 "captions_choice.on" = "实时字幕";
 "captions_choice.off" = "仅录音";

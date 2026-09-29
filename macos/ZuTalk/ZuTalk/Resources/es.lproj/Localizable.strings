@@ -1041,6 +1041,7 @@
 "recording_bar.mark_hint" = "Marcar el fragmento que acabas de oír (⌃⌥S, desde cualquier app)";
 "recording_bar.pause_hint" = "Pausar o reanudar (⌃⌥P, desde cualquier app)";
 "recording_bar.stop_hint" = "Terminar y guardar la grabación (⌃⌥R, desde cualquier app)";
+"recording_bar.retry_stop" = "Reintentar detener";
 "recording_bar.captions.off" = "Solo grabación";
 "captions_choice.on" = "Subtítulos en directo";
 "captions_choice.off" = "Solo grabación";

@@ -1041,6 +1041,7 @@
 "recording_bar.mark_hint" = "Marquer le passage que vous venez d’entendre (⌃⌥S, depuis n’importe quelle app)";
 "recording_bar.pause_hint" = "Mettre en pause ou reprendre (⌃⌥P, depuis n’importe quelle app)";
 "recording_bar.stop_hint" = "Terminer et enregistrer (⌃⌥R, depuis n’importe quelle app)";
+"recording_bar.retry_stop" = "Réessayer l'arrêt";
 "recording_bar.captions.off" = "Enregistrement seul";
 "captions_choice.on" = "Sous-titres en direct";
 "captions_choice.off" = "Enregistrement seul";

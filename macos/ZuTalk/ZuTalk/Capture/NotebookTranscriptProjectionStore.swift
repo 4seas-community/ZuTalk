@@ -278,7 +278,11 @@ final class NotebookTranscriptProjectionStore: ObservableObject {
     private func pollAsyncStateUntilTerminal(sessionId: String) async {
         for _ in 0..<360 {
             try? await MontereyTaskSleep.seconds(5)
-            guard let event = try? captureClient.getNotebookCaptureSessionEvent(
+            // The session event carries the whole transcript. Read off the
+            // main thread: this runs every five seconds for as long as the
+            // refined transcript takes, and a long recording made each read a
+            // visible hitch.
+            guard let event = try? await captureClient.reconcileNotebookCaptureSessionEvent(
                 sessionId: sessionId
             ) else { continue }
             applyAsyncState(event)

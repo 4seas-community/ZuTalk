@@ -1041,6 +1041,7 @@
 "recording_bar.mark_hint" = "방금 들은 부분 표시(⌃⌥S, 어느 앱에서나)";
 "recording_bar.pause_hint" = "일시정지 또는 계속(⌃⌥P, 어느 앱에서나)";
 "recording_bar.stop_hint" = "녹음을 끝내고 저장(⌃⌥R, 어느 앱에서나)";
+"recording_bar.retry_stop" = "중지 다시 시도";
 "recording_bar.captions.off" = "녹음만";
 "captions_choice.on" = "실시간 자막";
 "captions_choice.off" = "녹음만";

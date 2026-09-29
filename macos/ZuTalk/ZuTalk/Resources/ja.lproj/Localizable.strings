@@ -1041,6 +1041,7 @@
 "recording_bar.mark_hint" = "今聞いた部分をマーク（⌃⌥S、どのアプリからでも）";
 "recording_bar.pause_hint" = "一時停止・再開（⌃⌥P、どのアプリからでも）";
 "recording_bar.stop_hint" = "録音を終了して保存（⌃⌥R、どのアプリからでも）";
+"recording_bar.retry_stop" = "停止を再試行";
 "recording_bar.captions.off" = "録音のみ";
 "captions_choice.on" = "リアルタイム字幕";
 "captions_choice.off" = "録音のみ";
