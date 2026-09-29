@@ -12057,6 +12057,10 @@ pub(crate) mod tests {
         thai_starts: AtomicUsize,
         /// How many Thai connections fail before one stays up.
         failing_thai_starts: AtomicUsize,
+        /// While set, a Thai connection that is going to stay up holds back
+        /// its `Connected` until the test clears it — so the test decides
+        /// when the replacement comes back instead of racing it.
+        hold_replacement: Arc<AtomicBool>,
     }
 
     impl NotebookSonioxStreamFactory for FailingThaiLaneFactory {
@@ -12078,7 +12082,17 @@ pub(crate) mod tests {
             let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
             let (control_tx, mut control_rx) = tokio::sync::mpsc::channel(4);
             let (event_tx, event_rx) = tokio::sync::mpsc::channel(16);
+            let held = (is_thai && !fails).then(|| self.hold_replacement.clone());
             let task = tokio::spawn(async move {
+                while held
+                    .as_ref()
+                    .is_some_and(|hold| hold.load(Ordering::SeqCst))
+                {
+                    tokio::select! {
+                        _ = cancel.cancelled() => return Ok(()),
+                        _ = tokio::time::sleep(std::time::Duration::from_millis(5)) => {}
+                    }
+                }
                 let _ = event_tx.send(SttStreamEvent::Connected).await;
                 if fails {
                     let _ = event_tx
@@ -12134,6 +12148,7 @@ pub(crate) mod tests {
         let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
         let factory = Arc::new(FailingThaiLaneFactory::default());
         factory.failing_thai_starts.store(1, Ordering::SeqCst);
+        factory.hold_replacement.store(true, Ordering::SeqCst);
         core.notebook_soniox_stream_factory = factory.clone();
         core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
             .unwrap();
@@ -12156,32 +12171,55 @@ pub(crate) mod tests {
             .unwrap();
         let session_id = started.session_id.clone();
 
-        let thai_state = |event: &FfiNotebookCaptureEvent| {
+        let thai = |event: &FfiNotebookCaptureEvent| {
             event
                 .lane_health
                 .iter()
                 .find(|lane| lane.target_language.as_deref() == Some("th"))
-                .map(|lane| lane.state.clone())
+                .map(|lane| (lane.state.clone(), lane.group_epoch))
         };
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        let mut saw_failed = false;
-        let mut back_live = false;
-        while std::time::Instant::now() < deadline && !back_live {
-            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
-                .unwrap();
-            while let Ok(event) = events_rx.try_recv() {
-                match thai_state(&event).as_deref() {
-                    Some("failed") => saw_failed = true,
-                    Some("live") if saw_failed => back_live = true,
-                    _ => {}
+        // Lane health travels as current state on each event, and the
+        // callback mailbox keeps only the newest one. A failure followed at
+        // once by a working replacement can therefore never be seen as
+        // "failed" — the test used to wait for exactly that and timed out
+        // whenever the machine was busy. The replacement's `Connected` is
+        // held back instead, so the failure is the lane's state until the
+        // test lets it go.
+        let pump = |core: &ZuTalkCore, until: &mut dyn FnMut(&FfiNotebookCaptureEvent) -> bool| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            while std::time::Instant::now() < deadline {
+                core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                    .unwrap();
+                while let Ok(event) = events_rx.try_recv() {
+                    if until(&event) {
+                        return true;
+                    }
                 }
+                std::thread::sleep(std::time::Duration::from_millis(20));
             }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+            false
+        };
+        let mut failed_epoch = None;
+        let saw_failed = pump(&core, &mut |event| match thai(event) {
+            Some((state, epoch)) if state == "failed" => {
+                failed_epoch = Some(epoch);
+                true
+            }
+            _ => false,
+        });
         assert!(saw_failed, "the Thai lane's provider error is reported");
         assert!(
             factory.thai_starts.load(Ordering::SeqCst) >= 2,
             "the failed lane is replaced"
+        );
+
+        factory.hold_replacement.store(false, Ordering::SeqCst);
+        let failed_epoch = failed_epoch.unwrap();
+        // The replacement is a new provider timeline, so live again means
+        // live on an advanced epoch — not a stale report from before.
+        let back_live = pump(
+            &core,
+            &mut |event| matches!(thai(event), Some((state, epoch)) if state == "live" && epoch > failed_epoch),
         );
         assert!(back_live, "the replacement's events reach the group again");
 
