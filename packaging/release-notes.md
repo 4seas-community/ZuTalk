@@ -1,8 +1,59 @@
-# ZuTalk 0.5.9
+# ZuTalk 0.6.0
 
-Long recordings keep recording, and ZuTalk is simpler to run while they do.
+Share live captions with anyone who has a phone, find your way around a
+layout built on your recordings, and keep long recordings recording.
 
 ZuTalk requires macOS 12.5 or later.
+
+## Sharing that works for anyone with a phone
+
+Sharing used to need ZuTalk on a Mac at the other end, a join code over a
+hundred characters long, and a network that let two computers find each
+other. Almost nobody in a real room could get in. Now it takes a browser.
+
+- **Share live captions from the recording bar.** People scan the QR code
+  or open the link and follow the captions and translations on their phone
+  or computer — no app, no sign-in. On a phone each sentence is shown with
+  its translation underneath. *Show large QR code* opens it in its own
+  window, ready for the projector.
+- **End-to-end encrypted.** The key is in the part of the link after `#`,
+  which browsers never send to a server, so ZuTalk's server only relays
+  text it can't read. Anyone with the link can view it; audio never leaves
+  your Mac.
+- **See how many are watching, lock the share** so no one new gets in, or
+  **replace the link** to shut out anyone who shouldn't be there.
+- **Nothing stays behind by default.** When you stop — or the recording
+  ends — the link stops working and its content is deleted from the server.
+  Turn on *Keep the transcript after it ends* and viewers can still read and
+  download it for about 24 hours.
+- **Share a finished recording** from its menu or its header: send the
+  transcript as a Markdown or subtitle (SRT) file through AirDrop, Messages
+  or Mail, or create a read-only link. Links expire after 24 hours and you
+  can revoke one at any time.
+- **Peer-to-peer sharing is gone,** along with the Received page, join codes
+  and nearby discovery. Transcripts already received that way stay on your
+  Mac.
+
+## Laid out around your recordings
+
+- **The sidebar is what you do:** New recording, All recordings, Topics,
+  Trash, Settings.
+- **One place to start a recording.** *New recording* asks which topic it
+  goes in, which languages are spoken and whether to show live captions,
+  then records — or imports an audio file. A topic's Record button opens it
+  with that topic chosen. While recording, the same item reads *Recording
+  now* with the time, and takes you back to it.
+- **A recording has two tabs:** its transcript, with a *Live | Refined*
+  switch, and its notes. Sharing, export and its files sit behind ⋯.
+- **A topic has three:** its recordings, its notes, and its settings —
+  now including its languages and its *terms and background* (what used
+  to be the separate Knowledge page), edited where they are used.
+- **Recording lists look and work the same** in All recordings and in a
+  topic, with rename, share, files and trash in each row's menu.
+- **Settings has three sections:** General, Live captions and Sharing. ⌘,
+  opens it, and the welcome guide can be shown again from General.
+- **Trash says what it is,** shows what each recording was, and can be
+  emptied in one go.
 
 ## Recording you can rely on
 
@@ -83,53 +134,3 @@ ZuTalk requires macOS 12.5 or later.
   are sent, never audio; turning the switch off also deletes what came back.
 - **Plain language** instead of internal terms, and no promises the app did
   not keep — Trash no longer claims to empty itself after 30 days.
-
-## Laid out around your recordings
-
-- **The sidebar is what you do:** New recording, All recordings, Topics,
-  Trash, Settings.
-- **One place to start a recording.** *New recording* asks which topic it
-  goes in, which languages are spoken and whether to show live captions,
-  then records — or imports an audio file. A topic's Record button opens it
-  with that topic chosen. While recording, the same item reads *Recording
-  now* with the time, and takes you back to it.
-- **A recording has two tabs:** its transcript, with a *Live | Refined*
-  switch, and its notes. Sharing, export and its files sit behind ⋯.
-- **A topic has three:** its recordings, its notes, and its settings —
-  now including its languages and its *terms and background* (what used
-  to be the separate Knowledge page), edited where they are used.
-- **Recording lists look and work the same** in All recordings and in a
-  topic, with rename, share, files and trash in each row's menu.
-- **Settings has three sections:** General, Live captions and Sharing. ⌘,
-  opens it, and the welcome guide can be shown again from General.
-- **Trash says what it is,** shows what each recording was, and can be
-  emptied in one go.
-
-## Sharing that works for anyone with a phone
-
-Sharing used to need ZuTalk on a Mac at the other end, a join code over a
-hundred characters long, and a network that let two computers find each
-other. Almost nobody in a real room could get in. Now it takes a browser.
-
-- **Share live captions from the recording bar.** People scan the QR code
-  or open the link and follow the captions and translations on their phone
-  or computer — no app, no sign-in. On a phone each sentence is shown with
-  its translation underneath. *Show large QR code* opens it in its own
-  window, ready for the projector.
-- **End-to-end encrypted.** The key is in the part of the link after `#`,
-  which browsers never send to a server, so ZuTalk's server only relays
-  text it can't read. Anyone with the link can view it; audio never leaves
-  your Mac.
-- **See how many are watching, lock the share** so no one new gets in, or
-  **replace the link** to shut out anyone who shouldn't be there.
-- **Nothing stays behind by default.** When you stop — or the recording
-  ends — the link stops working and its content is deleted from the server.
-  Turn on *Keep the transcript after it ends* and viewers can still read and
-  download it for about 24 hours.
-- **Share a finished recording** from its menu or its header: send the
-  transcript as a Markdown or subtitle (SRT) file through AirDrop, Messages
-  or Mail, or create a read-only link. Links expire after 24 hours and you
-  can revoke one at any time.
-- **Peer-to-peer sharing is gone,** along with the Received page, join codes
-  and nearby discovery. Transcripts already received that way stay on your
-  Mac.

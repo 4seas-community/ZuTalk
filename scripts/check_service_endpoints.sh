@@ -39,7 +39,7 @@ extract() {
   printf '%s\n' "$url" | sed -E 's#^https://##; s#/.*$##'
 }
 
-# 点对点中继(zulangue-relay)0.5.9 起客户端不再使用 —— 它只为还没升级的
+# 点对点中继(zulangue-relay)0.6.0 起客户端不再使用 —— 它只为还没升级的
 # 旧版本留着,不在这里查。
 CAPTION_HOST="$(extract crates/vt-ffi/src/link_share.rs 'DEFAULT_LINK_SERVICE')"
 INVITE_HOST="$(extract \
