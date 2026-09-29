@@ -255,11 +255,7 @@ impl LibrarySync {
             listener: Mutex::new(None),
         });
         sync.ensure_device_group().map_err(internal)?;
-        for row in sync
-            .replica
-            .read(facts::spaces)
-            .map_err(internal)?
-        {
+        for row in sync.replica.read(facts::spaces).map_err(internal)? {
             sync.register_space(&row);
         }
         sync.runtime.spawn(pump(Arc::downgrade(&sync)));

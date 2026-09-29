@@ -1672,7 +1672,7 @@ mod tests {
                  VALUES ('{sid}', '周一例会', 'recording', 'completed', 61000, '2026-09-29 10:00:00');
              INSERT INTO session_meta (session_id, encrypted_path, key_id, tokens_json,
                                        privacy_level, sample_rate, channels, sample_format)
-                 VALUES ('{sid}', '/Users/someone/audio.enc', 'key-ref', '[{{\"text\":\"hi\"}}]',
+                 VALUES ('{sid}', 'audio/rec-1/audio.enc', 'key-ref', '[{{\"text\":\"hi\"}}]',
                          'standard', 16000, 1, 's16');
              INSERT INTO notebook_capture_runs
                  (id, notebook_id, session_id, profile_revision, profile_snapshot_json,
@@ -1686,7 +1686,7 @@ mod tests {
                   realtime_loro_desired_revision, realtime_loro_applied_revision)
              VALUES ('run-1', '{topic_id}', '{sid}', 1, '{{\"languages\":[\"en\",\"zh\"]}}',
                      'soniox', 'stt-rt-v5', 'soniox', 'stt-async-v5',
-                     'completed', '/Users/someone/audio.wav', 'key-ref', 16000, 's16', 1,
+                     'completed', 'audio/rec-1/audio.wav', 'key-ref', 16000, 's16', 1,
                      976000, 't1', 't9', 't2',
                      'completed', 5, 'en', 'task-1', '{sha}', '{sha}',
                      '{{\"full_text\":\"hi\"}}', 't3', 'ready', 'ready', 4, 4);
