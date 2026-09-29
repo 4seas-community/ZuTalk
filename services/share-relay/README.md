@@ -1,8 +1,10 @@
 # ZuTalk share relay
 
-> **只为旧版本留着（2026-09-28）。** 点对点共享随 0.6.0 下线（见
-> [docs/architecture/share-links.md](../../docs/architecture/share-links.md)），新版本不再连这台
-> 中继。0.5.8 及更早的客户端仍在用它，所以继续运行；等旧版本基本升级完再决定关停。
+> **长期保留（2026-09-29 起）。** 点对点共享随 0.6.0 下线（见
+> [docs/architecture/share-links.md](../../docs/architecture/share-links.md)），但设备之间的直接
+> 同步要靠它跨网络（见 [docs/architecture/local-first-sync.md](../../docs/architecture/local-first-sync.md)）。
+> 0.5.8 及更早的客户端也仍在用它。现在的门禁只放行登记过邀请码的设备，同步上线前要改
+> 成放行所有设备、靠速率限制防滥用（同步设计第 3 节）。
 
 自建 [iroh](https://github.com/n0-computer/iroh) 中继，供「分享」标签页在直连打洞
 失败时回落使用。设计见
@@ -43,11 +45,29 @@ exe.dev 的网络模型和一般 VM 不同，本目录里的 `relay.toml` 是**�
 
 ## 部署
 
-中继二进制来自 iroh 仓库，不在本仓库构建：
+中继二进制来自 iroh 上游（crates.io 上的 `iroh-relay`），不在本仓库构建。在一台
+x86_64 Linux 上可以直接：
 
 ```bash
-cargo install --git https://github.com/n0-computer/iroh --tag v1.0.3 --features server iroh-relay
+cargo install iroh-relay@1.3.0 --locked --features server
 ```
+
+中继机只有 1 vCPU / 2 GB,不在上面编译。在本机用 x86_64 的 Linux 容器编好再传上去
+(bookworm 的 glibc 2.36 不高于中继机的 2.39,动态链接的二进制可以直接跑)。容器里
+连 crates.io 常常超时,所以先在本机把依赖取齐,容器断网编译 —— crates.io 上的包自带
+上游发布时的 `Cargo.lock`,`--locked` 保证用的正是那一套版本:
+
+```bash
+cp -R ~/.cargo/registry/src/*/iroh-relay-1.3.0 src
+(cd src && cargo vendor --locked --versioned-dirs ../vendor)
+mkdir -p src/.cargo out
+printf '[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "/b/vendor"\n' > src/.cargo/config.toml
+docker run --rm --platform linux/amd64 --network none -v "$PWD:/b" -w /b/src rust:1.91-bookworm \
+  bash -c 'cargo build --release --locked --offline --features server --bin iroh-relay --target-dir /tmp/t && cp /tmp/t/release/iroh-relay /b/out/'
+```
+
+升级时旧二进制改名留在 `bin/` 里(如 `iroh-relay-1.0.3`),出问题换回来重启即可。
+1.x 之间中继协议兼容:新版中继多出的「被限速」状态,旧客户端按未知状态忽略。
 
 放好文件。`RELAY_HOME` 取 `zulangue-share-relay.service` 里 `WorkingDirectory`
 的值：
@@ -107,7 +127,7 @@ sudo systemctl enable --now zulangue-share-relay
 
 ## 一个会让所有人都连不上的坑
 
-iroh-relay 1.0.3 的文档说鉴权请求带 `X-Iroh-Endpoint-Id` 头，**但源码里发出去的
+iroh-relay 1.0.3 到 1.3.0 的文档都说鉴权请求带 `X-Iroh-Endpoint-Id` 头，**但源码里发出去的
 实际是 `X-Iroh-NodeId`**——1.0 把 NodeId 改名成 EndpointId 时这个头名字没跟着改。
 
 只认文档里那个名字的话，线上表现是「所有人都连不上中继」，而两边日志都显示一切
@@ -135,6 +155,20 @@ RUST_LOG=iroh_relay=debug iroh-relay --dev --config-path relay-dev.toml
 "invalid response text"。分辨二者要看已登记的那个 endpoint 有没有出现 OK。
 
 暂停一个邀请码会同时断掉它名下所有 endpoint 的中继权限，不需要第二个开关。
+
+线上中继升级或改门禁之后，用真实的 iroh 客户端连一次（TLS、HTTP upgrade、中继协议
+握手、门禁回调整条路径）：
+
+```bash
+cargo run -p vt-sync --example relay_probe -- https://zulangue-relay.exe.xyz
+```
+
+它每次现生成一个身份。门禁放行所有设备之前，应当看到「被拒: not authorized」，同时
+邀请码服务的日志多一条 `POST /v1/relay-auth ... 200`——两者一起才说明中继在说话、也
+真的问过门禁（中继连不上门禁时客户端也是被拒，但门禁那边没有这条日志）。
+
+2026-09-29 升级到 1.3.0 时另用一个 iroh 1.0.3 客户端（即 0.5.8 用的版本）连过：每次
+重试都在门禁那边留下一条鉴权记录，说明旧客户端能走完新中继的握手。
 
 ## 本地开发
 

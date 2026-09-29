@@ -6,7 +6,7 @@
 #      都能走邀请码登记;
 #   2. 它**不改变隐私**。中继看不到明文,流量始终端到端加密,开不开门禁都一样。
 #
-# 取值按 iroh-relay 1.0.3 源码核对:
+# 取值按 iroh-relay 1.3.0 源码核对(与 1.0.3 相同):
 #   - AccessConfig 带 #[serde(rename_all = "lowercase")],所以键是 [access.http];
 #   - CertMode 没有 rename,取值就是字面的 "Manual" / "LetsEncrypt" / "Reloading"。
 #
