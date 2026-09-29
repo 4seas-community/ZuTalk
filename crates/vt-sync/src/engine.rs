@@ -1,8 +1,13 @@
-//! 同步引擎:端点、连接管理、对账。
+//! 同步引擎:一个端点,多个同步空间。
 //!
-//! 每对设备一条连接。两边都会拨,但 id 小的一方先拨,大的一方等几秒没见到连接才拨
-//! —— 对方可能正在退避,或者还以为一条已经断掉的旧连接活着。两边同时拨出的两条
-//! 连接按一条双方算得出同样结果的规则留一条,见 [`register`]。
+//! **空间**是一组文档加一份成员名单:自己的设备组是一个空间,邀请同事协作的每个
+//! 主题各是一个空间,备份也是。同一台设备可以同时在好几个空间里,它们共用一个
+//! iroh 端点;每个(空间, 对端设备)一条连接,握手的 [`SyncMessage::Hello`] 说明
+//! 这条连接属于哪个空间。
+//!
+//! 每对设备在一个空间里只留一条连接。两边都会拨,但 id 小的一方先拨,大的一方
+//! 等几秒没见到连接才拨 —— 对方可能正在退避,或者还以为一条已经断掉的旧连接活着。
+//! 两边同时拨出的两条连接按一条双方算得出同样结果的规则留一条,见 [`register`]。
 //!
 //! 连接之上的协议见 [`crate::protocol`]。每条连接一个读循环、一个写循环:
 //!
@@ -14,7 +19,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use iroh::address_lookup::MemoryLookup;
@@ -26,11 +31,11 @@ use tokio::sync::{mpsc, Notify};
 use crate::identity::DeviceIdentity;
 use crate::membership::Membership;
 use crate::pairing::{
-    sanitize_device_name, InviteBook, PairMessage, PairRejection, PairingTicket, INVITE_TTL,
-    PAIR_ALPN,
+    sanitize_device_name, InviteBook, InvitePurpose, PairMessage, PairRejection, PairingTicket,
+    INVITE_TTL, PAIR_ALPN,
 };
 use crate::protocol::{
-    GroupId, SyncMessage, MAX_UPDATE_BYTES, PROTOCOL_VERSION, SYNC_ALPN, UPDATE_CHUNK_BYTES,
+    SpaceId, SyncMessage, MAX_UPDATE_BYTES, PROTOCOL_VERSION, SYNC_ALPN, UPDATE_CHUNK_BYTES,
 };
 use crate::store::{DocId, DocumentStore};
 use crate::wire::{read_frame, write_frame, WireError};
@@ -49,7 +54,7 @@ const RACE_WINDOW: Duration = Duration::from_secs(3);
 
 const CLOSE_BYE: u32 = 0;
 const CLOSE_NOT_MEMBER: u32 = 1;
-const CLOSE_WRONG_GROUP: u32 = 2;
+const CLOSE_UNKNOWN_SPACE: u32 = 2;
 const CLOSE_REPLACED: u32 = 3;
 
 #[derive(Debug, Clone)]
@@ -88,6 +93,8 @@ impl Default for SyncConfig {
 pub enum SyncError {
     #[error("端点启动失败: {0}")]
     Bind(String),
+    #[error("本机没有这个同步空间")]
+    UnknownSpace,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -98,19 +105,20 @@ pub enum PairError {
     Rejected(#[from] PairRejection),
     #[error("配对中断: {0}")]
     Interrupted(String),
-    #[error("加入设备组失败: {0}")]
-    Membership(String),
 }
 
-/// 配对成功后加入方看到的结果。
+/// 配对成功后加入方看到的结果。加入方据此在本机建好空间,再 [`SyncEngine::add_space`]。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Joined {
-    pub group: GroupId,
+    pub space: SpaceId,
+    pub purpose: InvitePurpose,
+    /// 邀请方给这个空间的说明,比如主题名。设备组为空。
+    pub label: String,
     pub inviter: EndpointId,
     pub inviter_name: String,
 }
 
-/// 一台组内设备此刻的同步状态。
+/// 一台对端设备在一个空间里此刻的同步状态。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerStatus {
     pub device: EndpointId,
@@ -124,41 +132,44 @@ pub struct PeerStatus {
 }
 
 pub struct SyncEngine {
-    shared: Arc<Shared>,
+    host: Arc<Host>,
     router: Router,
 }
 
 impl std::fmt::Debug for SyncEngine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SyncEngine")
-            .field("device", &self.shared.identity)
+            .field("device", &self.host.identity)
             .finish_non_exhaustive()
     }
 }
 
-struct Shared {
+/// 端点与所有空间共享的东西。
+struct Host {
     endpoint: Endpoint,
     identity: DeviceIdentity,
     config: SyncConfig,
-    store: Arc<dyn DocumentStore>,
-    membership: Arc<dyn Membership>,
     known: MemoryLookup,
-    links: Mutex<HashMap<EndpointId, Arc<Link>>>,
-    synced_at: Mutex<HashMap<EndpointId, i64>>,
-    dialers: Mutex<HashMap<EndpointId, tokio::task::JoinHandle<()>>>,
+    spaces: RwLock<HashMap<SpaceId, Arc<Space>>>,
     invites: InviteBook,
     /// 叫醒所有在退避中的拨号循环(网络变了、刚拿到新地址)。
     redial: Notify,
     closing: AtomicBool,
 }
 
+/// 一个同步空间:文档、名单、此刻的连接与拨号任务。
+struct Space {
+    id: SpaceId,
+    store: Arc<dyn DocumentStore>,
+    membership: Arc<dyn Membership>,
+    links: Mutex<HashMap<EndpointId, Arc<Link>>>,
+    synced_at: Mutex<HashMap<EndpointId, i64>>,
+    dialers: Mutex<HashMap<EndpointId, tokio::task::JoinHandle<()>>>,
+    removed: AtomicBool,
+}
+
 impl SyncEngine {
-    pub async fn start(
-        identity: DeviceIdentity,
-        config: SyncConfig,
-        store: Arc<dyn DocumentStore>,
-        membership: Arc<dyn Membership>,
-    ) -> Result<Self, SyncError> {
+    pub async fn start(identity: DeviceIdentity, config: SyncConfig) -> Result<Self, SyncError> {
         // Minimal 而非 N0:不挂任何公共发现服务。
         let mut builder = Endpoint::builder(presets::Minimal)
             .secret_key(identity.secret().clone())
@@ -195,35 +206,66 @@ impl SyncEngine {
             .await
             .map_err(|e| SyncError::Bind(e.to_string()))?;
 
-        let shared = Arc::new(Shared {
+        let host = Arc::new(Host {
             endpoint: endpoint.clone(),
             identity,
             config,
-            store,
-            membership,
             known,
-            links: Mutex::default(),
-            synced_at: Mutex::default(),
-            dialers: Mutex::default(),
+            spaces: RwLock::default(),
             invites: InviteBook::default(),
             redial: Notify::new(),
             closing: AtomicBool::new(false),
         });
         let router = Router::builder(endpoint)
-            .accept(SYNC_ALPN, SyncAcceptor(shared.clone()))
-            .accept(PAIR_ALPN, PairAcceptor(shared.clone()))
+            .accept(SYNC_ALPN, SyncAcceptor(host.clone()))
+            .accept(PAIR_ALPN, PairAcceptor(host.clone()))
             .spawn();
-        shared.members_changed();
-        Ok(Self { shared, router })
+        Ok(Self { host, router })
     }
 
     pub fn device_id(&self) -> EndpointId {
-        self.shared.identity.id()
+        self.host.identity.id()
+    }
+
+    /// 开始同步一个空间。同一个 id 已经在了就换成新的(旧连接断开)。
+    pub fn add_space(
+        &self,
+        id: SpaceId,
+        store: Arc<dyn DocumentStore>,
+        membership: Arc<dyn Membership>,
+    ) {
+        let space = Arc::new(Space {
+            id,
+            store,
+            membership,
+            links: Mutex::default(),
+            synced_at: Mutex::default(),
+            dialers: Mutex::default(),
+            removed: AtomicBool::new(false),
+        });
+        let old = self.host.spaces.write().unwrap().insert(id, space.clone());
+        if let Some(old) = old {
+            old.stop();
+        }
+        self.host.members_changed(&space);
+    }
+
+    /// 停止同步一个空间:断开它的连接、停掉拨号。本机的文档不动。
+    pub fn remove_space(&self, id: &SpaceId) {
+        let removed = self.host.spaces.write().unwrap().remove(id);
+        if let Some(space) = removed {
+            space.stop();
+        }
+        self.host.invites.revoke_space(id);
+    }
+
+    pub fn spaces(&self) -> Vec<SpaceId> {
+        self.host.spaces.read().unwrap().keys().copied().collect()
     }
 
     /// 本机当前可被拨到的地址。刚启动时直连地址要等一小会儿才齐。
     pub async fn addr(&self) -> EndpointAddr {
-        let mut watcher = self.shared.endpoint.watch_addr();
+        let mut watcher = self.host.endpoint.watch_addr();
         let ready = async {
             loop {
                 let addr = watcher.get();
@@ -237,49 +279,71 @@ impl SyncEngine {
         };
         match tokio::time::timeout(Duration::from_secs(3), ready).await {
             Ok(addr) => addr,
-            Err(_) => self.shared.endpoint.addr(),
+            Err(_) => self.host.endpoint.addr(),
         }
     }
 
     /// 告诉引擎一台设备可能在哪。中继与局域网发现之外的第三个来源。
     pub fn add_address_hint(&self, addr: EndpointAddr) {
-        self.shared.known.add_endpoint_info(addr);
-        self.shared.redial.notify_waiters();
+        self.host.known.add_endpoint_info(addr);
+        self.host.redial.notify_waiters();
     }
 
-    /// 本机改动了一个文档。立即返回;通知在各连接的写循环里合并发出。
-    pub fn notify_changed(&self, doc: &DocId) {
-        self.shared.fan_out(doc, None);
+    /// 本机改动了一个空间里的文档。立即返回;通知在各连接的写循环里合并发出。
+    pub fn notify_changed(&self, space: &SpaceId, doc: &DocId) {
+        if let Some(space) = self.host.space(space) {
+            space.fan_out(doc, None);
+        }
     }
 
-    /// 名单变了(同步来的、本机移除了设备)。按新名单增减拨号与连接。
-    pub fn members_changed(&self) {
-        self.shared.members_changed();
+    /// 一个空间的名单变了(同步来的、本机移除了设备)。按新名单增减拨号与连接。
+    pub fn members_changed(&self, space: &SpaceId) {
+        if let Some(space) = self.host.space(space) {
+            self.host.members_changed(&space);
+        }
     }
 
     /// 网络变了(换 Wi-Fi、从睡眠醒来)。让 iroh 重新探路,并立刻重拨。
     pub async fn network_changed(&self) {
-        self.shared.endpoint.network_change().await;
-        self.shared.redial.notify_waiters();
+        self.host.endpoint.network_change().await;
+        self.host.redial.notify_waiters();
     }
 
-    /// 生成一张配对码,在 [`SyncConfig::invite_ttl`] 内有效、只能用一次。
-    pub async fn create_invite(&self) -> PairingTicket {
+    /// 为一个空间生成一张配对码,在 [`SyncConfig::invite_ttl`] 内有效、只能用一次。
+    /// `label` 在配对成功后交给加入方(比如主题名),不写进配对码本身。
+    pub async fn create_invite(
+        &self,
+        space: &SpaceId,
+        purpose: InvitePurpose,
+        label: &str,
+    ) -> Result<PairingTicket, SyncError> {
+        if self.host.space(space).is_none() {
+            return Err(SyncError::UnknownSpace);
+        }
         let secret: [u8; 32] = rand::random();
-        self.shared
-            .invites
-            .issue(secret, self.shared.config.invite_ttl);
-        PairingTicket::new(self.addr().await, secret)
+        self.host.invites.issue(
+            secret,
+            *space,
+            purpose,
+            label.to_string(),
+            self.host.config.invite_ttl,
+        );
+        Ok(PairingTicket::new(self.addr().await, secret, purpose))
     }
 
-    /// 用对方给的配对码加入它的设备组。
+    /// 作废一个空间所有还没用掉的配对码。
+    pub fn revoke_invites(&self, space: &SpaceId) {
+        self.host.invites.revoke_space(space);
+    }
+
+    /// 用对方给的配对码加入它的空间。成功后调用方建好本机的空间再 `add_space`。
     pub async fn join(&self, ticket: &PairingTicket) -> Result<Joined, PairError> {
-        let shared = &self.shared;
+        let host = &self.host;
         let inviter = ticket.inviter.id;
-        shared.known.add_endpoint_info(ticket.inviter.clone());
+        host.known.add_endpoint_info(ticket.inviter.clone());
         let conn = tokio::time::timeout(
             CONNECT_TIMEOUT,
-            shared.endpoint.connect(ticket.inviter.clone(), PAIR_ALPN),
+            host.endpoint.connect(ticket.inviter.clone(), PAIR_ALPN),
         )
         .await
         .map_err(|_| PairError::Unreachable("超时".into()))?
@@ -287,7 +351,7 @@ impl SyncEngine {
 
         let request = PairMessage::Request {
             proof: ticket.proof_for(&self.device_id()),
-            device_name: shared.config.device_name.clone(),
+            device_name: host.config.device_name.clone(),
             joiner: self.addr().await,
         };
         let exchange = async {
@@ -307,34 +371,32 @@ impl SyncEngine {
 
         match reply {
             PairMessage::Accepted {
-                group,
+                space,
+                purpose,
+                label,
                 inviter_name,
-            } => {
-                let inviter_name = sanitize_device_name(&inviter_name);
-                shared
-                    .membership
-                    .join(group, inviter, &inviter_name)
-                    .map_err(PairError::Membership)?;
-                shared.members_changed();
-                Ok(Joined {
-                    group,
-                    inviter,
-                    inviter_name,
-                })
-            }
+            } => Ok(Joined {
+                space,
+                purpose,
+                label: sanitize_device_name(&label),
+                inviter,
+                inviter_name: sanitize_device_name(&inviter_name),
+            }),
             PairMessage::Rejected { reason } => Err(PairError::Rejected(reason)),
             PairMessage::Request { .. } => Err(PairError::Interrupted("对方回了一个请求".into())),
         }
     }
 
-    /// 组内其他设备的同步状态。
-    pub fn peers(&self) -> Vec<PeerStatus> {
+    /// 一个空间里其他设备的同步状态。
+    pub fn peers(&self, space: &SpaceId) -> Vec<PeerStatus> {
+        let Some(space) = self.host.space(space) else {
+            return Vec::new();
+        };
         let me = self.device_id();
         // 先问名单再上锁:名单的实现在调用方,可能有它自己的锁。
-        let mut devices: BTreeSet<EndpointId> =
-            self.shared.membership.members().into_iter().collect();
-        let links = self.shared.links.lock().unwrap();
-        let synced = self.shared.synced_at.lock().unwrap();
+        let mut devices: BTreeSet<EndpointId> = space.membership.members().into_iter().collect();
+        let links = space.links.lock().unwrap();
+        let synced = space.synced_at.lock().unwrap();
         devices.extend(links.keys().copied());
         devices.remove(&me);
         devices
@@ -353,15 +415,15 @@ impl SyncEngine {
     }
 
     pub async fn shutdown(self) {
-        self.shared.stop();
+        self.host.stop();
         let _ = self.router.shutdown().await;
     }
 }
 
 impl Drop for SyncEngine {
     fn drop(&mut self) {
-        // 拨号任务持有 Shared;不在这里停掉,引擎丢了它们还在后台转。
-        self.shared.stop();
+        // 拨号任务持有空间;不在这里停掉,引擎丢了它们还在后台转。
+        self.host.stop();
     }
 }
 
@@ -382,20 +444,90 @@ fn now_unix_ms() -> i64 {
         .map_or(0, |d| d.as_millis() as i64)
 }
 
-impl Shared {
+impl Host {
     fn stop(&self) {
         self.closing.store(true, Ordering::SeqCst);
-        for (_, dialer) in self.dialers.lock().unwrap().drain() {
-            dialer.abort();
-        }
-        for (_, link) in self.links.lock().unwrap().drain() {
-            link.conn.close(CLOSE_BYE.into(), b"shutdown");
+        for (_, space) in self.spaces.write().unwrap().drain() {
+            space.stop();
         }
         self.redial.notify_waiters();
     }
 
     fn me(&self) -> EndpointId {
         self.identity.id()
+    }
+
+    fn space(&self, id: &SpaceId) -> Option<Arc<Space>> {
+        self.spaces.read().unwrap().get(id).cloned()
+    }
+
+    fn members_changed(self: &Arc<Self>, space: &Arc<Space>) {
+        if self.closing.load(Ordering::SeqCst) || space.removed.load(Ordering::SeqCst) {
+            return;
+        }
+        let me = self.me();
+        let members: BTreeSet<EndpointId> = space
+            .membership
+            .members()
+            .into_iter()
+            .filter(|device| *device != me)
+            .collect();
+
+        // 不在名单上的连接当场断开。
+        space.links.lock().unwrap().retain(|device, link| {
+            let keep = members.contains(device);
+            if !keep {
+                link.conn.close(CLOSE_NOT_MEMBER.into(), b"not a member");
+            }
+            keep
+        });
+
+        // 设备都在同一个自建中继上,给每台记一条中继地址,跨网络就拨得到。
+        if !self.config.relay_urls.is_empty() {
+            for device in &members {
+                let addr = EndpointAddr::new(*device).with_addrs(
+                    self.config
+                        .relay_urls
+                        .iter()
+                        .cloned()
+                        .map(iroh::TransportAddr::Relay),
+                );
+                self.known.add_endpoint_info(addr);
+            }
+        }
+
+        let mut dialers = space.dialers.lock().unwrap();
+        dialers.retain(|device, task| {
+            let keep = members.contains(device) && !task.is_finished();
+            if !keep {
+                task.abort();
+            }
+            keep
+        });
+        for device in members {
+            dialers
+                .entry(device)
+                .or_insert_with(|| tokio::spawn(dial_loop(self.clone(), space.clone(), device)));
+        }
+    }
+
+    fn hello(&self, space: &SpaceId) -> SyncMessage {
+        SyncMessage::Hello {
+            space: *space,
+            protocol: PROTOCOL_VERSION,
+        }
+    }
+}
+
+impl Space {
+    fn stop(&self) {
+        self.removed.store(true, Ordering::SeqCst);
+        for (_, dialer) in self.dialers.lock().unwrap().drain() {
+            dialer.abort();
+        }
+        for (_, link) in self.links.lock().unwrap().drain() {
+            link.conn.close(CLOSE_BYE.into(), b"space closed");
+        }
     }
 
     fn fan_out(&self, doc: &DocId, except: Option<EndpointId>) {
@@ -408,73 +540,8 @@ impl Shared {
         }
     }
 
-    fn members_changed(self: &Arc<Self>) {
-        if self.closing.load(Ordering::SeqCst) {
-            return;
-        }
-        let me = self.me();
-        let members: BTreeSet<EndpointId> = self
-            .membership
-            .members()
-            .into_iter()
-            .filter(|device| *device != me)
-            .collect();
-
-        // 不在名单上的连接当场断开。
-        self.links.lock().unwrap().retain(|device, link| {
-            let keep = members.contains(device);
-            if !keep {
-                link.conn.close(CLOSE_NOT_MEMBER.into(), b"not a member");
-            }
-            keep
-        });
-
-        // 组内设备都在同一个自建中继上,给每台记一条中继地址,跨网络就拨得到。
-        for device in &members {
-            if !self.config.relay_urls.is_empty() {
-                let addr = EndpointAddr::new(*device).with_addrs(
-                    self.config
-                        .relay_urls
-                        .iter()
-                        .cloned()
-                        .map(iroh::TransportAddr::Relay),
-                );
-                self.known.add_endpoint_info(addr);
-            }
-        }
-
-        let mut dialers = self.dialers.lock().unwrap();
-        dialers.retain(|device, task| {
-            let keep = members.contains(device) && !task.is_finished();
-            if !keep {
-                task.abort();
-            }
-            keep
-        });
-        for device in members {
-            dialers
-                .entry(device)
-                .or_insert_with(|| tokio::spawn(dial_loop(self.clone(), device)));
-        }
-    }
-
     fn link_to(&self, device: &EndpointId) -> Option<Arc<Link>> {
         self.links.lock().unwrap().get(device).cloned()
-    }
-
-    fn hello(&self) -> Option<SyncMessage> {
-        Some(SyncMessage::Hello {
-            group: self.membership.group()?,
-            protocol: PROTOCOL_VERSION,
-        })
-    }
-
-    fn accepts_hello(&self, message: &SyncMessage) -> bool {
-        matches!(
-            message,
-            SyncMessage::Hello { group, protocol }
-                if *protocol == PROTOCOL_VERSION && Some(*group) == self.membership.group()
-        )
     }
 
     /// 在阻塞线程池里调存储。存储自己出了 panic 算这条连接失败,不带垮引擎。
@@ -494,14 +561,17 @@ impl Shared {
     }
 }
 
-async fn dial_loop(shared: Arc<Shared>, device: EndpointId) {
-    let dials_first = shared.me() < device;
+async fn dial_loop(host: Arc<Host>, space: Arc<Space>, device: EndpointId) {
+    let dials_first = host.me() < device;
     let mut backoff = REDIAL_MIN;
     loop {
-        if shared.closing.load(Ordering::SeqCst) || !shared.membership.is_member(&device) {
+        if host.closing.load(Ordering::SeqCst)
+            || space.removed.load(Ordering::SeqCst)
+            || !space.membership.is_member(&device)
+        {
             return;
         }
-        if let Some(link) = shared.link_to(&device) {
+        if let Some(link) = space.link_to(&device) {
             link.conn.closed().await;
             backoff = REDIAL_MIN;
             continue;
@@ -509,20 +579,19 @@ async fn dial_loop(shared: Arc<Shared>, device: EndpointId) {
         if !dials_first {
             tokio::select! {
                 _ = tokio::time::sleep(HIGHER_SIDE_GRACE) => {}
-                _ = shared.redial.notified() => {}
+                _ = host.redial.notified() => {}
             }
-            if shared.link_to(&device).is_some() {
+            if space.link_to(&device).is_some() {
                 continue;
             }
         }
         // 先登记再拨:拨号期间来的「重拨」也不会漏掉。
-        let redial = shared.redial.notified();
-        match tokio::time::timeout(CONNECT_TIMEOUT, shared.endpoint.connect(device, SYNC_ALPN))
-            .await
+        let redial = host.redial.notified();
+        match tokio::time::timeout(CONNECT_TIMEOUT, host.endpoint.connect(device, SYNC_ALPN)).await
         {
             Ok(Ok(conn)) => {
                 backoff = REDIAL_MIN;
-                if let Err(error) = run_dialed(&shared, conn).await {
+                if let Err(error) = run_dialed(&host, &space, conn).await {
                     tracing::debug!(device = %device.fmt_short(), %error, "同步连接结束");
                 }
                 continue;
@@ -540,25 +609,29 @@ async fn dial_loop(shared: Arc<Shared>, device: EndpointId) {
     }
 }
 
-async fn run_dialed(shared: &Arc<Shared>, conn: Connection) -> Result<(), WireError> {
-    let Some(hello) = shared.hello() else {
-        conn.close(CLOSE_WRONG_GROUP.into(), b"no group");
-        return Ok(());
-    };
+async fn run_dialed(
+    host: &Arc<Host>,
+    space: &Arc<Space>,
+    conn: Connection,
+) -> Result<(), WireError> {
     let (mut send, mut recv) = conn.open_bi().await.map_err(|e| WireError::Io(e.into()))?;
-    write_frame(&mut send, &hello).await?;
+    write_frame(&mut send, &host.hello(&space.id)).await?;
     let theirs = tokio::time::timeout(HANDSHAKE_TIMEOUT, read_frame::<_, SyncMessage>(&mut recv))
         .await
         .map_err(|_| WireError::Io(std::io::ErrorKind::TimedOut.into()))??;
-    if !shared.accepts_hello(&theirs) {
-        conn.close(CLOSE_WRONG_GROUP.into(), b"wrong group");
+    let accepted = matches!(
+        theirs,
+        SyncMessage::Hello { space: id, protocol } if id == space.id && protocol == PROTOCOL_VERSION
+    );
+    if !accepted {
+        conn.close(CLOSE_UNKNOWN_SPACE.into(), b"wrong space");
         return Ok(());
     }
-    run_link(shared, conn, true, send, recv).await
+    run_link(host, space, conn, true, send, recv).await
 }
 
 #[derive(Clone)]
-struct SyncAcceptor(Arc<Shared>);
+struct SyncAcceptor(Arc<Host>);
 
 impl std::fmt::Debug for SyncAcceptor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -568,12 +641,8 @@ impl std::fmt::Debug for SyncAcceptor {
 
 impl ProtocolHandler for SyncAcceptor {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
-        let shared = &self.0;
-        // QUIC 握手已经证明了对方是谁;不在名单上就不谈。
-        if !shared.membership.is_member(&conn.remote_id()) {
-            conn.close(CLOSE_NOT_MEMBER.into(), b"not a member");
-            return Ok(());
-        }
+        let host = &self.0;
+        let remote = conn.remote_id();
         let handshake = async {
             let (send, mut recv) = conn.accept_bi().await?;
             let theirs = read_frame::<_, SyncMessage>(&mut recv)
@@ -587,14 +656,27 @@ impl ProtocolHandler for SyncAcceptor {
             conn.close(CLOSE_BYE.into(), b"no hello");
             return Ok(());
         };
-        let Some(hello) = shared.hello().filter(|_| shared.accepts_hello(&theirs)) else {
-            conn.close(CLOSE_WRONG_GROUP.into(), b"wrong group");
+        let SyncMessage::Hello {
+            space: space_id,
+            protocol: PROTOCOL_VERSION,
+        } = theirs
+        else {
+            conn.close(CLOSE_UNKNOWN_SPACE.into(), b"bad hello");
             return Ok(());
         };
-        write_frame(&mut send, &hello)
+        // 本机不在这个空间里,或者对方不在这个空间的名单上:一律不谈,也不说是哪种。
+        // QUIC 握手已经证明了对方是谁。
+        let Some(space) = host
+            .space(&space_id)
+            .filter(|space| space.membership.is_member(&remote))
+        else {
+            conn.close(CLOSE_NOT_MEMBER.into(), b"not a member");
+            return Ok(());
+        };
+        write_frame(&mut send, &host.hello(&space.id))
             .await
             .map_err(AcceptError::from_err)?;
-        if let Err(error) = run_link(shared, conn, false, send, recv).await {
+        if let Err(error) = run_link(host, &space, conn, false, send, recv).await {
             tracing::debug!(%error, "同步连接结束");
         }
         Ok(())
@@ -602,7 +684,7 @@ impl ProtocolHandler for SyncAcceptor {
 }
 
 #[derive(Clone)]
-struct PairAcceptor(Arc<Shared>);
+struct PairAcceptor(Arc<Host>);
 
 impl std::fmt::Debug for PairAcceptor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -612,7 +694,7 @@ impl std::fmt::Debug for PairAcceptor {
 
 impl ProtocolHandler for PairAcceptor {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
-        let shared = &self.0;
+        let host = &self.0;
         let joiner = conn.remote_id();
         let request = async {
             let (send, mut recv) = conn.accept_bi().await?;
@@ -634,38 +716,51 @@ impl ProtocolHandler for PairAcceptor {
             return Ok(());
         };
 
-        let reply =
-            if joiner_addr.id != joiner || !shared.invites.redeem(&proof, &joiner, &shared.me()) {
-                PairMessage::Rejected {
-                    reason: PairRejection::InvalidOrExpired,
-                }
-            } else {
-                match shared
-                    .membership
-                    .admit(joiner, &sanitize_device_name(&device_name))
-                {
-                    Ok(group) => {
-                        shared.known.add_endpoint_info(joiner_addr);
-                        PairMessage::Accepted {
-                            group,
-                            inviter_name: shared.config.device_name.clone(),
+        let redeemed = if joiner_addr.id == joiner {
+            host.invites.redeem(&proof, &joiner, &host.me())
+        } else {
+            None
+        };
+        let mut admitted_into = None;
+        let reply = match redeemed {
+            None => PairMessage::Rejected {
+                reason: PairRejection::InvalidOrExpired,
+            },
+            Some(invite) => match host.space(&invite.space) {
+                None => PairMessage::Rejected {
+                    reason: PairRejection::Unavailable,
+                },
+                Some(space) => {
+                    match space
+                        .membership
+                        .admit(joiner, &sanitize_device_name(&device_name))
+                    {
+                        Ok(()) => {
+                            host.known.add_endpoint_info(joiner_addr);
+                            admitted_into = Some(space);
+                            PairMessage::Accepted {
+                                space: invite.space,
+                                purpose: invite.purpose,
+                                label: invite.label,
+                                inviter_name: host.config.device_name.clone(),
+                            }
+                        }
+                        Err(error) => {
+                            tracing::warn!(%error, "配对码有效,但没能把新设备记进名单");
+                            PairMessage::Rejected {
+                                reason: PairRejection::Unavailable,
+                            }
                         }
                     }
-                    Err(error) => {
-                        tracing::warn!(%error, "配对码有效,但没能把新设备记进名单");
-                        PairMessage::Rejected {
-                            reason: PairRejection::Unavailable,
-                        }
-                    }
                 }
-            };
-        let admitted = matches!(reply, PairMessage::Accepted { .. });
+            },
+        };
         let _ = write_frame(&mut send, &reply).await;
         let _ = send.finish();
         // handler 一返回 Router 就关连接;等对方读完、自己关,回复才不会丢在路上。
         let _ = tokio::time::timeout(HANDSHAKE_TIMEOUT, conn.closed()).await;
-        if admitted {
-            shared.members_changed();
+        if let Some(space) = admitted_into {
+            host.members_changed(&space);
         }
         Ok(())
     }
@@ -688,18 +783,19 @@ enum Outbound {
     Serve { doc: DocId, from: Vec<u8> },
 }
 
-/// 把一条新连接登记为和这台设备的那条连接。返回假表示新连接落选、应当关掉。
+/// 把一条新连接登记为和这台设备在这个空间里的那条连接。返回假表示新连接落选、
+/// 应当关掉。
 ///
 /// - 没有旧连接:登记。
 /// - 旧连接是刚建立的(不到 [`RACE_WINDOW`]):两边同时拨了。留 id 小的一方拨出的
 ///   那条 —— 两边看到的是同一对连接,按同一条规则,留下的是同一条。
 /// - 旧连接已经有一阵了:新的换掉旧的。对方肯拨过来,说明它那头已经没有可用的
 ///   连接,旧的这条多半是对方重启或断网后还没超时的残留。
-fn register(shared: &Shared, device: EndpointId, link: &Arc<Link>) -> bool {
-    let mut links = shared.links.lock().unwrap();
+fn register(me: EndpointId, space: &Space, device: EndpointId, link: &Arc<Link>) -> bool {
+    let mut links = space.links.lock().unwrap();
     if let Some(old) = links.get(&device) {
         let racing = old.established.elapsed() < RACE_WINDOW;
-        let dialed_by_lower = link.dialed_by_me == (shared.me() < device);
+        let dialed_by_lower = link.dialed_by_me == (me < device);
         if racing && !dialed_by_lower {
             return false;
         }
@@ -710,7 +806,8 @@ fn register(shared: &Shared, device: EndpointId, link: &Arc<Link>) -> bool {
 }
 
 async fn run_link(
-    shared: &Arc<Shared>,
+    host: &Arc<Host>,
+    space: &Arc<Space>,
     conn: Connection,
     dialed_by_me: bool,
     send: SendStream,
@@ -725,7 +822,10 @@ async fn run_link(
         dirty_signal: Notify::new(),
         in_flight: AtomicUsize::new(0),
     });
-    if shared.closing.load(Ordering::SeqCst) || !register(shared, device, &link) {
+    if host.closing.load(Ordering::SeqCst)
+        || space.removed.load(Ordering::SeqCst)
+        || !register(host.me(), space, device, &link)
+    {
         conn.close(CLOSE_REPLACED.into(), b"duplicate");
         return Ok(());
     }
@@ -733,14 +833,20 @@ async fn run_link(
 
     let (outbound, queue) = mpsc::unbounded_channel();
     let _ = outbound.send(Outbound::Summary);
-    let writer = tokio::spawn(write_loop(shared.clone(), link.clone(), send, queue));
+    let writer = tokio::spawn(write_loop(
+        host.config.anti_entropy,
+        space.clone(),
+        link.clone(),
+        send,
+        queue,
+    ));
     let result = tokio::select! {
-        result = read_loop(shared, &link, device, recv, outbound) => result,
+        result = read_loop(space, &link, device, recv, outbound) => result,
         _ = conn.closed() => Ok(()),
     };
     writer.abort();
     {
-        let mut links = shared.links.lock().unwrap();
+        let mut links = space.links.lock().unwrap();
         if links
             .get(&device)
             .is_some_and(|current| Arc::ptr_eq(current, &link))
@@ -753,7 +859,7 @@ async fn run_link(
 }
 
 async fn read_loop(
-    shared: &Arc<Shared>,
+    space: &Arc<Space>,
     link: &Link,
     device: EndpointId,
     mut recv: RecvStream,
@@ -771,7 +877,7 @@ async fn read_loop(
                 return Err(WireError::Io(std::io::Error::other("重复的 Hello")));
             }
             SyncMessage::Summary { docs, complete } => {
-                let wanted = shared
+                let wanted = space
                     .with_store(move |store| {
                         docs.into_iter()
                             .filter(|(doc, digest)| match store.digest(doc) {
@@ -792,7 +898,7 @@ async fn read_loop(
                     }
                 }
                 if complete && pending.is_empty() {
-                    shared
+                    space
                         .synced_at
                         .lock()
                         .unwrap()
@@ -828,11 +934,11 @@ async fn read_loop(
                 };
                 if !update.is_empty() {
                     let target = doc.clone();
-                    let applied = shared
+                    let applied = space
                         .with_store(move |store| store.apply(&target, &update))
                         .await;
                     match applied {
-                        Some(Ok(true)) => shared.fan_out(&doc, Some(device)),
+                        Some(Ok(true)) => space.fan_out(&doc, Some(device)),
                         Some(Ok(false)) => {}
                         Some(Err(error)) => {
                             tracing::warn!(doc = %doc, %error, "对方的差量合不进来");
@@ -845,7 +951,7 @@ async fn read_loop(
                     let _ = outbound.send(Outbound::Want(doc));
                 }
                 if pending.is_empty() {
-                    shared
+                    space
                         .synced_at
                         .lock()
                         .unwrap()
@@ -858,12 +964,13 @@ async fn read_loop(
 }
 
 async fn write_loop(
-    shared: Arc<Shared>,
+    anti_entropy: Duration,
+    space: Arc<Space>,
     link: Arc<Link>,
     mut send: SendStream,
     mut queue: mpsc::UnboundedReceiver<Outbound>,
 ) {
-    let mut anti_entropy = tokio::time::interval(shared.config.anti_entropy);
+    let mut anti_entropy = tokio::time::interval(anti_entropy);
     anti_entropy.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // 第一次完整摘要已经在队列里了。
     anti_entropy.reset();
@@ -878,7 +985,7 @@ async fn write_loop(
                 let docs: Vec<DocId> = std::mem::take(&mut *link.dirty.lock().unwrap())
                     .into_iter()
                     .collect();
-                let digests = shared
+                let digests = space
                     .with_store(move |store| {
                         docs.into_iter()
                             .filter_map(|doc| store.digest(&doc).map(|digest| (doc, digest)))
@@ -900,7 +1007,7 @@ async fn write_loop(
 
         let written = match item {
             Outbound::Summary => {
-                let docs = shared
+                let docs = space
                     .with_store(|store| store.summary())
                     .await
                     .unwrap_or_default();
@@ -915,7 +1022,7 @@ async fn write_loop(
             }
             Outbound::Want(doc) => {
                 let target = doc.clone();
-                let version = shared
+                let version = space
                     .with_store(move |store| store.version(&target))
                     .await
                     .flatten()
@@ -924,7 +1031,7 @@ async fn write_loop(
             }
             Outbound::Serve { doc, from } => {
                 let target = doc.clone();
-                let update = shared
+                let update = space
                     .with_store(move |store| store.updates_since(&target, &from))
                     .await
                     .flatten()

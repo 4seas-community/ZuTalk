@@ -2,7 +2,7 @@
 //!
 //! 每对设备一条 QUIC 连接、一条长寿的双向流,所有文档复用。两边对等,没有主从:
 //!
-//! 1. 连上后互发 [`SyncMessage::Hello`](同一个设备组、同一版协议才继续);
+//! 1. 连上后互发 [`SyncMessage::Hello`](同一个空间、同一版协议才继续);
 //! 2. 互发完整的 [`SyncMessage::Summary`](文档 id → 版本摘要);
 //! 3. 各自比对对方的摘要,对不一致、且本机愿意收的文档发 [`SyncMessage::Want`],
 //!    带上本机当前版本;
@@ -31,11 +31,12 @@ pub const UPDATE_CHUNK_BYTES: usize = 1024 * 1024;
 /// 一份差量重组后的上限。对端是自己的设备,但一个坏掉的文档不该吃光内存。
 pub const MAX_UPDATE_BYTES: usize = 256 * 1024 * 1024;
 
-/// 设备组 id。随机 32 字节,在配对时由邀请方交给新设备。
+/// 同步空间 id。随机 32 字节:设备组、每个协作主题、备份各一个。配对时由邀请方
+/// 交给加入方。
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct GroupId(pub [u8; 32]);
+pub struct SpaceId(pub [u8; 32]);
 
-impl GroupId {
+impl SpaceId {
     pub fn generate() -> Self {
         Self(rand::random())
     }
@@ -50,28 +51,23 @@ impl GroupId {
     }
 }
 
-impl std::fmt::Debug for GroupId {
+impl std::fmt::Debug for SpaceId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "GroupId({})", &self.to_hex()[..8])
+        write!(f, "SpaceId({})", &self.to_hex()[..8])
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SyncMessage {
-    Hello {
-        group: GroupId,
-        protocol: u32,
-    },
+    /// 这条连接属于哪个空间。两边说的必须是同一个。
+    Hello { space: SpaceId, protocol: u32 },
     /// 文档摘要。`complete` 为真时是本机全部可同步文档;为假时只是刚改过的几个。
     Summary {
         docs: Vec<(DocId, VersionDigest)>,
         complete: bool,
     },
     /// 「我停在这个版本,把我缺的给我」。空版本表示本机还没有这个文档。
-    Want {
-        doc: DocId,
-        version: Vec<u8>,
-    },
+    Want { doc: DocId, version: Vec<u8> },
     /// 一块差量。同一份差量的各块连续发出,`last` 标出最后一块;空的末块表示
     /// 对方什么都不缺。
     Update {
@@ -86,12 +82,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn group_ids_are_random_and_round_trip_through_hex() {
-        let a = GroupId::generate();
-        let b = GroupId::generate();
+    fn space_ids_are_random_and_round_trip_through_hex() {
+        let a = SpaceId::generate();
+        let b = SpaceId::generate();
         assert_ne!(a, b);
-        assert_eq!(GroupId::from_hex(&a.to_hex()), Some(a));
-        assert_eq!(GroupId::from_hex("not hex"), None);
+        assert_eq!(SpaceId::from_hex(&a.to_hex()), Some(a));
+        assert_eq!(SpaceId::from_hex("not hex"), None);
     }
 
     #[test]

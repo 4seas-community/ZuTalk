@@ -15,6 +15,6 @@ pub use engine::{Joined, PairError, PeerStatus, SyncConfig, SyncEngine, SyncErro
 pub use identity::DeviceIdentity;
 pub use iroh::{EndpointAddr, EndpointId, RelayUrl};
 pub use membership::Membership;
-pub use pairing::{PairRejection, PairingTicket};
-pub use protocol::GroupId;
+pub use pairing::{InvitePurpose, PairRejection, PairingTicket};
+pub use protocol::SpaceId;
 pub use store::{DocId, DocumentStore, StoreError, VersionDigest};
