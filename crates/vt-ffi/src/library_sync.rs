@@ -246,7 +246,7 @@ impl LibrarySync {
         };
         let config = SyncConfig {
             relay_urls,
-            local_discovery: options.local_discovery.unwrap_or(true),
+            local_discovery: options.local_discovery.unwrap_or_else(default_local_discovery),
             device_name: device_name.clone(),
             loopback_only: options.loopback_only,
             ..SyncConfig::default()
@@ -1361,6 +1361,16 @@ fn default_relays() -> Vec<RelayUrl> {
             .collect();
     }
     DEFAULT_RELAY_URL.parse().into_iter().collect()
+}
+
+fn default_local_discovery() -> bool {
+    // 开发构建可以用 ZUTALK_SYNC_MDNS=0 关掉局域网发现:同机起两个开发版联调时,
+    // 系统的「本地网络」授权框会卡住无人值守的测试。
+    #[cfg(debug_assertions)]
+    if std::env::var("ZUTALK_SYNC_MDNS").is_ok_and(|value| value == "0") {
+        return false;
+    }
+    true
 }
 
 fn load_or_create_identity(core: &ZuTalkCore) -> Result<DeviceIdentity, CoreError> {
