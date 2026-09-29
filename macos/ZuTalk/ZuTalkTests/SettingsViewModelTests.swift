@@ -45,7 +45,7 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
     }
 
     func testSettingsSectionsAreNamedForWhatTheyAreAbout() throws {
-        XCTAssertEqual(SettingsSection.allCases, [.general, .captions, .sharing])
+        XCTAssertEqual(SettingsSection.allCases, [.general, .captions, .sharing, .devices])
         let expected = [
             "en": ["General", "Live captions", "Sharing"],
             "zh-Hans": ["通用", "实时字幕", "共享"],

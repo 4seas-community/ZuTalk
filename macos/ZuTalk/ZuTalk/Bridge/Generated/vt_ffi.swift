@@ -949,6 +949,52 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func unregisterEditorCallback(notebookId: String, tabId: String) throws
 
     /**
+     * 这场录音是在哪台 Mac 上录的;本机录的为空。
+     */
+    func sessionRecordedOn(sessionId: String)  -> String?
+
+    /**
+     * 作废还没用掉的配对码。
+     */
+    func syncCancelInvites() throws
+
+    /**
+     * 生成一张「添加 Mac」的配对码。十分钟内有效,只能用一次。
+     */
+    func syncCreateDeviceInvite() throws  -> String
+
+    /**
+     * 看一眼配对码是干什么用的,不连接对方。
+     */
+    func syncDescribeCode(code: String) throws  -> FfiSyncInvitePurpose
+
+    /**
+     * 用另一台 Mac 给的配对码加入它的设备组。
+     */
+    func syncJoin(code: String) throws  -> FfiSyncJoinResult
+
+    /**
+     * 从设备组里移除一台 Mac。它自己留着已经同步到的资料,但再也连不进来。
+     */
+    func syncRemoveDevice(deviceId: String) throws
+
+    func syncRenameDevice(name: String) throws
+
+    func syncSetListener(listener: FfiSyncListener) throws
+
+    /**
+     * 打开设备同步。已经打开时只更新本机名字。
+     */
+    func syncStart(deviceName: String) throws  -> FfiSyncStatus
+
+    func syncStatus()  -> FfiSyncStatus
+
+    /**
+     * 关掉设备同步:断开所有连接。本机的资料原样留着。
+     */
+    func syncStop()
+
+    /**
      * 所有还有效的录音链接,新的在前。设置里「共享」一节据此列出此刻
      * 在外面的一切,好让主持人一处看清、随手撤销。
      */
@@ -2138,6 +2184,120 @@ open func unregisterEditorCallback(notebookId: String, tabId: String)throws   {t
             self.uniffiCloneHandle(),
         FfiConverterString.lower(notebookId),
         FfiConverterString.lower(tabId),$0
+    )
+}
+}
+
+    /**
+     * 这场录音是在哪台 Mac 上录的;本机录的为空。
+     */
+open func sessionRecordedOn(sessionId: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_session_recorded_on(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
+     * 作废还没用掉的配对码。
+     */
+open func syncCancelInvites()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_cancel_invites(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+    /**
+     * 生成一张「添加 Mac」的配对码。十分钟内有效,只能用一次。
+     */
+open func syncCreateDeviceInvite()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_create_device_invite(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 看一眼配对码是干什么用的,不连接对方。
+     */
+open func syncDescribeCode(code: String)throws  -> FfiSyncInvitePurpose  {
+    return try  FfiConverterTypeFfiSyncInvitePurpose_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_describe_code(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(code),$0
+    )
+})
+}
+
+    /**
+     * 用另一台 Mac 给的配对码加入它的设备组。
+     */
+open func syncJoin(code: String)throws  -> FfiSyncJoinResult  {
+    return try  FfiConverterTypeFfiSyncJoinResult_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_join(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(code),$0
+    )
+})
+}
+
+    /**
+     * 从设备组里移除一台 Mac。它自己留着已经同步到的资料,但再也连不进来。
+     */
+open func syncRemoveDevice(deviceId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_remove_device(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceId),$0
+    )
+}
+}
+
+open func syncRenameDevice(name: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_rename_device(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),$0
+    )
+}
+}
+
+open func syncSetListener(listener: FfiSyncListener)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_set_listener(
+            self.uniffiCloneHandle(),
+        FfiConverterCallbackInterfaceFfiSyncListener_lower(listener),$0
+    )
+}
+}
+
+    /**
+     * 打开设备同步。已经打开时只更新本机名字。
+     */
+open func syncStart(deviceName: String)throws  -> FfiSyncStatus  {
+    return try  FfiConverterTypeFfiSyncStatus_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_start(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceName),$0
+    )
+})
+}
+
+open func syncStatus() -> FfiSyncStatus  {
+    return try!  FfiConverterTypeFfiSyncStatus_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_status(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 关掉设备同步:断开所有连接。本机的资料原样留着。
+     */
+open func syncStop()  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_sync_stop(
+            self.uniffiCloneHandle(),$0
     )
 }
 }
@@ -6592,6 +6752,202 @@ public func FfiConverterTypeFfiSpeakerParticipant_lower(_ value: FfiSpeakerParti
 }
 
 
+public struct FfiSyncDevice: Equatable, Hashable {
+    public var deviceId: String
+    public var name: String
+    public var isThisDevice: Bool
+    public var connected: Bool
+    public var viaRelay: Bool
+    public var lastSyncedUnixMs: Int64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(deviceId: String, name: String, isThisDevice: Bool, connected: Bool, viaRelay: Bool, lastSyncedUnixMs: Int64?) {
+        self.deviceId = deviceId
+        self.name = name
+        self.isThisDevice = isThisDevice
+        self.connected = connected
+        self.viaRelay = viaRelay
+        self.lastSyncedUnixMs = lastSyncedUnixMs
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSyncDevice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSyncDevice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSyncDevice {
+        return
+            try FfiSyncDevice(
+                deviceId: FfiConverterString.read(from: &buf),
+                name: FfiConverterString.read(from: &buf),
+                isThisDevice: FfiConverterBool.read(from: &buf),
+                connected: FfiConverterBool.read(from: &buf),
+                viaRelay: FfiConverterBool.read(from: &buf),
+                lastSyncedUnixMs: FfiConverterOptionInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiSyncDevice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.deviceId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.isThisDevice, into: &buf)
+        FfiConverterBool.write(value.connected, into: &buf)
+        FfiConverterBool.write(value.viaRelay, into: &buf)
+        FfiConverterOptionInt64.write(value.lastSyncedUnixMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSyncDevice_lift(_ buf: RustBuffer) throws -> FfiSyncDevice {
+    return try FfiConverterTypeFfiSyncDevice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSyncDevice_lower(_ value: FfiSyncDevice) -> RustBuffer {
+    return FfiConverterTypeFfiSyncDevice.lower(value)
+}
+
+
+public struct FfiSyncJoinResult: Equatable, Hashable {
+    public var purpose: FfiSyncInvitePurpose
+    public var label: String
+    public var inviterName: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(purpose: FfiSyncInvitePurpose, label: String, inviterName: String) {
+        self.purpose = purpose
+        self.label = label
+        self.inviterName = inviterName
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSyncJoinResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSyncJoinResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSyncJoinResult {
+        return
+            try FfiSyncJoinResult(
+                purpose: FfiConverterTypeFfiSyncInvitePurpose.read(from: &buf),
+                label: FfiConverterString.read(from: &buf),
+                inviterName: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiSyncJoinResult, into buf: inout [UInt8]) {
+        FfiConverterTypeFfiSyncInvitePurpose.write(value.purpose, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.inviterName, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSyncJoinResult_lift(_ buf: RustBuffer) throws -> FfiSyncJoinResult {
+    return try FfiConverterTypeFfiSyncJoinResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSyncJoinResult_lower(_ value: FfiSyncJoinResult) -> RustBuffer {
+    return FfiConverterTypeFfiSyncJoinResult.lower(value)
+}
+
+
+public struct FfiSyncStatus: Equatable, Hashable {
+    public var running: Bool
+    public var deviceId: String
+    public var deviceName: String
+    /**
+     * 设备组里的全部设备,含本机。
+     */
+    public var devices: [FfiSyncDevice]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(running: Bool, deviceId: String, deviceName: String,
+        /**
+         * 设备组里的全部设备,含本机。
+         */devices: [FfiSyncDevice]) {
+        self.running = running
+        self.deviceId = deviceId
+        self.deviceName = deviceName
+        self.devices = devices
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSyncStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSyncStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSyncStatus {
+        return
+            try FfiSyncStatus(
+                running: FfiConverterBool.read(from: &buf),
+                deviceId: FfiConverterString.read(from: &buf),
+                deviceName: FfiConverterString.read(from: &buf),
+                devices: FfiConverterSequenceTypeFfiSyncDevice.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiSyncStatus, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.running, into: &buf)
+        FfiConverterString.write(value.deviceId, into: &buf)
+        FfiConverterString.write(value.deviceName, into: &buf)
+        FfiConverterSequenceTypeFfiSyncDevice.write(value.devices, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSyncStatus_lift(_ buf: RustBuffer) throws -> FfiSyncStatus {
+    return try FfiConverterTypeFfiSyncStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSyncStatus_lower(_ value: FfiSyncStatus) -> RustBuffer {
+    return FfiConverterTypeFfiSyncStatus.lower(value)
+}
+
+
 public struct FfiUtteranceBlock: Equatable, Hashable {
     public var id: String
     public var owner: String
@@ -6830,6 +7186,11 @@ public struct SessionInfo: Equatable, Hashable {
      * Home 用 list_sessions 不会返回 trashed 的)。
      */
     public var isTrashed: Bool
+    /**
+     * 另一台 Mac 录的、经设备同步过来的:那台 Mac 的名字(还不知道名字时是
+     * 空串)。音频在那台上,这台没有。本机录的为 `None`。
+     */
+    public var recordedOn: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -6859,7 +7220,11 @@ public struct SessionInfo: Equatable, Hashable {
         /**
          * 是否在垃圾箱里(TrashPage 用 list_trashed_sessions 专门拿,
          * Home 用 list_sessions 不会返回 trashed 的)。
-         */isTrashed: Bool) {
+         */isTrashed: Bool,
+        /**
+         * 另一台 Mac 录的、经设备同步过来的:那台 Mac 的名字(还不知道名字时是
+         * 空串)。音频在那台上,这台没有。本机录的为 `None`。
+         */recordedOn: String?) {
         self.id = id
         self.sessionType = sessionType
         self.status = status
@@ -6871,6 +7236,7 @@ public struct SessionInfo: Equatable, Hashable {
         self.hasEncryptedAudio = hasEncryptedAudio
         self.preview = preview
         self.isTrashed = isTrashed
+        self.recordedOn = recordedOn
     }
 
 
@@ -6899,7 +7265,8 @@ public struct FfiConverterTypeSessionInfo: FfiConverterRustBuffer {
                 createdAtUnixMs: FfiConverterUInt64.read(from: &buf),
                 hasEncryptedAudio: FfiConverterBool.read(from: &buf),
                 preview: FfiConverterString.read(from: &buf),
-                isTrashed: FfiConverterBool.read(from: &buf)
+                isTrashed: FfiConverterBool.read(from: &buf),
+                recordedOn: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -6915,6 +7282,7 @@ public struct FfiConverterTypeSessionInfo: FfiConverterRustBuffer {
         FfiConverterBool.write(value.hasEncryptedAudio, into: &buf)
         FfiConverterString.write(value.preview, into: &buf)
         FfiConverterBool.write(value.isTrashed, into: &buf)
+        FfiConverterOptionString.write(value.recordedOn, into: &buf)
     }
 }
 
@@ -8230,6 +8598,80 @@ public func FfiConverterTypeFfiProviderConnectionStatus_lower(_ value: FfiProvid
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum FfiSyncInvitePurpose: Equatable, Hashable {
+
+    case device
+    case topic
+    case backup
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiSyncInvitePurpose: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiSyncInvitePurpose: FfiConverterRustBuffer {
+    typealias SwiftType = FfiSyncInvitePurpose
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiSyncInvitePurpose {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .device
+
+        case 2: return .topic
+
+        case 3: return .backup
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiSyncInvitePurpose, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .device:
+            writeInt(&buf, Int32(1))
+
+
+        case .topic:
+            writeInt(&buf, Int32(2))
+
+
+        case .backup:
+            writeInt(&buf, Int32(3))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSyncInvitePurpose_lift(_ buf: RustBuffer) throws -> FfiSyncInvitePurpose {
+    return try FfiConverterTypeFfiSyncInvitePurpose.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiSyncInvitePurpose_lower(_ value: FfiSyncInvitePurpose) -> RustBuffer {
+    return FfiConverterTypeFfiSyncInvitePurpose.lower(value)
+}
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
  * 「发送副本」的文件格式。
  */
@@ -8727,6 +9169,163 @@ public func FfiConverterCallbackInterfaceFfiNotebookCaptureCallback_lift(_ handl
 #endif
 public func FfiConverterCallbackInterfaceFfiNotebookCaptureCallback_lower(_ v: FfiNotebookCaptureCallback) -> UInt64 {
     return FfiConverterCallbackInterfaceFfiNotebookCaptureCallback.lower(v)
+}
+
+
+
+
+/**
+ * 同步有了变化,界面该刷新了。
+ */
+public protocol FfiSyncListener: AnyObject, Sendable {
+
+    /**
+     * 录音、主题、人名等资料库内容变了。
+     */
+    func onLibraryChanged()
+
+    /**
+     * 一份笔记或精修稿收到了别的设备的改动。
+     */
+    func onNoteChanged(docId: String)
+
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceFfiSyncListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // This creates 1-element array, since this seems to be the only way to construct a const
+    // pointer that we can pass to the Rust code.
+    static let vtable: [UniffiVTableCallbackInterfaceFfiSyncListener] = [UniffiVTableCallbackInterfaceFfiSyncListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterCallbackInterfaceFfiSyncListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface FfiSyncListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterCallbackInterfaceFfiSyncListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface FfiSyncListener: handle missing in uniffiClone")
+            }
+        },
+        onLibraryChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceFfiSyncListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onLibraryChanged(
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onNoteChanged: { (
+            uniffiHandle: UInt64,
+            docId: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceFfiSyncListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onNoteChanged(
+                     docId: try FfiConverterString.lift(docId)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )]
+}
+
+private func uniffiCallbackInitFfiSyncListener() {
+    uniffi_vt_ffi_fn_init_callback_vtable_ffisynclistener(UniffiCallbackInterfaceFfiSyncListener.vtable)
+}
+
+// FfiConverter protocol for callback interfaces
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterCallbackInterfaceFfiSyncListener {
+    fileprivate static let handleMap = UniffiHandleMap<FfiSyncListener>()
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+extension FfiConverterCallbackInterfaceFfiSyncListener : FfiConverter {
+    typealias SwiftType = FfiSyncListener
+    typealias FfiType = UInt64
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lift(_ handle: UInt64) throws -> SwiftType {
+        try handleMap.get(handle: handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lower(_ v: SwiftType) -> UInt64 {
+        return handleMap.insert(obj: v)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(v))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceFfiSyncListener_lift(_ handle: UInt64) throws -> FfiSyncListener {
+    return try FfiConverterCallbackInterfaceFfiSyncListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceFfiSyncListener_lower(_ v: FfiSyncListener) -> UInt64 {
+    return FfiConverterCallbackInterfaceFfiSyncListener.lower(v)
 }
 
 #if swift(>=5.8)
@@ -9545,6 +10144,31 @@ fileprivate struct FfiConverterSequenceTypeFfiSpeakerParticipant: FfiConverterRu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiSyncDevice: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiSyncDevice]
+
+    public static func write(_ value: [FfiSyncDevice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiSyncDevice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiSyncDevice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiSyncDevice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiSyncDevice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiUtteranceBlock: FfiConverterRustBuffer {
     typealias SwiftType = [FfiUtteranceBlock]
 
@@ -9901,6 +10525,39 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_unregister_editor_callback() != 10320) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_session_recorded_on() != 10981) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_cancel_invites() != 52063) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_create_device_invite() != 40819) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_describe_code() != 35335) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_join() != 9864) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_remove_device() != 33379) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_rename_device() != 15695) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_set_listener() != 42255) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_start() != 40995) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_status() != 22638) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_stop() != 36851) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_all_recording_links() != 28687) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10162,6 +10819,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_ffilanecredentialrequester_on_lane_credential_requested() != 22018) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_ffisynclistener_on_library_changed() != 52780) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_ffisynclistener_on_note_changed() != 49554) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_ffinotebookcapturecallback_on_capture_event() != 11919) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10172,6 +10835,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitFfiEditorCallback()
     uniffiCallbackInitFfiLaneCredentialRequester()
     uniffiCallbackInitFfiNotebookCaptureCallback()
+    uniffiCallbackInitFfiSyncListener()
     return InitializationResult.ok
 }()
 

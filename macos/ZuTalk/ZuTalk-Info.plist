@@ -24,6 +24,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>ZuTalk finds your other Macs on this network to sync recordings, transcripts and notes directly between them. Audio never leaves the Mac that recorded it.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_zutalk-sync._udp</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>ZuTalk needs microphone access to record and transcribe your voice. Recordings are encrypted with AES-256-GCM and stored only on this device.</string>
 	<key>SUAllowsAutomaticUpdates</key>

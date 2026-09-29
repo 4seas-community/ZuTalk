@@ -1253,7 +1253,8 @@ final class LibraryViewModelTests: XCTestCase {
             createdAtUnixMs: 1_700_000_000_000,
             hasEncryptedAudio: true,
             preview: "",
-            isTrashed: false
+            isTrashed: false,
+            recordedOn: nil
         )
     }
 
@@ -1530,7 +1531,8 @@ final class LibraryViewModelHelpersTests: XCTestCase {
             createdAtUnixMs: 1_700_000_000_000,
             hasEncryptedAudio: true,
             preview: "",
-            isTrashed: false
+            isTrashed: false,
+            recordedOn: nil
         )
 
         let item = LibraryViewModel.makeListItem(info)
@@ -1556,7 +1558,8 @@ final class LibraryViewModelHelpersTests: XCTestCase {
             createdAtUnixMs: 1_700_000_000_000,
             hasEncryptedAudio: true,
             preview: "",
-            isTrashed: false
+            isTrashed: false,
+            recordedOn: nil
         )
 
         let item = LibraryViewModel.makeListItem(info)
@@ -1579,7 +1582,8 @@ final class LibraryViewModelHelpersTests: XCTestCase {
             createdAtUnixMs: 1_700_000_000_000,
             hasEncryptedAudio: false,
             preview: "",
-            isTrashed: false
+            isTrashed: false,
+            recordedOn: nil
         )
 
         let item = LibraryViewModel.makeListItem(info)
@@ -1603,7 +1607,8 @@ final class LibraryViewModelHelpersTests: XCTestCase {
             createdAtUnixMs: unixMs,
             hasEncryptedAudio: true,
             preview: "",
-            isTrashed: false
+            isTrashed: false,
+            recordedOn: nil
         )
         let item = LibraryViewModel.makeListItem(info)
         XCTAssertEqual(

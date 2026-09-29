@@ -1,0 +1,270 @@
+// DeviceSyncStore.swift
+// 自己的几台 Mac 之间直接同步:开关、本机名字、配对码、设备列表。
+//
+// 同步本身在 Rust 核心里(library_sync):录音、转录稿、笔记、标记在设备之间
+// 直接走,不经服务器、不要账号;音频永远只留在录音的那台 Mac 上。这里只管
+// 用户的选择与界面状态。打开过的,下次启动自动接着同步。
+
+import AppKit
+import Combine
+import Foundation
+
+extension Notification.Name {
+    /// 另一台 Mac 改了一份笔记。object 是那份笔记的 doc_id。
+    static let zutalkNoteChangedOnAnotherDevice = Notification.Name("ZuTalkNoteChangedOnAnotherDevice")
+}
+
+@MainActor
+final class DeviceSyncStore: ObservableObject {
+    static let shared = DeviceSyncStore()
+
+    private static let enabledKey = "deviceSync.enabled"
+    private static let nameKey = "deviceSync.deviceName"
+    /// 配对码的有效期,与核心里的一致。
+    static let inviteLifetime: TimeInterval = 10 * 60
+
+    struct PendingInvite: Equatable {
+        let code: String
+        let expiresAt: Date
+    }
+
+    @Published private(set) var enabled: Bool
+    @Published private(set) var status: FfiSyncStatus?
+    @Published private(set) var deviceName: String
+    @Published private(set) var invite: PendingInvite?
+    @Published private(set) var busy = false
+    /// 最近一次失败,已经是给人看的话。
+    @Published private(set) var problem: String?
+
+    private var refreshTimer: Timer?
+
+    private init() {
+        let defaults = UserDefaults.standard
+        enabled = defaults.bool(forKey: Self.enabledKey)
+        deviceName = defaults.string(forKey: Self.nameKey) ?? Self.defaultDeviceName()
+    }
+
+    nonisolated static func defaultDeviceName() -> String {
+        let name = Host.current().localizedName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (name?.isEmpty == false ? name : nil) ?? "Mac"
+    }
+
+    /// 其他设备(不含本机)。
+    var otherDevices: [FfiSyncDevice] {
+        (status?.devices ?? []).filter { !$0.isThisDevice }
+    }
+
+    // MARK: - 开关
+
+    /// 启动时调用:打开过同步的,接着同步。
+    func startIfEnabled() {
+        guard enabled else { return }
+        start()
+    }
+
+    func setEnabled(_ on: Bool) {
+        guard on != enabled else { return }
+        UserDefaults.standard.set(on, forKey: Self.enabledKey)
+        enabled = on
+        problem = nil
+        if on {
+            start()
+        } else {
+            stop()
+        }
+    }
+
+    private func start() {
+        guard let core = CoreClient.shared.core else { return }
+        let name = deviceName
+        busy = true
+        Task {
+            let result = await Task.detached { Result { try core.syncStart(deviceName: name) } }.value
+            busy = false
+            switch result {
+            case .success(let status):
+                self.status = status
+                try? core.syncSetListener(listener: DeviceSyncListener())
+                startRefreshing()
+            case .failure(let error):
+                problem = Self.describe(error)
+                DebugLog.warn("device sync failed to start", detail: "\(error)")
+            }
+        }
+    }
+
+    private func stop() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        invite = nil
+        status = nil
+        guard let core = CoreClient.shared.core else { return }
+        Task.detached { core.syncStop() }
+    }
+
+    /// 退出前断开:别的 Mac 马上知道这台下线了,而不是等连接超时。
+    nonisolated static func stopBeforeQuit(core: any ZuTalkCoreProtocol) {
+        core.syncStop()
+    }
+
+    // MARK: - 状态
+
+    private func startRefreshing() {
+        refreshTimer?.invalidate()
+        // 在线/上次同步时间要跟着变;几秒一次足够,也不费事(只读内存)。
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+            Task { @MainActor in DeviceSyncStore.shared.refresh() }
+        }
+        refresh()
+    }
+
+    func refresh() {
+        guard enabled, let core = CoreClient.shared.core else { return }
+        let next = core.syncStatus()
+        if next != status {
+            status = next
+        }
+        if let invite, invite.expiresAt <= Date() {
+            self.invite = nil
+        }
+    }
+
+    // MARK: - 本机名字
+
+    func rename(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let next = trimmed.isEmpty ? Self.defaultDeviceName() : trimmed
+        guard next != deviceName else { return }
+        deviceName = next
+        UserDefaults.standard.set(next, forKey: Self.nameKey)
+        guard enabled, let core = CoreClient.shared.core else { return }
+        Task.detached { try? core.syncRenameDevice(name: next) }
+    }
+
+    // MARK: - 配对
+
+    /// 在已经在同步的这台上生成配对码,拿去另一台 Mac 输入。
+    func createInvite() {
+        guard let core = CoreClient.shared.core else { return }
+        busy = true
+        problem = nil
+        Task {
+            let result = await Task.detached { Result { try core.syncCreateDeviceInvite() } }.value
+            busy = false
+            switch result {
+            case .success(let code):
+                invite = PendingInvite(code: code, expiresAt: Date().addingTimeInterval(Self.inviteLifetime))
+            case .failure(let error):
+                problem = Self.describe(error)
+            }
+        }
+    }
+
+    func cancelInvite() {
+        invite = nil
+        guard let core = CoreClient.shared.core else { return }
+        Task.detached { try? core.syncCancelInvites() }
+    }
+
+    func copyInvite() {
+        guard let invite else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(invite.code, forType: .string)
+        ToastCenter.shared.success(String(localized: "sync.invite.copied"))
+    }
+
+    /// 在新的这台上输入另一台给的配对码。成功返回邀请方的名字。
+    func join(code: String) async -> String? {
+        guard let core = CoreClient.shared.core else { return nil }
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        busy = true
+        problem = nil
+        let result = await Task.detached { Result { try core.syncJoin(code: trimmed) } }.value
+        busy = false
+        switch result {
+        case .success(let joined):
+            refresh()
+            NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
+            return joined.inviterName
+        case .failure(let error):
+            problem = Self.describe(error)
+            return nil
+        }
+    }
+
+    /// 移除一台 Mac:它留着已经同步到的,但再也连不进来。
+    func remove(_ device: FfiSyncDevice) {
+        guard let core = CoreClient.shared.core else { return }
+        let id = device.deviceId
+        Task {
+            let result = await Task.detached { Result { try core.syncRemoveDevice(deviceId: id) } }.value
+            if case .failure(let error) = result {
+                problem = Self.describe(error)
+            }
+            refresh()
+        }
+    }
+
+    // MARK: - 错误
+
+    /// 核心返回的是稳定代码(`sync.error.*`),按它查本地化的说法;认不出的
+    /// 给一句笼统的话,细节进日志。
+    nonisolated static func describe(_ error: Error) -> String {
+        if case let CoreError.ValidationFailed(message) = error, message.hasPrefix("sync.error.") {
+            switch message {
+            case "sync.error.not_a_code": return String(localized: "sync.error.not_a_code")
+            case "sync.error.own_code": return String(localized: "sync.error.own_code")
+            case "sync.error.wrong_purpose": return String(localized: "sync.error.wrong_purpose")
+            case "sync.error.invalid_or_expired": return String(localized: "sync.error.invalid_or_expired")
+            case "sync.error.unavailable": return String(localized: "sync.error.unavailable")
+            case "sync.error.unreachable": return String(localized: "sync.error.unreachable")
+            case "sync.error.interrupted": return String(localized: "sync.error.interrupted")
+            case "sync.error.cannot_remove_self": return String(localized: "sync.error.cannot_remove_self")
+            case "sync.error.audio_elsewhere": return String(localized: "sync.error.audio_elsewhere")
+            default: break
+            }
+        }
+        return String(localized: "sync.error.generic")
+    }
+}
+
+/// Rust 从同步线程回调这里;转到主线程再动界面。
+private final class DeviceSyncListener: FfiSyncListener, @unchecked Sendable {
+    func onLibraryChanged() {
+        Task { @MainActor in
+            NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
+            DeviceSyncStore.shared.refresh()
+        }
+    }
+
+    func onNoteChanged(docId: String) {
+        Task { @MainActor in
+            NotificationCenter.default.post(name: .zutalkNoteChangedOnAnotherDevice, object: docId)
+        }
+    }
+}
+
+/// 另一台 Mac 录的录音怎么说。名字可能为空:设备名单还没同步到这台。
+enum RecordingOrigin {
+    /// 资料库列表里的小标签。
+    static func badge(_ device: String) -> String {
+        device.isEmpty
+            ? String(localized: "recording.origin.badge_unknown")
+            : String(format: String(localized: "recording.origin.badge_format"), device)
+    }
+
+    /// 录音设置里「音频」那一栏。
+    static func audioOn(_ device: String) -> String {
+        device.isEmpty
+            ? String(localized: "recording.origin.audio_elsewhere")
+            : String(format: String(localized: "recording.origin.audio_on_format"), device)
+    }
+
+    /// 精修那一栏:这里精修不了,去哪台。
+    static func audioElsewhereHint(_ device: String) -> String {
+        device.isEmpty
+            ? String(localized: "recording.origin.refine_elsewhere")
+            : String(format: String(localized: "recording.origin.refine_on_format"), device)
+    }
+}

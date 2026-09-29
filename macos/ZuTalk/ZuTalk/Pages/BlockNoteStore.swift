@@ -51,10 +51,38 @@ final class BlockNoteStore: ObservableObject {
     /// noteBlockDocumentOpen 返回的 doc_id。nil 表示尚未打开或已关闭。
     private(set) var docId: String?
 
+    /// 另一台 Mac 改了笔记的通知。
+    private var changedElsewhere: AnyCancellable?
+
     init(
         coreProvider: @escaping @MainActor () -> ZuTalkCore? = { CoreClient.shared.core }
     ) {
         self.coreProvider = coreProvider
+        changedElsewhere = NotificationCenter.default
+            .publisher(for: .zutalkNoteChangedOnAnotherDevice)
+            .compactMap { $0.object as? String }
+            .sink { [weak self] docId in
+                Task { @MainActor [weak self] in
+                    self?.reloadAfterChangeOnAnotherDevice(docId: docId)
+                }
+            }
+    }
+
+    /// 另一台 Mac 改了这份笔记:先把手上的草稿写进文档(两边的改动一起合并),
+    /// 再整体刷新。打到一半的字不会丢。
+    func reloadAfterChangeOnAnotherDevice(docId changed: String) {
+        guard changed == docId else { return }
+        flushDrafts()
+        guard let docId, let core = coreProvider(),
+              var loaded = try? core.noteOutlineRows(docId: docId)
+        else { return }
+        if loaded.isEmpty {
+            loaded = [Self.makeRow(depth: 0)]
+        }
+        guard loaded != rows else { return }
+        rows = loaded
+        discardDrafts()
+        refreshUndoState()
     }
 
     /// 打开(必要时从第 1 纪元平文本迁移)并载入大纲行。

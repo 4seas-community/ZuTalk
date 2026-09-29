@@ -60,6 +60,25 @@ fn internal(message: impl std::fmt::Display) -> CoreError {
     }
 }
 
+/// 给界面的错误:消息是一个稳定的代码(`sync.error.*`),App 按它查各语言的
+/// 说法。代码之外不带任何细节 —— 细节在日志里。
+fn sync_error(code: &str) -> CoreError {
+    CoreError::ValidationFailed {
+        message: format!("sync.error.{code}"),
+    }
+}
+
+fn pair_error_code(error: &vt_sync::PairError) -> &'static str {
+    match error {
+        vt_sync::PairError::Unreachable(_) => "unreachable",
+        vt_sync::PairError::Rejected(vt_sync::PairRejection::InvalidOrExpired) => {
+            "invalid_or_expired"
+        }
+        vt_sync::PairError::Rejected(vt_sync::PairRejection::Unavailable) => "unavailable",
+        vt_sync::PairError::Interrupted(_) => "interrupted",
+    }
+}
+
 fn other(message: impl std::fmt::Display) -> ReplicaError {
     ReplicaError::Other(message.to_string())
 }
@@ -1207,27 +1226,23 @@ impl LibrarySync {
 
     /// 用别人给的配对码加入。现在只处理加自己的 Mac;协作主题与备份各有入口。
     fn join(self: &Arc<Self>, code: &str) -> Result<FfiSyncJoinResult, CoreError> {
-        let ticket: PairingTicket = code.parse().map_err(|_| CoreError::ValidationFailed {
-            message: "这不是一个有效的配对码".into(),
-        })?;
+        let ticket: PairingTicket = code.parse().map_err(|_| sync_error("not_a_code"))?;
         if ticket.inviter.id == parse_device(&self.device_hex).expect("本机 id 合法") {
-            return Err(CoreError::ValidationFailed {
-                message: "这是本机自己的配对码".into(),
-            });
+            return Err(sync_error("own_code"));
+        }
+        if ticket.purpose != InvitePurpose::Device {
+            return Err(sync_error("wrong_purpose"));
         }
         let joined = self
             .runtime
             .block_on(self.engine.join(&ticket))
-            .map_err(|error| CoreError::ValidationFailed {
-                message: error.to_string(),
+            .map_err(|error| {
+                tracing::info!(%error, "同步:配对没有成功");
+                sync_error(pair_error_code(&error))
             })?;
         match joined.purpose {
             InvitePurpose::Device => self.adopt_device_group(&joined)?,
-            InvitePurpose::Topic | InvitePurpose::Backup => {
-                return Err(CoreError::ValidationFailed {
-                    message: "这个配对码不是用来添加 Mac 的".into(),
-                })
-            }
+            InvitePurpose::Topic | InvitePurpose::Backup => return Err(sync_error("wrong_purpose")),
         }
         Ok(FfiSyncJoinResult {
             purpose: joined.purpose.into(),
@@ -1285,9 +1300,7 @@ impl LibrarySync {
     /// 从设备组里移除一台设备。永久:同一个设备身份再也进不来。
     fn remove_device(&self, device: &str) -> Result<(), CoreError> {
         if device == self.device_hex {
-            return Err(CoreError::ValidationFailed {
-                message: "不能移除本机".into(),
-            });
+            return Err(sync_error("cannot_remove_self"));
         }
         let space = self
             .device_group()
@@ -1616,9 +1629,7 @@ impl ZuTalkCore {
     fn running_sync(&self) -> Result<Arc<LibrarySync>, CoreError> {
         self.library_sync
             .get()
-            .ok_or_else(|| CoreError::ValidationFailed {
-                message: "设备同步没有打开".into(),
-            })
+            .ok_or_else(|| sync_error("not_running"))
     }
 }
 
@@ -1726,9 +1737,7 @@ impl ZuTalkCore {
 
     /// 看一眼配对码是干什么用的,不连接对方。
     pub fn sync_describe_code(&self, code: String) -> Result<FfiSyncInvitePurpose, CoreError> {
-        let ticket: PairingTicket = code.parse().map_err(|_| CoreError::ValidationFailed {
-            message: "这不是一个有效的配对码".into(),
-        })?;
+        let ticket: PairingTicket = code.parse().map_err(|_| sync_error("not_a_code"))?;
         Ok(ticket.purpose.into())
     }
 
@@ -1958,7 +1967,7 @@ mod tests {
         assert_eq!(studio.session_recorded_on(sid.into()), None);
         let refine = laptop.request_notebook_async_transcription(sid.into());
         assert!(
-            matches!(refine, Err(CoreError::ValidationFailed { ref message }) if message.contains("工作室")),
+            matches!(refine, Err(CoreError::ValidationFailed { ref message }) if message == "sync.error.audio_elsewhere"),
             "{refine:?}"
         );
         // 名单两边都是两台。

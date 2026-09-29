@@ -1142,7 +1142,10 @@ class LibraryViewModel: ObservableObject {
         default:
             break
         }
-        if !info.hasEncryptedAudio {
+        if let device = info.recordedOn {
+            // 另一台 Mac 录的:音频在那台上,不是被删了。
+            badges.append(SessionBadge(label: RecordingOrigin.badge(device), color: Color.textTertiary))
+        } else if !info.hasEncryptedAudio {
             badges.append(SessionBadge(label: "AUDIO DELETED", color: Color.signalRed))
         }
 

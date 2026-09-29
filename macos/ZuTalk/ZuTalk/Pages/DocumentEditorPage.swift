@@ -84,6 +84,8 @@ enum AsyncTranscriptPrimaryAction: Equatable {
     case none
     case addPersonalKey
     case start
+    /// 另一台 Mac 录的:音频在那台上,这里精修不了。带着那台的名字(可能为空)。
+    case audioElsewhere(String)
 }
 
 enum AsyncTranscriptActionPolicy {
@@ -95,9 +97,13 @@ enum AsyncTranscriptActionPolicy {
     static func primaryAction(
         projectionState: NotebookAsyncProjectionState?,
         providerState: String?,
-        hasReadyPersonalKey: Bool
+        hasReadyPersonalKey: Bool,
+        recordedOn: String? = nil
     ) -> AsyncTranscriptPrimaryAction {
         guard projectionState == NotebookAsyncProjectionState.none else { return .none }
+        if let recordedOn {
+            return .audioElsewhere(recordedOn)
+        }
         let normalizedProviderState = providerState?.lowercased()
         if normalizedProviderState == nil || normalizedProviderState == "none" {
             return hasReadyPersonalKey ? .start : .addPersonalKey
@@ -1462,6 +1468,8 @@ private struct AsyncTranscriptView: View {
         )
     @State private var isRepairingStoredProjection = false
     @State private var storedProjectionRepairFailed = false
+    /// 另一台 Mac 录的:那台的名字。本机录的为 nil。
+    @State private var recordedOn: String?
 
     private var lines: [NotebookTranscriptLine] {
         projectionStore.linesBySession[sessionId] ?? []
@@ -1517,6 +1525,7 @@ private struct AsyncTranscriptView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
         .task(id: "\(sessionId):\(tabId)") {
+            recordedOn = CoreClient.shared.core?.sessionRecordedOn(sessionId: sessionId)
             await repairStoredProjection(showFailureToast: false)
             attachProjection()
         }
@@ -1626,6 +1635,11 @@ private struct AsyncTranscriptView: View {
                 .frame(minHeight: 44)
                 .disabled(isRequestingAsyncTranscription)
                 .accessibilityIdentifier("async.transcription.start.\(sessionId)")
+            case .audioElsewhere(let device):
+                Label(RecordingOrigin.audioElsewhereHint(device), systemImage: "laptopcomputer")
+                    .font(.caption)
+                    .foregroundColor(.textSecondary)
+                    .accessibilityIdentifier("async.transcription.audio-elsewhere.\(sessionId)")
             case .none:
                 EmptyView()
             }
@@ -1670,7 +1684,8 @@ private struct AsyncTranscriptView: View {
         return AsyncTranscriptActionPolicy.primaryAction(
             projectionState: asyncProjectionState,
             providerState: asyncProviderState,
-            hasReadyPersonalKey: hasReadyPersonalSonioxKey
+            hasReadyPersonalKey: hasReadyPersonalSonioxKey,
+            recordedOn: recordedOn
         )
     }
 
@@ -2283,9 +2298,10 @@ private struct SessionSettingsSnapshotView: View {
             SessionSettingsRowModel(
                 icon: "waveform",
                 label: String(localized: "session.settings.field.audio"),
-                value: String(localized: session.hasEncryptedAudio
-                    ? "session.settings.value.available"
-                    : "session.settings.value.unavailable")
+                value: session.recordedOn.map(RecordingOrigin.audioOn)
+                    ?? String(localized: session.hasEncryptedAudio
+                        ? "session.settings.value.available"
+                        : "session.settings.value.unavailable")
             ),
         ]
     }

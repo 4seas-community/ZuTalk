@@ -23,6 +23,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "General"
     case captions = "Captions"
     case sharing = "Sharing"
+    case devices = "Devices"
 
     var id: String { rawValue }
 
@@ -31,6 +32,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general:  return String(localized: "settings.section.general_name")
         case .captions: return String(localized: "settings.section.captions_name")
         case .sharing:  return String(localized: "settings.section.sharing_name")
+        case .devices:  return String(localized: "settings.section.devices_name")
         }
     }
 
@@ -39,6 +41,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general:  return "gearshape"
         case .captions: return "captions.bubble"
         case .sharing:  return "square.and.arrow.up"
+        case .devices:  return "laptopcomputer"
         }
     }
 }
@@ -147,6 +150,8 @@ struct FullSettingsView: View {
             ProviderSettingsView(scope: .captions)
         case .sharing:
             SharingSettingsSection()
+        case .devices:
+            DevicesSettingsSection()
         }
     }
 }

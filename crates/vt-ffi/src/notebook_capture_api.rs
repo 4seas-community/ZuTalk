@@ -7866,14 +7866,11 @@ impl ZuTalkCore {
         session_id: String,
     ) -> Result<FfiNotebookCaptureEvent, CoreError> {
         let _ownership_guard = self.capture_ownership_gate.lock().unwrap();
-        // 另一台 Mac 录的:音频在那台上,这里没有可转写的东西。
-        if let Some(device) = self.recorded_elsewhere(&session_id) {
+        // 另一台 Mac 录的:音频在那台上,这里没有可转写的东西。界面按代码
+        // 说清是哪台(它从录音的 recorded_on 里知道名字)。
+        if self.recorded_elsewhere(&session_id).is_some() {
             return Err(CoreError::ValidationFailed {
-                message: if device.is_empty() {
-                    "音频在录音的那台 Mac 上,请在那台上精修".to_string()
-                } else {
-                    format!("音频在「{device}」上,请在那台 Mac 上精修")
-                },
+                message: "sync.error.audio_elsewhere".to_string(),
             });
         }
         let run = self

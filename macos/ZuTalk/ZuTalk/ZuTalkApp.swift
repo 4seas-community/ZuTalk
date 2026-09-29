@@ -156,6 +156,8 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
 
         if !TestEnvironment.isUnitTestMode {
             openMainWindow()
+            // 打开过设备同步的,接着同步。
+            DeviceSyncStore.shared.startIfEnabled()
         }
 
         if !TestEnvironment.isUnitTestMode {
@@ -274,6 +276,8 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
         guard let core = CoreClient.shared.core else { return }
         // 不留稿的直播要当场从服务器上删掉,不能等 24 小时过期。
         ShareActivityStore.stopLiveBeforeQuit(core: core)
+        // 同步的连接当场断开,别的 Mac 马上知道这台下线了。
+        DeviceSyncStore.stopBeforeQuit(core: core)
         do {
             try core.flushAllEditorsSync()
             DebugLog.info("applicationWillTerminate: editor snapshots flushed")

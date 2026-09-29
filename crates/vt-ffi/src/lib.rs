@@ -1871,6 +1871,7 @@ impl ZuTalkCore {
                 .unwrap_or(false),
             preview,
             is_trashed: record.deleted_at.is_some(),
+            recorded_on: self.recorded_elsewhere(&record.id),
         }
     }
 
@@ -2150,6 +2151,9 @@ pub struct SessionInfo {
     /// 是否在垃圾箱里(TrashPage 用 list_trashed_sessions 专门拿,
     /// Home 用 list_sessions 不会返回 trashed 的)。
     pub is_trashed: bool,
+    /// 另一台 Mac 录的、经设备同步过来的:那台 Mac 的名字(还不知道名字时是
+    /// 空串)。音频在那台上,这台没有。本机录的为 `None`。
+    pub recorded_on: Option<String>,
 }
 
 /// 搜索结果（FFI DTO）
