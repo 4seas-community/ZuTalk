@@ -1,0 +1,32 @@
+[package]
+name = "vt-sync"
+# 库 crate 一律 0.0.0;产品版本号只由 vt-ffi 承载(见 scripts/check_release_version.sh)。
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# 设备之间直接同步(docs/architecture/local-first-sync.md)。
+#
+# 依赖清单本身就是一道安全边界:vt-audio 与 vt-crypto 被**故意**排除在外。
+# 这个包只搬「文档 id + 不透明字节」,够不到音频的密钥与 PCM,也就物理上发
+# 不出音频。scripts/test_share_no_audio_gate.sh 对直接与传递依赖都做断言。
+#
+# 不依赖 Loro:文档的版本、差量与合并由调用方(vt-ffi)按 DocumentStore 接口
+# 提供。这里只管谁能连、连上之后怎么对账、怎么把字节送到。
+[dependencies]
+serde = { workspace = true }
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.9"
+iroh = "1.3.0"
+iroh-tickets = "1.0.0"
+iroh-mdns-address-lookup = "0.6.0"
+n0-future = "0.3"
+postcard = { version = "1", features = ["alloc"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }

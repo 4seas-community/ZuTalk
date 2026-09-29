@@ -197,7 +197,8 @@ local-gate-rust-core:
         -p vt-export \
         -p vt-store \
         -p vt-i18n \
-        -p vt-mirror
+        -p vt-mirror \
+        -p vt-sync
 
 local-gate-rust-macos:
     cargo nextest run --no-fail-fast \

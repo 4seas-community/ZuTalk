@@ -27,6 +27,10 @@ ignore = [
     # heapless 0.8+ replaces atomic-polyfill with portable-atomic, but postcard
     # 1.1.3 pins heapless 0.7. Revisit when postcard / loro-internal upgrade.
     "RUSTSEC-2023-0089",
+    # paste is unmaintained (informational, not a CVE). A build-time proc-macro,
+    # pulled in only on Linux via iroh -> netwatch -> netdev -> netlink-packet-core;
+    # the macOS app never compiles it. Revisit when netlink-packet-core drops it.
+    "RUSTSEC-2024-0436",
 ]
 
 # ============================================================
@@ -87,6 +91,37 @@ allow = ["GPL-3.0-or-later"]
 [[licenses.exceptions]]
 name = "vt-stt"
 allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "vt-llm"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "vt-sync"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+name = "zutalk-uniffi-bindgen"
+allow = ["GPL-3.0-or-later"]
+
+# iroh(vt-sync)的 TLS 栈。ISC 与 MIT 等价宽松;逐个放行而不是加进全局
+# allow,新引入的 ISC 依赖仍会被拦下来过目。
+[[licenses.exceptions]]
+name = "ring"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+name = "rustls-webpki"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+name = "untrusted"
+allow = ["ISC"]
+
+# Mozilla 根证书列表的数据许可(iroh-relay 内置,用于校验中继的 TLS 证书)。
+[[licenses.exceptions]]
+name = "webpki-roots"
+allow = ["CDLA-Permissive-2.0"]
 
 # ============================================================
 # 重复依赖
