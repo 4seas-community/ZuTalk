@@ -48,6 +48,10 @@ use vt_sync::{
 use crate::notebook_api::QUICK_CAPTURE_NOTEBOOK_INTERNAL_TITLE;
 use crate::{CoreError, ZuTalkCore};
 
+#[path = "nearby_share.rs"]
+mod nearby;
+pub(crate) use nearby::{nearby_broadcast, NearbyLiveSlot};
+
 /// 设备身份在密钥库里的名字。它只是一把设备签名密钥,与音频的密钥无关。
 pub(crate) const IDENTITY_KEY_REF: &str = "sync-device-identity";
 /// 自建中继。跨网络时两台设备打不通洞,密文经它转发。
@@ -229,6 +233,8 @@ pub(crate) struct LibrarySync {
     wake: tokio::sync::Notify,
     stopping: AtomicBool,
     listener: Mutex<Option<Arc<dyn FfiSyncListener>>>,
+    /// 附近:递来的文字稿、在看的直播。
+    nearby: Arc<nearby::NearbyInbox>,
 }
 
 /// 测试与开发时覆盖的引擎设置。
@@ -287,7 +293,10 @@ impl LibrarySync {
             wake: tokio::sync::Notify::new(),
             stopping: AtomicBool::new(false),
             listener: Mutex::new(None),
+            nearby: Arc::default(),
         });
+        sync.nearby.attach(&sync);
+        sync.engine.set_nearby_handler(Some(sync.nearby.clone()));
         sync.ensure_device_group().map_err(internal)?;
         for row in sync.replica.read(facts::spaces).map_err(internal)? {
             sync.register_space(&row);
@@ -1333,6 +1342,7 @@ impl LibrarySync {
                 self.engine.notify_changed(&space, &id);
             }
         }
+        self.publish_presence();
     }
 
     fn create_device_invite(&self) -> Result<String, CoreError> {
@@ -2040,6 +2050,11 @@ impl ZuTalkCore {
     /// 设备组名单上一台设备的名字。同步开着时读内存里的名单;没开时从库里读一次
     /// —— 资料库列表往往在同步启动之前就要显示「来自哪台」。
     fn device_name_of(&self, device: &str) -> Option<String> {
+        self.group_device_name(device)
+            .or_else(|| self.nearby_sender_name(device))
+    }
+
+    fn group_device_name(&self, device: &str) -> Option<String> {
         if let Some(sync) = self.library_sync.get() {
             let space = sync.device_group()?;
             return sync.roster(&space).devices.get(device).cloned();
@@ -2105,6 +2120,8 @@ pub trait FfiSyncListener: Send + Sync {
     fn on_library_changed(&self);
     /// 一份笔记或精修稿收到了别的设备的改动。
     fn on_note_changed(&self, doc_id: String);
+    /// 附近有了变化:有人递文字稿来、刚收下一份。
+    fn on_nearby_changed(&self);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -2777,5 +2794,271 @@ mod tests {
             laptop.session_recorded_on(sid.into()).as_deref(),
             Some("工作室")
         );
+    }
+
+    // ── 附近 ─────────────────────────────────────────────────────────────
+
+    /// 让 `viewer` 看见 `seen`:进程内没有 mDNS,直接把地址和样子告诉它。
+    fn see(viewer: &Arc<ZuTalkCore>, seen: &Arc<ZuTalkCore>, presence: vt_sync::Presence) {
+        let seen = seen.library_sync.get().unwrap();
+        let addr = seen.runtime.block_on(seen.engine.addr());
+        viewer
+            .library_sync
+            .get()
+            .unwrap()
+            .engine
+            .nearby_seen(addr, presence);
+    }
+
+    fn receiving(name: &str) -> vt_sync::Presence {
+        vt_sync::Presence {
+            name: name.into(),
+            receiving: true,
+            live: None,
+        }
+    }
+
+    fn unfiled(core: &Arc<ZuTalkCore>) -> String {
+        core.library_sync.get().unwrap().unfiled.clone()
+    }
+
+    #[test]
+    fn a_transcript_handed_to_a_nearby_mac_lands_unfiled_and_says_where_it_came_from() {
+        let (_a, studio) = core();
+        let (_b, stranger) = core();
+        let sid = "nearby-rec";
+        record(&studio, sid);
+        studio
+            .session_mark_create(sid.into(), Some(1_000))
+            .expect("录完的录音可以加标记");
+        let note = studio.session_note_block_document_open(sid.into()).unwrap();
+        studio
+            .note_apply_outline(
+                note,
+                vec![crate::block_document_api::FfiOutlineRow {
+                    id: "row-1".into(),
+                    depth: 0,
+                    text: "会后把进度表发给大家".into(),
+                    kind: crate::block_document_api::FfiOutlineKind::Paragraph,
+                    checked: false,
+                }],
+            )
+            .unwrap();
+        start(&studio, "讲台");
+        start(&stranger, "隔壁的 Mac");
+        stranger.nearby_set_receiving(true).unwrap();
+        see(&studio, &stranger, receiving("隔壁的 Mac"));
+        let peers = studio.nearby_status().peers;
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].name, "隔壁的 Mac");
+        let to = peers[0].device_id.clone();
+
+        let sender = {
+            let studio = studio.clone();
+            let to = to.clone();
+            std::thread::spawn(move || studio.nearby_send_recording(to, sid.into(), String::new()))
+        };
+        eventually("对方看到递稿请求", || {
+            !stranger.nearby_status().offers.is_empty()
+        });
+        let offer = stranger.nearby_status().offers.remove(0);
+        assert_eq!(offer.from_name, "讲台");
+        assert_eq!(offer.title, "周一例会");
+        // 还没点接收,什么也没落下。
+        assert!(title_of(&stranger, sid).is_none());
+        stranger.nearby_answer(offer.id, true);
+        sender.join().unwrap().unwrap();
+
+        assert_eq!(title_of(&stranger, sid).as_deref(), Some("周一例会"));
+        let home = unfiled(&stranger);
+        eventually("句子投影出来", || {
+            texts(&stranger, &home, sid) == ["大家早上好", "今天先过一下进度"]
+        });
+        assert_eq!(stranger.session_mark_list(sid.into()).unwrap().len(), 1);
+        let rows = stranger
+            .session_note_block_document_open(sid.into())
+            .and_then(|doc| stranger.note_outline_rows(doc))
+            .unwrap();
+        assert!(rows.iter().any(|row| row.text == "会后把进度表发给大家"));
+        assert_eq!(
+            stranger.session_recorded_on(sid.into()).as_deref(),
+            Some("讲台")
+        );
+        let received = stranger.nearby_take_received();
+        assert_eq!(received.len(), 1);
+        assert_eq!(received[0].session_id, sid);
+        assert!(stranger.nearby_take_received().is_empty());
+
+        // 再递一次:已经有了,不覆盖。
+        let again = {
+            let studio = studio.clone();
+            std::thread::spawn(move || studio.nearby_send_recording(to, sid.into(), String::new()))
+        };
+        eventually("第二次递稿请求", || {
+            !stranger.nearby_status().offers.is_empty()
+        });
+        let offer = stranger.nearby_status().offers.remove(0);
+        stranger.nearby_answer(offer.id, true);
+        let refused = again.join().unwrap();
+        assert!(
+            matches!(refused, Err(CoreError::ValidationFailed { ref message }) if message == "sync.error.nearby_already_have"),
+            "{refused:?}"
+        );
+
+        studio.sync_stop();
+        stranger.sync_stop();
+    }
+
+    #[test]
+    fn a_declined_transcript_leaves_nothing_behind() {
+        let (_a, studio) = core();
+        let (_b, stranger) = core();
+        let sid = "nearby-declined";
+        record(&studio, sid);
+        start(&studio, "讲台");
+        start(&stranger, "隔壁的 Mac");
+        // 没打开接收:连问都不问。
+        see(&studio, &stranger, receiving("隔壁的 Mac"));
+        let to = studio.nearby_status().peers[0].device_id.clone();
+        let refused = studio.nearby_send_recording(to.clone(), sid.into(), String::new());
+        assert!(
+            matches!(refused, Err(CoreError::ValidationFailed { ref message }) if message == "sync.error.nearby_not_receiving"),
+            "{refused:?}"
+        );
+
+        stranger.nearby_set_receiving(true).unwrap();
+        let sender = {
+            let studio = studio.clone();
+            std::thread::spawn(move || {
+                studio.nearby_send_recording(to, sid.into(), " 开头的那句话 ".into())
+            })
+        };
+        eventually("对方看到递稿请求", || {
+            !stranger.nearby_status().offers.is_empty()
+        });
+        let offer = stranger.nearby_status().offers.remove(0);
+        // 提示里用的是发送方列表里显示的名字。
+        assert_eq!(offer.title, "开头的那句话");
+        stranger.nearby_answer(offer.id, false);
+        let declined = sender.join().unwrap();
+        assert!(
+            matches!(declined, Err(CoreError::ValidationFailed { ref message }) if message == "sync.error.nearby_declined"),
+            "{declined:?}"
+        );
+        assert!(title_of(&stranger, sid).is_none());
+        assert!(stranger.nearby_status().offers.is_empty());
+
+        studio.sync_stop();
+        stranger.sync_stop();
+    }
+
+    fn live_preview(
+        session_id: &str,
+        revision: u64,
+        text: &str,
+    ) -> crate::notebook_capture_api::FfiNotebookCaptureLivePreview {
+        crate::notebook_capture_api::FfiNotebookCaptureLivePreview {
+            session_id: session_id.into(),
+            preview_revision: revision,
+            utterances: vec![crate::notebook_capture_api::FfiNotebookCaptureUtterance {
+                id: format!("tail-{revision}"),
+                session_id: session_id.into(),
+                sequence: 9,
+                revision: 1,
+                session_speaker_id: None,
+                source_language: "zh".into(),
+                provisional_source_language: None,
+                source_text: text.into(),
+                source_start_ms: Some(0),
+                source_end_ms: Some(500),
+                translated_language: Some("en".into()),
+                translated_text: Some("next up".into()),
+                completion: "partial".into(),
+                alignment: "aligned".into(),
+                source_projection_revision: 0,
+                source_edit_revision: 0,
+                language_variants: vec![],
+            }],
+            translation_cues: vec![],
+            lane_health: vec![],
+        }
+    }
+
+    #[test]
+    fn a_nearby_viewer_reads_what_the_live_link_writes() {
+        let (_a, studio) = core();
+        let (_b, stranger) = core();
+        let sid = "nearby-live";
+        record(&studio, sid);
+        start(&studio, "讲台");
+        start(&stranger, "听众");
+        studio
+            .clone()
+            .nearby_start_live(sid.into(), "周会".into())
+            .unwrap();
+        see(
+            &stranger,
+            &studio,
+            vt_sync::Presence {
+                name: "讲台".into(),
+                receiving: false,
+                live: Some("周会".into()),
+            },
+        );
+        let host = stranger.nearby_status().peers[0].device_id.clone();
+        assert_eq!(stranger.nearby_watch(host.clone()).unwrap(), "周会");
+        assert_eq!(
+            stranger.nearby_status().watching.as_deref(),
+            Some(host.as_str())
+        );
+        eventually("看到已经落定的句子", || {
+            stranger.nearby_watch_state().is_some_and(|w| {
+                w.lines
+                    .iter()
+                    .filter(|line| line.settled)
+                    .map(|line| line.source.as_str())
+                    .collect::<Vec<_>>()
+                    == ["大家早上好", "今天先过一下进度"]
+            })
+        });
+        eventually("主播那边数到一位观众", || {
+            studio.nearby_status().live_viewers == 1
+        });
+
+        // 字幕出口推一帧:只推正在附近直播的那一场。
+        crate::library_sync::nearby_broadcast(
+            &studio.nearby_live,
+            &live_preview("other", 1, "别的"),
+        );
+        crate::library_sync::nearby_broadcast(&studio.nearby_live, &live_preview(sid, 2, "接下来"));
+        eventually("看到正在说的那一截", || {
+            stranger.nearby_watch_state().is_some_and(|w| {
+                w.lines.last().is_some_and(|line| {
+                    !line.settled
+                        && line.source == "接下来"
+                        && line.translations
+                            == [nearby::FfiNearbyText {
+                                language: "en".into(),
+                                text: "next up".into(),
+                            }]
+                }) && w.languages == ["en"]
+            })
+        });
+        assert!(stranger
+            .nearby_watch_state()
+            .unwrap()
+            .lines
+            .iter()
+            .all(|line| line.source != "别的"));
+
+        studio.nearby_stop_live();
+        eventually("散场", || {
+            stranger.nearby_watch_state().is_some_and(|w| w.ended)
+        });
+        stranger.nearby_stop_watching();
+        assert!(stranger.nearby_watch_state().is_none());
+
+        studio.sync_stop();
+        stranger.sync_stop();
     }
 }

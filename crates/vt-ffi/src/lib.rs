@@ -418,6 +418,8 @@ pub struct ZuTalkCore {
     pub(crate) task_callbacks: Arc<TaskCallbackMap>,
     /// 进行中的直播链接(端到端加密的网页链接)。
     pub(crate) live_link: Arc<crate::link_share::LiveLinkSlot>,
+    /// 正在对同一网络里的 ZuTalk 直播的那一场(附近,不经服务器)。
+    pub(crate) nearby_live: Arc<crate::library_sync::NearbyLiveSlot>,
     /// 设备同步自己的数据库连接。同步没开时也在:判断一场录音是不是别的
     /// 设备录的,不能依赖同步正在运行。
     pub(crate) replica: Arc<vt_store::library_replica::ReplicaStore>,
@@ -823,6 +825,7 @@ impl ZuTalkCore {
             provider_credential_bootstrap,
             task_callbacks,
             live_link: Default::default(),
+            nearby_live: Default::default(),
             replica,
             library_sync: Default::default(),
             link_service: Mutex::new(crate::link_share::initial_link_service()),

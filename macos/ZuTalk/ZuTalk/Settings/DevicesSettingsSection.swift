@@ -9,6 +9,7 @@ import SwiftUI
 
 struct DevicesSettingsSection: View {
     @ObservedObject private var store = DeviceSyncStore.shared
+    @ObservedObject private var nearby = NearbyStore.shared
     @State private var nameDraft = ""
     @State private var joinCode = ""
     @State private var joinedWith: String?
@@ -99,6 +100,34 @@ struct DevicesSettingsSection: View {
                 }
             }
 
+            SettingsCard(
+                title: String(localized: "nearby.settings.title"),
+                subtitle: String(localized: "nearby.settings.subtitle")
+            ) {
+                SettingsRow(
+                    String(localized: "nearby.settings.receiving"),
+                    description: String(localized: "nearby.settings.receiving_hint")
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { nearby.receiving },
+                        set: { nearby.setReceiving($0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .accessibilityIdentifier("settings.devices.nearby-receiving")
+                }
+                if store.enabled, nearby.status?.running == true {
+                    SettingsRowDivider()
+                    SettingsFullRow {
+                        Text(nearbySummary)
+                            .font(Font.sans12)
+                            .foregroundColor(Color.textTertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
             if let problem = store.problem {
                 Label(problem, systemImage: "exclamationmark.triangle")
                     .font(Font.sans12)
@@ -150,6 +179,19 @@ struct DevicesSettingsSection: View {
         } message: {
             Text(String(localized: "settings.devices.leave_confirm_message"))
         }
+    }
+
+    /// 附近看得见谁。局域网发现关着(只在开发构建里会这样)时直说。
+    private var nearbySummary: String {
+        guard let status = nearby.status, status.discovery else {
+            return String(localized: "nearby.settings.discovery_off")
+        }
+        let names = status.peers.map { $0.name.isEmpty ? String(localized: "settings.devices.unnamed") : $0.name }
+        guard names.isEmpty == false else { return String(localized: "nearby.settings.nobody") }
+        return String(
+            format: String(localized: "nearby.settings.seen_format"),
+            ListFormatter.localizedString(byJoining: names)
+        )
     }
 
     // MARK: - 设备行

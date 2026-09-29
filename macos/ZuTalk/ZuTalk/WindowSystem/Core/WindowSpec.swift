@@ -207,6 +207,41 @@ extension WindowSpec {
                 ),
                 notes: "A large QR code for a share link, movable to a projector."
             ),
+            .nearbyLive: WindowSpec(
+                id: .nearbyLive,
+                role: WindowSurfaceID.nearbyLive.role,
+                ownership: .coordinatorOwned,
+                hostingPolicy: .fixedWindowOwned,
+                frameMutationPolicy: .coordinatorOnly,
+                frameApplyStrategy: .setFrame,
+                migrationPhase: .overlays,
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                initialContentRect: NSRect(x: 0, y: 0, width: 720, height: 620),
+                presentation: Presentation(
+                    presentAction: .showAndFocus,
+                    dismissAction: .close,
+                    activatesApp: true
+                ),
+                chrome: Chrome(
+                    level: nil,
+                    collectionBehavior: [.fullScreenPrimary],
+                    backgroundStyle: .systemDefault,
+                    isFloatingPanel: false,
+                    hasShadow: true,
+                    isOpaque: true,
+                    titleVisibility: .visible,
+                    titlebarAppearsTransparent: false,
+                    isMovable: nil,
+                    isMovableByWindowBackground: nil,
+                    ignoresMouseEvents: nil,
+                    hidesOnDeactivate: nil,
+                    animationBehavior: .documentWindow,
+                    minimumWindowSize: NSSize(width: 420, height: 360),
+                    minimumContentSize: nil,
+                    maximumContentSize: nil
+                ),
+                notes: "Live captions from a nearby ZuTalk, read over the local network."
+            ),
         ]
     }
 }

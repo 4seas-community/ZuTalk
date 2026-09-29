@@ -6791,6 +6791,7 @@ impl ZuTalkCore {
             (*self.notebook_capture_store).clone(),
             Some(crate::link_share::LinkCaptionTap::new(
                 self.live_link.clone(),
+                self.nearby_live.clone(),
             )),
         )?;
 

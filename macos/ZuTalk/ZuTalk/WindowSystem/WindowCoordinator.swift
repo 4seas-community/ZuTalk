@@ -27,6 +27,7 @@ final class WindowCoordinator {
     private var mainSurfaceController: MainWindowController?
     private var subtitleOverlayController: SubtitleOverlayController?
     private var shareCodeController: ShareCodeWindowController?
+    private var nearbyLiveController: NearbyLiveWindowController?
     private let subtitleDisplaySleepActivity = SubtitleDisplaySleepActivity()
     private var diagnosticAttachments: [WindowSurfaceID: DiagnosticAttachment] = [:]
 
@@ -173,6 +174,17 @@ final class WindowCoordinator {
         _ = presentRegisteredWindow(.shareCode)
     }
 
+    /// 看附近的直播。同一时间只看一场:已经开着就把它提到前面。
+    func presentNearbyLive() {
+        if nearbyLiveController == nil {
+            let controller = NearbyLiveWindowController()
+            nearbyLiveController = controller
+            registerWindow(controller.managedWindow, id: .nearbyLive)
+            controller.managedWindow.center()
+        }
+        _ = presentRegisteredWindow(.nearbyLive)
+    }
+
     /// Keeps the display awake only while the subtitle window has something
     /// live to show. It used to stay awake — and on top — over an ended
     /// recording's "recording ended" screen until someone closed it.
@@ -230,6 +242,8 @@ final class WindowCoordinator {
             subtitleOverlayController = nil
         case .shareCode:
             shareCodeController = nil
+        case .nearbyLive:
+            nearbyLiveController = nil
         }
         unregisterWindow(id)
     }
@@ -335,10 +349,12 @@ final class WindowCoordinator {
         mainSurfaceController?.window?.orderOut(nil)
         subtitleOverlayController?.window?.orderOut(nil)
         shareCodeController?.window?.orderOut(nil)
+        nearbyLiveController?.window?.orderOut(nil)
         dismissSubtitleOverlay()
         mainSurfaceController = nil
         subtitleOverlayController = nil
         shareCodeController = nil
+        nearbyLiveController = nil
         catalog.removeAll()
         detachAllDiagnostics()
         registeredWindows.removeAll()

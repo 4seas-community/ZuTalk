@@ -20,6 +20,7 @@ struct RecordStartPage: View {
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var commands = CaptureCommandCenter.shared
     @ObservedObject private var navigation = MainNavigationStore.shared
+    @ObservedObject private var nearby = NearbyStore.shared
     /// 录进哪个主题。nil 是「未归入主题」—— 录完随时可以归档。
     @State private var topicId: String?
     /// 语言选择编辑的就是开始时要用的那一份设置:未归入主题有它自己的一份,
@@ -41,6 +42,11 @@ struct RecordStartPage: View {
                         .font(.bodySM)
                         .foregroundColor(.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // 只有附近真有人在直播时才出现;来这一页的人多半就是来看的,放在最前面。
+                if nearby.liveNearby.isEmpty == false {
+                    nearbyLive
                 }
 
                 if capture.isCaptureActive {
@@ -212,6 +218,61 @@ struct RecordStartPage: View {
             border: Color.borderSubtle,
             borderWidth: 0.5
         )
+    }
+
+    // MARK: 附近正在直播
+
+    /// 同一网络里有 ZuTalk 在直播(主播打开了「同一网络的 ZuTalk 也能看」)。
+    private var nearbyLive: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text(String(localized: "nearby.watch.card_title"))
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+            Text(String(localized: "nearby.watch.card_detail"))
+                .font(.bodySM)
+                .foregroundColor(.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(nearby.liveNearby, id: \.deviceId) { peer in
+                HStack(spacing: Spacing.sm) {
+                    PulsingDot(color: .signalGreen, size: 7)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(peer.liveTitle ?? "")
+                            .font(.bodySM)
+                            .foregroundColor(.textPrimary)
+                            .lineLimit(1)
+                        Text(peer.name.isEmpty ? String(localized: "settings.devices.unnamed") : peer.name)
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    if nearby.joining == peer.deviceId {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button(String(localized: nearby.status?.watching == peer.deviceId
+                            ? "nearby.watch.open"
+                            : "nearby.watch.button")) {
+                            if nearby.status?.watching == peer.deviceId {
+                                WindowCoordinator.shared.presentNearbyLive()
+                            } else {
+                                nearby.watch(peer)
+                            }
+                        }
+                        .disabled(nearby.joining != nil)
+                    }
+                }
+            }
+        }
+        .padding(Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .surfaceCard(
+            fill: Color.bgElevated.opacity(0.4),
+            cornerRadius: Radius.md,
+            border: Color.borderSubtle,
+            borderWidth: 0.5
+        )
+        .accessibilityIdentifier("record.page.nearby-live")
     }
 
     // MARK: 动作

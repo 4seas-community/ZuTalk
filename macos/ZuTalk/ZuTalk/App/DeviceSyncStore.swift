@@ -102,6 +102,7 @@ final class DeviceSyncStore: ObservableObject {
                 self.status = status
                 try? core.syncSetListener(listener: DeviceSyncListener())
                 startRefreshing()
+                NearbyStore.shared.syncStarted()
                 // 列表可能在同步启动前就画好了:那时还叫不出「来自哪台」。
                 NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
             case .failure(let error):
@@ -116,6 +117,7 @@ final class DeviceSyncStore: ObservableObject {
         refreshTimer = nil
         invite = nil
         status = nil
+        NearbyStore.shared.syncStopped()
         guard let core = CoreClient.shared.core else { return }
         Task.detached { core.syncStop() }
     }
@@ -260,6 +262,8 @@ final class DeviceSyncStore: ObservableObject {
             case .success(let status):
                 self.status = status
                 try? core.syncSetListener(listener: DeviceSyncListener())
+                // 引擎换过了:接收、附近的名单跟着重来。
+                NearbyStore.shared.syncStarted()
             case .failure(let error):
                 problem = Self.describe(error)
             }
@@ -300,6 +304,16 @@ final class DeviceSyncStore: ObservableObject {
             case "sync.error.topic_missing": return String(localized: "sync.error.topic_missing")
             case "sync.error.topic_not_shareable": return String(localized: "sync.error.topic_not_shareable")
             case "sync.error.not_running": return String(localized: "sync.error.not_running")
+            case "sync.error.still_recording": return String(localized: "sync.error.still_recording")
+            case "sync.error.recording_missing": return String(localized: "sync.error.recording_missing")
+            case "sync.error.nearby_unreachable": return String(localized: "sync.error.nearby_unreachable")
+            case "sync.error.nearby_not_receiving": return String(localized: "sync.error.nearby_not_receiving")
+            case "sync.error.nearby_declined": return String(localized: "sync.error.nearby_declined")
+            case "sync.error.nearby_no_answer": return String(localized: "sync.error.nearby_no_answer")
+            case "sync.error.nearby_already_have": return String(localized: "sync.error.nearby_already_have")
+            case "sync.error.nearby_failed": return String(localized: "sync.error.nearby_failed")
+            case "sync.error.nearby_not_live": return String(localized: "sync.error.nearby_not_live")
+            case "sync.error.nearby_too_large": return String(localized: "sync.error.nearby_too_large")
             default: break
             }
         }
@@ -319,6 +333,12 @@ private final class DeviceSyncListener: FfiSyncListener, @unchecked Sendable {
     func onNoteChanged(docId: String) {
         Task { @MainActor in
             NotificationCenter.default.post(name: .zutalkNoteChangedOnAnotherDevice, object: docId)
+        }
+    }
+
+    func onNearbyChanged() {
+        Task { @MainActor in
+            NearbyStore.shared.refresh()
         }
     }
 }

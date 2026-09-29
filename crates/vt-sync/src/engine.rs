@@ -30,6 +30,10 @@ use tokio::sync::{mpsc, Notify};
 
 use crate::identity::DeviceIdentity;
 use crate::membership::Membership;
+use crate::nearby::{
+    LiveEvent, NearbyAcceptor, NearbyError, NearbyHandler, NearbyPeer, NearbyState, Presence,
+    NEARBY_ALPN,
+};
 use crate::pairing::{
     sanitize_device_name, InviteBook, InvitePurpose, PairMessage, PairRejection, PairingTicket,
     INVITE_TTL, PAIR_ALPN,
@@ -157,6 +161,10 @@ struct Host {
     /// 叫醒所有在退避中的拨号循环(网络变了、刚拿到新地址)。
     redial: Notify,
     closing: AtomicBool,
+    /// 附近:本机愿不愿意被看见、看见了谁、收到东西交给谁。
+    nearby: Arc<NearbyState>,
+    /// 读局域网发现事件的任务。
+    discovery: Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// 引擎启动时所在的运行时。调用方(比如 FFI 线程)不在运行时里时,拨号
     /// 任务也得有地方跑。
     runtime: tokio::runtime::Handle,
@@ -178,7 +186,11 @@ impl SyncEngine {
         // Minimal 而非 N0:不挂任何公共发现服务。
         let mut builder = Endpoint::builder(presets::Minimal)
             .secret_key(identity.secret().clone())
-            .alpns(vec![SYNC_ALPN.to_vec(), PAIR_ALPN.to_vec()]);
+            .alpns(vec![
+                SYNC_ALPN.to_vec(),
+                PAIR_ALPN.to_vec(),
+                NEARBY_ALPN.to_vec(),
+            ]);
         builder = if config.relay_urls.is_empty() {
             builder.relay_mode(RelayMode::Disabled)
         } else {
@@ -198,13 +210,15 @@ impl SyncEngine {
         }
         let known = MemoryLookup::new();
         builder = builder.address_lookup(known.clone());
+        let mut mdns = None;
         if config.local_discovery {
-            let mdns = iroh_mdns_address_lookup::MdnsAddressLookup::builder()
+            let lookup = iroh_mdns_address_lookup::MdnsAddressLookup::builder()
                 .advertise(true)
                 .service_name(MDNS_SERVICE)
                 .build(identity.id())
                 .map_err(|e| SyncError::Bind(format!("局域网发现: {e}")))?;
-            builder = builder.address_lookup(mdns);
+            mdns = Some(lookup.clone());
+            builder = builder.address_lookup(lookup);
         }
         let endpoint = builder
             .bind()
@@ -220,11 +234,33 @@ impl SyncEngine {
             invites: InviteBook::default(),
             redial: Notify::new(),
             closing: AtomicBool::new(false),
+            nearby: Arc::default(),
+            discovery: Mutex::default(),
             runtime: tokio::runtime::Handle::current(),
         });
+        if let Some(mdns) = mdns {
+            let nearby = host.nearby.clone();
+            let task = tokio::spawn(async move {
+                use iroh_mdns_address_lookup::DiscoveryEvent;
+                use n0_future::StreamExt;
+                let mut events = mdns.subscribe().await;
+                while let Some(event) = events.next().await {
+                    match event {
+                        DiscoveryEvent::Discovered { endpoint_info, .. } => {
+                            let data = endpoint_info.data.user_data().map(|d| d.to_string());
+                            nearby.discovered(endpoint_info.endpoint_id, data.as_deref());
+                        }
+                        DiscoveryEvent::Expired { endpoint_id } => nearby.expired(&endpoint_id),
+                        _ => {}
+                    }
+                }
+            });
+            *host.discovery.lock().unwrap() = Some(task);
+        }
         let router = Router::builder(endpoint)
             .accept(SYNC_ALPN, SyncAcceptor(host.clone()))
             .accept(PAIR_ALPN, PairAcceptor(host.clone()))
+            .accept(NEARBY_ALPN, NearbyAcceptor(host.nearby.clone()))
             .spawn();
         Ok(Self { host, router })
     }
@@ -434,6 +470,62 @@ impl SyncEngine {
             .collect()
     }
 
+    // ── 附近 ──────────────────────────────────────────────────────────────
+
+    /// 本机在附近的样子。`None` 或什么都不愿意时,广播里只剩匿名端点 id。
+    pub fn set_presence(&self, presence: Option<Presence>) {
+        let encoded = self.host.nearby.set_presence(presence);
+        let data = encoded.and_then(|text| text.parse().ok());
+        self.host.endpoint.set_user_data_for_address_lookup(data);
+    }
+
+    pub fn presence(&self) -> Option<Presence> {
+        self.host.nearby.presence()
+    }
+
+    /// 收到东西、有人来看直播时交给谁。
+    pub fn set_nearby_handler(&self, handler: Option<Arc<dyn NearbyHandler>>) {
+        self.host.nearby.set_handler(handler);
+    }
+
+    /// 附近此刻愿意被看见的 ZuTalk。
+    pub fn nearby(&self) -> Vec<NearbyPeer> {
+        let me = self.device_id();
+        self.host
+            .nearby
+            .peers()
+            .into_iter()
+            .filter(|peer| peer.device != me)
+            .collect()
+    }
+
+    /// 测试与开发用:不经局域网发现,直接告诉本机附近有这么一台。
+    #[doc(hidden)]
+    pub fn nearby_seen(&self, addr: EndpointAddr, presence: Presence) {
+        let id = addr.id;
+        self.host.known.add_endpoint_info(addr);
+        self.host.nearby.discovered(id, Some(&presence.encode()));
+    }
+
+    /// 把一份文字稿递给附近的一台。对方接收并落地之后才返回。
+    pub async fn send_parcel(
+        &self,
+        to: EndpointId,
+        from_name: &str,
+        title: &str,
+        parcel: &[u8],
+    ) -> Result<(), NearbyError> {
+        crate::nearby::send_parcel(&self.host.endpoint, to, from_name, title, parcel).await
+    }
+
+    /// 看附近一台的直播。丢掉返回的接收端即离开。
+    pub async fn watch_live(
+        &self,
+        host: EndpointId,
+    ) -> Result<(String, mpsc::Receiver<LiveEvent>), NearbyError> {
+        crate::nearby::watch_live(&self.host.endpoint, host, &self.host.runtime).await
+    }
+
     /// 断开所有空间、关掉端点。之后这个引擎不再可用。
     pub async fn shutdown(&self) {
         self.host.stop();
@@ -471,6 +563,10 @@ impl Host {
         for (_, space) in self.spaces.write().unwrap().drain() {
             space.stop();
         }
+        if let Some(task) = self.discovery.lock().unwrap().take() {
+            task.abort();
+        }
+        self.nearby.set_handler(None);
         self.redial.notify_waiters();
     }
 

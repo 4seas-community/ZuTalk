@@ -6,6 +6,7 @@
 pub mod engine;
 pub mod identity;
 pub mod membership;
+pub mod nearby;
 pub mod pairing;
 pub mod protocol;
 pub mod store;
@@ -15,6 +16,9 @@ pub use engine::{Joined, PairError, PeerStatus, SyncConfig, SyncEngine, SyncErro
 pub use identity::DeviceIdentity;
 pub use iroh::{EndpointAddr, EndpointId, RelayUrl};
 pub use membership::Membership;
+pub use nearby::{
+    IncomingOffer, LiveEvent, LiveFeed, NearbyError, NearbyHandler, NearbyPeer, Presence,
+};
 pub use pairing::{InvitePurpose, PairRejection, PairingTicket};
 pub use protocol::SpaceId;
 pub use store::{DocId, DocumentStore, StoreError, VersionDigest};

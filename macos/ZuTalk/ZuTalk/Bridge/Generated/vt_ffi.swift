@@ -1024,6 +1024,51 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
 
     func syncTopicStatus(notebookId: String)  -> FfiTopicCollaboration
 
+    func nearbyAnswer(offerId: UInt64, accept: Bool)
+
+    /**
+     * 把一场录好的录音的文字稿递给附近一台。对方接收并收下后才返回;对方可能
+     * 要想一会儿,最多等两分钟。不要在主线程上调。
+     *
+     * `title` 是发送方列表里显示的名字(没起标题的录音显示开头的话),只用在
+     * 对方的提示里;为空时用录音自己的标题。
+     */
+    func nearbySendRecording(deviceId: String, sessionId: String, title: String) throws
+
+    /**
+     * 让附近的 Mac 看见这台、能递文字稿过来。每次递来都要本机的用户点接收。
+     */
+    func nearbySetReceiving(on: Bool) throws
+
+    /**
+     * 让同一网络里的 ZuTalk 直接看这一场的实时字幕。同一时间只播一场。
+     */
+    func nearbyStartLive(sessionId: String, title: String) throws
+
+    /**
+     * 附近此刻的样子:看得见谁、在等回答的递稿、自己在不在直播。
+     */
+    func nearbyStatus()  -> FfiNearbyStatus
+
+    func nearbyStopLive()
+
+    func nearbyStopWatching()
+
+    /**
+     * 取走刚收下的(界面据此提示一次)。
+     */
+    func nearbyTakeReceived()  -> [FfiNearbyReceived]
+
+    /**
+     * 开始看附近一台的直播,返回标题。同一时间只看一场。
+     */
+    func nearbyWatch(deviceId: String) throws  -> String
+
+    /**
+     * 正在看的直播此刻的样子。界面在看的时候按节拍来取。
+     */
+    func nearbyWatchState()  -> FfiNearbyWatch?
+
     /**
      * 所有还有效的录音链接,新的在前。设置里「共享」一节据此列出此刻
      * 在外面的一切,好让主持人一处看清、随手撤销。
@@ -2397,6 +2442,114 @@ open func syncTopicStatus(notebookId: String) -> FfiTopicCollaboration  {
     uniffi_vt_ffi_fn_method_zutalkcore_sync_topic_status(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(notebookId),$0
+    )
+})
+}
+
+open func nearbyAnswer(offerId: UInt64, accept: Bool)  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_nearby_answer(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(offerId),
+        FfiConverterBool.lower(accept),$0
+    )
+}
+}
+
+    /**
+     * 把一场录好的录音的文字稿递给附近一台。对方接收并收下后才返回;对方可能
+     * 要想一会儿,最多等两分钟。不要在主线程上调。
+     *
+     * `title` 是发送方列表里显示的名字(没起标题的录音显示开头的话),只用在
+     * 对方的提示里;为空时用录音自己的标题。
+     */
+open func nearbySendRecording(deviceId: String, sessionId: String, title: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_nearby_send_recording(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceId),
+        FfiConverterString.lower(sessionId),
+        FfiConverterString.lower(title),$0
+    )
+}
+}
+
+    /**
+     * 让附近的 Mac 看见这台、能递文字稿过来。每次递来都要本机的用户点接收。
+     */
+open func nearbySetReceiving(on: Bool)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_nearby_set_receiving(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(on),$0
+    )
+}
+}
+
+    /**
+     * 让同一网络里的 ZuTalk 直接看这一场的实时字幕。同一时间只播一场。
+     */
+open func nearbyStartLive(sessionId: String, title: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_nearby_start_live(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterString.lower(title),$0
+    )
+}
+}
+
+    /**
+     * 附近此刻的样子:看得见谁、在等回答的递稿、自己在不在直播。
+     */
+open func nearbyStatus() -> FfiNearbyStatus  {
+    return try!  FfiConverterTypeFfiNearbyStatus_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_nearby_status(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+open func nearbyStopLive()  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_nearby_stop_live(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+open func nearbyStopWatching()  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_nearby_stop_watching(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+    /**
+     * 取走刚收下的(界面据此提示一次)。
+     */
+open func nearbyTakeReceived() -> [FfiNearbyReceived]  {
+    return try!  FfiConverterSequenceTypeFfiNearbyReceived.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_nearby_take_received(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 开始看附近一台的直播,返回标题。同一时间只看一场。
+     */
+open func nearbyWatch(deviceId: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_nearby_watch(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceId),$0
+    )
+})
+}
+
+    /**
+     * 正在看的直播此刻的样子。界面在看的时候按节拍来取。
+     */
+open func nearbyWatchState() -> FfiNearbyWatch?  {
+    return try!  FfiConverterOptionTypeFfiNearbyWatch.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_nearby_watch_state(
+            self.uniffiCloneHandle(),$0
     )
 })
 }
@@ -4279,6 +4432,516 @@ public func FfiConverterTypeFfiMarkDigest_lift(_ buf: RustBuffer) throws -> FfiM
 #endif
 public func FfiConverterTypeFfiMarkDigest_lower(_ value: FfiMarkDigest) -> RustBuffer {
     return FfiConverterTypeFfiMarkDigest.lower(value)
+}
+
+
+public struct FfiNearbyLine: Equatable, Hashable {
+    public var id: String
+    /**
+     * 说话人的名字;没起名时为空,界面用 `speaker_label` 拼「说话人 N」。
+     */
+    public var speaker: String?
+    public var speakerLabel: String?
+    /**
+     * 原文。只有某种译文的行(多语单向的实时译文)为空。
+     */
+    public var source: String
+    public var translations: [FfiNearbyText]
+    /**
+     * 已经落定;`false` 是正在说的那一截。
+     */
+    public var settled: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String,
+        /**
+         * 说话人的名字;没起名时为空,界面用 `speaker_label` 拼「说话人 N」。
+         */speaker: String?, speakerLabel: String?,
+        /**
+         * 原文。只有某种译文的行(多语单向的实时译文)为空。
+         */source: String, translations: [FfiNearbyText],
+        /**
+         * 已经落定;`false` 是正在说的那一截。
+         */settled: Bool) {
+        self.id = id
+        self.speaker = speaker
+        self.speakerLabel = speakerLabel
+        self.source = source
+        self.translations = translations
+        self.settled = settled
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNearbyLine: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNearbyLine: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNearbyLine {
+        return
+            try FfiNearbyLine(
+                id: FfiConverterString.read(from: &buf),
+                speaker: FfiConverterOptionString.read(from: &buf),
+                speakerLabel: FfiConverterOptionString.read(from: &buf),
+                source: FfiConverterString.read(from: &buf),
+                translations: FfiConverterSequenceTypeFfiNearbyText.read(from: &buf),
+                settled: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNearbyLine, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterOptionString.write(value.speaker, into: &buf)
+        FfiConverterOptionString.write(value.speakerLabel, into: &buf)
+        FfiConverterString.write(value.source, into: &buf)
+        FfiConverterSequenceTypeFfiNearbyText.write(value.translations, into: &buf)
+        FfiConverterBool.write(value.settled, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyLine_lift(_ buf: RustBuffer) throws -> FfiNearbyLine {
+    return try FfiConverterTypeFfiNearbyLine.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyLine_lower(_ value: FfiNearbyLine) -> RustBuffer {
+    return FfiConverterTypeFfiNearbyLine.lower(value)
+}
+
+
+public struct FfiNearbyOffer: Equatable, Hashable {
+    public var id: UInt64
+    public var fromName: String
+    public var title: String
+    public var bytes: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: UInt64, fromName: String, title: String, bytes: UInt64) {
+        self.id = id
+        self.fromName = fromName
+        self.title = title
+        self.bytes = bytes
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNearbyOffer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNearbyOffer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNearbyOffer {
+        return
+            try FfiNearbyOffer(
+                id: FfiConverterUInt64.read(from: &buf),
+                fromName: FfiConverterString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf),
+                bytes: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNearbyOffer, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.fromName, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterUInt64.write(value.bytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyOffer_lift(_ buf: RustBuffer) throws -> FfiNearbyOffer {
+    return try FfiConverterTypeFfiNearbyOffer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyOffer_lower(_ value: FfiNearbyOffer) -> RustBuffer {
+    return FfiConverterTypeFfiNearbyOffer.lower(value)
+}
+
+
+public struct FfiNearbyPeer: Equatable, Hashable {
+    public var deviceId: String
+    /**
+     * 对方自报的名字。
+     */
+    public var name: String
+    public var receiving: Bool
+    /**
+     * 正在对附近直播的录音标题。
+     */
+    public var liveTitle: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(deviceId: String,
+        /**
+         * 对方自报的名字。
+         */name: String, receiving: Bool,
+        /**
+         * 正在对附近直播的录音标题。
+         */liveTitle: String?) {
+        self.deviceId = deviceId
+        self.name = name
+        self.receiving = receiving
+        self.liveTitle = liveTitle
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNearbyPeer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNearbyPeer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNearbyPeer {
+        return
+            try FfiNearbyPeer(
+                deviceId: FfiConverterString.read(from: &buf),
+                name: FfiConverterString.read(from: &buf),
+                receiving: FfiConverterBool.read(from: &buf),
+                liveTitle: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNearbyPeer, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.deviceId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.receiving, into: &buf)
+        FfiConverterOptionString.write(value.liveTitle, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyPeer_lift(_ buf: RustBuffer) throws -> FfiNearbyPeer {
+    return try FfiConverterTypeFfiNearbyPeer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyPeer_lower(_ value: FfiNearbyPeer) -> RustBuffer {
+    return FfiConverterTypeFfiNearbyPeer.lower(value)
+}
+
+
+public struct FfiNearbyReceived: Equatable, Hashable {
+    public var sessionId: String
+    public var title: String
+    public var fromName: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(sessionId: String, title: String, fromName: String) {
+        self.sessionId = sessionId
+        self.title = title
+        self.fromName = fromName
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNearbyReceived: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNearbyReceived: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNearbyReceived {
+        return
+            try FfiNearbyReceived(
+                sessionId: FfiConverterString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf),
+                fromName: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNearbyReceived, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.sessionId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.fromName, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyReceived_lift(_ buf: RustBuffer) throws -> FfiNearbyReceived {
+    return try FfiConverterTypeFfiNearbyReceived.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyReceived_lower(_ value: FfiNearbyReceived) -> RustBuffer {
+    return FfiConverterTypeFfiNearbyReceived.lower(value)
+}
+
+
+public struct FfiNearbyStatus: Equatable, Hashable {
+    /**
+     * 同步(也就是端点)开着。关着时附近什么也做不了。
+     */
+    public var running: Bool
+    /**
+     * 局域网发现开着。关着时看不见别人,别人也看不见这台。
+     */
+    public var discovery: Bool
+    public var receiving: Bool
+    public var peers: [FfiNearbyPeer]
+    /**
+     * 等本机的用户回答的递稿。
+     */
+    public var offers: [FfiNearbyOffer]
+    public var liveSessionId: String?
+    public var liveViewers: UInt32
+    /**
+     * 正在看哪一台的直播。
+     */
+    public var watching: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 同步(也就是端点)开着。关着时附近什么也做不了。
+         */running: Bool,
+        /**
+         * 局域网发现开着。关着时看不见别人,别人也看不见这台。
+         */discovery: Bool, receiving: Bool, peers: [FfiNearbyPeer],
+        /**
+         * 等本机的用户回答的递稿。
+         */offers: [FfiNearbyOffer], liveSessionId: String?, liveViewers: UInt32,
+        /**
+         * 正在看哪一台的直播。
+         */watching: String?) {
+        self.running = running
+        self.discovery = discovery
+        self.receiving = receiving
+        self.peers = peers
+        self.offers = offers
+        self.liveSessionId = liveSessionId
+        self.liveViewers = liveViewers
+        self.watching = watching
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNearbyStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNearbyStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNearbyStatus {
+        return
+            try FfiNearbyStatus(
+                running: FfiConverterBool.read(from: &buf),
+                discovery: FfiConverterBool.read(from: &buf),
+                receiving: FfiConverterBool.read(from: &buf),
+                peers: FfiConverterSequenceTypeFfiNearbyPeer.read(from: &buf),
+                offers: FfiConverterSequenceTypeFfiNearbyOffer.read(from: &buf),
+                liveSessionId: FfiConverterOptionString.read(from: &buf),
+                liveViewers: FfiConverterUInt32.read(from: &buf),
+                watching: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNearbyStatus, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.running, into: &buf)
+        FfiConverterBool.write(value.discovery, into: &buf)
+        FfiConverterBool.write(value.receiving, into: &buf)
+        FfiConverterSequenceTypeFfiNearbyPeer.write(value.peers, into: &buf)
+        FfiConverterSequenceTypeFfiNearbyOffer.write(value.offers, into: &buf)
+        FfiConverterOptionString.write(value.liveSessionId, into: &buf)
+        FfiConverterUInt32.write(value.liveViewers, into: &buf)
+        FfiConverterOptionString.write(value.watching, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyStatus_lift(_ buf: RustBuffer) throws -> FfiNearbyStatus {
+    return try FfiConverterTypeFfiNearbyStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyStatus_lower(_ value: FfiNearbyStatus) -> RustBuffer {
+    return FfiConverterTypeFfiNearbyStatus.lower(value)
+}
+
+
+public struct FfiNearbyText: Equatable, Hashable {
+    public var language: String
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(language: String, text: String) {
+        self.language = language
+        self.text = text
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNearbyText: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNearbyText: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNearbyText {
+        return
+            try FfiNearbyText(
+                language: FfiConverterString.read(from: &buf),
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNearbyText, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.language, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyText_lift(_ buf: RustBuffer) throws -> FfiNearbyText {
+    return try FfiConverterTypeFfiNearbyText.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyText_lower(_ value: FfiNearbyText) -> RustBuffer {
+    return FfiConverterTypeFfiNearbyText.lower(value)
+}
+
+
+public struct FfiNearbyWatch: Equatable, Hashable {
+    public var hostName: String
+    public var title: String
+    public var ended: Bool
+    /**
+     * 行里出现过的译文语言。原文不在其中。
+     */
+    public var languages: [String]
+    public var lines: [FfiNearbyLine]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(hostName: String, title: String, ended: Bool,
+        /**
+         * 行里出现过的译文语言。原文不在其中。
+         */languages: [String], lines: [FfiNearbyLine]) {
+        self.hostName = hostName
+        self.title = title
+        self.ended = ended
+        self.languages = languages
+        self.lines = lines
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiNearbyWatch: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiNearbyWatch: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNearbyWatch {
+        return
+            try FfiNearbyWatch(
+                hostName: FfiConverterString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf),
+                ended: FfiConverterBool.read(from: &buf),
+                languages: FfiConverterSequenceString.read(from: &buf),
+                lines: FfiConverterSequenceTypeFfiNearbyLine.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiNearbyWatch, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.hostName, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterBool.write(value.ended, into: &buf)
+        FfiConverterSequenceString.write(value.languages, into: &buf)
+        FfiConverterSequenceTypeFfiNearbyLine.write(value.lines, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyWatch_lift(_ buf: RustBuffer) throws -> FfiNearbyWatch {
+    return try FfiConverterTypeFfiNearbyWatch.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiNearbyWatch_lower(_ value: FfiNearbyWatch) -> RustBuffer {
+    return FfiConverterTypeFfiNearbyWatch.lower(value)
 }
 
 
@@ -9397,6 +10060,11 @@ public protocol FfiSyncListener: AnyObject, Sendable {
      */
     func onNoteChanged(docId: String)
 
+    /**
+     * 附近有了变化:有人递文字稿来、刚收下一份。
+     */
+    func onNearbyChanged()
+
 }
 
 
@@ -9458,6 +10126,28 @@ fileprivate struct UniffiCallbackInterfaceFfiSyncListener {
                 }
                 return uniffiObj.onNoteChanged(
                      docId: try FfiConverterString.lift(docId)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onNearbyChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceFfiSyncListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onNearbyChanged(
                 )
             }
 
@@ -9755,6 +10445,30 @@ fileprivate struct FfiConverterOptionTypeFfiMarkDigest: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeFfiNearbyWatch: FfiConverterRustBuffer {
+    typealias SwiftType = FfiNearbyWatch?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiNearbyWatch.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiNearbyWatch.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeFfiNotebookCaptureContextReceipt: FfiConverterRustBuffer {
     typealias SwiftType = FfiNotebookCaptureContextReceipt?
 
@@ -9919,6 +10633,131 @@ fileprivate struct FfiConverterSequenceTypeFfiContextPackSourceInfo: FfiConverte
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFfiContextPackSourceInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiNearbyLine: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiNearbyLine]
+
+    public static func write(_ value: [FfiNearbyLine], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiNearbyLine.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiNearbyLine] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiNearbyLine]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiNearbyLine.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiNearbyOffer: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiNearbyOffer]
+
+    public static func write(_ value: [FfiNearbyOffer], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiNearbyOffer.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiNearbyOffer] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiNearbyOffer]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiNearbyOffer.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiNearbyPeer: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiNearbyPeer]
+
+    public static func write(_ value: [FfiNearbyPeer], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiNearbyPeer.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiNearbyPeer] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiNearbyPeer]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiNearbyPeer.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiNearbyReceived: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiNearbyReceived]
+
+    public static func write(_ value: [FfiNearbyReceived], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiNearbyReceived.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiNearbyReceived] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiNearbyReceived]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiNearbyReceived.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiNearbyText: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiNearbyText]
+
+    public static func write(_ value: [FfiNearbyText], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiNearbyText.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiNearbyText] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiNearbyText]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiNearbyText.read(from: &buf))
         }
         return seq
     }
@@ -10784,6 +11623,36 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_sync_topic_status() != 57597) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_answer() != 29638) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_send_recording() != 41021) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_set_receiving() != 15926) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_start_live() != 5250) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_status() != 45431) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_stop_live() != 30174) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_stop_watching() != 30853) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_take_received() != 1203) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_watch() != 54899) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_nearby_watch_state() != 25089) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_all_recording_links() != 28687) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -11049,6 +11918,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_ffisynclistener_on_note_changed() != 49554) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_ffisynclistener_on_nearby_changed() != 31983) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_ffinotebookcapturecallback_on_capture_event() != 11919) {

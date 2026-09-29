@@ -37,7 +37,7 @@ enum WindowLayoutEngine {
             return mainWindowSnapshot(for: request)
         case .subtitleOverlay:
             return subtitleOverlaySnapshot(for: request)
-        case .shareCode:
+        case .shareCode, .nearbyLive:
             // 居中打开,大小由窗口自己定;没有要记住的位置。
             return nil
         }

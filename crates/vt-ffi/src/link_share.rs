@@ -120,7 +120,7 @@ struct LinkMeta {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct WebUtterance {
+pub(crate) struct WebUtterance {
     id: String,
     session_id: String,
     speaker: Option<String>,
@@ -133,7 +133,7 @@ struct WebUtterance {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct WebCue {
+pub(crate) struct WebCue {
     target_language: String,
     text: String,
     completion: String,
@@ -141,14 +141,14 @@ struct WebCue {
 
 /// 一帧实时字幕:正在说的那一截,replace-in-full。
 #[derive(Debug, Clone, Serialize)]
-struct WebFrame {
+pub(crate) struct WebFrame {
     session_id: String,
     preview_revision: u64,
     utterances: Vec<WebUtterance>,
     cues: Vec<WebCue>,
 }
 
-fn web_frame(preview: &FfiNotebookCaptureLivePreview) -> WebFrame {
+pub(crate) fn web_frame(preview: &FfiNotebookCaptureLivePreview) -> WebFrame {
     WebFrame {
         session_id: preview.session_id.clone(),
         preview_revision: preview.preview_revision,
@@ -182,7 +182,7 @@ fn web_frame(preview: &FfiNotebookCaptureLivePreview) -> WebFrame {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-struct WebBlock {
+pub(crate) struct WebBlock {
     id: String,
     owner: String,
     text: String,
@@ -194,14 +194,14 @@ struct WebBlock {
 /// 一个说话人在网页上的显示材料。名字是用户给的专名;没有名字时网页按
 /// 观看者的界面语言拼「说话人 3」,所以编号单独送。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-struct WebSpeaker {
+pub(crate) struct WebSpeaker {
     name: Option<String>,
     label: String,
 }
 
 /// 转录稿的一片。
 #[derive(Debug, Clone, Serialize)]
-struct WebTranscriptPart {
+pub(crate) struct WebTranscriptPart {
     session_id: String,
     part: usize,
     /// 这场录音现在一共几片。网页据此丢掉已经不存在的尾片。
@@ -361,7 +361,10 @@ impl ZuTalkCore {
 
     /// 一场录音的转录稿,按片切好。实时转录有内容就用它(连同译文与用户的
     /// 订正);只有精修结果的录音(比如导入的音频)退回精修稿的纯文字。
-    fn transcript_parts(&self, session_id: &str) -> Result<Vec<WebTranscriptPart>, CoreError> {
+    pub(crate) fn transcript_parts(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<WebTranscriptPart>, CoreError> {
         let utterances = self
             .notebook_capture_store
             .list_utterances(session_id)
@@ -664,21 +667,26 @@ impl LiveLink {
 
 pub(crate) type LiveLinkSlot = Mutex<Option<LiveLink>>;
 
-/// 采集侧到直播链接的接线。挂在回调派发线程上:那里是「Swift 将要看到
-/// 什么」唯一确定的地方,网页看到的与本机屏幕上的是同一帧。加密与入队都是
-/// 微秒级,不拖慢派发。
+/// 采集侧到直播的接线:加密链接,以及同一网络里直接看的 ZuTalk。挂在回调
+/// 派发线程上:那里是「Swift 将要看到什么」唯一确定的地方,网页和附近的人看到
+/// 的与本机屏幕上的是同一帧。加密与入队都是微秒级,不拖慢派发。
 #[derive(Clone)]
 pub(crate) struct LinkCaptionTap {
     live: Arc<LiveLinkSlot>,
+    nearby: Arc<crate::library_sync::NearbyLiveSlot>,
 }
 
 impl LinkCaptionTap {
-    pub(crate) fn new(live: Arc<LiveLinkSlot>) -> Self {
-        Self { live }
+    pub(crate) fn new(
+        live: Arc<LiveLinkSlot>,
+        nearby: Arc<crate::library_sync::NearbyLiveSlot>,
+    ) -> Self {
+        Self { live, nearby }
     }
 
     /// 只播正在直播的那一场;同时在录的别的录音一帧也不出去。
     pub(crate) fn broadcast(&self, preview: &FfiNotebookCaptureLivePreview) {
+        crate::library_sync::nearby_broadcast(&self.nearby, preview);
         let Ok(guard) = self.live.lock() else {
             return;
         };
@@ -1519,7 +1527,7 @@ mod tests {
             .start_live_link("session-a".into(), "直播冒烟".into(), false)
             .unwrap();
         let (live_room, live_key) = split_link(&live.url);
-        let tap = LinkCaptionTap::new(core.live_link.clone());
+        let tap = LinkCaptionTap::new(core.live_link.clone(), core.nearby_live.clone());
         // 同时在录的别的录音一帧也不出去。
         tap.broadcast(&preview("session-other", 1));
         tap.broadcast(&preview("session-a", 2));

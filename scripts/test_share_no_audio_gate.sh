@@ -9,8 +9,8 @@
 #   2. 链接密钥只能现生成:不从密钥库取任何已有的 SessionKey(那是音频的钥匙);
 #   3. 发送副本只走纯文字导出:不走会打包 audio.wav 的 zip 导出;
 #   4. App 的共享界面同样不碰音频导出;
-#   5. 设备同步(crates/vt-sync,docs/architecture/local-first-sync.md)在依赖图
-#      上够不到 vt-audio 与 vt-crypto,源码里也不碰音频。
+#   5. 设备同步与附近(crates/vt-sync,docs/architecture/local-first-sync.md)在
+#      依赖图上够不到 vt-audio 与 vt-crypto,源码里也不碰音频。
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -116,22 +116,25 @@ while IFS= read -r file; do
   fi
 done < <(find "$SYNC_CRATE/src" -type f -name '*.rs' | sort)
 
-# 同步的编排层(vt-ffi/src/library_sync.rs)同样碰不到音频:它只搬事实与文档
-# 字节。密钥库只用来存取设备身份(一把与音频无关的签名密钥)。
-LIBRARY_SYNC="$ROOT_DIR/crates/vt-ffi/src/library_sync.rs"
-[[ -f "$LIBRARY_SYNC" ]] || fail "缺少 $LIBRARY_SYNC"
-SYNC_STRIPPED="$(mktemp)"
-awk '/^#\[cfg\(test\)\]$/{exit} {print}' "$LIBRARY_SYNC" | sed 's://.*::' >"$SYNC_STRIPPED"
-if grep -En "vt_audio|decrypt|DecryptReader|encrypted_path|audio_path|audio_key_ref|audio_journal|\.wav|export_session_zip|include_audio" \
-    "$SYNC_STRIPPED" >/dev/null; then
+# 同步的编排层(vt-ffi/src/library_sync.rs 与它的子模块 nearby_share.rs ——
+# 附近递稿、附近直播)同样碰不到音频:它只搬事实与文档字节。密钥库只用来存取
+# 设备身份(一把与音频无关的签名密钥)。
+for LIBRARY_SYNC in "$ROOT_DIR/crates/vt-ffi/src/library_sync.rs" "$ROOT_DIR/crates/vt-ffi/src/nearby_share.rs"; do
+  NAME="${LIBRARY_SYNC##*/}"
+  [[ -f "$LIBRARY_SYNC" ]] || fail "缺少 $LIBRARY_SYNC"
+  SYNC_STRIPPED="$(mktemp)"
+  awk '/^#\[cfg\(test\)\]$/{exit} {print}' "$LIBRARY_SYNC" | sed 's://.*::' >"$SYNC_STRIPPED"
+  if grep -En "vt_audio|decrypt|DecryptReader|encrypted_path|audio_path|audio_key_ref|audio_journal|\.wav|export_session_zip|include_audio" \
+      "$SYNC_STRIPPED" >/dev/null; then
+    rm -f "$SYNC_STRIPPED"
+    fail "$NAME 碰了音频或音频的密钥;同步只搬文字事实"
+  fi
+  KEY_REFS="$(grep -Eo "key_store\.[a-z_]+\([A-Z_a-z]+" "$SYNC_STRIPPED" | sed 's/.*(//' | sort -u || true)"
   rm -f "$SYNC_STRIPPED"
-  fail "library_sync.rs 碰了音频或音频的密钥;同步只搬文字事实"
-fi
-KEY_REFS="$(grep -Eo "key_store\.[a-z_]+\([A-Z_a-z]+" "$SYNC_STRIPPED" | sed 's/.*(//' | sort -u)"
-rm -f "$SYNC_STRIPPED"
-while IFS= read -r ref; do
-  [[ -n "$ref" ]] || continue
-  [[ "$ref" == "IDENTITY_KEY_REF" ]] || fail "library_sync.rs 从密钥库取了设备身份以外的东西: $ref"
-done <<<"$KEY_REFS"
+  while IFS= read -r ref; do
+    [[ -n "$ref" ]] || continue
+    [[ "$ref" == "IDENTITY_KEY_REF" ]] || fail "$NAME 从密钥库取了设备身份以外的东西: $ref"
+  done <<<"$KEY_REFS"
+done
 
 echo "✓ [share] 音频不可共享、不可同步的五层约束成立"

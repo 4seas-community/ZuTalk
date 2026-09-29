@@ -27,10 +27,11 @@ struct LiveShareButton: View {
     var compact = false
 
     @ObservedObject private var share = ShareActivityStore.shared
+    @ObservedObject private var nearby = NearbyStore.shared
     @State private var showsPanel = false
 
     var body: some View {
-        let live = share.isBroadcasting(sessionId: sessionId)
+        let live = share.isBroadcasting(sessionId: sessionId) || nearby.isLive(sessionId: sessionId)
         Button {
             showsPanel.toggle()
         } label: {
@@ -66,7 +67,9 @@ struct LiveShareButton: View {
 
     private func label(live: Bool) -> String {
         guard live else { return String(localized: "share.live.bar") }
-        return LiveShareText.status(viewers: share.live?.viewers ?? 0)
+        let viewers = (share.isBroadcasting(sessionId: sessionId) ? share.live?.viewers ?? 0 : 0)
+            + (nearby.isLive(sessionId: sessionId) ? nearby.status?.liveViewers ?? 0 : 0)
+        return LiveShareText.status(viewers: viewers)
     }
 }
 
@@ -146,6 +149,10 @@ struct LiveSharePanel: View {
             .controlSize(.large)
             .disabled(share.liveBusy)
             .accessibilityIdentifier("share.live.start")
+
+            // 和链接各管各的:不开链接也能只给附近看。
+            Divider()
+            NearbyLiveChoice(sessionId: sessionId, title: title)
         }
     }
 
@@ -196,6 +203,8 @@ struct LiveSharePanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+
+            NearbyLiveChoice(sessionId: sessionId, title: title)
 
             Divider()
 
@@ -284,6 +293,7 @@ struct RecordingShareSheet: View {
                             .foregroundColor(.textSecondary)
                     }
                     sendCopySection
+                    NearbySendSection(sessionId: request.sessionId, title: request.title)
                     linkSection
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -462,6 +472,99 @@ struct RecordingShareSheet: View {
         Text(String(localized: key))
             .font(.bodyMedium)
             .foregroundColor(.textPrimary)
+    }
+}
+
+// MARK: - 附近
+
+/// 直播面板里的「同一网络的 ZuTalk 也能看」:和链接各管各的,可以只开一个。
+/// 不经服务器,从这台 Mac 直接传过去。
+struct NearbyLiveChoice: View {
+    let sessionId: String
+    let title: String
+
+    @ObservedObject private var nearby = NearbyStore.shared
+
+    var body: some View {
+        let on = nearby.isLive(sessionId: sessionId)
+        ShareChoice(
+            isOn: Binding(
+                get: { on },
+                set: { $0 ? nearby.startLive(sessionId: sessionId, title: title) : nearby.stopLive() }
+            ),
+            title: String(localized: "nearby.live.choice"),
+            detail: detail(on: on)
+        )
+        .accessibilityIdentifier("share.live.nearby")
+    }
+
+    private func detail(on: Bool) -> String {
+        guard on else { return String(localized: "nearby.live.choice_off_detail") }
+        let viewers = nearby.status?.liveViewers ?? 0
+        return viewers == 0
+            ? String(localized: "nearby.live.choice_on_detail")
+            : String(format: String(localized: "nearby.live.viewers_format"), Int64(viewers))
+    }
+}
+
+/// 共享录音面板里的「递给附近的 Mac」:同一网络里打开了接收的 ZuTalk,点一下
+/// 递过去,对方点接收才收下。
+struct NearbySendSection: View {
+    let sessionId: String
+    let title: String
+
+    @ObservedObject private var nearby = NearbyStore.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text(String(localized: "nearby.send.title"))
+                .font(.bodyMedium)
+                .foregroundColor(.textPrimary)
+            Text(String(localized: "nearby.send.detail"))
+                .font(.bodySM)
+                .foregroundColor(.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if nearby.status?.running != true {
+                // 附近走的是同步的端点:同步没开就看不见任何人。
+                HStack(spacing: Spacing.sm) {
+                    Label(String(localized: "nearby.send.needs_sync"), systemImage: "wifi.slash")
+                        .font(.bodySM)
+                        .foregroundColor(.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button(String(localized: "nearby.send.turn_on")) {
+                        Task { _ = await DeviceSyncStore.shared.ensureRunning() }
+                    }
+                }
+            } else if nearby.receivers.isEmpty {
+                Label(String(localized: "nearby.send.none"), systemImage: "wifi")
+                    .font(.bodySM)
+                    .foregroundColor(.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(nearby.receivers, id: \.deviceId) { peer in
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: "laptopcomputer")
+                        .foregroundColor(.textTertiary)
+                    Text(peer.name.isEmpty ? String(localized: "settings.devices.unnamed") : peer.name)
+                        .font(.bodySM)
+                        .foregroundColor(.textPrimary)
+                    Spacer()
+                    if nearby.sending.contains(peer.deviceId) {
+                        ProgressView().controlSize(.small)
+                        Text(String(localized: "nearby.send.waiting"))
+                            .font(.bodySM)
+                            .foregroundColor(.textTertiary)
+                    } else {
+                        Button(String(localized: "nearby.send.button")) {
+                            nearby.send(sessionId: sessionId, title: title, to: peer)
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear { nearby.refresh() }
+        .accessibilityIdentifier("share.recording.nearby")
     }
 }
 
