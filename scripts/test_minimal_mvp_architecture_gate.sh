@@ -17,10 +17,15 @@ fail() {
 # owner decided cloud generation is in scope with the privacy stance restated
 # alongside it. Everything below is still out, and adding to this file is how a
 # revival stays a decision instead of a drift.
+#
+# vt-sync came off on 2026-09-29. The crate of that name that was cut is not
+# the one that returned: this one is local-first device sync on iroh
+# (docs/architecture/local-first-sync.md), which the owner put in scope. It
+# may not reach audio, and test_share_no_audio_gate.sh holds it to that
+# through its dependency graph. The old FFI sync surface below stays out.
 
 for removed_path in \
   crates/zutalkd \
-  crates/vt-sync \
   crates/vt-template \
   crates/vt-glossary \
   crates/vt-speaker \
@@ -38,11 +43,11 @@ do
     || fail "removed MVP subsystem path returned: $removed_path"
 done
 
-if grep -Eq '"crates/(zutalkd|vt-sync|vt-template|vt-glossary|vt-speaker)"' \
+if grep -Eq '"crates/(zutalkd|vt-template|vt-glossary|vt-speaker)"' \
     "$ROOT_DIR/Cargo.toml"; then
   fail "Cargo workspace must contain only the Notebook Capture MVP crates"
 fi
-if grep -Eq '^name = "(zutalkd|vt-sync|vt-template|vt-glossary|vt-speaker)"$' \
+if grep -Eq '^name = "(zutalkd|vt-template|vt-glossary|vt-speaker)"$' \
     "$ROOT_DIR/Cargo.lock"; then
   fail "Cargo.lock retained a removed MVP package"
 fi
