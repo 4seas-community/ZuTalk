@@ -5611,7 +5611,7 @@ dependencies = [
 
 [[package]]
 name = "vt-ffi"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -5691,6 +5691,7 @@ dependencies = [
 name = "vt-pipeline"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",
