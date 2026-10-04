@@ -981,7 +981,25 @@ impl ZuTalkCore {
                 self.post_to_room(&room.room_url, &room.publish_token, "blocks", &envelope)?;
             }
         }
-        self.close_room(&room.room_url, &room.publish_token, !keeps_after_end)
+        self.close_room(&room.room_url, &room.publish_token, !keeps_after_end)?;
+        if keeps_after_end {
+            // 留下的稿件和录音链接一样记进台账:直播一停,发布口令就只剩这里,
+            // 不记的话主持人在哪儿都看不到它、也撤不回,只能等它过期。
+            // 留存期从封笔这一刻起算,到期时间与服务端一致。
+            let created_at = now_epoch();
+            let mut links = self.load_link_registry();
+            links.push(StoredLink {
+                room_id: room.room_id.clone(),
+                room_url: room.room_url.clone(),
+                publish_token: room.publish_token.clone(),
+                session_id,
+                url: room.url.clone(),
+                created_at,
+                expires_at: created_at + RECORDING_LINK_TTL_SECS,
+            });
+            self.save_link_registry(&links)?;
+        }
+        Ok(())
     }
 
     /// 给一段录好的录音开一条只读链接:24 小时后失效,可以随时撤销。走网络。
@@ -1595,6 +1613,18 @@ mod tests {
             assert_eq!(status, 200);
             assert_eq!(body["ended"], true);
             assert!(core.live_link().is_none());
+
+            // 留下的稿件要撤得回:它记进了这场录音的链接里,撤销即删。
+            let kept = core.recording_links("session-a".into());
+            assert_eq!(kept.len(), 1, "散场留稿必须出现在录音的链接里");
+            assert_eq!(kept[0].room_id, fresh_room);
+            assert!(core
+                .all_recording_links()
+                .iter()
+                .any(|link| link.room_id == fresh_room));
+            core.revoke_recording_link(fresh_room.clone()).unwrap();
+            assert_eq!(service.status(&core, &fresh_room).0, 404);
+            assert!(core.recording_links("session-a".into()).is_empty());
 
             core.start_live_link("session-a".into(), "直播冒烟".into(), false)
                 .unwrap();
