@@ -755,6 +755,8 @@
 "capture.state.recording" = "Recording";
 "capture.state.paused" = "Paused";
 "capture.state.draining" = "Finishing";
+"capture.state.saving_recording" = "Saving recording…";
+"capture.state.saving_recording_seconds" = "Saving recording… %lld s";
 "capture.state.audio_drain_delayed" = "Local audio is still being saved";
 "capture.state.completed" = "Completed";
 "capture.state.interrupted" = "Interrupted";
@@ -1049,6 +1051,7 @@
 "captions_choice.off_hint" = "Recordings stay on this Mac, without live captions. Click to turn live captions on.";
 "captions_choice.unavailable_hint" = "Live captions need a Soniox key or an invite code. Click to add one in Settings.";
 "capture.toast.stopped_saved" = "Recording saved (%@)";
+"capture.toast.stopped_by_sleep" = "The Mac went to sleep, so the recording ended and was saved (%@)";
 "menubar.action.start_recording" = "Start recording";
 "menubar.action.open_main_window" = "Open ZuTalk";
 "settings.shortcuts.pause" = "Pause or resume";
@@ -1106,7 +1109,7 @@
 "share.live.start_failed" = "Couldn’t start sharing captions";
 "share.live.stop_failed" = "Couldn’t stop sharing";
 "share.live.stop_note" = "Stopping ends the link and deletes its content from the server.";
-"share.live.stop_note_kept" = "After you stop, captions stop updating and the transcript stays on the link for about 24 hours.";
+"share.live.stop_note_kept" = "After you stop, captions stop updating and the transcript stays on the link for about 24 hours. To take it down sooner, use Revoke in the recording’s Share… or in Settings › Sharing.";
 "share.encrypted" = "End-to-end encrypted: the server only relays content it can’t read. Anyone with the link can view it.";
 "share.live.keep" = "Keep the transcript after it ends";
 "share.live.keep_on_detail" = "After you stop, anyone with the link can still read and download the full transcript. It’s deleted after about 24 hours.";
@@ -1125,7 +1128,7 @@
 "share.live.other_title" = "Another recording is being shared";
 "share.live.other_body" = "Only one recording can share live captions at a time. Stop that one, then start here.";
 "share.live.default_title_format" = "Live captions · %@";
-"share.live.ended_with_recording_kept" = "The recording ended, so the caption link stopped updating. The transcript stays on the link for about 24 hours.";
+"share.live.ended_with_recording_kept" = "The recording ended, so the caption link stopped updating. The transcript stays on the link for about 24 hours. To take it down sooner, use Revoke in the recording’s Share… or in Settings › Sharing.";
 "share.link.copy" = "Copy link";
 "share.link.copied" = "Link copied";
 "share.link.created_copied" = "Link created and copied";

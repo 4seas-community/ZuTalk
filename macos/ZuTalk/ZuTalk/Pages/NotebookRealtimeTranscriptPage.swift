@@ -460,7 +460,15 @@ private struct NotebookRealtimeCaptureConsole: View {
                     } else {
                         ProgressView()
                             .controlSize(.small)
-                        Text(String(localized: "capture.state.draining"))
+                        if let since = capture.stoppingSince {
+                            TimelineView(.periodic(from: since, by: 1)) { context in
+                                Text(RecordingBarContent.savingText(
+                                    seconds: Int(context.date.timeIntervalSince(since))
+                                ))
+                            }
+                        } else {
+                            Text(String(localized: "capture.state.draining"))
+                        }
                     }
                 }
                 .font(.captionMedium)

@@ -755,6 +755,8 @@
 "capture.state.recording" = "Enregistrement";
 "capture.state.paused" = "En pause";
 "capture.state.draining" = "Finalisation";
+"capture.state.saving_recording" = "Sauvegarde de l’enregistrement…";
+"capture.state.saving_recording_seconds" = "Sauvegarde de l’enregistrement… %lld s";
 "capture.state.audio_drain_delayed" = "L’audio local est toujours en cours de sauvegarde";
 "capture.state.completed" = "Terminé";
 "capture.state.interrupted" = "Interrompu";
@@ -1049,6 +1051,7 @@
 "captions_choice.off_hint" = "Les enregistrements restent sur ce Mac, sans sous-titres en direct. Cliquez pour activer les sous-titres en direct.";
 "captions_choice.unavailable_hint" = "Les sous-titres en direct nécessitent une clé Soniox ou un code d’invitation. Cliquez pour en ajouter un dans les Réglages.";
 "capture.toast.stopped_saved" = "Enregistrement sauvegardé (%@)";
+"capture.toast.stopped_by_sleep" = "Le Mac s’est mis en veille : l’enregistrement s’est arrêté et a été sauvegardé (%@)";
 "menubar.action.start_recording" = "Démarrer l’enregistrement";
 "menubar.action.open_main_window" = "Ouvrir ZuTalk";
 "settings.shortcuts.pause" = "Pause ou reprise";
@@ -1106,7 +1109,7 @@
 "share.live.start_failed" = "Impossible de partager les sous-titres";
 "share.live.stop_failed" = "Impossible d’arrêter le partage";
 "share.live.stop_note" = "L’arrêt désactive le lien et supprime son contenu du serveur.";
-"share.live.stop_note_kept" = "Après l’arrêt, les sous-titres ne sont plus mis à jour et la transcription reste sur le lien environ 24 heures.";
+"share.live.stop_note_kept" = "Après l’arrêt, les sous-titres ne sont plus mis à jour et la transcription reste sur le lien environ 24 heures. Pour le retirer plus tôt, utilisez « Révoquer » dans « Partager… » de l’enregistrement ou dans Réglages › Partage.";
 "share.encrypted" = "Chiffré de bout en bout : le serveur ne relaie que du contenu qu’il ne peut pas lire. Toute personne ayant le lien peut le voir.";
 "share.live.keep" = "Garder la transcription après la fin";
 "share.live.keep_on_detail" = "Après l’arrêt, toute personne ayant le lien peut encore lire et télécharger la transcription complète. Elle est supprimée au bout d’environ 24 heures.";
@@ -1125,7 +1128,7 @@
 "share.live.other_title" = "Un autre enregistrement est partagé";
 "share.live.other_body" = "Un seul enregistrement peut partager ses sous-titres en direct à la fois. Arrêtez l’autre, puis lancez celui-ci.";
 "share.live.default_title_format" = "Sous-titres en direct · %@";
-"share.live.ended_with_recording_kept" = "L’enregistrement est terminé : le lien des sous-titres n’est plus mis à jour. La transcription y reste environ 24 heures.";
+"share.live.ended_with_recording_kept" = "L’enregistrement est terminé : le lien des sous-titres n’est plus mis à jour. La transcription y reste environ 24 heures. Pour le retirer plus tôt, utilisez « Révoquer » dans « Partager… » de l’enregistrement ou dans Réglages › Partage.";
 "share.link.copy" = "Copier le lien";
 "share.link.copied" = "Lien copié";
 "share.link.created_copied" = "Lien créé et copié";

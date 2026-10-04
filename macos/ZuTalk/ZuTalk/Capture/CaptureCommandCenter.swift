@@ -254,6 +254,56 @@ final class CaptureCommandCenter: ObservableObject {
         return marked
     }
 
+    // MARK: - System sleep
+
+    private var sleepObservers: [NSObjectProtocol] = []
+    /// A recording this Mac's sleep ended, waiting to be announced on wake.
+    private var endedBySleepSeconds: Int?
+
+    /// A Mac that goes to sleep ends the recording, saved, the same as Stop.
+    ///
+    /// Nothing is heard while it sleeps, and the transcription connection
+    /// dies under it: carrying on after wake used to leave a recording that
+    /// kept its microphone but never got captions again, with a gap no one
+    /// chose. Ending it at the moment the lid closes is the honest record.
+    func endRecordingWhenTheMacSleeps() {
+        guard sleepObservers.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        sleepObservers.append(center.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                CaptureCommandCenter.shared.handleSystemWillSleep()
+            }
+        })
+        sleepObservers.append(center.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                CaptureCommandCenter.shared.handleSystemDidWake()
+            }
+        })
+    }
+
+    func handleSystemWillSleep() {
+        guard capture.isCaptureActive, canStop else { return }
+        endedBySleepSeconds = Int(capture.elapsedRecordingTime.rounded(.up))
+        stop()
+    }
+
+    func handleSystemDidWake() {
+        guard let seconds = endedBySleepSeconds else { return }
+        endedBySleepSeconds = nil
+        ToastCenter.shared.info(String(
+            format: String(localized: "capture.toast.stopped_by_sleep"),
+            Self.clock(TimeInterval(seconds))
+        ))
+    }
+
     // MARK: - Shortcuts
 
     /// ⌃⌥R: start a recording if none is running, otherwise stop it.

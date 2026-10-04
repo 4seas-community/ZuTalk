@@ -755,6 +755,8 @@
 "capture.state.recording" = "Aufnahme läuft";
 "capture.state.paused" = "Pausiert";
 "capture.state.draining" = "Wird abgeschlossen";
+"capture.state.saving_recording" = "Aufnahme wird gesichert…";
+"capture.state.saving_recording_seconds" = "Aufnahme wird gesichert… %lld s";
 "capture.state.audio_drain_delayed" = "Lokales Audio wird noch gesichert";
 "capture.state.completed" = "Abgeschlossen";
 "capture.state.interrupted" = "Unterbrochen";
@@ -1049,6 +1051,7 @@
 "captions_choice.off_hint" = "Aufnahmen bleiben auf diesem Mac, ohne Live-Untertitel. Klicken, um Live-Untertitel einzuschalten.";
 "captions_choice.unavailable_hint" = "Live-Untertitel brauchen einen Soniox-Schlüssel oder einen Einladungscode. Klicken, um ihn in den Einstellungen hinzuzufügen.";
 "capture.toast.stopped_saved" = "Aufnahme gesichert (%@)";
+"capture.toast.stopped_by_sleep" = "Der Mac ist in den Ruhezustand gegangen: Die Aufnahme wurde beendet und gesichert (%@)";
 "menubar.action.start_recording" = "Aufnahme starten";
 "menubar.action.open_main_window" = "ZuTalk öffnen";
 "settings.shortcuts.pause" = "Pausieren oder fortsetzen";
@@ -1106,7 +1109,7 @@
 "share.live.start_failed" = "Untertitel konnten nicht geteilt werden";
 "share.live.stop_failed" = "Teilen konnte nicht beendet werden";
 "share.live.stop_note" = "Beim Beenden wird der Link ungültig und sein Inhalt sofort vom Server gelöscht.";
-"share.live.stop_note_kept" = "Nach dem Beenden werden keine Untertitel mehr aktualisiert; das Transkript bleibt etwa 24 Stunden unter dem Link.";
+"share.live.stop_note_kept" = "Nach dem Beenden werden keine Untertitel mehr aktualisiert; das Transkript bleibt etwa 24 Stunden unter dem Link. Um es früher zu entfernen, klicke in „Teilen…“ der Aufnahme oder unter Einstellungen › Teilen auf „Widerrufen“.";
 "share.encrypted" = "Ende-zu-Ende-verschlüsselt: Der Server leitet nur Inhalte weiter, die er nicht lesen kann. Wer den Link hat, kann mitlesen.";
 "share.live.keep" = "Transkript nach dem Ende behalten";
 "share.live.keep_on_detail" = "Nach dem Beenden können alle mit dem Link das vollständige Transkript noch lesen und herunterladen. Nach etwa 24 Stunden wird es gelöscht.";
@@ -1125,7 +1128,7 @@
 "share.live.other_title" = "Eine andere Aufnahme wird geteilt";
 "share.live.other_body" = "Es kann jeweils nur eine Aufnahme Live-Untertitel teilen. Beenden Sie die andere und starten Sie hier.";
 "share.live.default_title_format" = "Live-Untertitel · %@";
-"share.live.ended_with_recording_kept" = "Die Aufnahme ist beendet: Der Untertitel-Link wird nicht mehr aktualisiert. Das Transkript bleibt etwa 24 Stunden abrufbar.";
+"share.live.ended_with_recording_kept" = "Die Aufnahme ist beendet: Der Untertitel-Link wird nicht mehr aktualisiert. Das Transkript bleibt etwa 24 Stunden abrufbar. Um es früher zu entfernen, klicke in „Teilen…“ der Aufnahme oder unter Einstellungen › Teilen auf „Widerrufen“.";
 "share.link.copy" = "Link kopieren";
 "share.link.copied" = "Link kopiert";
 "share.link.created_copied" = "Link erstellt und kopiert";

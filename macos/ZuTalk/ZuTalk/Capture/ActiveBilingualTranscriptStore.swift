@@ -236,6 +236,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// for the durable capture state; this flag only tells the UI that closing
     /// the admitted local-audio backlog has exceeded the watchdog interval.
     @Published private(set) var isAudioDrainDelayed = false
+    /// When Stop began, while it is still finishing — so the recording bar
+    /// can say for how long instead of a bare "Finishing" with no end.
+    @Published private(set) var stoppingSince: Date?
     @Published private(set) var isRestartingTranscription = false
     /// A pause or resume request in flight. Shown as such instead of the
     /// "Finishing" that Stop uses, which made a pause look like the end.
@@ -1703,6 +1706,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     func resetForTesting() {
+        stoppingSince = nil
         audioDrainWatchdogTask?.cancel()
         audioDrainWatchdogTask = nil
         terminalTransitionLease = nil
@@ -2825,6 +2829,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     ) {
         guard isCurrentTerminalTransition(lease) else { return }
         stopRecoveryRequired = true
+        stoppingSince = nil
         lastError = "\(stopError) · \(followupError)"
         captureState = .draining
         stopElapsedTimer()
@@ -3041,6 +3046,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         gate?.close()
         stopElapsedTimer()
         captureState = .draining
+        stoppingSince = Date()
         MenuBarRuntimeStore.shared.returnToIdle()
         return (gate, microphoneTerminal)
     }
@@ -3085,6 +3091,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private func clearTerminalTransition(_ lease: TerminalTransitionLease) {
         guard terminalTransitionLease == lease else { return }
         terminalTransitionLease = nil
+        stoppingSince = nil
         terminalTransitionDrainPending = false
         pendingTerminalTransitionEvent = nil
         audioDrainWatchdogTask?.cancel()
@@ -3116,6 +3123,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         state: NotebookCaptureState,
         abortPendingAudio: Bool
     ) -> NotebookCaptureAudioPushGate? {
+        stoppingSince = nil
         client.cancelNotebookRealtimeProjection(sessionId: sessionId)
         if callbackSessionId == sessionId {
             invalidateCaptureCallback()

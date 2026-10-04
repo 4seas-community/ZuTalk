@@ -928,7 +928,7 @@ _rust-build-debug:
         cargo build -p vt-ffi --lib
 
 _rust-build-release-arm64:
-    RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix={{ project_dir }}=. --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=.cargo" \
+    RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--cfg aes_armv8 --cfg polyval_armv8 --remap-path-prefix={{ project_dir }}=. --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=.cargo" \
         CARGO_TARGET_DIR="{{ macos_rust_target_dir }}" \
         MACOSX_DEPLOYMENT_TARGET={{ macos_deployment_target }} \
         cargo build -p vt-ffi --lib --release --target {{ target_arm64 }}

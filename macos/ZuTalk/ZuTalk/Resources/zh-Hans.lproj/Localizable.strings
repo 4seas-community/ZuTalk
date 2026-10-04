@@ -755,6 +755,8 @@
 "capture.state.recording" = "录音中";
 "capture.state.paused" = "已暂停";
 "capture.state.draining" = "收尾中";
+"capture.state.saving_recording" = "正在保存录音…";
+"capture.state.saving_recording_seconds" = "正在保存录音… %lld 秒";
 "capture.state.audio_drain_delayed" = "本地音频仍在保存";
 "capture.state.completed" = "已完成";
 "capture.state.interrupted" = "已中断";
@@ -1049,6 +1051,7 @@
 "captions_choice.off_hint" = "录音只留在这台 Mac 上，没有实时字幕。点一下开启实时字幕。";
 "captions_choice.unavailable_hint" = "实时字幕需要 Soniox 密钥或邀请码。点一下去设置里添加。";
 "capture.toast.stopped_saved" = "录音已保存（%@）";
+"capture.toast.stopped_by_sleep" = "电脑进入睡眠，录音已结束并保存（%@）";
 "menubar.action.start_recording" = "开始录音";
 "menubar.action.open_main_window" = "打开 ZuTalk";
 "settings.shortcuts.pause" = "暂停 / 继续";
@@ -1106,7 +1109,7 @@
 "share.live.start_failed" = "没能开始共享字幕";
 "share.live.stop_failed" = "没能停止共享";
 "share.live.stop_note" = "停止后链接失效，服务器上的内容当场删除。";
-"share.live.stop_note_kept" = "停止后字幕不再更新，转录稿在链接上保留约 24 小时。";
+"share.live.stop_note_kept" = "停止后字幕不再更新，转录稿在链接上保留约 24 小时。想提前收回，在这段录音的「共享…」或 设置 › 共享 里点「撤销」。";
 "share.encrypted" = "端到端加密：服务器只转发加密内容，看不到字幕。拿到链接的人都能看。";
 "share.live.keep" = "散场后保留转录稿";
 "share.live.keep_on_detail" = "停止后，拿到链接的人还能读完整转录稿并下载，约 24 小时后自动删除。";
@@ -1125,7 +1128,7 @@
 "share.live.other_title" = "另一场录音正在共享";
 "share.live.other_body" = "一次只能共享一场录音的实时字幕。停止那一场，再从这里开始。";
 "share.live.default_title_format" = "实时字幕 · %@";
-"share.live.ended_with_recording_kept" = "录音结束了，字幕链接不再更新；转录稿在链接上保留约 24 小时。";
+"share.live.ended_with_recording_kept" = "录音结束了，字幕链接不再更新；转录稿在链接上保留约 24 小时。想提前收回，在这段录音的「共享…」或 设置 › 共享 里点「撤销」。";
 "share.link.copy" = "复制链接";
 "share.link.copied" = "链接已复制";
 "share.link.created_copied" = "链接已生成并复制";

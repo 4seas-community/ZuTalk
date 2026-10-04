@@ -23,6 +23,8 @@ struct RecordingBarModel: Equatable {
 
     var phase: Phase
     var elapsed: TimeInterval
+    /// Whole seconds since Stop began, while it is still finishing.
+    var stoppingSeconds: Int? = nil
     /// The topic the recording files into; nil for one that belongs to none.
     var topicTitle: String?
     var captions: Captions
@@ -44,7 +46,8 @@ struct RecordingBarModel: Equatable {
         capture: ActiveBilingualTranscriptStore,
         commands: CaptureCommandCenter,
         topicTitle: String?,
-        now: Date = Date()
+        now: Date = Date(),
+        clock: Date = Date()
     ) -> RecordingBarModel {
         let phase: Phase
         if commands.isStopping || (capture.captureState == .draining && capture.pauseTransition == nil) {
@@ -68,6 +71,9 @@ struct RecordingBarModel: Equatable {
         return RecordingBarModel(
             phase: phase,
             elapsed: capture.elapsedRecordingTime,
+            stoppingSeconds: phase == .stopping
+                ? capture.stoppingSince.map { max(0, Int(clock.timeIntervalSince($0))) }
+                : nil,
             topicTitle: topicTitle,
             captions: captions,
             lagNotice: capture.liveLagNotice,
@@ -129,16 +135,14 @@ struct RecordingBar: View {
                         compact: compact
                     )
                 }
-                RecordingBarContent(
-                    model: .current(
-                        capture: capture,
-                        commands: commands,
-                        topicTitle: topicTitle,
-                        now: markTick
-                    ),
-                    actions: .live,
-                    compact: compact
-                )
+                if let since = capture.stoppingSince {
+                    // Ticks only while Stop is finishing, to count it out.
+                    TimelineView(.periodic(from: since, by: 1)) { context in
+                        content(clock: context.date)
+                    }
+                } else {
+                    content(clock: Date())
+                }
             }
             .task(id: capture.notebookId) { loadTopicTitle() }
             .onReceive(commands.$lastMarkedAt) { markedAt in
@@ -149,6 +153,20 @@ struct RecordingBar: View {
             }
             .transition(.opacity)
         }
+    }
+
+    private func content(clock: Date) -> RecordingBarContent {
+        RecordingBarContent(
+            model: .current(
+                capture: capture,
+                commands: commands,
+                topicTitle: topicTitle,
+                now: markTick,
+                clock: clock
+            ),
+            actions: .live,
+            compact: compact
+        )
     }
 
     private func loadTopicTitle() {
@@ -278,7 +296,7 @@ struct RecordingBarContent: View {
             .accessibilityIdentifier("recording-bar.pause")
             barButton(
                 title: model.phase == .stopping
-                    ? String(localized: "capture.state.draining")
+                    ? String(localized: "capture.state.saving_recording")
                     : model.stopNeedsRetry
                         ? String(localized: "recording_bar.retry_stop")
                         : String(localized: "capture.toolbar.stop"),
@@ -344,8 +362,20 @@ struct RecordingBarContent: View {
         case .paused: return String(localized: "capture.state.paused")
         case .pausing: return String(localized: "capture.state.pausing")
         case .resuming: return String(localized: "capture.state.resuming")
-        case .stopping: return String(localized: "capture.state.draining")
+        case .stopping: return Self.savingText(seconds: model.stoppingSeconds)
         }
+    }
+
+    /// Long recordings take a few seconds to seal; the count says it is
+    /// working rather than stuck.
+    static func savingText(seconds: Int?) -> String {
+        guard let seconds, seconds >= 2 else {
+            return String(localized: "capture.state.saving_recording")
+        }
+        return String(
+            format: String(localized: "capture.state.saving_recording_seconds"),
+            Int64(seconds)
+        )
     }
 
     private var captionsText: String {

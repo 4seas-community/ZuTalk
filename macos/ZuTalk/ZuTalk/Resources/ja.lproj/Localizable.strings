@@ -738,6 +738,8 @@
 "capture.state.recording" = "録音中";
 "capture.state.paused" = "一時停止";
 "capture.state.draining" = "終了処理中";
+"capture.state.saving_recording" = "録音を保存中…";
+"capture.state.saving_recording_seconds" = "録音を保存中… %lld 秒";
 "capture.state.audio_drain_delayed" = "ローカル音声を保存しています";
 "capture.state.completed" = "完了";
 "capture.state.interrupted" = "中断";
@@ -1049,6 +1051,7 @@
 "captions_choice.off_hint" = "録音はこの Mac にだけ残り、リアルタイム字幕はありません。クリックでリアルタイム字幕をオンにします。";
 "captions_choice.unavailable_hint" = "リアルタイム字幕には Soniox キーか招待コードが必要です。クリックして設定で追加します。";
 "capture.toast.stopped_saved" = "録音を保存しました（%@）";
+"capture.toast.stopped_by_sleep" = "Mac がスリープしたため、録音を終了して保存しました（%@）";
 "menubar.action.start_recording" = "録音を開始";
 "menubar.action.open_main_window" = "ZuTalk を開く";
 "settings.shortcuts.pause" = "一時停止／再開";
@@ -1106,7 +1109,7 @@
 "share.live.start_failed" = "字幕の共有を開始できませんでした";
 "share.live.stop_failed" = "共有を停止できませんでした";
 "share.live.stop_note" = "停止するとリンクは無効になり、サーバー上の内容はその場で削除されます。";
-"share.live.stop_note_kept" = "停止すると字幕の更新は止まり、文字起こしは約 24 時間リンクに残ります。";
+"share.live.stop_note_kept" = "停止すると字幕の更新は止まり、文字起こしは約 24 時間リンクに残ります。早めに取り下げるには、この録音の「共有…」か 設定 › 共有 で「取り消す」を押してください。";
 "share.encrypted" = "エンドツーエンド暗号化：サーバーは読めない暗号文を中継するだけです。リンクを持つ人は誰でも見られます。";
 "share.live.keep" = "終了後も文字起こしを残す";
 "share.live.keep_on_detail" = "停止後も、リンクを持つ人は文字起こし全文を読んでダウンロードできます。約 24 時間後に自動で削除されます。";
@@ -1125,7 +1128,7 @@
 "share.live.other_title" = "別の録音を共有中です";
 "share.live.other_body" = "リアルタイム字幕を共有できる録音は一度に一つだけです。そちらを停止してから、ここで開始してください。";
 "share.live.default_title_format" = "リアルタイム字幕 · %@";
-"share.live.ended_with_recording_kept" = "録音が終わったので、字幕リンクの更新は止まりました。文字起こしは約 24 時間リンクに残ります。";
+"share.live.ended_with_recording_kept" = "録音が終わったので、字幕リンクの更新は止まりました。文字起こしは約 24 時間リンクに残ります。早めに取り下げるには、この録音の「共有…」か 設定 › 共有 で「取り消す」を押してください。";
 "share.link.copy" = "リンクをコピー";
 "share.link.copied" = "リンクをコピーしました";
 "share.link.created_copied" = "リンクを作成してコピーしました";

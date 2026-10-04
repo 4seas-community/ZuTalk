@@ -755,6 +755,8 @@
 "capture.state.recording" = "Grabando";
 "capture.state.paused" = "En pausa";
 "capture.state.draining" = "Finalizando";
+"capture.state.saving_recording" = "Guardando la grabación…";
+"capture.state.saving_recording_seconds" = "Guardando la grabación… %lld s";
 "capture.state.audio_drain_delayed" = "El audio local todavía se está guardando";
 "capture.state.completed" = "Completada";
 "capture.state.interrupted" = "Interrumpida";
@@ -1049,6 +1051,7 @@
 "captions_choice.off_hint" = "Las grabaciones se quedan en este Mac, sin subtítulos en directo. Haz clic para activarlos.";
 "captions_choice.unavailable_hint" = "Los subtítulos en directo necesitan una clave de Soniox o un código de invitación. Haz clic para añadirlo en Ajustes.";
 "capture.toast.stopped_saved" = "Grabación guardada (%@)";
+"capture.toast.stopped_by_sleep" = "El Mac entró en reposo: la grabación terminó y se guardó (%@)";
 "menubar.action.start_recording" = "Empezar a grabar";
 "menubar.action.open_main_window" = "Abrir ZuTalk";
 "settings.shortcuts.pause" = "Pausar o reanudar";
@@ -1106,7 +1109,7 @@
 "share.live.start_failed" = "No se pudieron compartir los subtítulos";
 "share.live.stop_failed" = "No se pudo dejar de compartir";
 "share.live.stop_note" = "Al detenerlo, el enlace deja de funcionar y su contenido se borra del servidor.";
-"share.live.stop_note_kept" = "Al detenerlo, los subtítulos dejan de actualizarse y la transcripción queda en el enlace unas 24 horas.";
+"share.live.stop_note_kept" = "Al detenerlo, los subtítulos dejan de actualizarse y la transcripción queda en el enlace unas 24 horas. Para retirarla antes, usa «Revocar» en «Compartir…» de la grabación o en Ajustes › Compartir.";
 "share.encrypted" = "Cifrado de extremo a extremo: el servidor solo reenvía contenido que no puede leer. Cualquiera con el enlace puede verlo.";
 "share.live.keep" = "Conservar la transcripción al terminar";
 "share.live.keep_on_detail" = "Tras detenerlo, cualquiera con el enlace puede seguir leyendo y descargando la transcripción completa. Se borra a las 24 horas aproximadamente.";
@@ -1125,7 +1128,7 @@
 "share.live.other_title" = "Se está compartiendo otra grabación";
 "share.live.other_body" = "Solo una grabación puede compartir subtítulos en directo a la vez. Detén la otra y empieza aquí.";
 "share.live.default_title_format" = "Subtítulos en directo · %@";
-"share.live.ended_with_recording_kept" = "La grabación terminó: el enlace de subtítulos ya no se actualiza. La transcripción queda en él unas 24 horas.";
+"share.live.ended_with_recording_kept" = "La grabación terminó: el enlace de subtítulos ya no se actualiza. La transcripción queda en él unas 24 horas. Para retirarla antes, usa «Revocar» en «Compartir…» de la grabación o en Ajustes › Compartir.";
 "share.link.copy" = "Copiar enlace";
 "share.link.copied" = "Enlace copiado";
 "share.link.created_copied" = "Enlace creado y copiado";

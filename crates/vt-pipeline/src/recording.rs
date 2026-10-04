@@ -565,6 +565,22 @@ pub fn recover_capture_audio_journal(
             audio_chunks.len(),
         )?);
     }
+    // One flush of the drive's own cache makes every chunk above, and the
+    // renames that installed them, durable together. Flushing per chunk
+    // (twice: file and directory) cost two full cache flushes a minute of
+    // audio — over a second of "Finishing" for a two-hour recording. The
+    // journal is kept until the caller has committed these chunks, so a
+    // crash before this point recovers from the journal again.
+    if let Some(last) = audio_chunks.last() {
+        File::open(&last.path)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| RecordingError::WriteFailed {
+                message: format!("sync recovered capture chunks: {error}"),
+            })?;
+    }
+    if let Ok(directory) = File::open(session_audio_dir(data_dir, session_id)) {
+        let _ = directory.sync_all();
+    }
     let duration_ms = if sample_rate > 0 {
         captured_frames.saturating_mul(1000) / sample_rate as u64
     } else {
@@ -584,6 +600,27 @@ pub fn recover_capture_audio_journal(
         channels,
         captured_frames,
     })
+}
+
+/// Passes a file's written data to the drive without waiting for the
+/// drive's cache. On Apple platforms `File::sync_all` is `F_FULLFSYNC`, a full
+/// cache flush; plain `fsync` is the cheap half, and one full flush after the
+/// last chunk covers them all.
+fn hand_to_drive(file: &File) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        // SAFETY: the descriptor is owned by `file` and stays open for the call.
+        if unsafe { libc::fsync(file.as_raw_fd()) } == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        file.sync_all()
+    }
 }
 
 struct RecoveredCaptureChunkWriter<'a> {
@@ -617,19 +654,15 @@ impl RecoveredCaptureChunkWriter<'_> {
             });
         }
         if let Ok(file) = File::open(&temporary) {
-            file.sync_all()
-                .map_err(|error| RecordingError::WriteFailed {
-                    message: format!("sync recovered capture chunk: {error}"),
-                })?;
+            hand_to_drive(&file).map_err(|error| RecordingError::WriteFailed {
+                message: format!("sync recovered capture chunk: {error}"),
+            })?;
         }
         if let Err(error) = std::fs::rename(&temporary, &path) {
             let _ = std::fs::remove_file(&temporary);
             return Err(RecordingError::WriteFailed {
                 message: format!("install recovered capture chunk: {error}"),
             });
-        }
-        if let Ok(directory) = File::open(&session_dir) {
-            let _ = directory.sync_all();
         }
         let frame_count = (plaintext.len() / self.bytes_per_frame) as u64;
         let end_frame = start_frame.saturating_add(frame_count);

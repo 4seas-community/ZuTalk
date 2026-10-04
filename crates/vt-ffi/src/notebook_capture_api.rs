@@ -7438,7 +7438,21 @@ impl ZuTalkCore {
         &self,
         session_id: String,
     ) -> Result<FfiNotebookCaptureEvent, CoreError> {
+        let stop_started = std::time::Instant::now();
         let _ownership_guard = self.capture_ownership_gate.lock().unwrap();
+        // Each stop phase is logged with its duration: a stop that seems to
+        // hang on someone's Mac is diagnosed from their rust.log alone.
+        let mut phase_started = std::time::Instant::now();
+        let mut log_phase = |phase: &str| {
+            tracing::info!(
+                session_id = %session_id,
+                phase,
+                elapsed_ms = phase_started.elapsed().as_millis() as u64,
+                "capture stop phase"
+            );
+            phase_started = std::time::Instant::now();
+        };
+        log_phase("wait for capture ownership");
         let (mut active, draining) = {
             let mut guard = self.active_notebook_capture.lock().unwrap();
             let Some(active) = guard
@@ -7489,6 +7503,7 @@ impl ZuTalkCore {
             }
         }
 
+        log_phase("finish transcription");
         let frames = active.journal.captured_frames();
         let journal_path = active.journal.journal_path().to_path_buf();
         let result = match active.journal.stop() {
@@ -7503,6 +7518,7 @@ impl ZuTalkCore {
                 ));
             }
         };
+        log_phase("finalize audio");
         let durability_result = (|| -> Result<(), CoreError> {
             let audio_path = result.encrypted_path.to_string_lossy().into_owned();
             self.notebook_capture_store
@@ -7610,8 +7626,15 @@ impl ZuTalkCore {
                 "stop left ambiguous auxiliary translation facts durably unbound"
             ),
         }
+        log_phase("commit and bind translations");
         let projection_result = self.project_notebook_capture_with_ownership(&active.run_id);
         let retention_result = self.enforce_realtime_capture_retention(&completed_run);
+        log_phase("project transcript");
+        tracing::info!(
+            session_id = %session_id,
+            elapsed_ms = stop_started.elapsed().as_millis() as u64,
+            "capture stop finished"
+        );
 
         let run = self
             .notebook_capture_store
@@ -9526,6 +9549,19 @@ impl ZuTalkCore {
             // releasing only these owners cannot truncate the provider tail.
             drop(tagged_tx);
             drop(discontinuity_tx);
+            if event_task.is_finished() {
+                // The collector already ended — the group died on a provider
+                // or local error and nothing is left to write. A graceful
+                // Finish would only wait out its deadline against lanes that
+                // can no longer deliver to anyone, with "Finishing" on screen.
+                cancel.cancel();
+                return join_cancelled_remote_group(
+                    streams,
+                    event_task,
+                    std::time::Duration::from_secs(1),
+                )
+                .await;
+            }
             let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
             let finish_senders = streams
                 .iter()

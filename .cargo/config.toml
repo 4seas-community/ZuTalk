@@ -5,3 +5,12 @@
 MACOSX_DEPLOYMENT_TARGET = "12.5"
 SCCACHE_BASEDIRS = { value = ".", relative = true, force = true }
 SCCACHE_CACHE_SIZE = "5G"
+
+# Apple Silicon: let `aes` and `polyval` use the ARMv8 crypto instructions.
+# Without these the AES-GCM that seals every captured audio block runs in
+# software at about 140 MB/s; with them about 1.5 GB/s. Stopping a two-hour
+# recording re-seals all of its audio, which took seconds of "Finishing".
+# The release recipe sets RUSTFLAGS, which replaces this table, so the
+# justfile repeats these flags for the arm64 build.
+[target.aarch64-apple-darwin]
+rustflags = ["--cfg", "aes_armv8", "--cfg", "polyval_armv8"]

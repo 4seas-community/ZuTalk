@@ -213,6 +213,42 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         try await store.stop()
     }
 
+    /// The Mac going to sleep ends the recording, saved like Stop, instead
+    /// of leaving a microphone that resumes after wake with captions dead.
+    @MainActor
+    func testTheMacGoingToSleepStopsTheRecording() async throws {
+        let client = FakeNotebookCaptureClient(
+            profile: .localDefault(notebookId: "quick-capture")
+        )
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        let suite = "sleep-stop-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let center = CaptureCommandCenter(
+            capture: store,
+            defaults: defaults,
+            coreProvider: { nil },
+            inviteReady: { false }
+        )
+        try await store.start(notebookId: "quick-capture")
+        XCTAssertTrue(center.canStop)
+
+        center.handleSystemWillSleep()
+
+        let stopped = await waitUntil(timeout: 2) {
+            client.stopCount == 1 && store.isCaptureActive == false
+        }
+        XCTAssertTrue(stopped, "sleep must end the recording through the normal Stop")
+        XCTAssertNil(store.stoppingSince, "a finished stop leaves no saving count behind")
+        center.handleSystemDidWake()
+        // Sleeping again with nothing recording does nothing.
+        center.handleSystemWillSleep()
+        XCTAssertEqual(client.stopCount, 1)
+    }
+
     @MainActor
     func testRecordingOnlyCommitsQueuedProfileWithoutRealtime() async throws {
         let client = FakeNotebookCaptureClient(

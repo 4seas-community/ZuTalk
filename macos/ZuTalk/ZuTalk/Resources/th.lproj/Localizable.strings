@@ -755,6 +755,8 @@
 "capture.state.recording" = "กำลังบันทึก";
 "capture.state.paused" = "หยุดชั่วคราว";
 "capture.state.draining" = "กำลังปิดท้าย";
+"capture.state.saving_recording" = "กำลังจัดเก็บการบันทึก…";
+"capture.state.saving_recording_seconds" = "กำลังจัดเก็บการบันทึก… %lld วินาที";
 "capture.state.audio_drain_delayed" = "ยังกำลังบันทึกไฟล์เสียงในเครื่องอยู่";
 "capture.state.completed" = "เสร็จสิ้น";
 "capture.state.interrupted" = "ถูกขัดจังหวะ";
@@ -1049,6 +1051,7 @@
 "captions_choice.off_hint" = "การบันทึกจะอยู่บน Mac เครื่องนี้เท่านั้น ไม่มีคำบรรยายสด คลิกเพื่อเปิดคำบรรยายสด";
 "captions_choice.unavailable_hint" = "คำบรรยายสดต้องใช้คีย์ Soniox หรือรหัสเชิญ คลิกเพื่อเพิ่มในการตั้งค่า";
 "capture.toast.stopped_saved" = "บันทึกการบันทึกแล้ว (%@)";
+"capture.toast.stopped_by_sleep" = "Mac เข้าสู่โหมดพัก การบันทึกจึงจบและบันทึกไว้แล้ว (%@)";
 "menubar.action.start_recording" = "เริ่มบันทึก";
 "menubar.action.open_main_window" = "เปิด ZuTalk";
 "settings.shortcuts.pause" = "หยุดชั่วคราว / ทำต่อ";
@@ -1106,7 +1109,7 @@
 "share.live.start_failed" = "เริ่มแชร์คำบรรยายไม่ได้";
 "share.live.stop_failed" = "หยุดแชร์ไม่ได้";
 "share.live.stop_note" = "เมื่อหยุด ลิงก์จะใช้ไม่ได้และเนื้อหาบนเซิร์ฟเวอร์จะถูกลบทันที";
-"share.live.stop_note_kept" = "เมื่อหยุด คำบรรยายจะไม่อัปเดตอีก และบทถอดความจะอยู่บนลิงก์ราว 24 ชั่วโมง";
+"share.live.stop_note_kept" = "เมื่อหยุด คำบรรยายจะไม่อัปเดตอีก และบทถอดความจะอยู่บนลิงก์ราว 24 ชั่วโมง หากต้องการเอาลงก่อน กด “เพิกถอน” ใน “แชร์…” ของการบันทึกนี้ หรือใน การตั้งค่า › การแชร์";
 "share.encrypted" = "เข้ารหัสตั้งแต่ต้นทางถึงปลายทาง เซิร์ฟเวอร์แค่ส่งต่อเนื้อหาที่อ่านไม่ออก ใครมีลิงก์ก็ดูได้";
 "share.live.keep" = "เก็บบทถอดความไว้หลังจบ";
 "share.live.keep_on_detail" = "หลังหยุด คนที่มีลิงก์ยังอ่านและดาวน์โหลดบทถอดความฉบับเต็มได้ และจะถูกลบอัตโนมัติหลังราว 24 ชั่วโมง";
@@ -1125,7 +1128,7 @@
 "share.live.other_title" = "กำลังแชร์การบันทึกอื่นอยู่";
 "share.live.other_body" = "แชร์คำบรรยายสดได้ทีละการบันทึก หยุดอันนั้นก่อนแล้วเริ่มที่นี่";
 "share.live.default_title_format" = "คำบรรยายสด · %@";
-"share.live.ended_with_recording_kept" = "การบันทึกจบแล้ว ลิงก์คำบรรยายหยุดอัปเดต บทถอดความจะอยู่บนลิงก์ราว 24 ชั่วโมง";
+"share.live.ended_with_recording_kept" = "การบันทึกจบแล้ว ลิงก์คำบรรยายหยุดอัปเดต บทถอดความจะอยู่บนลิงก์ราว 24 ชั่วโมง หากต้องการเอาลงก่อน กด “เพิกถอน” ใน “แชร์…” ของการบันทึกนี้ หรือใน การตั้งค่า › การแชร์";
 "share.link.copy" = "คัดลอกลิงก์";
 "share.link.copied" = "คัดลอกลิงก์แล้ว";
 "share.link.created_copied" = "สร้างและคัดลอกลิงก์แล้ว";

@@ -755,6 +755,8 @@
 "capture.state.recording" = "녹음";
 "capture.state.paused" = "일시중지됨";
 "capture.state.draining" = "마무리";
+"capture.state.saving_recording" = "녹음 저장 중…";
+"capture.state.saving_recording_seconds" = "녹음 저장 중… %lld초";
 "capture.state.audio_drain_delayed" = "로컬 오디오가 아직 저장 중입니다.";
 "capture.state.completed" = "완료됨";
 "capture.state.interrupted" = "중단됨";
@@ -1049,6 +1051,7 @@
 "captions_choice.off_hint" = "녹음은 이 Mac에만 남고 실시간 자막은 없습니다. 클릭하면 실시간 자막을 켭니다.";
 "captions_choice.unavailable_hint" = "실시간 자막에는 Soniox 키나 초대 코드가 필요합니다. 클릭해 설정에서 추가하세요.";
 "capture.toast.stopped_saved" = "녹음을 저장했습니다(%@)";
+"capture.toast.stopped_by_sleep" = "Mac이 잠자기에 들어가 녹음을 끝내고 저장했습니다(%@)";
 "menubar.action.start_recording" = "녹음 시작";
 "menubar.action.open_main_window" = "ZuTalk 열기";
 "settings.shortcuts.pause" = "일시정지/계속";
@@ -1106,7 +1109,7 @@
 "share.live.start_failed" = "자막 공유를 시작하지 못했어요";
 "share.live.stop_failed" = "공유를 중지하지 못했어요";
 "share.live.stop_note" = "중지하면 링크가 끊기고 서버의 내용은 바로 삭제돼요.";
-"share.live.stop_note_kept" = "중지하면 자막은 더 이상 갱신되지 않고, 전사본은 약 24시간 동안 링크에 남아요.";
+"share.live.stop_note_kept" = "중지하면 자막은 더 이상 갱신되지 않고, 전사본은 약 24시간 동안 링크에 남아요. 더 일찍 내리려면 이 녹음의 ‘공유…’ 또는 설정 › 공유에서 ‘취소’를 누르세요.";
 "share.encrypted" = "종단간 암호화: 서버는 읽을 수 없는 암호문만 전달해요. 링크가 있는 사람은 누구나 볼 수 있어요.";
 "share.live.keep" = "끝난 뒤에도 전사본 남기기";
 "share.live.keep_on_detail" = "중지한 뒤에도 링크가 있는 사람은 전체 전사본을 읽고 내려받을 수 있어요. 약 24시간 뒤 자동으로 삭제돼요.";
@@ -1125,7 +1128,7 @@
 "share.live.other_title" = "다른 녹음을 공유하고 있어요";
 "share.live.other_body" = "실시간 자막은 한 번에 한 녹음만 공유할 수 있어요. 그쪽을 중지한 뒤 여기서 시작하세요.";
 "share.live.default_title_format" = "실시간 자막 · %@";
-"share.live.ended_with_recording_kept" = "녹음이 끝나 자막 링크는 더 이상 갱신되지 않아요. 전사본은 약 24시간 동안 링크에 남아요.";
+"share.live.ended_with_recording_kept" = "녹음이 끝나 자막 링크는 더 이상 갱신되지 않아요. 전사본은 약 24시간 동안 링크에 남아요. 더 일찍 내리려면 이 녹음의 ‘공유…’ 또는 설정 › 공유에서 ‘취소’를 누르세요.";
 "share.link.copy" = "링크 복사";
 "share.link.copied" = "링크를 복사했어요";
 "share.link.created_copied" = "링크를 만들고 복사했어요";

@@ -124,6 +124,7 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
         // actually chose has to happen every launch, or the feature would
         // silently stop working after a restart.
         LanguageModelAssistanceStore.shared.pushToCore()
+        CaptureCommandCenter.shared.endRecordingWhenTheMacSleeps()
 
         // Provider credentials now use the app-private local file. Test hosts
         // must never inspect the signed-in user's real credential profile.
