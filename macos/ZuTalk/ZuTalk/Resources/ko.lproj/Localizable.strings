@@ -124,7 +124,7 @@
 /* General settings section */
 "settings.general.subtitle" = "언어, 모양, 업데이트, 그리고 선택 기능인 표시 정리와 단축키.";
 "settings.audio_input.title" = "오디오 입력";
-"settings.audio_input.subtitle" = "macOS가 인식한 마이크, USB 오디오 인터페이스 또는 믹서를 선택합니다.";
+"settings.audio_input.subtitle" = "macOS가 인식한 마이크, USB 오디오 인터페이스 또는 믹서를 선택하거나, Mac에서 재생되는 소리를 바로 녹음합니다.";
 "settings.audio_input.device" = "입력 기기";
 "settings.audio_input.channel_one_hint" = "이 버전은 선택한 기기의 첫 번째 입력 채널을 녹음합니다.";
 "settings.audio_input.system_default" = "시스템 기본값";
@@ -142,6 +142,10 @@
 "settings.audio_input.active_switch_hint" = "녹음 중에도 입력을 전환할 수 있지만 전환 순간의 짧은 오디오가 누락될 수 있습니다.";
 "settings.audio_input.active_elsewhere" = "다른 녹음이 진행 중입니다. 해당 녹음 페이지에서 입력을 전환하세요.";
 "settings.audio_input.error.switch_unavailable" = "다른 녹음 상태를 전환하는 동안에는 오디오 입력을 변경할 수 없습니다. 잠시 후 다시 시도하세요.";
+"settings.audio_input.system_audio" = "시스템 오디오(회의, 동영상)";
+"settings.audio_input.system_audio_hint" = "온라인 회의 상대방의 목소리처럼 이 Mac에서 재생되는 소리를 녹음합니다. 마이크는 포함하지 않습니다. 처음 사용할 때 macOS가 시스템 오디오 녹음 허용을 요청합니다. 녹음이 계속 무음이면 시스템 설정 › 개인정보 보호 및 보안 › 화면 및 시스템 오디오 녹음에서 ZuTalk를 켜세요.";
+"settings.audio_input.error.system_audio_unsupported" = "시스템 오디오를 녹음하려면 macOS 14.2 이상이 필요합니다.";
+"settings.audio_input.error.system_audio_format" = "ZuTalk가 시스템 오디오를 녹음할 수 없습니다(%1$@, 상태 %2$@).";
 "capture.toast.audio_input_switch_failed" = "오디오 입력을 전환할 수 없습니다";
 "settings.language.title" = "앱 언어";
 "settings.language.hint" = "ZuTalk의 창, 메뉴, 메시지에 사용되는 언어입니다.";

@@ -124,7 +124,7 @@
 /* General settings section */
 "settings.general.subtitle" = "Idioma, apariencia y actualizaciones, además del repaso opcional de marcas y los atajos.";
 "settings.audio_input.title" = "Entrada de audio";
-"settings.audio_input.subtitle" = "Elige un micrófono, una interfaz de audio USB o una mesa reconocida por macOS.";
+"settings.audio_input.subtitle" = "Elige un micrófono, una interfaz de audio USB o una mesa reconocida por macOS, o graba lo que reproduce el propio Mac.";
 "settings.audio_input.device" = "Dispositivo de entrada";
 "settings.audio_input.channel_one_hint" = "Esta versión graba el primer canal de entrada del dispositivo seleccionado.";
 "settings.audio_input.system_default" = "Predeterminado del sistema";
@@ -142,6 +142,10 @@
 "settings.audio_input.active_switch_hint" = "Puedes cambiar la entrada durante la grabación; podría perderse un instante de audio.";
 "settings.audio_input.active_elsewhere" = "Hay otra grabación activa. Cambia la entrada desde su página de grabación.";
 "settings.audio_input.error.switch_unavailable" = "No se puede cambiar la entrada de audio durante otra transición de grabación. Inténtalo de nuevo en unos instantes.";
+"settings.audio_input.system_audio" = "Audio del sistema (reuniones, vídeos)";
+"settings.audio_input.system_audio_hint" = "Graba lo que reproduce este Mac, como el otro lado de una reunión en línea, sin tu micrófono. La primera vez, macOS pide permiso para grabar el audio del sistema; si una grabación queda en silencio, activa ZuTalk en Ajustes del Sistema › Privacidad y seguridad › Grabación de pantalla y audio del sistema.";
+"settings.audio_input.error.system_audio_unsupported" = "Grabar el audio del sistema requiere macOS 14.2 o posterior.";
+"settings.audio_input.error.system_audio_format" = "ZuTalk no puede grabar el audio del sistema (%1$@, estado %2$@).";
 "capture.toast.audio_input_switch_failed" = "No se pudo cambiar la entrada de audio";
 "settings.language.title" = "Idioma de la app";
 "settings.language.hint" = "El idioma de las ventanas, los menús y los mensajes de ZuTalk.";

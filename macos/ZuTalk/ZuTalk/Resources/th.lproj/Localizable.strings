@@ -124,7 +124,7 @@
 /* General settings section */
 "settings.general.subtitle" = "ภาษา รูปลักษณ์ และการอัปเดต รวมถึงการเกลาเครื่องหมาย (ไม่บังคับ) และปุ่มลัด";
 "settings.audio_input.title" = "อินพุตเสียง";
-"settings.audio_input.subtitle" = "เลือกไมโครโฟน อินเทอร์เฟซเสียง USB หรือมิกเซอร์ที่ macOS รู้จัก";
+"settings.audio_input.subtitle" = "เลือกไมโครโฟน อินเทอร์เฟซเสียง USB หรือมิกเซอร์ที่ macOS รู้จัก หรือบันทึกเสียงที่ Mac กำลังเล่นโดยตรง";
 "settings.audio_input.device" = "อุปกรณ์อินพุต";
 "settings.audio_input.channel_one_hint" = "เวอร์ชันนี้บันทึกช่องอินพุตแรกของอุปกรณ์ที่เลือก";
 "settings.audio_input.system_default" = "ค่าเริ่มต้นของระบบ";
@@ -142,6 +142,10 @@
 "settings.audio_input.active_switch_hint" = "สลับอินพุตขณะบันทึกได้ แต่อาจพลาดเสียงช่วงสั้น ๆ ระหว่างการสลับ";
 "settings.audio_input.active_elsewhere" = "มีการบันทึกอื่นกำลังทำงาน โปรดสลับอินพุตจากหน้าการบันทึกนั้น";
 "settings.audio_input.error.switch_unavailable" = "ไม่สามารถเปลี่ยนอินพุตเสียงระหว่างการเปลี่ยนสถานะการบันทึกอื่นได้ โปรดลองอีกครั้งในอีกสักครู่";
+"settings.audio_input.system_audio" = "เสียงระบบ (ประชุม วิดีโอ)";
+"settings.audio_input.system_audio_hint" = "บันทึกเสียงที่ Mac เครื่องนี้เล่น เช่น เสียงของอีกฝ่ายในการประชุมออนไลน์ โดยไม่รวมไมโครโฟนของคุณ ครั้งแรก macOS จะขอให้อนุญาตการบันทึกเสียงระบบ หากบันทึกได้แต่ความเงียบ ให้เปิด ZuTalk ใน การตั้งค่าระบบ › ความเป็นส่วนตัวและความปลอดภัย › การบันทึกหน้าจอและเสียงระบบ";
+"settings.audio_input.error.system_audio_unsupported" = "การบันทึกเสียงระบบต้องใช้ macOS 14.2 ขึ้นไป";
+"settings.audio_input.error.system_audio_format" = "ZuTalk บันทึกเสียงระบบไม่ได้ (%1$@ สถานะ %2$@)";
 "capture.toast.audio_input_switch_failed" = "สลับอินพุตเสียงไม่สำเร็จ";
 "settings.language.title" = "ภาษาของแอป";
 "settings.language.hint" = "ภาษาที่ใช้ในหน้าต่าง เมนู และข้อความของ ZuTalk";

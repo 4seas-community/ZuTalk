@@ -231,7 +231,14 @@ protocol NotebookCaptureAudioSourcing: AnyObject {
 
 @MainActor
 final class LiveNotebookCaptureAudioSource: NotebookCaptureAudioSourcing {
-    private var subscriptions: [NotebookCaptureAudioToken: MicrophoneCapture.SubscriptionToken] = [:]
+    /// Which process-wide owner holds a subscription. A source switch mid-run
+    /// unsubscribes from one and subscribes to the other.
+    private enum SourceToken {
+        case microphone(MicrophoneCapture.SubscriptionToken)
+        case systemAudio(SystemAudioCapture.SubscriptionToken)
+    }
+
+    private var subscriptions: [NotebookCaptureAudioToken: SourceToken] = [:]
     private let inputDevices: AudioInputDeviceStore
     private(set) var preparedInputDevice: AudioInputDevice?
 
@@ -242,6 +249,78 @@ final class LiveNotebookCaptureAudioSource: NotebookCaptureAudioSourcing {
     var selectedInputDeviceUID: String? { inputDevices.selectedUID }
 
     func prepare() async throws {
+        // System audio asks for its own permission when the tap first starts;
+        // a meeting recorded that way needs no microphone access at all.
+        if inputDevices.isSystemAudioSelected == false {
+            try await Self.requireMicrophoneAccess()
+        }
+        preparedInputDevice = try inputDevices.resolveDeviceForCapture()
+    }
+
+    func resolveInputDevice(uid: String?) throws -> AudioInputDevice {
+        let device = try inputDevices.resolveDevice(uid: uid)
+        if device.isSystemAudio == false {
+            switch AVCaptureDevice.authorizationStatus(for: .audio) {
+            case .denied, .restricted:
+                throw RecordingLiveError.microphonePermissionDenied
+            default:
+                break
+            }
+        }
+        return device
+    }
+
+    func commitInputDeviceSelection(uid: String?, device: AudioInputDevice) {
+        inputDevices.select(uid: uid)
+        preparedInputDevice = device
+    }
+
+    func subscribe(
+        inputDevice: AudioInputDevice,
+        onAudio: @escaping @Sendable (Data) -> Void,
+        onOverflow: @escaping @Sendable () -> Void
+    ) throws -> NotebookCaptureAudioToken {
+        let sourceToken: SourceToken
+        if inputDevice.isSystemAudio {
+            sourceToken = .systemAudio(
+                try SystemAudioCapture.shared.subscribe(
+                    onOverflow: onOverflow,
+                    { data, _ in onAudio(data) }
+                )
+            )
+        } else {
+            sourceToken = .microphone(
+                try MicrophoneCapture.shared.subscribe(
+                    inputDevice: inputDevice,
+                    onOverflow: onOverflow,
+                    { data, _ in onAudio(data) }
+                )
+            )
+        }
+        let token = NotebookCaptureAudioToken(id: UUID())
+        subscriptions[token] = sourceToken
+        return token
+    }
+
+    @discardableResult
+    func unsubscribe(_ token: NotebookCaptureAudioToken) -> NotebookCaptureInterruptReason? {
+        guard let sourceToken = subscriptions.removeValue(forKey: token) else { return nil }
+        let terminalReason: MicrophoneCaptureTerminalReason?
+        switch sourceToken {
+        case .microphone(let microphoneToken):
+            terminalReason = MicrophoneCapture.shared.unsubscribe(microphoneToken)
+        case .systemAudio(let systemAudioToken):
+            terminalReason = SystemAudioCapture.shared.unsubscribe(systemAudioToken)
+        }
+        switch terminalReason {
+        case .overflow:
+            return .localAudioOverflow
+        case nil:
+            return nil
+        }
+    }
+
+    private static func requireMicrophoneAccess() async throws {
         let status = AVCaptureDevice.authorizationStatus(for: .audio)
         switch status {
         case .authorized:
@@ -256,42 +335,5 @@ final class LiveNotebookCaptureAudioSource: NotebookCaptureAudioSourcing {
         @unknown default:
             throw RecordingLiveError.microphonePermissionDenied
         }
-        preparedInputDevice = try inputDevices.resolveDeviceForCapture()
-    }
-
-    func resolveInputDevice(uid: String?) throws -> AudioInputDevice {
-        try inputDevices.resolveDevice(uid: uid)
-    }
-
-    func commitInputDeviceSelection(uid: String?, device: AudioInputDevice) {
-        inputDevices.select(uid: uid)
-        preparedInputDevice = device
-    }
-
-    func subscribe(
-        inputDevice: AudioInputDevice,
-        onAudio: @escaping @Sendable (Data) -> Void,
-        onOverflow: @escaping @Sendable () -> Void
-    ) throws -> NotebookCaptureAudioToken {
-        let sourceToken = try MicrophoneCapture.shared.subscribe(
-            inputDevice: inputDevice,
-            onOverflow: onOverflow,
-            { data, _ in onAudio(data) }
-        )
-        let token = NotebookCaptureAudioToken(id: UUID())
-        subscriptions[token] = sourceToken
-        return token
-    }
-
-    @discardableResult
-    func unsubscribe(_ token: NotebookCaptureAudioToken) -> NotebookCaptureInterruptReason? {
-        guard let sourceToken = subscriptions.removeValue(forKey: token) else { return nil }
-        switch MicrophoneCapture.shared.unsubscribe(sourceToken) {
-        case .overflow:
-            return .localAudioOverflow
-        case nil:
-            return nil
-        }
     }
 }
-

@@ -124,7 +124,7 @@
 /* General settings section */
 "settings.general.subtitle" = "Sprache, Darstellung und Updates, dazu das optionale Aufbereiten von Markierungen und die Kurzbefehle.";
 "settings.audio_input.title" = "Audioeingang";
-"settings.audio_input.subtitle" = "Wähle ein von macOS erkanntes Mikrofon, USB-Audiointerface oder Mischpult.";
+"settings.audio_input.subtitle" = "Wähle ein von macOS erkanntes Mikrofon, USB-Audiointerface oder Mischpult – oder nimm auf, was der Mac selbst abspielt.";
 "settings.audio_input.device" = "Eingabegerät";
 "settings.audio_input.channel_one_hint" = "Diese Version nimmt den ersten Eingangskanal des gewählten Geräts auf.";
 "settings.audio_input.system_default" = "Systemstandard";
@@ -142,6 +142,10 @@
 "settings.audio_input.active_switch_hint" = "Der Eingang kann während der Aufnahme gewechselt werden; dabei kann kurz Audio fehlen.";
 "settings.audio_input.active_elsewhere" = "Eine andere Aufnahme läuft. Wechseln Sie den Eingang auf deren Aufnahmeseite.";
 "settings.audio_input.error.switch_unavailable" = "Der Audioeingang kann während eines anderen Aufnahmeübergangs nicht gewechselt werden. Versuchen Sie es gleich erneut.";
+"settings.audio_input.system_audio" = "Systemaudio (Meetings, Videos)";
+"settings.audio_input.system_audio_hint" = "Nimmt auf, was dieser Mac abspielt, etwa die Gegenseite eines Online-Meetings, ohne dein Mikrofon. Beim ersten Mal bittet macOS um die Erlaubnis zur Systemaudioaufnahme; bleibt eine Aufnahme stumm, aktiviere ZuTalk unter Systemeinstellungen › Datenschutz & Sicherheit › Bildschirm- & Systemaudioaufnahme.";
+"settings.audio_input.error.system_audio_unsupported" = "Die Aufnahme von Systemaudio erfordert macOS 14.2 oder neuer.";
+"settings.audio_input.error.system_audio_format" = "ZuTalk kann kein Systemaudio aufnehmen (%1$@, Status %2$@).";
 "capture.toast.audio_input_switch_failed" = "Audioeingang konnte nicht gewechselt werden";
 "settings.language.title" = "App-Sprache";
 "settings.language.hint" = "Die Sprache der Fenster, Menüs und Meldungen von ZuTalk.";

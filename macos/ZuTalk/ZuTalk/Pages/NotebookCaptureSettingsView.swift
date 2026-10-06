@@ -188,6 +188,11 @@ struct NotebookCaptureSettingsView: View {
 
                 Picker("", selection: audioInputSelection) {
                     Text(systemDefaultInputTitle).tag(String?.none)
+                    if inputDevices.isSystemAudioSupported {
+                        Text(String(localized: "settings.audio_input.system_audio"))
+                            .tag(Optional(AudioInputDevice.systemAudioUID))
+                        Divider()
+                    }
                     ForEach(inputDevices.devices) { device in
                         Text(device.name).tag(Optional(device.uid))
                     }
@@ -218,7 +223,7 @@ struct NotebookCaptureSettingsView: View {
             .background(Color.bgSunken.opacity(0.35))
             .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
 
-            Text(String(localized: "settings.audio_input.channel_one_hint"))
+            Text(audioInputHint)
                 .font(.caption)
                 .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -251,6 +256,12 @@ struct NotebookCaptureSettingsView: View {
                 }
             }
         )
+    }
+
+    private var audioInputHint: String {
+        inputDevices.isSystemAudioSelected
+            ? String(localized: "settings.audio_input.system_audio_hint")
+            : String(localized: "settings.audio_input.channel_one_hint")
     }
 
     private var audioInputSelectionDisabled: Bool {

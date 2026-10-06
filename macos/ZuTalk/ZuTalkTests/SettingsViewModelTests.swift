@@ -888,6 +888,70 @@ final class AudioInputDeviceTests: XCTestCase {
         XCTAssertEqual(sampleTime, 123)
     }
 
+    func testSystemAudioChunkerGathersShortIOBuffersIntoWholeBlocks() {
+        let chunker = SystemAudioChunker(chunkFrames: 4)
+        var blocks: [([Float], Int64)] = []
+        let emit: (UnsafePointer<Float>, Int, Int64) -> Void = { block, count, time in
+            blocks.append((Array(UnsafeBufferPointer(start: block, count: count)), time))
+        }
+        let first: [Float] = [1, 2, 3]
+        let second: [Float] = [4, 5, 6]
+        first.withUnsafeBufferPointer {
+            chunker.append($0.baseAddress!, frameCount: 3, stride: 1, sampleTime: 100, emit: emit)
+        }
+        XCTAssertTrue(blocks.isEmpty)
+        second.withUnsafeBufferPointer {
+            chunker.append($0.baseAddress!, frameCount: 3, stride: 1, sampleTime: 103, emit: emit)
+        }
+        XCTAssertEqual(blocks.map(\.0), [[1, 2, 3, 4]])
+        XCTAssertEqual(blocks.map(\.1), [100])
+
+        chunker.flush(emit: emit)
+        XCTAssertEqual(blocks.map(\.0), [[1, 2, 3, 4], [5, 6]])
+        XCTAssertEqual(blocks.map(\.1), [100, 104])
+    }
+
+    func testSystemAudioChunkerClosesThePartialBlockAtATimelineJump() {
+        let chunker = SystemAudioChunker(chunkFrames: 4)
+        var blocks: [([Float], Int64)] = []
+        let emit: (UnsafePointer<Float>, Int, Int64) -> Void = { block, count, time in
+            blocks.append((Array(UnsafeBufferPointer(start: block, count: count)), time))
+        }
+        let interleaved: [Float] = [1, 10, 2, 20]
+        interleaved.withUnsafeBufferPointer {
+            chunker.append($0.baseAddress!, frameCount: 2, stride: 2, sampleTime: 0, emit: emit)
+        }
+        let later: [Float] = [7]
+        later.withUnsafeBufferPointer {
+            chunker.append($0.baseAddress!, frameCount: 1, stride: 1, sampleTime: 50, emit: emit)
+        }
+        chunker.flush(emit: emit)
+        XCTAssertEqual(blocks.map(\.0), [[1, 2], [7]])
+        XCTAssertEqual(blocks.map(\.1), [0, 50])
+    }
+
+    func testSystemAudioResolvesWithoutTheHardwareCatalog() throws {
+        let suiteName = "AudioInputDeviceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let catalog = FakeAudioInputDeviceCatalog(
+            snapshot: AudioInputDeviceSnapshot(devices: [], defaultInputDeviceID: nil)
+        )
+        let store = AudioInputDeviceStore(catalog: catalog, defaults: defaults)
+        store.select(uid: AudioInputDevice.systemAudioUID)
+
+        if SystemAudioCapture.isSupported {
+            XCTAssertTrue(try store.resolveDeviceForCapture().isSystemAudio)
+            XCTAssertFalse(store.isExplicitSelectionUnavailable)
+        } else {
+            XCTAssertThrowsError(try store.resolveDeviceForCapture()) { error in
+                XCTAssertEqual(error as? AudioInputDeviceError, .systemAudioUnsupported)
+            }
+        }
+        XCTAssertEqual(catalog.captureResolutionCallCount, 0)
+        XCTAssertTrue(store.isSystemAudioSelected)
+    }
+
     func testDeviceBindingHappensBeforeReadingFormatAndInstallingTap() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -929,6 +993,10 @@ final class AudioInputDeviceTests: XCTestCase {
             "settings.audio_input.error.audio_unit_format",
             "settings.audio_input.error.binding_format",
             "settings.audio_input.error.switch_unavailable",
+            "settings.audio_input.system_audio",
+            "settings.audio_input.system_audio_hint",
+            "settings.audio_input.error.system_audio_unsupported",
+            "settings.audio_input.error.system_audio_format",
             "capture.toast.audio_input_switch_failed",
         ]
 

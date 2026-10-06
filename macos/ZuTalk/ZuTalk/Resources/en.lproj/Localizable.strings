@@ -124,7 +124,7 @@
 /* General settings section */
 "settings.general.subtitle" = "Language, appearance and updates, plus optional tidying of marks and shortcuts.";
 "settings.audio_input.title" = "Audio input";
-"settings.audio_input.subtitle" = "Choose a microphone, USB audio interface, or mixer recognized by macOS.";
+"settings.audio_input.subtitle" = "Choose a microphone, USB audio interface, or mixer recognized by macOS — or record what the Mac itself plays.";
 "settings.audio_input.device" = "Input device";
 "settings.audio_input.channel_one_hint" = "This version records the first input channel of the selected device.";
 "settings.audio_input.system_default" = "System default";
@@ -142,6 +142,10 @@
 "settings.audio_input.active_switch_hint" = "You can switch inputs while recording; a brief moment of audio may be missed.";
 "settings.audio_input.active_elsewhere" = "Another recording is active. Switch the input from its recording page.";
 "settings.audio_input.error.switch_unavailable" = "The audio input cannot be changed during another recording transition. Try again in a moment.";
+"settings.audio_input.system_audio" = "System audio (meetings, videos)";
+"settings.audio_input.system_audio_hint" = "Records what this Mac plays, such as the other side of an online meeting, without your microphone. The first time, macOS asks to allow system audio recording; if a recording stays silent, turn ZuTalk on in System Settings › Privacy & Security › Screen & System Audio Recording.";
+"settings.audio_input.error.system_audio_unsupported" = "Recording system audio requires macOS 14.2 or later.";
+"settings.audio_input.error.system_audio_format" = "ZuTalk cannot record system audio (%1$@, status %2$@).";
 "capture.toast.audio_input_switch_failed" = "Could not switch audio input";
 "settings.language.title" = "App language";
 "settings.language.hint" = "The language of ZuTalk’s windows, menus and messages.";

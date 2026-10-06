@@ -124,7 +124,7 @@
 /* General settings section */
 "settings.general.subtitle" = "语言、外观、更新，以及可选的整理标记和快捷键。";
 "settings.audio_input.title" = "音频输入";
-"settings.audio_input.subtitle" = "选择 macOS 已识别的麦克风、USB 声卡或调音台。";
+"settings.audio_input.subtitle" = "选择 macOS 已识别的麦克风、USB 声卡或调音台，或直接录 Mac 播放的声音。";
 "settings.audio_input.device" = "输入设备";
 "settings.audio_input.channel_one_hint" = "当前版本录制所选设备的第 1 个输入通道。";
 "settings.audio_input.system_default" = "跟随系统默认";
@@ -142,6 +142,10 @@
 "settings.audio_input.active_switch_hint" = "录音中可以切换；切换瞬间可能漏掉一小段声音。";
 "settings.audio_input.active_elsewhere" = "另一场录音正在进行，请到当前录音页面切换输入。";
 "settings.audio_input.error.switch_unavailable" = "当前正在进行其他录音状态切换，请稍后再切换音频输入。";
+"settings.audio_input.system_audio" = "系统声音（会议、视频）";
+"settings.audio_input.system_audio_hint" = "录制这台 Mac 播放的声音，例如线上会议里对方的发言，不含你的麦克风。第一次使用时 macOS 会请你允许录制系统音频；如果录下来一片静音，请到 系统设置 › 隐私与安全性 › 录屏与系统录音 打开 ZuTalk。";
+"settings.audio_input.error.system_audio_unsupported" = "录制系统声音需要 macOS 14.2 或更新版本。";
+"settings.audio_input.error.system_audio_format" = "ZuTalk 无法录制系统声音（%1$@，状态 %2$@）。";
 "capture.toast.audio_input_switch_failed" = "切换音频输入失败";
 "settings.language.title" = "App 语言";
 "settings.language.hint" = "ZuTalk 的窗口、菜单和提示所使用的语言。";

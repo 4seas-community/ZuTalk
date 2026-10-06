@@ -53,6 +53,8 @@ enum AudioInputDeviceError: Error, Equatable, LocalizedError {
     case audioUnitUnavailable(name: String)
     case bindingFailed(name: String, status: OSStatus)
     case switchUnavailable
+    case systemAudioUnsupported
+    case systemAudioFailed(operation: String, status: OSStatus)
 
     var errorDescription: String? {
         switch self {
@@ -82,6 +84,14 @@ enum AudioInputDeviceError: Error, Equatable, LocalizedError {
             )
         case .switchUnavailable:
             return String(localized: "settings.audio_input.error.switch_unavailable")
+        case .systemAudioUnsupported:
+            return String(localized: "settings.audio_input.error.system_audio_unsupported")
+        case .systemAudioFailed(let operation, let status):
+            return String(
+                format: String(localized: "settings.audio_input.error.system_audio_format"),
+                operation,
+                String(status)
+            )
         }
     }
 }
@@ -390,8 +400,15 @@ final class AudioInputDeviceStore: ObservableObject {
 
     var isExplicitSelectionUnavailable: Bool {
         guard hasLoadedSnapshot, let selectedUID else { return false }
+        if selectedUID == AudioInputDevice.systemAudioUID {
+            return isSystemAudioSupported == false
+        }
         return devices.contains { $0.uid == selectedUID } == false
     }
+
+    var isSystemAudioSupported: Bool { SystemAudioCapture.isSupported }
+
+    var isSystemAudioSelected: Bool { selectedUID == AudioInputDevice.systemAudioUID }
 
     func select(uid: String?) {
         let normalized = uid?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -400,7 +417,10 @@ final class AudioInputDeviceStore: ObservableObject {
 
         if let selectedUID {
             defaults.set(selectedUID, forKey: DefaultsKey.selectedUID)
-            if let name = devices.first(where: { $0.uid == selectedUID })?.name {
+            let name = selectedUID == AudioInputDevice.systemAudioUID
+                ? AudioInputDevice.systemAudio.name
+                : devices.first(where: { $0.uid == selectedUID })?.name
+            if let name {
                 selectedDeviceLastKnownName = name
                 defaults.set(name, forKey: DefaultsKey.selectedName)
             }
@@ -433,6 +453,13 @@ final class AudioInputDeviceStore: ObservableObject {
     func resolveDevice(uid: String?) throws -> AudioInputDevice {
         let trimmedUID = uid?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedUID = trimmedUID?.isEmpty == false ? trimmedUID : nil
+        if normalizedUID == AudioInputDevice.systemAudioUID {
+            guard isSystemAudioSupported else {
+                throw AudioInputDeviceError.systemAudioUnsupported
+            }
+            refreshError = nil
+            return .systemAudio
+        }
         let cachedDevice: AudioInputDevice?
         if let normalizedUID {
             cachedDevice = devices.first { $0.uid == normalizedUID }

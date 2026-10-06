@@ -124,7 +124,7 @@
 /* General settings section */
 "settings.general.subtitle" = "Langue, apparence et mises à jour, ainsi que la mise au propre des marques (facultative) et les raccourcis.";
 "settings.audio_input.title" = "Entrée audio";
-"settings.audio_input.subtitle" = "Choisissez un micro, une interface audio USB ou une console reconnue par macOS.";
+"settings.audio_input.subtitle" = "Choisissez un micro, une interface audio USB ou une console reconnue par macOS — ou enregistrez ce que le Mac lui-même joue.";
 "settings.audio_input.device" = "Périphérique d’entrée";
 "settings.audio_input.channel_one_hint" = "Cette version enregistre le premier canal d’entrée du périphérique sélectionné.";
 "settings.audio_input.system_default" = "Réglage système";
@@ -142,6 +142,10 @@
 "settings.audio_input.active_switch_hint" = "Vous pouvez changer d’entrée pendant l’enregistrement ; un très court passage audio peut être perdu.";
 "settings.audio_input.active_elsewhere" = "Un autre enregistrement est en cours. Changez l’entrée depuis sa page d’enregistrement.";
 "settings.audio_input.error.switch_unavailable" = "L’entrée audio ne peut pas être changée pendant une autre transition d’enregistrement. Réessayez dans un instant.";
+"settings.audio_input.system_audio" = "Son du système (réunions, vidéos)";
+"settings.audio_input.system_audio_hint" = "Enregistre ce que ce Mac joue, par exemple l’autre côté d’une réunion en ligne, sans votre micro. La première fois, macOS demande d’autoriser l’enregistrement audio du système ; si un enregistrement reste silencieux, activez ZuTalk dans Réglages Système › Confidentialité et sécurité › Enregistrement de l’écran et de l’audio du système.";
+"settings.audio_input.error.system_audio_unsupported" = "L’enregistrement du son du système nécessite macOS 14.2 ou une version ultérieure.";
+"settings.audio_input.error.system_audio_format" = "ZuTalk ne peut pas enregistrer le son du système (%1$@, état %2$@).";
 "capture.toast.audio_input_switch_failed" = "Impossible de changer l’entrée audio";
 "settings.language.title" = "Langue de l’app";
 "settings.language.hint" = "La langue des fenêtres, menus et messages de ZuTalk.";
