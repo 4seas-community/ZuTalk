@@ -186,38 +186,7 @@ struct NotebookCaptureSettingsView: View {
 
                 Spacer(minLength: Spacing.sm)
 
-                Picker("", selection: audioInputSelection) {
-                    Text(systemDefaultInputTitle).tag(String?.none)
-                    if inputDevices.isSystemAudioSupported {
-                        Text(String(localized: "settings.audio_input.system_audio"))
-                            .tag(Optional(AudioInputDevice.systemAudioUID))
-                        Divider()
-                    }
-                    ForEach(inputDevices.devices) { device in
-                        Text(device.name).tag(Optional(device.uid))
-                    }
-                    if inputDevices.isExplicitSelectionUnavailable,
-                       let missingUID = inputDevices.selectedUID {
-                        Text(unavailableInputTitle).tag(Optional(missingUID))
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(width: 280, alignment: .trailing)
-                .disabled(audioInputSelectionDisabled)
-                .accessibilityLabel(Text(String(localized: "settings.audio_input.device")))
-
-                Button {
-                    inputDevices.refresh()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.textSecondary)
-                .disabled(capture.isAudioInputSwitching)
-                .help(String(localized: "settings.audio_input.refresh"))
-                .accessibilityLabel(Text(String(localized: "settings.audio_input.refresh")))
+                AudioInputPicker(notebookId: notebookId)
             }
             .padding(Spacing.md)
             .background(Color.bgSunken.opacity(0.35))
@@ -237,60 +206,10 @@ struct NotebookCaptureSettingsView: View {
         }
     }
 
-    private var audioInputSelection: Binding<String?> {
-        Binding(
-            get: { inputDevices.selectedUID },
-            set: { requestedUID in
-                Task { @MainActor in
-                    do {
-                        try await capture.selectAudioInputDevice(
-                            uid: requestedUID,
-                            notebookId: notebookId
-                        )
-                    } catch {
-                        ToastCenter.shared.error(
-                            String(localized: "capture.toast.audio_input_switch_failed"),
-                            detail: error.localizedDescription
-                        )
-                    }
-                }
-            }
-        )
-    }
-
     private var audioInputHint: String {
         inputDevices.isSystemAudioSelected
             ? String(localized: "settings.audio_input.system_audio_hint")
             : String(localized: "settings.audio_input.channel_one_hint")
-    }
-
-    private var audioInputSelectionDisabled: Bool {
-        capture.isAudioInputSwitching
-            || capture.captureState == .draining
-            || (capture.isCaptureActive && capture.notebookId != notebookId)
-    }
-
-    private var systemDefaultInputTitle: String {
-        let resolvedDevice = inputDevices.selectedUID == nil && capture.isCaptureActive
-            ? capture.activeAudioInputDevice
-            : inputDevices.defaultInputDevice
-        guard let name = resolvedDevice?.name else {
-            return String(localized: "settings.audio_input.system_default")
-        }
-        return String(
-            format: String(localized: "settings.audio_input.system_default_format"),
-            name
-        )
-    }
-
-    private var unavailableInputTitle: String {
-        let name = inputDevices.selectedDeviceLastKnownName
-            ?? inputDevices.selectedUID
-            ?? String(localized: "settings.audio_input.device")
-        return String(
-            format: String(localized: "settings.audio_input.unavailable_format"),
-            name
-        )
     }
 
     private var audioInputStatus: (text: String, systemImage: String, color: Color)? {

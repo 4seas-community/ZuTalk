@@ -1179,6 +1179,10 @@
 "record.page.subtitle" = "边说边出字幕和翻译；录完还能整理成精修稿。";
 "record.page.topic" = "归入主题";
 "record.page.topic_detail" = "录进哪个主题，就用那个主题的语言和专有词。不归入也行，录完随时可以归档。";
+"record.page.input" = "声音来源";
+"record.page.input_detail_system_audio" = "录这台 Mac 播放的声音：线上会议里对方的发言、视频。不含你的麦克风。";
+"record.page.input_detail_microphone_or_meeting" = "录麦克风收到的声音：面对面开会、上课、自己说话。要录线上会议里的对方，选「系统声音」。";
+"record.page.input_detail_microphone" = "录麦克风收到的声音：面对面开会、上课、自己说话。";
 "record.page.captions" = "实时字幕";
 "record.page.captions_detail" = "开着时，音频会发给 Soniox 实时转写和翻译；关着只在本机录音。";
 "record.page.captions_needs_key" = "要实时字幕，先在设置里填 Soniox 密钥或社区邀请码。现在只能录音。";

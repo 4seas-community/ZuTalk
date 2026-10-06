@@ -21,6 +21,7 @@ struct RecordStartPage: View {
     @ObservedObject private var commands = CaptureCommandCenter.shared
     @ObservedObject private var navigation = MainNavigationStore.shared
     @ObservedObject private var nearby = NearbyStore.shared
+    @ObservedObject private var inputDevices = AudioInputDeviceStore.shared
     /// 录进哪个主题。nil 是「未归入主题」—— 录完随时可以归档。
     @State private var topicId: String?
     /// 语言选择编辑的就是开始时要用的那一份设置:未归入主题有它自己的一份,
@@ -66,6 +67,12 @@ struct RecordStartPage: View {
             library.loadNotebookWorkspace()
             takePreselectedTopic()
             syncEditor()
+            inputDevices.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification
+        )) { _ in
+            inputDevices.refresh()
         }
         .montereyOnChange(of: navigation.recordTopicPreselection) { _, _ in
             takePreselectedTopic()
@@ -100,6 +107,17 @@ struct RecordStartPage: View {
             }
 
             Divider().padding(.horizontal, Spacing.md)
+
+            // 会议录音还是麦克风录音,开始之前就定:线上会议里对方的声音
+            // 从扬声器出来,麦克风收不到,只能录这台 Mac 播放的声音。
+            if let notebookId {
+                row(title: String(localized: "record.page.input"), detail: inputDetail) {
+                    AudioInputPicker(notebookId: notebookId, width: 260)
+                }
+                .accessibilityIdentifier("record.page.input")
+
+                Divider().padding(.horizontal, Spacing.md)
+            }
 
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 rowTitle(
@@ -152,6 +170,15 @@ struct RecordStartPage: View {
             border: Color.borderSubtle,
             borderWidth: 0.5
         )
+    }
+
+    private var inputDetail: String {
+        if inputDevices.isSystemAudioSelected {
+            return String(localized: "record.page.input_detail_system_audio")
+        }
+        return String(localized: inputDevices.isSystemAudioSupported
+            ? "record.page.input_detail_microphone_or_meeting"
+            : "record.page.input_detail_microphone")
     }
 
     private var captionsDetail: String {

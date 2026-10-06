@@ -1179,6 +1179,10 @@
 "record.page.subtitle" = "Captions and translations as people speak, and a refined transcript afterwards.";
 "record.page.topic" = "Topic";
 "record.page.topic_detail" = "A topic brings its own languages and terms. You can also file the recording later.";
+"record.page.input" = "Sound";
+"record.page.input_detail_system_audio" = "Records what this Mac plays: the other side of an online meeting, a video. Your microphone is not included.";
+"record.page.input_detail_microphone_or_meeting" = "Records what the microphone hears: a meeting in the room, a class, yourself. To capture the other side of an online meeting, choose System audio.";
+"record.page.input_detail_microphone" = "Records what the microphone hears: a meeting in the room, a class, yourself.";
 "record.page.captions" = "Live captions";
 "record.page.captions_detail" = "When on, audio goes to Soniox for live transcription and translation. When off, it only records on this Mac.";
 "record.page.captions_needs_key" = "Live captions need a Soniox key or an invite code in Settings. For now it records only.";

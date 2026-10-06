@@ -199,6 +199,16 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertTrue(record.contains("commands.start(notebookId: notebookId, profileEditor: starter)"))
         XCTAssertTrue(record.contains("CaptionsChoiceChip()"))
         XCTAssertTrue(record.contains("CaptureLanguageEditor(editor: editor)"))
+        // Meeting or microphone is decided before Start, with the same control
+        // a recording's settings show.
+        XCTAssertTrue(record.contains("AudioInputPicker(notebookId: notebookId"))
+        let settings = try String(
+            contentsOf: root.appendingPathComponent("Pages/NotebookCaptureSettingsView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(settings.contains("AudioInputPicker(notebookId: notebookId)"))
+        XCTAssertFalse(settings.contains("selectAudioInputDevice("))
+        XCTAssertFalse(record.contains("selectAudioInputDevice("))
         XCTAssertTrue(record.contains("home.record.start"))
         XCTAssertTrue(record.contains("allowedContentTypes = [.audio]"))
         XCTAssertTrue(record.contains("MainNavigationStore.shared.openLiveRecording()"))

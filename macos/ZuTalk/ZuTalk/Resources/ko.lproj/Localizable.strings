@@ -1179,6 +1179,10 @@
 "record.page.subtitle" = "말하는 동안 자막과 번역이 나오고, 녹음 후에는 정밀 전사본도 만들 수 있어요.";
 "record.page.topic" = "주제";
 "record.page.topic_detail" = "주제에 넣으면 그 주제의 언어와 전문 용어를 써요. 나중에 정리해도 돼요.";
+"record.page.input" = "소리 출처";
+"record.page.input_detail_system_audio" = "이 Mac에서 재생되는 소리를 녹음합니다. 온라인 회의 상대방의 목소리, 동영상 등. 마이크는 포함하지 않습니다.";
+"record.page.input_detail_microphone_or_meeting" = "마이크에 들리는 소리를 녹음합니다. 대면 회의, 수업, 내 목소리 등. 온라인 회의 상대방을 녹음하려면 ‘시스템 오디오’를 선택하세요.";
+"record.page.input_detail_microphone" = "마이크에 들리는 소리를 녹음합니다. 대면 회의, 수업, 내 목소리 등.";
 "record.page.captions" = "실시간 자막";
 "record.page.captions_detail" = "켜면 오디오를 Soniox로 보내 실시간 전사와 번역을 해요. 끄면 이 Mac에서 녹음만 해요.";
 "record.page.captions_needs_key" = "실시간 자막을 쓰려면 설정에서 Soniox 키나 초대 코드를 넣어야 해요. 지금은 녹음만 돼요.";

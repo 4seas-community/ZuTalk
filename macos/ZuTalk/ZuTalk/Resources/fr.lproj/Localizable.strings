@@ -1179,6 +1179,10 @@
 "record.page.subtitle" = "Des sous-titres et des traductions pendant qu’on parle, et une transcription affinée ensuite.";
 "record.page.topic" = "Sujet";
 "record.page.topic_detail" = "Un sujet apporte ses langues et ses termes. Vous pouvez aussi classer l’enregistrement plus tard.";
+"record.page.input" = "Source du son";
+"record.page.input_detail_system_audio" = "Enregistre ce que ce Mac joue : l’autre côté d’une réunion en ligne, une vidéo. Votre micro n’est pas inclus.";
+"record.page.input_detail_microphone_or_meeting" = "Enregistre ce que capte le micro : une réunion sur place, un cours, vous-même. Pour l’autre côté d’une réunion en ligne, choisissez Son du système.";
+"record.page.input_detail_microphone" = "Enregistre ce que capte le micro : une réunion sur place, un cours, vous-même.";
 "record.page.captions" = "Sous-titres en direct";
 "record.page.captions_detail" = "Activé, l’audio est envoyé à Soniox pour la transcription et la traduction en direct. Désactivé, l’enregistrement reste sur ce Mac.";
 "record.page.captions_needs_key" = "Les sous-titres en direct demandent une clé Soniox ou un code d’invitation dans les réglages. Pour l’instant, on enregistre seulement.";

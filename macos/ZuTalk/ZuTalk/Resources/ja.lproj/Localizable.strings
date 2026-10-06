@@ -1179,6 +1179,10 @@
 "record.page.subtitle" = "話すそばから字幕と翻訳が出て、録音後は精度の高い文字起こしにもできます。";
 "record.page.topic" = "トピック";
 "record.page.topic_detail" = "トピックに入れると、そのトピックの言語と用語が使われます。あとで整理することもできます。";
+"record.page.input" = "音声の入力元";
+"record.page.input_detail_system_audio" = "この Mac が再生している音声を録音します。オンライン会議の相手の声や動画など。マイクは含みません。";
+"record.page.input_detail_microphone_or_meeting" = "マイクが拾う音声を録音します。対面の会議、授業、自分の声など。オンライン会議の相手の声を録るには「システム音声」を選んでください。";
+"record.page.input_detail_microphone" = "マイクが拾う音声を録音します。対面の会議、授業、自分の声など。";
 "record.page.captions" = "リアルタイム字幕";
 "record.page.captions_detail" = "オンのときは音声を Soniox に送ってリアルタイムで文字起こしと翻訳をします。オフのときはこの Mac で録音するだけです。";
 "record.page.captions_needs_key" = "リアルタイム字幕には、設定で Soniox キーか招待コードが必要です。今は録音だけになります。";

@@ -1179,6 +1179,10 @@
 "record.page.subtitle" = "Subtítulos y traducciones mientras se habla, y una transcripción refinada después.";
 "record.page.topic" = "Tema";
 "record.page.topic_detail" = "Un tema aporta sus idiomas y términos. También puedes archivar la grabación después.";
+"record.page.input" = "Fuente de sonido";
+"record.page.input_detail_system_audio" = "Graba lo que reproduce este Mac: el otro lado de una reunión en línea, un vídeo. Tu micrófono no se incluye.";
+"record.page.input_detail_microphone_or_meeting" = "Graba lo que capta el micrófono: una reunión presencial, una clase, tu propia voz. Para grabar el otro lado de una reunión en línea, elige Audio del sistema.";
+"record.page.input_detail_microphone" = "Graba lo que capta el micrófono: una reunión presencial, una clase, tu propia voz.";
 "record.page.captions" = "Subtítulos en directo";
 "record.page.captions_detail" = "Si está activado, el audio va a Soniox para transcribir y traducir en directo. Si no, solo se graba en este Mac.";
 "record.page.captions_needs_key" = "Para los subtítulos en directo hace falta una clave de Soniox o un código de invitación en Ajustes. Por ahora solo se graba.";

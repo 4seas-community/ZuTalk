@@ -1179,6 +1179,10 @@
 "record.page.subtitle" = "Untertitel und Übersetzungen, während gesprochen wird – danach ein überarbeitetes Transkript.";
 "record.page.topic" = "Thema";
 "record.page.topic_detail" = "Ein Thema bringt seine Sprachen und Begriffe mit. Sie können die Aufnahme auch später einordnen.";
+"record.page.input" = "Tonquelle";
+"record.page.input_detail_system_audio" = "Nimmt auf, was dieser Mac abspielt: die Gegenseite eines Online-Meetings, ein Video. Dein Mikrofon ist nicht dabei.";
+"record.page.input_detail_microphone_or_meeting" = "Nimmt auf, was das Mikrofon hört: ein Meeting im Raum, eine Vorlesung, dich selbst. Für die Gegenseite eines Online-Meetings wähle Systemaudio.";
+"record.page.input_detail_microphone" = "Nimmt auf, was das Mikrofon hört: ein Meeting im Raum, eine Vorlesung, dich selbst.";
 "record.page.captions" = "Live-Untertitel";
 "record.page.captions_detail" = "Wenn aktiv, geht das Audio zur Live-Transkription und -Übersetzung an Soniox. Sonst wird nur auf diesem Mac aufgenommen.";
 "record.page.captions_needs_key" = "Für Live-Untertitel braucht es in den Einstellungen einen Soniox-Schlüssel oder Einladungscode. Vorerst wird nur aufgenommen.";

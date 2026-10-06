@@ -997,6 +997,10 @@ final class AudioInputDeviceTests: XCTestCase {
             "settings.audio_input.system_audio_hint",
             "settings.audio_input.error.system_audio_unsupported",
             "settings.audio_input.error.system_audio_format",
+            "record.page.input",
+            "record.page.input_detail_system_audio",
+            "record.page.input_detail_microphone_or_meeting",
+            "record.page.input_detail_microphone",
             "capture.toast.audio_input_switch_failed",
         ]
 
