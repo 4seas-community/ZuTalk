@@ -10,8 +10,9 @@ import SwiftUI
 /// recording. These layouts measure their text once per pass, from a cache,
 /// and answer every later probe with arithmetic.
 
-/// One row when everything fits at its natural width, otherwise the identity
-/// on its own line above the details and actions. The choice is the one
+/// One row when everything fits at its natural width; otherwise the identity
+/// on its own line above the details and actions; and when even those two do
+/// not fit side by side, each on its own line. The first two are the choices
 /// `ViewThatFits` made; only the cost differs.
 ///
 /// Subviews, in order: identity, details, actions.
@@ -24,6 +25,12 @@ struct RunHeaderLayout: Layout {
         var ideal: [CGSize]
     }
 
+    private enum Arrangement {
+        case oneRow
+        case identityAbove
+        case stacked
+    }
+
     func makeCache(subviews: Subviews) -> Cache {
         Cache(ideal: subviews.map { $0.sizeThatFits(.unspecified) })
     }
@@ -33,12 +40,25 @@ struct RunHeaderLayout: Layout {
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
-        let oneRowWidth = Self.oneRowWidth(cache.ideal, spacing: spacing)
-        let width = proposal.width ?? oneRowWidth
-        if fitsOneRow(width: width, cache: cache) {
-            return CGSize(width: width, height: cache.ideal.map(\.height).max() ?? 0)
+        guard cache.ideal.count == 3 else {
+            return CGSize(
+                width: proposal.width ?? cache.ideal.map(\.width).reduce(0, +),
+                height: cache.ideal.map(\.height).max() ?? 0
+            )
         }
-        return CGSize(width: width, height: twoRowHeight(cache))
+        let identity = cache.ideal[0], details = cache.ideal[1], actions = cache.ideal[2]
+        let width = proposal.width
+            ?? identity.width + details.width + actions.width + spacing * 3
+        let height: CGFloat
+        switch arrangement(width: width, cache: cache) {
+        case .oneRow:
+            height = max(identity.height, details.height, actions.height)
+        case .identityAbove:
+            height = identity.height + rowSpacing + max(details.height, actions.height)
+        case .stacked:
+            height = identity.height + rowSpacing + details.height + rowSpacing + actions.height
+        }
+        return CGSize(width: width, height: height)
     }
 
     func placeSubviews(
@@ -47,16 +67,15 @@ struct RunHeaderLayout: Layout {
         subviews: Subviews,
         cache: inout Cache
     ) {
-        guard subviews.count == 3 else {
+        guard subviews.count == 3, cache.ideal.count == 3 else {
             for subview in subviews {
                 subview.place(at: bounds.origin, proposal: .unspecified)
             }
             return
         }
-        let identity = cache.ideal[0]
-        let details = cache.ideal[1]
-        let actions = cache.ideal[2]
-        if fitsOneRow(width: bounds.width, cache: cache) {
+        let identity = cache.ideal[0], details = cache.ideal[1], actions = cache.ideal[2]
+        switch arrangement(width: bounds.width, cache: cache) {
+        case .oneRow:
             subviews[0].place(
                 at: CGPoint(x: bounds.minX, y: bounds.midY),
                 anchor: .leading,
@@ -72,40 +91,49 @@ struct RunHeaderLayout: Layout {
                 anchor: .trailing,
                 proposal: ProposedViewSize(details)
             )
-            return
+        case .identityAbove:
+            subviews[0].place(
+                at: CGPoint(x: bounds.minX, y: bounds.minY),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: bounds.width, height: nil)
+            )
+            let rowMidY = bounds.minY + identity.height + rowSpacing
+                + max(details.height, actions.height) / 2
+            subviews[1].place(
+                at: CGPoint(x: bounds.minX, y: rowMidY),
+                anchor: .leading,
+                proposal: ProposedViewSize(details)
+            )
+            subviews[2].place(
+                at: CGPoint(x: bounds.maxX, y: rowMidY),
+                anchor: .trailing,
+                proposal: ProposedViewSize(actions)
+            )
+        case .stacked:
+            var y = bounds.minY
+            for (index, size) in [identity, details, actions].enumerated() {
+                subviews[index].place(
+                    at: CGPoint(x: bounds.minX, y: y),
+                    anchor: .topLeading,
+                    proposal: ProposedViewSize(width: bounds.width, height: nil)
+                )
+                y += size.height + rowSpacing
+            }
         }
-        let firstRowHeight = identity.height
-        subviews[0].place(
-            at: CGPoint(x: bounds.minX, y: bounds.minY),
-            anchor: .topLeading,
-            proposal: ProposedViewSize(width: bounds.width, height: nil)
-        )
-        let secondRowMidY = bounds.minY + firstRowHeight + rowSpacing
-            + max(details.height, actions.height) / 2
-        subviews[1].place(
-            at: CGPoint(x: bounds.minX, y: secondRowMidY),
-            anchor: .leading,
-            proposal: ProposedViewSize(details)
-        )
-        subviews[2].place(
-            at: CGPoint(x: bounds.maxX, y: secondRowMidY),
-            anchor: .trailing,
-            proposal: ProposedViewSize(actions)
-        )
     }
 
-    private func fitsOneRow(width: CGFloat, cache: Cache) -> Bool {
-        // The Spacer the old row had between identity and details.
-        Self.oneRowWidth(cache.ideal, spacing: spacing) + spacing <= width + 0.5
-    }
-
-    private func twoRowHeight(_ cache: Cache) -> CGFloat {
-        guard cache.ideal.count == 3 else { return cache.ideal.map(\.height).max() ?? 0 }
-        return cache.ideal[0].height + rowSpacing + max(cache.ideal[1].height, cache.ideal[2].height)
-    }
-
-    private static func oneRowWidth(_ ideal: [CGSize], spacing: CGFloat) -> CGFloat {
-        ideal.map(\.width).reduce(0, +) + spacing * CGFloat(max(0, ideal.count - 1))
+    private func arrangement(width: CGFloat, cache: Cache) -> Arrangement {
+        let identity = cache.ideal[0], details = cache.ideal[1], actions = cache.ideal[2]
+        // The trailing spacing stands for the Spacer the old row had between
+        // identity and details.
+        let tolerance: CGFloat = 0.5
+        if identity.width + details.width + actions.width + spacing * 3 <= width + tolerance {
+            return .oneRow
+        }
+        if details.width + actions.width + spacing <= width + tolerance {
+            return .identityAbove
+        }
+        return .stacked
     }
 }
 
