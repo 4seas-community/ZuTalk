@@ -1,20 +1,33 @@
-# ZuTalk 0.7.3
+# ZuTalk 0.7.4
 
-Decide before you press Record whether this is an online meeting or a
-conversation in the room.
+ZuTalk stays responsive while it records. In earlier versions a long
+recording kept a whole processor core busy redrawing the live transcript,
+so opening a recording or its settings during a meeting could hang.
 
-ZuTalk requires macOS 12.5 or later. Recording system audio requires
-macOS 14.2 or later.
+ZuTalk requires macOS 12.5 or later.
 
-## Choosing the sound, on the Record page
+## While recording
 
-- **The Record page has a new Sound row,** right under the topic. Pick
-  *System audio (meetings, videos)* to transcribe the other side of a Zoom,
-  Teams or Meet call, or a microphone for a meeting in the room, a class,
-  or your own voice.
-- **The line under it says what the current choice records,** so it is
-  clear at a glance before you start.
-- **It is the same choice as in a recording's settings.** What you pick
-  here is what the recording uses, it is remembered on this Mac for next
-  time, and you can still switch during a recording.
-- Plugging in a USB microphone and coming back to ZuTalk updates the list.
+- **The live transcript no longer redraws itself in the background all
+  meeting long.** Its header used to be measured hundreds of times on every
+  update, and far more with Chinese text than with English. It is now laid
+  out once per update.
+- **The recording clock no longer redraws the whole window every second.**
+  Only the recording bar and the sidebar, which show it, update with it.
+- **A transcript you are not looking at is not laid out.** While you write
+  notes or open settings during a recording, the hidden transcript waits.
+- **Opening a recording's settings is lighter.** The list of microphones is
+  read in the background.
+- **Less disk writing during a recording.** The topic's transcript document
+  is saved at most every 10 seconds instead of after every sentence.
+
+## Stopping
+
+- **Stopping does less work.** Matching the last translations to the
+  transcript used to re-read every translation for each line; it now reads
+  them once. Audio bookkeeping is saved in one step instead of one per
+  minute of audio.
+- **ZuTalk keeps working at full speed until Stop has finished,** even if
+  you switch to another app while it saves.
+- Stopping now records how long each step takes, so a stop that is still
+  slow on your Mac can be traced from its log.
