@@ -702,7 +702,18 @@ impl LibrarySync {
                 }
                 let path =
                     crate::block_document_api::block_document_path(&self.data_dir, doc_id).ok()?;
-                snapshot_vv(&std::fs::read(path).ok()?)
+                let updates =
+                    crate::block_document_api::block_document_updates_path(&self.data_dir, doc_id)
+                        .ok()?;
+                if !updates.exists() {
+                    return snapshot_vv(&std::fs::read(path).ok()?);
+                }
+                // A recording appended changes after the snapshot; the
+                // version is the snapshot's plus theirs.
+                let doc = LoroDoc::new();
+                crate::block_document_api::import_block_document_files(&doc, &path, &updates)
+                    .ok()?;
+                Some(doc.oplog_vv())
             }
             NoteHome::Editor => {
                 if let Some(bytes) = core.editor_bridge.document_version(doc_id) {
@@ -731,8 +742,12 @@ impl LibrarySync {
                 }
                 let path =
                     crate::block_document_api::block_document_path(&self.data_dir, doc_id).ok()?;
+                let updates =
+                    crate::block_document_api::block_document_updates_path(&self.data_dir, doc_id)
+                        .ok()?;
                 let doc = LoroDoc::new();
-                doc.import(&std::fs::read(path).ok()?).ok()?;
+                crate::block_document_api::import_block_document_files(&doc, &path, &updates)
+                    .ok()?;
                 export(&doc)
             }
             NoteHome::Editor => {

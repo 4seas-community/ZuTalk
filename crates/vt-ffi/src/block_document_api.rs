@@ -188,6 +188,107 @@ pub(crate) fn block_document_path(data_dir: &Path, doc_id: &str) -> Result<PathB
     Ok(block_documents_dir(data_dir).join(format!("{doc_id}.loro")))
 }
 
+/// Changes appended since the snapshot was last written in full.
+///
+/// A live recording's transcript projection used to export and rewrite the
+/// topic's whole snapshot for every batch of Finals — megabytes per write,
+/// about 1.5 GB over one long meeting. While a capture is live it appends
+/// only what changed since the last save here instead. Every other save, and
+/// the projection that ends a capture, writes the full snapshot and removes
+/// this file, so it exists only while a recording runs (or after a crash
+/// during one). `doc_id` cannot contain a dot, so the name cannot collide
+/// with another document's snapshot.
+pub(crate) fn block_document_updates_path(
+    data_dir: &Path,
+    doc_id: &str,
+) -> Result<PathBuf, CoreError> {
+    let snapshot = block_document_path(data_dir, doc_id)?;
+    Ok(snapshot.with_extension("loro.updates"))
+}
+
+/// Above this the next live save compacts into a full snapshot instead.
+const UPDATES_COMPACTION_BYTES: u64 = 4 * 1024 * 1024;
+
+/// The version each document had when its files last matched it, keyed by
+/// snapshot path. An append exports the changes since this version; without
+/// an entry the save writes a full snapshot. Importing changes a reader
+/// already has is a no-op in Loro, so an older entry only makes an append
+/// larger, never wrong.
+static LAST_SAVED_VERSION: std::sync::LazyLock<Mutex<HashMap<PathBuf, loro::VersionVector>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn remember_saved_version(path: &Path, version: loro::VersionVector) {
+    LAST_SAVED_VERSION
+        .lock()
+        .unwrap()
+        .insert(path.to_path_buf(), version);
+}
+
+fn saved_version(path: &Path) -> Option<loro::VersionVector> {
+    LAST_SAVED_VERSION.lock().unwrap().get(path).cloned()
+}
+
+/// Imports a document's snapshot and then every complete appended update.
+/// A record cut short by a crash ends the read: it was never acknowledged,
+/// and the next projection writes it again.
+pub(crate) fn import_block_document_files(
+    doc: &LoroDoc,
+    snapshot: &Path,
+    updates: &Path,
+) -> Result<(), String> {
+    let bytes = fs::read(snapshot).map_err(|e| format!("读块文档: {e}"))?;
+    doc.import(&bytes)
+        .map_err(|e| format!("导入块文档快照: {e}"))?;
+    let appended = match fs::read(updates) {
+        Ok(appended) => appended,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("读块文档增量: {error}")),
+    };
+    let mut offset = 0_usize;
+    while offset + 4 <= appended.len() {
+        let length =
+            u32::from_le_bytes(appended[offset..offset + 4].try_into().expect("4 bytes")) as usize;
+        let start = offset + 4;
+        let Some(record) = appended.get(start..start + length) else {
+            break;
+        };
+        if let Err(error) = doc.import(record) {
+            // A record that does not decode is the torn tail of an append;
+            // everything before it is already in.
+            tracing::warn!(%error, "ignored an unreadable block document update record");
+            break;
+        }
+        offset = start + length;
+    }
+    Ok(())
+}
+
+/// Appends `doc`'s changes since `since` to the updates file. Returns false
+/// when there was nothing to append.
+fn append_block_document_updates(
+    doc: &LoroDoc,
+    since: &loro::VersionVector,
+    updates: &Path,
+) -> Result<bool, String> {
+    if since.includes_vv(&doc.oplog_vv()) {
+        return Ok(false);
+    }
+    let record = doc
+        .export(loro::ExportMode::updates(since))
+        .map_err(|e| format!("导出块文档增量: {e}"))?;
+    let length = u32::try_from(record.len()).map_err(|_| "块文档增量过大".to_string())?;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(updates)
+        .map_err(|e| format!("打开块文档增量: {e}"))?;
+    use std::io::Write as _;
+    file.write_all(&length.to_le_bytes())
+        .and_then(|()| file.write_all(&record))
+        .map_err(|e| format!("写块文档增量: {e}"))?;
+    Ok(true)
+}
+
 /// Session 笔记的稳定文档命名空间。
 ///
 /// Session id 来自持久化数据，历史版本并不保证它永远只含 UUID 字符；
@@ -229,11 +330,11 @@ impl ZuTalkCore {
         }
 
         let doc = if path.exists() {
-            let bytes = fs::read(&path).map_err(|e| internal(format!("读块文档: {e}")))?;
             let doc = LoroDoc::new();
             doc.set_record_timestamp(true);
-            doc.import(&bytes)
-                .map_err(|e| internal(format!("导入块文档快照: {e}")))?;
+            let updates = block_document_updates_path(&self.data_dir, &doc_id)?;
+            import_block_document_files(&doc, &path, &updates).map_err(internal)?;
+            remember_saved_version(&path, doc.oplog_vv());
             // 纪元/种类混流在打开时就大声拒绝,不等到分享层。
             if document_kind(&doc) != Some(kind) {
                 return Err(internal(format!(
@@ -564,6 +665,18 @@ impl ZuTalkCore {
         self.editor_bridge.evict(&doc_id);
 
         let path = block_document_path(&self.data_dir, &doc_id)?;
+        let updates = block_document_updates_path(&self.data_dir, &doc_id)?;
+        match fs::remove_file(&updates) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(internal(format!(
+                    "删除 Session 笔记块文档增量 {}: {error}",
+                    updates.display()
+                )))
+            }
+        }
+        LAST_SAVED_VERSION.lock().unwrap().remove(&path);
         match fs::remove_file(&path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -771,6 +884,40 @@ impl ZuTalkCore {
         self.save_block_document(doc_id, handle)
     }
 
+    /// The live capture projection's save: appends what changed since the
+    /// last save instead of rewriting the snapshot, compacting once the
+    /// appended file grows large. Falls back to a full snapshot whenever an
+    /// append is not possible.
+    pub(crate) fn persist_block_document_incrementally(
+        &self,
+        doc_id: &str,
+    ) -> Result<(), CoreError> {
+        let registry = self.block_documents.lock().unwrap();
+        let Some(handle) = registry.get(doc_id) else {
+            return Err(internal(format!("块文档 {doc_id} 未打开")));
+        };
+        let path = block_document_path(&self.data_dir, doc_id)?;
+        let updates = block_document_updates_path(&self.data_dir, doc_id)?;
+        let appended_bytes = fs::metadata(&updates).map(|m| m.len()).unwrap_or(0);
+        if let Some(since) = saved_version(&path)
+            .filter(|_| path.exists() && appended_bytes < UPDATES_COMPACTION_BYTES)
+        {
+            match append_block_document_updates(handle.doc(), &since, &updates) {
+                Ok(appended) => {
+                    if appended {
+                        remember_saved_version(&path, handle.doc().oplog_vv());
+                        self.library_sync_note_changed(doc_id);
+                    }
+                    return Ok(());
+                }
+                Err(error) => {
+                    tracing::warn!(doc_id, %error, "block document append failed; writing a snapshot");
+                }
+            }
+        }
+        self.save_block_document(doc_id, handle)
+    }
+
     fn save_block_document(
         &self,
         doc_id: &str,
@@ -785,7 +932,17 @@ impl ZuTalkCore {
             .doc()
             .export(loro::ExportMode::Snapshot)
             .map_err(|e| internal(format!("导出块文档快照: {e}")))?;
-        fs::write(&path, bytes).map_err(|e| internal(format!("写块文档快照: {e}")))
+        fs::write(&path, bytes).map_err(|e| internal(format!("写块文档快照: {e}")))?;
+        // The snapshot now holds everything the appended updates did. If
+        // removing them fails, re-importing them later is a no-op.
+        let updates = block_document_updates_path(&self.data_dir, doc_id)?;
+        if let Err(error) = fs::remove_file(&updates) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(doc_id, %error, "remove compacted block document updates");
+            }
+        }
+        remember_saved_version(&path, handle.doc().oplog_vv());
+        Ok(())
     }
 }
 
@@ -900,6 +1057,125 @@ mod tests {
         let blocks = core.transcript_blocks("t1".into()).unwrap();
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].text, "一");
+    }
+
+    /// The live capture projection's write, as `transcript_machine_upsert`
+    /// does it but saved by appending.
+    fn upsert_live(core: &ZuTalkCore, doc_id: &str, id: &str, text: &str) {
+        core.with_transcript(doc_id, |projection| {
+            projection
+                .machine_upsert_block(
+                    MachineBlockWrite {
+                        id: id.to_string(),
+                        owner: "capture:s1".to_string(),
+                        text: text.to_string(),
+                        lanes: BTreeMap::new(),
+                    },
+                    &BTreeSet::new(),
+                    None,
+                )
+                .map_err(internal)
+        })
+        .unwrap();
+        core.persist_block_document_incrementally(doc_id).unwrap();
+    }
+
+    fn block_texts(core: &ZuTalkCore, doc_id: &str) -> Vec<String> {
+        core.transcript_blocks(doc_id.into())
+            .unwrap()
+            .into_iter()
+            .map(|block| block.text)
+            .collect()
+    }
+
+    #[test]
+    fn live_saves_append_and_a_crash_recovers_snapshot_plus_appends() {
+        let (dir, core) = core();
+        core.block_document_open("t1".into(), FfiDocumentKind::Transcript)
+            .unwrap();
+        core.transcript_machine_upsert("t1".into(), machine("u1", "一"), vec![])
+            .unwrap();
+        let snapshot = block_document_path(dir.path(), "t1").unwrap();
+        let updates = block_document_updates_path(dir.path(), "t1").unwrap();
+        let snapshot_bytes = fs::read(&snapshot).unwrap();
+
+        upsert_live(&core, "t1", "u2", "二");
+        upsert_live(&core, "t1", "u3", "三");
+        // Saving with nothing new appends nothing.
+        let appended = fs::metadata(&updates).unwrap().len();
+        core.persist_block_document_incrementally("t1").unwrap();
+        assert_eq!(fs::metadata(&updates).unwrap().len(), appended);
+
+        assert_eq!(
+            fs::read(&snapshot).unwrap(),
+            snapshot_bytes,
+            "the snapshot is not rewritten"
+        );
+        assert!(appended > 0 && (appended as usize) < snapshot_bytes.len() * 4);
+
+        // A crash: the process goes away without closing the document.
+        drop(core);
+        let reopened = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        reopened
+            .block_document_open("t1".into(), FfiDocumentKind::Transcript)
+            .unwrap();
+        assert_eq!(block_texts(&reopened, "t1"), ["一", "二", "三"]);
+
+        // Any full save folds the appends into the snapshot.
+        reopened.persist_block_document("t1").unwrap();
+        assert!(!updates.exists());
+        let fresh = LoroDoc::new();
+        fresh.import(&fs::read(&snapshot).unwrap()).unwrap();
+        assert_eq!(fresh.oplog_vv(), {
+            let doc = LoroDoc::new();
+            import_block_document_files(&doc, &snapshot, &updates).unwrap();
+            doc.oplog_vv()
+        });
+    }
+
+    #[test]
+    fn a_torn_final_append_is_ignored_and_earlier_appends_survive() {
+        let (dir, core) = core();
+        core.block_document_open("t1".into(), FfiDocumentKind::Transcript)
+            .unwrap();
+        core.transcript_machine_upsert("t1".into(), machine("u1", "一"), vec![])
+            .unwrap();
+        upsert_live(&core, "t1", "u2", "二");
+        drop(core);
+
+        let updates = block_document_updates_path(dir.path(), "t1").unwrap();
+        let mut file = fs::OpenOptions::new().append(true).open(&updates).unwrap();
+        use std::io::Write as _;
+        // A record header promising more bytes than were written.
+        file.write_all(&1_000_u32.to_le_bytes()).unwrap();
+        file.write_all(b"partial").unwrap();
+        drop(file);
+
+        let reopened = ZuTalkCore::new_for_test(dir.path().to_string_lossy().to_string()).unwrap();
+        reopened
+            .block_document_open("t1".into(), FfiDocumentKind::Transcript)
+            .unwrap();
+        assert_eq!(block_texts(&reopened, "t1"), ["一", "二"]);
+    }
+
+    #[test]
+    fn appended_updates_compact_once_they_grow_large() {
+        let (dir, core) = core();
+        core.block_document_open("t1".into(), FfiDocumentKind::Transcript)
+            .unwrap();
+        core.transcript_machine_upsert("t1".into(), machine("u1", "一"), vec![])
+            .unwrap();
+        let updates = block_document_updates_path(dir.path(), "t1").unwrap();
+        upsert_live(&core, "t1", "u2", "二");
+        assert!(updates.exists());
+        // Pad the appended file past the threshold; the next live save
+        // writes a snapshot instead and removes it.
+        let file = fs::OpenOptions::new().append(true).open(&updates).unwrap();
+        file.set_len(UPDATES_COMPACTION_BYTES + 1).unwrap();
+        drop(file);
+        upsert_live(&core, "t1", "u3", "三");
+        assert!(!updates.exists());
+        assert_eq!(block_texts(&core, "t1"), ["一", "二", "三"]);
     }
 
     #[test]

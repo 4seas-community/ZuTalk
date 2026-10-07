@@ -10861,6 +10861,29 @@ impl ZuTalkCore {
     /// from delta-planned flat text to idempotent block upserts. Until the
     /// shard-4 cutover the block document lives in `block-documents/` next
     /// to the epoch-1 snapshot, keyed by the doc_id the tab will adopt.
+    /// Writes the topic transcript's full snapshot if live projections left
+    /// appended updates beside it. Best effort: the appended updates stay
+    /// readable, so a failure here costs disk, not content.
+    fn compact_realtime_transcript_updates(&self, notebook_id: &str) {
+        let Ok(tab) = self.realtime_transcript_tab(notebook_id) else {
+            return;
+        };
+        let Ok(updates) =
+            crate::block_document_api::block_document_updates_path(&self.data_dir, &tab.doc_id)
+        else {
+            return;
+        };
+        if !updates.exists() {
+            return;
+        }
+        if let Err(error) = self
+            .open_transcript_block_document(&tab.doc_id)
+            .and_then(|()| self.persist_block_document(&tab.doc_id))
+        {
+            tracing::warn!(doc_id = %tab.doc_id, %error, "compact realtime transcript updates");
+        }
+    }
+
     pub(crate) fn sync_capture_into_t2_transcript(
         &self,
         run: &NotebookCaptureRun,
@@ -10882,6 +10905,12 @@ impl ZuTalkCore {
         {
             RealtimeLoroProjectionLoad::Pending(projection) => projection,
             RealtimeLoroProjectionLoad::UpToDate(watermark) => {
+                if complete_projection || !run.capture_state.is_active() {
+                    // Live projections may already have appended every
+                    // change, leaving nothing pending here; fold the
+                    // appended updates into the snapshot all the same.
+                    self.compact_realtime_transcript_updates(&run.notebook_id);
+                }
                 return self.finish_up_to_date_realtime_projection(
                     run,
                     &watermark,
@@ -10909,7 +10938,14 @@ impl ZuTalkCore {
             written = written_blocks,
             "realtime block projection batch"
         );
-        self.persist_block_document(&tab.doc_id)?;
+        // While the capture is live each projection appends only what it
+        // changed; the projection that completes a capture (Stop, recovery)
+        // writes the full snapshot and folds those appends away.
+        if run.capture_state.is_active() && !complete_projection {
+            self.persist_block_document_incrementally(&tab.doc_id)?;
+        } else {
+            self.persist_block_document(&tab.doc_id)?;
+        }
 
         // The upserted snapshot is durable. Advance the SQLite watermark so
         // each Final lane becomes editable — this ACK protocol is shared
@@ -18999,6 +19035,82 @@ pub(crate) mod tests {
         assert_eq!(ffi.source_edit_revision, 0);
         assert_eq!(ffi.language_variants[0].projection_revision, 2);
         assert_eq!(ffi.language_variants[0].edit_revision, 0);
+    }
+
+    #[test]
+    fn live_projections_append_and_stop_folds_them_into_the_snapshot() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core
+            .create_notebook(Some("Appended projections".into()))
+            .unwrap();
+        let profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id.clone(),
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        claim_current_realtime_provider(&core.notebook_capture_store, &started.session_id);
+        let doc_id = core
+            .list_notebook_tabs(notebook.id.clone())
+            .unwrap()
+            .into_iter()
+            .find(|tab| tab.builtin_kind == "realtime_transcript")
+            .unwrap()
+            .doc_id;
+        let snapshot =
+            crate::block_document_api::block_document_path(temp.path(), &doc_id).unwrap();
+        let updates =
+            crate::block_document_api::block_document_updates_path(temp.path(), &doc_id).unwrap();
+
+        for (sequence, text) in ["first line", "second line", "third line"]
+            .iter()
+            .enumerate()
+        {
+            core.notebook_capture_store
+                .upsert_utterance(
+                    &NewRealtimeUtterance {
+                        id: format!("appended-{sequence}"),
+                        session_id: started.session_id.clone(),
+                        sequence: sequence as u64,
+                        session_speaker_id: None,
+                        source_language: "en".into(),
+                        source_text: (*text).into(),
+                        source_start_ms: None,
+                        source_end_ms: None,
+                        translated_language: None,
+                        translated_text: None,
+                        completion: UtteranceCompletion::Complete,
+                        alignment: UtteranceAlignment::SourceOnly,
+                    },
+                    None,
+                )
+                .unwrap();
+            core.project_notebook_realtime_incremental(started.session_id.clone())
+                .unwrap();
+        }
+        // The first live projection had no saved version to append to and
+        // wrote the snapshot; the rest appended.
+        assert!(snapshot.exists());
+        assert!(
+            updates.exists(),
+            "live projections append instead of rewriting"
+        );
+
+        core.stop_notebook_capture_session(started.session_id.clone())
+            .unwrap();
+        assert!(!updates.exists(), "Stop leaves only the full snapshot");
+        let doc = loro::LoroDoc::new();
+        doc.import(&std::fs::read(&snapshot).unwrap()).unwrap();
+        let text = format!("{:?}", doc.get_deep_value());
+        for line in ["first line", "second line", "third line"] {
+            assert!(text.contains(line), "the snapshot alone holds {line:?}");
+        }
     }
 
     #[test]
