@@ -178,12 +178,126 @@ pub struct CaptureAudioJournal {
     key: SessionKey,
     state: Mutex<CaptureAudioJournalState>,
     syncer: JournalSyncer,
+    live_chunks: LiveChunkWriter,
 }
 
 struct CaptureAudioJournalState {
     file: File,
     captured_frames: u64,
     records_since_sync: u64,
+    /// The minute being recorded, in plaintext, until it is full and handed
+    /// to the live chunk writer. Never written to disk as plaintext.
+    minute: Vec<u8>,
+    minute_start_frame: u64,
+    next_chunk_index: usize,
+    /// False once a full minute could not be handed over; Stop then
+    /// finalizes from the journal as it always did.
+    live_chunks_usable: bool,
+}
+
+/// Writes each finished minute of a recording as its final encrypted chunk
+/// while the recording is still running, on its own thread.
+///
+/// Stop used to read the whole journal back, decrypt it and encrypt it again
+/// into minute chunks — work that grew with the recording's length, done
+/// while the person waited. Now those chunks already exist and Stop writes
+/// only the last, partial minute.
+///
+/// The journal is untouched by this: it is still written first, kept until
+/// the database has committed the chunks, and is what a crash recovers from
+/// — recovery rewrites every chunk from it, these included. So this writer
+/// can only fail to save time, never lose audio; any doubt at Stop and the
+/// chunks are rebuilt from the journal as before. The chunks are written by
+/// the same writer recovery uses, at the same minute boundaries.
+struct LiveChunkWriter {
+    sender: Option<std::sync::mpsc::Sender<LiveChunk>>,
+    progress: std::sync::Arc<Mutex<LiveChunkProgress>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+struct LiveChunk {
+    index: usize,
+    start_frame: u64,
+    plaintext: Vec<u8>,
+}
+
+#[derive(Default)]
+struct LiveChunkProgress {
+    written: Vec<RecordingAudioChunk>,
+    failure: Option<String>,
+}
+
+impl LiveChunkWriter {
+    fn start(
+        data_dir: PathBuf,
+        session_id: String,
+        key: SessionKey,
+        sample_rate: u32,
+        bytes_per_frame: usize,
+    ) -> Self {
+        let (sender, chunks) = std::sync::mpsc::channel::<LiveChunk>();
+        let progress = std::sync::Arc::new(Mutex::new(LiveChunkProgress::default()));
+        let thread_progress = progress.clone();
+        let thread = std::thread::Builder::new()
+            .name("zutalk-live-chunks".to_string())
+            .spawn(move || {
+                let writer = RecoveredCaptureChunkWriter {
+                    data_dir: &data_dir,
+                    session_id: &session_id,
+                    key: &key,
+                    sample_rate,
+                    bytes_per_frame,
+                };
+                while let Ok(chunk) = chunks.recv() {
+                    let result = writer.write(&chunk.plaintext, chunk.start_frame, chunk.index);
+                    let Ok(mut progress) = thread_progress.lock() else {
+                        break;
+                    };
+                    match result {
+                        Ok(written) => progress.written.push(written),
+                        Err(error) => {
+                            progress.failure = Some(error.to_string());
+                            break;
+                        }
+                    }
+                }
+            })
+            .ok();
+        Self {
+            sender: thread.as_ref().map(|_| sender),
+            progress,
+            thread,
+        }
+    }
+
+    /// False when the writer is gone; the caller stops handing it minutes.
+    fn submit(&self, chunk: LiveChunk) -> bool {
+        self.sender
+            .as_ref()
+            .is_some_and(|sender| sender.send(chunk).is_ok())
+    }
+
+    /// Waits for every handed-over minute to be written.
+    fn finish(&mut self) -> LiveChunkProgress {
+        self.sender.take();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        self.progress
+            .lock()
+            .map(|mut progress| std::mem::take(&mut *progress))
+            .unwrap_or_else(|_| LiveChunkProgress {
+                written: Vec::new(),
+                failure: Some("live chunk progress poisoned".to_string()),
+            })
+    }
+}
+
+impl Drop for LiveChunkWriter {
+    fn drop(&mut self) {
+        // Detach: an abandoned capture's journal is what recovery uses.
+        self.sender.take();
+    }
 }
 
 /// Flushes the journal to stable storage on its own thread.
@@ -292,6 +406,16 @@ impl CaptureAudioJournal {
                 message: format!("clone capture journal for flushing: {error}"),
             })?;
 
+        let bytes_per_frame =
+            config.channels.max(1) as usize * StoredSampleFormat::S16.bytes_per_sample();
+        let live_chunks = LiveChunkWriter::start(
+            config.data_dir.clone(),
+            session_id.clone(),
+            SessionKey::from_bytes(*key.as_bytes()),
+            config.sample_rate,
+            bytes_per_frame,
+        );
+        let minute_bytes = chunk_byte_limit(config.sample_rate, bytes_per_frame);
         Ok(Self {
             session_id,
             config,
@@ -301,8 +425,13 @@ impl CaptureAudioJournal {
                 file,
                 captured_frames: 0,
                 records_since_sync: 0,
+                minute: Vec::with_capacity(minute_bytes),
+                minute_start_frame: 0,
+                next_chunk_index: 0,
+                live_chunks_usable: true,
             }),
             syncer: JournalSyncer::start(sync_handle),
+            live_chunks,
         })
     }
 
@@ -391,45 +520,244 @@ impl CaptureAudioJournal {
             self.syncer.request();
             state.records_since_sync = 0;
         }
+        // Only frames already in the journal reach a live chunk, so a chunk
+        // never holds audio a crash recovery would not also find.
+        if state.live_chunks_usable {
+            self.buffer_live_minute(&mut state, pcm, bytes_per_frame);
+        }
         Ok(())
     }
 
-    pub fn stop(mut self) -> Result<RecordingResult, RecordingError> {
-        self.syncer.finish();
-        {
-            let mut state = self
-                .state
-                .into_inner()
-                .map_err(|_| RecordingError::WriteFailed {
-                    message: "capture journal mutex poisoned".to_string(),
-                })?;
-            state
-                .file
-                .flush()
-                .and_then(|_| state.file.sync_all())
-                .map_err(|error| RecordingError::WriteFailed {
-                    message: error.to_string(),
-                })?;
+    fn buffer_live_minute(
+        &self,
+        state: &mut CaptureAudioJournalState,
+        pcm: &[u8],
+        bytes_per_frame: usize,
+    ) {
+        let limit = chunk_byte_limit(self.config.sample_rate, bytes_per_frame);
+        let mut offset = 0_usize;
+        while offset < pcm.len() {
+            let take = (limit - state.minute.len()).min(pcm.len() - offset);
+            state.minute.extend_from_slice(&pcm[offset..offset + take]);
+            offset += take;
+            if state.minute.len() == limit {
+                let plaintext = std::mem::replace(&mut state.minute, Vec::with_capacity(limit));
+                let chunk = LiveChunk {
+                    index: state.next_chunk_index,
+                    start_frame: state.minute_start_frame,
+                    plaintext,
+                };
+                if !self.live_chunks.submit(chunk) {
+                    state.live_chunks_usable = false;
+                    state.minute = Vec::new();
+                    return;
+                }
+                state.next_chunk_index += 1;
+                state.minute_start_frame = state
+                    .minute_start_frame
+                    .saturating_add((limit / bytes_per_frame) as u64);
+            }
         }
+    }
 
-        let recovered = recover_capture_audio_journal(
-            &self.journal_path,
-            &self.config.data_dir,
-            &self.session_id,
-            &self.key,
-            self.config.sample_rate,
-            self.config.channels,
-        )?;
+    pub fn stop(self) -> Result<RecordingResult, RecordingError> {
+        let Self {
+            session_id,
+            config,
+            journal_path,
+            key,
+            state,
+            mut syncer,
+            mut live_chunks,
+        } = self;
+        syncer.finish();
+        let live = live_chunks.finish();
+        let CaptureAudioJournalState {
+            mut file,
+            captured_frames,
+            minute,
+            minute_start_frame,
+            next_chunk_index,
+            live_chunks_usable,
+            ..
+        } = state
+            .into_inner()
+            .map_err(|_| RecordingError::WriteFailed {
+                message: "capture journal mutex poisoned".to_string(),
+            })?;
+        file.flush()
+            .and_then(|_| file.sync_all())
+            .map_err(|error| RecordingError::WriteFailed {
+                message: error.to_string(),
+            })?;
+        drop(file);
+
+        let recovered = if live_chunks_usable {
+            match finish_live_chunks(
+                &config,
+                &session_id,
+                &key,
+                live,
+                LiveTail {
+                    minute,
+                    minute_start_frame,
+                    next_chunk_index,
+                    captured_frames,
+                },
+            ) {
+                Ok(recovered) => Some(recovered),
+                Err(error) => {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        %error,
+                        "live audio chunks unusable at stop; finalizing from the journal"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let recovered = match recovered {
+            Some(recovered) => recovered,
+            None => recover_capture_audio_journal(
+                &journal_path,
+                &config.data_dir,
+                &session_id,
+                &key,
+                config.sample_rate,
+                config.channels,
+            )?,
+        };
         Ok(RecordingResult {
             session_id: recovered.session_id,
             encrypted_path: recovered.encrypted_path,
             audio_chunks: recovered.audio_chunks,
-            encryption_key: self.key,
+            encryption_key: key,
             duration_ms: recovered.duration_ms,
             sample_rate: recovered.sample_rate,
             channels: recovered.channels,
             sample_format: recovered.sample_format,
         })
+    }
+}
+
+/// What the journal held after the last full minute.
+struct LiveTail {
+    minute: Vec<u8>,
+    minute_start_frame: u64,
+    next_chunk_index: usize,
+    captured_frames: u64,
+}
+
+/// Completes the chunks written during the recording with the last partial
+/// minute, after checking they account for exactly the frames the journal
+/// holds. Any mismatch is an error, and the caller rebuilds from the journal.
+fn finish_live_chunks(
+    config: &RecordingConfig,
+    session_id: &str,
+    key: &SessionKey,
+    live: LiveChunkProgress,
+    tail: LiveTail,
+) -> Result<RecoveredCaptureAudio, RecordingError> {
+    if let Some(failure) = live.failure {
+        return Err(RecordingError::WriteFailed { message: failure });
+    }
+    let bytes_per_frame =
+        config.channels.max(1) as usize * StoredSampleFormat::S16.bytes_per_sample();
+    let frames_per_chunk =
+        (chunk_byte_limit(config.sample_rate, bytes_per_frame) / bytes_per_frame) as u64;
+    let mut chunks = live.written;
+    let in_order = chunks.len() == tail.next_chunk_index
+        && chunks.iter().enumerate().all(|(index, chunk)| {
+            chunk.path == session_audio_chunk_path(&config.data_dir, session_id, index)
+                && chunk.path.exists()
+        });
+    let accounted = (tail.next_chunk_index as u64)
+        .saturating_mul(frames_per_chunk)
+        .saturating_add((tail.minute.len() / bytes_per_frame) as u64);
+    if !in_order
+        || accounted != tail.captured_frames
+        || tail.minute_start_frame != (tail.next_chunk_index as u64) * frames_per_chunk
+    {
+        return Err(RecordingError::WriteFailed {
+            message: format!(
+                "live chunks cover {accounted} of {} frames in {} of {} chunks",
+                tail.captured_frames,
+                chunks.len(),
+                tail.next_chunk_index
+            ),
+        });
+    }
+    let writer = RecoveredCaptureChunkWriter {
+        data_dir: &config.data_dir,
+        session_id,
+        key,
+        sample_rate: config.sample_rate,
+        bytes_per_frame,
+    };
+    if !tail.minute.is_empty() || chunks.is_empty() {
+        chunks.push(writer.write(&tail.minute, tail.minute_start_frame, chunks.len())?);
+    }
+    remove_chunks_from(&config.data_dir, session_id, chunks.len());
+    seal_chunks(&config.data_dir, session_id, &chunks)?;
+    Ok(RecoveredCaptureAudio {
+        session_id: session_id.to_string(),
+        encrypted_path: chunks[0].path.clone(),
+        duration_ms: duration_ms(tail.captured_frames, config.sample_rate),
+        sample_rate: config.sample_rate,
+        channels: config.channels,
+        captured_frames: tail.captured_frames,
+        sample_format: StoredSampleFormat::S16,
+        audio_chunks: chunks,
+    })
+}
+
+fn chunk_byte_limit(sample_rate: u32, bytes_per_frame: usize) -> usize {
+    let frames_per_chunk = sample_rate.max(1) as usize * 60;
+    (frames_per_chunk * bytes_per_frame).max(bytes_per_frame)
+}
+
+fn duration_ms(frames: u64, sample_rate: u32) -> u64 {
+    if sample_rate > 0 {
+        frames.saturating_mul(1000) / sample_rate as u64
+    } else {
+        0
+    }
+}
+
+/// One flush of the drive's own cache makes every chunk, and the renames
+/// that installed them, durable together.
+fn seal_chunks(
+    data_dir: &Path,
+    session_id: &str,
+    chunks: &[RecordingAudioChunk],
+) -> Result<(), RecordingError> {
+    if let Some(last) = chunks.last() {
+        File::open(&last.path)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| RecordingError::WriteFailed {
+                message: format!("sync recovered capture chunks: {error}"),
+            })?;
+    }
+    if let Ok(directory) = File::open(session_audio_dir(data_dir, session_id)) {
+        let _ = directory.sync_all();
+    }
+    Ok(())
+}
+
+/// Chunks past the end of what the journal holds can only be left from a
+/// power loss that kept a live chunk the journal had not yet reached the
+/// disk with. Nothing refers to them; they are this session's audio, so
+/// they go.
+fn remove_chunks_from(data_dir: &Path, session_id: &str, first_unused: usize) {
+    let mut index = first_unused;
+    loop {
+        let path = session_audio_chunk_path(data_dir, session_id, index);
+        match std::fs::remove_file(&path) {
+            Ok(()) => index += 1,
+            Err(_) => break,
+        }
     }
 }
 
@@ -489,8 +817,7 @@ pub fn recover_capture_audio_journal(
     };
 
     let bytes_per_frame = channels.max(1) as usize * sample_format.bytes_per_sample();
-    let frames_per_chunk = sample_rate.max(1) as usize * 60;
-    let chunk_byte_limit = (frames_per_chunk * bytes_per_frame).max(bytes_per_frame);
+    let chunk_byte_limit = chunk_byte_limit(sample_rate, bytes_per_frame);
     let mut chunk_plaintext = Vec::with_capacity(chunk_byte_limit);
     let mut audio_chunks = Vec::new();
     let mut captured_frames = 0_u64;
@@ -565,27 +892,15 @@ pub fn recover_capture_audio_journal(
             audio_chunks.len(),
         )?);
     }
+    remove_chunks_from(data_dir, session_id, audio_chunks.len());
     // One flush of the drive's own cache makes every chunk above, and the
     // renames that installed them, durable together. Flushing per chunk
     // (twice: file and directory) cost two full cache flushes a minute of
     // audio — over a second of "Finishing" for a two-hour recording. The
     // journal is kept until the caller has committed these chunks, so a
     // crash before this point recovers from the journal again.
-    if let Some(last) = audio_chunks.last() {
-        File::open(&last.path)
-            .and_then(|file| file.sync_all())
-            .map_err(|error| RecordingError::WriteFailed {
-                message: format!("sync recovered capture chunks: {error}"),
-            })?;
-    }
-    if let Ok(directory) = File::open(session_audio_dir(data_dir, session_id)) {
-        let _ = directory.sync_all();
-    }
-    let duration_ms = if sample_rate > 0 {
-        captured_frames.saturating_mul(1000) / sample_rate as u64
-    } else {
-        0
-    };
+    seal_chunks(data_dir, session_id, &audio_chunks)?;
+    let duration_ms = duration_ms(captured_frames, sample_rate);
     let encrypted_path = audio_chunks
         .first()
         .map(|chunk| chunk.path.clone())
@@ -957,6 +1272,134 @@ mod tests {
         assert_eq!(recovered.audio_chunks[1].start_ms, 60_000);
         assert_eq!(recovered.audio_chunks[1].end_ms, 61_000);
         assert!(journal_path.exists());
+    }
+
+    fn read_chunks(chunks: &[RecordingAudioChunk], key: &SessionKey) -> Vec<Vec<u8>> {
+        chunks
+            .iter()
+            .map(|chunk| {
+                let mut plaintext = Vec::new();
+                DecryptReader::new(&chunk.path, key)
+                    .unwrap()
+                    .read_to_end(&mut plaintext)
+                    .unwrap();
+                plaintext
+            })
+            .collect()
+    }
+
+    /// 2 minutes and 17 seconds at 100 Hz, pushed in 37-frame callbacks so
+    /// pushes straddle every minute boundary; each sample is distinct.
+    fn record_two_and_a_bit_minutes(journal: &CaptureAudioJournal) -> Vec<u8> {
+        let total_frames = 100 * 137;
+        let audio: Vec<u8> = (0..total_frames)
+            .flat_map(|frame| (frame as i16).to_le_bytes())
+            .collect();
+        for push in audio.chunks(37 * 2) {
+            journal.push_s16_pcm(push).unwrap();
+        }
+        audio
+    }
+
+    fn start_small(tmp: &TempDir, session: &str, key_bytes: [u8; 32]) -> CaptureAudioJournal {
+        CaptureAudioJournal::start(
+            session.to_string(),
+            RecordingConfig {
+                data_dir: tmp.path().to_path_buf(),
+                sample_rate: 100,
+                channels: 1,
+            },
+            SessionKey::from_bytes(key_bytes),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn minutes_written_during_recording_match_a_recovery_from_the_journal_exactly() {
+        let tmp = TempDir::new().unwrap();
+        let key_bytes = *SessionKey::generate().as_bytes();
+        let journal = start_small(&tmp, "live", key_bytes);
+        let audio = record_two_and_a_bit_minutes(&journal);
+        let journal_path = journal.journal_path().to_path_buf();
+        let result = journal.stop().unwrap();
+
+        assert_eq!(result.duration_ms, 137_000);
+        assert_eq!(result.audio_chunks.len(), 3);
+        let live = read_chunks(&result.audio_chunks, &result.encryption_key);
+        assert_eq!(live.concat(), audio, "no sample lost, moved or duplicated");
+
+        // The journal is still the source of truth, and rebuilding from it
+        // gives the same chunks, boundaries and bytes.
+        let recovered = recover_capture_audio_journal(
+            &journal_path,
+            tmp.path(),
+            "live",
+            &result.encryption_key,
+            100,
+            1,
+        )
+        .unwrap();
+        assert_eq!(recovered.audio_chunks, result.audio_chunks);
+        assert_eq!(
+            read_chunks(&recovered.audio_chunks, &result.encryption_key),
+            live
+        );
+    }
+
+    #[test]
+    fn a_failed_live_minute_falls_back_to_the_journal_without_losing_audio() {
+        let tmp = TempDir::new().unwrap();
+        let key_bytes = *SessionKey::generate().as_bytes();
+        // A directory where the second minute's chunk must go makes its
+        // rename fail mid-recording.
+        let blocked = session_audio_chunk_path(tmp.path(), "blocked", 1);
+        std::fs::create_dir_all(blocked.join("in-the-way")).unwrap();
+        let journal = start_small(&tmp, "blocked", key_bytes);
+        let audio = record_two_and_a_bit_minutes(&journal);
+        std::fs::remove_dir_all(&blocked).unwrap();
+        let result = journal.stop().unwrap();
+
+        assert_eq!(result.audio_chunks.len(), 3);
+        let chunks = read_chunks(&result.audio_chunks, &result.encryption_key);
+        assert_eq!(chunks.concat(), audio);
+    }
+
+    #[test]
+    fn a_chunk_beyond_what_the_journal_holds_is_removed_at_stop() {
+        let tmp = TempDir::new().unwrap();
+        let key_bytes = *SessionKey::generate().as_bytes();
+        let journal = start_small(&tmp, "stray", key_bytes);
+        let stray = session_audio_chunk_path(tmp.path(), "stray", 3);
+        std::fs::write(&stray, b"left by a power loss").unwrap();
+        record_two_and_a_bit_minutes(&journal);
+        let result = journal.stop().unwrap();
+
+        assert_eq!(result.audio_chunks.len(), 3);
+        assert!(!stray.exists());
+    }
+
+    #[test]
+    fn a_recording_shorter_than_a_minute_still_ends_in_one_chunk() {
+        let tmp = TempDir::new().unwrap();
+        let key_bytes = *SessionKey::generate().as_bytes();
+        let journal = start_small(&tmp, "short", key_bytes);
+        journal.push_s16_pcm(&[1, 0, 2, 0, 3, 0]).unwrap();
+        let result = journal.stop().unwrap();
+        assert_eq!(result.audio_chunks.len(), 1);
+        assert_eq!(result.duration_ms, 30);
+        assert_eq!(
+            read_chunks(&result.audio_chunks, &result.encryption_key).concat(),
+            [1, 0, 2, 0, 3, 0]
+        );
+
+        let silent = start_small(&tmp, "silent", key_bytes);
+        let result = silent.stop().unwrap();
+        assert_eq!(
+            result.audio_chunks.len(),
+            1,
+            "an empty recording still has its chunk"
+        );
+        assert_eq!(result.duration_ms, 0);
     }
 
     #[test]
