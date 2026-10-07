@@ -1659,6 +1659,39 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
     }
 
+    func testRealtimeProjectionSchedulerSpacesStartsByTheMinimumInterval() {
+        // Each run rewrites the topic's whole transcript document. A Final
+        // every few seconds made that 1.5 GB of writes in one long meeting.
+        let scheduler = NotebookRealtimeProjectionScheduler(minimumInterval: 0.3)
+        let first = expectation(description: "first projection ran")
+        let second = expectation(description: "throttled projection ran")
+        let runs = FakeAudioPushRecorder()
+        let startedAt = Date()
+        final class Elapsed: @unchecked Sendable { var seconds: TimeInterval = 0 }
+        let secondStartedAfter = Elapsed()
+        let projection: NotebookRealtimeProjectionScheduler.Projection = { _ in
+            runs.record()
+            if runs.value == 1 {
+                first.fulfill()
+            } else {
+                secondStartedAfter.seconds = Date().timeIntervalSince(startedAt)
+                second.fulfill()
+            }
+        }
+
+        scheduler.schedule(sessionId: "session-a", projection: projection)
+        wait(for: [first], timeout: 1)
+        for _ in 0..<10 {
+            scheduler.schedule(sessionId: "session-a", projection: projection)
+        }
+        wait(for: [second], timeout: 2)
+        // Let anything else that might have been queued run.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+
+        XCTAssertEqual(runs.value, 2, "a burst of wakes inside the interval is one more run")
+        XCTAssertGreaterThanOrEqual(secondStartedAfter.seconds, 0.29)
+    }
+
     func testRealtimeProjectionSchedulerRetriesTransientFailureWithoutAnotherWake() {
         let scheduler = NotebookRealtimeProjectionScheduler(
             maximumFastRetries: 3,
@@ -3239,6 +3272,36 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(navigation.activeTab, .editor)
         XCTAssertTrue(capture.isCaptureActive)
         try await capture.stop()
+    }
+
+    @MainActor
+    func testRecordingClockTicksWithoutRepublishingTheCaptureStore() async throws {
+        // Every view observing the capture store — the realtime page among
+        // them, hidden or not — used to re-lay out once a second for a clock
+        // only the recording bar and sidebar show.
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource(),
+            elapsedTimerInterval: 0.01
+        )
+        store.loadProfile(notebookId: "notebook-a")
+        try await store.start(notebookId: "notebook-a")
+        try await Task.sleep(nanoseconds: 30_000_000)
+
+        var storeChanges = 0
+        var clockChanges = 0
+        let storeSubscription = store.objectWillChange.sink { storeChanges += 1 }
+        let clockSubscription = store.clock.objectWillChange.sink { clockChanges += 1 }
+        try await Task.sleep(nanoseconds: 120_000_000)
+        storeSubscription.cancel()
+        clockSubscription.cancel()
+
+        XCTAssertGreaterThan(clockChanges, 3)
+        XCTAssertEqual(storeChanges, 0)
+        XCTAssertEqual(store.elapsedRecordingTime, store.clock.elapsed)
+
+        try await store.stop()
     }
 
     @MainActor
@@ -8268,9 +8331,17 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             captureViews.components(
                 separatedBy: "MontereyHorizontalViewThatFits"
             ).count - 1,
-            2,
-            "Context Pack controls and recording history headers must keep a Monterey fallback"
+            1,
+            "Context Pack controls must keep a Monterey fallback"
         )
+        // The run header is re-laid out on every capture publish inside stacks
+        // that probe it at many widths. A ViewThatFits there shaped both
+        // candidates' CJK text once per probe — hundreds of times per update,
+        // a whole core for the whole recording. RunHeaderLayout measures once
+        // per pass, and Monterey (no Layout) keeps the two-row fallback.
+        XCTAssertTrue(realtimeTranscriptView.contains("RunHeaderLayout("))
+        XCTAssertFalse(realtimeTranscriptView.contains("MontereyHorizontalViewThatFits"))
+        XCTAssertTrue(realtimeTranscriptView.contains("if #available(macOS 13.0, *)"))
         XCTAssertTrue(captureViews.contains(".textSelection(.enabled)"))
         XCTAssertTrue(captureViews.contains(".help(message)"))
         XCTAssertTrue(captureViews.contains("onReplace(target.laneLanguage"))

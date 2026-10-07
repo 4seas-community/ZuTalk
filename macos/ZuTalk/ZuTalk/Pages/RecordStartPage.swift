@@ -67,12 +67,12 @@ struct RecordStartPage: View {
             library.loadNotebookWorkspace()
             takePreselectedTopic()
             syncEditor()
-            inputDevices.refresh()
+            inputDevices.refreshInBackground()
         }
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didBecomeActiveNotification
         )) { _ in
-            inputDevices.refresh()
+            inputDevices.refreshInBackground()
         }
         .montereyOnChange(of: navigation.recordTopicPreselection) { _, _ in
             takePreselectedTopic()

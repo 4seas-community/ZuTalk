@@ -119,6 +119,8 @@ struct RecordingBar: View {
     var compact = false
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var livePresentation = ActiveBilingualTranscriptStore.shared.livePresentation
+    /// The bar shows the clock; the capture store no longer ticks with it.
+    @ObservedObject private var clock = ActiveBilingualTranscriptStore.shared.clock
     @ObservedObject private var commands = CaptureCommandCenter.shared
     @State private var topicTitle: String?
     @State private var markTick = Date()

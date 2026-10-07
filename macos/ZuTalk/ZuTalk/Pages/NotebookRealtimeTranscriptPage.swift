@@ -11,60 +11,17 @@ struct NotebookRealtimeTranscriptPage: View {
     /// A non-nil id is a hard presentation boundary, never a timeline focus.
     let sessionId: String?
     @ObservedObject var editor: NotebookCaptureProfileEditorModel
+    /// The page stays mounted under notes and settings so it keeps its
+    /// history and tasks, but while a recording runs a hidden page has no
+    /// reason to lay out a transcript nobody sees on every publish.
+    var isVisible = true
     @StateObject private var history = NotebookCaptureHistoryStore()
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var subtitleOverlay = SubtitleOverlayCoordinator.shared
     @ObservedObject private var marks = SessionMarkStore.shared
 
     var body: some View {
-        VStack(spacing: 0) {
-            if showsCaptureSetup {
-                // Languages and captions for the next recording, and Record.
-                // The settings tab is one click away in the tab bar; a button
-                // here used to open it a second way.
-                HStack(spacing: Spacing.md) {
-                    Spacer(minLength: Spacing.md)
-                    NotebookCaptureToolbar(
-                        notebookId: notebookId,
-                        profileEditor: editor
-                    )
-                    floatingSubtitleButton
-                }
-                .padding(.horizontal, Spacing.xl)
-                .padding(.vertical, Spacing.sm)
-                .background(Color.bgSunken.opacity(0.42))
-
-                NotebookRealtimeCaptureConsole(
-                    notebookId: notebookId,
-                    editor: editor
-                )
-
-                Divider().background(Color.borderGhost.opacity(0.3))
-            }
-
-            HStack(spacing: 0) {
-                NotebookRealtimeHistoryView(
-                    notebookId: notebookId,
-                    focusSessionId: sessionId,
-                    history: history
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                // The transcript keeps the floor; the rail is where the
-                // listener's own record accumulates beside it.
-                // A finished recording with nothing marked gives the rail's
-                // width back to the transcript.
-                if let markSessionId, isMarkingLive || marks.marks.isEmpty == false {
-                    Divider().background(Color.borderGhost.opacity(0.4))
-                    SessionMarksPanel(
-                        sessionId: markSessionId,
-                        isLive: isMarkingLive,
-                        onMark: { SessionMarkStore.shared.mark() }
-                    )
-                    .frame(width: 300)
-                }
-            }
-        }
+        pageContent
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
         .task(id: "\(notebookId):\(sessionId ?? "new")") {
@@ -106,6 +63,105 @@ struct NotebookRealtimeTranscriptPage: View {
         .montereyOnChange(of: activeSessionSpeakerIds) { _, speakerIds in
             refreshActiveSessionSpeakers(speakerIds)
         }
+    }
+
+    @ViewBuilder
+    private var pageContent: some View {
+        if isVisible || capture.isCaptureActive == false {
+            visiblePage
+        } else {
+            Color.clear
+        }
+    }
+
+    private var visiblePage: some View {
+        VStack(spacing: 0) {
+            if showsCaptureSetup {
+                // Languages and captions for the next recording, and Record.
+                // The settings tab is one click away in the tab bar; a button
+                // here used to open it a second way.
+                HStack(spacing: Spacing.md) {
+                    Spacer(minLength: Spacing.md)
+                    NotebookCaptureToolbar(
+                        notebookId: notebookId,
+                        profileEditor: editor
+                    )
+                    floatingSubtitleButton
+                }
+                .padding(.horizontal, Spacing.xl)
+                .padding(.vertical, Spacing.sm)
+                .background(Color.bgSunken.opacity(0.42))
+
+                NotebookRealtimeCaptureConsole(
+                    notebookId: notebookId,
+                    editor: editor
+                )
+
+                Divider().background(Color.borderGhost.opacity(0.3))
+            }
+
+            transcriptAndRail
+        }
+    }
+
+    // The transcript keeps the floor; the rail is where the listener's own
+    // record accumulates beside it. A finished recording with nothing marked
+    // gives the rail's width back to the transcript.
+    @ViewBuilder
+    private var transcriptAndRail: some View {
+        if #available(macOS 13.0, *) {
+            // An HStack probed the whole transcript column at several widths
+            // on every publish to share space with a rail whose width never
+            // changes; this layout hands out the widths without asking.
+            TranscriptRailLayout(separatorWidth: 1, railWidth: Self.railWidth) {
+                historyView
+                if let markSessionId, showsMarksRail {
+                    railSeparator
+                    marksRail(sessionId: markSessionId)
+                }
+            }
+        } else {
+            HStack(spacing: 0) {
+                historyView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if let markSessionId, showsMarksRail {
+                    Divider().background(Color.borderGhost.opacity(0.4))
+                    marksRail(sessionId: markSessionId)
+                        .frame(width: Self.railWidth)
+                }
+            }
+        }
+    }
+
+    private static let railWidth: CGFloat = 300
+
+    private var showsMarksRail: Bool {
+        isMarkingLive || marks.marks.isEmpty == false
+    }
+
+    private var historyView: some View {
+        NotebookRealtimeHistoryView(
+            notebookId: notebookId,
+            focusSessionId: sessionId,
+            history: history
+        )
+    }
+
+    /// A `Divider` takes its direction from an enclosing stack; outside one
+    /// it would draw horizontally, so the line is drawn directly.
+    private var railSeparator: some View {
+        Color(nsColor: .separatorColor)
+            .background(Color.borderGhost.opacity(0.4))
+            .frame(width: 1)
+            .frame(maxHeight: .infinity)
+    }
+
+    private func marksRail(sessionId: String) -> some View {
+        SessionMarksPanel(
+            sessionId: sessionId,
+            isLive: isMarkingLive,
+            onMark: { SessionMarkStore.shared.mark() }
+        )
     }
 
     private func reloadHistory() async {

@@ -37,7 +37,7 @@ struct AudioInputPicker: View {
             .accessibilityLabel(Text(String(localized: "settings.audio_input.device")))
 
             Button {
-                inputDevices.refresh()
+                inputDevices.refreshInBackground()
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .frame(width: 24, height: 24)

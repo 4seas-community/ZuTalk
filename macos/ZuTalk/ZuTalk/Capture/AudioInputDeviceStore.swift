@@ -3,7 +3,7 @@ import Combine
 import CoreAudio
 import Foundation
 
-struct AudioInputDevice: Equatable, Identifiable {
+nonisolated struct AudioInputDevice: Equatable, Identifiable, Sendable {
     let deviceID: AudioDeviceID
     let uid: String
     let name: String
@@ -11,7 +11,7 @@ struct AudioInputDevice: Equatable, Identifiable {
     var id: String { uid }
 }
 
-struct AudioInputDeviceSnapshot: Equatable {
+nonisolated struct AudioInputDeviceSnapshot: Equatable, Sendable {
     let devices: [AudioInputDevice]
     let defaultInputDeviceID: AudioDeviceID?
 
@@ -21,7 +21,10 @@ struct AudioInputDeviceSnapshot: Equatable {
     }
 }
 
-protocol AudioInputDeviceCataloging {
+/// Nonisolated so the picker can enumerate CoreAudio devices off the main
+/// thread: listing every device's name, channels and liveness takes long
+/// enough to be felt when a settings page opens mid-recording.
+nonisolated protocol AudioInputDeviceCataloging {
     func snapshot() throws -> AudioInputDeviceSnapshot
     /// Resolves only the device needed by the next capture. Implementations may
     /// use `cachedDevice` to avoid rebuilding presentation metadata, but must
@@ -32,7 +35,7 @@ protocol AudioInputDeviceCataloging {
     ) throws -> AudioInputDevice?
 }
 
-extension AudioInputDeviceCataloging {
+nonisolated extension AudioInputDeviceCataloging {
     /// Safe fallback for test catalogs and alternate implementations. The live
     /// CoreAudio catalog overrides this with a one-device lookup so Start does
     /// not enumerate every audio device.
@@ -46,7 +49,7 @@ extension AudioInputDeviceCataloging {
     }
 }
 
-enum AudioInputDeviceError: Error, Equatable, LocalizedError {
+nonisolated enum AudioInputDeviceError: Error, Equatable, LocalizedError {
     case queryFailed(operation: String, status: OSStatus)
     case noInputDevice
     case selectedDeviceUnavailable(name: String)
@@ -96,7 +99,7 @@ enum AudioInputDeviceError: Error, Equatable, LocalizedError {
     }
 }
 
-struct CoreAudioInputDeviceCatalog: AudioInputDeviceCataloging {
+nonisolated struct CoreAudioInputDeviceCatalog: AudioInputDeviceCataloging {
     func snapshot() throws -> AudioInputDeviceSnapshot {
         let deviceIDs = try readDeviceIDs()
         let devices = deviceIDs.compactMap { deviceID -> AudioInputDevice? in
@@ -374,6 +377,7 @@ final class AudioInputDeviceStore: ObservableObject {
     /// populated by a cold Start without claiming the device picker is loaded.
     private var resolvedDevicesByUID: [String: AudioInputDevice] = [:]
     private var resolvedDefaultInputDevice: AudioInputDevice?
+    private var refreshGeneration: UInt64 = 0
 
     init(
         catalog: (any AudioInputDeviceCataloging)? = nil,
@@ -441,6 +445,29 @@ final class AudioInputDeviceStore: ObservableObject {
         }
     }
 
+    /// What pages call: the device list is read off the main thread and
+    /// applied when it arrives. A newer refresh supersedes an older one still
+    /// in flight.
+    func refreshInBackground() {
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
+        nonisolated(unsafe) let catalog = catalog
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                Result { try catalog.snapshot() }
+            }.value
+            guard generation == refreshGeneration else { return }
+            switch result {
+            case .success(let snapshot):
+                apply(snapshot)
+                if refreshError != nil { refreshError = nil }
+            case .failure(let error):
+                hasLoadedSnapshot = true
+                refreshError = error.localizedDescription
+            }
+        }
+    }
+
     /// Resolves a stable UID to the current process-local AudioDeviceID. The
     /// result is called once before a capture starts and then frozen by the
     /// live audio source for pause/resume.
@@ -501,9 +528,13 @@ final class AudioInputDeviceStore: ObservableObject {
     }
 
     private func apply(_ snapshot: AudioInputDeviceSnapshot) {
-        devices = snapshot.devices
-        defaultInputDeviceID = snapshot.defaultInputDeviceID
-        hasLoadedSnapshot = true
+        // Refreshed whenever the app becomes active; an unchanged device list
+        // must not re-render every page that shows a picker.
+        if devices != snapshot.devices { devices = snapshot.devices }
+        if defaultInputDeviceID != snapshot.defaultInputDeviceID {
+            defaultInputDeviceID = snapshot.defaultInputDeviceID
+        }
+        if hasLoadedSnapshot == false { hasLoadedSnapshot = true }
         for device in snapshot.devices {
             resolvedDevicesByUID[device.uid] = device
         }
@@ -515,6 +546,7 @@ final class AudioInputDeviceStore: ObservableObject {
     }
 
     private func rememberName(_ name: String) {
+        guard selectedDeviceLastKnownName != name else { return }
         selectedDeviceLastKnownName = name
         defaults.set(name, forKey: DefaultsKey.selectedName)
     }

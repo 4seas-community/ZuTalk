@@ -62,6 +62,17 @@ final class CaptureActivityStore: ObservableObject {
     @Published fileprivate(set) var isCaptureActive = false
 }
 
+/// The recording clock, published on its own.
+///
+/// It ticks every second. On the capture store that tick re-evaluated every
+/// view observing the store — the realtime page among them, hidden or not,
+/// laid out again each second although none of its text changed. Only the
+/// two places that show the clock observe this.
+@MainActor
+final class CaptureClockStore: ObservableObject {
+    @Published fileprivate(set) var elapsed: TimeInterval = 0
+}
+
 @MainActor
 final class ActiveBilingualTranscriptStore: ObservableObject {
     static let shared = ActiveBilingualTranscriptStore()
@@ -224,7 +235,17 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     @Published private(set) var postStopAsyncState = "none"
     @Published private(set) var postStopAsyncProjectionState: NotebookAsyncProjectionState = .none
     @Published private(set) var hasValidRunProfileSnapshot = true
-    @Published private(set) var elapsedRecordingTime: TimeInterval = 0
+    /// The recording clock lives on `clock` so its tick reaches only the views
+    /// that show it.
+    let clock = CaptureClockStore()
+    private(set) var elapsedRecordingTime: TimeInterval {
+        get { clock.elapsed }
+        set {
+            if clock.elapsed != newValue {
+                clock.elapsed = newValue
+            }
+        }
+    }
     @Published private(set) var lastError: String?
     @Published private(set) var isLoading = false
     /// Process-local presentation for a terminal command whose durable owner
@@ -339,6 +360,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         let isActive = isCaptureActive
         if activity.isCaptureActive != isActive {
             activity.isCaptureActive = isActive
+        }
+        if isActive == false {
+            endCaptureActivity()
         }
     }
 
@@ -656,8 +680,11 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         let priorSelection = loadedContextNotebookId == notebookId
             ? selectedContextPackId
             : nil
-        clearContextBrowserState()
 
+        // No render runs between here and the assignments below, so clearing
+        // first only re-announced every field — and this store is observed
+        // by the realtime page, which re-laid itself out for each settings
+        // visit. The catch below still clears on failure.
         do {
             let packs = sortedContextPacks(
                 try client.listNotebookContextPacks(notebookId: notebookId)
@@ -672,11 +699,11 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
             // Publish one Notebook-scoped snapshot only after both calls have
             // succeeded. A partial B load must never leave A metadata visible.
-            contextPacks = packs
-            selectedContextPackId = selection
-            contextSources = sources
-            loadedContextNotebookId = notebookId
-            lastError = nil
+            assignIfChanged(\.contextPacks, packs)
+            assignIfChanged(\.selectedContextPackId, selection)
+            assignIfChanged(\.contextSources, sources)
+            assignIfChanged(\.loadedContextNotebookId, notebookId)
+            assignIfChanged(\.lastError, nil)
         } catch {
             clearContextBrowserState()
             invalidateContextPreview()
@@ -2054,7 +2081,11 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     private func projectRealtimeIfPending(sessionId eventSessionId: String) {
+        // Stop projects the finished transcript itself. A projection started
+        // while it drains only competes with it for the capture connection
+        // and the document lock.
         guard captureState.isActive,
+              captureState != .draining,
               sessionId == eventSessionId,
               highestFinalProjectionRevision > realtimeLoroAppliedRevision
         else { return }
@@ -3331,10 +3362,13 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             }
     }
 
+    /// Stops only the clock. The activity that keeps App Nap away ends when
+    /// the capture does (`syncCaptureActivity`): Stop's own work — finishing
+    /// the provider, sealing the audio, binding the last translations — runs
+    /// after the clock stops, and in the background it was being throttled.
     private func stopElapsedTimer() {
         elapsedTimer?.cancel()
         elapsedTimer = nil
-        endCaptureActivity()
     }
 
     /// Tells macOS a recording is running for as long as the capture lives.

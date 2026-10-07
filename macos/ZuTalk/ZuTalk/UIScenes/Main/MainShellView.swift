@@ -641,6 +641,7 @@ struct MainShellView: View {
 private struct SidebarLiveRecordingItem: View {
     @ObservedObject var store: MainNavigationStore
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var clock = ActiveBilingualTranscriptStore.shared.clock
 
     var body: some View {
         // After Stop the microphone is already off while the last words
@@ -667,7 +668,7 @@ private struct SidebarLiveRecordingItem: View {
                     .font(.bodyMedium)
                     .foregroundColor(.textPrimary)
                 Spacer()
-                Text(CaptureCommandCenter.clock(capture.elapsedRecordingTime))
+                Text(CaptureCommandCenter.clock(clock.elapsed))
                     .font(.bodySM)
                     .monospacedDigit()
                     .foregroundColor(.textSecondary)

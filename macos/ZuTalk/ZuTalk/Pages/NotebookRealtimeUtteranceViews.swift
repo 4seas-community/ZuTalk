@@ -127,15 +127,30 @@ struct NotebookRealtimeUtteranceView: View {
     }
 
     private var runHeader: some View {
-        MontereyHorizontalViewThatFits {
-            HStack(spacing: Spacing.md) {
+        runHeaderContent
+            .padding(.horizontal, Spacing.lg)
+            .padding(.vertical, Spacing.sm)
+            .frame(minHeight: 52)
+    }
+
+    /// Re-laid out on every capture publish, inside stacks that probe it at
+    /// many widths: `RunHeaderLayout` shapes its text once per pass instead
+    /// of once per probe. Monterey has no `Layout` and always took the
+    /// two-row arrangement.
+    @ViewBuilder
+    private var runHeaderContent: some View {
+        if #available(macOS 13.0, *) {
+            RunHeaderLayout(spacing: Spacing.md, rowSpacing: Spacing.sm) {
                 runIdentity
-                Spacer(minLength: Spacing.md)
-                runMetadata
-                captureStateLabel
-                statusActions
+                HStack(spacing: Spacing.md) {
+                    runMetadata
+                    captureStateLabel
+                }
+                HStack(spacing: Spacing.md) {
+                    statusActions
+                }
             }
-        } fallback: {
+        } else {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 runIdentity
                 HStack(spacing: Spacing.md) {
@@ -146,9 +161,6 @@ struct NotebookRealtimeUtteranceView: View {
                 }
             }
         }
-        .padding(.horizontal, Spacing.lg)
-        .padding(.vertical, Spacing.sm)
-        .frame(minHeight: 52)
     }
 
     /// When it was recorded. The internal session ID used to sit under it.

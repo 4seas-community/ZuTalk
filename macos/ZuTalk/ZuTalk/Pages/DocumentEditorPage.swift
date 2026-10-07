@@ -297,7 +297,8 @@ struct DocumentEditorPage: View {
                     NotebookRealtimeTranscriptPage(
                         notebookId: transcriptTab.notebookId,
                         sessionId: effectiveSessionId,
-                        editor: captureProfileEditor
+                        editor: captureProfileEditor,
+                        isVisible: surface.showsTranscriptLayer
                     )
                         .id("realtime:\(transcriptTab.notebookId):\(effectiveSessionId ?? "new")")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)

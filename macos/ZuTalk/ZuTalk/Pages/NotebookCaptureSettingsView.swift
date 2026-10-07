@@ -81,14 +81,14 @@ struct NotebookCaptureSettingsView: View {
         }
         .background(Color.bgRoot)
         .task(id: notebookId) {
-            inputDevices.refresh()
+            inputDevices.refreshInBackground()
             engineStore.refresh()
             loadContextBrowser()
         }
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didBecomeActiveNotification
         )) { _ in
-            inputDevices.refresh()
+            inputDevices.refreshInBackground()
         }
     }
 
