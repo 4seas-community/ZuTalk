@@ -7562,6 +7562,7 @@ impl ZuTalkCore {
                     CaptureState::Completed,
                 )
                 .map_err(store_error)?;
+            log_phase("commit audio rows");
             if let Err(error) = std::fs::remove_file(&journal_path) {
                 if error.kind() != std::io::ErrorKind::NotFound {
                     tracing::warn!(
@@ -7572,6 +7573,7 @@ impl ZuTalkCore {
                     );
                 }
             }
+            log_phase("unlink journal");
             Ok(())
         })();
         if let Err(error) = durability_result {
@@ -7595,6 +7597,7 @@ impl ZuTalkCore {
             .ok_or_else(|| CoreError::NotFound {
                 message: format!("capture run {}", active.run_id),
             })?;
+        log_phase("read completed run");
         if let Some(error) = remote_failure_persistence_error {
             // The remote-health write is diagnostic metadata in a separate
             // error domain. Audio and Final machine facts are already durable,
@@ -7626,7 +7629,7 @@ impl ZuTalkCore {
                 "stop left ambiguous auxiliary translation facts durably unbound"
             ),
         }
-        log_phase("commit and bind translations");
+        log_phase("reconcile translation inbox");
         let projection_result = self.project_notebook_capture_with_ownership(&active.run_id);
         let retention_result = self.enforce_realtime_capture_retention(&completed_run);
         log_phase("project transcript");
@@ -7648,6 +7651,7 @@ impl ZuTalkCore {
             .list_utterances(&session_id)
             .map_err(store_error)?;
         let event = active.callback.send(event_from_run(run, utterances, true));
+        log_phase("terminal event");
         if let Err(projection_error) = projection_result {
             // Audio, capture state, and transcript facts are already durable.
             // A Loro failure is a separately retryable projection outcome, not

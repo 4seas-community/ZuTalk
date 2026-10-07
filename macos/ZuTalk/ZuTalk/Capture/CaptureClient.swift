@@ -277,14 +277,23 @@ final class NotebookRealtimeProjectionScheduler: @unchecked Sendable {
     private let maximumFastRetries: Int
     private let initialFastRetryDelay: TimeInterval
     private let cappedRetryDelay: TimeInterval
+    /// Least time between two projection starts for one session. Each run
+    /// rewrites the topic's whole transcript document (megabytes for a busy
+    /// topic) on disk; one per Final was about 1.5 GB of writes for a
+    /// 46-minute recording. The live transcript does not read this projection,
+    /// and Stop projects once more itself, so nothing waits on the interval.
+    private let minimumInterval: TimeInterval
     private var nextGeneration: UInt64 = 0
     private var jobs: [String: Job] = [:]
+    private var lastStartedAt: [String: Date] = [:]
 
     init(
         maximumFastRetries: Int = 3,
         initialFastRetryDelay: TimeInterval = 0.025,
-        cappedRetryDelay: TimeInterval = 2
+        cappedRetryDelay: TimeInterval = 2,
+        minimumInterval: TimeInterval = 0
     ) {
+        self.minimumInterval = max(0, minimumInterval)
         let normalizedFastRetryDelay = max(0, initialFastRetryDelay)
         self.maximumFastRetries = max(0, maximumFastRetries)
         self.initialFastRetryDelay = normalizedFastRetryDelay
@@ -307,7 +316,7 @@ final class NotebookRealtimeProjectionScheduler: @unchecked Sendable {
             let isRunning = job.runningGeneration != nil
             jobs[sessionId] = job
             if isRunning == false {
-                enqueueLocked(sessionId: sessionId, generation: generation, after: 0)
+                enqueueLocked(sessionId: sessionId, generation: generation, after: throttleDelayLocked(sessionId: sessionId))
             }
         } else {
             jobs[sessionId] = Job(
@@ -317,16 +326,25 @@ final class NotebookRealtimeProjectionScheduler: @unchecked Sendable {
                 runningGeneration: nil,
                 scheduledWorkItem: nil
             )
-            enqueueLocked(sessionId: sessionId, generation: generation, after: 0)
+            enqueueLocked(sessionId: sessionId, generation: generation, after: throttleDelayLocked(sessionId: sessionId))
         }
         lock.unlock()
     }
 
     func cancel(sessionId: String) {
         lock.lock()
+        lastStartedAt.removeValue(forKey: sessionId)
         let job = jobs.removeValue(forKey: sessionId)
         job?.scheduledWorkItem?.cancel()
         lock.unlock()
+    }
+
+    /// How long a new wake waits so that starts stay `minimumInterval` apart.
+    /// Measured from the last start, so a stream of Finals never pushes the
+    /// next run further away.
+    private func throttleDelayLocked(sessionId: String) -> TimeInterval {
+        guard minimumInterval > 0, let started = lastStartedAt[sessionId] else { return 0 }
+        return max(0, minimumInterval - Date().timeIntervalSince(started))
     }
 
     private func enqueueLocked(
@@ -362,6 +380,7 @@ final class NotebookRealtimeProjectionScheduler: @unchecked Sendable {
         job.runningGeneration = generation
         projection = job.projection
         jobs[sessionId] = job
+        lastStartedAt[sessionId] = Date()
         lock.unlock()
 
         let succeeded: Bool
@@ -400,7 +419,7 @@ final class NotebookRealtimeProjectionScheduler: @unchecked Sendable {
             enqueueLocked(
                 sessionId: sessionId,
                 generation: refreshedGeneration,
-                after: 0
+                after: throttleDelayLocked(sessionId: sessionId)
             )
             lock.unlock()
             return
@@ -434,7 +453,9 @@ final class NotebookRealtimeProjectionScheduler: @unchecked Sendable {
 @MainActor
 final class RustNotebookCaptureClient: NotebookCaptureClienting {
     private let coreProvider: @MainActor () -> (any ZuTalkCoreProtocol)?
-    private let realtimeProjectionScheduler = NotebookRealtimeProjectionScheduler()
+    private let realtimeProjectionScheduler = NotebookRealtimeProjectionScheduler(
+        minimumInterval: 10
+    )
 
     init(
         coreProvider: @escaping @MainActor () -> (any ZuTalkCoreProtocol)? = {
@@ -631,7 +652,9 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
 
     func stopNotebookCaptureSession(sessionId: String) async throws -> NotebookCaptureEventDTO {
         let core = try requireCore()
-        let event = try await Task.detached {
+        // Someone pressed Stop and is watching it finish; without a priority
+        // the detached work ran at whatever the scheduler chose.
+        let event = try await Task.detached(priority: .userInitiated) {
             try core.stopNotebookCaptureSession(sessionId: sessionId)
         }.value
         return Self.map(event)

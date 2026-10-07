@@ -79,8 +79,9 @@ impl ZuTalkCore {
         session_id: &str,
         chunks: &[RecordingAudioChunk],
     ) -> Result<(), CoreError> {
-        for chunk in chunks {
-            let record = AudioChunkRetentionRecord {
+        let records = chunks
+            .iter()
+            .map(|chunk| AudioChunkRetentionRecord {
                 session_id: session_id.to_string(),
                 chunk_id: chunk.chunk_id.clone(),
                 start_ms: chunk.start_ms,
@@ -91,17 +92,16 @@ impl ZuTalkCore {
                 retention_deadline_ms: i64::MAX,
                 delete_error: None,
                 deleted_at_ms: None,
-            };
-            self.session_meta
-                .upsert_audio_retention_chunk(&record)
-                .map_err(|error| CoreError::InternalError {
-                    message: format!(
-                        "record source audio retention chunk {}: {error}",
-                        chunk.chunk_id
-                    ),
-                })?;
-        }
-        Ok(())
+            })
+            .collect::<Vec<_>>();
+        self.session_meta
+            .upsert_audio_retention_chunks(&records)
+            .map_err(|error| CoreError::InternalError {
+                message: format!(
+                    "record {} source audio retention chunks: {error}",
+                    records.len()
+                ),
+            })
     }
 }
 

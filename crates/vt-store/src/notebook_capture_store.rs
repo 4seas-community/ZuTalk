@@ -1175,6 +1175,30 @@ pub struct NotebookCaptureStore {
     conn: Arc<Mutex<Connection>>,
 }
 
+/// Waits longer than this for the capture connection are logged with the
+/// waiting call site. A Stop once spent about 11 s in a window whose SQL took
+/// tens of milliseconds, and nothing said who held the connection.
+const SLOW_CONNECTION_WAIT: Duration = Duration::from_millis(100);
+
+impl NotebookCaptureStore {
+    /// Takes the capture connection, logging a slow wait with its caller.
+    #[track_caller]
+    fn lock_conn(&self) -> std::sync::MutexGuard<'_, Connection> {
+        let caller = std::panic::Location::caller();
+        let started = std::time::Instant::now();
+        let guard = self.conn.lock().unwrap();
+        let waited = started.elapsed();
+        if waited >= SLOW_CONNECTION_WAIT {
+            tracing::warn!(
+                waited_ms = waited.as_millis() as u64,
+                caller = %format_args!("{}:{}", caller.file(), caller.line()),
+                "waited for the capture store connection"
+            );
+        }
+        guard
+    }
+}
+
 impl NotebookCaptureStore {
     /// Opens the capture store without mutating capture ownership.
     ///
@@ -1197,7 +1221,7 @@ impl NotebookCaptureStore {
 
     pub fn recover_unfinished_runs(&self) -> Result<usize, NotebookCaptureStoreError> {
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs
              SET capture_state = CASE
                      WHEN capture_state IN ('recording', 'paused', 'draining')
@@ -1263,7 +1287,7 @@ impl NotebookCaptureStore {
     ) -> Result<NotebookCaptureRun, NotebookCaptureStoreError> {
         require_nonempty("run_id", run_id)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs
              SET capture_state = 'interrupted', remote_health = 'off',
                  projection_state = CASE
@@ -1298,7 +1322,7 @@ impl NotebookCaptureStore {
     ) -> Result<NotebookCaptureProfile, NotebookCaptureStoreError> {
         require_nonempty("notebook_id", notebook_id)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let exists = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM notebooks WHERE id = ?1 AND deleted_at IS NULL)",
             [notebook_id],
@@ -1361,7 +1385,7 @@ impl NotebookCaptureStore {
                 &update.subtitle_only_languages,
             ))?;
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_profiles
              SET remote_realtime_enabled = ?1, capture_mode = ?2, language_a = ?3,
                  language_b = ?4, left_language = ?5, right_language = ?6,
@@ -1412,7 +1436,7 @@ impl NotebookCaptureStore {
         let profile_snapshot_json = serde_json::to_string(profile_snapshot)?;
         let selected_languages_json = serde_json::to_string(&profile_snapshot.selected_languages)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         // Acquire the writer lock before checking the authorization snapshot.
         // The conditional INSERT is the revision CAS: a concurrent profile
         // update can either commit before this transaction (and make the
@@ -1495,7 +1519,7 @@ impl NotebookCaptureStore {
     pub fn list_runs_missing_notebook_membership(
         &self,
     ) -> Result<Vec<(String, String)>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(
             "SELECT r.notebook_id, r.session_id
              FROM notebook_capture_runs r
@@ -1538,7 +1562,7 @@ impl NotebookCaptureStore {
         let profile_snapshot_json = serde_json::to_string(profile_snapshot)?;
         let selected_languages_json = serde_json::to_string(&profile_snapshot.selected_languages)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         tx.execute(
             "INSERT INTO session_records
@@ -1657,7 +1681,7 @@ impl NotebookCaptureStore {
         let profile_snapshot_json = serde_json::to_string(profile_snapshot)?;
         let selected_languages_json = serde_json::to_string(&profile_snapshot.selected_languages)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let inserted = tx.execute(
             "INSERT INTO notebook_capture_runs
@@ -1791,7 +1815,7 @@ impl NotebookCaptureStore {
             )));
         }
 
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let run = tx
             .query_row(
@@ -1898,7 +1922,7 @@ impl NotebookCaptureStore {
     pub fn list_interrupted_runs(
         &self,
     ) -> Result<Vec<NotebookCaptureRun>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(&format!(
             "{RUN_SELECT} WHERE capture_state = 'interrupted' ORDER BY updated_at ASC, id ASC"
         ))?;
@@ -1919,7 +1943,7 @@ impl NotebookCaptureStore {
         &self,
     ) -> Result<std::collections::HashMap<String, RecoveryContentDigest>, NotebookCaptureStoreError>
     {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut digests: std::collections::HashMap<String, RecoveryContentDigest> =
             std::collections::HashMap::new();
         type DigestField = fn(&mut RecoveryContentDigest) -> &mut String;
@@ -1980,7 +2004,7 @@ impl NotebookCaptureStore {
     pub fn list_completed_runs(
         &self,
     ) -> Result<Vec<NotebookCaptureRun>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(&format!(
             "{RUN_SELECT} WHERE capture_state = 'completed'
              ORDER BY COALESCE(completed_at, updated_at) ASC, id ASC"
@@ -1995,7 +2019,7 @@ impl NotebookCaptureStore {
     pub fn list_post_stop_runs_requiring_async_compensation(
         &self,
     ) -> Result<Vec<NotebookCaptureRun>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(&format!(
             "{RUN_SELECT} WHERE capture_state IN ('completed', 'interrupted')
              AND async_task_state IN ('pending', 'reserved', 'enqueued')
@@ -2031,7 +2055,7 @@ impl NotebookCaptureStore {
             validate_language(language)?;
         }
 
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let run = tx
             .query_row(
@@ -2127,7 +2151,7 @@ impl NotebookCaptureStore {
     ) -> Result<NotebookCaptureRun, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs
              SET audio_path = NULL, audio_key_ref = NULL, updated_at = ?1
              WHERE session_id = ?2",
@@ -2157,7 +2181,7 @@ impl NotebookCaptureStore {
         require_nonempty("stable_task_id", stable_task_id)?;
         validate_sha256_hex("async task payload digest", payload_sha256)?;
 
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let run = tx
             .query_row(
@@ -2231,7 +2255,7 @@ impl NotebookCaptureStore {
         require_nonempty("run_id", run_id)?;
         require_nonempty("task_id", task_id)?;
 
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let run = tx
             .query_row(
@@ -2322,7 +2346,7 @@ impl NotebookCaptureStore {
         validate_provider_result_shape(session_id, tokens.len(), result_json)
             .map_err(NotebookCaptureStoreError::Validation)?;
 
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let (task_state, recorded_task_id, provider_id, model_id) = tx
             .query_row(
@@ -2461,7 +2485,7 @@ impl NotebookCaptureStore {
     ) -> Result<Option<AsyncProviderReceipt>, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
         require_nonempty("task_id", task_id)?;
-        let receipt = get_async_provider_receipt_from_conn(&self.conn.lock().unwrap(), session_id)?;
+        let receipt = get_async_provider_receipt_from_conn(&self.lock_conn(), session_id)?;
         if receipt
             .as_ref()
             .is_some_and(|receipt| receipt.task_id != task_id)
@@ -2476,7 +2500,7 @@ impl NotebookCaptureStore {
     pub fn list_async_search_projections_requiring_retry(
         &self,
     ) -> Result<AsyncProviderReceiptScan, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         scan_async_provider_receipts(
             &conn,
             "SELECT r.session_id, r.async_task_id,
@@ -2502,7 +2526,7 @@ impl NotebookCaptureStore {
     pub fn list_async_provider_receipts(
         &self,
     ) -> Result<AsyncProviderReceiptScan, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         scan_async_provider_receipts(
             &conn,
             "SELECT r.session_id, r.async_task_id,
@@ -2536,7 +2560,7 @@ impl NotebookCaptureStore {
     ) -> Result<(), NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         conn.execute(
             "UPDATE notebook_capture_runs
              SET async_search_projection_state = 'failed', updated_at = ?1
@@ -2563,7 +2587,7 @@ impl NotebookCaptureStore {
             ));
         }
         let desired = AsyncSearchProjectionState::Failed;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         if session_purge_job_exists(&tx, session_id)? {
             return Err(NotebookCaptureStoreError::Conflict(format!(
@@ -2640,7 +2664,7 @@ impl NotebookCaptureStore {
             AsyncTaskState::Failed
         };
 
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let run = tx
             .query_row(
@@ -2734,7 +2758,7 @@ impl NotebookCaptureStore {
         let now = chrono::Utc::now().to_rfc3339();
         let completed_at = next.is_terminal().then_some(now.as_str());
         let remote_health = next.is_terminal().then_some(RemoteHealth::Off.as_str());
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs
              SET capture_state = ?1, updated_at = ?2,
                  completed_at = COALESCE(?3, completed_at),
@@ -2784,7 +2808,7 @@ impl NotebookCaptureStore {
             ));
         }
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs
              SET capture_state = 'interrupted', remote_health = 'off',
                  provider_error_type = ?1, provider_request_id = ?2,
@@ -2837,7 +2861,7 @@ impl NotebookCaptureStore {
             ));
         }
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs
              SET capture_state = 'interrupted', remote_health = 'off',
                  provider_error_type = ?1, provider_request_id = ?2,
@@ -2891,7 +2915,7 @@ impl NotebookCaptureStore {
         // dark. The recorded cause survives until either a new failure
         // replaces it or the group reports fully Live, which is the only
         // state that genuinely means no standing cause remains.
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs
              SET remote_health = ?1,
                  provider_error_type = CASE
@@ -2922,7 +2946,7 @@ impl NotebookCaptureStore {
         captured_frames: u64,
     ) -> Result<NotebookCaptureRun, NotebookCaptureStoreError> {
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs SET captured_frames = ?1, updated_at = ?2
              WHERE id = ?3 AND capture_state IN ('recording', 'paused', 'draining')
                    AND captured_frames <= ?1",
@@ -2951,7 +2975,7 @@ impl NotebookCaptureStore {
         }
         let now = chrono::Utc::now().to_rfc3339();
         let id = uuid::Uuid::new_v4().to_string();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         conn.execute(
             "INSERT INTO realtime_transcript_gaps
                 (id, session_id, start_frame, end_frame, reason, repair_state,
@@ -3008,7 +3032,7 @@ impl NotebookCaptureStore {
         &self,
         session_id: &str,
     ) -> Result<RealtimeResumePoint, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let (next_sequence, transcribed_through_ms) = conn.query_row(
             "SELECT COALESCE(MAX(sequence) + 1, 0), COALESCE(MAX(source_end_ms), 0)
              FROM realtime_utterances WHERE session_id = ?1",
@@ -3046,7 +3070,7 @@ impl NotebookCaptureStore {
         &self,
         session_id: &str,
     ) -> Result<Vec<RealtimeTranscriptGap>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut statement = conn.prepare(
             "SELECT id, session_id, start_frame, end_frame, reason, repair_state,
                     created_at, updated_at
@@ -3099,7 +3123,7 @@ impl NotebookCaptureStore {
     ) -> Result<NotebookCaptureRun, NotebookCaptureStoreError> {
         require_nonempty("audio_path", audio_path)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs
              SET audio_path = ?1, captured_frames = ?2, updated_at = ?3
              WHERE id = ?4 AND capture_state = 'draining' AND captured_frames <= ?2",
@@ -3128,7 +3152,7 @@ impl NotebookCaptureStore {
     ) -> Result<NotebookCaptureRun, NotebookCaptureStoreError> {
         require_nonempty("audio_path", audio_path)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs
              SET audio_path = ?1, captured_frames = ?2, updated_at = ?3
              WHERE id = ?4 AND capture_state = 'interrupted' AND captured_frames <= ?2",
@@ -3161,7 +3185,7 @@ impl NotebookCaptureStore {
             )));
         }
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs SET projection_state = ?1, updated_at = ?2
              WHERE id = ?3 AND projection_state = ?4
                AND capture_state IN ('completed', 'interrupted', 'failed')",
@@ -3197,7 +3221,7 @@ impl NotebookCaptureStore {
             )));
         }
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE notebook_capture_runs
              SET async_projection_state = ?1, updated_at = ?2
              WHERE id = ?3 AND async_projection_state = ?4
@@ -3228,7 +3252,7 @@ impl NotebookCaptureStore {
     pub fn list_pending_async_projections(
         &self,
     ) -> Result<Vec<NotebookCaptureRun>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(&format!(
             "{RUN_SELECT} WHERE capture_state IN ('completed', 'interrupted')
              AND async_task_state = 'completed' AND async_projection_state = 'pending'
@@ -3245,7 +3269,7 @@ impl NotebookCaptureStore {
         run_id: &str,
     ) -> Result<(), NotebookCaptureStoreError> {
         require_nonempty("run_id", run_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let session_id = tx
             .query_row(
@@ -3296,7 +3320,7 @@ impl NotebookCaptureStore {
         run_id: &str,
     ) -> Result<(), NotebookCaptureStoreError> {
         require_nonempty("run_id", run_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let session_id = tx
             .query_row(
@@ -3342,7 +3366,7 @@ impl NotebookCaptureStore {
         require_nonempty("session_id", session_id)?;
         require_nonempty("client_reference_id", client_reference_id)?;
         let now = chrono::Utc::now().to_rfc3339();
-        self.conn.lock().unwrap().execute(
+        self.lock_conn().execute(
             "INSERT INTO provider_remote_artifacts
              (task_id, session_id, provider_id, client_reference_id, created_at, updated_at)
              VALUES (?1, ?2, 'soniox', ?3, ?4, ?4)
@@ -3382,7 +3406,7 @@ impl NotebookCaptureStore {
         require_nonempty("task_id", task_id)?;
         require_nonempty("remote_id", remote_id)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             &format!(
                 "UPDATE provider_remote_artifacts
                  SET {column} = ?2, updated_at = ?3
@@ -3404,7 +3428,7 @@ impl NotebookCaptureStore {
         task_id: &str,
     ) -> Result<(), NotebookCaptureStoreError> {
         require_nonempty("task_id", task_id)?;
-        self.conn.lock().unwrap().execute(
+        self.lock_conn().execute(
             "DELETE FROM provider_remote_artifacts WHERE task_id = ?1",
             [task_id],
         )?;
@@ -3414,7 +3438,7 @@ impl NotebookCaptureStore {
     pub fn list_provider_remote_artifact_claims(
         &self,
     ) -> Result<Vec<ProviderRemoteArtifactClaim>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(
             "SELECT task_id, session_id, client_reference_id,
                     remote_file_id, remote_transcription_id
@@ -3459,7 +3483,7 @@ impl NotebookCaptureStore {
         for key_ref in extra_key_refs {
             require_nonempty("extra purge key ref", key_ref)?;
         }
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         if let Some(existing) = get_session_purge_job_from_conn(&tx, session_id)? {
             tx.commit()?;
@@ -3509,7 +3533,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<Option<SessionPurgeJob>, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        get_session_purge_job_from_conn(&self.conn.lock().unwrap(), session_id)
+        get_session_purge_job_from_conn(&self.lock_conn(), session_id)
     }
 
     /// Lightweight tombstone check for task workers and artifact writers.
@@ -3519,13 +3543,13 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<bool, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        session_purge_job_exists(&self.conn.lock().unwrap(), session_id)
+        session_purge_job_exists(&self.lock_conn(), session_id)
     }
 
     pub fn list_session_purge_jobs(
         &self,
     ) -> Result<Vec<SessionPurgeJob>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(
             "SELECT session_id, plan_json, phase, last_error, created_at, updated_at
              FROM session_purge_jobs ORDER BY created_at ASC, session_id ASC",
@@ -3548,7 +3572,7 @@ impl NotebookCaptureStore {
             ));
         }
         let now = chrono::Utc::now().to_rfc3339();
-        let updated = self.conn.lock().unwrap().execute(
+        let updated = self.lock_conn().execute(
             "UPDATE session_purge_jobs
              SET phase = ?1, last_error = ?2, updated_at = ?3
              WHERE session_id = ?4",
@@ -3571,7 +3595,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<bool, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        let deleted = self.conn.lock().unwrap().execute(
+        let deleted = self.lock_conn().execute(
             "DELETE FROM session_purge_jobs WHERE session_id = ?1",
             [session_id],
         )?;
@@ -3583,7 +3607,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<SessionPurgePlan, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        build_session_purge_plan(&self.conn.lock().unwrap(), session_id)
+        build_session_purge_plan(&self.lock_conn(), session_id)
     }
 
     /// Deletes all capture/session artifacts that live in the shared main
@@ -3594,7 +3618,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<SessionPurgePlan, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let plan = build_session_purge_plan(&tx, session_id)?;
 
@@ -3646,7 +3670,7 @@ impl NotebookCaptureStore {
         require_nonempty("participant display_name", display_name)?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         conn.execute(
             "INSERT INTO participants (id, display_name, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?3)",
@@ -3657,7 +3681,7 @@ impl NotebookCaptureStore {
     }
 
     pub fn list_participants(&self) -> Result<Vec<Participant>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(
             "SELECT id, display_name, created_at, updated_at
              FROM participants
@@ -3672,7 +3696,7 @@ impl NotebookCaptureStore {
         participant_id: &str,
     ) -> Result<Option<Participant>, NotebookCaptureStoreError> {
         require_nonempty("participant_id", participant_id)?;
-        get_participant_from_conn(&self.conn.lock().unwrap(), participant_id)
+        get_participant_from_conn(&self.lock_conn(), participant_id)
     }
 
     pub fn rename_participant(
@@ -3683,7 +3707,7 @@ impl NotebookCaptureStore {
         require_nonempty("participant_id", participant_id)?;
         require_nonempty("participant display_name", display_name)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let updated = conn.execute(
             "UPDATE participants
              SET display_name = ?1, updated_at = ?2
@@ -3705,7 +3729,7 @@ impl NotebookCaptureStore {
     pub fn participant_session_counts(
         &self,
     ) -> Result<std::collections::HashMap<String, u32>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(
             "SELECT participant_id, COUNT(DISTINCT session_id)
              FROM session_speakers
@@ -3726,7 +3750,7 @@ impl NotebookCaptureStore {
         participant_id: &str,
     ) -> Result<bool, NotebookCaptureStoreError> {
         require_nonempty("participant_id", participant_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         tx.execute(
             "UPDATE session_speakers
@@ -3759,7 +3783,7 @@ impl NotebookCaptureStore {
         let epoch = u64_to_i64(provider_session_epoch, "provider_session_epoch")?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         if !capture_session_exists(&conn, session_id)? {
             return Err(NotebookCaptureStoreError::NotFound(format!(
                 "capture session {session_id}"
@@ -3793,7 +3817,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<Vec<SessionSpeaker>, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(
             "SELECT id, session_id, provider_session_epoch, provider, provider_label,
                     local_display_name, participant_id, participant_linked_at,
@@ -3811,7 +3835,7 @@ impl NotebookCaptureStore {
         session_speaker_id: &str,
     ) -> Result<Option<SessionSpeaker>, NotebookCaptureStoreError> {
         require_nonempty("session_speaker_id", session_speaker_id)?;
-        get_session_speaker_from_conn(&self.conn.lock().unwrap(), session_speaker_id)
+        get_session_speaker_from_conn(&self.lock_conn(), session_speaker_id)
     }
 
     pub fn rename_session_speaker(
@@ -3824,7 +3848,7 @@ impl NotebookCaptureStore {
             require_nonempty("local speaker display_name", display_name)?;
         }
         let now = chrono::Utc::now().to_rfc3339();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let updated = conn.execute(
             "UPDATE session_speakers
              SET local_display_name = ?1, updated_at = ?2
@@ -3848,7 +3872,7 @@ impl NotebookCaptureStore {
     ) -> Result<SessionSpeaker, NotebookCaptureStoreError> {
         require_nonempty("session_speaker_id", session_speaker_id)?;
         require_nonempty("participant_id", participant_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         if get_participant_from_conn(&tx, participant_id)?.is_none() {
             return Err(NotebookCaptureStoreError::NotFound(format!(
@@ -3880,7 +3904,7 @@ impl NotebookCaptureStore {
     ) -> Result<SessionSpeaker, NotebookCaptureStoreError> {
         require_nonempty("session_speaker_id", session_speaker_id)?;
         let now = chrono::Utc::now().to_rfc3339();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let updated = conn.execute(
             "UPDATE session_speakers
              SET participant_id = NULL, participant_linked_at = NULL, updated_at = ?1
@@ -3904,7 +3928,7 @@ impl NotebookCaptureStore {
         session_speaker_id: &str,
     ) -> Result<bool, NotebookCaptureStoreError> {
         require_nonempty("session_speaker_id", session_speaker_id)?;
-        Ok(self.conn.lock().unwrap().execute(
+        Ok(self.lock_conn().execute(
             "DELETE FROM session_speakers WHERE id = ?1",
             [session_speaker_id],
         )? > 0)
@@ -3929,7 +3953,7 @@ impl NotebookCaptureStore {
         let mut stored_translated_text = input.translated_text.clone();
         let mut stored_alignment = input.alignment;
         let now = chrono::Utc::now().to_rfc3339();
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_active_realtime_session(&tx, &input.session_id)?;
         if let Some(session_speaker_id) = input.session_speaker_id.as_deref() {
@@ -4302,7 +4326,7 @@ impl NotebookCaptureStore {
         input: &NewRealtimeTranslationInboxItem,
     ) -> Result<RealtimeTranslationInboxPersistence, NotebookCaptureStoreError> {
         validate_translation_inbox_input(input)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_active_realtime_session(&tx, &input.key.session_id)?;
         let persistence = upsert_translation_inbox_item_from_conn(&tx, input)?;
@@ -4317,7 +4341,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<Vec<RealtimeTranslationInboxItem>, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(
             "SELECT session_id, lane_index, group_epoch, provider_sequence,
                     target_language, source_language, source_text,
@@ -4342,7 +4366,7 @@ impl NotebookCaptureStore {
         canonical_sequence: u64,
     ) -> Result<Option<RealtimeUtterance>, NotebookCaptureStoreError> {
         validate_translation_inbox_key(key)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_active_realtime_session(&tx, &key.session_id)?;
         let visible = bind_translation_inbox_item_from_conn(&tx, key, canonical_sequence)?;
@@ -4365,7 +4389,7 @@ impl NotebookCaptureStore {
         // the end of its column. A row whose lane already holds segments of
         // another epoch still refuses them (see the bind), so one lane is
         // never composed from two provider orderings.
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_active_realtime_session(&tx, &key.session_id)?;
         let item = get_translation_inbox_item_from_conn(&tx, key)?.ok_or_else(|| {
@@ -4423,7 +4447,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<Vec<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_active_realtime_session(&tx, session_id)?;
         let bindings = reconcile_translation_inbox_from_conn(&tx, session_id)?;
@@ -4442,7 +4466,8 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<usize, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let started = std::time::Instant::now();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_realtime_session_provenance(&tx, session_id)?;
 
@@ -4453,20 +4478,43 @@ impl NotebookCaptureStore {
         // Grouping by canonical row preserves the same surviving-facts-before-
         // tombstones composition order as the live path and makes replays
         // idempotent at the lane upsert boundary.
-        let bound_rows = list_translation_inbox_from_conn(&tx, session_id)?
-            .into_iter()
-            .filter_map(|item| item.bound_utterance_id.zip(item.bound_sequence))
+        //
+        // The inbox is read once. Replaying a bound row rewrites that row's
+        // lanes, never an inbox fact, so one snapshot serves every group; it
+        // used to be re-read for each bound row — bound rows × inbox rows of
+        // decoded text inside the write lock, at the end of every Stop.
+        let inbox = list_translation_inbox_from_conn(&tx, session_id)?;
+        if inbox.is_empty() {
+            tx.commit()?;
+            return Ok(0);
+        }
+        let bound_rows = inbox
+            .iter()
+            .filter_map(|item| item.bound_utterance_id.clone().zip(item.bound_sequence))
             .collect::<std::collections::HashSet<_>>();
-        for (utterance_id, sequence) in bound_rows {
-            let _ = apply_bound_translation_inbox_items_from_conn(
+        for (utterance_id, sequence) in &bound_rows {
+            let _ = apply_bound_translation_inbox_snapshot_from_conn(
                 &tx,
-                session_id,
-                &utterance_id,
-                sequence,
+                &inbox,
+                utterance_id,
+                *sequence,
             )?;
         }
-        let reconciled = reconcile_translation_inbox_from_conn(&tx, session_id)?.len();
+        let bound_groups = bound_rows.len();
+        let inbox_items = inbox.len();
+        let reconciled = reconcile_translation_inbox_items_from_conn(&tx, session_id, inbox)?.len();
         tx.commit()?;
+        let elapsed = started.elapsed();
+        if elapsed >= Duration::from_millis(500) {
+            tracing::info!(
+                session_id,
+                inbox_items,
+                bound_groups,
+                reconciled,
+                elapsed_ms = elapsed.as_millis() as u64,
+                "slow translation inbox reconcile"
+            );
+        }
         Ok(reconciled)
     }
 
@@ -4486,7 +4534,7 @@ impl NotebookCaptureStore {
         require_nonempty("session_id", session_id)?;
         validate_language(language)?;
         validate_variant_payload(text, state, completion)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_active_realtime_session(&tx, session_id)?;
         let utterance = upsert_translation_variant_from_conn(
@@ -4522,7 +4570,7 @@ impl NotebookCaptureStore {
         require_nonempty("session_id", session_id)?;
         validate_language(language)?;
         validate_variant_payload(text, state, completion)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_active_realtime_session(&tx, session_id)?;
         let utterance = upsert_translation_variant_from_conn(
@@ -4547,7 +4595,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<Vec<RealtimeUtterance>, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_realtime_session_provenance(&tx, session_id)?;
         let waiting = {
@@ -4602,7 +4650,7 @@ impl NotebookCaptureStore {
             validate_language(&update.language)?;
             validate_variant_payload(update.text.as_deref(), update.state, update.completion)?;
         }
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         ensure_active_realtime_session(&tx, session_id)?;
         let Some(mut utterance) =
@@ -4727,7 +4775,7 @@ impl NotebookCaptureStore {
         &self,
         session_id: &str,
     ) -> Result<Vec<RealtimeUtterance>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         list_utterances_with_overrides_from_conn(&conn, session_id)
     }
 
@@ -4741,7 +4789,7 @@ impl NotebookCaptureStore {
     ) -> Result<Vec<RealtimeUtterance>, NotebookCaptureStoreError> {
         require_nonempty("notebook_id", notebook_id)?;
         require_nonempty("session_id", session_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Deferred)?;
         let visible = tx.query_row(
             "SELECT EXISTS(
@@ -4785,7 +4833,7 @@ impl NotebookCaptureStore {
     ) -> Result<Option<(NotebookCaptureRun, Vec<RealtimeUtterance>)>, NotebookCaptureStoreError>
     {
         require_nonempty("session_id", session_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Deferred)?;
         let run = tx
             .query_row(
@@ -4831,7 +4879,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<Vec<RealtimeUtterance>, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        list_machine_utterances_from_conn(&self.conn.lock().unwrap(), session_id)
+        list_machine_utterances_from_conn(&self.lock_conn(), session_id)
     }
 
     /// Selects projector work from one SQLite read transaction. The common
@@ -4846,7 +4894,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<RealtimeLoroProjectionLoad, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Deferred)?;
         let watermark =
             get_realtime_loro_projection_from_conn(&tx, session_id)?.ok_or_else(|| {
@@ -4878,7 +4926,7 @@ impl NotebookCaptureStore {
         session_id: &str,
     ) -> Result<RealtimeLoroProjectionSnapshot, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Deferred)?;
         let watermark =
             get_realtime_loro_projection_from_conn(&tx, session_id)?.ok_or_else(|| {
@@ -4898,7 +4946,7 @@ impl NotebookCaptureStore {
     pub fn list_pending_realtime_loro_projections(
         &self,
     ) -> Result<Vec<RealtimeLoroProjection>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(
             "SELECT session_id, realtime_loro_desired_revision,
                     realtime_loro_applied_revision
@@ -4925,7 +4973,7 @@ impl NotebookCaptureStore {
     ) -> Result<RealtimeLoroProjectionAck, NotebookCaptureStoreError> {
         require_nonempty("session_id", session_id)?;
         let revision = u64_to_i64(revision, "realtime Loro projection revision")?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let current =
             get_realtime_loro_projection_from_conn(&tx, session_id)?.ok_or_else(|| {
@@ -4993,7 +5041,7 @@ impl NotebookCaptureStore {
     ) -> Result<Vec<NotebookCaptureHistoryRun>, NotebookCaptureStoreError> {
         require_nonempty("notebook_id", notebook_id)?;
 
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction()?;
         let visible_runs = {
             let mut stmt = tx.prepare(
@@ -5068,7 +5116,7 @@ impl NotebookCaptureStore {
         utterance_id: &str,
     ) -> Result<Option<RealtimeUtterance>, NotebookCaptureStoreError> {
         require_nonempty("utterance_id", utterance_id)?;
-        get_utterance_with_overrides_by_id_from_conn(&self.conn.lock().unwrap(), utterance_id)
+        get_utterance_with_overrides_by_id_from_conn(&self.lock_conn(), utterance_id)
     }
 
     /// Returns one provider-owned machine fact without user-edit overlays.
@@ -5077,7 +5125,7 @@ impl NotebookCaptureStore {
         utterance_id: &str,
     ) -> Result<Option<RealtimeUtterance>, NotebookCaptureStoreError> {
         require_nonempty("utterance_id", utterance_id)?;
-        get_machine_utterance_by_id_from_conn(&self.conn.lock().unwrap(), utterance_id)
+        get_machine_utterance_by_id_from_conn(&self.lock_conn(), utterance_id)
     }
 
     /// Durably stage a lane edit without changing the visible utterance.
@@ -5126,7 +5174,7 @@ impl NotebookCaptureStore {
         require_nonempty("utterance_id", utterance_id)?;
         validate_language(lane_language)?;
         let canonical_lane_language = canonical_language(lane_language);
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let utterance =
             get_machine_utterance_by_id_from_conn(&tx, utterance_id)?.ok_or_else(|| {
@@ -5234,7 +5282,7 @@ impl NotebookCaptureStore {
         mutation_id: &str,
     ) -> Result<RealtimeUtterance, NotebookCaptureStoreError> {
         require_nonempty("mutation_id", mutation_id)?;
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mutation = get_projection_mutation_from_conn(&tx, mutation_id)?.ok_or_else(|| {
             NotebookCaptureStoreError::NotFound(format!("projection mutation {mutation_id}"))
@@ -5354,7 +5402,7 @@ impl NotebookCaptureStore {
         mutation_id: &str,
     ) -> Result<bool, NotebookCaptureStoreError> {
         require_nonempty("mutation_id", mutation_id)?;
-        let deleted = self.conn.lock().unwrap().execute(
+        let deleted = self.lock_conn().execute(
             "DELETE FROM notebook_projection_mutations
              WHERE id = ?1 AND state = 'pending'",
             [mutation_id],
@@ -5367,13 +5415,13 @@ impl NotebookCaptureStore {
         mutation_id: &str,
     ) -> Result<Option<NotebookProjectionMutation>, NotebookCaptureStoreError> {
         require_nonempty("mutation_id", mutation_id)?;
-        get_projection_mutation_from_conn(&self.conn.lock().unwrap(), mutation_id)
+        get_projection_mutation_from_conn(&self.lock_conn(), mutation_id)
     }
 
     pub fn list_pending_projection_mutations(
         &self,
     ) -> Result<Vec<NotebookProjectionMutation>, NotebookCaptureStoreError> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn();
         let mut stmt = conn.prepare(&format!(
             "{PROJECTION_MUTATION_SELECT} WHERE state = 'pending'
              ORDER BY created_at ASC, id ASC"
@@ -5726,6 +5774,23 @@ fn reconcile_translation_inbox_from_conn(
     session_id: &str,
 ) -> Result<Vec<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
     let items = list_translation_inbox_from_conn(conn, session_id)?;
+    reconcile_translation_inbox_items_from_conn(conn, session_id, items)
+}
+
+/// `reconcile_translation_inbox_from_conn` over an inbox the caller already
+/// read in this transaction.
+fn reconcile_translation_inbox_items_from_conn(
+    conn: &Connection,
+    session_id: &str,
+    items: Vec<RealtimeTranslationInboxItem>,
+) -> Result<Vec<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
+    if !items
+        .iter()
+        .any(|item| !item.withdrawn && item.bound_sequence.is_none())
+    {
+        // Nothing unbound: skip reading every machine utterance of the session.
+        return Ok(Vec::new());
+    }
     let candidates = list_machine_utterances_from_conn(conn, session_id)?;
     let mut bindings = Vec::new();
     for item in items
@@ -5759,6 +5824,17 @@ fn apply_bound_translation_inbox_items_from_conn(
     canonical_sequence: u64,
 ) -> Result<bool, NotebookCaptureStoreError> {
     let items = list_translation_inbox_from_conn(conn, session_id)?;
+    apply_bound_translation_inbox_snapshot_from_conn(conn, &items, utterance_id, canonical_sequence)
+}
+
+/// Replays one bound row's facts from an inbox snapshot read in the same
+/// transaction.
+fn apply_bound_translation_inbox_snapshot_from_conn(
+    conn: &Connection,
+    items: &[RealtimeTranslationInboxItem],
+    utterance_id: &str,
+    canonical_sequence: u64,
+) -> Result<bool, NotebookCaptureStoreError> {
     // Materialize surviving evidence before processing tombstones so an
     // otherwise empty shell cannot be collected while another bound producer
     // fact still owns a fallback lane.

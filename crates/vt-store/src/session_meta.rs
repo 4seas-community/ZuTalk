@@ -133,33 +133,25 @@ impl SessionMetaStore {
         record: &AudioChunkRetentionRecord,
     ) -> Result<(), SessionMetaError> {
         let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "INSERT INTO audio_retention_chunks (
-                session_id, chunk_id, start_ms, end_ms, local_path, encrypted,
-                deleted, retention_deadline_ms, delete_error, deleted_at_ms
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-             ON CONFLICT(session_id, chunk_id) DO UPDATE SET
-                start_ms=?3,
-                end_ms=?4,
-                local_path=?5,
-                encrypted=?6,
-                deleted=?7,
-                retention_deadline_ms=?8,
-                delete_error=?9,
-                deleted_at_ms=?10",
-            rusqlite::params![
-                &record.session_id,
-                &record.chunk_id,
-                record.start_ms as i64,
-                record.end_ms as i64,
-                &record.local_path,
-                if record.encrypted { 1_i64 } else { 0_i64 },
-                if record.deleted { 1_i64 } else { 0_i64 },
-                record.retention_deadline_ms,
-                record.delete_error.as_deref(),
-                record.deleted_at_ms,
-            ],
-        )?;
+        upsert_audio_retention_chunk_on(&conn, record)
+    }
+
+    /// One transaction for a whole recording's chunks. Stop wrote one
+    /// autocommit — one WAL sync — per minute of audio, while holding the
+    /// capture ownership gate.
+    pub fn upsert_audio_retention_chunks(
+        &self,
+        records: &[AudioChunkRetentionRecord],
+    ) -> Result<(), SessionMetaError> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.conn.lock().unwrap();
+        let transaction = conn.transaction()?;
+        for record in records {
+            upsert_audio_retention_chunk_on(&transaction, record)?;
+        }
+        transaction.commit()?;
         Ok(())
     }
 
@@ -346,6 +338,40 @@ impl From<rusqlite::Error> for SessionMetaError {
     }
 }
 
+fn upsert_audio_retention_chunk_on(
+    conn: &Connection,
+    record: &AudioChunkRetentionRecord,
+) -> Result<(), SessionMetaError> {
+    conn.execute(
+        "INSERT INTO audio_retention_chunks (
+            session_id, chunk_id, start_ms, end_ms, local_path, encrypted,
+            deleted, retention_deadline_ms, delete_error, deleted_at_ms
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+         ON CONFLICT(session_id, chunk_id) DO UPDATE SET
+            start_ms=?3,
+            end_ms=?4,
+            local_path=?5,
+            encrypted=?6,
+            deleted=?7,
+            retention_deadline_ms=?8,
+            delete_error=?9,
+            deleted_at_ms=?10",
+        rusqlite::params![
+            &record.session_id,
+            &record.chunk_id,
+            record.start_ms as i64,
+            record.end_ms as i64,
+            &record.local_path,
+            if record.encrypted { 1_i64 } else { 0_i64 },
+            if record.deleted { 1_i64 } else { 0_i64 },
+            record.retention_deadline_ms,
+            record.delete_error.as_deref(),
+            record.deleted_at_ms,
+        ],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,6 +466,34 @@ mod tests {
         let meta = store.get_meta("s1").unwrap();
         assert!(meta.encrypted_path.is_none());
         assert!(meta.key_id.is_none());
+    }
+
+    #[test]
+    fn audio_retention_chunks_are_written_in_one_batch_and_rewritten_in_place() {
+        let (_tmp, store) = setup();
+        let records = (0..46_u64)
+            .map(|minute| AudioChunkRetentionRecord {
+                session_id: "s1".to_string(),
+                chunk_id: format!("s1:audio:{minute:05}"),
+                start_ms: minute * 60_000,
+                end_ms: (minute + 1) * 60_000,
+                local_path: format!("/data/s1.chunk{minute}.enc"),
+                encrypted: true,
+                deleted: false,
+                retention_deadline_ms: i64::MAX,
+                delete_error: None,
+                deleted_at_ms: None,
+            })
+            .collect::<Vec<_>>();
+        store.upsert_audio_retention_chunks(&records).unwrap();
+        // A retried Stop writes the same rows again; they update in place.
+        store.upsert_audio_retention_chunks(&records).unwrap();
+        store.upsert_audio_retention_chunks(&[]).unwrap();
+
+        let chunks = store.list_audio_retention_chunks("s1").unwrap();
+        assert_eq!(chunks.len(), 46);
+        assert_eq!(chunks[0].chunk_id, "s1:audio:00000");
+        assert_eq!(chunks[45].end_ms, 46 * 60_000);
     }
 
     #[test]
