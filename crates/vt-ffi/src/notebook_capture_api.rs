@@ -2303,6 +2303,11 @@ async fn collect_stream_events_until_closed(
                     );
                     lane.connected = true;
                     lane.ever_connected = true;
+                    // Lag is the backlog of one connection. The one this
+                    // replaces usually went down for being 15 s behind, and
+                    // its figure would otherwise speak for the new one until
+                    // the provider's first progress report.
+                    lane.lag_ms = None;
                 }
                 // A lane that cannot be replaced any more must not hold the
                 // group's health at Connecting forever. Live requires every
@@ -4730,6 +4735,25 @@ impl CaptureCallbackSink {
         if self.mailbox.closed.load(Ordering::Acquire) {
             tracing::warn!("Notebook capture callback dispatcher is closed");
             return preview;
+        }
+        // Lane health is one current fact both channels describe. A preview
+        // carries the group's newest snapshot (every progress report sends
+        // one), while an event re-attaches the sticky copy below, which used
+        // to change only at transitions. The recording bar then alternated
+        // between the two several times a second: "captions 16 s behind",
+        // frozen at the lane's last reconnect, against the lag it has now.
+        if !preview.lane_health.is_empty() {
+            pending.lane_health = preview.lane_health.clone();
+            if let Some(event) = pending.event.as_mut().filter(|event| {
+                !matches!(
+                    event.capture_state,
+                    FfiNotebookCaptureState::Completed
+                        | FfiNotebookCaptureState::Interrupted
+                        | FfiNotebookCaptureState::Failed
+                )
+            }) {
+                event.lane_health = preview.lane_health.clone();
+            }
         }
         // The speculative tail is a complete replacement snapshot, so keeping
         // only the newest value is lossless and provides natural backpressure.
@@ -15848,6 +15872,57 @@ pub(crate) mod tests {
             .lane_health
             .iter()
             .any(|lane| lane.target_language.as_deref() == Some("th") && lane.state == "failed"));
+        drop(rx);
+    }
+
+    #[test]
+    fn an_event_reports_the_lane_lag_the_newest_preview_reported() {
+        // Every progress report sends a preview with the lag as it is now and,
+        // for the canonical lane, an event. When the event re-attached the
+        // lane health of the last transition instead, the recording bar
+        // flipped between "16 s behind" and nothing several times a second.
+        let (_temp, core, _profile) = assembler_store_fixture("lane-lag-coherence");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let callback = CaptureCallbackSink::new(
+            Arc::new(CaptureEventSender(tx)),
+            (*core.notebook_capture_store).clone(),
+            None,
+        )
+        .unwrap();
+        let run = core
+            .notebook_capture_store
+            .get_run_for_session("lane-lag-coherence")
+            .unwrap()
+            .unwrap();
+        let canonical = |lag_ms: u64| FfiNotebookCaptureLaneHealth {
+            target_language: None,
+            state: "live".to_string(),
+            group_epoch: 0,
+            final_audio_proc_ms: None,
+            total_audio_proc_ms: None,
+            lag_ms: Some(lag_ms),
+            input_discontinuous: false,
+        };
+
+        let mut transition = event_from_run(run.clone(), Vec::new(), false);
+        transition.lane_health = vec![canonical(16_000)];
+        callback.send(transition);
+
+        callback.send_preview(FfiNotebookCaptureLivePreview {
+            session_id: "lane-lag-coherence".to_string(),
+            preview_revision: 0,
+            utterances: Vec::new(),
+            translation_cues: Vec::new(),
+            lane_health: vec![canonical(800)],
+        });
+
+        let progress = callback.send(event_from_run(run, Vec::new(), false));
+        assert_eq!(progress.lane_health.len(), 1);
+        assert_eq!(progress.lane_health[0].lag_ms, Some(800));
+        let snapshot = callback
+            .full_snapshot_with_remote_truth("lane-lag-coherence")
+            .unwrap();
+        assert_eq!(snapshot.lane_health[0].lag_ms, Some(800));
         drop(rx);
     }
 
