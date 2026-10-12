@@ -688,7 +688,8 @@
 "capture.toolbar.captions_lag" = "Untertitel %lld s im Rückstand";
 "capture.state.pausing" = "Wird pausiert…";
 "capture.state.resuming" = "Wird fortgesetzt…";
-"capture.problem.credentials" = "Der Transkriptionsdienst hat den Schlüssel abgelehnt. In den Einstellungen prüfen – oder die Einladungszeit ist aufgebraucht.";
+"capture.problem.credentials" = "Der Transkriptionsdienst hat den Schlüssel abgelehnt. Schlüssel oder Einladung in den Einstellungen prüfen.";
+"capture.problem.invite_time" = "Die Einladungszeit ist aufgebraucht. Die Aufnahme läuft ohne Live-Transkription weiter.";
 "capture.problem.quota" = "Das Transkriptionsguthaben ist aufgebraucht.";
 "capture.problem.rate_limited" = "Zu viele Transkriptionsverbindungen sind gleichzeitig offen.";
 "capture.problem.network" = "Die Verbindung zum Transkriptionsdienst ist abgebrochen.";

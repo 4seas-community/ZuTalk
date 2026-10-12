@@ -1349,8 +1349,13 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         else { return nil }
         let key: String.LocalizationValue
         switch providerErrorType {
-        case "authentication_error":
+        // A refusal from the provider arrives canonicalized; one from the
+        // invite service, before any connection was made, under the
+        // provider's own word.
+        case "authentication_error", "unauthenticated":
             key = "capture.problem.credentials"
+        case "invite_time_exhausted":
+            key = "capture.problem.invite_time"
         case "quota_exhausted":
             key = "capture.problem.quota"
         case "rate_limited":

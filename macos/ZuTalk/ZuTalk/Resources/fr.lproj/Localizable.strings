@@ -688,7 +688,8 @@
 "capture.toolbar.captions_lag" = "Sous-titres en retard de %lld s";
 "capture.state.pausing" = "Mise en pause…";
 "capture.state.resuming" = "Reprise…";
-"capture.problem.credentials" = "Le service de transcription a refusé la clé. Vérifiez-la dans les Réglages — ou votre temps d’invitation est peut-être épuisé.";
+"capture.problem.credentials" = "Le service de transcription a refusé la clé. Vérifiez votre clé ou votre invitation dans les Réglages.";
+"capture.problem.invite_time" = "Le temps de votre invitation est épuisé. L’enregistrement continue, sans transcription en direct.";
 "capture.problem.quota" = "Votre solde de transcription est épuisé.";
 "capture.problem.rate_limited" = "Trop de connexions de transcription sont ouvertes en même temps.";
 "capture.problem.network" = "La connexion au service de transcription a été perdue.";

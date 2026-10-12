@@ -2369,7 +2369,7 @@ async fn collect_stream_events_until_closed(
                 }
                 PersistedCaptureChanges::default()
             }
-            SttStreamEvent::Reconnecting { .. } => {
+            SttStreamEvent::Reconnecting { planned, .. } => {
                 // The untranscribed stretch starts where durable rows stop,
                 // not where the socket died. A lane that cut itself for
                 // outrunning its provider was fifteen or more seconds past
@@ -2403,31 +2403,45 @@ async fn collect_stream_events_until_closed(
                     &mut initialized_variants,
                 )?;
                 lanes[lane_index].assembler.advance();
-                lanes[lane_index].connected = false;
-                // One lane reconnecting no longer fails the group. The old
-                // fail-closed rule existed because a replacement session's
-                // token timestamps restarted at zero and the row binding
-                // could not survive the jump; tokens are now projected onto
-                // the capture-wide timeline through connection_origin_ms
-                // (sibling agreement measured at p95 ≤ one PCM block), and
-                // translation visibility is time-anchored rather than bound.
-                // The lane's own runtime replays and re-anchors; a canonical
-                // outage degrades every column and reports Connecting, an
-                // auxiliary outage degrades one column and the group stays
-                // on the air.
                 lanes[lane_index].awaiting_reconnect = true;
-                let health = if lane_index == canonical_lane_index {
-                    RemoteHealth::Connecting
+                if planned {
+                    // A connection reaching its session cap is a lane
+                    // changing connections, not an outage: the next one opens
+                    // at once and nothing is lost. Health stays where it is,
+                    // so a recording does not flash "connecting" at the end of
+                    // every key. If the replacement cannot come up, its own
+                    // unplanned reconnect or error reports that.
+                    persisted
                 } else {
-                    RemoteHealth::Degraded
-                };
-                let run = store
-                    .update_remote_health(&run_id, health, None)
-                    .map_err(|error| {
-                        local_persistence_failure("persist Soniox reconnecting state", error)
-                    })?;
-                emit_capture_lane_transition(run, &lanes, &callback);
-                persisted
+                    lanes[lane_index].connected = false;
+                    // One lane reconnecting no longer fails the group. The old
+                    // fail-closed rule existed because a replacement session's
+                    // token timestamps restarted at zero and the row binding
+                    // could not survive the jump; tokens are now projected onto
+                    // the capture-wide timeline through connection_origin_ms
+                    // (sibling agreement measured at p95 ≤ one PCM block), and
+                    // translation visibility is time-anchored rather than bound.
+                    // The lane's own runtime replays and re-anchors; a canonical
+                    // outage degrades every column and reports Connecting, an
+                    // auxiliary outage degrades one column and the group stays
+                    // on the air.
+                    let health = if lane_index == canonical_lane_index {
+                        RemoteHealth::Connecting
+                    } else {
+                        RemoteHealth::Degraded
+                    };
+                    let run =
+                        store
+                            .update_remote_health(&run_id, health, None)
+                            .map_err(|error| {
+                                local_persistence_failure(
+                                    "persist Soniox reconnecting state",
+                                    error,
+                                )
+                            })?;
+                    emit_capture_lane_transition(run, &lanes, &callback);
+                    persisted
+                }
             }
             SttStreamEvent::Tokens(tokens) => {
                 let updates = lanes[lane_index].assembler.apply_tokens(&tokens);
@@ -6378,21 +6392,38 @@ impl ZuTalkCore {
         *self.lane_credential_broker.lock().unwrap() = broker;
     }
 
-    /// Answers a pending credential request with a freshly fetched key.
-    pub fn fulfill_lane_credential(&self, request_id: String, api_key: String) {
+    /// Answers a pending credential request with a freshly fetched key, and
+    /// the per-session cap it was minted with when the issuer reported one.
+    pub fn fulfill_lane_credential(
+        &self,
+        request_id: String,
+        api_key: String,
+        session_cap_seconds: Option<u64>,
+    ) {
         let broker = self.lane_credential_broker.lock().unwrap().clone();
         if let Some(broker) = broker {
-            broker.fulfill(&request_id, api_key);
+            broker.fulfill(
+                &request_id,
+                api_key,
+                session_cap_seconds
+                    .filter(|seconds| *seconds > 0)
+                    .map(std::time::Duration::from_secs),
+            );
         }
     }
 
-    /// Reports that a credential request cannot be answered. `terminal` marks
-    /// a refusal the lane must not retry (invitation spent, budget exhausted)
-    /// as opposed to a transient failure worth a reconnect.
-    pub fn fail_lane_credential(&self, request_id: String, message: String, terminal: bool) {
+    /// Reports that a credential request cannot be answered, and why: a
+    /// transient failure is retried with the lane's normal backoff; a refusal
+    /// or spent invite time ends the lane and is reported as that.
+    pub fn fail_lane_credential(
+        &self,
+        request_id: String,
+        message: String,
+        refusal: crate::lane_credential_api::FfiLaneCredentialRefusal,
+    ) {
         let broker = self.lane_credential_broker.lock().unwrap().clone();
         if let Some(broker) = broker {
-            broker.fail(&request_id, message, terminal);
+            broker.fail(&request_id, message, refusal);
         }
     }
 
@@ -7507,6 +7538,18 @@ impl ZuTalkCore {
             .callback
             .send(event_from_run(draining, Vec::new(), false));
 
+        // Whether transcription had already stopped before the user did: a
+        // group whose writer finished on its own (a terminal provider error,
+        // spent invite time) or one a push already tore down. Its stretch from
+        // the last settled row to the end of the recording went untranscribed
+        // and is recorded below, once that writer is joined and its rows are
+        // durable.
+        let transcription_ended_early = active.profile.remote_realtime_enabled
+            && (active
+                .remote
+                .as_ref()
+                .is_some_and(|remote| remote.event_task.is_finished())
+                || active.remote_cleanup.is_some());
         let mut remote_failure_persistence_error = None;
         if let Some(remote) = active.remote.take() {
             if let Some(failure) = self.finish_remote_capture(remote) {
@@ -7529,6 +7572,9 @@ impl ZuTalkCore {
 
         log_phase("finish transcription");
         let frames = active.journal.captured_frames();
+        if transcription_ended_early {
+            self.preserve_untranscribed_tail(&active.session_id, frames);
+        }
         let journal_path = active.journal.journal_path().to_path_buf();
         let result = match active.journal.stop() {
             Ok(result) => result,
@@ -8229,6 +8275,52 @@ impl ZuTalkCore {
             .map(|error| format!("persist {} capture failure: {error}", failure.error_type))
     }
 
+    /// Records the stretch from where durable rows stop to `captured_frames`
+    /// as a gap — the record that draws the separator in the transcript and
+    /// that after-stop repair works from. Best effort: a missed gap must not
+    /// cost the recording it describes.
+    fn preserve_gap_after_transcribed_rows(
+        &self,
+        session_id: &str,
+        transcribed_through_ms: u64,
+        captured_frames: u64,
+    ) {
+        let sample_rate = u64::from(CURRENT_NOTEBOOK_CAPTURE_ENGINE.sample_rate);
+        let transcribed_through_frame = transcribed_through_ms.saturating_mul(sample_rate) / 1_000;
+        if captured_frames <= transcribed_through_frame {
+            return;
+        }
+        if let Err(error) = self.notebook_capture_store.preserve_network_transcript_gap(
+            session_id,
+            transcribed_through_frame,
+            captured_frames,
+        ) {
+            tracing::warn!(error = %error, "untranscribed stretch was not recorded as a gap");
+        }
+    }
+
+    /// A recording stopped after its transcription had already ended keeps
+    /// the stretch it never transcribed. Before, only a restart recorded that
+    /// gap, so a recording whose lane died and was then stopped — the end of
+    /// every invite recording's reservation window — showed its last lines
+    /// running straight into silence, with nothing to say the rest of the
+    /// audio was never transcribed and nothing for repair to start from.
+    fn preserve_untranscribed_tail(&self, session_id: &str, captured_frames: u64) {
+        match self
+            .notebook_capture_store
+            .realtime_resume_point(session_id)
+        {
+            Ok(resume) => self.preserve_gap_after_transcribed_rows(
+                session_id,
+                resume.transcribed_through_ms,
+                captured_frames,
+            ),
+            Err(error) => {
+                tracing::warn!(error = %error, "untranscribed tail was not recorded as a gap");
+            }
+        }
+    }
+
     /// Brings transcription back to a recording whose provider group is gone.
     ///
     /// A recording outlives its provider group on purpose: a provider or
@@ -8289,20 +8381,11 @@ impl ZuTalkCore {
             .map_err(store_error)?;
         let sample_rate = u64::from(CURRENT_NOTEBOOK_CAPTURE_ENGINE.sample_rate);
         let captured_frames = active.captured_frames.load(Ordering::Acquire);
-        let transcribed_through_frame =
-            resume.transcribed_through_ms.saturating_mul(sample_rate) / 1_000;
-        if captured_frames > transcribed_through_frame {
-            if let Err(error) = self.notebook_capture_store.preserve_network_transcript_gap(
-                &active.session_id,
-                transcribed_through_frame,
-                captured_frames,
-            ) {
-                tracing::warn!(
-                    error = %error,
-                    "transcript gap before a restarted provider group was not recorded"
-                );
-            }
-        }
+        self.preserve_gap_after_transcribed_rows(
+            &active.session_id,
+            resume.transcribed_through_ms,
+            captured_frames,
+        );
         let context = if active.profile.send_context_to_soniox {
             // The Context the user confirmed for this run, not whatever the
             // Notebook holds now.
@@ -12078,6 +12161,72 @@ pub(crate) mod tests {
         assert_eq!(gaps[0].end_ms, 2_000, "and ends where the new group joined");
     }
 
+    /// Field report: an invite recording lost its transcription at the end
+    /// of its third hour and was stopped 107 seconds later. Those seconds were
+    /// recorded but not transcribed, and nothing said so — no gap, so no
+    /// separator in the transcript and nothing for repair to start from. Only
+    /// a restart used to record the stretch a dead group left behind.
+    #[test]
+    fn a_recording_stopped_after_its_transcription_died_keeps_the_untranscribed_tail() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let factory = Arc::new(DyingThenRestartedStreamFactory::default());
+        core.notebook_soniox_stream_factory = factory.clone();
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core
+            .create_notebook(Some("Stopped after transcription died".into()))
+            .unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        let session_id = started.session_id.clone();
+        let push = |blocks: usize| {
+            for _ in 0..blocks {
+                let _ = core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200]);
+            }
+        };
+
+        // The group settles one row through 0.5 s and dies; the recording
+        // carries on to 3 s and is stopped without a restart.
+        push(20);
+        wait_for("the group to fail", || {
+            core.notebook_capture_store
+                .get_run_for_session(&session_id)
+                .unwrap()
+                .unwrap()
+                .provider_error_type
+                .is_some()
+        });
+        push(10);
+        let stopped = core
+            .stop_notebook_capture_session(session_id.clone())
+            .unwrap();
+        assert_eq!(stopped.capture_state, FfiNotebookCaptureState::Completed);
+        assert_eq!(
+            *factory.origins.lock().unwrap(),
+            vec![0],
+            "no restart happened"
+        );
+
+        let gaps = core
+            .list_notebook_session_transcript_gaps(session_id)
+            .unwrap();
+        assert_eq!(gaps.len(), 1, "the untranscribed tail is recorded");
+        assert_eq!(gaps[0].start_ms, 500, "from where settled rows stop");
+        assert_eq!(gaps[0].end_ms, 3_000, "to the end of the recording");
+    }
+
     /// Pause and resume is what a user reaches for when captions stop.
     #[test]
     fn resuming_a_recording_whose_transcription_died_restarts_it() {
@@ -12474,6 +12623,7 @@ pub(crate) mod tests {
                             .send(SttStreamEvent::Reconnecting {
                                 attempt: 1,
                                 delay_ms: 0,
+                                planned: false,
                             })
                             .await;
                         let _ = event_tx
@@ -12942,6 +13092,7 @@ pub(crate) mod tests {
                     .send(SttStreamEvent::Reconnecting {
                         attempt: 1,
                         delay_ms: 0,
+                        planned: false,
                     })
                     .await;
                 let _ = event_tx

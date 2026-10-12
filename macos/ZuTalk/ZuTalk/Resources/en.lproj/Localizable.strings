@@ -688,7 +688,8 @@
 "capture.toolbar.captions_lag" = "Captions %lld s behind";
 "capture.state.pausing" = "Pausing…";
 "capture.state.resuming" = "Resuming…";
-"capture.problem.credentials" = "The transcription service rejected the key. Check it in Settings — or your invite time may be used up.";
+"capture.problem.credentials" = "The transcription service rejected the key. Check your key or invitation in Settings.";
+"capture.problem.invite_time" = "Your invitation's time is used up. The recording continues without live transcription.";
 "capture.problem.quota" = "Your transcription balance is used up.";
 "capture.problem.rate_limited" = "Too many transcription connections are open at once.";
 "capture.problem.network" = "The connection to the transcription service was lost.";

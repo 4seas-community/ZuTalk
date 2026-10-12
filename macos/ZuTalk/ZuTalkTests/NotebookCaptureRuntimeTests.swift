@@ -4040,6 +4040,57 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertEqual(store.captureState, .recording)
     }
 
+    /// An invite recording that reached the end of its reservation window was
+    /// told "the transcription service rejected the key … or your invite time
+    /// may be used up" — with 561 hours of invite time left. Each cause now
+    /// has its own sentence, and neither borrows the other's.
+    @MainActor
+    func testTranscriptionProblemTextNamesTheCauseItWasGiven() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+        let sessionId = try XCTUnwrap(store.sessionId)
+        var revision: UInt64 = 1
+        func emitFailure(_ errorType: String) {
+            revision += 1
+            client.emitCaptureEvent(NotebookCaptureEventDTO(
+                sessionId: sessionId,
+                eventRevision: revision,
+                isFullSnapshot: false,
+                captureState: .recording,
+                remoteHealth: .degraded,
+                projectionState: .ready,
+                utterances: [],
+                contextReceipt: nil,
+                providerErrorType: errorType,
+                providerRequestId: nil
+            ))
+        }
+
+        emitFailure("invite_time_exhausted")
+        XCTAssertEqual(
+            store.transcriptionProblemText,
+            String(localized: "capture.problem.invite_time")
+        )
+        emitFailure("unauthenticated")
+        XCTAssertEqual(
+            store.transcriptionProblemText,
+            String(localized: "capture.problem.credentials")
+        )
+        emitFailure("authentication_error")
+        XCTAssertEqual(
+            store.transcriptionProblemText,
+            String(localized: "capture.problem.credentials")
+        )
+        XCTAssertNotEqual(
+            String(localized: "capture.problem.credentials"),
+            String(localized: "capture.problem.invite_time")
+        )
+    }
+
     @MainActor
     func testRestartTranscriptionIsOfferedOnlyWhileRecordingWithoutIt() async throws {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))

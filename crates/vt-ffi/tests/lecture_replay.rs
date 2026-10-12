@@ -91,6 +91,15 @@ fn replay_seconds() -> Option<u64> {
         .filter(|value| *value > 0)
 }
 
+/// Opening reservation per lane, in wall-clock seconds. Unset reserves the
+/// whole replay up front.
+fn invite_window_seconds() -> Option<u64> {
+    std::env::var("ZULANGUE_INVITE_WINDOW_SECONDS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+}
+
 fn replay_speed() -> f64 {
     std::env::var("ZULANGUE_REPLAY_SPEED")
         .ok()
@@ -247,6 +256,31 @@ fn persisted_provider_failure(data_dir: &Path, session_id: &str) -> Option<(Stri
         .filter(|(error_type, _)| !error_type.is_empty())
 }
 
+/// Untranscribed stretches the core recorded, in capture seconds.
+fn persisted_transcript_gaps(data_dir: &Path, session_id: &str) -> Vec<(f64, f64)> {
+    let Ok(connection) = rusqlite::Connection::open_with_flags(
+        data_dir.join("zutalk.db"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    ) else {
+        return Vec::new();
+    };
+    let Ok(mut statement) = connection.prepare(
+        "SELECT start_frame, end_frame FROM realtime_transcript_gaps
+         WHERE session_id = ?1 ORDER BY start_frame",
+    ) else {
+        return Vec::new();
+    };
+    statement
+        .query_map([session_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)? as f64 / 16_000.0,
+                row.get::<_, i64>(1)? as f64 / 16_000.0,
+            ))
+        })
+        .map(|rows| rows.flatten().collect())
+        .unwrap_or_default()
+}
+
 fn assert_private_file(path: &Path, label: &str) {
     let metadata =
         std::fs::symlink_metadata(path).unwrap_or_else(|error| panic!("inspect {label}: {error}"));
@@ -273,6 +307,12 @@ fn assert_private_file(path: &Path, label: &str) {
 /// exercises the credential path invited users actually run on, and it is the
 /// only way to reach the realtime provider without a personal key.
 ///
+/// Keys are fetched the way the app fetches them: the reservation returns one
+/// single-use key per opening lane, and every later connection — a reconnect
+/// or a rollover at a key's session cap — fetches one more from
+/// `/v1/realtime-session/key`. A refusal is reported with the same kind the
+/// app reports, so a spent invitation ends the lanes the way it does there.
+///
 /// Quota is counted in lane-seconds. Settlement reports **audio** seconds, not
 /// wall-clock seconds: Soniox bills the master key for the audio it decoded,
 /// and an accelerated replay decodes the full recording in a fraction of the
@@ -285,12 +325,13 @@ struct InviteLane {
     client: reqwest::Client,
     session_id: Mutex<Option<String>>,
     lane_count: u32,
-    key: Mutex<Option<(String, Instant)>>,
+    /// Opening keys returned with the reservation, spent first, with the
+    /// session cap the service minted them with.
+    pooled: Mutex<Vec<(String, Option<u64>)>>,
+    /// Keys fetched after the opening batch, with the cap each carried.
+    fetched: Mutex<Vec<(f64, Option<u64>)>>,
+    started: Instant,
 }
-
-/// Soniox temporary keys live an hour; renew well before the edge so a
-/// reconnect late in a long replay still gets a usable key.
-const INVITE_KEY_RENEW_AFTER: Duration = Duration::from_secs(45 * 60);
 
 #[derive(Deserialize)]
 struct InviteTokenDocument {
@@ -309,12 +350,35 @@ struct InviteQuota {
 struct InviteRealtimeSession {
     session_id: String,
     reserved_seconds: i64,
+    #[serde(default)]
+    keys: Vec<InviteKey>,
+    #[serde(default)]
+    max_session_duration_seconds: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct InviteKey {
     api_key: String,
 }
 
 #[derive(Deserialize)]
-struct InviteRenewedKey {
-    api_key: String,
+struct InviteLaneKeys {
+    keys: Vec<InviteKey>,
+    #[serde(default)]
+    max_session_duration_seconds: Option<u64>,
+}
+
+/// A lane key and the session cap it was minted with.
+type LaneKey = (String, Option<u64>);
+type LaneKeyRefusal = (
+    String,
+    vt_ffi::lane_credential_api::FfiLaneCredentialRefusal,
+);
+
+#[derive(Deserialize)]
+struct InviteRefusal {
+    #[serde(default)]
+    error: String,
 }
 
 impl InviteLane {
@@ -344,7 +408,9 @@ impl InviteLane {
                 .expect("build invite client"),
             session_id: Mutex::new(None),
             lane_count,
-            key: Mutex::new(None),
+            pooled: Mutex::new(Vec::new()),
+            fetched: Mutex::new(Vec::new()),
+            started: Instant::now(),
         })
     }
 
@@ -387,42 +453,91 @@ impl InviteLane {
         })
     }
 
-    /// Reserves lane-seconds and takes the first temporary key. The reservation
-    /// also caps the WebSocket duration Soniox will allow, so it must cover the
-    /// whole replay.
+    /// Reserves lane-seconds and takes one single-use key per opening lane.
+    /// The reservation's wall-clock span caps how long those first streams
+    /// run; after that each lane rolls onto a key fetched on demand.
     fn reserve(&self, requested_seconds: i64) -> i64 {
         let session: InviteRealtimeSession = self.post(
             "/v1/realtime-session",
             serde_json::json!({
                 "requested_seconds": requested_seconds,
                 "lane_count": self.lane_count,
+                "initial_key_mode": "single_use_batch",
             }),
         );
         *self.session_id.lock().unwrap() = Some(session.session_id.clone());
-        *self.key.lock().unwrap() = Some((session.api_key, Instant::now()));
+        let cap = session.max_session_duration_seconds;
+        *self.pooled.lock().unwrap() = session
+            .keys
+            .into_iter()
+            .map(|key| (key.api_key, cap))
+            .collect();
         session.reserved_seconds
     }
 
-    /// The key a lane should connect with right now.
-    fn current_key(&self) -> String {
-        let cached = self.key.lock().unwrap().clone();
-        if let Some((key, minted)) = cached {
-            if minted.elapsed() < INVITE_KEY_RENEW_AFTER {
-                return key;
-            }
+    /// The key the next connection should present: an opening key while any
+    /// remain, otherwise one fetched for this connection alone.
+    fn next_key(&self) -> Result<LaneKey, LaneKeyRefusal> {
+        use vt_ffi::lane_credential_api::FfiLaneCredentialRefusal as Refusal;
+        if let Some(key) = self.pooled.lock().unwrap().pop() {
+            return Ok(key);
         }
-        let session_id = self
-            .session_id
-            .lock()
-            .unwrap()
-            .clone()
-            .expect("invite realtime session must be reserved before a lane connects");
-        let renewed: InviteRenewedKey = self.post(
-            "/v1/realtime-session/renew-key",
-            serde_json::json!({ "session_id": session_id }),
-        );
-        *self.key.lock().unwrap() = Some((renewed.api_key.clone(), Instant::now()));
-        renewed.api_key
+        let Some(session_id) = self.session_id.lock().unwrap().clone() else {
+            return Err(("no open reservation".to_string(), Refusal::Refused));
+        };
+        let url = format!("{}/v1/realtime-session/key", self.base_url);
+        let outcome = self.runtime.block_on(async {
+            let response = self
+                .client
+                .post(&url)
+                .bearer_auth(&self.token)
+                .json(&serde_json::json!({ "session_id": session_id, "count": 1 }))
+                .send()
+                .await?;
+            let status = response.status();
+            let text = response.text().await?;
+            Ok::<_, reqwest::Error>((status, text))
+        });
+        let (status, text) = match outcome {
+            Ok(answer) => answer,
+            Err(error) => return Err((format!("invite service: {error}"), Refusal::Transient)),
+        };
+        if status.is_success() {
+            let answer: InviteLaneKeys = serde_json::from_str(&text)
+                .map_err(|error| (format!("decode lane key: {error}"), Refusal::Transient))?;
+            let key = answer
+                .keys
+                .into_iter()
+                .next()
+                .ok_or_else(|| ("no key returned".to_string(), Refusal::Refused))?;
+            self.fetched.lock().unwrap().push((
+                self.started.elapsed().as_secs_f64(),
+                answer.max_session_duration_seconds,
+            ));
+            eprintln!(
+                "[invite] fetched a lane key at {:.0}s (cap {:?}s)",
+                self.started.elapsed().as_secs_f64(),
+                answer.max_session_duration_seconds
+            );
+            return Ok((key.api_key, answer.max_session_duration_seconds));
+        }
+        let reason = serde_json::from_str::<InviteRefusal>(&text)
+            .map(|refusal| refusal.error)
+            .unwrap_or_default();
+        let refusal = match (status.as_u16(), reason.as_str()) {
+            (_, "quota_exhausted") | (402, _) => Refusal::TimeExhausted,
+            (401 | 404 | 429, _) => Refusal::Refused,
+            _ => Refusal::Transient,
+        };
+        eprintln!("[invite] lane key refused: {status} {reason}");
+        Err((
+            format!("invite service returned {status} {reason}"),
+            refusal,
+        ))
+    }
+
+    fn keys_fetched_after_opening(&self) -> Vec<(f64, Option<u64>)> {
+        self.fetched.lock().unwrap().clone()
     }
 
     /// Charges the audio the provider actually decoded, then closes the
@@ -494,14 +609,9 @@ impl vt_ffi::lane_credential_api::FfiLaneCredentialRequester for InviteLaneReque
             let Some(core) = core.upgrade() else {
                 return;
             };
-            let key = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| lane.current_key()));
-            match key {
-                Ok(key) => core.fulfill_lane_credential(request_id, key),
-                Err(_) => core.fail_lane_credential(
-                    request_id,
-                    "invite service did not issue a lane key".to_string(),
-                    false,
-                ),
+            match lane.next_key() {
+                Ok((key, cap)) => core.fulfill_lane_credential(request_id, key, cap),
+                Err((message, refusal)) => core.fail_lane_credential(request_id, message, refusal),
             }
         });
     }
@@ -900,10 +1010,16 @@ fn replay_lecture_realtime_accelerated() {
         }
         (None, Some(lane)) => {
             let before = lane.quota();
-            // The reservation doubles as the Soniox WebSocket duration cap, so
-            // it has to cover the whole wall clock of the replay, not just its
-            // audio duration.
-            let requested = (audio_ms as i64 / 1_000) + 900;
+            // The opening reservation is also the first streams' cap. By
+            // default it covers the whole replay; `ZULANGUE_INVITE_WINDOW_SECONDS`
+            // makes it short on purpose, so every lane reaches its key's cap
+            // mid-replay and has to roll over onto a fresh one — the path an
+            // invite recording takes at the end of each reservation window.
+            let window = invite_window_seconds();
+            let requested = match window {
+                Some(window) => window as i64 * lane.lane_count as i64,
+                None => (audio_ms as i64 / 1_000) + 900,
+            };
             let reserved = lane.reserve(requested);
             settle_guard = Some(InviteSettleGuard {
                 lane: lane.clone(),
@@ -914,9 +1030,8 @@ fn replay_lecture_realtime_accelerated() {
                 before.remaining_seconds, before.quota_seconds, before.used_seconds, lane.lane_count
             );
             assert!(
-                reserved >= audio_ms as i64 / 1_000,
-                "reservation {reserved}s is shorter than the {}s recording; \
-                 Soniox would cut the WebSocket off mid-replay",
+                window.is_some() || reserved >= audio_ms as i64 / 1_000,
+                "reservation {reserved}s is shorter than the {}s recording",
                 audio_ms / 1_000
             );
             core.set_lane_credential_requester(Some(Box::new(InviteLaneRequester {
@@ -1338,6 +1453,55 @@ fn replay_lecture_realtime_accelerated() {
     ));
     for error in projection_errors.iter().take(5) {
         line(format!("PROJECTION FAILURE: {error}"));
+    }
+    if let Some(lane) = &invite {
+        let fetched = lane.keys_fetched_after_opening();
+        line(format!(
+            "invite keys fetched after the opening batch: {} [{}]",
+            fetched.len(),
+            fetched
+                .iter()
+                .map(|(at, cap)| format!(
+                    "{at:.0}s cap {}",
+                    cap.map(|cap| format!("{cap}s"))
+                        .unwrap_or_else(|| "?".to_string())
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    let gaps = persisted_transcript_gaps(&data_dir, &session_id);
+    line(format!(
+        "transcript gaps recorded: {} [{}]",
+        gaps.len(),
+        gaps.iter()
+            .map(|(start, end)| format!("{start:.1}-{end:.1}s"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    if let Some(window) = invite_window_seconds() {
+        // Text per window: a lane that died at a cap leaves every window
+        // after it empty.
+        let windows = (audio_ms / 1_000).div_ceil(window).max(1);
+        let per_window = (0..windows)
+            .map(|index| {
+                let from = index * window * 1_000;
+                let to = from + window * 1_000;
+                let chars: usize = utterances
+                    .iter()
+                    .filter(|utterance| {
+                        let start = utterance.source_start_ms.unwrap_or(0);
+                        start >= from && start < to
+                    })
+                    .map(|utterance| utterance.source_text.chars().count())
+                    .sum();
+                format!("{}-{}s {chars}", from / 1_000, to / 1_000)
+            })
+            .collect::<Vec<_>>();
+        line(format!(
+            "source characters per {window}s window: {}",
+            per_window.join(" | ")
+        ));
     }
 
     // Projection cost against transcript length answers "does it get worse the

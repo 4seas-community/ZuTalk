@@ -688,7 +688,8 @@
 "capture.toolbar.captions_lag" = "字幕落后 %lld 秒";
 "capture.state.pausing" = "正在暂停…";
 "capture.state.resuming" = "正在继续…";
-"capture.problem.credentials" = "转录服务拒绝了密钥。请在设置里检查，也可能是邀请时长已用完。";
+"capture.problem.credentials" = "转录服务拒绝了密钥。请在设置里检查密钥或邀请。";
+"capture.problem.invite_time" = "邀请时长已用完。录音会继续，但不再实时转录。";
 "capture.problem.quota" = "转录额度已用完。";
 "capture.problem.rate_limited" = "同时打开的转录连接太多。";
 "capture.problem.network" = "与转录服务的连接断开了。";

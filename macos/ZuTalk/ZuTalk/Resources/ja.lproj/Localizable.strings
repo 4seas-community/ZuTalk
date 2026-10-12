@@ -671,7 +671,8 @@
 "capture.toolbar.captions_lag" = "字幕が %lld 秒遅れています";
 "capture.state.pausing" = "一時停止中…";
 "capture.state.resuming" = "再開中…";
-"capture.problem.credentials" = "文字起こしサービスがキーを拒否しました。設定で確認してください。招待の利用時間を使い切った可能性もあります。";
+"capture.problem.credentials" = "文字起こしサービスがキーを拒否しました。設定でキーまたは招待を確認してください。";
+"capture.problem.invite_time" = "招待の利用時間を使い切りました。録音は続きますが、リアルタイムの文字起こしは止まります。";
 "capture.problem.quota" = "文字起こしの残高を使い切りました。";
 "capture.problem.rate_limited" = "同時に開いている文字起こし接続が多すぎます。";
 "capture.problem.network" = "文字起こしサービスとの接続が切れました。";

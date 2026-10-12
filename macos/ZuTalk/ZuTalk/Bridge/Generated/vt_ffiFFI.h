@@ -903,12 +903,12 @@ uint32_t uniffi_vt_ffi_fn_method_zutalkcore_export_context_pack(uint64_t ptr, Ru
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_FAIL_LANE_CREDENTIAL
 #define UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_FAIL_LANE_CREDENTIAL
-void uniffi_vt_ffi_fn_method_zutalkcore_fail_lane_credential(uint64_t ptr, RustBuffer request_id, RustBuffer message, int8_t terminal, RustCallStatus *_Nonnull out_status
+void uniffi_vt_ffi_fn_method_zutalkcore_fail_lane_credential(uint64_t ptr, RustBuffer request_id, RustBuffer message, RustBuffer refusal, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_FULFILL_LANE_CREDENTIAL
 #define UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_FULFILL_LANE_CREDENTIAL
-void uniffi_vt_ffi_fn_method_zutalkcore_fulfill_lane_credential(uint64_t ptr, RustBuffer request_id, RustBuffer api_key, RustCallStatus *_Nonnull out_status
+void uniffi_vt_ffi_fn_method_zutalkcore_fulfill_lane_credential(uint64_t ptr, RustBuffer request_id, RustBuffer api_key, RustBuffer session_cap_seconds, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_GET_NOTEBOOK_CAPTURE_ENGINE_DESCRIPTOR

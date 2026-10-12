@@ -124,6 +124,15 @@ final class CommunityInviteRealtimeSessionResponseTests: XCTestCase {
         XCTAssertEqual(response.reservedSeconds, 7_200)
         XCTAssertNil(response.legacyAPIKey)
         XCTAssertEqual(response.initialKeys?.map(\.apiKey), ["lane-0", "lane-1"])
+        XCTAssertNil(response.maxSessionDurationSeconds)
+    }
+
+    func testReservationResponseCarriesTheOpeningKeysSessionCap() throws {
+        let data = Data(
+            #"{"session_id":"session-3","reserved_seconds":18000,"max_session_duration_seconds":6000,"keys":[{"api_key":"lane-0"}]}"#.utf8
+        )
+        let response = try JSONDecoder().decode(RealtimeSessionResponse.self, from: data)
+        XCTAssertEqual(response.maxSessionDurationSeconds, 6_000)
     }
 }
 
@@ -370,6 +379,81 @@ final class CommunityInviteLaneCredentialTests: XCTestCase {
         XCTAssertFalse(LaneCredentialFailure.fromStatusCode(503).terminal)
     }
 
+    /// A rollover at the end of a reservation window asks for the next key.
+    /// When the invitation cannot pay for it, the service says so in the
+    /// body under the same 429 a spent key budget uses — and the two need
+    /// different words on screen, so the body decides.
+    func testSpentInviteTimeIsToldApartFromARefusedKey() {
+        let spent = LaneCredentialFailure.fromResponse(
+            statusCode: 429,
+            body: Data(#"{"error":"quota_exhausted"}"#.utf8)
+        )
+        XCTAssertEqual(spent.refusal, .timeExhausted)
+        XCTAssertTrue(spent.terminal)
+
+        let budget = LaneCredentialFailure.fromResponse(
+            statusCode: 429,
+            body: Data(#"{"error":"key_budget_exhausted"}"#.utf8)
+        )
+        XCTAssertEqual(budget.refusal, .refused)
+
+        let revoked = LaneCredentialFailure.fromResponse(statusCode: 401, body: nil)
+        XCTAssertEqual(revoked.refusal, .refused)
+
+        let unreadable = LaneCredentialFailure.fromResponse(
+            statusCode: 503,
+            body: Data("<html>bad gateway</html>".utf8)
+        )
+        XCTAssertEqual(unreadable.refusal, .transient)
+    }
+
+    /// The lane can only hand over before Soniox's cap if it knows the cap:
+    /// opening keys carry the one the reservation was minted with, and a
+    /// reconnect key carries the one the service reported with it.
+    func testEveryKeyReachesTheLaneWithTheCapItWasMintedWith() async throws {
+        let delivered = LockedKeys()
+        let subject = CommunityInviteLaneCredentialProvider(
+            sessionID: "session",
+            accessToken: "token",
+            fetchKeys: { _, _, count in
+                (0..<count).map {
+                    CommunityInviteLaneKey(apiKey: "rollover-\($0)", sessionCapSeconds: 10_800)
+                }
+            },
+            deliverKey: { requestID, result in delivered.record(requestID, result) }
+        )
+        await subject.prepareInitialKeys(["opening-0"], laneCount: 1, sessionCapSeconds: 6_000)
+
+        subject.onLaneCredentialRequested(requestId: "opening")
+        subject.onLaneCredentialRequested(requestId: "rollover")
+        try await delivered.waitForAnswer(to: "rollover")
+
+        XCTAssertEqual(
+            delivered.key(for: "opening"),
+            CommunityInviteLaneKey(apiKey: "opening-0", sessionCapSeconds: 6_000)
+        )
+        XCTAssertEqual(
+            delivered.key(for: "rollover"),
+            CommunityInviteLaneKey(apiKey: "rollover-0", sessionCapSeconds: 10_800)
+        )
+    }
+
+    func testSpentInviteTimeReachesTheLaneAsSpentTime() async throws {
+        let answers = LockedAnswers()
+        let spent = provider(
+            fetch: { _, _, _ in
+                throw LaneCredentialFailure.fromResponse(
+                    statusCode: 429,
+                    body: Data(#"{"error":"quota_exhausted"}"#.utf8)
+                )
+            },
+            deliver: { requestID, result in answers.record(requestID, result) }
+        )
+        spent.onLaneCredentialRequested(requestId: "rollover")
+        try await answers.waitForAnswer(to: "rollover")
+        XCTAssertEqual(answers.failure(for: "rollover")?.refusal, .timeExhausted)
+    }
+
     func testDiscardingPooledKeysLeavesNothingRedeemable() async {
         let subject = provider(
             fetch: { _, _, count in (0..<count).map { "key-\($0)" } },
@@ -445,6 +529,35 @@ private final class LockedAnswers: @unchecked Sendable {
     func waitForAnswer(to requestID: String) async throws {
         for _ in 0..<200 {
             if result(for: requestID) != nil { return }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("no answer delivered for \(requestID)")
+    }
+}
+
+private final class LockedKeys: @unchecked Sendable {
+    private let lock = NSLock()
+    private var results: [String: Result<CommunityInviteLaneKey, LaneCredentialFailure>] = [:]
+
+    func record(_ requestID: String, _ result: Result<CommunityInviteLaneKey, LaneCredentialFailure>) {
+        lock.lock()
+        results[requestID] = result
+        lock.unlock()
+    }
+
+    func key(for requestID: String) -> CommunityInviteLaneKey? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard case .success(let key) = results[requestID] else { return nil }
+        return key
+    }
+
+    func waitForAnswer(to requestID: String) async throws {
+        for _ in 0..<200 {
+            lock.lock()
+            let answered = results[requestID] != nil
+            lock.unlock()
+            if answered { return }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
         XCTFail("no answer delivered for \(requestID)")

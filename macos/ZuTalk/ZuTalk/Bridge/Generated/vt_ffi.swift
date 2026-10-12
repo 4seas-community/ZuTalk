@@ -1260,16 +1260,17 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func exportContextPack(notebookId: String, packId: String, destinationPath: String) throws  -> UInt32
 
     /**
-     * Reports that a credential request cannot be answered. `terminal` marks
-     * a refusal the lane must not retry (invitation spent, budget exhausted)
-     * as opposed to a transient failure worth a reconnect.
+     * Reports that a credential request cannot be answered, and why: a
+     * transient failure is retried with the lane's normal backoff; a refusal
+     * or spent invite time ends the lane and is reported as that.
      */
-    func failLaneCredential(requestId: String, message: String, terminal: Bool)
+    func failLaneCredential(requestId: String, message: String, refusal: FfiLaneCredentialRefusal)
 
     /**
-     * Answers a pending credential request with a freshly fetched key.
+     * Answers a pending credential request with a freshly fetched key, and
+     * the per-session cap it was minted with when the issuer reported one.
      */
-    func fulfillLaneCredential(requestId: String, apiKey: String)
+    func fulfillLaneCredential(requestId: String, apiKey: String, sessionCapSeconds: UInt64?)
 
     func getNotebookCaptureEngineDescriptor()  -> FfiNotebookCaptureEngineDescriptor
 
@@ -3031,28 +3032,30 @@ open func exportContextPack(notebookId: String, packId: String, destinationPath:
 }
 
     /**
-     * Reports that a credential request cannot be answered. `terminal` marks
-     * a refusal the lane must not retry (invitation spent, budget exhausted)
-     * as opposed to a transient failure worth a reconnect.
+     * Reports that a credential request cannot be answered, and why: a
+     * transient failure is retried with the lane's normal backoff; a refusal
+     * or spent invite time ends the lane and is reported as that.
      */
-open func failLaneCredential(requestId: String, message: String, terminal: Bool)  {try! rustCall() {
+open func failLaneCredential(requestId: String, message: String, refusal: FfiLaneCredentialRefusal)  {try! rustCall() {
     uniffi_vt_ffi_fn_method_zutalkcore_fail_lane_credential(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(requestId),
         FfiConverterString.lower(message),
-        FfiConverterBool.lower(terminal),$0
+        FfiConverterTypeFfiLaneCredentialRefusal_lower(refusal),$0
     )
 }
 }
 
     /**
-     * Answers a pending credential request with a freshly fetched key.
+     * Answers a pending credential request with a freshly fetched key, and
+     * the per-session cap it was minted with when the issuer reported one.
      */
-open func fulfillLaneCredential(requestId: String, apiKey: String)  {try! rustCall() {
+open func fulfillLaneCredential(requestId: String, apiKey: String, sessionCapSeconds: UInt64?)  {try! rustCall() {
     uniffi_vt_ffi_fn_method_zutalkcore_fulfill_lane_credential(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(requestId),
-        FfiConverterString.lower(apiKey),$0
+        FfiConverterString.lower(apiKey),
+        FfiConverterOptionUInt64.lower(sessionCapSeconds),$0
     )
 }
 }
@@ -9089,6 +9092,96 @@ public func FfiConverterTypeFfiEditOp_lower(_ value: FfiEditOp) -> RustBuffer {
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Why the app could not hand a lane a credential.
+ */
+
+public enum FfiLaneCredentialRefusal: Equatable, Hashable {
+
+    /**
+     * Worth another try with the stream's normal backoff: the service that
+     * issues keys was unreachable, busy, or answered with something
+     * unreadable.
+     */
+    case transient
+    /**
+     * The issuer refused this recording for good — revoked token, unknown
+     * session, spent key budget. Retrying cannot change the answer.
+     */
+    case refused
+    /**
+     * The issuer has no time left to cover another stream: the invitation's
+     * quota is spent. Final like a refusal, but reported as what it is.
+     */
+    case timeExhausted
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiLaneCredentialRefusal: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiLaneCredentialRefusal: FfiConverterRustBuffer {
+    typealias SwiftType = FfiLaneCredentialRefusal
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLaneCredentialRefusal {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .transient
+
+        case 2: return .refused
+
+        case 3: return .timeExhausted
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiLaneCredentialRefusal, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .transient:
+            writeInt(&buf, Int32(1))
+
+
+        case .refused:
+            writeInt(&buf, Int32(2))
+
+
+        case .timeExhausted:
+            writeInt(&buf, Int32(3))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiLaneCredentialRefusal_lift(_ buf: RustBuffer) throws -> FfiLaneCredentialRefusal {
+    return try FfiConverterTypeFfiLaneCredentialRefusal.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiLaneCredentialRefusal_lower(_ value: FfiLaneCredentialRefusal) -> RustBuffer {
+    return FfiConverterTypeFfiLaneCredentialRefusal.lower(value)
+}
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
 public enum FfiNotebookAsyncProjectionState: Equatable, Hashable {
 
@@ -12255,10 +12348,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_export_context_pack() != 20833) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_fail_lane_credential() != 2352) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_fail_lane_credential() != 33383) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_fulfill_lane_credential() != 1624) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_fulfill_lane_credential() != 38178) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_get_notebook_capture_engine_descriptor() != 56339) {

@@ -26,7 +26,8 @@ pub use soniox_async::{
 };
 pub use soniox_rt::SonioxRtClient;
 pub use soniox_stream::{
-    soniox_stream_context_json, BoxedCredentialFuture, LaneCredentialSource, SonioxStreamClient,
-    SonioxStreamRuntime, StaticLaneCredential, SttStreamControl, SttStreamError, SttStreamEvent,
-    SttStreamProviderError, SttStreamToken, SttStreamTranslationStatus,
+    soniox_stream_context_json, BoxedCredentialFuture, LaneCredential, LaneCredentialSource,
+    SonioxStreamClient, SonioxStreamRuntime, StaticLaneCredential, SttStreamControl,
+    SttStreamError, SttStreamEvent, SttStreamProviderError, SttStreamToken,
+    SttStreamTranslationStatus, CREDENTIAL_TIME_EXHAUSTED_ERROR_TYPE,
 };

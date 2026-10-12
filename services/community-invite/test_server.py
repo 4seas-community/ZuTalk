@@ -19,6 +19,8 @@ from server import (
     DEFAULT_QUOTA_SECONDS,
     MAX_LANES_PER_SESSION,
     RESERVATION_TTL_SECONDS,
+    SONIOX_MAX_SESSION_DURATION_SECONDS,
+    STREAM_WINDOW_SECONDS,
     session_key_budget,
     KEYS_PER_LANE,
     SESSION_KEY_FLOOR,
@@ -355,6 +357,187 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(clamped["lane_count"], MAX_LANES_PER_SESSION)
         self.assertEqual(stream_duration_seconds(clamped), 900)
 
+    def _age_session(self, session_id, seconds):
+        created_at = (
+            datetime.now(timezone.utc) - timedelta(seconds=seconds)
+        ).isoformat()
+        with self.store.connect() as db:
+            db.execute(
+                "UPDATE sessions SET created_at = ? WHERE id = ?",
+                (created_at, session_id),
+            )
+
+    def test_a_key_issued_at_the_cap_rolls_the_reservation_forward(self):
+        code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
+        token = self.store.redeem(code)["access_token"]
+        invite = self.store.invite_for_token(token)
+        session = self.store.reserve_session(invite["id"], 3 * 3600, 1)
+        # Three hours in, Soniox has just ended the first stream.
+        self._age_session(session["session_id"], 3 * 3600)
+
+        rolled, stream_seconds = self.store.extend_session_window(
+            invite["id"], session["session_id"]
+        )
+
+        self.assertEqual(stream_seconds, STREAM_WINDOW_SECONDS)
+        # The reservation now reaches one more window past now, and the
+        # invitation holds exactly that much more.
+        self.assertGreaterEqual(rolled["reserved_seconds"], 6 * 3600)
+        self.assertLessEqual(rolled["reserved_seconds"], 6 * 3600 + 2)
+        refreshed = self.store.invite_for_token(token)
+        self.assertEqual(refreshed["reserved_seconds"], rolled["reserved_seconds"])
+        # Settling the whole six hours is now covered rather than truncated.
+        quota = self.store.settle_session(
+            invite["id"], session["session_id"], 6 * 3600
+        )
+        self.assertEqual(quota["used_seconds"], 6 * 3600)
+
+    def test_every_lane_rolls_over_inside_one_shared_window(self):
+        code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
+        token = self.store.redeem(code)["access_token"]
+        invite = self.store.invite_for_token(token)
+        # Three lanes: the service caps the opening reservation at five
+        # lane-hours, which is a hundred minutes of wall clock.
+        session = self.store.reserve_session(invite["id"], 9 * 3600, 3)
+        self.assertEqual(stream_duration_seconds(session), 6_000)
+        self._age_session(session["session_id"], 6_000)
+
+        moment = datetime.now(timezone.utc)
+        first, first_stream = self.store.extend_session_window(
+            invite["id"], session["session_id"], now=moment
+        )
+        # The other two lanes hit the same cap a moment later; the first
+        # rollover already reserved their stretch, so nothing more is drawn.
+        second, second_stream = self.store.extend_session_window(
+            invite["id"], session["session_id"], now=moment
+        )
+
+        self.assertEqual(first_stream, STREAM_WINDOW_SECONDS)
+        self.assertEqual(second_stream, STREAM_WINDOW_SECONDS)
+        self.assertEqual(second["reserved_seconds"], first["reserved_seconds"])
+        self.assertEqual(first["reserved_seconds"] % 3, 0)
+        self.assertGreaterEqual(
+            first["reserved_seconds"], 3 * (6_000 + STREAM_WINDOW_SECONDS)
+        )
+
+    def test_a_key_never_streams_past_what_the_invitation_can_pay_for(self):
+        # Two hours of quota, one lane: the first window reserves all of it.
+        code = self.store.create_invite("small", 2 * 3600)
+        token = self.store.redeem(code)["access_token"]
+        invite = self.store.invite_for_token(token)
+        session = self.store.reserve_session(invite["id"], 3 * 3600, 1)
+        self.assertEqual(session["reserved_seconds"], 2 * 3600)
+
+        # A reconnect half an hour in gets only what is left of the two hours.
+        self._age_session(session["session_id"], 1800)
+        _, stream_seconds = self.store.extend_session_window(
+            invite["id"], session["session_id"]
+        )
+        self.assertLessEqual(stream_seconds, 5400)
+        self.assertGreater(stream_seconds, 5390)
+
+        # At the end of the two hours there is nothing left to roll onto.
+        self._age_session(session["session_id"], 2 * 3600)
+        rolled, stream_seconds = self.store.extend_session_window(
+            invite["id"], session["session_id"]
+        )
+        self.assertEqual(stream_seconds, 0)
+        self.assertEqual(rolled["reserved_seconds"], 2 * 3600)
+        refreshed = self.store.invite_for_token(token)
+        self.assertEqual(refreshed["reserved_seconds"], 2 * 3600)
+
+    def test_a_partial_top_up_shortens_the_key_instead_of_overdrawing(self):
+        code = self.store.create_invite("partner", 4 * 3600)
+        token = self.store.redeem(code)["access_token"]
+        invite = self.store.invite_for_token(token)
+        session = self.store.reserve_session(invite["id"], 3 * 3600, 1)
+        self._age_session(session["session_id"], 3 * 3600)
+
+        rolled, stream_seconds = self.store.extend_session_window(
+            invite["id"], session["session_id"]
+        )
+
+        # Only one hour of quota remained, so the next stream gets one hour.
+        self.assertEqual(rolled["reserved_seconds"], 4 * 3600)
+        self.assertLessEqual(stream_seconds, 3600)
+        self.assertGreater(stream_seconds, 3590)
+        refreshed = self.store.invite_for_token(token)
+        self.assertEqual(
+            refreshed["quota_seconds"]
+            - refreshed["used_seconds"]
+            - refreshed["reserved_seconds"],
+            0,
+        )
+
+    def test_a_key_cap_never_exceeds_what_soniox_accepts(self):
+        code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
+        token = self.store.redeem(code)["access_token"]
+        invite = self.store.invite_for_token(token)
+        session = self.store.reserve_session(invite["id"], 3 * 3600, 1)
+        # A reservation made generous by an operator still yields keys Soniox
+        # will mint.
+        with self.store.connect() as db:
+            db.execute(
+                "UPDATE sessions SET reserved_seconds = ? WHERE id = ?",
+                (20 * 3600, session["session_id"]),
+            )
+        _, stream_seconds = self.store.extend_session_window(
+            invite["id"], session["session_id"]
+        )
+        self.assertEqual(stream_seconds, SONIOX_MAX_SESSION_DURATION_SECONDS)
+
+    def test_settled_and_foreign_sessions_cannot_be_extended(self):
+        code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
+        token = self.store.redeem(code)["access_token"]
+        invite = self.store.invite_for_token(token)
+        session = self.store.reserve_session(invite["id"], 3600, 1)
+        other = self.store.invite_for_token(
+            self.store.redeem(self.store.create_invite("other", DEFAULT_QUOTA_SECONDS))[
+                "access_token"
+            ]
+        )
+        self.assertIsNone(
+            self.store.extend_session_window(other["id"], session["session_id"])[0]
+        )
+        self.store.settle_session(invite["id"], session["session_id"], 60)
+        self.assertIsNone(
+            self.store.extend_session_window(invite["id"], session["session_id"])[0]
+        )
+
+    def test_a_recording_still_issuing_keys_is_not_swept_as_stale(self):
+        code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
+        token = self.store.redeem(code)["access_token"]
+        invite = self.store.invite_for_token(token)
+        session = self.store.reserve_session(invite["id"], 3 * 3600, 1)
+        # Seven hours in, with the last rollover key issued two hours ago.
+        self._age_session(session["session_id"], 7 * 3600)
+        recent = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        with self.store.connect() as db:
+            db.execute(
+                "INSERT INTO session_keys (session_id, issued_at) VALUES (?, ?)",
+                (session["session_id"], recent),
+            )
+
+        self.store.invite_for_token(token)
+        self.assertIsNotNone(
+            self.store.open_session(invite["id"], session["session_id"])
+        )
+
+        # Once no key has been issued for longer than the TTL, nothing can
+        # still be streaming on it and the reservation is released.
+        stale = (
+            datetime.now(timezone.utc)
+            - timedelta(seconds=RESERVATION_TTL_SECONDS + 60)
+        ).isoformat()
+        with self.store.connect() as db:
+            db.execute(
+                "UPDATE session_keys SET issued_at = ? WHERE session_id = ?",
+                (stale, session["session_id"]),
+            )
+        refreshed = self.store.invite_for_token(token)
+        self.assertIsNone(self.store.open_session(invite["id"], session["session_id"]))
+        self.assertEqual(refreshed["reserved_seconds"], 0)
+
     def test_open_session_carries_its_lane_count(self):
         code = self.store.create_invite("partner", DEFAULT_QUOTA_SECONDS)
         token = self.store.redeem(code)["access_token"]
@@ -568,6 +751,9 @@ class RealtimeSessionInitialKeyModeTests(unittest.TestCase):
         self.assertEqual(payload["initial_key_mode"], "single_use_batch")
         self.assertEqual(len(payload["keys"]), 3)
         self.assertEqual(payload["keys_issued"], 3)
+        # 3,600 lane-seconds over three lanes: each opening key runs 1,200 s,
+        # and the client is told so it can hand over before Soniox's cap.
+        self.assertEqual(payload["max_session_duration_seconds"], 1_200)
         self.assertNotIn(
             "api_key", payload, "the unused legacy shared key must not be minted"
         )
@@ -859,6 +1045,70 @@ class RealtimeSessionInitialKeyModeTests(unittest.TestCase):
         self.assertIsNotNone(
             self.store.open_session(invite["id"], session["session_id"]),
             "a reconnect-key outage must not settle an active recording",
+        )
+
+    def test_a_key_fetched_at_the_cap_carries_a_fresh_window(self):
+        invite = self.store.invite_for_token(self.access_token)
+        session = self.store.reserve_session(invite["id"], 3 * 3600, 1)
+        stale_created_at = (
+            datetime.now(timezone.utc) - timedelta(seconds=3 * 3600)
+        ).isoformat()
+        with self.store.connect() as db:
+            db.execute(
+                "UPDATE sessions SET created_at = ? WHERE id = ?",
+                (stale_created_at, session["session_id"]),
+            )
+        with mock.patch.object(
+            server,
+            "create_soniox_temporary_key",
+            return_value={"api_key": "next-window"},
+        ) as mint:
+            status, payload = self.post(
+                "/v1/realtime-session/key",
+                {"session_id": session["session_id"], "count": 1},
+            )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["keys"], [{"api_key": "next-window"}])
+        self.assertEqual(payload["max_session_duration_seconds"], STREAM_WINDOW_SECONDS)
+        # The key Soniox mints is capped at the new window, not the old one,
+        # which ran out at the moment the client asked.
+        self.assertEqual(mint.call_args.args[2], STREAM_WINDOW_SECONDS)
+        self.assertGreaterEqual(payload["reserved_seconds"], 6 * 3600)
+
+    def test_a_spent_invitation_refuses_the_next_key_without_minting(self):
+        code = self.store.create_invite("small", 3 * 3600)
+        self.access_token = self.store.redeem(code)["access_token"]
+        invite = self.store.invite_for_token(self.access_token)
+        session = self.store.reserve_session(invite["id"], 3 * 3600, 1)
+        stale_created_at = (
+            datetime.now(timezone.utc) - timedelta(seconds=3 * 3600)
+        ).isoformat()
+        with self.store.connect() as db:
+            db.execute(
+                "UPDATE sessions SET created_at = ? WHERE id = ?",
+                (stale_created_at, session["session_id"]),
+            )
+        headroom = self.store.session_key_headroom(invite["id"], session["session_id"])
+
+        with mock.patch.object(server, "create_soniox_temporary_key") as mint:
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                self.post(
+                    "/v1/realtime-session/key",
+                    {"session_id": session["session_id"], "count": 1},
+                )
+
+        response_error = raised.exception
+        try:
+            self.assertEqual(response_error.code, 429)
+            self.assertEqual(json.load(response_error), {"error": "quota_exhausted"})
+        finally:
+            response_error.close()
+        mint.assert_not_called()
+        self.assertEqual(
+            self.store.session_key_headroom(invite["id"], session["session_id"]),
+            headroom,
+            "a refused rollover must not spend the key budget",
         )
 
     def test_key_batch_and_legacy_renewal_response_shapes_stay_unchanged(self):

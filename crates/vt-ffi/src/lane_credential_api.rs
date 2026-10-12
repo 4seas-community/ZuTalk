@@ -16,13 +16,30 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::sync::oneshot;
-use vt_stt::{BoxedCredentialFuture, LaneCredentialSource, SttError};
+use vt_stt::{
+    BoxedCredentialFuture, LaneCredential, LaneCredentialSource, SonioxQuotaKind, SttError,
+};
 
 /// How long a lane waits for the app to answer a credential request. Longer
 /// than a normal round trip to the invite service, shorter than the stream's
 /// own connect timeout budget so a silent app surfaces as a retryable failure
 /// rather than a hung capture.
 const CREDENTIAL_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Why the app could not hand a lane a credential.
+#[derive(uniffi::Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FfiLaneCredentialRefusal {
+    /// Worth another try with the stream's normal backoff: the service that
+    /// issues keys was unreachable, busy, or answered with something
+    /// unreadable.
+    Transient,
+    /// The issuer refused this recording for good — revoked token, unknown
+    /// session, spent key budget. Retrying cannot change the answer.
+    Refused,
+    /// The issuer has no time left to cover another stream: the invitation's
+    /// quota is spent. Final like a refusal, but reported as what it is.
+    TimeExhausted,
+}
 
 /// Implemented by the app. Called when a lane is about to open a connection
 /// and needs a credential for it.
@@ -37,7 +54,7 @@ pub trait FfiLaneCredentialRequester: Send + Sync {
 /// lane that is waiting.
 pub struct LaneCredentialBroker {
     requester: Arc<dyn FfiLaneCredentialRequester>,
-    pending: Mutex<HashMap<String, oneshot::Sender<Result<String, SttError>>>>,
+    pending: Mutex<HashMap<String, oneshot::Sender<Result<LaneCredential, SttError>>>>,
     next_id: Mutex<u64>,
     timeout: Duration,
 }
@@ -59,35 +76,41 @@ impl LaneCredentialBroker {
         })
     }
 
-    /// Hands a fetched key to the lane waiting on `request_id`. Unknown or
+    /// Hands a fetched key to the lane waiting on `request_id`, with the
+    /// session cap it was minted with when the issuer said. Unknown or
     /// already-answered ids are ignored: a late answer to a lane that gave up
     /// must not resurrect anything.
-    pub fn fulfill(&self, request_id: &str, api_key: String) {
+    pub fn fulfill(&self, request_id: &str, api_key: String, session_cap: Option<Duration>) {
         if let Some(sender) = self.take(request_id) {
-            let _ = sender.send(Ok(api_key));
+            let _ = sender.send(Ok(LaneCredential {
+                api_key,
+                session_cap,
+            }));
         }
     }
 
-    /// Reports that no key is coming. `terminal` distinguishes a refusal the
-    /// stream must not retry (invitation spent, budget exhausted, token
-    /// revoked) from a transient one it should ride out with its normal
-    /// reconnect backoff.
-    pub fn fail(&self, request_id: &str, message: String, terminal: bool) {
+    /// Reports that no key is coming. A refusal or spent time ends the lane;
+    /// a transient failure is ridden out with the stream's normal reconnect
+    /// backoff.
+    pub fn fail(&self, request_id: &str, message: String, refusal: FfiLaneCredentialRefusal) {
         if let Some(sender) = self.take(request_id) {
-            let error = if terminal {
-                SttError::AuthFailed { message }
-            } else {
-                SttError::ConnectionFailed(message)
+            let error = match refusal {
+                FfiLaneCredentialRefusal::Transient => SttError::ConnectionFailed(message),
+                FfiLaneCredentialRefusal::Refused => SttError::AuthFailed { message },
+                FfiLaneCredentialRefusal::TimeExhausted => SttError::QuotaExhausted {
+                    kind: SonioxQuotaKind::Other,
+                    message,
+                },
             };
             let _ = sender.send(Err(error));
         }
     }
 
-    fn take(&self, request_id: &str) -> Option<oneshot::Sender<Result<String, SttError>>> {
+    fn take(&self, request_id: &str) -> Option<oneshot::Sender<Result<LaneCredential, SttError>>> {
         self.pending.lock().unwrap().remove(request_id)
     }
 
-    fn register(&self) -> (String, oneshot::Receiver<Result<String, SttError>>) {
+    fn register(&self) -> (String, oneshot::Receiver<Result<LaneCredential, SttError>>) {
         let request_id = {
             let mut next = self.next_id.lock().unwrap();
             *next += 1;
@@ -163,10 +186,20 @@ mod tests {
         assert_eq!(ids.len(), 2);
         assert_ne!(ids[0], ids[1]);
 
-        broker.fulfill(&ids[0], "key-one".to_string());
-        broker.fulfill(&ids[1], "key-two".to_string());
-        assert_eq!(first.await.unwrap(), "key-one");
-        assert_eq!(second.await.unwrap(), "key-two");
+        broker.fulfill(&ids[0], "key-one".to_string(), None);
+        broker.fulfill(
+            &ids[1],
+            "key-two".to_string(),
+            Some(Duration::from_secs(10_800)),
+        );
+        assert_eq!(first.await.unwrap(), LaneCredential::uncapped("key-one"));
+        let second = second.await.unwrap();
+        assert_eq!(second.api_key, "key-two");
+        assert_eq!(
+            second.session_cap,
+            Some(Duration::from_secs(10_800)),
+            "the cap the key was minted with reaches the lane, so it can hand over before it"
+        );
     }
 
     #[tokio::test]
@@ -175,18 +208,45 @@ mod tests {
 
         let refused = broker.credential_for_connection();
         let id = seen.lock().unwrap().last().unwrap().clone();
-        broker.fail(&id, "invitation spent".to_string(), true);
+        broker.fail(
+            &id,
+            "invitation spent".to_string(),
+            FfiLaneCredentialRefusal::Refused,
+        );
         let error = refused.await.unwrap_err();
         assert!(error.is_auth_error(), "expected terminal, got {error:?}");
 
         let transient = broker.credential_for_connection();
         let id = seen.lock().unwrap().last().unwrap().clone();
-        broker.fail(&id, "invite service unreachable".to_string(), false);
+        broker.fail(
+            &id,
+            "invite service unreachable".to_string(),
+            FfiLaneCredentialRefusal::Transient,
+        );
         let error = transient.await.unwrap_err();
         assert!(
             !error.is_auth_error(),
             "a service outage must stay retryable, got {error:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn spent_invite_time_is_final_and_reported_as_spent_time() {
+        let (broker, seen) = broker(Duration::from_secs(5));
+
+        let spent = broker.credential_for_connection();
+        let id = seen.lock().unwrap().last().unwrap().clone();
+        broker.fail(
+            &id,
+            "invite service returned 429 quota_exhausted".to_string(),
+            FfiLaneCredentialRefusal::TimeExhausted,
+        );
+        let error = spent.await.unwrap_err();
+        assert!(
+            matches!(error, SttError::QuotaExhausted { .. }),
+            "spent time must not read as a rejected key, got {error:?}"
+        );
+        assert!(error.is_auth_error(), "spent time is final, got {error:?}");
     }
 
     #[tokio::test]
@@ -208,7 +268,7 @@ mod tests {
         assert!(!error.is_auth_error());
         let id = seen.lock().unwrap().last().unwrap().clone();
         // Answering after the lane gave up must be a no-op, not a panic.
-        broker.fulfill(&id, "too-late".to_string());
+        broker.fulfill(&id, "too-late".to_string(), None);
         assert!(broker.pending.lock().unwrap().is_empty());
     }
 }

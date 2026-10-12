@@ -688,7 +688,8 @@
 "capture.toolbar.captions_lag" = "Subtítulos con %lld s de retraso";
 "capture.state.pausing" = "Pausando…";
 "capture.state.resuming" = "Reanudando…";
-"capture.problem.credentials" = "El servicio de transcripción rechazó la clave. Revísala en Ajustes; también puede que se haya agotado el tiempo de la invitación.";
+"capture.problem.credentials" = "El servicio de transcripción rechazó la clave. Revisa tu clave o tu invitación en Ajustes.";
+"capture.problem.invite_time" = "Se agotó el tiempo de tu invitación. La grabación continúa sin transcripción en directo.";
 "capture.problem.quota" = "Se agotó tu saldo de transcripción.";
 "capture.problem.rate_limited" = "Hay demasiadas conexiones de transcripción abiertas a la vez.";
 "capture.problem.network" = "Se perdió la conexión con el servicio de transcripción.";

@@ -222,7 +222,8 @@ final class CommunityInviteSession: ObservableObject {
         CoreClient.shared.core?.setLaneCredentialRequester(requester: provider)
         await provider.prepareInitialKeys(
             response.initialKeys?.map(\.apiKey) ?? [],
-            laneCount: laneCount
+            laneCount: laneCount,
+            sessionCapSeconds: response.maxSessionDurationSeconds
         )
         remainingSeconds = max(0, (remainingSeconds ?? 0) - response.reservedSeconds)
         return response.sessionID
@@ -236,7 +237,7 @@ final class CommunityInviteSession: ObservableObject {
         return CommunityInviteLaneCredentialProvider(
             sessionID: sessionID,
             accessToken: token,
-            fetch: { sessionID, token, count in
+            fetchKeys: { sessionID, token, count in
                 try await CommunityInviteSession.fetchLaneKeys(
                     baseURL: baseURL,
                     sessionID: sessionID,
@@ -244,17 +245,21 @@ final class CommunityInviteSession: ObservableObject {
                     count: count
                 )
             },
-            deliver: { requestID, result in
+            deliverKey: { requestID, result in
                 Task { @MainActor in
                     guard let core = CoreClient.shared.core else { return }
                     switch result {
                     case .success(let key):
-                        core.fulfillLaneCredential(requestId: requestID, apiKey: key)
+                        core.fulfillLaneCredential(
+                            requestId: requestID,
+                            apiKey: key.apiKey,
+                            sessionCapSeconds: key.sessionCapSeconds
+                        )
                     case .failure(let failure):
                         core.failLaneCredential(
                             requestId: requestID,
                             message: failure.message,
-                            terminal: failure.terminal
+                            refusal: failure.refusal
                         )
                     }
                 }
@@ -270,7 +275,7 @@ final class CommunityInviteSession: ObservableObject {
         sessionID: String,
         token: String,
         count: Int
-    ) async throws -> [String] {
+    ) async throws -> [CommunityInviteLaneKey] {
         var request = URLRequest(
             url: baseURL.appendingPathComponent("v1/realtime-session/key")
         )
@@ -287,10 +292,15 @@ final class CommunityInviteSession: ObservableObject {
             throw LaneCredentialFailure(message: "no HTTP response", terminal: false)
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw LaneCredentialFailure.fromStatusCode(http.statusCode)
+            throw LaneCredentialFailure.fromResponse(statusCode: http.statusCode, body: data)
         }
         let decoded = try JSONDecoder().decode(LaneKeyResponse.self, from: data)
-        return decoded.keys.map { $0.apiKey }
+        return decoded.keys.map {
+            CommunityInviteLaneKey(
+                apiKey: $0.apiKey,
+                sessionCapSeconds: decoded.maxSessionDurationSeconds
+            )
+        }
     }
 
     func settleRealtimeSession(usedSeconds: Int) async {
@@ -504,12 +514,17 @@ struct RealtimeSessionResponse: Decodable {
     // single-use lane provider must never put it into its opening-key pool.
     let legacyAPIKey: String?
     let initialKeys: [RealtimeLaneKey]?
+    /// How long the opening keys may stream before Soniox ends them. Absent
+    /// from services that predate the hand-over; lanes then roll over when
+    /// Soniox ends the connection instead.
+    let maxSessionDurationSeconds: UInt64?
 
     enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
         case reservedSeconds = "reserved_seconds"
         case legacyAPIKey = "api_key"
         case initialKeys = "keys"
+        case maxSessionDurationSeconds = "max_session_duration_seconds"
     }
 }
 
@@ -525,6 +540,12 @@ struct RealtimeLaneKey: Decodable {
 /// into flat fields for the legacy path; only the array is read here.
 private struct LaneKeyResponse: Decodable {
     let keys: [RealtimeLaneKey]
+    let maxSessionDurationSeconds: UInt64?
+
+    enum CodingKeys: String, CodingKey {
+        case keys
+        case maxSessionDurationSeconds = "max_session_duration_seconds"
+    }
 }
 
 private enum CommunityInviteError: Error, LocalizedError {

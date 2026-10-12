@@ -372,9 +372,10 @@ impl vt_stt::LaneCredentialSource for CountingCredential {
         self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let next = self.keys.lock().unwrap().pop();
         Box::pin(async move {
-            next.ok_or_else(|| vt_stt::SttError::AuthFailed {
-                message: "invitation key budget exhausted".to_string(),
-            })
+            next.map(vt_stt::LaneCredential::uncapped)
+                .ok_or_else(|| vt_stt::SttError::AuthFailed {
+                    message: "invitation key budget exhausted".to_string(),
+                })
         })
     }
 }
@@ -431,6 +432,8 @@ async fn each_connection_attempt_resolves_its_own_credential() {
     assert_eq!(config_json["api_key"], "lane-key-1");
     assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1);
 
+    // A connection that carried audio is finished by the provider.
+    runtime.push_pcm(vec![0_u8; 3_200]).await.unwrap();
     runtime
         .control_tx
         .try_send(SttStreamControl::Finish)

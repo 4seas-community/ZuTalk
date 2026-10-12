@@ -33,6 +33,19 @@ The server divides the reservation by the lane count to derive that bound.
 Passing the raw reservation would let every lane run the full reservation on
 its own, overshooting the quota by the lane count.
 
+A recording is not bounded by any one key. When a key's cap runs out, Soniox
+ends that WebSocket with `403 temp_api_key_session_expired` and the client
+asks `/v1/realtime-session/key` for the next one. Before minting, the server
+tops the session's reservation up from the invitation's remaining quota until
+it reaches `STREAM_WINDOW_SECONDS` (3 h) past now, and caps the new key at
+the end of that reservation — so however many keys one recording goes
+through, Soniox can bill no more than was reserved. The response carries the
+cap as `max_session_duration_seconds`. When the invitation has nothing left
+to reserve, the key request is refused with `429 {"error":
+"quota_exhausted"}` and nothing is minted. Unsettled reservations are swept
+six hours after their last key, not after they were made, so a long
+recording that keeps rolling over is never swept from under itself.
+
 ## Passage cleanup (optional)
 
 Set `DEEPSEEK_API_KEY` in `service.env` and invitations also cover cleaning

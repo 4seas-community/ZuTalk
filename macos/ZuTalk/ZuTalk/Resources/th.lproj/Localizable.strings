@@ -688,7 +688,8 @@
 "capture.toolbar.captions_lag" = "คำบรรยายช้าไป %lld วินาที";
 "capture.state.pausing" = "กำลังหยุดชั่วคราว…";
 "capture.state.resuming" = "กำลังดำเนินการต่อ…";
-"capture.problem.credentials" = "บริการถอดเสียงปฏิเสธคีย์ โปรดตรวจสอบในการตั้งค่า หรือเวลาจากคำเชิญอาจหมดแล้ว";
+"capture.problem.credentials" = "บริการถอดเสียงปฏิเสธคีย์ โปรดตรวจสอบคีย์หรือคำเชิญในการตั้งค่า";
+"capture.problem.invite_time" = "เวลาจากคำเชิญหมดแล้ว การบันทึกยังดำเนินต่อแต่ไม่มีการถอดเสียงสด";
 "capture.problem.quota" = "ยอดคงเหลือสำหรับการถอดเสียงหมดแล้ว";
 "capture.problem.rate_limited" = "มีการเชื่อมต่อถอดเสียงเปิดพร้อมกันมากเกินไป";
 "capture.problem.network" = "การเชื่อมต่อกับบริการถอดเสียงขาดหาย";

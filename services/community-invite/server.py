@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import html
 import json
+import math
 import os
 import secrets
 import sqlite3
@@ -52,8 +53,23 @@ SECONDS_PER_GIVE = 6 * 60 * 60
 DEFAULT_GIVES = 5
 MAX_SESSION_SECONDS = 5 * 60 * 60
 # A reservation that was never settled (client crash, network loss) must not
-# hold invite quota forever. Anything older than this settles at zero seconds.
+# hold invite quota forever. One that has gone this long without a key being
+# issued settles at zero seconds. Measured from the last key rather than from
+# the reservation: a recording rolls onto a fresh key at least once per
+# STREAM_WINDOW_SECONDS, so an idle stretch this long means nothing can still
+# be streaming on it — no key outlives SONIOX_MAX_SESSION_DURATION_SECONDS
+# plus its few minutes to be redeemed — while a live seven-hour recording is
+# not swept from under itself.
 RESERVATION_TTL_SECONDS = 6 * 60 * 60
+# A recording is not bounded by any one key. Soniox ends each WebSocket when
+# its key's max_session_duration_seconds runs out — error 403
+# `temp_api_key_session_expired` — and the client opens the next connection
+# with a fresh key. Every key must still stream only inside time the session
+# has reserved, so issuing one first tops the reservation up until it reaches
+# this far past now, drawing on the invitation's remaining quota.
+STREAM_WINDOW_SECONDS = 3 * 60 * 60
+# Soniox refuses a temporary key whose per-session cap exceeds this.
+SONIOX_MAX_SESSION_DURATION_SECONDS = 5 * 60 * 60
 # One partner records on one machine; a small allowance covers a second
 # device or a crashed session waiting for its TTL. Anything beyond that is
 # a shared or scripted token.
@@ -562,8 +578,20 @@ class Store:
         ).isoformat()
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            # Timestamps are all now_iso() in UTC, so they order as text.
             stale = db.execute(
-                "SELECT * FROM sessions WHERE settled_seconds IS NULL AND created_at < ?",
+                """
+                SELECT * FROM sessions
+                WHERE settled_seconds IS NULL
+                  AND max(
+                      created_at,
+                      COALESCE(
+                          (SELECT max(issued_at) FROM session_keys
+                           WHERE session_keys.session_id = sessions.id),
+                          created_at
+                      )
+                  ) < ?
+                """,
                 (cutoff,),
             ).fetchall()
             for session in stale:
@@ -725,6 +753,73 @@ class Store:
                 [(session_id, stamp)] * count,
             )
             return issued + count
+
+    def extend_session_window(
+        self, invite_id: int, session_id: str, *, now: datetime | None = None
+    ) -> tuple[sqlite3.Row | None, int]:
+        """Makes sure the session has reserved enough time for one more key
+        and returns `(session, stream_seconds)`: the reservation as it now
+        stands, and the wall-clock seconds the next key may stream for.
+
+        A reservation of R lane-seconds over L lanes pays for R / L seconds of
+        wall clock from the moment it was made. Every key's cap is cut to end
+        inside that span, so however many keys a recording goes through,
+        Soniox can bill no more than was reserved. When less than
+        STREAM_WINDOW_SECONDS of the span is left, the reservation grows from
+        the invitation's remaining quota until it reaches that far past now —
+        this is what lets a recording roll onto a new key at the cap instead
+        of ending there.
+
+        `session` is None when the session is unknown, foreign, or settled.
+        `stream_seconds` is 0 when the invitation has no time left to cover
+        another key."""
+        moment = now or datetime.now(timezone.utc)
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            session = db.execute(
+                """
+                SELECT * FROM sessions
+                WHERE id = ? AND invite_id = ? AND settled_seconds IS NULL
+                """,
+                (session_id, invite_id),
+            ).fetchone()
+            if session is None:
+                return None, 0
+            lanes = max(1, min(int(session["lane_count"] or 1), MAX_LANES_PER_SESSION))
+            started = datetime.fromisoformat(session["created_at"])
+            elapsed = max(0, math.ceil((moment - started).total_seconds()))
+            covered = int(session["reserved_seconds"]) // lanes
+            wanted = elapsed + STREAM_WINDOW_SECONDS
+            if covered < wanted:
+                invite = db.execute(
+                    "SELECT * FROM invites WHERE id = ?", (invite_id,)
+                ).fetchone()
+                remaining = max(
+                    0,
+                    invite["quota_seconds"]
+                    - invite["used_seconds"]
+                    - invite["reserved_seconds"],
+                )
+                # Whole wall-clock seconds only, so the span stays R / L.
+                added = min(lanes * (wanted - covered), remaining)
+                added -= added % lanes
+                if added > 0:
+                    db.execute(
+                        "UPDATE sessions SET reserved_seconds = reserved_seconds + ? "
+                        "WHERE id = ?",
+                        (added, session_id),
+                    )
+                    db.execute(
+                        "UPDATE invites SET reserved_seconds = reserved_seconds + ? "
+                        "WHERE id = ?",
+                        (added, invite_id),
+                    )
+                    covered += added // lanes
+                    session = db.execute(
+                        "SELECT * FROM sessions WHERE id = ?", (session_id,)
+                    ).fetchone()
+            stream_seconds = min(SONIOX_MAX_SESSION_DURATION_SECONDS, covered - elapsed)
+            return session, max(0, stream_seconds)
 
     def issue_session_key(self, invite_id: int, session_id: str) -> int | None:
         """Claims exactly one slot. Thin wrapper over reserve_session_keys."""
@@ -1900,6 +1995,11 @@ class Handler(BaseHTTPRequestHandler):
                         {
                             **session,
                             "initial_key_mode": INITIAL_KEY_MODE_SINGLE_USE_BATCH,
+                            # Lets the client hand each lane over to its next
+                            # key at a pause shortly before Soniox's cap.
+                            "max_session_duration_seconds": stream_duration_seconds(
+                                session
+                            ),
                             "keys_issued": issued,
                             "keys": keys,
                         },
@@ -1982,6 +2082,20 @@ class Handler(BaseHTTPRequestHandler):
             if not admitted:
                 self.send_json(503, {"error": "key_mint_busy"})
                 return
+            # A key asked for at the cap is the recording rolling over, not
+            # ending: reserve the next stretch before handing out its key.
+            session, stream_seconds = self.store.extend_session_window(
+                invite["id"], session["id"]
+            )
+            if session is None:
+                self.send_json(404, {"error": "session_not_found"})
+                return
+            if stream_seconds <= 0:
+                # 429, like the key budget: both mean this session may not
+                # open another stream, and clients that predate the error
+                # body already stop on that status instead of retrying.
+                self.send_json(429, {"error": "quota_exhausted"})
+                return
             # Claim the whole batch before minting anything. Checking headroom
             # and counting afterwards lets two concurrent requests both pass the
             # check and hand out keys the budget never covered.
@@ -1995,7 +2109,7 @@ class Handler(BaseHTTPRequestHandler):
                 keys = create_soniox_temporary_key_batch(
                     master_key,
                     session["id"],
-                    stream_duration_seconds(session),
+                    stream_seconds,
                     count,
                     single_use=single_use,
                     expires_in_seconds=(
@@ -2012,6 +2126,9 @@ class Handler(BaseHTTPRequestHandler):
             response = {
                 "session_id": session["id"],
                 "reserved_seconds": session["reserved_seconds"],
+                # How long a stream on these keys may run before Soniox ends
+                # it and the client must ask for the next one.
+                "max_session_duration_seconds": stream_seconds,
                 "keys_issued": issued,
                 "keys": keys,
             }

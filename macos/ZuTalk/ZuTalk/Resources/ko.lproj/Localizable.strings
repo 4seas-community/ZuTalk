@@ -688,7 +688,8 @@
 "capture.toolbar.captions_lag" = "자막이 %lld초 늦음";
 "capture.state.pausing" = "일시중지하는 중…";
 "capture.state.resuming" = "재개하는 중…";
-"capture.problem.credentials" = "전사 서비스가 키를 거부했습니다. 설정에서 확인하세요. 초대 시간이 모두 소진되었을 수도 있습니다.";
+"capture.problem.credentials" = "전사 서비스가 키를 거부했습니다. 설정에서 키나 초대를 확인하세요.";
+"capture.problem.invite_time" = "초대 시간을 모두 사용했습니다. 녹음은 계속되지만 실시간 전사는 멈춥니다.";
 "capture.problem.quota" = "전사 잔액을 모두 사용했습니다.";
 "capture.problem.rate_limited" = "동시에 열린 전사 연결이 너무 많습니다.";
 "capture.problem.network" = "전사 서비스와의 연결이 끊어졌습니다.";
