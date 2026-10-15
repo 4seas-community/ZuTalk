@@ -20,16 +20,22 @@ WRITABLE_DMG="$WORK_DIR/ZuTalk-writable.dmg"
 DEVICE=""
 VERIFY_DEVICE=""
 
+# Never forced. A volume that will not let go is in use, and the use that
+# matters is Finder copying ZuTalk.app out of it: tearing the volume away
+# mid-copy is what left /Applications/ZuTalk.app missing or an empty shell
+# after four releases. Waiting lets that copy finish; a volume still busy
+# after a minute fails this step, before anything is tagged or published.
 detach_image() {
   local device="$1"
   local attempt
-  for attempt in 1 2 3; do
+  for attempt in $(seq 1 60); do
     if hdiutil detach "$device" >/dev/null 2>&1; then
       return 0
     fi
     sleep 1
   done
-  hdiutil detach "$device" -force >/dev/null
+  echo "FAIL: $device is still in use after 60 s; not forcing it" >&2
+  return 1
 }
 
 cleanup() {
@@ -69,7 +75,13 @@ trap cleanup EXIT
 
 mkdir -p "$STAGING_DIR/.background"
 ditto "$APP_PATH" "$STAGING_DIR/ZuTalk.app"
-ln -s /Applications "$STAGING_DIR/Applications"
+# Finder has to open the volume to record its layout, and while it does the
+# window on screen is a working installer: dragging ZuTalk.app onto a real
+# Applications shortcut there replaced the installed app from a volume this
+# script was about to unmount. During layout the slot holds an empty folder
+# of the same name — Finder keys icon positions by name — and the shortcut
+# (ln -s /Applications) takes its place only after the window has closed.
+mkdir "$STAGING_DIR/Applications"
 ditto "$BACKGROUND" "$STAGING_DIR/.background/background.png"
 
 hdiutil create \
@@ -125,6 +137,15 @@ tell application "Finder"
   end tell
 end tell
 APPLESCRIPT
+
+# The layout is written; now the real shortcut. An Applications folder that
+# is no longer empty means something was dropped on it while the window was
+# open — stop rather than ship it.
+rmdir "$MOUNT_DIR/Applications" || {
+  echo "FAIL: something was dropped into the DMG while Finder laid it out; rebuild" >&2
+  exit 1
+}
+ln -s /Applications "$MOUNT_DIR/Applications"
 
 sync
 detach_image "$DEVICE"

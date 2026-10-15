@@ -430,10 +430,11 @@ xcode-build-universal:
     just assert-universal-app
     bash "{{ project_dir }}/scripts/check_release_version.sh" "$OUT/ZuTalk.app"
     echo "✓ Universal Xcode build → $OUT/ZuTalk.app"
-    # 0.6.0 发布时,本机 /Applications/ZuTalk.app 在这次构建前后变成了一个只有
-    # 目录和签名清单的空壳(Finder 报「可能已损毁或不完整」);发布产物完好。
-    # 来源没有查明:同参数单独重跑构建不复现,构建日志与系统日志里也没有写
-    # /Applications 的记录。再出现时要一眼认出来,而不是怀疑发布包。
+    # 0.6.0、0.7.1、0.7.2、0.7.8 发布时,本机 /Applications/ZuTalk.app 消失或
+    # 只剩空壳。不是构建做的:做 DMG 时 Finder 会真的打开可写卷的窗口来记录排版,
+    # 窗口里就是「拖到 Applications 安装」;人一拖,Finder 开始替换已装的 App,
+    # 脚本随即强拆这个卷,复制被腰斩。create_friendly_dmg.sh 已改为排版期间用
+    # 空文件夹占位、卸载不再 -force。这条检查留着,以防别的原因再出现空壳。
     if [[ -d /Applications/ZuTalk.app && ! -f /Applications/ZuTalk.app/Contents/Info.plist ]]; then
         echo "⚠ 本机 /Applications/ZuTalk.app 只剩空壳(不是发布产物的问题)。" >&2
         echo "  发布完成后用 build/dmg 里新做的 DMG 重装它;录音数据在 ~/Library/Application Support/ZuTalk,不受影响。" >&2
