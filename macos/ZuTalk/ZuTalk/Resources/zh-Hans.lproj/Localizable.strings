@@ -40,6 +40,9 @@
 "community_invite.shared_detail" = "实时转录和翻译共用这段时间；音频文件转录使用自己的密钥。";
 "community_invite.invalid" = "邀请码无效，请向邀请人确认。";
 "community_invite.unavailable" = "社区服务暂时不可用，请稍后再试。";
+"community_invite.start.time_exhausted" = "邀请时长已用完，这次无法开启实时字幕。";
+"community_invite.start.busy" = "同时在录音的人太多，社区服务暂时排不上。请稍后再试。";
+"community_invite.start.unauthorized" = "这个邀请已失效。请在设置里重新输入邀请码。";
 "community_invite.remaining_recordable_format" = "约可再录 %1$lld 小时 %2$lld 分钟";
 "community_invite.remaining_recordable_hint" = "邀请时长按字幕连接数扣减：开着三条连接的录音，每录一分钟扣三分钟。";
 "community_invite.settings.title" = "社区邀请";
@@ -702,6 +705,9 @@
 "capture.toolbar.translation_lag" = "%1$@翻译落后 %2$lld 秒";
 "capture.toolbar.translation_lag_hint" = "服务的处理速度跟不上说话速度。追上之后各行会补齐；落后太多时会直接跳到当前位置，跳过的那段不会有字幕。";
 "capture.toast.stop_failed" = "无法停止录音";
+"capture.stop.stalled" = "停止录音没有及时完成。再按一次「停止」即可结束，已录下的音频不会丢。";
+"capture.stop.ended_locally_title" = "录音已结束";
+"capture.stop.ended_locally_detail" = "音频已经保存。转录的收尾会在下次打开 ZuTalk 时自动完成。";
 "capture.toast.context_preview_failed" = "无法查看参考资料";
 "capture.toast.context_load_failed" = "无法载入参考资料";
 "capture.toast.context_update_failed" = "无法更新参考资料";
@@ -810,6 +816,8 @@
 "capture.transcript.presentation.language_columns_detail" = "每种已选择的语言固定显示在自己的有序栏目中。";
 "capture.transcript.waiting_lane" = "等待 %@";
 "capture.transcript.failed_lane" = "未能生成 %@ 栏内容";
+"capture.transcript.continued_above" = "译文在上一行";
+"capture.transcript.continued_below" = "译文在下一行";
 "capture.transcript.source_timestamp" = "原始音频时间 %@";
 "capture.speaker.fallback" = "说话人";
 "capture.speaker.fallback_format" = "说话人 %@";

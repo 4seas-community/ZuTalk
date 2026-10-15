@@ -3545,6 +3545,204 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertNil(store.lastError)
     }
 
+    // MARK: - Cells whose translation is on the neighbouring row
+
+    @MainActor
+    private func cue(_ language: String, _ start: UInt64, _ end: UInt64, sequence: UInt64 = 0) -> NotebookCaptureTranslationCueDTO {
+        NotebookCaptureTranslationCueDTO(
+            targetLanguage: language,
+            groupEpoch: 0,
+            providerSequence: sequence,
+            sourceLanguage: "th",
+            sourceStartMs: start,
+            sourceEndMs: end,
+            text: "译文",
+            completion: "complete",
+            withdrawn: false,
+            revision: 0
+        )
+    }
+
+    /// From a real three-language replay: the timeline cut the Thai word
+    /// "ออนไลน์" into a 60 ms row of its own ("On."), while the Chinese lane
+    /// translated the whole sentence onto the row before.
+    @MainActor
+    func testAFragmentCutFromASentenceSaysItsTranslationIsAbove() {
+        let index = NotebookTranslationCueIndex([cue("zh", 21_240, 26_280)])
+        XCTAssertEqual(
+            index.continuation(language: "zh", rowStartMs: 25_620, rowEndMs: 25_680),
+            true
+        )
+    }
+
+    /// "Let me." split from "add a few points": the segment starts just after
+    /// the fragment and is shown on the next row.
+    @MainActor
+    func testAFragmentJustBeforeASegmentSaysItsTranslationIsBelow() {
+        let index = NotebookTranslationCueIndex([
+            cue("zh", 53_940, 54_360, sequence: 1),
+            cue("zh", 56_220, 56_760, sequence: 2),
+        ])
+        XCTAssertEqual(
+            index.continuation(language: "zh", rowStartMs: 55_860, rowEndMs: 55_920),
+            false
+        )
+    }
+
+    /// A row of its own length with nothing translated over it keeps its
+    /// dash: that is a translation that really is missing, not elsewhere.
+    @MainActor
+    func testACellNothingCoversKeepsItsDash() {
+        let index = NotebookTranslationCueIndex([cue("zh", 0, 18_960), cue("th", 50_000, 52_000)])
+        XCTAssertNil(index.continuation(language: "th", rowStartMs: 19_140, rowEndMs: 19_920))
+        XCTAssertNil(index.continuation(language: "zh", rowStartMs: 19_140, rowEndMs: 19_920))
+    }
+
+    @MainActor
+    func testOnlyDashesBecomeContinuations() {
+        let projection = NotebookCaptureLaneProjection(
+            lanes: [
+                NotebookCaptureLanguageLane(language: "zh", text: nil, missingLaneState: .unavailable),
+                NotebookCaptureLanguageLane(language: "en", text: nil, missingLaneState: .waiting),
+                NotebookCaptureLanguageLane(language: "th", text: "ออน", missingLaneState: .unavailable),
+            ],
+            pendingLanguage: nil,
+            unselectedLanguageText: nil
+        )
+        let marked = projection.markingContinuations(
+            rowStartMs: 25_620,
+            rowEndMs: 25_680,
+            cues: NotebookTranslationCueIndex([cue("zh", 21_240, 26_280), cue("en", 21_240, 26_280)])
+        )
+        XCTAssertEqual(marked.lanes.map(\.missingLaneState), [.continued(above: true), .waiting, .unavailable])
+    }
+
+    // MARK: - A Stop that never answers
+
+    /// Field report: "couldn't stop the recording, had to quit everything and
+    /// reopen". Draining disabled Stop and Pause while a Stop waited, so a
+    /// Stop that never answered left nothing to press.
+    @MainActor
+    func testAStopThatNeverAnswersHandsStopBackAndTheRetryEndsTheRecording() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let stalledStop = BlockingNotebookInterruptController()
+        client.stopController = stalledStop
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource(),
+            terminalCommandWatchdogInterval: 0.05
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        let stopTask = Task { @MainActor in try? await store.stop() }
+        let handedBack = await waitUntil(timeout: 2) { store.stopRecoveryRequired }
+        XCTAssertTrue(handedBack, "an unanswered Stop must hand Stop back")
+        XCTAssertTrue(stalledStop.isWaiting, "the first Stop is still waiting on Rust")
+        XCTAssertTrue(store.isCaptureActive)
+        XCTAssertFalse(store.hasAudioSubscription, "the microphone was released at once")
+
+        try await store.retryStopRecovery()
+        XCTAssertEqual(client.interruptCount, 1)
+        XCTAssertEqual(store.captureState, .interrupted)
+        XCTAssertFalse(store.isCaptureActive)
+        XCTAssertFalse(store.stopRecoveryRequired)
+
+        // The first Stop answering late changes nothing.
+        stalledStop.release()
+        await stopTask.value
+        XCTAssertEqual(store.captureState, .interrupted)
+        XCTAssertFalse(store.isCaptureActive)
+    }
+
+    /// The last way out: the interrupt goes unanswered as well. The recording
+    /// still ends — here, on this side — so the person can record again or
+    /// quit, instead of force-quitting the app.
+    @MainActor
+    func testWhenTheInterruptAlsoNeverAnswersTheRecordingEndsLocally() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let stalledStop = BlockingNotebookInterruptController()
+        let stalledInterrupt = BlockingNotebookInterruptController()
+        client.stopController = stalledStop
+        client.interruptController = stalledInterrupt
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource(),
+            terminalCommandWatchdogInterval: 0.05
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        let stopTask = Task { @MainActor in try? await store.stop() }
+        let handedBack = await waitUntil(timeout: 2) { store.stopRecoveryRequired }
+        XCTAssertTrue(handedBack)
+        let retryTask = Task { @MainActor in try? await store.retryStopRecovery() }
+        let ended = await waitUntil(timeout: 2) { store.isCaptureActive == false }
+        XCTAssertTrue(ended, "a recording must end even when Rust never answers")
+        XCTAssertTrue(stalledInterrupt.isWaiting)
+        XCTAssertEqual(store.captureState, .interrupted)
+        XCTAssertFalse(store.hasAudioSubscription)
+        XCTAssertEqual(
+            store.lastError,
+            String(localized: "capture.stop.ended_locally_detail")
+        )
+
+        stalledInterrupt.release()
+        stalledStop.release()
+        await retryTask.value
+        await stopTask.value
+        XCTAssertEqual(store.captureState, .interrupted)
+        XCTAssertFalse(store.isCaptureActive)
+    }
+
+    /// Pausing shows Draining too, and a pause that never answered disabled
+    /// Stop just the same.
+    @MainActor
+    func testAPauseThatNeverAnswersStillLeavesAWayToStop() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let stalledPause = BlockingNotebookPauseController()
+        client.pauseController = stalledPause
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource(),
+            terminalCommandWatchdogInterval: 0.05
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        let pauseTask = Task { @MainActor in try? await store.setPaused(true) }
+        let handedBack = await waitUntil(timeout: 2) { store.stopRecoveryRequired }
+        XCTAssertTrue(handedBack, "an unanswered pause must hand Stop back")
+
+        try await store.retryStopRecovery()
+        XCTAssertEqual(store.captureState, .interrupted)
+        XCTAssertFalse(store.isCaptureActive)
+
+        stalledPause.release()
+        await pauseTask.value
+        XCTAssertEqual(store.captureState, .interrupted)
+    }
+
+    /// A slow Stop that does answer is not interfered with: once it answers,
+    /// nothing is left asking for a retry.
+    @MainActor
+    func testASlowStopThatAnswersLeavesNoRetryBehind() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let slowStop = BlockingNotebookInterruptController()
+        client.stopController = slowStop
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource(),
+            terminalCommandWatchdogInterval: 0.05
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        let stopTask = Task { @MainActor in try await store.stop() }
+        _ = await waitUntil(timeout: 2) { store.stopRecoveryRequired }
+        slowStop.release()
+        try await stopTask.value
+        XCTAssertEqual(store.captureState, .completed)
+        XCTAssertFalse(store.stopRecoveryRequired)
+        XCTAssertFalse(store.isCaptureActive)
+    }
+
     @MainActor
     func testStreamingResamplerPreservesCountFrequencyAndBufferContinuity() {
         for inputRate in [44_100.0, 48_000.0] {
@@ -9166,6 +9364,8 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
     var sessionEventError: NotebookCaptureClientError?
     var interruptError: NotebookCaptureClientError?
     var interruptController: BlockingNotebookInterruptController?
+    /// Holds Stop at the FFI boundary: a Stop that does not answer.
+    var stopController: BlockingNotebookInterruptController?
     var pauseController: BlockingNotebookPauseController?
     /// When set, pause/resume answer with the delta Rust really sends — an
     /// `event_from_run` stamped with this callback revision — instead of a
@@ -9540,6 +9740,9 @@ private final class FakeNotebookCaptureClient: NotebookCaptureClienting {
 
     func stopNotebookCaptureSession(sessionId: String) async throws -> NotebookCaptureEventDTO {
         stopCount += 1
+        if let stopController {
+            await stopController.wait()
+        }
         if shouldFailStop {
             throw NotebookCaptureClientError.ffiUnavailable
         }

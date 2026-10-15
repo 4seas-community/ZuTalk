@@ -11,6 +11,11 @@ enum NotebookCaptureMissingLaneState: Equatable {
     case waiting
     case failed
     case unavailable
+    /// This row has no words of its own in the language, but the translated
+    /// segment covering its audio is shown on the neighbouring row — above
+    /// when `above`, below otherwise. A dash would say "nothing was
+    /// translated"; the words are there, one row over.
+    case continued(above: Bool)
 }
 
 struct NotebookCaptureLaneTexts: Equatable {
@@ -61,6 +66,112 @@ struct NotebookCaptureLaneProjection: Equatable {
             pendingLanguage: pendingLanguage,
             unselectedLanguageText: unselectedLanguageText
         )
+    }
+}
+
+extension NotebookCaptureLaneProjection {
+    /// The same projection with each dash checked against the translated
+    /// segments: a cell whose audio a segment on the neighbouring row covers
+    /// says so instead of showing a dash.
+    func markingContinuations(
+        rowStartMs: UInt64?,
+        rowEndMs: UInt64?,
+        cues: NotebookTranslationCueIndex
+    ) -> Self {
+        guard cues.isEmpty == false,
+              let rowStartMs, let rowEndMs,
+              lanes.contains(where: {
+                  $0.text == nil && $0.missingLaneState == .unavailable
+              })
+        else { return self }
+        return Self(
+            lanes: lanes.map { lane in
+                guard lane.text == nil,
+                      lane.missingLaneState == .unavailable,
+                      let above = cues.continuation(
+                          language: lane.language,
+                          rowStartMs: rowStartMs,
+                          rowEndMs: rowEndMs
+                      )
+                else { return lane }
+                return NotebookCaptureLanguageLane(
+                    language: lane.language,
+                    text: nil,
+                    missingLaneState: .continued(above: above)
+                )
+            },
+            pendingLanguage: pendingLanguage,
+            unselectedLanguageText: unselectedLanguageText
+        )
+    }
+}
+
+/// The translated segments of one recording, by language and start, for
+/// asking "does a segment cover this row's audio?".
+///
+/// One translation lane sets its own sentence boundaries. When the transcript
+/// splits a sentence the lane translated as one — a word cut into a 60 ms
+/// "On." of its own, a "Let me." split from what follows — the whole
+/// translation lands on one of the rows and the other's cell is empty though
+/// nothing is missing. Times are what tell those two cases apart.
+struct NotebookTranslationCueIndex: Equatable {
+    private struct Span: Equatable {
+        let start: UInt64
+        let end: UInt64
+    }
+
+    private let spans: [String: [Span]]
+
+    /// A row shorter than this whose cell no segment overlaps can still be a
+    /// fragment of the sentence a segment just before or after it translates.
+    static let fragmentMs: UInt64 = 600
+    /// How close that segment must be.
+    static let fragmentReachMs: UInt64 = 1_000
+
+    init(_ cues: [NotebookCaptureTranslationCueDTO]) {
+        var spans: [String: [Span]] = [:]
+        for cue in cues where cue.withdrawn == false
+            && cue.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            guard let start = cue.sourceStartMs, let end = cue.sourceEndMs, end >= start,
+                  let language = NotebookCaptureHistoryPolicy.normalizedLanguage(cue.targetLanguage)
+            else { continue }
+            spans[language, default: []].append(Span(start: start, end: end))
+        }
+        self.spans = spans.mapValues { $0.sorted { $0.start < $1.start } }
+    }
+
+    var isEmpty: Bool { spans.isEmpty }
+
+    /// Nil when no segment accounts for the row; otherwise whether the
+    /// segment that does lies mostly above it.
+    func continuation(language: String, rowStartMs: UInt64, rowEndMs: UInt64) -> Bool? {
+        guard let key = NotebookCaptureHistoryPolicy.normalizedLanguage(language),
+              let spans = spans[key], rowEndMs >= rowStartMs
+        else { return nil }
+        let rowLength = max(rowEndMs - rowStartMs, 1)
+        let rowMid = rowStartMs + (rowEndMs - rowStartMs) / 2
+        // Covering: a segment shares at least half of the row's audio.
+        for span in spans where span.start <= rowEndMs && span.end >= rowStartMs {
+            let shared = min(span.end, rowEndMs) - max(span.start, rowStartMs)
+            if shared * 2 >= rowLength {
+                return span.start + (span.end - span.start) / 2 < rowMid
+            }
+        }
+        // A fragment: a row too short to be a sentence, with a segment just
+        // before or just after it and none on it.
+        guard rowEndMs - rowStartMs <= Self.fragmentMs,
+              spans.contains(where: { $0.start <= rowEndMs && $0.end >= rowStartMs }) == false
+        else { return nil }
+        let before = spans.last { $0.end <= rowStartMs }
+            .flatMap { rowStartMs - $0.end <= Self.fragmentReachMs ? rowStartMs - $0.end : nil }
+        let after = spans.first { $0.start >= rowEndMs }
+            .flatMap { $0.start - rowEndMs <= Self.fragmentReachMs ? $0.start - rowEndMs : nil }
+        switch (before, after) {
+        case let (.some(above), .some(below)): return above <= below
+        case (.some, nil): return true
+        case (nil, .some): return false
+        case (nil, nil): return nil
+        }
     }
 }
 
@@ -469,7 +580,7 @@ enum NotebookCaptureHistoryPolicy {
         return languages.compactMap { normalizedLanguage($0) }.filter { seen.insert($0).inserted }
     }
 
-    private static func normalizedLanguage(_ language: String?) -> String? {
+    static func normalizedLanguage(_ language: String?) -> String? {
         guard let language else { return nil }
         let normalized = language
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -530,6 +641,7 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     /// transcript and on live remote-health transitions. A handful of small
     /// rows per session; reset with each catalog load.
     @Published private(set) var transcriptGapsBySession: [String: [NotebookTranscriptGapDTO]] = [:]
+    @Published private(set) var translationCueIndexBySession: [String: NotebookTranslationCueIndex] = [:]
 
     private let client: NotebookCaptureClienting
     private var laneMutationsInFlight: Set<NotebookCaptureLaneMutationKey> = []
@@ -630,6 +742,24 @@ final class NotebookCaptureHistoryStore: ObservableObject {
         transcriptGapsBySession[sessionId] ?? []
     }
 
+    func translationCueIndex(sessionId: String) -> NotebookTranslationCueIndex {
+        translationCueIndexBySession[sessionId] ?? NotebookTranslationCueIndex([])
+    }
+
+    /// Reads one recording's translated segments. Advisory like the gaps: a
+    /// failure leaves the previous value and the cells show dashes.
+    func refreshTranslationCues(sessionId: String) async {
+        guard sessionId.isEmpty == false,
+              let cues = try? await client.loadNotebookCaptureTranslationCues(sessionId: sessionId)
+        else { return }
+        let index = NotebookTranslationCueIndex(cues)
+        if translationCueIndexBySession[sessionId] != index {
+            var next = translationCueIndexBySession
+            next[sessionId] = index
+            translationCueIndexBySession = next
+        }
+    }
+
     /// Re-reads one session's recorded gaps. Failures keep the previous
     /// value: dividers are advisory presentation, not worth an error surface.
     func refreshTranscriptGaps(sessionId: String) async {
@@ -710,6 +840,7 @@ final class NotebookCaptureHistoryStore: ObservableObject {
             runs = nextRuns
             refreshSessionSpeakers(sessionId: sessionId)
             await refreshTranscriptGaps(sessionId: sessionId)
+            await refreshTranslationCues(sessionId: sessionId)
         } catch {
             guard loadedNotebookId == notebookId,
                   transcriptLoadRequestIds[sessionId] == requestId else { return }

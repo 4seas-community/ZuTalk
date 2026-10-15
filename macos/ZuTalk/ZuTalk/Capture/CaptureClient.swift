@@ -113,6 +113,9 @@ protocol NotebookCaptureClienting: AnyObject {
     func loadNotebookSessionTranscriptGaps(
         sessionId: String
     ) async throws -> [NotebookTranscriptGapDTO]
+    func loadNotebookCaptureTranslationCues(
+        sessionId: String
+    ) async throws -> [NotebookCaptureTranslationCueDTO]
     func retryNotebookCaptureProjection(sessionId: String) throws -> NotebookCaptureEventDTO
     func retryNotebookAsyncProjection(sessionId: String) throws -> NotebookCaptureEventDTO
     func requestNotebookAsyncTranscription(sessionId: String) throws -> NotebookCaptureEventDTO
@@ -138,6 +141,13 @@ extension NotebookCaptureClienting {
     func loadNotebookSessionTranscriptGaps(
         sessionId: String
     ) async throws -> [NotebookTranscriptGapDTO] {
+        []
+    }
+
+    /// Advisory like the gaps: without it, empty cells keep their dashes.
+    func loadNotebookCaptureTranslationCues(
+        sessionId: String
+    ) async throws -> [NotebookCaptureTranslationCueDTO] {
         []
     }
 
@@ -749,6 +759,29 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
                 startMs: gap.startMs,
                 endMs: gap.endMs,
                 repairState: gap.repairState
+            )
+        }
+    }
+
+    func loadNotebookCaptureTranslationCues(
+        sessionId: String
+    ) async throws -> [NotebookCaptureTranslationCueDTO] {
+        let core = try requireCore()
+        let values = try await Task.detached {
+            try core.listNotebookCaptureTranslationCues(sessionId: sessionId)
+        }.value
+        return values.map { cue in
+            NotebookCaptureTranslationCueDTO(
+                targetLanguage: cue.targetLanguage,
+                groupEpoch: cue.groupEpoch,
+                providerSequence: cue.providerSequence,
+                sourceLanguage: cue.sourceLanguage,
+                sourceStartMs: cue.sourceStartMs,
+                sourceEndMs: cue.sourceEndMs,
+                text: cue.text,
+                completion: cue.completion,
+                withdrawn: cue.withdrawn,
+                revision: cue.revision
             )
         }
     }

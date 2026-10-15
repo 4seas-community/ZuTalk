@@ -11,6 +11,9 @@ struct NotebookRealtimeUtteranceView: View {
     /// and row bodies from each rebuilding the full durable+preview session.
     let presentedUtterances: [NotebookCaptureUtteranceDTO]
     let liveTranslationCues: [NotebookCaptureTranslationCueDTO]
+    /// Every translated segment of the recording, durable ones included, so
+    /// that an empty cell another row's segment accounts for says so.
+    var continuationCues = NotebookTranslationCueIndex([])
     let presentationMode: NotebookTranscriptPresentationMode
     let isFocused: Bool
     /// Run-level editing gate, above the per-lane projection watermark. The
@@ -334,7 +337,12 @@ struct NotebookRealtimeUtteranceView: View {
                             selectedLanguages: displayLanguages,
                             commonCaptionLanguage: nil
                         )
-                        .resolvingWaits(translationProgress, rowEndMs: utterance.sourceEndMs),
+                        .resolvingWaits(translationProgress, rowEndMs: utterance.sourceEndMs)
+                        .markingContinuations(
+                            rowStartMs: utterance.sourceStartMs,
+                            rowEndMs: utterance.sourceEndMs,
+                            cues: continuationCues
+                        ),
                         speakerDisplayName: speakerTurns.contains(utterance.id)
                             ? speakerDisplayName(for: utterance)
                             : nil,
@@ -1482,6 +1490,18 @@ struct BilingualLaneText: View {
                     format: String(localized: "capture.transcript.failed_lane"),
                     laneLanguageName
                 )))
+            } else if case let .continued(above) = missingLaneState {
+                // The words are on the neighbouring row: one translated
+                // segment covers both rows' audio.
+                Label(
+                    String(localized: above
+                        ? "capture.transcript.continued_above"
+                        : "capture.transcript.continued_below"),
+                    systemImage: above ? "arrow.up" : "arrow.down"
+                )
+                .font(.caption)
+                .foregroundColor(.textTertiary)
+                .frame(minHeight: 28, alignment: .leading)
             } else {
                 Text("—")
                     .font(.body)

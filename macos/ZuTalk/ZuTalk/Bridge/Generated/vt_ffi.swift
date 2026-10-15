@@ -1327,6 +1327,14 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      */
     func listNotebookCaptureHistoryUtterances(notebookId: String, sessionId: String) throws  -> [FfiNotebookCaptureUtterance]
 
+    /**
+     * Every present translation segment of a recording, with its audio
+     * interval. A finished recording's transcript uses them to tell a cell
+     * whose words sit in the neighbouring row — one translated segment
+     * spanning two transcript rows — from a cell that really has none.
+     */
+    func listNotebookCaptureTranslationCues(sessionId: String) throws  -> [FfiNotebookCaptureTranslationCue]
+
     func listNotebookCaptureUtterances(sessionId: String) throws  -> [FfiNotebookCaptureUtterance]
 
     /**
@@ -3193,6 +3201,21 @@ open func listNotebookCaptureHistoryUtterances(notebookId: String, sessionId: St
     uniffi_vt_ffi_fn_method_zutalkcore_list_notebook_capture_history_utterances(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(notebookId),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
+     * Every present translation segment of a recording, with its audio
+     * interval. A finished recording's transcript uses them to tell a cell
+     * whose words sit in the neighbouring row — one translated segment
+     * spanning two transcript rows — from a cell that really has none.
+     */
+open func listNotebookCaptureTranslationCues(sessionId: String)throws  -> [FfiNotebookCaptureTranslationCue]  {
+    return try  FfiConverterSequenceTypeFfiNotebookCaptureTranslationCue.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_list_notebook_capture_translation_cues(
+            self.uniffiCloneHandle(),
         FfiConverterString.lower(sessionId),$0
     )
 })
@@ -12385,6 +12408,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_list_notebook_capture_history_utterances() != 7335) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_list_notebook_capture_translation_cues() != 2354) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_list_notebook_capture_utterances() != 63533) {

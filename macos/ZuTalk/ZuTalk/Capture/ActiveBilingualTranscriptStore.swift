@@ -180,7 +180,16 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// Time-anchored auxiliary translation cues, keyed by cue identity.
     /// The audience canvas reads translations from here in multilingual mode;
     /// the durable transcript keeps reading bound utterance variants.
-    @Published private(set) var translationCues: [String: NotebookCaptureTranslationCueDTO] = [:]
+    @Published private(set) var translationCues: [String: NotebookCaptureTranslationCueDTO] = [:] {
+        didSet {
+            if translationCues != oldValue {
+                continuationCueIndex = NotebookTranslationCueIndex(Array(translationCues.values))
+            }
+        }
+    }
+    /// `translationCues` indexed for the transcript's "continues on the row
+    /// above" cells. Rebuilt when the cues change, not on every frame.
+    private(set) var continuationCueIndex = NotebookTranslationCueIndex([])
     /// Bounded replace-in-full cue tail delivered with the speculative source
     /// frame. While capture is active this is the live canvas authority; it is
     /// deliberately separate from the durable all-session cue dictionary.
@@ -277,6 +286,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private let elapsedTimerInterval: TimeInterval
     private let audioQueueCapacity: Int
     private let audioDrainWatchdogInterval: TimeInterval
+    /// How long a Stop, Pause or Resume may go without an answer before the
+    /// controls are handed back. See `startTerminalCommandWatchdog`.
+    private let terminalCommandWatchdogInterval: TimeInterval
+    private var terminalCommandWatchdogTask: Task<Void, Never>?
     /// Zero publishes every revision synchronously, which is what a test that
     /// asserts on preview content wants: the coalescing window is a rendering
     /// budget, not a contract about what the transcript contains.
@@ -338,6 +351,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         elapsedTimerInterval: TimeInterval = 1,
         audioQueueCapacity: Int = ActiveBilingualTranscriptStore.defaultAudioQueueCapacity,
         audioDrainWatchdogInterval: TimeInterval = 5,
+        terminalCommandWatchdogInterval: TimeInterval = 15,
         livePreviewCoalescingInterval: TimeInterval = NotebookCaptureLivePreviewCoalescing.interval
     ) {
         self.client = client ?? RustNotebookCaptureClient()
@@ -345,6 +359,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         self.elapsedTimerInterval = max(0.001, elapsedTimerInterval)
         self.audioQueueCapacity = max(1, audioQueueCapacity)
         self.audioDrainWatchdogInterval = max(0.001, audioDrainWatchdogInterval)
+        self.terminalCommandWatchdogInterval = max(0.001, terminalCommandWatchdogInterval)
         self.livePreviewCoalescingInterval = max(0, livePreviewCoalescingInterval)
     }
 
@@ -1124,6 +1139,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             guard let drainLease = beginTerminalTransition(sessionId: sessionId) else {
                 throw NotebookCaptureClientError.captureNotActive
             }
+            startTerminalCommandWatchdog(for: drainLease, command: "pause")
             let preDrainState = captureState
             captureState = .draining
             // Remove the tap first. `unsubscribe` synchronously drains the
@@ -1231,6 +1247,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         guard let resumeLease = beginTerminalTransition(sessionId: sessionId) else {
             throw NotebookCaptureClientError.captureNotActive
         }
+        startTerminalCommandWatchdog(for: resumeLease, command: "resume")
         captureState = .draining
         // Paused capture has no open microphone stream to fence. The lease is
         // still retained across the detached FFI request so Stop/Start and
@@ -1404,6 +1421,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
         let convergence = enterTerminalConvergence(sessionId: sessionId, lease: lease)
         startAudioDrainWatchdog(for: lease)
+        startTerminalCommandWatchdog(for: lease, command: "stop")
         // Removing the tap fences its preallocated ring first. Those frames
         // must still be admitted to the Rust push gate before that gate closes.
         let microphoneTerminal = convergence.microphoneTerminal
@@ -1533,6 +1551,23 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             throw NotebookCaptureClientError.captureNotActive
         }
         let previousStopError = lastError
+        // The interrupt is the second request; if it goes unanswered as well,
+        // the recording ends on this side rather than leaving Stop spinning.
+        let interval = terminalCommandWatchdogInterval
+        terminalCommandWatchdogTask?.cancel()
+        let watchdog = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(min(interval * 1_000_000_000, Double(UInt64.max))))
+            guard Task.isCancelled == false, let self else { return }
+            self.endLocallyAfterStalledStop(lease)
+        }
+        terminalCommandWatchdogTask = watchdog
+        defer {
+            // Answered, one way or the other: the watchdog was only for silence.
+            watchdog.cancel()
+            if terminalCommandWatchdogTask == watchdog {
+                terminalCommandWatchdogTask = nil
+            }
+        }
 
         let event: NotebookCaptureEventDTO
         do {
@@ -1681,17 +1716,26 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// start/pause/stop transition settle, then uses the ordinary Stop path so
     /// the microphone ring and every frame admitted to the bounded push gate
     /// are fenced before the durable capture run is finalized.
+    ///
+    /// Every wait here is bounded. Quit used to wait for an in-flight Stop
+    /// without limit, so a Stop that hung made Quit hang with it and the only
+    /// way out was Force Quit — "I had to quit everything and start again".
+    /// What is not finished in time is finished by startup recovery: audio the
+    /// microphone delivered is already in Rust's journal.
     func prepareForApplicationTermination() async {
-        await waitForLifecycleQuiescence()
+        let budget = Self.terminationWaitSeconds
+        await waitAtMost(budget) { await self.waitForLifecycleQuiescence() }
 
         if captureState.isActive, terminalTransitionLease == nil {
-            do {
-                try await stop()
-            } catch {
-                lastError = error.localizedDescription
+            await waitAtMost(budget) {
+                do {
+                    try await self.stop()
+                } catch {
+                    self.lastError = error.localizedDescription
+                }
             }
         }
-        await waitForLifecycleQuiescence()
+        await waitAtMost(budget) { await self.waitForLifecycleQuiescence() }
 
         // Defensive convergence for a partially-started or failed terminal
         // transition. Never abort here: accepted audio must remain durable even
@@ -1701,7 +1745,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             audioPushGate = nil
             _ = releaseMicrophoneSubscription()
             gate?.close()
-            await gate?.fence()
+            await waitAtMost(budget) { await gate?.fence() }
             stopElapsedTimer()
         }
 
@@ -1715,32 +1759,38 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             audioDrainWatchdogTask?.cancel()
             audioDrainWatchdogTask = nil
             isAudioDrainDelayed = false
-            do {
-                let event = try await client.interruptNotebookCaptureSession(
-                    sessionId: sessionId,
-                    reason: .localAudioUnavailable
-                )
-                if applyAuthoritativeTerminal(event, for: lease) == false {
-                    enterStopFailureFallback(
+            await waitAtMost(budget) {
+                do {
+                    let event = try await self.client.interruptNotebookCaptureSession(
+                        sessionId: sessionId,
+                        reason: .localAudioUnavailable
+                    )
+                    if self.applyAuthoritativeTerminal(event, for: lease) == false {
+                        self.enterStopFailureFallback(
+                            lease: lease,
+                            stopError: self.lastError ?? "application termination",
+                            followupError: "durable interrupt returned an active capture"
+                        )
+                    }
+                } catch {
+                    self.enterStopFailureFallback(
                         lease: lease,
-                        stopError: lastError ?? "application termination",
-                        followupError: "durable interrupt returned an active capture"
+                        stopError: self.lastError ?? "application termination",
+                        followupError: error.localizedDescription
                     )
                 }
-            } catch {
-                enterStopFailureFallback(
-                    lease: lease,
-                    stopError: lastError ?? "application termination",
-                    followupError: error.localizedDescription
-                )
             }
         }
     }
+
+    /// How long quitting waits on each step of ending a recording.
+    static let terminationWaitSeconds: TimeInterval = 8
 
     func resetForTesting() {
         stoppingSince = nil
         audioDrainWatchdogTask?.cancel()
         audioDrainWatchdogTask = nil
+        cancelTerminalCommandWatchdog()
         terminalTransitionLease = nil
         terminalTransitionDrainPending = false
         pendingTerminalTransitionEvent = nil
@@ -3112,6 +3162,100 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
     }
 
+    /// Hands Stop back to the person when a Stop, Pause or Resume has gone
+    /// unanswered for `terminalCommandWatchdogInterval`.
+    ///
+    /// "I couldn't stop the recording and had to quit the whole app" was the
+    /// report. While one of these commands is in flight the capture shows
+    /// Draining, and Draining disables Stop and Pause alike; a command that
+    /// never answered left nothing to press. Every await below it is bounded
+    /// on paper, but a person cannot wait on paper. After the interval the
+    /// command is treated as a failed Stop: the bar offers Stop again, and
+    /// pressing it asks Rust to interrupt the capture instead. If that, too,
+    /// goes unanswered, `retryStopRecovery` ends the recording on this side.
+    /// Audio already handed to Rust is in its journal either way.
+    private func startTerminalCommandWatchdog(
+        for lease: TerminalTransitionLease,
+        command: String
+    ) {
+        terminalCommandWatchdogTask?.cancel()
+        let interval = terminalCommandWatchdogInterval
+        terminalCommandWatchdogTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(min(interval * 1_000_000_000, Double(UInt64.max))))
+            guard Task.isCancelled == false,
+                  let self,
+                  self.isCurrentTerminalTransition(lease),
+                  self.terminalSessionId == nil,
+                  self.stopRecoveryRequired == false
+            else { return }
+            DebugLog.warn(
+                "capture \(command) unanswered; handing Stop back",
+                detail: "\(Int(interval))s"
+            )
+            self.enterStopFailureFallback(
+                lease: lease,
+                stopError: String(localized: "capture.stop.stalled"),
+                followupError: "\(command) did not answer within \(Int(interval)) s"
+            )
+        }
+    }
+
+    private func cancelTerminalCommandWatchdog() {
+        terminalCommandWatchdogTask?.cancel()
+        terminalCommandWatchdogTask = nil
+    }
+
+    /// The last way out: the interrupt that should have ended a stalled Stop
+    /// went unanswered too. The recording ends here, on this side — the
+    /// microphone is already released and every accepted frame is in Rust's
+    /// journal — so the person can record again or quit. Whatever Rust still
+    /// owes arrives later and is ignored, or is finished by startup recovery
+    /// the next time the app opens.
+    private func endLocallyAfterStalledStop(_ lease: TerminalTransitionLease) {
+        guard isCurrentTerminalTransition(lease) else { return }
+        let sessionId = lease.sessionId
+        clearTerminalTransition(lease)
+        lastError = String(localized: "capture.stop.ended_locally_detail")
+        // Not the generic "recording interrupted": nothing was lost, and the
+        // person asked for this ending.
+        announcedUnexpectedEndSessionId = sessionId
+        _ = enterLocalTerminal(
+            sessionId: sessionId,
+            state: .interrupted,
+            abortPendingAudio: false
+        )
+        ToastCenter.shared.info(
+            String(localized: "capture.stop.ended_locally_title"),
+            detail: String(localized: "capture.stop.ended_locally_detail")
+        )
+    }
+
+    /// Runs `operation`, but stops waiting for it after `seconds`. The
+    /// operation itself keeps running; only the caller moves on. Used where
+    /// moving on is safe and waiting forever is not — quitting the app.
+    private func waitAtMost(
+        _ seconds: TimeInterval,
+        _ operation: @escaping @MainActor () async -> Void
+    ) async {
+        var finished = false
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Task { @MainActor in
+                await operation()
+                if finished == false {
+                    finished = true
+                    continuation.resume()
+                }
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+                if finished == false {
+                    finished = true
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
     private func audioFenceDidDrain(for lease: TerminalTransitionLease) {
         guard isCurrentTerminalTransition(lease) else { return }
         terminalTransitionDrainPending = false
@@ -3133,6 +3277,11 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         audioDrainWatchdogTask?.cancel()
         audioDrainWatchdogTask = nil
         isAudioDrainDelayed = false
+        cancelTerminalCommandWatchdog()
+        // No command is in flight any more, so none needs recovering — a
+        // stalled pause that did answer in the end leaves no "retry Stop"
+        // behind it.
+        stopRecoveryRequired = false
     }
 
     @discardableResult

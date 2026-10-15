@@ -40,6 +40,9 @@
 "community_invite.shared_detail" = "La transcripción en vivo y la traducción comparten este tiempo. La transcripción de archivos de audio usa su propia clave.";
 "community_invite.invalid" = "Ese código de invitación no es válido. Consulte con la persona que lo invitó.";
 "community_invite.unavailable" = "El servicio de la comunidad no está disponible temporalmente. Inténtelo de nuevo más tarde.";
+"community_invite.start.time_exhausted" = "Se agotó el tiempo de la invitación, así que esta vez no se pueden iniciar los subtítulos en directo.";
+"community_invite.start.busy" = "Hay demasiadas personas grabando a la vez y el servicio de la comunidad está lleno. Inténtelo de nuevo en un rato.";
+"community_invite.start.unauthorized" = "Esta invitación ya no es válida. Introduzca de nuevo un código de invitación en Ajustes.";
 "community_invite.remaining_recordable_format" = "Quedan unas %1$lld h %2$lld min de grabación";
 "community_invite.remaining_recordable_hint" = "El tiempo de la invitación se descuenta por cada conexión de subtítulos: una grabación con tres conexiones consume tres minutos por cada minuto grabado.";
 "community_invite.settings.title" = "Invitación de la comunidad";
@@ -702,6 +705,9 @@
 "capture.toolbar.translation_lag" = "Traducción al %1$@ con %2$lld s de retraso";
 "capture.toolbar.translation_lag_hint" = "El servicio va más lento que quien habla. Las líneas se completan cuando se pone al día; si se retrasa demasiado, salta al presente y lo que se saltó queda sin subtítulos.";
 "capture.toast.stop_failed" = "No se pudo detener la grabación";
+"capture.stop.stalled" = "La detención no terminó a tiempo. Pulse Detener otra vez para terminar la grabación; no se pierde nada de lo grabado.";
+"capture.stop.ended_locally_title" = "Grabación terminada";
+"capture.stop.ended_locally_detail" = "El audio está guardado. La transcripción se terminará la próxima vez que se abra ZuTalk.";
 "capture.toast.context_preview_failed" = "No se pudo revisar el material de referencia";
 "capture.toast.context_load_failed" = "No se pudo cargar el material de referencia";
 "capture.toast.context_update_failed" = "No se pudo actualizar el material de referencia";
@@ -810,6 +816,8 @@
 "capture.transcript.presentation.language_columns_detail" = "Mantiene cada idioma seleccionado en su propia columna ordenada.";
 "capture.transcript.waiting_lane" = "Esperando %@";
 "capture.transcript.failed_lane" = "No se pudo completar la columna de %@";
+"capture.transcript.continued_above" = "Traducido en la línea de arriba";
+"capture.transcript.continued_below" = "Traducido en la línea de abajo";
 "capture.transcript.source_timestamp" = "Marca de tiempo del audio original %@";
 "capture.speaker.fallback" = "Hablante";
 "capture.speaker.fallback_format" = "Hablante %@";

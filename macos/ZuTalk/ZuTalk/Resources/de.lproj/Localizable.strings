@@ -40,6 +40,9 @@
 "community_invite.shared_detail" = "Live-Transkription und Übersetzung teilen sich diese Zeit. Die Transkription von Audiodateien nutzt deinen eigenen Schlüssel.";
 "community_invite.invalid" = "Dieser Einladungscode ist ungültig. Wende dich an die Person, die dich eingeladen hat.";
 "community_invite.unavailable" = "Der Community-Dienst ist vorübergehend nicht verfügbar. Versuche es später erneut.";
+"community_invite.start.time_exhausted" = "Die Einladungszeit ist aufgebraucht, daher können diesmal keine Live-Untertitel starten.";
+"community_invite.start.busy" = "Gerade nehmen zu viele Personen gleichzeitig auf, der Community-Dienst ist ausgelastet. Versuche es gleich noch einmal.";
+"community_invite.start.unauthorized" = "Diese Einladung ist nicht mehr gültig. Gib in den Einstellungen erneut einen Einladungscode ein.";
 "community_invite.remaining_recordable_format" = "Noch etwa %1$lld Std. %2$lld Min. Aufnahmezeit";
 "community_invite.remaining_recordable_hint" = "Einladungszeit wird pro Untertitelverbindung abgebucht: Eine Aufnahme mit drei Verbindungen verbraucht pro aufgenommener Minute drei Minuten davon.";
 "community_invite.settings.title" = "Community-Einladung";
@@ -702,6 +705,9 @@
 "capture.toolbar.translation_lag" = "%1$@-Übersetzung %2$lld s im Rückstand";
 "capture.toolbar.translation_lag_hint" = "Der Dienst ist langsamer als die sprechende Person. Die Zeilen füllen sich, sobald er aufholt; liegt er zu weit zurück, springt er zur Gegenwart, und das Übersprungene bleibt ohne Untertitel.";
 "capture.toast.stop_failed" = "Aufnahme konnte nicht gestoppt werden";
+"capture.stop.stalled" = "Das Beenden wurde nicht rechtzeitig fertig. Drücke erneut auf Stopp, um die Aufnahme zu beenden – nichts Aufgenommenes geht verloren.";
+"capture.stop.ended_locally_title" = "Aufnahme beendet";
+"capture.stop.ended_locally_detail" = "Der Ton ist gesichert. Das Transkript wird beim nächsten Öffnen von ZuTalk fertiggestellt.";
 "capture.toast.context_preview_failed" = "Referenzmaterial konnte nicht geprüft werden";
 "capture.toast.context_load_failed" = "Referenzmaterial konnte nicht geladen werden";
 "capture.toast.context_update_failed" = "Referenzmaterial konnte nicht aktualisiert werden";
@@ -810,6 +816,8 @@
 "capture.transcript.presentation.language_columns_detail" = "Hält jede ausgewählte Sprache in ihrer eigenen geordneten Spalte.";
 "capture.transcript.waiting_lane" = "Warten auf %@";
 "capture.transcript.failed_lane" = "Die Spalte „%@“ konnte nicht gefüllt werden";
+"capture.transcript.continued_above" = "Übersetzt in der Zeile darüber";
+"capture.transcript.continued_below" = "Übersetzt in der Zeile darunter";
 "capture.transcript.source_timestamp" = "Zeitstempel im Quellaudio %@";
 "capture.speaker.fallback" = "Sprecher";
 "capture.speaker.fallback_format" = "Sprecher %@";

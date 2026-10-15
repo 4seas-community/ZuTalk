@@ -40,6 +40,9 @@
 "community_invite.shared_detail" = "การถอดเสียงสดและการแปลใช้เวลานี้ร่วมกัน ส่วนการถอดเสียงจากไฟล์เสียงใช้คีย์ของคุณเอง";
 "community_invite.invalid" = "รหัสคำเชิญนี้ไม่ถูกต้อง โปรดตรวจสอบกับผู้ที่เชิญคุณ";
 "community_invite.unavailable" = "บริการชุมชนไม่พร้อมใช้งานชั่วคราว โปรดลองใหม่ภายหลัง";
+"community_invite.start.time_exhausted" = "เวลาจากคำเชิญหมดแล้ว ครั้งนี้จึงเริ่มคำบรรยายสดไม่ได้";
+"community_invite.start.busy" = "มีคนบันทึกพร้อมกันมากเกินไป บริการชุมชนเต็มชั่วคราว โปรดลองใหม่อีกสักครู่";
+"community_invite.start.unauthorized" = "คำเชิญนี้ใช้ไม่ได้แล้ว โปรดป้อนรหัสคำเชิญอีกครั้งในการตั้งค่า";
 "community_invite.remaining_recordable_format" = "บันทึกได้อีกประมาณ %1$lld ชม. %2$lld นาที";
 "community_invite.remaining_recordable_hint" = "เวลาจากคำเชิญถูกหักตามจำนวนการเชื่อมต่อคำบรรยาย การบันทึกที่มีการเชื่อมต่อ 3 เส้นจะใช้เวลา 3 นาทีต่อการบันทึกทุก 1 นาที";
 "community_invite.settings.title" = "คำเชิญชุมชน";
@@ -702,6 +705,9 @@
 "capture.toolbar.translation_lag" = "การแปล%1$@ช้าไป %2$lld วินาที";
 "capture.toolbar.translation_lag_hint" = "บริการทำงานช้ากว่าผู้พูด แต่ละบรรทัดจะเติมเต็มเมื่อตามทัน หากช้าเกินไปจะข้ามไปยังปัจจุบัน และส่วนที่ข้ามไปจะไม่มีคำบรรยาย";
 "capture.toast.stop_failed" = "ไม่สามารถหยุดบันทึกได้";
+"capture.stop.stalled" = "การหยุดไม่เสร็จทันเวลา กดหยุดอีกครั้งเพื่อจบการบันทึก สิ่งที่บันทึกไว้จะไม่หายไป";
+"capture.stop.ended_locally_title" = "จบการบันทึกแล้ว";
+"capture.stop.ended_locally_detail" = "บันทึกเสียงไว้แล้ว การถอดเสียงจะทำต่อจนเสร็จเมื่อเปิด ZuTalk ครั้งถัดไป";
 "capture.toast.context_preview_failed" = "ไม่สามารถตรวจทานข้อมูลอ้างอิงได้";
 "capture.toast.context_load_failed" = "ไม่สามารถโหลดข้อมูลอ้างอิงได้";
 "capture.toast.context_update_failed" = "ไม่สามารถอัปเดตข้อมูลอ้างอิงได้";
@@ -810,6 +816,8 @@
 "capture.transcript.presentation.language_columns_detail" = "เก็บทุกภาษาที่เลือกไว้ในคอลัมน์ของตัวเองตามลำดับ";
 "capture.transcript.waiting_lane" = "กำลังรอ %@";
 "capture.transcript.failed_lane" = "ไม่สามารถเติมคอลัมน์ %@ ได้";
+"capture.transcript.continued_above" = "คำแปลอยู่ในบรรทัดด้านบน";
+"capture.transcript.continued_below" = "คำแปลอยู่ในบรรทัดด้านล่าง";
 "capture.transcript.source_timestamp" = "ประทับเวลาเสียงต้นฉบับ %@";
 "capture.speaker.fallback" = "ผู้พูด";
 "capture.speaker.fallback_format" = "ผู้พูด %@";

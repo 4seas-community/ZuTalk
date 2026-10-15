@@ -40,6 +40,9 @@
 "community_invite.shared_detail" = "La transcription en direct et la traduction partagent ce temps. La transcription de fichiers audio utilise votre propre clé.";
 "community_invite.invalid" = "Ce code d’invitation n’est pas valide. Vérifiez auprès de la personne qui vous a invité.";
 "community_invite.unavailable" = "Le service communautaire est temporairement indisponible. Réessayez plus tard.";
+"community_invite.start.time_exhausted" = "Le temps de l’invitation est épuisé : les sous-titres en direct ne peuvent pas démarrer cette fois.";
+"community_invite.start.busy" = "Trop de personnes enregistrent en même temps et le service communautaire est complet. Réessayez dans un moment.";
+"community_invite.start.unauthorized" = "Cette invitation n’est plus valable. Saisissez à nouveau un code d’invitation dans les Réglages.";
 "community_invite.remaining_recordable_format" = "Environ %1$lld h %2$lld min d’enregistrement restantes";
 "community_invite.remaining_recordable_hint" = "Le temps d’invitation est décompté par connexion de sous-titres : un enregistrement avec trois connexions en consomme trois minutes par minute enregistrée.";
 "community_invite.settings.title" = "Invitation communautaire";
@@ -702,6 +705,9 @@
 "capture.toolbar.translation_lag" = "Traduction %1$@ en retard de %2$lld s";
 "capture.toolbar.translation_lag_hint" = "Le service est plus lent que l’orateur. Les lignes se complètent quand il rattrape son retard ; s’il prend trop de retard, il saute au présent et le passage sauté reste sans sous-titres.";
 "capture.toast.stop_failed" = "Impossible d’arrêter l’enregistrement";
+"capture.stop.stalled" = "L’arrêt n’a pas abouti à temps. Appuyez de nouveau sur Arrêter pour terminer l’enregistrement ; rien de ce qui a été enregistré n’est perdu.";
+"capture.stop.ended_locally_title" = "Enregistrement terminé";
+"capture.stop.ended_locally_detail" = "L’audio est enregistré. La transcription sera terminée à la prochaine ouverture de ZuTalk.";
 "capture.toast.context_preview_failed" = "Impossible de consulter les documents de référence";
 "capture.toast.context_load_failed" = "Impossible de charger les documents de référence";
 "capture.toast.context_update_failed" = "Impossible de mettre à jour les documents de référence";
@@ -810,6 +816,8 @@
 "capture.transcript.presentation.language_columns_detail" = "Garde chaque langue sélectionnée dans sa propre colonne ordonnée.";
 "capture.transcript.waiting_lane" = "En attente de %@";
 "capture.transcript.failed_lane" = "Impossible de remplir la colonne %@";
+"capture.transcript.continued_above" = "Traduit dans la ligne au-dessus";
+"capture.transcript.continued_below" = "Traduit dans la ligne en dessous";
 "capture.transcript.source_timestamp" = "Horodatage audio source %@";
 "capture.speaker.fallback" = "Locuteur";
 "capture.speaker.fallback_format" = "Locuteur %@";

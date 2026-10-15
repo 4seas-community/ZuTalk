@@ -49,10 +49,23 @@ final class CommunityInviteSession: ObservableObject {
     /// the core asks it for a single-use key per connection, so no invite key
     /// is ever written into the shared credential runtime.
     private var laneCredentialProvider: CommunityInviteLaneCredentialProvider?
+    /// Reservations still owed a settlement, on disk so that no way a
+    /// recording can end — including the app not being there any more —
+    /// leaves one open on the service.
+    private let ledger: CommunityInviteSettlementLedger
+    /// Recorded seconds last written to the ledger for the active
+    /// reservation; the ledger is rewritten only every few seconds of change.
+    private var ledgerRecordedSeconds = 0
+    private var latestRecordedSeconds = 0
+    private var isRetryingSettlements = false
+    static let ledgerProgressInterval = 15
 
     private init() {
         tokenFileURL = Self.defaultTokenFileURL()
         accessToken = Self.loadToken(from: tokenFileURL)
+        ledger = CommunityInviteSettlementLedger(
+            fileURL: CommunityInviteSettlementLedger.defaultFileURL()
+        )
         Self.purgeLegacyKeychainItem()
     }
 
@@ -112,6 +125,9 @@ final class CommunityInviteSession: ObservableObject {
 
     func refreshQuota() async {
         guard isEnabled, let token = accessToken else { return }
+        // Whatever an earlier run of the app could not settle goes first, so
+        // the time shown afterwards is what is really left.
+        await retryPendingSettlements()
         do {
             let response: CommunityInviteQuotaResponse = try await request(
                 path: "/v1/quota",
@@ -137,12 +153,24 @@ final class CommunityInviteSession: ObservableObject {
         let lanes = max(1, laneCount)
         updatePlannedLaneCount(lanes)
         guard isEnabled, accessToken != nil else { return .notUsed }
+        await retryPendingSettlements()
         do {
             activeRealtimeSessionID = try await prepareCredential(
                 requestedSeconds: 3 * 60 * 60 * lanes,
                 laneCount: lanes
             )
             activeRealtimeLaneCount = lanes
+            if let sessionID = activeRealtimeSessionID {
+                latestRecordedSeconds = 0
+                ledgerRecordedSeconds = 0
+                ledger.record(CommunityInviteOpenReservation(
+                    sessionID: sessionID,
+                    laneCount: lanes,
+                    reservedAt: Date(),
+                    recordedSeconds: 0,
+                    ended: false
+                ))
+            }
             // No renewal loop: every connection fetches its own key, so there
             // is no long-lived credential left to expire mid-recording.
             return .invite
@@ -303,6 +331,8 @@ final class CommunityInviteSession: ObservableObject {
         }
     }
 
+    /// Ends the active reservation: called for every way a recording ends,
+    /// and a no-op when there is none (a second caller for the same ending).
     func settleRealtimeSession(usedSeconds: Int) async {
         // Unused single-use keys are dropped rather than kept: they are only
         // redeemable for minutes, and holding them widens the window in which
@@ -314,10 +344,94 @@ final class CommunityInviteSession: ObservableObject {
         activeRealtimeSessionID = nil
         let lanes = activeRealtimeLaneCount
         activeRealtimeLaneCount = 1
-        await settle(sessionID: sessionID, usedSeconds: usedSeconds * lanes)
+        // The service's settlement endpoint is where the reservation ends,
+        // but the ledger is where the obligation lives: mark it final first,
+        // so a settle that does not get through is sent again later.
+        if let sessionID {
+            let recorded = max(usedSeconds, latestRecordedSeconds)
+            ledger.record(CommunityInviteOpenReservation(
+                sessionID: sessionID,
+                laneCount: lanes,
+                reservedAt: ledger.reservations()
+                    .first { $0.sessionID == sessionID }?.reservedAt ?? Date(),
+                recordedSeconds: recorded,
+                ended: true
+            ))
+            if await settle(sessionID: sessionID, usedSeconds: recorded * lanes) {
+                ledger.remove(sessionID: sessionID)
+            }
+        }
+        latestRecordedSeconds = 0
+        ledgerRecordedSeconds = 0
         // The session's temporary key is spent; put the user's own saved key
         // back so post-recording features never run on a dead credential.
         restorePersonalKeyIfSaved()
+    }
+
+    /// The recording clock, while an invite recording runs. Kept in memory
+    /// every tick and in the ledger every few seconds of change, so that a
+    /// recording the app never gets to settle is settled later for what it
+    /// actually recorded rather than for nothing.
+    func noteRealtimeProgress(elapsedSeconds: Int) {
+        guard let sessionID = activeRealtimeSessionID else { return }
+        latestRecordedSeconds = max(latestRecordedSeconds, elapsedSeconds)
+        guard latestRecordedSeconds - ledgerRecordedSeconds >= Self.ledgerProgressInterval else {
+            return
+        }
+        ledgerRecordedSeconds = latestRecordedSeconds
+        guard let open = ledger.reservations().first(where: { $0.sessionID == sessionID }) else {
+            return
+        }
+        var updated = open
+        updated.recordedSeconds = latestRecordedSeconds
+        ledger.record(updated)
+    }
+
+    /// Settles every reservation an earlier run, or an earlier attempt, left
+    /// open. A reservation still being recorded on is skipped; one that was
+    /// never marked ended belonged to a recording the app did not survive,
+    /// and is settled for the time it had recorded by then.
+    func retryPendingSettlements() async {
+        guard isRetryingSettlements == false, accessToken != nil else { return }
+        isRetryingSettlements = true
+        defer { isRetryingSettlements = false }
+        for reservation in ledger.reservations()
+        where reservation.sessionID != activeRealtimeSessionID {
+            if await settle(
+                sessionID: reservation.sessionID,
+                usedSeconds: reservation.usedLaneSeconds
+            ) {
+                ledger.remove(sessionID: reservation.sessionID)
+            }
+        }
+    }
+
+    /// The app is quitting with an invite recording that has just been
+    /// stopped. Tries to settle it now, but never holds the quit up for
+    /// long: whatever does not get through stays in the ledger for the next
+    /// launch.
+    func settleBeforeTermination(usedSeconds: Int, timeout: TimeInterval = 3) async {
+        guard activeRealtimeSessionID != nil else { return }
+        // Not a task group: leaving one waits for every child, so a settle
+        // stuck on a dead connection would have held the quit for the
+        // request's full timeout. Whichever finishes first resumes the quit.
+        var finished = false
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Task { @MainActor in
+                await self.settleRealtimeSession(usedSeconds: usedSeconds)
+                if finished == false {
+                    finished = true
+                    continuation.resume()
+                }
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                if finished == false {
+                    finished = true
+                    continuation.resume()
+                }
+            }
+        }
     }
 
     /// Deletes the redeemed invitation from this Mac and returns the app to
@@ -333,6 +447,9 @@ final class CommunityInviteSession: ObservableObject {
         errorMessage = nil
         activeRealtimeSessionID = nil
         activeRealtimeLaneCount = 1
+        // Without the token nothing in the ledger can be sent; the service
+        // sweeps those reservations on its own.
+        ledger.removeAll()
         setEnabled(false)
         // With no saved key this clears any leftover temporary key from the
         // runtime; with one it reactivates the user's own credential.
@@ -355,10 +472,11 @@ final class CommunityInviteSession: ObservableObject {
         }
     }
 
-    private func settle(sessionID: String?, usedSeconds: Int) async {
-        guard let token = accessToken,
-              let sessionID
-        else { return }
+    /// Whether the service has answered for this reservation — settled now,
+    /// settled before, or never known to it. Only a missing answer (offline,
+    /// a server error) means it must be tried again.
+    private func settle(sessionID: String, usedSeconds: Int) async -> Bool {
+        guard let token = accessToken else { return false }
         do {
             let response: CommunityInviteQuotaResponse = try await request(
                 path: "/v1/realtime-session/settle",
@@ -370,8 +488,13 @@ final class CommunityInviteSession: ObservableObject {
                 token: token
             )
             remainingSeconds = response.remainingSeconds
+            return true
+        } catch CommunityInviteError.refused(statusCode: 404, reason: _) {
+            // An older service answers a closed session this way; either way
+            // there is nothing left to settle.
+            return true
         } catch {
-            errorMessage = String(localized: "community_invite.unavailable")
+            return false
         }
     }
 
@@ -451,10 +574,22 @@ final class CommunityInviteSession: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode)
-        else { throw CommunityInviteError.requestFailed }
+        guard let http = response as? HTTPURLResponse else {
+            throw CommunityInviteError.requestFailed
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            // The service says why it refused in the body. Every refusal used
+            // to read "community service unavailable", including two that
+            // were nothing of the kind: an invitation out of time, and one
+            // with recordings left unsettled by force-quits.
+            let reason = (try? JSONDecoder().decode(RefusalBody.self, from: data))?.error
+            throw CommunityInviteError.refused(statusCode: http.statusCode, reason: reason)
+        }
         return try JSONDecoder().decode(Response.self, from: data)
+    }
+
+    private struct RefusalBody: Decodable {
+        let error: String?
     }
 }
 
@@ -548,8 +683,9 @@ private struct LaneKeyResponse: Decodable {
     }
 }
 
-private enum CommunityInviteError: Error, LocalizedError {
+enum CommunityInviteError: Error, LocalizedError, Equatable {
     case requestFailed
+    case refused(statusCode: Int, reason: String?)
     case secureStorageFailed
     case personalKeyRequired
     case realtimeCaptureActive
@@ -558,12 +694,33 @@ private enum CommunityInviteError: Error, LocalizedError {
         switch self {
         case .requestFailed:
             return String(localized: "community_invite.unavailable")
+        case let .refused(statusCode, reason):
+            return Self.refusalDescription(statusCode: statusCode, reason: reason)
         case .secureStorageFailed:
             return nil
         case .personalKeyRequired:
             return String(localized: "community_invite.async.needs_personal_key")
         case .realtimeCaptureActive:
             return String(localized: "community_invite.async.wait_for_recording")
+        }
+    }
+
+    /// The words for a refusal, chosen by what the service said rather than
+    /// by status code alone (a spent invitation and a spent key budget are
+    /// both 429; a full service and a busy key mint are both 503).
+    static func refusalDescription(statusCode: Int, reason: String?) -> String {
+        switch reason {
+        case "quota_exhausted":
+            return String(localized: "community_invite.start.time_exhausted")
+        case "capacity_reached":
+            return String(localized: "community_invite.start.busy")
+        case "unauthorized", "invalid_invite":
+            return String(localized: "community_invite.start.unauthorized")
+        default:
+            if statusCode == 401 {
+                return String(localized: "community_invite.start.unauthorized")
+            }
+            return String(localized: "community_invite.unavailable")
         }
     }
 }

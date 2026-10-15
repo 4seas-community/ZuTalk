@@ -99,7 +99,13 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
         WindowCoordinator.shared.isMainWindowVisible()
     }
     var captureTerminationAction: (@MainActor @Sendable () async -> Void) = {
-        await ActiveBilingualTranscriptStore.shared.prepareForApplicationTermination()
+        let capture = ActiveBilingualTranscriptStore.shared
+        await capture.prepareForApplicationTermination()
+        // Quitting ends the recording, so it ends the invite reservation too.
+        // Bounded: what does not get through in time is sent at next launch.
+        await CommunityInviteSession.shared.settleBeforeTermination(
+            usedSeconds: Int(capture.elapsedRecordingTime.rounded(.up))
+        )
     }
     var requiresQuitConfirmationAction: (@MainActor @Sendable () -> Bool) = {
         ApplicationQuitConfirmationPolicy.requiresConfirmation(

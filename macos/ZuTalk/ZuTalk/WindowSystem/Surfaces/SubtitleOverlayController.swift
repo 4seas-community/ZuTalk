@@ -2705,7 +2705,7 @@ struct SubtitleOverlayView: View {
                 format: String(localized: "capture.transcript.failed_lane"),
                 displayLanguageCode(lane.language)
             )
-        case .unavailable:
+        case .unavailable, .continued:
             return ""
         }
     }

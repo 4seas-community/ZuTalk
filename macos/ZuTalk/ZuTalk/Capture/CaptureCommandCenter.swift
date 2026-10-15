@@ -18,6 +18,9 @@ final class CaptureCommandCenter: ObservableObject {
     @Published private(set) var isStarting = false
     @Published private(set) var isPausing = false
     @Published private(set) var isStopping = false
+    /// A second Stop, asking Rust to interrupt after the first went unanswered.
+    @Published private(set) var isRetryingStop = false
+    private var stopAttempt: UUID?
     /// When the last mark landed, so the surface that made it can say so.
     @Published private(set) var lastMarkedAt: Date?
     /// The person's own choice, once they have made one.
@@ -38,6 +41,7 @@ final class CaptureCommandCenter: ObservableObject {
     private let defaults: UserDefaults
     private let coreProvider: @MainActor () -> (any ZuTalkCoreProtocol)?
     private let inviteReady: @MainActor () -> Bool
+    private var settlementObservers: Set<AnyCancellable> = []
 
     static let realtimeCaptionsDefaultsKey = "capture.realtime_captions.enabled"
 
@@ -61,6 +65,46 @@ final class CaptureCommandCenter: ObservableObject {
         storedCaptionsChoice = defaults.object(forKey: Self.realtimeCaptionsDefaultsKey) != nil
             ? defaults.bool(forKey: Self.realtimeCaptionsDefaultsKey)
             : nil
+        observeRecordingForInviteSettlement()
+    }
+
+    // MARK: - Invite settlement
+
+    /// Invite time is settled when a recording ends, however it ends.
+    ///
+    /// It used to be settled from Stop's success path only. A recording the
+    /// microphone ended, one Rust interrupted, one ended by quitting, and one
+    /// whose Stop failed all left the reservation open, and the service then
+    /// refused new recordings while two such leftovers were waiting out their
+    /// six hours. The settle is idempotent, so Stop's own call and this one
+    /// can both run for the same ending.
+    private func observeRecordingForInviteSettlement() {
+        let capture = self.capture
+        let invite = self.invite
+        var wasActive = capture.activity.isCaptureActive
+        capture.activity.$isCaptureActive
+            .removeDuplicates()
+            .sink { [weak self] isActive in
+                defer { wasActive = isActive }
+                guard wasActive, isActive == false else { return }
+                // The recording is over, whatever is still waiting for an
+                // answer about it. A command that never answers must not keep
+                // the next recording's Stop or Pause greyed out.
+                self?.stopAttempt = nil
+                self?.isStopping = false
+                self?.isRetryingStop = false
+                self?.isPausing = false
+                let usedSeconds = Int(capture.elapsedRecordingTime.rounded(.up))
+                Task { @MainActor in
+                    await invite.settleRealtimeSession(usedSeconds: usedSeconds)
+                }
+            }
+            .store(in: &settlementObservers)
+        capture.clock.$elapsed
+            .sink { elapsed in
+                invite.noteRealtimeProgress(elapsedSeconds: Int(elapsed.rounded(.down)))
+            }
+            .store(in: &settlementObservers)
     }
 
     // MARK: - Captions choice
@@ -175,10 +219,17 @@ final class CaptureCommandCenter: ObservableObject {
             && isStopping == false
     }
 
+    /// Stop is offered whenever a recording is running and no Stop is already
+    /// on its way — and again once a command that went unanswered has been
+    /// handed back (`stopRecoveryRequired`), even while that first Stop is
+    /// still waiting somewhere. Requiring it to come back first is what left
+    /// nothing to press.
     var canStop: Bool {
-        capture.isCaptureActive
-            && isStopping == false
-            && (capture.captureState != .draining || capture.stopRecoveryRequired)
+        guard capture.isCaptureActive else { return false }
+        if capture.stopRecoveryRequired {
+            return isRetryingStop == false
+        }
+        return isStopping == false && capture.captureState != .draining
     }
 
     func togglePause() {
@@ -203,12 +254,29 @@ final class CaptureCommandCenter: ObservableObject {
     /// on screen would.
     func stop(announce: Bool = false) {
         guard canStop else { return }
-        isStopping = true
+        let retrying = capture.stopRecoveryRequired
+        if retrying {
+            isRetryingStop = true
+        } else {
+            isStopping = true
+        }
+        let attempt = UUID()
+        stopAttempt = attempt
         Task { @MainActor in
-            defer { isStopping = false }
+            defer {
+                // A Stop that answers only after its recording ended some
+                // other way must not reset the flags of a later one.
+                if stopAttempt == attempt {
+                    if retrying {
+                        isRetryingStop = false
+                    } else {
+                        isStopping = false
+                    }
+                }
+            }
             let usedSeconds = Int(capture.elapsedRecordingTime.rounded(.up))
             do {
-                if capture.stopRecoveryRequired {
+                if retrying {
                     try await capture.retryStopRecovery()
                 } else {
                     try await capture.stop()

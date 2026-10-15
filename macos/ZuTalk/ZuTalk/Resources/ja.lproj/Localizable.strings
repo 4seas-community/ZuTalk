@@ -40,6 +40,9 @@
 "community_invite.shared_detail" = "リアルタイム文字起こしと翻訳で共用します。音声ファイルの文字起こしは自分のキーを使用します。";
 "community_invite.invalid" = "招待コードが無効です。招待者に確認してください。";
 "community_invite.unavailable" = "コミュニティサービスを一時的に利用できません。後でもう一度お試しください。";
+"community_invite.start.time_exhausted" = "招待の利用時間を使い切ったため、今回はリアルタイム字幕を開始できません。";
+"community_invite.start.busy" = "同時に録音している人が多く、コミュニティサービスが混み合っています。しばらくしてからもう一度お試しください。";
+"community_invite.start.unauthorized" = "この招待は無効になりました。設定で招待コードをもう一度入力してください。";
 "community_invite.remaining_recordable_format" = "あと約 %1$lld 時間 %2$lld 分録音できます";
 "community_invite.remaining_recordable_hint" = "招待時間は字幕の接続ごとに消費されます。接続が 3 本ある録音では、1 分録音するごとに 3 分消費します。";
 "community_invite.settings.title" = "コミュニティ招待";
@@ -685,6 +688,9 @@
 "capture.toolbar.translation_lag" = "%1$@の翻訳が %2$lld 秒遅れています";
 "capture.toolbar.translation_lag_hint" = "サービスの処理が話す速さに追いついていません。追いつくと各行が埋まります。遅れが大きすぎると現在位置へ飛び、飛ばした部分には字幕が付きません。";
 "capture.toast.stop_failed" = "録音を停止できませんでした";
+"capture.stop.stalled" = "停止が時間内に完了しませんでした。もう一度「停止」を押すと録音を終了できます。録音済みの音声は失われません。";
+"capture.stop.ended_locally_title" = "録音を終了しました";
+"capture.stop.ended_locally_detail" = "音声は保存されています。文字起こしの仕上げは、次に ZuTalk を開いたときに自動で行われます。";
 "capture.toast.context_preview_failed" = "参考資料を確認できませんでした";
 "capture.toast.context_load_failed" = "参考資料を読み込めませんでした";
 "capture.toast.context_update_failed" = "参考資料を更新できませんでした";
@@ -793,6 +799,8 @@
 "capture.transcript.presentation.language_columns_detail" = "選択した各言語を、それぞれの順序付き列に固定して表示します。";
 "capture.transcript.waiting_lane" = "%@ を待っています";
 "capture.transcript.failed_lane" = "%@ 列を生成できませんでした";
+"capture.transcript.continued_above" = "訳文は上の行にあります";
+"capture.transcript.continued_below" = "訳文は下の行にあります";
 "capture.transcript.source_timestamp" = "元音声の時刻 %@";
 "capture.speaker.fallback" = "話者";
 "capture.speaker.fallback_format" = "話者 %@";
