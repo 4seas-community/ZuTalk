@@ -4409,7 +4409,7 @@ impl NotebookCaptureStore {
         let sequence = if let Some(sequence) = item.bound_sequence {
             sequence
         } else {
-            let candidates = list_machine_utterances_from_conn(&tx, &key.session_id)?;
+            let candidates = translation_inbox_candidates_from_conn(&tx, &item)?;
             let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter())
             else {
                 tx.commit()?;
@@ -4455,6 +4455,140 @@ impl NotebookCaptureStore {
         Ok(bindings)
     }
 
+    /// The live path's reconcile after canonical rows changed inside
+    /// `window` (capture milliseconds). Only facts the change could place are
+    /// looked at — those whose audio touches the window, and untimed ones.
+    ///
+    /// This used to be a pass over the session's whole inbox and every one of
+    /// its rows, on every canonical token batch. Once a single fact stayed
+    /// unbound, each pass also aligned it against every row, so the cost grew
+    /// with the square of the recording's length. Around the twentieth minute
+    /// of a three-language meeting the event collector fell behind the
+    /// provider, its lanes stopped reading their sockets, and each lane cut
+    /// itself every half minute for being "behind" — the translation columns
+    /// went dark and Stop had to wait behind the backlog.
+    pub fn reconcile_active_translation_inbox_near(
+        &self,
+        session_id: &str,
+        window: Option<(u64, u64)>,
+    ) -> Result<Vec<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
+        require_nonempty("session_id", session_id)?;
+        let mut conn = self.lock_conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_active_realtime_session(&tx, session_id)?;
+        let items = list_unbound_translation_inbox_near_from_conn(&tx, session_id, window)?;
+        let bindings = reconcile_translation_inbox_items_from_conn(&tx, session_id, items)?;
+        tx.commit()?;
+        Ok(bindings)
+    }
+
+    /// Places every settled, still-unbound fact whose audio ends in
+    /// `(after_end_ms, through_end_ms]`, falling back from its best row to the
+    /// next acceptable one and, when no row shares its audio, to its nearest
+    /// rows (see `settle_translation_inbox_items_from_conn`).
+    ///
+    /// The caller moves the window forward behind the canonical lane's final
+    /// position, so each fact is settled once and the work per call is the
+    /// handful of facts that just fell behind it.
+    pub fn settle_active_translation_inbox_through(
+        &self,
+        session_id: &str,
+        after_end_ms: u64,
+        through_end_ms: u64,
+    ) -> Result<Vec<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
+        require_nonempty("session_id", session_id)?;
+        if through_end_ms <= after_end_ms {
+            return Ok(Vec::new());
+        }
+        let mut conn = self.lock_conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_active_realtime_session(&tx, session_id)?;
+        let items = {
+            let mut stmt = tx.prepare_cached(&format!(
+                "{TRANSLATION_INBOX_SELECT}
+                 WHERE session_id = ?1 AND state = 'present'
+                   AND bound_utterance_id IS NULL AND completion = 'complete'
+                   AND source_end_ms IS NOT NULL
+                   AND source_end_ms > ?2 AND source_end_ms <= ?3
+                 ORDER BY source_end_ms, group_epoch, provider_sequence, target_language"
+            ))?;
+            let rows = stmt.query_map(
+                params![
+                    session_id,
+                    u64_to_i64(after_end_ms, "settlement start")?,
+                    u64_to_i64(through_end_ms.min(i64::MAX as u64), "settlement end")?
+                ],
+                translation_inbox_item_from_row,
+            )?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+        let bindings = settle_translation_inbox_items_from_conn(&tx, items)?;
+        tx.commit()?;
+        Ok(bindings)
+    }
+
+    /// Settles facts the settlement window has already passed that sit near
+    /// rows which just changed — those it deferred because their nearest row
+    /// was still being spoken. `window` is the changed rows' audio, widened by
+    /// the caller to reach their neighbours.
+    pub fn settle_active_translation_inbox_near(
+        &self,
+        session_id: &str,
+        window: (u64, u64),
+        through_end_ms: u64,
+    ) -> Result<Vec<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
+        require_nonempty("session_id", session_id)?;
+        if through_end_ms == 0 {
+            return Ok(Vec::new());
+        }
+        let mut conn = self.lock_conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_active_realtime_session(&tx, session_id)?;
+        let items = list_unbound_translation_inbox_near_from_conn(&tx, session_id, Some(window))?
+            .into_iter()
+            .filter(|item| {
+                item.completion == Some(UtteranceCompletion::Complete)
+                    && item.source_end_ms.is_some_and(|end| end <= through_end_ms)
+            })
+            .collect::<Vec<_>>();
+        let bindings = settle_translation_inbox_items_from_conn(&tx, items)?;
+        tx.commit()?;
+        Ok(bindings)
+    }
+
+    /// Settles named facts at once: ones that became final only after the
+    /// canonical lane had already settled past them — a translation lane that
+    /// reconnected and caught up late. Waiting for the settlement window to
+    /// come round again would mean waiting for Stop.
+    pub fn settle_active_translation_inbox_items(
+        &self,
+        session_id: &str,
+        keys: &[RealtimeTranslationInboxKey],
+    ) -> Result<Vec<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
+        require_nonempty("session_id", session_id)?;
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut conn = self.lock_conn();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_active_realtime_session(&tx, session_id)?;
+        let mut items = Vec::with_capacity(keys.len());
+        for key in keys {
+            let key = RealtimeTranslationInboxKey {
+                target_language: canonical_language(&key.target_language),
+                ..key.clone()
+            };
+            if let Some(item) = get_translation_inbox_item_from_conn(&tx, &key)? {
+                if item.completion == Some(UtteranceCompletion::Complete) {
+                    items.push(item);
+                }
+            }
+        }
+        let bindings = settle_translation_inbox_items_from_conn(&tx, items)?;
+        tx.commit()?;
+        Ok(bindings)
+    }
+
     /// Reconciles only provider facts that were durable before startup
     /// recovery made the run terminal. It never accepts a new provider write.
     ///
@@ -4488,21 +4622,44 @@ impl NotebookCaptureStore {
             tx.commit()?;
             return Ok(0);
         }
-        let bound_rows = inbox
-            .iter()
-            .filter_map(|item| item.bound_utterance_id.clone().zip(item.bound_sequence))
-            .collect::<std::collections::HashSet<_>>();
-        for (utterance_id, sequence) in &bound_rows {
+        // Each bound row replays only its own facts. Handing every row the
+        // whole inbox to filter was rows × facts of comparisons at every Stop.
+        let mut bound_rows =
+            std::collections::BTreeMap::<(String, u64), Vec<RealtimeTranslationInboxItem>>::new();
+        for item in &inbox {
+            if let Some(row) = item.bound_utterance_id.clone().zip(item.bound_sequence) {
+                bound_rows.entry(row).or_default().push(item.clone());
+            }
+        }
+        for ((utterance_id, sequence), items) in &bound_rows {
             let _ = apply_bound_translation_inbox_snapshot_from_conn(
                 &tx,
-                &inbox,
+                items,
                 utterance_id,
                 *sequence,
             )?;
         }
         let bound_groups = bound_rows.len();
         let inbox_items = inbox.len();
-        let reconciled = reconcile_translation_inbox_items_from_conn(&tx, session_id, inbox)?.len();
+        let mut reconciled =
+            reconcile_translation_inbox_items_from_conn(&tx, session_id, inbox)?.len();
+        // The recording is over; no row will appear or change any more. A fact
+        // still without a row now never gets one from waiting, so it is given
+        // its best acceptable row instead of being left out of the record.
+        let leftover = list_translation_inbox_from_conn(&tx, session_id)?
+            .into_iter()
+            .filter(|item| !item.withdrawn && item.bound_sequence.is_none())
+            .collect::<Vec<_>>();
+        let leftover_count = leftover.len();
+        let settled = settle_translation_inbox_items_from_conn(&tx, leftover)?.len();
+        reconciled += settled;
+        if leftover_count > settled {
+            tracing::warn!(
+                session_id,
+                unplaced = leftover_count - settled,
+                "translation facts left without any acceptable row"
+            );
+        }
         tx.commit()?;
         let elapsed = started.elapsed();
         if elapsed >= Duration::from_millis(500) {
@@ -4735,8 +4892,11 @@ impl NotebookCaptureStore {
             return Ok(None);
         }
         // Also consume any older unbound fact whose identity becomes unique
-        // only after this withdrawal.
-        let _ = reconcile_translation_inbox_from_conn(&tx, session_id)?;
+        // only after this withdrawal — which can only be one this row's audio
+        // touched.
+        let window = utterance.source_start_ms.zip(utterance.source_end_ms);
+        let nearby = list_unbound_translation_inbox_near_from_conn(&tx, session_id, window)?;
+        let _ = reconcile_translation_inbox_items_from_conn(&tx, session_id, nearby)?;
         utterance =
             get_machine_utterance_by_id_from_conn(&tx, &utterance.id)?.ok_or_else(|| {
                 NotebookCaptureStoreError::NotFound(format!("utterance {}", utterance.id))
@@ -5636,6 +5796,323 @@ fn list_translation_inbox_from_conn(
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+const TRANSLATION_INBOX_SELECT: &str =
+    "SELECT session_id, lane_index, group_epoch, provider_sequence,
+            target_language, source_language, source_text,
+            source_start_ms, source_end_ms, translated_text,
+            completion, state, revision, bound_utterance_id,
+            bound_sequence, created_at, updated_at
+     FROM realtime_translation_inbox";
+
+/// The facts bound to one row, in the order the whole-session listing would
+/// have returned them. Every caller only ever looked at these; reading the
+/// session's entire inbox to find them made each canonical revision cost the
+/// length of the recording.
+fn list_translation_inbox_bound_to_from_conn(
+    conn: &Connection,
+    utterance_id: &str,
+) -> Result<Vec<RealtimeTranslationInboxItem>, NotebookCaptureStoreError> {
+    let mut stmt = conn.prepare_cached(&format!(
+        "{TRANSLATION_INBOX_SELECT}
+         WHERE bound_utterance_id = ?1
+         ORDER BY group_epoch, lane_index, provider_sequence, target_language"
+    ))?;
+    let rows = stmt.query_map([utterance_id], translation_inbox_item_from_row)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Unbound, present facts that a change to the rows in `window` could place:
+/// every fact whose interval touches the window, and every untimed fact
+/// (only words can place those, against any row). Facts elsewhere on the
+/// timeline cannot gain or lose a candidate from this change.
+fn list_unbound_translation_inbox_near_from_conn(
+    conn: &Connection,
+    session_id: &str,
+    window: Option<(u64, u64)>,
+) -> Result<Vec<RealtimeTranslationInboxItem>, NotebookCaptureStoreError> {
+    let untimed = "(source_start_ms IS NULL OR source_end_ms IS NULL)";
+    let base = format!(
+        "{TRANSLATION_INBOX_SELECT}
+         WHERE session_id = ?1 AND state = 'present' AND bound_utterance_id IS NULL"
+    );
+    let order = "ORDER BY group_epoch, lane_index, provider_sequence, target_language";
+    let rows = match window {
+        Some((start, end)) => {
+            let mut stmt = conn.prepare_cached(&format!(
+                "{base} AND ({untimed} OR (source_start_ms <= ?3 AND source_end_ms >= ?2)) {order}"
+            ))?;
+            let rows = stmt.query_map(
+                params![
+                    session_id,
+                    u64_to_i64(start, "translation window start")?,
+                    u64_to_i64(end, "translation window end")?
+                ],
+                translation_inbox_item_from_row,
+            )?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        }
+        None => {
+            let mut stmt = conn.prepare_cached(&format!("{base} AND {untimed} {order}"))?;
+            let rows = stmt.query_map([session_id], translation_inbox_item_from_row)?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        }
+    };
+    Ok(rows)
+}
+
+/// Rows that could share audio with `item`: every timed row whose interval
+/// touches the fact's, and every untimed row (words alone place against
+/// those). A fact with no times of its own is compared with every row, as it
+/// always was.
+///
+/// The scorer rejects any timed row the fact does not overlap, so this is the
+/// same candidate set the whole-session scan produced, minus rows that could
+/// never win. It is unhydrated on purpose: placement reads only the source
+/// columns, and hydrating every row's variants was one query per row of the
+/// recording, run for every fact on every event.
+fn translation_inbox_candidates_from_conn(
+    conn: &Connection,
+    item: &RealtimeTranslationInboxItem,
+) -> Result<Vec<RealtimeUtterance>, NotebookCaptureStoreError> {
+    let rows = match (item.source_start_ms, item.source_end_ms) {
+        (Some(start), Some(end)) if end >= start => {
+            let mut stmt = conn.prepare_cached(&format!(
+                "{UTTERANCE_SELECT}
+                 WHERE session_id = ?1
+                   AND (source_start_ms IS NULL OR source_end_ms IS NULL
+                        OR (source_start_ms <= ?3 AND source_end_ms >= ?2))
+                 ORDER BY sequence ASC"
+            ))?;
+            let rows = stmt.query_map(
+                params![
+                    item.key.session_id,
+                    u64_to_i64(start, "translation source start")?,
+                    u64_to_i64(end, "translation source end")?
+                ],
+                realtime_utterance_from_row,
+            )?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        }
+        _ => {
+            let mut stmt = conn.prepare_cached(&format!(
+                "{UTTERANCE_SELECT} WHERE session_id = ?1 ORDER BY sequence ASC"
+            ))?;
+            let rows = stmt.query_map([&item.key.session_id], realtime_utterance_from_row)?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        }
+    };
+    Ok(rows)
+}
+
+/// How many rows on either side of a fact that no row overlaps may take it.
+const ADJACENT_PLACEMENT_ROWS: usize = 4;
+
+/// The rows nearest in time to a fact that no row overlaps, nearest first —
+/// the row just before it ahead of the row just after it at equal distance,
+/// since a stretch the transcript has no row for is most often the tail of
+/// what was being said.
+///
+/// While the capture is live only settled rows qualify: a Partial row can
+/// still grow over the fact, and then it is an overlap like any other.
+fn adjacent_translation_inbox_rows_from_conn(
+    conn: &Connection,
+    item: &RealtimeTranslationInboxItem,
+    session_active: bool,
+) -> Result<Vec<RealtimeUtterance>, NotebookCaptureStoreError> {
+    let (Some(start), Some(end)) = (item.source_start_ms, item.source_end_ms) else {
+        return Ok(Vec::new());
+    };
+    let limit = i64::try_from(ADJACENT_PLACEMENT_ROWS).unwrap_or(4);
+    let settled = if session_active {
+        "AND completion = 'complete'"
+    } else {
+        ""
+    };
+    let before = {
+        let mut stmt = conn.prepare_cached(&format!(
+            "{UTTERANCE_SELECT}
+             WHERE session_id = ?1 AND source_start_ms IS NOT NULL
+               AND source_end_ms IS NOT NULL AND source_end_ms <= ?2 {settled}
+             ORDER BY source_end_ms DESC, sequence DESC LIMIT ?3"
+        ))?;
+        let rows = stmt.query_map(
+            params![
+                item.key.session_id,
+                u64_to_i64(start, "translation source start")?,
+                limit
+            ],
+            realtime_utterance_from_row,
+        )?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    let after = {
+        let mut stmt = conn.prepare_cached(&format!(
+            "{UTTERANCE_SELECT}
+             WHERE session_id = ?1 AND source_start_ms IS NOT NULL
+               AND source_end_ms IS NOT NULL AND source_start_ms >= ?2 {settled}
+             ORDER BY source_start_ms ASC, sequence ASC LIMIT ?3"
+        ))?;
+        let rows = stmt.query_map(
+            params![
+                item.key.session_id,
+                u64_to_i64(end, "translation source end")?,
+                limit
+            ],
+            realtime_utterance_from_row,
+        )?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    let gap = |row: &RealtimeUtterance| -> u64 {
+        match (row.source_start_ms, row.source_end_ms) {
+            (Some(_), Some(row_end)) if row_end <= start => start - row_end,
+            (Some(row_start), Some(_)) => row_start.saturating_sub(end),
+            _ => u64::MAX,
+        }
+    };
+    let mut nearest = before
+        .into_iter()
+        .map(|row| (gap(&row), 0_u8, row))
+        .chain(after.into_iter().map(|row| (gap(&row), 1_u8, row)))
+        .collect::<Vec<_>>();
+    nearest.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| left.2.sequence.cmp(&right.2.sequence))
+    });
+    nearest.dedup_by(|left, right| left.2.id == right.2.id);
+    Ok(nearest
+        .into_iter()
+        .take(ADJACENT_PLACEMENT_ROWS)
+        .map(|(_, _, row)| row)
+        .collect())
+}
+
+/// Whether some timed row shares audio with this fact.
+fn translation_inbox_has_overlapping_row_from_conn(
+    conn: &Connection,
+    item: &RealtimeTranslationInboxItem,
+) -> Result<bool, NotebookCaptureStoreError> {
+    Ok(translation_inbox_candidates_from_conn(conn, item)?
+        .iter()
+        .any(|row| {
+            row.source_start_ms.is_some()
+                && row.source_end_ms.is_some()
+                && translation_inbox_matches_utterance(item, row)
+        }))
+}
+
+/// Whether `utterance` is a legitimate home for this fact.
+///
+/// A row it shares audio with always is. A settled fact that no row shares
+/// audio with — the auxiliary lane heard speech the transcript has no row
+/// for — may also sit on one of its nearest rows: that is where settlement
+/// puts it, so that it is shown rather than held back forever. The moment a
+/// row does overlap it, only overlapping rows qualify again.
+fn translation_inbox_placement_matches_from_conn(
+    conn: &Connection,
+    item: &RealtimeTranslationInboxItem,
+    utterance: &RealtimeUtterance,
+) -> Result<bool, NotebookCaptureStoreError> {
+    if translation_inbox_matches_utterance(item, utterance) {
+        return Ok(true);
+    }
+    if item.source_start_ms.is_none()
+        || item.source_end_ms.is_none()
+        || translation_inbox_has_overlapping_row_from_conn(conn, item)?
+    {
+        return Ok(false);
+    }
+    // While recording, only a final fact is settled; once the recording is
+    // over, a fact the provider never finalized is final as it stands.
+    let session_active = capture_session_is_active_from_conn(conn, &item.key.session_id)?;
+    if session_active && item.completion != Some(UtteranceCompletion::Complete) {
+        return Ok(false);
+    }
+    Ok(
+        adjacent_translation_inbox_rows_from_conn(conn, item, session_active)?
+            .iter()
+            .any(|row| row.id == utterance.id),
+    )
+}
+
+/// Every row this fact may be placed on, best first: rows it shares audio
+/// with in evidence order, and — only when there are none — its nearest rows
+/// in a language other than its own target.
+fn translation_inbox_placement_order_from_conn(
+    conn: &Connection,
+    item: &RealtimeTranslationInboxItem,
+) -> Result<Vec<u64>, NotebookCaptureStoreError> {
+    let candidates = translation_inbox_candidates_from_conn(conn, item)?;
+    let ranked = ranked_translation_inbox_candidates(item, candidates.iter())
+        .into_iter()
+        .map(|(_, sequence)| sequence)
+        .collect::<Vec<_>>();
+    if !ranked.is_empty() || item.source_start_ms.is_none() || item.source_end_ms.is_none() {
+        return Ok(ranked);
+    }
+    let session_active = capture_session_is_active_from_conn(conn, &item.key.session_id)?;
+    let target = canonical_language(&item.key.target_language);
+    if session_active {
+        // The nearest row is still being spoken: it may yet grow over this
+        // fact, and settling now would hand it to an older, finished row
+        // instead. It is settled again once that row is done.
+        let nearest = adjacent_translation_inbox_rows_from_conn(conn, item, false)?
+            .into_iter()
+            .find(|row| canonical_language(&row.source_language) != target);
+        if nearest.is_some_and(|row| row.completion != UtteranceCompletion::Complete) {
+            return Ok(Vec::new());
+        }
+    }
+    Ok(
+        adjacent_translation_inbox_rows_from_conn(conn, item, session_active)?
+            .into_iter()
+            .filter(|row| canonical_language(&row.source_language) != target)
+            .map(|row| row.sequence)
+            .collect(),
+    )
+}
+
+/// Gives every unbound fact handed in a row, trying each acceptable row in
+/// order until one takes it.
+///
+/// This is the step that makes "a translation the provider sent is never
+/// missing from the transcript" true. The live matcher binds only a fact with
+/// one uniquely best row, and leaves the rest pending in the hope that the
+/// evidence improves — a fact between two rows, one tied with its neighbour,
+/// one whose best row's lane was already composed from another connection, or
+/// one the transcript has no row for at all. By the time it is settled the
+/// evidence is all in: every row that will ever overlap it exists. Waiting
+/// longer only kept it off the screen, permanently.
+fn settle_translation_inbox_items_from_conn(
+    conn: &Connection,
+    items: Vec<RealtimeTranslationInboxItem>,
+) -> Result<Vec<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
+    let mut bindings = Vec::new();
+    for item in items
+        .into_iter()
+        .filter(|item| !item.withdrawn && item.bound_sequence.is_none())
+    {
+        for sequence in translation_inbox_placement_order_from_conn(conn, &item)? {
+            match bind_translation_inbox_item_from_conn(conn, &item.key, sequence) {
+                Ok(utterance) => {
+                    bindings.push(RealtimeTranslationInboxBinding {
+                        key: item.key.clone(),
+                        canonical_sequence: sequence,
+                        utterance,
+                    });
+                    break;
+                }
+                // That row's lane cannot take it (a settled lane it would
+                // rewrite, a concurrent bind); the next acceptable row can.
+                Err(NotebookCaptureStoreError::Conflict(_)) => continue,
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Ok(bindings)
+}
+
 /// Binding and lane composition are one step, so they need one savepoint.
 ///
 /// Composition can fail after the binding row is written — an out-of-order
@@ -5694,7 +6171,7 @@ fn bind_translation_inbox_item_within_savepoint(
             key.session_id
         ))
     })?;
-    if !translation_inbox_matches_utterance(&item, &canonical) {
+    if !translation_inbox_placement_matches_from_conn(conn, &item, &canonical)? {
         return Err(NotebookCaptureStoreError::Conflict(format!(
             "translation inbox identity does not match canonical utterance {}:{canonical_sequence}",
             key.session_id
@@ -5712,32 +6189,14 @@ fn bind_translation_inbox_item_within_savepoint(
     // ends a segment mid-row, and rejecting the remainder used to discard it
     // permanently — a third of a long run's translated text.
     //
-    // Composition is still refused across a stream-group epoch: segments from
-    // two different provider connections have no shared ordering, so they
-    // cannot be concatenated into one lane.
-    let cross_epoch_owner = conn
-        .query_row(
-            "SELECT 1
-             FROM realtime_translation_inbox
-             WHERE bound_utterance_id = ?1
-               AND target_language = ?2
-               AND group_epoch <> ?3
-             LIMIT 1",
-            params![
-                canonical.id,
-                canonical_language(&key.target_language),
-                u64_to_i64(key.group_epoch, "translation group epoch")?,
-            ],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some();
-    if cross_epoch_owner {
-        return Err(NotebookCaptureStoreError::Conflict(format!(
-            "canonical translation lane {}:{canonical_sequence}:{} is bound to another stream epoch",
-            key.session_id, key.target_language
-        )));
-    }
+    // That includes segments from a later connection of the same lane. They
+    // were refused on the grounds that two connections share no ordering, but
+    // one target language is one lane, and its epochs only ever increase as
+    // the recording goes on: (epoch, provider sequence) is the order the words
+    // were spoken (see `composed_translation_lane_from_conn`). The refusal cost
+    // every row that straddled a reconnect its translation — and reconnects
+    // come in runs when the network is poor, which is exactly when a column
+    // went dark for minutes.
     let now = chrono::Utc::now().to_rfc3339();
     let updated = conn.execute(
         "UPDATE realtime_translation_inbox
@@ -5784,19 +6243,13 @@ fn reconcile_translation_inbox_items_from_conn(
     session_id: &str,
     items: Vec<RealtimeTranslationInboxItem>,
 ) -> Result<Vec<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
-    if !items
-        .iter()
-        .any(|item| !item.withdrawn && item.bound_sequence.is_none())
-    {
-        // Nothing unbound: skip reading every machine utterance of the session.
-        return Ok(Vec::new());
-    }
-    let candidates = list_machine_utterances_from_conn(conn, session_id)?;
+    let _ = session_id;
     let mut bindings = Vec::new();
     for item in items
         .into_iter()
         .filter(|item| !item.withdrawn && item.bound_sequence.is_none())
     {
+        let candidates = translation_inbox_candidates_from_conn(conn, &item)?;
         let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter()) else {
             continue;
         };
@@ -5819,11 +6272,11 @@ fn reconcile_translation_inbox_items_from_conn(
 
 fn apply_bound_translation_inbox_items_from_conn(
     conn: &Connection,
-    session_id: &str,
+    _session_id: &str,
     utterance_id: &str,
     canonical_sequence: u64,
 ) -> Result<bool, NotebookCaptureStoreError> {
-    let items = list_translation_inbox_from_conn(conn, session_id)?;
+    let items = list_translation_inbox_bound_to_from_conn(conn, utterance_id)?;
     apply_bound_translation_inbox_snapshot_from_conn(conn, &items, utterance_id, canonical_sequence)
 }
 
@@ -5865,15 +6318,17 @@ fn revalidate_bound_translation_inbox_items_for_utterance_from_conn(
     utterance_id: &str,
     canonical_sequence: u64,
 ) -> Result<(), NotebookCaptureStoreError> {
+    let _ = session_id;
     let canonical = get_machine_utterance_by_id_from_conn(conn, utterance_id)?
         .ok_or_else(|| NotebookCaptureStoreError::NotFound(format!("utterance {utterance_id}")))?;
-    let items = list_translation_inbox_from_conn(conn, session_id)?;
+    let items = list_translation_inbox_bound_to_from_conn(conn, utterance_id)?;
     for item in items.into_iter().filter(|item| {
         item.bound_utterance_id.as_deref() == Some(utterance_id)
             && item.bound_sequence == Some(canonical_sequence)
-            && !translation_inbox_matches_utterance(item, &canonical)
     }) {
-        detach_translation_inbox_item_from_bound_utterance(conn, &item)?;
+        if !translation_inbox_placement_matches_from_conn(conn, &item, &canonical)? {
+            detach_translation_inbox_item_from_bound_utterance(conn, &item)?;
+        }
     }
     Ok(())
 }
@@ -5930,7 +6385,7 @@ fn detach_translation_inbox_item_from_bound_utterance(
         return Ok(Some(canonical));
     }
 
-    let remaining = list_translation_inbox_from_conn(conn, &item.key.session_id)?
+    let remaining = list_translation_inbox_bound_to_from_conn(conn, utterance_id)?
         .into_iter()
         .find(|candidate| {
             !candidate.withdrawn
@@ -6060,7 +6515,7 @@ fn upsert_translation_inbox_item_from_conn(
                     &key.session_id,
                     sequence,
                 )? {
-                    if !translation_inbox_matches_utterance(&item, &canonical) {
+                    if !translation_inbox_placement_matches_from_conn(conn, &item, &canonical)? {
                         removed_bound_sequence = Some(sequence);
                         let old_utterance_id = item.bound_utterance_id.clone();
                         let visible =
@@ -6134,7 +6589,7 @@ fn upsert_translation_inbox_item_from_conn(
         None
     };
     if !item.withdrawn && item.bound_sequence.is_none() && item.key.group_epoch == 0 {
-        let candidates = list_machine_utterances_from_conn(conn, &key.session_id)?;
+        let candidates = translation_inbox_candidates_from_conn(conn, &item)?;
         if let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter()) {
             match bind_translation_inbox_item_from_conn(conn, &key, sequence) {
                 Ok(visible) => {
@@ -6294,12 +6749,8 @@ fn apply_translation_inbox_to_bound_utterance(
         && !canonical.source_lane_is_complete()
         && auxiliary_is_final
         && capture_session_is_active_from_conn(conn, &item.key.session_id)?;
-    let composed = composed_translation_lane_from_conn(
-        conn,
-        &canonical.id,
-        &item.key.target_language,
-        item.key.group_epoch,
-    )?;
+    let composed =
+        composed_translation_lane_from_conn(conn, &canonical.id, &item.key.target_language)?;
     let auxiliary_final_claims_owner = target_is_current_source
         && !canonical.source_lane_is_complete()
         && auxiliary_is_final
@@ -6476,35 +6927,31 @@ pub fn preserves_settled_lane(settled: &str, incoming: &str) -> bool {
 /// Concatenates every auxiliary segment bound to one canonical row's language
 /// lane, in the order the words were spoken.
 ///
-/// Ordering is by provider sequence, not by timestamp: after the shared-time
-/// candidate gate places sibling segments on this row, the sequence is the
-/// connection's authoritative account of their order. Because the order is
-/// append-only as later segments arrive, the resulting text only ever grows at
-/// the end — which is what lets an already-projected lane be extended without
-/// rewriting what a reader has already seen.
+/// Ordering is by connection epoch, then provider sequence, not by timestamp:
+/// after the shared-time candidate gate places sibling segments on this row,
+/// the sequence is the connection's authoritative account of their order, and
+/// a target language's later connections carry strictly later epochs (the
+/// collector only ever advances them as the recording goes on). Because the
+/// order is append-only as later segments arrive, the resulting text only ever
+/// grows at the end — which is what lets an already-projected lane be extended
+/// without rewriting what a reader has already seen.
 fn composed_translation_lane_from_conn(
     conn: &Connection,
     utterance_id: &str,
     target_language: &str,
-    group_epoch: u64,
 ) -> Result<Option<ComposedTranslationLane>, NotebookCaptureStoreError> {
-    let mut statement = conn.prepare(
+    let mut statement = conn.prepare_cached(
         "SELECT translated_text, completion
          FROM realtime_translation_inbox
          WHERE bound_utterance_id = ?1
            AND target_language = ?2
-           AND group_epoch = ?3
            AND state <> 'withdrawn'
            AND translated_text IS NOT NULL
-         ORDER BY provider_sequence, lane_index",
+         ORDER BY group_epoch, provider_sequence, lane_index",
     )?;
     let rows = statement
         .query_map(
-            params![
-                utterance_id,
-                canonical_language(target_language),
-                u64_to_i64(group_epoch, "translation group epoch")?,
-            ],
+            params![utterance_id, canonical_language(target_language)],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
         )?
         .collect::<Result<Vec<_>, _>>()?;
@@ -6772,6 +7219,23 @@ fn unique_translation_inbox_candidate<'a>(
     item: &RealtimeTranslationInboxItem,
     candidates: impl Iterator<Item = &'a RealtimeUtterance>,
 ) -> Option<u64> {
+    let ranked = ranked_translation_inbox_candidates(item, candidates);
+    let (best, sequence) = ranked.first()?;
+    let equally_supported = ranked
+        .iter()
+        .take_while(|(score, _)| translation_inbox_evidence_eq(best, score))
+        .map(|(_, sequence)| *sequence)
+        .collect::<std::collections::HashSet<_>>();
+    (equally_supported.len() == 1).then_some(*sequence)
+}
+
+/// Every row the fact shares audio with, best evidence first. Rows of equal
+/// evidence keep a deterministic order — earliest first — so that settlement,
+/// which must choose, always chooses the same.
+fn ranked_translation_inbox_candidates<'a>(
+    item: &RealtimeTranslationInboxItem,
+    candidates: impl Iterator<Item = &'a RealtimeUtterance>,
+) -> Vec<(TranslationInboxAlignmentScore, u64)> {
     let mut ranked = candidates
         .filter_map(|candidate| {
             translation_inbox_alignment_score(item, candidate).map(|score| (score, candidate))
@@ -6792,13 +7256,10 @@ fn unique_translation_inbox_candidate<'a>(
             .then_with(|| left.midpoint_distance_ms.cmp(&right.midpoint_distance_ms))
             .then_with(|| left.sequence.cmp(&right.sequence))
     });
-    let (best, candidate) = ranked.first()?;
-    let equally_supported = ranked
-        .iter()
-        .take_while(|(score, _)| translation_inbox_evidence_eq(best, score))
-        .map(|(_, candidate)| candidate.sequence)
-        .collect::<std::collections::HashSet<_>>();
-    (equally_supported.len() == 1).then_some(candidate.sequence)
+    ranked
+        .into_iter()
+        .map(|(score, candidate)| (score, candidate.sequence))
+        .collect()
 }
 
 /// Whether this write is allowed to grow a lane that already reached Final.
@@ -14201,8 +14662,319 @@ mod tests {
         );
     }
 
+    fn settlement_row(
+        store: &NotebookCaptureStore,
+        session: &str,
+        sequence: u64,
+        start: u64,
+        end: u64,
+        text: &str,
+        completion: UtteranceCompletion,
+    ) -> u64 {
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: format!("utt-{session}-{sequence}"),
+                    session_id: session.into(),
+                    sequence,
+                    session_speaker_id: None,
+                    source_language: "th".into(),
+                    source_text: text.into(),
+                    source_start_ms: Some(start),
+                    source_end_ms: Some(end),
+                    translated_language: None,
+                    translated_text: None,
+                    completion,
+                    alignment: UtteranceAlignment::TranslationPending,
+                },
+                None,
+            )
+            .unwrap()
+            .revision
+    }
+
+    fn settlement_fact(
+        store: &NotebookCaptureStore,
+        session: &str,
+        provider_sequence: u64,
+        start: u64,
+        end: u64,
+        translated: &str,
+    ) -> RealtimeTranslationInboxKey {
+        let key = RealtimeTranslationInboxKey {
+            session_id: session.into(),
+            lane_index: 1,
+            group_epoch: 0,
+            provider_sequence,
+            target_language: "zh".into(),
+        };
+        store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: key.clone(),
+                source_language: "th".into(),
+                source_text: "ครับ".into(),
+                source_start_ms: Some(start),
+                source_end_ms: Some(end),
+                translated_text: Some(translated.into()),
+                completion: Some(UtteranceCompletion::Complete),
+                withdrawn: false,
+            })
+            .unwrap();
+        key
+    }
+
+    fn inbox_bound_sequence(
+        store: &NotebookCaptureStore,
+        session: &str,
+        key: &RealtimeTranslationInboxKey,
+    ) -> Option<u64> {
+        store
+            .list_translation_inbox(session)
+            .unwrap()
+            .into_iter()
+            .find(|item| &item.key == key)
+            .unwrap()
+            .bound_sequence
+    }
+
+    fn zh_lane(store: &NotebookCaptureStore, session: &str, sequence: u64) -> Option<String> {
+        store
+            .list_utterances(session)
+            .unwrap()
+            .into_iter()
+            .find(|utterance| utterance.sequence == sequence)?
+            .variants
+            .into_iter()
+            .find(|variant| {
+                variant.language == "zh" && variant.state == UtteranceVariantState::Ready
+            })?
+            .text
+    }
+
+    /// The auxiliary lane heard a short reply between two transcript rows,
+    /// in a stretch the canonical lane has no row for. While the capture can
+    /// still produce a row there, the fact waits; once the canonical lane has
+    /// settled past it, it joins the row before it instead of being lost.
     #[test]
-    fn recovery_leaves_ambiguous_or_nonzero_epoch_aux_facts_unbound() {
+    fn a_settled_fact_between_rows_joins_the_row_before_it() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "settle-gap");
+        let session = "session-settle-gap";
+        claim_realtime(&store, session);
+        settlement_row(
+            &store,
+            session,
+            0,
+            0,
+            2_000,
+            "สวัสดี",
+            UtteranceCompletion::Complete,
+        );
+        settlement_row(
+            &store,
+            session,
+            1,
+            4_000,
+            6_000,
+            "ขอบคุณ",
+            UtteranceCompletion::Complete,
+        );
+        let key = settlement_fact(&store, session, 0, 2_300, 2_600, "好的");
+        assert_eq!(
+            inbox_bound_sequence(&store, session, &key),
+            None,
+            "no row shares its audio, so the live matcher must not guess"
+        );
+
+        // The canonical lane has not settled past it yet: nothing happens.
+        assert!(store
+            .settle_active_translation_inbox_through(session, 0, 2_000)
+            .unwrap()
+            .is_empty());
+
+        let bindings = store
+            .settle_active_translation_inbox_through(session, 2_000, 5_000)
+            .unwrap();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].canonical_sequence, 0);
+        assert_eq!(zh_lane(&store, session, 0).as_deref(), Some("好的"));
+
+        // Settling the same stretch again changes nothing: a fact is settled once.
+        assert!(store
+            .settle_active_translation_inbox_through(session, 0, 5_000)
+            .unwrap()
+            .is_empty());
+        assert_eq!(inbox_bound_sequence(&store, session, &key), Some(0));
+    }
+
+    /// A row still being spoken can grow over the fact. While it is the
+    /// nearest row the fact waits — handing it to an older, finished row puts
+    /// a short reply on the previous sentence, which is what a 60 ms gap
+    /// between two lanes' timestamps did in a real three-language replay — and
+    /// it is settled onto that row once the row is done.
+    #[test]
+    fn live_settlement_waits_while_the_nearest_row_is_still_being_spoken() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "settle-partial");
+        let session = "session-settle-partial";
+        claim_realtime(&store, session);
+        settlement_row(
+            &store,
+            session,
+            0,
+            48_180,
+            51_960,
+            "我们需要增加预算",
+            UtteranceCompletion::Complete,
+        );
+        let partial_revision = settlement_row(
+            &store,
+            session,
+            1,
+            53_700,
+            54_000,
+            "ครับ",
+            UtteranceCompletion::Partial,
+        );
+        let key = settlement_fact(&store, session, 0, 54_060, 54_480, "Yes.");
+        assert!(store
+            .settle_active_translation_inbox_through(session, 0, 57_500)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            inbox_bound_sequence(&store, session, &key),
+            None,
+            "not onto the previous sentence while its own row is still open"
+        );
+
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: format!("utt-{session}-1"),
+                    session_id: session.into(),
+                    sequence: 1,
+                    session_speaker_id: None,
+                    source_language: "th".into(),
+                    source_text: "ครับ".into(),
+                    source_start_ms: Some(53_700),
+                    source_end_ms: Some(54_000),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Complete,
+                    alignment: UtteranceAlignment::TranslationPending,
+                },
+                Some(partial_revision),
+            )
+            .unwrap();
+        let bindings = store
+            .settle_active_translation_inbox_near(session, (50_700, 57_000), 57_500)
+            .unwrap();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].canonical_sequence, 1);
+    }
+
+    /// Settlement never puts a translation on a row spoken in that same
+    /// language: the row's own words already fill that column.
+    #[test]
+    fn settlement_skips_rows_spoken_in_the_facts_target_language() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "settle-language");
+        let session = "session-settle-language";
+        claim_realtime(&store, session);
+        settlement_row(
+            &store,
+            session,
+            0,
+            0,
+            2_000,
+            "สวัสดี",
+            UtteranceCompletion::Complete,
+        );
+        store
+            .upsert_utterance(
+                &NewRealtimeUtterance {
+                    id: "utt-settle-language-zh".into(),
+                    session_id: session.into(),
+                    sequence: 1,
+                    session_speaker_id: None,
+                    source_language: "zh".into(),
+                    source_text: "你好".into(),
+                    source_start_ms: Some(2_200),
+                    source_end_ms: Some(2_250),
+                    translated_language: None,
+                    translated_text: None,
+                    completion: UtteranceCompletion::Complete,
+                    alignment: UtteranceAlignment::TranslationPending,
+                },
+                None,
+            )
+            .unwrap();
+        settlement_fact(&store, session, 0, 2_300, 2_600, "好的");
+        let bindings = store
+            .settle_active_translation_inbox_through(session, 0, 5_000)
+            .unwrap();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].canonical_sequence, 0);
+    }
+
+    /// Stop can arrive before the provider finalized a short reply. Once the
+    /// recording is over that Partial is all there will ever be, and it still
+    /// gets a row.
+    #[test]
+    fn recovery_places_an_unfinished_fact_between_rows() {
+        let (_temp, store, notebook_id) = fixture();
+        store.get_or_create_profile(&notebook_id).unwrap();
+        create_catalogued_run(&store, &notebook_id, "settle-partial-tail");
+        let session = "session-settle-partial-tail";
+        claim_realtime(&store, session);
+        settlement_row(
+            &store,
+            session,
+            0,
+            0,
+            2_000,
+            "สวัสดี",
+            UtteranceCompletion::Complete,
+        );
+        let key = RealtimeTranslationInboxKey {
+            session_id: session.into(),
+            lane_index: 1,
+            group_epoch: 0,
+            provider_sequence: 0,
+            target_language: "zh".into(),
+        };
+        store
+            .upsert_translation_inbox_item(&NewRealtimeTranslationInboxItem {
+                key: key.clone(),
+                source_language: "th".into(),
+                source_text: "ครับ".into(),
+                source_start_ms: Some(2_300),
+                source_end_ms: Some(2_600),
+                translated_text: Some("好".into()),
+                completion: Some(UtteranceCompletion::Partial),
+                withdrawn: false,
+            })
+            .unwrap();
+        store.recover_unfinished_runs().unwrap();
+        assert_eq!(
+            store
+                .reconcile_translation_inbox_after_recovery(session)
+                .unwrap(),
+            1
+        );
+        assert_eq!(inbox_bound_sequence(&store, session, &key), Some(0));
+        assert_eq!(zh_lane(&store, session, 0).as_deref(), Some("好"));
+    }
+
+    /// Once a recording is over no evidence can still arrive, so an ambiguous
+    /// fact is given the earliest of its equally good rows, and a fact from a
+    /// later connection joins the same lane after it. Both used to stay
+    /// unbound for good — out of the transcript, though the provider sent them.
+    #[test]
+    fn recovery_places_ambiguous_and_reconnected_aux_facts_instead_of_dropping_them() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
         create_catalogued_run(&store, &notebook_id, "aux-ambiguous");
@@ -14253,19 +15025,28 @@ mod tests {
             store
                 .reconcile_translation_inbox_after_recovery("session-aux-ambiguous")
                 .unwrap(),
-            0
+            2
         );
         let inbox = store
             .list_translation_inbox("session-aux-ambiguous")
             .unwrap();
         assert_eq!(inbox.len(), 2);
-        assert!(inbox.iter().all(|item| item.bound_sequence.is_none()));
+        assert!(inbox.iter().all(|item| item.bound_sequence == Some(0)));
+        let row = store
+            .list_utterances("session-aux-ambiguous")
+            .unwrap()
+            .into_iter()
+            .find(|utterance| utterance.sequence == 0)
+            .unwrap();
+        let zh = row
+            .variants
+            .iter()
+            .find(|variant| variant.language == "zh")
+            .unwrap();
         assert_eq!(
-            store
-                .load_realtime_loro_projection("session-aux-ambiguous")
-                .unwrap()
-                .desired_revision,
-            0
+            zh.text.as_deref(),
+            Some("歧义不连续"),
+            "the later connection's segment follows the earlier one"
         );
     }
 

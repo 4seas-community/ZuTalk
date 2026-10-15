@@ -1074,7 +1074,22 @@ impl SonioxStreamClient {
     ) -> SonioxStreamRuntime {
         let (audio_tx, audio_rx) = mpsc::channel(AUDIO_CHANNEL_CAPACITY);
         let (control_tx, control_rx) = mpsc::channel(CONTROL_CHANNEL_CAPACITY);
-        let (event_tx, event_rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
+        let (public_event_tx, event_rx) = mpsc::channel(EVENT_CHANNEL_CAPACITY);
+        // The connection never waits on whoever consumes its events. It used
+        // to: with the bounded channel full, the task sat in `send` instead of
+        // reading the socket, the provider's progress went unread, and the
+        // lane measured its own unread acknowledgements as the provider
+        // falling behind — then cut itself to "rejoin the live edge", every
+        // half minute, for as long as the consumer stayed slow. A relay now
+        // owns the bounded hand-off; the connection only ever enqueues.
+        let (event_tx, mut relay_rx) = mpsc::unbounded_channel::<SttStreamEvent>();
+        tokio::spawn(async move {
+            while let Some(event) = relay_rx.recv().await {
+                if public_event_tx.send(event).await.is_err() {
+                    break;
+                }
+            }
+        });
         let endpoint = endpoint.into();
         let task = tokio::spawn(async move {
             match run_stream(
@@ -1092,9 +1107,7 @@ impl SonioxStreamClient {
             {
                 Ok(()) => Ok(()),
                 Err(failure) => {
-                    let _ = event_tx
-                        .send(SttStreamEvent::Error(failure.event_error))
-                        .await;
+                    let _ = event_tx.send(SttStreamEvent::Error(failure.event_error));
                     Err(failure.task_error)
                 }
             }
@@ -1115,7 +1128,7 @@ async fn run_stream(
     config: &SttConfig,
     mut audio_rx: mpsc::Receiver<Vec<u8>>,
     mut control_rx: mpsc::Receiver<SttStreamControl>,
-    event_tx: &mpsc::Sender<SttStreamEvent>,
+    event_tx: &mpsc::UnboundedSender<SttStreamEvent>,
     cancel: CancellationToken,
     capture_origin_ms: u64,
     timeouts: StreamTimeouts,
@@ -1250,7 +1263,7 @@ async fn run_stream_session(
     config: &SttConfig,
     audio_rx: &mut mpsc::Receiver<Vec<u8>>,
     control_rx: &mut mpsc::Receiver<SttStreamControl>,
-    event_tx: &mpsc::Sender<SttStreamEvent>,
+    event_tx: &mpsc::UnboundedSender<SttStreamEvent>,
     cancel: CancellationToken,
     timeouts: StreamTimeouts,
     paused: &mut bool,
@@ -1500,84 +1513,10 @@ async fn run_stream_session(
                     }
                 }
             }
-            audio = audio_rx.recv(), if audio_open && !draining => {
-                match audio {
-                    Some(pcm) if !*paused => {
-                        let quiet_block = quiet_blocks.observe(&pcm);
-                        let retained_pcm = pcm.clone();
-                        send_message(
-                            &mut write,
-                            Message::Binary(pcm.into()),
-                            "Soniox stream audio send",
-                            timeouts.write,
-                        ).await?;
-                        recovery.record_sent(retained_pcm);
-                        sent_audio = true;
-                        if waiting_for_pause && quiet_block {
-                            // The block just sent was quiet: a cut here falls
-                            // between words. Everything before it goes to
-                            // this connection, everything after to the next.
-                            tracing::info!(
-                                "Soniox session cap is near; handing over at a quiet moment"
-                            );
-                            begin_drain(&mut write, &mut draining, &mut drain_sleep, timeouts)
-                                .await?;
-                            handing_over = true;
-                            continue;
-                        }
-                        // The provider accepting bytes is not the provider
-                        // keeping up. Once it is further behind than any
-                        // reconnect could replay, this stream can no longer
-                        // be continued — cut it now and rejoin at the live
-                        // edge while the lane is still healthy, rather than
-                        // waiting for the bounded channel behind it to fill
-                        // and take the lane down for good.
-                        let backlog = recovery.sent_backlog();
-                        if backlog > timeouts.live_edge_max_backlog {
-                            tracing::warn!(
-                                backlog_s = backlog.as_secs(),
-                                "Soniox lane outran its provider past the replay window; \
-                                 skipping to the live edge"
-                            );
-                            return Err(StreamFailure::behind_live_edge(backlog));
-                        }
-                    }
-                    Some(_) => {
-                        // Paused audio is deliberately not buffered or sent remotely.
-                    }
-                    None => {
-                        audio_open = false;
-                    }
-                }
-            }
-            _ = &mut keepalive_sleep, if *paused && !draining => {
-                send_control(&mut write, "keepalive", timeouts.write).await?;
-                reset_sleep(&mut keepalive_sleep, timeouts.keepalive);
-            }
-            _ = &mut drain_sleep, if draining => {
-                if handing_over {
-                    return Err(StreamFailure::handover_unconfirmed(timeouts.drain));
-                }
-                return Err(StreamFailure::timeout("Soniox stream drain", timeouts.drain));
-            }
-            _ = &mut handover_sleep, if handover.is_some() && !draining => {
-                if waiting_for_pause {
-                    tracing::info!(
-                        "Soniox session cap is near and no pause came; handing over now"
-                    );
-                    begin_drain(&mut write, &mut draining, &mut drain_sleep, timeouts).await?;
-                    handing_over = true;
-                } else if let Some(schedule) = handover {
-                    waiting_for_pause = true;
-                    handover_sleep.as_mut().reset(schedule.hand_over_by);
-                }
-            }
-            _ = &mut receive_idle_sleep, if !draining && !*paused => {
-                return Err(StreamFailure::timeout(
-                    "Soniox stream response receive",
-                    timeouts.receive_idle,
-                ));
-            }
+            // Responses before audio. Acknowledgements are what the live-edge
+            // rule measures the provider by; a burst of queued audio used to be
+            // sent in full before a single response was read, which counted
+            // the lane's own unread socket as provider backlog.
             message = read.next() => {
                 reset_sleep(&mut receive_idle_sleep, timeouts.receive_idle);
                 match message {
@@ -1716,6 +1655,84 @@ async fn run_stream_session(
                         return Err(StreamFailure::closed(None));
                     }
                 }
+            }
+            audio = audio_rx.recv(), if audio_open && !draining => {
+                match audio {
+                    Some(pcm) if !*paused => {
+                        let quiet_block = quiet_blocks.observe(&pcm);
+                        let retained_pcm = pcm.clone();
+                        send_message(
+                            &mut write,
+                            Message::Binary(pcm.into()),
+                            "Soniox stream audio send",
+                            timeouts.write,
+                        ).await?;
+                        recovery.record_sent(retained_pcm);
+                        sent_audio = true;
+                        if waiting_for_pause && quiet_block {
+                            // The block just sent was quiet: a cut here falls
+                            // between words. Everything before it goes to
+                            // this connection, everything after to the next.
+                            tracing::info!(
+                                "Soniox session cap is near; handing over at a quiet moment"
+                            );
+                            begin_drain(&mut write, &mut draining, &mut drain_sleep, timeouts)
+                                .await?;
+                            handing_over = true;
+                            continue;
+                        }
+                        // The provider accepting bytes is not the provider
+                        // keeping up. Once it is further behind than any
+                        // reconnect could replay, this stream can no longer
+                        // be continued — cut it now and rejoin at the live
+                        // edge while the lane is still healthy, rather than
+                        // waiting for the bounded channel behind it to fill
+                        // and take the lane down for good.
+                        let backlog = recovery.sent_backlog();
+                        if backlog > timeouts.live_edge_max_backlog {
+                            tracing::warn!(
+                                backlog_s = backlog.as_secs(),
+                                "Soniox lane outran its provider past the replay window; \
+                                 skipping to the live edge"
+                            );
+                            return Err(StreamFailure::behind_live_edge(backlog));
+                        }
+                    }
+                    Some(_) => {
+                        // Paused audio is deliberately not buffered or sent remotely.
+                    }
+                    None => {
+                        audio_open = false;
+                    }
+                }
+            }
+            _ = &mut keepalive_sleep, if *paused && !draining => {
+                send_control(&mut write, "keepalive", timeouts.write).await?;
+                reset_sleep(&mut keepalive_sleep, timeouts.keepalive);
+            }
+            _ = &mut drain_sleep, if draining => {
+                if handing_over {
+                    return Err(StreamFailure::handover_unconfirmed(timeouts.drain));
+                }
+                return Err(StreamFailure::timeout("Soniox stream drain", timeouts.drain));
+            }
+            _ = &mut handover_sleep, if handover.is_some() && !draining => {
+                if waiting_for_pause {
+                    tracing::info!(
+                        "Soniox session cap is near and no pause came; handing over now"
+                    );
+                    begin_drain(&mut write, &mut draining, &mut drain_sleep, timeouts).await?;
+                    handing_over = true;
+                } else if let Some(schedule) = handover {
+                    waiting_for_pause = true;
+                    handover_sleep.as_mut().reset(schedule.hand_over_by);
+                }
+            }
+            _ = &mut receive_idle_sleep, if !draining && !*paused => {
+                return Err(StreamFailure::timeout(
+                    "Soniox stream response receive",
+                    timeouts.receive_idle,
+                ));
             }
         }
     }
@@ -1879,7 +1896,7 @@ pub fn soniox_stream_context_json(context: &ContextConfig) -> Result<Option<Stri
 /// The replay filter above this call compares against connection-relative
 /// positions, so the projection has to happen after it, not before.
 async fn emit_response_events(
-    event_tx: &mpsc::Sender<SttStreamEvent>,
+    event_tx: &mpsc::UnboundedSender<SttStreamEvent>,
     tokens: Vec<SonioxStreamTokenWire>,
     connection_origin_ms: u64,
 ) -> Result<(), StreamFailure> {
@@ -1919,10 +1936,10 @@ async fn emit_response_events(
 }
 
 async fn send_event(
-    event_tx: &mpsc::Sender<SttStreamEvent>,
+    event_tx: &mpsc::UnboundedSender<SttStreamEvent>,
     event: SttStreamEvent,
 ) -> Result<(), StreamFailure> {
-    event_tx.send(event).await.map_err(|_| StreamFailure {
+    event_tx.send(event).map_err(|_| StreamFailure {
         task_error: SttError::Cancelled,
         skips_to_live_edge: false,
         rollover: Rollover::None,
@@ -3530,6 +3547,147 @@ mod tests {
             Some(SttStreamEvent::Finished)
         );
         assert!(runtime.task.await.unwrap().is_ok());
+    }
+
+    /// A consumer that stops reading for a while — the app's event collector
+    /// busy, the machine stalled — is not the provider falling behind. The
+    /// connection keeps reading the provider's acknowledgements meanwhile, so
+    /// the live-edge rule never fires and nothing is cut; every event is
+    /// still delivered, in order, once the consumer reads again.
+    ///
+    /// Before the relay, the connection blocked on the full event channel,
+    /// left acknowledgements unread in the socket, and then flushed its queued
+    /// audio ahead of them: its own backlog, measured as the provider's. In a
+    /// three-language meeting that cut every lane about twice a minute.
+    #[tokio::test]
+    async fn a_slow_consumer_never_makes_a_healthy_lane_cut_itself() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let server_accepted = accepted.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    return;
+                };
+                server_accepted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let mut ws = accept_async(stream).await.unwrap();
+                let Some(Ok(Message::Text(_config))) = ws.next().await else {
+                    return;
+                };
+                // A healthy provider: every 100 ms frame is acknowledged at once.
+                let mut processed_ms = 0_u64;
+                while let Some(Ok(message)) = ws.next().await {
+                    match message {
+                        Message::Binary(_) => {
+                            processed_ms += 100;
+                            let _ = ws
+                                .send(Message::Text(
+                                    json!({
+                                        "tokens": [],
+                                        "final_audio_proc_ms": processed_ms,
+                                        "total_audio_proc_ms": processed_ms
+                                    })
+                                    .to_string()
+                                    .into(),
+                                ))
+                                .await;
+                        }
+                        Message::Text(text) if text.is_empty() => {
+                            let _ = ws
+                                .send(Message::Text(
+                                    json!({"tokens": [], "finished": true}).to_string().into(),
+                                ))
+                                .await;
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
+
+        let mut timeouts = short_timeouts();
+        timeouts.live_edge_max_backlog = Duration::from_millis(500);
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            timeouts,
+        );
+        assert_eq!(
+            runtime.event_rx.recv().await,
+            Some(SttStreamEvent::Connected)
+        );
+        let mut progress = 0;
+        let mut last_processed = 0;
+        let mut observe = |event: SttStreamEvent| match event {
+            SttStreamEvent::AudioProgress {
+                total_audio_proc_ms,
+                ..
+            } => {
+                assert!(
+                    total_audio_proc_ms >= last_processed,
+                    "events stay in order"
+                );
+                last_processed = total_audio_proc_ms;
+                progress += 1;
+                false
+            }
+            SttStreamEvent::Finished => true,
+            SttStreamEvent::Reconnecting { .. } => {
+                panic!("a slow consumer made a healthy lane cut itself")
+            }
+            other => panic!("unexpected event {other:?}"),
+        };
+        // Three times the event channel's capacity in acknowledgements, and
+        // many times the backlog bound in audio, while nobody reads an event.
+        let stalled_frames = EVENT_CHANNEL_CAPACITY * 3;
+        for _ in 0..stalled_frames {
+            runtime.audio_tx.send(vec![0u8; 3_200]).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        // The consumer reads again while audio keeps arriving. This is where
+        // the old connection, released, flushed its queued audio ahead of the
+        // unread acknowledgements and cut itself.
+        let mut live_frames = 0;
+        let resumed = tokio::time::Instant::now();
+        while resumed.elapsed() < Duration::from_millis(800) {
+            runtime.audio_tx.send(vec![0u8; 3_200]).await.unwrap();
+            live_frames += 1;
+            while let Ok(Some(event)) =
+                tokio::time::timeout(Duration::from_millis(5), runtime.event_rx.recv()).await
+            {
+                observe(event);
+            }
+        }
+        runtime
+            .send_control(SttStreamControl::Finish)
+            .await
+            .unwrap();
+        loop {
+            let event = runtime
+                .event_rx
+                .recv()
+                .await
+                .expect("the stream ended before finishing");
+            if observe(event) {
+                break;
+            }
+        }
+        assert_eq!(
+            progress,
+            stalled_frames + live_frames,
+            "every acknowledgement is delivered"
+        );
+        assert!(runtime.task.await.unwrap().is_ok());
+        assert_eq!(
+            accepted.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "one connection for the whole run"
+        );
     }
 
     /// Audio discarded on a skip never reached any provider, but it happened:

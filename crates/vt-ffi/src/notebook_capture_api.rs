@@ -1632,6 +1632,9 @@ struct StreamAggregationLane {
     /// The connection this lane currently listens to; see
     /// [`TaggedStreamEvent::generation`].
     generation: u64,
+    /// Canonical lane only: auxiliary facts ending at or before this capture
+    /// millisecond have been settled (given a row, or found to have none).
+    translation_settled_through_ms: u64,
 }
 
 const REALTIME_CONTINUITY_WINDOW_MS: u64 = 15_000;
@@ -2038,6 +2041,7 @@ async fn collect_stream_events_until_closed(
                 provider_accepted_configuration: false,
                 disconnected_at_frame: None,
                 generation: 0,
+                translation_settled_through_ms: 0,
             }
         })
         .collect::<Vec<_>>();
@@ -2471,8 +2475,25 @@ async fn collect_stream_events_until_closed(
                     if let Ok(Some(run)) = store.get_run(&run_id) {
                         emit_realtime_progress(run, lag_ms, &callback);
                     }
+                    // Silence moves the canonical lane forward without any
+                    // token batch, and a reply spoken just before it must not
+                    // wait for the next sentence to be settled.
+                    let settled = settle_translations_behind_canonical(
+                        &store,
+                        &mut lanes,
+                        canonical_lane_index,
+                        &mut canonical_matches,
+                        &mut pending_variants,
+                        &mut variant_bindings,
+                        &mut reverse_variant_bindings,
+                    )?;
+                    PersistedCaptureChanges {
+                        utterances: latest_utterance_revisions(settled),
+                        ..PersistedCaptureChanges::default()
+                    }
+                } else {
+                    PersistedCaptureChanges::default()
                 }
-                PersistedCaptureChanges::default()
             }
             SttStreamEvent::Endpoint | SttStreamEvent::Finalized | SttStreamEvent::Finished => {
                 let finalized = lanes[lane_index].assembler.finalize(finalize_boundary);
@@ -2766,53 +2787,65 @@ fn persist_stream_lane_updates(
             reverse_variant_bindings,
         )?;
         persisted.extend(matched);
+        // Only facts the changed rows could place are reconsidered: those
+        // whose audio touches them. The whole-session pass this replaces grew
+        // with the square of the recording and was, by the twentieth minute of
+        // a three-language meeting, the reason the collector fell behind.
         let durable_bindings = store
-            .reconcile_active_translation_inbox(&lanes[canonical_lane_index].assembler.session_id)
+            .reconcile_active_translation_inbox_near(
+                &lanes[canonical_lane_index].assembler.session_id,
+                capture_window_of(&persisted.utterances),
+            )
             .map_err(|error| {
                 local_persistence_failure("reconcile bounded auxiliary translation inbox", error)
             })?;
-        for binding in durable_bindings {
-            let lane_index =
-                usize::try_from(binding.key.lane_index).map_err(|_| ProviderFailure {
-                    error_type: "invalid_stream_lane".to_string(),
-                    request_id: None,
-                })?;
-            let pending_key = (
-                lane_index,
-                binding.key.group_epoch,
-                binding.key.provider_sequence,
-            );
-            variant_bindings.insert(pending_key, binding.canonical_sequence);
-            reverse_variant_bindings.insert(
-                (
-                    binding.key.group_epoch,
-                    binding.canonical_sequence,
-                    binding.key.target_language.clone(),
-                ),
-                pending_key,
-            );
-            pending_variants.retain(|(pending_lane, epoch, provider_sequence), pending| {
-                !(*epoch == binding.key.group_epoch
-                    && *provider_sequence == binding.key.provider_sequence
-                    && normalize_language(&pending.target_language) == binding.key.target_language
-                    && (*pending_lane == lane_index
-                        || pending.session_id == binding.key.session_id))
-            });
-            if let Some(updated) = binding.utterance {
-                canonical_assembler_record_external_state(
-                    &mut lanes[canonical_lane_index].assembler,
-                    &updated,
-                    &binding.key.target_language,
-                );
-                canonical_matches.insert(
-                    (binding.key.group_epoch, binding.canonical_sequence),
-                    CanonicalUtteranceMatch {
-                        utterance: updated.clone(),
-                    },
-                );
-                persisted.push(updated);
+        let mut absorbed = absorb_translation_inbox_bindings(
+            durable_bindings,
+            lanes,
+            canonical_lane_index,
+            canonical_matches,
+            pending_variants,
+            variant_bindings,
+            reverse_variant_bindings,
+        )?;
+        absorbed.extend(settle_translations_behind_canonical(
+            store,
+            lanes,
+            canonical_lane_index,
+            canonical_matches,
+            pending_variants,
+            variant_bindings,
+            reverse_variant_bindings,
+        )?);
+        // A fact settlement deferred because its nearest row was still being
+        // spoken is settled when that row, or a neighbour, changes.
+        let settled_through = lanes[canonical_lane_index].translation_settled_through_ms;
+        if let Some((start, end)) = capture_window_of(&persisted.utterances) {
+            if settled_through > 0 {
+                let deferred = store
+                    .settle_active_translation_inbox_near(
+                        &lanes[canonical_lane_index].assembler.session_id,
+                        (
+                            start.saturating_sub(TRANSLATION_SETTLE_MARGIN_MS),
+                            end.saturating_add(TRANSLATION_SETTLE_MARGIN_MS),
+                        ),
+                        settled_through,
+                    )
+                    .map_err(|error| {
+                        local_persistence_failure("settle deferred auxiliary translation", error)
+                    })?;
+                absorbed.extend(absorb_translation_inbox_bindings(
+                    deferred,
+                    lanes,
+                    canonical_lane_index,
+                    canonical_matches,
+                    pending_variants,
+                    variant_bindings,
+                    reverse_variant_bindings,
+                )?);
             }
         }
+        persisted.extend(absorbed);
         prune_resolved_stream_aggregation_history(
             selected_languages,
             canonical_matches,
@@ -2836,6 +2869,7 @@ fn persist_stream_lane_updates(
     let mut persisted = Vec::new();
     let mut removed_sequences = Vec::new();
     let mut translation_cues = Vec::new();
+    let mut late_settlements = Vec::new();
     for update in updates {
         let translation_completion = update.translation_completion;
         let translation_clear_language = update
@@ -2988,6 +3022,17 @@ fn persist_stream_lane_updates(
                     .clone_from(&previous.rejected_sequences);
             }
             pending_variants.insert(pending_key, pending);
+            // Final only now, and already behind the canonical lane's settled
+            // position: the window that settles facts has passed it by.
+            let settled_through = lanes[canonical_lane_index].translation_settled_through_ms;
+            if persistence.item.completion == Some(UtteranceCompletion::Complete)
+                && persistence
+                    .item
+                    .source_end_ms
+                    .is_some_and(|end| end <= settled_through)
+            {
+                late_settlements.push(persistence.item.key.clone());
+            }
         } else {
             pending_variants.remove(&pending_key);
         }
@@ -3000,6 +3045,23 @@ fn persist_stream_lane_updates(
         variant_bindings,
         reverse_variant_bindings,
     )?);
+    if !late_settlements.is_empty() {
+        let session_id = lanes[canonical_lane_index].assembler.session_id.clone();
+        let bindings = store
+            .settle_active_translation_inbox_items(&session_id, &late_settlements)
+            .map_err(|error| {
+                local_persistence_failure("settle late auxiliary translation", error)
+            })?;
+        persisted.extend(absorb_translation_inbox_bindings(
+            bindings,
+            lanes,
+            canonical_lane_index,
+            canonical_matches,
+            pending_variants,
+            variant_bindings,
+            reverse_variant_bindings,
+        )?);
+    }
     prune_resolved_stream_aggregation_history(
         selected_languages,
         canonical_matches,
@@ -3194,6 +3256,125 @@ fn prune_resolved_stream_aggregation_history(
         }
     }
     recycled.len()
+}
+
+/// How far behind the canonical lane's final position an auxiliary fact must
+/// end before it is settled. Every canonical row that will ever overlap it is
+/// then on record; the margin absorbs a row whose tokens are final but which
+/// the assembler has not persisted yet.
+const TRANSLATION_SETTLE_MARGIN_MS: u64 = 3_000;
+/// Settlement runs at most this often as the canonical lane advances.
+const TRANSLATION_SETTLE_STEP_MS: u64 = 1_000;
+
+/// The stretch of capture audio a batch of canonical rows covers.
+fn capture_window_of(utterances: &[RealtimeUtterance]) -> Option<(u64, u64)> {
+    utterances
+        .iter()
+        .filter_map(|utterance| utterance.source_start_ms.zip(utterance.source_end_ms))
+        .fold(None, |window, (start, end)| match window {
+            None => Some((start.min(end), end.max(start))),
+            Some((low, high)) => Some((low.min(start), high.max(end))),
+        })
+}
+
+/// Brings the collector's caches in line with bindings the store made on its
+/// own — by its windowed matcher or by settlement — and returns the rows whose
+/// lanes changed, for the delta.
+fn absorb_translation_inbox_bindings(
+    bindings: Vec<vt_store::RealtimeTranslationInboxBinding>,
+    lanes: &mut [StreamAggregationLane],
+    canonical_lane_index: usize,
+    canonical_matches: &mut std::collections::HashMap<(u64, u64), CanonicalUtteranceMatch>,
+    pending_variants: &mut std::collections::HashMap<(usize, u64, u64), PendingTranslationVariant>,
+    variant_bindings: &mut std::collections::HashMap<(usize, u64, u64), u64>,
+    reverse_variant_bindings: &mut std::collections::HashMap<(u64, u64, String), (usize, u64, u64)>,
+) -> Result<Vec<RealtimeUtterance>, ProviderFailure> {
+    let mut persisted = Vec::new();
+    for binding in bindings {
+        let lane_index = usize::try_from(binding.key.lane_index).map_err(|_| ProviderFailure {
+            error_type: "invalid_stream_lane".to_string(),
+            request_id: None,
+        })?;
+        let pending_key = (
+            lane_index,
+            binding.key.group_epoch,
+            binding.key.provider_sequence,
+        );
+        variant_bindings.insert(pending_key, binding.canonical_sequence);
+        reverse_variant_bindings.insert(
+            (
+                binding.key.group_epoch,
+                binding.canonical_sequence,
+                binding.key.target_language.clone(),
+            ),
+            pending_key,
+        );
+        pending_variants.retain(|(pending_lane, epoch, provider_sequence), pending| {
+            !(*epoch == binding.key.group_epoch
+                && *provider_sequence == binding.key.provider_sequence
+                && normalize_language(&pending.target_language) == binding.key.target_language
+                && (*pending_lane == lane_index || pending.session_id == binding.key.session_id))
+        });
+        if let Some(updated) = binding.utterance {
+            canonical_assembler_record_external_state(
+                &mut lanes[canonical_lane_index].assembler,
+                &updated,
+                &binding.key.target_language,
+            );
+            canonical_matches.insert(
+                (binding.key.group_epoch, binding.canonical_sequence),
+                CanonicalUtteranceMatch {
+                    utterance: updated.clone(),
+                },
+            );
+            persisted.push(updated);
+        }
+    }
+    Ok(persisted)
+}
+
+/// Settles the auxiliary facts the canonical lane has now finalized past.
+///
+/// A fact the live matcher could not place — between two rows, tied, or on a
+/// row whose lane would not take it — used to wait for evidence that was not
+/// coming. Behind the canonical lane's final position every row that could
+/// overlap it exists, so it is given its best acceptable row here, once.
+fn settle_translations_behind_canonical(
+    store: &NotebookCaptureStore,
+    lanes: &mut [StreamAggregationLane],
+    canonical_lane_index: usize,
+    canonical_matches: &mut std::collections::HashMap<(u64, u64), CanonicalUtteranceMatch>,
+    pending_variants: &mut std::collections::HashMap<(usize, u64, u64), PendingTranslationVariant>,
+    variant_bindings: &mut std::collections::HashMap<(usize, u64, u64), u64>,
+    reverse_variant_bindings: &mut std::collections::HashMap<(u64, u64, String), (usize, u64, u64)>,
+) -> Result<Vec<RealtimeUtterance>, ProviderFailure> {
+    // Only a group with translation lanes has anything to settle.
+    if lanes.len() < 2 {
+        return Ok(Vec::new());
+    }
+    let canonical = &lanes[canonical_lane_index];
+    let Some(final_audio_proc_ms) = canonical.final_audio_proc_ms else {
+        return Ok(Vec::new());
+    };
+    let through = final_audio_proc_ms.saturating_sub(TRANSLATION_SETTLE_MARGIN_MS);
+    let after = canonical.translation_settled_through_ms;
+    if through < after.saturating_add(TRANSLATION_SETTLE_STEP_MS) {
+        return Ok(Vec::new());
+    }
+    let session_id = canonical.assembler.session_id.clone();
+    let bindings = store
+        .settle_active_translation_inbox_through(&session_id, after, through)
+        .map_err(|error| local_persistence_failure("settle auxiliary translation inbox", error))?;
+    lanes[canonical_lane_index].translation_settled_through_ms = through;
+    absorb_translation_inbox_bindings(
+        bindings,
+        lanes,
+        canonical_lane_index,
+        canonical_matches,
+        pending_variants,
+        variant_bindings,
+        reverse_variant_bindings,
+    )
 }
 
 fn flush_pending_translation_variants(
@@ -3634,7 +3815,7 @@ fn warn_unbound_auxiliary_final(
         provider_sequence = pending.source_sequence,
         source_start_ms = pending.source_start_ms,
         source_end_ms = pending.source_end_ms,
-        "auxiliary translation segment matched no unique canonical row; fact stays durably unbound"
+        "auxiliary translation segment matched no unique canonical row yet; it is settled once the timeline passes it"
     );
 }
 
@@ -7881,6 +8062,18 @@ impl ZuTalkCore {
         self.notebook_capture_store
             .list_utterances(&session_id)
             .map(|values| values.into_iter().map(Into::into).collect())
+            .map_err(store_error)
+    }
+
+    /// Every present translation segment of a recording, with its audio
+    /// interval. A finished recording's transcript uses them to tell a cell
+    /// whose words sit in the neighbouring row — one translated segment
+    /// spanning two transcript rows — from a cell that really has none.
+    pub fn list_notebook_capture_translation_cues(
+        &self,
+        session_id: String,
+    ) -> Result<Vec<FfiNotebookCaptureTranslationCue>, CoreError> {
+        list_present_translation_cues(&self.notebook_capture_store, &session_id)
             .map_err(store_error)
     }
 
@@ -12729,6 +12922,193 @@ pub(crate) mod tests {
         core.stop_notebook_capture_session(session_id).unwrap();
     }
 
+    /// Thai spoken in a Chinese / English / Thai meeting: the timeline is the
+    /// one-way stream into Thai, and the Chinese and English columns come from
+    /// their own lanes. Between two sentences someone answers "ครับ"; both
+    /// translation lanes hear it, the timeline makes no row of it.
+    struct ThaiReplyBetweenRowsFactory;
+
+    impl NotebookSonioxStreamFactory for ThaiReplyBetweenRowsFactory {
+        fn start(
+            &self,
+            _endpoint: &str,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
+            config: SttConfig,
+            _cancel: tokio_util::sync::CancellationToken,
+            _capture_origin_ms: u64,
+        ) -> SonioxStreamRuntime {
+            let target = match &config.translation {
+                Some(TranslationConfig::OneWay { target_language }) => target_language.clone(),
+                _ => "und".to_string(),
+            };
+            let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
+            let (control_tx, mut control_rx) = tokio::sync::mpsc::channel(4);
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(64);
+            let task = tokio::spawn(async move {
+                let _ = event_tx.send(SttStreamEvent::Connected).await;
+                // (Thai, start, end, Chinese, English, heard by the timeline)
+                let segments = [
+                    ("สวัสดีครับ", 0_u64, 900_u64, "你好。", "Hello.", true),
+                    ("ครับ", 1_000, 1_300, "好的。", "Okay.", false),
+                    ("ขอบคุณมาก", 2_000, 2_900, "非常感谢。", "Thank you.", true),
+                ];
+                let mut blocks = 0_u64;
+                for (thai, start, end, chinese, english, timeline_hears) in segments {
+                    let due = end / 100 + 2;
+                    while blocks < due {
+                        match audio_rx.recv().await {
+                            Some(_) => blocks += 1,
+                            None => return Ok(()),
+                        }
+                    }
+                    let tokens = match target.as_str() {
+                        "th" if timeline_hears => vec![token(
+                            thai,
+                            SttStreamTranslationStatus::None,
+                            "th",
+                            Some(start),
+                            Some(end),
+                            true,
+                        )],
+                        "th" => continue,
+                        language => vec![
+                            token(
+                                thai,
+                                SttStreamTranslationStatus::Original,
+                                "th",
+                                Some(start),
+                                Some(end),
+                                true,
+                            ),
+                            attributed_token(
+                                if language == "zh" { chinese } else { english },
+                                SttStreamTranslationStatus::Translation,
+                                Some(language),
+                                Some("th"),
+                                None,
+                                true,
+                            ),
+                        ],
+                    };
+                    let _ = event_tx.send(SttStreamEvent::Tokens(tokens)).await;
+                    let _ = event_tx.send(SttStreamEvent::Endpoint).await;
+                }
+                // The timeline settles well past all three, while recording.
+                while blocks < 70 {
+                    match audio_rx.recv().await {
+                        Some(_) => blocks += 1,
+                        None => return Ok(()),
+                    }
+                }
+                if target == "th" {
+                    let _ = event_tx
+                        .send(SttStreamEvent::AudioProgress {
+                            final_audio_proc_ms: 7_000,
+                            total_audio_proc_ms: 7_000,
+                            lag_ms: 0,
+                        })
+                        .await;
+                }
+                loop {
+                    tokio::select! {
+                        control = control_rx.recv() => match control {
+                            Some(SttStreamControl::Finish) | None => {
+                                let _ = event_tx.send(SttStreamEvent::Finished).await;
+                                return Ok(());
+                            }
+                            Some(_) => {}
+                        },
+                        audio = audio_rx.recv() => if audio.is_none() {
+                            return Ok(());
+                        },
+                    }
+                }
+            });
+            SonioxStreamRuntime {
+                audio_tx,
+                control_tx,
+                event_rx,
+                task,
+            }
+        }
+
+        fn try_send_pcm(
+            &self,
+            audio_tx: &tokio::sync::mpsc::Sender<Vec<u8>>,
+            audio_data: Vec<u8>,
+        ) -> Result<(), String> {
+            audio_tx
+                .try_send(audio_data)
+                .map_err(|error| error.to_string())
+        }
+    }
+
+    /// The reply's translations used to stay unbound for good: no row shares
+    /// its audio, and the matcher would not guess. They now join the row
+    /// before it as soon as the timeline has settled past them — while the
+    /// meeting is still being recorded, not only at Stop.
+    #[test]
+    fn a_reply_the_timeline_has_no_row_for_is_still_translated_while_recording() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        core.notebook_soniox_stream_factory = Arc::new(ThaiReplyBetweenRowsFactory);
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core.create_notebook(Some("Thai reply".into())).unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        profile.selected_languages = vec!["zh".into(), "en".into(), "th".into()];
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        let session_id = started.session_id.clone();
+        let lane_text = |sequence: u64, language: &str| {
+            core.notebook_capture_store
+                .list_utterances(&session_id)
+                .unwrap()
+                .into_iter()
+                .find(|row| row.sequence == sequence)
+                .and_then(|row| {
+                    row.variants
+                        .into_iter()
+                        .find(|variant| variant.language == language)
+                        .filter(|variant| variant.state == UtteranceVariantState::Ready)
+                        .and_then(|variant| variant.text)
+                })
+        };
+        for _ in 0..80 {
+            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+        }
+        wait_for(
+            "the reply settled onto the row before it, in both columns",
+            || {
+                lane_text(0, "zh").is_some_and(|text| text.contains("好的"))
+                    && lane_text(0, "en").is_some_and(|text| text.contains("Okay"))
+            },
+        );
+        assert_eq!(lane_text(0, "zh").as_deref(), Some("你好。好的。"));
+        assert_eq!(lane_text(0, "en").as_deref(), Some("Hello. Okay."));
+        assert_eq!(lane_text(1, "zh").as_deref(), Some("非常感谢。"));
+        assert!(
+            core.notebook_capture_store
+                .list_translation_inbox(&session_id)
+                .unwrap()
+                .iter()
+                .all(|item| item.bound_sequence.is_some()),
+            "no translation the provider sent is left without a row"
+        );
+        core.stop_notebook_capture_session(session_id).unwrap();
+    }
+
     /// All three languages may be spoken: three one-way connections, the
     /// timeline's translating into the last selected language. Its Thai
     /// fills the Thai column without a lane of its own.
@@ -15968,6 +16348,7 @@ pub(crate) mod tests {
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
                 generation: 0,
+                translation_settled_through_ms: 0,
             },
             StreamAggregationLane {
                 descriptor: RemoteStreamLane {
@@ -15992,6 +16373,7 @@ pub(crate) mod tests {
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
                 generation: 0,
+                translation_settled_through_ms: 0,
             },
         ];
 
@@ -16137,6 +16519,7 @@ pub(crate) mod tests {
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
                 generation: 0,
+                translation_settled_through_ms: 0,
             }
         };
         let mut thai = lane(false, Some("th"), false, true);
@@ -18266,6 +18649,7 @@ pub(crate) mod tests {
                 provider_accepted_configuration: connected,
                 disconnected_at_frame: None,
                 generation: 0,
+                translation_settled_through_ms: 0,
             }
         };
         let lanes = vec![
@@ -18647,6 +19031,7 @@ pub(crate) mod tests {
                 provider_accepted_configuration: true,
                 disconnected_at_frame: None,
                 generation: 0,
+                translation_settled_through_ms: 0,
             }
         };
         let mut lanes = vec![make_lane("en", true), make_lane("zh", false)];
