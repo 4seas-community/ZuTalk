@@ -49,6 +49,34 @@ struct ProviderConnectionVerificationFailure: LocalizedError {
     }
 }
 
+extension ProviderConnectionVerificationState {
+    /// What a person can do about a failed check, as a format taking the
+    /// provider's display name. The status line above it already says what
+    /// failed, so this says what to do next instead of saying it again.
+    var failureHintFormatKey: String? {
+        switch self {
+        case .invalidCredential:
+            "settings.credentials.verification.invalid_hint_format"
+        case .organizationBalanceExhausted:
+            "settings.credentials.verification.organization_balance_exhausted_hint_format"
+        case .organizationMonthlyBudgetExhausted:
+            "settings.credentials.verification.organization_budget_exhausted_hint_format"
+        case .projectMonthlyBudgetExhausted:
+            "settings.credentials.verification.project_budget_exhausted_hint_format"
+        case .quotaExhausted:
+            "settings.credentials.verification.quota_exhausted_hint_format"
+        case .networkUnavailable:
+            "settings.credentials.verification.network_unavailable_hint_format"
+        case .rateLimited:
+            "settings.credentials.verification.rate_limited_hint_format"
+        case .serviceUnavailable:
+            "settings.credentials.verification.service_unavailable_hint_format"
+        case .unverified, .checking, .ready:
+            nil
+        }
+    }
+}
+
 /// Global Settings owns service credentials only. Notebook-specific capture
 /// mode, languages, remote-processing consent and Context Packs stay inside
 /// the Notebook that will use them.
@@ -112,9 +140,10 @@ final class ProviderConnectionsViewModel: ObservableObject {
             for: account
         )
         guard verification.isReady else {
-            let error = ProviderConnectionVerificationFailure(verification)
-            operationError = error.localizedDescription
-            throw error
+            // The account's card shows this verdict; repeating it here put
+            // the same sentence on screen twice.
+            operationError = nil
+            throw ProviderConnectionVerificationFailure(verification)
         }
 
         do {
@@ -701,8 +730,9 @@ private struct ProviderCredentialAutoSaveRow: View {
                         .foregroundColor(.textTertiary)
                 }
 
+                // Sentences, not metadata: `.caption` is the monospaced label face.
                 Text(statusHint)
-                    .font(.caption)
+                    .font(.sans11)
                     .foregroundColor(.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -719,7 +749,7 @@ private struct ProviderCredentialAutoSaveRow: View {
 
     private var statusLabel: some View {
         Label(statusTitle, systemImage: statusIcon)
-            .font(.caption)
+            .font(.sans11)
             .foregroundColor(statusColor)
             .accessibilityLabel(statusAccessibilityLabel)
     }
@@ -809,8 +839,12 @@ private struct ProviderCredentialAutoSaveRow: View {
              .networkUnavailable,
              .rateLimited,
              .serviceUnavailable:
-            return ProviderConnectionVerificationFailure(verificationState)
-                .localizedDescription
+            if let key = verificationState.failureHintFormatKey {
+                return String(
+                    format: String(localized: String.LocalizationValue(key)),
+                    account.displayName
+                )
+            }
         case .unverified:
             break
         }
@@ -877,6 +911,9 @@ private struct ProviderCredentialAutoSaveRow: View {
                 draft = ""
                 errorMessage = nil
                 isReplacingCredential = false
+            } catch is ProviderConnectionVerificationFailure {
+                // The status line and hint already show this verdict.
+                errorMessage = nil
             } catch {
                 errorMessage = error.localizedDescription
             }

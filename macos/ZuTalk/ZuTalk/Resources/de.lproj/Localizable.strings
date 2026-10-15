@@ -208,6 +208,14 @@
 "settings.credentials.verification.network_unavailable" = "Soniox ist nicht erreichbar. Prüfe das Netzwerk und versuche es erneut.";
 "settings.credentials.verification.rate_limited" = "Soniox begrenzt derzeit die Anfragen. Versuche es gleich noch einmal.";
 "settings.credentials.verification.service_unavailable" = "Die Soniox-Prüfung ist vorübergehend nicht verfügbar.";
+"settings.credentials.verification.invalid_hint_format" = "Prüfe in der %@-Konsole, ob dieser Schlüssel gelöscht oder widerrufen wurde, oder gib einen neuen Schlüssel ein und prüfe erneut.";
+"settings.credentials.verification.organization_balance_exhausted_hint_format" = "Dieser Schlüssel kann vorerst nicht transkribieren. Lade in der %@-Konsole Guthaben für die Organisation auf oder nutze den Schlüssel einer Organisation mit Guthaben, und prüfe dann erneut.";
+"settings.credentials.verification.organization_budget_exhausted_hint_format" = "Dieser Schlüssel kann vorerst nicht transkribieren. Erhöhe in der %@-Konsole das Monatsbudget der Organisation oder warte auf die Zurücksetzung im nächsten Monat, und prüfe dann erneut.";
+"settings.credentials.verification.project_budget_exhausted_hint_format" = "Dieser Schlüssel kann vorerst nicht transkribieren. Erhöhe in der %@-Konsole das Monatsbudget dieses Projekts oder warte auf die Zurücksetzung im nächsten Monat, und prüfe dann erneut.";
+"settings.credentials.verification.quota_exhausted_hint_format" = "Sieh in der %@-Konsole nach Guthaben und Nutzungslimits, lade bei Bedarf auf und prüfe dann erneut.";
+"settings.credentials.verification.network_unavailable_hint_format" = "Das heißt nicht, dass der %@-Schlüssel fehlerhaft ist. Prüfe erneut, sobald das Netzwerk wieder da ist.";
+"settings.credentials.verification.rate_limited_hint_format" = "Das heißt nicht, dass der %@-Schlüssel fehlerhaft ist. Warte ein, zwei Minuten und prüfe dann erneut.";
+"settings.credentials.verification.service_unavailable_hint_format" = "Das heißt nicht, dass der %@-Schlüssel fehlerhaft ist. Prüfe in Kürze erneut.";
 "settings.credentials.applied" = "Gesichert · Geladen";
 "settings.credentials.saved_inactive" = "Gesichert · Erfordert Aufmerksamkeit";
 "settings.credentials.runtime_only" = "Für diese Sitzung geladen · Nicht gesichert";

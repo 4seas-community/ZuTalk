@@ -208,6 +208,14 @@
 "settings.credentials.verification.network_unavailable" = "Impossible de joindre Soniox. Vérifiez le réseau et réessayez.";
 "settings.credentials.verification.rate_limited" = "Soniox limite le débit des requêtes. Réessayez dans un instant.";
 "settings.credentials.verification.service_unavailable" = "La vérification Soniox est temporairement indisponible.";
+"settings.credentials.verification.invalid_hint_format" = "Vérifiez dans la console %@ que cette clé n’a pas été supprimée ni révoquée, ou saisissez une nouvelle clé et vérifiez à nouveau.";
+"settings.credentials.verification.organization_balance_exhausted_hint_format" = "Cette clé ne peut pas transcrire pour l’instant. Rechargez le solde de l’organisation dans la console %@, ou utilisez la clé d’une organisation qui a du solde, puis vérifiez à nouveau.";
+"settings.credentials.verification.organization_budget_exhausted_hint_format" = "Cette clé ne peut pas transcrire pour l’instant. Augmentez le budget mensuel de l’organisation dans la console %@, ou attendez sa remise à zéro le mois prochain, puis vérifiez à nouveau.";
+"settings.credentials.verification.project_budget_exhausted_hint_format" = "Cette clé ne peut pas transcrire pour l’instant. Augmentez le budget mensuel de ce projet dans la console %@, ou attendez sa remise à zéro le mois prochain, puis vérifiez à nouveau.";
+"settings.credentials.verification.quota_exhausted_hint_format" = "Consultez le solde et les limites d’utilisation dans la console %@, rechargez si nécessaire, puis vérifiez à nouveau.";
+"settings.credentials.verification.network_unavailable_hint_format" = "Cela ne veut pas dire que la clé %@ est en cause. Vérifiez à nouveau une fois le réseau rétabli.";
+"settings.credentials.verification.rate_limited_hint_format" = "Cela ne veut pas dire que la clé %@ est en cause. Patientez une ou deux minutes, puis vérifiez à nouveau.";
+"settings.credentials.verification.service_unavailable_hint_format" = "Cela ne veut pas dire que la clé %@ est en cause. Vérifiez à nouveau dans un moment.";
 "settings.credentials.applied" = "Enregistrée · Chargée";
 "settings.credentials.saved_inactive" = "Enregistrée · Attention requise";
 "settings.credentials.runtime_only" = "Chargée pour cette session · Non enregistrée";

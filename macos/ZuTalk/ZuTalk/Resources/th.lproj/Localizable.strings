@@ -208,6 +208,14 @@
 "settings.credentials.verification.network_unavailable" = "ไม่สามารถติดต่อ Soniox ได้ ตรวจสอบเครือข่ายแล้วลองอีกครั้ง";
 "settings.credentials.verification.rate_limited" = "Soniox กำลังจำกัดอัตราคำขอ โปรดลองใหม่ในอีกสักครู่";
 "settings.credentials.verification.service_unavailable" = "การตรวจสอบของ Soniox ไม่พร้อมใช้งานชั่วคราว";
+"settings.credentials.verification.invalid_hint_format" = "ตรวจสอบในคอนโซล %@ ว่าคีย์นี้ไม่ได้ถูกลบหรือเพิกถอน หรือใส่คีย์ใหม่แล้วตรวจสอบอีกครั้ง";
+"settings.credentials.verification.organization_balance_exhausted_hint_format" = "คีย์นี้ยังใช้ถอดเสียงไม่ได้ในตอนนี้ เติมยอดเงินให้องค์กรในคอนโซล %@ หรือเปลี่ยนไปใช้คีย์ขององค์กรที่มียอดคงเหลือ แล้วตรวจสอบอีกครั้ง";
+"settings.credentials.verification.organization_budget_exhausted_hint_format" = "คีย์นี้ยังใช้ถอดเสียงไม่ได้ในตอนนี้ เพิ่มงบประมาณรายเดือนขององค์กรในคอนโซล %@ หรือรอให้งบรีเซ็ตในเดือนหน้า แล้วตรวจสอบอีกครั้ง";
+"settings.credentials.verification.project_budget_exhausted_hint_format" = "คีย์นี้ยังใช้ถอดเสียงไม่ได้ในตอนนี้ เพิ่มงบประมาณรายเดือนของโปรเจ็กต์นี้ในคอนโซล %@ หรือรอให้งบรีเซ็ตในเดือนหน้า แล้วตรวจสอบอีกครั้ง";
+"settings.credentials.verification.quota_exhausted_hint_format" = "ดูยอดคงเหลือและขีดจำกัดการใช้งานในคอนโซล %@ เติมเงินหากจำเป็น แล้วตรวจสอบอีกครั้ง";
+"settings.credentials.verification.network_unavailable_hint_format" = "ไม่ได้แปลว่าคีย์ %@ มีปัญหา ตรวจสอบอีกครั้งเมื่อเครือข่ายกลับมาใช้ได้";
+"settings.credentials.verification.rate_limited_hint_format" = "ไม่ได้แปลว่าคีย์ %@ มีปัญหา รอสักหนึ่งถึงสองนาทีแล้วตรวจสอบอีกครั้ง";
+"settings.credentials.verification.service_unavailable_hint_format" = "ไม่ได้แปลว่าคีย์ %@ มีปัญหา ลองตรวจสอบอีกครั้งในอีกสักครู่";
 "settings.credentials.applied" = "บันทึกแล้ว · โหลดแล้ว";
 "settings.credentials.saved_inactive" = "บันทึกแล้ว · ต้องดำเนินการ";
 "settings.credentials.runtime_only" = "โหลดสำหรับการทำงานครั้งนี้ · ไม่ได้บันทึก";

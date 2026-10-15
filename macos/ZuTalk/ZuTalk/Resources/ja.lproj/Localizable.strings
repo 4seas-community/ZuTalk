@@ -206,6 +206,14 @@
 "settings.credentials.verification.network_unavailable" = "Soniox に接続できません。ネットワークを確認して再試行してください。";
 "settings.credentials.verification.rate_limited" = "Soniox がリクエストを制限しています。しばらくしてから再試行してください。";
 "settings.credentials.verification.service_unavailable" = "Soniox の検証サービスは一時的に利用できません。";
+"settings.credentials.verification.invalid_hint_format" = "%@ のコンソールでこのキーが削除・失効していないか確認するか、新しいキーを入力して再度検証してください。";
+"settings.credentials.verification.organization_balance_exhausted_hint_format" = "このキーはしばらく文字起こしに使えません。%@ のコンソールで組織の残高をチャージするか、残高のある組織のキーに切り替えてから、再度検証してください。";
+"settings.credentials.verification.organization_budget_exhausted_hint_format" = "このキーはしばらく文字起こしに使えません。%@ のコンソールで組織の月間予算を引き上げるか、翌月のリセットを待ってから、再度検証してください。";
+"settings.credentials.verification.project_budget_exhausted_hint_format" = "このキーはしばらく文字起こしに使えません。%@ のコンソールでこのプロジェクトの月間予算を引き上げるか、翌月のリセットを待ってから、再度検証してください。";
+"settings.credentials.verification.quota_exhausted_hint_format" = "%@ のコンソールで残高と使用量の上限を確認し、必要なら補充してから再度検証してください。";
+"settings.credentials.verification.network_unavailable_hint_format" = "%@ のキーに問題があるとは限りません。ネットワークが復旧したら再度検証してください。";
+"settings.credentials.verification.rate_limited_hint_format" = "%@ のキーに問題があるとは限りません。1〜2 分待ってから再度検証してください。";
+"settings.credentials.verification.service_unavailable_hint_format" = "%@ のキーに問題があるとは限りません。しばらくしてから再度検証してください。";
 "settings.credentials.applied" = "保存済み · 読み込み済み";
 "settings.credentials.saved_inactive" = "保存済み · 要確認";
 "settings.credentials.runtime_only" = "今回のみ読み込み済み · 未保存";

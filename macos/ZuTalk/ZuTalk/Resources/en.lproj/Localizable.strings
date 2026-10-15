@@ -208,6 +208,14 @@
 "settings.credentials.verification.network_unavailable" = "Could not reach Soniox. Check the network and try again.";
 "settings.credentials.verification.rate_limited" = "Soniox is rate limiting requests. Try again shortly.";
 "settings.credentials.verification.service_unavailable" = "Soniox verification is temporarily unavailable.";
+"settings.credentials.verification.invalid_hint_format" = "Check in the %@ console that this key hasn't been deleted or revoked, or enter a new key and verify again.";
+"settings.credentials.verification.organization_balance_exhausted_hint_format" = "This key can't transcribe for now. Add funds to the organization in the %@ console, or switch to a key from an organization with a balance, then verify again.";
+"settings.credentials.verification.organization_budget_exhausted_hint_format" = "This key can't transcribe for now. Raise the organization's monthly budget in the %@ console, or wait for it to reset next month, then verify again.";
+"settings.credentials.verification.project_budget_exhausted_hint_format" = "This key can't transcribe for now. Raise this project's monthly budget in the %@ console, or wait for it to reset next month, then verify again.";
+"settings.credentials.verification.quota_exhausted_hint_format" = "Check the balance and usage limits in the %@ console, top up if needed, then verify again.";
+"settings.credentials.verification.network_unavailable_hint_format" = "This doesn't mean the %@ key is bad. Verify again once the network is back.";
+"settings.credentials.verification.rate_limited_hint_format" = "This doesn't mean the %@ key is bad. Wait a minute or two, then verify again.";
+"settings.credentials.verification.service_unavailable_hint_format" = "This doesn't mean the %@ key is bad. Verify again in a little while.";
 "settings.credentials.applied" = "Saved · Loaded";
 "settings.credentials.saved_inactive" = "Saved · Needs attention";
 "settings.credentials.runtime_only" = "Loaded for this run · Not saved";

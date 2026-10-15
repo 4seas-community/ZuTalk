@@ -150,6 +150,12 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
             XCTAssertEqual(session.applyCallCount, 0)
             XCTAssertEqual(validator.callCount, 1)
             XCTAssertNil(validator.lastCandidateAfterCall)
+            // The verdict belongs to the account's card, not a second banner.
+            XCTAssertEqual(
+                store.state(for: .soniox),
+                .invalidCredential(Date(timeIntervalSince1970: 100))
+            )
+            XCTAssertNil(viewModel.operationError)
         }
     }
 
@@ -318,6 +324,46 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
             )
             XCTAssertEqual(hint, expected)
             XCTAssertFalse(hint.localizedCaseInsensitiveContains("Keychain"))
+        }
+    }
+
+    func testFailedVerificationHintSaysWhatToDoInsteadOfRepeatingTheVerdict() throws {
+        let checkedAt = Date(timeIntervalSince1970: 100)
+        let failures: [(ProviderConnectionVerificationState, String)] = [
+            (.invalidCredential(checkedAt), "invalid"),
+            (.organizationBalanceExhausted(checkedAt), "organization_balance_exhausted"),
+            (.organizationMonthlyBudgetExhausted(checkedAt), "organization_budget_exhausted"),
+            (.projectMonthlyBudgetExhausted(checkedAt), "project_budget_exhausted"),
+            (.quotaExhausted(checkedAt), "quota_exhausted"),
+            (.networkUnavailable(checkedAt), "network_unavailable"),
+            (.rateLimited(checkedAt), "rate_limited"),
+            (.serviceUnavailable(checkedAt), "service_unavailable"),
+        ]
+        let passing: [ProviderConnectionVerificationState] = [
+            .unverified, .checking, .ready(checkedAt),
+        ]
+        for state in passing {
+            XCTAssertNil(state.failureHintFormatKey)
+        }
+
+        for (state, verdict) in failures {
+            let hintKey = try XCTUnwrap(state.failureHintFormatKey)
+            for locale in ["en", "zh-Hans", "ja", "ko", "fr", "es", "de", "th"] {
+                let title = try localizedString(
+                    locale: locale,
+                    key: "settings.credentials.verification.\(verdict)"
+                )
+                let hint = try localizedString(locale: locale, key: hintKey)
+                XCTAssertNotEqual(hint, title, "\(locale) \(hintKey) repeats the status line")
+                // The same card shows the Anthropic key, so the provider is
+                // always the account's name, never a hard-coded one.
+                XCTAssertEqual(
+                    hint.components(separatedBy: "%@").count,
+                    2,
+                    "\(locale) \(hintKey) must name the provider exactly once"
+                )
+                XCTAssertFalse(hint.contains("Soniox"), "\(locale) \(hintKey)")
+            }
         }
     }
 

@@ -208,6 +208,14 @@
 "settings.credentials.verification.network_unavailable" = "No se pudo contactar con Soniox. Compruebe la red e inténtelo de nuevo.";
 "settings.credentials.verification.rate_limited" = "Soniox está limitando las solicitudes. Inténtelo de nuevo en breve.";
 "settings.credentials.verification.service_unavailable" = "La verificación de Soniox no está disponible temporalmente.";
+"settings.credentials.verification.invalid_hint_format" = "Compruebe en la consola de %@ que esta clave no se haya eliminado ni revocado, o introduzca una clave nueva y verifique de nuevo.";
+"settings.credentials.verification.organization_balance_exhausted_hint_format" = "Esta clave no puede transcribir por ahora. Recargue el saldo de la organización en la consola de %@, o use la clave de una organización con saldo, y luego verifique de nuevo.";
+"settings.credentials.verification.organization_budget_exhausted_hint_format" = "Esta clave no puede transcribir por ahora. Aumente el presupuesto mensual de la organización en la consola de %@, o espere a que se restablezca el mes que viene, y luego verifique de nuevo.";
+"settings.credentials.verification.project_budget_exhausted_hint_format" = "Esta clave no puede transcribir por ahora. Aumente el presupuesto mensual de este proyecto en la consola de %@, o espere a que se restablezca el mes que viene, y luego verifique de nuevo.";
+"settings.credentials.verification.quota_exhausted_hint_format" = "Consulte el saldo y los límites de uso en la consola de %@, recargue si hace falta y luego verifique de nuevo.";
+"settings.credentials.verification.network_unavailable_hint_format" = "Esto no significa que la clave de %@ tenga un problema. Verifique de nuevo cuando vuelva la red.";
+"settings.credentials.verification.rate_limited_hint_format" = "Esto no significa que la clave de %@ tenga un problema. Espere uno o dos minutos y verifique de nuevo.";
+"settings.credentials.verification.service_unavailable_hint_format" = "Esto no significa que la clave de %@ tenga un problema. Verifique de nuevo dentro de un rato.";
 "settings.credentials.applied" = "Guardada · Cargada";
 "settings.credentials.saved_inactive" = "Guardada · Requiere atención";
 "settings.credentials.runtime_only" = "Cargada para esta ejecución · Sin guardar";

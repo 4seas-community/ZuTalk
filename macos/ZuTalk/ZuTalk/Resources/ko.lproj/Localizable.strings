@@ -208,6 +208,14 @@
 "settings.credentials.verification.network_unavailable" = "Soniox에 연결할 수 없습니다. 네트워크를 확인하고 다시 시도하세요.";
 "settings.credentials.verification.rate_limited" = "Soniox는 요청 속도를 제한합니다. 잠시 후 다시 시도하세요.";
 "settings.credentials.verification.service_unavailable" = "Soniox 인증을 일시적으로 사용할 수 없습니다.";
+"settings.credentials.verification.invalid_hint_format" = "%@ 콘솔에서 이 키가 삭제되거나 취소되지 않았는지 확인하거나, 새 키를 입력한 뒤 다시 확인하세요.";
+"settings.credentials.verification.organization_balance_exhausted_hint_format" = "이 키는 당분간 전사에 사용할 수 없습니다. %@ 콘솔에서 조직 잔고를 충전하거나 잔고가 있는 조직의 키로 바꾼 뒤 다시 확인하세요.";
+"settings.credentials.verification.organization_budget_exhausted_hint_format" = "이 키는 당분간 전사에 사용할 수 없습니다. %@ 콘솔에서 조직의 월예산을 늘리거나 다음 달 초기화를 기다린 뒤 다시 확인하세요.";
+"settings.credentials.verification.project_budget_exhausted_hint_format" = "이 키는 당분간 전사에 사용할 수 없습니다. %@ 콘솔에서 이 프로젝트의 월예산을 늘리거나 다음 달 초기화를 기다린 뒤 다시 확인하세요.";
+"settings.credentials.verification.quota_exhausted_hint_format" = "%@ 콘솔에서 잔고와 사용 한도를 확인하고, 필요하면 충전한 뒤 다시 확인하세요.";
+"settings.credentials.verification.network_unavailable_hint_format" = "%@ 키에 문제가 있다는 뜻은 아닙니다. 네트워크가 복구되면 다시 확인하세요.";
+"settings.credentials.verification.rate_limited_hint_format" = "%@ 키에 문제가 있다는 뜻은 아닙니다. 1~2분 뒤에 다시 확인하세요.";
+"settings.credentials.verification.service_unavailable_hint_format" = "%@ 키에 문제가 있다는 뜻은 아닙니다. 잠시 후 다시 확인하세요.";
 "settings.credentials.applied" = "저장됨 · 로드됨";
 "settings.credentials.saved_inactive" = "저장됨 · 주의가 필요함";
 "settings.credentials.runtime_only" = "이번 실행을 위해 로드됨 · 저장되지 않음";

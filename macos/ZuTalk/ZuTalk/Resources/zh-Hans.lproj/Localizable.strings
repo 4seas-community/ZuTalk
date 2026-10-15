@@ -208,6 +208,14 @@
 "settings.credentials.verification.network_unavailable" = "无法连接 Soniox，请检查网络后重试。";
 "settings.credentials.verification.rate_limited" = "Soniox 暂时限制了请求，请稍后重试。";
 "settings.credentials.verification.service_unavailable" = "Soniox 验证服务暂时不可用。";
+"settings.credentials.verification.invalid_hint_format" = "请到 %@ 控制台确认这把密钥没有被删除或撤销，或换一把新密钥再验证。";
+"settings.credentials.verification.organization_balance_exhausted_hint_format" = "这把密钥暂时不能用于转录。请到 %@ 控制台给组织充值，或换用有余额的组织的密钥，然后再验证。";
+"settings.credentials.verification.organization_budget_exhausted_hint_format" = "这把密钥暂时不能用于转录。请到 %@ 控制台调高组织月度预算，或等下月预算重置，然后再验证。";
+"settings.credentials.verification.project_budget_exhausted_hint_format" = "这把密钥暂时不能用于转录。请到 %@ 控制台调高该项目的月度预算，或等下月预算重置，然后再验证。";
+"settings.credentials.verification.quota_exhausted_hint_format" = "请到 %@ 控制台查看余额和用量上限，补足后再验证。";
+"settings.credentials.verification.network_unavailable_hint_format" = "这不代表 %@ 密钥有问题。网络恢复后再验证一次。";
+"settings.credentials.verification.rate_limited_hint_format" = "这不代表 %@ 密钥有问题。过一两分钟再验证。";
+"settings.credentials.verification.service_unavailable_hint_format" = "这不代表 %@ 密钥有问题。稍后再验证一次。";
 "settings.credentials.applied" = "已保存 · 已加载";
 "settings.credentials.saved_inactive" = "已保存 · 需要处理";
 "settings.credentials.runtime_only" = "本次运行已加载 · 未保存";
