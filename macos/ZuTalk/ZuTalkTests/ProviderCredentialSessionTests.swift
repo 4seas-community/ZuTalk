@@ -208,13 +208,14 @@ final class ProviderCredentialSessionTests: XCTestCase {
 
         XCTAssertEqual(Set(scopes).count, accounts.count, "scopes key the store")
         XCTAssertEqual(ProviderCredentialAccount.soniox.scope, "soniox")
-        XCTAssertEqual(ProviderCredentialAccount.anthropic.scope, "anthropic")
+        XCTAssertEqual(ProviderCredentialAccount.deepseek.scope, "deepseek")
         XCTAssertNil(ProviderCredentialAccount(scope: "unknown"))
+        XCTAssertNil(ProviderCredentialAccount(scope: "anthropic"), "retired, not an account")
 
         // Exactly one credential is what the app cannot transcribe without.
         // The model key is optional, and presentation depends on that split.
         XCTAssertEqual(accounts.filter(\.isRequiredForCapture), [.soniox])
-        XCTAssertFalse(ProviderCredentialAccount.anthropic.isRequiredForCapture)
+        XCTAssertFalse(ProviderCredentialAccount.deepseek.isRequiredForCapture)
     }
 
     func testSavedCredentialLoadPolicyExcludesUnitAndUiTests() {
@@ -468,6 +469,41 @@ final class ProviderCredentialSessionTests: XCTestCase {
         }
     }
 
+    /// An Anthropic key saved before DeepSeek replaced it must not make the
+    /// file unreadable — that would take the Soniox key down with it — and
+    /// must not stay on disk either.
+    func testLoadDropsRetiredAnthropicKeyAndKeepsTheRest() throws {
+        try writeJSONFixture([
+            "version": 1,
+            "credentials": [
+                "soniox": "fixture-token",
+                "anthropic": "retired-fixture-token",
+            ],
+        ])
+
+        XCTAssertEqual(try makeStore().load(), [.soniox: "fixture-token"])
+
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: credentialFileURL))
+                as? [String: Any]
+        )
+        let credentials = try XCTUnwrap(object["credentials"] as? [String: String])
+        XCTAssertEqual(credentials, ["soniox": "fixture-token"])
+        assertPermissions(0o600, at: credentialFileURL)
+    }
+
+    func testLoadOfOnlyARetiredKeyLeavesNothingSaved() throws {
+        try writeJSONFixture([
+            "version": 1,
+            "credentials": ["anthropic": "retired-fixture-token"],
+        ])
+
+        XCTAssertTrue(try makeStore().load().isEmpty)
+        let raw = try String(contentsOf: credentialFileURL, encoding: .utf8)
+        XCTAssertFalse(raw.contains("retired-fixture-token"))
+        XCTAssertTrue(try makeStore().load().isEmpty, "the rewritten file reads back")
+    }
+
     func testLoadRejectsEmptyCredential() throws {
         try writeJSONFixture([
             "version": 1,
@@ -620,7 +656,7 @@ final class ProviderCredentialSessionTests: XCTestCase {
         // no longer be trusted to say what it was.
         XCTAssertEqual(events, [
             "runtime.clear:soniox",
-            "runtime.clear:anthropic",
+            "runtime.clear:deepseek",
             "persistence.commit",
             "runtime.set:soniox:replacement-fixture-token",
             "runtime.complete_bootstrap",

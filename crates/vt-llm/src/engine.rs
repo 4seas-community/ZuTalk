@@ -13,8 +13,9 @@ pub struct LanguageModelEngine {
     /// scope: they are different accounts, billed separately, and either one
     /// can be configured without the other.
     pub credential_scope: &'static str,
+    /// An OpenAI-compatible API root: `/models` and `/chat/completions` hang
+    /// off it directly.
     pub api_base_url: &'static str,
-    pub api_version: &'static str,
     /// The model that cleans up a marked passage and writes from materials.
     pub model_id: &'static str,
     /// Where a user obtains a key, shown in Settings so the answer to "where
@@ -22,14 +23,15 @@ pub struct LanguageModelEngine {
     pub console_url: &'static str,
 }
 
+/// DeepSeek, at the model the invite service already uses for the same
+/// cleanup, so a passage reads the same whichever key paid for it.
 pub const CURRENT_LANGUAGE_MODEL_ENGINE: LanguageModelEngine = LanguageModelEngine {
-    provider_id: "anthropic",
-    provider_display_name: "Anthropic",
-    credential_scope: "anthropic",
-    api_base_url: "https://api.anthropic.com",
-    api_version: "2023-06-01",
-    model_id: "claude-sonnet-5",
-    console_url: "https://console.anthropic.com/settings/keys",
+    provider_id: "deepseek",
+    provider_display_name: "DeepSeek",
+    credential_scope: "deepseek",
+    api_base_url: "https://api.deepseek.com",
+    model_id: "deepseek-flash",
+    console_url: "https://platform.deepseek.com/api_keys",
 };
 
 #[cfg(test)]
@@ -42,7 +44,7 @@ mod tests {
     /// model key.
     #[test]
     fn the_model_credential_scope_is_not_the_capture_one() {
-        assert_eq!(CURRENT_LANGUAGE_MODEL_ENGINE.credential_scope, "anthropic");
+        assert_eq!(CURRENT_LANGUAGE_MODEL_ENGINE.credential_scope, "deepseek");
         assert_ne!(CURRENT_LANGUAGE_MODEL_ENGINE.credential_scope, "soniox");
     }
 
@@ -50,8 +52,11 @@ mod tests {
     fn the_engine_names_a_reachable_endpoint_and_a_current_model() {
         let engine = CURRENT_LANGUAGE_MODEL_ENGINE;
         assert!(engine.api_base_url.starts_with("https://"));
+        assert!(
+            !engine.api_base_url.ends_with('/'),
+            "paths are joined with a slash"
+        );
         assert!(engine.console_url.starts_with("https://"));
         assert!(!engine.model_id.is_empty());
-        assert!(!engine.api_version.is_empty());
     }
 }

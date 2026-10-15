@@ -934,7 +934,8 @@ struct SonioxCredentialScreen: View {
             EmptyView()
         default:
             Label(
-                ProviderConnectionVerificationFailure(verificationState).localizedDescription,
+                ProviderConnectionVerificationFailure(verificationState, account: .soniox)
+                    .localizedDescription,
                 systemImage: "exclamationmark.triangle.fill"
             )
             .foregroundColor(.signalAmber)

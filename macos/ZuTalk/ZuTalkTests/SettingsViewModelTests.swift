@@ -276,14 +276,14 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         // these values, but only as they come back from the core — two copies
         // drift, and the UI ends up naming a model the core does not use.
         for coreOwnedConstant in [
-            "stt-rt-v5", "stt-async-v5", "claude-", "soniox.com", "anthropic.com",
+            "stt-rt-v5", "stt-async-v5", "deepseek-", "soniox.com", "deepseek.com",
         ] {
             XCTAssertFalse(
                 providerSettings.contains(coreOwnedConstant),
                 "\(coreOwnedConstant) belongs to the core descriptor, not to Swift"
             )
         }
-        for unsupportedProvider in ["OpenRouter", "DeepSeek", "xAI"] {
+        for unsupportedProvider in ["OpenRouter", "Anthropic", "xAI"] {
             XCTAssertFalse(providerSettings.contains(unsupportedProvider))
         }
         XCTAssertTrue(credentialSession.contains("getNotebookCaptureEngineDescriptor()"))
@@ -330,14 +330,14 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
     func testFailedVerificationHintSaysWhatToDoInsteadOfRepeatingTheVerdict() throws {
         let checkedAt = Date(timeIntervalSince1970: 100)
         let failures: [(ProviderConnectionVerificationState, String)] = [
-            (.invalidCredential(checkedAt), "invalid"),
+            (.invalidCredential(checkedAt), "invalid_format"),
             (.organizationBalanceExhausted(checkedAt), "organization_balance_exhausted"),
             (.organizationMonthlyBudgetExhausted(checkedAt), "organization_budget_exhausted"),
             (.projectMonthlyBudgetExhausted(checkedAt), "project_budget_exhausted"),
-            (.quotaExhausted(checkedAt), "quota_exhausted"),
-            (.networkUnavailable(checkedAt), "network_unavailable"),
-            (.rateLimited(checkedAt), "rate_limited"),
-            (.serviceUnavailable(checkedAt), "service_unavailable"),
+            (.quotaExhausted(checkedAt), "quota_exhausted_format"),
+            (.networkUnavailable(checkedAt), "network_unavailable_format"),
+            (.rateLimited(checkedAt), "rate_limited_format"),
+            (.serviceUnavailable(checkedAt), "service_unavailable_format"),
         ]
         let passing: [ProviderConnectionVerificationState] = [
             .unverified, .checking, .ready(checkedAt),
@@ -355,7 +355,7 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
                 )
                 let hint = try localizedString(locale: locale, key: hintKey)
                 XCTAssertNotEqual(hint, title, "\(locale) \(hintKey) repeats the status line")
-                // The same card shows the Anthropic key, so the provider is
+                // The same card shows the DeepSeek key, so the provider is
                 // always the account's name, never a hard-coded one.
                 XCTAssertEqual(
                     hint.components(separatedBy: "%@").count,
@@ -364,6 +364,29 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
                 )
                 XCTAssertFalse(hint.contains("Soniox"), "\(locale) \(hintKey)")
             }
+        }
+    }
+
+    /// Every verdict the model key can get names the model's provider. The
+    /// card used to say "Soniox rejected this key" under the model key too.
+    func testModelKeyVerdictsNameTheModelProvider() {
+        let checkedAt = Date(timeIntervalSince1970: 100)
+        let modelVerdicts: [ProviderConnectionVerificationState] = [
+            .invalidCredential(checkedAt),
+            .quotaExhausted(checkedAt),
+            .networkUnavailable(checkedAt),
+            .rateLimited(checkedAt),
+            .serviceUnavailable(checkedAt),
+        ]
+        for state in modelVerdicts {
+            let model = ProviderConnectionVerificationFailure(state, account: .deepseek)
+                .localizedDescription
+            XCTAssertTrue(model.contains("DeepSeek"), model)
+            XCTAssertFalse(model.contains("Soniox"), model)
+
+            let capture = ProviderConnectionVerificationFailure(state, account: .soniox)
+                .localizedDescription
+            XCTAssertTrue(capture.contains("Soniox"), capture)
         }
     }
 

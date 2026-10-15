@@ -1136,7 +1136,7 @@ impl ZuTalkCore {
 
     /// 设置进程内 API Key。
     ///
-    /// 支持的 scope:`soniox`(采集)与 `anthropic`(语言模型)。
+    /// 支持的 scope:`soniox`(采集)与 `deepseek`(语言模型)。
     ///
     /// 空 value 视为 clear。
     pub fn set_api_key(&self, scope: String, value: String) -> Result<(), CoreError> {
@@ -2598,6 +2598,9 @@ mod tests {
         assert!(is_valid_scope(model));
         assert_ne!(capture, model);
         assert!(!is_valid_scope("openai"));
+        // The model provider before DeepSeek. Its scope is retired, not kept
+        // as a second model slot nothing reads.
+        assert!(!is_valid_scope("anthropic"));
         assert!(!is_valid_scope(""));
     }
 

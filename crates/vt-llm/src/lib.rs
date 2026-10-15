@@ -79,9 +79,8 @@ pub async fn verify_credential(
         .map_err(|error| LanguageModelError::NetworkUnavailable(error.to_string()))?;
 
     let response = client
-        .get(format!("{}/v1/models", engine.api_base_url))
-        .header("x-api-key", api_key)
-        .header("anthropic-version", engine.api_version)
+        .get(format!("{}/models", engine.api_base_url))
+        .bearer_auth(api_key)
         .send()
         .await
         .map_err(|error| {

@@ -693,7 +693,7 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     /**
      * 设置进程内 API Key。
      *
-     * 支持的 scope:`soniox`(采集)与 `anthropic`(语言模型)。
+     * 支持的 scope:`soniox`(采集)与 `deepseek`(语言模型)。
      *
      * 空 value 视为 clear。
      */
@@ -1818,7 +1818,7 @@ open func searchSessions(query: String, limit: UInt32)throws  -> [SearchResultIn
     /**
      * 设置进程内 API Key。
      *
-     * 支持的 scope:`soniox`(采集)与 `anthropic`(语言模型)。
+     * 支持的 scope:`soniox`(采集)与 `deepseek`(语言模型)。
      *
      * 空 value 视为 clear。
      */
@@ -12086,7 +12086,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_search_sessions() != 40170) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_api_key() != 17118) {
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_api_key() != 12336) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_set_invite_digest_route() != 49444) {

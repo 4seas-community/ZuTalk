@@ -22,15 +22,24 @@ enum ProviderCredentialEditorCommitDecision: Equatable {
 
 struct ProviderConnectionVerificationFailure: LocalizedError {
     let state: ProviderConnectionVerificationState
+    /// Whose verdict this is. Settings shows the capture and model keys on
+    /// the same card, so the provider is named, never assumed.
+    let account: ProviderCredentialAccount
 
-    init(_ state: ProviderConnectionVerificationState) {
+    init(_ state: ProviderConnectionVerificationState, account: ProviderCredentialAccount) {
         self.state = state
+        self.account = account
     }
 
     var errorDescription: String? {
-        switch state {
+        let named: (String.LocalizationValue) -> String = { key in
+            String(format: String(localized: key), account.displayName)
+        }
+        // The balance and budget verdicts are Soniox's own error types; no
+        // other provider produces them, so they name it directly.
+        return switch state {
         case .invalidCredential:
-            String(localized: "settings.credentials.verification.invalid")
+            named("settings.credentials.verification.invalid_format")
         case .organizationBalanceExhausted:
             String(localized: "settings.credentials.verification.organization_balance_exhausted")
         case .organizationMonthlyBudgetExhausted:
@@ -38,13 +47,13 @@ struct ProviderConnectionVerificationFailure: LocalizedError {
         case .projectMonthlyBudgetExhausted:
             String(localized: "settings.credentials.verification.project_budget_exhausted")
         case .quotaExhausted:
-            String(localized: "settings.credentials.verification.quota_exhausted")
+            named("settings.credentials.verification.quota_exhausted_format")
         case .networkUnavailable:
-            String(localized: "settings.credentials.verification.network_unavailable")
+            named("settings.credentials.verification.network_unavailable_format")
         case .rateLimited:
-            String(localized: "settings.credentials.verification.rate_limited")
+            named("settings.credentials.verification.rate_limited_format")
         case .serviceUnavailable, .unverified, .checking, .ready:
-            String(localized: "settings.credentials.verification.service_unavailable")
+            named("settings.credentials.verification.service_unavailable_format")
         }
     }
 }
@@ -143,7 +152,7 @@ final class ProviderConnectionsViewModel: ObservableObject {
             // The account's card shows this verdict; repeating it here put
             // the same sentence on screen twice.
             operationError = nil
-            throw ProviderConnectionVerificationFailure(verification)
+            throw ProviderConnectionVerificationFailure(verification, account: account)
         }
 
         do {
@@ -759,23 +768,20 @@ private struct ProviderCredentialAutoSaveRow: View {
         case .checking:
             return String(localized: "settings.credentials.verifying")
         case .ready:
-            return String(localized: "settings.credentials.verification.ready")
-        case .invalidCredential:
-            return String(localized: "settings.credentials.verification.invalid")
-        case .organizationBalanceExhausted:
-            return String(localized: "settings.credentials.verification.organization_balance_exhausted")
-        case .organizationMonthlyBudgetExhausted:
-            return String(localized: "settings.credentials.verification.organization_budget_exhausted")
-        case .projectMonthlyBudgetExhausted:
-            return String(localized: "settings.credentials.verification.project_budget_exhausted")
-        case .quotaExhausted:
-            return String(localized: "settings.credentials.verification.quota_exhausted")
-        case .networkUnavailable:
-            return String(localized: "settings.credentials.verification.network_unavailable")
-        case .rateLimited:
-            return String(localized: "settings.credentials.verification.rate_limited")
-        case .serviceUnavailable:
-            return String(localized: "settings.credentials.verification.service_unavailable")
+            return String(
+                format: String(localized: "settings.credentials.verification.ready_format"),
+                account.displayName
+            )
+        case .invalidCredential,
+             .organizationBalanceExhausted,
+             .organizationMonthlyBudgetExhausted,
+             .projectMonthlyBudgetExhausted,
+             .quotaExhausted,
+             .networkUnavailable,
+             .rateLimited,
+             .serviceUnavailable:
+            return ProviderConnectionVerificationFailure(verificationState, account: account)
+                .localizedDescription
         case .unverified:
             break
         }
@@ -828,9 +834,16 @@ private struct ProviderCredentialAutoSaveRow: View {
     private var statusHint: String {
         switch verificationState {
         case .checking:
-            return String(localized: "settings.credentials.verifying_hint")
+            return String(
+                format: String(localized: "settings.credentials.verifying_hint_format"),
+                account.displayName
+            )
         case .ready:
-            return String(localized: "settings.credentials.verified_hint")
+            // The title already names the provider; this says what the key
+            // is now good for.
+            return account.isRequiredForCapture
+                ? String(localized: "settings.credentials.verified_hint_capture")
+                : String(localized: "settings.credentials.verified_hint_model")
         case .invalidCredential,
              .organizationBalanceExhausted,
              .organizationMonthlyBudgetExhausted,

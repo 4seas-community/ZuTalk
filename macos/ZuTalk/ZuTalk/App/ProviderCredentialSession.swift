@@ -9,7 +9,11 @@ enum ProviderCredentialAccount: String, CaseIterable, Codable, Identifiable {
     /// Language model: optional, and the only credential whose use sends text
     /// off this machine. Kept a separate account because it is a separate
     /// vendor, billed separately, and either can be configured alone.
-    case anthropic
+    case deepseek
+
+    /// Accounts ZuTalk used to keep and no longer does. `anthropic` was the
+    /// model account before DeepSeek replaced it.
+    static let retiredRawValues: Set<String> = ["anthropic"]
 
     var id: String { rawValue }
 
@@ -18,7 +22,7 @@ enum ProviderCredentialAccount: String, CaseIterable, Codable, Identifiable {
     var displayName: String {
         switch self {
         case .soniox: "Soniox"
-        case .anthropic: "Anthropic"
+        case .deepseek: "DeepSeek"
         }
     }
 
@@ -30,7 +34,7 @@ enum ProviderCredentialAccount: String, CaseIterable, Codable, Identifiable {
     var isRequiredForCapture: Bool {
         switch self {
         case .soniox: true
-        case .anthropic: false
+        case .deepseek: false
         }
     }
 
@@ -455,12 +459,19 @@ final class ProviderCredentialFileStore: ProviderCredentialPersisting {
         guard let data = try readPrivateFileIfPresentLocked() else {
             return [:]
         }
-        return try decodeDocument(data)
+        let decoded = try decodeDocument(data)
+        if decoded.droppedRetiredAccounts {
+            // A key for a provider ZuTalk no longer uses is not kept on disk.
+            try writePrivateFileAtomicallyLocked(try encodeDocument(decoded.credentials))
+        }
+        return decoded.credentials
     }
 
+    /// A retired account is dropped rather than refused: refusing would make
+    /// the whole file unreadable, and with it the keys that still matter.
     private func decodeDocument(
         _ data: Data
-    ) throws -> [ProviderCredentialAccount: String] {
+    ) throws -> (credentials: [ProviderCredentialAccount: String], droppedRetiredAccounts: Bool) {
         guard data.count <= Self.maximumFileBytes else {
             throw ProviderCredentialStoreError.fileTooLarge
         }
@@ -476,16 +487,19 @@ final class ProviderCredentialFileStore: ProviderCredentialPersisting {
         }
 
         let knownNames = Set(ProviderCredentialAccount.allCases.map(\.rawValue))
+        let retiredNames = ProviderCredentialAccount.retiredRawValues
         let unknownNames = document.credentials.keys
-            .filter { !knownNames.contains($0) }
+            .filter { !knownNames.contains($0) && !retiredNames.contains($0) }
             .sorted()
         guard unknownNames.isEmpty else {
             throw ProviderCredentialStoreError.unknownAccounts(unknownNames)
         }
 
         var result: [ProviderCredentialAccount: String] = [:]
+        var droppedRetiredAccounts = false
         for (rawAccount, value) in document.credentials {
             guard let account = ProviderCredentialAccount(rawValue: rawAccount) else {
+                droppedRetiredAccounts = true
                 continue
             }
             let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -497,7 +511,7 @@ final class ProviderCredentialFileStore: ProviderCredentialPersisting {
             }
             result[account] = normalized
         }
-        return result
+        return (result, droppedRetiredAccounts)
     }
 
     private func encodeDocument(

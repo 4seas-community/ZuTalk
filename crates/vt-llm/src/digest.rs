@@ -143,14 +143,42 @@ pub fn source_fingerprint(request: &PassageDigestRequest) -> String {
 }
 
 #[derive(Deserialize)]
-struct MessagesResponse {
-    content: Vec<ContentBlock>,
+struct ChatCompletionResponse {
+    #[serde(default)]
+    choices: Vec<ChatChoice>,
 }
 
 #[derive(Deserialize)]
-struct ContentBlock {
+struct ChatChoice {
+    message: ChatMessage,
+}
+
+#[derive(Deserialize)]
+struct ChatMessage {
     #[serde(default)]
-    text: Option<String>,
+    content: Option<String>,
+}
+
+/// The request body, kept apart from the send so its shape can be tested
+/// without a network or a key.
+fn chat_completion_body(
+    engine: LanguageModelEngine,
+    request: &PassageDigestRequest,
+) -> serde_json::Value {
+    serde_json::json!({
+        "model": engine.model_id,
+        "messages": [
+            { "role": "system", "content": system_prompt(&request.target_language) },
+            { "role": "user", "content": user_prompt(request) },
+        ],
+        // A repair cannot be much longer than its input, and an unbounded
+        // ceiling turns one runaway response into a bill nobody expected.
+        "max_tokens": 2048,
+        // Thinking is on by default. A repair gains nothing from it and pays
+        // for it in latency and reasoning tokens.
+        "thinking": { "type": "disabled" },
+        "stream": false,
+    })
 }
 
 /// Sends one marked passage and returns it legible.
@@ -173,20 +201,10 @@ pub async fn digest_passage(
         .build()
         .map_err(|error| LanguageModelError::NetworkUnavailable(error.to_string()))?;
 
-    let body = serde_json::json!({
-        "model": engine.model_id,
-        // A repair cannot be much longer than its input, and an unbounded
-        // ceiling turns one runaway response into a bill nobody expected.
-        "max_tokens": 2048,
-        "system": system_prompt(&request.target_language),
-        "messages": [{ "role": "user", "content": user_prompt(request) }],
-    });
-
     let response = client
-        .post(format!("{}/v1/messages", engine.api_base_url))
-        .header("x-api-key", api_key)
-        .header("anthropic-version", engine.api_version)
-        .json(&body)
+        .post(format!("{}/chat/completions", engine.api_base_url))
+        .bearer_auth(api_key)
+        .json(&chat_completion_body(engine, request))
         .send()
         .await
         .map_err(|error| {
@@ -195,16 +213,16 @@ pub async fn digest_passage(
 
     classify(response.status().as_u16())?;
 
-    let parsed: MessagesResponse = response.json().await.map_err(|error| {
+    let parsed: ChatCompletionResponse = response.json().await.map_err(|error| {
         LanguageModelError::NetworkUnavailable(describe_transport_failure(&error))
     })?;
 
     let text = parsed
-        .content
+        .choices
         .into_iter()
-        .filter_map(|block| block.text)
-        .collect::<Vec<_>>()
-        .join("")
+        .next()
+        .and_then(|choice| choice.message.content)
+        .unwrap_or_default()
         .trim()
         .to_string();
 
@@ -311,6 +329,43 @@ mod tests {
             source_fingerprint(&base),
             source_fingerprint(&other_language)
         );
+    }
+
+    /// The same request the invite service makes, so a passage reads the
+    /// same whether the listener's key or an invitation paid for it.
+    #[test]
+    fn the_request_carries_the_repair_rules_and_a_bounded_reply() {
+        let passage = request(vec![line("and that is the crux of the issue", None)]);
+        let body = chat_completion_body(crate::CURRENT_LANGUAGE_MODEL_ENGINE, &passage);
+
+        assert_eq!(body["model"], crate::CURRENT_LANGUAGE_MODEL_ENGINE.model_id);
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"][0]["content"], system_prompt("zh-Hans"));
+        assert_eq!(body["messages"][1]["role"], "user");
+        assert_eq!(body["messages"][1]["content"], user_prompt(&passage));
+        assert_eq!(body["max_tokens"], 2048);
+        assert_eq!(body["thinking"]["type"], "disabled");
+        assert_eq!(body["stream"], false);
+    }
+
+    #[test]
+    fn the_reply_is_the_first_choice_s_message() {
+        let parsed: ChatCompletionResponse = serde_json::from_str(
+            r#"{"id":"x","object":"chat.completion","choices":[
+                {"index":0,"message":{"role":"assistant","content":"  这才是问题的核心。\n"},
+                 "finish_reason":"stop"}],
+               "usage":{"prompt_tokens":239,"completion_tokens":9}}"#,
+        )
+        .unwrap();
+        let text = parsed
+            .choices
+            .into_iter()
+            .next()
+            .and_then(|choice| choice.message.content);
+        assert_eq!(text.as_deref().map(str::trim), Some("这才是问题的核心。"));
+
+        let empty: ChatCompletionResponse = serde_json::from_str(r#"{"choices":[]}"#).unwrap();
+        assert!(empty.choices.is_empty());
     }
 
     #[tokio::test]
