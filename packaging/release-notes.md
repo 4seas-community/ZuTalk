@@ -1,34 +1,38 @@
-# ZuTalk 0.7.7
+# ZuTalk 0.7.8
 
-Long recordings keep their live transcript past the third hour.
+Three-language recordings keep every translation, and Stop always stops.
 
 ZuTalk requires macOS 12.5 or later.
 
 ## While recording
 
-- **Live transcription no longer stops after three hours on an
-  invitation.** On an invitation, each connection to the transcription
-  service may run only for a limited time — three hours, and less with
-  several languages (100 minutes with three spoken languages). When that
-  time ran out, ZuTalk took the closed connection for a rejected key,
-  stopped transcribing for the rest of the recording and told you the
-  service had rejected your key. Now every connection, in one language or
-  several, moves on to a fresh one before its time is up.
-- **The change-over is seamless.** ZuTalk switches connections at a pause
-  in speech, after the service has confirmed everything it heard, so no
-  words are lost or written twice where one connection ends and the next
-  begins, and the recording bar does not flash "connecting".
-- **Your own key carries on too.** The transcription service also ends any
-  connection after its own maximum length; recordings on your own key now
-  continue past it.
-- **When invitation time really runs out, ZuTalk says so.** The recording
-  bar now reads "Your invitation's time is used up" instead of claiming the
-  key was rejected, and a rejected key no longer suggests your invitation
-  time might be gone.
+- **Every translation reaches the transcript.** In recordings with three
+  languages, some translations never appeared: a short reply between two
+  sentences, a sentence the translation split differently from the
+  transcript, or anything translated right after a reconnect. Each
+  translation now finds its line as soon as the transcript has caught up
+  with it, and the line is chosen by when it was said.
+- **Long multi-language recordings stay live.** After about twenty minutes,
+  a three-language recording could fall into reconnecting every half
+  minute, losing translations each time. ZuTalk's own bookkeeping grew with
+  the length of the recording, and its connections mistook falling behind
+  for the service lagging. The work no longer grows as you record, and a
+  connection never waits for ZuTalk to catch up.
+- **Stop always stops.** If stopping, pausing or resuming does not finish
+  within 15 seconds, Stop becomes available again, and pressing it ends the
+  recording. Everything recorded is kept. Quitting ZuTalk no longer waits
+  indefinitely for a recording that will not stop.
+- **"Translated in the line above".** When one translated sentence covers
+  two lines of the transcript, the line without words of its own now says
+  where they are instead of showing a dash.
 
-## After recording
+## Community invitations
 
-- **The part that was not transcribed is marked.** If live transcription
-  had stopped before you stopped recording, the stretch from the last
-  transcribed line to the end of the recording now appears as a gap in the
-  transcript, so it is clear what still needs a full transcription.
+- **No more "community service unavailable" after a crash.** An invitation
+  no longer refuses a new recording because earlier ones were not settled.
+- **Invitation time is settled however a recording ends.** Stopped,
+  interrupted, quit, or — on the next launch — after a crash, a recording
+  is charged for the time it actually recorded.
+- **Clearer reasons when a recording cannot start**: the invitation's time
+  is used up, too many people are recording at once, or the invitation no
+  longer works.
