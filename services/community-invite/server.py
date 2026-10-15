@@ -70,10 +70,12 @@ RESERVATION_TTL_SECONDS = 6 * 60 * 60
 STREAM_WINDOW_SECONDS = 3 * 60 * 60
 # Soniox refuses a temporary key whose per-session cap exceeds this.
 SONIOX_MAX_SESSION_DURATION_SECONDS = 5 * 60 * 60
-# One partner records on one machine; a small allowance covers a second
-# device or a crashed session waiting for its TTL. Anything beyond that is
-# a shared or scripted token.
-MAX_OPEN_SESSIONS_PER_INVITE = 2
+# There is deliberately no cap on how many reservations one invitation may
+# hold open. A recording the app could not settle — force-quit, crash, a
+# settle request lost to the network — stays open until its TTL, and a cap of
+# two turned two of those into "service unavailable" for hours while nothing
+# was recording at all. What bounds a leaked token is the invitation's quota
+# (every reservation draws on it) and GLOBAL_CONCURRENT_LANE_CEILING.
 # A capture selects at most three target languages, which the core turns
 # into one canonical lane plus one translation lane per language. Everything
 # the server derives per lane is bounded by this.
@@ -94,10 +96,10 @@ MAX_LANES_PER_SESSION = 4
 # by total, and a four-lane group reconnecting in unison asks for four.
 #
 # What still bounds a leaked token is not this number. Every stream it opens
-# bills against the reservation's audio seconds, the reservation is bounded by
-# the invitation's quota, and MAX_OPEN_SESSIONS_PER_INVITE bounds how many
-# reservations can be open at once. This budget only stops a runaway client
-# from opening streams without limit inside one reservation.
+# bills against the reservation's audio seconds, every reservation is bounded
+# by the invitation's quota, and the global lane ceiling bounds how many
+# streams all invitations together may hold. This budget only stops a runaway
+# client from opening streams without limit inside one reservation.
 KEYS_PER_LANE = 256
 # Never below the old flat budget: a one-lane capture must not lose headroom
 # it has always had.
@@ -683,6 +685,17 @@ class Store:
                 """,
                 (MAX_LANES_PER_SESSION,),
             ).fetchone()["n"]
+
+    def session_belongs_to_invite(self, invite_id: int, session_id: str) -> bool:
+        """Whether this invitation ever held the session, open or closed."""
+        with self.connect() as db:
+            return (
+                db.execute(
+                    "SELECT 1 FROM sessions WHERE id = ? AND invite_id = ?",
+                    (session_id, invite_id),
+                ).fetchone()
+                is not None
+            )
 
     def count_open_sessions(self, invite_id: int) -> int:
         with self.connect() as db:
@@ -1913,12 +1926,6 @@ class Handler(BaseHTTPRequestHandler):
         body = self.read_json()
 
         if self.path == "/v1/realtime-session":
-            if (
-                self.store.count_open_sessions(invite["id"])
-                >= MAX_OPEN_SESSIONS_PER_INVITE
-            ):
-                self.send_json(409, {"error": "too_many_open_sessions"})
-                return
             requested = int(body.get("requested_seconds", MAX_SESSION_SECONDS))
             lanes = max(1, min(int(body.get("lane_count", 1)), MAX_LANES_PER_SESSION))
             # Refuse here rather than let Soniox refuse the WebSockets later:
@@ -2042,15 +2049,22 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/v1/realtime-session/settle":
+            session_id = str(body.get("session_id", ""))
             result = self.store.settle_session(
                 invite["id"],
-                str(body.get("session_id", "")),
+                session_id,
                 int(body.get("used_seconds", 0)),
             )
-            if result is None:
-                self.send_json(404, {"error": "session_not_found"})
-            else:
+            if result is not None:
                 self.send_json(200, result)
+            elif self.store.session_belongs_to_invite(invite["id"], session_id):
+                # Already closed — settled earlier, or swept by the TTL. The
+                # app retries settlements it could not deliver (after a crash,
+                # a quit, a dropped connection), so a repeat must be an
+                # answer, not an error: nothing is charged twice.
+                self.send_json(200, {**quota_payload(invite), "already_closed": True})
+            else:
+                self.send_json(404, {"error": "session_not_found"})
             return
 
         self.send_json(404, {"error": "not_found"})

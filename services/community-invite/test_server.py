@@ -782,6 +782,61 @@ class RealtimeSessionInitialKeyModeTests(unittest.TestCase):
         self.assertEqual(mint.call_count, 1)
         self.assertNotIn("single_use", mint.call_args.kwargs)
 
+    def test_unsettled_recordings_never_block_the_next_start(self):
+        # Three recordings the app never settled (force-quit twice, then a
+        # crash) used to leave the invitation refusing every start with
+        # 409 too_many_open_sessions until the TTL swept them.
+        with mock.patch.object(
+            server,
+            "create_soniox_temporary_key",
+            return_value={"api_key": "lane-key"},
+        ):
+            statuses = [
+                self.post_session(
+                    {
+                        "requested_seconds": 3_600,
+                        "lane_count": 3,
+                        "initial_key_mode": server.INITIAL_KEY_MODE_SINGLE_USE_BATCH,
+                    }
+                )[0]
+                for _ in range(4)
+            ]
+        self.assertEqual(statuses, [200, 200, 200, 200])
+        invite = self.store.invite_for_token(self.access_token)
+        self.assertEqual(self.store.count_open_sessions(invite["id"]), 4)
+
+    def test_repeating_a_settlement_answers_without_charging_twice(self):
+        with mock.patch.object(
+            server,
+            "create_soniox_temporary_key",
+            return_value={"api_key": "lane-key"},
+        ):
+            _, session = self.post_session(
+                {
+                    "requested_seconds": 3_600,
+                    "lane_count": 3,
+                    "initial_key_mode": server.INITIAL_KEY_MODE_SINGLE_USE_BATCH,
+                }
+            )
+        body = {"session_id": session["session_id"], "used_seconds": 900}
+        status, first = self.post("/v1/realtime-session/settle", body)
+        self.assertEqual(status, 200)
+        self.assertEqual(first["used_seconds"], 900)
+        self.assertNotIn("already_closed", first)
+
+        status, again = self.post("/v1/realtime-session/settle", body)
+        self.assertEqual(status, 200)
+        self.assertTrue(again["already_closed"])
+        self.assertEqual(again["used_seconds"], 900, "a retry must not charge again")
+
+    def test_settling_a_session_this_invitation_never_held_is_refused(self):
+        with self.assertRaises(urllib.error.HTTPError) as refused:
+            self.post(
+                "/v1/realtime-session/settle",
+                {"session_id": "not-a-session", "used_seconds": 60},
+            )
+        self.assertEqual(refused.exception.code, 404)
+
     def test_full_batch_makes_second_start_fail_fast_without_database_claims(self):
         self.assertLessEqual(
             server.SONIOX_KEY_MINT_ADMISSION_TIMEOUT_SECONDS,

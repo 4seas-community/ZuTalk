@@ -12,8 +12,16 @@ The long-lived `SONIOX_API_KEY` belongs only in `service.env` on the server.
 Never commit it. Clients receive short-lived temporary keys scoped to
 transcription WebSocket access; they never receive the server key.
 
-Abuse bounds enforced server-side: at most 2 open sessions per invite, and a
-finite per-session key budget (16) shared by the initial key, renewals
+Abuse bounds enforced server-side: every reservation draws on the
+invitation's quota, all invitations together may hold at most
+`GLOBAL_CONCURRENT_LANE_CEILING` lanes, and each session has a finite key
+budget. There is no cap on open sessions per invitation: a recording the app
+could not settle (force-quit, crash, lost connection) stays open until its
+TTL, and a cap turned those into hours of "service unavailable". Settling an
+already-closed session answers 200 with `"already_closed": true`, so the app
+can retry settlements it could not deliver without being charged twice.
+
+The key budget is shared by the initial key, renewals
 (`POST /v1/realtime-session/renew-key`, for recordings longer than the 1-hour
 key lifetime), and single-use per-connection keys
 (`POST /v1/realtime-session/key`, one key = one WebSocket lane, 5-minute
