@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod text;
+
 /// Local privacy policy applied before any remote provider is used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PrivacyLevel {

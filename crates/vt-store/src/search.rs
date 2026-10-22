@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use vt_model::text::{compose_thai_sara_am, decompose_thai_sara_am, is_unspaced_script};
 
 /// 搜索结果
 #[derive(Debug, Clone)]
@@ -46,7 +47,7 @@ impl SearchStore {
         )?;
         tx.execute(
             "INSERT INTO search_index (session_id, content) VALUES (?1, ?2)",
-            rusqlite::params![session_id, content],
+            rusqlite::params![session_id, compose_thai_sara_am(content)],
         )?;
         tx.commit()?;
         Ok(())
@@ -170,25 +171,55 @@ impl SearchStore {
     /// 全文搜索
     ///
     /// 英文使用 FTS5 MATCH（带排名和高亮）。
-    /// CJK 降级为 LIKE 子串匹配——unicode61 对无空格语言分词不可靠。
+    /// 词与词之间不留空格的文字（中日文、泰文、老挝文、缅甸文、高棉文）以及
+    /// 韩文降级为子串匹配：unicode61 找不到这些文字的词边界，泰文更是在每个
+    /// 元音和声调符号处被切开，句中的词只能碰巧搜到。
+    ///
+    /// 泰文的 SARA AM 两边都按合成写法（U+0E33）比较；索引里归一化之前写入
+    /// 的旧内容还是供应商的分解写法，所以同时按分解写法再找一次。
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>, SearchStoreError> {
         let conn = self.conn.lock().unwrap();
+        let query = compose_thai_sara_am(query);
+        let query = query.as_ref();
 
-        let has_cjk = query.chars().any(|c| {
-            matches!(c,
-                '\u{4E00}'..='\u{9FFF}'
-                | '\u{3040}'..='\u{309F}'
-                | '\u{30A0}'..='\u{30FF}'
-                | '\u{AC00}'..='\u{D7AF}'
-            )
-        });
+        let needs_substring = query
+            .chars()
+            .any(|c| is_unspaced_script(c) || matches!(c, '\u{AC00}'..='\u{D7AF}'));
 
-        if has_cjk {
+        if needs_substring {
             // Never bridge the whole transcript for a hit. A common CJK word
             // can match thousands of multi-hour Sessions; returning `content`
             // here previously turned one search into hundreds of MB or more.
             // SQLite `substr` counts Unicode characters, so the result stays
             // bounded before it crosses Rust/Swift FFI.
+            let legacy = decompose_thai_sara_am(query);
+            if legacy != query {
+                let mut stmt = conn.prepare(
+                    "SELECT session_id,
+                            substr(content,
+                                   max(coalesce(nullif(instr(content, ?1), 0),
+                                                instr(content, ?3)) - 80, 1),
+                                   240),
+                            0.0
+                     FROM search_index
+                     WHERE instr(content, ?1) > 0 OR instr(content, ?3) > 0
+                     LIMIT ?2",
+                )?;
+                let results = stmt
+                    .query_map(
+                        rusqlite::params![query, limit as i64, legacy.as_ref()],
+                        |row| {
+                            Ok(SearchResult {
+                                session_id: row.get(0)?,
+                                snippet: row.get(1)?,
+                                rank: row.get(2)?,
+                            })
+                        },
+                    )?
+                    .filter_map(|r| r.ok())
+                    .collect();
+                return Ok(results);
+            }
             let mut stmt = conn.prepare(
                 "SELECT session_id,
                         substr(content, max(instr(content, ?1) - 80, 1), 240),
@@ -256,7 +287,7 @@ fn replace_session_in_transaction(
     )?;
     tx.execute(
         "INSERT INTO search_index (session_id, content) VALUES (?1, ?2)",
-        params![session_id, content],
+        params![session_id, compose_thai_sara_am(content)],
     )?;
     Ok(())
 }
@@ -303,6 +334,61 @@ mod tests {
         let results = store.search("产品", 10).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].session_id, "s1");
+    }
+
+    /// Thai is written without spaces between words, and unicode61 splits it
+    /// at every vowel and tone mark, so a word inside a sentence matched
+    /// only by luck. Transcripts also carry the provider's decomposed SARA AM
+    /// (U+0E4D U+0E32) while people type U+0E33.
+    #[test]
+    fn thai_words_inside_a_sentence_are_found() {
+        let (_tmp, store) = setup();
+        store
+            .index_session(
+                "th",
+                "วันนี้เราจะมาคุยกันเรื่องชุมชนดิจิทัลที่เชียงใหม่ และวิธีที่คนจากหลายประเทศมาท\u{0E4D}\u{0E32}งานร่วมกัน",
+            )
+            .unwrap();
+        store.index_session("other", "明天 去 野餐").unwrap();
+        for word in ["ชุมชน", "ดิจิทัล", "ประเทศ", "ทำงาน", "ท\u{0E4D}\u{0E32}งาน"]
+        {
+            let results = store.search(word, 10).unwrap();
+            assert_eq!(
+                results
+                    .iter()
+                    .map(|r| r.session_id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["th"],
+                "searching {word}"
+            );
+        }
+    }
+
+    /// A recording indexed by an earlier build holds the provider's spelling.
+    #[test]
+    fn thai_indexed_before_normalization_is_still_found() {
+        let (_tmp, store) = setup();
+        store
+            .conn
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO search_index (session_id, content) VALUES ('old', ?1)",
+                ["เราจะมาท\u{0E4D}\u{0E32}งานร่วมกันและดื่มน\u{0E49}\u{0E4D}\u{0E32}"],
+            )
+            .unwrap();
+        for word in ["ทำงาน", "น้ำ", "ร่วมกัน"] {
+            let results = store.search(word, 10).unwrap();
+            assert_eq!(
+                results
+                    .iter()
+                    .map(|r| r.session_id.as_str())
+                    .collect::<Vec<_>>(),
+                vec!["old"],
+                "searching {word}"
+            );
+            assert!(!results[0].snippet.is_empty());
+        }
     }
 
     #[test]
