@@ -1382,6 +1382,70 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    /// The ellipsis promises words still on their way. In silence it must go
+    /// once nothing is: a segment that ends a few hundred milliseconds short
+    /// of the row (each stream times its own boundaries), or a lane that has
+    /// settled past the speech without producing anything for it.
+    func testTheWaitingEllipsisClearsOnceNothingMoreIsComing() {
+        let spoken = NotebookCaptureUtteranceDTO(
+            id: "utt-0",
+            sessionId: "session",
+            sequence: 0,
+            revision: 1,
+            sourceLanguage: "zh",
+            sourceText: "我们开始吧",
+            sourceStartMs: 2_000,
+            sourceEndMs: 5_000,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "complete",
+            alignment: "source_only"
+        )
+        let cue = { (target: String, end: UInt64) in
+            NotebookCaptureTranslationCueDTO(
+                targetLanguage: target,
+                groupEpoch: 0,
+                providerSequence: 0,
+                sourceLanguage: "zh",
+                sourceStartMs: 2_000,
+                sourceEndMs: end,
+                text: "Let's begin",
+                completion: "complete",
+                withdrawn: false,
+                revision: 1
+            )
+        }
+        let columns = SubtitleAudienceTimeline.columns(
+            languages: ["zh", "en", "th", "ja"],
+            utterances: [spoken],
+            placement: { $0.sourceLanguage },
+            cues: { language in
+                switch language {
+                case "en": [cue("en", 4_700)]
+                case "ja": [cue("ja", 2_600)]
+                default: []
+                }
+            }
+        )
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.waitingLanguages(columns: columns),
+            ["th", "ja"],
+            "a segment ending 300 ms short of the row covers it"
+        )
+        var progress = NotebookTranslationProgress()
+        progress.settledThroughMs = ["th": 7_500, "ja": 6_000]
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.waitingLanguages(columns: columns, progress: progress),
+            ["ja"],
+            "a lane settled past the speech has nothing more on its way"
+        )
+        progress.stoppedLanguages = ["ja"]
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.waitingLanguages(columns: columns, progress: progress),
+            []
+        )
+    }
+
     func testAudienceTimelineColumnsAnchorByTimeAndKeepIndependentSegmentation() {
         let source = { (sequence: UInt64, language: String, text: String, start: UInt64) in
             NotebookCaptureUtteranceDTO(
