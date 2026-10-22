@@ -1264,6 +1264,9 @@ struct RealtimeSegmentRevision {
     /// re-assembled whenever a later translation dirties it, so without this
     /// the same row would be counted once per revision.
     source_timestamp_censused: bool,
+    /// Latin words the current speaker has put into this row since its own
+    /// language last spoke — an English term inside a Thai sentence.
+    embedded_words: usize,
 }
 
 impl RealtimeSegmentRevision {
@@ -1290,6 +1293,7 @@ impl RealtimeSegmentRevision {
             source_dirty: false,
             translation_dirty: false,
             source_timestamp_censused: false,
+            embedded_words: 0,
         }
     }
 
@@ -1875,6 +1879,48 @@ const CROSS_ROW_OVERLAP_WARN_PER_MILLE: u16 = 500;
 /// below the runaway rows this exists to cut.
 const MAX_CANONICAL_SEGMENT_MS: u64 = 25_000;
 
+/// How long a speaker label must stay silent before a new label on the same
+/// language counts as another person. Measured on the provider's labels: the
+/// changes that came with no pause at all fell inside a word.
+const SPEAKER_CHANGE_PAUSE_MS: u64 = 200;
+
+/// How many Latin words in a row a sentence in another script takes in as
+/// its own before they are a new language.
+const EMBEDDED_WORD_LIMIT: usize = 3;
+
+/// A word that follows a longer silence than this starts something new.
+const EMBEDDED_WORD_PAUSE_MS: u64 = 700;
+
+/// Languages written in Latin letters, whose rows an English word does not
+/// join as a foreign one.
+fn is_latin_language(language: &str) -> bool {
+    !matches!(
+        language.split(['-', '_']).next().unwrap_or_default(),
+        "th" | "lo"
+            | "km"
+            | "my"
+            | "zh"
+            | "yue"
+            | "ja"
+            | "ko"
+            | "ru"
+            | "uk"
+            | "bg"
+            | "sr"
+            | "mk"
+            | "be"
+            | "kk"
+            | "el"
+            | "ar"
+            | "fa"
+            | "ur"
+            | "he"
+            | "hi"
+            | "mr"
+            | "ne"
+    )
+}
+
 /// Closes a canonical row that provider endpointing has left open too long.
 ///
 /// Positions are provider-confirmed audio milliseconds, not wall clock: a lane
@@ -2428,6 +2474,8 @@ async fn collect_stream_events_until_closed(
         } else {
             FinalizeBoundary::ConnectionClosing
         };
+        #[cfg(debug_assertions)]
+        trace_lane_event(&lanes[lane_index].descriptor, lane_index, &tagged.event);
         let persisted = match tagged.event {
             SttStreamEvent::Connected => {
                 {
@@ -3338,6 +3386,75 @@ fn mark_waiting_translation_variants_unavailable(
         }
     }
     Ok(latest_utterance_revisions(updates))
+}
+
+/// Debug builds only: every provider event of every lane, one JSON line each,
+/// to the file `ZUTALK_LANE_TRACE` names. How the lanes' tokens interleave is
+/// what decides where a translation lands, and nothing else records it.
+#[cfg(debug_assertions)]
+fn trace_lane_event(descriptor: &RemoteStreamLane, lane_index: usize, event: &SttStreamEvent) {
+    use std::io::Write;
+    static TRACE: std::sync::OnceLock<Option<std::sync::Mutex<std::fs::File>>> =
+        std::sync::OnceLock::new();
+    let Some(file) = TRACE.get_or_init(|| {
+        let path = std::env::var_os("ZUTALK_LANE_TRACE")?;
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .ok()
+            .map(std::sync::Mutex::new)
+    }) else {
+        return;
+    };
+    let at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or_default();
+    let (kind, tokens) = match event {
+        SttStreamEvent::Tokens(tokens) => (
+            "tokens",
+            tokens
+                .iter()
+                .map(|token| {
+                    serde_json::json!({
+                        "t": token.text,
+                        "s": token.start_ms,
+                        "e": token.end_ms,
+                        "f": token.is_final,
+                        "tr": format!("{:?}", token.translation_status),
+                        "l": token.language,
+                        "sl": token.source_language,
+                        "sp": token.speaker,
+                    })
+                })
+                .collect::<Vec<_>>(),
+        ),
+        SttStreamEvent::Endpoint => ("endpoint", Vec::new()),
+        SttStreamEvent::Finalized => ("finalized", Vec::new()),
+        SttStreamEvent::Finished => ("finished", Vec::new()),
+        SttStreamEvent::AudioProgress {
+            final_audio_proc_ms,
+            ..
+        } => {
+            let line = serde_json::json!({
+                "at": at_ms, "lane": lane_index, "target": descriptor.target_language,
+                "canonical": descriptor.canonical, "kind": "progress", "final_ms": final_audio_proc_ms,
+            });
+            if let Ok(mut file) = file.lock() {
+                let _ = writeln!(file, "{line}");
+            }
+            return;
+        }
+        _ => ("other", Vec::new()),
+    };
+    let line = serde_json::json!({
+        "at": at_ms, "lane": lane_index, "target": descriptor.target_language,
+        "canonical": descriptor.canonical, "kind": kind, "tokens": tokens,
+    });
+    if let Ok(mut file) = file.lock() {
+        let _ = writeln!(file, "{line}");
+    }
 }
 
 fn forget_canonical_sequence(
@@ -5252,19 +5369,31 @@ impl RealtimeUtteranceAssembler {
     }
 
     fn apply_original_token(&mut self, token: &SttStreamToken) {
-        let language = normalized_optional_language(
-            token
-                .language
-                .as_deref()
-                .or(token.source_language.as_deref()),
-        );
+        // Letters only one selected language is written in say which it is,
+        // whatever the provider labelled them.
+        let language = vt_model::script::language_written_in(
+            &token.text,
+            self.selected_languages.iter().map(String::as_str),
+        )
+        .map(str::to_string)
+        .or_else(|| {
+            normalized_optional_language(
+                token
+                    .language
+                    .as_deref()
+                    .or(token.source_language.as_deref()),
+            )
+        });
         let provider_speaker = normalized_provider_speaker(token.speaker.as_deref());
-        let segment_index = self.source_segment_for_token(
-            token.is_final,
-            language.as_deref(),
-            provider_speaker.as_deref(),
-        );
+        let (segment_index, embedded) =
+            self.source_segment_for_token(token, language.as_deref(), provider_speaker.as_deref());
         let segment = &mut self.segments[segment_index];
+        // An embedded word takes the row's language, not its own.
+        let language = if embedded {
+            segment.stable_source_language().map(str::to_string)
+        } else {
+            language
+        };
         segment.source.push(token, language);
         if token.is_final {
             if provider_speaker.is_some() {
@@ -5304,12 +5433,15 @@ impl RealtimeUtteranceAssembler {
         self.latest_original_segment = Some(segment_index);
     }
 
+    /// The segment a source token belongs to, and whether it is an embedded
+    /// word that keeps that segment's language.
     fn source_segment_for_token(
         &mut self,
-        is_final: bool,
+        token: &SttStreamToken,
         language: Option<&str>,
         provider_speaker: Option<&str>,
-    ) -> usize {
+    ) -> (usize, bool) {
+        let is_final = token.is_final;
         let current = self
             .latest_original_segment
             .filter(|index| !self.segments[*index].complete);
@@ -5320,27 +5452,55 @@ impl RealtimeUtteranceAssembler {
                         && !segment.has_source_text()
                         && segment.matching_provider_speaker() == Some(provider_speaker)
                 }) {
-                    return index;
+                    return (index, false);
                 }
             }
-            return self.create_segment();
+            return (self.create_segment(), false);
         };
 
-        if is_final
-            && self.segments[current].has_source_text()
-            && (identity_conflicts(self.segments[current].stable_source_language(), language)
-                || identity_conflicts(
-                    self.segments[current].stable_provider_speaker(),
-                    provider_speaker,
-                ))
-        {
+        let segment = &self.segments[current];
+        if !is_final || !segment.has_source_text() {
+            return (current, false);
+        }
+        let row_language = segment.stable_source_language();
+        let speaker_changes =
+            identity_conflicts(segment.stable_provider_speaker(), provider_speaker);
+        let language_changes = identity_conflicts(row_language, language);
+        let pause_ms = match (segment.committed_source_end_ms, token.start_ms) {
+            (Some(previous_end), Some(start)) => Some(start.saturating_sub(previous_end)),
+            _ => None,
+        };
+        let paused = pause_ms.is_none_or(|pause| pause >= SPEAKER_CHANGE_PAUSE_MS);
+        // A Latin word or two inside a sentence in another script is part of
+        // that sentence; a third in a row is the speaker changing language.
+        let embedded = language_changes
+            && !speaker_changes
+            && row_language.is_some_and(|language| !is_latin_language(language))
+            && vt_model::script::is_latin_text(&token.text)
+            && pause_ms.is_some_and(|pause| pause < EMBEDDED_WORD_PAUSE_MS)
+            && segment.embedded_words + 1 < EMBEDDED_WORD_LIMIT;
+        let starts_turn = match (speaker_changes, language_changes) {
+            // Another person in another language.
+            (true, true) => true,
+            // The same language under a new label: a turn only after a pause.
+            // The provider's labels flip inside a word now and then.
+            (true, false) => paused,
+            (false, true) => !embedded,
+            (false, false) => false,
+        };
+        if starts_turn {
             self.segments[current].complete = true;
             self.segments[current].source_dirty = true;
             self.segments[current].translation_dirty = true;
-            return self.create_segment();
+            return (self.create_segment(), false);
         }
-
-        current
+        let segment = &mut self.segments[current];
+        if embedded {
+            segment.embedded_words += 1;
+        } else if !language_changes {
+            segment.embedded_words = 0;
+        }
+        (current, embedded)
     }
 
     fn apply_translation_token(&mut self, token: &SttStreamToken) {
@@ -5794,7 +5954,15 @@ fn assemble_segment(
     // source must withdraw its still-Partial inline translation in the same
     // transaction. Independent auxiliary lanes live outside this assembler.
     let translated_text = (!source_text.is_empty() && translation_is_pairable)
-        .then(|| segment.translated.text(include_pending_translation))
+        .then(|| {
+            let text = segment.translated.text(include_pending_translation);
+            match translated_language_candidate {
+                Some(target) => {
+                    vt_model::text::polish_translation(&text, &source_language, target).into_owned()
+                }
+                None => text,
+            }
+        })
         .filter(|text| is_publishable_text(text));
     let translated_language = translated_text
         .as_ref()
@@ -9947,6 +10115,10 @@ impl ZuTalkCore {
                     translation,
                     context: context_config.clone(),
                     client_reference_id,
+                    // The canonical lane's rows are the ones everything else
+                    // is placed on; it closes a long one at the next pause,
+                    // and the auxiliary lanes close with it.
+                    close_long_utterances_at_pauses: canonical,
                     ..Default::default()
                 };
                 let lane_cancel = cancel.child_token();
@@ -15146,6 +15318,175 @@ pub(crate) mod tests {
             language: language.map(str::to_string),
             source_language: source_language.map(str::to_string),
             speaker: speaker.map(str::to_string),
+        }
+    }
+
+    fn spoken(
+        text: &str,
+        language: &str,
+        speaker: &str,
+        start_ms: u64,
+        end_ms: u64,
+    ) -> SttStreamToken {
+        SttStreamToken {
+            text: text.into(),
+            start_ms: Some(start_ms),
+            end_ms: Some(end_ms),
+            is_final: true,
+            confidence: None,
+            translation_status: SttStreamTranslationStatus::Original,
+            language: Some(language.into()),
+            source_language: None,
+            speaker: Some(speaker.into()),
+        }
+    }
+
+    fn rows_of(tokens: &[SttStreamToken]) -> Vec<(String, String)> {
+        let mut three = profile();
+        three.capture_mode = CaptureMode::MultilingualOneWay;
+        three.selected_languages = vec!["th".into(), "zh".into(), "en".into()];
+        three.common_caption_language = Some("en".into());
+        let mut assembler = RealtimeUtteranceAssembler::new("rows-session".into(), &three);
+        let mut rows = std::collections::BTreeMap::new();
+        for update in assembler
+            .apply_tokens(tokens)
+            .into_iter()
+            .chain(assembler.finalize(FinalizeBoundary::ProviderBoundary))
+        {
+            rows.insert(
+                update.utterance.sequence,
+                (
+                    update.utterance.source_language,
+                    update.utterance.source_text.trim().to_string(),
+                ),
+            );
+        }
+        rows.into_values()
+            .filter(|(_, text)| !text.is_empty())
+            .collect()
+    }
+
+    /// The provider's speaker labels flip inside a word now and then — on
+    /// the same voice, with no pause at all. A Thai word is several tokens,
+    /// so it was cut in two: "เต็น" on one row, "ท์ไว้" on the next.
+    #[test]
+    fn a_speaker_label_that_flips_without_a_pause_does_not_cut_the_row() {
+        let rows = rows_of(&[
+            spoken("เราเตรียมเต็น", "th", "1", 0, 600),
+            spoken("ท์ไว้", "th", "2", 600, 900),
+            spoken(" fin", "en", "2", 2_000, 2_200),
+            spoken("e.", "en", "3", 2_300, 2_400),
+        ]);
+        assert_eq!(rows[0], ("th".into(), "เราเตรียมเต็นท์ไว้".into()));
+        assert_eq!(rows[1], ("en".into(), "fine.".into()));
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn a_new_speaker_after_a_pause_starts_a_row() {
+        let rows = rows_of(&[
+            spoken("สวัสดี", "th", "1", 0, 600),
+            spoken("ครับ", "th", "2", 1_000, 1_300),
+        ]);
+        assert_eq!(rows.len(), 2);
+    }
+
+    /// Thai letters are Thai whatever the provider labels them. It labelled
+    /// the end of a Thai sentence English, and the row went to the English
+    /// column with its Thai cell empty.
+    #[test]
+    fn thai_text_the_provider_labels_english_stays_in_the_thai_row() {
+        let rows = rows_of(&[
+            spoken("ส่วนคุณซาร่าจะเล่าเรื่องการทำ", "th", "1", 0, 2_000),
+            spoken(" Power", "th", "1", 2_000, 2_400),
+            spoken(" Class", "en", "1", 2_900, 3_300),
+            spoken(" ภาษาไทย.", "en", "1", 3_400, 4_000),
+        ]);
+        assert_eq!(
+            rows,
+            vec![(
+                "th".into(),
+                "ส่วนคุณซาร่าจะเล่าเรื่องการทำ Power Class ภาษาไทย.".into()
+            )]
+        );
+    }
+
+    #[test]
+    fn another_speaker_in_another_language_still_starts_a_row() {
+        let rows = rows_of(&[
+            spoken("ตกลงค่ะ", "th", "1", 0, 600),
+            spoken(" Great", "en", "2", 660, 900),
+        ]);
+        assert_eq!(rows.len(), 2);
+    }
+
+    /// An English word or two inside a Thai sentence is part of it; a
+    /// sentence of English is not, even when the provider hears one speaker.
+    #[test]
+    fn an_english_sentence_after_thai_does_not_stay_on_the_thai_row() {
+        let rows = rows_of(&[
+            spoken("ตกลงค่ะ", "th", "1", 0, 600),
+            spoken(" Do", "en", "1", 1_300, 1_500),
+            spoken(" we", "en", "1", 1_500, 1_600),
+            spoken(" already", "en", "1", 1_600, 1_900),
+            spoken(" have", "en", "1", 1_900, 2_100),
+            spoken(" a", "en", "1", 2_100, 2_200),
+            spoken(" list?", "en", "1", 2_200, 2_500),
+        ]);
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(rows[1].0, "en");
+    }
+
+    /// A translation reaches the row set for its reader: a Chinese one from
+    /// English loses the seams of the provider's streamed chunks, a Thai one
+    /// the particles that guess the speaker's gender.
+    #[test]
+    fn translations_reach_the_row_polished_for_their_reader() {
+        for (target, source_text, pieces, expected) in [
+            (
+                "zh",
+                "Long Thai passages tend to arrive late on the screen.",
+                vec!["很长的泰语段落", " 往往会在屏幕上出现得比较晚。"],
+                "很长的泰语段落往往会在屏幕上出现得比较晚。",
+            ),
+            (
+                "th",
+                "Thank you, everyone.",
+                vec!["ขอบคุณ", "ครับ", " ทุกคน"],
+                "ขอบคุณ ทุกคน",
+            ),
+        ] {
+            let mut two_way = profile();
+            two_way.language_b = target.into();
+            two_way.right_language = target.into();
+            two_way.selected_languages = vec!["en".into(), target.into()];
+            let mut assembler = RealtimeUtteranceAssembler::new("polish-session".into(), &two_way);
+            let mut tokens = vec![token(
+                source_text,
+                SttStreamTranslationStatus::Original,
+                "en",
+                Some(100),
+                Some(2_000),
+                true,
+            )];
+            tokens.extend(pieces.iter().map(|piece| {
+                attributed_token(
+                    piece,
+                    SttStreamTranslationStatus::Translation,
+                    Some(target),
+                    Some("en"),
+                    None,
+                    true,
+                )
+            }));
+            assembler.apply_tokens(&tokens);
+            let rows = assembler.finalize(FinalizeBoundary::ProviderBoundary);
+            let row = rows.last().expect("the segment closes into a row");
+            assert_eq!(
+                row.utterance.translated_text.as_deref(),
+                Some(expected),
+                "{target}"
+            );
         }
     }
 

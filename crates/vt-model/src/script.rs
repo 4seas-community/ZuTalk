@@ -90,9 +90,44 @@ pub fn script_contradicts_language(text: &str, language: &str) -> bool {
     letters > 0 && in_expected == 0
 }
 
+/// The one language among `candidates` whose writing `text` is in, when its
+/// letters are all in one script other than Latin and only that language
+/// uses it — Thai letters with Thai selected, Chinese characters with
+/// Chinese and not Japanese. Latin letters say nothing: they are the English
+/// words people put into Thai and Chinese speech as often as they are
+/// English.
+pub fn language_written_in<'a>(
+    text: &str,
+    candidates: impl IntoIterator<Item = &'a str>,
+) -> Option<&'a str> {
+    let mut script = None;
+    for character in text.chars() {
+        let Some(found) = script_of(character) else {
+            continue;
+        };
+        match script {
+            None => script = Some(found),
+            Some(current) if current == found => {}
+            Some(_) => return None,
+        }
+    }
+    let script = script.filter(|script| *script != Script::Latin)?;
+    let mut writers = candidates.into_iter().filter(|language| {
+        scripts_of_language(language).is_some_and(|scripts| scripts.contains(&script))
+    });
+    let only = writers.next()?;
+    writers.next().is_none().then_some(only)
+}
+
+/// Whether every letter of `text` is Latin, and there is at least one.
+pub fn is_latin_text(text: &str) -> bool {
+    let mut letters = text.chars().filter_map(script_of).peekable();
+    letters.peek().is_some() && letters.all(|script| script == Script::Latin)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::script_contradicts_language;
+    use super::{is_latin_text, language_written_in, script_contradicts_language};
 
     #[test]
     fn a_label_is_contradicted_only_by_text_with_none_of_its_script() {
@@ -109,5 +144,23 @@ mod tests {
         assert!(!script_contradicts_language("我们走吧", "und"));
         assert!(!script_contradicts_language("我们走吧", "xx"));
         assert!(!script_contradicts_language("我们走吧", "zh-Hant"));
+    }
+
+    #[test]
+    fn letters_of_one_language_name_it_and_latin_letters_name_none() {
+        let three = ["th", "zh", "en"];
+        assert_eq!(language_written_in(" ภาษาไทย.", three), Some("th"));
+        assert_eq!(language_written_in("我们", three), Some("zh"));
+        assert_eq!(language_written_in(" Class", three), None);
+        assert_eq!(language_written_in("我们 ok", three), None);
+        assert_eq!(
+            language_written_in("我们", ["zh", "ja"]),
+            None,
+            "both write Han"
+        );
+        assert_eq!(language_written_in("123 ", three), None);
+        assert!(is_latin_text(" Class"));
+        assert!(!is_latin_text(" ภาษา"));
+        assert!(!is_latin_text(" 2026"));
     }
 }

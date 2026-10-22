@@ -122,6 +122,104 @@ pub fn normalize_provider_text(text: &str) -> String {
     normalize_pieces(&[text], true).remove(0)
 }
 
+/// A machine translation set for its reader, given the language it was
+/// translated from.
+///
+/// - Into Chinese or Japanese from a language that spaces its words, a space
+///   between two characters is a seam where the provider's streamed
+///   translation was joined, in the middle of a phrase. From Thai it is the
+///   space Thai writes between clauses, and it stays.
+/// - Into Thai, the provider ends sentences with ค่ะ, คะ or ครับ, which say
+///   whether the speaker is a woman or a man. It does not know, and the
+///   speaker said no such thing; written Thai reads complete without them.
+pub fn polish_translation<'a>(
+    text: &'a str,
+    source_language: &str,
+    target_language: &str,
+) -> Cow<'a, str> {
+    let source = primary_language(source_language);
+    let target = primary_language(target_language);
+    if source == target {
+        return Cow::Borrowed(text);
+    }
+    match target.as_str() {
+        "zh" | "yue" | "ja" if !is_unspaced_language(&source) => {
+            remove_seams_between_characters(text)
+        }
+        "th" => drop_thai_politeness_particles(text),
+        _ => Cow::Borrowed(text),
+    }
+}
+
+fn primary_language(language: &str) -> String {
+    language
+        .trim()
+        .split(['-', '_'])
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+}
+
+/// Languages written without spaces between words, where a space marks a
+/// pause or a clause.
+fn is_unspaced_language(language: &str) -> bool {
+    matches!(language, "th" | "lo" | "km" | "my" | "zh" | "yue" | "ja")
+}
+
+fn remove_seams_between_characters(text: &str) -> Cow<'_, str> {
+    if !text.contains(is_provider_space) {
+        return Cow::Borrowed(text);
+    }
+    let characters: Vec<char> = text.chars().collect();
+    let mut output = String::with_capacity(text.len());
+    let mut index = 0;
+    while index < characters.len() {
+        let character = characters[index];
+        if is_provider_space(character) {
+            let mut end = index;
+            while end < characters.len() && is_provider_space(characters[end]) {
+                end += 1;
+            }
+            let between_characters = output.chars().next_back().is_some_and(is_han_or_kana)
+                && characters.get(end).copied().is_some_and(is_han_or_kana);
+            if !between_characters {
+                output.extend(&characters[index..end]);
+            }
+            index = end;
+            continue;
+        }
+        output.push(character);
+        index += 1;
+    }
+    Cow::Owned(output)
+}
+
+fn drop_thai_politeness_particles(text: &str) -> Cow<'_, str> {
+    const PARTICLES: [&str; 3] = ["ครับ", "ค่ะ", "คะ"];
+    if !PARTICLES.iter().any(|particle| text.contains(particle)) {
+        return Cow::Borrowed(text);
+    }
+    let mut output = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(character) = rest.chars().next() {
+        let particle = PARTICLES.iter().find(|particle| {
+            rest.starts_with(**particle)
+                // It ends a clause: nothing Thai follows it.
+                && rest[particle.len()..].chars().next().is_none_or(|next| !is_thai(next))
+                // And something Thai precedes it: a particle on its own is
+                // the whole answer, and keeps its meaning.
+                && output.chars().next_back().is_some_and(is_thai)
+        });
+        if let Some(particle) = particle {
+            rest = &rest[particle.len()..];
+            continue;
+        }
+        output.push(character);
+        rest = &rest[character.len_utf8()..];
+    }
+    Cow::Owned(output)
+}
+
 /// [`normalize_provider_text`] over a sequence of tokens, keeping every
 /// token's boundary: the result has one entry per input, and joining it is
 /// the normalized join. A NIKHAHIT that ends one token and the SARA AA that
@@ -274,5 +372,51 @@ mod tests {
         for character in ['한', 'a', ' ', '。'] {
             assert!(!is_unspaced_script(character), "{character}");
         }
+    }
+
+    #[test]
+    fn a_translation_from_a_spaced_language_loses_the_seams_between_chinese_characters() {
+        assert_eq!(
+            polish_translation("很长的泰语段落 往往会在屏幕上出现", "en", "zh"),
+            "很长的泰语段落往往会在屏幕上出现"
+        );
+        assert_eq!(
+            polish_translation("请记住 下周的会议将重点关注 治理问题", "en", "zh"),
+            "请记住下周的会议将重点关注治理问题"
+        );
+        // Mixed script keeps its spacing.
+        assert_eq!(
+            polish_translation("他说 ZuTalk 很好用", "en", "zh"),
+            "他说 ZuTalk 很好用"
+        );
+    }
+
+    #[test]
+    fn a_translation_from_thai_keeps_the_space_that_stood_for_a_sentence_break() {
+        let text = "重要的是成员之间的信任 因为如果没有信任";
+        assert_eq!(polish_translation(text, "th", "zh"), text);
+    }
+
+    #[test]
+    fn a_thai_translation_drops_the_particles_that_presume_who_is_speaking() {
+        assert_eq!(
+            polish_translation("ขอเสริมอีกนิดนะคะ: กิจกรรมนี้ดีมาก", "zh", "th"),
+            "ขอเสริมอีกนิดนะ: กิจกรรมนี้ดีมาก"
+        );
+        assert_eq!(
+            polish_translation("สามารถสมัครในกลุ่มล่วงหน้าได้ค่ะ", "zh", "th"),
+            "สามารถสมัครในกลุ่มล่วงหน้าได้"
+        );
+        assert_eq!(
+            polish_translation("ขอบคุณครับ ทุกคน", "en", "th"),
+            "ขอบคุณ ทุกคน"
+        );
+        assert_eq!(polish_translation("ไปไหมคะ?", "en", "th"), "ไปไหม?");
+        // A particle that is the whole answer is its meaning; a word that only
+        // begins with the same letters is not a particle.
+        assert_eq!(polish_translation("ค่ะ", "en", "th"), "ค่ะ");
+        assert_eq!(polish_translation("ได้คะแนนเต็ม", "en", "th"), "ได้คะแนนเต็ม");
+        // Thai spoken by the speaker is never touched by this.
+        assert_eq!(polish_translation("ได้ค่ะ", "th", "zh"), "ได้ค่ะ");
     }
 }

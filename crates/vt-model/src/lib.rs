@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-mod script;
+pub mod script;
 pub mod text;
 
 pub use script::script_contradicts_language;

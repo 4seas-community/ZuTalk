@@ -42,6 +42,8 @@ final class LiveCaptureReplayTests: XCTestCase {
         let subtitles: Bool?
         /// Write every callback the core delivers to this JSON Lines file.
         let record: String?
+        /// Terms to hand Soniox as the notebook's context, one per entry.
+        let context_terms: [String]?
     }
 
     func testReplayRecordedFileThroughTheLivePage() async throws {
@@ -86,6 +88,18 @@ final class LiveCaptureReplayTests: XCTestCase {
         profile.leftLanguage = config.languages[0]
         profile.rightLanguage = config.languages[1]
         profile.sendContextToSoniox = false
+        if let terms = config.context_terms, terms.isEmpty == false {
+            let pack = try core.createLibraryContextPack(title: "Replay terms")
+            try core.setNotebookContextPackBinding(notebookId: notebook.id, packId: pack.id, position: nil)
+            _ = try core.importContextPackText(
+                notebookId: notebook.id,
+                packId: pack.id,
+                title: "Terms",
+                text: terms.joined(separator: "\n"),
+                contentKind: "terms"
+            )
+            profile.sendContextToSoniox = true
+        }
         _ = try store.saveProfile(profile)
 
         // The page, laid out for real in windows nobody sees.
