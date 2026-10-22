@@ -899,6 +899,73 @@ impl StreamRecoveryState {
     }
 }
 
+/// Which tokens of a replacement connection repeat what the connection
+/// before it already delivered.
+///
+/// A replacement hears the stretch before the acknowledged point again, for
+/// context. Every word in that stretch is already written: the old
+/// connection's finals were delivered, and its partials were confirmed when
+/// it closed. So no word ending inside the replay may come back — not when
+/// the provider first re-hears it, and not when it finalizes it, which can
+/// be well after `total_audio_proc_ms` has passed the replay. Only
+/// `final_audio_proc_ms` past the replay says the last of them is out.
+///
+/// Translation tokens carry no timestamps. Each follows the source words it
+/// translates, so it repeats old work exactly when the source word before it
+/// did — even when it arrives in a later response than that word.
+#[derive(Debug, Default)]
+struct ReplaySuppression {
+    /// Connection-relative end of the replayed audio; zero when nothing was
+    /// replayed and nothing is filtered.
+    until_provider_ms: u64,
+    /// Whether the last final source word was a replayed one.
+    last_final_source_replayed: bool,
+}
+
+impl ReplaySuppression {
+    fn after_replay(until_provider_ms: u64) -> Self {
+        Self {
+            until_provider_ms,
+            // Before any source word arrives, all the connection has heard
+            // is the replay.
+            last_final_source_replayed: true,
+        }
+    }
+
+    fn filter(
+        &mut self,
+        tokens: &mut Vec<SonioxStreamTokenWire>,
+        final_audio_proc_ms: Option<u64>,
+    ) {
+        if self.until_provider_ms == 0 {
+            return;
+        }
+        let until = self.until_provider_ms;
+        // Finals come first in a response and the partial tail continues
+        // after them, so one running state serves both; only the finals'
+        // carries over to the next response.
+        let mut last_final_replayed = self.last_final_source_replayed;
+        let mut last_replayed = last_final_replayed;
+        tokens.retain(|token| {
+            if token.translation_status.as_deref() == Some("translation") {
+                return !last_replayed;
+            }
+            let replayed = token.end_ms.is_some_and(|end_ms| end_ms <= until);
+            last_replayed = replayed;
+            if token.is_final {
+                last_final_replayed = replayed;
+            }
+            !replayed
+        });
+        self.last_final_source_replayed = last_final_replayed;
+        if final_audio_proc_ms.is_some_and(|processed| processed >= until)
+            && !self.last_final_source_replayed
+        {
+            *self = Self::default();
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct SonioxStreamTokenWire {
     text: String,
@@ -1331,7 +1398,7 @@ async fn run_stream_session(
     .await?;
     *session_connected = true;
 
-    let mut suppress_replay_until_provider_ms = 0_u64;
+    let mut replay_suppression = ReplaySuppression::default();
     // Whether this connection has carried any audio at all.
     let mut sent_audio = false;
     let clean_handover = reconnect_after_handover
@@ -1388,7 +1455,8 @@ async fn run_stream_session(
         )
         .await?;
         let replay = recovery.prepare_replay(outage);
-        suppress_replay_until_provider_ms = recovery.replay_duplicate_until_provider_ms();
+        replay_suppression =
+            ReplaySuppression::after_replay(recovery.replay_duplicate_until_provider_ms());
         let replay_interval = if outage > FAST_RECONNECT_WINDOW {
             Some(Duration::from_millis(80))
         } else {
@@ -1565,40 +1633,8 @@ async fn run_stream_session(
                             )
                             .await?;
                         }
-                        if suppress_replay_until_provider_ms > 0 {
-                            let response_is_entirely_replayed = response
-                                .total_audio_proc_ms
-                                .is_some_and(|processed| {
-                                    processed <= suppress_replay_until_provider_ms
-                                });
-                            if response_is_entirely_replayed {
-                                response.tokens.clear();
-                            } else {
-                                let has_new_timed_source = response.tokens.iter().any(|token| {
-                                    token.translation_status.as_deref() != Some("translation")
-                                        && token.end_ms.is_some_and(|end_ms| {
-                                            end_ms > suppress_replay_until_provider_ms
-                                        })
-                                });
-                                response.tokens.retain(|token| {
-                                    if token.translation_status.as_deref() == Some("translation") {
-                                        has_new_timed_source
-                                    } else {
-                                        token.end_ms.is_none_or(|end_ms| {
-                                            end_ms > suppress_replay_until_provider_ms
-                                        })
-                                    }
-                                });
-                            }
-                            if response
-                                .total_audio_proc_ms
-                                .is_some_and(|processed| {
-                                    processed >= suppress_replay_until_provider_ms
-                                })
-                            {
-                                suppress_replay_until_provider_ms = 0;
-                            }
-                        }
+                        replay_suppression
+                            .filter(&mut response.tokens, response.final_audio_proc_ms);
                         let reached_pause = waiting_for_pause
                             && response.tokens.iter().any(|token| token.text == "<end>");
                         emit_response_events(
@@ -2582,6 +2618,154 @@ mod tests {
             vec![4_000, 5_500],
             "the replacement session's 2_500 ms token must be reported at \
              connection_origin_ms (3_000) + 2_500 on the capture timeline"
+        );
+    }
+
+    /// A replacement connection hears the last two seconds again. Every word
+    /// in them was already written when the old connection closed — its
+    /// partials were confirmed then — so none may come back. The provider
+    /// finalizes a word some time after it has processed the audio, so the
+    /// replayed words keep arriving after `total_audio_proc_ms` has passed
+    /// the replay; only `final_audio_proc_ms` says they are all out. And a
+    /// translation belongs to the source words just before it, even when it
+    /// arrives in a later response than they did.
+    #[tokio::test]
+    async fn replayed_words_never_come_back_after_a_reconnect() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            let (first_stream, _) = listener.accept().await.unwrap();
+            let mut first_ws = accept_async(first_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = first_ws.next().await else {
+                panic!("first session configuration missing");
+            };
+            let mut accepted_chunks = 0;
+            while let Some(Ok(message)) = first_ws.next().await {
+                if matches!(message, Message::Binary(_)) {
+                    accepted_chunks += 1;
+                    if accepted_chunks == 50 {
+                        break;
+                    }
+                }
+            }
+            first_ws
+                .send(Message::Text(
+                    json!({
+                        "tokens": [
+                            {"text": "前", "is_final": true, "language": "zh",
+                             "start_ms": 4_000, "end_ms": 4_500},
+                            {"text": "before", "is_final": true, "language": "en",
+                             "translation_status": "translation"}
+                        ],
+                        "final_audio_proc_ms": 5_000,
+                        "total_audio_proc_ms": 5_000
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            first_ws.close(None).await.unwrap();
+
+            let (second_stream, _) = listener.accept().await.unwrap();
+            let mut second_ws = accept_async(second_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = second_ws.next().await else {
+                panic!("replacement session configuration missing");
+            };
+            // The replay starts at 3_000, so the replayed word is at 1_000
+            // here and the replay ends at 2_000.
+            let responses = [
+                // Past the replay, but its word still only a partial.
+                json!({
+                    "tokens": [{"text": "前", "is_final": false, "language": "zh",
+                                "start_ms": 1_000, "end_ms": 1_500}],
+                    "final_audio_proc_ms": 0,
+                    "total_audio_proc_ms": 2_100
+                }),
+                // The replayed word turns final, with its translation.
+                json!({
+                    "tokens": [
+                        {"text": "前", "is_final": true, "language": "zh",
+                         "start_ms": 1_000, "end_ms": 1_500},
+                        {"text": "before", "is_final": true, "language": "en",
+                         "translation_status": "translation"}
+                    ],
+                    "final_audio_proc_ms": 1_600,
+                    "total_audio_proc_ms": 2_600
+                }),
+                // A new word, its translation one response later.
+                json!({
+                    "tokens": [{"text": "后", "is_final": true, "language": "zh",
+                                "start_ms": 2_500, "end_ms": 2_600}],
+                    "final_audio_proc_ms": 2_600,
+                    "total_audio_proc_ms": 2_600
+                }),
+                json!({
+                    "tokens": [{"text": "after", "is_final": true, "language": "en",
+                                "translation_status": "translation"}],
+                    "final_audio_proc_ms": 2_600,
+                    "total_audio_proc_ms": 2_600
+                }),
+            ];
+            let mut answered = false;
+            while let Some(Ok(message)) = second_ws.next().await {
+                match message {
+                    Message::Binary(_) if !answered => {
+                        answered = true;
+                        for response in &responses {
+                            second_ws
+                                .send(Message::Text(response.to_string().into()))
+                                .await
+                                .unwrap();
+                        }
+                    }
+                    Message::Text(text) if text.is_empty() => {
+                        second_ws
+                            .send(Message::Text(
+                                json!({"tokens": [], "finished": true}).to_string().into(),
+                            ))
+                            .await
+                            .unwrap();
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            short_timeouts(),
+        );
+        for _ in 0..50 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+
+        let mut final_words = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while let Ok(Some(event)) = tokio::time::timeout_at(deadline, runtime.event_rx.recv()).await
+        {
+            if let SttStreamEvent::Tokens(tokens) = event {
+                final_words.extend(
+                    tokens
+                        .iter()
+                        .filter(|token| token.is_final)
+                        .map(|token| token.text.clone()),
+                );
+            }
+            if final_words.last().is_some_and(|word| word == "after") {
+                break;
+            }
+        }
+
+        assert_eq!(
+            final_words,
+            vec!["前", "before", "后", "after"],
+            "a replayed word or its translation came back"
         );
     }
 
