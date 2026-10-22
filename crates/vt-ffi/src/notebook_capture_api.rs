@@ -3106,6 +3106,26 @@ fn persist_stream_lane_updates(
                     .record_partial_removed(id);
             }
         }
+        if let Some(left) = persistence.detached_utterance {
+            // The fact left a row that is still there. That row goes out as
+            // it now stands; only this fact's binding to it is forgotten.
+            if variant_bindings.get(&pending_key) == Some(&left.sequence) {
+                variant_bindings.remove(&pending_key);
+            }
+            reverse_variant_bindings.retain(|_, bound| *bound != pending_key);
+            lanes[canonical_lane_index]
+                .assembler
+                .record_persisted(&left.id, left.revision);
+            if let Some((match_key, _)) = canonical_row_entry(canonical_matches, left.sequence) {
+                canonical_matches.insert(
+                    match_key,
+                    CanonicalUtteranceMatch {
+                        utterance: left.clone(),
+                    },
+                );
+            }
+            persisted.push(left);
+        }
 
         if let Some(sequence) = persistence.item.bound_sequence {
             variant_bindings.insert(pending_key, sequence);
@@ -19600,6 +19620,191 @@ pub(crate) mod tests {
             Some("你好"),
             "the durable final translation stays authoritative"
         );
+    }
+
+    /// A translation revised onto another row leaves the first row in place.
+    /// That row went out as removed, and the app deleted a live row.
+    #[test]
+    fn a_translation_moving_rows_publishes_the_row_it_left_not_a_removal() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core.create_notebook(Some("Moves".into())).unwrap();
+        let stored_profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let session = vt_store::SessionRecord {
+            id: "aux-moves-session".into(),
+            title: "Moves".into(),
+            session_type: "recording".into(),
+            status: "recording".into(),
+            duration_ms: 0,
+            created_at: "2001-01-04T00:00:00Z".into(),
+            deleted_at: None,
+        };
+        core.notebook_capture_store
+            .create_session_and_run(
+                &session,
+                &vt_store::notebook_capture_store::NewNotebookCaptureRun {
+                    id: "aux-moves-run".into(),
+                    notebook_id: notebook.id.clone(),
+                    session_id: session.id.clone(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "/private/aux-moves.journal".into(),
+                    audio_key_ref: "aux-moves-key".into(),
+                    sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
+                    channels: 1,
+                },
+                &stored_profile,
+            )
+            .unwrap();
+        claim_current_realtime_provider(&core.notebook_capture_store, &session.id);
+        for (sequence, text, start, end, completion) in [
+            (0, "first phrase", 0, 1_000, UtteranceCompletion::Partial),
+            (
+                1,
+                "second phrase",
+                2_000,
+                3_000,
+                UtteranceCompletion::Complete,
+            ),
+        ] {
+            core.notebook_capture_store
+                .upsert_utterance(
+                    &NewRealtimeUtterance {
+                        id: format!("canonical-{sequence}"),
+                        session_id: session.id.clone(),
+                        sequence,
+                        session_speaker_id: None,
+                        source_language: "en".into(),
+                        source_text: text.into(),
+                        source_start_ms: Some(start),
+                        source_end_ms: Some(end),
+                        translated_language: None,
+                        translated_text: None,
+                        completion,
+                        alignment: UtteranceAlignment::TranslationPending,
+                    },
+                    None,
+                )
+                .unwrap();
+        }
+
+        let mut runtime_profile = profile();
+        runtime_profile.notebook_id = notebook.id;
+        runtime_profile.capture_mode = CaptureMode::MultilingualOneWay;
+        runtime_profile.selected_languages = vec!["en".into(), "zh".into()];
+        let make_lane = |target_language: &str, canonical: bool| {
+            let mut lane_profile = runtime_profile.clone();
+            lane_profile.common_caption_language = Some(target_language.to_string());
+            StreamAggregationLane {
+                descriptor: RemoteStreamLane {
+                    target_language: Some(target_language.to_string()),
+                    canonical,
+                    inline_translation: None,
+                },
+                assembler: RealtimeUtteranceAssembler::new(session.id.clone(), &lane_profile),
+                provider_session_epoch: 0,
+                group_epoch: 0,
+                awaiting_reconnect: false,
+                connected: true,
+                ever_connected: true,
+                failed: false,
+                input_discontinuous: false,
+                final_audio_proc_ms: None,
+                total_audio_proc_ms: None,
+                lag_ms: None,
+                provider_accepted_configuration: true,
+                disconnected_at_frame: None,
+                generation: 0,
+                translation_settled_through_ms: 0,
+            }
+        };
+        let mut lanes = vec![make_lane("en", true), make_lane("zh", false)];
+        let selected_languages = vec!["en".to_string(), "zh".to_string()];
+        let mut canonical_matches = std::collections::HashMap::new();
+        let mut pending_variants = std::collections::HashMap::new();
+        let mut variant_bindings = std::collections::HashMap::new();
+        let mut reverse_variant_bindings = std::collections::HashMap::new();
+        let mut initialized_variants = std::collections::HashSet::new();
+        let update = |text: &str, start: u64, end: u64, translated: &str, completion| {
+            AssembledRealtimeUtterance {
+                utterance: NewRealtimeUtterance {
+                    id: "aux-moving".into(),
+                    session_id: session.id.clone(),
+                    sequence: 9,
+                    session_speaker_id: None,
+                    source_language: "en".into(),
+                    source_text: text.into(),
+                    source_start_ms: Some(start),
+                    source_end_ms: Some(end),
+                    translated_language: Some("zh".into()),
+                    translated_text: Some(translated.into()),
+                    completion,
+                    alignment: UtteranceAlignment::Paired,
+                },
+                provisional_source_language: None,
+                source_dirty: true,
+                translation_dirty: true,
+                translation_completion: Some(completion),
+                translation_clear_language: None,
+                remove_partial: false,
+                provider_speaker: None,
+                expected_revision: None,
+            }
+        };
+        let mut persist = |updates| {
+            persist_stream_lane_updates(
+                &core.notebook_capture_store,
+                &mut lanes,
+                0,
+                1,
+                updates,
+                &selected_languages,
+                &mut canonical_matches,
+                &mut pending_variants,
+                &mut variant_bindings,
+                &mut reverse_variant_bindings,
+                &mut initialized_variants,
+            )
+            .unwrap()
+        };
+
+        let first = persist(vec![update(
+            "first phrase",
+            100,
+            900,
+            "第一句（未完成）",
+            UtteranceCompletion::Partial,
+        )]);
+        assert!(first.iter().any(|row| row.sequence == 0));
+
+        let moved = persist(vec![update(
+            "second phrase",
+            2_100,
+            2_900,
+            "第二句",
+            UtteranceCompletion::Complete,
+        )]);
+        assert!(
+            !moved.removed_sequences.contains(&0),
+            "row 0 is still in the transcript"
+        );
+        let left = moved
+            .iter()
+            .find(|row| row.sequence == 0)
+            .expect("the row it left goes out as it now stands");
+        assert!(left
+            .variants
+            .iter()
+            .filter(|lane| lane.language == "zh")
+            .all(|lane| lane.state == UtteranceVariantState::Waiting));
+        assert!(moved.iter().any(|row| row.sequence == 1
+            && row
+                .variants
+                .iter()
+                .any(|lane| lane.language == "zh" && lane.text.as_deref() == Some("第二句"))));
     }
 
     #[test]

@@ -775,10 +775,13 @@ pub struct RealtimeTranslationInboxPersistence {
     pub item: RealtimeTranslationInboxItem,
     /// Present when an already-bound item changed its canonical lane.
     pub bound_utterance: Option<RealtimeUtterance>,
-    /// Set when withdrawing the last machine fact deletes a translation-only
-    /// shell. Delta consumers must rebuild so the removed row cannot ghost.
+    /// Set only when the row this fact left was deleted — the last machine
+    /// fact of a translation-only shell. Delta consumers drop that row.
     pub removed_bound_sequence: Option<u64>,
     pub removed_bound_utterance_id: Option<String>,
+    /// The row this fact left, as it now stands, when that row is still
+    /// there. Its lane was recomposed without this fact.
+    pub detached_utterance: Option<RealtimeUtterance>,
     pub changed: bool,
 }
 
@@ -4410,7 +4413,7 @@ impl NotebookCaptureStore {
             sequence
         } else {
             let candidates = translation_inbox_candidates_from_conn(&tx, &item)?;
-            let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter())
+            let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter(), true)
             else {
                 tx.commit()?;
                 return Ok(None);
@@ -4632,12 +4635,32 @@ impl NotebookCaptureStore {
             }
         }
         for ((utterance_id, sequence), items) in &bound_rows {
-            let _ = apply_bound_translation_inbox_snapshot_from_conn(
+            // One row whose lanes cannot be rebuilt keeps what it has. Its
+            // refusal used to abort this transaction, and with it the
+            // placement of every other fact in the recording.
+            tx.execute_batch("SAVEPOINT replay_bound_row")?;
+            let replayed = apply_bound_translation_inbox_snapshot_from_conn(
                 &tx,
                 items,
                 utterance_id,
                 *sequence,
-            )?;
+            );
+            match replayed {
+                Ok(_) => tx.execute_batch("RELEASE replay_bound_row")?,
+                Err(NotebookCaptureStoreError::Conflict(conflict)) => {
+                    tx.execute_batch("ROLLBACK TO replay_bound_row; RELEASE replay_bound_row")?;
+                    tracing::warn!(
+                        session_id,
+                        sequence,
+                        conflict = %conflict,
+                        "bound row kept its lanes; replay would rewrite settled text"
+                    );
+                }
+                Err(error) => {
+                    tx.execute_batch("ROLLBACK TO replay_bound_row; RELEASE replay_bound_row")?;
+                    return Err(error);
+                }
+            }
         }
         let bound_groups = bound_rows.len();
         let inbox_items = inbox.len();
@@ -6036,6 +6059,44 @@ fn translation_inbox_placement_matches_from_conn(
     )
 }
 
+/// Whether a revised fact, while recording, no longer belongs on the row it
+/// sits on: that row no longer holds most of it, or another row uniquely
+/// does. A lane that is already final stays where it is.
+fn translation_inbox_belongs_elsewhere_from_conn(
+    conn: &Connection,
+    item: &RealtimeTranslationInboxItem,
+    bound: &RealtimeUtterance,
+) -> Result<bool, NotebookCaptureStoreError> {
+    if item.withdrawn || !capture_session_is_active_from_conn(conn, &item.key.session_id)? {
+        return Ok(false);
+    }
+    let target = canonical_language(&item.key.target_language);
+    let lane_is_final = bound.variants.iter().any(|variant| {
+        variant.role == UtteranceVariantRole::Translation
+            && canonical_language(&variant.language) == target
+            && variant.completion == Some(UtteranceCompletion::Complete)
+    });
+    if lane_is_final {
+        return Ok(false);
+    }
+    let candidates = translation_inbox_candidates_from_conn(conn, item)?;
+    let ranked = ranked_translation_inbox_candidates(item, candidates.iter());
+    let Some((here, _)) = ranked
+        .iter()
+        .find(|(_, sequence)| *sequence == bound.sequence)
+    else {
+        // Placed on a neighbour no row overlaps; settlement put it there.
+        return Ok(false);
+    };
+    if !is_live_home(here) {
+        return Ok(true);
+    }
+    Ok(
+        unique_translation_inbox_candidate(item, candidates.iter(), true)
+            .is_some_and(|best| best != bound.sequence),
+    )
+}
+
 /// Every row this fact may be placed on, best first: rows it shares audio
 /// with in evidence order, and — only when there are none — its nearest rows
 /// in a language other than its own target.
@@ -6177,6 +6238,9 @@ fn bind_translation_inbox_item_within_savepoint(
             key.session_id
         )));
     }
+    // The row's label decides below whether this fact is a translation or
+    // only evidence for the source, so settle the label first.
+    let canonical = adopt_translation_inbox_source_language(conn, &item, canonical)?;
     let target_is_current_source = canonical.has_source_lane()
         && canonical_language(&canonical.source_language)
             == canonical_language(&key.target_language);
@@ -6243,14 +6307,15 @@ fn reconcile_translation_inbox_items_from_conn(
     session_id: &str,
     items: Vec<RealtimeTranslationInboxItem>,
 ) -> Result<Vec<RealtimeTranslationInboxBinding>, NotebookCaptureStoreError> {
-    let _ = session_id;
+    let live = capture_session_is_active_from_conn(conn, session_id)?;
     let mut bindings = Vec::new();
     for item in items
         .into_iter()
         .filter(|item| !item.withdrawn && item.bound_sequence.is_none())
     {
         let candidates = translation_inbox_candidates_from_conn(conn, &item)?;
-        let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter()) else {
+        let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter(), live)
+        else {
             continue;
         };
         match bind_translation_inbox_item_from_conn(conn, &item.key, sequence) {
@@ -6507,6 +6572,7 @@ fn upsert_translation_inbox_item_from_conn(
     })?;
     let mut removed_bound_sequence = None;
     let mut removed_bound_utterance_id = None;
+    let mut detached_utterance = None;
     let mut bound_utterance = if changed {
         match (item.bound_utterance_id.as_deref(), item.bound_sequence) {
             (Some(_), Some(sequence)) => {
@@ -6515,13 +6581,21 @@ fn upsert_translation_inbox_item_from_conn(
                     &key.session_id,
                     sequence,
                 )? {
-                    if !translation_inbox_placement_matches_from_conn(conn, &item, &canonical)? {
-                        removed_bound_sequence = Some(sequence);
+                    if !translation_inbox_placement_matches_from_conn(conn, &item, &canonical)?
+                        || translation_inbox_belongs_elsewhere_from_conn(conn, &item, &canonical)?
+                    {
                         let old_utterance_id = item.bound_utterance_id.clone();
                         let visible =
                             detach_translation_inbox_item_from_bound_utterance(conn, &item)?;
-                        if visible.is_none() {
-                            removed_bound_utterance_id = old_utterance_id;
+                        // The row it left is gone only when it was a shell this
+                        // fact alone held. Reporting a surviving row as removed
+                        // made the app delete a live transcript row.
+                        match visible {
+                            Some(row) => detached_utterance = Some(row),
+                            None => {
+                                removed_bound_sequence = Some(sequence);
+                                removed_bound_utterance_id = old_utterance_id;
+                            }
                         }
                         item =
                             get_translation_inbox_item_from_conn(conn, &key)?.ok_or_else(|| {
@@ -6590,7 +6664,7 @@ fn upsert_translation_inbox_item_from_conn(
     };
     if !item.withdrawn && item.bound_sequence.is_none() && item.key.group_epoch == 0 {
         let candidates = translation_inbox_candidates_from_conn(conn, &item)?;
-        if let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter()) {
+        if let Some(sequence) = unique_translation_inbox_candidate(&item, candidates.iter(), true) {
             match bind_translation_inbox_item_from_conn(conn, &key, sequence) {
                 Ok(visible) => {
                     bound_utterance = visible;
@@ -6614,6 +6688,7 @@ fn upsert_translation_inbox_item_from_conn(
         bound_utterance,
         removed_bound_sequence,
         removed_bound_utterance_id,
+        detached_utterance,
         changed,
     })
 }
@@ -6626,9 +6701,13 @@ fn upsert_translation_inbox_item_from_conn(
 /// auxiliary producer fact carries the provider's own identification of the
 /// same audio, so binding it to an `und` canonical row is strictly stronger
 /// evidence and upgrades the row in the same transaction as the bind. A
-/// concrete language is never displaced (first evidence wins), and the
-/// adopted language must not already be owned by a Ready translation variant
-/// — that would be provider evidence that the source is a different language.
+/// concrete language is displaced only on a settled row whose own words are
+/// written in another script, when the fact's language is written in that one
+/// — Chinese characters labelled Thai. The label then swallowed the translation into it,
+/// leaving Chinese in the Thai column. The adopted language must not already
+/// be owned by a Ready translation variant — that would be provider evidence
+/// that the source is a different language — and a row the user has edited
+/// keeps its label.
 ///
 /// Language is the Loro lane key, so a completed source lane re-materializes
 /// under its real language via a fresh desired revision.
@@ -6641,8 +6720,21 @@ fn adopt_translation_inbox_source_language(
         return Ok(canonical);
     }
     let adopted = canonical_language(&item.source_language);
-    if adopted == "und" || canonical_language(&canonical.source_language) != "und" {
+    let labelled = canonical_language(&canonical.source_language);
+    if adopted == "und" || adopted == labelled {
         return Ok(canonical);
+    }
+    if labelled != "und" {
+        // Only a settled row: a Partial one is relabelled by every revision
+        // the canonical lane sends, and the two would trade the label back
+        // and forth. Its bound facts are replayed when it settles.
+        let mislabelled = canonical.has_source_lane()
+            && canonical.source_lane_is_complete()
+            && vt_model::script_contradicts_language(&canonical.source_text, &labelled)
+            && !vt_model::script_contradicts_language(&canonical.source_text, &adopted);
+        if !mislabelled || utterance_has_user_state_from_conn(conn, &canonical.id)? {
+            return Ok(canonical);
+        }
     }
     let adopted_lane_is_occupied = canonical.variants.iter().any(|variant| {
         canonical_language(&variant.language) == adopted
@@ -6669,8 +6761,8 @@ fn adopt_translation_inbox_source_language(
          SET language = ?1, revision = revision + 1, updated_at = ?2
          WHERE utterance_id = ?3
            AND role = 'source'
-           AND lower(trim(language)) = 'und'",
-        params![adopted, now, canonical.id],
+           AND lower(trim(language)) = ?4",
+        params![adopted, now, canonical.id, labelled],
     )?;
     conn.execute(
         "UPDATE realtime_utterances
@@ -6765,17 +6857,45 @@ fn apply_translation_inbox_to_bound_utterance(
         return Ok(None);
     }
     if item.withdrawn {
-        if let Some(existing) = canonical.variants.iter().find(|variant| {
+        let existing = canonical.variants.iter().find(|variant| {
             variant.role == UtteranceVariantRole::Translation
                 && canonical_language(&variant.language)
                     == canonical_language(&item.key.target_language)
-        }) {
-            if existing.completion == Some(UtteranceCompletion::Complete) {
-                return Err(NotebookCaptureStoreError::Conflict(format!(
-                    "final machine utterance variant {}:{canonical_sequence}:{} is immutable",
-                    item.key.session_id, item.key.target_language
-                )));
-            }
+        });
+        if existing.is_some_and(|lane| lane.completion == Some(UtteranceCompletion::Complete)) {
+            // A settled lane is what the reader saw; a segment withdrawn
+            // after it settled is evidence only. Refusing it here used to
+            // fail the next canonical Final, which replays every bound fact,
+            // and that ended the transcription group.
+            let mut visible = canonical;
+            apply_utterance_overrides(conn, &mut visible)?;
+            return Ok(Some(visible));
+        }
+        if let Some(composed) = composed {
+            // The row's other segments still say something: the lane is
+            // what they say. Emptying it took their words off the screen.
+            let source_still_open = canonical.has_source_lane()
+                && !canonical.source_lane_is_complete()
+                && capture_session_is_active_from_conn(conn, &item.key.session_id)?;
+            let completion = match composed.completion {
+                Some(UtteranceCompletion::Complete) if source_still_open => {
+                    Some(UtteranceCompletion::Partial)
+                }
+                completion => completion,
+            };
+            return upsert_translation_variant_from_conn(
+                conn,
+                &item.key.session_id,
+                canonical_sequence,
+                &item.key.target_language,
+                Some(&composed.text),
+                UtteranceVariantState::Ready,
+                completion,
+                TranslationLaneWrite::ComposeAuxiliarySegments,
+            )
+            .map(Some);
+        }
+        if let Some(existing) = existing {
             if existing.state == UtteranceVariantState::Waiting {
                 let mut visible = canonical;
                 apply_utterance_overrides(conn, &mut visible)?;
@@ -7072,6 +7192,26 @@ fn claim_auxiliary_final_from_provisional_source(
     Ok(visible)
 }
 
+/// Whether the user has edited this row or has an edit of it on its way.
+fn utterance_has_user_state_from_conn(
+    conn: &Connection,
+    utterance_id: &str,
+) -> Result<bool, NotebookCaptureStoreError> {
+    Ok(conn.query_row(
+        "SELECT
+             EXISTS(
+                 SELECT 1 FROM realtime_utterance_overrides
+                 WHERE utterance_id = ?1
+             )
+             OR EXISTS(
+                 SELECT 1 FROM notebook_projection_mutations
+                 WHERE utterance_id = ?1
+             )",
+        [utterance_id],
+        |row| row.get::<_, bool>(0),
+    )?)
+}
+
 fn collect_empty_translation_shell_after_withdrawal(
     conn: &Connection,
     utterance: RealtimeUtterance,
@@ -7086,20 +7226,7 @@ fn collect_empty_translation_shell_after_withdrawal(
     {
         return Ok(Some(utterance));
     }
-    let has_user_state = conn.query_row(
-        "SELECT
-             EXISTS(
-                 SELECT 1 FROM realtime_utterance_overrides
-                 WHERE utterance_id = ?1
-             )
-             OR EXISTS(
-                 SELECT 1 FROM notebook_projection_mutations
-                 WHERE utterance_id = ?1
-             )",
-        [&utterance.id],
-        |row| row.get::<_, bool>(0),
-    )?;
-    if has_user_state {
+    if utterance_has_user_state_from_conn(conn, &utterance.id)? {
         return Ok(Some(utterance));
     }
     let removed = conn.execute(
@@ -7129,6 +7256,9 @@ struct TranslationInboxAlignmentScore {
     /// Length of the containing row; smaller is a tighter fit. Only compared
     /// between two rows that both contain the segment.
     canonical_text_chars: usize,
+    /// How much of the fact's audio this row holds. Measured against the
+    /// shorter of the two intervals, a one-word filler inside a long
+    /// translation scored as high as the sentence that held most of it.
     overlap_per_mille: u16,
     source_language_matches: bool,
     midpoint_distance_ms: u64,
@@ -7186,14 +7316,12 @@ fn translation_inbox_alignment_score(
                 // canonical interval has not arrived yet.
                 return None;
             }
-            let shorter = left_end
-                .saturating_sub(left_start)
-                .min(right_end.saturating_sub(right_start));
-            score.overlap_per_mille = if shorter == 0 {
+            let fact_ms = left_end.saturating_sub(left_start);
+            score.overlap_per_mille = if fact_ms == 0 {
                 1_000
             } else {
                 ((u128::from(intersection_end.saturating_sub(intersection_start)) * 1_000)
-                    / u128::from(shorter))
+                    / u128::from(fact_ms))
                 .min(1_000) as u16
             };
             Some(score)
@@ -7215,12 +7343,28 @@ fn translation_inbox_evidence_eq(
         && left.midpoint_distance_ms == right.midpoint_distance_ms
 }
 
+/// While recording, a row takes a fact only when it holds most of the
+/// fact's audio or its words contain the fact's.
+///
+/// The auxiliary lane runs seconds ahead of the canonical one, so the row a
+/// fact mostly belongs to often does not exist yet when the fact arrives. A
+/// fact placed on the previous row in the meantime became final there and
+/// could never move. Settlement places whatever this leaves out, once every
+/// row that could overlap it exists.
+fn is_live_home(score: &TranslationInboxAlignmentScore) -> bool {
+    score.exact_source_text || score.contained_source_text || score.overlap_per_mille >= 500
+}
+
 fn unique_translation_inbox_candidate<'a>(
     item: &RealtimeTranslationInboxItem,
     candidates: impl Iterator<Item = &'a RealtimeUtterance>,
+    live: bool,
 ) -> Option<u64> {
     let ranked = ranked_translation_inbox_candidates(item, candidates);
     let (best, sequence) = ranked.first()?;
+    if live && !is_live_home(best) {
+        return None;
+    }
     let equally_supported = ranked
         .iter()
         .take_while(|(score, _)| translation_inbox_evidence_eq(best, score))
@@ -13128,7 +13272,12 @@ mod tests {
                 withdrawn: false,
             })
             .unwrap();
-        assert_eq!(moved.removed_bound_sequence, Some(0));
+        // Row 0 is still there, so it is reported as changed, not removed.
+        assert_eq!(moved.removed_bound_sequence, None);
+        assert_eq!(
+            moved.detached_utterance.as_ref().map(|row| row.sequence),
+            Some(0)
+        );
         assert_eq!(moved.item.bound_sequence, Some(1));
         assert_eq!(
             moved

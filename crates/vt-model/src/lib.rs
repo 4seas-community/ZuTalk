@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+mod script;
+pub use script::script_contradicts_language;
+
 /// Local privacy policy applied before any remote provider is used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PrivacyLevel {
