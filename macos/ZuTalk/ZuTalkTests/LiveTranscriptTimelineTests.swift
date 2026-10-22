@@ -332,4 +332,19 @@ final class LiveTranscriptTimelineTests: XCTestCase {
             XCTAssertEqual(coalesced.eventRevision, queued.last?.eventRevision)
         }
     }
+
+    /// The core leaves a revision out on purpose when it cannot read the
+    /// rows for it, so that the next event shows the store a gap and the
+    /// store reloads. Merging across that hole must keep it visible.
+    func testMergingAcrossAMissingRevisionKeepsTheGapVisible() {
+        let seven = Self.event(revision: 7, full: false, rows: [Self.row(1)], removed: [], cues: [])
+        let nine = Self.event(revision: 9, full: false, rows: [Self.row(2)], removed: [], cues: [])
+        let merged = NotebookCaptureEventDTO.coalescing(seven, into: nine)
+        XCTAssertEqual(merged.coversFromRevision ?? merged.eventRevision, 9, "revision 8 is missing")
+
+        var eightToNine = nine
+        eightToNine.coversFromRevision = 8
+        let contiguous = NotebookCaptureEventDTO.coalescing(seven, into: eightToNine)
+        XCTAssertEqual(contiguous.coversFromRevision ?? contiguous.eventRevision, 7)
+    }
 }
