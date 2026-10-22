@@ -1288,7 +1288,13 @@ final class RustNotebookCaptureCallback: FfiNotebookCaptureCallback, @unchecked 
 /// that follows it.
 private final class NotebookCaptureCallbackDispatcher: @unchecked Sendable {
     nonisolated private let lock = NSLock()
-    nonisolated(unsafe) private var pendingEvent: FfiNotebookCaptureEvent?
+    /// Every event submitted since the last drain, in order. Keeping only the
+    /// newest lost the rows of the deltas in between; the drain merges them
+    /// instead, so nothing is lost and no whole-session reload is needed.
+    nonisolated(unsafe) private var pendingEvents: [FfiNotebookCaptureEvent] = []
+    /// Beyond this many undelivered events the oldest are dropped, and the
+    /// store's gap repair recovers them as it always could.
+    nonisolated static let pendingEventLimit = 512
     nonisolated(unsafe) private var pending: FfiNotebookCaptureLivePreview?
     nonisolated(unsafe) private var drainScheduled = false
     nonisolated private let deliverEvent:
@@ -1306,10 +1312,18 @@ private final class NotebookCaptureCallbackDispatcher: @unchecked Sendable {
 
     nonisolated func submit(_ event: FfiNotebookCaptureEvent) {
         lock.lock()
-        if pendingEvent == nil
-            || pendingEvent?.sessionId != event.sessionId
-            || (pendingEvent?.eventRevision ?? 0) <= event.eventRevision {
-            pendingEvent = event
+        if let last = pendingEvents.last, last.sessionId != event.sessionId {
+            pendingEvents.removeAll()
+        }
+        if (pendingEvents.last?.eventRevision ?? 0) <= event.eventRevision {
+            if event.isFullSnapshot {
+                // A snapshot supersedes everything queued before it.
+                pendingEvents.removeAll()
+            }
+            pendingEvents.append(event)
+            if pendingEvents.count > Self.pendingEventLimit {
+                pendingEvents.removeFirst(pendingEvents.count - Self.pendingEventLimit)
+            }
         }
         let shouldSchedule = scheduleDrainIfNeededLocked()
         lock.unlock()
@@ -1341,24 +1355,27 @@ private final class NotebookCaptureCallbackDispatcher: @unchecked Sendable {
 
     @MainActor
     private func drainOne() {
-        let event: FfiNotebookCaptureEvent?
+        let events: [FfiNotebookCaptureEvent]
         let preview: FfiNotebookCaptureLivePreview?
         lock.lock()
-        event = pendingEvent
-        pendingEvent = nil
+        events = pendingEvents
+        pendingEvents = []
         preview = pending
         pending = nil
         lock.unlock()
 
-        if let event {
-            deliverEvent(RustNotebookCaptureClient.map(event))
+        if let first = events.first {
+            let merged = events.dropFirst().reduce(RustNotebookCaptureClient.map(first)) {
+                NotebookCaptureEventDTO.coalescing($0, into: RustNotebookCaptureClient.map($1))
+            }
+            deliverEvent(merged)
         }
         if let preview {
             deliverPreview(RustNotebookCaptureClient.map(preview))
         }
 
         lock.lock()
-        let hasPending = pendingEvent != nil || pending != nil
+        let hasPending = pendingEvents.isEmpty == false || pending != nil
         if hasPending == false {
             drainScheduled = false
         }

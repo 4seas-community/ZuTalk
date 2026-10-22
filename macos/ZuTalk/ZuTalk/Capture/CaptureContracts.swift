@@ -202,7 +202,7 @@ struct NotebookCaptureUtteranceDTO: Codable, Equatable, Identifiable {
         if let variant = languageVariants.first(where: {
             Self.languageKey($0.language) == language
         }) {
-            return ["translation", "translated"].contains(variant.role)
+            return (variant.role == "translation" || variant.role == "translated")
                 && variant.state == "ready"
                 && variant.completion == "complete"
                 && variant.text != nil
@@ -219,13 +219,30 @@ struct NotebookCaptureUtteranceDTO: Codable, Equatable, Identifiable {
             ? sourceProjectionRevision
             : 0
         for variant in languageVariants where
-            ["translation", "translated"].contains(variant.role)
+            (variant.role == "translation" || variant.role == "translated")
                 && variant.state == "ready"
                 && variant.completion == "complete"
                 && variant.text != nil {
             highest = max(highest, variant.projectionRevision)
         }
         return highest
+    }
+
+    /// The lowest projection revision among this row's final lanes — the
+    /// watermark at which the first of them becomes editable — or `nil`.
+    var lowestFinalLaneProjectionRevision: UInt64? {
+        var lowest: UInt64? = hasSourceLane && completion == "complete" && sourceProjectionRevision > 0
+            ? sourceProjectionRevision
+            : nil
+        for variant in languageVariants where
+            (variant.role == "translation" || variant.role == "translated")
+                && variant.state == "ready"
+                && variant.completion == "complete"
+                && variant.text != nil
+                && variant.projectionRevision > 0 {
+            lowest = min(lowest ?? variant.projectionRevision, variant.projectionRevision)
+        }
+        return lowest
     }
 
     func isLoroEditableLane(
@@ -241,7 +258,7 @@ struct NotebookCaptureUtteranceDTO: Codable, Equatable, Identifiable {
         guard let variant = languageVariants.first(where: {
             Self.languageKey($0.language) == language
         }) else { return false }
-        return ["translation", "translated"].contains(variant.role)
+        return (variant.role == "translation" || variant.role == "translated")
             && variant.state == "ready"
             && variant.completion == "complete"
             && variant.text != nil
@@ -537,6 +554,10 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
     let selectedLanguages: [String]
     let commonCaptionLanguage: String?
     let realtimeLoroAppliedRevision: UInt64
+    /// The first revision this event accounts for when it stands for several
+    /// coalesced ones; `nil` for an event that is only itself. A store that
+    /// has applied `coversFromRevision - 1` has missed nothing.
+    var coversFromRevision: UInt64? = nil
 
     init(
         sessionId: String,
@@ -599,11 +620,112 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         self.commonCaptionLanguage = commonCaptionLanguage
         self.realtimeLoroAppliedRevision = realtimeLoroAppliedRevision
     }
+
+    /// One event that carries everything `pending` and `next` carry, for a
+    /// dispatcher that has both queued by the time the main thread takes
+    /// them.
+    ///
+    /// Delivering only the newest used to drop the rows of every delta in
+    /// between, and the store then had to reload the whole session to find
+    /// them: an operation linear in the recording, more frequent the busier
+    /// the main thread already was. Merging costs what the two events hold.
+    /// Rows follow the store's own arbitration — the higher revision wins,
+    /// the later event on a tie — and a removal followed by a re-add keeps
+    /// both, as applying the two events in turn would.
+    static func coalescing(_ pending: Self, into next: Self) -> Self {
+        guard pending.sessionId == next.sessionId else { return next }
+        guard next.eventRevision >= pending.eventRevision else { return pending }
+        let coversFrom = min(
+            pending.coversFromRevision ?? pending.eventRevision,
+            next.coversFromRevision ?? next.eventRevision
+        )
+        if next.isFullSnapshot {
+            var merged = next
+            merged.coversFromRevision = coversFrom
+            return merged
+        }
+        var rows: [UInt64: NotebookCaptureUtteranceDTO] = [:]
+        for row in pending.utterances {
+            if let current = rows[row.sequence], current.revision > row.revision { continue }
+            rows[row.sequence] = row
+        }
+        var removed = pending.isFullSnapshot ? Set<UInt64>() : Set(pending.removedSequences)
+        for sequence in next.removedSequences {
+            rows[sequence] = nil
+            if pending.isFullSnapshot == false { removed.insert(sequence) }
+        }
+        for row in next.utterances {
+            if let current = rows[row.sequence], current.revision > row.revision { continue }
+            rows[row.sequence] = row
+            // A row removed earlier and brought back stays in both lists:
+            // the store removes before it upserts, and the removal is what
+            // lets a lower revision in again.
+        }
+        // Per cue, what the events in turn would do: a withdrawal removes
+        // whatever is there, and after it the best of the later cues wins.
+        // A delta re-states that as the withdrawal followed by that cue.
+        var withdrawals: [String: NotebookCaptureTranslationCueDTO] = [:]
+        var best: [String: NotebookCaptureTranslationCueDTO] = [:]
+        var order: [String] = []
+        for cue in pending.translationCues + next.translationCues {
+            if withdrawals[cue.id] == nil, best[cue.id] == nil { order.append(cue.id) }
+            if cue.withdrawn {
+                // A snapshot lists present cues only; there the withdrawal
+                // simply takes the cue out.
+                if pending.isFullSnapshot == false { withdrawals[cue.id] = cue }
+                best[cue.id] = nil
+                continue
+            }
+            if let current = best[cue.id], current.revision > cue.revision || current == cue { continue }
+            best[cue.id] = cue
+        }
+        var cues: [NotebookCaptureTranslationCueDTO] = []
+        for id in order {
+            if let withdrawal = withdrawals[id] { cues.append(withdrawal) }
+            if let cue = best[id] { cues.append(cue) }
+        }
+        var merged = Self(
+            sessionId: next.sessionId,
+            eventRevision: next.eventRevision,
+            isFullSnapshot: pending.isFullSnapshot,
+            captureState: next.captureState,
+            remoteHealth: next.remoteHealth,
+            realtimeLagMs: next.realtimeLagMs,
+            projectionState: next.projectionState,
+            utterances: rows.values.sorted { $0.sequence < $1.sequence },
+            removedSequences: removed.sorted(),
+            translationCues: cues,
+            laneHealth: next.laneHealth.isEmpty ? pending.laneHealth : next.laneHealth,
+            contextReceipt: next.contextReceipt ?? pending.contextReceipt,
+            providerErrorType: next.providerErrorType,
+            providerRequestId: next.providerRequestId,
+            mode: next.mode,
+            languageA: next.languageA,
+            languageB: next.languageB,
+            leftLanguage: next.leftLanguage,
+            rightLanguage: next.rightLanguage,
+            privacyLevel: next.privacyLevel,
+            realtimeProviderId: next.realtimeProviderId,
+            realtimeModelId: next.realtimeModelId,
+            postStopProviderId: next.postStopProviderId,
+            postStopModelId: next.postStopModelId,
+            postStopAsyncState: next.postStopAsyncState,
+            postStopAsyncProjectionState: next.postStopAsyncProjectionState,
+            selectedLanguages: next.selectedLanguages,
+            commonCaptionLanguage: next.commonCaptionLanguage,
+            realtimeLoroAppliedRevision: max(
+                pending.realtimeLoroAppliedRevision,
+                next.realtimeLoroAppliedRevision
+            )
+        )
+        merged.coversFromRevision = coversFrom
+        return merged
+    }
 }
 
 /// Replace-in-full, process-local view of the current Soniox speculative tail.
 /// It never represents a persisted transcript row.
-struct NotebookCaptureLivePreviewDTO: Equatable {
+struct NotebookCaptureLivePreviewDTO: Codable, Equatable {
     let sessionId: String
     let previewRevision: UInt64
     let utterances: [NotebookCaptureUtteranceDTO]

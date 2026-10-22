@@ -121,6 +121,22 @@ struct NotebookTranslationCueIndex: Equatable {
     }
 
     private let spans: [String: [Span]]
+    /// Names this exact index, so a consumer can tell "the same index" from
+    /// "an index with the same spans" without comparing them. Not part of
+    /// equality.
+    let token: UInt64
+    /// The index this one was built to replace, and how far back the two
+    /// agree: every span starting before `unchangedBeforeMs` is in both.
+    /// A row's continuation marks only read spans that start before the
+    /// row ends plus `fragmentReachMs`, so a row ending well before that
+    /// point reads the same marks from either index.
+    let previousToken: UInt64?
+    let unchangedBeforeMs: UInt64
+    nonisolated(unsafe) private static var nextToken: UInt64 = 1
+
+    static func == (left: Self, right: Self) -> Bool {
+        left.spans == right.spans
+    }
 
     /// A row shorter than this whose cell no segment overlaps can still be a
     /// fragment of the sentence a segment just before or after it translates.
@@ -128,16 +144,55 @@ struct NotebookTranslationCueIndex: Equatable {
     /// How close that segment must be.
     static let fragmentReachMs: UInt64 = 1_000
 
-    init(_ cues: [NotebookCaptureTranslationCueDTO]) {
+    init(_ cues: [NotebookCaptureTranslationCueDTO], replacing previous: NotebookTranslationCueIndex? = nil) {
         var spans: [String: [Span]] = [:]
+        // "Has any visible character", stopping at the first one; trimming
+        // copied the whole text, which for Thai is not cheap, for every cue
+        // of the session at every rebuild.
         for cue in cues where cue.withdrawn == false
-            && cue.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            && cue.text.unicodeScalars.contains(where: {
+                CharacterSet.whitespacesAndNewlines.contains($0) == false
+            }) {
             guard let start = cue.sourceStartMs, let end = cue.sourceEndMs, end >= start,
                   let language = NotebookCaptureHistoryPolicy.normalizedLanguage(cue.targetLanguage)
             else { continue }
             spans[language, default: []].append(Span(start: start, end: end))
         }
-        self.spans = spans.mapValues { $0.sorted { $0.start < $1.start } }
+        let sorted = spans.mapValues {
+            $0.sorted { $0.start != $1.start ? $0.start < $1.start : $0.end < $1.end }
+        }
+        self.spans = sorted
+        token = Self.nextToken
+        Self.nextToken &+= 1
+        previousToken = previous?.token
+        unchangedBeforeMs = previous.map { Self.firstDifference(between: $0.spans, and: sorted) } ?? 0
+    }
+
+    /// The earliest start of any span that is not in both, `UInt64.max` when
+    /// they hold the same spans. Spans are sorted by start, so past the first
+    /// position where two lists part, nothing starts earlier.
+    private static func firstDifference(between old: [String: [Span]], and new: [String: [Span]]) -> UInt64 {
+        var earliest = UInt64.max
+        for language in Set(old.keys).union(new.keys) {
+            let left = old[language] ?? []
+            let right = new[language] ?? []
+            var index = 0
+            while index < left.count, index < right.count, left[index] == right[index] {
+                index += 1
+            }
+            if index < left.count { earliest = min(earliest, left[index].start) }
+            if index < right.count { earliest = min(earliest, right[index].start) }
+        }
+        return earliest
+    }
+
+    /// Whether every row ending by `rowsEndMs` reads the same continuation
+    /// marks from this index as from the index with `token`.
+    func agreesForRows(endingBy rowsEndMs: UInt64, withIndex otherToken: UInt64) -> Bool {
+        if otherToken == token { return true }
+        guard previousToken == otherToken else { return false }
+        let (reach, overflow) = rowsEndMs.addingReportingOverflow(Self.fragmentReachMs)
+        return overflow == false && reach < unchangedBeforeMs
     }
 
     var isEmpty: Bool { spans.isEmpty }
@@ -529,6 +584,14 @@ enum NotebookCaptureHistoryPolicy {
               let activeSessionId
         else { return runs }
 
+        // The capture store only ever holds rows of its own session, so this
+        // is normally the store's array itself. Passing that same storage on
+        // is what lets SwiftUI compare an unchanged run in constant time; a
+        // filtered copy is new storage on every page evaluation, and SwiftUI
+        // then compares every row's text against the last frame's.
+        let activeUtterances = utterances.allSatisfy { $0.sessionId == activeSessionId }
+            ? utterances
+            : utterances.filter { $0.sessionId == activeSessionId }
         return runs.map { run in
             guard run.sessionId == activeSessionId else { return run }
             return NotebookCaptureHistoryRunDTO(
@@ -549,7 +612,7 @@ enum NotebookCaptureHistoryPolicy {
                 leftLanguage: profile.leftLanguage,
                 rightLanguage: profile.rightLanguage,
                 privacyLevel: profile.privacyLevel,
-                utterances: utterances.filter { $0.sessionId == activeSessionId },
+                utterances: activeUtterances,
                 selectedLanguages: resolvedSelectedLanguages(
                     profile.selectedLanguages,
                     legacyLeftLanguage: profile.leftLanguage,
@@ -631,10 +694,17 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var lastError: String?
     @Published private(set) var presentationByNotebook: [String: NotebookTranscriptPresentationMode] = [:]
-    @Published private(set) var speakerParticipants: [SpeakerParticipantDTO] = []
+    @Published private(set) var speakerParticipants: [SpeakerParticipantDTO] = [] {
+        didSet { speakerNamesRevision &+= 1 }
+    }
     /// How many recordings each named person appears in, for the name list.
     @Published private(set) var participantRecordingCounts: [String: UInt32] = [:]
-    @Published private(set) var sessionSpeakersBySession: [String: [NotebookSessionSpeakerDTO]] = [:]
+    @Published private(set) var sessionSpeakersBySession: [String: [NotebookSessionSpeakerDTO]] = [:] {
+        didSet { speakerNamesRevision &+= 1 }
+    }
+    /// Moves whenever a speaker name could read differently, so a transcript
+    /// can reuse the names it already resolved until then.
+    private(set) var speakerNamesRevision: UInt64 = 0
     @Published private(set) var transcriptLoadingSessionIds: Set<String> = []
     @Published private(set) var transcriptLoadErrors: [String: String] = [:]
     /// Recorded transcript gaps per session, refreshed with each hydrated

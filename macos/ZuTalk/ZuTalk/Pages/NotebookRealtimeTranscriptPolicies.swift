@@ -329,7 +329,7 @@ enum NotebookLanguageColumnCueOverlay {
     /// times a second, and used to split, lowercase and search the full text
     /// of every row in the session for every language first — the one cost
     /// on the main thread that grew with the length of the recording.
-    private static let representationWindow = 64
+    static let representationWindow = 64
 
     private static func cuePrecedes(
         _ left: NotebookCaptureTranslationCueDTO,

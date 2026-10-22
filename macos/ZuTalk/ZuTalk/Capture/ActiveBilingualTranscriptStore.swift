@@ -112,7 +112,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     }
 
     @Published private(set) var sessionId: String? {
-        didSet { syncCaptureActivity() }
+        didSet {
+            syncCaptureActivity()
+            if sessionId != oldValue { timeline.noteDurableChanged(sequences: nil) }
+        }
     }
     @Published private(set) var notebookId: String?
     @Published private(set) var profile = NotebookCaptureProfileDTO.localDefault(notebookId: "")
@@ -142,6 +145,25 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         let inheritedSourceAnchors: [String: UInt64]
     }
     private var audienceDurablePresentationCache: AudienceDurablePresentationCache?
+
+    /// The audience fold's state after each chunk of stored rows, so a change
+    /// resumes the fold at its own chunk. See `AudienceCandidateFold`.
+    private struct AudienceFoldCheckpoint {
+        let chunkID: UInt64
+        let fold: AudienceCandidateFold
+        /// Some row of this chunk took its column from the borrowed language.
+        let borrowsLanguage: Bool
+    }
+    private struct AudienceFoldKey: Equatable {
+        let sessionId: String
+        let languages: [String]
+        let maximumRows: Int
+    }
+    private var audienceFoldKey: AudienceFoldKey?
+    private var audienceFoldFallback: String?
+    private var audienceFoldCheckpoints: [AudienceFoldCheckpoint] = []
+    /// The first chunk whose fold state is stale; `nil` when none is.
+    private var audienceFoldDirtyFrom: UInt64? = 0
     private var cachedLastIdentifiedSourceLanguage: String?
     private var hasCachedLastIdentifiedSourceLanguage = false
     private var cachedHighestFinalProjectionRevision: UInt64 = 0
@@ -163,33 +185,152 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         cachedUtteranceSpeakerIds = ids
         return ids
     }
-    @Published private(set) var utterances: [NotebookCaptureUtteranceDTO] = [] {
-        didSet {
-            // Durable rows change far less often than speculative frames. A
-            // lazy invalidation makes a long `und` tail pay for one reverse
-            // scan at the next durable boundary, not once per visible row on
-            // every provider-rate SwiftUI refresh.
-            cachedUtteranceSpeakerIds = nil
-            cachedLastIdentifiedSourceLanguage = nil
-            hasCachedLastIdentifiedSourceLanguage = false
-            cachedHighestFinalProjectionRevision = 0
-            hasCachedHighestFinalProjectionRevision = false
-            audienceDurablePresentationCache = nil
+    /// The stored rows of the capture, ordered by sequence.
+    ///
+    /// Deliberately not `@Published`. Rows change with almost every provider
+    /// event, and publishing them made every page observing this store
+    /// re-read the whole transcript several times a second. Views read rows
+    /// from `timeline`, which publishes them as chunked frames at a bounded
+    /// rate; this store only tells it what changed.
+    var utterances: [NotebookCaptureUtteranceDTO] {
+        get { rows }
+        set {
+            rows = newValue
+            rowsDidChange(sequences: nil)
         }
+    }
+    /// Mutated in place by the merge path, which reports the sequences it
+    /// touched; any other assignment goes through `utterances` and reports
+    /// "anything may have changed".
+    private var rows: [NotebookCaptureUtteranceDTO] = []
+
+    /// The live transcript as the pages and the subtitle window read it.
+    let timeline = LiveTranscriptTimeline()
+
+    private func rowsDidChange(sequences: [UInt64]?) {
+        // Durable rows change far less often than speculative frames. A
+        // lazy invalidation makes a long `und` tail pay for one reverse
+        // scan at the next durable boundary, not once per visible row on
+        // every provider-rate SwiftUI refresh.
+        cachedUtteranceSpeakerIds = nil
+        cachedLastIdentifiedSourceLanguage = nil
+        hasCachedLastIdentifiedSourceLanguage = false
+        cachedHighestFinalProjectionRevision = 0
+        hasCachedHighestFinalProjectionRevision = false
+        audienceDurablePresentationCache = nil
+        let firstChunk = sequences.map { $0.map(TranscriptChunk.chunkID(of:)).min() } ?? 0
+        if let firstChunk {
+            audienceFoldDirtyFrom = min(audienceFoldDirtyFrom ?? firstChunk, firstChunk)
+        }
+        timeline.noteDurableChanged(sequences: sequences)
+    }
+
+    /// The bounded audience candidates over every stored row, resuming the
+    /// fold at the first chunk that changed since the last call.
+    private func foldAudienceCandidates(
+        sessionId: String,
+        languages: [String],
+        fallbackLanguage: String?,
+        maximumRows: Int
+    ) -> (utterances: [NotebookCaptureUtteranceDTO], anchors: [String: UInt64]) {
+        let key = AudienceFoldKey(sessionId: sessionId, languages: languages, maximumRows: maximumRows)
+        if audienceFoldKey != key {
+            audienceFoldKey = key
+            audienceFoldCheckpoints = []
+            audienceFoldDirtyFrom = 0
+        }
+        if audienceFoldFallback != fallbackLanguage {
+            audienceFoldFallback = fallbackLanguage
+            if let borrowing = audienceFoldCheckpoints.first(where: \.borrowsLanguage) {
+                audienceFoldDirtyFrom = min(audienceFoldDirtyFrom ?? borrowing.chunkID, borrowing.chunkID)
+            }
+        }
+        if let dirtyFrom = audienceFoldDirtyFrom {
+            audienceFoldCheckpoints.removeAll { $0.chunkID >= dirtyFrom }
+            var fold = audienceFoldCheckpoints.last?.fold ?? AudienceCandidateFold()
+            let firstSequence = dirtyFrom * TranscriptChunk.size
+            var index = 0
+            var upper = rows.count
+            while index < upper {
+                let middle = (index + upper) / 2
+                if rows[middle].sequence < firstSequence { index = middle + 1 } else { upper = middle }
+            }
+            while index < rows.count {
+                let chunkID = TranscriptChunk.chunkID(of: rows[index].sequence)
+                var borrows = false
+                while index < rows.count, TranscriptChunk.chunkID(of: rows[index].sequence) == chunkID {
+                    let row = rows[index]
+                    if row.sessionId == sessionId {
+                        borrows = borrows || AudienceCandidateFold.borrowsLanguage(row)
+                        fold.consume(
+                            row,
+                            selectedLanguages: languages,
+                            lastIdentifiedSourceLanguage: fallbackLanguage,
+                            limit: maximumRows
+                        )
+                    }
+                    index += 1
+                }
+                audienceFoldCheckpoints.append(AudienceFoldCheckpoint(
+                    chunkID: chunkID,
+                    fold: fold,
+                    borrowsLanguage: borrows
+                ))
+            }
+            audienceFoldDirtyFrom = nil
+        }
+        var tail: [NotebookCaptureUtteranceDTO] = []
+        for row in rows.reversed() where row.sessionId == sessionId {
+            tail.append(row)
+            if tail.count == maximumRows { break }
+        }
+        let fold = audienceFoldCheckpoints.last?.fold ?? AudienceCandidateFold()
+        return fold.result(globalTail: tail.reversed(), tailAnchors: [:])
     }
     /// Time-anchored auxiliary translation cues, keyed by cue identity.
     /// The audience canvas reads translations from here in multilingual mode;
     /// the durable transcript keeps reading bound utterance variants.
-    @Published private(set) var translationCues: [String: NotebookCaptureTranslationCueDTO] = [:] {
-        didSet {
-            if translationCues != oldValue {
-                continuationCueIndex = NotebookTranslationCueIndex(Array(translationCues.values))
-            }
-        }
+    ///
+    /// Assigned at most once per event, and only when an event changed it.
+    /// Every auxiliary partial arrives as its own delta, several a second per
+    /// translation lane, so a per-cue assignment used to compare the whole
+    /// session's cues and republish the store once per cue.
+    ///
+    /// Not `@Published` either, for the same reason as `utterances`: while a
+    /// recording runs the canvas reads the live cue tail, and the transcript
+    /// reads `continuationCueIndex`, which is published.
+    private(set) var translationCues: [String: NotebookCaptureTranslationCueDTO] = [:] {
+        didSet { scheduleContinuationCueIndexRebuild() }
     }
     /// `translationCues` indexed for the transcript's "continues on the row
-    /// above" cells. Rebuilt when the cues change, not on every frame.
-    private(set) var continuationCueIndex = NotebookTranslationCueIndex([])
+    /// above" cells. Rebuilding it reads every cue of the session, so during a
+    /// recording it follows the cues at most once a second instead of once
+    /// per partial; it is exact again as soon as the cues stop changing.
+    @Published private(set) var continuationCueIndex = NotebookTranslationCueIndex([])
+    private var continuationCueIndexRebuild: Task<Void, Never>?
+    static let continuationCueIndexInterval: TimeInterval = 1
+
+    private func scheduleContinuationCueIndexRebuild() {
+        guard captureState.isActive, translationCues.isEmpty == false else {
+            continuationCueIndexRebuild?.cancel()
+            continuationCueIndexRebuild = nil
+            continuationCueIndex = NotebookTranslationCueIndex(
+                Array(translationCues.values),
+                replacing: continuationCueIndex
+            )
+            return
+        }
+        guard continuationCueIndexRebuild == nil else { return }
+        continuationCueIndexRebuild = Task { @MainActor [weak self] in
+            try? await MontereyTaskSleep.seconds(Self.continuationCueIndexInterval)
+            guard let self, Task.isCancelled == false else { return }
+            self.continuationCueIndexRebuild = nil
+            self.continuationCueIndex = NotebookTranslationCueIndex(
+                Array(self.translationCues.values),
+                replacing: self.continuationCueIndex
+            )
+        }
+    }
     /// Bounded replace-in-full cue tail delivered with the speculative source
     /// frame. While capture is active this is the live canvas authority; it is
     /// deliberately separate from the durable all-session cue dictionary.
@@ -281,8 +422,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     @Published private(set) var isAudioInputSwitching = false
     @Published private(set) var activeAudioInputDevice: AudioInputDevice?
 
-    private let client: NotebookCaptureClienting
-    private let audioSource: NotebookCaptureAudioSourcing
+    private var client: NotebookCaptureClienting
+    private var audioSource: NotebookCaptureAudioSourcing
     private let elapsedTimerInterval: TimeInterval
     private let audioQueueCapacity: Int
     private let audioDrainWatchdogInterval: TimeInterval
@@ -313,6 +454,8 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private var lastLivePreviewPublishedAt: TimeInterval?
     private var heldLivePreview: NotebookCaptureLivePreviewDTO?
     private var livePreviewFlushTask: Task<Void, Never>?
+    private var previewRowsSubscription: AnyCancellable?
+    private var liveCuesSubscription: AnyCancellable?
     private var pendingCallbackEvent: NotebookCaptureEventDTO?
     private var pendingLivePreview: NotebookCaptureLivePreviewDTO?
     private var utteranceGapRepair: UtteranceGapRepair?
@@ -361,6 +504,19 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         self.audioDrainWatchdogInterval = max(0.001, audioDrainWatchdogInterval)
         self.terminalCommandWatchdogInterval = max(0.001, terminalCommandWatchdogInterval)
         self.livePreviewCoalescingInterval = max(0, livePreviewCoalescingInterval)
+        timeline.attach(LiveTranscriptTimeline.Source(
+            sessionId: { [weak self] in self?.sessionId },
+            durable: { [weak self] in self?.rows ?? [] },
+            preview: { [weak self] in self?.livePresentation.utterances ?? [] }
+        ))
+        previewRowsSubscription = livePresentation.$frame
+            .map(\.utterances)
+            .removeDuplicates()
+            .sink { [weak timeline] _ in timeline?.notePreviewChanged() }
+        liveCuesSubscription = livePresentation.$frame
+            .map(\.translationCues)
+            .removeDuplicates()
+            .sink { [weak timeline] _ in timeline?.noteLiveCuesChanged() }
     }
 
     var hasAudioSubscription: Bool { audioToken != nil }
@@ -436,24 +592,19 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
            cache.maximumRows == maximumRows {
             return cache
         }
-        let anchors = NotebookCaptureLivePresentation.inheritedSourceAnchors(
-            durable: utterances,
-            sessionId: sessionId
+        let folded = foldAudienceCandidates(
+            sessionId: sessionId,
+            languages: languages,
+            fallbackLanguage: fallbackLanguage,
+            maximumRows: maximumRows
         )
         let cache = AudienceDurablePresentationCache(
             sessionId: sessionId,
             selectedLanguages: languages,
             fallbackLanguage: fallbackLanguage,
             maximumRows: maximumRows,
-            utterances: NotebookCaptureLivePresentation.audienceDurableCandidates(
-                durable: utterances,
-                sessionId: sessionId,
-                selectedLanguages: languages,
-                lastIdentifiedSourceLanguage: fallbackLanguage,
-                maximumRows: maximumRows,
-                inheritedSourceAnchors: anchors
-            ),
-            inheritedSourceAnchors: anchors
+            utterances: folded.utterances,
+            inheritedSourceAnchors: folded.anchors
         )
         audienceDurablePresentationCache = cache
         return cache
@@ -1855,6 +2006,24 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     func abortAudioGateForTesting() {
         audioPushGate?.abort()
     }
+
+    /// Lets a test drive the shared store, which the pages observe, from a
+    /// recorded file instead of a microphone. Only between recordings.
+    func replaceAudioSourceForTesting(_ source: NotebookCaptureAudioSourcing) {
+        precondition(isCaptureActive == false, "replace the audio source between recordings")
+        audioSource = source
+    }
+
+    /// Lets a test record what the core delivers, or replay a recording of
+    /// it, through the shared store the pages observe.
+    /// Whole-session reloads started because a delta went missing. With
+    /// the merging dispatcher a live recording should need none.
+    private(set) var gapRepairCountForTesting = 0
+
+    func replaceClientForTesting(_ client: NotebookCaptureClienting) {
+        precondition(isCaptureActive == false, "replace the client between recordings")
+        self.client = client
+    }
 #endif
 
     func texts(for utterance: NotebookCaptureUtteranceDTO) -> NotebookCaptureLaneTexts {
@@ -2164,12 +2333,39 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private func merge(_ updates: [NotebookCaptureUtteranceDTO]) {
         guard updates.isEmpty == false else { return }
         let preparedUpdates = prepareUtteranceUpdates(updates)
-        var mergedUtterances = utterances
+        // In place, and only the touched rows are compared: copying and then
+        // comparing the whole transcript on every event was linear in the
+        // length of the recording, several times a second.
+        var changed: [UInt64] = []
+        // The session's highest final lane revision, kept current here
+        // instead of rescanned: only a replaced row that held the maximum
+        // can lower it, and then it is recomputed once on demand.
+        var highest: UInt64? = hasCachedHighestFinalProjectionRevision
+            ? cachedHighestFinalProjectionRevision
+            : nil
         for update in preparedUpdates {
-            Self.upsertOrderedUtterance(update, into: &mergedUtterances)
+            switch Self.upsertOrderedUtterance(update, into: &rows) {
+            case .unchanged:
+                continue
+            case .inserted:
+                highest = highest.map { max($0, update.highestFinalLaneProjectionRevision) }
+            case .replaced(let previous):
+                let next = update.highestFinalLaneProjectionRevision
+                if let current = highest,
+                   previous.highestFinalLaneProjectionRevision == current, next < current {
+                    highest = nil
+                } else {
+                    highest = highest.map { max($0, next) }
+                }
+            }
+            changed.append(update.sequence)
         }
-        if mergedUtterances != utterances {
-            utterances = mergedUtterances
+        if changed.isEmpty == false {
+            rowsDidChange(sequences: changed)
+            if let highest {
+                cachedHighestFinalProjectionRevision = highest
+                hasCachedHighestFinalProjectionRevision = true
+            }
         }
         // Preserve the old non-empty-event menu refresh behavior even when all
         // rows belong to another session or lose stale-revision arbitration.
@@ -2186,11 +2382,12 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private func removeUtterances(sequences: [UInt64]) {
         guard sequences.isEmpty == false else { return }
         let withdrawn = Set(sequences)
-        let remaining = utterances.filter {
-            $0.sessionId != sessionId || withdrawn.contains($0.sequence) == false
+        let before = rows.count
+        rows.removeAll {
+            $0.sessionId == sessionId && withdrawn.contains($0.sequence)
         }
-        guard remaining.count != utterances.count else { return }
-        utterances = remaining
+        guard rows.count != before else { return }
+        rowsDidChange(sequences: sequences)
         refreshRecentTranscriptPresentation()
     }
 
@@ -2214,13 +2411,20 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     /// `utterances` is session-scoped and maintained in strict sequence order.
     /// Equal revisions remain last-writer-wins, while a stale revision is
     /// ignored exactly as it was by the former linear-search/full-sort merge.
+    private enum UpsertOutcome {
+        case unchanged
+        case inserted
+        case replaced(NotebookCaptureUtteranceDTO)
+    }
+
+    @discardableResult
     private static func upsertOrderedUtterance(
         _ update: NotebookCaptureUtteranceDTO,
         into rows: inout [NotebookCaptureUtteranceDTO]
-    ) {
-        if let last = rows.last, last.sequence < update.sequence {
+    ) -> UpsertOutcome {
+        if rows.last.map({ $0.sequence < update.sequence }) ?? true {
             rows.append(update)
-            return
+            return .inserted
         }
 
         var lowerBound = 0
@@ -2236,12 +2440,15 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
         if lowerBound < rows.count,
            rows[lowerBound].sequence == update.sequence {
-            if update.revision >= rows[lowerBound].revision {
-                rows[lowerBound] = update
-            }
-        } else {
-            rows.insert(update, at: lowerBound)
+            guard update.revision >= rows[lowerBound].revision,
+                  rows[lowerBound] != update
+            else { return .unchanged }
+            let previous = rows[lowerBound]
+            rows[lowerBound] = update
+            return .replaced(previous)
         }
+        rows.insert(update, at: lowerBound)
+        return .inserted
     }
 
     /// Builds an authoritative snapshot off-publisher, selecting the highest
@@ -2482,12 +2689,16 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             return
         }
         guard event.translationCues.isEmpty == false else { return }
+        // In place: a copy of the dictionary to edit and assign back was a
+        // copy of every cue of the session, on every event.
         for cue in event.translationCues {
             if cue.withdrawn {
-                translationCues.removeValue(forKey: cue.id)
+                if translationCues[cue.id] != nil { translationCues[cue.id] = nil }
                 continue
             }
-            if let existing = translationCues[cue.id], existing.revision > cue.revision {
+            if let existing = translationCues[cue.id],
+               existing.revision > cue.revision || existing == cue {
+                // Older, or a redelivery after mailbox coalescing.
                 continue
             }
             translationCues[cue.id] = cue
@@ -2671,8 +2882,11 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             return
         }
 
+        // A coalesced event stands for every revision from `coversFromRevision`
+        // on, so it closes the gap it would otherwise seem to open.
         let expectedRevision = lastAppliedEventRevision.map { $0 &+ 1 }
-        let hasGap = expectedRevision != event.eventRevision
+        let firstCovered = event.coversFromRevision ?? event.eventRevision
+        let hasGap = expectedRevision.map { firstCovered > $0 } ?? true
 
         // Apply the newest durable delta immediately. If the dispatcher
         // coalesced one or more revisions, the async authoritative pass below
@@ -2681,9 +2895,10 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         // Withdrawal is part of the delta: a provider replacement can retire a
         // speculative row outright, and until that had a delta shape the only
         // way to say so was a whole-session resend on the publication path.
-        // Rust guarantees a sequence is never in both lists — a withdrawal
-        // that leaves a translation-only shell behind sends the shell as an
-        // upsert — so the two can be applied in either order.
+        // One Rust event never lists a sequence in both — a withdrawal that
+        // leaves a translation-only shell behind sends the shell as an
+        // upsert. A coalesced event can: a row withdrawn and later re-sent.
+        // Removing first is what makes that equal to the events in turn.
         removeUtterances(sequences: event.removedSequences)
         merge(event.utterances)
         lastAppliedEventRevision = event.eventRevision
@@ -2704,6 +2919,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
 
     private func beginUtteranceGapRepair(with event: NotebookCaptureEventDTO) {
         guard utteranceGapRepair == nil else { return }
+#if DEBUG
+        gapRepairCountForTesting += 1
+#endif
         var repair = UtteranceGapRepair(
             id: UUID(),
             sessionId: event.sessionId,
@@ -2807,7 +3025,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             for delta in replayDeltas {
                 guard continuousThroughRevision < UInt64.max else { break }
                 let expectedRevision = continuousThroughRevision + 1
-                guard delta.eventRevision == expectedRevision else { break }
+                guard (delta.coversFromRevision ?? delta.eventRevision) <= expectedRevision,
+                      delta.eventRevision >= expectedRevision
+                else { break }
                 continuousThroughRevision = delta.eventRevision
             }
 
@@ -3030,10 +3250,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     ) {
         guard acceptedCallbackGeneration == generation else { return }
         guard readyCallbackGeneration == generation else {
-            if pendingCallbackEvent == nil
-                || (pendingCallbackEvent?.eventRevision ?? 0) <= event.eventRevision {
-                pendingCallbackEvent = event
-            }
+            pendingCallbackEvent = pendingCallbackEvent.map {
+                NotebookCaptureEventDTO.coalescing($0, into: event)
+            } ?? event
             return
         }
         guard callbackSessionId == event.sessionId else { return }

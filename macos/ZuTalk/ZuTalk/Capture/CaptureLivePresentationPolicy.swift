@@ -234,6 +234,107 @@ enum NotebookCaptureLivePresentation {
     }
 }
 
+/// `audienceDurableCandidates` and `inheritedSourceAnchors` as a resumable
+/// left fold.
+///
+/// Both read the whole session from its first row, and used to be rerun from
+/// there on every change of any row — several times a second, getting slower
+/// for as long as the recording ran. They are folds over the rows in order,
+/// so the state after any prefix can be kept and the fold resumed from it:
+/// keeping it at each chunk boundary turns a change near the live edge into
+/// a pass over the last chunk. Same rows in, same candidates out.
+struct AudienceCandidateFold {
+    /// Coverage of the most recent timed row, carried onto untimed ones.
+    var carried: UInt64?
+    /// Sort-only bounds of every untimed row seen so far.
+    var anchors: [String: UInt64] = [:]
+    var visibleSources: [String: [NotebookCaptureUtteranceDTO]] = [:]
+    var coverageLeaders: [String: NotebookCaptureUtteranceDTO] = [:]
+
+    /// Whether a row's column depends on the borrowed last-identified
+    /// language, so a change of that language must redo it.
+    static func borrowsLanguage(_ utterance: NotebookCaptureUtteranceDTO) -> Bool {
+        guard utterance.hasSourceLane, utterance.sourceText.isEmpty == false else { return false }
+        let source = utterance.sourceLanguage.trimmingCharacters(in: .whitespaces).lowercased()
+        if source.isEmpty == false, source != "und" { return false }
+        let provisional = (utterance.provisionalSourceLanguage ?? "")
+            .trimmingCharacters(in: .whitespaces).lowercased()
+        return provisional.isEmpty || provisional == "und"
+    }
+
+    mutating func consume(
+        _ utterance: NotebookCaptureUtteranceDTO,
+        selectedLanguages: [String],
+        lastIdentifiedSourceLanguage: String?,
+        limit: Int
+    ) {
+        if let start = utterance.sourceStartMs {
+            carried = utterance.sourceEndMs ?? start
+        } else if let carried {
+            anchors[utterance.id] = carried
+        }
+        guard let language = NotebookCaptureHistoryPolicy.audienceSourcePlacement(
+            for: utterance,
+            selectedLanguages: selectedLanguages,
+            lastIdentifiedSourceLanguage: lastIdentifiedSourceLanguage
+        ) else { return }
+        let anchors = anchors
+        func comesBefore(_ left: NotebookCaptureUtteranceDTO, _ right: NotebookCaptureUtteranceDTO) -> Bool {
+            let leftAnchor = left.sourceStartMs ?? anchors[left.id]
+            let rightAnchor = right.sourceStartMs ?? anchors[right.id]
+            switch (leftAnchor, rightAnchor) {
+            case let (.some(leftAnchor), .some(rightAnchor)) where leftAnchor != rightAnchor:
+                return leftAnchor < rightAnchor
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            default:
+                if (left.sourceStartMs == nil) != (right.sourceStartMs == nil) {
+                    return right.sourceStartMs == nil
+                }
+                return left.sequence < right.sequence
+            }
+        }
+        var retained = visibleSources[language] ?? []
+        retained.append(utterance)
+        retained.sort(by: comesBefore)
+        if retained.count > limit {
+            retained.removeFirst(retained.count - limit)
+        }
+        visibleSources[language] = retained
+
+        if let coverage = utterance.sourceEndMs ?? utterance.sourceStartMs {
+            let existingCoverage = coverageLeaders[language]
+                .flatMap { $0.sourceEndMs ?? $0.sourceStartMs }
+            if existingCoverage.map({ coverage > $0 }) ?? true {
+                coverageLeaders[language] = utterance
+            }
+        }
+    }
+
+    /// The candidates and the bounds they are sorted by, given the fold over
+    /// every row and the session's last `limit` rows.
+    func result(
+        globalTail: [NotebookCaptureUtteranceDTO],
+        tailAnchors: [String: UInt64]
+    ) -> (utterances: [NotebookCaptureUtteranceDTO], anchors: [String: UInt64]) {
+        var candidatesByID: [String: NotebookCaptureUtteranceDTO] = [:]
+        for utterance in globalTail { candidatesByID[utterance.id] = utterance }
+        for utterance in visibleSources.values.joined() { candidatesByID[utterance.id] = utterance }
+        for utterance in coverageLeaders.values { candidatesByID[utterance.id] = utterance }
+        var bounds: [String: UInt64] = [:]
+        for id in candidatesByID.keys {
+            if let bound = anchors[id] ?? tailAnchors[id] { bounds[id] = bound }
+        }
+        let utterances = candidatesByID.values.sorted {
+            if $0.sequence != $1.sequence { return $0.sequence < $1.sequence }
+            return $0.id < $1.id
+        }
+        return (utterances, bounds)
+    }
+}
+
 /// Bounds how often interim preview revisions reach the published transcript.
 ///
 /// The realtime provider emits a preview revision at roughly speaking cadence —

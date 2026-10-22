@@ -71,6 +71,14 @@ final class CommunityInviteSession: ObservableObject {
 
     var isActive: Bool { accessToken != nil }
 
+#if DEBUG
+    /// Re-reads the token file after a test has placed one in its isolated
+    /// Secrets directory; the shared session read it once at first use.
+    func reloadAccessTokenForTesting() {
+        accessToken = Self.loadToken(from: tokenFileURL)
+    }
+#endif
+
     /// Whether the invitation currently stands in for a model key. The
     /// assistance switch still decides whether anything is sent, and a key the
     /// user saved still wins; the core enforces both.

@@ -831,7 +831,9 @@ private struct NotebookRealtimeHistoryView: View {
             projectionState: capture.projectionState,
             realtimeLoroAppliedRevision: capture.realtimeLoroAppliedRevision,
             profile: capture.profile,
-            utterances: capture.utterances
+            // The live run draws its rows from the timeline; its run value
+            // carries none, so an unchanged run stays equal while rows move.
+            utterances: []
         )
     }
 
@@ -1032,7 +1034,6 @@ private struct NotebookRealtimeHistoryView: View {
                 VStack(spacing: 0) {
                     NotebookRealtimeUtteranceView(
                         run: run,
-                        presentedUtterances: run.utterances,
                         liveTranslationCues: [],
                         continuationCues: history.translationCueIndex(sessionId: run.sessionId),
                         presentationMode: presentationMode,
@@ -1079,11 +1080,25 @@ private struct NotebookRealtimeHistoryView: View {
         else { return }
         cancelLiveFollow()
         isFollowingLive = false
-        if reduceMotion {
-            proxy.scrollTo(target.id, anchor: .center)
-        } else {
-            withAnimation(.easeOut(duration: 0.22)) {
+        // Rows live inside blocks, and a lazy stack only knows the ids of its
+        // own children: bring the row's block in first, then the row.
+        let listed = presentationMode == .bilingualColumns
+            ? utterances
+            : utterances.filter(\.hasSourceLane)
+        if listed.contains(where: { $0.id == target.id }) {
+            proxy.scrollTo(
+                NotebookTranscriptRowBlocks.anchor(ofSequence: target.sequence),
+                anchor: .center
+            )
+        }
+        Task { @MainActor in
+            await Task.yield()
+            if reduceMotion {
                 proxy.scrollTo(target.id, anchor: .center)
+            } else {
+                withAnimation(.easeOut(duration: 0.22)) {
+                    proxy.scrollTo(target.id, anchor: .center)
+                }
             }
         }
     }
@@ -1204,36 +1219,6 @@ private struct NotebookRealtimeHistoryView: View {
     }
 }
 
-/// Owns the provider-rate observation for the one mounted live run. A
-/// speculative preview frame updates live text and follow-at-edge behavior
-/// without rebuilding the durable Session Section.
-/// The live preview's rows for the main window, at most ten times a second.
-///
-/// The provider's speculative tail changes up to thirty times a second, which
-/// the subtitle window needs to feel live. This page re-evaluates the whole
-/// recording on every change — speaker turns, gaps, cues, one diff per row —
-/// so here a third of the rate reads the same and costs a third as much. The
-/// newest frame always arrives: the throttle keeps the latest value.
-@MainActor
-final class ThrottledLivePreviewUtterances: ObservableObject {
-    @Published private(set) var utterances: [NotebookCaptureUtteranceDTO]
-    private var subscription: AnyCancellable?
-
-    init(
-        source: NotebookCaptureLivePresentationStore,
-        interval: RunLoop.SchedulerTimeType.Stride = .milliseconds(100)
-    ) {
-        utterances = source.utterances
-        subscription = source.$frame
-            .map(\.utterances)
-            .removeDuplicates()
-            .throttle(for: interval, scheduler: RunLoop.main, latest: true)
-            .sink { [weak self] rows in
-                self?.utterances = rows
-            }
-    }
-}
-
 private struct NotebookRealtimeActiveRunView: View {
     let run: NotebookCaptureHistoryRunDTO
     let presentationMode: NotebookTranscriptPresentationMode
@@ -1242,7 +1227,8 @@ private struct NotebookRealtimeActiveRunView: View {
     private let capture: ActiveBilingualTranscriptStore
     private let liveTailAnchorID: String
     private let onLiveAutoscrollSignal: () -> Void
-    @StateObject private var livePreview: ThrottledLivePreviewUtterances
+    /// The only source of rows here, published at most ten times a second.
+    @ObservedObject private var timeline: LiveTranscriptTimeline
 
     init(
         run: NotebookCaptureHistoryRunDTO,
@@ -1260,21 +1246,17 @@ private struct NotebookRealtimeActiveRunView: View {
         self.capture = capture
         self.liveTailAnchorID = liveTailAnchorID
         self.onLiveAutoscrollSignal = onLiveAutoscrollSignal
-        _livePreview = StateObject(
-            wrappedValue: ThrottledLivePreviewUtterances(source: capture.livePresentation)
-        )
+        _timeline = ObservedObject(wrappedValue: capture.timeline)
     }
 
     var body: some View {
-        let presentedUtterances = NotebookCaptureLivePresentation.utterances(
-            durable: run.utterances,
-            preview: livePreview.utterances,
-            sessionId: run.sessionId
-        )
+        // Rows of another session never reach this view: the timeline is
+        // reset with the store's session.
+        let chunks = timeline.frame.sessionId == run.sessionId ? timeline.frame.chunks : []
         VStack(spacing: 0) {
             NotebookRealtimeUtteranceView(
                 run: run,
-                presentedUtterances: presentedUtterances,
+                liveChunks: chunks,
                 liveTranslationCues: capture.presentedTranslationCueSnapshot,
                 continuationCues: capture.continuationCueIndex,
                 presentationMode: presentationMode,
@@ -1315,12 +1297,7 @@ private struct NotebookRealtimeActiveRunView: View {
 
     private var liveAutoscrollSignal: NotebookRealtimeAutoscrollSignal? {
         NotebookRealtimeAutoscrollPolicy.signal(
-            in: NotebookCaptureLivePresentation.utteranceTail(
-                durable: run.utterances,
-                preview: livePreview.utterances,
-                sessionId: run.sessionId,
-                limit: 1
-            ),
+            in: timeline.frame.sessionId == run.sessionId ? timeline.frame.tail(limit: 1) : [],
             cues: capture.presentedTranslationCueSnapshot
         )
     }

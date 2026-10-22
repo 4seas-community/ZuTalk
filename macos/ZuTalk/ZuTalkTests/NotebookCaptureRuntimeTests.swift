@@ -1211,8 +1211,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         foreign.sourceText = "must stay hidden"
 
         var publishedSnapshots: [[UInt64]] = []
-        let observation = store.$utterances.dropFirst().sink { utterances in
-            publishedSnapshots.append(utterances.map(\.sequence))
+        // Rows reach views through the timeline's frames; settle anything
+        // earlier events scheduled before watching for this one.
+        store.timeline.flush()
+        let observation = store.timeline.$frame.dropFirst().sink { frame in
+            publishedSnapshots.append(frame.rows.map(\.sequence))
         }
         client.emitCaptureEvent(captureEvent(
             sessionId: "session-a",
@@ -1221,6 +1224,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             eventRevision: 2,
             isFullSnapshot: false
         ))
+        store.timeline.flush()
 
         XCTAssertEqual(store.utterances.map(\.sequence), [0, 1, 2, 3])
         XCTAssertEqual(
@@ -1284,8 +1288,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         twoStale.sourceText = "two-stale-later"
 
         var publishedSnapshots: [[UInt64]] = []
-        let observation = store.$utterances.dropFirst().sink { utterances in
-            publishedSnapshots.append(utterances.map(\.sequence))
+        // Rows reach views through the timeline's frames; settle anything
+        // earlier events scheduled before watching for this one.
+        store.timeline.flush()
+        let observation = store.timeline.$frame.dropFirst().sink { frame in
+            publishedSnapshots.append(frame.rows.map(\.sequence))
         }
         client.emitCaptureEvent(captureEvent(
             sessionId: "session-a",
@@ -1294,6 +1301,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             eventRevision: 2,
             isFullSnapshot: true
         ))
+        store.timeline.flush()
 
         XCTAssertEqual(store.utterances.map(\.sequence), [0, 1, 2])
         XCTAssertEqual(
@@ -5075,8 +5083,9 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         staleDuplicate.sourceText = "stale duplicate"
         rows.append(contentsOf: [newerDuplicate, equalRevisionDuplicate, staleDuplicate])
         var publishedCounts: [Int] = []
-        let observation = store.$utterances.dropFirst().sink { rows in
-            publishedCounts.append(rows.count)
+        store.timeline.flush()
+        let observation = store.timeline.$frame.dropFirst().sink { frame in
+            publishedCounts.append(frame.rowCount)
         }
 
         client.emitCaptureEvent(captureEvent(
@@ -5086,6 +5095,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             eventRevision: 1,
             isFullSnapshot: true
         ))
+        store.timeline.flush()
 
         XCTAssertEqual(store.utterances.count, 5_000)
         XCTAssertEqual(store.utterances.first?.sourceText, "row 0")
@@ -8206,7 +8216,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         let realtimeTranscriptEnd = try XCTUnwrap(
             captureViews[realtimeTranscriptStart.upperBound...]
-                .range(of: "private struct TranscriptionUtteranceRow: View")
+                .range(of: "struct TranscriptionUtteranceRow: View")
         )
         let realtimeTranscriptView = String(
             captureViews[realtimeTranscriptStart.lowerBound..<realtimeTranscriptEnd.lowerBound]
@@ -8473,7 +8483,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(realtimeTranscriptView.contains("case .snapshotUnavailable:"))
         XCTAssertTrue(realtimeTranscriptView.contains("private var bilingualLayout"))
         XCTAssertTrue(realtimeTranscriptView.contains("private var transcriptionOnlyLayout"))
-        XCTAssertTrue(realtimeTranscriptView.contains("TranscriptionUtteranceRow("))
+        XCTAssertTrue(realtimeTranscriptView.contains("NotebookTranscriptionRowBlock("))
         XCTAssertEqual(
             realtimeTranscriptView.components(separatedBy: ".onChange(of: latestUtteranceID)").count - 1,
             0,
@@ -8492,7 +8502,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             "catalog completion must rehydrate an already-active capture's speaker metadata"
         )
         XCTAssertTrue(activeCapture.contains("listNotebookCaptureHistory(notebookId:"))
-        XCTAssertTrue(realtimeTranscriptView.contains("NotebookCaptureHistoryPolicy.laneProjection("))
+        XCTAssertTrue(realtimeTranscriptView.contains("rowCache.multilingualBlocks("))
         XCTAssertTrue(realtimeTranscriptView.contains("languageCount: displayLanguages.count"))
         XCTAssertTrue(captureViews.contains("ForEach(Array(projection.lanes.enumerated())"))
         XCTAssertTrue(captureViews.contains("NotebookCaptureLanguageLane"))
@@ -8538,12 +8548,12 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         )
         XCTAssertTrue(realtimeTranscriptView.contains("runHeader"))
         XCTAssertTrue(realtimeTranscriptView.contains("createdAtText"))
-        XCTAssertTrue(realtimeTranscriptView.contains("run.utterances.isEmpty"))
+        XCTAssertTrue(realtimeTranscriptView.contains("chunks.isEmpty"))
         XCTAssertTrue(realtimeTranscriptView.contains("capture.transcript.copy"))
         XCTAssertTrue(realtimeTranscriptView.contains("getSessionTranscriptClipboardText"))
         XCTAssertTrue(realtimeTranscriptView.contains("TranscriptClipboard.write"))
         XCTAssertTrue(realtimeTranscriptView.contains(
-            "run.utterances.isEmpty == false && laneEditingState.canSwap"
+            "chunks.isEmpty == false && laneEditingState.canSwap"
         ))
         XCTAssertTrue(realtimeTranscriptView.contains(".frame(minWidth: 44, minHeight: 44)"))
         XCTAssertTrue(captureViews.contains("projection.pendingLanguage"))

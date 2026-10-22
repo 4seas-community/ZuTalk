@@ -779,112 +779,6 @@ enum SubtitleConversationTimeline {
     }
 }
 
-/// Paces a translation card's text onto the screen at reading speed instead of
-/// painting each provider batch as one slab.
-///
-/// Translations arrive in mouthfuls — measured p50 15 tokens per batch, p50
-/// 1.4 s between batches — because the provider needs source context before it
-/// can translate at all. The gap between mouthfuls is idle screen time; the
-/// reveal cursor spends exactly that time walking through the buffered text,
-/// so the column reads as flowing words while adding only bounded latency.
-///
-/// The unrevealed tail is also a free mask: a provider rewrite that lands
-/// beyond the cursor was never on screen, so it costs zero visible erasure —
-/// masking priced in idle time instead of MeetDot's constant four words or the
-/// 4-second lag Google pays for erasure 0.1.
-enum SubtitlePacedReveal {
-    struct State: Equatable {
-        /// Fractional so per-tick advances below one character accumulate.
-        var revealedChars: Double = 0
-
-        func revealedPrefix(of text: String) -> String {
-            let whole = Int(revealedChars)
-            if whole >= text.count { return text }
-            return String(text.prefix(whole))
-        }
-    }
-
-    /// Dense scripts (CJK, Thai) carry a word per character or two and are
-    /// read at far fewer characters per second than spaced Latin text.
-    enum Script {
-        case dense
-        case spaced
-    }
-
-    /// Base rates hold a column legible; the adaptive term above them exists
-    /// to drain a measured-size backlog inside one measured batch gap
-    /// (~90 Latin / ~25 dense chars per mouthful, ~1.4 s to the next one).
-    static func characterRate(script: Script, backlogChars: Int) -> Double {
-        let (base, halfway): (Double, Double) = switch script {
-        case .dense: (13, 20)
-        case .spaced: (40, 60)
-        }
-        return base * (1 + Double(max(backlogChars, 0)) / halfway)
-    }
-
-    /// Beyond four mouthfuls of backlog (a reconnect flood, not live speech),
-    /// pacing would turn into visible lag; the cursor snaps forward instead.
-    static func snapBacklogLimit(script: Script) -> Int {
-        switch script {
-        case .dense: 100
-        case .spaced: 360
-        }
-    }
-
-    static func script(for text: String) -> Script {
-        var dense = 0
-        var scored = 0
-        for scalar in text.unicodeScalars {
-            guard scalar.properties.isAlphabetic else { continue }
-            scored += 1
-            switch scalar.value {
-            case 0x2E80...0x9FFF,       // CJK radicals through unified ideographs
-                 0x3040...0x30FF,       // kana
-                 0xF900...0xFAFF,       // compatibility ideographs
-                 0x0E00...0x0E7F:       // Thai
-                dense += 1
-            default:
-                break
-            }
-        }
-        guard scored > 0 else { return .spaced }
-        return dense * 2 >= scored ? .dense : .spaced
-    }
-
-    /// A text change keeps every already-revealed character that survived and
-    /// never re-reveals what the reader has seen: appends and beyond-cursor
-    /// rewrites leave the cursor alone; a rewrite that reaches under the
-    /// cursor snaps it back to the surviving prefix so the correction shows
-    /// immediately instead of replaying the whole card.
-    static func reconcile(state: State, oldText: String, newText: String) -> State {
-        var state = state
-        let survivingPrefix = zip(oldText, newText)
-            .prefix(while: { $0 == $1 })
-            .count
-        if state.revealedChars > Double(survivingPrefix) {
-            state.revealedChars = Double(survivingPrefix)
-        }
-        return state
-    }
-
-    static func advance(state: State, elapsedSeconds: Double, text: String) -> State {
-        var state = state
-        let total = Double(text.count)
-        guard state.revealedChars < total else {
-            state.revealedChars = total
-            return state
-        }
-        let script = script(for: text)
-        let backlog = Int(total - state.revealedChars)
-        if backlog > snapBacklogLimit(script: script) {
-            state.revealedChars = total - Double(snapBacklogLimit(script: script))
-        }
-        let rate = characterRate(script: script, backlogChars: backlog)
-        state.revealedChars = min(total, state.revealedChars + rate * elapsedSeconds)
-        return state
-    }
-}
-
 /// The canonical preview can revise several times a second. The audience
 /// needs the newest words, not every intermediate hypothesis: partials share
 /// one trailing-edge refresh while a Final bypasses the budget immediately.
@@ -922,90 +816,95 @@ enum SubtitleAudienceSourceRefresh {
 /// Not observable on purpose: cards render from their own @State, and
 /// publishing every 33 ms tick would re-render every column.
 @MainActor
+/// Where each translation card's reveal stands, kept outside the views so a
+/// layout rebuild resumes a card instead of replaying its words at the room.
 final class AudienceRevealMemory {
-    private var progress: [String: (state: SubtitlePacedReveal.State, text: String)] = [:]
+    private var plans: [String: CaptionRevealPlan] = [:]
 
-    func recall(_ id: String) -> (state: SubtitlePacedReveal.State, text: String)? {
-        progress[id]
+    /// The card's plan for `text`, revised in place when the text moved on.
+    func plan(
+        for id: String,
+        text: String,
+        profile: CaptionScriptProfile,
+        startsRevealed: Bool,
+        now: TimeInterval
+    ) -> CaptionRevealPlan {
+        if let plan = plans[id], plan.profile == profile {
+            let revised = plan.updated(text: text, now: now)
+            if revised != plan { plans[id] = revised }
+            return revised
+        }
+        let plan = CaptionRevealPlan.start(
+            text: text,
+            profile: profile,
+            now: now,
+            revealed: startsRevealed
+        )
+        plans[id] = plan
+        return plan
     }
 
-    func store(_ id: String, state: SubtitlePacedReveal.State, text: String) {
-        progress[id] = (state, text)
-    }
-
-    /// Cards fall off the visible suffix as the session grows; their cursors
+    /// Cards fall off the visible suffix as the session grows; their plans
     /// go with them so a long meeting cannot accumulate one entry per cue.
     func prune(keeping visible: Set<String>) {
-        guard progress.count > visible.count else { return }
-        progress = progress.filter { visible.contains($0.key) }
+        guard plans.count > visible.count else { return }
+        plans = plans.filter { visible.contains($0.key) }
     }
 }
 
-/// Drives `SubtitlePacedReveal` at caption frame rate. The task restarts on
-/// every text revision: reconcile decides what the cursor keeps, then the
-/// loop walks the remainder out at reading speed and ends when the card is
-/// fully revealed — an idle card costs no timer.
+/// A translation card revealed by its plan: what shows is computed from the
+/// clock on every frame the system draws, and once the last step is due the
+/// card is plain text again and costs no frames at all.
 private struct AudiencePacedText: View {
     let id: String
     let text: String
+    let language: String?
     let fontSize: Double
+    let startsRevealed: Bool
     let memory: AudienceRevealMemory
 
-    @State private var reveal: SubtitlePacedReveal.State
-    @State private var revealedText: String
-    @State private var lastText: String
+    /// The plan's completion time this view has already seen pass.
+    @State private var settledAt: TimeInterval = -.infinity
 
-    init(
-        id: String,
-        text: String,
-        fontSize: Double,
-        startsRevealed: Bool,
-        memory: AudienceRevealMemory
-    ) {
-        self.id = id
-        self.text = text
-        self.fontSize = fontSize
-        self.memory = memory
-        // A card the memory already knows resumes exactly where it was —
-        // a layout rebuild is not a reason to replay words at the room.
-        let seed = memory.recall(id) ?? (
-            state: SubtitlePacedReveal.State(
-                revealedChars: startsRevealed ? Double(text.count) : 0
-            ),
-            text: text
-        )
-        _reveal = State(initialValue: seed.state)
-        _revealedText = State(initialValue: seed.state.revealedPrefix(of: seed.text))
-        _lastText = State(initialValue: seed.text)
-    }
+    static func now() -> TimeInterval { Date().timeIntervalSinceReferenceDate }
 
     var body: some View {
-        Text(revealedText)
+        let plan = memory.plan(
+            for: id,
+            text: text,
+            profile: CaptionScriptProfile.forLanguage(language, text: text),
+            startsRevealed: startsRevealed,
+            now: Self.now()
+        )
+        let isSettled = plan.completesAt <= Self.now() || plan.completesAt <= settledAt
+        Group {
+            if isSettled {
+                styled(Text(text))
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
+                    styled(Text(plan.visibleText(at: context.date.timeIntervalSinceReferenceDate)))
+                }
+            }
+        }
+        .task(id: plan.completesAt) {
+            // One wake-up when the plan completes, to stop drawing frames.
+            // Its lateness changes nothing on screen: the frames in between
+            // already show whatever the clock says is due.
+            let wait = plan.completesAt - Self.now()
+            if wait > 0, wait.isFinite {
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            }
+            guard Task.isCancelled == false else { return }
+            settledAt = plan.completesAt
+        }
+    }
+
+    private func styled(_ text: Text) -> some View {
+        text
             .font(.system(size: CGFloat(fontSize), weight: .semibold))
             .foregroundColor(.primary)
             .textSelection(.enabled)
             .multilineTextAlignment(.leading)
-            .task(id: text) {
-                reveal = SubtitlePacedReveal.reconcile(
-                    state: reveal,
-                    oldText: lastText,
-                    newText: text
-                )
-                lastText = text
-                revealedText = reveal.revealedPrefix(of: text)
-                memory.store(id, state: reveal, text: text)
-                while !Task.isCancelled, Int(reveal.revealedChars) < text.count {
-                    try? await MontereyTaskSleep.milliseconds(33)
-                    if Task.isCancelled { return }
-                    reveal = SubtitlePacedReveal.advance(
-                        state: reveal,
-                        elapsedSeconds: 0.033,
-                        text: text
-                    )
-                    revealedText = reveal.revealedPrefix(of: text)
-                    memory.store(id, state: reveal, text: text)
-                }
-            }
     }
 }
 
@@ -1232,6 +1131,9 @@ final class SubtitleOverlayPresentationSettings: ObservableObject {
 struct SubtitleOverlayView: View {
     @ObservedObject var store: ActiveBilingualTranscriptStore
     @ObservedObject private var livePresentation: NotebookCaptureLivePresentationStore
+    /// Stored rows no longer republish the store; the timeline says when
+    /// they moved, at its bounded rate.
+    @ObservedObject private var timeline: LiveTranscriptTimeline
     @ObservedObject private var coordinator = SubtitleOverlayCoordinator.shared
     @ObservedObject private var presentationSettings = SubtitleOverlayPresentationSettings.shared
     // 观看端分支的数据源:别人房间里的远端预览帧。本机没在录而人在房间里
@@ -1292,6 +1194,7 @@ struct SubtitleOverlayView: View {
     init(store: ActiveBilingualTranscriptStore) {
         self.store = store
         _livePresentation = ObservedObject(wrappedValue: store.livePresentation)
+        _timeline = ObservedObject(wrappedValue: store.timeline)
     }
 
     var body: some View {
@@ -2278,6 +2181,7 @@ struct SubtitleOverlayView: View {
             ForEach(items) { item in
                 audienceCueCard(
                     item: item,
+                    language: language,
                     // Only the live tail paces from zero. Cards already on
                     // screen keep their reveal state across updates (stable
                     // ForEach identity); finished cards arriving with a
@@ -2339,12 +2243,14 @@ struct SubtitleOverlayView: View {
     @ViewBuilder
     private func audienceCueCard(
         item: SubtitleAudienceTimeline.Item,
+        language: String?,
         startsRevealed: Bool
     ) -> some View {
         if item.kind == .translation {
             AudiencePacedText(
                 id: item.id,
                 text: item.text,
+                language: language,
                 fontSize: fontSize,
                 startsRevealed: startsRevealed,
                 memory: revealMemory

@@ -758,13 +758,10 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertFalse(historyView.contains("ForEach(availableRuns)"))
         XCTAssertTrue(historyView.contains("presentedRun"))
         XCTAssertTrue(historyView.contains("NotebookRealtimeActiveRunView("))
-        // Only the active run observes the live preview, and in the main
-        // window it does so through the throttled mirror.
+        // Only the active run observes live rows, and it does so through the
+        // timeline's bounded-rate frames, never the provider-rate preview.
         XCTAssertTrue(
-            activeRunView.contains(
-                "@StateObject private var livePreview: "
-                    + "ThrottledLivePreviewUtterances"
-            )
+            activeRunView.contains("@ObservedObject private var timeline: LiveTranscriptTimeline")
         )
         XCTAssertFalse(activeRunView.contains("@ObservedObject private var livePresentation"))
         XCTAssertTrue(activeRunView.contains("NotebookRealtimeAutoscrollPolicy.signal("))
@@ -2378,83 +2375,6 @@ final class WindowSystemTests: XCTestCase {
             fontSize: 40
         )
         XCTAssertEqual(floored, 40 * 2.6, accuracy: 0.01)
-    }
-
-    func testPacedRevealFlowsMouthfulsAndAbsorbsTailRewrites() {
-        // Reading rates are calibrated against the measured provider batch
-        // shape: ~15 tokens per mouthful, ~1.4 s until the next one. One
-        // mouthful must finish revealing inside that gap for either script.
-        for (text, budgetSeconds) in [
-            (String(repeating: "词", count: 25), 1.4),
-            (String(repeating: "word ", count: 15), 1.4),
-        ] {
-            var state = SubtitlePacedReveal.State()
-            var elapsed = 0.0
-            while Int(state.revealedChars) < text.count, elapsed < 10 {
-                state = SubtitlePacedReveal.advance(
-                    state: state,
-                    elapsedSeconds: 0.033,
-                    text: text
-                )
-                elapsed += 0.033
-            }
-            XCTAssertLessThanOrEqual(
-                elapsed,
-                budgetSeconds,
-                "one mouthful of \(text.prefix(4))… must drain within a batch gap"
-            )
-        }
-
-        // An append keeps the cursor: nothing the reader saw is replayed.
-        var state = SubtitlePacedReveal.State(revealedChars: 5)
-        state = SubtitlePacedReveal.reconcile(
-            state: state,
-            oldText: "hello",
-            newText: "hello world"
-        )
-        XCTAssertEqual(state.revealedChars, 5)
-
-        // A rewrite beyond the cursor is invisible and free.
-        state = SubtitlePacedReveal.State(revealedChars: 3)
-        state = SubtitlePacedReveal.reconcile(
-            state: state,
-            oldText: "helXYZ",
-            newText: "hello!"
-        )
-        XCTAssertEqual(state.revealedChars, 3)
-
-        // A rewrite under the cursor snaps back to the surviving prefix so
-        // the correction shows immediately.
-        state = SubtitlePacedReveal.State(revealedChars: 9)
-        state = SubtitlePacedReveal.reconcile(
-            state: state,
-            oldText: "hello red",
-            newText: "hello blue"
-        )
-        XCTAssertEqual(state.revealedChars, 6)
-
-        // A reconnect flood snaps forward: backlog never exceeds the cap
-        // after one tick.
-        let flood = String(repeating: "字", count: 500)
-        var flooded = SubtitlePacedReveal.State()
-        flooded = SubtitlePacedReveal.advance(
-            state: flooded,
-            elapsedSeconds: 0.033,
-            text: flood
-        )
-        XCTAssertGreaterThanOrEqual(
-            flooded.revealedChars,
-            Double(flood.count - SubtitlePacedReveal.snapBacklogLimit(script: .dense))
-        )
-
-        XCTAssertEqual(SubtitlePacedReveal.script(for: "สวัสดีครับ"), .dense)
-        XCTAssertEqual(SubtitlePacedReveal.script(for: "你好，世界"), .dense)
-        XCTAssertEqual(SubtitlePacedReveal.script(for: "Hello, world"), .spaced)
-        // Mixed line with a majority of spaced words stays spaced.
-        XCTAssertEqual(
-            SubtitlePacedReveal.script(for: "Der Begriff 道 im Kontext"),
-            .spaced
-        )
     }
 
     func testSubtitleOverlayLayoutPolicyAdaptsConversationAndAudienceLayouts() {

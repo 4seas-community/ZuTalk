@@ -6,10 +6,10 @@ import SwiftUI
 /// session id and never changes the run's frozen processing configuration.
 struct NotebookRealtimeUtteranceView: View {
     let run: NotebookCaptureHistoryRunDTO
-    /// Already merged once by the active-run boundary. Keeping the complete
-    /// array as an input prevents this view's header, empty state, cue overlay,
-    /// and row bodies from each rebuilding the full durable+preview session.
-    let presentedUtterances: [NotebookCaptureUtteranceDTO]
+    /// The live run's rows as the timeline publishes them: stored rows with
+    /// the speculative tail, in chunks that keep their identity while they
+    /// do not change. `nil` for a finished run, whose rows are `run.utterances`.
+    var liveChunks: [TranscriptChunk]? = nil
     let liveTranslationCues: [NotebookCaptureTranslationCueDTO]
     /// Every translated segment of the recording, durable ones included, so
     /// that an empty cell another row's segment accounts for says so.
@@ -29,6 +29,7 @@ struct NotebookRealtimeUtteranceView: View {
     var translationProgress: NotebookTranslationProgress = .none
     @State private var laneEditingState = BilingualLaneEditingState()
     @State private var speakerSelection: NotebookSpeakerSelection?
+    @State private var rowCache = NotebookTranscriptRowCache()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -105,28 +106,37 @@ struct NotebookRealtimeUtteranceView: View {
         NotebookCaptureHistoryPolicy.displayLanguages(for: run) ?? []
     }
 
-    private var supplementalCues: [String: NotebookCaptureTranslationCueDTO] {
+    /// The rows to draw, as chunks. Only reads; the row cache does the work.
+    private var chunks: [TranscriptChunk] {
+        liveChunks ?? rowCache.chunks(for: run.utterances)
+    }
+
+    private func supplementalCues(in chunks: [TranscriptChunk]) -> [String: NotebookCaptureTranslationCueDTO] {
         guard run.captureState.isActive else { return [:] }
         return NotebookLanguageColumnCueOverlay.latestSupplementalCues(
             languages: displayLanguages,
-            utterances: presentedUtterances,
+            utterances: LiveTranscriptFrame(sessionId: nil, chunks: chunks, revision: 0)
+                .tail(limit: NotebookLanguageColumnCueOverlay.representationWindow),
             cues: liveTranslationCues
         )
     }
 
     private var hasAnyEditableLane: Bool {
         guard isLaneEditingEnabled else { return false }
-        return presentedUtterances.contains { utterance in
-            utterance.isLoroEditableLane(
-                language: utterance.sourceLanguage,
-                appliedRevision: run.realtimeLoroAppliedRevision
-            ) || utterance.languageVariants.contains { variant in
-                utterance.isLoroEditableLane(
-                    language: variant.language,
-                    appliedRevision: run.realtimeLoroAppliedRevision
-                )
-            }
-        }
+        return chunks.contains { $0.hasEditableLane(appliedRevision: run.realtimeLoroAppliedRevision) }
+    }
+
+    private func rowContext() -> NotebookTranscriptRowContext {
+        NotebookTranscriptRowContext(
+            languages: displayLanguages,
+            progress: translationProgress,
+            continuationCues: continuationCues,
+            appliedRevision: run.realtimeLoroAppliedRevision,
+            isLaneEditingEnabled: isLaneEditingEnabled,
+            gaps: history.transcriptGaps(sessionId: run.sessionId),
+            speakerNamesRevision: history.speakerNamesRevision,
+            speakerName: { utterance in speakerDisplayName(for: utterance) }
+        )
     }
 
     private var runHeader: some View {
@@ -263,11 +273,11 @@ struct NotebookRealtimeUtteranceView: View {
     }
 
     private var canCopyTranscript: Bool {
-        run.utterances.isEmpty == false && laneEditingState.canSwap
+        chunks.isEmpty == false && laneEditingState.canSwap
     }
 
     private var copyTranscriptHint: String {
-        if run.utterances.isEmpty {
+        if chunks.isEmpty {
             return String(localized: "capture.transcript.copy_empty_hint")
         }
         if laneEditingState.canSwap == false {
@@ -313,8 +323,9 @@ struct NotebookRealtimeUtteranceView: View {
 
     @ViewBuilder
     private var bilingualBody: some View {
-        let supplementalCues = supplementalCues
-        if presentedUtterances.isEmpty, supplementalCues.isEmpty {
+        let chunks = chunks
+        let supplementalCues = supplementalCues(in: chunks)
+        if chunks.isEmpty, supplementalCues.isEmpty {
             compactEmptyRun(
                 title: run.captureState.isActive
                     ? String(localized: "capture.transcript.waiting_title")
@@ -324,40 +335,17 @@ struct NotebookRealtimeUtteranceView: View {
                     : String(localized: "editor.transcript.realtime.empty_desc")
             )
         } else {
-            let gapAnchors = anchoredTranscriptGaps
-            let speakerTurns = NotebookSpeakerTurns.starts(in: presentedUtterances)
+            let built = rowCache.multilingualBlocks(chunks: chunks, context: rowContext())
             LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
               Section(header: NotebookLanguageColumnHeader(languages: displayLanguages)) {
-                ForEach(presentedUtterances) { utterance in
-                    transcriptGapDividers(gapAnchors.leading[utterance.id])
-                    MultilingualUtteranceRow(
-                        utterance: utterance,
-                        projection: NotebookCaptureHistoryPolicy.laneProjection(
-                            for: utterance,
-                            selectedLanguages: displayLanguages,
-                            commonCaptionLanguage: nil
-                        )
-                        .resolvingWaits(translationProgress, rowEndMs: utterance.sourceEndMs)
-                        .markingContinuations(
-                            rowStartMs: utterance.sourceStartMs,
-                            rowEndMs: utterance.sourceEndMs,
-                            cues: continuationCues
-                        ),
-                        speakerDisplayName: speakerTurns.contains(utterance.id)
-                            ? speakerDisplayName(for: utterance)
-                            : nil,
-                        onManageSpeaker: { selectSpeaker(for: utterance) },
+                ForEach(built.blocks) { block in
+                    NotebookMultilingualRowBlock(
+                        block: block,
                         isLaneEditingEnabled: isLaneEditingEnabled,
-                        realtimeLoroAppliedRevision: run.realtimeLoroAppliedRevision,
-                        onReplace: { language, text in
-                            try await replaceLane(utterance.id, language, text)
-                        },
-                        onEditingChanged: { target, focused in
-                            updateLaneEditingState(target, focused: focused)
-                        }
+                        actions: rowActions
                     )
-                    .id(utterance.id)
-                    Divider().background(Color.borderGhost.opacity(0.22))
+                    .equatable()
+                    .id(NotebookTranscriptRowBlocks.anchor(block.id))
                 }
                 if supplementalCues.isEmpty == false {
                     NotebookSupplementalCueRow(
@@ -367,7 +355,7 @@ struct NotebookRealtimeUtteranceView: View {
                     .transition(.opacity)
                     Divider().background(Color.borderGhost.opacity(0.22))
                 }
-                transcriptGapDividers(gapAnchors.trailing)
+                transcriptGapDividers(built.trailingGaps)
               }
             }
             .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset)
@@ -376,8 +364,8 @@ struct NotebookRealtimeUtteranceView: View {
 
     @ViewBuilder
     private var transcriptionBody: some View {
-        let sourceTimelineUtterances = presentedUtterances.filter(\.hasSourceLane)
-        if sourceTimelineUtterances.isEmpty {
+        let built = rowCache.transcriptionBlocks(chunks: chunks, context: rowContext())
+        if built.blocks.isEmpty {
             compactEmptyRun(
                 title: run.captureState.isActive
                     ? String(localized: "capture.transcript.waiting_title")
@@ -387,47 +375,30 @@ struct NotebookRealtimeUtteranceView: View {
                     : String(localized: "capture.transcript.transcription_empty_detail")
             )
         } else {
-            let gapAnchors = NotebookTranscriptGapPresentation.anchoredGaps(
-                utterances: sourceTimelineUtterances,
-                gaps: history.transcriptGaps(sessionId: run.sessionId)
-            )
-            let speakerTurns = NotebookSpeakerTurns.starts(in: sourceTimelineUtterances)
             LazyVStack(spacing: 0) {
-                ForEach(sourceTimelineUtterances) { utterance in
-                    transcriptGapDividers(gapAnchors.leading[utterance.id])
-                    TranscriptionUtteranceRow(
-                        utterance: utterance,
-                        speakerDisplayName: speakerTurns.contains(utterance.id)
-                            ? speakerDisplayName(for: utterance)
-                            : nil,
-                        onManageSpeaker: { selectSpeaker(for: utterance) },
-                        isEditable: isLaneEditingEnabled && utterance.isLoroEditableLane(
-                            language: utterance.sourceLanguage,
-                            appliedRevision: run.realtimeLoroAppliedRevision
-                        ),
-                        onReplace: { language, text in
-                            try await replaceLane(utterance.id, language, text)
-                        },
-                        onEditingChanged: { target, focused in
-                            updateLaneEditingState(target, focused: focused)
-                        }
-                    )
-                    .id(utterance.id)
-                    Divider().background(Color.borderGhost.opacity(0.22))
+                ForEach(built.blocks) { block in
+                    NotebookTranscriptionRowBlock(block: block, actions: rowActions)
+                        .equatable()
+                        .id(NotebookTranscriptRowBlocks.anchor(block.id))
                 }
-                transcriptGapDividers(gapAnchors.trailing)
+                transcriptGapDividers(built.trailingGaps)
             }
             .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset)
         }
     }
 
-    private var anchoredTranscriptGaps: (
-        leading: [String: [NotebookTranscriptGapDTO]],
-        trailing: [NotebookTranscriptGapDTO]
-    ) {
-        NotebookTranscriptGapPresentation.anchoredGaps(
-            utterances: presentedUtterances,
-            gaps: history.transcriptGaps(sessionId: run.sessionId)
+    /// What a row may ask of this view. Rows receive it once per block
+    /// rather than as closures of their own, which SwiftUI cannot compare
+    /// and so treated as a change on every frame.
+    private var rowActions: NotebookTranscriptRowActions {
+        NotebookTranscriptRowActions(
+            manageSpeaker: { utterance in selectSpeaker(for: utterance) },
+            replace: { utteranceId, language, text in
+                try await replaceLane(utteranceId, language, text)
+            },
+            editingChanged: { target, focused in
+                updateLaneEditingState(target, focused: focused)
+            }
         )
     }
 
@@ -989,7 +960,7 @@ private struct NotebookSupplementalCueRow: View {
     }
 }
 
-private struct TranscriptionUtteranceRow: View {
+struct TranscriptionUtteranceRow: View {
     let utterance: NotebookCaptureUtteranceDTO
     let speakerDisplayName: String?
     let onManageSpeaker: () -> Void
@@ -1076,7 +1047,7 @@ private struct TranscriptionUtteranceRow: View {
     }
 }
 
-private struct MultilingualUtteranceRow: View {
+struct MultilingualUtteranceRow: View {
     let utterance: NotebookCaptureUtteranceDTO
     let projection: NotebookCaptureLaneProjection
     let speakerDisplayName: String?
