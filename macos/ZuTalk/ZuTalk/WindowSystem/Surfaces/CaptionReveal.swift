@@ -186,6 +186,11 @@ struct CaptionRevealPlan: Equatable {
         if newText == text { return self }
         let newEnds = profile.unitEnds(of: newText)
         let shared = zip(text.utf8, newText.utf8).prefix(while: { $0 == $1 }).count
+        // What the reader can already see, as far as the new text still says
+        // it. Word boundaries are not stable — a Thai dictionary split moves
+        // as the sentence grows — so this, not step identity, is what must
+        // stay on screen.
+        let shown = min(shared, visibleText(at: now).utf8.count)
         var arrivals: [TimeInterval] = []
         var dues: [TimeInterval] = []
         arrivals.reserveCapacity(newEnds.count)
@@ -201,6 +206,11 @@ struct CaptionRevealPlan: Equatable {
                end >= ends[index] {
                 arrivals.append(self.arrivals[index])
                 dues.append(self.dues[index])
+            } else if start < shown {
+                // Re-cut, but it holds words already on screen: it stays,
+                // even if that shows the rest of the step a moment early.
+                arrivals.append(now)
+                dues.append(now)
             } else {
                 arrivals.append(now)
                 dues.append(.infinity)

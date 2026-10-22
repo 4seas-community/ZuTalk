@@ -110,4 +110,51 @@ final class CaptionRevealTests: XCTestCase {
         XCTAssertEqual(CaptionScriptProfile.forLanguage(nil, text: "Hello, world"), .latin)
         XCTAssertEqual(CaptionScriptProfile.forLanguage(nil, text: "Der Begriff 道 im Kontext"), .latin)
     }
+
+    /// Text only grows on screen while the provider only appends: however a
+    /// re-segmentation moves word boundaries, nothing already shown is taken
+    /// back and shown again.
+    func testGrowingTextNeverTakesBackWhatWasShown() {
+        for (name, profile, sentence) in profiles {
+            let characters = Array(sentence)
+            var plan = CaptionRevealPlan.start(text: "", profile: profile, now: 0, revealed: false)
+            var now = 0.0
+            var shown = ""
+            for count in 1...characters.count {
+                now += 0.15
+                plan = plan.updated(text: String(characters[0..<count]), now: now)
+                let visible = plan.visibleText(at: now)
+                XCTAssertTrue(
+                    visible.hasPrefix(shown),
+                    "\(name): at \(count) characters the screen went from '\(shown)' to '\(visible)'"
+                )
+                XCTAssertEqual(plan.dues, plan.dues.sorted(), "\(name): due times out of order at \(count)")
+                shown = visible
+            }
+        }
+    }
+
+    /// A rewrite keeps on screen whatever part of the shown text the new
+    /// text still begins with.
+    func testARewriteKeepsTheShownTextItStillSays() {
+        let edits: [(CaptionScriptProfile, String, String)] = [
+            (.latin, "Hello world", "Hello, world"),
+            (.latin, "We meet at the hall", "We met at the hall today"),
+            (.cjk, "我们明天见。", "我们明天再见。"),
+            (.thai, "การประชุมวันนี้", "การประชุมในวันนี้"),
+        ]
+        for (profile, before, after) in edits {
+            let plan = CaptionRevealPlan.start(text: before, profile: profile, now: 0, revealed: false)
+            let now = 5.0
+            let shown = plan.visibleText(at: now)
+            XCTAssertEqual(shown, before)
+            let revised = plan.updated(text: after, now: now)
+            let shared = String(zip(shown, after).prefix(while: { $0 == $1 }).map(\.0))
+            XCTAssertTrue(
+                revised.visibleText(at: now).hasPrefix(shared),
+                "'\(before)' → '\(after)' showed '\(revised.visibleText(at: now))'"
+            )
+            XCTAssertEqual(revised.dues, revised.dues.sorted())
+        }
+    }
 }
