@@ -90,7 +90,7 @@ final class LiveCaptureReplayTests: XCTestCase {
         profile.sendContextToSoniox = false
         if let terms = config.context_terms, terms.isEmpty == false {
             let pack = try core.createLibraryContextPack(title: "Replay terms")
-            try core.setNotebookContextPackBinding(notebookId: notebook.id, packId: pack.id, position: nil)
+            try core.setNotebookContextPackBinding(notebookId: notebook.id, packId: pack.id, position: 0)
             _ = try core.importContextPackText(
                 notebookId: notebook.id,
                 packId: pack.id,
