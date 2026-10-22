@@ -2836,6 +2836,46 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         store.resetForTesting()
     }
 
+    /// The transcript page asks for speaker names when a new speaker shows up
+    /// in the rows. Rows are not published, so the speakers have to be: a
+    /// delta that only adds a row by someone new must still reach the page.
+    @MainActor
+    func testANewSpeakerInTheRowsIsPublished() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+        var first = NotebookCaptureUtteranceDTO.sample.replacingIdentity(id: "utt-0", sequence: 0)
+        first.revision = 1
+        first.sessionSpeakerId = "speaker-a"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        XCTAssertEqual(store.utteranceSpeakerIds, ["speaker-a"])
+
+        var published = 0
+        let subscription = store.objectWillChange.sink { _ in published += 1 }
+        var second = first.replacingIdentity(id: "utt-1", sequence: 1)
+        second.sessionSpeakerId = "speaker-b"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [second],
+            eventRevision: 2,
+            isFullSnapshot: false
+        ))
+        XCTAssertGreaterThan(published, 0, "the page never hears of the new speaker")
+        XCTAssertEqual(store.utteranceSpeakerIds, ["speaker-a", "speaker-b"])
+        subscription.cancel()
+        store.resetForTesting()
+    }
+
     /// A line the provider never identified borrows the column of the line
     /// before it, and keeps it: later speech in another language must not
     /// move it across the subtitle window.
@@ -8663,7 +8703,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(realtimeTranscriptView.contains("getSessionTranscriptClipboardText"))
         XCTAssertTrue(realtimeTranscriptView.contains("TranscriptClipboard.write"))
         XCTAssertTrue(realtimeTranscriptView.contains(
-            "chunks.isEmpty == false && laneEditingState.canSwap"
+            "hasStoredRows && laneEditingState.canSwap"
         ))
         XCTAssertTrue(realtimeTranscriptView.contains(".frame(minWidth: 44, minHeight: 44)"))
         XCTAssertTrue(captureViews.contains("projection.pendingLanguage"))

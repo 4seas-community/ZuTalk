@@ -104,6 +104,24 @@ final class LiveTranscriptTimelineTests: XCTestCase {
         XCTAssertEqual(timeline.frame.rowCount, 41)
     }
 
+    /// Copying the transcript copies stored rows; a recording whose words
+    /// are all still speculative has nothing to copy yet, and its frame says
+    /// so even though it shows text.
+    func testAFrameOfOnlyTheSpeculativeTailHasNoStoredRows() {
+        let rows = Rows()
+        let timeline = timeline(rows)
+        rows.preview = [Self.row(0, preview: true)]
+        timeline.notePreviewChanged()
+        timeline.flush()
+        XCTAssertFalse(timeline.frame.isEmpty)
+        XCTAssertFalse(timeline.frame.hasStoredRows)
+
+        rows.durable = [Self.row(0)]
+        timeline.noteDurableChanged(sequences: [0])
+        timeline.flush()
+        XCTAssertTrue(timeline.frame.hasStoredRows)
+    }
+
     /// Whatever the sequence of edits, the frame is the flat merge.
     func testTheFrameIsAlwaysTheFlatMerge() {
         var generator = Generator(state: 7)

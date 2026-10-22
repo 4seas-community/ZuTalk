@@ -169,19 +169,34 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     var livePreviewUtterances: [NotebookCaptureUtteranceDTO] {
         livePresentation.utterances
     }
-    private var cachedUtteranceSpeakerIds: [String]?
     /// The distinct session speakers in the durable transcript, sorted.
     ///
-    /// Read from a page body that re-evaluates far more often than rows
-    /// change; computed once per durable change instead of walking every
-    /// row of the recording on each evaluation.
-    var utteranceSpeakerIds: [String] {
-        if let cachedUtteranceSpeakerIds {
-            return cachedUtteranceSpeakerIds
+    /// Published, unlike the rows: the transcript page fetches speaker names
+    /// when a new speaker appears, and a delta that only adds a row by
+    /// someone new publishes nothing else. Kept current from the rows each
+    /// change touched; published only when the set changes.
+    @Published private(set) var utteranceSpeakerIds: [String] = []
+
+    private func refreshUtteranceSpeakerIds(sequences: [UInt64]?) {
+        var ids = Set(utteranceSpeakerIds)
+        if let sequences {
+            for sequence in sequences {
+                var lower = 0
+                var upper = rows.count
+                while lower < upper {
+                    let middle = (lower + upper) / 2
+                    if rows[middle].sequence < sequence { lower = middle + 1 } else { upper = middle }
+                }
+                if lower < rows.count, rows[lower].sequence == sequence,
+                   let speaker = rows[lower].sessionSpeakerId {
+                    ids.insert(speaker)
+                }
+            }
+        } else {
+            ids = Set(rows.compactMap(\.sessionSpeakerId))
         }
-        let ids = Array(Set(utterances.compactMap(\.sessionSpeakerId))).sorted()
-        cachedUtteranceSpeakerIds = ids
-        return ids
+        let sorted = ids.sorted()
+        if sorted != utteranceSpeakerIds { utteranceSpeakerIds = sorted }
     }
     /// The stored rows of the capture, ordered by sequence.
     ///
@@ -210,7 +225,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         // lazy invalidation makes a long `und` tail pay for one reverse
         // scan at the next durable boundary, not once per visible row on
         // every provider-rate SwiftUI refresh.
-        cachedUtteranceSpeakerIds = nil
+        refreshUtteranceSpeakerIds(sequences: sequences)
         cachedHighestFinalProjectionRevision = 0
         hasCachedHighestFinalProjectionRevision = false
         audienceDurablePresentationCache = nil
