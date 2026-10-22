@@ -137,6 +137,10 @@ pub(crate) struct WebCue {
     target_language: String,
     text: String,
     completion: String,
+    /// The cue's identity within its lane, so a viewer can tell two live
+    /// cues of one language apart.
+    group_epoch: u64,
+    provider_sequence: u64,
 }
 
 /// 一帧实时字幕:正在说的那一截,replace-in-full。
@@ -176,6 +180,8 @@ pub(crate) fn web_frame(preview: &FfiNotebookCaptureLivePreview) -> WebFrame {
                 target_language: cue.target_language.clone(),
                 text: cue.text.clone(),
                 completion: cue.completion.clone(),
+                group_epoch: cue.group_epoch,
+                provider_sequence: cue.provider_sequence,
             })
             .collect(),
     }
@@ -189,6 +195,9 @@ pub(crate) struct WebBlock {
     lanes: BTreeMap<String, String>,
     /// 说话人在本场录音内的标识,查 `speakers` 取名字。
     speaker: Option<String>,
+    /// 原文的语言;认不出(`und`)或没有原文时为空。观看端选看某种语言时,
+    /// 用这种语言说的句子显示原文。
+    source_language: Option<String>,
 }
 
 /// 一个说话人在网页上的显示材料。名字是用户给的专名;没有名字时网页按
@@ -379,6 +388,9 @@ impl ZuTalkCore {
                         text: write.text,
                         lanes: write.lanes,
                         speaker: utterance.session_speaker_id.clone(),
+                        source_language: crate::notebook_capture_api::identified_language(
+                            &utterance.source_language,
+                        ),
                     }
                 })
             })
@@ -429,6 +441,7 @@ impl ZuTalkCore {
                 text: paragraph.to_string(),
                 lanes: BTreeMap::new(),
                 speaker: None,
+                source_language: None,
             })
             .collect())
     }
@@ -1253,6 +1266,7 @@ mod tests {
                 text: text.into(),
                 lanes: BTreeMap::from([("en".into(), "hi".into())]),
                 speaker: None,
+                source_language: Some("zh".into()),
             }],
             speakers: BTreeMap::new(),
         };

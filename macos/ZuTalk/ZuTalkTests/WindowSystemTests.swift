@@ -1365,6 +1365,34 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    /// Watching a nearby room in one language shows every line in it: the
+    /// translation, or the words themselves when they were spoken in it.
+    func testNearbyWatchShowsLinesSpokenInTheChosenLanguage() {
+        let spokenInThai = FfiNearbyLine(
+            id: "b1",
+            speaker: nil,
+            speakerLabel: nil,
+            source: "สวัสดีครับ",
+            sourceLanguage: "th",
+            translations: [FfiNearbyText(language: "en", text: "Hello")],
+            settled: true
+        )
+        XCTAssertEqual(NearbyLiveView.text(of: spokenInThai, in: "th"), "สวัสดีครับ")
+        XCTAssertEqual(NearbyLiveView.text(of: spokenInThai, in: "en"), "Hello")
+        XCTAssertEqual(NearbyLiveView.text(of: spokenInThai, in: nil), "สวัสดีครับ")
+        XCTAssertNil(NearbyLiveView.text(of: spokenInThai, in: "zh"))
+        let translatedHant = FfiNearbyLine(
+            id: "b2",
+            speaker: nil,
+            speakerLabel: nil,
+            source: "Next",
+            sourceLanguage: "en",
+            translations: [FfiNearbyText(language: "zh-Hant", text: "下一個")],
+            settled: true
+        )
+        XCTAssertEqual(NearbyLiveView.text(of: translatedHant, in: "zh-Hant"), "下一個")
+    }
+
     func testSubtitleOnlyLanguagesFollowSelectionAndNeverSilenceTheRoom() {
         XCTAssertEqual(
             NotebookCaptureLanguageRoles.subtitleOnly(

@@ -188,15 +188,28 @@ struct NearbyLiveView: View {
     /// 按选中的语言取每一行的字;这一行没有这种语言就不显示。
     private func visibleLines(_ watch: FfiNearbyWatch) -> [VisibleLine] {
         watch.lines.compactMap { line in
-            let text: String
-            if let language {
-                text = line.translations.first { $0.language == language }?.text ?? ""
-            } else {
-                text = line.source
-            }
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : VisibleLine(line: line, text: trimmed)
+            Self.text(of: line, in: language).map { VisibleLine(line: line, text: $0) }
         }
+    }
+
+    /// 一行在某种语言下显示的字;`language` 为 nil 是原文。没有就是 nil。
+    /// 用这种语言说的行没有这种语言的译文,显示的是原文本身。
+    static func text(of line: FfiNearbyLine, in language: String?) -> String? {
+        let text: String
+        if let language {
+            if let translation = line.translations.first(where: { $0.language == language }) {
+                text = translation.text
+            } else if let spoken = line.sourceLanguage,
+                      primaryLanguage(spoken) == primaryLanguage(language) {
+                text = line.source
+            } else {
+                text = ""
+            }
+        } else {
+            text = line.source
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func speakerName(_ line: FfiNearbyLine) -> String? {
@@ -205,6 +218,10 @@ struct NearbyLiveView: View {
         }
         guard let label = line.speakerLabel, label.isEmpty == false else { return nil }
         return String(format: String(localized: "capture.speaker.fallback_format"), label)
+    }
+
+    private static func primaryLanguage(_ code: String) -> String {
+        code.split(separator: "-").first.map { $0.lowercased() } ?? code.lowercased()
     }
 
     static func languageName(_ code: String) -> String {

@@ -482,9 +482,16 @@ impl WatchView {
         };
         let mut languages = BTreeSet::new();
         let mut settled_ids = BTreeSet::new();
+        let mut settled_lanes: Vec<(String, &str)> = Vec::new();
         let mut lines = Vec::new();
         for block in self.parts.values().flat_map(|part| &part.blocks) {
             settled_ids.insert(block.id.as_str());
+            settled_lanes.extend(block.lanes.iter().map(|(language, text)| {
+                (
+                    crate::notebook_capture_api::capture_lane_id(language),
+                    text.as_str(),
+                )
+            }));
             let (speaker, speaker_label) = who(&block.speaker);
             languages.extend(block.lanes.keys().cloned());
             lines.push(FfiNearbyLine {
@@ -492,6 +499,10 @@ impl WatchView {
                 speaker,
                 speaker_label,
                 source: block.text.clone(),
+                source_language: block
+                    .source_language
+                    .as_deref()
+                    .and_then(crate::notebook_capture_api::identified_language),
                 translations: block
                     .lanes
                     .iter()
@@ -524,17 +535,45 @@ impl WatchView {
                     speaker,
                     speaker_label,
                     source: utterance.source_text.clone(),
+                    source_language: utterance
+                        .source_language
+                        .as_deref()
+                        .and_then(crate::notebook_capture_api::identified_language)
+                        .or_else(|| {
+                            utterance
+                                .provisional_source_language
+                                .as_deref()
+                                .and_then(crate::notebook_capture_api::identified_language)
+                        }),
                     translations,
                     settled: false,
                 });
             }
-            for cue in &frame.cues {
+            for (index, cue) in frame.cues.iter().enumerate() {
                 languages.insert(cue.target_language.clone());
+                // A cue the transcript has already settled into a line's lane
+                // is that line now; showing it again repeats the sentence.
+                let text = cue.text.trim();
+                let target = crate::notebook_capture_api::capture_lane_id(&cue.target_language);
+                if text.is_empty()
+                    || settled_lanes
+                        .iter()
+                        .any(|(language, lane)| *language == target && lane.contains(text))
+                {
+                    continue;
+                }
+                let id = match (cue.group_epoch, cue.provider_sequence) {
+                    (Some(epoch), Some(sequence)) => {
+                        format!("cue-{}-{epoch}-{sequence}", cue.target_language)
+                    }
+                    _ => format!("cue-{}-#{index}", cue.target_language),
+                };
                 lines.push(FfiNearbyLine {
-                    id: format!("cue-{}", cue.target_language),
+                    id,
                     speaker: None,
                     speaker_label: None,
                     source: String::new(),
+                    source_language: None,
                     translations: vec![FfiNearbyText {
                         language: cue.target_language.clone(),
                         text: cue.text.clone(),
@@ -563,6 +602,10 @@ struct InFrame {
 struct InUtterance {
     id: String,
     speaker: Option<String>,
+    #[serde(default)]
+    source_language: Option<String>,
+    #[serde(default)]
+    provisional_source_language: Option<String>,
     source_text: String,
     translated_language: Option<String>,
     translated_text: Option<String>,
@@ -572,6 +615,10 @@ struct InUtterance {
 struct InCue {
     target_language: String,
     text: String,
+    #[serde(default)]
+    group_epoch: Option<u64>,
+    #[serde(default)]
+    provider_sequence: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -589,6 +636,8 @@ struct InBlock {
     #[serde(default)]
     lanes: BTreeMap<String, String>,
     speaker: Option<String>,
+    #[serde(default)]
+    source_language: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -654,6 +703,9 @@ pub struct FfiNearbyLine {
     pub speaker_label: Option<String>,
     /// 原文。只有某种译文的行(多语单向的实时译文)为空。
     pub source: String,
+    /// 原文是用哪种语言说的(取主语言,如 `zh`);认不出、或这一行没有原文时为空。
+    /// 选看某种语言时,用这种语言说的行要显示原文。
+    pub source_language: Option<String>,
     pub translations: Vec<FfiNearbyText>,
     /// 已经落定;`false` 是正在说的那一截。
     pub settled: bool,
@@ -837,5 +889,69 @@ impl ZuTalkCore {
             .read(|conn| facts::state(conn, &format!("{PEER_NAME_STATE}{device}")))
             .ok()
             .flatten()
+    }
+}
+
+#[cfg(test)]
+mod watch_tests {
+    use super::*;
+
+    fn bytes(value: serde_json::Value) -> Vec<u8> {
+        serde_json::to_vec(&value).unwrap()
+    }
+
+    /// Picking a language in the nearby window shows each line in that
+    /// language — the translation, or the words themselves when they were
+    /// spoken in it — so every line has to say what it was spoken in. Live
+    /// translation lines need ids of their own, and one already settled into
+    /// the transcript is not shown twice.
+    #[test]
+    fn watched_lines_name_their_spoken_language_and_live_translations_stay_distinct() {
+        let mut view = WatchView::default();
+        view.apply(LiveEvent::Part {
+            index: 0,
+            total: 1,
+            bytes: bytes(serde_json::json!({
+                "blocks": [{
+                    "id": "b1",
+                    "text": "สวัสดีครับ",
+                    "source_language": "th",
+                    "lanes": { "en": "Hello", "zh": "你好" },
+                    "speaker": null
+                }],
+                "speakers": {}
+            })),
+        });
+        view.apply(LiveEvent::Frame(bytes(serde_json::json!({
+            "utterances": [{
+                "id": "u2",
+                "speaker": null,
+                "source_language": "und",
+                "provisional_source_language": "en-US",
+                "source_text": "Next one",
+                "translated_language": null,
+                "translated_text": null
+            }],
+            "cues": [
+                { "target_language": "zh", "text": "你好", "group_epoch": 0, "provider_sequence": 4 },
+                { "target_language": "th", "text": "ต่อไป", "group_epoch": 0, "provider_sequence": 5 },
+                { "target_language": "th", "text": "อีกอัน", "group_epoch": 0, "provider_sequence": 6 }
+            ]
+        }))));
+        let (lines, _) = view.lines();
+        assert_eq!(lines[0].source_language.as_deref(), Some("th"));
+        assert_eq!(lines[1].source_language.as_deref(), Some("en"));
+        let live: Vec<&FfiNearbyLine> =
+            lines.iter().filter(|line| line.source.is_empty()).collect();
+        assert_eq!(
+            live.iter()
+                .map(|line| line.translations[0].text.as_str())
+                .collect::<Vec<_>>(),
+            ["ต่อไป", "อีกอัน"],
+            "the Chinese cue is already the settled line's lane"
+        );
+        assert_ne!(live[0].id, live[1].id);
+        let ids: BTreeSet<&str> = lines.iter().map(|line| line.id.as_str()).collect();
+        assert_eq!(ids.len(), lines.len());
     }
 }

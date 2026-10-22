@@ -4882,6 +4882,11 @@ public struct FfiNearbyLine: Equatable, Hashable {
      * 原文。只有某种译文的行(多语单向的实时译文)为空。
      */
     public var source: String
+    /**
+     * 原文是用哪种语言说的(取主语言,如 `zh`);认不出、或这一行没有原文时为空。
+     * 选看某种语言时,用这种语言说的行要显示原文。
+     */
+    public var sourceLanguage: String?
     public var translations: [FfiNearbyText]
     /**
      * 已经落定;`false` 是正在说的那一截。
@@ -4896,7 +4901,11 @@ public struct FfiNearbyLine: Equatable, Hashable {
          */speaker: String?, speakerLabel: String?,
         /**
          * 原文。只有某种译文的行(多语单向的实时译文)为空。
-         */source: String, translations: [FfiNearbyText],
+         */source: String,
+        /**
+         * 原文是用哪种语言说的(取主语言,如 `zh`);认不出、或这一行没有原文时为空。
+         * 选看某种语言时,用这种语言说的行要显示原文。
+         */sourceLanguage: String?, translations: [FfiNearbyText],
         /**
          * 已经落定;`false` 是正在说的那一截。
          */settled: Bool) {
@@ -4904,6 +4913,7 @@ public struct FfiNearbyLine: Equatable, Hashable {
         self.speaker = speaker
         self.speakerLabel = speakerLabel
         self.source = source
+        self.sourceLanguage = sourceLanguage
         self.translations = translations
         self.settled = settled
     }
@@ -4928,6 +4938,7 @@ public struct FfiConverterTypeFfiNearbyLine: FfiConverterRustBuffer {
                 speaker: FfiConverterOptionString.read(from: &buf),
                 speakerLabel: FfiConverterOptionString.read(from: &buf),
                 source: FfiConverterString.read(from: &buf),
+                sourceLanguage: FfiConverterOptionString.read(from: &buf),
                 translations: FfiConverterSequenceTypeFfiNearbyText.read(from: &buf),
                 settled: FfiConverterBool.read(from: &buf)
         )
@@ -4938,6 +4949,7 @@ public struct FfiConverterTypeFfiNearbyLine: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.speaker, into: &buf)
         FfiConverterOptionString.write(value.speakerLabel, into: &buf)
         FfiConverterString.write(value.source, into: &buf)
+        FfiConverterOptionString.write(value.sourceLanguage, into: &buf)
         FfiConverterSequenceTypeFfiNearbyText.write(value.translations, into: &buf)
         FfiConverterBool.write(value.settled, into: &buf)
     }

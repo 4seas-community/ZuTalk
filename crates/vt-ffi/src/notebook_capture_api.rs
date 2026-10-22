@@ -5873,6 +5873,13 @@ fn normalized_provider_speaker(value: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
+/// The primary subtag of a language the provider actually identified;
+/// `None` for an empty or `und` one.
+pub(crate) fn identified_language(value: &str) -> Option<String> {
+    let language = normalize_language(value);
+    (!language.is_empty() && language != "und").then_some(language)
+}
+
 fn normalize_language(value: &str) -> String {
     value
         .split('-')
