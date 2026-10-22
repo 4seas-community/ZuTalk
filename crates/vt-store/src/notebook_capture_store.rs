@@ -5930,6 +5930,61 @@ fn translation_inbox_candidates_from_conn(
 /// How many rows on either side of a fact that no row overlaps may take it.
 const ADJACENT_PLACEMENT_ROWS: usize = 4;
 
+/// How close a fact that no row overlaps must be to a row to be that row's.
+/// A one-word reply is a few dozen milliseconds on an auxiliary lane, and
+/// the lanes' times for the same word differ by more than that.
+const NEAR_MISS_PLACEMENT_MS: u64 = 400;
+
+/// The row a fact that no row overlaps all but touches: the nearest within
+/// [`NEAR_MISS_PLACEMENT_MS`], in a language other than the fact's target,
+/// the later one when two are as near. Being spoken does not disqualify it —
+/// it is plainly where the fact belongs, and waiting for it to settle sent
+/// the fact back past rows it could not join instead.
+fn near_miss_translation_inbox_row_from_conn(
+    conn: &Connection,
+    item: &RealtimeTranslationInboxItem,
+) -> Result<Option<RealtimeUtterance>, NotebookCaptureStoreError> {
+    let (Some(start), Some(end)) = (item.source_start_ms, item.source_end_ms) else {
+        return Ok(None);
+    };
+    let mut stmt = conn.prepare_cached(&format!(
+        "{UTTERANCE_SELECT}
+         WHERE session_id = ?1 AND source_start_ms IS NOT NULL AND source_end_ms IS NOT NULL
+           AND source_end_ms >= ?2 AND source_start_ms <= ?3
+         ORDER BY sequence ASC"
+    ))?;
+    let rows = stmt
+        .query_map(
+            params![
+                item.key.session_id,
+                u64_to_i64(
+                    start.saturating_sub(NEAR_MISS_PLACEMENT_MS),
+                    "near-miss start"
+                )?,
+                u64_to_i64(end.saturating_add(NEAR_MISS_PLACEMENT_MS), "near-miss end")?
+            ],
+            realtime_utterance_from_row,
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+    let target = canonical_language(&item.key.target_language);
+    let gap = |row: &RealtimeUtterance| -> u64 {
+        match (row.source_start_ms, row.source_end_ms) {
+            (Some(_), Some(row_end)) if row_end <= start => start - row_end,
+            (Some(row_start), Some(_)) => row_start.saturating_sub(end),
+            _ => u64::MAX,
+        }
+    };
+    Ok(rows
+        .into_iter()
+        .filter(|row| row.has_source_fact() && canonical_language(&row.source_language) != target)
+        .filter(|row| gap(row) <= NEAR_MISS_PLACEMENT_MS)
+        .min_by(|left, right| {
+            gap(left)
+                .cmp(&gap(right))
+                .then(right.sequence.cmp(&left.sequence))
+        }))
+}
+
 /// The rows nearest in time to a fact that no row overlaps, nearest first —
 /// the row just before it ahead of the row just after it at equal distance,
 /// since a stretch the transcript has no row for is most often the tail of
@@ -6052,6 +6107,11 @@ fn translation_inbox_placement_matches_from_conn(
     if session_active && item.completion != Some(UtteranceCompletion::Complete) {
         return Ok(false);
     }
+    if near_miss_translation_inbox_row_from_conn(conn, item)?
+        .is_some_and(|row| row.id == utterance.id)
+    {
+        return Ok(true);
+    }
     Ok(
         adjacent_translation_inbox_rows_from_conn(conn, item, session_active)?
             .iter()
@@ -6111,6 +6171,9 @@ fn translation_inbox_placement_order_from_conn(
         .collect::<Vec<_>>();
     if !ranked.is_empty() || item.source_start_ms.is_none() || item.source_end_ms.is_none() {
         return Ok(ranked);
+    }
+    if let Some(row) = near_miss_translation_inbox_row_from_conn(conn, item)? {
+        return Ok(vec![row.sequence]);
     }
     let session_active = capture_session_is_active_from_conn(conn, &item.key.session_id)?;
     let target = canonical_language(&item.key.target_language);
@@ -14945,13 +15008,13 @@ mod tests {
         assert_eq!(inbox_bound_sequence(&store, session, &key), Some(0));
     }
 
-    /// A row still being spoken can grow over the fact. While it is the
-    /// nearest row the fact waits — handing it to an older, finished row puts
-    /// a short reply on the previous sentence, which is what a 60 ms gap
-    /// between two lanes' timestamps did in a real three-language replay — and
-    /// it is settled onto that row once the row is done.
+    /// A reply 60 ms past a row still being spoken is that row's. Handing it
+    /// to an older, finished row put a short reply on the previous sentence,
+    /// which is what a 60 ms gap between two lanes' timestamps did in a real
+    /// three-language replay; it goes to the row it all but touches, open or
+    /// not, and stays there once the row is done.
     #[test]
-    fn live_settlement_waits_while_the_nearest_row_is_still_being_spoken() {
+    fn live_settlement_puts_a_reply_on_the_open_row_it_all_but_touches() {
         let (_temp, store, notebook_id) = fixture();
         store.get_or_create_profile(&notebook_id).unwrap();
         create_catalogued_run(&store, &notebook_id, "settle-partial");
@@ -14976,14 +15039,13 @@ mod tests {
             UtteranceCompletion::Partial,
         );
         let key = settlement_fact(&store, session, 0, 54_060, 54_480, "Yes.");
-        assert!(store
+        store
             .settle_active_translation_inbox_through(session, 0, 57_500)
-            .unwrap()
-            .is_empty());
+            .unwrap();
         assert_eq!(
             inbox_bound_sequence(&store, session, &key),
-            None,
-            "not onto the previous sentence while its own row is still open"
+            Some(1),
+            "onto its own row, not the previous sentence, while that row is still open"
         );
 
         store
@@ -15005,11 +15067,7 @@ mod tests {
                 Some(partial_revision),
             )
             .unwrap();
-        let bindings = store
-            .settle_active_translation_inbox_near(session, (50_700, 57_000), 57_500)
-            .unwrap();
-        assert_eq!(bindings.len(), 1);
-        assert_eq!(bindings[0].canonical_sequence, 1);
+        assert_eq!(inbox_bound_sequence(&store, session, &key), Some(1));
     }
 
     /// Settlement never puts a translation on a row spoken in that same

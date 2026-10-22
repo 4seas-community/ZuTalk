@@ -443,3 +443,103 @@ fn a_row_whose_script_matches_its_label_keeps_it() {
     );
     assert_eq!(current(&store, &s, 0).unwrap().source_language, "th");
 }
+
+/// A one-word reply is a few dozen milliseconds on the auxiliary lane, and
+/// the lanes' times for the same word differ by more than that. "Perfect."
+/// touched no row, its own row was still being spoken, the row before was
+/// in the translation's own language — and it went two rows back.
+#[test]
+fn a_one_word_reply_just_before_its_row_lands_on_that_row() {
+    let (_t, store, s) = fixture("reply");
+    row(
+        &store,
+        &s,
+        0,
+        "th",
+        "เงินมาจากค่าเช่าร้าน ร้านละ 200 บาท",
+        57_800,
+        61_800,
+        COMPLETE,
+    );
+    row(
+        &store,
+        &s,
+        1,
+        "zh",
+        "好的，那我把预算表更新一下，晚上发到群里。",
+        61_900,
+        66_700,
+        COMPLETE,
+    );
+    row(
+        &store,
+        &s,
+        2,
+        "en",
+        "Perfect. Let's meet again on Thursday",
+        67_300,
+        70_100,
+        PARTIAL,
+    );
+    fact(
+        &store,
+        &s,
+        0,
+        "zh",
+        "en",
+        "Perfect.",
+        67_100,
+        67_160,
+        Some("太好了。"),
+        Some(COMPLETE),
+    );
+    store
+        .settle_active_translation_inbox_through(&s, 0, 69_000)
+        .unwrap();
+    let placed = store.list_translation_inbox(&s).unwrap().remove(0);
+    assert_eq!(placed.bound_sequence, Some(2));
+    assert_eq!(lane(&store, &s, 0, "zh"), None);
+}
+
+/// Farther than that, the nearest settled row still takes it, as before.
+#[test]
+fn a_reply_far_from_any_row_still_goes_to_its_nearest_settled_row() {
+    let (_t, store, s) = fixture("far");
+    row(
+        &store,
+        &s,
+        0,
+        "th",
+        "เงินมาจากค่าเช่าร้าน",
+        10_000,
+        12_000,
+        COMPLETE,
+    );
+    row(
+        &store,
+        &s,
+        1,
+        "en",
+        "Let's meet again",
+        20_000,
+        22_000,
+        PARTIAL,
+    );
+    fact(
+        &store,
+        &s,
+        0,
+        "zh",
+        "en",
+        "Yes.",
+        14_000,
+        14_100,
+        Some("是的。"),
+        Some(COMPLETE),
+    );
+    store
+        .settle_active_translation_inbox_through(&s, 0, 15_000)
+        .unwrap();
+    let placed = store.list_translation_inbox(&s).unwrap().remove(0);
+    assert_eq!(placed.bound_sequence, Some(0));
+}
