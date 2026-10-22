@@ -2836,6 +2836,55 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         store.resetForTesting()
     }
 
+    /// A line the provider never identified borrows the column of the line
+    /// before it, and keeps it: later speech in another language must not
+    /// move it across the subtitle window.
+    @MainActor
+    func testAnUnidentifiedLineKeepsTheColumnOfTheLineBeforeIt() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+        func line(_ sequence: UInt64, _ language: String, _ text: String) -> NotebookCaptureUtteranceDTO {
+            var row = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+                id: "utt-\(sequence)",
+                sequence: sequence
+            )
+            row.revision = 1
+            row.sourceLanguage = language
+            row.sourceText = text
+            row.sourceStartMs = sequence * 2_000
+            row.sourceEndMs = sequence * 2_000 + 1_500
+            return row
+        }
+        let chinese = line(0, "zh", "我们开始吧")
+        let unidentified = line(1, "und", "嗯")
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [chinese, unidentified],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        XCTAssertEqual(store.audienceSourcePlacement(for: unidentified), "zh")
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [line(2, "en", "Let's begin")],
+            eventRevision: 2,
+            isFullSnapshot: false
+        ))
+        XCTAssertEqual(
+            store.audienceSourcePlacement(for: unidentified),
+            "zh",
+            "the next speaker's language moved the line"
+        )
+        store.resetForTesting()
+    }
+
     /// A row the core withdraws while the snapshot read is in flight is gone
     /// for good: replaying the later deltas over the snapshot must remove it,
     /// as applying them live did.

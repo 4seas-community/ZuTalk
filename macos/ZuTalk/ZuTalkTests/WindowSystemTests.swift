@@ -1871,11 +1871,17 @@ final class WindowSystemTests: XCTestCase {
                 revision: 2
             ),
         ]
+        // Placed as the store places them: an unidentified row borrows the
+        // nearest earlier identified one.
         let placement: (NotebookCaptureUtteranceDTO) -> String? = { utterance in
             NotebookCaptureHistoryPolicy.audienceSourcePlacement(
                 for: utterance,
                 selectedLanguages: languages,
-                lastIdentifiedSourceLanguage: "en"
+                lastIdentifiedSourceLanguage: NotebookCaptureLivePresentation.borrowedSourceLanguage(
+                    for: utterance,
+                    durable: utterances,
+                    fallbackLanguage: "en"
+                )
             )
         }
         // Bounds come from the whole session, exactly once, and both the
@@ -1900,7 +1906,7 @@ final class WindowSystemTests: XCTestCase {
             durable: utterances,
             sessionId: "session",
             selectedLanguages: languages,
-            lastIdentifiedSourceLanguage: "en",
+            fallbackLanguage: "en",
             maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount,
             inheritedSourceAnchors: anchors
         )

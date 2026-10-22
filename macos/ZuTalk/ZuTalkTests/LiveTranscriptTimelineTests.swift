@@ -210,7 +210,7 @@ final class LiveTranscriptTimelineTests: XCTestCase {
                 durable: rows,
                 sessionId: "session",
                 selectedLanguages: languages,
-                lastIdentifiedSourceLanguage: fallback,
+                fallbackLanguage: fallback,
                 maximumRows: limit,
                 inheritedSourceAnchors: anchors
             )
@@ -219,11 +219,11 @@ final class LiveTranscriptTimelineTests: XCTestCase {
             let split = generator.next(rows.count)
             var fold = AudienceCandidateFold()
             for row in rows[..<split] {
-                fold.consume(row, selectedLanguages: languages, lastIdentifiedSourceLanguage: fallback, limit: limit)
+                fold.consume(row, selectedLanguages: languages, fallbackLanguage: fallback, limit: limit)
             }
             var resumed = fold
             for row in rows[split...] {
-                resumed.consume(row, selectedLanguages: languages, lastIdentifiedSourceLanguage: fallback, limit: limit)
+                resumed.consume(row, selectedLanguages: languages, fallbackLanguage: fallback, limit: limit)
             }
             let result = resumed.result(globalTail: Array(rows.suffix(limit)), tailAnchors: [:])
 
