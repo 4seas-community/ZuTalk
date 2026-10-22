@@ -521,8 +521,10 @@ impl StreamFailure {
             // provider's own names for a duration cap never reach this match;
             // those endings are recognised from the raw frame and arrive as a
             // `rollover` instead.
+            // 408 is the provider timing out on this connection — a stall,
+            // which a fresh connection resumes like any outage.
             SttStreamError::Provider(error) => {
-                matches!(error.error_code, 413 | 429 | 503)
+                matches!(error.error_code, 408 | 413 | 429 | 503)
                     || matches!(
                         error.error_type.as_str(),
                         "rate_limited" | "service_unavailable"
@@ -4570,6 +4572,65 @@ mod tests {
             runtime.task.await.unwrap(),
             Err(SttError::QuotaExhausted { .. })
         ));
+    }
+
+    /// The provider ends a session it timed out waiting on (408) — a stall
+    /// of this connection, not a refusal of the lane. It used to end the
+    /// lane for the rest of the recording; a fresh connection resumes it.
+    /// A request the provider rejects as invalid (400) would be rejected
+    /// again, so that one still ends the lane.
+    #[tokio::test]
+    async fn a_provider_timeout_reconnects_and_an_invalid_request_does_not() {
+        async fn first_frame_after_error(error_code: u16, error_type: &str) -> SttStreamEvent {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+            let frame = json!({"error_code": error_code, "error_type": error_type}).to_string();
+            tokio::spawn(async move {
+                loop {
+                    let Ok((stream, _)) = listener.accept().await else {
+                        return;
+                    };
+                    let Ok(mut ws) = accept_async(stream).await else {
+                        continue;
+                    };
+                    let Some(Ok(Message::Text(_config))) = ws.next().await else {
+                        continue;
+                    };
+                    let _ = ws.send(Message::Text(frame.clone().into())).await;
+                }
+            });
+            let mut runtime = SonioxStreamClient::start_with_timeouts(
+                endpoint,
+                StaticLaneCredential::new("key"),
+                SttConfig::default(),
+                CancellationToken::new(),
+                0,
+                short_timeouts(),
+            );
+            assert_eq!(
+                runtime.event_rx.recv().await,
+                Some(SttStreamEvent::Connected)
+            );
+            runtime.event_rx.recv().await.unwrap()
+        }
+
+        assert!(
+            matches!(
+                first_frame_after_error(408, "request_timeout").await,
+                SttStreamEvent::Reconnecting { .. }
+            ),
+            "a provider timeout is an outage"
+        );
+        assert!(
+            matches!(
+                first_frame_after_error(400, "invalid_request").await,
+                SttStreamEvent::Error(SttStreamError::Provider(SttStreamProviderError {
+                    error_code: 400,
+                    ..
+                }))
+            ),
+            "an invalid request is final"
+        );
     }
 
     #[test]
