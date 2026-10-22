@@ -93,6 +93,61 @@ enum NotebookCaptureLivePresentation {
         return Array(rows.suffix(limit))
     }
 
+    /// The language a line was identified in, by the provider's final or
+    /// provisional identification; nil for a line it never identified.
+    static func identifiedSourceLanguage(
+        of utterance: NotebookCaptureUtteranceDTO
+    ) -> String? {
+        guard utterance.hasSourceLane, utterance.sourceText.isEmpty == false else { return nil }
+        if let source = NotebookCaptureHistoryPolicy.normalizedLanguage(utterance.sourceLanguage),
+           source != "und" {
+            return source
+        }
+        if let provisional = NotebookCaptureHistoryPolicy.normalizedLanguage(
+            utterance.provisionalSourceLanguage
+        ), provisional != "und" {
+            return provisional
+        }
+        return nil
+    }
+
+    /// The column an unidentified line borrows: the language of the nearest
+    /// earlier identified line, else `fallbackLanguage`. It depends only on
+    /// what came before the line, so it holds as later speech arrives —
+    /// borrowing the session's newest language instead moved an unidentified
+    /// line into whichever column had spoken last.
+    ///
+    /// `durable` is sorted by sequence; `preview` follows it, in order.
+    static func borrowedSourceLanguage(
+        for utterance: NotebookCaptureUtteranceDTO,
+        durable: [NotebookCaptureUtteranceDTO],
+        preview: [NotebookCaptureUtteranceDTO] = [],
+        fallbackLanguage: String?
+    ) -> String? {
+        var end: Int
+        if let previewIndex = preview.firstIndex(where: { $0.id == utterance.id }) {
+            for row in preview[..<previewIndex].reversed() where row.sessionId == utterance.sessionId {
+                if let language = identifiedSourceLanguage(of: row) { return language }
+            }
+            end = durable.count
+        } else {
+            var lower = 0
+            var upper = durable.count
+            while lower < upper {
+                let middle = (lower + upper) / 2
+                if durable[middle].sequence < utterance.sequence { lower = middle + 1 } else { upper = middle }
+            }
+            end = lower
+        }
+        while end > 0 {
+            end -= 1
+            let row = durable[end]
+            guard row.sessionId == utterance.sessionId else { continue }
+            if let language = identifiedSourceLanguage(of: row) { return language }
+        }
+        return fallbackLanguage
+    }
+
     /// Sort-only lower bounds for the source rows this session never received a
     /// provider timestamp for, keyed by utterance id.
     ///
@@ -151,7 +206,7 @@ enum NotebookCaptureLivePresentation {
         durable: [NotebookCaptureUtteranceDTO],
         sessionId: String,
         selectedLanguages: [String],
-        lastIdentifiedSourceLanguage: String?,
+        fallbackLanguage: String?,
         maximumRows: Int,
         inheritedSourceAnchors: [String: UInt64] = [:]
     ) -> [NotebookCaptureUtteranceDTO] {
@@ -181,11 +236,16 @@ enum NotebookCaptureLivePresentation {
             }
         }
 
+        var previousIdentified: String?
         let placement: (NotebookCaptureUtteranceDTO) -> String? = { utterance in
-            NotebookCaptureHistoryPolicy.audienceSourcePlacement(
+            let borrowed = previousIdentified ?? fallbackLanguage
+            if let identified = identifiedSourceLanguage(of: utterance) {
+                previousIdentified = identified
+            }
+            return NotebookCaptureHistoryPolicy.audienceSourcePlacement(
                 for: utterance,
                 selectedLanguages: selectedLanguages,
-                lastIdentifiedSourceLanguage: lastIdentifiedSourceLanguage
+                lastIdentifiedSourceLanguage: borrowed
             )
         }
         var visibleSources: [String: [NotebookCaptureUtteranceDTO]] = [:]
@@ -255,17 +315,19 @@ struct AudienceCandidateFold {
     /// language, so a change of that language must redo it.
     static func borrowsLanguage(_ utterance: NotebookCaptureUtteranceDTO) -> Bool {
         guard utterance.hasSourceLane, utterance.sourceText.isEmpty == false else { return false }
-        let source = utterance.sourceLanguage.trimmingCharacters(in: .whitespaces).lowercased()
-        if source.isEmpty == false, source != "und" { return false }
-        let provisional = (utterance.provisionalSourceLanguage ?? "")
-            .trimmingCharacters(in: .whitespaces).lowercased()
-        return provisional.isEmpty || provisional == "und"
+        return NotebookCaptureLivePresentation.identifiedSourceLanguage(of: utterance) == nil
     }
 
+    /// The language of the newest identified line folded so far: what an
+    /// unidentified line after it borrows.
+    var previousIdentified: String?
+
+    /// `fallbackLanguage` is what a line borrows before any line has been
+    /// identified; after that it borrows the nearest earlier identified one.
     mutating func consume(
         _ utterance: NotebookCaptureUtteranceDTO,
         selectedLanguages: [String],
-        lastIdentifiedSourceLanguage: String?,
+        fallbackLanguage: String?,
         limit: Int
     ) {
         if let start = utterance.sourceStartMs {
@@ -273,10 +335,14 @@ struct AudienceCandidateFold {
         } else if let carried {
             anchors[utterance.id] = carried
         }
+        let borrowed = previousIdentified ?? fallbackLanguage
+        if let identified = NotebookCaptureLivePresentation.identifiedSourceLanguage(of: utterance) {
+            previousIdentified = identified
+        }
         guard let language = NotebookCaptureHistoryPolicy.audienceSourcePlacement(
             for: utterance,
             selectedLanguages: selectedLanguages,
-            lastIdentifiedSourceLanguage: lastIdentifiedSourceLanguage
+            lastIdentifiedSourceLanguage: borrowed
         ) else { return }
         let anchors = anchors
         func comesBefore(_ left: NotebookCaptureUtteranceDTO, _ right: NotebookCaptureUtteranceDTO) -> Bool {

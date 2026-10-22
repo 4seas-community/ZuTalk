@@ -1252,11 +1252,13 @@ private struct NotebookRealtimeActiveRunView: View {
     var body: some View {
         // Rows of another session never reach this view: the timeline is
         // reset with the store's session.
-        let chunks = timeline.frame.sessionId == run.sessionId ? timeline.frame.chunks : []
+        let isThisRun = timeline.frame.sessionId == run.sessionId
+        let chunks = isThisRun ? timeline.frame.chunks : []
         VStack(spacing: 0) {
             NotebookRealtimeUtteranceView(
                 run: run,
                 liveChunks: chunks,
+                liveHasStoredRows: isThisRun && timeline.frame.hasStoredRows,
                 liveTranslationCues: capture.presentedTranslationCueSnapshot,
                 continuationCues: capture.continuationCueIndex,
                 presentationMode: presentationMode,

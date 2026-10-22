@@ -632,18 +632,29 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
     /// Rows follow the store's own arbitration — the higher revision wins,
     /// the later event on a tie — and a removal followed by a re-add keeps
     /// both, as applying the two events in turn would.
+    ///
+    /// The merged event stands for `pending`'s revisions only when nothing
+    /// lies between the two. The core skips a revision on purpose when it
+    /// cannot read the rows for it, so that the next event shows the store a
+    /// gap and the store reloads; merging across that hole keeps `next`'s own
+    /// start, and the gap stays visible.
     static func coalescing(_ pending: Self, into next: Self) -> Self {
         guard pending.sessionId == next.sessionId else { return next }
         guard next.eventRevision >= pending.eventRevision else { return pending }
-        let coversFrom = min(
-            pending.coversFromRevision ?? pending.eventRevision,
-            next.coversFromRevision ?? next.eventRevision
-        )
+        let nextFrom = next.coversFromRevision ?? next.eventRevision
+        let contiguous = nextFrom <= pending.eventRevision &+ 1
+        let coversFrom = contiguous
+            ? min(pending.coversFromRevision ?? pending.eventRevision, nextFrom)
+            : nextFrom
         if next.isFullSnapshot {
             var merged = next
             merged.coversFromRevision = coversFrom
             return merged
         }
+        // A snapshot followed by a gap cannot stay a snapshot: installing it
+        // would mark everything through `next` as applied. As a delta it
+        // shows the gap, and the store's reload brings the rest.
+        let mergedIsSnapshot = pending.isFullSnapshot && contiguous
         var rows: [UInt64: NotebookCaptureUtteranceDTO] = [:]
         for row in pending.utterances {
             if let current = rows[row.sequence], current.revision > row.revision { continue }
@@ -652,7 +663,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         var removed = pending.isFullSnapshot ? Set<UInt64>() : Set(pending.removedSequences)
         for sequence in next.removedSequences {
             rows[sequence] = nil
-            if pending.isFullSnapshot == false { removed.insert(sequence) }
+            if mergedIsSnapshot == false { removed.insert(sequence) }
         }
         for row in next.utterances {
             if let current = rows[row.sequence], current.revision > row.revision { continue }
@@ -672,7 +683,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
             if cue.withdrawn {
                 // A snapshot lists present cues only; there the withdrawal
                 // simply takes the cue out.
-                if pending.isFullSnapshot == false { withdrawals[cue.id] = cue }
+                if mergedIsSnapshot == false { withdrawals[cue.id] = cue }
                 best[cue.id] = nil
                 continue
             }
@@ -687,7 +698,7 @@ struct NotebookCaptureEventDTO: Codable, Equatable {
         var merged = Self(
             sessionId: next.sessionId,
             eventRevision: next.eventRevision,
-            isFullSnapshot: pending.isFullSnapshot,
+            isFullSnapshot: mergedIsSnapshot,
             captureState: next.captureState,
             remoteHealth: next.remoteHealth,
             realtimeLagMs: next.realtimeLagMs,

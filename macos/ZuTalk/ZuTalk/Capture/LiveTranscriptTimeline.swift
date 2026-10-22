@@ -57,6 +57,9 @@ struct LiveTranscriptFrame: Equatable {
     var chunks: [TranscriptChunk]
     /// Bumped on every published change; the frame compares by it alone.
     var revision: UInt64
+    /// Whether any row is stored, not only the speculative tail: what can be
+    /// copied, exported or edited.
+    var hasStoredRows = false
 
     static let empty = Self(sessionId: nil, chunks: [], revision: 0)
 
@@ -164,8 +167,8 @@ final class LiveTranscriptTimeline: ObservableObject {
         schedule()
     }
 
-    /// Builds and publishes the pending frame now. Terminal transitions and
-    /// tests call this; the live path waits for its slot.
+    /// Builds and publishes the pending frame now, for tests. Everything else
+    /// waits for its slot, at most one interval.
     func flush() {
         scheduled?.cancel()
         scheduled = nil
@@ -271,7 +274,8 @@ final class LiveTranscriptTimeline: ObservableObject {
             sessionId: currentSession,
             chunks: publishedChunks.keys.sorted().compactMap { publishedChunks[$0] }
                 .filter { $0.rows.isEmpty == false },
-            revision: revision
+            revision: revision,
+            hasStoredRows: durableChunks.isEmpty == false
         )
     }
 

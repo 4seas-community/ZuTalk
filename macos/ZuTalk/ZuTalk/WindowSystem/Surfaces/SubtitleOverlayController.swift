@@ -613,9 +613,16 @@ enum SubtitleAudienceTimeline {
     /// A lane whose stream died is never "waiting": the ellipsis is a promise
     /// that words are coming, and for a dead lane that promise is false. Its
     /// column simply stops, and the operator — not the audience — is told why.
+    ///
+    /// Nor is a lane that has nothing more on its way. Each stream times its
+    /// own segment boundaries, so a translation that covers a row can end a
+    /// few hundred milliseconds short of it; and a lane that has settled past
+    /// the newest speech has said all it will say about it. Without both, the
+    /// ellipsis stayed on through every silence.
     static func waitingLanguages(
         columns: [String: [Item]],
-        failedLanguages: Set<String> = []
+        failedLanguages: Set<String> = [],
+        progress: NotebookTranslationProgress = .none
     ) -> Set<String> {
         let newestSpokenEnd = columns.values
             .joined()
@@ -624,16 +631,26 @@ enum SubtitleAudienceTimeline {
             .max()
         guard let newestSpokenEnd else { return [] }
         var waiting: Set<String> = []
-        for (language, items) in columns where !failedLanguages.contains(language) {
-            let covered = items
-                .compactMap { $0.endMs ?? $0.anchorMs }
-                .max() ?? 0
-            if covered < newestSpokenEnd {
-                waiting.insert(language)
-            }
+        for (language, items) in columns
+        where !failedLanguages.contains(language) && !progress.stoppedLanguages.contains(language) {
+            let leader = items.max { ($0.endMs ?? $0.anchorMs ?? 0) < ($1.endMs ?? $1.anchorMs ?? 0) }
+            let covered = leader.flatMap { $0.endMs ?? $0.anchorMs } ?? 0
+            if covered >= newestSpokenEnd { continue }
+            // Only a finished segment may end short: a partial one is still
+            // growing, and the ellipsis says so.
+            if leader?.isComplete == true, covered &+ coverageToleranceMs >= newestSpokenEnd { continue }
+            if let settled = progress.settledThroughMs[language],
+               settled >= newestSpokenEnd &+ settledGraceMs { continue }
+            waiting.insert(language)
         }
         return waiting
     }
+
+    /// How far short of a row a covering segment may end.
+    static let coverageToleranceMs: UInt64 = 600
+    /// How long after its lane settled past the speech a translation of it
+    /// can still arrive: translation tokens follow the source finals.
+    static let settledGraceMs: UInt64 = 2_000
 
     /// The newest line no column claims — an unselected known language, or a
     /// line whose identity is still pending with no usable hint. Spoken words
@@ -691,7 +708,8 @@ enum SubtitleConversationTimeline {
         utterances: [NotebookCaptureUtteranceDTO],
         placement: (NotebookCaptureUtteranceDTO) -> String?,
         cues: (String) -> [NotebookCaptureTranslationCueDTO],
-        failedLanguages: Set<String> = []
+        failedLanguages: Set<String> = [],
+        progress: NotebookTranslationProgress = .none
     ) -> Projection {
         let languages = Array(
             languages.prefix(SubtitleOverlayLayoutPolicy.maximumLanguageCount)
@@ -711,7 +729,8 @@ enum SubtitleConversationTimeline {
         )
         let waitingLanguages = SubtitleAudienceTimeline.waitingLanguages(
             columns: columns,
-            failedLanguages: failedLanguages
+            failedLanguages: failedLanguages,
+            progress: progress
         )
 
         // `presentedUtterances` is already in source order. Only its newest
@@ -1936,7 +1955,8 @@ struct SubtitleOverlayView: View {
             utterances: utterances,
             placement: store.makeAudienceSourcePlacement(),
             cues: { cuesByLanguage[normalizedLanguageCode($0)] ?? [] },
-            failedLanguages: store.failedTranslationLanguages
+            failedLanguages: store.failedTranslationLanguages,
+            progress: store.translationProgress
         )
         let liveRowCount = timeline.hasLiveWords ? 1 : 0
         let unroutedRowCount = timeline.unroutedLiveUtterance == nil ? 0 : 1
@@ -2018,6 +2038,8 @@ struct SubtitleOverlayView: View {
         let placement: (NotebookCaptureUtteranceDTO) -> String?
         let cuesByLanguage: [String: [NotebookCaptureTranslationCueDTO]]
         let failedLanguages: Set<String>
+        /// How far each language's lane has settled; empty for a shared room.
+        var progress: NotebookTranslationProgress = .none
         /// Sort-only lower bounds for rows the provider never timed, keyed by
         /// utterance id. It travels with `utterances` because the local capture
         /// hands over a pruned candidate set, and the bound has to come from
@@ -2049,6 +2071,7 @@ struct SubtitleOverlayView: View {
                 uniquingKeysWith: { lane, _ in lane }
             ),
             failedLanguages: store.failedTranslationLanguages,
+            progress: store.translationProgress,
             inheritedSourceAnchors: store.presentedAudienceInheritedSourceAnchors(
                 maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount
             )
@@ -2108,7 +2131,8 @@ struct SubtitleOverlayView: View {
         )
         let waiting = SubtitleAudienceTimeline.waitingLanguages(
             columns: columns,
-            failedLanguages: input.failedLanguages
+            failedLanguages: input.failedLanguages,
+            progress: input.progress
         )
         let unrouted = SubtitleAudienceTimeline.unroutedText(
             utterances: utterances,

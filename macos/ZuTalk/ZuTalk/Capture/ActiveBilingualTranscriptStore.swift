@@ -164,26 +164,39 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     private var audienceFoldCheckpoints: [AudienceFoldCheckpoint] = []
     /// The first chunk whose fold state is stale; `nil` when none is.
     private var audienceFoldDirtyFrom: UInt64? = 0
-    private var cachedLastIdentifiedSourceLanguage: String?
-    private var hasCachedLastIdentifiedSourceLanguage = false
     private var cachedHighestFinalProjectionRevision: UInt64 = 0
     private var hasCachedHighestFinalProjectionRevision = false
     var livePreviewUtterances: [NotebookCaptureUtteranceDTO] {
         livePresentation.utterances
     }
-    private var cachedUtteranceSpeakerIds: [String]?
     /// The distinct session speakers in the durable transcript, sorted.
     ///
-    /// Read from a page body that re-evaluates far more often than rows
-    /// change; computed once per durable change instead of walking every
-    /// row of the recording on each evaluation.
-    var utteranceSpeakerIds: [String] {
-        if let cachedUtteranceSpeakerIds {
-            return cachedUtteranceSpeakerIds
+    /// Published, unlike the rows: the transcript page fetches speaker names
+    /// when a new speaker appears, and a delta that only adds a row by
+    /// someone new publishes nothing else. Kept current from the rows each
+    /// change touched; published only when the set changes.
+    @Published private(set) var utteranceSpeakerIds: [String] = []
+
+    private func refreshUtteranceSpeakerIds(sequences: [UInt64]?) {
+        var ids = Set(utteranceSpeakerIds)
+        if let sequences {
+            for sequence in sequences {
+                var lower = 0
+                var upper = rows.count
+                while lower < upper {
+                    let middle = (lower + upper) / 2
+                    if rows[middle].sequence < sequence { lower = middle + 1 } else { upper = middle }
+                }
+                if lower < rows.count, rows[lower].sequence == sequence,
+                   let speaker = rows[lower].sessionSpeakerId {
+                    ids.insert(speaker)
+                }
+            }
+        } else {
+            ids = Set(rows.compactMap(\.sessionSpeakerId))
         }
-        let ids = Array(Set(utterances.compactMap(\.sessionSpeakerId))).sorted()
-        cachedUtteranceSpeakerIds = ids
-        return ids
+        let sorted = ids.sorted()
+        if sorted != utteranceSpeakerIds { utteranceSpeakerIds = sorted }
     }
     /// The stored rows of the capture, ordered by sequence.
     ///
@@ -212,9 +225,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         // lazy invalidation makes a long `und` tail pay for one reverse
         // scan at the next durable boundary, not once per visible row on
         // every provider-rate SwiftUI refresh.
-        cachedUtteranceSpeakerIds = nil
-        cachedLastIdentifiedSourceLanguage = nil
-        hasCachedLastIdentifiedSourceLanguage = false
+        refreshUtteranceSpeakerIds(sequences: sequences)
         cachedHighestFinalProjectionRevision = 0
         hasCachedHighestFinalProjectionRevision = false
         audienceDurablePresentationCache = nil
@@ -265,7 +276,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                         fold.consume(
                             row,
                             selectedLanguages: languages,
-                            lastIdentifiedSourceLanguage: fallbackLanguage,
+                            fallbackLanguage: fallbackLanguage,
                             limit: maximumRows
                         )
                     }
@@ -584,7 +595,9 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
     ) -> AudienceDurablePresentationCache? {
         guard maximumRows > 0 else { return nil }
         let languages = selectedLanguages
-        let fallbackLanguage = lastIdentifiedSourceLanguage ?? languages.first
+        // A line before any identified one borrows the leading column; after
+        // that, the fold carries the nearest earlier identified language.
+        let fallbackLanguage = languages.first
         if let cache = audienceDurablePresentationCache,
            cache.sessionId == sessionId,
            cache.selectedLanguages == languages,
@@ -1091,7 +1104,6 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         self.notebookId = notebookId
         self.profile = startProfile
         self.utterances = []
-        self.cachedLastIdentifiedSourceLanguage = nil
         cancelLivePreviewCoalescing()
         self.livePresentation.updateFrame { frame in
             frame.utterances = []
@@ -1961,7 +1973,6 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         realtimeLagMs = nil
         projectionState = .ready
         utterances = []
-        cachedLastIdentifiedSourceLanguage = nil
         translationCues = [:]
         committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
         cancelLivePreviewCoalescing()
@@ -2041,10 +2052,7 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             for: utterance,
             selectedLanguages: selectedLanguages,
             commonCaptionLanguage: commonCaptionLanguage,
-            // The leading selected column carries the first line of a session,
-            // before any language has been identified to inherit.
-            lastIdentifiedSourceLanguage: lastIdentifiedSourceLanguage
-                ?? selectedLanguages.first
+            lastIdentifiedSourceLanguage: borrowedSourceLanguage(for: utterance)
         )
         .resolvingWaits(translationProgress, rowEndMs: utterance.sourceEndMs)
     }
@@ -2057,40 +2065,42 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         makeAudienceSourcePlacement()(utterance)
     }
 
-    /// Freezes the language-placement context for one presentation pass.
-    /// Besides guaranteeing that every row uses the same settled-language
-    /// fallback, this avoids rescanning a long `und` tail for every row.
+    /// Freezes the language-placement context for one presentation pass, so
+    /// every row of a frame is placed against the same rows. Only a line the
+    /// provider never identified looks back, and only as far as the nearest
+    /// identified line before it.
     func makeAudienceSourcePlacement() -> (NotebookCaptureUtteranceDTO) -> String? {
         let languages = selectedLanguages
-        let fallbackLanguage = lastIdentifiedSourceLanguage ?? languages.first
+        let durable = rows
+        let preview = livePreviewUtterances
         return { utterance in
             NotebookCaptureHistoryPolicy.audienceSourcePlacement(
                 for: utterance,
                 selectedLanguages: languages,
-                lastIdentifiedSourceLanguage: fallbackLanguage
+                lastIdentifiedSourceLanguage: AudienceCandidateFold.borrowsLanguage(utterance)
+                    ? NotebookCaptureLivePresentation.borrowedSourceLanguage(
+                        for: utterance,
+                        durable: durable,
+                        preview: preview,
+                        fallbackLanguage: languages.first
+                    )
+                    : nil
             )
         }
     }
 
-    /// The most recent language the provider actually identified in this
-    /// session. Used only as the last resort for placing an `und` line, after
-    /// the provider's own per-utterance hint. Durable merge/snapshot boundaries
-    /// refresh the cache once; a live SwiftUI frame must never rescan the whole
-    /// session just to place each visible row.
-    private var lastIdentifiedSourceLanguage: String? {
-        if hasCachedLastIdentifiedSourceLanguage {
-            return cachedLastIdentifiedSourceLanguage
-        }
-        defer { hasCachedLastIdentifiedSourceLanguage = true }
-        for utterance in utterances.reversed() where utterance.hasSourceLane {
-            let language = utterance.sourceLanguage.lowercased()
-            if language.isEmpty == false, language != "und" {
-                cachedLastIdentifiedSourceLanguage = language
-                return cachedLastIdentifiedSourceLanguage
-            }
-        }
-        cachedLastIdentifiedSourceLanguage = nil
-        return cachedLastIdentifiedSourceLanguage
+    /// What an unidentified line borrows: the language of the nearest earlier
+    /// identified line, or the leading selected column before there is one.
+    /// The audience canvas uses it as the provider's last-resort hint; it
+    /// never changes as later speech arrives, so the line stays in its column.
+    private func borrowedSourceLanguage(for utterance: NotebookCaptureUtteranceDTO) -> String? {
+        guard AudienceCandidateFold.borrowsLanguage(utterance) else { return nil }
+        return NotebookCaptureLivePresentation.borrowedSourceLanguage(
+            for: utterance,
+            durable: rows,
+            preview: livePreviewUtterances,
+            fallbackLanguage: selectedLanguages.first
+        )
     }
 
     private var captureLanguageSummary: String {
@@ -2995,6 +3005,13 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             // longer depends on finding a quiet interval.
             var repairedUtterances = rebuiltUtteranceSnapshot(from: snapshot.utterances)
             for delta in replayDeltas {
+                // As live: a withdrawal first, then the upserts — a row the
+                // core withdrew after the checkpoint stays withdrawn, and one
+                // it withdrew and sent again may come back at a lower revision.
+                if delta.removedSequences.isEmpty == false {
+                    let withdrawn = Set(delta.removedSequences)
+                    repairedUtterances.removeAll { withdrawn.contains($0.sequence) }
+                }
                 let preparedUpdates = prepareUtteranceUpdates(delta.utterances)
                 for update in preparedUpdates {
                     Self.upsertOrderedUtterance(update, into: &repairedUtterances)
@@ -3204,7 +3221,6 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
         }
         cancelUtteranceGapRepair()
         utterances = []
-        cachedLastIdentifiedSourceLanguage = nil
         translationCues = [:]
         committedLaneOverrideBarriers.removeAll(keepingCapacity: true)
         cancelLivePreviewCoalescing()

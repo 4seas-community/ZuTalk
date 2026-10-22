@@ -1365,6 +1365,34 @@ final class WindowSystemTests: XCTestCase {
         )
     }
 
+    /// Watching a nearby room in one language shows every line in it: the
+    /// translation, or the words themselves when they were spoken in it.
+    func testNearbyWatchShowsLinesSpokenInTheChosenLanguage() {
+        let spokenInThai = FfiNearbyLine(
+            id: "b1",
+            speaker: nil,
+            speakerLabel: nil,
+            source: "สวัสดีครับ",
+            sourceLanguage: "th",
+            translations: [FfiNearbyText(language: "en", text: "Hello")],
+            settled: true
+        )
+        XCTAssertEqual(NearbyLiveView.text(of: spokenInThai, in: "th"), "สวัสดีครับ")
+        XCTAssertEqual(NearbyLiveView.text(of: spokenInThai, in: "en"), "Hello")
+        XCTAssertEqual(NearbyLiveView.text(of: spokenInThai, in: nil), "สวัสดีครับ")
+        XCTAssertNil(NearbyLiveView.text(of: spokenInThai, in: "zh"))
+        let translatedHant = FfiNearbyLine(
+            id: "b2",
+            speaker: nil,
+            speakerLabel: nil,
+            source: "Next",
+            sourceLanguage: "en",
+            translations: [FfiNearbyText(language: "zh-Hant", text: "下一個")],
+            settled: true
+        )
+        XCTAssertEqual(NearbyLiveView.text(of: translatedHant, in: "zh-Hant"), "下一個")
+    }
+
     func testSubtitleOnlyLanguagesFollowSelectionAndNeverSilenceTheRoom() {
         XCTAssertEqual(
             NotebookCaptureLanguageRoles.subtitleOnly(
@@ -1378,6 +1406,70 @@ final class WindowSystemTests: XCTestCase {
                 selected: ["zh", "en", "th"],
                 requested: ["zh", "en", "th"]
             ),
+            []
+        )
+    }
+
+    /// The ellipsis promises words still on their way. In silence it must go
+    /// once nothing is: a segment that ends a few hundred milliseconds short
+    /// of the row (each stream times its own boundaries), or a lane that has
+    /// settled past the speech without producing anything for it.
+    func testTheWaitingEllipsisClearsOnceNothingMoreIsComing() {
+        let spoken = NotebookCaptureUtteranceDTO(
+            id: "utt-0",
+            sessionId: "session",
+            sequence: 0,
+            revision: 1,
+            sourceLanguage: "zh",
+            sourceText: "我们开始吧",
+            sourceStartMs: 2_000,
+            sourceEndMs: 5_000,
+            translatedLanguage: nil,
+            translatedText: nil,
+            completion: "complete",
+            alignment: "source_only"
+        )
+        let cue = { (target: String, end: UInt64) in
+            NotebookCaptureTranslationCueDTO(
+                targetLanguage: target,
+                groupEpoch: 0,
+                providerSequence: 0,
+                sourceLanguage: "zh",
+                sourceStartMs: 2_000,
+                sourceEndMs: end,
+                text: "Let's begin",
+                completion: "complete",
+                withdrawn: false,
+                revision: 1
+            )
+        }
+        let columns = SubtitleAudienceTimeline.columns(
+            languages: ["zh", "en", "th", "ja"],
+            utterances: [spoken],
+            placement: { $0.sourceLanguage },
+            cues: { language in
+                switch language {
+                case "en": [cue("en", 4_700)]
+                case "ja": [cue("ja", 2_600)]
+                default: []
+                }
+            }
+        )
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.waitingLanguages(columns: columns),
+            ["th", "ja"],
+            "a segment ending 300 ms short of the row covers it"
+        )
+        var progress = NotebookTranslationProgress()
+        progress.settledThroughMs = ["th": 7_500, "ja": 6_000]
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.waitingLanguages(columns: columns, progress: progress),
+            ["ja"],
+            "a lane settled past the speech has nothing more on its way"
+        )
+        progress.stoppedLanguages = ["ja"]
+        XCTAssertEqual(
+            SubtitleAudienceTimeline.waitingLanguages(columns: columns, progress: progress),
             []
         )
     }
@@ -1807,11 +1899,17 @@ final class WindowSystemTests: XCTestCase {
                 revision: 2
             ),
         ]
+        // Placed as the store places them: an unidentified row borrows the
+        // nearest earlier identified one.
         let placement: (NotebookCaptureUtteranceDTO) -> String? = { utterance in
             NotebookCaptureHistoryPolicy.audienceSourcePlacement(
                 for: utterance,
                 selectedLanguages: languages,
-                lastIdentifiedSourceLanguage: "en"
+                lastIdentifiedSourceLanguage: NotebookCaptureLivePresentation.borrowedSourceLanguage(
+                    for: utterance,
+                    durable: utterances,
+                    fallbackLanguage: "en"
+                )
             )
         }
         // Bounds come from the whole session, exactly once, and both the
@@ -1836,7 +1934,7 @@ final class WindowSystemTests: XCTestCase {
             durable: utterances,
             sessionId: "session",
             selectedLanguages: languages,
-            lastIdentifiedSourceLanguage: "en",
+            fallbackLanguage: "en",
             maximumRows: SubtitleOverlayLayoutPolicy.maximumAudienceRowCount,
             inheritedSourceAnchors: anchors
         )

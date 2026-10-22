@@ -10,6 +10,9 @@ struct NotebookRealtimeUtteranceView: View {
     /// the speculative tail, in chunks that keep their identity while they
     /// do not change. `nil` for a finished run, whose rows are `run.utterances`.
     var liveChunks: [TranscriptChunk]? = nil
+    /// Whether the live chunks hold any stored row; the speculative tail
+    /// alone has nothing to copy.
+    var liveHasStoredRows = false
     let liveTranslationCues: [NotebookCaptureTranslationCueDTO]
     /// Every translated segment of the recording, durable ones included, so
     /// that an empty cell another row's segment accounts for says so.
@@ -272,12 +275,18 @@ struct NotebookRealtimeUtteranceView: View {
         }
     }
 
+    /// Copying reads the stored rows; a live run whose words are all still
+    /// speculative has none yet, and the copy came back empty as a failure.
+    private var hasStoredRows: Bool {
+        liveChunks == nil ? chunks.isEmpty == false : liveHasStoredRows
+    }
+
     private var canCopyTranscript: Bool {
-        chunks.isEmpty == false && laneEditingState.canSwap
+        hasStoredRows && laneEditingState.canSwap
     }
 
     private var copyTranscriptHint: String {
-        if chunks.isEmpty {
+        if hasStoredRows == false {
             return String(localized: "capture.transcript.copy_empty_hint")
         }
         if laneEditingState.canSwap == false {

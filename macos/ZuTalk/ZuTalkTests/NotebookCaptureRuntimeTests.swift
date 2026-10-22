@@ -2836,6 +2836,166 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         store.resetForTesting()
     }
 
+    /// A recording whose cues were never read gets the same empty index every
+    /// time: the transcript's block cache is keyed by the index's token, and a
+    /// fresh one per call rebuilt every block with an empty cell each frame.
+    @MainActor
+    func testARecordingWithoutCuesReadsTheSameEmptyIndexEachTime() {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let history = NotebookCaptureHistoryStore(client: client)
+        XCTAssertEqual(
+            history.translationCueIndex(sessionId: "session-a").token,
+            history.translationCueIndex(sessionId: "session-a").token
+        )
+    }
+
+    /// The transcript page asks for speaker names when a new speaker shows up
+    /// in the rows. Rows are not published, so the speakers have to be: a
+    /// delta that only adds a row by someone new must still reach the page.
+    @MainActor
+    func testANewSpeakerInTheRowsIsPublished() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+        var first = NotebookCaptureUtteranceDTO.sample.replacingIdentity(id: "utt-0", sequence: 0)
+        first.revision = 1
+        first.sessionSpeakerId = "speaker-a"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        XCTAssertEqual(store.utteranceSpeakerIds, ["speaker-a"])
+
+        var published = 0
+        let subscription = store.objectWillChange.sink { _ in published += 1 }
+        var second = first.replacingIdentity(id: "utt-1", sequence: 1)
+        second.sessionSpeakerId = "speaker-b"
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [second],
+            eventRevision: 2,
+            isFullSnapshot: false
+        ))
+        XCTAssertGreaterThan(published, 0, "the page never hears of the new speaker")
+        XCTAssertEqual(store.utteranceSpeakerIds, ["speaker-a", "speaker-b"])
+        subscription.cancel()
+        store.resetForTesting()
+    }
+
+    /// A line the provider never identified borrows the column of the line
+    /// before it, and keeps it: later speech in another language must not
+    /// move it across the subtitle window.
+    @MainActor
+    func testAnUnidentifiedLineKeepsTheColumnOfTheLineBeforeIt() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+        func line(_ sequence: UInt64, _ language: String, _ text: String) -> NotebookCaptureUtteranceDTO {
+            var row = NotebookCaptureUtteranceDTO.sample.replacingIdentity(
+                id: "utt-\(sequence)",
+                sequence: sequence
+            )
+            row.revision = 1
+            row.sourceLanguage = language
+            row.sourceText = text
+            row.sourceStartMs = sequence * 2_000
+            row.sourceEndMs = sequence * 2_000 + 1_500
+            return row
+        }
+        let chinese = line(0, "zh", "我们开始吧")
+        let unidentified = line(1, "und", "嗯")
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [chinese, unidentified],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        XCTAssertEqual(store.audienceSourcePlacement(for: unidentified), "zh")
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [line(2, "en", "Let's begin")],
+            eventRevision: 2,
+            isFullSnapshot: false
+        ))
+        XCTAssertEqual(
+            store.audienceSourcePlacement(for: unidentified),
+            "zh",
+            "the next speaker's language moved the line"
+        )
+        store.resetForTesting()
+    }
+
+    /// A row the core withdraws while the snapshot read is in flight is gone
+    /// for good: replaying the later deltas over the snapshot must remove it,
+    /// as applying them live did.
+    @MainActor
+    func testCaptureGapRepairReplaysWithdrawalsAfterSnapshotCheckpoint() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let controller = BlockingNotebookReconcileController()
+        client.reconcileController = controller
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var first = NotebookCaptureUtteranceDTO.sample.replacingIdentity(sequence: 0)
+        first.revision = 1
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        let speculative = first.replacingIdentity(id: "utt-speculative", sequence: 1)
+        client.reconcileEvents = [captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first, speculative],
+            eventRevision: 3,
+            isFullSnapshot: true
+        )]
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [speculative],
+            eventRevision: 3,
+            isFullSnapshot: false
+        ))
+        let didStartRepair = await waitUntil { controller.isWaiting(call: 0) }
+        XCTAssertTrue(didStartRepair)
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 4,
+            isFullSnapshot: false,
+            removedSequences: [1]
+        ))
+        XCTAssertEqual(store.utterances.map(\.sequence), [0])
+
+        controller.release(call: 0)
+        let resurrected = await waitUntil(timeout: 0.5) { store.utterances.map(\.sequence) == [0, 1] }
+        XCTAssertFalse(resurrected, "the withdrawn row came back")
+        XCTAssertEqual(store.utterances.map(\.sequence), [0])
+        store.resetForTesting()
+    }
+
     @MainActor
     func testInactiveSessionChangeClearsOldRowsWhenNewSessionIsEmptyAndCannotEditOldRow() async {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
@@ -8556,7 +8716,7 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(realtimeTranscriptView.contains("getSessionTranscriptClipboardText"))
         XCTAssertTrue(realtimeTranscriptView.contains("TranscriptClipboard.write"))
         XCTAssertTrue(realtimeTranscriptView.contains(
-            "chunks.isEmpty == false && laneEditingState.canSwap"
+            "hasStoredRows && laneEditingState.canSwap"
         ))
         XCTAssertTrue(realtimeTranscriptView.contains(".frame(minWidth: 44, minHeight: 44)"))
         XCTAssertTrue(captureViews.contains("projection.pendingLanguage"))

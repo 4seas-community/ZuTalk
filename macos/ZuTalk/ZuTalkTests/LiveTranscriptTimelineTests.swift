@@ -104,6 +104,24 @@ final class LiveTranscriptTimelineTests: XCTestCase {
         XCTAssertEqual(timeline.frame.rowCount, 41)
     }
 
+    /// Copying the transcript copies stored rows; a recording whose words
+    /// are all still speculative has nothing to copy yet, and its frame says
+    /// so even though it shows text.
+    func testAFrameOfOnlyTheSpeculativeTailHasNoStoredRows() {
+        let rows = Rows()
+        let timeline = timeline(rows)
+        rows.preview = [Self.row(0, preview: true)]
+        timeline.notePreviewChanged()
+        timeline.flush()
+        XCTAssertFalse(timeline.frame.isEmpty)
+        XCTAssertFalse(timeline.frame.hasStoredRows)
+
+        rows.durable = [Self.row(0)]
+        timeline.noteDurableChanged(sequences: [0])
+        timeline.flush()
+        XCTAssertTrue(timeline.frame.hasStoredRows)
+    }
+
     /// Whatever the sequence of edits, the frame is the flat merge.
     func testTheFrameIsAlwaysTheFlatMerge() {
         var generator = Generator(state: 7)
@@ -210,7 +228,7 @@ final class LiveTranscriptTimelineTests: XCTestCase {
                 durable: rows,
                 sessionId: "session",
                 selectedLanguages: languages,
-                lastIdentifiedSourceLanguage: fallback,
+                fallbackLanguage: fallback,
                 maximumRows: limit,
                 inheritedSourceAnchors: anchors
             )
@@ -219,11 +237,11 @@ final class LiveTranscriptTimelineTests: XCTestCase {
             let split = generator.next(rows.count)
             var fold = AudienceCandidateFold()
             for row in rows[..<split] {
-                fold.consume(row, selectedLanguages: languages, lastIdentifiedSourceLanguage: fallback, limit: limit)
+                fold.consume(row, selectedLanguages: languages, fallbackLanguage: fallback, limit: limit)
             }
             var resumed = fold
             for row in rows[split...] {
-                resumed.consume(row, selectedLanguages: languages, lastIdentifiedSourceLanguage: fallback, limit: limit)
+                resumed.consume(row, selectedLanguages: languages, fallbackLanguage: fallback, limit: limit)
             }
             let result = resumed.result(globalTail: Array(rows.suffix(limit)), tailAnchors: [:])
 
@@ -331,5 +349,20 @@ final class LiveTranscriptTimelineTests: XCTestCase {
             XCTAssertEqual(coalesced.coversFromRevision ?? coalesced.eventRevision, 2, "trial \(trial)")
             XCTAssertEqual(coalesced.eventRevision, queued.last?.eventRevision)
         }
+    }
+
+    /// The core leaves a revision out on purpose when it cannot read the
+    /// rows for it, so that the next event shows the store a gap and the
+    /// store reloads. Merging across that hole must keep it visible.
+    func testMergingAcrossAMissingRevisionKeepsTheGapVisible() {
+        let seven = Self.event(revision: 7, full: false, rows: [Self.row(1)], removed: [], cues: [])
+        let nine = Self.event(revision: 9, full: false, rows: [Self.row(2)], removed: [], cues: [])
+        let merged = NotebookCaptureEventDTO.coalescing(seven, into: nine)
+        XCTAssertEqual(merged.coversFromRevision ?? merged.eventRevision, 9, "revision 8 is missing")
+
+        var eightToNine = nine
+        eightToNine.coversFromRevision = 8
+        let contiguous = NotebookCaptureEventDTO.coalescing(seven, into: eightToNine)
+        XCTAssertEqual(contiguous.coversFromRevision ?? contiguous.eventRevision, 7)
     }
 }

@@ -1051,18 +1051,31 @@ fn event_from_run(
 /// and the later event a tie; a row removed and later re-sent stays in both
 /// lists (the client removes before it upserts); a withdrawn cue removes,
 /// and the best cue after it is re-added; a full snapshot supersedes all.
+///
+/// The merged event stands for `pending`'s revisions only when nothing lies
+/// between the two. A revision skipped on purpose — one whose rows could not
+/// be read — must still show the client a gap, so merging across it keeps
+/// `next`'s own start, and a snapshot followed by such a gap becomes a delta.
+/// The Swift dispatcher merges by the same rule.
 fn coalesce_capture_events(
     pending: FfiNotebookCaptureEvent,
     mut next: FfiNotebookCaptureEvent,
 ) -> FfiNotebookCaptureEvent {
-    let covers_from = pending
-        .covers_from_revision
-        .unwrap_or(pending.event_revision)
-        .min(next.covers_from_revision.unwrap_or(next.event_revision));
+    let next_from = next.covers_from_revision.unwrap_or(next.event_revision);
+    let contiguous = next_from <= pending.event_revision.saturating_add(1);
+    let covers_from = if contiguous {
+        pending
+            .covers_from_revision
+            .unwrap_or(pending.event_revision)
+            .min(next_from)
+    } else {
+        next_from
+    };
     if next.is_full_snapshot {
         next.covers_from_revision = Some(covers_from);
         return next;
     }
+    let merged_is_snapshot = pending.is_full_snapshot && contiguous;
     let mut rows: BTreeMap<u64, FfiNotebookCaptureUtterance> = BTreeMap::new();
     let upsert = |rows: &mut BTreeMap<u64, FfiNotebookCaptureUtterance>,
                   row: FfiNotebookCaptureUtterance| {
@@ -1084,7 +1097,7 @@ fn coalesce_capture_events(
     };
     for sequence in &next.removed_sequences {
         rows.remove(sequence);
-        if !pending.is_full_snapshot {
+        if !merged_is_snapshot {
             removed.insert(*sequence);
         }
     }
@@ -1113,7 +1126,7 @@ fn coalesce_capture_events(
             best.remove(&key);
             // A snapshot lists present cues only; there a withdrawal just
             // takes the cue out.
-            if !pending.is_full_snapshot {
+            if !merged_is_snapshot {
                 withdrawals.insert(key, cue);
             }
             continue;
@@ -1139,7 +1152,7 @@ fn coalesce_capture_events(
     next.utterances = rows.into_values().collect();
     next.removed_sequences = removed.into_iter().collect();
     next.translation_cues = cues;
-    next.is_full_snapshot = pending.is_full_snapshot;
+    next.is_full_snapshot = merged_is_snapshot;
     if next.lane_health.is_empty() {
         next.lane_health = pending.lane_health;
     }
@@ -5878,6 +5891,13 @@ fn normalized_provider_speaker(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+/// The primary subtag of a language the provider actually identified;
+/// `None` for an empty or `und` one.
+pub(crate) fn identified_language(value: &str) -> Option<String> {
+    let language = normalize_language(value);
+    (!language.is_empty() && language != "und").then_some(language)
 }
 
 fn normalize_language(value: &str) -> String {
@@ -16742,6 +16762,33 @@ pub(crate) mod tests {
                 "trial {trial}"
             );
         }
+    }
+
+    /// A revision the core skipped because it could not read its rows must
+    /// still show the client a gap after a merge, and a snapshot followed by
+    /// that gap must not be installed as if it covered it.
+    #[test]
+    fn merging_across_a_skipped_revision_keeps_the_gap_visible() {
+        let seven = coalescing_event(7, false, vec![coalescing_row(1, 1)], Vec::new(), Vec::new());
+        let nine = coalescing_event(9, false, vec![coalescing_row(2, 1)], vec![3], Vec::new());
+        let merged = coalesce_capture_events(seven.clone(), nine.clone());
+        assert_eq!(
+            merged.covers_from_revision,
+            Some(9),
+            "revision 8 is missing"
+        );
+
+        let mut eight_to_nine = nine.clone();
+        eight_to_nine.covers_from_revision = Some(8);
+        let contiguous = coalesce_capture_events(seven, eight_to_nine);
+        assert_eq!(contiguous.covers_from_revision, Some(7));
+
+        let snapshot =
+            coalescing_event(7, true, vec![coalescing_row(1, 1)], Vec::new(), Vec::new());
+        let after_gap = coalesce_capture_events(snapshot, nine);
+        assert!(!after_gap.is_full_snapshot);
+        assert_eq!(after_gap.covers_from_revision, Some(9));
+        assert_eq!(after_gap.removed_sequences, vec![3]);
     }
 
     #[test]
