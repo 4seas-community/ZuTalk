@@ -116,10 +116,10 @@ pub fn decompose_thai_sara_am(text: &str) -> Cow<'_, str> {
 /// Provider text set the way it is written: SARA AM composed, and the spaces
 /// Chinese and Japanese do not have taken out.
 pub fn normalize_provider_text(text: &str) -> String {
-    if !text.contains(NIKHAHIT) {
+    if !text.contains(NIKHAHIT) && !text.contains(is_provider_space) {
         return text.to_string();
     }
-    normalize_pieces(&[text], false).remove(0)
+    normalize_pieces(&[text], true).remove(0)
 }
 
 /// [`normalize_provider_text`] over a sequence of tokens, keeping every
@@ -128,7 +128,7 @@ pub fn normalize_provider_text(text: &str) -> String {
 /// starts the next compose into the first; a space that opens a token after
 /// `。` leaves that token shorter, possibly empty.
 pub fn normalize_provider_pieces<S: AsRef<str>>(pieces: &[S]) -> Vec<String> {
-    normalize_pieces(pieces, false)
+    normalize_pieces(pieces, true)
 }
 
 fn normalize_pieces<S: AsRef<str>>(pieces: &[S], collapse_spaces: bool) -> Vec<String> {
@@ -215,6 +215,52 @@ mod tests {
             assert!(decomposed.contains(NIKHAHIT));
             assert_eq!(compose_thai_sara_am(&decomposed), word);
         }
+    }
+
+    /// Spellings taken from a real three-language recording.
+    #[test]
+    fn chinese_loses_the_spaces_the_provider_put_in() {
+        assert_eq!(
+            normalize_provider_text("清迈的数字社区。 以及来自多个国家的人"),
+            "清迈的数字社区。以及来自多个国家的人"
+        );
+        assert_eq!(
+            normalize_provider_text("在我们结束之前，请记住 下周的课程将重点关注"),
+            "在我们结束之前，请记住下周的课程将重点关注"
+        );
+        assert_eq!(
+            normalize_provider_text("支持 已分配的记录。 Mei。"),
+            "支持已分配的记录。Mei。"
+        );
+        assert_eq!(normalize_provider_text(" 以及"), "以及");
+    }
+
+    #[test]
+    fn spaces_that_belong_to_the_text_stay() {
+        // Mixed-script spacing, Thai phrase spacing, Korean and Latin words.
+        for text in [
+            "他说 ZuTalk 很好用",
+            "ผมคิดว่า เราควรเริ่มใหม่",
+            "안녕하세요 반갑습니다",
+            "we should start over",
+            " start over",
+            "trailing ",
+            "第 3 章",
+        ] {
+            assert_eq!(normalize_provider_text(text), text, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_token_that_is_only_a_space_after_a_full_stop_becomes_empty() {
+        assert_eq!(
+            normalize_provider_pieces(&["社区。", " ", "以及"]),
+            vec!["社区。", "", "以及"]
+        );
+        assert_eq!(
+            normalize_provider_pieces(&["社区。", " 以及"]),
+            vec!["社区。", "以及"]
+        );
     }
 
     #[test]

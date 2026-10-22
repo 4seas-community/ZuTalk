@@ -2217,6 +2217,27 @@ mod import_tests {
         );
     }
 
+    /// The post-stop transcript drops the provider's spaces inside Chinese;
+    /// a token that held nothing else adds nothing.
+    #[test]
+    fn processed_chinese_does_not_keep_the_providers_spaces() {
+        use vt_model::TranslationStatus::None as Plain;
+        let segments = build_notebook_segments_from_tokens(&[
+            provider_token("清迈的数字社区。", 0, 900, "zh", None, Plain),
+            provider_token(" ", 900, 950, "zh", None, Plain),
+            provider_token("以及来自", 950, 1_400, "zh", None, Plain),
+            provider_token(" 多个国家", 1_400, 2_000, "zh", None, Plain),
+        ]);
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| segment.text.as_str())
+                .collect::<String>(),
+            "清迈的数字社区。以及来自多个国家"
+        );
+        assert!(segments.iter().all(|segment| !segment.text.is_empty()));
+    }
+
     #[test]
     fn processed_multi_token_paragraphs_respect_aggregation_bounds() {
         let tokens = (0..18)

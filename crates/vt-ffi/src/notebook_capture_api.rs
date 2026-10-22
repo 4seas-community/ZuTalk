@@ -14879,8 +14879,9 @@ pub(crate) mod tests {
             .is_empty());
         assembler.advance();
 
-        // The same separator followed by speech is the ordinary case, and the
-        // row that results keeps the provider's spacing verbatim.
+        // The same separator followed by speech is the ordinary case. The
+        // space opens a Chinese row, where the language has none, and is
+        // dropped.
         let spoken = assembler.apply_tokens(&[
             token(
                 " ",
@@ -14899,7 +14900,7 @@ pub(crate) mod tests {
                 true,
             ),
         ]);
-        assert_eq!(only_utterance(spoken).source_text, " 它给你讲了三个案例。");
+        assert_eq!(only_utterance(spoken).source_text, "它给你讲了三个案例。");
     }
 
     /// Soniox spells SARA AM as NIKHAHIT + SARA AA, sometimes across two
@@ -14930,6 +14931,44 @@ pub(crate) mod tests {
             .live_previews()
             .iter()
             .all(|preview| !preview.utterance.source_text.contains('\u{0E4D}')));
+    }
+
+    /// Chinese the way it is written: the provider's spaces after `。` and
+    /// between two characters do not reach the row. Spellings from a real
+    /// recording.
+    #[test]
+    fn chinese_rows_do_not_keep_the_providers_spaces() {
+        let mut assembler = RealtimeUtteranceAssembler::new("cjk-space-session".into(), &profile());
+        let updates = assembler.apply_tokens(&[
+            token(
+                " 清迈的数字社区。",
+                SttStreamTranslationStatus::Original,
+                "zh",
+                Some(1_000),
+                Some(2_000),
+                true,
+            ),
+            token(
+                " 以及来自多个国家的人，请记住",
+                SttStreamTranslationStatus::Original,
+                "zh",
+                Some(2_000),
+                Some(3_000),
+                true,
+            ),
+            token(
+                " 下周的课程用 ZuTalk 记录",
+                SttStreamTranslationStatus::Original,
+                "zh",
+                Some(3_000),
+                Some(4_000),
+                true,
+            ),
+        ]);
+        assert_eq!(
+            only_utterance(updates).source_text,
+            "清迈的数字社区。以及来自多个国家的人，请记住下周的课程用 ZuTalk 记录"
+        );
     }
 
     /// The truncated row directly above its own completion. Measured on this
@@ -14970,7 +15009,7 @@ pub(crate) mod tests {
         assert_eq!(completed.source_start_ms, Some(1_125_720));
         assert_eq!(
             completed.source_text,
-            " 什么？这三个案例有什么区别？它是三个。"
+            "什么？这三个案例有什么区别？它是三个。"
         );
     }
 
@@ -14990,7 +15029,7 @@ pub(crate) mod tests {
         )]);
 
         let kept = only_utterance(assembler.finalize(FinalizeBoundary::ConnectionClosing));
-        assert_eq!(kept.source_text, " 什么？这三个案例");
+        assert_eq!(kept.source_text, "什么？这三个案例");
         assert_eq!(kept.completion, UtteranceCompletion::Partial);
     }
 
@@ -15019,7 +15058,7 @@ pub(crate) mod tests {
         ]);
 
         let closed = only_utterance(assembler.finalize(FinalizeBoundary::ProviderBoundary));
-        assert_eq!(closed.source_text, " 它给你讲了三个案例。你那个");
+        assert_eq!(closed.source_text, "它给你讲了三个案例。你那个");
         assert_eq!(closed.completion, UtteranceCompletion::Partial);
     }
 
@@ -15213,7 +15252,7 @@ pub(crate) mod tests {
         assert_eq!(rows[0].source_start_ms, Some(1_125_720));
         assert_eq!(
             rows[0].source_text,
-            " 什么？这三个案例有什么区别？它是三个。"
+            "什么？这三个案例有什么区别？它是三个。"
         );
 
         // A closing connection has no next response to carry those words, so
@@ -15230,7 +15269,7 @@ pub(crate) mod tests {
             .list_utterances(&session.id)
             .unwrap();
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[1].source_text, " 什么？这三个案例");
+        assert_eq!(rows[1].source_text, "什么？这三个案例");
         assert_eq!(rows[1].completion, UtteranceCompletion::Partial);
     }
 
@@ -18119,9 +18158,23 @@ pub(crate) mod tests {
         assert_eq!(neutral.alignment, UtteranceAlignment::SourceOnly);
         assert_store_valid_alignment_shape(&neutral);
 
-        for (session_id, pending_language, pending_speaker, pending_text) in [
-            ("session-language-conflict", "zh", "speaker-a", " 你好"),
-            ("session-speaker-conflict", "en", "speaker-b", " goodbye"),
+        // The provider's leading space stays on English and is dropped
+        // before Chinese, which has none.
+        for (session_id, pending_language, pending_speaker, pending_text, kept_text) in [
+            (
+                "session-language-conflict",
+                "zh",
+                "speaker-a",
+                " 你好",
+                "你好",
+            ),
+            (
+                "session-speaker-conflict",
+                "en",
+                "speaker-b",
+                " goodbye",
+                " goodbye",
+            ),
         ] {
             let mut assembler = RealtimeUtteranceAssembler::new(session_id.into(), &profile());
             let stable = assembler.apply_tokens(&[
@@ -18150,7 +18203,7 @@ pub(crate) mod tests {
             assert_eq!(finalized[0].utterance.source_language, "en");
             assert_eq!(finalized[0].utterance.source_text, "hello");
             assert_eq!(finalized[1].utterance.source_language, "und");
-            assert_eq!(finalized[1].utterance.source_text, pending_text);
+            assert_eq!(finalized[1].utterance.source_text, kept_text);
             assert_eq!(
                 finalized[1].utterance.completion,
                 UtteranceCompletion::Partial
