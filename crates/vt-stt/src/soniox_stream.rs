@@ -787,6 +787,14 @@ struct StreamRecoveryState {
     acknowledged_ms: u64,
     connection_origin_ms: u64,
     sent_frames: VecDeque<ReplayAudioFrame>,
+    /// Where this connection's audio stood, in the provider's frame, at each
+    /// finalize sent and not yet answered.
+    finalize_marks: VecDeque<u64>,
+    /// How far the provider's clock runs ahead of the audio sent, from which
+    /// of its positions on. Soniox adds a little time of its own each time
+    /// it finalizes — about a tenth of a second — and every position it
+    /// reports afterwards carries all of it.
+    provider_lead: Vec<(u64, u64)>,
 }
 
 impl StreamRecoveryState {
@@ -799,7 +807,48 @@ impl StreamRecoveryState {
             acknowledged_ms: capture_origin_ms,
             connection_origin_ms: capture_origin_ms,
             sent_frames: VecDeque::new(),
+            finalize_marks: VecDeque::new(),
+            provider_lead: Vec::new(),
         }
+    }
+
+    /// A new connection: its clock starts again at zero, with nothing added.
+    fn begin_provider_clock(&mut self) {
+        self.finalize_marks.clear();
+        self.provider_lead.clear();
+    }
+
+    /// A finalize went out after everything recorded as sent.
+    fn note_finalize_sent(&mut self) {
+        self.finalize_marks
+            .push_back(self.next_audio_ms.saturating_sub(self.connection_origin_ms));
+    }
+
+    /// The provider answered the oldest finalize at `provider_total_ms`. All
+    /// it heard was the audio sent before that finalize; the rest is time it
+    /// added.
+    fn note_finalize_answered(&mut self, provider_total_ms: u64) {
+        let Some(sent_ms) = self.finalize_marks.pop_front() else {
+            return;
+        };
+        let lead_ms = provider_total_ms.saturating_sub(sent_ms);
+        if lead_ms > self.lead_at(provider_total_ms) {
+            self.provider_lead.push((provider_total_ms, lead_ms));
+        }
+    }
+
+    fn lead_at(&self, provider_ms: u64) -> u64 {
+        self.provider_lead
+            .iter()
+            .rev()
+            .find(|(from_ms, _)| *from_ms <= provider_ms)
+            .map_or(0, |(_, lead_ms)| *lead_ms)
+    }
+
+    /// A provider position on the capture timeline.
+    fn capture_ms(&self, provider_ms: u64) -> u64 {
+        self.connection_origin_ms
+            .saturating_add(provider_ms.saturating_sub(self.lead_at(provider_ms)))
     }
 
     fn record_sent(&mut self, pcm: Vec<u8>) {
@@ -843,10 +892,7 @@ impl StreamRecoveryState {
     }
 
     fn acknowledge(&mut self, provider_total_ms: u64) -> (u64, u64) {
-        let acknowledged = self
-            .connection_origin_ms
-            .saturating_add(provider_total_ms)
-            .min(self.next_audio_ms);
+        let acknowledged = self.capture_ms(provider_total_ms).min(self.next_audio_ms);
         self.acknowledged_ms = self.acknowledged_ms.max(acknowledged);
         let retain_from = self
             .acknowledged_ms
@@ -869,12 +915,14 @@ impl StreamRecoveryState {
             self.sent_frames.clear();
             self.acknowledged_ms = self.next_audio_ms;
             self.connection_origin_ms = self.next_audio_ms;
+            self.begin_provider_clock();
             return Vec::new();
         }
         let replay_from = self
             .acknowledged_ms
             .saturating_sub(REPLAY_OVERLAP.as_millis() as u64);
         self.connection_origin_ms = replay_from;
+        self.begin_provider_clock();
         self.sent_frames
             .iter()
             .filter(|frame| frame.end_ms > replay_from)
@@ -903,6 +951,7 @@ impl StreamRecoveryState {
         self.sent_frames.clear();
         self.acknowledged_ms = self.next_audio_ms;
         self.connection_origin_ms = self.next_audio_ms;
+        self.begin_provider_clock();
     }
 
     fn sent_backlog(&self) -> Duration {
@@ -1511,6 +1560,7 @@ async fn run_stream_session(
         }
     } else {
         recovery.connection_origin_ms = recovery.next_audio_ms;
+        recovery.begin_provider_clock();
     }
     if *paused {
         // A pause heard while there was no connection follows speech the
@@ -1527,6 +1577,7 @@ async fn run_stream_session(
         .await?;
         if sent_audio {
             send_control(&mut write, "finalize", timeouts.write).await?;
+            recovery.note_finalize_sent();
         }
     }
     send_event(event_tx, SttStreamEvent::Connected).await?;
@@ -1578,6 +1629,7 @@ async fn run_stream_session(
                         sent_audio |=
                             drain_queued_audio(&mut write, &mut catch_up, audio_rx, recovery, timeouts.write).await?;
                         send_control(&mut write, "finalize", timeouts.write).await?;
+                        recovery.note_finalize_sent();
                     }
                     Some(SttStreamControl::Pause) => {
                         // The FFI state lock prevents new pushes before Pause is
@@ -1587,6 +1639,7 @@ async fn run_stream_session(
                         sent_audio |=
                             drain_queued_audio(&mut write, &mut catch_up, audio_rx, recovery, timeouts.write).await?;
                         send_control(&mut write, "finalize", timeouts.write).await?;
+                        recovery.note_finalize_sent();
                         *paused = true;
                         reset_sleep(&mut keepalive_sleep, timeouts.keepalive);
                     }
@@ -1654,15 +1707,19 @@ async fn run_stream_session(
                                 request_id: safe_soniox_request_id(response.request_id.as_deref()),
                             }));
                         }
+                        #[cfg(debug_assertions)]
+                        trace_provider_clock(config, recovery, &response);
                         if let Some(total_audio_proc_ms) = response.total_audio_proc_ms {
+                            if response.tokens.iter().any(|token| token.text == "<fin>") {
+                                recovery.note_finalize_answered(total_audio_proc_ms);
+                            }
                             let final_audio_proc_ms = response.final_audio_proc_ms.unwrap_or(0);
                             let (acknowledged_ms, sent_lag_ms) =
                                 recovery.acknowledge(total_audio_proc_ms);
                             let queued_lag_ms = (audio_rx.len() as u64).saturating_mul(100);
                             let lag_ms = sent_lag_ms.saturating_add(queued_lag_ms);
                             let final_audio_proc_ms = recovery
-                                .connection_origin_ms
-                                .saturating_add(final_audio_proc_ms)
+                                .capture_ms(final_audio_proc_ms)
                                 .min(acknowledged_ms);
                             send_event(
                                 event_tx,
@@ -1678,11 +1735,7 @@ async fn run_stream_session(
                             .filter(&mut response.tokens, response.final_audio_proc_ms);
                         let reached_pause = waiting_for_pause
                             && response.tokens.iter().any(|token| token.text == "<end>");
-                        emit_response_events(
-                            event_tx,
-                            response.tokens,
-                            recovery.connection_origin_ms,
-                        )
+                        emit_response_events(event_tx, response.tokens, recovery)
                         .await?;
                         if response.finished {
                             if handing_over {
@@ -2017,8 +2070,10 @@ pub fn soniox_stream_context_json(context: &ContextConfig) -> Result<Option<Stri
         .transpose()
 }
 
-/// `connection_origin_ms` is where the current WebSocket's own audio clock sits
-/// on the capture-wide timeline. A replacement session numbers its audio from
+/// Positions go onto the capture-wide timeline through
+/// [`StreamRecoveryState::capture_ms`]: `connection_origin_ms` is where the
+/// current WebSocket's own audio clock sits on it, less the time the provider
+/// added of its own at each finalize. A replacement session numbers its audio from
 /// zero, so without this projection a lane's token timestamps jump backwards the
 /// moment it reconnects — and one lane's timestamps drifting out of step with
 /// its siblings' is the stated reason multilingual capture fails the whole
@@ -2029,18 +2084,14 @@ pub fn soniox_stream_context_json(context: &ContextConfig) -> Result<Option<Stri
 async fn emit_response_events(
     event_tx: &mpsc::UnboundedSender<SttStreamEvent>,
     tokens: Vec<SonioxStreamTokenWire>,
-    connection_origin_ms: u64,
+    recovery: &StreamRecoveryState,
 ) -> Result<(), StreamFailure> {
     let mut batch = Vec::new();
     let mut control_events = Vec::new();
     for mut token in tokens {
         // Translation tokens carry no timestamps at all; `None` stays `None`.
-        token.start_ms = token
-            .start_ms
-            .map(|start_ms| start_ms.saturating_add(connection_origin_ms));
-        token.end_ms = token
-            .end_ms
-            .map(|end_ms| end_ms.saturating_add(connection_origin_ms));
+        token.start_ms = token.start_ms.map(|start_ms| recovery.capture_ms(start_ms));
+        token.end_ms = token.end_ms.map(|end_ms| recovery.capture_ms(end_ms));
         let control_event = match token.text.as_str() {
             "<end>" => Some(SttStreamEvent::Endpoint),
             "<fin>" => Some(SttStreamEvent::Finalized),
@@ -2106,6 +2157,52 @@ struct CatchUp {
     active: bool,
     /// Replayed blocks not yet sent; already counted on the timeline.
     replay: VecDeque<Vec<u8>>,
+}
+
+/// Debug builds only: the provider's own clock next to the audio this lane
+/// sent, one JSON line per response, to the file `ZUTALK_LANE_TRACE` names.
+#[cfg(debug_assertions)]
+fn trace_provider_clock(
+    config: &SttConfig,
+    recovery: &StreamRecoveryState,
+    response: &SonioxStreamResponse,
+) {
+    use std::io::Write;
+    static TRACE: std::sync::OnceLock<Option<std::sync::Mutex<std::fs::File>>> =
+        std::sync::OnceLock::new();
+    let Some(file) = TRACE.get_or_init(|| {
+        let path = std::env::var_os("ZUTALK_LANE_TRACE")?;
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .ok()
+            .map(std::sync::Mutex::new)
+    }) else {
+        return;
+    };
+    let target = match config.translation.as_ref() {
+        Some(TranslationConfig::OneWay { target_language }) => Some(target_language.clone()),
+        _ => None,
+    };
+    let at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or_default();
+    let line = serde_json::json!({
+        "at": at_ms,
+        "kind": "provider_clock",
+        "stream_target": target,
+        "origin": recovery.connection_origin_ms,
+        "sent": recovery.next_audio_ms,
+        "provider_total": response.total_audio_proc_ms,
+        "provider_final": response.final_audio_proc_ms,
+        "fin": response.tokens.iter().any(|token| token.text == "<fin>"),
+        "end": response.tokens.iter().any(|token| token.text == "<end>"),
+    });
+    if let Ok(mut file) = file.lock() {
+        let _ = writeln!(file, "{line}");
+    }
 }
 
 /// Sends every queued block. Returns whether there was any.
@@ -3231,6 +3328,119 @@ mod tests {
             final_words,
             vec!["前", "before", "后", "after"],
             "a replayed word or its translation came back"
+        );
+    }
+
+    /// Soniox moves its own clock forward by about a tenth of a second each
+    /// time it finalizes, so every word after a finalize came back late by
+    /// all the time added so far. An auxiliary lane is finalized at every
+    /// canonical endpoint: after nine minutes of conversation its words were
+    /// four seconds late, and their translations sat on the next speaker's
+    /// row. The provider says how far ahead it is when it answers the
+    /// finalize; positions after that are taken back by that much.
+    #[tokio::test]
+    async fn time_the_provider_adds_when_it_finalizes_is_taken_back_out() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        let (more_audio_tx, more_audio_rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = accept_async(stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = ws.next().await else {
+                panic!("configuration missing");
+            };
+            let mut blocks = 0;
+            while let Some(Ok(message)) = ws.next().await {
+                match message {
+                    Message::Binary(_) => blocks += 1,
+                    Message::Text(text) if text.contains("finalize") => break,
+                    _ => {}
+                }
+            }
+            assert_eq!(blocks, 10, "one second of audio before the finalize");
+            // Everything heard, plus 120 ms the provider added for itself.
+            ws.send(Message::Text(
+                json!({
+                    "tokens": [
+                        {"text": "前", "is_final": true, "language": "zh", "start_ms": 100, "end_ms": 400},
+                        {"text": "<fin>", "is_final": true}
+                    ],
+                    "final_audio_proc_ms": 1_120,
+                    "total_audio_proc_ms": 1_120
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+            let _ = more_audio_tx.send(());
+            let mut more = 0;
+            while let Some(Ok(message)) = ws.next().await {
+                if let Message::Binary(_) = message {
+                    more += 1;
+                    if more == 10 {
+                        // Spoken 400 ms into the second second: capture
+                        // 1_400, which the provider calls 1_520.
+                        ws.send(Message::Text(
+                            json!({
+                                "tokens": [{"text": "后", "is_final": true, "language": "zh", "start_ms": 1_520, "end_ms": 1_800}],
+                                "final_audio_proc_ms": 2_120,
+                                "total_audio_proc_ms": 2_120
+                            })
+                            .to_string()
+                            .into(),
+                        ))
+                        .await
+                        .unwrap();
+                    }
+                }
+            }
+        });
+
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            short_timeouts(),
+        );
+        for _ in 0..10 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+        runtime
+            .send_control(SttStreamControl::Finalize)
+            .await
+            .unwrap();
+        more_audio_rx.await.unwrap();
+        for _ in 0..10 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+
+        let mut starts = Vec::new();
+        let mut totals = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while let Ok(Some(event)) = tokio::time::timeout_at(deadline, runtime.event_rx.recv()).await
+        {
+            match event {
+                SttStreamEvent::Tokens(tokens) => {
+                    starts.extend(tokens.iter().filter_map(|token| token.start_ms))
+                }
+                SttStreamEvent::AudioProgress {
+                    total_audio_proc_ms,
+                    ..
+                } => totals.push(total_audio_proc_ms),
+                _ => {}
+            }
+            if starts.len() >= 2 {
+                break;
+            }
+        }
+        assert_eq!(starts, vec![100, 1_400]);
+        assert_eq!(
+            totals.first(),
+            Some(&1_000),
+            "the finalize covers the second sent"
         );
     }
 
