@@ -5370,20 +5370,26 @@ impl RealtimeUtteranceAssembler {
 
     fn apply_original_token(&mut self, token: &SttStreamToken) {
         // Letters only one selected language is written in say which it is,
-        // whatever the provider labelled them.
-        let language = vt_model::script::language_written_in(
-            &token.text,
-            self.selected_languages.iter().map(String::as_str),
-        )
-        .map(str::to_string)
-        .or_else(|| {
-            normalized_optional_language(
-                token
-                    .language
-                    .as_deref()
-                    .or(token.source_language.as_deref()),
+        // whatever the provider labelled them. A token with no letters — a
+        // number, punctuation — says nothing: it takes its row's language.
+        let has_letters = token.text.chars().any(char::is_alphabetic);
+        let language = if !has_letters {
+            None
+        } else {
+            vt_model::script::language_written_in(
+                &token.text,
+                self.selected_languages.iter().map(String::as_str),
             )
-        });
+            .map(str::to_string)
+            .or_else(|| {
+                normalized_optional_language(
+                    token
+                        .language
+                        .as_deref()
+                        .or(token.source_language.as_deref()),
+                )
+            })
+        };
         let provider_speaker = normalized_provider_speaker(token.speaker.as_deref());
         let (segment_index, embedded) =
             self.source_segment_for_token(token, language.as_deref(), provider_speaker.as_deref());
@@ -5471,6 +5477,21 @@ impl RealtimeUtteranceAssembler {
             _ => None,
         };
         let paused = pause_ms.is_none_or(|pause| pause >= SPEAKER_CHANGE_PAUSE_MS);
+        // A sentence in another script may open with a Latin word or two: the
+        // row becomes that sentence's, not a row of its own.
+        let opens_with_embedded_words = language_changes
+            && !speaker_changes
+            && pause_ms.is_some_and(|pause| pause < EMBEDDED_WORD_PAUSE_MS)
+            && vt_model::script::language_written_in(
+                &token.text,
+                self.selected_languages.iter().map(String::as_str),
+            )
+            .is_some()
+            && {
+                let text = format!("{}{}", segment.source.committed, segment.source.pending);
+                vt_model::script::is_latin_text(&text)
+                    && text.split_whitespace().count() < EMBEDDED_WORD_LIMIT
+            };
         // A Latin word or two inside a sentence in another script is part of
         // that sentence; a third in a row is the speaker changing language.
         let embedded = language_changes
@@ -5485,7 +5506,7 @@ impl RealtimeUtteranceAssembler {
             // The same language under a new label: a turn only after a pause.
             // The provider's labels flip inside a word now and then.
             (true, false) => paused,
-            (false, true) => !embedded,
+            (false, true) => !embedded && !opens_with_embedded_words,
             (false, false) => false,
         };
         if starts_turn {
@@ -15418,6 +15439,31 @@ pub(crate) mod tests {
             spoken(" Great", "en", "2", 660, 900),
         ]);
         assert_eq!(rows.len(), 2);
+    }
+
+    /// A number has no language. The provider labelled "10" in a Thai
+    /// sentence English, and the sentence was cut in three.
+    #[test]
+    fn a_number_inside_a_sentence_keeps_the_sentence_whole() {
+        let rows = rows_of(&[
+            spoken("เราเตรียมเต็นท์ไว้", "th", "1", 0, 900),
+            spoken(" 10", "en", "1", 1_000, 1_300),
+            spoken(" หลัง น่าจะพอ", "th", "1", 1_300, 2_500),
+        ]);
+        assert_eq!(
+            rows,
+            vec![("th".into(), "เราเตรียมเต็นท์ไว้ 10 หลัง น่าจะพอ".into())]
+        );
+    }
+
+    /// A Thai sentence may open with an English term; the row is Thai.
+    #[test]
+    fn a_thai_sentence_that_opens_with_an_english_term_is_one_thai_row() {
+        let rows = rows_of(&[
+            spoken(" Co-working space", "en", "1", 0, 1_200),
+            spoken(" ชั้น 3 ค่ะ", "th", "1", 1_500, 2_400),
+        ]);
+        assert_eq!(rows, vec![("th".into(), "Co-working space ชั้น 3 ค่ะ".into())]);
     }
 
     /// An English word or two inside a Thai sentence is part of it; a

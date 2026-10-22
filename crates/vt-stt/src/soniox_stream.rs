@@ -607,7 +607,8 @@ impl QuietBlockDetector {
 /// The pause is judged on the audio, not on the words the provider has sent:
 /// the provider is often a word behind what it has heard, and finalizing in
 /// what looked like silence lost that word. Soniox asks for a finalize after
-/// about 200 ms of silence; three quiet blocks are 300.
+/// about 200 ms of silence: two quiet blocks. Synthetic Thai left no longer
+/// gap than that between clauses, and natural speech leaves more.
 #[derive(Debug, Default)]
 struct LongUtteranceCloser {
     /// Where the open utterance began: the last boundary.
@@ -623,7 +624,7 @@ struct LongUtteranceCloser {
 /// Speech this long since the last boundary is a long utterance.
 const LONG_UTTERANCE_MS: u64 = 10_000;
 /// Silence this long after it is the pause to close it at.
-const LONG_UTTERANCE_PAUSE_MS: u64 = 300;
+const LONG_UTTERANCE_PAUSE_MS: u64 = 200;
 
 impl LongUtteranceCloser {
     fn starting_at(at_ms: u64) -> Self {
@@ -3486,13 +3487,17 @@ mod tests {
     async fn a_long_utterance_closes_at_the_next_pause_in_the_audio() {
         assert_eq!(
             blocks_before_finalize(&[(true, 105), (false, 6)], true).await,
-            Some(108),
-            "three quiet blocks after more than ten seconds of speech"
+            Some(107),
+            "two quiet blocks after more than ten seconds of speech"
         );
         assert_eq!(
-            blocks_before_finalize(&[(true, 105), (false, 2), (true, 5)], true).await,
+            blocks_before_finalize(
+                &[(true, 105), (false, 1), (true, 5), (false, 1), (true, 5)],
+                true
+            )
+            .await,
             None,
-            "a breath between words is not a pause"
+            "a gap between words is not a pause"
         );
         assert_eq!(
             blocks_before_finalize(&[(true, 50), (false, 6)], true).await,
