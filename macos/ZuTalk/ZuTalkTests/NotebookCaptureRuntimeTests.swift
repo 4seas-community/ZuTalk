@@ -2836,6 +2836,64 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         store.resetForTesting()
     }
 
+    /// A row the core withdraws while the snapshot read is in flight is gone
+    /// for good: replaying the later deltas over the snapshot must remove it,
+    /// as applying them live did.
+    @MainActor
+    func testCaptureGapRepairReplaysWithdrawalsAfterSnapshotCheckpoint() async throws {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let controller = BlockingNotebookReconcileController()
+        client.reconcileController = controller
+        let store = ActiveBilingualTranscriptStore(
+            client: client,
+            audioSource: FakeNotebookCaptureAudioSource()
+        )
+        try await store.start(notebookId: "notebook-a")
+
+        var first = NotebookCaptureUtteranceDTO.sample.replacingIdentity(sequence: 0)
+        first.revision = 1
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first],
+            eventRevision: 1,
+            isFullSnapshot: false
+        ))
+        let speculative = first.replacingIdentity(id: "utt-speculative", sequence: 1)
+        client.reconcileEvents = [captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [first, speculative],
+            eventRevision: 3,
+            isFullSnapshot: true
+        )]
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [speculative],
+            eventRevision: 3,
+            isFullSnapshot: false
+        ))
+        let didStartRepair = await waitUntil { controller.isWaiting(call: 0) }
+        XCTAssertTrue(didStartRepair)
+
+        client.emitCaptureEvent(captureEvent(
+            sessionId: "session-a",
+            state: .recording,
+            utterances: [],
+            eventRevision: 4,
+            isFullSnapshot: false,
+            removedSequences: [1]
+        ))
+        XCTAssertEqual(store.utterances.map(\.sequence), [0])
+
+        controller.release(call: 0)
+        let resurrected = await waitUntil(timeout: 0.5) { store.utterances.map(\.sequence) == [0, 1] }
+        XCTAssertFalse(resurrected, "the withdrawn row came back")
+        XCTAssertEqual(store.utterances.map(\.sequence), [0])
+        store.resetForTesting()
+    }
+
     @MainActor
     func testInactiveSessionChangeClearsOldRowsWhenNewSessionIsEmptyAndCannotEditOldRow() async {
         let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))

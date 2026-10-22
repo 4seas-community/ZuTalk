@@ -2995,6 +2995,13 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
             // longer depends on finding a quiet interval.
             var repairedUtterances = rebuiltUtteranceSnapshot(from: snapshot.utterances)
             for delta in replayDeltas {
+                // As live: a withdrawal first, then the upserts — a row the
+                // core withdrew after the checkpoint stays withdrawn, and one
+                // it withdrew and sent again may come back at a lower revision.
+                if delta.removedSequences.isEmpty == false {
+                    let withdrawn = Set(delta.removedSequences)
+                    repairedUtterances.removeAll { withdrawn.contains($0.sequence) }
+                }
                 let preparedUpdates = prepareUtteranceUpdates(delta.utterances)
                 for update in preparedUpdates {
                     Self.upsertOrderedUtterance(update, into: &repairedUtterances)
