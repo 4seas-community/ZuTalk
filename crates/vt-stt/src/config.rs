@@ -23,6 +23,10 @@ pub struct SttConfig {
     pub translation: Option<TranslationConfig>,
     pub context: Option<ContextConfig>,
     pub client_reference_id: Option<String>,
+    /// Finalize an utterance that has run past ten seconds at the speaker's
+    /// next pause in the audio, instead of waiting for provider endpointing.
+    /// For the lane whose rows the others follow.
+    pub close_long_utterances_at_pauses: bool,
 }
 
 pub const BALANCED_ENDPOINT_LATENCY_ADJUSTMENT_LEVEL: u8 = 0;
@@ -49,6 +53,7 @@ impl Default for SttConfig {
             translation: None,
             context: None,
             client_reference_id: None,
+            close_long_utterances_at_pauses: false,
         }
     }
 }

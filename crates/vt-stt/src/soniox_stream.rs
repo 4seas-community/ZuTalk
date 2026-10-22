@@ -600,6 +600,63 @@ impl QuietBlockDetector {
     }
 }
 
+/// Closes an utterance that has run long at the speaker's next pause in the
+/// audio, for a lane configured to (see
+/// [`SttConfig::close_long_utterances_at_pauses`]).
+///
+/// The pause is judged on the audio, not on the words the provider has sent:
+/// the provider is often a word behind what it has heard, and finalizing in
+/// what looked like silence lost that word. Soniox asks for a finalize after
+/// about 200 ms of silence; three quiet blocks are 300.
+#[derive(Debug, Default)]
+struct LongUtteranceCloser {
+    /// Where the open utterance began: the last boundary.
+    open_from_ms: u64,
+    /// Where the latest block with speech in it ends.
+    voiced_until_ms: u64,
+    /// Quiet audio sent since then.
+    quiet_ms: u64,
+    /// A finalize is out and not yet answered.
+    pending: bool,
+}
+
+/// Speech this long since the last boundary is a long utterance.
+const LONG_UTTERANCE_MS: u64 = 10_000;
+/// Silence this long after it is the pause to close it at.
+const LONG_UTTERANCE_PAUSE_MS: u64 = 300;
+
+impl LongUtteranceCloser {
+    fn starting_at(at_ms: u64) -> Self {
+        Self {
+            open_from_ms: at_ms,
+            voiced_until_ms: at_ms,
+            ..Self::default()
+        }
+    }
+
+    /// The provider closed an utterance; the next one starts here.
+    fn boundary(&mut self, at_ms: u64) {
+        self.open_from_ms = at_ms;
+        self.pending = false;
+    }
+
+    /// A block ending at `end_ms` went out. Whether to finalize now.
+    fn sent(&mut self, quiet: bool, block_ms: u64, end_ms: u64) -> bool {
+        if quiet {
+            self.quiet_ms = self.quiet_ms.saturating_add(block_ms);
+        } else {
+            self.quiet_ms = 0;
+            self.voiced_until_ms = end_ms;
+        }
+        let long = self.voiced_until_ms.saturating_sub(self.open_from_ms) >= LONG_UTTERANCE_MS;
+        if self.pending || !long || self.quiet_ms < LONG_UTTERANCE_PAUSE_MS {
+            return false;
+        }
+        self.pending = true;
+        true
+    }
+}
+
 /// When a connection whose key carries a session cap should hand over.
 #[derive(Clone, Copy, Debug)]
 struct HandoverSchedule {
@@ -1601,6 +1658,7 @@ async fn run_stream_session(
     let mut waiting_for_pause = false;
     let mut handing_over = false;
     let mut quiet_blocks = QuietBlockDetector::default();
+    let mut long_utterance = LongUtteranceCloser::starting_at(recovery.next_audio_ms);
     let mut catch_up_sleep = Box::pin(time::sleep(Duration::ZERO));
     if finish_requested {
         // Stop came while this lane was reconnecting; see `run_stream`.
@@ -1733,6 +1791,13 @@ async fn run_stream_session(
                         }
                         replay_suppression
                             .filter(&mut response.tokens, response.final_audio_proc_ms);
+                        if response
+                            .tokens
+                            .iter()
+                            .any(|token| token.text == "<end>" || token.text == "<fin>")
+                        {
+                            long_utterance.boundary(recovery.next_audio_ms);
+                        }
                         let reached_pause = waiting_for_pause
                             && response.tokens.iter().any(|token| token.text == "<end>");
                         emit_response_events(event_tx, response.tokens, recovery)
@@ -1832,6 +1897,7 @@ async fn run_stream_session(
                 match audio {
                     Some(pcm) if !*paused => {
                         let quiet_block = quiet_blocks.observe(&pcm);
+                        let block_ms = (pcm.len() as u64).div_ceil(PCM_BYTES_PER_MILLISECOND).max(1);
                         let retained_pcm = pcm.clone();
                         send_message(
                             &mut write,
@@ -1841,6 +1907,13 @@ async fn run_stream_session(
                         ).await?;
                         recovery.record_sent(retained_pcm);
                         sent_audio = true;
+                        if config.close_long_utterances_at_pauses
+                            && !waiting_for_pause
+                            && long_utterance.sent(quiet_block, block_ms, recovery.next_audio_ms)
+                        {
+                            send_control(&mut write, "finalize", timeouts.write).await?;
+                            recovery.note_finalize_sent();
+                        }
                         if waiting_for_pause && quiet_block {
                             // The block just sent was quiet: a cut here falls
                             // between words. Everything before it goes to
@@ -3328,6 +3401,108 @@ mod tests {
             final_words,
             vec!["前", "before", "后", "after"],
             "a replayed word or its translation came back"
+        );
+    }
+
+    /// How many audio blocks a lane sends before it finalizes, given loud
+    /// and quiet blocks in that order; None when it never does.
+    async fn blocks_before_finalize(
+        pattern: &[(bool, usize)],
+        close_long_utterances: bool,
+    ) -> Option<usize> {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel::<Option<usize>>();
+        let total: usize = pattern.iter().map(|(_, count)| count).sum();
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = accept_async(stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = ws.next().await else {
+                panic!("configuration missing");
+            };
+            let mut blocks = 0;
+            let mut finalized_after = None;
+            while let Some(Ok(message)) = ws.next().await {
+                match message {
+                    Message::Binary(_) => {
+                        blocks += 1;
+                        if blocks == total {
+                            break;
+                        }
+                    }
+                    Message::Text(text) if text.contains("finalize") => {
+                        finalized_after.get_or_insert(blocks);
+                    }
+                    _ => {}
+                }
+            }
+            let _ = seen_tx.send(finalized_after);
+        });
+        let config = SttConfig {
+            close_long_utterances_at_pauses: close_long_utterances,
+            ..SttConfig::default()
+        };
+        let runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            config,
+            CancellationToken::new(),
+            0,
+            short_timeouts(),
+        );
+        let loud: Vec<u8> = (0..1_600)
+            .flat_map(|index| {
+                (if index % 2 == 0 {
+                    8_000_i16
+                } else {
+                    -8_000_i16
+                })
+                .to_le_bytes()
+            })
+            .collect();
+        for (is_loud, count) in pattern {
+            for _ in 0..*count {
+                let block = if *is_loud {
+                    loud.clone()
+                } else {
+                    vec![0_u8; 3_200]
+                };
+                runtime.push_pcm(block).await.unwrap();
+            }
+        }
+        tokio::time::timeout(Duration::from_secs(10), seen_rx)
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    /// The lane whose rows the others follow closes a long utterance at the
+    /// speaker's next pause: provider endpointing waits for a longer silence
+    /// than people leave between sentences, so a monologue ran on to the
+    /// 25 s cap and was cut mid-sentence. The pause is the audio's own —
+    /// judged by the words the provider had sent so far, a word it had not
+    /// sent yet was taken for silence, and finalizing then lost it.
+    #[tokio::test]
+    async fn a_long_utterance_closes_at_the_next_pause_in_the_audio() {
+        assert_eq!(
+            blocks_before_finalize(&[(true, 105), (false, 6)], true).await,
+            Some(108),
+            "three quiet blocks after more than ten seconds of speech"
+        );
+        assert_eq!(
+            blocks_before_finalize(&[(true, 105), (false, 2), (true, 5)], true).await,
+            None,
+            "a breath between words is not a pause"
+        );
+        assert_eq!(
+            blocks_before_finalize(&[(true, 50), (false, 6)], true).await,
+            None,
+            "a short utterance is left to the provider"
+        );
+        assert_eq!(
+            blocks_before_finalize(&[(true, 105), (false, 6)], false).await,
+            None,
+            "only the lane that asks for it"
         );
     }
 
