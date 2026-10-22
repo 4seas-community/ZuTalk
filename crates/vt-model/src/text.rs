@@ -1,10 +1,19 @@
 //! Text as the provider sends it, set the way people write it.
 //!
-//! Soniox spells Thai SARA AM decomposed, as NIKHAHIT (U+0E4D) followed by
-//! SARA AA (U+0E32), on every occurrence and sometimes split across two
-//! tokens. Every keyboard types the single U+0E33. The two look the same on
-//! screen, so nobody notices until a search, a copy into another app or a
-//! comparison finds nothing.
+//! Soniox spells two things differently from how they are typed:
+//!
+//! - Thai SARA AM arrives decomposed, as NIKHAHIT (U+0E4D) followed by SARA AA
+//!   (U+0E32), on every occurrence and sometimes split across two tokens.
+//!   Every keyboard types the single U+0E33. The two look the same on screen,
+//!   so nobody notices until a search, a copy into another app or a
+//!   comparison finds nothing.
+//! - Chinese and Japanese carry spaces the language does not have: after
+//!   `。` and `，`, and between two characters where a token began with one.
+//!
+//! Machine text is normalized where it enters the system — the realtime
+//! segment assembler and the post-stop token stream — and never afterwards:
+//! stored text is provider evidence that later reads compare byte for byte,
+//! and a user's own edit is theirs.
 
 use std::borrow::Cow;
 
@@ -25,6 +34,12 @@ pub fn is_han_or_kana(character: char) -> bool {
     )
 }
 
+/// Thai, which sets words without spaces but uses a space between phrases
+/// and sentences — so a space in Thai is text, not noise.
+pub fn is_thai(character: char) -> bool {
+    matches!(character as u32, 0x0E00..=0x0E7F)
+}
+
 /// Every script whose words run together, so that a word can begin anywhere
 /// inside a run: Han and kana, Thai, Lao, Myanmar and Khmer. Word-based
 /// full-text tokenizers cannot find the edges of a word in these.
@@ -38,37 +53,46 @@ pub fn is_unspaced_script(character: char) -> bool {
         )
 }
 
+/// Punctuation drawn on a full-width body: it carries its own sidebearing, so
+/// a space beside it reads as a gap rather than as word separation.
+pub fn is_wide_punctuation(character: char) -> bool {
+    matches!(character as u32,
+        0x3000..=0x303F     // CJK symbols and punctuation, incl. the ideographic space
+        | 0xFF01..=0xFF20   // fullwidth ASCII punctuation and digits' neighbours
+        | 0xFF3B..=0xFF40
+        | 0xFF5B..=0xFF65
+    )
+}
+
+/// A space the provider put between tokens. The ideographic space is a
+/// character of the text and newlines are structure; neither is removed.
+fn is_provider_space(character: char) -> bool {
+    matches!(character, ' ' | '\t' | '\u{00A0}' | '\u{202F}')
+}
+
+/// Whether a run of provider spaces between `previous` and `next` belongs to
+/// the text. It does not where no writer would put one: between two Han or
+/// kana characters, beside full-width punctuation, or before the first
+/// character of a Chinese or Japanese text.
+fn space_is_noise(previous: Option<char>, next: Option<char>) -> bool {
+    match (previous, next) {
+        (_, None) => false,
+        (None, Some(next)) => is_han_or_kana(next) || is_wide_punctuation(next),
+        (Some(previous), Some(next)) => {
+            is_wide_punctuation(previous)
+                || is_wide_punctuation(next)
+                || (is_han_or_kana(previous) && is_han_or_kana(next))
+        }
+    }
+}
+
 /// Writes NIKHAHIT + SARA AA as SARA AM, including where a tone mark sits
 /// between the two.
 pub fn compose_thai_sara_am(text: &str) -> Cow<'_, str> {
     if !text.contains(NIKHAHIT) {
         return Cow::Borrowed(text);
     }
-    let characters: Vec<char> = text.chars().collect();
-    let mut composed = String::with_capacity(text.len());
-    let mut index = 0;
-    while index < characters.len() {
-        let character = characters[index];
-        let at = |offset: usize| characters.get(index + offset).copied();
-        if character == NIKHAHIT {
-            if at(1) == Some(SARA_AA) {
-                composed.push(SARA_AM);
-                index += 2;
-                continue;
-            }
-            if let (Some(tone), Some(SARA_AA)) = (at(1), at(2)) {
-                if is_thai_tone_mark(tone) {
-                    composed.push(tone);
-                    composed.push(SARA_AM);
-                    index += 3;
-                    continue;
-                }
-            }
-        }
-        composed.push(character);
-        index += 1;
-    }
-    Cow::Owned(composed)
+    Cow::Owned(normalize_pieces(&[text], false).remove(0))
 }
 
 /// The provider's spelling of `text`: SARA AM as NIKHAHIT + SARA AA, after
@@ -89,6 +113,78 @@ pub fn decompose_thai_sara_am(text: &str) -> Cow<'_, str> {
     Cow::Owned(decomposed)
 }
 
+/// Provider text set the way it is written: SARA AM composed, and the spaces
+/// Chinese and Japanese do not have taken out.
+pub fn normalize_provider_text(text: &str) -> String {
+    if !text.contains(NIKHAHIT) {
+        return text.to_string();
+    }
+    normalize_pieces(&[text], false).remove(0)
+}
+
+/// [`normalize_provider_text`] over a sequence of tokens, keeping every
+/// token's boundary: the result has one entry per input, and joining it is
+/// the normalized join. A NIKHAHIT that ends one token and the SARA AA that
+/// starts the next compose into the first; a space that opens a token after
+/// `。` leaves that token shorter, possibly empty.
+pub fn normalize_provider_pieces<S: AsRef<str>>(pieces: &[S]) -> Vec<String> {
+    normalize_pieces(pieces, false)
+}
+
+fn normalize_pieces<S: AsRef<str>>(pieces: &[S], collapse_spaces: bool) -> Vec<String> {
+    let flat: Vec<(char, usize)> = pieces
+        .iter()
+        .enumerate()
+        .flat_map(|(index, piece)| piece.as_ref().chars().map(move |c| (c, index)))
+        .collect();
+    let mut output: Vec<String> = pieces
+        .iter()
+        .map(|piece| String::with_capacity(piece.as_ref().len()))
+        .collect();
+    let mut previous: Option<char> = None;
+    let mut index = 0;
+    while index < flat.len() {
+        let (character, piece) = flat[index];
+        let at = |offset: usize| flat.get(index + offset).map(|(c, _)| *c);
+        if character == NIKHAHIT {
+            if at(1) == Some(SARA_AA) {
+                output[piece].push(SARA_AM);
+                previous = Some(SARA_AM);
+                index += 2;
+                continue;
+            }
+            if let (Some(tone), Some(SARA_AA)) = (at(1), at(2)) {
+                if is_thai_tone_mark(tone) {
+                    output[piece].push(tone);
+                    output[piece].push(SARA_AM);
+                    previous = Some(SARA_AM);
+                    index += 3;
+                    continue;
+                }
+            }
+        }
+        if collapse_spaces && is_provider_space(character) {
+            let end = flat[index..]
+                .iter()
+                .position(|(c, _)| !is_provider_space(*c))
+                .map_or(flat.len(), |offset| index + offset);
+            let next = flat.get(end).map(|(c, _)| *c);
+            if !space_is_noise(previous, next) {
+                for &(space, space_piece) in &flat[index..end] {
+                    output[space_piece].push(space);
+                }
+                previous = Some(flat[end - 1].0);
+            }
+            index = end;
+            continue;
+        }
+        output[piece].push(character);
+        previous = Some(character);
+        index += 1;
+    }
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,6 +198,14 @@ mod tests {
         // A NIKHAHIT that is not followed by SARA AA is left alone.
         assert_eq!(compose_thai_sara_am("สํ"), "สํ");
         assert!(matches!(compose_thai_sara_am("ทำงาน"), Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn sara_am_split_across_two_tokens_composes_into_the_first() {
+        assert_eq!(
+            normalize_provider_pieces(&["ท\u{0E4D}", "\u{0E32}งาน", " ครับ"]),
+            vec!["ทำ", "งาน", " ครับ"]
+        );
     }
 
     #[test]

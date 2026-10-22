@@ -1209,11 +1209,14 @@ impl LaneRevision {
         }
     }
 
+    /// The lane as the provider spelled it, normalized where it enters the
+    /// system (see [`vt_model::text`]). Normalizing the joined text rather
+    /// than each token is what lets a letter split across two tokens compose.
     fn text(&self, include_pending: bool) -> String {
         if include_pending {
-            format!("{}{}", self.committed, self.pending)
+            vt_model::text::normalize_provider_text(&format!("{}{}", self.committed, self.pending))
         } else {
-            self.committed.clone()
+            vt_model::text::normalize_provider_text(&self.committed)
         }
     }
 
@@ -14897,6 +14900,36 @@ pub(crate) mod tests {
             ),
         ]);
         assert_eq!(only_utterance(spoken).source_text, " 它给你讲了三个案例。");
+    }
+
+    /// Soniox spells SARA AM as NIKHAHIT + SARA AA, sometimes across two
+    /// tokens; rows and their translations hold the spelling people type.
+    #[test]
+    fn thai_sara_am_reaches_rows_composed_even_across_tokens() {
+        let mut assembler = RealtimeUtteranceAssembler::new("sara-am-session".into(), &profile());
+        let updates = assembler.apply_tokens(&[
+            token(
+                "เรามาท\u{0E4D}",
+                SttStreamTranslationStatus::Original,
+                "th",
+                Some(1_000),
+                Some(1_400),
+                true,
+            ),
+            token(
+                "\u{0E32}งานและดื่มน\u{0E49}\u{0E4D}\u{0E32}",
+                SttStreamTranslationStatus::Original,
+                "th",
+                Some(1_400),
+                Some(2_200),
+                true,
+            ),
+        ]);
+        assert_eq!(only_utterance(updates).source_text, "เรามาทำงานและดื่มน้ำ");
+        assert!(assembler
+            .live_previews()
+            .iter()
+            .all(|preview| !preview.utterance.source_text.contains('\u{0E4D}')));
     }
 
     /// The truncated row directly above its own completion. Measured on this
