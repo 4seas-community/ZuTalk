@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
-use vt_model::Token;
+use vt_model::{text::is_wide_punctuation, Token};
 
 use crate::{notebook_store::BuiltinNotebookTab, session_query::SessionRecord};
 
@@ -6954,26 +6954,11 @@ struct ComposedTranslationLane {
 }
 
 /// Whether a character belongs to a writing system that sets word boundaries
-/// without spaces. Mirrors `SubtitlePacedReveal.script(for:)` on the Swift
-/// side, which classifies the same ranges to pace reveal speed.
+/// without spaces: Han, kana and Thai. The classes are the ones
+/// [`vt_model::text`] normalizes provider text with, so a segment and the join
+/// between two segments follow one rule.
 fn is_dense_script(character: char) -> bool {
-    matches!(character as u32,
-        0x3040..=0x30FF     // kana
-        | 0x3400..=0x9FFF   // CJK extension A through unified ideographs
-        | 0xF900..=0xFAFF   // compatibility ideographs
-        | 0x0E00..=0x0E7F   // Thai
-    )
-}
-
-/// Punctuation drawn on a full-width body: it carries its own sidebearing, so
-/// a space beside it reads as a gap rather than as word separation.
-fn is_wide_punctuation(character: char) -> bool {
-    matches!(character as u32,
-        0x3000..=0x303F     // CJK symbols and punctuation, incl. the ideographic space
-        | 0xFF01..=0xFF20   // fullwidth ASCII punctuation and digits' neighbours
-        | 0xFF3B..=0xFF40
-        | 0xFF5B..=0xFF65
-    )
+    vt_model::text::is_han_or_kana(character) || vt_model::text::is_thai(character)
 }
 
 /// Whether joining two auxiliary segments needs a space between them.
@@ -7098,8 +7083,11 @@ fn composed_translation_lane_from_conn(
         if segment.is_empty() {
             continue;
         }
-        // The first segment is copied verbatim so a single-segment lane keeps
-        // the provider's own leading spacing, byte for byte.
+        // Segments arrive normalized (`vt_model::text`); composition only
+        // decides the boundary. Normalizing here too would recompose lanes
+        // that recordings made before normalization already settled, and the
+        // first segment is copied verbatim so a single-segment lane keeps the
+        // text it was stored with, byte for byte.
         if needs_separator_between(&text, segment) {
             text.push(' ');
         }

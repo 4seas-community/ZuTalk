@@ -1112,12 +1112,22 @@ pub(crate) fn build_notebook_segments_from_tokens(
     let mut segments: Vec<NotebookTranscriptSegment> = Vec::new();
     let mut last_end_ms: Option<u64> = None;
     let mut last_token_ended_sentence = false;
+    // Normalized across token boundaries, one text per token, so a letter the
+    // provider split between two tokens composes and every segment still
+    // covers exactly its own tokens.
+    let texts = vt_model::text::normalize_provider_pieces(
+        &tokens
+            .iter()
+            .map(|token| token.text.as_str())
+            .collect::<Vec<_>>(),
+    );
 
-    for token in tokens {
-        for (piece_index, piece_text) in split_provider_token_text(&token.text)
-            .into_iter()
-            .enumerate()
-        {
+    for (token, text) in tokens.iter().zip(&texts) {
+        if text.is_empty() && !token.text.is_empty() {
+            // Nothing but a space the language does not have.
+            continue;
+        }
+        for (piece_index, piece_text) in split_provider_token_text(text).into_iter().enumerate() {
             let source_language = non_empty_metadata(&token.language);
             let provider_speaker_label = token.speaker.as_deref().and_then(non_empty_metadata);
             let needs_new_segment = piece_index > 0
@@ -2186,6 +2196,47 @@ mod import_tests {
         let unique_ids: std::collections::HashSet<_> =
             segments.iter().map(|segment| &segment.segment_id).collect();
         assert_eq!(unique_ids.len(), segments.len());
+    }
+
+    /// The post-stop transcript holds the spelling people type, and every
+    /// segment still covers exactly its own tokens.
+    #[test]
+    fn processed_thai_sara_am_is_composed_even_across_tokens() {
+        use vt_model::TranslationStatus::None as Plain;
+        let segments = build_notebook_segments_from_tokens(&[
+            provider_token("เรามาท\u{0E4D}", 0, 400, "th", None, Plain),
+            provider_token("\u{0E32}งาน", 400, 900, "th", None, Plain),
+            provider_token("ดื่มน\u{0E49}\u{0E4D}\u{0E32}", 900, 1_400, "th", None, Plain),
+        ]);
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| segment.text.as_str())
+                .collect::<String>(),
+            "เรามาทำงานดื่มน้ำ"
+        );
+    }
+
+    /// The post-stop transcript drops the provider's spaces beside Chinese
+    /// punctuation, and a token that held nothing else adds nothing; the
+    /// space marking an unpunctuated pause stays.
+    #[test]
+    fn processed_chinese_does_not_keep_the_providers_spaces_beside_punctuation() {
+        use vt_model::TranslationStatus::None as Plain;
+        let segments = build_notebook_segments_from_tokens(&[
+            provider_token("清迈的数字社区。", 0, 900, "zh", None, Plain),
+            provider_token(" ", 900, 950, "zh", None, Plain),
+            provider_token("以及来自", 950, 1_400, "zh", None, Plain),
+            provider_token(" 多个国家", 1_400, 2_000, "zh", None, Plain),
+        ]);
+        assert_eq!(
+            segments
+                .iter()
+                .map(|segment| segment.text.as_str())
+                .collect::<String>(),
+            "清迈的数字社区。以及来自 多个国家"
+        );
+        assert!(segments.iter().all(|segment| !segment.text.is_empty()));
     }
 
     #[test]

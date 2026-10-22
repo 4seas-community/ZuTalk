@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 mod script;
+pub mod text;
+
 pub use script::script_contradicts_language;
 
 /// Local privacy policy applied before any remote provider is used.
