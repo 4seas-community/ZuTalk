@@ -14933,11 +14933,12 @@ pub(crate) mod tests {
             .all(|preview| !preview.utterance.source_text.contains('\u{0E4D}')));
     }
 
-    /// Chinese the way it is written: the provider's spaces after `。` and
-    /// between two characters do not reach the row. Spellings from a real
-    /// recording.
+    /// Chinese the way it is written: the provider's spaces beside `。` and
+    /// `，` and before the first character do not reach the row; a space
+    /// between two characters, its mark of an unpunctuated pause, does.
+    /// Spellings from a real recording.
     #[test]
-    fn chinese_rows_do_not_keep_the_providers_spaces() {
+    fn chinese_rows_do_not_keep_the_providers_spaces_beside_punctuation() {
         let mut assembler = RealtimeUtteranceAssembler::new("cjk-space-session".into(), &profile());
         let updates = assembler.apply_tokens(&[
             token(
@@ -14967,7 +14968,7 @@ pub(crate) mod tests {
         ]);
         assert_eq!(
             only_utterance(updates).source_text,
-            "清迈的数字社区。以及来自多个国家的人，请记住下周的课程用 ZuTalk 记录"
+            "清迈的数字社区。以及来自多个国家的人，请记住 下周的课程用 ZuTalk 记录"
         );
     }
 

@@ -7,8 +7,11 @@
 //!   Every keyboard types the single U+0E33. The two look the same on screen,
 //!   so nobody notices until a search, a copy into another app or a
 //!   comparison finds nothing.
-//! - Chinese and Japanese carry spaces the language does not have: after
-//!   `。` and `，`, and between two characters where a token began with one.
+//! - Chinese and Japanese carry spaces beside full-width punctuation — after
+//!   `。` and `，` — where the punctuation already is the pause. A space
+//!   between two characters stays: the provider puts one where it heard a
+//!   pause and wrote no punctuation, and without it two sentences run
+//!   together.
 //!
 //! Machine text is normalized where it enters the system — the realtime
 //! segment assembler and the post-stop token stream — and never afterwards:
@@ -71,18 +74,15 @@ fn is_provider_space(character: char) -> bool {
 }
 
 /// Whether a run of provider spaces between `previous` and `next` belongs to
-/// the text. It does not where no writer would put one: between two Han or
-/// kana characters, beside full-width punctuation, or before the first
-/// character of a Chinese or Japanese text.
+/// the text. It does not beside full-width punctuation, which carries its own
+/// space, or before the first character of a Chinese or Japanese text. Between
+/// two Han or kana characters it does: it is the only mark of a pause the
+/// provider heard and did not punctuate.
 fn space_is_noise(previous: Option<char>, next: Option<char>) -> bool {
     match (previous, next) {
         (_, None) => false,
         (None, Some(next)) => is_han_or_kana(next) || is_wide_punctuation(next),
-        (Some(previous), Some(next)) => {
-            is_wide_punctuation(previous)
-                || is_wide_punctuation(next)
-                || (is_han_or_kana(previous) && is_han_or_kana(next))
-        }
+        (Some(previous), Some(next)) => is_wide_punctuation(previous) || is_wide_punctuation(next),
     }
 }
 
@@ -114,7 +114,7 @@ pub fn decompose_thai_sara_am(text: &str) -> Cow<'_, str> {
 }
 
 /// Provider text set the way it is written: SARA AM composed, and the spaces
-/// Chinese and Japanese do not have taken out.
+/// beside Chinese and Japanese full-width punctuation taken out.
 pub fn normalize_provider_text(text: &str) -> String {
     if !text.contains(NIKHAHIT) && !text.contains(is_provider_space) {
         return text.to_string();
@@ -219,26 +219,29 @@ mod tests {
 
     /// Spellings taken from a real three-language recording.
     #[test]
-    fn chinese_loses_the_spaces_the_provider_put_in() {
+    fn chinese_loses_the_spaces_beside_full_width_punctuation() {
         assert_eq!(
             normalize_provider_text("清迈的数字社区。 以及来自多个国家的人"),
             "清迈的数字社区。以及来自多个国家的人"
         );
         assert_eq!(
-            normalize_provider_text("在我们结束之前，请记住 下周的课程将重点关注"),
-            "在我们结束之前，请记住下周的课程将重点关注"
+            normalize_provider_text("在我们结束之前， 请记住 下周的课程将重点关注"),
+            "在我们结束之前，请记住 下周的课程将重点关注"
         );
         assert_eq!(
             normalize_provider_text("支持 已分配的记录。 Mei。"),
-            "支持已分配的记录。Mei。"
+            "支持 已分配的记录。Mei。"
         );
         assert_eq!(normalize_provider_text(" 以及"), "以及");
     }
 
     #[test]
     fn spaces_that_belong_to_the_text_stay() {
-        // Mixed-script spacing, Thai phrase spacing, Korean and Latin words.
+        // Mixed-script spacing, the pause between two Chinese sentences the
+        // provider did not punctuate, Thai phrase spacing, Korean and Latin.
         for text in [
+            "一起合作工作 我认为最重要的是成员之间的信任",
+            "これは テスト",
             "他说 ZuTalk 很好用",
             "ผมคิดว่า เราควรเริ่มใหม่",
             "안녕하세요 반갑습니다",

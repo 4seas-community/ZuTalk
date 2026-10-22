@@ -2217,10 +2217,11 @@ mod import_tests {
         );
     }
 
-    /// The post-stop transcript drops the provider's spaces inside Chinese;
-    /// a token that held nothing else adds nothing.
+    /// The post-stop transcript drops the provider's spaces beside Chinese
+    /// punctuation, and a token that held nothing else adds nothing; the
+    /// space marking an unpunctuated pause stays.
     #[test]
-    fn processed_chinese_does_not_keep_the_providers_spaces() {
+    fn processed_chinese_does_not_keep_the_providers_spaces_beside_punctuation() {
         use vt_model::TranslationStatus::None as Plain;
         let segments = build_notebook_segments_from_tokens(&[
             provider_token("清迈的数字社区。", 0, 900, "zh", None, Plain),
@@ -2233,7 +2234,7 @@ mod import_tests {
                 .iter()
                 .map(|segment| segment.text.as_str())
                 .collect::<String>(),
-            "清迈的数字社区。以及来自多个国家"
+            "清迈的数字社区。以及来自 多个国家"
         );
         assert!(segments.iter().all(|segment| !segment.text.is_empty()));
     }
