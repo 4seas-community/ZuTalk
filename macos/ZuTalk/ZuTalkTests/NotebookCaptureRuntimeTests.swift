@@ -2836,6 +2836,19 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         store.resetForTesting()
     }
 
+    /// A recording whose cues were never read gets the same empty index every
+    /// time: the transcript's block cache is keyed by the index's token, and a
+    /// fresh one per call rebuilt every block with an empty cell each frame.
+    @MainActor
+    func testARecordingWithoutCuesReadsTheSameEmptyIndexEachTime() {
+        let client = FakeNotebookCaptureClient(profile: .twoWay(notebookId: "notebook-a"))
+        let history = NotebookCaptureHistoryStore(client: client)
+        XCTAssertEqual(
+            history.translationCueIndex(sessionId: "session-a").token,
+            history.translationCueIndex(sessionId: "session-a").token
+        )
+    }
+
     /// The transcript page asks for speaker names when a new speaker shows up
     /// in the rows. Rows are not published, so the speakers have to be: a
     /// delta that only adds a row by someone new must still reach the page.

@@ -138,6 +138,10 @@ struct NotebookTranslationCueIndex: Equatable {
         left.spans == right.spans
     }
 
+    /// The one index of no cues. Built once, so it is always the same token:
+    /// a fresh empty index per read made every cached block look stale.
+    static let empty = NotebookTranslationCueIndex([])
+
     /// A row shorter than this whose cell no segment overlaps can still be a
     /// fragment of the sentence a segment just before or after it translates.
     static let fragmentMs: UInt64 = 600
@@ -813,7 +817,7 @@ final class NotebookCaptureHistoryStore: ObservableObject {
     }
 
     func translationCueIndex(sessionId: String) -> NotebookTranslationCueIndex {
-        translationCueIndexBySession[sessionId] ?? NotebookTranslationCueIndex([])
+        translationCueIndexBySession[sessionId] ?? .empty
     }
 
     /// Reads one recording's translated segments. Advisory like the gaps: a

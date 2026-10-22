@@ -167,8 +167,8 @@ final class LiveTranscriptTimeline: ObservableObject {
         schedule()
     }
 
-    /// Builds and publishes the pending frame now. Terminal transitions and
-    /// tests call this; the live path waits for its slot.
+    /// Builds and publishes the pending frame now, for tests. Everything else
+    /// waits for its slot, at most one interval.
     func flush() {
         scheduled?.cancel()
         scheduled = nil
