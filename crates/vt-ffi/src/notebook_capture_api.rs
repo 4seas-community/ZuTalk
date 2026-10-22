@@ -6227,6 +6227,11 @@ pub(crate) trait NotebookSonioxStreamFactory: Send + Sync {
         audio_tx: &tokio::sync::mpsc::Sender<Vec<u8>>,
         audio_data: Vec<u8>,
     ) -> Result<(), String>;
+
+    /// How long a stop waits for the provider to confirm every lane's tail.
+    fn finish_budget(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(5)
+    }
 }
 
 pub(crate) struct RealNotebookSonioxStreamFactory;
@@ -6664,6 +6669,24 @@ async fn forward_stream_events(
     }
 }
 
+/// How a provider group's stop went.
+struct RemoteFinish {
+    failure: Option<ProviderFailure>,
+    /// Whether the transcript lane confirmed its tail and every word it
+    /// delivered was written. When not, the stretch after the last written
+    /// row was recorded but never transcribed, and Stop records it as a gap.
+    tail_transcribed: bool,
+}
+
+impl RemoteFinish {
+    fn untranscribed_tail(failure: Option<ProviderFailure>) -> Self {
+        Self {
+            failure,
+            tail_transcribed: false,
+        }
+    }
+}
+
 async fn join_cancelled_remote_group(
     mut streams: Vec<ActiveRemoteStream>,
     mut event_task: tokio::task::JoinHandle<Result<(), ProviderFailure>>,
@@ -6677,30 +6700,28 @@ async fn join_cancelled_remote_group(
         let _ = (&mut stream.stream_task).await;
     }
 
-    let forward_result = tokio::time::timeout_at(
-        deadline,
-        futures::future::join_all(streams.iter_mut().map(|stream| &mut stream.forward_task)),
-    )
-    .await;
-    let mut failure = match forward_result {
-        Ok(results) if results.iter().all(Result::is_ok) => None,
-        Ok(_) => Some(ProviderFailure {
-            error_type: "event_forward_task_failed".to_string(),
-            request_id: None,
-        }),
-        Err(_) => {
-            for stream in &streams {
+    // One task at a time, so a task that ended is never polled again; see
+    // `finish_remote_capture`.
+    let mut failure = None;
+    for stream in &mut streams {
+        match tokio::time::timeout_at(deadline, &mut stream.forward_task).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) => {
+                failure.get_or_insert_with(|| ProviderFailure {
+                    error_type: "event_forward_task_failed".to_string(),
+                    request_id: None,
+                });
+            }
+            Err(_) => {
                 stream.forward_task.abort();
-            }
-            for stream in &mut streams {
                 let _ = (&mut stream.forward_task).await;
+                failure.get_or_insert_with(|| ProviderFailure {
+                    error_type: "event_forward_drain_timeout".to_string(),
+                    request_id: None,
+                });
             }
-            Some(ProviderFailure {
-                error_type: "event_forward_drain_timeout".to_string(),
-                request_id: None,
-            })
         }
-    };
+    }
 
     match tokio::time::timeout_at(deadline, &mut event_task).await {
         Ok(Ok(Ok(()))) => {}
@@ -7902,9 +7923,14 @@ impl ZuTalkCore {
                 .as_ref()
                 .is_some_and(|remote| remote.event_task.is_finished())
                 || active.remote_cleanup.is_some());
+        let mut tail_untranscribed = transcription_ended_early;
         let mut remote_failure_persistence_error = None;
         if let Some(remote) = active.remote.take() {
-            if let Some(failure) = self.finish_remote_capture(remote) {
+            let finish = self.finish_remote_capture(remote);
+            // A provider that never confirmed the transcript's tail leaves
+            // the same untranscribed stretch as one that died early.
+            tail_untranscribed |= !finish.tail_transcribed;
+            if let Some(failure) = finish.failure {
                 remote_failure_persistence_error =
                     self.persist_remote_shutdown_failure(&active.run_id, &failure);
             }
@@ -7924,7 +7950,7 @@ impl ZuTalkCore {
 
         log_phase("finish transcription");
         let frames = active.journal.captured_frames();
-        if transcription_ended_early {
+        if tail_untranscribed {
             self.preserve_untranscribed_tail(&active.session_id, frames);
         }
         let journal_path = active.journal.journal_path().to_path_buf();
@@ -10007,7 +10033,8 @@ impl ZuTalkCore {
         })
     }
 
-    fn finish_remote_capture(&self, remote: ActiveRemoteCapture) -> Option<ProviderFailure> {
+    fn finish_remote_capture(&self, remote: ActiveRemoteCapture) -> RemoteFinish {
+        let finish_budget = remote.stream_factory.finish_budget();
         self.runtime.block_on(async move {
             let ActiveRemoteCapture {
                 cancel,
@@ -10030,14 +10057,16 @@ impl ZuTalkCore {
                 // Finish would only wait out its deadline against lanes that
                 // can no longer deliver to anyone, with "Finishing" on screen.
                 cancel.cancel();
-                return join_cancelled_remote_group(
-                    streams,
-                    event_task,
-                    std::time::Duration::from_secs(1),
-                )
-                .await;
+                return RemoteFinish::untranscribed_tail(
+                    join_cancelled_remote_group(
+                        streams,
+                        event_task,
+                        std::time::Duration::from_secs(1),
+                    )
+                    .await,
+                );
             }
-            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+            let deadline = tokio::time::Instant::now() + finish_budget;
             let finish_senders = streams
                 .iter()
                 .map(|stream| (stream.descriptor.canonical, stream.control_tx.clone()))
@@ -10081,81 +10110,81 @@ impl ZuTalkCore {
                     std::time::Duration::from_secs(1),
                 )
                 .await;
-                return match cleanup {
+                return RemoteFinish::untranscribed_tail(match cleanup {
                     Some(cleanup_failure) => {
                         prefer_provider_failure(Some(failure), cleanup_failure)
                     }
                     None => Some(failure),
-                };
+                });
             }
 
+            // Each lane is awaited on its own against the shared deadline,
+            // and a lane that has ended is never polled again. One join over
+            // all of them, cut short by the deadline, used to leave the lanes
+            // that had finished consumed and then await them a second time:
+            // a panic in Stop whenever one translation lane never confirmed
+            // its tail while the others did.
             let mut failure = None;
-            match tokio::time::timeout_at(
-                deadline,
-                futures::future::join_all(streams.iter_mut().map(|stream| &mut stream.stream_task)),
-            )
-            .await
-            {
-                Ok(results) => {
-                    for result in results {
-                        match result {
-                            Ok(Ok(())) => {}
-                            Ok(Err(_error)) => {
-                                failure.get_or_insert_with(|| ProviderFailure {
-                                    error_type: "stream_terminated".to_string(),
-                                    request_id: None,
-                                });
-                            }
-                            Err(_error) => {
-                                failure.get_or_insert_with(|| ProviderFailure {
-                                    error_type: "stream_task_failed".to_string(),
-                                    request_id: None,
-                                });
-                            }
+            let mut timed_out = false;
+            let mut canonical_tail_confirmed = false;
+            for stream in &mut streams {
+                match tokio::time::timeout_at(deadline, &mut stream.stream_task).await {
+                    Ok(Ok(Ok(()))) => {
+                        canonical_tail_confirmed |= stream.descriptor.canonical;
+                    }
+                    Ok(Ok(Err(_error))) => {
+                        failure.get_or_insert_with(|| ProviderFailure {
+                            error_type: "stream_terminated".to_string(),
+                            request_id: None,
+                        });
+                    }
+                    Ok(Err(_error)) => {
+                        failure.get_or_insert_with(|| ProviderFailure {
+                            error_type: "stream_task_failed".to_string(),
+                            request_id: None,
+                        });
+                    }
+                    Err(_) => {
+                        if !timed_out {
+                            timed_out = true;
+                            cancel.cancel();
                         }
-                    }
-                }
-                Err(_) => {
-                    cancel.cancel();
-                    for stream in &streams {
                         stream.stream_task.abort();
-                    }
-                    for stream in &mut streams {
                         let _ = (&mut stream.stream_task).await;
                     }
-                    failure = Some(ProviderFailure {
-                        error_type: "finish_timeout".to_string(),
-                        request_id: None,
-                    });
                 }
             }
+            if timed_out {
+                failure = Some(ProviderFailure {
+                    error_type: "finish_timeout".to_string(),
+                    request_id: None,
+                });
+            }
 
-            match tokio::time::timeout_at(
-                deadline,
-                futures::future::join_all(
-                    streams.iter_mut().map(|stream| &mut stream.forward_task),
-                ),
-            )
-            .await
-            {
-                Ok(results) if results.iter().all(Result::is_ok) => {}
-                Ok(_) => {
-                    failure.get_or_insert_with(|| ProviderFailure {
-                        error_type: "event_forward_task_failed".to_string(),
-                        request_id: None,
-                    });
-                }
-                Err(_) => {
-                    for stream in &streams {
+            // Forwarding gets its own budget. The provider may have used all
+            // of the shared one before confirming the tail, and the tokens it
+            // did deliver must still reach the collector.
+            let forward_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+            let mut canonical_tail_forwarded = false;
+            for stream in &mut streams {
+                match tokio::time::timeout_at(forward_deadline, &mut stream.forward_task).await {
+                    Ok(Ok(_)) => {
+                        canonical_tail_forwarded |= stream.descriptor.canonical;
+                    }
+                    Ok(Err(_)) => {
+                        failure.get_or_insert_with(|| ProviderFailure {
+                            error_type: "event_forward_task_failed".to_string(),
+                            request_id: None,
+                        });
+                    }
+                    Err(_) => {
                         stream.forward_task.abort();
-                    }
-                    for stream in &mut streams {
                         let _ = (&mut stream.forward_task).await;
+                        failure.get_or_insert_with(|| ProviderFailure {
+                            error_type: "event_forward_drain_timeout".to_string(),
+                            request_id: None,
+                        });
                     }
-                    failure.get_or_insert_with(|| ProviderFailure {
-                        error_type: "event_forward_drain_timeout".to_string(),
-                        request_id: None,
-                    });
                 }
             }
 
@@ -10166,8 +10195,9 @@ impl ZuTalkCore {
             // legitimately consumed the shared provider-finish deadline.
             let event_drain_deadline =
                 tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+            let mut collector_drained = false;
             match tokio::time::timeout_at(event_drain_deadline, &mut event_task).await {
-                Ok(Ok(Ok(()))) => {}
+                Ok(Ok(Ok(()))) => collector_drained = true,
                 Ok(Ok(Err(event_failure))) => {
                     failure = prefer_provider_failure(failure, event_failure);
                 }
@@ -10186,7 +10216,12 @@ impl ZuTalkCore {
                     });
                 }
             }
-            failure
+            RemoteFinish {
+                failure,
+                tail_transcribed: canonical_tail_confirmed
+                    && canonical_tail_forwarded
+                    && collector_drained,
+            }
         })
     }
 
@@ -12525,6 +12560,222 @@ pub(crate) mod tests {
         assert_eq!(gaps[0].end_ms, 2_000, "and ends where the new group joined");
     }
 
+    /// A provider group whose lanes settle one row and then, on Stop, either
+    /// confirm their tail or never answer. `hangs` picks the lanes that never
+    /// answer: `None` for the transcript lane, `Some(language)` for the
+    /// translation lane into that language.
+    struct StopTailFactory {
+        hangs: Option<&'static str>,
+        hangs_canonical: bool,
+    }
+
+    impl NotebookSonioxStreamFactory for StopTailFactory {
+        fn start(
+            &self,
+            _endpoint: &str,
+            _credential: std::sync::Arc<dyn vt_stt::LaneCredentialSource>,
+            config: SttConfig,
+            cancel: tokio_util::sync::CancellationToken,
+            _capture_origin_ms: u64,
+        ) -> SonioxStreamRuntime {
+            // A translation lane is named `<session>:rt:<target>`; the
+            // transcript lane carries the session id alone.
+            let target = config
+                .client_reference_id
+                .as_deref()
+                .and_then(|reference| reference.split_once(":rt:"))
+                .map(|(_, target)| target.to_string());
+            let canonical = target.is_none();
+            let hangs = if canonical {
+                self.hangs_canonical
+            } else {
+                target.as_deref() == self.hangs
+            };
+            let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
+            let (control_tx, mut control_rx) = tokio::sync::mpsc::channel(4);
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(16);
+            let task = tokio::spawn(async move {
+                let _ = event_tx.send(SttStreamEvent::Connected).await;
+                let mut blocks = 0;
+                let mut finishing = false;
+                loop {
+                    tokio::select! {
+                        _ = cancel.cancelled() => return Ok(()),
+                        control = control_rx.recv(), if !finishing => match control {
+                            Some(SttStreamControl::Finish) | None => {
+                                if hangs {
+                                    // Heard, never answered.
+                                    finishing = true;
+                                    continue;
+                                }
+                                if canonical {
+                                    let _ = event_tx
+                                        .send(SttStreamEvent::Tokens(vec![token(
+                                            "the tail after stop",
+                                            SttStreamTranslationStatus::Original,
+                                            "en",
+                                            Some(1_500),
+                                            Some(1_900),
+                                            true,
+                                        )]))
+                                        .await;
+                                }
+                                let _ = event_tx.send(SttStreamEvent::Finished).await;
+                                return Ok(());
+                            }
+                            Some(_) => {}
+                        },
+                        audio = audio_rx.recv() => match audio {
+                            Some(_) => {
+                                blocks += 1;
+                                if blocks == 5 && canonical {
+                                    let _ = event_tx
+                                        .send(SttStreamEvent::Tokens(vec![token(
+                                            "said before stop",
+                                            SttStreamTranslationStatus::Original,
+                                            "en",
+                                            Some(0),
+                                            Some(500),
+                                            true,
+                                        )]))
+                                        .await;
+                                    let _ = event_tx.send(SttStreamEvent::Endpoint).await;
+                                }
+                            }
+                            None if hangs => std::future::pending::<()>().await,
+                            None => return Ok(()),
+                        },
+                    }
+                }
+            });
+            SonioxStreamRuntime {
+                audio_tx,
+                control_tx,
+                event_rx,
+                task,
+            }
+        }
+
+        fn try_send_pcm(
+            &self,
+            audio_tx: &tokio::sync::mpsc::Sender<Vec<u8>>,
+            audio_data: Vec<u8>,
+        ) -> Result<(), String> {
+            audio_tx
+                .try_send(audio_data)
+                .map_err(|error| error.to_string())
+        }
+
+        fn finish_budget(&self) -> std::time::Duration {
+            std::time::Duration::from_millis(300)
+        }
+    }
+
+    fn record_and_stop_with(
+        factory: StopTailFactory,
+        languages: &[&str],
+    ) -> (ZuTalkCore, String, tempfile::TempDir) {
+        let temp = tempfile::tempdir().unwrap();
+        let mut core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        core.notebook_soniox_stream_factory = Arc::new(factory);
+        core.set_api_key("soniox".to_string(), "configured-test-key".to_string())
+            .unwrap();
+        let notebook = core.create_notebook(Some("Stop tail".into())).unwrap();
+        let mut profile = core
+            .get_notebook_capture_profile(notebook.id.clone())
+            .unwrap();
+        profile.remote_realtime_enabled = true;
+        if !languages.is_empty() {
+            profile.mode = FfiNotebookCaptureMode::MultilingualOneWay;
+            profile.selected_languages = languages.iter().map(|code| code.to_string()).collect();
+        }
+        let profile = core.update_notebook_capture_profile(profile).unwrap();
+        let started = core
+            .start_notebook_capture_session(
+                notebook.id,
+                profile.revision,
+                None,
+                Box::new(CaptureEventSender(std::sync::mpsc::channel().0)),
+            )
+            .unwrap();
+        let session_id = started.session_id.clone();
+        // Two seconds of audio; the first half second settles one row.
+        for _ in 0..20 {
+            core.push_notebook_capture_session(session_id.clone(), vec![0_u8; 3_200])
+                .unwrap();
+        }
+        wait_for("the first row", || {
+            !core
+                .notebook_capture_store
+                .list_utterances(&session_id)
+                .unwrap()
+                .is_empty()
+        });
+        core.stop_notebook_capture_session(session_id.clone())
+            .unwrap();
+        (core, session_id, temp)
+    }
+
+    /// The provider never confirmed the transcript's tail before Stop gave
+    /// up on it. Everything after the last row was recorded and never
+    /// transcribed, and nothing said so — no divider in the transcript and
+    /// nothing for repair to start from.
+    #[test]
+    fn a_stop_the_provider_never_confirms_keeps_the_untranscribed_tail() {
+        let (core, session_id, _temp) = record_and_stop_with(
+            StopTailFactory {
+                hangs: None,
+                hangs_canonical: true,
+            },
+            &[],
+        );
+        let rows = core
+            .notebook_capture_store
+            .list_utterances(&session_id)
+            .unwrap();
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.source_text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["said before stop"],
+            "what was settled before Stop stays"
+        );
+        let gaps = core
+            .list_notebook_session_transcript_gaps(session_id)
+            .unwrap();
+        assert_eq!(gaps.len(), 1, "the unconfirmed tail is a gap: {gaps:?}");
+        assert_eq!(gaps[0].start_ms, 500, "from where settled rows stop");
+        assert_eq!(gaps[0].end_ms, 2_000, "to the end of the recording");
+    }
+
+    /// One translation lane never answers Stop. The transcript lane
+    /// confirmed its tail, so the transcript is whole: no gap, and the tail
+    /// row is there.
+    #[test]
+    fn a_translation_lane_that_never_confirms_stop_costs_the_transcript_nothing() {
+        let (core, session_id, _temp) = record_and_stop_with(
+            StopTailFactory {
+                hangs: Some("th"),
+                hangs_canonical: false,
+            },
+            &["en", "th", "zh"],
+        );
+        let rows = core
+            .notebook_capture_store
+            .list_utterances(&session_id)
+            .unwrap();
+        assert_eq!(
+            rows.iter()
+                .map(|row| row.source_text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["said before stop", "the tail after stop"],
+        );
+        let gaps = core
+            .list_notebook_session_transcript_gaps(session_id)
+            .unwrap();
+        assert!(gaps.is_empty(), "the transcript lost nothing: {gaps:?}");
+    }
+
     /// Field report: an invite recording lost its transcription at the end
     /// of its third hour and was stopped 107 seconds later. Those seconds were
     /// recorded but not transcribed, and nothing said so — no gap, so no
@@ -13800,11 +14051,16 @@ pub(crate) mod tests {
             runtime: core.runtime.handle().clone(),
         };
 
-        let failure = core.finish_remote_capture(remote);
+        let finish = core.finish_remote_capture(remote);
+        let failure = finish.failure;
 
         assert!(
             failure.is_none(),
             "healthy forward/collector teardown must not report {failure:?}"
+        );
+        assert!(
+            finish.tail_transcribed,
+            "the tail was confirmed and written"
         );
         assert!(
             provider_tail_sent.load(Ordering::SeqCst),

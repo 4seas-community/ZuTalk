@@ -38,6 +38,11 @@ const RECONNECT_MAX_DELAY_EXPONENT: u32 = 3;
 const CONTINUITY_WINDOW: Duration = Duration::from_secs(15);
 const FAST_RECONNECT_WINDOW: Duration = Duration::from_secs(5);
 const REPLAY_OVERLAP: Duration = Duration::from_secs(2);
+/// How many times real time a lane sends what queued during an outage too
+/// long to resume at once. Live audio keeps arriving at one times real time,
+/// so the backlog shrinks at one times real time: a fifteen-second outage is
+/// caught up in fifteen seconds.
+const CATCH_UP_SPEED: u32 = 2;
 const PCM_BYTES_PER_MILLISECOND: u64 = 32;
 
 // The macOS capture tap forwards approximately one 100 ms, 3,200-byte PCM
@@ -224,6 +229,9 @@ struct StreamTimeouts {
     /// How long before the cap the lane hands over whether or not a pause
     /// came. Never more than a tenth of the cap.
     handover_deadline_margin: Duration,
+    /// An outage up to this long replays and resumes at once; a longer one
+    /// catches up at a measured pace. See [`FAST_RECONNECT_WINDOW`].
+    fast_reconnect_window: Duration,
 }
 
 impl Default for StreamTimeouts {
@@ -240,6 +248,7 @@ impl Default for StreamTimeouts {
             immediate_rollover_min_session: IMMEDIATE_ROLLOVER_MIN_SESSION,
             handover_lead: HANDOVER_LEAD,
             handover_deadline_margin: HANDOVER_DEADLINE_MARGIN,
+            fast_reconnect_window: FAST_RECONNECT_WINDOW,
         }
     }
 }
@@ -512,8 +521,10 @@ impl StreamFailure {
             // provider's own names for a duration cap never reach this match;
             // those endings are recognised from the raw frame and arrive as a
             // `rollover` instead.
+            // 408 is the provider timing out on this connection — a stall,
+            // which a fresh connection resumes like any outage.
             SttStreamError::Provider(error) => {
-                matches!(error.error_code, 413 | 429 | 503)
+                matches!(error.error_code, 408 | 413 | 429 | 503)
                     || matches!(
                         error.error_type.as_str(),
                         "rate_limited" | "service_unavailable"
@@ -899,6 +910,73 @@ impl StreamRecoveryState {
     }
 }
 
+/// Which tokens of a replacement connection repeat what the connection
+/// before it already delivered.
+///
+/// A replacement hears the stretch before the acknowledged point again, for
+/// context. Every word in that stretch is already written: the old
+/// connection's finals were delivered, and its partials were confirmed when
+/// it closed. So no word ending inside the replay may come back — not when
+/// the provider first re-hears it, and not when it finalizes it, which can
+/// be well after `total_audio_proc_ms` has passed the replay. Only
+/// `final_audio_proc_ms` past the replay says the last of them is out.
+///
+/// Translation tokens carry no timestamps. Each follows the source words it
+/// translates, so it repeats old work exactly when the source word before it
+/// did — even when it arrives in a later response than that word.
+#[derive(Debug, Default)]
+struct ReplaySuppression {
+    /// Connection-relative end of the replayed audio; zero when nothing was
+    /// replayed and nothing is filtered.
+    until_provider_ms: u64,
+    /// Whether the last final source word was a replayed one.
+    last_final_source_replayed: bool,
+}
+
+impl ReplaySuppression {
+    fn after_replay(until_provider_ms: u64) -> Self {
+        Self {
+            until_provider_ms,
+            // Before any source word arrives, all the connection has heard
+            // is the replay.
+            last_final_source_replayed: true,
+        }
+    }
+
+    fn filter(
+        &mut self,
+        tokens: &mut Vec<SonioxStreamTokenWire>,
+        final_audio_proc_ms: Option<u64>,
+    ) {
+        if self.until_provider_ms == 0 {
+            return;
+        }
+        let until = self.until_provider_ms;
+        // Finals come first in a response and the partial tail continues
+        // after them, so one running state serves both; only the finals'
+        // carries over to the next response.
+        let mut last_final_replayed = self.last_final_source_replayed;
+        let mut last_replayed = last_final_replayed;
+        tokens.retain(|token| {
+            if token.translation_status.as_deref() == Some("translation") {
+                return !last_replayed;
+            }
+            let replayed = token.end_ms.is_some_and(|end_ms| end_ms <= until);
+            last_replayed = replayed;
+            if token.is_final {
+                last_final_replayed = replayed;
+            }
+            !replayed
+        });
+        self.last_final_source_replayed = last_final_replayed;
+        if final_audio_proc_ms.is_some_and(|processed| processed >= until)
+            && !self.last_final_source_replayed
+        {
+            *self = Self::default();
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct SonioxStreamTokenWire {
     text: String,
@@ -1140,6 +1218,9 @@ async fn run_stream(
     let mut unpresented_credential: Option<UnpresentedCredential> = None;
     let mut skip_to_live_edge = false;
     let mut handed_over = false;
+    // A stop heard while waiting to reconnect: the next connection sends
+    // what is left and finishes at once.
+    let mut finish_requested = false;
     loop {
         let mut session_connected = false;
         let reconnect_outage = disconnected_at.map(|started| started.elapsed());
@@ -1161,6 +1242,7 @@ async fn run_stream(
             reconnect_outage,
             reconnect_skips,
             after_handover,
+            finish_requested,
             &mut unpresented_credential,
         )
         .await
@@ -1243,12 +1325,16 @@ async fn run_stream(
                     &mut control_rx,
                     cancel.clone(),
                     &mut paused,
+                    finish_requested,
                 )
                 .await
                 {
                     ReconnectWait::Retry => {}
                     ReconnectWait::Cancelled => return Ok(()),
-                    ReconnectWait::Finish => return Err(failure),
+                    // The tail is still owed: the audio queued meanwhile and
+                    // the words this outage left unconfirmed. Reconnect now
+                    // rather than end the lane on the outage's error.
+                    ReconnectWait::Finish => finish_requested = true,
                 }
             }
             Err(failure) => return Err(failure),
@@ -1272,6 +1358,7 @@ async fn run_stream_session(
     reconnect_outage: Option<Duration>,
     reconnect_skips_to_live_edge: bool,
     reconnect_after_handover: bool,
+    finish_requested: bool,
     unpresented_credential: &mut Option<UnpresentedCredential>,
 ) -> Result<(), StreamFailure> {
     // Resolved before dialing: a single-use credential is spent the moment a
@@ -1331,7 +1418,8 @@ async fn run_stream_session(
     .await?;
     *session_connected = true;
 
-    let mut suppress_replay_until_provider_ms = 0_u64;
+    let mut replay_suppression = ReplaySuppression::default();
+    let mut catch_up = CatchUp::default();
     // Whether this connection has carried any audio at all.
     let mut sent_audio = false;
     let clean_handover = reconnect_after_handover
@@ -1388,40 +1476,27 @@ async fn run_stream_session(
         )
         .await?;
         let replay = recovery.prepare_replay(outage);
-        suppress_replay_until_provider_ms = recovery.replay_duplicate_until_provider_ms();
-        let replay_interval = if outage > FAST_RECONNECT_WINDOW {
-            Some(Duration::from_millis(80))
+        replay_suppression =
+            ReplaySuppression::after_replay(recovery.replay_duplicate_until_provider_ms());
+        if outage > timeouts.fast_reconnect_window && outage <= CONTINUITY_WINDOW {
+            // Too much to send at once. The replay and then the queue go out
+            // at a measured pace from the session loop below, which keeps
+            // reading words and controls between blocks.
+            catch_up.replay = replay.into_iter().map(|frame| frame.pcm).collect();
+            catch_up.active = true;
         } else {
-            None
-        };
-        for frame in replay {
-            send_message(
-                &mut write,
-                Message::Binary(frame.pcm.into()),
-                "Soniox stream recovery audio send",
-                timeouts.write,
-            )
-            .await?;
-            sent_audio = true;
-            if let Some(interval) = replay_interval {
-                time::sleep(interval).await;
-            }
-        }
-        if outage > FAST_RECONNECT_WINDOW && outage <= CONTINUITY_WINDOW {
-            while let Ok(pcm) = audio_rx.try_recv() {
-                let retained_pcm = pcm.clone();
+            for frame in replay {
                 send_message(
                     &mut write,
-                    Message::Binary(pcm.into()),
-                    "Soniox stream catch-up audio send",
+                    Message::Binary(frame.pcm.into()),
+                    "Soniox stream recovery audio send",
                     timeouts.write,
                 )
                 .await?;
-                recovery.record_sent(retained_pcm);
                 sent_audio = true;
-                time::sleep(Duration::from_millis(80)).await;
             }
-        } else if outage > CONTINUITY_WINDOW {
+        }
+        if outage > CONTINUITY_WINDOW {
             // The local encrypted journal remains authoritative for this
             // interval. Do not burst stale remote audio into the new,
             // explicitly non-contiguous realtime epoch — but every dropped
@@ -1436,6 +1511,23 @@ async fn run_stream_session(
         }
     } else {
         recovery.connection_origin_ms = recovery.next_audio_ms;
+    }
+    if *paused {
+        // A pause heard while there was no connection follows speech the
+        // lane had already accepted. Send it and close the utterance, as
+        // the pause would have on a live connection; the capture accepts no
+        // audio while paused, so nothing queued is from the pause itself.
+        sent_audio |= drain_queued_audio(
+            &mut write,
+            &mut catch_up,
+            audio_rx,
+            recovery,
+            timeouts.write,
+        )
+        .await?;
+        if sent_audio {
+            send_control(&mut write, "finalize", timeouts.write).await?;
+        }
     }
     send_event(event_tx, SttStreamEvent::Connected).await?;
 
@@ -1458,6 +1550,23 @@ async fn run_stream_session(
     let mut waiting_for_pause = false;
     let mut handing_over = false;
     let mut quiet_blocks = QuietBlockDetector::default();
+    let mut catch_up_sleep = Box::pin(time::sleep(Duration::ZERO));
+    if finish_requested {
+        // Stop came while this lane was reconnecting; see `run_stream`.
+        sent_audio |= drain_queued_audio(
+            &mut write,
+            &mut catch_up,
+            audio_rx,
+            recovery,
+            timeouts.write,
+        )
+        .await?;
+        if !sent_audio {
+            send_event(event_tx, SttStreamEvent::Finished).await?;
+            return Ok(());
+        }
+        begin_drain(&mut write, &mut draining, &mut drain_sleep, timeouts).await?;
+    }
 
     loop {
         tokio::select! {
@@ -1467,7 +1576,7 @@ async fn run_stream_session(
                 match control {
                     Some(SttStreamControl::Finalize) => {
                         sent_audio |=
-                            drain_queued_audio(&mut write, audio_rx, timeouts.write).await?;
+                            drain_queued_audio(&mut write, &mut catch_up, audio_rx, recovery, timeouts.write).await?;
                         send_control(&mut write, "finalize", timeouts.write).await?;
                     }
                     Some(SttStreamControl::Pause) => {
@@ -1476,7 +1585,7 @@ async fn run_stream_session(
                         // `audio_tx` before the utterance boundary, otherwise the
                         // biased control branch would finalize ahead of speech.
                         sent_audio |=
-                            drain_queued_audio(&mut write, audio_rx, timeouts.write).await?;
+                            drain_queued_audio(&mut write, &mut catch_up, audio_rx, recovery, timeouts.write).await?;
                         send_control(&mut write, "finalize", timeouts.write).await?;
                         *paused = true;
                         reset_sleep(&mut keepalive_sleep, timeouts.keepalive);
@@ -1499,7 +1608,7 @@ async fn run_stream_session(
                         // Drain accepted PCM first, then send the empty frame so
                         // Soniox tail tokens cover the complete local recording.
                         sent_audio |=
-                            drain_queued_audio(&mut write, audio_rx, timeouts.write).await?;
+                            drain_queued_audio(&mut write, &mut catch_up, audio_rx, recovery, timeouts.write).await?;
                         if !sent_audio {
                             // A connection that never carried audio has no
                             // tail to wait for, and the provider refuses to
@@ -1565,40 +1674,8 @@ async fn run_stream_session(
                             )
                             .await?;
                         }
-                        if suppress_replay_until_provider_ms > 0 {
-                            let response_is_entirely_replayed = response
-                                .total_audio_proc_ms
-                                .is_some_and(|processed| {
-                                    processed <= suppress_replay_until_provider_ms
-                                });
-                            if response_is_entirely_replayed {
-                                response.tokens.clear();
-                            } else {
-                                let has_new_timed_source = response.tokens.iter().any(|token| {
-                                    token.translation_status.as_deref() != Some("translation")
-                                        && token.end_ms.is_some_and(|end_ms| {
-                                            end_ms > suppress_replay_until_provider_ms
-                                        })
-                                });
-                                response.tokens.retain(|token| {
-                                    if token.translation_status.as_deref() == Some("translation") {
-                                        has_new_timed_source
-                                    } else {
-                                        token.end_ms.is_none_or(|end_ms| {
-                                            end_ms > suppress_replay_until_provider_ms
-                                        })
-                                    }
-                                });
-                            }
-                            if response
-                                .total_audio_proc_ms
-                                .is_some_and(|processed| {
-                                    processed >= suppress_replay_until_provider_ms
-                                })
-                            {
-                                suppress_replay_until_provider_ms = 0;
-                            }
-                        }
+                        replay_suppression
+                            .filter(&mut response.tokens, response.final_audio_proc_ms);
                         let reached_pause = waiting_for_pause
                             && response.tokens.iter().any(|token| token.text == "<end>");
                         emit_response_events(
@@ -1635,6 +1712,19 @@ async fn run_stream_session(
                             tracing::info!(
                                 "Soniox session cap is near; handing over at a pause"
                             );
+                            if catch_up.active {
+                                // What this connection was still catching
+                                // up on is older than the cut; it is this
+                                // connection's to finish.
+                                sent_audio |= drain_queued_audio(
+                                    &mut write,
+                                    &mut catch_up,
+                                    audio_rx,
+                                    recovery,
+                                    timeouts.write,
+                                )
+                                .await?;
+                            }
                             begin_drain(&mut write, &mut draining, &mut drain_sleep, timeouts)
                                 .await?;
                             handing_over = true;
@@ -1656,7 +1746,36 @@ async fn run_stream_session(
                     }
                 }
             }
-            audio = audio_rx.recv(), if audio_open && !draining => {
+            _ = &mut catch_up_sleep, if catch_up.active && !draining => {
+                let (pcm, counted) = match catch_up.replay.pop_front() {
+                    Some(pcm) => (Some(pcm), true),
+                    None => (audio_rx.try_recv().ok(), false),
+                };
+                let Some(pcm) = pcm else {
+                    // Caught up: from here audio is live again.
+                    catch_up.active = false;
+                    continue;
+                };
+                let block = Duration::from_millis(
+                    (pcm.len() as u64).div_ceil(PCM_BYTES_PER_MILLISECOND).max(1),
+                );
+                let retained_pcm = (!counted).then(|| pcm.clone());
+                send_message(
+                    &mut write,
+                    Message::Binary(pcm.into()),
+                    "Soniox stream catch-up audio send",
+                    timeouts.write,
+                )
+                .await?;
+                if let Some(retained_pcm) = retained_pcm {
+                    recovery.record_sent(retained_pcm);
+                }
+                sent_audio = true;
+                catch_up_sleep
+                    .as_mut()
+                    .reset(Instant::now() + block / CATCH_UP_SPEED);
+            }
+            audio = audio_rx.recv(), if audio_open && !draining && !catch_up.active => {
                 match audio {
                     Some(pcm) if !*paused => {
                         let quiet_block = quiet_blocks.observe(&pcm);
@@ -1721,6 +1840,16 @@ async fn run_stream_session(
                     tracing::info!(
                         "Soniox session cap is near and no pause came; handing over now"
                     );
+                    if catch_up.active {
+                        sent_audio |= drain_queued_audio(
+                            &mut write,
+                            &mut catch_up,
+                            audio_rx,
+                            recovery,
+                            timeouts.write,
+                        )
+                        .await?;
+                    }
                     begin_drain(&mut write, &mut draining, &mut drain_sleep, timeouts).await?;
                     handing_over = true;
                 } else if let Some(schedule) = handover {
@@ -1744,6 +1873,7 @@ enum ReconnectWait {
     Finish,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn wait_for_reconnect(
     delay: Duration,
     audio_rx: &mut mpsc::Receiver<Vec<u8>>,
@@ -1752,6 +1882,7 @@ async fn wait_for_reconnect(
     control_rx: &mut mpsc::Receiver<SttStreamControl>,
     cancel: CancellationToken,
     paused: &mut bool,
+    finishing: bool,
 ) -> ReconnectWait {
     let sleep = time::sleep(delay);
     tokio::pin!(sleep);
@@ -1761,7 +1892,7 @@ async fn wait_for_reconnect(
         tokio::select! {
             biased;
             _ = cancel.cancelled() => break ReconnectWait::Cancelled,
-            control = control_rx.recv() => {
+            control = control_rx.recv(), if !finishing => {
                 match control {
                     Some(SttStreamControl::Pause) => *paused = true,
                     Some(SttStreamControl::Resume) => *paused = false,
@@ -1969,17 +2100,45 @@ where
     .await
 }
 
+/// What a lane still has to send after an outage too long to resume at once.
+#[derive(Default)]
+struct CatchUp {
+    active: bool,
+    /// Replayed blocks not yet sent; already counted on the timeline.
+    replay: VecDeque<Vec<u8>>,
+}
+
 /// Sends every queued block. Returns whether there was any.
+///
+/// Every block goes onto the lane's own timeline and into the replay
+/// buffer, exactly as one sent from the audio branch does: the provider
+/// heard it, and its clock counts it.
 async fn drain_queued_audio<S>(
     write: &mut S,
+    catch_up: &mut CatchUp,
     audio_rx: &mut mpsc::Receiver<Vec<u8>>,
+    recovery: &mut StreamRecoveryState,
     timeout: Duration,
 ) -> Result<bool, StreamFailure>
 where
     S: futures::Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
 {
     let mut sent = false;
+    // A replay still being caught up goes first: it is older than the queue,
+    // and it is already on the timeline.
+    catch_up.active = false;
+    while let Some(pcm) = catch_up.replay.pop_front() {
+        send_message(
+            write,
+            Message::Binary(pcm.into()),
+            "Soniox stream recovery audio send",
+            timeout,
+        )
+        .await?;
+        sent = true;
+    }
     while let Ok(pcm) = audio_rx.try_recv() {
+        let retained_pcm = pcm.clone();
         send_message(
             write,
             Message::Binary(pcm.into()),
@@ -1987,6 +2146,7 @@ where
             timeout,
         )
         .await?;
+        recovery.record_sent(retained_pcm);
         sent = true;
     }
     Ok(sent)
@@ -2109,6 +2269,7 @@ mod tests {
             immediate_rollover_min_session: Duration::ZERO,
             handover_lead: HANDOVER_LEAD,
             handover_deadline_margin: HANDOVER_DEADLINE_MARGIN,
+            fast_reconnect_window: FAST_RECONNECT_WINDOW,
         }
     }
 
@@ -2575,6 +2736,636 @@ mod tests {
             vec![4_000, 5_500],
             "the replacement session's 2_500 ms token must be reported at \
              connection_origin_ms (3_000) + 2_500 on the capture timeline"
+        );
+    }
+
+    /// A provider whose first connection takes five seconds of audio and then
+    /// drops, and whose replacement reports what it received after its
+    /// configuration up to the first control message, then answers a finish.
+    async fn provider_dropping_once() -> (String, tokio::sync::oneshot::Receiver<(usize, String)>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (first_stream, _) = listener.accept().await.unwrap();
+            let mut first_ws = accept_async(first_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = first_ws.next().await else {
+                panic!("first session configuration missing");
+            };
+            let mut accepted_chunks = 0;
+            while let Some(Ok(message)) = first_ws.next().await {
+                if matches!(message, Message::Binary(_)) {
+                    accepted_chunks += 1;
+                    if accepted_chunks == 50 {
+                        break;
+                    }
+                }
+            }
+            first_ws
+                .send(Message::Text(
+                    json!({
+                        "tokens": [{"text": "前", "is_final": true, "language": "zh",
+                                    "start_ms": 4_000, "end_ms": 4_500}],
+                        "final_audio_proc_ms": 5_000,
+                        "total_audio_proc_ms": 5_000
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            first_ws.close(None).await.unwrap();
+
+            let (second_stream, _) = listener.accept().await.unwrap();
+            let mut second_ws = accept_async(second_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = second_ws.next().await else {
+                panic!("replacement session configuration missing");
+            };
+            let mut seen_tx = Some(seen_tx);
+            let mut binaries = 0;
+            while let Some(Ok(message)) = second_ws.next().await {
+                match message {
+                    Message::Binary(_) => binaries += 1,
+                    Message::Text(text) => {
+                        if let Some(seen_tx) = seen_tx.take() {
+                            let control = if text.is_empty() {
+                                "finish".to_string()
+                            } else {
+                                serde_json::from_str::<Value>(&text).unwrap()["type"]
+                                    .as_str()
+                                    .unwrap_or_default()
+                                    .to_string()
+                            };
+                            let _ = seen_tx.send((binaries, control));
+                        }
+                        if text.is_empty() {
+                            second_ws
+                                .send(Message::Text(
+                                    json!({
+                                        "tokens": [{"text": "后", "is_final": true,
+                                                    "language": "zh",
+                                                    "start_ms": 2_500, "end_ms": 2_600}],
+                                        "final_audio_proc_ms": 3_000,
+                                        "total_audio_proc_ms": 3_000,
+                                        "finished": true
+                                    })
+                                    .to_string()
+                                    .into(),
+                                ))
+                                .await
+                                .unwrap();
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
+        (endpoint, seen_rx)
+    }
+
+    fn slow_reconnect_timeouts() -> StreamTimeouts {
+        StreamTimeouts {
+            reconnect_base_delay: Duration::from_millis(300),
+            ..short_timeouts()
+        }
+    }
+
+    async fn wait_for_reconnecting(runtime: &mut SonioxStreamRuntime) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while let Ok(Some(event)) = tokio::time::timeout_at(deadline, runtime.event_rx.recv()).await
+        {
+            if matches!(event, SttStreamEvent::Reconnecting { .. }) {
+                return;
+            }
+        }
+        panic!("the lane never started reconnecting");
+    }
+
+    /// Stop can come while a lane waits to reconnect. The audio it queued
+    /// meanwhile and the words not yet confirmed are still the recording's
+    /// tail: the lane reconnects at once, sends them, and finishes, instead
+    /// of ending with an error and leaving the tail untranscribed.
+    #[tokio::test]
+    async fn a_stop_during_a_reconnect_still_delivers_the_tail() {
+        let (endpoint, seen) = provider_dropping_once().await;
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            slow_reconnect_timeouts(),
+        );
+        for _ in 0..50 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+        wait_for_reconnecting(&mut runtime).await;
+        for _ in 0..10 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+        runtime
+            .send_control(SttStreamControl::Finish)
+            .await
+            .unwrap();
+
+        let mut words = Vec::new();
+        let mut finished = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while let Ok(Some(event)) = tokio::time::timeout_at(deadline, runtime.event_rx.recv()).await
+        {
+            match event {
+                SttStreamEvent::Tokens(tokens) => {
+                    words.extend(tokens.into_iter().map(|token| token.text));
+                }
+                SttStreamEvent::Finished => {
+                    finished = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        assert!(finished, "the lane finished; words so far {words:?}");
+        assert!(
+            words.contains(&"后".to_string()),
+            "the tail arrived: {words:?}"
+        );
+        let (binaries, control) = seen.await.unwrap();
+        assert_eq!(control, "finish");
+        assert_eq!(binaries, 30, "two replayed seconds and the queued second");
+        assert!(runtime.task.await.unwrap().is_ok());
+    }
+
+    /// A pause that comes while a lane waits to reconnect follows speech the
+    /// lane already accepted. That speech is still sent, and still closed
+    /// with a finalize, exactly as a pause on a live connection does.
+    #[tokio::test]
+    async fn a_pause_during_a_reconnect_keeps_the_speech_before_it() {
+        let (endpoint, seen) = provider_dropping_once().await;
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            slow_reconnect_timeouts(),
+        );
+        for _ in 0..50 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+        wait_for_reconnecting(&mut runtime).await;
+        for _ in 0..10 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+        runtime.send_control(SttStreamControl::Pause).await.unwrap();
+
+        let (binaries, control) = time::timeout(Duration::from_secs(3), seen)
+            .await
+            .expect("the replacement heard a control message")
+            .unwrap();
+        assert_eq!(control, "finalize", "the pause still closes the utterance");
+        assert_eq!(
+            binaries, 30,
+            "two replayed seconds and the second before the pause"
+        );
+
+        runtime
+            .send_control(SttStreamControl::Resume)
+            .await
+            .unwrap();
+        runtime
+            .send_control(SttStreamControl::Finish)
+            .await
+            .unwrap();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let mut finished = false;
+        while let Ok(Some(event)) = tokio::time::timeout_at(deadline, runtime.event_rx.recv()).await
+        {
+            if event == SttStreamEvent::Finished {
+                finished = true;
+                break;
+            }
+        }
+        assert!(finished);
+    }
+
+    /// After an outage too long to resume at once, the lane catches up on
+    /// what queued. It used to do that block by block in a loop that read
+    /// nothing back: no caption appeared and Stop went unheard until the
+    /// whole backlog was sent, at a pace barely ahead of the live audio still
+    /// arriving — up to a minute for a fifteen-second outage. Words and
+    /// controls are now served while it catches up.
+    #[tokio::test]
+    async fn catching_up_after_an_outage_still_serves_words_and_stop() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel::<usize>();
+        tokio::spawn(async move {
+            let (first_stream, _) = listener.accept().await.unwrap();
+            let mut first_ws = accept_async(first_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = first_ws.next().await else {
+                panic!("first session configuration missing");
+            };
+            let mut accepted_chunks = 0;
+            while let Some(Ok(message)) = first_ws.next().await {
+                if matches!(message, Message::Binary(_)) {
+                    accepted_chunks += 1;
+                    if accepted_chunks == 50 {
+                        break;
+                    }
+                }
+            }
+            first_ws
+                .send(Message::Text(
+                    json!({"tokens": [], "final_audio_proc_ms": 5_000, "total_audio_proc_ms": 5_000})
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+            first_ws.close(None).await.unwrap();
+
+            let (second_stream, _) = listener.accept().await.unwrap();
+            let mut second_ws = accept_async(second_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = second_ws.next().await else {
+                panic!("replacement session configuration missing");
+            };
+            let mut binaries = 0;
+            while let Some(Ok(message)) = second_ws.next().await {
+                match message {
+                    Message::Binary(_) => {
+                        binaries += 1;
+                        if binaries == 1 {
+                            second_ws
+                                .send(Message::Text(
+                                    json!({
+                                        "tokens": [{"text": "新", "is_final": true,
+                                                    "language": "zh",
+                                                    "start_ms": 2_100, "end_ms": 2_200}],
+                                        "final_audio_proc_ms": 2_200,
+                                        "total_audio_proc_ms": 2_200
+                                    })
+                                    .to_string()
+                                    .into(),
+                                ))
+                                .await
+                                .unwrap();
+                        }
+                    }
+                    Message::Text(text) if text.is_empty() => {
+                        let _ = seen_tx.send(binaries);
+                        second_ws
+                            .send(Message::Text(
+                                json!({"tokens": [], "finished": true}).to_string().into(),
+                            ))
+                            .await
+                            .unwrap();
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            StreamTimeouts {
+                // Any outage counts as a long one here.
+                fast_reconnect_window: Duration::from_millis(50),
+                ..slow_reconnect_timeouts()
+            },
+        );
+        for _ in 0..50 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+        wait_for_reconnecting(&mut runtime).await;
+        // Three seconds queue during the outage.
+        for _ in 0..30 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+
+        let word_deadline = tokio::time::Instant::now() + Duration::from_millis(1_500);
+        let mut word = None;
+        while let Ok(Some(event)) =
+            tokio::time::timeout_at(word_deadline, runtime.event_rx.recv()).await
+        {
+            if let SttStreamEvent::Tokens(tokens) = event {
+                word = tokens.into_iter().next().map(|token| token.text);
+                break;
+            }
+        }
+        assert_eq!(
+            word.as_deref(),
+            Some("新"),
+            "the replacement's first word arrived while the lane caught up"
+        );
+
+        runtime
+            .send_control(SttStreamControl::Finish)
+            .await
+            .unwrap();
+        let stop_deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        let mut finished = false;
+        while let Ok(Some(event)) =
+            tokio::time::timeout_at(stop_deadline, runtime.event_rx.recv()).await
+        {
+            if event == SttStreamEvent::Finished {
+                finished = true;
+                break;
+            }
+        }
+        assert!(finished, "Stop was heard while catching up");
+        assert_eq!(
+            seen_rx.await.unwrap(),
+            50,
+            "the two replayed seconds and the three queued ones all reached the provider"
+        );
+    }
+
+    /// A replacement connection hears the last two seconds again. Every word
+    /// in them was already written when the old connection closed — its
+    /// partials were confirmed then — so none may come back. The provider
+    /// finalizes a word some time after it has processed the audio, so the
+    /// replayed words keep arriving after `total_audio_proc_ms` has passed
+    /// the replay; only `final_audio_proc_ms` says they are all out. And a
+    /// translation belongs to the source words just before it, even when it
+    /// arrives in a later response than they did.
+    #[tokio::test]
+    async fn replayed_words_never_come_back_after_a_reconnect() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            let (first_stream, _) = listener.accept().await.unwrap();
+            let mut first_ws = accept_async(first_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = first_ws.next().await else {
+                panic!("first session configuration missing");
+            };
+            let mut accepted_chunks = 0;
+            while let Some(Ok(message)) = first_ws.next().await {
+                if matches!(message, Message::Binary(_)) {
+                    accepted_chunks += 1;
+                    if accepted_chunks == 50 {
+                        break;
+                    }
+                }
+            }
+            first_ws
+                .send(Message::Text(
+                    json!({
+                        "tokens": [
+                            {"text": "前", "is_final": true, "language": "zh",
+                             "start_ms": 4_000, "end_ms": 4_500},
+                            {"text": "before", "is_final": true, "language": "en",
+                             "translation_status": "translation"}
+                        ],
+                        "final_audio_proc_ms": 5_000,
+                        "total_audio_proc_ms": 5_000
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            first_ws.close(None).await.unwrap();
+
+            let (second_stream, _) = listener.accept().await.unwrap();
+            let mut second_ws = accept_async(second_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = second_ws.next().await else {
+                panic!("replacement session configuration missing");
+            };
+            // The replay starts at 3_000, so the replayed word is at 1_000
+            // here and the replay ends at 2_000.
+            let responses = [
+                // Past the replay, but its word still only a partial.
+                json!({
+                    "tokens": [{"text": "前", "is_final": false, "language": "zh",
+                                "start_ms": 1_000, "end_ms": 1_500}],
+                    "final_audio_proc_ms": 0,
+                    "total_audio_proc_ms": 2_100
+                }),
+                // The replayed word turns final, with its translation.
+                json!({
+                    "tokens": [
+                        {"text": "前", "is_final": true, "language": "zh",
+                         "start_ms": 1_000, "end_ms": 1_500},
+                        {"text": "before", "is_final": true, "language": "en",
+                         "translation_status": "translation"}
+                    ],
+                    "final_audio_proc_ms": 1_600,
+                    "total_audio_proc_ms": 2_600
+                }),
+                // A new word, its translation one response later.
+                json!({
+                    "tokens": [{"text": "后", "is_final": true, "language": "zh",
+                                "start_ms": 2_500, "end_ms": 2_600}],
+                    "final_audio_proc_ms": 2_600,
+                    "total_audio_proc_ms": 2_600
+                }),
+                json!({
+                    "tokens": [{"text": "after", "is_final": true, "language": "en",
+                                "translation_status": "translation"}],
+                    "final_audio_proc_ms": 2_600,
+                    "total_audio_proc_ms": 2_600
+                }),
+            ];
+            let mut answered = false;
+            while let Some(Ok(message)) = second_ws.next().await {
+                match message {
+                    Message::Binary(_) if !answered => {
+                        answered = true;
+                        for response in &responses {
+                            second_ws
+                                .send(Message::Text(response.to_string().into()))
+                                .await
+                                .unwrap();
+                        }
+                    }
+                    Message::Text(text) if text.is_empty() => {
+                        second_ws
+                            .send(Message::Text(
+                                json!({"tokens": [], "finished": true}).to_string().into(),
+                            ))
+                            .await
+                            .unwrap();
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            short_timeouts(),
+        );
+        for _ in 0..50 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+
+        let mut final_words = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while let Ok(Some(event)) = tokio::time::timeout_at(deadline, runtime.event_rx.recv()).await
+        {
+            if let SttStreamEvent::Tokens(tokens) = event {
+                final_words.extend(
+                    tokens
+                        .iter()
+                        .filter(|token| token.is_final)
+                        .map(|token| token.text.clone()),
+                );
+            }
+            if final_words.last().is_some_and(|word| word == "after") {
+                break;
+            }
+        }
+
+        assert_eq!(
+            final_words,
+            vec!["前", "before", "后", "after"],
+            "a replayed word or its translation came back"
+        );
+    }
+
+    /// Audio flushed ahead of a finalize is audio the provider heard. It
+    /// used to go out uncounted: an auxiliary lane takes a finalize at
+    /// every canonical endpoint, so its own clock fell behind by every such
+    /// flush, and the first reconnect, hand-over or re-anchor projected all
+    /// later tokens early by the whole accumulated amount.
+    #[tokio::test]
+    async fn audio_flushed_ahead_of_a_finalize_still_advances_the_timeline() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        let (queued_tx, queued_rx) = tokio::sync::oneshot::channel::<()>();
+        let (first_answered_tx, first_answered_rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let (first_stream, _) = listener.accept().await.unwrap();
+            // Hold the handshake until the client has queued its audio and
+            // the finalize, so the lane meets both at once and the finalize
+            // branch is the one that sends the audio.
+            queued_rx.await.unwrap();
+            let mut first_ws = accept_async(first_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = first_ws.next().await else {
+                panic!("first session configuration missing");
+            };
+            let mut binary_before_finalize = 0;
+            while let Some(Ok(message)) = first_ws.next().await {
+                match message {
+                    Message::Binary(_) => binary_before_finalize += 1,
+                    Message::Text(text) if text.contains("finalize") => break,
+                    _ => {}
+                }
+            }
+            assert_eq!(binary_before_finalize, 50, "the finalize flushed the queue");
+            first_ws
+                .send(Message::Text(
+                    json!({
+                        "tokens": [{
+                            "text": "前",
+                            "is_final": true,
+                            "language": "zh",
+                            "start_ms": 4_000,
+                            "end_ms": 4_500
+                        }],
+                        "final_audio_proc_ms": 5_000,
+                        "total_audio_proc_ms": 5_000
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            first_ws.close(None).await.unwrap();
+            let _ = first_answered_tx.send(());
+
+            let (second_stream, _) = listener.accept().await.unwrap();
+            let mut second_ws = accept_async(second_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = second_ws.next().await else {
+                panic!("replacement session configuration missing");
+            };
+            let mut answered = false;
+            while let Some(Ok(message)) = second_ws.next().await {
+                match message {
+                    Message::Binary(_) if !answered => {
+                        answered = true;
+                        second_ws
+                            .send(Message::Text(
+                                json!({
+                                    "tokens": [{
+                                        "text": "后",
+                                        "is_final": true,
+                                        "language": "zh",
+                                        "start_ms": 2_500,
+                                        "end_ms": 2_600
+                                    }],
+                                    "final_audio_proc_ms": 2_600,
+                                    "total_audio_proc_ms": 2_600
+                                })
+                                .to_string()
+                                .into(),
+                            ))
+                            .await
+                            .unwrap();
+                    }
+                    Message::Text(text) if text.is_empty() => {
+                        second_ws
+                            .send(Message::Text(
+                                json!({"tokens": [], "finished": true}).to_string().into(),
+                            ))
+                            .await
+                            .unwrap();
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            short_timeouts(),
+        );
+        for _ in 0..50 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+        runtime
+            .send_control(SttStreamControl::Finalize)
+            .await
+            .unwrap();
+        queued_tx.send(()).unwrap();
+        first_answered_rx.await.unwrap();
+        // Live audio after the outage, so the replacement has something to
+        // answer even if nothing were replayed.
+        runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+
+        let mut source_start_ms = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while let Ok(Some(event)) = tokio::time::timeout_at(deadline, runtime.event_rx.recv()).await
+        {
+            if let SttStreamEvent::Tokens(tokens) = event {
+                source_start_ms.extend(tokens.iter().filter_map(|token| token.start_ms));
+            }
+            if source_start_ms.len() >= 2 {
+                break;
+            }
+        }
+
+        assert_eq!(
+            source_start_ms,
+            vec![4_000, 5_500],
+            "the replacement resumes 2 s before the acknowledged 5 s, so its \
+             2_500 ms token is at 5_500 on the capture timeline"
         );
     }
 
@@ -3781,6 +4572,65 @@ mod tests {
             runtime.task.await.unwrap(),
             Err(SttError::QuotaExhausted { .. })
         ));
+    }
+
+    /// The provider ends a session it timed out waiting on (408) — a stall
+    /// of this connection, not a refusal of the lane. It used to end the
+    /// lane for the rest of the recording; a fresh connection resumes it.
+    /// A request the provider rejects as invalid (400) would be rejected
+    /// again, so that one still ends the lane.
+    #[tokio::test]
+    async fn a_provider_timeout_reconnects_and_an_invalid_request_does_not() {
+        async fn first_frame_after_error(error_code: u16, error_type: &str) -> SttStreamEvent {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+            let frame = json!({"error_code": error_code, "error_type": error_type}).to_string();
+            tokio::spawn(async move {
+                loop {
+                    let Ok((stream, _)) = listener.accept().await else {
+                        return;
+                    };
+                    let Ok(mut ws) = accept_async(stream).await else {
+                        continue;
+                    };
+                    let Some(Ok(Message::Text(_config))) = ws.next().await else {
+                        continue;
+                    };
+                    let _ = ws.send(Message::Text(frame.clone().into())).await;
+                }
+            });
+            let mut runtime = SonioxStreamClient::start_with_timeouts(
+                endpoint,
+                StaticLaneCredential::new("key"),
+                SttConfig::default(),
+                CancellationToken::new(),
+                0,
+                short_timeouts(),
+            );
+            assert_eq!(
+                runtime.event_rx.recv().await,
+                Some(SttStreamEvent::Connected)
+            );
+            runtime.event_rx.recv().await.unwrap()
+        }
+
+        assert!(
+            matches!(
+                first_frame_after_error(408, "request_timeout").await,
+                SttStreamEvent::Reconnecting { .. }
+            ),
+            "a provider timeout is an outage"
+        );
+        assert!(
+            matches!(
+                first_frame_after_error(400, "invalid_request").await,
+                SttStreamEvent::Error(SttStreamError::Provider(SttStreamProviderError {
+                    error_code: 400,
+                    ..
+                }))
+            ),
+            "an invalid request is final"
+        );
     }
 
     #[test]
