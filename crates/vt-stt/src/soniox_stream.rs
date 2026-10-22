@@ -38,6 +38,11 @@ const RECONNECT_MAX_DELAY_EXPONENT: u32 = 3;
 const CONTINUITY_WINDOW: Duration = Duration::from_secs(15);
 const FAST_RECONNECT_WINDOW: Duration = Duration::from_secs(5);
 const REPLAY_OVERLAP: Duration = Duration::from_secs(2);
+/// How many times real time a lane sends what queued during an outage too
+/// long to resume at once. Live audio keeps arriving at one times real time,
+/// so the backlog shrinks at one times real time: a fifteen-second outage is
+/// caught up in fifteen seconds.
+const CATCH_UP_SPEED: u32 = 2;
 const PCM_BYTES_PER_MILLISECOND: u64 = 32;
 
 // The macOS capture tap forwards approximately one 100 ms, 3,200-byte PCM
@@ -224,6 +229,9 @@ struct StreamTimeouts {
     /// How long before the cap the lane hands over whether or not a pause
     /// came. Never more than a tenth of the cap.
     handover_deadline_margin: Duration,
+    /// An outage up to this long replays and resumes at once; a longer one
+    /// catches up at a measured pace. See [`FAST_RECONNECT_WINDOW`].
+    fast_reconnect_window: Duration,
 }
 
 impl Default for StreamTimeouts {
@@ -240,6 +248,7 @@ impl Default for StreamTimeouts {
             immediate_rollover_min_session: IMMEDIATE_ROLLOVER_MIN_SESSION,
             handover_lead: HANDOVER_LEAD,
             handover_deadline_margin: HANDOVER_DEADLINE_MARGIN,
+            fast_reconnect_window: FAST_RECONNECT_WINDOW,
         }
     }
 }
@@ -1408,6 +1417,7 @@ async fn run_stream_session(
     *session_connected = true;
 
     let mut replay_suppression = ReplaySuppression::default();
+    let mut catch_up = CatchUp::default();
     // Whether this connection has carried any audio at all.
     let mut sent_audio = false;
     let clean_handover = reconnect_after_handover
@@ -1466,39 +1476,25 @@ async fn run_stream_session(
         let replay = recovery.prepare_replay(outage);
         replay_suppression =
             ReplaySuppression::after_replay(recovery.replay_duplicate_until_provider_ms());
-        let replay_interval = if outage > FAST_RECONNECT_WINDOW {
-            Some(Duration::from_millis(80))
+        if outage > timeouts.fast_reconnect_window && outage <= CONTINUITY_WINDOW {
+            // Too much to send at once. The replay and then the queue go out
+            // at a measured pace from the session loop below, which keeps
+            // reading words and controls between blocks.
+            catch_up.replay = replay.into_iter().map(|frame| frame.pcm).collect();
+            catch_up.active = true;
         } else {
-            None
-        };
-        for frame in replay {
-            send_message(
-                &mut write,
-                Message::Binary(frame.pcm.into()),
-                "Soniox stream recovery audio send",
-                timeouts.write,
-            )
-            .await?;
-            sent_audio = true;
-            if let Some(interval) = replay_interval {
-                time::sleep(interval).await;
-            }
-        }
-        if outage > FAST_RECONNECT_WINDOW && outage <= CONTINUITY_WINDOW {
-            while let Ok(pcm) = audio_rx.try_recv() {
-                let retained_pcm = pcm.clone();
+            for frame in replay {
                 send_message(
                     &mut write,
-                    Message::Binary(pcm.into()),
-                    "Soniox stream catch-up audio send",
+                    Message::Binary(frame.pcm.into()),
+                    "Soniox stream recovery audio send",
                     timeouts.write,
                 )
                 .await?;
-                recovery.record_sent(retained_pcm);
                 sent_audio = true;
-                time::sleep(Duration::from_millis(80)).await;
             }
-        } else if outage > CONTINUITY_WINDOW {
+        }
+        if outage > CONTINUITY_WINDOW {
             // The local encrypted journal remains authoritative for this
             // interval. Do not burst stale remote audio into the new,
             // explicitly non-contiguous realtime epoch — but every dropped
@@ -1519,7 +1515,14 @@ async fn run_stream_session(
         // lane had already accepted. Send it and close the utterance, as
         // the pause would have on a live connection; the capture accepts no
         // audio while paused, so nothing queued is from the pause itself.
-        sent_audio |= drain_queued_audio(&mut write, audio_rx, recovery, timeouts.write).await?;
+        sent_audio |= drain_queued_audio(
+            &mut write,
+            &mut catch_up,
+            audio_rx,
+            recovery,
+            timeouts.write,
+        )
+        .await?;
         if sent_audio {
             send_control(&mut write, "finalize", timeouts.write).await?;
         }
@@ -1545,9 +1548,17 @@ async fn run_stream_session(
     let mut waiting_for_pause = false;
     let mut handing_over = false;
     let mut quiet_blocks = QuietBlockDetector::default();
+    let mut catch_up_sleep = Box::pin(time::sleep(Duration::ZERO));
     if finish_requested {
         // Stop came while this lane was reconnecting; see `run_stream`.
-        sent_audio |= drain_queued_audio(&mut write, audio_rx, recovery, timeouts.write).await?;
+        sent_audio |= drain_queued_audio(
+            &mut write,
+            &mut catch_up,
+            audio_rx,
+            recovery,
+            timeouts.write,
+        )
+        .await?;
         if !sent_audio {
             send_event(event_tx, SttStreamEvent::Finished).await?;
             return Ok(());
@@ -1563,7 +1574,7 @@ async fn run_stream_session(
                 match control {
                     Some(SttStreamControl::Finalize) => {
                         sent_audio |=
-                            drain_queued_audio(&mut write, audio_rx, recovery, timeouts.write).await?;
+                            drain_queued_audio(&mut write, &mut catch_up, audio_rx, recovery, timeouts.write).await?;
                         send_control(&mut write, "finalize", timeouts.write).await?;
                     }
                     Some(SttStreamControl::Pause) => {
@@ -1572,7 +1583,7 @@ async fn run_stream_session(
                         // `audio_tx` before the utterance boundary, otherwise the
                         // biased control branch would finalize ahead of speech.
                         sent_audio |=
-                            drain_queued_audio(&mut write, audio_rx, recovery, timeouts.write).await?;
+                            drain_queued_audio(&mut write, &mut catch_up, audio_rx, recovery, timeouts.write).await?;
                         send_control(&mut write, "finalize", timeouts.write).await?;
                         *paused = true;
                         reset_sleep(&mut keepalive_sleep, timeouts.keepalive);
@@ -1595,7 +1606,7 @@ async fn run_stream_session(
                         // Drain accepted PCM first, then send the empty frame so
                         // Soniox tail tokens cover the complete local recording.
                         sent_audio |=
-                            drain_queued_audio(&mut write, audio_rx, recovery, timeouts.write).await?;
+                            drain_queued_audio(&mut write, &mut catch_up, audio_rx, recovery, timeouts.write).await?;
                         if !sent_audio {
                             // A connection that never carried audio has no
                             // tail to wait for, and the provider refuses to
@@ -1699,6 +1710,19 @@ async fn run_stream_session(
                             tracing::info!(
                                 "Soniox session cap is near; handing over at a pause"
                             );
+                            if catch_up.active {
+                                // What this connection was still catching
+                                // up on is older than the cut; it is this
+                                // connection's to finish.
+                                sent_audio |= drain_queued_audio(
+                                    &mut write,
+                                    &mut catch_up,
+                                    audio_rx,
+                                    recovery,
+                                    timeouts.write,
+                                )
+                                .await?;
+                            }
                             begin_drain(&mut write, &mut draining, &mut drain_sleep, timeouts)
                                 .await?;
                             handing_over = true;
@@ -1720,7 +1744,36 @@ async fn run_stream_session(
                     }
                 }
             }
-            audio = audio_rx.recv(), if audio_open && !draining => {
+            _ = &mut catch_up_sleep, if catch_up.active && !draining => {
+                let (pcm, counted) = match catch_up.replay.pop_front() {
+                    Some(pcm) => (Some(pcm), true),
+                    None => (audio_rx.try_recv().ok(), false),
+                };
+                let Some(pcm) = pcm else {
+                    // Caught up: from here audio is live again.
+                    catch_up.active = false;
+                    continue;
+                };
+                let block = Duration::from_millis(
+                    (pcm.len() as u64).div_ceil(PCM_BYTES_PER_MILLISECOND).max(1),
+                );
+                let retained_pcm = (!counted).then(|| pcm.clone());
+                send_message(
+                    &mut write,
+                    Message::Binary(pcm.into()),
+                    "Soniox stream catch-up audio send",
+                    timeouts.write,
+                )
+                .await?;
+                if let Some(retained_pcm) = retained_pcm {
+                    recovery.record_sent(retained_pcm);
+                }
+                sent_audio = true;
+                catch_up_sleep
+                    .as_mut()
+                    .reset(Instant::now() + block / CATCH_UP_SPEED);
+            }
+            audio = audio_rx.recv(), if audio_open && !draining && !catch_up.active => {
                 match audio {
                     Some(pcm) if !*paused => {
                         let quiet_block = quiet_blocks.observe(&pcm);
@@ -1785,6 +1838,16 @@ async fn run_stream_session(
                     tracing::info!(
                         "Soniox session cap is near and no pause came; handing over now"
                     );
+                    if catch_up.active {
+                        sent_audio |= drain_queued_audio(
+                            &mut write,
+                            &mut catch_up,
+                            audio_rx,
+                            recovery,
+                            timeouts.write,
+                        )
+                        .await?;
+                    }
                     begin_drain(&mut write, &mut draining, &mut drain_sleep, timeouts).await?;
                     handing_over = true;
                 } else if let Some(schedule) = handover {
@@ -1808,6 +1871,7 @@ enum ReconnectWait {
     Finish,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn wait_for_reconnect(
     delay: Duration,
     audio_rx: &mut mpsc::Receiver<Vec<u8>>,
@@ -2034,6 +2098,14 @@ where
     .await
 }
 
+/// What a lane still has to send after an outage too long to resume at once.
+#[derive(Default)]
+struct CatchUp {
+    active: bool,
+    /// Replayed blocks not yet sent; already counted on the timeline.
+    replay: VecDeque<Vec<u8>>,
+}
+
 /// Sends every queued block. Returns whether there was any.
 ///
 /// Every block goes onto the lane's own timeline and into the replay
@@ -2041,6 +2113,7 @@ where
 /// heard it, and its clock counts it.
 async fn drain_queued_audio<S>(
     write: &mut S,
+    catch_up: &mut CatchUp,
     audio_rx: &mut mpsc::Receiver<Vec<u8>>,
     recovery: &mut StreamRecoveryState,
     timeout: Duration,
@@ -2049,6 +2122,19 @@ where
     S: futures::Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
 {
     let mut sent = false;
+    // A replay still being caught up goes first: it is older than the queue,
+    // and it is already on the timeline.
+    catch_up.active = false;
+    while let Some(pcm) = catch_up.replay.pop_front() {
+        send_message(
+            write,
+            Message::Binary(pcm.into()),
+            "Soniox stream recovery audio send",
+            timeout,
+        )
+        .await?;
+        sent = true;
+    }
     while let Ok(pcm) = audio_rx.try_recv() {
         let retained_pcm = pcm.clone();
         send_message(
@@ -2181,6 +2267,7 @@ mod tests {
             immediate_rollover_min_session: Duration::ZERO,
             handover_lead: HANDOVER_LEAD,
             handover_deadline_margin: HANDOVER_DEADLINE_MARGIN,
+            fast_reconnect_window: FAST_RECONNECT_WINDOW,
         }
     }
 
@@ -2858,6 +2945,143 @@ mod tests {
             }
         }
         assert!(finished);
+    }
+
+    /// After an outage too long to resume at once, the lane catches up on
+    /// what queued. It used to do that block by block in a loop that read
+    /// nothing back: no caption appeared and Stop went unheard until the
+    /// whole backlog was sent, at a pace barely ahead of the live audio still
+    /// arriving — up to a minute for a fifteen-second outage. Words and
+    /// controls are now served while it catches up.
+    #[tokio::test]
+    async fn catching_up_after_an_outage_still_serves_words_and_stop() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel::<usize>();
+        tokio::spawn(async move {
+            let (first_stream, _) = listener.accept().await.unwrap();
+            let mut first_ws = accept_async(first_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = first_ws.next().await else {
+                panic!("first session configuration missing");
+            };
+            let mut accepted_chunks = 0;
+            while let Some(Ok(message)) = first_ws.next().await {
+                if matches!(message, Message::Binary(_)) {
+                    accepted_chunks += 1;
+                    if accepted_chunks == 50 {
+                        break;
+                    }
+                }
+            }
+            first_ws
+                .send(Message::Text(
+                    json!({"tokens": [], "final_audio_proc_ms": 5_000, "total_audio_proc_ms": 5_000})
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+            first_ws.close(None).await.unwrap();
+
+            let (second_stream, _) = listener.accept().await.unwrap();
+            let mut second_ws = accept_async(second_stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = second_ws.next().await else {
+                panic!("replacement session configuration missing");
+            };
+            let mut binaries = 0;
+            while let Some(Ok(message)) = second_ws.next().await {
+                match message {
+                    Message::Binary(_) => {
+                        binaries += 1;
+                        if binaries == 1 {
+                            second_ws
+                                .send(Message::Text(
+                                    json!({
+                                        "tokens": [{"text": "新", "is_final": true,
+                                                    "language": "zh",
+                                                    "start_ms": 2_100, "end_ms": 2_200}],
+                                        "final_audio_proc_ms": 2_200,
+                                        "total_audio_proc_ms": 2_200
+                                    })
+                                    .to_string()
+                                    .into(),
+                                ))
+                                .await
+                                .unwrap();
+                        }
+                    }
+                    Message::Text(text) if text.is_empty() => {
+                        let _ = seen_tx.send(binaries);
+                        second_ws
+                            .send(Message::Text(
+                                json!({"tokens": [], "finished": true}).to_string().into(),
+                            ))
+                            .await
+                            .unwrap();
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        let mut runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            SttConfig::default(),
+            CancellationToken::new(),
+            0,
+            StreamTimeouts {
+                // Any outage counts as a long one here.
+                fast_reconnect_window: Duration::from_millis(50),
+                ..slow_reconnect_timeouts()
+            },
+        );
+        for _ in 0..50 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+        wait_for_reconnecting(&mut runtime).await;
+        // Three seconds queue during the outage.
+        for _ in 0..30 {
+            runtime.push_pcm(vec![1_u8; 3_200]).await.unwrap();
+        }
+
+        let word_deadline = tokio::time::Instant::now() + Duration::from_millis(1_500);
+        let mut word = None;
+        while let Ok(Some(event)) =
+            tokio::time::timeout_at(word_deadline, runtime.event_rx.recv()).await
+        {
+            if let SttStreamEvent::Tokens(tokens) = event {
+                word = tokens.into_iter().next().map(|token| token.text);
+                break;
+            }
+        }
+        assert_eq!(
+            word.as_deref(),
+            Some("新"),
+            "the replacement's first word arrived while the lane caught up"
+        );
+
+        runtime
+            .send_control(SttStreamControl::Finish)
+            .await
+            .unwrap();
+        let stop_deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        let mut finished = false;
+        while let Ok(Some(event)) =
+            tokio::time::timeout_at(stop_deadline, runtime.event_rx.recv()).await
+        {
+            if event == SttStreamEvent::Finished {
+                finished = true;
+                break;
+            }
+        }
+        assert!(finished, "Stop was heard while catching up");
+        assert_eq!(
+            seen_rx.await.unwrap(),
+            50,
+            "the two replayed seconds and the three queued ones all reached the provider"
+        );
     }
 
     /// A replacement connection hears the last two seconds again. Every word
