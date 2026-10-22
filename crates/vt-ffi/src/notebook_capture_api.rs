@@ -377,6 +377,10 @@ pub struct FfiNotebookCaptureEvent {
     pub context_receipt: Option<FfiNotebookCaptureContextReceipt>,
     pub provider_error_type: Option<String>,
     pub provider_request_id: Option<String>,
+    /// The first revision this event accounts for when the mailbox merged
+    /// several into it; `None` for an event that is only itself. A client
+    /// that has applied `covers_from_revision - 1` has missed nothing.
+    pub covers_from_revision: Option<u64>,
 }
 
 /// Process-local health of one stream lane inside the active capture group.
@@ -1032,7 +1036,121 @@ fn event_from_run(
         context_receipt: parse_context_receipt(&run),
         provider_error_type: run.provider_error_type,
         provider_request_id: run.provider_request_id,
+        covers_from_revision: None,
     }
+}
+
+/// One event carrying everything `pending` and `next` carry, for a mailbox
+/// that still holds `pending` when `next` is published.
+///
+/// The mailbox used to overwrite: the rows of the overwritten delta were
+/// lost, and the client had to reload the whole session to find them — an
+/// operation linear in the recording, more frequent the busier the client
+/// already was. The rules are the client's own, so applying the merged event
+/// equals applying both in turn: rows by sequence, the higher revision wins
+/// and the later event a tie; a row removed and later re-sent stays in both
+/// lists (the client removes before it upserts); a withdrawn cue removes,
+/// and the best cue after it is re-added; a full snapshot supersedes all.
+fn coalesce_capture_events(
+    pending: FfiNotebookCaptureEvent,
+    mut next: FfiNotebookCaptureEvent,
+) -> FfiNotebookCaptureEvent {
+    let covers_from = pending
+        .covers_from_revision
+        .unwrap_or(pending.event_revision)
+        .min(next.covers_from_revision.unwrap_or(next.event_revision));
+    if next.is_full_snapshot {
+        next.covers_from_revision = Some(covers_from);
+        return next;
+    }
+    let mut rows: BTreeMap<u64, FfiNotebookCaptureUtterance> = BTreeMap::new();
+    let upsert = |rows: &mut BTreeMap<u64, FfiNotebookCaptureUtterance>,
+                  row: FfiNotebookCaptureUtterance| {
+        if rows
+            .get(&row.sequence)
+            .is_some_and(|current| current.revision > row.revision)
+        {
+            return;
+        }
+        rows.insert(row.sequence, row);
+    };
+    for row in pending.utterances {
+        upsert(&mut rows, row);
+    }
+    let mut removed: BTreeSet<u64> = if pending.is_full_snapshot {
+        BTreeSet::new()
+    } else {
+        pending.removed_sequences.into_iter().collect()
+    };
+    for sequence in &next.removed_sequences {
+        rows.remove(sequence);
+        if !pending.is_full_snapshot {
+            removed.insert(*sequence);
+        }
+    }
+    for row in std::mem::take(&mut next.utterances) {
+        upsert(&mut rows, row);
+    }
+
+    type CueKey = (u64, u64, String);
+    let mut withdrawals: HashMap<CueKey, FfiNotebookCaptureTranslationCue> = HashMap::new();
+    let mut best: HashMap<CueKey, FfiNotebookCaptureTranslationCue> = HashMap::new();
+    let mut order: Vec<CueKey> = Vec::new();
+    for cue in pending
+        .translation_cues
+        .into_iter()
+        .chain(std::mem::take(&mut next.translation_cues))
+    {
+        let key = (
+            cue.group_epoch,
+            cue.provider_sequence,
+            cue.target_language.clone(),
+        );
+        if !withdrawals.contains_key(&key) && !best.contains_key(&key) {
+            order.push(key.clone());
+        }
+        if cue.withdrawn {
+            best.remove(&key);
+            // A snapshot lists present cues only; there a withdrawal just
+            // takes the cue out.
+            if !pending.is_full_snapshot {
+                withdrawals.insert(key, cue);
+            }
+            continue;
+        }
+        if best
+            .get(&key)
+            .is_some_and(|current| current.revision > cue.revision)
+        {
+            continue;
+        }
+        best.insert(key, cue);
+    }
+    let mut cues = Vec::with_capacity(order.len());
+    for key in order {
+        if let Some(withdrawal) = withdrawals.remove(&key) {
+            cues.push(withdrawal);
+        }
+        if let Some(cue) = best.remove(&key) {
+            cues.push(cue);
+        }
+    }
+
+    next.utterances = rows.into_values().collect();
+    next.removed_sequences = removed.into_iter().collect();
+    next.translation_cues = cues;
+    next.is_full_snapshot = pending.is_full_snapshot;
+    if next.lane_health.is_empty() {
+        next.lane_health = pending.lane_health;
+    }
+    if next.context_receipt.is_none() {
+        next.context_receipt = pending.context_receipt;
+    }
+    next.realtime_loro_applied_revision = next
+        .realtime_loro_applied_revision
+        .max(pending.realtime_loro_applied_revision);
+    next.covers_from_revision = Some(covers_from);
+    next
 }
 
 #[derive(Debug, Default)]
@@ -4446,6 +4564,10 @@ struct PendingCaptureCallbacks {
     /// operator must not miss, so lane health is carried as current state on
     /// every outgoing event instead of as an edge.
     lane_health: Vec<FfiNotebookCaptureLaneHealth>,
+    /// A revision was handed out without being enqueued since the queued
+    /// event was. Merging across it would hide the gap the client relies
+    /// on to reload, so the next event replaces the queued one instead.
+    continuity_broken: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -4578,6 +4700,7 @@ impl CaptureCallbackSink {
         let event_revision = self.mailbox.next_revision.fetch_add(1, Ordering::Relaxed);
         if self.mailbox.closed.load(Ordering::Acquire) {
             tracing::warn!("Notebook capture callback dispatcher is closed");
+            pending.continuity_broken = true;
             let mut direct = event;
             direct.event_revision = event_revision;
             return direct;
@@ -4654,6 +4777,7 @@ impl CaptureCallbackSink {
                     session_id = %event.session_id,
                     "capture callback refresh found no durable run; stale event was not enqueued"
                 );
+                pending.continuity_broken = true;
                 let mut direct = event;
                 direct.event_revision = event_revision;
                 return direct;
@@ -4664,6 +4788,7 @@ impl CaptureCallbackSink {
                     error = %error,
                     "capture callback refresh failed; stale event was not enqueued"
                 );
+                pending.continuity_broken = true;
                 let mut direct = event;
                 direct.event_revision = event_revision;
                 return direct;
@@ -4674,7 +4799,13 @@ impl CaptureCallbackSink {
         self.mailbox
             .last_enqueued_applied_revision
             .fetch_max(refreshed.realtime_loro_applied_revision, Ordering::Release);
-        pending.event = Some(refreshed.clone());
+        let continuity_broken = std::mem::take(&mut pending.continuity_broken);
+        pending.event = Some(match pending.event.take() {
+            Some(queued) if !continuity_broken && queued.session_id == refreshed.session_id => {
+                coalesce_capture_events(queued, refreshed.clone())
+            }
+            _ => refreshed.clone(),
+        });
         drop(pending);
         self.mailbox.wake.notify_one();
         refreshed
@@ -16406,6 +16537,191 @@ pub(crate) mod tests {
             .iter()
             .any(|lane| lane.target_language.as_deref() == Some("th") && lane.state == "failed"));
         drop(rx);
+    }
+
+    fn coalescing_row(sequence: u64, revision: u64) -> FfiNotebookCaptureUtterance {
+        FfiNotebookCaptureUtterance {
+            id: format!("utt-{sequence}"),
+            session_id: "coalesce".to_string(),
+            sequence,
+            revision,
+            session_speaker_id: None,
+            source_language: "th".to_string(),
+            provisional_source_language: None,
+            source_text: format!("row {sequence} r{revision}"),
+            source_start_ms: Some(sequence * 1_000),
+            source_end_ms: Some(sequence * 1_000 + 800),
+            translated_language: None,
+            translated_text: None,
+            completion: "complete".to_string(),
+            alignment: "response_order".to_string(),
+            source_projection_revision: 0,
+            source_edit_revision: 0,
+            language_variants: Vec::new(),
+        }
+    }
+
+    fn coalescing_event(
+        revision: u64,
+        full: bool,
+        rows: Vec<FfiNotebookCaptureUtterance>,
+        removed: Vec<u64>,
+        cues: Vec<FfiNotebookCaptureTranslationCue>,
+    ) -> FfiNotebookCaptureEvent {
+        FfiNotebookCaptureEvent {
+            session_id: "coalesce".to_string(),
+            event_revision: revision,
+            is_full_snapshot: full,
+            capture_state: FfiNotebookCaptureState::Recording,
+            remote_health: FfiNotebookRemoteHealth::Live,
+            realtime_lag_ms: None,
+            projection_state: FfiNotebookProjectionState::Ready,
+            realtime_loro_applied_revision: revision,
+            mode: None,
+            language_a: None,
+            language_b: None,
+            left_language: None,
+            right_language: None,
+            selected_languages: Vec::new(),
+            common_caption_language: None,
+            privacy_level: None,
+            post_stop_async_state: "none".to_string(),
+            post_stop_async_projection_state: FfiNotebookAsyncProjectionState::None,
+            realtime_provider_id: None,
+            realtime_model_id: None,
+            post_stop_provider_id: None,
+            post_stop_model_id: None,
+            utterances: rows,
+            removed_sequences: removed,
+            translation_cues: cues,
+            lane_health: Vec::new(),
+            context_receipt: None,
+            provider_error_type: None,
+            provider_request_id: None,
+            covers_from_revision: None,
+        }
+    }
+
+    /// The client's rules for one event, as `reconcileUtterances` and
+    /// `reconcileTranslationCues` apply them.
+    #[derive(Default, PartialEq, Debug)]
+    struct CoalescingModel {
+        rows: BTreeMap<u64, (u64, String)>,
+        cues: BTreeMap<(u64, u64, String), (u64, String)>,
+    }
+
+    impl CoalescingModel {
+        fn apply(&mut self, event: &FfiNotebookCaptureEvent) {
+            if event.is_full_snapshot {
+                self.rows.clear();
+                self.cues.clear();
+            }
+            for sequence in &event.removed_sequences {
+                self.rows.remove(sequence);
+            }
+            for row in &event.utterances {
+                if self
+                    .rows
+                    .get(&row.sequence)
+                    .is_some_and(|(revision, _)| *revision > row.revision)
+                {
+                    continue;
+                }
+                self.rows
+                    .insert(row.sequence, (row.revision, row.source_text.clone()));
+            }
+            for cue in &event.translation_cues {
+                let key = (
+                    cue.group_epoch,
+                    cue.provider_sequence,
+                    cue.target_language.clone(),
+                );
+                if cue.withdrawn {
+                    self.cues.remove(&key);
+                    continue;
+                }
+                if self
+                    .cues
+                    .get(&key)
+                    .is_some_and(|(revision, _)| *revision > cue.revision)
+                {
+                    continue;
+                }
+                self.cues.insert(key, (cue.revision, cue.text.clone()));
+            }
+        }
+    }
+
+    #[test]
+    fn a_merged_mailbox_event_leaves_what_the_events_leave_one_by_one() {
+        let mut state: u64 = 31;
+        let mut next = |bound: u64| {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (state >> 33) % bound.max(1)
+        };
+        for trial in 0..300 {
+            let mut base = CoalescingModel::default();
+            let opening_rows = (0..next(8))
+                .map(|sequence| coalescing_row(sequence, 1))
+                .collect();
+            base.apply(&coalescing_event(
+                1,
+                true,
+                opening_rows,
+                Vec::new(),
+                Vec::new(),
+            ));
+            let mut one_by_one = CoalescingModel {
+                rows: base.rows.clone(),
+                cues: base.cues.clone(),
+            };
+            let mut queued: Option<FfiNotebookCaptureEvent> = None;
+            for revision in 2..(3 + next(6)) {
+                let rows: Vec<_> = (0..next(4))
+                    .map(|_| coalescing_row(next(12), next(5)))
+                    .collect();
+                let removed: Vec<u64> = (0..next(2))
+                    .map(|_| next(12))
+                    .filter(|sequence| rows.iter().all(|row| row.sequence != *sequence))
+                    .collect();
+                let cues = (0..next(3))
+                    .map(|_| FfiNotebookCaptureTranslationCue {
+                        target_language: "en".to_string(),
+                        group_epoch: 0,
+                        provider_sequence: next(4),
+                        source_language: "th".to_string(),
+                        source_start_ms: Some(0),
+                        source_end_ms: Some(1_000),
+                        text: format!("t{revision}"),
+                        completion: "partial".to_string(),
+                        withdrawn: next(4) == 0,
+                        revision: next(5),
+                    })
+                    .collect();
+                let event = coalescing_event(revision, next(7) == 0, rows, removed, cues);
+                one_by_one.apply(&event);
+                queued = Some(match queued.take() {
+                    Some(pending) => coalesce_capture_events(pending, event),
+                    None => event,
+                });
+            }
+            let merged_event = queued.expect("at least one event");
+            let mut merged = CoalescingModel {
+                rows: base.rows.clone(),
+                cues: base.cues.clone(),
+            };
+            merged.apply(&merged_event);
+            assert_eq!(merged, one_by_one, "trial {trial}");
+            assert_eq!(
+                merged_event
+                    .covers_from_revision
+                    .unwrap_or(merged_event.event_revision),
+                2,
+                "trial {trial}"
+            );
+        }
     }
 
     #[test]

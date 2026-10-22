@@ -5899,6 +5899,12 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
     public var contextReceipt: FfiNotebookCaptureContextReceipt?
     public var providerErrorType: String?
     public var providerRequestId: String?
+    /**
+     * The first revision this event accounts for when the mailbox merged
+     * several into it; `None` for an event that is only itself. A client
+     * that has applied `covers_from_revision - 1` has missed nothing.
+     */
+    public var coversFromRevision: UInt64?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -5963,7 +5969,12 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
          * per session, and the single-slot callback mailbox coalesces, so an
          * edge-triggered payload would be silently dropped exactly when it
          * mattered most. Empty means there is no running group.
-         */laneHealth: [FfiNotebookCaptureLaneHealth], contextReceipt: FfiNotebookCaptureContextReceipt?, providerErrorType: String?, providerRequestId: String?) {
+         */laneHealth: [FfiNotebookCaptureLaneHealth], contextReceipt: FfiNotebookCaptureContextReceipt?, providerErrorType: String?, providerRequestId: String?,
+        /**
+         * The first revision this event accounts for when the mailbox merged
+         * several into it; `None` for an event that is only itself. A client
+         * that has applied `covers_from_revision - 1` has missed nothing.
+         */coversFromRevision: UInt64?) {
         self.sessionId = sessionId
         self.eventRevision = eventRevision
         self.isFullSnapshot = isFullSnapshot
@@ -5993,6 +6004,7 @@ public struct FfiNotebookCaptureEvent: Equatable, Hashable {
         self.contextReceipt = contextReceipt
         self.providerErrorType = providerErrorType
         self.providerRequestId = providerRequestId
+        self.coversFromRevision = coversFromRevision
     }
 
 
@@ -6039,7 +6051,8 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
                 laneHealth: FfiConverterSequenceTypeFfiNotebookCaptureLaneHealth.read(from: &buf),
                 contextReceipt: FfiConverterOptionTypeFfiNotebookCaptureContextReceipt.read(from: &buf),
                 providerErrorType: FfiConverterOptionString.read(from: &buf),
-                providerRequestId: FfiConverterOptionString.read(from: &buf)
+                providerRequestId: FfiConverterOptionString.read(from: &buf),
+                coversFromRevision: FfiConverterOptionUInt64.read(from: &buf)
         )
     }
 
@@ -6073,6 +6086,7 @@ public struct FfiConverterTypeFfiNotebookCaptureEvent: FfiConverterRustBuffer {
         FfiConverterOptionTypeFfiNotebookCaptureContextReceipt.write(value.contextReceipt, into: &buf)
         FfiConverterOptionString.write(value.providerErrorType, into: &buf)
         FfiConverterOptionString.write(value.providerRequestId, into: &buf)
+        FfiConverterOptionUInt64.write(value.coversFromRevision, into: &buf)
     }
 }
 

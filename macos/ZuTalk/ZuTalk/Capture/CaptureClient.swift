@@ -995,7 +995,7 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             legacyLeftLanguage: value.leftLanguage,
             legacyRightLanguage: value.rightLanguage
         )
-        return NotebookCaptureEventDTO(
+        var event = NotebookCaptureEventDTO(
             sessionId: value.sessionId,
             eventRevision: value.eventRevision,
             isFullSnapshot: value.isFullSnapshot,
@@ -1062,6 +1062,8 @@ final class RustNotebookCaptureClient: NotebookCaptureClienting {
             commonCaptionLanguage: nil,
             realtimeLoroAppliedRevision: value.realtimeLoroAppliedRevision
         )
+        event.coversFromRevision = value.coversFromRevision
+        return event
     }
 
     static func map(_ value: FfiNotebookCaptureLivePreview) -> NotebookCaptureLivePreviewDTO {

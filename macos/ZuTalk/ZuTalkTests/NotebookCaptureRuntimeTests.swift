@@ -6526,7 +6526,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             laneHealth: [],
             contextReceipt: nil,
             providerErrorType: nil,
-            providerRequestId: "request-1"
+            providerRequestId: "request-1",
+            coversFromRevision: nil
         ))
 
         XCTAssertEqual(mapped.mode, .multilingualOneWay)
@@ -6573,7 +6574,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             laneHealth: [],
             contextReceipt: nil,
             providerErrorType: "profile_snapshot_corrupt",
-            providerRequestId: nil
+            providerRequestId: nil,
+            coversFromRevision: nil
         ))
         XCTAssertNil(corrupt.mode)
         XCTAssertNil(corrupt.languageA)
@@ -7241,7 +7243,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             laneHealth: [],
             contextReceipt: nil,
             providerErrorType: nil,
-            providerRequestId: nil
+            providerRequestId: nil,
+            coversFromRevision: nil
         )
 
         DispatchQueue.global(qos: .userInitiated).async {
