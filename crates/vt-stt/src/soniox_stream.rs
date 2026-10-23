@@ -627,9 +627,9 @@ struct LongUtteranceCloser {
 const LONG_UTTERANCE_MS: u64 = 10_000;
 /// Silence this long after it is the pause to close it at.
 const LONG_UTTERANCE_PAUSE_MS: u64 = 200;
-/// Audio sent after a finalize with neither `<fin>` nor `<end>` back, past
-/// which it is taken as lost. Soniox answers in about 0.4 s; once in a while
-/// it never does.
+/// Audio the provider has heard past a finalize with neither `<fin>` nor
+/// `<end>` back, after which the finalize is taken as lost. Soniox answers
+/// in about 0.4 s; once in a while it never does.
 const FINALIZE_ANSWER_TIMEOUT_MS: u64 = 1_500;
 
 impl LongUtteranceCloser {
@@ -666,19 +666,21 @@ impl LongUtteranceCloser {
         }
     }
 
-    /// A block ending at `end_ms` went out. Whether to finalize now.
-    fn sent(&mut self, quiet: bool, block_ms: u64, end_ms: u64) -> bool {
+    /// A block ending at `end_ms` went out, and the provider has heard the
+    /// audio up to `heard_ms`. Whether to finalize now.
+    fn sent(&mut self, quiet: bool, block_ms: u64, end_ms: u64, heard_ms: u64) -> bool {
         if quiet {
             self.quiet_ms = self.quiet_ms.saturating_add(block_ms);
         } else {
             self.quiet_ms = 0;
             self.voiced_until_ms = end_ms;
         }
-        // An answer this overdue is not coming. Waiting for it held every
-        // later pause back until the provider's own next boundary, a minute
-        // away at times.
+        // The provider heard well past the finalize and did not answer: the
+        // answer is not coming. Waiting for it held every later pause back
+        // until the provider's own next boundary, a minute away at times. A
+        // provider that has stopped hearing is only late, and is waited for.
         if self.pending
-            && end_ms.saturating_sub(self.pending_since_ms) >= FINALIZE_ANSWER_TIMEOUT_MS
+            && heard_ms.saturating_sub(self.pending_since_ms) >= FINALIZE_ANSWER_TIMEOUT_MS
         {
             self.pending = false;
         }
@@ -1978,7 +1980,12 @@ async fn run_stream_session(
                         sent_audio = true;
                         if config.close_long_utterances_at_pauses
                             && !waiting_for_pause
-                            && long_utterance.sent(quiet_block, block_ms, recovery.next_audio_ms)
+                            && long_utterance.sent(
+                                quiet_block,
+                                block_ms,
+                                recovery.next_audio_ms,
+                                recovery.acknowledged_ms,
+                            )
                         {
                             send_control(&mut write, "finalize", timeouts.write).await?;
                             recovery.note_finalize_sent();
@@ -3652,7 +3659,8 @@ mod tests {
         let mut send = |closer: &mut LongUtteranceCloser, quiet: bool, blocks: u64| {
             for _ in 0..blocks {
                 at += 100;
-                if closer.sent(quiet, 100, at) {
+                // The provider keeps up, 0.4 s behind.
+                if closer.sent(quiet, 100, at, at.saturating_sub(400)) {
                     fired.push(at);
                 }
             }
@@ -3679,6 +3687,33 @@ mod tests {
                 .all(|pair| pair[1] - pair[0] >= FINALIZE_ANSWER_TIMEOUT_MS),
             "and only once the answer is overdue: {fired:?}"
         );
+    }
+
+    /// A provider that has stopped hearing anything has not lost the
+    /// finalize: its answer comes when it catches up. Taking the silence
+    /// for a loss sent four finalizes in eight seconds into a stalled lane.
+    #[test]
+    fn a_stalled_provider_is_waited_for() {
+        let mut closer = LongUtteranceCloser::starting_at(0);
+        let mut fired = Vec::new();
+        let mut at = 0;
+        for (quiet, blocks) in [
+            (false, 105),
+            (true, 3),
+            (false, 30),
+            (true, 3),
+            (false, 30),
+            (true, 3),
+        ] {
+            for _ in 0..blocks {
+                at += 100;
+                // The provider stops hearing at 10 s.
+                if closer.sent(quiet, 100, at, at.min(10_000)) {
+                    fired.push(at);
+                }
+            }
+        }
+        assert_eq!(fired, vec![10_700]);
     }
 
     #[tokio::test]
