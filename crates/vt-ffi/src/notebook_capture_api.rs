@@ -5543,8 +5543,10 @@ impl RealtimeUtteranceAssembler {
                 let text = format!("{}{}", segment.source.committed, segment.source.pending);
                 vt_model::script::is_latin_text(&text)
                     && text.split_whitespace().count() < EMBEDDED_WORD_LIMIT
-                    // "Of course." already ended a sentence of its own.
-                    && !text.trim_end().ends_with(['.', '?', '!'])
+                    // "Of course." and a pause already ended a sentence of
+                    // its own; a word the provider gave a full stop and ran
+                    // straight on from (上次 heard as "Shots.") did not.
+                    && !(text.trim_end().ends_with(['.', '?', '!']) && paused)
             };
         // A Latin word or two inside a sentence in another script is part of
         // that sentence; a third in a row is the speaker changing language.
@@ -15690,8 +15692,8 @@ pub(crate) mod tests {
     fn an_english_reply_before_a_chinese_sentence_keeps_its_own_row() {
         let rows = rows_of(&[
             spoken(" Of", "en", "2", 401_720, 401_900),
-            spoken(" course.", "en", "2", 401_900, 402_300),
-            spoken(" 还有一个问题", "zh", "2", 402_480, 403_160),
+            spoken(" course.", "en", "2", 401_900, 402_140),
+            spoken(" 还有一个问题", "zh", "2", 402_440, 403_160),
         ]);
         assert_eq!(
             rows,
@@ -15700,6 +15702,17 @@ pub(crate) mod tests {
                 ("zh".into(), "还有一个问题".into())
             ]
         );
+    }
+
+    /// The provider heard 上次 as "Shots." and ran straight on into the rest
+    /// of the Chinese sentence: its full stop does not make it a sentence.
+    #[test]
+    fn a_misheard_word_with_a_full_stop_still_opens_the_sentence_after_it() {
+        let rows = rows_of(&[
+            spoken(" Shots.", "en", "2", 4_620, 4_920),
+            spoken("有人说太挤了。", "zh", "2", 4_920, 6_000),
+        ]);
+        assert_eq!(rows, vec![("zh".into(), "Shots.有人说太挤了。".into())]);
     }
 
     /// A Thai sentence may open with an English term; the row is Thai.
