@@ -627,6 +627,10 @@ struct LongUtteranceCloser {
 const LONG_UTTERANCE_MS: u64 = 10_000;
 /// Silence this long after it is the pause to close it at.
 const LONG_UTTERANCE_PAUSE_MS: u64 = 200;
+/// The most a single finalize adds to the provider's clock, with room to
+/// spare: Soniox adds about 0.1 s. An answer further past the oldest
+/// outstanding finalize than this belongs to a later one.
+const FINALIZE_ANSWER_STEP_MS: u64 = 1_000;
 /// Audio the provider has heard past a finalize with neither `<fin>` nor
 /// `<end>` back, after which the finalize is taken as lost. Soniox answers
 /// in about 0.4 s; once in a while it never does.
@@ -922,14 +926,17 @@ impl StreamRecoveryState {
     /// it heard was the audio sent before that finalize; the rest is time it
     /// added.
     ///
-    /// The finalize answered is the latest one sent from audio the provider
-    /// had already heard. Earlier ones it left unanswered — Soniox now and
-    /// then answers with `<end>` instead, or not at all — are dropped rather
-    /// than paired with this answer, which would count the audio between
-    /// them as time the provider added.
+    /// The provider answers finalizes in order. Now and then it leaves one
+    /// unanswered — answering with `<end>` instead, or not at all — and an
+    /// answer this far past the oldest outstanding finalize is to a later
+    /// one: the oldest is dropped rather than paired with it, which would
+    /// count the audio between them as time the provider added.
     fn note_finalize_answered(&mut self, provider_total_ms: u64) {
         let heard_ms = provider_total_ms.saturating_sub(self.lead_at(provider_total_ms));
-        while self.finalize_marks.len() > 1 && self.finalize_marks[1] <= heard_ms {
+        while self.finalize_marks.len() > 1
+            && heard_ms.saturating_sub(self.finalize_marks[0]) > FINALIZE_ANSWER_STEP_MS
+            && self.finalize_marks[1] <= heard_ms
+        {
             self.finalize_marks.pop_front();
         }
         let Some(sent_ms) = self.finalize_marks.pop_front() else {
@@ -3744,6 +3751,25 @@ mod tests {
         late.note_finalize_answered(10_100);
         late.note_finalize_answered(20_200);
         assert_eq!(late.capture_ms(30_200), 30_000);
+    }
+
+    /// An auxiliary lane is sent two finalizes a few dozen milliseconds
+    /// apart when a canonical boundary arrives as an endpoint and a finalize
+    /// together. The provider answers both, in order, adding its time for
+    /// each; paired with the later finalize, the first answer used up the
+    /// second's and each such pair left the lane 0.1 s early.
+    #[test]
+    fn two_finalizes_close_together_are_answered_in_order() {
+        let mut recovery = StreamRecoveryState {
+            next_audio_ms: 10_000,
+            ..StreamRecoveryState::default()
+        };
+        recovery.note_finalize_sent();
+        recovery.next_audio_ms = 10_050;
+        recovery.note_finalize_sent();
+        recovery.note_finalize_answered(10_100);
+        recovery.note_finalize_answered(10_250);
+        assert_eq!(recovery.capture_ms(20_200), 20_000);
     }
 
     /// The provider left the closer's finalize unanswered and sent no
