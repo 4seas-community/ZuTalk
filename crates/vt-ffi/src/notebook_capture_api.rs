@@ -4388,24 +4388,31 @@ fn persist_assembled_utterances(
                 };
                 assembler.record_translation_persisted(&persisted.id, Some(language));
             } else if let Some(language) = update.translation_clear_language.as_deref() {
-                persisted = store
-                    .upsert_translation_variant(
-                        &update.utterance.session_id,
-                        update.utterance.sequence,
-                        language,
-                        None,
-                        UtteranceVariantState::Waiting,
-                        None,
-                    )
-                    .map_err(|error| {
-                        local_persistence_failure(
-                            &format!(
-                                "withdraw Soniox partial translation {}:{}:{language}",
-                                update.utterance.session_id, update.utterance.sequence
-                            ),
-                            error,
+                // The store already dropped a translation in the language the
+                // source has just turned into; withdrawing it again would be
+                // refused as a translation of a row into itself.
+                let dropped_with_relabel = normalized_optional_language(Some(language))
+                    == normalized_optional_language(Some(&persisted.source_language));
+                if !dropped_with_relabel {
+                    persisted = store
+                        .upsert_translation_variant(
+                            &update.utterance.session_id,
+                            update.utterance.sequence,
+                            language,
+                            None,
+                            UtteranceVariantState::Waiting,
+                            None,
                         )
-                    })?;
+                        .map_err(|error| {
+                            local_persistence_failure(
+                                &format!(
+                                    "withdraw Soniox partial translation {}:{}:{language}",
+                                    update.utterance.session_id, update.utterance.sequence
+                                ),
+                                error,
+                            )
+                        })?;
+                }
                 assembler.record_translation_persisted(&persisted.id, None);
             }
         }
@@ -5401,6 +5408,17 @@ impl RealtimeUtteranceAssembler {
             language
         };
         segment.source.push(token, language);
+        // A row that has become the language its translation is in has no
+        // translation yet: what it held put the row's first words into that
+        // language ("Shots?" heard as English and translated into Chinese,
+        // then the speaker went on in Chinese).
+        if token.is_final
+            && segment.translated.committed_language.is_some()
+            && segment.translated.committed_language.as_deref() == segment.stable_source_language()
+        {
+            segment.translated = LaneRevision::default();
+            segment.translation_dirty = true;
+        }
         if token.is_final {
             if provider_speaker.is_some() {
                 segment.committed_provider_speaker = provider_speaker;
@@ -13711,6 +13729,7 @@ pub(crate) mod tests {
             || {
                 lane_text(0, "zh").is_some_and(|text| text.contains("好的"))
                     && lane_text(0, "en").is_some_and(|text| text.contains("Okay"))
+                    && lane_text(1, "zh").is_some()
             },
         );
         assert_eq!(lane_text(0, "zh").as_deref(), Some("你好。好的。"));
@@ -16068,6 +16087,114 @@ pub(crate) mod tests {
         assert_eq!(
             kept[0].translated_text.as_deref(),
             Some("通常我们有这种阿拉伯语的说法。")
+        );
+    }
+
+    /// Replay failure, Chinese–English pair at second 8: the provider heard
+    /// "Shots?" in English and translated it into Chinese, then the same
+    /// speaker went on in Chinese 60 ms later. The row became that Chinese
+    /// sentence's, and the store dropped the Chinese "translation" when the
+    /// source turned Chinese; withdrawing it again was refused as a
+    /// translation in the source language, which ended the capture.
+    #[test]
+    fn a_row_that_turns_into_its_translations_language_keeps_transcribing() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let notebook = core.create_notebook(Some("Relabelled row".into())).unwrap();
+        let stored_profile = core
+            .notebook_capture_store
+            .get_or_create_profile(&notebook.id)
+            .unwrap();
+        let session = vt_store::SessionRecord {
+            id: "relabelled-row-session".into(),
+            title: "Relabelled row".into(),
+            session_type: "recording".into(),
+            status: "recording".into(),
+            duration_ms: 0,
+            created_at: "2001-01-03T00:00:00Z".into(),
+            deleted_at: None,
+        };
+        core.notebook_capture_store
+            .create_session_and_run(
+                &session,
+                &vt_store::notebook_capture_store::NewNotebookCaptureRun {
+                    id: "relabelled-row-run".into(),
+                    notebook_id: notebook.id,
+                    session_id: session.id.clone(),
+                    remote_health: RemoteHealth::Off,
+                    audio_journal_path: "/private/relabelled-row.journal".into(),
+                    audio_key_ref: "relabelled-row-key".into(),
+                    sample_rate: 16_000,
+                    sample_format: "s16".to_string(),
+                    channels: 1,
+                },
+                &stored_profile,
+            )
+            .unwrap();
+        claim_current_realtime_provider(&core.notebook_capture_store, &session.id);
+        let store = &core.notebook_capture_store;
+        let mut assembler = RealtimeUtteranceAssembler::new(session.id.clone(), &profile());
+
+        let heard_english = assembler.apply_tokens(&[
+            spoken(" Shots?", "en", "2", 4_620, 4_800),
+            attributed_token(
+                "开枪？",
+                SttStreamTranslationStatus::Translation,
+                Some("zh"),
+                Some("en"),
+                Some("2"),
+                true,
+            ),
+        ]);
+        persist_assembled_utterances(store, &mut assembler, heard_english, 0).unwrap();
+        assert_eq!(
+            store.list_utterances(&session.id).unwrap()[0]
+                .translated_text
+                .as_deref(),
+            Some("开枪？")
+        );
+
+        let went_on_in_chinese =
+            assembler.apply_tokens(&[spoken(" 有人说太挤了。", "zh", "2", 4_860, 5_940)]);
+        persist_assembled_utterances(store, &mut assembler, went_on_in_chinese, 0)
+            .expect("a row taking its translation's language must not end the capture");
+        let translating = assembler.apply_tokens(&[attributed_token(
+            " Someone",
+            SttStreamTranslationStatus::Translation,
+            Some("en"),
+            Some("zh"),
+            Some("2"),
+            false,
+        )]);
+        persist_assembled_utterances(store, &mut assembler, translating, 0)
+            .expect("its English translation must not end the capture");
+        let translated = assembler.apply_tokens(&[attributed_token(
+            " Someone said it was too crowded.",
+            SttStreamTranslationStatus::Translation,
+            Some("en"),
+            Some("zh"),
+            Some("2"),
+            true,
+        )]);
+        persist_assembled_utterances(store, &mut assembler, translated, 0)
+            .expect("its English translation must not end the capture either");
+        let rows = store.list_utterances(&session.id).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].source_language, "zh");
+        assert_eq!(rows[0].source_text.trim(), "Shots? 有人说太挤了。");
+        assert_eq!(
+            rows[0].translated_text.as_deref().map(str::trim),
+            Some("Someone said it was too crowded."),
+            "the Chinese row carries its English translation"
+        );
+        assert!(
+            rows[0]
+                .variants
+                .iter()
+                .all(|variant| variant.role == UtteranceVariantRole::Source
+                    || variant.language != "zh"),
+            "no Chinese translation on a Chinese row: {:?}",
+            rows[0].variants
         );
     }
 
