@@ -1,61 +1,37 @@
-# ZuTalk 0.7.10
+# ZuTalk 0.7.11
 
-Translations land on the right line, and captions keep going until you stop.
+Translations stay on the right line in Thai, Chinese and English, however long the meeting runs.
 
 ZuTalk requires macOS 12.5 or later.
 
-## While recording
+## While recording in three languages
 
-- **Captions no longer stop in the middle of a recording.** When the
-  translation service took back part of a sentence it had already sent,
-  the whole translation column for that line was emptied, and the moment
-  the line was finished ZuTalk stopped transcribing until the recording
-  was restarted. Only the part taken back is removed now, and
-  transcription carries on.
-- **Translations land on the line they belong to.** The translation of a
-  sentence no longer sticks to the line before it, a short "Okay" no
-  longer takes the translation of the sentence that follows, and a
-  translation that moves to a better line no longer makes its old line
-  disappear.
-- **A line heard in the wrong language is corrected.** When Chinese was
-  recognised as Thai, the Thai translation went missing and Chinese
-  appeared in the Thai column. ZuTalk now notices when a line's words are
-  not written in the language it was given and takes the language the
-  translation heard.
-- **Translations stay in time after a dropped connection.** Translations
-  no longer drift onto earlier lines after a reconnect, words are no
-  longer repeated where a connection was replaced, and after a long drop
-  the captions catch up at twice the speed of speech. A translation
-  service that times out reconnects instead of falling silent for the
-  rest of the recording.
-- **Nothing said is lost while ZuTalk reconnects.** Pausing or stopping
-  while a translation was reconnecting could drop the speech just before
-  it. It is now sent first.
-- **Lines no longer go missing or come back.** A line ZuTalk could not
-  read in time is fetched again during the recording instead of after it,
-  and a line the service took back no longer reappears.
-- **The subtitle window stops waiting in silence.** The "…" for a
-  translation that is not coming any more now clears, and a line whose
-  language was not identified stays in the column of the line before it.
-- **Speaker names appear during the recording**, and Copy is available
-  only once there is a line to copy.
+- **Translations no longer slide onto the next speaker's line.** Each
+  language's translation is timed on its own connection, and that timing
+  slipped a little later every time a sentence ended. After a few minutes of
+  quick back-and-forth, translations landed one line too late and some lines
+  were left with none. Every connection now keeps the same time.
+- **Short replies get their own translation.** A one-word answer such as
+  "Thanks." or "ครับ" no longer has its translation attached to a line two
+  rows back.
+- **No half-finished copy of a line.** A line such as "Of cours" no longer
+  stays above the finished "Of course." when the service ends a sentence
+  while it is still guessing the next words.
 
-## Stopping
+## In every language pair
 
-- **Stop no longer crashes when a translation does not answer.** And when
-  the service never confirms the last words, that stretch is kept as a gap
-  that is transcribed again after the recording, instead of being lost.
+- **Long speeches break at pauses.** A long passage, Thai above all, now
+  ends a line where the speaker pauses instead of running on for 25 seconds
+  and breaking mid-sentence, so its translations settle sooner.
+- **Words stay whole.** A word is no longer split across two lines, whether
+  the speaker label changes in the middle of it or the service sends an
+  English word in pieces. Thai text stays in the Thai column even when it
+  was labelled as another language, and an English word or two inside a Thai
+  or Chinese sentence, or a number, stays in that sentence.
 
-## Text
+## Translations
 
-- **Thai is searchable.** Words inside a Thai sentence are now found,
-  including in recordings made before this version.
-- **Thai ำ is written the standard way**, so Thai text copied out of
-  ZuTalk matches what you would type.
-- **No stray spaces in Chinese.** The spaces the service put after "。"
-  and "，" are gone.
-
-## Watching a nearby recording
-
-- **Choosing a language shows everything said in it**, not only what was
-  translated into it, and the same line no longer appears twice.
+- **No stray spaces in Chinese translated from English.**
+- **Thai translations no longer guess who is speaking.** The service ended
+  Thai sentences with ค่ะ or ครับ, choosing a gender for the speaker; ZuTalk
+  now leaves them out.
