@@ -1867,7 +1867,15 @@ async fn run_stream_session(
                             .iter()
                             .any(|token| token.text == "<end>" || token.text == "<fin>")
                         {
-                            long_utterance.boundary(recovery.next_audio_ms);
+                            // Where the provider ended it, not the audio sent
+                            // by the time it said so: a provider seconds
+                            // behind would otherwise add those seconds to the
+                            // next utterance before it could be closed.
+                            let ended_at = response
+                                .final_audio_proc_ms
+                                .map(|ms| recovery.capture_ms(ms).min(recovery.next_audio_ms))
+                                .unwrap_or(recovery.next_audio_ms);
+                            long_utterance.boundary(ended_at);
                         }
                         let reached_pause = waiting_for_pause
                             && response.tokens.iter().any(|token| token.text == "<end>");
@@ -3614,12 +3622,102 @@ mod tests {
             .unwrap()
     }
 
-    /// The lane whose rows the others follow closes a long utterance at the
-    /// speaker's next pause: provider endpointing waits for a longer silence
-    /// than people leave between sentences, so a monologue ran on to the
-    /// 25 s cap and was cut mid-sentence. The pause is the audio's own —
-    /// judged by the words the provider had sent so far, a word it had not
-    /// sent yet was taken for silence, and finalizing then lost it.
+    /// A provider running behind ends an utterance where it heard the
+    /// pause, seconds before the audio sent by the time its answer arrives.
+    /// Counting the next utterance from that later point let every row after
+    /// a slow answer run on seconds longer before it could be closed.
+    #[tokio::test]
+    async fn a_long_utterance_counts_from_where_the_provider_ended_the_last() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("ws://{}", listener.local_addr().unwrap());
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel::<Option<usize>>();
+        let (answered_tx, answered_rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = accept_async(stream).await.unwrap();
+            let Some(Ok(Message::Text(_config))) = ws.next().await else {
+                panic!("configuration missing");
+            };
+            let mut blocks = 0;
+            let mut finalized_after = None;
+            let mut answered_tx = Some(answered_tx);
+            while let Some(Ok(message)) = ws.next().await {
+                match message {
+                    Message::Binary(_) => {
+                        blocks += 1;
+                        if blocks == 50 {
+                            // Two seconds behind: the utterance ended at 3 s.
+                            ws.send(Message::Text(
+                                json!({
+                                    "tokens": [{"text": "<end>", "is_final": true}],
+                                    "final_audio_proc_ms": 3_000,
+                                    "total_audio_proc_ms": 3_000
+                                })
+                                .to_string()
+                                .into(),
+                            ))
+                            .await
+                            .unwrap();
+                            if let Some(tx) = answered_tx.take() {
+                                let _ = tx.send(());
+                            }
+                        }
+                        if blocks == 141 {
+                            break;
+                        }
+                    }
+                    Message::Text(text) if text.contains("finalize") => {
+                        finalized_after.get_or_insert(blocks);
+                    }
+                    _ => {}
+                }
+            }
+            let _ = seen_tx.send(finalized_after);
+        });
+        let config = SttConfig {
+            close_long_utterances_at_pauses: true,
+            ..SttConfig::default()
+        };
+        let runtime = SonioxStreamClient::start_with_timeouts(
+            endpoint,
+            StaticLaneCredential::new("key"),
+            config,
+            CancellationToken::new(),
+            0,
+            short_timeouts(),
+        );
+        let loud: Vec<u8> = (0..1_600)
+            .flat_map(|index| {
+                (if index % 2 == 0 {
+                    8_000_i16
+                } else {
+                    -8_000_i16
+                })
+                .to_le_bytes()
+            })
+            .collect();
+        for _ in 0..50 {
+            runtime.push_pcm(loud.clone()).await.unwrap();
+        }
+        answered_rx.await.unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        for _ in 50..135 {
+            runtime.push_pcm(loud.clone()).await.unwrap();
+        }
+        for _ in 0..6 {
+            runtime.push_pcm(vec![0_u8; 3_200]).await.unwrap();
+        }
+        let finalized_after = tokio::time::timeout(Duration::from_secs(10), seen_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            finalized_after,
+            Some(137),
+            "ten seconds from 3 s, not from the 5 s sent when the answer came"
+        );
+    }
+
     /// Soniox now and then leaves a finalize unanswered. Paired first in,
     /// first out, the next answer was counted against the older finalize,
     /// and the ten seconds of audio between the two became time the
@@ -3716,6 +3814,12 @@ mod tests {
         assert_eq!(fired, vec![10_700]);
     }
 
+    /// The lane whose rows the others follow closes a long utterance at the
+    /// speaker's next pause: provider endpointing waits for a longer silence
+    /// than people leave between sentences, so a monologue ran on to the
+    /// 25 s cap and was cut mid-sentence. The pause is the audio's own —
+    /// judged by the words the provider had sent so far, a word it had not
+    /// sent yet was taken for silence, and finalizing then lost it.
     #[tokio::test]
     async fn a_long_utterance_closes_at_the_next_pause_in_the_audio() {
         assert_eq!(
