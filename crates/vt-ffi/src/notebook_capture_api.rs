@@ -5423,7 +5423,7 @@ impl RealtimeUtteranceAssembler {
         segment.source.push(token, language);
         // A row that has become the language its translation is in has no
         // translation yet: what it held put the row's first words into that
-        // language ("Shots?" heard as English and translated into Chinese,
+        // language ("Shots" heard as English and translated into Chinese,
         // then the speaker went on in Chinese).
         if token.is_final
             && segment.translated.committed_language.is_some()
@@ -5543,6 +5543,8 @@ impl RealtimeUtteranceAssembler {
                 let text = format!("{}{}", segment.source.committed, segment.source.pending);
                 vt_model::script::is_latin_text(&text)
                     && text.split_whitespace().count() < EMBEDDED_WORD_LIMIT
+                    // "Of course." already ended a sentence of its own.
+                    && !text.trim_end().ends_with(['.', '?', '!'])
             };
         // A Latin word or two inside a sentence in another script is part of
         // that sentence; a third in a row is the speaker changing language.
@@ -5735,6 +5737,14 @@ impl RealtimeUtteranceAssembler {
             ));
             segment.source_dirty = true;
             segment.translation_dirty = true;
+        }
+        // A tail that does not match the row it trails is, at a provider
+        // boundary, speculation past that boundary like any pending-only
+        // segment: the live connection sends it again. Frozen as a row, it
+        // sat beside its own final words. A reconnect or stop still keeps it,
+        // since nothing will send it again.
+        if boundary == FinalizeBoundary::ProviderBoundary {
+            detached_pending.clear();
         }
         for (
             source,
@@ -15608,6 +15618,90 @@ pub(crate) mod tests {
         );
     }
 
+    /// Replay at 523.5 s of the full suite: the provider marked an endpoint
+    /// while "Of cours", under another speaker label than the Thai row it
+    /// trailed, was still speculative, then sent "Of course." final. The
+    /// tail was frozen as a row of its own; withdrawing it later left a
+    /// shell that an auxiliary lane's English filled in, beside the final
+    /// row — "Of cours" above "Of course.".
+    #[test]
+    fn an_endpoint_during_speculation_leaves_one_row() {
+        let mut three = profile();
+        three.capture_mode = CaptureMode::MultilingualOneWay;
+        three.selected_languages = vec!["th".into(), "zh".into(), "en".into()];
+        three.common_caption_language = Some("en".into());
+        let mut assembler = RealtimeUtteranceAssembler::new("speculation".into(), &three);
+        let pending = |text: &str, speaker: &str, start: u64| SttStreamToken {
+            is_final: false,
+            ..spoken(text, "en", speaker, start, start + 60)
+        };
+        let mut published = Vec::new();
+        let mut keep = |updates: Vec<AssembledRealtimeUtterance>| {
+            for update in updates {
+                published.push((
+                    update.utterance.sequence,
+                    update.utterance.source_text.trim().to_string(),
+                ));
+            }
+        };
+        keep(assembler.apply_tokens(&[spoken(
+            "อย่าลืมใส่ 3 ภาษานะคะ ไทย จีน และอังกฤษ",
+            "th",
+            "4",
+            518_360,
+            522_860,
+        )]));
+        keep(assembler.apply_tokens(&[pending(" Of", "4", 523_580)]));
+        keep(assembler.apply_tokens(&[
+            pending(" Of", "2", 523_520),
+            pending(" cours", "2", 523_700),
+        ]));
+        keep(assembler.finalize(FinalizeBoundary::ProviderBoundary));
+        keep(assembler.apply_tokens(&[
+            pending(" Of", "2", 523_520),
+            pending(" cours", "2", 523_700),
+            pending("e.", "2", 523_940),
+        ]));
+        keep(assembler.apply_tokens(&[
+            spoken(" Of", "en", "2", 523_520, 523_580),
+            spoken(" cours", "en", "2", 523_700, 523_760),
+            spoken("e.", "en", "2", 523_760, 523_820),
+        ]));
+        keep(assembler.finalize(FinalizeBoundary::ProviderBoundary));
+        assert!(
+            published.iter().all(|(_, text)| text != "Of cours"),
+            "a speculative tail was published as a row: {published:?}"
+        );
+        let last = published
+            .iter()
+            .rev()
+            .find(|(_, text)| !text.is_empty())
+            .unwrap();
+        assert_eq!(last.1, "Of course.");
+        assert_eq!(
+            last.0, 1,
+            "the final words take the next row: {published:?}"
+        );
+    }
+
+    /// "Of course." is a sentence of its own. A Chinese sentence after it
+    /// under the same speaker label is not opened by it.
+    #[test]
+    fn an_english_reply_before_a_chinese_sentence_keeps_its_own_row() {
+        let rows = rows_of(&[
+            spoken(" Of", "en", "2", 401_720, 401_900),
+            spoken(" course.", "en", "2", 401_900, 402_300),
+            spoken(" 还有一个问题", "zh", "2", 402_480, 403_160),
+        ]);
+        assert_eq!(
+            rows,
+            vec![
+                ("en".into(), "Of course.".into()),
+                ("zh".into(), "还有一个问题".into())
+            ]
+        );
+    }
+
     /// A Thai sentence may open with an English term; the row is Thai.
     #[test]
     fn a_thai_sentence_that_opens_with_an_english_term_is_one_thai_row() {
@@ -16224,7 +16318,7 @@ pub(crate) mod tests {
     }
 
     /// Replay failure, Chinese–English pair at second 8: the provider heard
-    /// "Shots?" in English and translated it into Chinese, then the same
+    /// "Shots" in English and translated it into Chinese, then the same
     /// speaker went on in Chinese 60 ms later. The row became that Chinese
     /// sentence's, and the store dropped the Chinese "translation" when the
     /// source turned Chinese; withdrawing it again was refused as a
@@ -16269,9 +16363,9 @@ pub(crate) mod tests {
         let mut assembler = RealtimeUtteranceAssembler::new(session.id.clone(), &profile());
 
         let heard_english = assembler.apply_tokens(&[
-            spoken(" Shots?", "en", "2", 4_620, 4_800),
+            spoken(" Shots", "en", "2", 4_620, 4_800),
             attributed_token(
-                "开枪？",
+                "开枪",
                 SttStreamTranslationStatus::Translation,
                 Some("zh"),
                 Some("en"),
@@ -16284,7 +16378,7 @@ pub(crate) mod tests {
             store.list_utterances(&session.id).unwrap()[0]
                 .translated_text
                 .as_deref(),
-            Some("开枪？")
+            Some("开枪")
         );
 
         let went_on_in_chinese =
@@ -16314,7 +16408,7 @@ pub(crate) mod tests {
         let rows = store.list_utterances(&session.id).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].source_language, "zh");
-        assert_eq!(rows[0].source_text.trim(), "Shots? 有人说太挤了。");
+        assert_eq!(rows[0].source_text.trim(), "Shots 有人说太挤了。");
         assert_eq!(
             rows[0].translated_text.as_deref().map(str::trim),
             Some("Someone said it was too crowded."),
