@@ -22,11 +22,11 @@ for line in open(sys.argv[1]):
     if "canonical" not in d:
         continue
     first_at = first_at or d["at"]
-    lane = "canonical" if d["canonical"] else d["target"]
+    lane = "canonical" if d["canonical"] else d.get("target")
     if d["kind"] == "finalized":
         finalizes[lane].append(d["at"])
     if d["kind"] == "progress":
-        progress[lane].append((d["at"], d["final_ms"]))
+        progress[lane].append((d["at"], d.get("final_ms")))
     if d["kind"] != "tokens":
         continue
     for t in d["tokens"]:
