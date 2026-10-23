@@ -619,12 +619,18 @@ struct LongUtteranceCloser {
     quiet_ms: u64,
     /// A finalize is out and not yet answered.
     pending: bool,
+    /// Where the audio stood when that finalize went out.
+    pending_since_ms: u64,
 }
 
 /// Speech this long since the last boundary is a long utterance.
 const LONG_UTTERANCE_MS: u64 = 10_000;
 /// Silence this long after it is the pause to close it at.
 const LONG_UTTERANCE_PAUSE_MS: u64 = 200;
+/// Audio sent after a finalize with neither `<fin>` nor `<end>` back, past
+/// which it is taken as lost. Soniox answers in about 0.4 s; once in a while
+/// it never does.
+const FINALIZE_ANSWER_TIMEOUT_MS: u64 = 1_500;
 
 impl LongUtteranceCloser {
     fn starting_at(at_ms: u64) -> Self {
@@ -641,6 +647,25 @@ impl LongUtteranceCloser {
         self.pending = false;
     }
 
+    /// Debug trace only: a long utterance has just reached a pause, but the
+    /// closer is not finalizing it — and why.
+    #[cfg(debug_assertions)]
+    fn held_at_pause(&self, block_ms: u64, waiting_for_pause: bool) -> Option<&'static str> {
+        let long = self.voiced_until_ms.saturating_sub(self.open_from_ms) >= LONG_UTTERANCE_MS;
+        let just_reached = self.quiet_ms >= LONG_UTTERANCE_PAUSE_MS
+            && self.quiet_ms.saturating_sub(block_ms) < LONG_UTTERANCE_PAUSE_MS;
+        if !long || !just_reached {
+            return None;
+        }
+        if waiting_for_pause {
+            Some("handover")
+        } else if self.pending {
+            Some("awaiting_answer")
+        } else {
+            None
+        }
+    }
+
     /// A block ending at `end_ms` went out. Whether to finalize now.
     fn sent(&mut self, quiet: bool, block_ms: u64, end_ms: u64) -> bool {
         if quiet {
@@ -649,11 +674,20 @@ impl LongUtteranceCloser {
             self.quiet_ms = 0;
             self.voiced_until_ms = end_ms;
         }
+        // An answer this overdue is not coming. Waiting for it held every
+        // later pause back until the provider's own next boundary, a minute
+        // away at times.
+        if self.pending
+            && end_ms.saturating_sub(self.pending_since_ms) >= FINALIZE_ANSWER_TIMEOUT_MS
+        {
+            self.pending = false;
+        }
         let long = self.voiced_until_ms.saturating_sub(self.open_from_ms) >= LONG_UTTERANCE_MS;
         if self.pending || !long || self.quiet_ms < LONG_UTTERANCE_PAUSE_MS {
             return false;
         }
         self.pending = true;
+        self.pending_since_ms = end_ms;
         true
     }
 }
@@ -885,7 +919,17 @@ impl StreamRecoveryState {
     /// The provider answered the oldest finalize at `provider_total_ms`. All
     /// it heard was the audio sent before that finalize; the rest is time it
     /// added.
+    ///
+    /// The finalize answered is the latest one sent from audio the provider
+    /// had already heard. Earlier ones it left unanswered — Soniox now and
+    /// then answers with `<end>` instead, or not at all — are dropped rather
+    /// than paired with this answer, which would count the audio between
+    /// them as time the provider added.
     fn note_finalize_answered(&mut self, provider_total_ms: u64) {
+        let heard_ms = provider_total_ms.saturating_sub(self.lead_at(provider_total_ms));
+        while self.finalize_marks.len() > 1 && self.finalize_marks[1] <= heard_ms {
+            self.finalize_marks.pop_front();
+        }
         let Some(sent_ms) = self.finalize_marks.pop_front() else {
             return;
         };
@@ -1636,6 +1680,13 @@ async fn run_stream_session(
         if sent_audio {
             send_control(&mut write, "finalize", timeouts.write).await?;
             recovery.note_finalize_sent();
+            #[cfg(debug_assertions)]
+            trace_finalize_sent(
+                config,
+                recovery,
+                "reconnect_replay",
+                &LongUtteranceCloser::default(),
+            );
         }
     }
     send_event(event_tx, SttStreamEvent::Connected).await?;
@@ -1689,6 +1740,8 @@ async fn run_stream_session(
                             drain_queued_audio(&mut write, &mut catch_up, audio_rx, recovery, timeouts.write).await?;
                         send_control(&mut write, "finalize", timeouts.write).await?;
                         recovery.note_finalize_sent();
+                        #[cfg(debug_assertions)]
+                        trace_finalize_sent(config, recovery, "control", &long_utterance);
                     }
                     Some(SttStreamControl::Pause) => {
                         // The FFI state lock prevents new pushes before Pause is
@@ -1699,6 +1752,8 @@ async fn run_stream_session(
                             drain_queued_audio(&mut write, &mut catch_up, audio_rx, recovery, timeouts.write).await?;
                         send_control(&mut write, "finalize", timeouts.write).await?;
                         recovery.note_finalize_sent();
+                        #[cfg(debug_assertions)]
+                        trace_finalize_sent(config, recovery, "pause", &long_utterance);
                         *paused = true;
                         reset_sleep(&mut keepalive_sleep, timeouts.keepalive);
                     }
@@ -1770,7 +1825,20 @@ async fn run_stream_session(
                         trace_provider_clock(config, recovery, &response);
                         if let Some(total_audio_proc_ms) = response.total_audio_proc_ms {
                             if response.tokens.iter().any(|token| token.text == "<fin>") {
+                                #[cfg(debug_assertions)]
+                                let oldest = recovery.finalize_marks.front().copied();
                                 recovery.note_finalize_answered(total_audio_proc_ms);
+                                #[cfg(debug_assertions)]
+                                write_lane_trace(
+                                    config,
+                                    serde_json::json!({
+                                        "kind": "finalize_answered",
+                                        "answered_mark": oldest,
+                                        "provider_total": total_audio_proc_ms,
+                                        "remaining": recovery.finalize_marks.len(),
+                                        "lead": recovery.lead_at(total_audio_proc_ms),
+                                    }),
+                                );
                             }
                             let final_audio_proc_ms = response.final_audio_proc_ms.unwrap_or(0);
                             let (acknowledged_ms, sent_lag_ms) =
@@ -1914,6 +1982,14 @@ async fn run_stream_session(
                         {
                             send_control(&mut write, "finalize", timeouts.write).await?;
                             recovery.note_finalize_sent();
+                            #[cfg(debug_assertions)]
+                            trace_finalize_sent(config, recovery, "long_utterance", &long_utterance);
+                        }
+                        #[cfg(debug_assertions)]
+                        if config.close_long_utterances_at_pauses {
+                            if let Some(why) = long_utterance.held_at_pause(block_ms, waiting_for_pause) {
+                                trace_closer_held(config, recovery, why, &long_utterance);
+                            }
                         }
                         if waiting_for_pause && quiet_block {
                             // The block just sent was quiet: a cut here falls
@@ -2233,14 +2309,10 @@ struct CatchUp {
     replay: VecDeque<Vec<u8>>,
 }
 
-/// Debug builds only: the provider's own clock next to the audio this lane
-/// sent, one JSON line per response, to the file `ZUTALK_LANE_TRACE` names.
+/// One line of the debug lane trace (`ZUTALK_LANE_TRACE`), stamped with the
+/// wall clock and the lane's translation target.
 #[cfg(debug_assertions)]
-fn trace_provider_clock(
-    config: &SttConfig,
-    recovery: &StreamRecoveryState,
-    response: &SonioxStreamResponse,
-) {
+fn write_lane_trace(config: &SttConfig, mut line: serde_json::Value) {
     use std::io::Write;
     static TRACE: std::sync::OnceLock<Option<std::sync::Mutex<std::fs::File>>> =
         std::sync::OnceLock::new();
@@ -2263,20 +2335,78 @@ fn trace_provider_clock(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|elapsed| elapsed.as_millis() as u64)
         .unwrap_or_default();
-    let line = serde_json::json!({
-        "at": at_ms,
-        "kind": "provider_clock",
-        "stream_target": target,
-        "origin": recovery.connection_origin_ms,
-        "sent": recovery.next_audio_ms,
-        "provider_total": response.total_audio_proc_ms,
-        "provider_final": response.final_audio_proc_ms,
-        "fin": response.tokens.iter().any(|token| token.text == "<fin>"),
-        "end": response.tokens.iter().any(|token| token.text == "<end>"),
-    });
+    line["at"] = at_ms.into();
+    line["stream_target"] = target.into();
     if let Ok(mut file) = file.lock() {
-        let _ = writeln!(file, "{line}");
+        // One write per line: two crates append to this file, and a line
+        // written in pieces interleaved with the other's.
+        let _ = file.write_all(format!("{line}\n").as_bytes());
     }
+}
+
+/// Debug builds only: the provider's own clock next to the audio this lane
+/// sent, one JSON line per response, to the file `ZUTALK_LANE_TRACE` names.
+#[cfg(debug_assertions)]
+fn trace_provider_clock(
+    config: &SttConfig,
+    recovery: &StreamRecoveryState,
+    response: &SonioxStreamResponse,
+) {
+    write_lane_trace(
+        config,
+        serde_json::json!({
+            "kind": "provider_clock",
+            "origin": recovery.connection_origin_ms,
+            "sent": recovery.next_audio_ms,
+            "provider_total": response.total_audio_proc_ms,
+            "provider_final": response.final_audio_proc_ms,
+            "fin": response.tokens.iter().any(|token| token.text == "<fin>"),
+            "end": response.tokens.iter().any(|token| token.text == "<end>"),
+        }),
+    );
+}
+
+/// A finalize this lane sent, and why. Paired with the `<fin>` answers in
+/// `provider_clock`, it shows which finalizes the provider left unanswered.
+#[cfg(debug_assertions)]
+fn trace_finalize_sent(
+    config: &SttConfig,
+    recovery: &StreamRecoveryState,
+    reason: &str,
+    closer: &LongUtteranceCloser,
+) {
+    write_lane_trace(
+        config,
+        serde_json::json!({
+            "kind": "finalize_sent",
+            "reason": reason,
+            "sent": recovery.next_audio_ms,
+            "unanswered": recovery.finalize_marks.len(),
+            "open_from": closer.open_from_ms,
+            "voiced_until": closer.voiced_until_ms,
+        }),
+    );
+}
+
+/// The closer saw a long utterance reach a pause but did not finalize.
+#[cfg(debug_assertions)]
+fn trace_closer_held(
+    config: &SttConfig,
+    recovery: &StreamRecoveryState,
+    why: &str,
+    closer: &LongUtteranceCloser,
+) {
+    write_lane_trace(
+        config,
+        serde_json::json!({
+            "kind": "closer_held",
+            "why": why,
+            "sent": recovery.next_audio_ms,
+            "unanswered": recovery.finalize_marks.len(),
+            "open_from": closer.open_from_ms,
+            "voiced_until": closer.voiced_until_ms,
+        }),
+    );
 }
 
 /// Sends every queued block. Returns whether there was any.
@@ -3483,6 +3613,74 @@ mod tests {
     /// 25 s cap and was cut mid-sentence. The pause is the audio's own —
     /// judged by the words the provider had sent so far, a word it had not
     /// sent yet was taken for silence, and finalizing then lost it.
+    /// Soniox now and then leaves a finalize unanswered. Paired first in,
+    /// first out, the next answer was counted against the older finalize,
+    /// and the ten seconds of audio between the two became time the
+    /// provider had added: every later position landed ten seconds early.
+    #[test]
+    fn an_unanswered_finalize_is_not_paired_with_a_later_answer() {
+        let mut recovery = StreamRecoveryState {
+            next_audio_ms: 10_000,
+            ..StreamRecoveryState::default()
+        };
+        recovery.note_finalize_sent();
+        recovery.next_audio_ms = 20_000;
+        recovery.note_finalize_sent();
+        recovery.note_finalize_answered(20_100);
+        assert_eq!(recovery.capture_ms(30_100), 30_000);
+        // A late answer to the first, after the second, changes nothing.
+        let mut late = StreamRecoveryState {
+            next_audio_ms: 10_000,
+            ..StreamRecoveryState::default()
+        };
+        late.note_finalize_sent();
+        late.next_audio_ms = 20_000;
+        late.note_finalize_sent();
+        late.note_finalize_answered(10_100);
+        late.note_finalize_answered(20_200);
+        assert_eq!(late.capture_ms(30_200), 30_000);
+    }
+
+    /// The provider left the closer's finalize unanswered and sent no
+    /// boundary for a minute. The closer waited for that answer the whole
+    /// time and closed nothing, so rows ran to twenty seconds and more.
+    #[test]
+    fn a_finalize_left_unanswered_does_not_hold_back_the_next() {
+        let mut closer = LongUtteranceCloser::starting_at(0);
+        let mut at = 0;
+        let mut fired = Vec::new();
+        let mut send = |closer: &mut LongUtteranceCloser, quiet: bool, blocks: u64| {
+            for _ in 0..blocks {
+                at += 100;
+                if closer.sent(quiet, 100, at) {
+                    fired.push(at);
+                }
+            }
+        };
+        send(&mut closer, false, 105);
+        send(&mut closer, true, 3);
+        // Speech with a breath every three seconds; no answer, no boundary.
+        for _ in 0..5 {
+            send(&mut closer, false, 30);
+            send(&mut closer, true, 3);
+        }
+        assert_eq!(
+            fired.first(),
+            Some(&10_700),
+            "the first pause after ten seconds"
+        );
+        assert!(
+            fired.len() >= 2,
+            "a pause after the unanswered finalize closes the row: {fired:?}"
+        );
+        assert!(
+            fired
+                .windows(2)
+                .all(|pair| pair[1] - pair[0] >= FINALIZE_ANSWER_TIMEOUT_MS),
+            "and only once the answer is overdue: {fired:?}"
+        );
+    }
+
     #[tokio::test]
     async fn a_long_utterance_closes_at_the_next_pause_in_the_audio() {
         assert_eq!(

@@ -3455,7 +3455,9 @@ fn trace_lane_event(descriptor: &RemoteStreamLane, lane_index: usize, event: &St
                 "canonical": descriptor.canonical, "kind": "progress", "final_ms": final_audio_proc_ms,
             });
             if let Ok(mut file) = file.lock() {
-                let _ = writeln!(file, "{line}");
+                // One write per line: two crates append to this file, and a line
+                // written in pieces interleaved with the other's.
+                let _ = file.write_all(format!("{line}\n").as_bytes());
             }
             return;
         }
@@ -3466,7 +3468,9 @@ fn trace_lane_event(descriptor: &RemoteStreamLane, lane_index: usize, event: &St
         "canonical": descriptor.canonical, "kind": kind, "tokens": tokens,
     });
     if let Ok(mut file) = file.lock() {
-        let _ = writeln!(file, "{line}");
+        // One write per line: two crates append to this file, and a line
+        // written in pieces interleaved with the other's.
+        let _ = file.write_all(format!("{line}\n").as_bytes());
     }
 }
 
