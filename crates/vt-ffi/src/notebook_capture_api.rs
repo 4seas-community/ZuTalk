@@ -1267,6 +1267,18 @@ struct RealtimeSegmentRevision {
     /// Latin words the current speaker has put into this row since its own
     /// language last spoke — an English term inside a Thai sentence.
     embedded_words: usize,
+    /// Where those words began, should they turn out to open a sentence of
+    /// their own.
+    embedded_run: Option<EmbeddedRun>,
+}
+
+/// The Latin words at the end of a row in another script: where they start
+/// in the committed source, when, and where the row ended before them.
+#[derive(Debug, Clone, Copy)]
+struct EmbeddedRun {
+    byte_offset: usize,
+    start_ms: Option<u64>,
+    row_end_before_ms: Option<u64>,
 }
 
 impl RealtimeSegmentRevision {
@@ -1294,6 +1306,7 @@ impl RealtimeSegmentRevision {
             translation_dirty: false,
             source_timestamp_censused: false,
             embedded_words: 0,
+            embedded_run: None,
         }
     }
 
@@ -5548,17 +5561,53 @@ impl RealtimeUtteranceAssembler {
             (false, true) => !embedded && !opens_with_embedded_words,
             (false, false) => false,
         };
+        // A third Latin word in a row shows the speaker changed language;
+        // the two before it were the start of that sentence, not words in
+        // the old one ("…4 ทุ่ม If you" / "are joining…").
+        let carries_embedded_run = starts_turn
+            && language_changes
+            && !speaker_changes
+            && segment.embedded_words > 0
+            && vt_model::script::is_latin_text(&token.text)
+            && pause_ms.is_some_and(|pause| pause < EMBEDDED_WORD_PAUSE_MS);
         if starts_turn {
+            let carried = carries_embedded_run
+                .then(|| {
+                    let old = &mut self.segments[current];
+                    let run = old.embedded_run.take()?;
+                    let words = old.source.committed.split_off(run.byte_offset);
+                    old.committed_source_end_ms = run.row_end_before_ms;
+                    old.embedded_words = 0;
+                    Some((words, run.start_ms))
+                })
+                .flatten();
             self.segments[current].complete = true;
             self.segments[current].source_dirty = true;
             self.segments[current].translation_dirty = true;
-            return (self.create_segment(), false);
+            let next = self.create_segment();
+            if let Some((words, start_ms)) = carried {
+                let segment = &mut self.segments[next];
+                segment.source.committed = words;
+                segment.source.committed_language = language.map(str::to_string);
+                segment.committed_source_start_ms = start_ms;
+                segment.committed_source_end_ms = start_ms;
+                segment.committed_provider_speaker = provider_speaker.map(str::to_string);
+            }
+            return (next, false);
         }
         let segment = &mut self.segments[current];
         if embedded {
+            if segment.embedded_words == 0 {
+                segment.embedded_run = Some(EmbeddedRun {
+                    byte_offset: segment.source.committed.len(),
+                    start_ms: token.start_ms,
+                    row_end_before_ms: segment.committed_source_end_ms,
+                });
+            }
             segment.embedded_words += 1;
         } else if !language_changes {
             segment.embedded_words = 0;
+            segment.embedded_run = None;
         }
         (current, embedded)
     }
@@ -15532,6 +15581,30 @@ pub(crate) mod tests {
         assert!(
             rows.iter().any(|(_, text)| text.contains("Of course.")),
             "{rows:?}"
+        );
+    }
+
+    /// An English sentence right after a Thai one, under the same speaker
+    /// label: its first two words were taken for words inside the Thai
+    /// sentence and stayed on the Thai row when the third showed the
+    /// language had changed — "…4 ทุ่ม If you" / "are joining…".
+    #[test]
+    fn an_english_sentence_after_a_thai_one_keeps_its_first_words() {
+        let rows = rows_of(&[
+            spoken("เราเลยต้องปิดแอร์หลัง 4 ทุ่ม", "th", "1", 103_420, 109_700),
+            spoken(" I", "en", "1", 110_020, 110_080),
+            spoken("f", "en", "1", 110_080, 110_140),
+            spoken(" y", "en", "1", 110_140, 110_200),
+            spoken("ou", "en", "1", 110_200, 110_260),
+            spoken(" are", "en", "1", 110_320, 110_380),
+            spoken(" joining from Chiang Rai.", "en", "1", 110_500, 112_000),
+        ]);
+        assert_eq!(
+            rows,
+            vec![
+                ("th".into(), "เราเลยต้องปิดแอร์หลัง 4 ทุ่ม".into()),
+                ("en".into(), "If you are joining from Chiang Rai.".into()),
+            ]
         );
     }
 
