@@ -5495,6 +5495,27 @@ impl RealtimeUtteranceAssembler {
             _ => None,
         };
         let paused = pause_ms.is_none_or(|pause| pause >= SPEAKER_CHANGE_PAUSE_MS);
+        // The provider sends a word as several tokens and starts every new
+        // word with a space. A token that goes on from a Latin letter without
+        // one is the rest of that word ("Hotsp" + "ot"): it never starts a
+        // row and is not another word.
+        let is_latin_letter = |letter: char| {
+            letter.is_alphabetic()
+                && vt_model::script::is_latin_text(letter.encode_utf8(&mut [0; 4]))
+        };
+        let continues_word = token.text.chars().next().is_some_and(is_latin_letter)
+            && segment
+                .source
+                .committed
+                .chars()
+                .next_back()
+                .is_some_and(is_latin_letter)
+            // Under another speaker's label only with no pause: a label that
+            // flips inside the word.
+            && (!speaker_changes || !paused);
+        if continues_word {
+            return (current, segment.embedded_words > 0);
+        }
         // A sentence in another script may open with a Latin word or two: the
         // row becomes that sentence's, not a row of its own.
         let opens_with_embedded_words = language_changes
@@ -15472,6 +15493,45 @@ pub(crate) mod tests {
         assert_eq!(
             rows,
             vec![("th".into(), "เราเตรียมเต็นท์ไว้ 10 หลัง น่าจะพอ".into())]
+        );
+    }
+
+    /// The provider sends one English word as several tokens. Counting
+    /// tokens, "Hotsp" + "ot" was a third embedded word, and the word was
+    /// cut across two rows: "Hotsp" on one, "ot和移动…" on the next.
+    #[test]
+    fn an_english_word_in_several_tokens_is_one_word() {
+        let rows = rows_of(&[
+            spoken("就4个。", "zh", "2", 59_440, 59_980),
+            spoken(" Hot", "en", "2", 60_160, 60_400),
+            spoken("sp", "en", "2", 60_460, 60_520),
+            spoken("ot", "en", "2", 60_520, 60_700),
+            spoken("和移动", "en", "2", 60_700, 61_000),
+            spoken(" 有12个团队报名。", "zh", "2", 61_060, 62_400),
+        ]);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0].0, "zh");
+        assert!(rows[0].1.contains("Hotspot和移动"), "{rows:?}");
+    }
+
+    /// The same cut in a Thai row, with the speaker label flipping inside
+    /// the word: "Of cours" ended one row and "e." opened the next.
+    #[test]
+    fn a_row_never_starts_inside_a_word() {
+        let rows = rows_of(&[
+            spoken("อย่าลืมใส่ 3 ภาษานะคะ", "th", "1", 28_900, 33_700),
+            spoken(" Of", "en", "1", 34_140, 34_300),
+            spoken(" cours", "en", "1", 34_300, 34_600),
+            spoken("e.", "en", "2", 34_600, 34_800),
+            spoken(" เราเตรียมเต็นท์ไว้", "th", "1", 35_230, 36_500),
+        ]);
+        assert!(
+            rows.iter().all(|(_, text)| !text.starts_with("e.")),
+            "{rows:?}"
+        );
+        assert!(
+            rows.iter().any(|(_, text)| text.contains("Of course.")),
+            "{rows:?}"
         );
     }
 
