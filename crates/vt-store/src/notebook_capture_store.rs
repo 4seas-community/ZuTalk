@@ -4121,13 +4121,31 @@ impl NotebookCaptureStore {
                 )?;
             }
             Some(revision) => {
+                // Every live revision of a row lands here, several times a
+                // second while someone speaks. `session_speaker_id` is indexed,
+                // and SQLite rewrites an index whenever its column appears in
+                // SET, even with the same value. So the speaker is assigned on
+                // its own, only when it changes, and the revision below leaves
+                // the index alone. Measured: one WAL page per revision fewer.
+                tx.execute(
+                    "UPDATE realtime_utterances SET session_speaker_id = ?1
+                     WHERE session_id = ?2 AND sequence = ?3 AND revision = ?4
+                       AND session_speaker_id IS NOT ?1",
+                    params![
+                        input.session_speaker_id,
+                        input.session_id,
+                        u64_to_i64(input.sequence, "sequence")?,
+                        u64_to_i64(revision, "expected_revision")?,
+                    ],
+                )?;
                 let updated = tx.execute(
                     "UPDATE realtime_utterances
-                     SET session_speaker_id = ?1, source_language = ?2, source_text = ?3,
+                     SET source_language = ?2, source_text = ?3,
                          source_start_ms = ?4, source_end_ms = ?5, translated_language = ?6,
                          translated_text = ?7, revision = revision + 1, completion = ?8,
                          alignment = ?9, updated_at = ?10
-                     WHERE session_id = ?11 AND sequence = ?12 AND revision = ?13",
+                     WHERE session_id = ?11 AND sequence = ?12 AND revision = ?13
+                       AND session_speaker_id IS ?1",
                     params![
                         input.session_speaker_id,
                         source_language,
@@ -4193,27 +4211,53 @@ impl NotebookCaptureStore {
                 [&utterance_id],
             )?;
         } else {
-            tx.execute(
-                "DELETE FROM realtime_utterance_variants
-                 WHERE utterance_id = ?1
-                   AND (role = 'source' OR lower(trim(language)) = ?2)",
-                params![utterance_id, source_variant_language],
-            )?;
-            tx.execute(
-                "INSERT INTO realtime_utterance_variants
-                 (utterance_id, language, role, text, state, completion,
-                  revision, created_at, updated_at)
-                 VALUES (?1, ?2, 'source', ?3, 'ready', ?4, ?5, ?6, ?7)",
+            // Rewrite the source variant in place while its language holds.
+            // Deleting and re-inserting it touched the table and all three of
+            // its indexes on every partial revision: four of the six WAL pages
+            // a two-character Chinese revision cost, and most of a three-hour
+            // recording's 2 GB of writes. The unique language index means no
+            // other variant can hold this language, so the in-place update is
+            // exactly what the delete-and-insert produced. Only a language
+            // change takes the old path, which also evicts a translation now
+            // occupying the newly identified language.
+            let rewritten = tx.execute(
+                "UPDATE realtime_utterance_variants
+                 SET text = ?3, state = 'ready', completion = ?4, revision = ?5,
+                     updated_at = ?6, projection_revision = 0
+                 WHERE utterance_id = ?1 AND role = 'source'
+                   AND lower(trim(language)) = ?2",
                 params![
                     utterance_id,
                     source_variant_language,
                     input.source_text,
                     input.completion.as_str(),
                     revision,
-                    created_at,
                     now,
                 ],
             )?;
+            if rewritten == 0 {
+                tx.execute(
+                    "DELETE FROM realtime_utterance_variants
+                     WHERE utterance_id = ?1
+                       AND (role = 'source' OR lower(trim(language)) = ?2)",
+                    params![utterance_id, source_variant_language],
+                )?;
+                tx.execute(
+                    "INSERT INTO realtime_utterance_variants
+                     (utterance_id, language, role, text, state, completion,
+                      revision, created_at, updated_at)
+                     VALUES (?1, ?2, 'source', ?3, 'ready', ?4, ?5, ?6, ?7)",
+                    params![
+                        utterance_id,
+                        source_variant_language,
+                        input.source_text,
+                        input.completion.as_str(),
+                        revision,
+                        created_at,
+                        now,
+                    ],
+                )?;
+            }
         }
         if !preserve_final_translation_variant {
             if let (Some(language), Some(text)) = (
