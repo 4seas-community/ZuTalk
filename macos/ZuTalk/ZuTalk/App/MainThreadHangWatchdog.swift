@@ -15,13 +15,13 @@ import Foundation
 final class MainThreadHangWatchdog: @unchecked Sendable {
     nonisolated static let shared = MainThreadHangWatchdog()
 
-    private static let pingIntervalMs = 500
-    private static let hangThresholdMs = 2_000
-    private static let sampleSeconds = 3
+    nonisolated private static let pingIntervalMs = 500
+    nonisolated private static let hangThresholdMs = 2_000
+    nonisolated private static let sampleSeconds = 3
     /// One sample per ten minutes is plenty; a hang that repeats faster than
     /// that is already explained by the first.
-    private static let minimumSampleSpacingMs = 10 * 60 * 1_000
-    private static let keptSamples = 5
+    nonisolated private static let minimumSampleSpacingMs = 10 * 60 * 1_000
+    nonisolated private static let keptSamples = 5
 
     nonisolated private let lastAnswerMs = CaptureAtomicInt(0)
     nonisolated private let lock = NSLock()
