@@ -578,10 +578,99 @@ final class MicrophoneCaptureWorker: @unchecked Sendable {
     }
 }
 
+/// Decides, one watchdog look at a time, whether a stopped microphone engine
+/// is restarted, how much silence stands in for the audio it missed, and when
+/// to give up on it. Kept free of AVAudioEngine so its bookkeeping — the part
+/// that is easy to get wrong — is testable without a microphone.
+struct MicrophoneOutagePolicy: Equatable {
+    /// A running engine delivers a buffer every 100 ms; this long without
+    /// one means it stopped, whatever macOS did or did not report.
+    static let stallThresholdMs = 3_000
+    /// How long to keep trying to restart before ending the recording.
+    static let recoveryBudgetMs = 20_000
+    /// Longest silence written in place of missed audio. The push gate holds
+    /// about 25 seconds; filling more than that would overflow it.
+    static let maximumSilenceFillMs = 20_000
+    /// Restarts allowed within `restartWindowMs` before an engine that keeps
+    /// stopping is treated as a microphone that is gone.
+    static let maximumRestartsPerWindow = 6
+    static let restartWindowMs = 60_000
+
+    enum Decision: Equatable {
+        case healthy
+        /// In an outage, waiting for the next attempt.
+        case wait
+        /// Restart now, handing over this much silence first.
+        case restart(silenceMs: Int)
+        case giveUp(attempts: Int)
+    }
+
+    /// Uptime of the last buffer before the current outage; nil when healthy.
+    private(set) var outageSinceMs: Int?
+    private(set) var attempts = 0
+    private(set) var nextAttemptMs = 0
+    /// Silence already handed over in this outage. A restart that fails
+    /// after filling must not fill the same stretch again.
+    private(set) var filledMs = 0
+    private(set) var restartTimesMs: [Int] = []
+
+    var isInOutage: Bool { outageSinceMs != nil }
+
+    mutating func evaluate(nowMs: Int, lastBufferMs: Int, engineStopped: Bool) -> Decision {
+        if outageSinceMs == nil {
+            guard engineStopped || nowMs - lastBufferMs > Self.stallThresholdMs else {
+                return .healthy
+            }
+            outageSinceMs = lastBufferMs
+            attempts = 0
+            filledMs = 0
+            nextAttemptMs = nowMs
+        }
+        guard let since = outageSinceMs, nowMs >= nextAttemptMs else { return .wait }
+        restartTimesMs.removeAll { nowMs - $0 >= Self.restartWindowMs }
+        if restartTimesMs.count >= Self.maximumRestartsPerWindow
+            || nowMs - since > Self.recoveryBudgetMs
+        {
+            let made = attempts
+            outageSinceMs = nil
+            return .giveUp(attempts: made)
+        }
+        attempts += 1
+        let missed = min(max(0, nowMs - since), Self.maximumSilenceFillMs)
+        return .restart(silenceMs: max(0, missed - filledMs))
+    }
+
+    /// The engine runs again after a restart attempted at `nowMs`.
+    mutating func restartSucceeded(nowMs: Int) {
+        outageSinceMs = nil
+        restartTimesMs.append(nowMs)
+    }
+
+    /// The restart attempted at `nowMs` failed after handing over
+    /// `filledMs` of silence (possibly none).
+    mutating func restartFailed(nowMs: Int, filledMs filled: Int) {
+        filledMs += filled
+        nextAttemptMs = nowMs + min(4_000, 500 << min(attempts, 3))
+    }
+}
+
 /// Process-wide single microphone owner. Only one subscription and one
 /// AVAudioEngine tap may exist. The tap publishes fixed-size Float32 blocks to
 /// a preallocated SPSC ring; a generation-scoped worker owns all DSP and
 /// callback work.
+///
+/// The engine is not left to keep itself alive. macOS stops an
+/// `AVAudioEngine` whenever its hardware configuration changes — another app
+/// opening the microphone for a call, a device switching its format — and
+/// expects the app to start it again. Nothing did: in one recording another
+/// app took the microphone for a call and ZuTalk recorded nothing for the
+/// next 45 minutes while its clock kept running and every caption lane timed
+/// out on silence. So a subscription now has a watchdog. It restarts the engine when
+/// macOS reports the change, or when no buffer has arrived for a few seconds
+/// for any other reason; it puts silence in place of the audio the engine
+/// missed so the recording's timeline still matches the clock; and if the
+/// microphone cannot be brought back it ends the recording out loud, keeping
+/// everything recorded so far, instead of recording nothing.
 final class MicrophoneCapture {
     static let shared = MicrophoneCapture()
 
@@ -591,7 +680,11 @@ final class MicrophoneCapture {
 
     private struct ActiveSubscription {
         let token: SubscriptionToken
-        let worker: MicrophoneCaptureWorker
+        var worker: MicrophoneCaptureWorker
+        let inputDevice: AudioInputDevice
+        let onAudio: @Sendable (Data, UInt64) -> Void
+        let onOverflow: @Sendable () -> Void
+        let onUnavailable: @Sendable (String) -> Void
     }
 
     private static let logger = Logger(
@@ -608,7 +701,8 @@ final class MicrophoneCapture {
     /// a capture that has stopped working. Sized so the restored silence plus
     /// a full ring stays inside the push gate's own backlog.
     private static let maximumDroppedDuration: Double = 15
-
+    /// How often the watchdog looks at the engine.
+    private static let watchdogIntervalMs: UInt64 = 500
     private var engine = AVAudioEngine()
     /// Used only by lifecycle callers. The tap and worker never acquire it.
     private let lifecycleLock = NSLock()
@@ -616,6 +710,12 @@ final class MicrophoneCapture {
     private var isEngineRunning = false
     private var nextGeneration: UInt64 = 0
     private var activeSubscription: ActiveSubscription?
+    /// Uptime in milliseconds of the newest buffer, written by the tap.
+    private let lastBufferUptimeMs = CaptureAtomicInt(0)
+    private var configurationObserver: NSObjectProtocol?
+    private var watchdog: Task<Void, Never>?
+    private var configurationChanged = false
+    private var outagePolicy = MicrophoneOutagePolicy()
 
     private init() {}
 
@@ -631,10 +731,13 @@ final class MicrophoneCapture {
 
     /// Starts the one process-wide microphone subscription. Overflow is
     /// delivered exactly once from the worker after all earlier accepted slots
-    /// have been handed to `callback`.
+    /// have been handed to `callback`. `onUnavailable` is called on the main
+    /// actor, at most once, when the engine stopped and could not be started
+    /// again; the subscription stays registered until `unsubscribe`.
     func subscribe(
         inputDevice: AudioInputDevice,
         onOverflow: @escaping @Sendable () -> Void,
+        onUnavailable: @escaping @Sendable (String) -> Void = { _ in },
         _ callback: @escaping @Sendable (Data, UInt64) -> Void
     ) throws -> SubscriptionToken {
         lifecycleLock.lock()
@@ -644,6 +747,53 @@ final class MicrophoneCapture {
         }
 
         let startedAt = Date()
+        nextGeneration &+= 1
+        let generation = nextGeneration
+        let token = SubscriptionToken(id: UUID())
+        let worker: MicrophoneCaptureWorker
+        do {
+            worker = try startEngineLocked(
+                inputDevice: inputDevice,
+                generation: generation,
+                onAudio: callback,
+                onOverflow: onOverflow,
+                beforeStart: { _ in }
+            )
+        } catch {
+            lifecycleLock.unlock()
+            throw error
+        }
+        activeSubscription = ActiveSubscription(
+            token: token,
+            worker: worker,
+            inputDevice: inputDevice,
+            onAudio: callback,
+            onOverflow: onOverflow,
+            onUnavailable: onUnavailable
+        )
+        outagePolicy = MicrophoneOutagePolicy()
+        configurationChanged = false
+        lifecycleLock.unlock()
+        startWatchdog(token)
+
+        let elapsed = Int(Date().timeIntervalSince(startedAt) * 1_000)
+        Self.logger.info(
+            "startEngine: generation \(generation) started in \(elapsed)ms; resampling to \(Self.targetSampleRate)Hz"
+        )
+        return token
+    }
+
+    /// Builds a fresh engine bound to `inputDevice`, starts a worker for its
+    /// format, and runs it. `beforeStart` runs after the worker exists and
+    /// before the tap can deliver anything, so audio it hands over through
+    /// `onAudio` lands first. The lifecycle lock must be held.
+    private func startEngineLocked(
+        inputDevice: AudioInputDevice,
+        generation: UInt64,
+        onAudio: @escaping @Sendable (Data, UInt64) -> Void,
+        onOverflow: @escaping @Sendable () -> Void,
+        beforeStart: (Double) -> Void
+    ) throws -> MicrophoneCaptureWorker {
         // AVAudioEngine keeps the old input node's format after a hardware
         // route changes. A fresh engine guarantees the selected device is
         // bound before any format is read or render resources are prepared.
@@ -651,12 +801,7 @@ final class MicrophoneCapture {
         engine = AVAudioEngine()
         didPrewarm = false
         let inputNode = engine.inputNode
-        do {
-            try Self.bind(inputDevice, to: inputNode)
-        } catch {
-            lifecycleLock.unlock()
-            throw error
-        }
+        try Self.bind(inputDevice, to: inputNode)
         let inputFormat = inputNode.inputFormat(forBus: 0)
         let inputSampleRate = inputFormat.sampleRate
         guard inputSampleRate.isFinite,
@@ -664,7 +809,6 @@ final class MicrophoneCapture {
               inputFormat.channelCount > 0,
               inputFormat.commonFormat == .pcmFormatFloat32
         else {
-            lifecycleLock.unlock()
             throw CaptureError.formatError
         }
         let tapBufferFrames = Self.tapBufferFrames(inputSampleRate: inputSampleRate)
@@ -672,9 +816,6 @@ final class MicrophoneCapture {
             inputSampleRate: inputSampleRate
         )
 
-        nextGeneration &+= 1
-        let generation = nextGeneration
-        let token = SubscriptionToken(id: UUID())
         let worker = MicrophoneCaptureWorker(
             generation: generation,
             inputSampleRate: inputSampleRate,
@@ -683,27 +824,30 @@ final class MicrophoneCapture {
             maximumDroppedFrames: Int(inputSampleRate * Self.maximumDroppedDuration),
             onAudio: { workerGeneration, data, timestampNs in
                 guard workerGeneration == generation else { return }
-                callback(data, timestampNs)
+                onAudio(data, timestampNs)
             },
             onOverflow: { workerGeneration in
                 guard workerGeneration == generation else { return }
                 onOverflow()
             }
         )
+        beforeStart(inputSampleRate)
         worker.start()
-        activeSubscription = ActiveSubscription(token: token, worker: worker)
 
         Self.logger.info(
             "startEngine: input \(inputSampleRate)Hz \(inputFormat.channelCount)ch; worker generation \(generation)"
         )
+        let liveness = lastBufferUptimeMs
+        liveness.storeRelease(Self.uptimeMs())
         inputNode.installTap(
             onBus: 0,
             bufferSize: tapBufferFrames,
             format: inputFormat
-        ) { [worker] buffer, time in
+        ) { [worker, liveness] buffer, time in
             guard let channelData = buffer.floatChannelData else { return }
             let frameCount = Int(buffer.frameLength)
             guard frameCount > 0 else { return }
+            liveness.storeRelease(Self.uptimeMs())
             worker.enqueue(
                 channelData[0],
                 frameCount: frameCount,
@@ -720,19 +864,168 @@ final class MicrophoneCapture {
             try engine.start()
         } catch {
             inputNode.removeTap(onBus: 0)
-            activeSubscription = nil
             worker.closeAndWait()
-            lifecycleLock.unlock()
             throw error
         }
         isEngineRunning = true
-        lifecycleLock.unlock()
+        observeConfigurationChanges(of: engine)
+        return worker
+    }
 
-        let elapsed = Int(Date().timeIntervalSince(startedAt) * 1_000)
-        Self.logger.info(
-            "startEngine: generation \(generation) started in \(elapsed)ms; resampling to \(Self.targetSampleRate)Hz"
+    private func observeConfigurationChanges(of engine: AVAudioEngine) {
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+        }
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.noteConfigurationChange()
+            }
+        }
+    }
+
+    private func noteConfigurationChange() {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
+        guard activeSubscription != nil else { return }
+        // macOS posts this for its own changes and for ours (binding a
+        // device posts it too). Only a change that stopped the engine needs
+        // a restart; one that left it running is a format notice that the
+        // stall check still covers if buffers do stop.
+        if engine.isRunning == false {
+            configurationChanged = true
+            Self.logger.error("microphone engine stopped by a configuration change")
+        }
+    }
+
+    private func startWatchdog(_ token: SubscriptionToken) {
+        watchdog?.cancel()
+        watchdog = Task { @MainActor [weak self] in
+            while Task.isCancelled == false {
+                try? await MontereyTaskSleep.milliseconds(Self.watchdogIntervalMs)
+                guard Task.isCancelled == false, let self else { return }
+                self.checkEngine(token)
+            }
+        }
+    }
+
+    /// One watchdog look: restart a stopped engine, or give up on it.
+    private func checkEngine(_ token: SubscriptionToken) {
+        lifecycleLock.lock()
+        guard let active = activeSubscription, active.token == token else {
+            lifecycleLock.unlock()
+            return
+        }
+        let now = Self.uptimeMs()
+        let lastBuffer = lastBufferUptimeMs.loadAcquire()
+        let stopped = configurationChanged || engine.isRunning == false
+        let wasInOutage = outagePolicy.isInOutage
+        let decision = outagePolicy.evaluate(
+            nowMs: now,
+            lastBufferMs: lastBuffer,
+            engineStopped: stopped
         )
-        return token
+        switch decision {
+        case .healthy, .wait:
+            lifecycleLock.unlock()
+            return
+        case .giveUp(let attempts):
+            tearDownEngineLocked()
+            let overflowed = active.worker.closeAndWait() == .overflow
+            configurationChanged = false
+            let onUnavailable = active.onUnavailable
+            lifecycleLock.unlock()
+            watchdog?.cancel()
+            // An overflow already ended this recording through its own path.
+            guard overflowed == false else { return }
+            report("microphone could not be restarted (\(attempts) attempts); ending the recording")
+            onUnavailable(String(localized: "capture.microphone.stopped"))
+        case .restart(let silenceMs):
+            if wasInOutage == false {
+                let cause = configurationChanged
+                    ? "macOS changed the audio configuration and stopped the engine"
+                    : stopped ? "the engine stopped" : "no microphone audio for \(now - lastBuffer) ms"
+                report("microphone stopped: \(cause); restarting")
+            }
+            configurationChanged = false
+            // Tear the stopped engine down. The old worker drains what it took.
+            tearDownEngineLocked()
+            if active.worker.closeAndWait() == .overflow {
+                // The overflow path already owns this recording's ending.
+                outagePolicy = MicrophoneOutagePolicy()
+                lifecycleLock.unlock()
+                return
+            }
+            nextGeneration &+= 1
+            let generation = nextGeneration
+            var filled = 0
+            do {
+                let worker = try startEngineLocked(
+                    inputDevice: active.inputDevice,
+                    generation: generation,
+                    onAudio: active.onAudio,
+                    onOverflow: active.onOverflow,
+                    beforeStart: { _ in
+                        Self.fillSilence(milliseconds: silenceMs, into: active.onAudio)
+                        filled = silenceMs
+                    }
+                )
+                var restored = active
+                restored.worker = worker
+                activeSubscription = restored
+                let attempts = outagePolicy.attempts
+                let keptMs = outagePolicy.filledMs + filled
+                outagePolicy.restartSucceeded(nowMs: now)
+                lifecycleLock.unlock()
+                report(
+                    "microphone restarted (attempt \(attempts), generation \(generation)); \(keptMs) ms of missed audio kept as silence"
+                )
+            } catch {
+                isEngineRunning = false
+                outagePolicy.restartFailed(nowMs: now, filledMs: filled)
+                lifecycleLock.unlock()
+                Self.logger.error(
+                    "microphone restart failed: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
+
+    private func tearDownEngineLocked() {
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+            self.configurationObserver = nil
+        }
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        isEngineRunning = false
+    }
+
+    /// Hands `milliseconds` of 16 kHz mono silence to the pipeline in 100 ms
+    /// pieces, the size the push gate expects.
+    private static func fillSilence(
+        milliseconds: Int,
+        into onAudio: @Sendable (Data, UInt64) -> Void
+    ) {
+        var remaining = milliseconds * Int(targetSampleRate) / 1_000
+        let piece = Int(targetSampleRate * tapBufferDuration)
+        while remaining > 0 {
+            let frames = min(piece, remaining)
+            remaining -= frames
+            onAudio(Data(count: frames * MemoryLayout<Int16>.size), 0)
+        }
+    }
+
+    private func report(_ message: String) {
+        Self.logger.error("\(message, privacy: .public)")
+        ClientDiagnostics.record(category: "microphone", message)
+    }
+
+    nonisolated private static func uptimeMs() -> Int {
+        Int(DispatchTime.now().uptimeNanoseconds / 1_000_000)
     }
 
     private static func bind(
@@ -825,6 +1118,12 @@ final class MicrophoneCapture {
             return nil
         }
 
+        watchdog?.cancel()
+        watchdog = nil
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+            self.configurationObserver = nil
+        }
         if isEngineRunning {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
@@ -832,6 +1131,8 @@ final class MicrophoneCapture {
         }
         let terminalReason = active.worker.closeAndWait()
         activeSubscription = nil
+        outagePolicy = MicrophoneOutagePolicy()
+        configurationChanged = false
         lifecycleLock.unlock()
         Self.logger.info("stopEngine: generation \(active.worker.generation) drained and stopped")
         return terminalReason

@@ -137,6 +137,7 @@
 "settings.audio_input.active_locked" = "The input device is locked while a recording is active.";
 "settings.audio_input.error.query_format" = "Could not read audio devices (%1$@, status %2$@).";
 "settings.audio_input.error.no_device" = "No audio input device is available.";
+"capture.microphone.stopped" = "The microphone stopped and could not be started again — another app may have taken it, or it was disconnected. The recording has ended; everything recorded until then is kept.";
 "settings.audio_input.error.unavailable_format" = "The selected audio input “%@” is unavailable. Reconnect it or choose another device.";
 "settings.audio_input.error.audio_unit_format" = "ZuTalk could not open the audio input “%@”.";
 "settings.audio_input.error.binding_format" = "ZuTalk could not use the audio input “%1$@” (status %2$@).";

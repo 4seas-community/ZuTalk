@@ -416,6 +416,11 @@ void uniffi_vt_ffi_fn_method_zutalkcore_purge_session(uint64_t ptr, RustBuffer s
 RustBuffer uniffi_vt_ffi_fn_method_zutalkcore_query_sessions(uint64_t ptr, RustBuffer session_type, RustBuffer status, RustBuffer search_text, RustBuffer limit, RustBuffer offset, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_RECORD_CLIENT_DIAGNOSTIC
+#define UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_RECORD_CLIENT_DIAGNOSTIC
+void uniffi_vt_ffi_fn_method_zutalkcore_record_client_diagnostic(uint64_t ptr, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_RESTORE_SESSION
 #define UNIFFI_FFIDEF_UNIFFI_VT_FFI_FN_METHOD_ZUTALKCORE_RESTORE_SESSION
 void uniffi_vt_ffi_fn_method_zutalkcore_restore_session(uint64_t ptr, RustBuffer session_id, RustCallStatus *_Nonnull out_status
@@ -1547,6 +1552,12 @@ uint16_t uniffi_vt_ffi_checksum_method_zutalkcore_purge_session(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_QUERY_SESSIONS
 #define UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_QUERY_SESSIONS
 uint16_t uniffi_vt_ffi_checksum_method_zutalkcore_query_sessions(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_RECORD_CLIENT_DIAGNOSTIC
+#define UNIFFI_FFIDEF_UNIFFI_VT_FFI_CHECKSUM_METHOD_ZUTALKCORE_RECORD_CLIENT_DIAGNOSTIC
+uint16_t uniffi_vt_ffi_checksum_method_zutalkcore_record_client_diagnostic(void
 
 );
 #endif

@@ -884,6 +884,24 @@ impl ZuTalkCore {
 
 #[uniffi::export]
 impl ZuTalkCore {
+    /// Writes an app-side event into rust.log, beside the core's own lines.
+    ///
+    /// The app's own logger only reaches the system log, which keeps
+    /// info-level lines for minutes and needs `log show` to read. The two
+    /// failures this exists for were reconstructed from the system log a day
+    /// late: a microphone engine that macOS stopped and nobody restarted, and
+    /// a main thread that froze for twenty seconds without a trace. Both
+    /// belong in the file people already read. Callers pass plain facts —
+    /// never transcript text, audio, or credentials.
+    pub fn record_client_diagnostic(&self, category: String, message: String) {
+        let category: String = category.chars().take(64).collect();
+        let message: String = message.chars().take(16 * 1024).collect();
+        tracing::warn!(category = %category, "client: {message}");
+    }
+}
+
+#[uniffi::export]
+impl ZuTalkCore {
     /// Opens the one-shot durable task-worker gate after provider credentials
     /// have either been restored successfully or cleared fail-closed.  This is
     /// idempotent; it never exposes credential values.

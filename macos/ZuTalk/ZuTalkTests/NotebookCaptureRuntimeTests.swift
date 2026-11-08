@@ -10475,3 +10475,138 @@ private extension NotebookCaptureHistoryRunDTO {
         )
     }
 }
+
+/// The microphone outage policy, the part of engine recovery that does not
+/// need a microphone. macOS once stopped the engine when another app took
+/// the microphone, and nothing restarted it for 45 minutes.
+final class MicrophoneOutagePolicyTests: XCTestCase {
+    func testAHealthyEngineIsLeftAlone() {
+        var policy = MicrophoneOutagePolicy()
+        XCTAssertEqual(
+            policy.evaluate(nowMs: 10_000, lastBufferMs: 9_900, engineStopped: false),
+            .healthy
+        )
+        XCTAssertFalse(policy.isInOutage)
+    }
+
+    func testAnEngineMacOSStoppedIsRestartedAtOnceWithItsGapAsSilence() {
+        var policy = MicrophoneOutagePolicy()
+        // The configuration change landed 400 ms after the last buffer.
+        XCTAssertEqual(
+            policy.evaluate(nowMs: 10_400, lastBufferMs: 10_000, engineStopped: true),
+            .restart(silenceMs: 400)
+        )
+        policy.restartSucceeded(nowMs: 10_400)
+        XCTAssertFalse(policy.isInOutage)
+        XCTAssertEqual(
+            policy.evaluate(nowMs: 10_900, lastBufferMs: 10_850, engineStopped: false),
+            .healthy
+        )
+    }
+
+    func testBuffersThatStopWithoutANoticeAreCaughtAfterTheStallThreshold() {
+        var policy = MicrophoneOutagePolicy()
+        let last = 50_000
+        XCTAssertEqual(
+            policy.evaluate(
+                nowMs: last + MicrophoneOutagePolicy.stallThresholdMs,
+                lastBufferMs: last,
+                engineStopped: false
+            ),
+            .healthy
+        )
+        XCTAssertEqual(
+            policy.evaluate(
+                nowMs: last + MicrophoneOutagePolicy.stallThresholdMs + 500,
+                lastBufferMs: last,
+                engineStopped: false
+            ),
+            .restart(silenceMs: MicrophoneOutagePolicy.stallThresholdMs + 500)
+        )
+    }
+
+    func testAFailedRestartBacksOffAndNeverFillsTheSameStretchTwice() {
+        var policy = MicrophoneOutagePolicy()
+        let last = 100_000
+        XCTAssertEqual(
+            policy.evaluate(nowMs: last + 600, lastBufferMs: last, engineStopped: true),
+            .restart(silenceMs: 600)
+        )
+        // The silence was handed over, then the engine would not start.
+        policy.restartFailed(nowMs: last + 600, filledMs: 600)
+        XCTAssertEqual(
+            policy.evaluate(nowMs: last + 900, lastBufferMs: last, engineStopped: true),
+            .wait
+        )
+        // The next attempt fills only what has passed since.
+        XCTAssertEqual(
+            policy.evaluate(nowMs: last + 2_000, lastBufferMs: last, engineStopped: true),
+            .restart(silenceMs: 1_400)
+        )
+        // A failure before any silence was handed over leaves the debt.
+        policy.restartFailed(nowMs: last + 2_000, filledMs: 0)
+        XCTAssertEqual(
+            policy.evaluate(nowMs: last + 4_000, lastBufferMs: last, engineStopped: true),
+            .restart(silenceMs: 3_400)
+        )
+        XCTAssertEqual(policy.attempts, 3)
+    }
+
+    func testAMicrophoneThatCannotBeRestartedEndsTheRecordingWithinTheBudget() {
+        var policy = MicrophoneOutagePolicy()
+        let last = 200_000
+        var now = last + 500
+        var decision = policy.evaluate(nowMs: now, lastBufferMs: last, engineStopped: true)
+        var restarts = 0
+        while case .restart(let silenceMs) = decision {
+            restarts += 1
+            policy.restartFailed(nowMs: now, filledMs: silenceMs)
+            repeat {
+                now += 500
+                decision = policy.evaluate(nowMs: now, lastBufferMs: last, engineStopped: true)
+            } while decision == .wait
+        }
+        XCTAssertEqual(decision, .giveUp(attempts: restarts))
+        XCTAssertGreaterThan(restarts, 3)
+        XCTAssertLessThanOrEqual(now - last, MicrophoneOutagePolicy.recoveryBudgetMs + 4_500)
+        XCTAssertFalse(policy.isInOutage)
+        // The silence handed over never exceeds what the gate can hold.
+        XCTAssertLessThanOrEqual(policy.filledMs, MicrophoneOutagePolicy.maximumSilenceFillMs)
+    }
+
+    func testAnEngineThatKeepsStoppingIsTreatedAsGone() {
+        var policy = MicrophoneOutagePolicy()
+        var now = 300_000
+        for _ in 0..<MicrophoneOutagePolicy.maximumRestartsPerWindow {
+            XCTAssertEqual(
+                policy.evaluate(nowMs: now + 100, lastBufferMs: now, engineStopped: true),
+                .restart(silenceMs: 100)
+            )
+            policy.restartSucceeded(nowMs: now + 100)
+            now += 5_000
+        }
+        XCTAssertEqual(
+            policy.evaluate(nowMs: now + 100, lastBufferMs: now, engineStopped: true),
+            .giveUp(attempts: 0)
+        )
+    }
+
+    func testALongOutageNeverFillsMoreSilenceThanTheGateHolds() {
+        var policy = MicrophoneOutagePolicy()
+        XCTAssertEqual(
+            policy.evaluate(nowMs: 15_000, lastBufferMs: 0, engineStopped: true),
+            .restart(silenceMs: 15_000)
+        )
+        policy.restartFailed(nowMs: 15_000, filledMs: 15_000)
+        XCTAssertEqual(
+            policy.evaluate(nowMs: 19_500, lastBufferMs: 0, engineStopped: true),
+            .restart(silenceMs: 4_500)
+        )
+        policy.restartFailed(nowMs: 19_500, filledMs: 4_500)
+        // Past the budget: give up rather than fill beyond the cap.
+        XCTAssertEqual(
+            policy.evaluate(nowMs: 24_000, lastBufferMs: 0, engineStopped: true),
+            .giveUp(attempts: 2)
+        )
+    }
+}

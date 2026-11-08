@@ -137,6 +137,7 @@
 "settings.audio_input.active_locked" = "录音进行中，输入设备已锁定。";
 "settings.audio_input.error.query_format" = "无法读取音频设备（%1$@，状态 %2$@）。";
 "settings.audio_input.error.no_device" = "当前没有可用的音频输入设备。";
+"capture.microphone.stopped" = "麦克风停止了，且无法重新启动——可能被其他应用占用，或已断开。录音已结束，此前录下的内容都已保留。";
 "settings.audio_input.error.unavailable_format" = "所选音频输入“%@”不可用，请重新连接或选择其他设备。";
 "settings.audio_input.error.audio_unit_format" = "ZuTalk 无法打开音频输入“%@”。";
 "settings.audio_input.error.binding_format" = "ZuTalk 无法使用音频输入“%1$@”（状态 %2$@）。";

@@ -137,6 +137,7 @@
 "settings.audio_input.active_locked" = "อุปกรณ์อินพุตถูกล็อกขณะกำลังบันทึก";
 "settings.audio_input.error.query_format" = "ไม่สามารถอ่านอุปกรณ์เสียงได้ (%1$@, สถานะ %2$@)";
 "settings.audio_input.error.no_device" = "ไม่มีอุปกรณ์อินพุตเสียงที่ใช้งานได้";
+"capture.microphone.stopped" = "ไมโครโฟนหยุดทำงานและเริ่มใหม่ไม่ได้ — อาจมีแอปอื่นใช้งานอยู่ หรือถูกถอดการเชื่อมต่อ การบันทึกสิ้นสุดแล้ว สิ่งที่บันทึกไว้ก่อนหน้านั้นยังเก็บไว้ครบ";
 "settings.audio_input.error.unavailable_format" = "อุปกรณ์อินพุตเสียงที่เลือก “%@” ใช้งานไม่ได้ โปรดเชื่อมต่อใหม่หรือเลือกอุปกรณ์อื่น";
 "settings.audio_input.error.audio_unit_format" = "ZuTalk ไม่สามารถเปิดอินพุตเสียง “%@” ได้";
 "settings.audio_input.error.binding_format" = "ZuTalk ไม่สามารถใช้อินพุตเสียง “%1$@” ได้ (สถานะ %2$@)";

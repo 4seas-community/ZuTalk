@@ -137,6 +137,7 @@
 "settings.audio_input.active_locked" = "録音中は入力デバイスがロックされます。";
 "settings.audio_input.error.query_format" = "オーディオデバイスを読み込めませんでした（%1$@、ステータス %2$@）。";
 "settings.audio_input.error.no_device" = "利用できるオーディオ入力デバイスがありません。";
+"capture.microphone.stopped" = "マイクが停止し、再開できませんでした。ほかのアプリが使用中か、接続が切れた可能性があります。録音は終了しました。それまでに録音した内容はすべて保存されています。";
 "settings.audio_input.error.unavailable_format" = "選択したオーディオ入力「%@」は利用できません。再接続するか、別のデバイスを選択してください。";
 "settings.audio_input.error.audio_unit_format" = "ZuTalk はオーディオ入力「%@」を開けませんでした。";
 "settings.audio_input.error.binding_format" = "ZuTalk はオーディオ入力「%1$@」を使用できませんでした（ステータス %2$@）。";

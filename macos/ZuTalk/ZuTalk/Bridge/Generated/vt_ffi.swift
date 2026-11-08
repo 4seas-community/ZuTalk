@@ -677,6 +677,19 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func querySessions(sessionType: String?, status: String?, searchText: String?, limit: UInt32?, offset: UInt32?) throws  -> SessionQueryResultInfo
 
     /**
+     * Writes an app-side event into rust.log, beside the core's own lines.
+     *
+     * The app's own logger only reaches the system log, which keeps
+     * info-level lines for minutes and needs `log show` to read. The two
+     * failures this exists for were reconstructed from the system log a day
+     * late: a microphone engine that macOS stopped and nobody restarted, and
+     * a main thread that froze for twenty seconds without a trace. Both
+     * belong in the file people already read. Callers pass plain facts —
+     * never transcript text, audio, or credentials.
+     */
+    func recordClientDiagnostic(category: String, message: String)
+
+    /**
      * 从垃圾箱恢复 session。
      */
     func restoreSession(sessionId: String) throws
@@ -1785,6 +1798,26 @@ open func querySessions(sessionType: String?, status: String?, searchText: Strin
         FfiConverterOptionUInt32.lower(offset),$0
     )
 })
+}
+
+    /**
+     * Writes an app-side event into rust.log, beside the core's own lines.
+     *
+     * The app's own logger only reaches the system log, which keeps
+     * info-level lines for minutes and needs `log show` to read. The two
+     * failures this exists for were reconstructed from the system log a day
+     * late: a microphone engine that macOS stopped and nobody restarted, and
+     * a main thread that froze for twenty seconds without a trace. Both
+     * belong in the file people already read. Callers pass plain facts —
+     * never transcript text, audio, or credentials.
+     */
+open func recordClientDiagnostic(category: String, message: String)  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_record_client_diagnostic(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(category),
+        FfiConverterString.lower(message),$0
+    )
+}
 }
 
     /**
@@ -12104,6 +12137,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_query_sessions() != 8485) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_record_client_diagnostic() != 32061) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_restore_session() != 47738) {

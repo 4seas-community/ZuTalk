@@ -3114,6 +3114,18 @@ final class ActiveBilingualTranscriptStore: ObservableObject {
                         sessionId: sessionId
                     )
                 }
+            },
+            onUnavailable: { [weak self] message in
+                // The microphone stopped and could not be started again.
+                // End the recording plainly, keeping what was recorded,
+                // rather than run a clock over a silent capture.
+                Task { @MainActor [weak self] in
+                    await self?.handleLocalInterrupt(
+                        .localAudioUnavailable,
+                        message: message,
+                        sessionId: sessionId
+                    )
+                }
             }
         )
         audioToken = subscription

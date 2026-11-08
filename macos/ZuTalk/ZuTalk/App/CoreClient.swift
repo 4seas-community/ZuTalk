@@ -35,6 +35,7 @@ final class CoreClient {
 
             self.core = core
             self.initError = nil
+            ClientDiagnostics.install(core: core)
         } catch {
             self.core = nil
             self.initError = String(describing: error)

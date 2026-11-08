@@ -137,6 +137,7 @@
 "settings.audio_input.active_locked" = "녹음 중에는 입력 기기가 잠깁니다.";
 "settings.audio_input.error.query_format" = "오디오 기기를 읽을 수 없습니다(%1$@, 상태 %2$@).";
 "settings.audio_input.error.no_device" = "사용 가능한 오디오 입력 기기가 없습니다.";
+"capture.microphone.stopped" = "마이크가 멈췄고 다시 시작할 수 없었습니다. 다른 앱이 사용 중이거나 연결이 끊겼을 수 있습니다. 녹음이 종료되었으며, 그때까지 녹음된 내용은 모두 보존됩니다.";
 "settings.audio_input.error.unavailable_format" = "선택한 오디오 입력 ‘%@’을 사용할 수 없습니다. 다시 연결하거나 다른 기기를 선택하세요.";
 "settings.audio_input.error.audio_unit_format" = "ZuTalk에서 오디오 입력 ‘%@’을 열 수 없습니다.";
 "settings.audio_input.error.binding_format" = "ZuTalk에서 오디오 입력 ‘%1$@’을 사용할 수 없습니다(상태 %2$@).";

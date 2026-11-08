@@ -225,8 +225,29 @@ protocol NotebookCaptureAudioSourcing: AnyObject {
         onAudio: @escaping @Sendable (Data) -> Void,
         onOverflow: @escaping @Sendable () -> Void
     ) throws -> NotebookCaptureAudioToken
+    /// `onUnavailable` reports, on the main actor, a source that stopped and
+    /// could not be started again, with a message for the person recording.
+    func subscribe(
+        inputDevice: AudioInputDevice,
+        onAudio: @escaping @Sendable (Data) -> Void,
+        onOverflow: @escaping @Sendable () -> Void,
+        onUnavailable: @escaping @Sendable (String) -> Void
+    ) throws -> NotebookCaptureAudioToken
     @discardableResult
     func unsubscribe(_ token: NotebookCaptureAudioToken) -> NotebookCaptureInterruptReason?
+}
+
+extension NotebookCaptureAudioSourcing {
+    /// Sources that never stop on their own (replays, test doubles) need not
+    /// report it.
+    func subscribe(
+        inputDevice: AudioInputDevice,
+        onAudio: @escaping @Sendable (Data) -> Void,
+        onOverflow: @escaping @Sendable () -> Void,
+        onUnavailable: @escaping @Sendable (String) -> Void
+    ) throws -> NotebookCaptureAudioToken {
+        try subscribe(inputDevice: inputDevice, onAudio: onAudio, onOverflow: onOverflow)
+    }
 }
 
 @MainActor
@@ -280,6 +301,20 @@ final class LiveNotebookCaptureAudioSource: NotebookCaptureAudioSourcing {
         onAudio: @escaping @Sendable (Data) -> Void,
         onOverflow: @escaping @Sendable () -> Void
     ) throws -> NotebookCaptureAudioToken {
+        try subscribe(
+            inputDevice: inputDevice,
+            onAudio: onAudio,
+            onOverflow: onOverflow,
+            onUnavailable: { _ in }
+        )
+    }
+
+    func subscribe(
+        inputDevice: AudioInputDevice,
+        onAudio: @escaping @Sendable (Data) -> Void,
+        onOverflow: @escaping @Sendable () -> Void,
+        onUnavailable: @escaping @Sendable (String) -> Void
+    ) throws -> NotebookCaptureAudioToken {
         let sourceToken: SourceToken
         if inputDevice.isSystemAudio {
             sourceToken = .systemAudio(
@@ -293,6 +328,7 @@ final class LiveNotebookCaptureAudioSource: NotebookCaptureAudioSourcing {
                 try MicrophoneCapture.shared.subscribe(
                     inputDevice: inputDevice,
                     onOverflow: onOverflow,
+                    onUnavailable: onUnavailable,
                     { data, _ in onAudio(data) }
                 )
             )

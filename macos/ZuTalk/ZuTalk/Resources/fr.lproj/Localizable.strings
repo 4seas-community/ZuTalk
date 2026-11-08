@@ -137,6 +137,7 @@
 "settings.audio_input.active_locked" = "Le périphérique d’entrée est verrouillé pendant l’enregistrement.";
 "settings.audio_input.error.query_format" = "Impossible de lire les périphériques audio (%1$@, état %2$@).";
 "settings.audio_input.error.no_device" = "Aucun périphérique d’entrée audio n’est disponible.";
+"capture.microphone.stopped" = "Le micro s’est arrêté et n’a pas pu redémarrer — une autre app l’utilise peut-être, ou il a été déconnecté. L’enregistrement est terminé ; tout ce qui a été enregistré jusque-là est conservé.";
 "settings.audio_input.error.unavailable_format" = "L’entrée audio sélectionnée « %@ » est indisponible. Reconnectez-la ou choisissez-en une autre.";
 "settings.audio_input.error.audio_unit_format" = "ZuTalk n’a pas pu ouvrir l’entrée audio « %@ ».";
 "settings.audio_input.error.binding_format" = "ZuTalk n’a pas pu utiliser l’entrée audio « %1$@ » (état %2$@).";
