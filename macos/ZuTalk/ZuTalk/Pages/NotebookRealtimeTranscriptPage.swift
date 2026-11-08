@@ -800,8 +800,8 @@ private struct NotebookRealtimeHistoryView: View {
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedSessionID: String?
-    @State private var liveFollowTask: Task<Void, Never>?
-    @State private var liveFollowGeneration: UInt64 = 0
+    /// Not @State fields: see `LiveFollowTicket`.
+    @State private var liveFollow = LiveFollowTicket()
     @State private var isFollowingLive = true
 
     var body: some View {
@@ -929,8 +929,8 @@ private struct NotebookRealtimeHistoryView: View {
                                 let contentBottom = geometry.contentSize.height
                                     + geometry.contentInsets.bottom
                                 return NotebookRealtimeScrollMetrics(
-                                    offsetY: Double(geometry.contentOffset.y),
-                                    distanceFromBottom: Double(max(
+                                    offsetY: LiveScrollGeometry.whole(geometry.contentOffset.y),
+                                    distanceFromBottom: LiveScrollGeometry.whole(max(
                                         0,
                                         contentBottom - visibleBottom
                                     ))
@@ -1167,7 +1167,11 @@ private struct NotebookRealtimeHistoryView: View {
         if isFollowingLive, next == false {
             cancelLiveFollow()
         }
-        isFollowingLive = next
+        // Only a real change may invalidate the view; this runs on every
+        // scroll-geometry change, including the ones its own relayout causes.
+        if isFollowingLive != next {
+            isFollowingLive = next
+        }
     }
 
     private func resumeLiveFollow(using proxy: ScrollViewProxy) {
@@ -1189,33 +1193,32 @@ private struct NotebookRealtimeHistoryView: View {
     /// four times per second and never animate in-place growth; animating every
     /// partial competes with the text layout that just changed the row height.
     private func scheduleLiveFollow(using proxy: ScrollViewProxy) {
-        guard liveFollowTask == nil,
+        guard liveFollow.task == nil,
               isFollowingLive,
               let sessionID = activeSessionID,
               selectedSessionID == sessionID else { return }
-        liveFollowGeneration &+= 1
-        let generation = liveFollowGeneration
-        liveFollowTask = Task { @MainActor in
+        let ticket = liveFollow
+        ticket.generation &+= 1
+        let generation = ticket.generation
+        ticket.task = Task { @MainActor in
             try? await MontereyTaskSleep.milliseconds(250)
             guard Task.isCancelled == false,
-                  generation == liveFollowGeneration,
+                  generation == ticket.generation,
                   isFollowingLive,
                   selectedSessionID == sessionID,
                   activeSessionID == sessionID else {
-                if generation == liveFollowGeneration {
-                    liveFollowTask = nil
+                if generation == ticket.generation {
+                    ticket.task = nil
                 }
                 return
             }
             proxy.scrollTo(liveTailAnchor(sessionID), anchor: .bottom)
-            liveFollowTask = nil
+            ticket.task = nil
         }
     }
 
     private func cancelLiveFollow() {
-        liveFollowGeneration &+= 1
-        liveFollowTask?.cancel()
-        liveFollowTask = nil
+        liveFollow.cancel()
     }
 }
 

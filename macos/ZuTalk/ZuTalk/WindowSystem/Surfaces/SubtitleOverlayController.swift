@@ -1185,8 +1185,8 @@ struct SubtitleOverlayView: View {
     // it. Reopening the overlay rebuilt the scroll view, which is why closing
     // and reopening "fixed" it.
     @State private var isFollowingLive = true
-    @State private var liveFollowTask: Task<Void, Never>?
-    @State private var liveFollowGeneration: UInt64 = 0
+    /// Not @State fields: see `LiveFollowTicket`.
+    @State private var liveFollow = LiveFollowTicket()
     // The strip of canvas that re-summons the operator chrome once the panel
     // fills a display. It has to cover the chrome itself: a band shorter than
     // the controls means hovering the lower half of the bar reads as "pointer
@@ -1757,21 +1757,27 @@ struct SubtitleOverlayView: View {
                             let contentBottom = geometry.contentSize.height
                                 + geometry.contentInsets.bottom
                             return SubtitleOverlayScrollMetrics(
-                                offsetY: Double(geometry.contentOffset.y),
-                                distanceFromBottom: Double(max(
+                                offsetY: LiveScrollGeometry.whole(geometry.contentOffset.y),
+                                distanceFromBottom: LiveScrollGeometry.whole(max(
                                     0,
                                     contentBottom - visibleBottom
                                 )),
-                                contentHeight: Double(geometry.contentSize.height)
+                                contentHeight: LiveScrollGeometry.whole(geometry.contentSize.height)
                             )
                         } action: { previous, current in
-                            isFollowingLive = SubtitleOverlayFollowPolicy.reconciledFollowing(
+                            let next = SubtitleOverlayFollowPolicy.reconciledFollowing(
                                 wasFollowing: isFollowingLive,
                                 previous: previous,
                                 current: current
                             )
-                            if isFollowingLive == false {
+                            // This runs on every scroll-geometry change,
+                            // including those its own relayout causes; only a
+                            // real change may invalidate the view.
+                            if next == false {
                                 cancelLiveFollow()
+                            }
+                            if isFollowingLive != next {
+                                isFollowingLive = next
                             }
                         }
                 } else {
@@ -1813,29 +1819,28 @@ struct SubtitleOverlayView: View {
     /// four times per second and never animate in-place growth; animating every
     /// partial competes with the text layout that just changed the row height.
     private func scheduleLiveFollow(using proxy: ScrollViewProxy) {
-        guard liveFollowTask == nil, isFollowingLive else { return }
-        liveFollowGeneration &+= 1
-        let generation = liveFollowGeneration
-        liveFollowTask = Task { @MainActor in
+        guard liveFollow.task == nil, isFollowingLive else { return }
+        let ticket = liveFollow
+        ticket.generation &+= 1
+        let generation = ticket.generation
+        ticket.task = Task { @MainActor in
             try? await MontereyTaskSleep.milliseconds(250)
             guard Task.isCancelled == false,
-                  generation == liveFollowGeneration,
+                  generation == ticket.generation,
                   isFollowingLive
             else {
-                if generation == liveFollowGeneration {
-                    liveFollowTask = nil
+                if generation == ticket.generation {
+                    ticket.task = nil
                 }
                 return
             }
             proxy.scrollTo(Self.liveTailAnchorID, anchor: .bottom)
-            liveFollowTask = nil
+            ticket.task = nil
         }
     }
 
     private func cancelLiveFollow() {
-        liveFollowGeneration &+= 1
-        liveFollowTask?.cancel()
-        liveFollowTask = nil
+        liveFollow.cancel()
     }
 
     private var subtitleBody: some View {

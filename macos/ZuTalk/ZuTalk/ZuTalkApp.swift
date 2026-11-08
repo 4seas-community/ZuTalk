@@ -15,6 +15,10 @@ struct ZuTalkApp: App {
         // 必须在任何人碰数据目录或偏好设置之前 —— 包括下面这行崩溃诊断。
         LegacyIdentityMigration.runIfNeeded()
         CrashDiagnostics.install()
+        MainThreadHangWatchdog.shared.start(
+            logsDirectory: URL(fileURLWithPath: CoreClient.defaultDataDir(), isDirectory: true)
+                .appendingPathComponent("logs", isDirectory: true)
+        )
         WindowCoordinator.shared.installBaselineCatalog()
     }
 
