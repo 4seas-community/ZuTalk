@@ -22504,7 +22504,12 @@ pub(crate) mod tests {
             .get_run_for_session(&started.session_id)
             .unwrap()
             .unwrap();
+        // The audio is written into its chunk as it arrives. Moving that
+        // chunk aside and leaving a directory in its place makes Stop find
+        // the chunk gone; putting it back later is the audio a recovery finds.
         let chunk_path = vt_pipeline::session_audio_chunk_path(temp.path(), &started.session_id, 0);
+        let moved_chunk = chunk_path.with_extension("moved");
+        std::fs::rename(&chunk_path, &moved_chunk).unwrap();
         std::fs::create_dir(&chunk_path).unwrap();
 
         let error = core
@@ -22535,6 +22540,7 @@ pub(crate) mod tests {
             .is_empty());
 
         std::fs::remove_dir(&chunk_path).unwrap();
+        std::fs::rename(&moved_chunk, &chunk_path).unwrap();
         assert_journal_contains_recoverable_audio(&core, temp.path(), &interrupted);
         let next = core
             .start_notebook_capture_session(
@@ -22572,7 +22578,10 @@ pub(crate) mod tests {
                 .as_deref()
                 .expect("active capture has a recovery journal"),
         );
+        // See journal_stop_failure_interrupts_pending_async_and_retains_recoverable_audio.
         let chunk_path = vt_pipeline::session_audio_chunk_path(temp.path(), &started.session_id, 0);
+        let moved_chunk = chunk_path.with_extension("moved");
+        std::fs::rename(&chunk_path, &moved_chunk).unwrap();
         std::fs::create_dir(&chunk_path).unwrap();
 
         let db = rusqlite::Connection::open(temp.path().join("zutalk.db")).unwrap();
@@ -22641,6 +22650,7 @@ pub(crate) mod tests {
         db.execute_batch("DROP TRIGGER fail_stop_interruption_state;")
             .unwrap();
         std::fs::remove_dir(&chunk_path).unwrap();
+        std::fs::rename(&moved_chunk, &chunk_path).unwrap();
         let recovered_event = core
             .interrupt_notebook_capture_session(
                 started.session_id.clone(),
