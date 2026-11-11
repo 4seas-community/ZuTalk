@@ -179,6 +179,9 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
             // Denied mic permission surfaces as a mic.slash menu-bar icon that opens
             // System Settings — same gate the suppressed island showed, new home.
             MenuBarSuppressionCoordinator.shared.start()
+            // Lets recording surfaces say "no network" instead of a service
+            // error; see `NetworkReachability`.
+            NetworkReachability.shared.start()
             // Full-screen safety net: macOS hides the menu bar in full-screen apps,
             // which would leave the menu-bar pulsing icon invisible. This controller
             // presents a tiny `.fullScreenAuxiliary` REC pill at the top of the

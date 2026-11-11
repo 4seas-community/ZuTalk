@@ -1425,3 +1425,10 @@
 "backup.restore_here" = "この Mac に復元";
 "backup.restore_here_hint" = "コードを使わず、このコピーをこの Mac 自体のライブラリに統合します。すでにあるものはそのままです。";
 "backup.restore_failed" = "復元できませんでした";
+
+/* No network: said plainly instead of blaming a service. */
+"community_invite.offline" = "この Mac はインターネットに接続されていないため、招待サービスに接続できません。接続してからもう一度お試しください。";
+"network.offline.captions_start" = "この Mac はインターネットに接続されていないため、リアルタイム字幕を開始できません。先に接続するか、字幕をオフにして録音だけ行ってください。";
+"network.offline.record_hint" = "この Mac は現在オフラインです。リアルタイム字幕にはインターネットが必要です。字幕をオフにすれば録音だけできます。";
+"network.offline.short" = "ネットワークなし";
+"network.offline.recording_banner" = "この Mac はオフラインです。録音は続いています。オンラインに戻ると字幕は自動で再開しますが、オフラインだった部分には字幕が付かないことがあります。";

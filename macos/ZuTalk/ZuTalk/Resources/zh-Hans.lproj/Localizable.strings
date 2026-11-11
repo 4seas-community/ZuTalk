@@ -1425,3 +1425,10 @@
 "backup.restore_here" = "恢复到这台 Mac";
 "backup.restore_here_hint" = "不用恢复码，直接把这一份合并进这台 Mac 自己的资料库。已经有的不动。";
 "backup.restore_failed" = "没能恢复";
+
+/* No network: said plainly instead of blaming a service. */
+"community_invite.offline" = "这台 Mac 没有联网，连不上邀请服务。连上网络再试。";
+"network.offline.captions_start" = "这台 Mac 没有联网，实时字幕开不了。先连上网络，或者关掉字幕先录音。";
+"network.offline.record_hint" = "这台 Mac 现在没有联网。实时字幕要联网才能用；关掉字幕可以先录音。";
+"network.offline.short" = "没有网络";
+"network.offline.recording_banner" = "这台 Mac 没有联网。录音照常进行，联网后字幕会自动接上，断网这段可能没有字幕。";

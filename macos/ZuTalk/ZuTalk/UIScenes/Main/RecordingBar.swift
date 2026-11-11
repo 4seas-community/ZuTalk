@@ -28,6 +28,9 @@ struct RecordingBarModel: Equatable {
     /// The topic the recording files into; nil for one that belongs to none.
     var topicTitle: String?
     var captions: Captions
+    /// Captions were asked for and this Mac has no network. Said instead of
+    /// "connecting", which reads as the service being slow.
+    var offline: Bool = false
     /// "Chinese translation 12 s behind" and the like; nil while keeping up.
     var lagNotice: String?
     /// Why captions are not running normally, in words someone can act on.
@@ -46,6 +49,7 @@ struct RecordingBarModel: Equatable {
         capture: ActiveBilingualTranscriptStore,
         commands: CaptureCommandCenter,
         topicTitle: String?,
+        networkOffline: Bool,
         now: Date = Date(),
         clock: Date = Date()
     ) -> RecordingBarModel {
@@ -76,6 +80,7 @@ struct RecordingBarModel: Equatable {
                 : nil,
             topicTitle: topicTitle,
             captions: captions,
+            offline: networkOffline && captions != .off,
             lagNotice: capture.liveLagNotice,
             problem: capture.transcriptionProblemText,
             canReconnect: capture.canRestartTranscription,
@@ -122,6 +127,7 @@ struct RecordingBar: View {
     /// The bar shows the clock; the capture store no longer ticks with it.
     @ObservedObject private var clock = ActiveBilingualTranscriptStore.shared.clock
     @ObservedObject private var commands = CaptureCommandCenter.shared
+    @ObservedObject private var network = NetworkReachability.shared
     @State private var topicTitle: String?
     @State private var markTick = Date()
 
@@ -163,6 +169,7 @@ struct RecordingBar: View {
                 capture: capture,
                 commands: commands,
                 topicTitle: topicTitle,
+                networkOffline: network.isOffline,
                 now: markTick,
                 clock: clock
             ),
@@ -253,7 +260,9 @@ struct RecordingBarContent: View {
             .font(.bodySM)
             .foregroundColor(captionsColor)
             .lineLimit(1)
-            .help(model.problem ?? captionsText)
+            .help(model.offline
+                ? String(localized: "network.offline.recording_banner")
+                : model.problem ?? captionsText)
     }
 
     private func controls(compact: Bool) -> some View {
@@ -381,6 +390,7 @@ struct RecordingBarContent: View {
     }
 
     private var captionsText: String {
+        if model.offline { return String(localized: "network.offline.short") }
         switch model.captions {
         case .off: return String(localized: "recording_bar.captions.off")
         case .connecting: return String(localized: "capture.remote.connecting")
@@ -391,6 +401,7 @@ struct RecordingBarContent: View {
     }
 
     private var captionsIcon: String {
+        if model.offline { return "wifi.slash" }
         switch model.captions {
         case .off: return "mic.fill"
         case .connecting: return "ellipsis.bubble"
@@ -400,6 +411,7 @@ struct RecordingBarContent: View {
     }
 
     private var captionsColor: Color {
+        if model.offline { return .signalAmber }
         switch model.captions {
         case .off, .connecting: return .textSecondary
         case .live: return .signalGreen
@@ -424,6 +436,14 @@ struct RecordingProblemBanner: View {
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var livePresentation = ActiveBilingualTranscriptStore.shared.livePresentation
     @ObservedObject private var commands = CaptureCommandCenter.shared
+    @ObservedObject private var network = NetworkReachability.shared
+
+    /// No network explains every caption problem underneath it, and its
+    /// remedy is the user's own Wi-Fi, so it is said first and Reconnect is
+    /// not offered: the lanes already retry, and pressing it changes nothing.
+    private var offline: Bool {
+        network.isOffline && capture.remoteHealth != .off
+    }
 
     var body: some View {
         if capture.isCaptureActive, let message {
@@ -436,7 +456,8 @@ struct RecordingProblemBanner: View {
                     .foregroundColor(.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: Spacing.md)
-                if capture.canRestartTranscription || capture.isRestartingTranscription {
+                if offline == false,
+                   capture.canRestartTranscription || capture.isRestartingTranscription {
                     Button {
                         commands.restartTranscription()
                     } label: {
@@ -466,6 +487,9 @@ struct RecordingProblemBanner: View {
     }
 
     private var message: String? {
+        if offline {
+            return String(localized: "network.offline.recording_banner")
+        }
         if let problem = capture.transcriptionProblemText {
             return problem
         }
@@ -487,7 +511,8 @@ struct RecordingProblemBanner: View {
     }
 
     private var icon: String {
-        capture.captureState == .paused && capture.transcriptionProblemText == nil
+        if offline { return "wifi.slash" }
+        return capture.captureState == .paused && capture.transcriptionProblemText == nil
             ? "clock.badge.exclamationmark"
             : "exclamationmark.triangle.fill"
     }

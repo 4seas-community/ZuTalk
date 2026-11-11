@@ -22,6 +22,7 @@ struct RecordStartPage: View {
     @ObservedObject private var navigation = MainNavigationStore.shared
     @ObservedObject private var nearby = NearbyStore.shared
     @ObservedObject private var inputDevices = AudioInputDeviceStore.shared
+    @ObservedObject private var network = NetworkReachability.shared
     /// 录进哪个主题。nil 是「未归入主题」—— 录完随时可以归档。
     @State private var topicId: String?
     /// 语言选择编辑的就是开始时要用的那一份设置:未归入主题有它自己的一份,
@@ -138,6 +139,17 @@ struct RecordStartPage: View {
 
             row(title: String(localized: "record.page.captions"), detail: captionsDetail) {
                 CaptionsChoiceChip()
+            }
+
+            // 没联网又开着字幕:按下开始之前就说清楚,别让人以为是服务坏了。
+            if network.isOffline && commands.nextRecordingUsesCaptions {
+                Label(String(localized: "network.offline.record_hint"), systemImage: "wifi.slash")
+                    .font(.bodySM)
+                    .foregroundColor(.signalAmber)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Spacing.md)
+                    .padding(.bottom, Spacing.md)
+                    .accessibilityIdentifier("record.page.offline")
             }
 
             Divider().padding(.horizontal, Spacing.md)

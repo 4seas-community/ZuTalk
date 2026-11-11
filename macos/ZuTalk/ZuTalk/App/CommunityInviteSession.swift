@@ -123,7 +123,12 @@ final class CommunityInviteSession: ObservableObject {
             remainingSeconds = response.remainingSeconds
             setEnabled(true)
         } catch {
-            errorMessage = String(localized: "community_invite.invalid")
+            // Offline used to read "invalid code", and a correct code
+            // retyped on a Mac with no network kept failing for no reason
+            // anyone could see.
+            errorMessage = CommunityInviteError.isOffline(error)
+                ? String(localized: "community_invite.offline")
+                : String(localized: "community_invite.invalid")
             return
         }
         // The redeem answer does not say whether passage cleanup is offered;
@@ -149,7 +154,9 @@ final class CommunityInviteSession: ObservableObject {
             passageDigestOffer = response.passageDigest
             pushPassageDigestRouteToCore()
         } catch {
-            errorMessage = String(localized: "community_invite.unavailable")
+            errorMessage = CommunityInviteError.isOffline(error)
+                ? String(localized: "community_invite.offline")
+                : String(localized: "community_invite.unavailable")
         }
     }
 
@@ -161,6 +168,12 @@ final class CommunityInviteSession: ObservableObject {
         let lanes = max(1, laneCount)
         updatePlannedLaneCount(lanes)
         guard isEnabled, accessToken != nil else { return .notUsed }
+        // No route at all: say so before any request. Falling back to a
+        // saved personal key here would only move the same failure onto the
+        // caption lanes, under a toast that blames the invite service.
+        if NetworkReachability.shared.isOffline {
+            throw CommunityInviteError.offline
+        }
         await retryPendingSettlements()
         do {
             activeRealtimeSessionID = try await prepareCredential(
@@ -183,6 +196,12 @@ final class CommunityInviteSession: ObservableObject {
             // is no long-lived credential left to expire mid-recording.
             return .invite
         } catch {
+            // The path monitor can lag a dropped connection, or read Wi-Fi
+            // with nothing behind it as online; the request's own error is
+            // the second chance to call it what it is.
+            if CommunityInviteError.isOffline(error) {
+                throw CommunityInviteError.offline
+            }
             guard restorePersonalKeyIfSaved() else { throw error }
             errorMessage = String(localized: "community_invite.unavailable")
             return .personalKeyFallback
@@ -693,6 +712,9 @@ private struct LaneKeyResponse: Decodable {
 
 enum CommunityInviteError: Error, LocalizedError, Equatable {
     case requestFailed
+    /// This Mac could not reach any network, which is not the service's
+    /// fault and must not read like it.
+    case offline
     case refused(statusCode: Int, reason: String?)
     case secureStorageFailed
     case personalKeyRequired
@@ -702,6 +724,8 @@ enum CommunityInviteError: Error, LocalizedError, Equatable {
         switch self {
         case .requestFailed:
             return String(localized: "community_invite.unavailable")
+        case .offline:
+            return String(localized: "community_invite.offline")
         case let .refused(statusCode, reason):
             return Self.refusalDescription(statusCode: statusCode, reason: reason)
         case .secureStorageFailed:
@@ -729,6 +753,38 @@ enum CommunityInviteError: Error, LocalizedError, Equatable {
                 return String(localized: "community_invite.start.unauthorized")
             }
             return String(localized: "community_invite.unavailable")
+        }
+    }
+
+    /// Whether a failed request failed because this Mac could not get onto
+    /// the network, as opposed to the invite service being down or refusing.
+    ///
+    /// Requests here throw `URLError` straight from `URLSession`; a refusal
+    /// the service answered is `.refused` and never counts. A wrong "yes"
+    /// tells someone to check their Wi-Fi while the service is the one
+    /// down; a wrong "no" sends them to blame the service, the case this
+    /// exists for.
+    static func isOffline(_ error: Error) -> Bool {
+        if let invite = error as? CommunityInviteError {
+            return invite == .offline
+        }
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        // No usable interface, or the system refused to use the one there is.
+        case .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff:
+            return true
+        // A name that cannot be resolved at all is, in practice, Wi-Fi with
+        // nothing behind it (a captive portal), which the path monitor reads
+        // as online.
+        case .cannotFindHost, .dnsLookupFailed:
+            return true
+        // Left out on purpose. `.networkConnectionLost` is also what a
+        // server's stale keep-alive socket produces; `.timedOut`,
+        // `.cannotConnectToHost` and TLS failures happen just as well when
+        // the service is the one down. A real drop mid-request is caught by
+        // the path monitor instead.
+        default:
+            return false
         }
     }
 }

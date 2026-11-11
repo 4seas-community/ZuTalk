@@ -1425,3 +1425,10 @@
 "backup.restore_here" = "Auf diesem Mac wiederherstellen";
 "backup.restore_here_hint" = "Führt diese Kopie ohne Code mit der Bibliothek dieses Macs zusammen. Was schon da ist, bleibt unverändert.";
 "backup.restore_failed" = "Wiederherstellen fehlgeschlagen";
+
+/* No network: said plainly instead of blaming a service. */
+"community_invite.offline" = "Dieser Mac ist nicht mit dem Internet verbunden und erreicht den Einladungsdienst nicht. Verbinde dich und versuche es erneut.";
+"network.offline.captions_start" = "Dieser Mac ist nicht mit dem Internet verbunden, deshalb können Live-Untertitel nicht starten. Verbinde dich zuerst oder schalte die Untertitel aus, um ohne sie aufzunehmen.";
+"network.offline.record_hint" = "Dieser Mac ist offline. Live-Untertitel brauchen das Internet; schalte sie aus, um ohne sie aufzunehmen.";
+"network.offline.short" = "Kein Netzwerk";
+"network.offline.recording_banner" = "Dieser Mac ist offline. Die Aufnahme läuft weiter, und die Untertitel setzen von selbst wieder ein, sobald er wieder online ist; für die Offline-Strecke fehlen sie womöglich.";

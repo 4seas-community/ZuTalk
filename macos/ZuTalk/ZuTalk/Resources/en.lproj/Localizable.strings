@@ -1425,3 +1425,10 @@
 "backup.restore_here" = "Restore to This Mac";
 "backup.restore_here_hint" = "Merges this copy into this Mac’s own library, without a code. What’s already here stays as is.";
 "backup.restore_failed" = "Couldn’t restore";
+
+/* No network: said plainly instead of blaming a service. */
+"community_invite.offline" = "This Mac isn’t connected to the internet, so it can’t reach the invite service. Connect and try again.";
+"network.offline.captions_start" = "This Mac isn’t connected to the internet, so live captions can’t start. Connect first, or turn captions off to record without them.";
+"network.offline.record_hint" = "This Mac is offline. Live captions need the internet; turn them off to record without them.";
+"network.offline.short" = "No network";
+"network.offline.recording_banner" = "This Mac is offline. Recording continues, and captions pick up again on their own once it’s back online; the offline stretch may have none.";

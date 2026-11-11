@@ -195,9 +195,13 @@ final class CaptureCommandCenter: ObservableObject {
         } catch {
             // Return any invite reservation made above; a no-op when none exists.
             await invite.settleRealtimeSession(usedSeconds: 0)
+            // Offline gets the way out too: recording itself needs no
+            // network, only the captions do.
             ToastCenter.shared.error(
                 String(localized: "capture.toast.start_failed"),
-                detail: error.localizedDescription
+                detail: CommunityInviteError.isOffline(error)
+                    ? String(localized: "network.offline.captions_start")
+                    : error.localizedDescription
             )
             return false
         }

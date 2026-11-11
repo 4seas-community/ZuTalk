@@ -1425,3 +1425,10 @@
 "backup.restore_here" = "이 Mac에 복원";
 "backup.restore_here_hint" = "코드 없이 이 사본을 이 Mac의 라이브러리에 바로 합쳐요. 이미 있는 것은 그대로예요.";
 "backup.restore_failed" = "복원하지 못했어요";
+
+/* No network: said plainly instead of blaming a service. */
+"community_invite.offline" = "이 Mac이 인터넷에 연결되어 있지 않아 초대 서비스에 연결할 수 없어요. 연결한 뒤 다시 시도하세요.";
+"network.offline.captions_start" = "이 Mac이 인터넷에 연결되어 있지 않아 실시간 자막을 시작할 수 없어요. 먼저 연결하거나, 자막을 끄고 녹음만 하세요.";
+"network.offline.record_hint" = "이 Mac은 지금 오프라인이에요. 실시간 자막에는 인터넷이 필요해요. 자막을 끄면 녹음만 할 수 있어요.";
+"network.offline.short" = "네트워크 없음";
+"network.offline.recording_banner" = "이 Mac은 오프라인이에요. 녹음은 계속되고, 다시 연결되면 자막이 자동으로 이어져요. 오프라인이었던 구간에는 자막이 없을 수 있어요.";

@@ -1425,3 +1425,10 @@
 "backup.restore_here" = "Restaurar en este Mac";
 "backup.restore_here_hint" = "Combina esta copia con la biblioteca de este Mac, sin código. Lo que ya hay no cambia.";
 "backup.restore_failed" = "No se pudo restaurar";
+
+/* No network: said plainly instead of blaming a service. */
+"community_invite.offline" = "Este Mac no está conectado a internet y no puede llegar al servicio de invitaciones. Conéctese e inténtelo de nuevo.";
+"network.offline.captions_start" = "Este Mac no está conectado a internet, así que los subtítulos en directo no pueden empezar. Conéctese primero o desactive los subtítulos para grabar sin ellos.";
+"network.offline.record_hint" = "Este Mac está sin conexión. Los subtítulos en directo necesitan internet; desactívelos para grabar sin ellos.";
+"network.offline.short" = "Sin red";
+"network.offline.recording_banner" = "Este Mac está sin conexión. La grabación continúa y los subtítulos se reanudarán solos cuando vuelva la conexión; el tramo sin conexión puede quedar sin ellos.";

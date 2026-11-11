@@ -105,4 +105,27 @@ final class CommunityInviteSettlementLedgerTests: XCTestCase {
             String(localized: "community_invite.unavailable")
         )
     }
+
+    /// A Mac with no network once read "community service unavailable" and
+    /// sent everyone looking at the service. Only the unambiguous ends are
+    /// pinned here; the codes in between are a judgment call.
+    func testOfflineIsToldApartFromTheServiceFailing() {
+        XCTAssertTrue(CommunityInviteError.isOffline(URLError(.notConnectedToInternet)))
+        XCTAssertTrue(CommunityInviteError.isOffline(CommunityInviteError.offline))
+        XCTAssertEqual(
+            CommunityInviteError.offline.errorDescription,
+            String(localized: "community_invite.offline")
+        )
+
+        // The service answered: whatever it said, the network was fine.
+        XCTAssertFalse(CommunityInviteError.isOffline(
+            CommunityInviteError.refused(statusCode: 503, reason: "capacity_reached")
+        ))
+        XCTAssertFalse(CommunityInviteError.isOffline(CommunityInviteError.requestFailed))
+        XCTAssertFalse(CommunityInviteError.isOffline(URLError(.badServerResponse)))
+        XCTAssertFalse(CommunityInviteError.isOffline(URLError(.userAuthenticationRequired)))
+        XCTAssertFalse(CommunityInviteError.isOffline(
+            NSError(domain: "unrelated", code: -1009)
+        ))
+    }
 }
